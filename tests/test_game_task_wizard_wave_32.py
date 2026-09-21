@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 
+import game_labels
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -25,6 +26,7 @@ from config import config
 from database import db
 from handlers import admin_gamification
 from handlers import admin_game_tasks
+from handlers import game_task_wizard
 from handlers.states import GameTaskCreate
 
 
@@ -215,6 +217,8 @@ def test_audience_step_with_wave_deadline_prompt_offers_wave_end_hint(tmp_path):
     cb = _drive_to_deadline(state, wave_cb=f"gtwave:{wave_id}", audience="ambassadors")
     prompt = cb.message.answers_sent[-1]
     assert "По умолчанию — конец" in prompt
+    kb = cb.message.answer_markups[-1]
+    assert "gtdeadline_preset:wave_end" in _flat_callback_data(kb)
 
 
 def test_audience_step_without_wave_deadline_prompt_has_no_hint(tmp_path):
@@ -223,6 +227,8 @@ def test_audience_step_without_wave_deadline_prompt_has_no_hint(tmp_path):
     cb = _drive_to_deadline(state)  # gtwave:none by default
     prompt = cb.message.answers_sent[-1]
     assert "По умолчанию" not in prompt
+    kb = cb.message.answer_markups[-1]
+    assert "gtdeadline_preset:wave_end" not in _flat_callback_data(kb)
 
 
 def test_confirm_card_has_wave_and_audience_lines_no_codes(tmp_path):
@@ -315,3 +321,94 @@ def test_edit_audience_field_from_preview_returns_to_updated_preview(tmp_path):
     asyncio.run(admin_game_tasks.game_task_audience_step(cb, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
     assert "Аудитория: Только амбассадорам" in cb.message.answers_sent[-1]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: «Без срока» / «По умолчанию — конец волны»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_wizard_none_preset_creates_task_without_deadline(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(FakeCallback("gtdeadline_preset:none"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    asyncio.run(admin_gamification.game_task_confirm(FakeCallback("gtconfirm"), state))
+    tasks = asyncio.run(db.list_all_tasks())
+    assert game_labels.task_has_deadline(tasks[0]) is False
+    assert tasks[0]["deadline_at"] == db.NO_DEADLINE_AT
+
+
+def test_wizard_none_preset_confirm_card_prints_words_not_9999(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    preset_cb = FakeCallback("gtdeadline_preset:none")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(preset_cb, state))
+    card = preset_cb.message.answers_sent[-1]
+    assert "9999" not in card
+    assert "без срока" in card
+
+
+def test_wizard_wave_end_preset_sets_deadline_to_wave_end(tmp_path):
+    _db_ready(tmp_path)
+    wave_id = _mk_wave(ends_at="2026-11-30 23:59:59")
+    state = _new_state()
+    _drive_to_deadline(state, wave_cb=f"gtwave:{wave_id}")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(FakeCallback("gtdeadline_preset:wave_end"), state))
+    data = asyncio.run(state.get_data())
+    assert data["gt_deadline"] == "2026-11-30 23:59:59"
+
+
+def test_wizard_wave_end_preset_unavailable_without_wave_is_unknown(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)  # вне волн
+    cb = FakeCallback("gtdeadline_preset:wave_end")
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
+    assert cb.answers == [("Неизвестный вариант", True)]
+
+
+def test_point_edit_none_preset_removes_deadline_and_prints_words(tmp_path):
+    _db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task(
+        "т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID,
+    ))
+    state = _new_state()
+    asyncio.run(admin_game_tasks.game_task_editdeadline_start(FakeCallback(f"gteditdeadline:{task_id}"), state))
+    asyncio.run(admin_game_tasks.game_task_editdeadline_preset(
+        FakeCallback("gteditdeadline_preset:none"), state,
+    ))
+    task = asyncio.run(db.get_task(task_id))
+    assert task["deadline_at"] == db.NO_DEADLINE_AT
+    assert game_labels.task_has_deadline(task) is False
+    admin_text = game_labels.task_deadline_admin(task)
+    assert "9999" not in admin_text
+    assert admin_text == "без срока"
+
+
+def test_point_edit_wave_end_preset_available_only_for_wave_task(tmp_path):
+    _db_ready(tmp_path)
+    wave_id = _mk_wave(ends_at="2026-12-24 23:59:59")
+    task_id = asyncio.run(db.create_task(
+        "т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID, wave_id=wave_id,
+    ))
+    state = _new_state()
+    cb = FakeCallback(f"gteditdeadline:{task_id}")
+    asyncio.run(admin_game_tasks.game_task_editdeadline_start(cb, state))
+    assert "gteditdeadline_preset:wave_end" in _flat_callback_data(cb.message.edit_markup)
+    asyncio.run(admin_game_tasks.game_task_editdeadline_preset(
+        FakeCallback("gteditdeadline_preset:wave_end"), state,
+    ))
+    task = asyncio.run(db.get_task(task_id))
+    assert task["deadline_at"] == "2026-12-24 23:59:59"
+
+
+def test_existing_presets_still_work_plus3(tmp_path):
+    _db_ready(tmp_path)
+    state = _new_state()
+    _drive_to_deadline(state)
+    asyncio.run(admin_game_tasks.game_task_deadline_preset(FakeCallback("gtdeadline_preset:plus3"), state))
+    data = asyncio.run(state.get_data())
+    expected = game_task_wizard._resolve_deadline_preset("plus3")
+    assert data["gt_deadline"] == expected.strftime("%Y-%m-%d %H:%M:%S")
