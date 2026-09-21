@@ -3316,15 +3316,19 @@ SETTINGS_SCHEMA = {
     # ── Phase 09.2 (B): group "menu" — тумблеры кнопок главного меню ────────────────────
     # Source of these 9 keys/labels: keyboards/builders.py::MENU_BUTTONS (copied byte-for-
     # byte, emoji included). Deliberately `type: "enum"`, options ["on", "off"], NOT
-    # `type: "toggle"`. Reason: `REG_DEFAULTS` is derived from SETTINGS_SCHEMA by filtering
-    # `type == "toggle"` (handlers/registration.py:237-239), and `_apply_event_preset`
-    # (handlers/admin.py:3061-3069) unconditionally sweeps EVERY REG_DEFAULTS key on every
-    # tap of an event-type preset (forum/conference/custom), writing "on"/"off" to each.
-    # If menu_* were "toggle"-typed, tapping any preset in the admin UI would silently
-    # force every menu button off (none of them match a reg_q_* preset name). This is the
-    # SAME established workaround already used by payment_enabled/consent_enabled/
-    # role_reg_manager_enabled/event_city_enabled — all documented "NOT toggle" for the
-    # exact same reason.
+    # `type: "toggle"`. Reason: `reg_engine.REG_DEFAULTS` is derived from SETTINGS_SCHEMA by
+    # filtering `type == "toggle" and group == "reg_questions"`, and `reg_presets.
+    # apply_reg_preset` unconditionally sweeps EVERY REG_DEFAULTS key on every tap of an
+    # event-type preset (forum/conference/skillup/…), writing "on"/"off" to each. If menu_*
+    # were "toggle"-typed AND group "reg_questions", tapping any preset in the admin UI would
+    # silently force every menu button off (none of them match a reg_q_* preset name). This is
+    # the SAME established workaround already used by payment_enabled/consent_enabled/
+    # role_reg_manager_enabled/event_city_enabled — all documented "NOT toggle" for the exact
+    # same reason. (Two keys — `reg_scoring_enabled`/`reject_rules_enabled` — take the OTHER
+    # valid escape hatch instead: stay `type: "toggle"` for the manager-facing UI, group
+    # "apps" keeps them out of REG_DEFAULTS, and `reg_engine.MODULE_SWITCH_TOGGLES` is the
+    # explicit allowlist a preset may still opt one of them into — see their entries below and
+    # `reg_presets.apply_reg_preset`.)
     # `per_city: True` — Phase 09.2 (A): kept as an editable, per-city-overridable setting,
     # same mechanism as any other per_city key. Consumers (get_main_menu_kb, the admin
     # "🔘 Кнопки главного меню" screen) are NOT migrated in this plan — they stay on raw
@@ -4975,16 +4979,21 @@ SETTINGS_SCHEMA = {
         "default": 2,
     },
     # Phase 28 (28-07, SU-08, A-04, СкиллАп 5): ГЛАВНЫЙ выключатель автоскоринга — type
-    # НАРОЧНО "toggle" (не "enum"): только ключи типа toggle попадают в
-    # `reg_engine.REG_DEFAULTS`, а гейт столбцов листа «Балл»/«IT 3+»
-    # (handlers/reg_schema.SHEET_COLUMNS) резолвится через тот же `is_step_enabled_for_track`,
-    # что и reg_q_* (D-06 — при default "off" ширина листа YL/РилТолка не меняется). Group
-    # НАРОЧНО "apps" (не "reg_questions"): это не парный шаг REG_FLOW (нет своего вопроса
-    # анкеты) — группа "reg_questions" зарезервирована `settings_ops.reg_question_track_base`
-    # и веб-матрицей «трек × вопрос» (miniapp/routers/settings.py::_reg_questions_matrix)
-    # СТРОГО за ключами, у которых есть парный REG_FLOW-шаг; ключ вне REG_FLOW в этой группе
-    # ломает оба инварианта (обнаружено `tests/test_web_settings_parity.py`). Не per_city —
-    # один переключатель на всё событие, как reg_multi_max_*/score_* пороги выше.
+    # "toggle" для однокнопочного вида в админке (как reg_q_*), но group НАРОЧНО "apps", а
+    # не "reg_questions": группа "reg_questions" зарезервирована `settings_ops.
+    # reg_question_track_base` и веб-матрицей «трек × вопрос» (miniapp/routers/settings.py::
+    # _reg_questions_matrix) СТРОГО за ключами с парным REG_FLOW-шагом — у этого ключа
+    # своего вопроса анкеты нет (обнаружено `tests/test_web_settings_parity.py`).
+    # Quick 260921: та же group "apps" ЕЩЁ и держит ключ вне `reg_engine.REG_DEFAULTS`
+    # (фильтр там — `type == "toggle" and group == "reg_questions"`), поэтому пресет типа
+    # события (`reg_presets.apply_reg_preset`) не выключает его молча наравне с вопросами
+    # анкеты; ключ явно перечислен в `reg_engine.MODULE_SWITCH_TOGGLES` — единственный
+    # преднамеренный способ преста включить его ("skillup"). Гейт столбцов листа «Балл»/«IT
+    # 3+» (handlers/reg_schema.SHEET_COLUMNS) всё равно резолвится через тот же
+    # `is_step_enabled_for_track` → `_is_step_enabled`, что и reg_q_* — тот читает дефолт из
+    # SETTINGS_SCHEMA напрямую, не из REG_DEFAULTS, поэтому default "off" ниже соблюдается
+    # (D-06 — при "off" ширина листа YL/РилТолка не меняется). Не per_city — один переключатель
+    # на всё событие, как reg_multi_max_*/score_* пороги выше.
     "reg_scoring_enabled": {
         "type": "toggle", "group": "apps", "label": "🧮 Автоматический балл заявки",
         "prompt": None, "default": "off",
@@ -4997,7 +5006,10 @@ SETTINGS_SCHEMA = {
     # тумблера живёт на экране «Правила автоотказа» (план 31-08) — НЕ здесь, поэтому своего
     # toggle_* хендлера в admin_settings.py у этого ключа нет и не будет (правило файла: экран
     # уже под потолком размера, а тумблер логически принадлежит экрану правил, не общим
-    # настройкам заявок).
+    # настройкам заявок). Quick 260921: group "apps" (та же причина, что у reg_scoring_enabled
+    # выше) держит ключ вне `reg_engine.REG_DEFAULTS`, значит вне зоны сноса пресетом типа
+    # события — ключ в явном `reg_engine.MODULE_SWITCH_TOGGLES`, ни один пресет сегодня не
+    # включает его через "on" список, поэтому применение любого пресета его не трогает вовсе.
     "reject_rules_enabled": {
         "type": "toggle", "group": "apps", "label": "🚫 Правила автоотказа",
         "prompt": None, "default": "off",
