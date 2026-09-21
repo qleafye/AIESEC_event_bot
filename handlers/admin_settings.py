@@ -242,6 +242,22 @@ _GAME_FIELD_ORDER = [
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
     "balance_history_header_text",
     "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
+    # Phase 32 (32-02, D-21/D-35/D-18): амбассадорский слой — числа сначала (ambassador_
+    # referral_coins/game_late_penalty_percent/wave_prize_places), `wave_rating_show_names`
+    # СЮДА НЕ входит — тумблер «одной кнопкой» (D-29), правится `toggle_wave_rating_show_names`
+    # ниже, не общим вводом текста (см. комментарий у ключа в settings_schema.py).
+    "ambassador_referral_coins", "game_late_penalty_percent", "wave_prize_places",
+    # Тексты старта волны, напоминания, итогов (D-04) — делегатские, переводятся автоматически.
+    "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
+    "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",
+    "wave_rating_header_text", "wave_rating_own_line_text", "wave_rating_closed_text",
+    # Тексты амбассадорского блока и пути (D-04) — делегатские.
+    "ambassador_block_header_text", "game_task_no_deadline_text", "game_task_penalty_hint_text",
+    "ambassador_path_prompt_text", "ambassador_path_label_invite", "ambassador_path_label_content",
+    "ambassador_path_label_none", "ambassador_leave_button_text", "ambassador_leave_confirm_text",
+    "ambassador_leave_done_text",
+    # Менеджерский текст конца волны (D-04) — НЕ переводится, см. i18n_sources._ADMIN_ONLY_GAME_KEYS.
+    "wave_end_manager_text",
 ]
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
@@ -1045,6 +1061,8 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
         buttons.extend([[b] for b in unconfigured])
     if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
         buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
+        # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
+        buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
     # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
     # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/admin_sections.py) — это
     # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового
@@ -1373,6 +1391,34 @@ async def toggle_daily_digest(callback: types.CallbackQuery):
     # «📊 Итоги дня: во сколько» в группе «🔧 Система» и применяется после перезапуска.
     await _toggle_module_setting(
         callback, "daily_digest_enabled", SETTINGS_SCHEMA["daily_digest_enabled"]["label"],
+    )
+
+
+# Phase 32 (32-02, D-29): «🏅 Показывать имена в рейтинге волны» — enum on/off, дефолт "on".
+# Тот же приём, что toggle_game_submit_notify: ключ НЕ в _GAME_FIELD_ORDER (CLAUDE.md — выбор
+# из готового набора только кнопкой, не вводом кода "on"/"off"), кнопка добавлена отдельной
+# строкой в build_settings_group_keyboard(token == "game") выше. Алерт при переключении несёт
+# совет «когда выключать» из SETTINGS_SCHEMA["wave_rating_show_names"]["prompt"] — единственное
+# место, где этот текст реально доходит до менеджера (в отличие от prompt обычного текстового
+# ключа, у этого ключа нет экрана свободного ввода).
+async def _wave_rating_show_names_button_text() -> str:
+    val = await get_setting_typed("wave_rating_show_names")
+    state = "показывать" if val == "on" else "скрыть"
+    return f"🏅 Имена в рейтинге волны: {state}"
+
+
+@router.callback_query(F.data == "toggle_wave_rating_show_names")
+async def toggle_wave_rating_show_names(callback: types.CallbackQuery):
+    current = await get_setting_typed("wave_rating_show_names")
+    new_val = "off" if current == "on" else "on"
+    await set_setting_by_admin(callback.from_user.id, "wave_rating_show_names", new_val)
+    label = SETTINGS_SCHEMA["wave_rating_show_names"]["label"]
+    state = "✅ Показывать" if new_val == "on" else "❌ Скрыть"
+    hint = SETTINGS_SCHEMA["wave_rating_show_names"]["prompt"]
+    await callback.answer(f"{label}: {state}\n\n{hint}", show_alert=True)
+    text = await render_settings_group_text("game", callback.from_user.id)
+    await callback.message.edit_text(
+        text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("game", callback.from_user.id)
     )
 
 
