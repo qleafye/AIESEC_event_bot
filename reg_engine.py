@@ -36,7 +36,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from config import config
-from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, settings_snapshot
+from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, RESUME_COLUMNS, settings_snapshot
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
@@ -3098,6 +3098,101 @@ def age_on(birth_raw: str | None, target_raw: str | None) -> int | None:
         return None
     years = target.year - born.year - ((target.month, target.day) < (born.month, born.day))
     return years if years >= 0 else None
+
+
+# ── Правила автоотказа: чистый оценщик условий (Phase 31, 31-01) ───────────────────────────
+# D-07: тот же класс функции, что compute_score/decide_status выше — синхронная, без БД, без
+# aiogram. Форма правила/условия и контракт возврата зафиксированы в <interfaces> 31-01-PLAN.md
+# и одинаково потребляются чатом и Mini App через общий финал анкеты (services/reg_finalize.py).
+# Фильтрация правил по городу/треку сюда НЕ входит намеренно — её делает загрузчик
+# services/reject_rules.py::active_rules (план 31-04), ровно как scoring_rules() выше собирает
+# готовый словарь для compute_score, а не читает реестр прямо из чистой функции.
+
+# Закрытый набор операторов условия по категории типа шага (D-01). Набор ЗАКРЫТ — условие с
+# неизвестным оператором обязано трактоваться оценщиком как «не сработало», а НЕ как исключение
+# (D-03, анти-паттерн «действие случайно прочиталось как противоположность отказу», инцидент
+# 06.09 — молчаливое авторешение).
+REJECT_RULE_OPERATORS = {
+    "select": ("in", "not_in"),
+    "multi": ("in", "not_in"),
+    "int": ("lt", "gt", "between"),
+    "date": ("before", "after"),
+    "birth_date": ("before", "after", "age_on_forum_lt"),
+    "text": ("filled", "empty"),
+    "file": ("has_file", "no_file"),
+}
+
+# Колонки резюме, которые условие «есть файл/нет файла» считает «файлом» — тот же список, что
+# database.db.RESUME_COLUMNS (has_file/no_file не заводит вторую копию перечисления).
+_REJECT_FILE_COLUMNS = RESUME_COLUMNS
+
+
+def reject_condition_category(step_key: str) -> str:
+    """Категория оператора условия автоотказа (D-01) по типу шага — ключ `REJECT_RULE_OPERATORS`.
+    Порядок проверок важен: файл и дата рождения проверяются ДО общего select/multi-разбора —
+    иначе `resume` уехал бы в `text` (его `REG_STEP_TYPES` — «text», признак «файл» знает
+    только `_ui_type_for`), а `birth_date` неотличим от прочих `date`-шагов.
+
+    Дальше — `step_type_v2(step_key)` как ПЕРВЫЙ сигнал (та же ось типа шага, что и остальной
+    модуль), но с оговоркой: `step_type_v2("course")`/`("study_field")` возвращают `"composite"`
+    (Phase 30 композит-карточка «Образование» поглощает оба шага в ОДНУ карточку анкеты 2.0) —
+    категория условия автоотказа обязана остаться «select» для КАЖДОГО шага ОТДЕЛЬНО (D-01:
+    «Курс — один из: 1, 2» — правило по одному вопросу, не по всей карточке разом). Поэтому
+    результаты `step_type_v2`, отличные от `select`/`multi` (в т.ч. `composite`/`lookup`/
+    `link`/`repeatable`), доопределяются терминальной веткой `_ui_type_for` — тем же кодом,
+    которым сам `step_type_v2` решает select/multi для НЕ-композитных шагов."""
+    if step_key == "resume":
+        return "file"
+    step_type = REG_STEP_TYPES.get(step_key)
+    if step_type == "date":
+        return "birth_date" if step_key == "birth_date" else "date"
+    ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
+    if ui_type == "int":
+        return "int"
+    v2_type = step_type_v2(step_key)
+    if v2_type in ("select", "multi"):
+        return v2_type
+    if ui_type in ("choice-chips", "select", "yesno"):
+        return "select"
+    if ui_type == "multi":
+        return "multi"
+    return "text"
+
+
+def condition_operators(step_key: str) -> tuple[str, ...]:
+    """Единственный источник правды о наборе операторов, предлагаемых менеджеру (редактор,
+    план 31-10) — тонкая обёртка над `REJECT_RULE_OPERATORS`/`reject_condition_category`,
+    второй копии таблицы операторов заводить не нужно."""
+    return REJECT_RULE_OPERATORS[reject_condition_category(step_key)]
+
+
+def rule_pause_reason(rule: dict, enabled_steps, options_by_step: dict) -> str | None:
+    """Чистый предикат D-14: правило само встаёт на паузу, если хоть одно из его условий
+    опирается на выключенный вопрос анкеты (`step` отсутствует в `enabled_steps`) либо на
+    исчезнувший вариант ответа (категория условия — select/multi, и хотя бы одно значение
+    условия отсутствует среди живых вариантов шага). `enabled_steps`/`options_by_step` собирает
+    вызывающий (загрузчик `services/reject_rules.py`, план 31-04) — сама функция ничего не
+    читает из БД и не зовёт асинхронный `reg_engine.options`. Шаг, которого нет в
+    `options_by_step` вовсе, — значения этого шага НЕ проверяются (список просто не собрали, а
+    не «вариантов не осталось»). Возврат — человеческая подпись ПЕРВОГО сломанного шага через
+    `label_for` (CLAUDE.md «бот для людей»: менеджеру не показываем сырой `step_key`), `None` —
+    правило исправно."""
+    enabled_steps = enabled_steps or []
+    options_by_step = options_by_step or {}
+    for group in (rule or {}).get("conditions") or []:
+        for cond in group or []:
+            step = (cond or {}).get("step")
+            if not step:
+                continue
+            if step not in enabled_steps:
+                return label_for(step)
+            category = reject_condition_category(step)
+            if category in ("select", "multi") and step in options_by_step:
+                values = (cond or {}).get("values") or []
+                live_options = options_by_step.get(step) or []
+                if any(value not in live_options for value in values):
+                    return label_for(step)
+    return None
 
 
 def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
