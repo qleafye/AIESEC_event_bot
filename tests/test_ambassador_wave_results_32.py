@@ -377,6 +377,21 @@ def test_wave_card_has_no_edit_buttons_after_announcement(tmp_path, monkeypatch)
     assert not any(c and c.startswith(("wavedel:", "wavecopy:")) for c in callbacks)
 
 
+def test_closing_wave_card_offers_results_screen(tmp_path):
+    """Сообщение о конце волны можно потерять — карточка волны, ждущей итогов, сама ведёт на
+    экран итогов; у идущей волны такой кнопки нет (нажимать её рано)."""
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, _task_id = _make_wave_with_task()
+    _text, kb = _run(w._wave_card_screen(ADMIN_ID, _run(db.get_wave(wave_id))))
+    assert f"wavefin:{wave_id}" in _kb_callbacks(kb)
+
+    active_id = _run(db.create_wave(_dt("01.11.2026"), _dt_end("08.11.2026")))
+    _run(db.set_wave_state(active_id, "active"))
+    _text, kb = _run(w._wave_card_screen(ADMIN_ID, _run(db.get_wave(active_id))))
+    assert f"wavefin:{active_id}" not in _kb_callbacks(kb)
+
+
 def test_wavefin_callback_format_matches_scheduler_button():
     """services.scheduler.send_wave_end_ping ставит кнопку `wavefin:{wave_id}` — формат должен
     совпадать буква в букву с фильтром обработчика в admin_game_waves.py."""
