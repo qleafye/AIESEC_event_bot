@@ -1463,6 +1463,103 @@ async def send_wave_end_ping(wave_id: int) -> None:
         logger.error(f"send_wave_end_ping({wave_id}) failed: {e}")
 
 
+# ── Phase 32 (32-11, D-16/D-17): рассылка итогов волны из неизменяемого снимка ───────────
+# `standings_json` — сериализованный `services.ambassador_waves.announce_results()["standings"]`
+# ({user_id: [place, points]} для ВСЕХ участников волны на момент объявления, не только
+# призёров). Обычные джобы этого файла берут только int-id и перечитывают живое состояние
+# ПЕРЕД отправкой (Pitfall 3) — здесь так не получится: если бы `send_wave_results` сама звала
+# `wave_rating(wave_id)` в момент срабатывания (минутой позже постановки, а после переармирования
+# — и часами/днями позже), сдача, одобренная уже ПОСЛЕ объявления, задним числом поменяла бы
+# личное место участника в рассылке — ровно то, что D-17 запрещает (T-32-11-01). `standings_json`
+# — обычная строка (json.dumps), а не Bot/closure — так же picklable и переживает рестарт
+# (SQLAlchemyJobStore), как и int-аргументы остальных джоб этого файла.
+
+def schedule_wave_results_broadcast(wave_id: int, standings: dict[int, tuple[int, int]]) -> None:
+    """Разовая джоба рассылки итогов ОДНОЙ волны, id `wave_results_broadcast_{wave_id}`,
+    `replace_existing=True`. «Сейчас + минута», не «прямо сейчас внутри хендлера»: рассылка
+    сотням участников не должна выполняться внутри обработчика кнопки менеджера (T-32-11-06) и
+    обязана пережить рестарт бота — тот же приём, что `schedule_payment_reminder`/`schedule_
+    wave_start`."""
+    run_at = _now_moscow_naive() + timedelta(minutes=1)
+    payload = json.dumps({str(uid): list(v) for uid, v in standings.items()})
+    get_scheduler().add_job(
+        send_wave_results, "date", run_date=run_at, args=[wave_id, payload],
+        id=f"wave_results_broadcast_{wave_id}", replace_existing=True,
+    )
+
+
+async def send_wave_results(wave_id: int, standings_json: str) -> None:
+    """Date-job target: рассылка итогов волны (D-16/D-17). Идемпотентна по факту: волна не в
+    состоянии 'announced' (откатили руками, повторное срабатывание после переармирования) —
+    молча выходим, ничего не отправляя.
+
+    Список призёров — из НЕИЗМЕНЯЕМОГО снимка `get_wave_results` (а не пересчитанный `wave_
+    rating`, вызова которого в этой функции НЕТ намеренно — см. комментарий к разделу выше);
+    личное место/баллы КАЖДОГО участника — из `standings_json`, замороженного в момент
+    объявления. Каждому участнику уходит `wave_results_announce_text`; призёрам (по снимку)
+    ДОПОЛНИТЕЛЬНО — `wave_results_winner_text` с текстом приза `wave_results_prize_text` (D-19:
+    сам приз бот не выдаёт, это только текст). Оба сообщения — через `services.i18n.context`
+    (язык участника), `quiet_hours.send_or_queue_text` и `_safe_send` (внутри `sender`), с
+    паузой между получателями; сбой одного получателя (заблокировал бота) не обрывает
+    остальных — `_safe_send` сама глотает permanent-ошибки, не поднимая исключение наружу."""
+    try:
+        from database.db import get_wave, get_wave_results, get_display_names
+        from services.ambassador_waves import wave_number_label
+        from services import quiet_hours, i18n
+
+        wave = await get_wave(wave_id)
+        if not wave or wave.get("state") != "announced":
+            return
+
+        standings = {
+            int(uid): (int(v[0]), int(v[1])) for uid, v in json.loads(standings_json).items()
+        }
+        total = len(standings)
+
+        winners = await get_wave_results(wave_id)
+        winner_ids = {int(w["user_id"]) for w in winners}
+        winner_names = await get_display_names([int(w["user_id"]) for w in winners])
+        winners_txt = "; ".join(
+            f"{w['place']}. {html.escape(str(winner_names.get(int(w['user_id']), w['user_id'])))}"
+            for w in winners
+        ) or "—"
+
+        announce_raw = await get_setting_typed("wave_results_announce_text")
+        winner_raw = await get_setting_typed("wave_results_winner_text")
+        prize_raw = await get_setting_typed("wave_results_prize_text")
+        wave_label = wave_number_label(wave)
+        now = _now_moscow_naive()
+
+        for user_id, (place, points) in standings.items():
+            lang, tr_map = await i18n.context(user_id)
+            text = i18n.tr(announce_raw, lang, tr_map).format(
+                wave=wave_label, winners=winners_txt, place=place, total=total, points=points,
+            )
+
+            async def _sender(cid=user_id, txt=text):
+                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+
+            await quiet_hours.send_or_queue_text(now, user_id, text, sender=_sender, parse_mode="HTML")
+            await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+
+            if user_id not in winner_ids:
+                continue
+            prize_text = i18n.tr(prize_raw, lang, tr_map)
+            winner_text = i18n.tr(winner_raw, lang, tr_map).format(
+                wave=wave_label, place=place, points=points, prize=prize_text,
+            )
+
+            async def _winner_sender(cid=user_id, txt=winner_text):
+                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+
+            await quiet_hours.send_or_queue_text(
+                now, user_id, winner_text, sender=_winner_sender, parse_mode="HTML",
+            )
+            await asyncio.sleep(0.05)
+    except Exception as e:
+        logger.error(f"send_wave_results({wave_id}) failed: {e}")
+
+
 # ── Phase 32 (32-08, T-32-08-07): переармирование джоб волн на старте бота ───────────────
 
 async def reconcile_wave_jobs() -> None:
