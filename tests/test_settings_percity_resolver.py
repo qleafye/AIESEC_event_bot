@@ -145,6 +145,9 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_status_rejected_badge_text", "reg_status_rejected_title_text",
     "reg_status_rejected_body_text", "reg_status_resubmit_button_text",
     "reg_status_tile_review_text", "reg_status_tile_approved_text", "reg_status_tile_rejected_text",
+    # Phase 31 (31-03, D-30): дата начала форума — per_city как её соседи event_date/
+    # event_time (у разных городов форум может стартовать в разный день).
+    "forum_date",
 }
 
 

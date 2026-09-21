@@ -17,11 +17,14 @@ admin_settings.py упирается в потолок test_module_size_conventi
   prompt (game_resubmit_limit, proxy_connect_timeout).
 - `enum` — одно из `options`; сравнение без учёта регистра, сохраняется каноническое
   написание из схемы.
+- `date_only` — маска `ДД.ММ.ГГГГ`, проверяется реальным `strptime` (Phase 31, 31-03,
+  D-30) — не regex, `31.02.2026` отбрасывается. Нормализуется к ведущим нулям.
 - Остальные типы (text/list/date/toggle/photo/file) и незнакомые ключи — без проверки.
 
 Сброс («-») и пустое значение валидатор не видит — их обрабатывает сам хендлер раньше.
 """
 import re
+from datetime import datetime
 
 from cities import PER_CITY_SEP
 from settings_schema import SETTINGS_SCHEMA, multi_codes
@@ -136,6 +139,22 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 "попробуйте ещё раз."
             )
         return "\n".join(codes), None
+
+    if entry_type == "date_only":
+        # Phase 31 (31-03, D-30): «дата без времени» — реальная проверка через strptime
+        # (не regex-маска), 31.02 отбрасывается так же честно, как «abc». Нормализуем к
+        # ведущим нулям (%d.%m.%Y), чтобы в базе не копились варианты вида «1.9.2026» — тот
+        # же приём, что у int-ветки выше (str(number)).
+        stripped = value.strip()
+        try:
+            parsed = datetime.strptime(stripped, "%d.%m.%Y")
+        except ValueError:
+            return None, (
+                "Нужна дата в формате <code>ДД.ММ.ГГГГ</code>, например "
+                "<code>15.10.2026</code> — без времени.\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить значение."
+            )
+        return parsed.strftime("%d.%m.%Y"), None
 
     if entry.get("format") == "time":
         match = _TIME_RE.fullmatch(value.strip())
