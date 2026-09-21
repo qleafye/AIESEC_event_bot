@@ -5609,12 +5609,21 @@ async def set_ambassador_flag(telegram_id: int, *, active: bool, at: str) -> boo
     """Единственная точка записи is_ambassador/ambassador_since/ambassador_left_at.
     `active=True` — is_ambassador=1, ambassador_since=at, ambassador_left_at=NULL (новый
     заход снова активен). `active=False` — is_ambassador=0, ambassador_left_at=at,
-    ambassador_since НЕ трогает (когда человек стал амбассадором — исторический факт)."""
+    ambassador_since НЕ трогает (когда человек стал амбассадором — исторический факт).
+
+    CR-08 (32-REVIEW.md): `active=True` идемпотентна на уровне SQL — `WHERE ... AND
+    COALESCE(is_ambassador, 0) = 0` не даёт ДЕЙСТВУЮЩЕМУ амбассадору переставить свой
+    `ambassador_since` повторным тапом «Хочу свою ссылку»/перезаполнением анкеты (кнопки
+    Telegram не истекают, предложение приходит после каждого финала анкеты). `rowcount == 0`
+    у уже активного амбассадора — не ошибка вызывающего, а нормальный итог: дата вступления
+    исторический факт, трогать её нечего. Возврат ПОСЛЕ выхода (D-38, `is_ambassador = 0`)
+    проходит условие как обычно и получает свежую дату — это осознанно другой случай."""
     async with _connect() as db:
         if active:
             cursor = await db.execute(
                 "UPDATE users SET is_ambassador = 1, ambassador_since = ?, "
-                "ambassador_left_at = NULL WHERE telegram_id = ?",
+                "ambassador_left_at = NULL WHERE telegram_id = ? "
+                "AND COALESCE(is_ambassador, 0) = 0",
                 (at, telegram_id),
             )
         else:

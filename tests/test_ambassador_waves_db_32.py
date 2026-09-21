@@ -295,6 +295,38 @@ def test_set_ambassador_flag_active_false_keeps_since(tmp_path):
     assert user["ambassador_left_at"] == "2026-09-20 00:00:00"
 
 
+def test_set_ambassador_flag_active_true_is_idempotent_for_current_ambassador(tmp_path):
+    """CR-08 (32-REVIEW.md): повторный `set_ambassador_flag(active=True)` у ДЕЙСТВУЮЩЕГО
+    амбассадора не имеет права переставить `ambassador_since` — это исторический факт
+    вступления. Сценарий: амбассадор с 1 сентября, волна с 1 октября, 5 октября он
+    перезаполняет анкету/тапает старую кнопку «Хочу свою ссылку» — рейтинг текущей волны не
+    должен потерять его."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _run(db.set_ambassador_flag(1, active=True, at="2026-09-01 00:00:00"))
+    rowcount_changed = _run(db.set_ambassador_flag(1, active=True, at="2026-10-05 00:00:00"))
+    user = _run(db.get_user(1))
+    assert rowcount_changed is False  # ничего не обновилось — уже был амбассадором
+    assert user["is_ambassador"] == 1
+    assert user["ambassador_since"] == "2026-09-01 00:00:00"
+
+
+def test_set_ambassador_flag_active_true_after_leave_gets_fresh_since(tmp_path):
+    """D-38: возврат ПОСЛЕ выхода — новая дата (не лазейка «выйти-войти», рейтинг текущей
+    волны для вернувшегося всё равно закрыт правилом `wave_eligible`, но сама дата обязана
+    обновиться — это НЕ тот же случай, что CR-08)."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _run(db.set_ambassador_flag(1, active=True, at="2026-09-01 00:00:00"))
+    _run(db.set_ambassador_flag(1, active=False, at="2026-09-15 00:00:00"))
+    changed = _run(db.set_ambassador_flag(1, active=True, at="2026-10-05 00:00:00"))
+    user = _run(db.get_user(1))
+    assert changed is True
+    assert user["is_ambassador"] == 1
+    assert user["ambassador_since"] == "2026-10-05 00:00:00"
+    assert user["ambassador_left_at"] is None
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Задача 3: аксессоры начислений и сторож пожизненного рейтинга
 # ══════════════════════════════════════════════════════════════════════════════════════════
