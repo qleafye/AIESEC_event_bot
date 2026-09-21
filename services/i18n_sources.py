@@ -117,9 +117,14 @@ ADMIN_KEYS_IN_DELEGATE_GROUPS: frozenset[str] = frozenset(
 # `game_task_title_prompt`/`game_wizard_publish_btn`, делегат эти экраны не видит никогда
 # (см. докстринг модуля выше). Список явный и должен обновляться руками при добавлении новых
 # менеджерских экранов в группу `game`.
+#
+# Phase 32 (32-02, D-04): `wave_end_manager_text` — сообщение МЕНЕДЖЕРУ о конце волны (топ по
+# уже проверенным сдачам + счётчик непроверенных), делегат его никогда не видит — та же логика
+# исключения, что у визарда создания задания выше.
 _ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
     "game_task_title_prompt", "game_task_photo_prompt", "game_task_preview_intro",
     "game_wizard_preview_title", "game_wizard_publish_btn", "coins_manual_amount_presets",
+    "wave_end_manager_text",
 })
 
 # Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты

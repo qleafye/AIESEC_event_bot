@@ -156,7 +156,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2495,
+        2545,
+        "Phase 32 (32-02, амбассадорский слой): +42 строки — 22 новых ключа группы game "
+        "(3 числовых + 19 текстовых + wave_end_manager_text) дописаны в _GAME_FIELD_ORDER, "
+        "плюс отдельный тумблер `wave_rating_show_names` (не в FIELD_ORDER — правится кнопкой, "
+        "не вводом кода, CLAUDE.md): хелпер `_wave_rating_show_names_button_text`, строка в "
+        "build_settings_group_keyboard(token == \"game\"), хендлер "
+        "`toggle_wave_rating_show_names`; 2495 -> 2537, потолок 2545 с небольшим запасом. "
         "Квик 260921 (дашборд, иконка вкладки): +21 строка — раздел `dashboard_favicon` в "
         "settings_receive_file_photo/settings_receive_file_doc (raw_file_key-ветка по образцу "
         "consent PDF, проверка mime/размера через dashboard_favicon.py, возврат на экран "

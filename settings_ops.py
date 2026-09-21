@@ -111,6 +111,10 @@ HTML_SETTINGS = {
     # Phase 21 Plan 02 (FORM-SYNC-04): анкета Mini App — три ключа уходят сообщением в чат
     # с parse_mode="HTML" (реестровый текст, не badge/подпись кнопки).
     "reg_sync_from_app_text", "reg_resume_restart_confirm_text", "reg_form_closed_text",
+    # Phase 32 (32-02): тексты волн — prompt каждого явно обещает «Поддерживается HTML»
+    # (wave_rating_header_text несёт <b> в самом дефолте).
+    "wave_start_message_text", "wave_deadline_reminder_text", "wave_results_announce_text",
+    "wave_results_winner_text", "wave_rating_header_text", "wave_end_manager_text",
 }
 
 
