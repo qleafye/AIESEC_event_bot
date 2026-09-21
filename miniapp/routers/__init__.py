@@ -18,8 +18,13 @@
                                        form_first — дом приложения = экран анкеты (D-24)
   Делегат (план 19-03, все — `delegate_gate` + `require_section`):
   GET  /app/api/tasks?offset&limit   -> {items[{id,title,category,category_label,coins,deadline_at,
-                                       deadline_short,status,attempt,overdue}], total, limit, offset}
+                                       deadline_short,has_deadline,deadline_text,status,attempt,
+                                       overdue}], total, limit, offset}
                                        status: new|pending|approved|rejected; limit <= 50, дефолт 25
+                                       has_deadline/deadline_text (план 32-14, D-27): у задания
+                                       без срока — `false`/«без срока» (реестр), не служебная
+                                       метка «конца времён»; метка наружу не отдаётся никогда,
+                                       ставится только из бота
   GET  /app/api/tasks/{id}         -> задание + card_text, proof_hint, photo_file_id, status,
                                        attempt, can_submit; 404 {"reason":"task_not_found"} и для архивных
   GET  /app/api/profile            -> {full_name, username, fields[{key,label,value}], status,
@@ -147,12 +152,17 @@
                                        deadline_presets[{code,label}], deadline_example, cities[{code,label}],
                                        city_choice, bound_city_label, title_max, text_max}
   GET  /app/api/admin/tasks?archived=0|1&offset&limit -> {items[{id,number,title,category,category_label,
-                                       coins,deadline_at,deadline_short,overdue,archived,pending,approved,
-                                       has_photo}], total, active_count, archived_count, archived, offset,
-                                       limit, empty_text}; limit <= 50
+                                       coins,deadline_at,deadline_short,has_deadline,deadline_display,
+                                       overdue,archived,pending,approved,has_photo}], total, active_count,
+                                       archived_count, archived, offset, limit, empty_text}; limit <= 50
   GET  /app/api/admin/tasks/{id}   -> карточка: все поля + category_label, proof_label, city_label,
-                                       deadline_display, card_text (render_task_card_text), photo_file_id,
-                                       submissions_count, can_delete, cannot_delete_text; 404 not_found
+                                       deadline_display, has_deadline, card_text (render_task_card_text),
+                                       photo_file_id, submissions_count, can_delete, cannot_delete_text;
+                                       404 not_found
+                                       has_deadline/deadline_display (план 32-14, D-27): без срока —
+                                       `false`/«без срока» словами (`game_labels.task_deadline_admin`),
+                                       не «31.12.9999 23:59»; хранимую метку «конца времён» PATCH
+                                       поставить нельзя — эта фаза новых значений не добавляет (D-36)
   PATCH /app/api/admin/tasks/{id} {title | text | coins | deadline_at | photo_file_id(+part_token)
                                        | remove_photo: true} -> {ok, field, task}; РОВНО одно поле
                                        400 one_field/title_empty/text_empty/bad_coins/bad_deadline/
