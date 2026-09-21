@@ -1663,12 +1663,18 @@ _NO_DEADLINE_AT = "9999-12-31 23:59:59"
 def _ambassador_current_wave(conn, scope: Scope) -> "dict | None":
     """Волна, в чьи даты попадает «сейчас» (МСК); если такой нет — последняя ОБЪЯВЛЕННАЯ
     волна скоупа. Единственная таблица в запросе — `ambassador_waves`, колонка `event_city`
-    не квалифицируется (`_user_scoped_parts` здесь не нужен, ни с чем не джойнимся)."""
+    не квалифицируется (`_user_scoped_parts` здесь не нужен, ни с чем не джойнимся).
+
+    Фикс WR-14 (фаза 32): `state != 'draft'` — та же оговорка, что у бота
+    (`database.db.wave_at`, «состояние не 'draft'»). Без неё «Скопировать прошлую» с датами,
+    захватывающими текущий момент, подставляла дашборду ещё не запущенный черновик — на
+    боевом рейтинге волны амбассадоров бота эта волна не видна вовсе."""
     city_frag, city_params = _city_sql(conn, scope.city)
     parts = [city_frag] if city_frag else []
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    state_not_draft = "state != 'draft'"
     row = conn.execute(
-        f"SELECT * FROM ambassador_waves{_where(parts + ['starts_at <= ?', 'ends_at >= ?'])} "
+        f"SELECT * FROM ambassador_waves{_where(parts + ['starts_at <= ?', 'ends_at >= ?', state_not_draft])} "
         "ORDER BY starts_at DESC LIMIT 1",
         tuple(city_params) + (now, now),
     ).fetchone()
@@ -1724,32 +1730,64 @@ def _ambassador_funnel(conn, scope: Scope) -> list[dict]:
     return result[:_AMBASSADOR_ROWS_LIMIT]
 
 
+def _ambassador_wave_results_snapshot(conn, wave: dict) -> list[dict]:
+    """Фикс WR-14 (фаза 32): волна `announced` — читаем неизменяемый снимок призёров
+    `wave_results` (D-17), а НЕ пересчитываем по `coins`/`referral_credits`. Сдача, проверенная
+    уже ПОСЛЕ объявления, продолжает пополнять общий зачёт (D-17), но не имеет права задним
+    числом изменить то, что увидели амбассадоры в сообщении об итогах — живой пересчёт молча
+    разошёлся бы с уже объявленными числами. `wave_results` несёт только призовые места (не
+    всех участников волны, см. `services.ambassador_waves.announce_results`) — после
+    объявления список короче, чем во время волны, это ожидаемо."""
+    rows = conn.execute(
+        "SELECT wr.user_id AS user_id, wr.points AS points, users.username AS username "
+        "FROM wave_results wr JOIN users ON users.telegram_id = wr.user_id "
+        "WHERE wr.wave_id = ? ORDER BY wr.place ASC",
+        (wave["id"],),
+    ).fetchall()
+    return [
+        {"telegram_id": row["user_id"], "username": row["username"], "points": row["points"]}
+        for row in rows
+    ]
+
+
 def _ambassador_wave_rating(conn, scope: Scope, wave: "dict | None") -> list[dict]:
     """Рейтинг ТЕКУЩЕЙ волны: баллы = сумма `coins` по заданиям волны (привязка задания,
     не дата проверки, D-14а) + сумма `referral_credits` этой волны (D-14б). `[]`, если волны
-    сейчас нет в скоупе."""
+    сейчас нет в скоупе.
+
+    Фикс WR-14 (фаза 32): участвуют ТОЛЬКО те, кто проходит `wave_eligible` бота —
+    `users.is_ambassador = 1` И (`ambassador_since` пусто ИЛИ не позже старта волны), иначе
+    вышедший амбассадор или обычный делегат, сдавший задание волны с аудиторией «всем»,
+    попадал на дашборд, которого нет в рейтинге бота. `c.source = 'task'` — та же граница, что
+    у бота (`database.db.sum_task_coins_for_wave`), а не «любой положительный coins.delta»
+    (ручная правка/штраф с отрицательным delta по тому же заданию раньше пропадали из суммы)."""
     if wave is None:
         return []
+    if wave["state"] == "announced":
+        return _ambassador_wave_results_snapshot(conn, wave)
     parts, params = _scope_sql(conn, scope)
+    eligible = ["users.is_ambassador = 1", "(users.ambassador_since IS NULL OR users.ambassador_since <= ?)"]
+    eligible_params = params + (wave["starts_at"],)
+    source_is_task = "c.source = 'task'"
 
     task_sql = (
         "SELECT c.user_id AS user_id, SUM(c.delta) AS points FROM coins c "
         "JOIN users ON users.telegram_id = c.user_id "
         "JOIN game_tasks t ON t.id = c.task_id "
-        f"{_where(_user_scoped_parts(parts) + ['t.wave_id = ?', 'c.delta > 0'])} "
+        f"{_where(_user_scoped_parts(parts) + eligible + ['t.wave_id = ?', source_is_task])} "
         "GROUP BY c.user_id"
     )
     points: dict[int, int] = {
         row["user_id"]: row["points"] or 0
-        for row in conn.execute(task_sql, params + (wave["id"],)).fetchall()
+        for row in conn.execute(task_sql, eligible_params + (wave["id"],)).fetchall()
     }
 
     ref_sql = (
         "SELECT rc.referrer_id AS user_id, SUM(rc.coins) AS points FROM referral_credits rc "
         "JOIN users ON users.telegram_id = rc.referrer_id "
-        f"{_where(parts + ['rc.wave_id = ?'])} GROUP BY rc.referrer_id"
+        f"{_where(parts + eligible + ['rc.wave_id = ?'])} GROUP BY rc.referrer_id"
     )
-    for row in conn.execute(ref_sql, params + (wave["id"],)).fetchall():
+    for row in conn.execute(ref_sql, eligible_params + (wave["id"],)).fetchall():
         points[row["user_id"]] = points.get(row["user_id"], 0) + (row["points"] or 0)
 
     if not points:

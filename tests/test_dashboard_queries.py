@@ -2488,6 +2488,106 @@ def test_ambassador_block_city_scope_excludes_other_city(tmp_path):
     assert {row["telegram_id"] for row in spb_block["funnel"]} == {2}
 
 
+def test_ambassador_wave_rating_excludes_ineligible_and_filters_by_source(tmp_path):
+    """Фикс WR-14: рейтинг волны на дашборде считается ТЕМ ЖЕ правилом, что у бота —
+    `wave_eligible` (is_ambassador=1, ambassador_since не позже старта волны) и
+    `c.source = 'task'`, а не «любой положительный coins.delta»."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        users=[
+            {"telegram_id": 1, "username": "amb", "is_ambassador": 1, "status": "approved"},
+            # вышедший амбассадор (D-32) — is_ambassador=0 сейчас, но у него есть строка coins
+            # с task_id этой волны (одобрено, пока ещё был амбассадором).
+            {"telegram_id": 2, "username": "left_amb", "is_ambassador": 0, "status": "approved"},
+            # обычный делегат, никогда не был амбассадором, сдал задание волны с аудиторией "всем".
+            {"telegram_id": 3, "username": "delegate", "is_ambassador": 0, "status": "approved"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": None,
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+        game_tasks=[
+            {"id": 10, "text": "Задание", "category": "photo", "coins": 50, "proof_type": "photo",
+             "deadline_at": _NO_DEADLINE_AT, "created_at": "2026-09-01 00:00:00",
+             "event_city": None, "wave_id": 1, "audience": "all"},
+        ],
+        coins=[
+            {"user_id": 1, "delta": 50, "reason": "task", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-05 00:00:00"},
+            {"user_id": 1, "delta": -10, "reason": "коррекция", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-06 00:00:00"},  # source='task', отрицательная -- ДОЛЖНА войти
+            {"user_id": 1, "delta": 200, "reason": "ручной бонус", "task_id": 10, "source": "manual",
+             "timestamp": "2026-09-07 00:00:00"},  # source!='task' -- НЕ должна войти
+            {"user_id": 2, "delta": 300, "reason": "task", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-08 00:00:00"},
+            {"user_id": 3, "delta": 50, "reason": "task", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-09 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope())
+    rating_by_id = {row["telegram_id"]: row["points"] for row in block["wave_rating"]}
+    assert rating_by_id == {1: 40}  # 50 - 10 (source='task' обе строки), без ручного бонуса
+    assert 2 not in rating_by_id  # вышедший амбассадор
+    assert 3 not in rating_by_id  # никогда не был амбассадором
+
+
+def test_ambassador_current_wave_skips_draft_state(tmp_path):
+    """Фикс WR-14: черновик («Скопировать прошлую» с датами, накрывающими «сейчас») не
+    считается текущей волной дашборда — `database.db.wave_at` бота его тоже пропускает."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        users=[{"telegram_id": 1, "is_ambassador": 1, "status": "approved"}],
+        ambassador_waves=[
+            {"id": 1, "number": 2, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "draft", "event_city": None,
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope())
+    assert block["wave"] is None
+    assert block["wave_rating"] == []
+
+
+def test_ambassador_wave_rating_announced_shows_frozen_snapshot_not_live_recompute(tmp_path):
+    """Фикс WR-14: волна `announced` — рейтинг читается из `wave_results` (снимок D-17), а не
+    пересчитывается заново, даже если после объявления добавились новые coins-строки той же
+    волны (сдача, проверенная после объявления, — только в общий зачёт)."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        users=[
+            {"telegram_id": 1, "username": "winner", "is_ambassador": 1, "status": "approved"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "announced", "event_city": None,
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+        game_tasks=[
+            {"id": 10, "text": "Задание", "category": "photo", "coins": 50, "proof_type": "photo",
+             "deadline_at": _NO_DEADLINE_AT, "created_at": "2026-09-01 00:00:00",
+             "event_city": None, "wave_id": 1, "audience": "all"},
+        ],
+        coins=[
+            # Одобрено ПОСЛЕ объявления -- живой пересчёт увидел бы 500, снимок -- нет.
+            {"user_id": 1, "delta": 500, "reason": "task", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-10 00:00:00"},
+        ],
+        wave_results=[
+            {"wave_id": 1, "user_id": 1, "place": 1, "points": 50,
+             "announced_at": "2026-09-09 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope())
+    assert block["wave_rating"] == [{"telegram_id": 1, "username": "winner", "points": 50}]
+
+
 def test_ambassador_block_rows_limit_constant_used():
     """Сторож текста T-32-09-03: своя константа потолка строк должна фигурировать в теле
     каждой списочной функции блока, а не только в объявлении (не даёт тихо забыть `LIMIT`
