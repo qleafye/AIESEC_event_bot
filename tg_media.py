@@ -24,6 +24,10 @@ _IMAGE_EXT_MAP = {
     ".png": "image/png",
     ".webp": "image/webp",
     ".gif": "image/gif",
+    # Квик 260921: фавикон дашборда — ICO та же история, что и остальные записи карты —
+    # `mimetypes.guess_type` угадывает и без неё на большинстве платформ, но не гарантированно
+    # везде одинаково, фиксируем явно.
+    ".ico": "image/x-icon",
 }
 
 _OCTET_STREAM = "application/octet-stream"

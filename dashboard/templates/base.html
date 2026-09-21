@@ -5,12 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>{% block title %}{{ event_name or "Дашборд статистики" }}{% endblock %}</title>
-  {# Фаза 26-02 (RT-05): favicon мероприятия, если менеджер задал miniapp_logo, иначе —
-     прежняя иконка АЙСЕК. Jinja2 отдаёт неопределённую event_logo_url как ложное значение —
-     на страницах входа/«нет доступа» (контекст без event_logo_url) ветка молча уходит в
-     откат, их контексты трогать не нужно. #}
-  {% if event_logo_url %}
-  <link rel="icon" href="{{ event_logo_url }}">
+  {# Фаза 26-02 (RT-05) + квик 260921: favicon — своя иконка вкладки (dashboard_favicon), если
+     менеджер её загрузил, иначе лого мероприятия (miniapp_logo), иначе — прежняя иконка
+     АЙСЕК; порядок уже разрешён в Python (dashboard/main.py::_favicon_url), здесь простой
+     if/else. НЕ event_logo_url — тот управляет только видимым лого на странице (D-10 квика
+     260921: разведены по разным переменным, чтобы своя иконка вкладки не подменяла лого).
+     Jinja2 отдаёт неопределённую favicon_url как ложное значение — на страницах входа/«нет
+     доступа»/сравнения (контекст без favicon_url) ветка молча уходит в откат, их контексты
+     трогать не нужно. #}
+  {% if favicon_url %}
+  <link rel="icon" href="{{ favicon_url }}">
   {% else %}
   <link rel="icon" href="/static/brand/aiesec-human-blue.svg" type="image/svg+xml">
   {% endif %}

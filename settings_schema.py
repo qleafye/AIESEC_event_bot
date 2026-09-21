@@ -3470,6 +3470,15 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "dashboard", "label": "🔗 Рефералы",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
+    # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
+    # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
+    # НЕ фото — Telegram пережимает фото в JPEG) с экрана «🎭 Пресеты и ручки оформления»
+    # (handlers/admin_miniapp_theme.py), тексты/правила — dashboard_favicon.py. Резолвер
+    # порядка favicon -> miniapp_logo -> статика АЙСЕК — dashboard/main.py::_favicon_url.
+    "dashboard_favicon": {
+        "type": "file", "group": "dashboard", "label": "🔖 Иконка вкладки дашборда",
+        "prompt": None, "default": None,
+    },
 
     # ── Phase 19 (D-06): экран «🎨 Оформление» Mini App — тумблеры, оформление, чекбоксы
     # разделов и тексты, которых нет в группах game/menu. Own group "miniapp": как и

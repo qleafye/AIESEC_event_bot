@@ -28,7 +28,12 @@ logger = logging.getLogger(__name__)
 # Единственное перечисление ключей оформления в этом модуле — список берётся из
 # `web_theme.ASSET_KEYS`, второй раз ключи здесь не заводятся (`miniapp_logo` — не ключ
 # `web_theme`, это ключ реестра лого приложения, тот же, что в `miniapp/routers/files.py`).
-ASSET_SETTING_KEYS: tuple[str, ...] = tuple(dict.fromkeys(("miniapp_logo", *web_theme.ASSET_KEYS.values())))
+# `dashboard_favicon` (квик 260921) — своя иконка вкладки БРАУЗЕРА дашборда, не относится к
+# Mini App вовсе (`dashboard_favicon.py`), добавлена сюда напрямую тем же приёмом, что
+# `miniapp_logo` — второго ASSET_KEYS для дашборда заводить не стали ради одного ключа.
+ASSET_SETTING_KEYS: tuple[str, ...] = tuple(dict.fromkeys(
+    ("miniapp_logo", "dashboard_favicon", *web_theme.ASSET_KEYS.values())
+))
 
 FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{20,200}$")
 
