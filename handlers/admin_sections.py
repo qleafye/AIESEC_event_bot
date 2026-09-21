@@ -107,6 +107,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Phase 28 (28-08, SU-08): чекбокс-пикеры скоринговых множеств — рядом с «🧾 Поля
         # карточки заявки» (тот же класс экрана: динамический набор, кнопки вместо кодов).
         ("screen", "admin_reg_scoring", "🧮 Правила балла"),
+        # Phase 31 (31-08, D-09/D-15): «🚫 Правила автоотказа» — сразу после «🧮 Правила балла»,
+        # два экрана «правил» читаются подряд.
+        ("screen", "admin_reject_rules", "🚫 Правила автоотказа"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
@@ -556,3 +559,7 @@ from handlers import admin_app_list  # noqa: E402,F401
 # Квик 260919-mlu (Task 3): шов «развилка при смене имени вкладки» — импорт СРАЗУ ПОСЛЕ
 # admin_app_list, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_sheet_tabs  # noqa: E402,F401
+
+# Phase 31 (31-08, D-09/D-15): шов «🚫 Правила автоотказа» — импорт СРАЗУ ПОСЛЕ admin_sheet_tabs,
+# тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_reject_rules  # noqa: E402,F401

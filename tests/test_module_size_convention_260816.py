@@ -403,7 +403,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "логика решения/текста живёт в том шве, здесь только развилка + вызов.",
     ),
     "admin_caps.py": (
-        1000,
+        1015,
+        "План 31-08 (D-09/D-15/D-16): +8 строк — capability-записи экрана «🚫 Правила "
+        "автоотказа» (admin_reject_rules, arr_* префиксный ключ на всё пространство "
+        "callback'ов редактора, state:RejectRuleEdit:*), рядом с admin_reg_scoring выше "
+        "(тот же класс экрана настроек); 999 -> 1007, потолок поднят с небольшим запасом. "
         "Квик 260919-mlu (Task 3): +6 строк — три новые capability-записи развилки «была своя "
         "вкладка, имя меняется» (sheet_tab_rename_go/sheet_tab_reuse_go/sheet_tab_newtab_go, "
         "handlers/admin_sheet_tabs.py), рядом с sheets_tab_confirm/sheets_tab_cancel; "
