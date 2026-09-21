@@ -260,6 +260,7 @@ async def render_task_card_text(task: dict, status_line: str, attempt: int | Non
 
 def visible_tasks_for(
     tasks: list[dict], *, is_ambassador: bool, eligible_wave_ids: set[int],
+    open_wave_ids: set[int] | None = None,
 ) -> list[dict]:
     """Phase 32 (32-04, D-28/D-31/D-38): единственное правило видимости задания на весь
     проект — бот (`handlers/user_actions.py`) и Mini App (`miniapp/routers/tasks.py`) зовут
@@ -271,17 +272,53 @@ def visible_tasks_for(
     недоступна (`wave_id not in eligible_wave_ids`) — D-31 «вступил посреди волны, участвует
     только в заданиях вне волн», то же правило автоматически закрывает вернувшегося (D-38).
     Всё остальное отдаётся. Исходный список не меняется — только фильтрует, состав не
-    сортирует (сортировка — `sort_tasks_for_ambassador`)."""
+    сортирует (сортировка — `sort_tasks_for_ambassador`).
+
+    Фикс находки CR-03 (32-REVIEW.md): у НЕ-амбассадора задание `audience="all"`, привязанное
+    к волне, раньше отдавалось всегда — черновик/будущая/уже закрытая волна утекала кому
+    угодно. Новый необязательный `open_wave_ids` (по умолчанию `None` — прежнее поведение)
+    сужает такое задание до волн, которые прямо сейчас идут (`services.ambassador_waves.
+    wave_open`), той же формой множества id, что и `eligible_wave_ids`. `None` — сознательный
+    сохранённый пробел: Mini App (`miniapp/routers/tasks.py`/`submissions.py`) пока не
+    передаёт этот параметр вовсе (см. отчёт фиксера находки — какую правку туда нужно
+    добавить, чтобы закрыть пробел и там); бот (`handlers/user_actions.py`) передаёт его
+    всегда, поэтому там пробел закрыт полностью."""
     result = []
     for task in tasks:
         audience = task.get("audience") or "all"
         if audience == "ambassadors" and not is_ambassador:
             continue
         wave_id = task.get("wave_id")
-        if is_ambassador and wave_id and wave_id not in eligible_wave_ids:
-            continue
+        if wave_id:
+            if is_ambassador:
+                if wave_id not in eligible_wave_ids:
+                    continue
+            elif open_wave_ids is not None and wave_id not in open_wave_ids:
+                continue
         result.append(task)
     return result
+
+
+async def task_visible_to(user: dict | None, task: dict) -> bool:
+    """WR-08 (32-REVIEW.md): ОДНО ЗАДАНИЕ — та же проверка, что и `visible_tasks_for` на
+    списке, для точек входа по голому `task_id` (карточка/начало сдачи), которые раньше
+    перепроверяли только архив и город: вышедший из амбассадоров (D-32) со старым сообщением
+    списка на руках мог открыть и сдать амбассадорское задание или задание волны напрямую,
+    минуя список вовсе. Ленивые импорты (`database.db.list_waves` через `services.
+    ambassador_waves.wave_visibility_ids`, `cities`) — этот модуль корневой для Mini App,
+    таскать их на уровень модуля незачем ни боту, ни веб-процессу."""
+    from cities import cities_module_on, city_scope, normalize_city
+    from services.ambassador_waves import wave_visibility_ids
+
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    cities_on = await cities_module_on()
+    code = normalize_city(user.get("event_city") if user else None) if cities_on else None
+    wave_ids, open_ids = await wave_visibility_ids(
+        user, city_scope=city_scope(code) if cities_on else None,
+    )
+    return bool(visible_tasks_for(
+        [task], is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_ids,
+    ))
 
 
 # D-02: «путь» — предпочтение ПОРЯДКА показа, а не новое поле задания (у задания уже есть
@@ -353,5 +390,6 @@ __all__ = [
     "task_deadline_short",
     "task_deadline_text",
     "task_has_deadline",
+    "task_visible_to",
     "visible_tasks_for",
 ]

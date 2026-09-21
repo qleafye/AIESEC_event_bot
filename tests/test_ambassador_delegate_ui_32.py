@@ -475,12 +475,19 @@ def test_ambjoin_restores_flag_with_fresh_since_current_wave_unavailable_next_av
     current = _run(bot_db.get_wave(wave_id))
     assert wave_id not in _eligible(user, [current])  # вступил ПОСЛЕ старта текущей волны
 
+    # CR-03 (32-REVIEW.md): eligible_wave_ids ТЕПЕРЬ требует ещё и `wave_open` (волна должна
+    # реально идти — active И starts_at уже наступил), не только ambassador_since. «Следующая
+    # волна» стартует вскоре ПОСЛЕ вступления (ambassador_since <= starts_at) и активна;
+    # проверяем eligible_wave_ids с явным `now` ПОЗЖЕ её собственного starts_at — «после того
+    # как волна реально началась», а не в момент постановки.
+    soon = datetime.now() + timedelta(hours=1)
     next_wave_id = _run(bot_db.create_wave(
-        starts_at=_fmt(datetime.now() + timedelta(days=11)),
-        ends_at=_fmt(datetime.now() + timedelta(days=20)),
+        starts_at=_fmt(soon), ends_at=_fmt(datetime.now() + timedelta(days=20)),
     ))
+    _run(bot_db.set_wave_state(next_wave_id, "active"))
     next_wave = _run(bot_db.get_wave(next_wave_id))
-    assert next_wave_id in _eligible(user, [next_wave])
+    later = datetime.now() + timedelta(hours=2)
+    assert next_wave_id in _eligible(user, [next_wave], now=later)
 
 
 def test_regamb_want_fills_ambassador_since(client):  # noqa: F811

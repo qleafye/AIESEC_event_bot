@@ -15,7 +15,6 @@ from database.db import (
     get_user_rank,
     create_question,
     list_active_tasks,
-    list_waves,  # Phase 32 (32-06, D-31/D-38): доступные амбассадору волны для visible_tasks_for
     get_wave,  # Phase 32 (32-06): экран рейтинга волны
     get_task,
     get_active_submission,
@@ -43,9 +42,10 @@ from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 
     # блок/порядок по пути на весь проект, срок словами вместо служебной метки.
     task_deadline_text as _game_task_deadline_text,
     visible_tasks_for, sort_tasks_for_ambassador, ambassador_block_index,
+    task_visible_to,  # WR-08 (32-REVIEW.md): гейт прямого входа по task_id
 )
 from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
-    eligible_wave_ids, current_wave_for, wave_rating_view, wave_number_label, wave_eligible,
+    current_wave_for, wave_rating_view, wave_number_label, wave_eligible, wave_visibility_ids,
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
@@ -400,15 +400,10 @@ async def _game_task_list_screen(
     else:
         tasks = await list_active_tasks()
 
-    # Phase 32 (32-06, D-28/D-31/D-38): единственное правило видимости на проект — ДО сортировки,
-    # иначе амбассадорское задание (audience="ambassadors") утечёт не-амбассадору, а задание
-    # чужой волны — амбассадору, для которого эта волна недоступна.
+    # Phase 32 (32-06, D-28/D-31/D-38, фикс CR-03): единственное правило видимости — ДО сортировки.
     is_ambassador = bool(user and user.get("is_ambassador"))
-    wave_ids: set[int] = set()
-    if is_ambassador:
-        waves = await list_waves(city_scope=city_scope(code) if cities_on else None)
-        wave_ids = eligible_wave_ids(user, waves)
-    tasks = visible_tasks_for(tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids)
+    wave_ids, open_wave_ids = await wave_visibility_ids(user, city_scope=city_scope(code) if cities_on else None)
+    tasks = visible_tasks_for(tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_wave_ids)
 
     # Квик 260919-m9x: порядок — не тот, в котором отдаёт БД (`ORDER BY deadline_at ASC`,
     # просроченные сверху): открытые задания идут первыми, просроченные — в хвост. Иначе на
@@ -553,6 +548,11 @@ async def mytask_open(callback: types.CallbackQuery):
             ),
             show_alert=True,
         )
+        return
+
+    user = await get_user(callback.from_user.id)
+    if not await task_visible_to(user, task):  # WR-08 (32-REVIEW.md)
+        await callback.answer(reg_i18n.tr_text("Это задание сейчас тебе недоступно — загляни в «🎯 Задания».", lang, tr_map), show_alert=True)
         return
 
     active = await get_active_submission(task_id, callback.from_user.id)
@@ -707,12 +707,15 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     # one layer down. cities_module_on() first so an off module stays byte-identical to
     # pre-09.1; task.get("event_city") second so an "all cities" task never triggers a check
     # at all. normalize_city on BOTH sides -- a delegate without a city reads as the default
-    # city, same rule show_game_tasks already uses.
+    # city, same rule show_game_tasks already uses. `user` read unconditionally now (WR-08).
+    user = await get_user(callback.from_user.id)
     if await cities_module_on() and task.get("event_city"):
-        user = await get_user(callback.from_user.id)
         if normalize_city(user.get("event_city") if user else None) != normalize_city(task["event_city"]):
             await callback.answer(reg_i18n.tr_text("Это задание для другого города", lang, tr_map), show_alert=True)
             return
+    if not await task_visible_to(user, task):  # WR-08 (32-REVIEW.md)
+        await callback.answer(reg_i18n.tr_text("Это задание сейчас тебе недоступно — загляни в «🎯 Задания».", lang, tr_map), show_alert=True)
+        return
 
     # A-05 (созвон 13.08): дедлайн мягкий -- НЕ блокирует сдачу. Единственный оставшийся
     # серверный гвард на этом пути -- дубль-сдача (T-09-09), проверяется ниже.

@@ -35,6 +35,8 @@ from database.db import (
     list_active_tasks,
     list_ambassadors,
     list_wave_tasks,
+    list_waves,
+
     set_wave_state,
     sum_referral_coins_for_wave,
     sum_task_coins_for_wave,
@@ -62,10 +64,53 @@ def wave_eligible(user: dict, wave: dict) -> bool:
     return str(since) <= str((wave or {}).get("starts_at") or "")
 
 
-def eligible_wave_ids(user: dict, waves: list[dict]) -> set[int]:
-    """Чистая обёртка над `wave_eligible` — какие из перечисленных волн этому пользователю
-    доступны прямо сейчас."""
-    return {int(w["id"]) for w in waves if wave_eligible(user, w)}
+def wave_open(wave: dict, *, now: datetime | None = None) -> bool:
+    """CR-03 (32-REVIEW.md): волна ИДЁТ прямо сейчас — состояние `active` И её `starts_at`
+    уже наступил (московское «сейчас» по умолчанию, `now` — только для тестов). Черновик
+    (только что скопированная волна, D-13 «Скопировать прошлую» — основной способ создания)
+    и активная волна, чей `starts_at` ещё впереди (запущена заранее), обе дают `False` —
+    задание такой волны не должно утекать в список/сдачу раньше срока. `closing`/`announced`
+    тоже дают `False` — новая сдача после конца волны прекращается (уже поданные сдачи по
+    привязке `task_id -> wave_id` продолжают засчитываться в рейтинг, D-14, но это отдельный
+    путь одобрения, не видимость). Чистая функция: ни БД, ни реестра."""
+    if not wave or wave.get("state") != "active":
+        return False
+    now_str = (now or msk_now()).strftime("%Y-%m-%d %H:%M:%S")
+    return str(wave.get("starts_at") or "") <= now_str
+
+
+def eligible_wave_ids(user: dict, waves: list[dict], *, now: datetime | None = None) -> set[int]:
+    """Волны этого АМБАССАДОРА, чьи задания видны ему прямо сейчас — ОБА условия обязательны:
+    волна идёт (`wave_open`, CR-03) И он лично в ней участвует (`wave_eligible`, ambassador_
+    since). Новый keyword-only `now` (по умолчанию `None` = московское «сейчас») не меняет
+    вызов ни одного существующего места — и в боте, и в Mini App это по-прежнему
+    `eligible_wave_ids(user, waves)` двумя позиционными аргументами."""
+    return {int(w["id"]) for w in waves if wave_open(w, now=now) and wave_eligible(user, w)}
+
+
+def open_wave_ids_for(waves: list[dict], *, now: datetime | None = None) -> set[int]:
+    """CR-03: волны, чьи задания видны ЛЮБОМУ смотрящему НЕЗАВИСИМО от участия в
+    амбассадорах — только состояние волны и её даты (`wave_open`), `ambassador_since` тут ни
+    при чём (у не-амбассадора его и не бывает). Не-амбассадорское задание `audience="all"`,
+    привязанное к волне, использует ЭТУ функцию, а не `eligible_wave_ids` — та всегда пуста
+    для не-амбассадора, потому что `wave_eligible` первым делом проверяет `is_ambassador`."""
+    return {int(w["id"]) for w in waves if wave_open(w, now=now)}
+
+
+async def wave_visibility_ids(user: dict | None, *, city_scope=None) -> tuple[set[int], set[int]]:
+    """CR-03/WR-08 (32-REVIEW.md): одна точка, которая тянет волны и раскладывает их на
+    `(eligible_wave_ids, open_wave_ids)` — ровно то, что нужно `game_labels.visible_tasks_for`
+    для ОДНОГО делегата. Список заданий (`handlers/user_actions.py::_game_task_list_screen`) и
+    прямой вход по `task_id` (`game_labels.task_visible_to`, WR-08) зовут ЭТУ функцию, а не
+    собирают волны каждый по-своему — вторая копия давно и была источником дыр (CR-03: не-
+    амбассадорская ветка вовсе не заводила волны). `city_scope` — уже готовый дескриптор
+    (`cities.city_scope(...)` или `None`), вызывающая сторона сама решает, нужен ли он при
+    выключенном модуле городов."""
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    waves = await list_waves(city_scope=city_scope)
+    wave_ids = eligible_wave_ids(user, waves) if is_ambassador else set()
+    open_ids = open_wave_ids_for(waves)
+    return wave_ids, open_ids
 
 
 async def current_wave_for(event_city: str | None, *, now: datetime | None = None) -> dict | None:
