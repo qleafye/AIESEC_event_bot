@@ -389,6 +389,17 @@ def _build_snapshot_lines():
 # against HEAD и diffed против прежнего 527-строчного снимка (`difflib.SequenceMatcher`):
 # ровно одна вставка из 4 строк в позиции 201, ни одна существующая строка не сдвинулась и
 # не изменилась.
+# Drift note (Phase 31, план 31-08, задача 1, D-09/D-15/D-16, 531 -> 538 handlers -- PURE
+# APPEND): новый шов `handlers/admin_reject_rules.py` («🚫 Правила автоотказа») — задача 1:
+# экран списка, общий рубильник, вход в заготовку/своё правило (карточка и FSM-имя/текст —
+# задача 2, копирование/удаление — задача 3, БЕЗ новых регистраций хендлеров в этом же файле —
+# только заполнение тел уже существующих функций). Импортирован ХВОСТОМ `admin_sections.py`
+# СРАЗУ ПОСЛЕ `admin_sheet_tabs` (тот же хвостовой приём, что у соседних швов раздела «📋
+# Заявки»). Re-captured by RUNNING `_build_snapshot_lines()` against HEAD и diffed против
+# прежнего 531-строчного снимка: 7 новых строк (`admin_reject_rules`/`arr_p`/`arr_master`/
+# `arr_t`/`arr_noop`/`arr_new`/`arr_preset`), ни одна существующая строка не сдвинулась и не
+# изменилась. Все 7 — callback_query, встали в общем callback_query-бакете СРАЗУ ПОСЛЕ
+# `sheet_tabs_prefix_del_go` и ПЕРЕД `sync_sheet`.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -595,6 +606,13 @@ admin|callback_query|sheet_tabs_prefix_add|sheet_tabs_prefix_add
 admin|callback_query|sheet_tabs_prefix_del|sheet_tabs_prefix_del
 admin|callback_query|sheet_tabs_prefix_add_go|sheet_tabs_prefix_add_go
 admin|callback_query|sheet_tabs_prefix_del_go|sheet_tabs_prefix_del_go
+admin|callback_query|admin_reject_rules|admin_reject_rules
+admin|callback_query|arr_page|arr_p:*
+admin|callback_query|arr_master_toggle|arr_master
+admin|callback_query|arr_toggle_enabled|arr_t:*
+admin|callback_query|arr_noop|arr_noop
+admin|callback_query|arr_new_start|arr_new
+admin|callback_query|arr_preset_pick|arr_preset:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1084,7 +1102,14 @@ def test_snapshot_total_handler_count_is_292():
     # (527 -> 531); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
     # diff'ом (difflib.SequenceMatcher) с прежним 527-строчным снапшотом — ровно четыре
     # новые строки в позиции 201, ни одна другая не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 531
+    # Phase 31 (план 31-08, задача 1): +7 handlers/admin_reject_rules.py callback_query
+    # (admin_reject_rules/arr_p/arr_master/arr_t/arr_noop/arr_new/arr_preset — экран списка
+    # «🚫 Правила автоотказа»), шов импортируется из хвоста handlers/admin_sections.py СРАЗУ
+    # ПОСЛЕ admin_sheet_tabs (531 -> 538); чистая вставка, перепроверена прогоном
+    # `_build_snapshot_lines()` и diff'ом с прежним 531-строчным снапшотом — 7 новых строк, ни
+    # одна другая не поменялась и не переставилась. Задачи 2/3 того же плана заполняют тела
+    # существующих функций и добавляют СВОИ хендлеры отдельными коммитами того же плана.
+    assert len(GOLDEN_SNAPSHOT) == 538
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

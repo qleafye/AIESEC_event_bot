@@ -537,6 +537,14 @@ ADMIN_CAPS: dict[str, str] = {
     "scoring_limit:*": "settings",
     "scoring_drop:*": "settings",
     "scoring_noop": "settings",
+    # Phase 31 (31-08, D-09/D-15/D-16): экран «🚫 Правила автоотказа» — тот же класс экрана
+    # настроек, что «🧮 Правила балла» выше (конфигурирование, не действие над заявкой). Один
+    # префиксный ключ на всё пространство callback'ов редактора (arr_v/arr_t/arr_master/
+    # arr_act/arr_city/arr_citypick/arr_track/arr_name/arr_text/arr_copy/arr_copygo/arr_new/
+    # arr_preset/arr_p/arr_d/arr_dgo/arr_noop — все начинаются с "arr_").
+    "admin_reject_rules": "settings",
+    "arr_*": "settings",
+    "state:RejectRuleEdit:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
