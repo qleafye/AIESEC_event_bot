@@ -428,6 +428,15 @@ def _build_snapshot_lines():
 # целиком в самом хендлере (T-32-06-01). Re-captured by RUNNING `_build_snapshot_lines()`
 # against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего 578-строчного снимка: ровно
 # одна вставка из 1 строки, 0 удалений, 0 реордеров.
+#
+# Drift note (32-06, задача 3, D-24/D-32/D-38: путь/выход/возврат, 579 -> 584 handlers -- PURE
+# APPEND): пять новых callback_query-хендлеров (`ambassador_path_pick`/`ambassador_leave_start`/
+# `ambassador_leave_cancel`/`ambassador_leave_confirm`/`ambassador_join` — callback'ы
+# `ambpath:*`/`ambleave`/`ambleave_no`/`ambleave_go`/`ambjoin`) встали в самый хвост
+# user_actions.router, сразу после `show_wave_rating` (последний хендлер файла на момент этого
+# плана). Re-captured by RUNNING `_build_snapshot_lines()` against HEAD и diffed
+# (`difflib.SequenceMatcher`) против прежнего 579-строчного снимка: ровно одна вставка из 5
+# строк, 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1008,6 +1017,11 @@ user_actions|callback_query|faq_page|faq_list:*
 user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
 user_actions|callback_query|show_wave_rating|ambwave
+user_actions|callback_query|ambassador_path_pick|ambpath:*
+user_actions|callback_query|ambassador_leave_start|ambleave
+user_actions|callback_query|ambassador_leave_cancel|ambleave_no
+user_actions|callback_query|ambassador_leave_confirm|ambleave_go
+user_actions|callback_query|ambassador_join|ambjoin
 """.strip("\n").splitlines()
 
 
@@ -1227,7 +1241,9 @@ def test_snapshot_total_handler_count_is_292():
     # одной строки, ни одна другая строка не поменялась и не переставилась.
     # 32-06 задача 2: экран рейтинга волны, +1 user_actions.callback_query show_wave_rating
     # (ambwave), хвост user_actions.router (578 -> 579).
-    assert len(GOLDEN_SNAPSHOT) == 579
+    # 32-06 задача 3: путь/выход/возврат амбассадора, +5 user_actions.callback_query, хвост
+    # user_actions.router (579 -> 584).
+    assert len(GOLDEN_SNAPSHOT) == 584
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

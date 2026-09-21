@@ -62,6 +62,10 @@ async def history(offset: str | None = None, limit: str | None = None,
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
     manual_label = await i18n.tr_setting("balance_source_manual_label", lang, tr_map)
     task_label = await i18n.tr_setting("balance_source_task_label", lang, tr_map)
+    # Phase 32 (32-06, D-36): начисление за приглашённого (`claim_referral_credit`, план 32-01)
+    # подписано по-человечески, как manual/task — иначе делегат видит служебный код source или
+    # пустую подпись «—» вместо понятной причины.
+    referral_label = await i18n.tr_setting("balance_source_referral_label", lang, tr_map)
     items = []
     for row in rows:
         source = row.get("source")
@@ -69,6 +73,8 @@ async def history(offset: str | None = None, limit: str | None = None,
             source_label = manual_label
         elif source == "task":
             source_label = task_label
+        elif source == "referral":
+            source_label = referral_label
         else:
             source_label = "—"
         items.append({
