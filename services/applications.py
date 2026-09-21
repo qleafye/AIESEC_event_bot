@@ -561,20 +561,43 @@ async def card_payload(user: dict) -> dict:
 
 async def claim_approve(telegram_id: int) -> bool:
     """Правило «выигрывает ровно один» — одно имя для бота и веба. approved_at ставит
-    `approve_user_atomic` в той же атомарной записи, что и status (D-10)."""
-    return await approve_user_atomic(telegram_id)
+    `approve_user_atomic` в той же атомарной записи, что и status (D-10).
+
+    Phase 32 (32-05, D-20): начисление баллов амбассадору за приглашённого — ТОЛЬКО при
+    реально выигранном флипе (`won`), ленивый импорт, чтобы не тянуть services.referrals в
+    цепочку импортов веба. Возвращаемое значение не меняется — все существующие вызывающие
+    этой функции не тронуты."""
+    won = await approve_user_atomic(telegram_id)
+    if won:
+        from services.referrals import credit_for_approved
+        await credit_for_approved(telegram_id)
+    return won
 
 
 async def claim_reject(telegram_id: int) -> bool:
     return await reject_user(telegram_id)
 
 
+async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
+    """Массовое одобрение + начисление рефералки ОДНИМ швом (32-05, D-20/D-22) — единственная
+    точка, которую зовут И бот (`handlers/admin_moderation.py::appr_all_yes`), И веб, так что
+    бот-путь и веб-путь структурно не могут разъехаться по начислению (раньше бот звал
+    `approve_all_pending` напрямую, минуя `claim_approve_all`). approved_at ставит
+    `approve_all_pending` в той же атомарной записи, что и status (D-10)."""
+    ids = await approve_all_pending(city_scope=scope)
+    if not ids:
+        return ids, {"credited": 0, "coins": 0, "ambassadors": 0}
+    from services.referrals import credit_for_approved_bulk
+    summary = await credit_for_approved_bulk(ids)
+    return ids, summary
+
+
 async def claim_approve_all(scope) -> list[int]:
-    """«Принять всех» веб-слоя. approved_at ставит `approve_all_pending` в той же атомарной
-    записи, что и status (D-10). Бот зовёт `approve_all_pending` НАПРЯМУЮ для своего «Принять
-    всех» (`handlers/admin_moderation.py::appr_all_yes`), минуя эту обёртку — approved_at всё
-    равно проставляется, т.к. живёт в database.db, а не здесь."""
-    return await approve_all_pending(city_scope=scope)
+    """«Принять всех» веб-слоя — тонкая обёртка над `claim_approve_all_with_credits`,
+    возвращает только `ids` (сигнатура не меняется, веб-вызов
+    `miniapp/routers/applications.py` эту функцию не трогает)."""
+    ids, _credit_summary = await claim_approve_all_with_credits(scope)
+    return ids
 
 
 # ── Журнал отмены (D-06) ─────────────────────────────────────────────────────────────────
