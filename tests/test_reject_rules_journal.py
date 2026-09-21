@@ -13,6 +13,8 @@ pytest-asyncio недоступен в этом окружении — async ч�
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 
 from config import config
 from database import db
@@ -189,3 +191,110 @@ def test_new_trigger_after_return_opens_a_new_row_with_attempt_one(tmp_path):
     assert second_id != first_id
     entry = _run(db.get_auto_reject_log_entry(second_id))
     assert entry["attempt_count"] == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: страница журнала, строка экрана, выгрузка CSV
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_journal_page_empty_gives_empty_list_and_zero(tmp_path):
+    _ready(tmp_path)
+    rows, total = _run(rj.journal_page(900001))
+    assert rows == []
+    assert total == 0
+
+
+def test_journal_page_count_and_length_are_consistent_at_twelve_rows(tmp_path):
+    """12 записей, JOURNAL_PAGE == 10 — первая страница отдаёт 10 строк, счётчик знает про
+    все 12 (правило queue_page: список и счётчик по одному набору фильтров)."""
+    _ready(tmp_path)
+    assert rj.JOURNAL_PAGE == 10
+    for i in range(12):
+        tid = 3100 + i
+        _seed_user(tid, event_city="msk", status="rejected")
+        _run(rj.record_auto_reject(tid, [1], ["Не подходит."]))
+
+    rows, total = _run(rj.journal_page(900001))
+    assert total == 12
+    assert len(rows) == 10
+
+    rows_page_two, total_two = _run(rj.journal_page(900001, offset=10))
+    assert total_two == 12
+    assert len(rows_page_two) == 2
+
+
+def test_journal_page_include_returned_false_hides_returned_rows(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3200, event_city="msk", status="rejected")
+    _seed_user(3201, event_city="msk", status="rejected")
+    entry_id = _run(rj.record_auto_reject(3200, [1], ["Не подходит."]))
+    _run(rj.record_auto_reject(3201, [1], ["Не подходит."]))
+    _run(rj.return_to_moderation(900001, entry_id))
+
+    rows, total = _run(rj.journal_page(900001))
+    assert total == 1
+    assert len(rows) == 1
+    assert rows[0]["telegram_id"] == 3201
+
+    rows_all, total_all = _run(rj.journal_page(900001, include_returned=True))
+    assert total_all == 2
+    assert len(rows_all) == 2
+
+
+def test_journal_line_escapes_full_name_and_rule_text():
+    entry = {
+        "full_name": "Иван <b>",
+        "username": "masha",
+        "last_triggered_at": "2026-09-20 14:12:00",
+        "attempt_count": 2,
+        "reject_texts": '["Правило М&M не подходит по треку."]',
+        "returned_to_moderation_at": None,
+    }
+    line = rj.journal_line(entry)
+    assert "&lt;b&gt;" in line
+    assert "<b>" not in line
+    assert "&amp;M" in line
+    assert "попыток: 2" in line
+    assert "@masha" in line
+    assert "20.09 14:12" in line
+
+
+def test_journal_line_marks_returned_rows():
+    entry = {
+        "full_name": "Пётр",
+        "username": None,
+        "last_triggered_at": "2026-09-20 14:12:00",
+        "attempt_count": 1,
+        "reject_texts": "[]",
+        "returned_to_moderation_at": "2026-09-20 15:00:00",
+    }
+    line = rj.journal_line(entry)
+    assert "возвращена на модерацию" in line
+    assert "(без ника)" in line
+
+
+def test_csv_export_reads_back_with_semicolon_and_neutralises_formula_injection(tmp_path):
+    _ready(tmp_path)
+    _run(db.add_user({
+        "telegram_id": 3300,
+        "full_name": "=HYPERLINK(\"http://evil\")",
+        "registration_date": "2026-01-01 00:00:00",
+        "event_city": "msk",
+    }))
+    _run(_set_user_field(3300, "status", "rejected"))
+    _seed_user(3301, event_city="msk", status="rejected")
+    _run(rj.record_auto_reject(3300, [1], ["Не подходит."]))
+    _run(rj.record_auto_reject(3301, [1], ["Не подходит."]))
+
+    filename, file_bytes = _run(rj.export_csv(900001))
+    assert filename.endswith(".csv")
+
+    text = file_bytes.decode("utf-8-sig")
+    reader = list(csv.reader(io.StringIO(text), delimiter=';'))
+    header, *data_rows = reader
+    assert len(data_rows) == 2
+
+    name_col = header.index("ФИО")
+    names = [row[name_col] for row in data_rows]
+    malicious = [n for n in names if "HYPERLINK" in n][0]
+    assert not malicious.startswith("=")
