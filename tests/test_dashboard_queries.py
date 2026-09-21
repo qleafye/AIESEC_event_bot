@@ -25,6 +25,7 @@ from dashboard.queries import (
     _QUESTION_STATUS_CASE,
     _SETTING_DEFAULTS,
     _task_title,
+    auto_reject_breakdown,
     breakdown,
     city_comparison,
     city_options,
@@ -63,7 +64,7 @@ def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
 async def _seed_async(
     cities=None, settings=None, users=None, reg_events=None, reg_started=None,
     game_tasks=None, game_submissions=None, application_decisions=None, coins=None,
-    delegate_questions=None,
+    delegate_questions=None, reject_rules=None, auto_reject_log=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -132,6 +133,22 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
+        # Phase 31 (31-07): правила автоотказа + журнал срабатываний, для ступени воронки
+        # и разбивки по правилам.
+        for row in reject_rules or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO reject_rules ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
+        for row in auto_reject_log or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO auto_reject_log ({cols}) VALUES ({placeholders})",
                 tuple(row.values()),
             )
         await conn.commit()
@@ -837,6 +854,173 @@ def test_funnel_start_event_city_counts_only_for_matching_city_scope(tmp_path):
         msk_stages = dict(funnel(conn, Scope(city="msk")))
     assert spb_stages["Зашли"] == 1
     assert msk_stages["Зашли"] == 0
+
+
+# ── funnel: ступень автоотказа + разбивка по правилам (Phase 31, 31-07, D-27) ───────────
+
+def test_funnel_auto_reject_stage_absent_when_module_disabled(tmp_path):
+    """Модуль выключен по умолчанию (`reject_rules_enabled` не задан) — состав ступеней
+    байт-в-байт прежний, ступени «🤖 Автоотказ» в списке НЕТ вовсе."""
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": "[1]"},
+        {"telegram_id": 2, "status": "approved"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        stages = funnel(conn, Scope())
+    labels = [label for label, _ in stages]
+    assert labels == ["Зашли", "Начали анкету", "Дошли до конца", "На модерации", "Одобрено"]
+    assert "🤖 Автоотказ" not in labels
+
+
+def test_funnel_auto_reject_stage_present_at_right_position_when_enabled(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"reject_rules_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[]"},  # не автоотказ
+            {"telegram_id": 3, "status": "approved"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        stages = funnel(conn, Scope())
+    labels = [label for label, _ in stages]
+    assert labels == [
+        "Зашли", "Начали анкету", "Дошли до конца", "На модерации",
+        "🤖 Автоотказ", "Одобрено",
+    ]
+    assert dict(stages)["🤖 Автоотказ"] == 1
+
+
+def test_funnel_auto_reject_stage_cut_by_city_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"reject_rules_enabled": "on", "event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "event_city": "msk", "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 2, "event_city": "spb", "status": "rejected", "auto_reject_rule_ids": "[1]"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_stages = dict(funnel(conn, Scope(city="msk")))
+        spb_stages = dict(funnel(conn, Scope(city="spb")))
+    assert msk_stages["🤖 Автоотказ"] == 1
+    assert spb_stages["🤖 Автоотказ"] == 1
+
+
+def _seed_reject_rule(**overrides) -> dict:
+    row = {
+        "name": None, "city": None, "tracks": "[]", "conditions": "[]", "action": "reject",
+        "reject_text": None, "enabled": 1, "created_at": "2026-01-01 00:00:00",
+        "updated_at": "2026-01-01 00:00:00",
+    }
+    row.update(overrides)
+    return row
+
+
+def _seed_auto_reject_log_row(**overrides) -> dict:
+    row = {
+        "reject_texts": "[]", "attempt_count": 1,
+        "first_triggered_at": "2026-01-01 00:00:00", "last_triggered_at": "2026-01-01 00:00:00",
+        "returned_to_moderation_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_auto_reject_breakdown_uses_named_rule_not_id(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1]"}],
+        reject_rules=[_seed_reject_rule(name="Слишком юн")],
+        auto_reject_log=[_seed_auto_reject_log_row(telegram_id=1, rule_ids="[1]")],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = auto_reject_breakdown(conn, Scope())
+    assert rows == [("Слишком юн", 1)]
+    labels = [label for label, _ in rows]
+    assert "1" not in labels  # id правила нигде не подставлен как подпись
+
+
+def test_auto_reject_breakdown_falls_back_to_reject_text_then_default_label(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[2]"},
+        ],
+        reject_rules=[
+            _seed_reject_rule(reject_text="места на первый и второй курс закончились в этом сезоне"),
+            _seed_reject_rule(),
+        ],
+        auto_reject_log=[
+            _seed_auto_reject_log_row(telegram_id=1, rule_ids="[1]"),
+            _seed_auto_reject_log_row(telegram_id=2, rule_ids="[2]"),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = dict(auto_reject_breakdown(conn, Scope()))
+    assert rows["места на первый и второй курс"] == 1  # первые 6 слов текста отказа
+    assert rows["Правило без названия"] == 1
+
+
+def test_auto_reject_breakdown_skips_malformed_json_without_crashing(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+        ],
+        reject_rules=[_seed_reject_rule(name="Курс")],
+        auto_reject_log=[
+            _seed_auto_reject_log_row(telegram_id=1, rule_ids="not-json{{{"),
+            _seed_auto_reject_log_row(telegram_id=2, rule_ids="[1]"),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = auto_reject_breakdown(conn, Scope())
+    assert rows == [("Курс", 1)]
+
+
+def test_auto_reject_breakdown_excludes_returned_to_moderation(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": "[]"}],
+        reject_rules=[_seed_reject_rule(name="Курс")],
+        auto_reject_log=[
+            _seed_auto_reject_log_row(
+                telegram_id=1, rule_ids="[1]",
+                returned_to_moderation_at="2026-01-02 00:00:00",
+            ),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = auto_reject_breakdown(conn, Scope())
+    assert rows == []
+
+
+def test_auto_reject_breakdown_cut_by_city_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 1, "event_city": "msk", "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 2, "event_city": "spb", "status": "rejected", "auto_reject_rule_ids": "[1]"},
+        ],
+        reject_rules=[_seed_reject_rule(name="Курс")],
+        auto_reject_log=[
+            _seed_auto_reject_log_row(telegram_id=1, rule_ids="[1]"),
+            _seed_auto_reject_log_row(telegram_id=2, rule_ids="[1]"),
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_rows = auto_reject_breakdown(conn, Scope(city="msk"))
+        spb_rows = auto_reject_breakdown(conn, Scope(city="spb"))
+    assert msk_rows == [("Курс", 1)]
+    assert spb_rows == [("Курс", 1)]
 
 
 # ── registration_start (Phase 26.1 Plan 01, SD-03) ───────────────────────────────────────
