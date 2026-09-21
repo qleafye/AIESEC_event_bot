@@ -440,3 +440,94 @@ def test_arj_backgo_on_stale_entry_gives_friendly_alert_and_no_send(tmp_path):
     assert callback.bot.sent == []
     assert callback.answers and callback.answers[0][1] is True
     assert _run(_get_field(3703, "status")) == "pending"  # не тронуто повторно
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: чип «только помеченные правилами» в очереди заявок бота
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+async def _seed_pending(uid, *, flagged_rule_id=None, city=None):
+    row = {
+        "telegram_id": uid,
+        "full_name": f"Delegate {uid}",
+        "username": "d" + str(uid),
+        "registration_date": "2026-09-01 10:00:00",
+        "event_city": city,
+        "participant_type": "full",
+        "course": "1",
+    }
+    await db.add_user(row)
+    await db.set_user_status(uid, "pending")
+    if flagged_rule_id is not None:
+        await db.update_user_answers(
+            uid, {"flagged_rule_ids": json.dumps([flagged_rule_id])},
+            allowed_columns=["flagged_rule_ids"],
+        )
+
+
+def test_flag_chip_hidden_when_module_off(tmp_path):
+    from handlers import admin_moderation
+    from tests.test_city_admin_phase72 import FakeMessage, _new_state
+
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city=None))
+    _run(_seed_pending(3800, flagged_rule_id=rule_id))
+    state = _new_state(3800)
+    target = FakeMessage()
+    _run(admin_moderation._show_current_card(target, state))
+    cbs = [b.callback_data for row in target.markup.inline_keyboard for b in row]
+    assert not any(cb and cb.startswith("appr_flag:") for cb in cbs)
+
+
+def test_flag_chip_shown_when_module_on(tmp_path):
+    from handlers import admin_moderation
+    from tests.test_city_admin_phase72 import FakeMessage, _new_state
+
+    _ready(tmp_path)
+    _run(db.set_setting("reject_rules_enabled", "on"))
+    rule_id = _run(_create_rule(city=None))
+    _run(_seed_pending(3801, flagged_rule_id=rule_id))
+    state = _new_state(3801)
+    target = FakeMessage()
+    _run(admin_moderation._show_current_card(target, state))
+    cbs = [b.callback_data for row in target.markup.inline_keyboard for b in row]
+    assert any(cb and cb.startswith("appr_flag:") for cb in cbs)
+
+
+def test_appr_flag_toggle_filters_queue_to_flagged_only(tmp_path):
+    from handlers import admin_moderation
+    from tests.test_city_admin_phase72 import FakeCallback, _new_state
+
+    _ready(tmp_path)
+    _run(db.set_setting("reject_rules_enabled", "on"))
+    rule_id = _run(_create_rule(city=None))
+    _run(_seed_pending(3802, flagged_rule_id=rule_id))  # помечен
+    _run(_seed_pending(3803))  # обычный
+
+    state = _new_state(3802)
+    callback = FakeCallback("appr_flag:1", user_id=3802)
+    _run(admin_moderation.appr_flag_toggle(callback, state))
+
+    stored = _run(state.get_data())
+    assert stored.get("appr_flagged_only") is True
+    assert "Delegate 3802" in callback.message.text
+    assert "Delegate 3803" not in callback.message.text
+
+
+def test_empty_flagged_queue_explains_filter_with_the_word(tmp_path):
+    from handlers import admin_moderation
+    from tests.test_city_admin_phase72 import FakeMessage, _new_state
+
+    _ready(tmp_path)
+    _run(db.set_setting("reject_rules_enabled", "on"))
+    _run(_seed_pending(3804))  # ни одного помеченного
+
+    state = _new_state(3804)
+    _run(state.update_data(appr_flagged_only=True))
+    target = FakeMessage()
+    _run(admin_moderation._show_current_card(target, state))
+    assert "фильтр" in target.text.lower()
+
+
+def test_required_capability_appr_flag():
+    assert required_capability(callback_data="appr_flag:1") == "moderate_reg"

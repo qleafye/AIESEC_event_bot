@@ -209,7 +209,7 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     return "\n".join(lines)
 
 
-async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: bool = False, has_full: bool = False) -> InlineKeyboardMarkup:
+async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: bool = False, has_full: bool = False, show_flag_chip: bool = False, flagged_only: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="✅ Одобрить", callback_data=f"appr_approve:{tid}"),
@@ -230,6 +230,14 @@ async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: boo
         third.append(InlineKeyboardButton(text="📄 Полная анкета", callback_data=f"appr_full:{tid}"))
     third.append(InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"appr_skip:{tid}"))
     rows.append(third)
+    if show_flag_chip:
+        # Phase 31 (31-11, D-20): чип «только помеченные правилами» — виден ТОЛЬКО когда модуль
+        # автоотказа включён целиком (событие без правил выглядит прежним байт-в-байт).
+        chip_icon = "✅" if flagged_only else "☐"
+        rows.append([InlineKeyboardButton(
+            text=f"{chip_icon} Только помеченные правилами",
+            callback_data=f"appr_flag:{0 if flagged_only else 1}",
+        )])
     rows.append([InlineKeyboardButton(text=f"✅ Одобрить все ({total})", callback_data="appr_all")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -242,8 +250,13 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     admin_id = state.key.user_id
     # WR-05: ONE read — the rows shown and the city named in the header must agree.
     scope, label = await _admin_city_view(admin_id)
-    skipped = set((await state.get_data()).get("appr_skipped", []))
-    total = await get_pending_count(city_scope=scope)
+    data = await state.get_data()
+    skipped = set(data.get("appr_skipped", []))
+    # Phase 31 (31-11, D-20): чип «только помеченные правилами» — невидим и неактивен, пока
+    # модуль автоотказа выключен целиком (событие без правил выглядит байт-в-байт как раньше).
+    rules_on = bool(await get_setting_typed("reject_rules_enabled"))
+    flagged_only = rules_on and bool(data.get("appr_flagged_only", False))
+    total = await get_pending_count(city_scope=scope, flagged_only=flagged_only)
     # Phase 28 (28-08, SU-08): тумблер очереди читается ЗДЕСЬ (вызывающий), один раз на
     # рендер карточки — сама get_pending_users в реестр не ходит (T-23-04, SQL сортирует).
     order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
@@ -252,6 +265,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     while not visible and offset < total:
         batch = await get_pending_users(
             limit=50, offset=offset, city_scope=scope, order_by_score=order_by_score,
+            flagged_only=flagged_only,
         )
         if not batch:
             break
@@ -260,10 +274,12 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     if not visible:
         # CR-01: admin-editable label + global HTML parse_mode → escape, or an «<» in the
         # setting makes Telegram reject the message and the empty-queue screen never opens.
-        empty_text = (
-            "✅ Заявок нет." if label is None
-            else f"✅ Заявок нет — «{html_module.escape(str(label))}»."
-        )
+        if flagged_only:
+            empty_text = "⚠️ Помеченных правилами заявок нет — откройте «📋 Заявки» заново, чтобы снять фильтр."
+        elif label is None:
+            empty_text = "✅ Заявок нет."
+        else:
+            empty_text = f"✅ Заявок нет — «{html_module.escape(str(label))}»."
         await target.answer(empty_text, reply_markup=await admin_keyboard_for(admin_id))
         return
     current = visible[0]
@@ -320,13 +336,25 @@ async def _show_current_card(target: types.Message, state: FSMContext):
             total,
             has_history=has_history,
             has_full=overflow,
+            show_flag_chip=rules_on,
+            flagged_only=flagged_only,
         ),
     )
 
 
 @router.callback_query(F.data == "admin_applications")
 async def show_applications(callback: types.CallbackQuery, state: FSMContext):
-    await state.update_data(appr_skipped=[])  # session-only skip set (D-07)
+    # session-only skip set (D-07) + фильтр «только помеченные» (31-11) — свежий заход в раздел
+    # открывает очередь целиком, чип снова выключен.
+    await state.update_data(appr_skipped=[], appr_flagged_only=False)
+    await callback.answer()
+    await _show_current_card(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("appr_flag:"))
+async def appr_flag_toggle(callback: types.CallbackQuery, state: FSMContext):
+    _, val = _parse_appr(callback.data)
+    await state.update_data(appr_flagged_only=bool(val))
     await callback.answer()
     await _show_current_card(callback.message, state)
 
