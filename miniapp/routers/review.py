@@ -3,13 +3,20 @@
 Единственное место фазы, где веб-процесс НАЧИСЛЯЕТ монеты. Порядок решения — строго как у
 `handlers/admin_gamification.py::grev_approve` (импортировать нельзя — aiogram):
 
-    проверка скоупа -> claim_submission(...) -> ТОЛЬКО при won:
-        add_coins(source="task") -> outbox submission_reviewed -> сообщение делегату
+    проверка скоупа -> award_for (штраф за просрочку) -> claim_submission(...) -> ТОЛЬКО при won:
+        add_coins(source="task", task_id=...) -> outbox submission_reviewed -> сообщение делегату
 
 `claim_submission` — атомарный `UPDATE … WHERE status = 'pending'`, True ровно у одного
 вызова (T-19-27). `add_coins` дописывает строку в журнал и сам по себе НЕ идемпотентен,
 поэтому двойной тап / второй менеджер получают `{ok: false, reason: "already"}` без
 монет и без сообщения. Отклонение `add_coins` не вызывает никогда.
+
+Фикс фазы 32 (CR-01/CR-02): `add_coins` обязан нести `task_id` — рейтинг волны
+(`database.db.sum_task_coins_for_wave`) джойнит `coins.task_id -> game_tasks.wave_id`, без
+этой ссылки одобренная здесь сдача не попадала в зачёт волны вовсе. Штраф за просрочку
+считает `services.game_award.award_for` — та же формула и тот же предикат просрочки, что у
+бота (`handlers/admin_gamification.py::_award_for`), иначе одна и та же просроченная сдача
+получала разные баллы в зависимости от того, где менеджер нажал «Одобрить».
 
 Очередь — по одной карточке (D-07): `GET /review/next?offset=N`; «⏭ Пропустить» — чисто
 клиентский `offset+1`, на сервере ничего не меняется (как `grev_skip` пишет только в FSM).
@@ -41,8 +48,9 @@ from database.db import (
     get_user,
     task_title,
 )
-from game_labels import category_label, proof_types_label
+from game_labels import category_label, penalized_coins, proof_types_label
 from services import quiet_hours
+from services.game_award import award_for
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -133,6 +141,17 @@ async def review_next(
     submitted_at, deadline_at = row.get("submitted_at"), row.get("task_deadline_at")
     after_deadline = bool(submitted_at and deadline_at and str(submitted_at) > str(deadline_at))
 
+    # CR-02: менеджер должен видеть урезанную сумму ДО нажатия «Одобрить», не только после —
+    # тот же штраф, что реально применит award_for в /approve (penalty_percent пуст/нулевой ->
+    # penalized_coins = None, кнопка на экране показывает полную сумму, как раньше).
+    penalty_percent = None
+    penalized = None
+    if after_deadline:
+        percent = await get_setting_typed("game_late_penalty_percent")
+        if percent:
+            penalty_percent = percent
+            penalized = penalized_coins(row.get("task_coins") or 0, percent)
+
     return {
         "submission": {
             "id": row["id"],
@@ -147,6 +166,8 @@ async def review_next(
             "category": row.get("task_category"),
             "category_label": await category_label(row.get("task_category")),
             "coins": row.get("task_coins"),
+            "penalized_coins": penalized,
+            "penalty_percent": penalty_percent,
             "proof_label": await proof_types_label(row.get("task_proof_type")),
             "deadline_at": deadline_at,
         },
@@ -201,9 +222,14 @@ async def review_approve(
     _: Principal = Depends(require_section("review")),
 ) -> dict:
     submission, task = await _load_for_decision(p, sid)
-    coins = body.coins if body is not None and body.coins is not None else task["coins"]
-    if body is not None and body.coins is not None and not (COINS_MIN <= coins <= COINS_MAX):
+    base_coins = body.coins if body is not None and body.coins is not None else task["coins"]
+    if body is not None and body.coins is not None and not (COINS_MIN <= base_coins <= COINS_MAX):
         raise HTTPException(400, {"reason": "bad_coins", "text": BAD_COINS_TEXT})
+
+    # CR-02: тот же штраф за просрочку, что у бота (`grev_approve`/`grev_approve_amount_step`)
+    # — применяется и к дефолтной сумме, и к сумме, введённой менеджером вручную, ровно как в
+    # боте (парность, не новое поведение).
+    coins, late = await award_for(submission, task, base_coins)
 
     # T-19-27: та же переменная `coins` уходит и в claim_submission, и в add_coins.
     won = await claim_submission(sid, p.telegram_id, "approved", coins_awarded=coins)
@@ -215,6 +241,7 @@ async def review_approve(
         reason=f"Задание: {str(task['text'])[:60]}",
         changed_by=p.telegram_id,
         source="task",
+        task_id=task["id"],  # CR-01: ссылка для рейтинга волны (sum_task_coins_for_wave)
     )
     await enqueue("submission_reviewed", {
         "submission_id": sid,
@@ -222,10 +249,11 @@ async def review_approve(
         "status": "approved",
         "coins": coins,
     })
-    await _notify_delegate(
-        request.app.state.cfg, submission["user_id"],
-        f"✅ Задание «{task['text']}» одобрено! +{coins}🪙",
-    )
+    text = f"✅ Задание «{task['text']}» одобрено! +{coins}🪙"
+    if late and coins != base_coins:
+        # Тот же хвост, что у бота (D-25/D-35) — делегат должен понимать, почему баллов меньше.
+        text += " — сдано после дедлайна, начислено меньше обычного"
+    await _notify_delegate(request.app.state.cfg, submission["user_id"], text)
     return {"ok": True, "status": "approved", "coins": coins}
 
 

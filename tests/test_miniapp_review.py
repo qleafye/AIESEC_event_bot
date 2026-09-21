@@ -239,6 +239,60 @@ def test_approve_credits_once_and_notifies(client, bot_api):
     assert "одобрено" in msg["text"] and "+10🪙" in msg["text"]
 
 
+def test_approve_writes_task_id_for_wave_rating(client, bot_api):
+    """CR-01: без `task_id` строка леджера не попадает в
+    `database.db.sum_task_coins_for_wave` (JOIN по `coins.task_id -> game_tasks.wave_id`) —
+    баллы одобренной в Mini App сдачи молча выпадали из рейтинга волны."""
+    t = _task(coins=10)
+    sid = _submit(t)
+    assert _approve(client, sid).json()["ok"] is True
+    rows = _coins_rows()
+    assert len(rows) == 1
+    assert rows[0]["task_id"] == t
+
+
+def test_approve_late_submission_is_penalized_like_bot(client, bot_api):
+    """CR-02: та же формула, что у бота (`_award_for`/`game_labels.penalized_coins`) —
+    дефолтное одобрение просроченной сдачи урезается штрафом, а не полной суммой."""
+    past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    _set("game_late_penalty_percent", "30")
+    t = _task(coins=100, deadline=past)
+    sid = _submit(t, at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    # Экран проверки обязан показать урезанную сумму ДО подтверждения.
+    card = client.get("/app/api/review/next", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert card["task"]["penalized_coins"] == 70
+    assert card["task"]["penalty_percent"] == 30
+
+    resp = _approve(client, sid)
+    assert resp.json() == {"ok": True, "status": "approved", "coins": 70}
+    rows = _coins_rows()
+    assert len(rows) == 1 and rows[0]["delta"] == 70 and rows[0]["task_id"] == t
+    assert "начислено меньше обычного" in bot_api.messages[0]["text"]
+
+
+def test_approve_custom_amount_late_submission_is_also_penalized(client, bot_api):
+    """CR-02: «Своя сумма» из Mini App не обходит штраф — тот же путь, что
+    `grev_approve_amount_step` у бота (`handlers/admin_gamification.py`)."""
+    past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    _set("game_late_penalty_percent", "30")
+    t = _task(coins=100, deadline=past)
+    sid = _submit(t)
+    resp = _approve(client, sid, body={"coins": 200})
+    assert resp.json() == {"ok": True, "status": "approved", "coins": 140}
+    assert _coins_rows()[0]["delta"] == 140
+
+
+def test_next_penalty_fields_absent_when_percent_zero_or_on_time(client, bot_api):
+    """Штраф выключен (процент 0, дефолт) или сдача вовремя — поля пусты, кнопка на экране
+    показывает полную сумму, как до этого фикса."""
+    t = _task(coins=10)  # deadline в будущем -> вовремя
+    sid = _submit(t)
+    card = client.get("/app/api/review/next", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert card["submission"]["id"] == sid
+    assert card["task"]["penalized_coins"] is None and card["task"]["penalty_percent"] is None
+
+
 def test_double_tap_second_approve_is_already_and_still_one_coin_row(client, bot_api):
     t = _task(coins=10)
     sid = _submit(t)
