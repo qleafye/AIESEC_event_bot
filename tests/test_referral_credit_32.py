@@ -500,3 +500,36 @@ def test_backfill_skips_already_live_credited_invitee(tmp_path):
 
     assert summary["candidates"] == 0
     assert _referral_credit_count() == 1
+
+
+# ── Волна (D-31/D-38): wave_id резолвится в момент начисления, только если пригласивший
+# участвует в ней прямо сейчас ─────────────────────────────────────────────────────────────
+
+def test_active_wave_eligible_referrer_gets_wave_id(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "15"))
+    wave_id = _active_wave()  # активная волна, накрывающая «сейчас»
+    _make_ambassador(9401, since="2026-01-01 00:00:00")  # стал амбассадором ДО волны
+    _seed_user(9501, referrer_id=9401)
+
+    result = _run(applications.claim_approve(9501))
+    credit = _run(db.get_referral_credit(9501))
+
+    assert result is True
+    assert credit["wave_id"] == wave_id
+
+
+def test_mid_wave_joiner_referrer_gets_no_wave_id(tmp_path):
+    """D-31/D-38: пригласивший стал амбассадором ПОСЛЕ старта активной волны — в неё не
+    участвует, начисление идёт (D-37 не нарушен — он ДЕЙСТВУЮЩИЙ амбассадор), но `wave_id`
+    остаётся `None` (только общий зачёт)."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "15"))
+    _active_wave(starts_at="2026-09-01 00:00:00", ends_at="2026-12-31 23:59:59")
+    _make_ambassador(9402, since="2026-09-15 00:00:00")  # стал амбассадором ПОСЛЕ старта волны
+    _seed_user(9502, referrer_id=9402)
+
+    _run(applications.claim_approve(9502))
+    credit = _run(db.get_referral_credit(9502))
+
+    assert credit["wave_id"] is None
