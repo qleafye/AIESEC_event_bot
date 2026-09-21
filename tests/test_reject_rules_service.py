@@ -321,3 +321,119 @@ def test_delete_rule_respects_city_right(tmp_path):
     assert ok2 is True
     assert delete_error2 is None
     assert _run(db.get_reject_rule(foreign_id)) is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: автоописание, заготовки и счётчик «попали бы N из M»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_rule_summary_matches_expected_human_string(tmp_path):
+    """label_for("course") возвращает эмодзи-подпись «📖 Курс» — та же строка, что использует
+    вся остальная админка (REG_LABELS["reg_q_course"]); подпись города нормализована к «Москва»
+    настройкой `city_label__msk`, чтобы сравнение было точным независимо от .env-дефолта."""
+    _ready(tmp_path)
+    _run(db.set_setting("city_label__msk", "Москва"))
+    rule = {
+        "city": "msk",
+        "conditions": [[{"step": "course", "op": "in", "values": ["1", "2"]}]],
+        "action": "reject",
+    }
+    summary = _run(rr.rule_summary(rule))
+    assert summary == "Москва · 📖 Курс — один из: 1, 2 → отказ"
+    for forbidden in ("course", "birth_date", "reject"):
+        assert forbidden not in summary
+
+
+def test_rule_summary_all_cities_and_flag_action(tmp_path):
+    _ready(tmp_path)
+    rule = {
+        "city": None,
+        "conditions": [[{"step": "resume", "op": "no_file", "values": []}]],
+        "action": "flag",
+    }
+    summary = _run(rr.rule_summary(rule))
+    assert summary.startswith("Все города · ")
+    assert summary.endswith("→ пометка")
+
+
+def test_rule_summary_or_between_groups(tmp_path):
+    _ready(tmp_path)
+    rule = {
+        "city": None,
+        "conditions": [
+            [{"step": "resume", "op": "no_file", "values": []}],
+            [{"step": "expectations", "op": "empty", "values": []}],
+        ],
+        "action": "reject",
+    }
+    summary = _run(rr.rule_summary(rule))
+    assert " ИЛИ " in summary
+
+
+def test_rule_presets_has_three_ready_presets(tmp_path):
+    _ready(tmp_path)
+    presets = _run(rr.RULE_PRESETS())
+    names = {p["name"] for p in presets}
+    assert names == {"Младше 18 на дату форума", "Курс из списка", "Нет резюме"}
+    for preset in presets:
+        assert preset["conditions"], "заготовка обязана отдаваться с готовыми условиями (D-11)"
+        assert preset["action"] == "reject"
+        assert preset["reject_text"]
+
+
+def test_rule_presets_course_uses_live_options_not_literal(tmp_path, monkeypatch):
+    """Заготовка «Курс из списка» идёт через `reg_engine.options("course")`, а не через
+    статическую копию — подмена живого источника меняет значения заготовки."""
+    _ready(tmp_path)
+
+    async def _fake_options(step_key):
+        if step_key == "course":
+            return ["Отредактированный вариант 1", "Отредактированный вариант 2", "3"]
+        return []
+
+    monkeypatch.setattr(rr, "options", _fake_options)
+    presets = _run(rr.RULE_PRESETS())
+    course_preset = next(p for p in presets if p["name"] == "Курс из списка")
+    assert course_preset["conditions"][0][0]["values"] == [
+        "Отредактированный вариант 1", "Отредактированный вариант 2",
+    ]
+
+
+def test_dry_run_count_matches_and_total_no_side_effects(tmp_path):
+    _ready(tmp_path)
+    _run(_seed_user(1, event_city="msk", participant_type="full", course="1"))
+    _run(_seed_user(2, event_city="msk", participant_type="full", course="2"))
+    _run(_seed_user(3, event_city="msk", participant_type="full", course="3"))
+    _run(_seed_user(4, event_city="msk", participant_type="full", course="4"))
+    _run(_seed_user(5, event_city="msk", participant_type="full", course="5+"))
+    _run(_seed_user(6, event_city="spb", participant_type="full", course="1"))  # вне области
+
+    statuses_before = {tid: _run(db.get_user(tid))["status"] for tid in (1, 2, 3, 4, 5)}
+
+    rule = {
+        "city": "msk", "tracks": ["full"], "action": "reject",
+        "conditions": [[{"step": "course", "op": "in", "values": ["1", "2"]}]],
+        "enabled": 0, "paused_reason": "не включено — считаем всё равно",
+    }
+    matched, total = _run(rr.dry_run_count(rule))
+    assert (matched, total) == (2, 5)
+
+    for tid in (1, 2, 3, 4, 5):
+        assert _run(db.get_user(tid))["status"] == statuses_before[tid]
+    assert _run(db.count_auto_reject_log()) == 0
+
+
+def test_dry_run_count_all_cities_rule_scans_every_city(tmp_path):
+    _ready(tmp_path)
+    _run(_seed_user(11, event_city="msk", participant_type="full", resume_file_id=None))
+    _run(_seed_user(12, event_city="spb", participant_type="full", resume_file_id=None))
+    _run(_seed_user(13, event_city="spb", participant_type="full", resume_file_id="abc"))
+
+    rule = {
+        "city": None, "tracks": ["full"], "action": "flag",
+        "conditions": [[{"step": "resume", "op": "no_file", "values": []}]],
+        "enabled": 1, "paused_reason": None,
+    }
+    matched, total = _run(rr.dry_run_count(rule))
+    assert total == 3
+    assert matched == 2

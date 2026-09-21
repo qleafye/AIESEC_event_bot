@@ -420,3 +420,142 @@ async def _maybe_enqueue_rule_text_translation(text: str | None, rule_id: int | 
             "приняла текст правила id=%s (%s)",
             rule_id, exc,
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: автоописание, заготовки и счётчик «попали бы N из M»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+# Человеческие подписи операторов (D-10) — ни одного кодового значения в результате
+# `rule_summary` (CLAUDE.md).
+_OPERATOR_LABELS = {
+    "in": "один из", "not_in": "ни один из",
+    "lt": "меньше", "gt": "больше", "between": "между",
+    "before": "раньше", "after": "позже",
+    "age_on_forum_lt": "возраст на дату форума меньше",
+    "filled": "заполнено", "empty": "не заполнено",
+    "has_file": "есть", "no_file": "нет",
+}
+
+_ACTION_LABELS = {"reject": "отказ", "flag": "пометка"}
+
+# Операторы, у которых значения условия не печатаются (сам оператор — уже полная мысль).
+_NO_VALUE_OPERATORS = ("filled", "empty", "has_file", "no_file")
+
+
+async def rule_summary(rule: dict) -> str:
+    """D-10: автоописание ЧЕЛОВЕЧЕСКИМИ словами — «Москва · Курс — один из: 1, 2 → отказ».
+    Город (`cities.city_label`, «Все города» при `None`) · условия (`reg_engine.label_for(step)`
+    + человеческая подпись оператора; группы разделяются «ИЛИ», условия внутри группы — « и »)
+    · стрелка и действие. Ни одного кодового значения — своё имя правила (если менеджер его
+    задал) печатается вызывающим экраном ОТДЕЛЬНО, в шапке, эта функция отдаёт только
+    автоописание."""
+    rule_city = rule.get("city")
+    city_text = "Все города" if not rule_city else await city_label(rule_city)
+
+    group_texts = []
+    for group in rule.get("conditions") or []:
+        cond_texts = []
+        for cond in group or []:
+            cond = cond or {}
+            step = cond.get("step")
+            op = cond.get("op")
+            values = cond.get("values") or []
+            step_label = label_for(step) if step else "?"
+            op_label = _OPERATOR_LABELS.get(op, op or "?")
+            if op in _NO_VALUE_OPERATORS:
+                cond_texts.append(f"{step_label} — {op_label}")
+            elif op == "between" and len(values) == 2:
+                cond_texts.append(f"{step_label} — {op_label} {values[0]} и {values[1]}")
+            else:
+                values_text = ", ".join(str(v) for v in values)
+                cond_texts.append(f"{step_label} — {op_label}: {values_text}")
+        if cond_texts:
+            group_texts.append(" и ".join(cond_texts))
+
+    conditions_text = " ИЛИ ".join(group_texts)
+    action_label = _ACTION_LABELS.get(rule.get("action"), rule.get("action") or "?")
+
+    parts = [city_text]
+    if conditions_text:
+        parts.append(conditions_text)
+    return f"{' · '.join(parts)} → {action_label}"
+
+
+async def RULE_PRESETS() -> list[dict]:  # noqa: N802 — имя дословно из <interfaces> плана 31-04
+    """D-11: три заготовки правила в один тап — менеджер открывает, правит значения, включает.
+    Оформлена АСИНХРОННОЙ функцией (не модульным литералом, хотя имя в интерфейсе плана
+    записано без `async def`): заготовка «Курс из списка» обязана брать первые два варианта
+    ЖИВОГО `reg_engine.options("course")`, а не литеральную копию статического списка вариантов
+    курса из `reg_options.py` — иначе заготовка разъедется с анкетой, которую менеджер уже
+    отредактировал в реестре (прямой анти-паттерн, названный в 31-RESEARCH). Статический
+    модульный список не может прочитать «текущий» реестр на КАЖДЫЙ вызов — значит, единственный
+    вариант, честно удовлетворяющий и D-11, и собственному acceptance-тесту плана («заготовка
+    берёт варианты из отредактированного менеджером списка»), — асинхронная функция, вызывающая
+    сторона зовёт её через `await RULE_PRESETS()`."""
+    course_options = await options("course")
+    course_values = course_options[:2]
+    return [
+        {
+            "name": "Младше 18 на дату форума",
+            "action": "reject",
+            "conditions": [[{"step": "birth_date", "op": "age_on_forum_lt", "values": [18]}]],
+            "reject_text": (
+                "На дату форума тебе ещё не исполнится 18 лет — по правилам участия это "
+                "обязательное условие."
+            ),
+        },
+        {
+            "name": "Курс из списка",
+            "action": "reject",
+            "conditions": [[{"step": "course", "op": "in", "values": course_values}]],
+            "reject_text": "Мест на выбранный курс уже нет — набор на него закрыт.",
+        },
+        {
+            "name": "Нет резюме",
+            "action": "reject",
+            "conditions": [[{"step": "resume", "op": "no_file", "values": []}]],
+            "reject_text": (
+                "Без резюме заявку пока не можем рассмотреть — пришли его, пожалуйста, при "
+                "повторной подаче."
+            ),
+        },
+    ]
+
+
+async def dry_run_count(rule: dict) -> tuple[int, int]:
+    """D-13: `(подпали_бы, всего)` — заявки ВСЕХ статусов в области правила (город + трек), а
+    не только ожидающие: менеджеру нужен честный ответ «сколько таких людей вообще», не
+    «сколько сейчас в очереди» (кнопки «применить к очереди» нет и не будет, D-19). Структурно
+    read-only (T-31-04-03): единственное обращение к базе — `get_all_users_dicts` (SELECT),
+    дальше чистый `reg_engine.evaluate_reject_rules` над КАЖДОЙ строкой с временно снятыми
+    `enabled`/`paused_reason` (чтобы посчитать ещё не включённое правило) — ни одного
+    `UPDATE`/`INSERT`, ни одной строки журнала."""
+    rule_city = rule.get("city")
+    tracks = rule.get("tracks") or ["full"]
+    probe_rule = {**rule, "enabled": 1, "paused_reason": None}
+
+    all_users = await get_all_users_dicts()
+    forum_dates: dict = {}
+    matched = 0
+    total = 0
+    for row in all_users:
+        user_city = row.get("event_city")
+        if rule_city is not None and normalize_city(rule_city) != normalize_city(user_city):
+            continue
+        track = row.get("participant_type") or "full"
+        if track not in tracks:
+            continue
+        total += 1
+
+        if user_city not in forum_dates:
+            forum_dates[user_city] = await forum_date_for(user_city)
+
+        result = evaluate_reject_rules(
+            row, [probe_rule],
+            birth_date=row.get("birth_date"), forum_date=forum_dates[user_city],
+        )
+        if result["reject_rule_ids"] or result["flag_rule_ids"]:
+            matched += 1
+
+    return matched, total
