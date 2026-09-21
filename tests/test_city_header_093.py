@@ -473,7 +473,8 @@ def test_game_task_city_kb_prefill_is_a_highlight_not_a_lock(tmp_path):
     asyncio.run(state.set_state(admin_mod.GameTaskCreate.city))
     cb = FakeCallback("gttcity:msk", ADMIN_ID)
     asyncio.run(admin_gamification.game_task_city_step(cb, state))
-    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
+    # Phase 32 (32-12): the next step is now «Волна», not the deadline prompt directly.
+    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.wave
     assert asyncio.run(state.get_data())["gt_event_city"] == "msk"
 
 
@@ -505,6 +506,7 @@ def test_game_task_city_kb_module_off_step_not_shown(tmp_path):
     asyncio.run(state.set_state(admin_mod.GameTaskCreate.text))
     cb = FakeCallback("gtproof_done", ADMIN_ID)
     asyncio.run(admin_gamification.game_task_proof_done(cb, state))
-    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.deadline
-    # прямиком дедлайн-промпт -- экран «Кому задание?» не отправлялся вообще
+    # Phase 32 (32-12): прямиком волна-промпт (module off) -- экран «Кому задание?» не
+    # отправлялся вообще, а следующий шаг цепочки теперь «Волна», не дедлайн.
+    assert asyncio.run(state.get_state()) == admin_mod.GameTaskCreate.wave
     assert "Кому" not in cb.message.answers_sent[-1]

@@ -146,6 +146,10 @@ class GameTaskCreate(StatesGroup):
     coins = State()
     proof_type = State()
     city = State()  # Phase 09.1 (B, GAME-06): "Кому задание?" — only when cities module is on
+    # Phase 32 (32-12, D-12/D-28): «Волна» и «Аудитория» — оба шага кнопочные (как city выше),
+    # это состояние только паркует визард между сообщением-подсказкой и тапом по кнопке.
+    wave = State()
+    audience = State()
     deadline = State()
     confirm = State()
 

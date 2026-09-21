@@ -20,6 +20,7 @@ from database import db
 import cities
 from handlers import admin as admin_mod
 from handlers import admin_gamification
+from handlers import admin_game_tasks
 from handlers import user_actions as ua_mod
 from handlers.states import GameTaskCreate
 
@@ -223,8 +224,8 @@ def test_module_off_wizard_skips_city_step_entirely(tmp_path):
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.text))
     callback = _drive_to_city_step(state)
-    # straight to the deadline prompt -- no city keyboard sent at all
-    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    # Phase 32 (32-12): straight to the wave prompt -- no city keyboard sent at all
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave
     assert "Кому" not in callback.message.answers_sent[-1]
     data = asyncio.run(state.get_data())
     assert data.get("gt_event_city") is None
@@ -252,7 +253,7 @@ def test_gttcity_all_sets_null_event_city(tmp_path):
     _drive_to_city_step(state)
     callback = FakeCallback("gttcity:all")
     asyncio.run(admin_gamification.game_task_city_step(callback, state))
-    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave  # Phase 32 (32-12)
     assert asyncio.run(state.get_data())["gt_event_city"] is None
 
 
@@ -264,7 +265,7 @@ def test_gttcity_known_code_sets_city(tmp_path):
     _drive_to_city_step(state)
     callback = FakeCallback("gttcity:spb")
     asyncio.run(admin_gamification.game_task_city_step(callback, state))
-    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave  # Phase 32 (32-12)
     assert asyncio.run(state.get_data())["gt_event_city"] == "spb"
 
 
@@ -283,6 +284,9 @@ def test_gttcity_unknown_code_alerts_and_keeps_state(tmp_path):
 def _drive_full_wizard_with_city(state, gttcity="gttcity:spb"):
     _drive_to_city_step(state)
     asyncio.run(admin_gamification.game_task_city_step(FakeCallback(gttcity), state))
+    # Phase 32 (32-12): «Волна»/«Аудитория» now sit between city and deadline.
+    asyncio.run(admin_game_tasks.game_task_wave_step(FakeCallback("gtwave:none"), state))
+    asyncio.run(admin_game_tasks.game_task_audience_step(FakeCallback("gtaud:all"), state))
     deadline_message = FakeMessage(text="25.08.2099 23:59")
     asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     return deadline_message
@@ -313,7 +317,11 @@ def test_confirm_card_no_komu_line_when_module_off(tmp_path):
     _db_ready(tmp_path)
     state = _new_state()
     asyncio.run(state.set_state(GameTaskCreate.text))
-    callback = _drive_to_city_step(state)  # goes straight to deadline (module off)
+    # Phase 32 (32-12): module off -> straight to the wave prompt now, not deadline; the
+    # deadline step handler itself is called directly (no state-filter check on direct calls,
+    # same convention as every other test in this file), so skipping wave/audience here is
+    # still a valid probe of this ONE handler's own «Кому:»-line behaviour.
+    callback = _drive_to_city_step(state)
     deadline_message = FakeMessage(text="25.08.2099 23:59")
     asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     card_text = deadline_message.answers_sent[-1]
