@@ -932,6 +932,13 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_reg_submit_digest_unsent "
             "ON reg_submit_digest_queue(sent_at, city)"
         )
+        # Phase 31 (31-02, D-17): признак автоотказа штампуется НА ПОСТАНОВКЕ строки в очередь
+        # (enqueue_reg_digest ниже), а не выводится из users.status в момент отправки — к
+        # моменту отправки статус мог уже смениться (менеджер вернул заявку из журнала
+        # автоотказов, claim_auto_reject_return), и сводка соврала бы. Дефолт 0 — легаси-строки
+        # очереди (до этой колонки) читаются как «не автоотказ», что и было их фактическим
+        # состоянием (колонки не существовало, автоотказа не было вовсе).
+        await _ensure_column(db, "reg_submit_digest_queue", "auto_rejected", "INTEGER NOT NULL DEFAULT 0")
 
         # Quick 260904-dq1: «🌙 Тихие часы» — очередь уведомлений делегату, отложенных до конца
         # окна тишины (services/quiet_hours.py). `kind` — закрытый диспетчер на стороне
@@ -2918,9 +2925,19 @@ def _changed_only_clause(changed_only: bool, column: str = "edited_at") -> str:
     return f"{column} IS NOT NULL AND TRIM({column}) != ''"
 
 
-def _pending_where(city_scope, track, changed_only, *, city_column: str = "event_city") -> tuple[str, list]:
-    """Assemble the shared WHERE tail (city scope + track + changed-only) used by
-    `get_pending_users`/`get_pending_count` — ONE place builds the fragment list so both
+def _flagged_only_clause(flagged_only: bool, column: str = "flagged_rule_ids") -> str:
+    """Phase 31 (31-02, D-20): та же форма, что соседний `_changed_only_clause` — без
+    ведущего AND, пустая строка при выключенном фильтре (дефолт — существующие вызывающие
+    остаются байт-в-байт), иначе проверка «колонка непуста и не пустой JSON-список»."""
+    if not flagged_only:
+        return ""
+    return f"{column} IS NOT NULL AND TRIM({column}) NOT IN ('', '[]')"
+
+
+def _pending_where(city_scope, track, changed_only, *, city_column: str = "event_city",
+                    flagged_only: bool = False) -> tuple[str, list]:
+    """Assemble the shared WHERE tail (city scope + track + changed-only + flagged-only) used
+    by `get_pending_users`/`get_pending_count` — ONE place builds the fragment list so both
     functions stay byte-identical in filtering behaviour."""
     parts = []
     params: list = []
@@ -2935,13 +2952,16 @@ def _pending_where(city_scope, track, changed_only, *, city_column: str = "event
     changed_frag = _changed_only_clause(changed_only)
     if changed_frag:
         parts.append(changed_frag)
+    flagged_frag = _flagged_only_clause(flagged_only)
+    if flagged_frag:
+        parts.append(flagged_frag)
     extra = "".join(f" AND {p}" for p in parts)
     return extra, params
 
 
 async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
                              track: str | None = None, changed_only: bool = False,
-                             order_by_score: bool = False) -> list[dict]:
+                             order_by_score: bool = False, flagged_only: bool = False) -> list[dict]:
     """Pending applications, oldest first by default (registration_date then telegram_id).
 
     `track`/`changed_only` splice into the SAME WHERE as `city_scope` — SQL does the
@@ -2952,8 +2972,12 @@ async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
     читает вызывающий — сама функция в реестр не ходит) — сортирует SQL, не Python:
     `score` убывает первым (`COALESCE(score, -1)` — заявка без балла уходит в конец, а не
     смешивается с нулевым баллом), внутри одного балла порядок прежний (registration_date,
-    telegram_id). Default `False` — байт-в-байт прежний порядок."""
-    extra, params = _pending_where(city_scope, track, changed_only)
+    telegram_id). Default `False` — байт-в-байт прежний порядок.
+
+    Phase 31 (31-02, D-20): `flagged_only=True` — фильтр «только помеченные правилами»,
+    включая делегатов, сменивших ответ после автоотказа (D-23, попадают сюда же с ⚠️-бейджем
+    на карточке). Default `False` — прежнее поведение."""
+    extra, params = _pending_where(city_scope, track, changed_only, flagged_only=flagged_only)
     order = (
         "ORDER BY COALESCE(score, -1) DESC, registration_date ASC, telegram_id ASC"
         if order_by_score
@@ -2998,8 +3022,8 @@ async def get_resume_upload_backlog(before: str, limit: int = 20) -> list[dict]:
 
 
 async def get_pending_count(*, city_scope=None, track: str | None = None,
-                             changed_only: bool = False) -> int:
-    extra, params = _pending_where(city_scope, track, changed_only)
+                             changed_only: bool = False, flagged_only: bool = False) -> int:
+    extra, params = _pending_where(city_scope, track, changed_only, flagged_only=flagged_only)
     async with _connect() as db:
         async with db.execute(
             f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(params)
@@ -3500,6 +3524,13 @@ _FILTER_COLUMNS = {
     # собирается по `chat_members` собственной веткой `_build_filter_clause`; см.
     # `_FILTER_VIRTUAL_FIELDS` ниже.
     "delegate_chat",
+    # Phase 31 (31-02, D-28): «автоотказ по правилу» как поле фильтра рассылки. Та же двойная
+    # регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`, план 31-07), тот же
+    # прецедент D-19 — поле, зарегистрированное только тут, видно на экране и молча не
+    # доходит до SQL. Поле ВИРТУАЛЬНОЕ — условие собирается по `users.auto_reject_rule_ids`
+    # (не `users.auto_reject`, такой колонки нет) собственной веткой `_build_filter_clause`;
+    # см. `_FILTER_VIRTUAL_FIELDS` ниже.
+    "auto_reject",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -3511,7 +3542,7 @@ _FILTER_COLUMNS = {
 # `elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS`, виртуальное поле
 # уходит в уже существующий `return []` (мина обезврежена ДО того, как её кто-то заденет —
 # сегодня `get_distinct_filter_values("resume")` никто не зовёт, но так не будет всегда).
-_FILTER_VIRTUAL_FIELDS = {"resume", "delegate_chat"}
+_FILTER_VIRTUAL_FIELDS = {"resume", "delegate_chat", "auto_reject"}
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
 # Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
@@ -3546,6 +3577,11 @@ RESUME_COLUMNS = RESUME_RECALL_COLUMNS + ("resume_link",)
 # приём, что `SEASON_NONE` выше. Это НЕ значения из БД.
 RESUME_HAS = "has"
 RESUME_MISSING = "none"
+
+# Сентинелы значений поля фильтра «Автоотказ» (Phase 31, 31-02, D-28) — та же причина строки,
+# не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
+AUTO_REJECT_YES = "yes"
+AUTO_REJECT_NO = "no"
 
 # Сентинелы значений поля фильтра «Чат делегатов» (квик 260914-rgr) — та же причина строки,
 # не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
@@ -3648,6 +3684,22 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             else:
                 # WR-01, same reasoning as event_city/season above: an empty or unknown value
                 # must NOT drop the condition (that would fan out to the whole base).
+                clauses.append("0")
+        elif field == "auto_reject":
+            # Phase 31 (31-02, D-28): must come BEFORE the generic `_FILTER_COLUMNS` branch
+            # below — there is no `users.auto_reject` column, the general branch would emit
+            # `auto_reject = ?` and blow up with `OperationalError`. Same fail-closed shape as
+            # the `resume` branch above (WR-01).
+            value = f.get("value")
+            if value == AUTO_REJECT_YES:
+                clauses.append(
+                    "(auto_reject_rule_ids IS NOT NULL AND TRIM(auto_reject_rule_ids) NOT IN ('', '[]'))"
+                )
+            elif value == AUTO_REJECT_NO:
+                clauses.append(
+                    "(auto_reject_rule_ids IS NULL OR TRIM(auto_reject_rule_ids) IN ('', '[]'))"
+                )
+            else:
                 clauses.append("0")
         elif field == "delegate_chat":
             # Квик 260914-rgr (RGR-01..07, D-5/D-6): must come BEFORE the generic
@@ -3788,6 +3840,26 @@ async def get_resume_filter_options() -> list[str]:
         options.append(RESUME_HAS)
     if row and row[1]:
         options.append(RESUME_MISSING)
+    return options
+
+
+async def get_auto_reject_filter_options() -> list[str]:
+    """Значения для пикера поля «Автоотказ» (Phase 31, 31-02, D-28) — та же роль порога показа
+    кнопки, что у `get_resume_filter_options`: оба сентинела только если в базе реально есть
+    обе стороны, `[]` на пустой базе (фильтровать не по чему)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE auto_reject_rule_ids IS NOT NULL AND "
+            "TRIM(auto_reject_rule_ids) NOT IN ('', '[]')), "
+            "EXISTS(SELECT 1 FROM users WHERE auto_reject_rule_ids IS NULL OR "
+            "TRIM(auto_reject_rule_ids) IN ('', '[]'))"
+        ) as cursor:
+            row = await cursor.fetchone()
+    options: list[str] = []
+    if row and row[0]:
+        options.append(AUTO_REJECT_YES)
+    if row and row[1]:
+        options.append(AUTO_REJECT_NO)
     return options
 
 
@@ -5216,12 +5288,17 @@ async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
 
 # ── Квик 260916: очередь дайджеста заявок ───────────────────────────────────────────────────
 
-async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str) -> int:
+async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str, *,
+                              auto_rejected: int = 0) -> int:
+    """`auto_rejected` (Phase 31, 31-02, D-17) — хвостовой kwarg с дефолтом 0, существующие
+    вызывающие без нового аргумента остаются байт-в-байт прежними. Штампуется здесь, на
+    постановке в очередь, не выводится позже из `users.status` — см. комментарий у
+    `_ensure_column(..., "auto_rejected", ...)` в `init_db`."""
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT INTO reg_submit_digest_queue (telegram_id, city, created_at) "
-            "VALUES (?, ?, ?)",
-            (telegram_id, city, created_at),
+            "INSERT INTO reg_submit_digest_queue (telegram_id, city, created_at, auto_rejected) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, city, created_at, auto_rejected),
         )
         await db.commit()
         return cursor.lastrowid
@@ -5229,7 +5306,8 @@ async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str
 
 async def list_unsent_reg_digest(city: str | None = None, *, all_cities: bool = False) -> list[dict]:
     """Неотправленные строки очереди. `all_cities=True` — вся очередь (для ре-арма на старте);
-    иначе строго по `city` (None = строки без города, НЕ «все»)."""
+    иначе строго по `city` (None = строки без города, НЕ «все»). `SELECT *` — колонка
+    `auto_rejected` (D-17) возвращается автоматически, отдельного проецирования не требуется."""
     where = "sent_at IS NULL"
     params: tuple = ()
     if not all_cities:

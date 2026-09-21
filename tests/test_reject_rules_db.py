@@ -19,6 +19,7 @@ import sqlite3
 
 from config import config
 from database import db
+from database.db import _build_filter_clause
 
 
 def _ready(tmp_path, name="test_reject_rules_db.db"):
@@ -331,3 +332,146 @@ def test_resolve_decision_managers_skips_auto_reject_sentinel(tmp_path):
     labels = _run(db.resolve_decision_managers([-1, 12345]))
     assert -1 not in labels
     assert 12345 in labels
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: три шва — flagged_only, auto_reject фильтр рассылки, auto_rejected в дайджесте
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_flagged_only_true_returns_only_flagged_pending(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3001)
+    _seed_user(3002)
+    _run(db.set_user_status(3001, "pending"))
+    _run(db.set_user_status(3002, "pending"))
+    _run(_set_user_field(3001, "flagged_rule_ids", "[7]"))
+
+    flagged = _run(db.get_pending_users(limit=10, flagged_only=True))
+    assert [r["telegram_id"] for r in flagged] == [3001]
+    assert _run(db.get_pending_count(flagged_only=True)) == 1
+
+
+def test_flagged_only_false_keeps_previous_behaviour(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3003)
+    _seed_user(3004)
+    _run(db.set_user_status(3003, "pending"))
+    _run(db.set_user_status(3004, "pending"))
+    _run(_set_user_field(3003, "flagged_rule_ids", "[7]"))
+
+    rows = _run(db.get_pending_users(limit=10))
+    assert {r["telegram_id"] for r in rows} == {3003, 3004}
+    assert _run(db.get_pending_count()) == 2
+
+
+def test_flagged_only_treats_empty_list_as_not_flagged(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3005)
+    _run(db.set_user_status(3005, "pending"))
+    _run(_set_user_field(3005, "flagged_rule_ids", "[]"))
+
+    assert _run(db.get_pending_count(flagged_only=True)) == 0
+
+
+def test_auto_reject_is_registered_in_filter_columns_and_virtual_fields():
+    assert "auto_reject" in db._FILTER_COLUMNS
+    assert "auto_reject" in db._FILTER_VIRTUAL_FIELDS
+
+
+def test_filter_columns_whitelist_guard(tmp_path):
+    """Каждое поле `_FILTER_COLUMNS` — либо реальная колонка `users`, либо объявлено
+    виртуальным в `_FILTER_VIRTUAL_FIELDS` (тот же guard, что
+    tests/test_broadcast_resume_filter_260911.py — ловит опечатку в имени колонки)."""
+    _ready(tmp_path)
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        real_cols = {row[1] for row in con.execute("PRAGMA table_info(users)")}
+    finally:
+        con.close()
+    for field in db._FILTER_COLUMNS:
+        assert field in real_cols or field in db._FILTER_VIRTUAL_FIELDS, (
+            f"'{field}' is neither a real users column nor declared virtual"
+        )
+
+
+def test_build_filter_clause_auto_reject_yes_and_no():
+    where_yes, params_yes = _build_filter_clause([{"field": "auto_reject", "value": db.AUTO_REJECT_YES}])
+    assert params_yes == []
+    assert "auto_reject_rule_ids" in where_yes
+
+    where_no, params_no = _build_filter_clause([{"field": "auto_reject", "value": db.AUTO_REJECT_NO}])
+    assert params_no == []
+    assert "auto_reject_rule_ids" in where_no
+    assert where_yes != where_no
+
+
+def test_build_filter_clause_auto_reject_garbage_value_is_fail_closed():
+    assert _build_filter_clause([{"field": "auto_reject", "value": "garbage"}]) == (" WHERE 0", [])
+
+
+def test_build_filter_clause_auto_reject_empty_value_is_fail_closed():
+    assert _build_filter_clause([{"field": "auto_reject", "value": ""}]) == (" WHERE 0", [])
+
+
+def test_count_and_list_filtered_auto_reject_yes_and_no_partition_base(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3101)
+    _seed_user(3102)
+    _run(_set_user_field(3101, "auto_reject_rule_ids", "[1]"))
+
+    yes_ids = _run(db.count_and_list_filtered([{"field": "auto_reject", "value": db.AUTO_REJECT_YES}]))
+    no_ids = _run(db.count_and_list_filtered([{"field": "auto_reject", "value": db.AUTO_REJECT_NO}]))
+    assert set(yes_ids) == {3101}
+    assert set(no_ids) == {3102}
+
+
+def test_get_distinct_filter_values_auto_reject_returns_empty_not_crash(tmp_path):
+    """Виртуальное поле — тот же прецедент, что resume: `SELECT DISTINCT auto_reject` упал бы
+    `OperationalError` без ветки `_FILTER_VIRTUAL_FIELDS`."""
+    _ready(tmp_path)
+    assert _run(db.get_distinct_filter_values("auto_reject")) == []
+
+
+def test_get_auto_reject_filter_options_both_sides(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3103)
+    _seed_user(3104)
+    _run(_set_user_field(3103, "auto_reject_rule_ids", "[1]"))
+
+    options = _run(db.get_auto_reject_filter_options())
+    assert options == [db.AUTO_REJECT_YES, db.AUTO_REJECT_NO]
+
+
+def test_get_auto_reject_filter_options_empty_base(tmp_path):
+    _ready(tmp_path)
+    assert _run(db.get_auto_reject_filter_options()) == []
+
+
+def test_enqueue_reg_digest_accepts_auto_rejected_kwarg(tmp_path):
+    _ready(tmp_path)
+    _seed_user(3201)
+    qid = _run(db.enqueue_reg_digest(3201, "msk", "2026-09-20 10:00:00", auto_rejected=1))
+    rows = _run(db.list_unsent_reg_digest("msk"))
+    row = next(r for r in rows if r["id"] == qid)
+    assert row["auto_rejected"] == 1
+
+
+def test_enqueue_reg_digest_default_auto_rejected_is_zero(tmp_path):
+    """Хвостовой kwarg с дефолтом — существующие вызывающие без нового аргумента остаются
+    байт-в-байт прежними."""
+    _ready(tmp_path)
+    _seed_user(3202)
+    qid = _run(db.enqueue_reg_digest(3202, "msk", "2026-09-20 10:00:00"))
+    rows = _run(db.list_unsent_reg_digest("msk"))
+    row = next(r for r in rows if r["id"] == qid)
+    assert row["auto_rejected"] == 0
+
+
+def test_reg_submit_digest_queue_has_auto_rejected_column(tmp_path):
+    _ready(tmp_path)
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        cols = {row[1] for row in con.execute("PRAGMA table_info(reg_submit_digest_queue)")}
+    finally:
+        con.close()
+    assert "auto_rejected" in cols
