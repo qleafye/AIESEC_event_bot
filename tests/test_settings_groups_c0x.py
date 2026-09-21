@@ -406,6 +406,9 @@ def test_render_snapshot_reg(tmp_path):
         # reg_mini_portfolio_skip_label (handlers/admin_settings.py::_REG_FIELD_ORDER).
         "reg_resume_fork_pick_hint_text",
         "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
+        # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — хвост группы (handlers/
+        # admin_settings.py::_REG_FIELD_ORDER).
+        "reject_rules_return_text",
     ]
     expected_labels = [
         "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
@@ -428,6 +431,7 @@ def test_render_snapshot_reg(tmp_path):
         "📎 Развилка резюме: подсказка «выбери кнопкой»",
         "✍️ Развилка резюме: вопрос «Опиши опыт текстом»",
         "✍️ Развилка резюме: ошибка «пришли текстом»",
+        "🔄 При возврате заявки на пересмотр",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
@@ -695,6 +699,10 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
     # REG_FLOW, см. комментарий у ключа в settings_schema.py), поэтому REG_DEFAULTS его тоже
     # подхватывает; default "off" (D-06).
     "reg_scoring_enabled": "off",
+    # Phase 31 (31-03, D-15): reject_rules_enabled — тот же класс ключа, что reg_scoring_enabled
+    # выше (toggle, group "apps", не парный шаг REG_FLOW); default "off" — на других событиях
+    # ничего не меняется.
+    "reject_rules_enabled": "off",
 }
 
 # NOTE (deviation, Rule 1): 06-04-PLAN.md's interfaces table labels this a "44-key" oracle,
@@ -704,7 +712,8 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
 # matches registration.py:197-241 exactly" acceptance criterion (source is the ground truth).
 # Phase 28 (28-01): +8 новых reg_q_* ключей (default "off") — 43 + 8 = 51.
 # Phase 28 (28-07): +1 reg_scoring_enabled (default "off") — 51 + 1 = 52.
-assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 52  # sanity — must match the live table (source-verified)
+# Phase 31 (31-03): +1 reject_rules_enabled (default "off") — 52 + 1 = 53.
+assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 53  # sanity — must match the live table (source-verified)
 
 # Feature-switch (enum) defaults verified byte-for-byte from the live call sites
 # (06-04-PLAN.md interfaces table) — DO NOT guess, DO NOT edit without re-checking the
