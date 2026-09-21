@@ -661,9 +661,36 @@ _REGISTRY_TEXTS_EN = {
     "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.": "Want to join again? Let's update your application — I'll offer to keep your previous answers.",
 }
 
+# ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
+# карточка волны, рейтинг волны, штраф за просроченную сдачу, итоги волны. «Балл» здесь —
+# тот же счёт, что уже переведён «points» в `EVENT_TEXTS_260917` («получения Юлид баллов»),
+# держим единый термин в обоих словарях. ───────────────────────────────────────────────────
+_AMBASSADOR_WAVE_TEXTS_EN = {
+    "Задания амбассадоров": "Ambassador tasks",
+    "Перестать быть амбассадором": "Stop being an ambassador",
+    "Точно хочешь перестать быть амбассадором?\n\nРассылки волны прекратятся, из рейтинга текущей волны ты исчезнешь, а уже набранные баллы останутся.": "Are you sure you want to stop being an ambassador?\n\nWave broadcasts will stop and you'll disappear from the current wave's ranking, but the points you've already earned will stay with you.",
+    "Готово — ты больше не амбассадор. Спасибо за работу!": "Done — you're no longer an ambassador. Thanks for your work!",
+    "Делаю контент": "Creating content",
+    "Зову людей": "Inviting people",
+    "Пока не выбрал": "Not chosen yet",
+    "Как тебе больше нравится помогать как амбассадору?": "How do you prefer to help as an ambassador?",
+    "без срока": "no deadline",
+    "После дедлайна ({deadline}) — {penalized} баллов вместо {coins}. Штраф фиксированный, не зависит от того, насколько поздно.": "After the deadline ({deadline}) — {penalized} points instead of {coins}. The penalty is fixed, no matter how late.",
+    "Скоро дедлайн ({deadline}), а у тебя ещё не сдано: «{task}» ({coins} баллов). Успеешь — получишь баллы полностью, после дедлайна — со штрафом.": "The deadline ({deadline}) is coming up, and you still haven't submitted: «{task}» ({coins} points). Make it in time and you'll get the full points — after the deadline, there's a penalty.",
+    "Сейчас нет активной волны амбассадоров — рейтинг появится, когда волна начнётся.": "There's no active ambassador wave right now — the ranking will appear once a wave starts.",
+    "🏅 <b>Рейтинг волны</b>": "🏅 <b>Wave ranking</b>",
+    "Ты {rank}-й из {total}. До призового места ({place}-е) — {gap} баллов.": "You're #{rank} out of {total}. {gap} points to the prize place ({place}).",
+    "Волна {wave} завершена. Призёры: {winners} — поздравляем!\nТвоё место — {place}-е из {total}, {points} баллов за волну.": "Wave {wave} is over. Winners: {winners} — congratulations!\nYour place — {place} out of {total}, {points} points for the wave.",
+    "Твой приз найдёт тебя отдельно — считай это счастливым билетом 🎟": "Your prize will find you separately — consider it a lucky ticket 🎟",
+    "Ты в тройке призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}\nСпасибо за работу в этой волне.": "You're in the top three of wave {wave} — {place} place, {points} points!\n{prize}\nThanks for your work in this wave.",
+    "Открыть задания": "Open tasks",
+    "Волна {wave} началась и продлится до {ends}.\n{intro}\n\nЗадания волны:\n{tasks}\n\nСдать можно и позже дедлайна — баллов будет меньше.": "Wave {wave} has started and runs until {ends}.\n{intro}\n\nWave tasks:\n{tasks}\n\nYou can still submit after the deadline — you'll just get fewer points.",
+}
+
 FORM_DEFAULT_EN: dict[str, str] = {
     **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
+    **_AMBASSADOR_WAVE_TEXTS_EN,
 }
 
 
