@@ -580,8 +580,6 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 )
                 flagged_rule_ids_out = auto_patch["flag_rule_ids"]
                 if auto_patch["status_override"] == "rejected":
-                    # Пометка (flag) статус НЕ меняет — заявка остаётся на обычной модерации
-                    # с бейджем (auto_rule_note уже записан узким UPDATE выше).
                     status = "rejected"
                     auto_rejected = True
                     await set_user_status(telegram_id, status)
@@ -589,6 +587,20 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     await record_auto_reject(
                         telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
                     )
+                else:
+                    # Дефект (найден ревью): чистая пометка (reject_rule_ids пуст, гейт
+                    # `_auto_reject_patch` гарантирует непустой flag_rule_ids в этой ветке) НЕ
+                    # отклоняет — но и не имеет права проскочить дальше на автоодобрение. По
+                    # тому же принципу, что D-23 у снятия автоотказа в правке (решает человек,
+                    # оценщик структурно не умеет вернуть "approved"): помеченная правилом
+                    # заявка всегда уходит на ручную модерацию, даже если `full_approval`/
+                    # `short_approval`/`party_approval` события — "auto". Без этого `status`
+                    # остаётся тем, что вернул decide_status выше (может быть "approved"), и
+                    # ветка автоприёма в конце post_finalize отправляет делегату «заявка
+                    # принята», а бейдж пометки никто из менеджеров не видит.
+                    if status != "pending":
+                        status = "pending"
+                        await set_user_status(telegram_id, status)
 
             try:
                 await record_reg_event(
