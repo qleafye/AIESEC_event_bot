@@ -11,7 +11,9 @@
 снятии срока; планировщик может быть не поднят — создание задания не имеет права упасть.
 
 Handlers called DIRECTLY with Fake message/callback doubles (pytest-asyncio unavailable in this
-env) — same convention as tests/test_game_ui16_manager_tasks_260820.py.
+env) — same convention as tests/test_game_ui16_manager_tasks_260820.py. Job scheduling tests
+(задача 3) reuse tests/test_ambassador_wave_scheduling_32.py's real-AsyncIOScheduler-on-temp-
+jobstore harness so a job's ID (not just the fact a call happened) is verified.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
+import services.scheduler as sched
 from handlers import admin_gamification
 from handlers import admin_game_tasks
 from handlers import game_task_wizard
@@ -412,3 +415,166 @@ def test_existing_presets_still_work_plus3(tmp_path):
     data = asyncio.run(state.get_data())
     expected = game_task_wizard._resolve_deadline_preset("plus3")
     assert data["gt_deadline"] == expected.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: автоматические напоминания
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _build_scheduler(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+
+    return AsyncIOScheduler(
+        jobstores={"default": SQLAlchemyJobStore(url=f"sqlite:///{tmp_path / 'jobs.sqlite'}")},
+        timezone=sched.MOSCOW_TZ,
+    )
+
+
+def _run_scheduled(tmp_path, monkeypatch, body):
+    """Реальный AsyncIOScheduler на временном jobstore (тот же приём, что
+    tests/test_ambassador_wave_scheduling_32.py::_run_scheduled) — job-id проверяется по-
+    настоящему, не только факт вызова add_job. `body` — асинхронная функция, принимающая
+    планировщик; внутренние вызовы визарда идут через `_a_drive_to_*` (await напрямую), т.к.
+    вложенный `asyncio.run()` внутри уже запущенного цикла роняет RuntimeError."""
+    s = _build_scheduler(tmp_path)
+    monkeypatch.setattr(sched, "_scheduler", s)
+
+    async def go():
+        s.start(paused=True)
+        try:
+            return await body(s)
+        finally:
+            s.shutdown(wait=False)
+
+    return asyncio.run(go())
+
+
+def test_confirm_with_deadline_schedules_reminder_with_expected_job_id(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        state = _new_state()
+        await _a_drive_to_deadline(state)
+        msg = FakeMessage(text="01.01.2099 00:00")
+        await admin_gamification.game_task_deadline_step(msg, state)
+        await admin_gamification.game_task_confirm(FakeCallback("gtconfirm"), state)
+        tasks = await db.list_all_tasks()
+        task_id = tasks[0]["id"]
+        return s.get_job(f"task_deadline_reminder_{task_id}")
+
+    job = _run_scheduled(tmp_path, monkeypatch, body)
+    assert job is not None
+
+
+def test_confirm_without_deadline_does_not_schedule(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        state = _new_state()
+        await _a_drive_to_deadline(state)
+        await admin_game_tasks.game_task_deadline_preset(FakeCallback("gtdeadline_preset:none"), state)
+        await admin_gamification.game_task_confirm(FakeCallback("gtconfirm"), state)
+        return len(s.get_jobs())
+
+    assert _run_scheduled(tmp_path, monkeypatch, body) == 0
+
+
+def test_point_edit_deadline_change_reschedules_job(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        task_id = await db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID)
+        sched.schedule_task_deadline_reminder(task_id, sched._parse_schedule_dt("01.01.2099 00:00"))
+        first = s.get_job(f"task_deadline_reminder_{task_id}").next_run_time
+
+        state = _new_state()
+        await admin_game_tasks.game_task_editdeadline_start(FakeCallback(f"gteditdeadline:{task_id}"), state)
+        await admin_game_tasks.game_task_editdeadline_preset(
+            FakeCallback("gteditdeadline_preset:plus7"), state,
+        )
+        job = s.get_job(f"task_deadline_reminder_{task_id}")
+        return first, job
+
+    first, job = _run_scheduled(tmp_path, monkeypatch, body)
+    assert job is not None
+    assert job.next_run_time != first
+
+
+def test_point_edit_none_preset_cancels_job(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        task_id = await db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID)
+        sched.schedule_task_deadline_reminder(task_id, sched._parse_schedule_dt("01.01.2099 00:00"))
+        assert s.get_job(f"task_deadline_reminder_{task_id}") is not None
+
+        state = _new_state()
+        await admin_game_tasks.game_task_editdeadline_start(FakeCallback(f"gteditdeadline:{task_id}"), state)
+        await admin_game_tasks.game_task_editdeadline_preset(
+            FakeCallback("gteditdeadline_preset:none"), state,
+        )
+        return s.get_job(f"task_deadline_reminder_{task_id}")
+
+    assert _run_scheduled(tmp_path, monkeypatch, body) is None
+
+
+def test_archive_cancels_reminder_job(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        task_id = await db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID)
+        sched.schedule_task_deadline_reminder(task_id, sched._parse_schedule_dt("01.01.2099 00:00"))
+        await admin_gamification.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}"))
+        return s.get_job(f"task_deadline_reminder_{task_id}")
+
+    assert _run_scheduled(tmp_path, monkeypatch, body) is None
+
+
+def test_delete_cancels_reminder_job(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def body(s):
+        task_id = await db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID)
+        sched.schedule_task_deadline_reminder(task_id, sched._parse_schedule_dt("01.01.2099 00:00"))
+        await admin_gamification.game_task_delete_go(FakeCallback(f"gtdelete_go:{task_id}"))
+        return s.get_job(f"task_deadline_reminder_{task_id}")
+
+    assert _run_scheduled(tmp_path, monkeypatch, body) is None
+
+
+def test_unarchive_rearms_reminder_job(tmp_path, monkeypatch):
+    """[Rule 1] Симметрично архивации: возврат из архива задания с будущим сроком снова
+    ставит напоминание -- иначе снятое при архивации напоминание осиротело бы навсегда."""
+    _db_ready(tmp_path)
+
+    async def body(s):
+        task_id = await db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID)
+        await admin_gamification.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}"))
+        assert s.get_job(f"task_deadline_reminder_{task_id}") is None
+        await admin_gamification.game_task_unarchive(FakeCallback(f"gtunarchive:{task_id}"))
+        return s.get_job(f"task_deadline_reminder_{task_id}")
+
+    assert _run_scheduled(tmp_path, monkeypatch, body) is not None
+
+
+def test_scheduler_unavailable_does_not_block_task_creation(tmp_path, monkeypatch):
+    """T-32-12-04: планировщик не поднят в тестовой среде -- create_task не имеет права упасть."""
+    _db_ready(tmp_path)
+    monkeypatch.setattr(sched, "_scheduler", None)
+    state = _new_state()
+    _drive_to_deadline(state)
+    msg = FakeMessage(text="01.01.2099 00:00")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    asyncio.run(admin_gamification.game_task_confirm(FakeCallback("gtconfirm"), state))
+    tasks = asyncio.run(db.list_all_tasks())
+    assert len(tasks) == 1  # задание всё равно создано
+
+
+def test_scheduler_unavailable_does_not_block_archive(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    task_id = asyncio.run(db.create_task("т", "Light", 10, "text", "2099-01-01 00:00:00", ADMIN_ID))
+    monkeypatch.setattr(sched, "_scheduler", None)
+    asyncio.run(admin_gamification.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}")))
+    task = asyncio.run(db.get_task(task_id))
+    assert task["archived_at"] is not None

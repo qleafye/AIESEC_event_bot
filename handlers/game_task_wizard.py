@@ -12,10 +12,15 @@ reason -- admin_gamification.py had little budget left against its 2020-line cei
 `_game_task_deadline_prompt` shared prompt (previously local to admin_gamification.py) moved
 here too, since it now sits right next to the wave/audience prompts in the wizard's step chain.
 
+Phase 32 (32-12, задача 3, D-26): `_safe_schedule_reminder`/`_safe_cancel_reminder` — the one
+fail-soft entry point every task-lifecycle call site (create, point-edit deadline, archive,
+unarchive, delete) uses to arm/disarm the deadline-reminder job, also live here.
+
 Names keep their leading underscore: admin_gamification.py re-exports them under the same
 names (existing tests reach `admin_gamification._render_game_task_confirm_card`).
 """
 import html as html_module
+import logging
 from datetime import datetime, timedelta
 
 from aiogram.fsm.context import FSMContext
@@ -25,9 +30,16 @@ import cities
 from settings_schema import get_setting_typed
 from database.db import NO_DEADLINE_AT, list_waves
 from services.ambassador_waves import wave_number_label
-from services.scheduler import _fmt_dt, _now_moscow_naive
+from services.scheduler import (
+    _fmt_dt,
+    _now_moscow_naive,
+    cancel_task_deadline_reminder,
+    schedule_task_deadline_reminder,
+)
 from handlers.states import GameTaskCreate
 from handlers.game_labels import render_task_card_text
+
+logger = logging.getLogger(__name__)
 
 
 # Phase 16 (16-03, GAME-UI-03): the wizard's free-text prompts, shared by the creation steps
@@ -268,3 +280,30 @@ async def _game_task_deadline_prompt(target, state: FSMContext):
         prompt, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel", wave_end=has_wave),
     )
     await state.set_state(GameTaskCreate.deadline)
+
+
+# ── Phase 32 (32-12, задача 3, D-26): автоматическое напоминание за сутки ──────────────────
+
+def _safe_schedule_reminder(task_id: int, deadline_at: str | None):
+    """D-26/T-32-12-04: постановка напоминания за сутки — fail-soft (планировщик может быть не
+    поднят в тестовой среде, сбой постановки не имеет права уронить создание/правку задания,
+    та же дисциплина, что у `_request_game_resync`). Задание без срока (`NO_DEADLINE_AT`) или с
+    неразбираемым значением не ставит ничего."""
+    if not deadline_at or deadline_at == NO_DEADLINE_AT:
+        return
+    when = _parse_iso_dt(deadline_at)
+    if when is None:
+        return
+    try:
+        schedule_task_deadline_reminder(task_id, when)
+    except Exception:
+        logger.warning("task deadline reminder schedule failed for task %s", task_id, exc_info=True)
+
+
+def _safe_cancel_reminder(task_id: int):
+    """T-32-12-05: снятие — тот же fail-soft, вызывается на архивации/удалении/снятии срока
+    задания (осиротевшее напоминание архивному/удалённому заданию — прямая угроза плана)."""
+    try:
+        cancel_task_deadline_reminder(task_id)
+    except Exception:
+        logger.warning("task deadline reminder cancel failed for task %s", task_id, exc_info=True)

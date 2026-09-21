@@ -61,6 +61,8 @@ from handlers.game_task_wizard import (
     _game_task_wave_prompt,
     _parse_iso_dt,
     _resolve_deadline_preset,
+    _safe_cancel_reminder,
+    _safe_schedule_reminder,
     _wizard_return_to_preview,
 )
 from handlers.admin import router, _parse_positive_int
@@ -189,11 +191,17 @@ async def game_task_editdeadline_start(callback: types.CallbackQuery, state: FSM
 
 async def _apply_point_deadline(task_id: int, when) -> bool:
     """Правка дедлайна СУЩЕСТВУЮЩЕГО задания — общая хвостовая точка для ввода текстом и
-    пресетов (включая «Без срока»/«По умолчанию — конец волны», Phase 32 32-12 задача 2)."""
+    пресетов (включая «Без срока»/«По умолчанию — конец волны», Phase 32 32-12 задача 2).
+    Напоминание за сутки (D-26) переставляется или снимается здесь же — единственная точка
+    правки дедлайна (задача 3)."""
     deadline_at = when if isinstance(when, str) else _fmt_dt(when)
     if not await update_task_deadline(task_id, deadline_at):
         return False
     _request_game_resync()
+    if deadline_at == NO_DEADLINE_AT:
+        _safe_cancel_reminder(task_id)
+    else:
+        _safe_schedule_reminder(task_id, deadline_at)
     return True
 
 

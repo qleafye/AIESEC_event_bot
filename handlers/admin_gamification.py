@@ -101,6 +101,7 @@ from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers
     _game_task_deadline_preset_kb, _render_game_task_confirm_card, _resolve_deadline_preset,  # noqa: F401
     _show_wizard_preview, _wizard_return_to_preview,  # noqa: F401
     _game_task_audience_prompt, _game_task_deadline_prompt, _game_task_wave_prompt,  # noqa: F401
+    _safe_cancel_reminder, _safe_schedule_reminder,  # Phase 32 (32-12): reminder side effects
 )
 from cities import (
     admin_selected_city,
@@ -286,6 +287,7 @@ async def game_task_archive_go(callback: types.CallbackQuery):
         return
     if await archive_task(task_id):
         _request_game_resync()  # Phase 09.1 (D, GAME-07): archive is a debounced resync trigger
+        _safe_cancel_reminder(task_id)  # Phase 32 (32-12, T-32-12-05): no orphaned reminder
         await callback.answer("Задание убрано в архив")
     else:
         await callback.answer("Задание уже в архиве", show_alert=True)
@@ -303,6 +305,12 @@ async def game_task_unarchive(callback: types.CallbackQuery):
         return
     if await unarchive_task(task_id):
         _request_game_resync()
+        # Phase 32 (32-12): symmetric to the archive branch above — re-arm the reminder the
+        # archive branch cancelled, or an unarchived task with a future deadline silently
+        # never nudges anyone again.
+        task = await get_task(task_id)
+        if task:
+            _safe_schedule_reminder(task_id, task.get("deadline_at"))
         await callback.answer("Задание возвращено")
     else:
         await callback.answer("Задание уже активно", show_alert=True)
@@ -388,6 +396,7 @@ async def game_task_delete_go(callback: types.CallbackQuery):
         return
     if await delete_task(task_id):
         _request_game_resync()
+        _safe_cancel_reminder(task_id)  # Phase 32 (32-12, T-32-12-05): no orphaned reminder
         await callback.answer("Задание удалено")
     else:
         # delete_task's own SQL-level NOT EXISTS gate refused -- a submission landed between
@@ -684,9 +693,10 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
 async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
     """«✅ Опубликовать» on the final preview (Phase 16, 16-03, Экран 7) -- the callback stayed
     `gtconfirm`, the write below and its ADMIN_CAPS entry are unchanged from Phase 9. Phase 32
-    (32-12, D-12/D-28): `wave_id`/`audience` go straight to `create_task`."""
+    (32-12, D-12/D-28): `wave_id`/`audience` go straight to `create_task`; a task WITH a real
+    deadline gets its D-26 reminder armed right after (fail-soft, `_safe_schedule_reminder`)."""
     data = await state.get_data()
-    await create_task(
+    task_id = await create_task(
         text=data["gt_text"],
         category=data["gt_category"],
         coins=data["gt_coins"],
@@ -700,6 +710,7 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         audience=data.get("gt_audience") or "all",
     )
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
+    _safe_schedule_reminder(task_id, data["gt_deadline"])
     await state.set_state(None)
     await callback.answer("Задание создано")
     text, kb = await _game_tasks_screen()
