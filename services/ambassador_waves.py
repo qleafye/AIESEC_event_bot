@@ -11,15 +11,17 @@
 не участвует», «вышел — пропал из текущей волны, но не из общего зачёта», «вернулся — снова
 новичок посреди волны».
 
-Зависимости — ТОЛЬКО `database.db`, `settings_schema` (плюс стандартная библиотека). Ни
-`aiogram`, ни `handlers.*` на уровне модуля не импортируются — веб-процесс Mini App будущей
-фазы (D-36) сможет позвать те же функции напрямую, без второй копии этих правил.
+Зависимости — `database.db`, `settings_schema`, `cities` (плюс стандартная библиотека); `cities`
+сама не импортирует `aiogram`, так что правило ниже не нарушается. Ни `aiogram`, ни
+`handlers.*` на уровне модуля не импортируются — веб-процесс Mini App будущей фазы (D-36)
+сможет позвать те же функции напрямую, без второй копии этих правил.
 """
 from __future__ import annotations
 
 import statistics
 from datetime import datetime
 
+import cities
 from database.db import (
     get_display_names,
     get_pending_submissions,
@@ -90,7 +92,10 @@ async def wave_rating(wave_id: int) -> list[dict]:
 
     # Волна со своим городом рейтингует амбассадоров этого города (плюс без города — как и
     # везде в проекте, city_scope=None у волны «все города» не фильтрует вовсе).
-    ambassadors = await list_ambassadors(city_scope=wave.get("event_city"))
+    # T-091-08/CITY-02: `list_ambassadors(city_scope=...)` ждёт дескриптор
+    # `cities.city_scope(...)`, а не сырой код города — `wave["event_city"]` без обёртки
+    # роняет `database.db._city_clause` (`code, exclude = scope` на голой строке).
+    ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
     eligible: list[tuple[int, int, str]] = []
     for a in ambassadors:
         user = dict(a)
