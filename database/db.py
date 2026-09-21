@@ -2187,17 +2187,22 @@ async def get_city_counts() -> list[tuple]:
 # ── Phase 1: coins ledger (append-only) ──────────────────────────────────────
 
 async def add_coins(user_id: int, delta: int, reason: str | None = None, changed_by: int | None = None,
-                     source: str | None = None):
+                     source: str | None = None, task_id: int | None = None):
     """Append a ledger row. Never UPDATE — balance is the derived SUM(delta).
 
     Phase 14 (GAME-09): `source` distinguishes a manual manager edit ('manual') from a
     task-award credit ('task') at the data level. Default None preserves every pre-existing
-    call site's behavior byte-for-byte (NULL = legacy/system, per Pitfall 6 in 14-RESEARCH.md)."""
+    call site's behavior byte-for-byte (NULL = legacy/system, per Pitfall 6 in 14-RESEARCH.md).
+
+    Phase 32 (32-01, D-14): `task_id` — ссылка на задание этого начисления. Default None
+    сохраняет поведение ВСЕХ существующих вызовов байт-в-байт; пишется только двумя точками
+    начисления за задание (grev_approve/grev_approve_amount_step, план 32-05)."""
     timestamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, delta, reason, changed_by, timestamp, source),
+            "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source, task_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, delta, reason, changed_by, timestamp, source, task_id),
         )
         await db.commit()
 
@@ -5607,6 +5612,128 @@ async def list_ambassadors(*, city_scope=None, include_null: bool = True) -> lis
             tuple(params),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
+
+
+# ── Phase 32 (32-01, D-22): начисления за приглашённых — аксессоры ─────────────────────────
+
+async def claim_referral_credit(invitee_id: int, referrer_id: int, coins: int,
+                                 wave_id: int | None, *, source: str = "approval") -> bool:
+    """Идиома `add_staff` дословно: `INSERT OR IGNORE` против PRIMARY KEY (invitee_id) +
+    `rowcount == 1`. Никакой предварительной проверки «а не начисляли ли уже» в Python —
+    уникальность держит первичный ключ, повтор/гонка/ретрай физически не создают вторую
+    строку (T-32-01-01)."""
+    credited_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO referral_credits "
+            "(invitee_id, referrer_id, coins, wave_id, credited_at, source) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (invitee_id, referrer_id, coins, wave_id, credited_at, source),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def get_referral_credit(invitee_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM referral_credits WHERE invitee_id = ?", (invitee_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def list_referral_credits(*, referrer_id: int | None = None,
+                                 wave_id: int | None = None) -> list[dict]:
+    clauses, params = [], []
+    if referrer_id is not None:
+        clauses.append("referrer_id = ?")
+        params.append(referrer_id)
+    if wave_id is not None:
+        clauses.append("wave_id = ?")
+        params.append(wave_id)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM referral_credits{where} ORDER BY credited_at ASC", tuple(params),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_referral_credits(referrer_id: int, wave_id: int | None) -> int:
+    """Сколько приглашённых этого амбассадора уже начислено в этой волне — подсказка
+    модератору (план 32-05). `wave_id=None` считает начисления ВНЕ волн (`IS NULL`, обычное
+    равенство `= NULL` в SQL не матчит NULL-строки)."""
+    cond = "wave_id IS NULL" if wave_id is None else "wave_id = ?"
+    params = [referrer_id] if wave_id is None else [referrer_id, wave_id]
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM referral_credits WHERE referrer_id = ? AND {cond}",
+            params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+
+
+# ── Phase 32 (32-01, D-17): снимок итогов волны — аксессоры ────────────────────────────────
+
+async def insert_wave_results(wave_id: int, rows: list[tuple[int, int, int]],
+                               announced_at: str) -> int:
+    """`rows` — список (user_id, place, points). Одна транзакция, `INSERT OR IGNORE` против
+    `PRIMARY KEY (wave_id, user_id)` — повторный вызов вставляет 0 строк, снимок остаётся
+    неизменным (D-17). Возвращает число РЕАЛЬНО вставленных строк."""
+    inserted = 0
+    async with _connect() as db:
+        for user_id, place, points in rows:
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO wave_results (wave_id, user_id, place, points, announced_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (wave_id, user_id, place, points, announced_at),
+            )
+            inserted += cursor.rowcount
+        await db.commit()
+        return inserted
+
+
+async def get_wave_results(wave_id: int) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM wave_results WHERE wave_id = ? ORDER BY place ASC", (wave_id,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+# ── Phase 32 (32-01, D-14): суммы для рейтинга волны — сырой SQL, правила в сервисе плана
+# 32-03 ────────────────────────────────────────────────────────────────────────────────────
+
+async def sum_task_coins_for_wave(wave_id: int) -> dict[int, int]:
+    """JOIN строго по coins.task_id -> game_tasks.id, НИКОГДА по user_id — иначе у делегата
+    с двумя сдачами разных заданий одной волны сумма удвоилась бы через второй join-путь
+    (RESEARCH Pitfall 4). Легаси-строки coins без task_id в сумму волны не попадают."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT c.user_id, SUM(c.delta) FROM coins c "
+            "JOIN game_tasks t ON t.id = c.task_id "
+            "WHERE t.wave_id = ? AND c.source = 'task' GROUP BY c.user_id",
+            (wave_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: int(row[1]) for row in rows}
+
+
+async def sum_referral_coins_for_wave(wave_id: int) -> dict[int, int]:
+    """Ключ — referrer_id (кому начислено за приглашённого), а не invitee_id."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT referrer_id, SUM(coins) FROM referral_credits WHERE wave_id = ? "
+            "GROUP BY referrer_id",
+            (wave_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: int(row[1]) for row in rows}
 
 
 async def create_submission(task_id: int, user_id: int, content_type: str, content: str,
