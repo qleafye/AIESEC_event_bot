@@ -48,6 +48,8 @@ from services.applications import (
     format_edited_date as _format_edited_date,
     edit_badges_for as _edit_badges_for,
     prev_reject_line as _prev_reject_line,
+    rule_badge_lines as _rule_badge_lines,
+    auto_reject_cleared_line as _auto_reject_cleared_line,
     score_badge_text as _score_badge_text,
     IT_3PLUS_BADGE_TEXT as _IT_3PLUS_BADGE_TEXT,
 )
@@ -87,7 +89,7 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True, scoring_enabled: bool = False) -> str:
+def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, rule_lines: list[str] | None = None, cleared_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True, scoring_enabled: bool = False) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
@@ -97,6 +99,11 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     `prev_reject_line` (quick 260904-liz) — same contract: caller (`_prev_reject_line`,
     `escape_reason=True`) already resolved and HTML-escaped the string, printed right after
     `resubmit_line` and before `consent_line`. Default None keeps every other call byte-compatible.
+    `rule_lines`/`cleared_line` (Phase 31, 31-09, D-20/D-23) — тот же контракт: вызывающий уже
+    резолвил (`_rule_badge_lines`/`_auto_reject_cleared_line`) и `html.escape`-нул каждую строку.
+    `rule_lines` печатается ПЕРЕД `edited_line` (причина попадания в очередь важнее пометки о
+    правке); `cleared_line`, когда непуст, печатается ВМЕСТО `resubmit_line` — иначе менеджер
+    увидел бы два противоречивых объяснения одного перехода `rejected -> pending`.
     Quick 260902-tzh: `fields` — `[(label, value)]` из `moderation_card.card_answers`, вопросы
     анкеты по выбору менеджера (реестр `modcard_fields`); `None` (все старые вызовы) печатает
     ни одной строки вопроса — карточка байт-совместима с версией до этой правки. Шесть
@@ -177,11 +184,19 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
             lines.append("📎 Резюме: ⚠️ резюме не сохранилось")
         else:
             lines.append("📎 Резюме: нет")
+    # Phase 31 (31-09, D-20): пометка правилом / автоотказ — ПЕРЕД строками правки (причина
+    # попадания заявки в очередь важнее пометки о правке).
+    for rule_line in rule_lines or []:
+        lines.append(rule_line)
     # Phase 21 (21-07, D-14/D-10): «✏️ Изменена …» / «🔁 Повторная подача» — пометки для
     # менеджера о правке уже поданной анкеты, ПЕРЕД строкой согласия (та всегда идёт последней).
     if edited_line:
         lines.append(edited_line)
-    if resubmit_line:
+    # Phase 31 (31-09, D-23): «сменил ответ после автоотказа» — ВМЕСТО «🔁 Повторная подача»,
+    # когда она непуста (Pitfall 2: два объяснения одного перехода одновременно не показываем).
+    if cleared_line:
+        lines.append(cleared_line)
+    elif resubmit_line:
         lines.append(resubmit_line)
     # Quick 260904-liz: «🚫 Ранее отклонена: <причина>» — сразу после повторной подачи, перед
     # согласием (то всегда идёт последним).
@@ -269,6 +284,13 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # Quick 260904-liz: «🚫 Ранее отклонена: <причина>» — escape_reason=True, карточка бота
     # печатает готовые строки как есть (тот же контракт, что edited_line/resubmit_line).
     prev_reject = await _prev_reject_line(current, escape_reason=True)
+    # Phase 31 (31-09, D-20/D-23): бейджи пометки/автоотказа и «сменил ответ после автоотказа»
+    # — карточка бота печатает готовые строки как есть, экранирует ТОЛЬКО вызывающий (тот же
+    # контракт, что prev_reject_line(escape_reason=True)).
+    rule_lines = [html_module.escape(line) for line in await _rule_badge_lines(current)]
+    cleared_line = await _auto_reject_cleared_line(current)
+    if cleared_line:
+        cleared_line = html_module.escape(cleared_line)
     # Quick 260902-tzh: набор вопросов и лимит длины ответа — реестром (экран «🧾 Поля
     # карточки заявки»), не девять захардкоженных полей. «resume» — отдельный блок карточки
     # (файлом/текстом/нет), из fields исключается и управляет только show_resume.
@@ -284,6 +306,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
             consent_line=await consent_card_line(current["telegram_id"]),
             edited_line=edited_line, resubmit_line=resubmit_line,
             prev_reject_line=prev_reject,
+            rule_lines=rule_lines, cleared_line=cleared_line,
             fields=fields, show_resume=("resume" in steps),
             scoring_enabled=scoring_enabled,
         )

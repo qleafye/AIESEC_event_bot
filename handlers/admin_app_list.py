@@ -17,6 +17,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import count_applications, list_applications_page, resolve_decision_managers
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
+from services.reject_journal import AUTO_DECIDED_BY
 
 PAGE = 15
 
@@ -64,15 +65,23 @@ _DECISION_VERB = {
 
 
 def _decision_suffix(status: str, decided_by, manager_labels: dict[int, str]) -> str:
-    """Пустая строка для pending. Для approved/rejected без живой строки в
-    `application_decisions` (`decided_by` — NULL: отменённое решение или автоодобрение без
-    журнала, `services/reg_finalize.py::post_finalize`) — «автоматически» без глагола, решение
-    принял не человек. Иначе — глагол + подпись менеджера из `resolve_decision_managers`
-    (уже содержит фолбэк `менеджер #<id>`, HTML экранируем здесь — имя менеджера может быть
-    произвольным текстом из анкеты)."""
+    """Пустая строка для pending. Три случая для approved/rejected:
+
+    1. `decided_by == AUTO_DECIDED_BY` (отрицательный сентинел, `services.reject_journal`) —
+       решило правило автоотказа, не человек и не «решения нет» — «🤖 Автоправило». Ветка стоит
+       ДО проверки falsy ниже — сентинел сам по себе truthy (отрицательное число), без отдельной
+       ветки решение правила провалилось бы в фолбэк «менеджер #<сентинел>».
+    2. Falsy `decided_by` (NULL) — живой строки в `application_decisions` нет: отменённое
+       решение или автоодобрение без журнала (`services/reg_finalize.py::post_finalize`) —
+       «автоматически» без глагола, решение принял не человек.
+    3. Иначе — глагол + подпись менеджера из `resolve_decision_managers` (уже содержит фолбэк
+       `менеджер #<id>`, HTML экранируем здесь — имя менеджера может быть произвольным текстом
+       из анкеты)."""
     verb = _DECISION_VERB.get(status)
     if not verb:
         return ""
+    if decided_by == AUTO_DECIDED_BY:
+        return " · 🤖 Автоправило"
     if not decided_by:
         return " · автоматически"
     label = manager_labels.get(decided_by, f"менеджер #{decided_by}")
