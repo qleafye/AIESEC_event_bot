@@ -540,6 +540,7 @@ admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
 admin|callback_query|toggle_quiet_hours|toggle_quiet_hours
 admin|callback_query|toggle_chat_tracking_enabled|toggle_chat_tracking_enabled
 admin|callback_query|toggle_daily_digest|toggle_daily_digest
+admin|callback_query|toggle_wave_rating_show_names|toggle_wave_rating_show_names
 admin|callback_query|toggle_delegate_lang_enabled|toggle_delegate_lang_enabled
 admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_on_start
 admin|callback_query|toggle_reg_skip_source_for_referred|toggle_reg_skip_source_for_referred
@@ -1206,7 +1207,16 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним 576-строчным
     # снимком: ровно одна вставка одной строки, ни одна другая строка не поменялась и не
     # переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 577
+    # Тумблер «имена в рейтинге волны»: новый хендлер admin.callback_query
+    # toggle_wave_rating_show_names, handlers/admin_settings.py, встал СРАЗУ ПОСЛЕ
+    # toggle_daily_digest и ПЕРЕД toggle_delegate_lang_enabled — среди соседних тумблеров
+    # раздела настроек, а не в хвосте admin.router (577 -> 578). Точка регистрации в файле
+    # не переехала: соседний shadowing-риск проверен (ни один более ранний
+    # `F.data.startswith(...)` в admin_settings.py не покрывает эту строку), поэтому перенос
+    # в хвост файла не требовался. Пересчитано RUNNING `_build_snapshot_lines()` и сверено
+    # diff'ом (difflib.SequenceMatcher) с прежним 577-строчным снимком: ровно одна вставка
+    # одной строки, ни одна другая строка не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 578
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

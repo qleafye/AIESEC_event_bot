@@ -704,6 +704,7 @@ ADMIN_CAPS: dict[str, str] = {
     "toggle_apps_queue_sort_by_score": "settings",  # Phase 28 (28-08)
     "toggle_reg_submit_notify": "settings",  # Квик 260916: дайджест заявок (раздел «📋 Заявки»)
     "toggle_daily_digest": "settings",  # Квик 260916: «📊 Итоги дня» (раздел «🔧 Управление»)
+    "toggle_wave_rating_show_names": "settings",  # тумблер «имена в рейтинге волны»
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — handlers/admin_reg_form.py.
