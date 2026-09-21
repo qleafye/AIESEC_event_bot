@@ -4998,6 +4998,27 @@ async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
             return dict(row) if row else None
 
 
+async def get_live_auto_reject_log_entry(telegram_id: int) -> dict | None:
+    """Живая (`returned_to_moderation_at IS NULL`) строка журнала автоотказов ОДНОГО делегата
+    — план 31-06 (`services/reg_finalize.py::post_finalize`, D-21/D-25): снимок текстов правил
+    на МОМЕНТ срабатывания (записала `upsert_auto_reject_log`/`record_auto_reject`), а не
+    текущий текст правила — который к моменту хвоста финала (может быть отложенным ретраем
+    очереди Mini App) уже могли отредактировать. Та же дисциплина, что `get_last_application_
+    decision`: берётся ПОСЛЕДНЯЯ строка (`ORDER BY id DESC LIMIT 1`) среди живых — после
+    возврата на модерацию следующее срабатывание заводит НОВУЮ живую строку
+    (`upsert_auto_reject_log`), старая перестаёт быть «живой» и больше не попадает в эту
+    выборку."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM auto_reject_log WHERE telegram_id = ? AND "
+            "returned_to_moderation_at IS NULL ORDER BY id DESC LIMIT 1",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
 async def claim_auto_reject_return(entry_id: int, admin_id: int, now: str) -> dict | None:
     """Условный UPDATE ... WHERE returned_to_moderation_at IS NULL — выигрывает ровно один
     вызов, та же дисциплина, что `claim_application_undo`: двойной тап по кнопке «вернуть на
