@@ -19,6 +19,7 @@ import json
 import pathlib
 import re
 import sqlite3
+from datetime import datetime
 
 from config import config
 from database import db
@@ -32,6 +33,22 @@ def _ready(tmp_path, name="test_referral_credit_32.db"):
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _approve_immediate(tid, by=1):
+    """Фикс WR-02 (фаза 32): начисление за приглашённого больше не сидит внутри
+    `claim_approve` — оно переехало в `record_decision`/`flush_due_decisions`, чтобы веб-путь
+    с 5-секундным окном «Отменить» не дарил баллы за решение, которое ещё можно откатить.
+    Этот помощник — бот-путь целиком, ровно та же пара вызовов, что
+    `handlers/admin_moderation.py::appr_approve` (флип, затем `record_decision` с
+    `effects_already_sent=True` — эффекты применяются сразу, без окна): весь этот файл
+    проверяет НАЧИСЛЕНИЕ, а не сам флип, поэтому вызывающие эти тесты не различают "claim_approve
+    начисляет" и "claim_approve + запись решения начисляют" — обе версии значат «одно
+    одобрение целиком»."""
+    won = _run(applications.claim_approve(tid))
+    if won:
+        _run(applications.record_decision(tid, "approved", None, by, datetime.now(), effects_already_sent=True))
+    return won
 
 
 def _seed_user(tid, *, referrer_id=None, event_city=None, full_name=None, status="pending"):
@@ -117,14 +134,16 @@ def test_single_approve_credits_ambassador_once(tmp_path):
 
 
 def test_credit_fires_through_claim_approve_hook(tmp_path):
-    """Врезка №1: `services.applications.claim_approve` зовёт `credit_for_approved`
-    ТОЛЬКО при реально выигранном флипе, возвращаемое значение не меняется."""
+    """Врезка №1 (бот-путь, `_approve_immediate` — `claim_approve` + `record_decision` с
+    `effects_already_sent=True`, тот же шов, что `handlers/admin_moderation.py::appr_approve`):
+    начисление происходит ТОЛЬКО при реально выигранном флипе, возвращаемое значение
+    `claim_approve` не меняется."""
     _ready(tmp_path)
     _run(db.set_setting("ambassador_referral_coins", "50"))
     _make_ambassador(1002)
     _seed_user(2002, referrer_id=1002)
 
-    won = _run(applications.claim_approve(2002))
+    won = _approve_immediate(2002)
 
     assert won is True
     assert _referral_credit_count() == 1
@@ -139,8 +158,8 @@ def test_second_approve_call_no_second_credit(tmp_path):
     _make_ambassador(1003)
     _seed_user(2003, referrer_id=1003)
 
-    won1 = _run(applications.claim_approve(2003))
-    won2 = _run(applications.claim_approve(2003))
+    won1 = _approve_immediate(2003)
+    won2 = _approve_immediate(2003)
 
     assert won1 is True
     assert won2 is False
@@ -157,12 +176,12 @@ def test_rejected_then_approved_again_no_second_credit(tmp_path):
     _make_ambassador(1004)
     _seed_user(2004, referrer_id=1004)
 
-    _run(applications.claim_approve(2004))
+    _approve_immediate(2004)
     assert _referral_credit_count() == 1
 
     reverted = _run(db.revert_user_to_pending(2004, "approved"))
     assert reverted is True
-    _run(applications.claim_approve(2004))
+    _approve_immediate(2004)
 
     assert _referral_credit_count() == 1
     assert len(_coins_rows(source="referral", user_id=1004)) == 1
@@ -175,7 +194,7 @@ def test_referrer_not_ambassador_no_credit(tmp_path):
     _seed_user(1005)  # не амбассадор
     _seed_user(2005, referrer_id=1005)
 
-    _run(applications.claim_approve(2005))
+    _approve_immediate(2005)
 
     assert _referral_credit_count() == 0
     assert _coins_rows(source="referral") == []
@@ -188,12 +207,12 @@ def test_referrer_left_ambassadors_no_new_credit_but_old_stays(tmp_path):
     _run(db.set_setting("ambassador_referral_coins", "50"))
     _make_ambassador(1006)
     _seed_user(2006, referrer_id=1006)
-    _run(applications.claim_approve(2006))
+    _approve_immediate(2006)
     assert _referral_credit_count() == 1
 
     _run(db.set_ambassador_flag(1006, active=False, at="2026-09-10 00:00:00"))
     _seed_user(2007, referrer_id=1006)
-    _run(applications.claim_approve(2007))
+    _approve_immediate(2007)
 
     assert _referral_credit_count() == 1  # прежняя строка на месте, новой не добавилось
 
@@ -205,7 +224,7 @@ def test_zero_coins_setting_no_credit_at_all(tmp_path):
     _make_ambassador(1007)
     _seed_user(2008, referrer_id=1007)
 
-    _run(applications.claim_approve(2008))
+    _approve_immediate(2008)
 
     assert _referral_credit_count() == 0
     assert _coins_rows(source="referral") == []
@@ -409,7 +428,7 @@ def test_referrer_badge_shown_with_count_when_referrer_is_ambassador(tmp_path):
     _make_ambassador(9001, full_name="Амбассадор Иванов")
     # Один уже одобренный приглашённый этого амбассадора — счётчик должен увидеть 1.
     _seed_user(9101, referrer_id=9001)
-    _run(applications.claim_approve(9101))
+    _approve_immediate(9101)
     assert _referral_credit_count() == 1
 
     # Новая заявка ТОГО ЖЕ амбассадора, ещё не одобрена — карточка должна показать бейдж.
@@ -493,7 +512,7 @@ def test_backfill_skips_already_live_credited_invitee(tmp_path):
     _run(db.set_setting("ambassador_referral_coins", "25"))
     _make_ambassador(9204)
     _seed_user(9305, referrer_id=9204)
-    _run(applications.claim_approve(9305))  # «живое» начисление, source='approval'
+    _approve_immediate(9305)  # «живое» начисление, source='approval'
     assert _referral_credit_count() == 1
 
     summary = _run(referrals.backfill_approved(dry_run=True))
@@ -512,7 +531,7 @@ def test_active_wave_eligible_referrer_gets_wave_id(tmp_path):
     _make_ambassador(9401, since="2026-01-01 00:00:00")  # стал амбассадором ДО волны
     _seed_user(9501, referrer_id=9401)
 
-    result = _run(applications.claim_approve(9501))
+    result = _approve_immediate(9501)
     credit = _run(db.get_referral_credit(9501))
 
     assert result is True
@@ -529,7 +548,7 @@ def test_mid_wave_joiner_referrer_gets_no_wave_id(tmp_path):
     _make_ambassador(9402, since="2026-09-15 00:00:00")  # стал амбассадором ПОСЛЕ старта волны
     _seed_user(9502, referrer_id=9402)
 
-    _run(applications.claim_approve(9502))
+    _approve_immediate(9502)
     credit = _run(db.get_referral_credit(9502))
 
     assert credit["wave_id"] is None
