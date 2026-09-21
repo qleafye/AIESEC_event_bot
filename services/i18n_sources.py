@@ -410,6 +410,15 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:user_actions.cancel_question", "Действие отменено."))
     items.append(("lit:user_actions.not_registered", "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start."))
 
+    # Phase 32 (32-06, D-24/D-29/D-32/D-38): кнопка рейтинга волны в списке заданий, отказ по
+    # доступу к рейтингу вне волны и подтверждение выхода амбассадора — тот же приём.
+    items.append(("lit:user_actions.wave_rating_button", "🏅 Рейтинг волны"))
+    items.append((
+        "lit:user_actions.wave_rating_not_eligible",
+        "Рейтинг волны виден только участникам текущей волны амбассадоров.",
+    ))
+    items.append(("lit:user_actions.ambassador_leave_confirm_yes", "Да, выйти"))
+
     items.append(("lit:payment.receipt_bad_mime", "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото."))
     items.append(("lit:payment.receipt_too_large_doc", "❌ Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера."))
     items.append(("lit:payment.receipt_too_large_photo", "❌ Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера."))
