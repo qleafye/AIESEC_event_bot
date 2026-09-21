@@ -36,6 +36,15 @@ function proofChips(h, raw) {
   );
 }
 
+// Phase 32 (32-14, D-27): «Сейчас: до {дата}» — только у задания со сроком; без срока
+// сервер уже прислал готовую подпись словами (`card.deadline_display`, из
+// `game_labels.task_deadline_admin`) — свой литерал «без срока» тут не заводим. Из
+// приложения в этой фазе поставить «без срока» нельзя (D-36) — редактор карточки только
+// показывает существующее значение, новой кнопки/пресета здесь не появляется.
+function deadlineNowLabel(card) {
+  return card.has_deadline ? `до ${card.deadline_display}` : card.deadline_display;
+}
+
 // errorText/isAuthError — перенесены в form.js (план 21-04, были дословным дублем settings.js).
 // Свои причины 403, которые НЕ считаются гейтом авторизации у этого экрана, — вторым
 // аргументом, поведение не изменилось.
@@ -62,7 +71,11 @@ export async function render(root, params, ctx) {
     }
     box.append(h("p", { class: "faint" }, icon("user"), h("span", { text: " Так увидит делегат" })));
     if (card.title) box.append(h("h1", { text: card.title }));
-    const metaParts = [card.category_label, card.coins != null ? `${card.coins} монет` : null, card.deadline_display ? `до ${card.deadline_display}` : null].filter(Boolean);
+    // Phase 32 (32-14, D-27): предлог «до» — только когда `has_deadline` (менеджер видит
+    // готовую строку `deadline_display` — байт-в-байт та же дата, что и раньше); без срока
+    // сервер уже прислал слова «без срока» — печатаем их без «до» и без своего литерала.
+    const deadlinePart = card.deadline_display ? (card.has_deadline ? `до ${card.deadline_display}` : card.deadline_display) : null;
+    const metaParts = [card.category_label, card.coins != null ? `${card.coins} монет` : null, deadlinePart].filter(Boolean);
     if (metaParts.length) box.append(h("p", { class: "label-role", text: metaParts.join(" · ") }));
     const chips = proofChips(h, card.proof_type);
     if (chips) box.append(chips);
@@ -174,13 +187,13 @@ export async function render(root, params, ctx) {
       const coinsBox = panel("Сколько монет за задание? Например 10", coinsInput, "Сохранить", () => patch({ coins: Number(coinsInput.value) }, `Монеты обновлены: ${coinsInput.value}.`));
 
       // Дедлайн — пресеты + своя дата
-      const deadlineBox = h("div", { class: "field hidden" }, h("label", { text: `Сейчас: до ${card.deadline_display}` }));
+      const deadlineBox = h("div", { class: "field hidden" }, h("label", { text: `Сейчас: ${deadlineNowLabel(card)}` }));
       async function openDeadline() {
         toggle(deadlineBox);
         if (deadlineBox.classList.contains("hidden")) return;
         if (!options) options = await api("/admin/tasks/options");
         deadlineBox.replaceChildren(
-          h("label", { text: `Сейчас: до ${card.deadline_display}` }),
+          h("label", { text: `Сейчас: ${deadlineNowLabel(card)}` }),
           deadlinePicker(options.deadline_presets, options.deadline_example, (value) => patch({ deadline_at: value }, "Дедлайн обновлён.")),
         );
       }
@@ -208,7 +221,7 @@ export async function render(root, params, ctx) {
         flatRow(h, { title: "Название", meta: card.title, trailing: icon("pen-line"), onClick: () => toggle(titleBox) }),
         flatRow(h, { title: "Описание", meta: card.text, trailing: icon("pen-line"), onClick: () => toggle(textBox) }),
         flatRow(h, { title: "Монеты", meta: `${card.coins} монет`, trailing: icon("pen-line"), onClick: () => toggle(coinsBox) }),
-        flatRow(h, { title: "Дедлайн", meta: `до ${card.deadline_display}`, trailing: icon("pen-line"), onClick: openDeadline }),
+        flatRow(h, { title: "Дедлайн", meta: deadlineNowLabel(card), trailing: icon("pen-line"), onClick: openDeadline }),
         flatRow(h, { title: "Обложка", meta: card.photo_file_id ? "Загружена" : "Не добавлена", trailing: icon("image"), onClick: () => fileInput.click() }),
       );
 
@@ -452,6 +465,9 @@ export async function render(root, params, ctx) {
           title: draft.title,
           category_label: labels.category,
           coins: draft.coins,
+          // Дедлайн визарда обязателен (D-36 — кнопки «Без срока» тут нет), значит срок есть
+          // всегда — «до …» ставится безусловно, как и раньше.
+          has_deadline: true,
           deadline_display: labels.deadline,
           proof_type: draft.proof_types.join(","),
           text: draft.text,
