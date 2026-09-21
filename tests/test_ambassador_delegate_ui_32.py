@@ -243,3 +243,131 @@ def test_miniapp_task_without_deadline_shows_words(client):  # noqa: F811
     t = _task("Бессрочное веб", days=None)
     item = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
     assert "без срока" in item["card_text"]
+
+
+# ── Задача 2: экран рейтинга волны (D-29) ────────────────────────────────────────────────────
+
+OTHER_AMB_ID = 941777  # второй амбассадор той же волны — для проверки скрытия имён
+
+
+class _FakeMessage:
+    def __init__(self):
+        self.edits: list[tuple[str, dict]] = []
+
+    async def edit_text(self, text, **kw):
+        self.edits.append((text, kw))
+
+
+class _FakeWaveCallback:
+    def __init__(self, user_id: int, data: str = "ambwave"):
+        self.data = data
+        self.from_user = type("U", (), {"id": user_id})()
+        self.message = _FakeMessage()
+        self.alerts: list[tuple[str | None, bool]] = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.alerts.append((text, show_alert))
+
+
+def _active_wave(days_ago_start: int = 1, days_ahead_end: int = 5) -> int:
+    now = datetime.now()
+    wave_id = _run(bot_db.create_wave(
+        starts_at=_fmt(now - timedelta(days=days_ago_start)),
+        ends_at=_fmt(now + timedelta(days=days_ahead_end)),
+    ))
+    _run(bot_db.set_wave_state(wave_id, "active"))
+    return wave_id
+
+
+def _credit_wave_task(uid: int, wave_id: int, coins: int) -> None:
+    task_id = _task("Задание волны для рейтинга", wave_id=wave_id, audience="ambassadors")
+    _run(bot_db.add_coins(uid, coins, task_id=task_id))
+
+
+def test_wave_rating_button_shown_for_ambassador_with_active_eligible_wave(client):  # noqa: F811
+    wave_id = _active_wave()
+    _make_ambassador(DELEGATE_ID, since=_fmt(datetime.now() - timedelta(days=10)))
+    assert wave_id
+    _task("Обычное")
+    _text, kb = _run(ua_mod._game_task_list_screen(DELEGATE_ID))
+    labels = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "ambwave" in labels
+
+
+def test_wave_rating_button_absent_without_active_wave(client):  # noqa: F811
+    _make_ambassador(DELEGATE_ID)
+    _task("Обычное")
+    _text, kb = _run(ua_mod._game_task_list_screen(DELEGATE_ID))
+    labels = [b.callback_data for row in (kb.inline_keyboard if kb else []) for b in row]
+    assert "ambwave" not in labels
+
+
+def test_wave_rating_screen_shows_top_and_own_line_when_names_on(client):  # noqa: F811
+    wave_id = _active_wave()
+    since = _fmt(datetime.now() - timedelta(days=10))
+    _make_ambassador(DELEGATE_ID, since=since)
+    _make_ambassador(OTHER_AMB_ID, since=since)
+    _run(bot_db.add_user({
+        "telegram_id": OTHER_AMB_ID, "full_name": "Второй Амбассадор",
+        "registration_date": "2026-08-01",
+    }))
+    _run(bot_db.set_ambassador_flag(OTHER_AMB_ID, active=True, at=since))
+    _credit_wave_task(DELEGATE_ID, wave_id, 30)
+    _credit_wave_task(OTHER_AMB_ID, wave_id, 50)
+
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    assert not any(show_alert for _t, show_alert in cb.alerts), "участник не должен получать alert"
+    assert cb.message.edits, "экран обязан перерисоваться"
+    text = cb.message.edits[0][0]
+    assert "Второй Амбассадор" in text  # тумблер включён по умолчанию — топ с именами
+
+
+def test_wave_rating_hides_other_names_when_toggle_off_but_keeps_own_line(client):  # noqa: F811
+    wave_id = _active_wave()
+    since = _fmt(datetime.now() - timedelta(days=10))
+    _run(bot_db.add_user({
+        "telegram_id": OTHER_AMB_ID, "full_name": "Скрытый Сосед",
+        "registration_date": "2026-08-01",
+    }))
+    _make_ambassador(DELEGATE_ID, since=since)
+    _run(bot_db.set_ambassador_flag(OTHER_AMB_ID, active=True, at=since))
+    _credit_wave_task(DELEGATE_ID, wave_id, 10)
+    _credit_wave_task(OTHER_AMB_ID, wave_id, 90)
+    _run(bot_db.set_setting("wave_rating_show_names", "off"))
+
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    text = cb.message.edits[0][0]
+    assert "Скрытый Сосед" not in text
+    assert not any(show_alert for _t, show_alert in cb.alerts)
+
+
+def test_wave_rating_non_ambassador_gets_alert_and_no_redraw(client):  # noqa: F811
+    _active_wave()
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    assert cb.alerts and cb.alerts[0][1] is True  # show_alert
+    assert not cb.message.edits
+
+
+def test_wave_rating_ambassador_joined_mid_wave_gets_alert_not_data(client):  # noqa: F811
+    """T-32-06-01: экран мог быть отрисован до того, как волна началась — гейт обязан
+    перепроверить участие заново, а не доверять факту, что кнопка вообще существует."""
+    wave_id = _active_wave(days_ago_start=5)
+    wave = _run(bot_db.get_wave(wave_id))
+    after_start = (datetime.strptime(wave["starts_at"], "%Y-%m-%d %H:%M:%S") + timedelta(days=1))
+    _make_ambassador(DELEGATE_ID, since=_fmt(after_start))
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    assert cb.alerts and not cb.message.edits
+
+
+def test_wave_rating_no_active_wave_shows_closed_text_not_alert(client):  # noqa: F811
+    _make_ambassador(DELEGATE_ID)
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    assert not any(show_alert for _t, show_alert in cb.alerts)
+    assert cb.message.edits
+    text = cb.message.edits[0][0]
+    assert "нет активной волны" in text.lower() or "волн" in text.lower()
