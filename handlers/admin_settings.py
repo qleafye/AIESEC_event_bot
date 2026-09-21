@@ -25,6 +25,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 # not a hack: raising it inside a handler makes that handler's match count as UNHANDLED.
 from aiogram.dispatcher.event.bases import SkipHandler
 
+import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
@@ -2039,7 +2040,11 @@ async def settings_receive_photo_invalid(message: types.Message):
 @router.message(EditSetting.waiting_for_file, F.photo)
 async def settings_receive_file_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if data.get("raw_file_key"):
+    raw_key = data.get("raw_file_key")
+    if raw_key == dashboard_favicon.SETTING_KEY:
+        await message.answer(dashboard_favicon.PHOTO_REJECT_MESSAGE)
+        return
+    if raw_key:
         await message.answer("Согласие принимается только PDF-документом, не фото.")
         return
     prefix = data.get("file_setting", "reg_bonus")
@@ -2067,8 +2072,33 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     data = await state.get_data()
 
-    # Consent PDF: store the document file_id directly into an arbitrary settings key.
+    # Квик 260921: иконка вкладки дашборда — тот же raw_file_key-путь, что у PDF согласия
+    # ниже, но со своей проверкой mime/размера (dashboard_favicon.py, D-2 брифа: фото на этот
+    # же ключ уже отбито в settings_receive_file_photo выше).
     raw_key = data.get("raw_file_key")
+    if raw_key == dashboard_favicon.SETTING_KEY:
+        if not dashboard_favicon.is_acceptable_document(message.document.mime_type, message.document.file_name):
+            await message.answer(dashboard_favicon.MIME_REJECT_MESSAGE)
+            return
+        if dashboard_favicon.is_too_large(message.document.file_size):
+            await message.answer(dashboard_favicon.SIZE_REJECT_MESSAGE)
+            return
+        await set_setting_by_admin(message.from_user.id, raw_key, message.document.file_id)
+        await state.clear()
+        await message.answer(dashboard_favicon.SUCCESS_MESSAGE)
+        # Возврат НА ТОТ ЖЕ экран «🎭 Пресеты и ручки», а не через settings_return_screen
+        # (у него нет своего раздела-строки) — тот же приём, что у остальных десяти
+        # фото-ручек в miniapp_theme_photo_step (handlers/admin_miniapp_theme.py).
+        from handlers.admin_miniapp_theme import (  # ленивый шов
+            build_miniapp_theme_keyboard, render_miniapp_theme_text,
+        )
+        await message.answer(
+            await render_miniapp_theme_text(), parse_mode="HTML",
+            reply_markup=await build_miniapp_theme_keyboard(),
+        )
+        return
+
+    # Consent PDF: store the document file_id directly into an arbitrary settings key.
     if raw_key:
         if (message.document.mime_type or "") != "application/pdf":
             await message.answer("Принимается только PDF-документ. Пришли PDF.")
