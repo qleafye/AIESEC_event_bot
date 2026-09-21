@@ -406,55 +406,56 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 "participant_type": old.get("participant_type"),
             }
             auto_patch = await _auto_reject_patch(telegram_id, eval_answers, status)
-            if auto_patch:
-                if auto_patch["status_override"] == "rejected":
-                    # Исход 1 (D-24): правило снова сработало (или впервые — на правке ранее
-                    # не отклонённой заявки) — тот же отказ, лимита попыток нет;
-                    # record_auto_reject растит счётчик живой строки журнала.
-                    column_patch = {
-                        "auto_reject_rule_ids": auto_patch["auto_reject_rule_ids"],
-                        "auto_rejected_at": auto_patch["auto_rejected_at"],
-                        "flagged_rule_ids": auto_patch["flagged_rule_ids"],
-                        "auto_rule_note": auto_patch["auto_rule_note"],
-                    }
-                    if "rejected_at" in auto_patch:
-                        column_patch["rejected_at"] = auto_patch["rejected_at"]
-                    await update_user_answers(
-                        telegram_id, column_patch,
-                        allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note", "rejected_at"],
-                    )
-                    status = "rejected"
-                    auto_rejected = True
-                    await set_user_status(telegram_id, status)
-                    from services.reject_journal import record_auto_reject
-                    await record_auto_reject(
-                        telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
-                    )
-                else:
-                    # Пометка (flag) статус не меняет — заявка остаётся на обычной модерации.
-                    column_patch = {
-                        "flagged_rule_ids": auto_patch["flagged_rule_ids"],
-                        "auto_rule_note": auto_patch["auto_rule_note"],
-                    }
-                    await update_user_answers(
-                        telegram_id, column_patch,
-                        allowed_columns=["flagged_rule_ids", "auto_rule_note"],
-                    )
+            rejects_again = bool(auto_patch) and auto_patch["status_override"] == "rejected"
+
+            if rejects_again:
+                # Исход 1 (D-24): правило снова сработало (или впервые — на правке ранее
+                # не отклонённой заявки) — тот же отказ, лимита попыток нет;
+                # record_auto_reject растит счётчик живой строки журнала.
+                column_patch = {
+                    "auto_reject_rule_ids": auto_patch["auto_reject_rule_ids"],
+                    "auto_rejected_at": auto_patch["auto_rejected_at"],
+                    "flagged_rule_ids": auto_patch["flagged_rule_ids"],
+                    "auto_rule_note": auto_patch["auto_rule_note"],
+                }
+                if "rejected_at" in auto_patch:
+                    column_patch["rejected_at"] = auto_patch["rejected_at"]
+                await update_user_answers(
+                    telegram_id, column_patch,
+                    allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note", "rejected_at"],
+                )
+                status = "rejected"
+                auto_rejected = True
+                await set_user_status(telegram_id, status)
+                from services.reject_journal import record_auto_reject
+                await record_auto_reject(
+                    telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
+                )
                 flagged_rule_ids_out = auto_patch["flag_rule_ids"]
             elif was_auto_rejected:
-                # Исход 2 (D-23): делегат БЫЛ автоотклонён, правило больше не срабатывает —
-                # статус ВСЕГДА pending, даже при включённом автоодобрении события: решает
-                # человек, оценщик структурно не умеет вернуть "approved" (план 31-01). Колонки
-                # автоотказа обнуляются; отдельный маркер истории (Pitfall 2) — НЕ переиспользуем
-                # маркер обычной повторной подачи, бейдж обязан отличаться.
+                # Исход 2 (D-23, дефект-фикс ревью): делегат БЫЛ автоотклонён, и повторная
+                # оценка больше НЕ отклоняет — статус ВСЕГДА pending, даже если осталось
+                # правило-пометка (тогда `auto_patch` здесь truthy, но `status_override` не
+                # "rejected") и даже при включённом автоодобрении события: решает человек,
+                # оценщик структурно не умеет вернуть "approved" (план 31-01). Раньше живой
+                # флаг-рул уводил выполнение в ветку «Пометка» выше и НИКОГДА не доходил сюда —
+                # делегат навсегда оставался в статусе "rejected" без пути на модерацию (баг).
+                # Колонки автоотказа обнуляются; если пометка ещё держится — её свежие
+                # flagged_rule_ids/auto_rule_note пишутся В ТОМ ЖЕ узком UPDATE поверх
+                # обнуления, чтобы модератор увидел ОБА бейджа сразу: маркер истории «сменил
+                # ответ после автоотказа» (ниже) и пометку правила.
                 status = "pending"
                 await set_user_status(telegram_id, status)
+                clear_patch = {
+                    "auto_reject_rule_ids": None, "auto_rejected_at": None,
+                    "flagged_rule_ids": None, "auto_rule_note": None,
+                }
+                if auto_patch:
+                    clear_patch["flagged_rule_ids"] = auto_patch["flagged_rule_ids"]
+                    clear_patch["auto_rule_note"] = auto_patch["auto_rule_note"]
+                    flagged_rule_ids_out = auto_patch["flag_rule_ids"]
                 await update_user_answers(
-                    telegram_id,
-                    {
-                        "auto_reject_rule_ids": None, "auto_rejected_at": None,
-                        "flagged_rule_ids": None, "auto_rule_note": None,
-                    },
+                    telegram_id, clear_patch,
                     allowed_columns=[
                         "auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note",
                     ],
@@ -463,8 +464,21 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     old.get("auto_reject_rule_ids"), changes,
                 )
                 await record_answer_history(telegram_id, [cleared_marker], source, season)
-            # Исход 3: делегат не был автоотклонён, и правило не сработало — поведение ветки
-            # `edit` байт-в-байт прежнее (auto_patch пуст, was_auto_rejected ложно).
+            elif auto_patch:
+                # Исход 3: делегат НЕ был автоотклонён, сработала только пометка (reject_rule_ids
+                # пуст — иначе `rejects_again` был бы истинным) — статус не меняется, заявка
+                # остаётся на обычной модерации/своём статусе с бейджем.
+                column_patch = {
+                    "flagged_rule_ids": auto_patch["flagged_rule_ids"],
+                    "auto_rule_note": auto_patch["auto_rule_note"],
+                }
+                await update_user_answers(
+                    telegram_id, column_patch,
+                    allowed_columns=["flagged_rule_ids", "auto_rule_note"],
+                )
+                flagged_rule_ids_out = auto_patch["flag_rule_ids"]
+            # Исход 4: делегат не был автоотклонён, и правило не сработало вовсе — поведение
+            # ветки `edit` байт-в-байт прежнее (auto_patch пуст, was_auto_rejected ложно).
         else:
             answers = reg_engine.with_defaults(raw_answers)
             data = dict(answers)
