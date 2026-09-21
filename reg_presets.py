@@ -17,9 +17,23 @@ REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema
 `MODULE_SWITCH_TOGGLES`), ни одного
 импорта `aiogram`/`handlers.*` (сторож tests/test_skillup_preset_28.py::
 test_reg_presets_module_is_aiogram_free).
+
+Правки правил автоотказа (D-14, план 31-12): `apply_reg_preset` — единственное место в проекте,
+которое пишет `reg_q_*`-тумблеры МИМО воронки `settings_audit.set_setting_by_admin` (веб-путь
+Mini App не имеет права тянуть тот корневой модуль так же, как не имеет права тянуть `aiogram`).
+Тап пресета одним действием переписывает ДЕСЯТКИ вопросов анкеты разом — ровно момент, когда
+может встать на паузу сразу несколько правил автоотказа. Поэтому у этого файла собственный,
+отдельный вызов реакции: ОДИН раз, ПОСЛЕ всех записей пресета (не на каждый ключ по отдельности
+— иначе держатели права получили бы сообщение за сообщением вместо одного), ленивым импортом
+(та же причина, что у `aiogram`/`handlers.*` выше — цикл на уровне модуля) и в собственном
+`try/except` — запись пресета важнее реакции на неё.
 """
+import logging
+
 from database.db import set_setting
 from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
+
+logger = logging.getLogger(__name__)
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
 # A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
@@ -134,11 +148,21 @@ async def apply_reg_preset(preset_key: str) -> None:
     never "off" for the ones it omits."""
     preset = REG_PRESETS[preset_key]
     on_set = set(preset["on"])
+    changed_keys = list(REG_DEFAULTS)
     for key in REG_DEFAULTS:
         await set_setting(key, "on" if key in on_set else "off")
     for key in MODULE_SWITCH_TOGGLES:
         if key in on_set:
             await set_setting(key, "on")
+            changed_keys.append(key)
     await set_setting("payment_enabled", preset["payment_enabled"])
+    changed_keys.append("payment_enabled")
     for key, value in preset.get("settings", {}).items():
         await set_setting(key, value)
+        changed_keys.append(key)
+
+    try:
+        from services import reject_rules_notify as _rrn
+        await _rrn.on_settings_written_batch(changed_keys)
+    except Exception as exc:  # noqa: BLE001 — запись пресета важнее реакции на неё
+        logger.error("reg_presets.apply_reg_preset(%r): реакция на правки сорвалась: %s", preset_key, exc)
