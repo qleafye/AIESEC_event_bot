@@ -14,11 +14,9 @@
 Запись правила — ТОЛЬКО через `services.reject_rules.save_rule`/`delete_rule` (план 31-04),
 второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
 в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот
-же приём, что `handlers/admin_faq.py::_card_out_of_scope`).
-
-Задача 2 (этот срез): карточка правила по макету D-09, город, треки, имя/текст отказа (FSM).
-Копирование/удаление — задача 3, следующим коммитом того же плана (кнопки на карточке появятся
-вместе с ней)."""
+же приём, что `handlers/admin_faq.py::_card_out_of_scope`). Копия правила (D-12) ВСЕГДА
+выключена; удаление подтверждается экраном, который называет последствия (CLAUDE.md, форма
+`handlers/admin_faq.py::afaq_delete_confirm`)."""
 import html as html_module
 import json
 
@@ -28,7 +26,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from config import config
 from cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
-from database.db import get_reject_rule, get_staff_city
+from database.db import get_reject_rule, get_staff_city, list_auto_reject_log
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
@@ -37,6 +35,7 @@ from reg_engine import label_for
 from services.reject_rules import (
     RULE_PRESETS,
     can_edit_city,
+    delete_rule,
     rule_summary,
     rules_for_admin,
     save_rule,
@@ -170,6 +169,21 @@ def _condition_groups_text(conditions: list[list[dict]]) -> str:
     return "\n— ИЛИ —\n".join(blocks)
 
 
+async def _rule_reject_count(rule_id: int) -> int:
+    """Число ЖИВЫХ строк журнала с ИМЕННО этим правилом — читает журнал целиком (правило может
+    быть «все города») и разбирает JSON `rule_ids` в Python; второго счётчика не заводим."""
+    rows = await list_auto_reject_log(city_scope=None, limit=100000, offset=0, include_returned=False)
+    count = 0
+    for row in rows:
+        try:
+            ids = json.loads(row.get("rule_ids") or "[]")
+        except (TypeError, ValueError):
+            ids = []
+        if rule_id in ids:
+            count += 1
+    return count
+
+
 # ── Экран списка ──────────────────────────────────────────────────────────────
 
 async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
@@ -268,11 +282,6 @@ async def arr_master_toggle(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("arr_t:"))
 async def arr_toggle_enabled(callback: types.CallbackQuery):
-    """Задача 2: теперь редрейит КАРТОЧКУ (задача 1 редрейила список — карточки ещё не было).
-    Регистрация НАМЕРЕННО осталась на этой же позиции файла (сразу после `arr_master`, перед
-    `arr_noop`) — задача 1 уже зарегистрировала этот хендлер здесь; менять его ПОЗИЦИЮ означало
-    бы реордер строки золотого снимка (tests/test_refac_snapshot_260816.py), а не чистую
-    вставку — задача правит только ТЕЛО функции."""
     rule_id = _parse_id(callback.data)
     if rule_id is None:
         await callback.answer("Правило не найдено.", show_alert=True)
@@ -442,6 +451,8 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
         text=("🚫 Выключить" if rule.get("enabled") else "✅ Включить"),
         callback_data=f"arr_t:{rule_id}",
     )])
+    buttons.append([InlineKeyboardButton(text="📋 Скопировать в другой город", callback_data=f"arr_copy:{rule_id}")])
+    buttons.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"arr_d:{rule_id}")])
     buttons.append([InlineKeyboardButton(text="← К списку", callback_data="arr_p:0")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -699,3 +710,141 @@ async def arr_text_step(message: types.Message, state: FSMContext):
     if screen is not None:
         text, kb = screen
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Копирование в другой город (D-12) ─────────────────────────────────────────
+
+async def render_copy_screen(admin_id: int, rule_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(admin_id, rule.get("city")):
+        return None
+    codes = []
+    for code in city_codes():
+        if code == rule.get("city"):
+            continue
+        if await can_edit_city(admin_id, code):
+            codes.append(code)
+    lines = [
+        "📋 <b>Скопировать правило в другой город</b>", "",
+        html_module.escape(await rule_summary(rule)), "",
+    ]
+    if codes:
+        lines.append("Копия создаётся выключенной — включите её на новом экране, когда проверите.")
+    else:
+        lines.append("Нет доступных городов — у вас нет права ни на один город кроме текущего.")
+    buttons = [
+        [InlineKeyboardButton(text=await city_label(code), callback_data=f"arr_copygo:{rule_id}:{code}")]
+        for code in codes
+    ]
+    buttons.append([InlineKeyboardButton(text="← Отмена", callback_data=f"arr_v:{rule_id}")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("arr_copy:"))
+async def arr_copy_start(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    screen = await render_copy_screen(callback.from_user.id, rule_id)
+    if screen is None:
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("arr_copygo:"))
+async def arr_copy_go(callback: types.CallbackQuery):
+    rule_id, code = _parse_id_and_code(callback.data)
+    if rule_id is None or not code or code not in city_codes():
+        await callback.answer("Такого города нет — обновите экран.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    if code == rule.get("city"):
+        await callback.answer("Этот город уже у самого правила — выберите другой.", show_alert=True)
+        return
+    if not await can_edit_city(callback.from_user.id, code):
+        await callback.answer("Нет прав скопировать правило в этот город.", show_alert=True)
+        return
+    # D-12/T-31-08-04: копия ВСЕГДА выключена — не начнёт отклонять людей до того, как менеджер её посмотрел.
+    new_id, error = await save_rule(
+        callback.from_user.id, None,
+        name=rule.get("name"), city=code, tracks=rule.get("tracks") or ["full"],
+        conditions=rule.get("conditions") or [], action=rule.get("action"),
+        reject_text=rule.get("reject_text"), enabled=0,
+    )
+    if error:
+        await callback.answer(error, show_alert=True)
+        return
+    screen = await render_rule_card(callback.from_user.id, new_id)
+    if screen is None:
+        await callback.answer("Копия создана, но не открылась — обновите список.", show_alert=True)
+        return
+    text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    city_text = await city_label(code)
+    await callback.answer(
+        f"Копия создана в городе «{city_text}» и выключена — включите её здесь, когда проверите.",
+        show_alert=True,
+    )
+
+
+# ── Удаление с подтверждением ─────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("arr_d:"))
+async def arr_delete_confirm(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило недоступно — обновите список.", show_alert=True)
+        return
+    name_or_summary = rule.get("name") or await rule_summary(rule)
+    rejected_count = await _rule_reject_count(rule_id)
+    lines = [
+        "🗑 <b>Удалить правило навсегда?</b>", "",
+        f"«{html_module.escape(str(name_or_summary))}»", "",
+    ]
+    if rejected_count:
+        lines.append(f"Уже отклонило заявок: {rejected_count}. Их статус и журнал не изменятся.")
+    else:
+        lines.append("Пока не отклонило ни одной заявки.")
+    lines.append("")
+    lines.append(
+        "Отменить нельзя. Если не уверены — можно вместо удаления просто выключить правило: "
+        "оно останется в списке и перестанет срабатывать, включить его можно будет обратно."
+    )
+    buttons = [[InlineKeyboardButton(text="🗑 Да, удалить навсегда", callback_data=f"arr_dgo:{rule_id}")]]
+    if rule.get("enabled"):
+        buttons.append([InlineKeyboardButton(text="🚫 Выключить вместо удаления", callback_data=f"arr_t:{rule_id}")])
+    buttons.append([InlineKeyboardButton(text="← Отмена", callback_data=f"arr_v:{rule_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("arr_dgo:"))
+async def arr_delete_go(callback: types.CallbackQuery):
+    rule_id = _parse_id(callback.data)
+    if rule_id is None:
+        await callback.answer("Правило не найдено.", show_alert=True)
+        return
+    rule = await _load_rule(rule_id)
+    if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
+        await callback.answer("Правило уже недоступно.", show_alert=True)
+        return
+    # D-26/T-31-08-06: удаление не трогает журнал автоотказов и не меняет статус делегата — правило уходит, история остаётся.
+    deleted, error = await delete_rule(callback.from_user.id, rule_id)
+    if not deleted:
+        await callback.answer(error or "Не удалось удалить правило.", show_alert=True)
+        return
+    text, kb = await render_rules_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Правило удалено навсегда.")

@@ -7,9 +7,10 @@ pytest-asyncio недоступна в этом окружении — async ч�
 
 Три пласта сторожей — по задачам плана:
 - Задача 1: экран списка, capability-гейт, общий рубильник, стейл-гард чужого правила, заготовки.
-- Задача 2 (этот срез добавляет): карточка правила по макету D-09, единственная дверь записи,
-  право по городу, треки, FSM имени/текста отказа. Задача 3 (копирование/удаление) — следующим
-  коммитом того же плана.
+- Задача 2: карточка правила по макету D-09, единственная дверь записи, право по городу, треки,
+  FSM имени/текста отказа.
+- Задача 3 (этот срез добавляет): копирование правила в другой город (выключенным), удаление с
+  подтверждением, которое называет последствия и не трогает журнал автоотказов.
 """
 from __future__ import annotations
 
@@ -358,3 +359,85 @@ def test_arr_text_step_saves_via_save_rule_not_update_reject_rule_directly(tmp_p
     assert len(calls) == 1
     assert calls[0][1] == rule_id
     assert calls[0][2]["reject_text"] == "Строка один\nСтрока два"
+
+
+# ── Задача 3: копирование в другой город, удаление с подтверждением ─────────────────────────
+
+def test_arr_copy_go_creates_disabled_copy_with_new_city_original_unchanged(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(
+        city="msk", action="reject", reject_text="Причина",
+        conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
+        enabled=1,
+    ))
+    callback = _FakeCallback(f"arr_copygo:{rule_id}:spb", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_copy_go(callback))
+
+    original = _run(db.get_reject_rule(rule_id))
+    assert original["city"] == "msk"
+    assert original["enabled"] == 1
+
+    all_rules = _run(db.list_reject_rules())
+    copy_row = next(r for r in all_rules if r["id"] != rule_id)
+    assert copy_row["city"] == "spb"
+    assert copy_row["enabled"] == 0
+    assert copy_row["action"] == original["action"]
+    assert copy_row["conditions"] == original["conditions"]
+
+
+def test_copy_screen_excludes_city_without_right(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    rule_id = _run(_create_rule(city="msk", reject_text="x"))
+    screen = _run(admin_reject_rules.render_copy_screen(BOUND_MSK_ID, rule_id))
+    _text, kb = screen
+    cbs = _cbs(kb)
+    assert not any(cb and cb.startswith("arr_copygo:") and ":spb" in cb for cb in cbs)
+
+
+def test_copy_go_rejects_city_without_right(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    rule_id = _run(_create_rule(city="msk", reject_text="x"))
+    callback = _FakeCallback(f"arr_copygo:{rule_id}:spb", user_id=BOUND_MSK_ID)
+    _run(admin_reject_rules.arr_copy_go(callback))
+    assert callback.answers and callback.answers[0][1] is True
+    all_rules = _run(db.list_reject_rules())
+    assert len(all_rules) == 1
+
+
+def test_delete_confirm_shows_autodescription_and_disable_alternative(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", reject_text="Причина", enabled=1))
+    callback = _FakeCallback(f"arr_d:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_delete_confirm(callback))
+    text = callback.message.text_edited
+    assert "выключить" in text
+    assert "→ отказ" in text
+
+
+def test_delete_go_does_not_touch_journal_or_delegate_status(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", reject_text="Причина"))
+    telegram_id = 900300099
+    _run(db.add_user({
+        "telegram_id": telegram_id, "full_name": "Delegate", "registration_date": "2026-01-01 00:00:00",
+        "event_city": "msk",
+    }))
+    _run(db.set_user_status(telegram_id, "rejected"))
+    _run(db.upsert_auto_reject_log(
+        telegram_id, json.dumps([rule_id]), json.dumps(["Причина"]), "2026-01-01 00:00:00",
+    ))
+
+    callback = _FakeCallback(f"arr_d:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_delete_confirm(callback))
+    assert "заявок: 1" in callback.message.text_edited
+
+    go_callback = _FakeCallback(f"arr_dgo:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_delete_go(go_callback))
+
+    assert _run(db.get_reject_rule(rule_id)) is None
+    journal_rows = _run(db.list_auto_reject_log(city_scope=None))
+    assert len(journal_rows) == 1
+    user = _run(db.get_user(telegram_id))
+    assert user["status"] == "rejected"
