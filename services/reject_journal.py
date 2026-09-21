@@ -33,12 +33,14 @@ from database.db import (
     count_auto_reject_log,
     export_auto_reject_log_rows,
     get_auto_reject_log_entry,
+    get_reject_rule,
     get_user,
     list_auto_reject_log,
     revert_user_to_pending,
     update_user_answers,
     upsert_auto_reject_log,
 )
+from services.reject_rules import rule_summary
 from services.timeutil import msk_now
 from settings_ops import per_city_visible_codes
 
@@ -104,6 +106,23 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
         if delegate_city not in visible:
             return None, "Эта заявка не из вашего города"
 
+    # Экран журнала (план 31-11): строка журнала считается ЖИВОЙ в БД
+    # (`returned_to_moderation_at IS NULL`), но делегат мог сам поправить анкету — финализация
+    # (`services/reg_finalize.py`, исход 2) снимает признак автоотказа с `users` и переводит
+    # статус в `pending`, НЕ трогая строку журнала (это факт истории, не ошибка). Проверяется
+    # ТОЛЬКО для ещё живой по БД строки (уже возвращённая идёт своим путём — «уже вернули»
+    # ниже, вокруг claim_auto_reject_return, — иначе второй тап по своей же кнопке «вернуть»
+    # ошибочно попал бы в эту ветку, статус делегата к тому моменту уже "pending"). Клавиатура
+    # экрана журнала в чате не истекает — менеджер может тапнуть «вернуть» по старой карточке
+    # уже после того, как делегат сам вернулся или решение принял человек; дружелюбный алерт
+    # вместо попытки откатить статус, которого уже нет.
+    if entry.get("returned_to_moderation_at") is None:
+        status = (user or {}).get("status")
+        if status != "rejected":
+            if status == "pending":
+                return None, "Делегат уже сам вернулся на модерацию — поправил анкету, возвращать нечего"
+            return None, "По этой заявке уже есть решение человека — из журнала её больше не тронуть"
+
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     claimed = await claim_auto_reject_return(entry_id, admin_id, now)
     if claimed is None:
@@ -144,12 +163,28 @@ async def journal_page(admin_id: int, *, offset: int = 0, include_returned: bool
                         ) -> tuple[list[dict], int]:
     """Страница журнала + общий счётчик по ОДНОМУ набору фильтров (правило `services.
     applications.queue_page`: список и счётчик обязаны ходить по одному скоупу, иначе «Всего:
-    N» разойдётся со списком под ним)."""
+    N» разойдётся со списком под ним). Каждая строка дополнительно резолвит `rule_display`
+    (см. `_resolve_rule_display`) и, для ЖИВЫХ по БД строк, `stale_reason` — правку 31-11,
+    закрывающую находку «стейл-«живые» записи»: живая по `returned_to_moderation_at` строка,
+    чей делегат уже не в статусе `rejected` (поправил анкету сама/решение принял человек),
+    экрану журнала нечего предлагать вернуть."""
     scope = await _admin_scope(admin_id)
     total = await count_auto_reject_log(city_scope=scope, include_returned=include_returned)
     rows = await list_auto_reject_log(
         city_scope=scope, limit=JOURNAL_PAGE, offset=offset, include_returned=include_returned,
     )
+    for row in rows:
+        row["rule_display"] = await _resolve_rule_display(row)
+        if not row.get("returned_to_moderation_at"):
+            # `_AUTO_REJECT_LOG_SELECT` не несёт `users.status` (только full_name/username/
+            # event_city) — отдельный запрос за статусом, тот же N+1-компромисс, что у
+            # `_resolve_rule_display` ниже, приемлем на странице из JOURNAL_PAGE=10 строк.
+            user = await get_user(row["telegram_id"])
+            status = (user or {}).get("status")
+            if status == "pending":
+                row["stale_reason"] = "делегат поправил анкету — автоотказ снялся сам"
+            elif status not in (None, "rejected"):
+                row["stale_reason"] = "решение по заявке уже принял человек"
     return rows, total
 
 
@@ -205,18 +240,62 @@ def _rule_label(entry: dict) -> str:
     return html.escape(first)
 
 
+async def _resolve_rule_display(entry: dict) -> str:
+    """План 31-11 (orchestrator finding 1): имя правила для строки журнала — если правило
+    ЕЩЁ существует, собственное имя (D-10) или его автоописание `services.reject_rules.
+    rule_summary` («Москва · Курс — один из: 1, 2 → отказ»), резолвится ЗАНОВО через
+    `database.db.get_reject_rule` (та же дисциплина, что `services.applications.
+    _resolve_rule_label` для бейджей карточки) — правило могло быть переименовано после
+    срабатывания. Правило удалено (или снимок вообще не нёс id — записи, посеянные до этой
+    правки) -> единственный оставшийся источник `_rule_label` (снимок `reject_texts`)."""
+    try:
+        rule_ids = json.loads(entry.get("rule_ids") or "[]")
+    except (TypeError, ValueError):
+        rule_ids = []
+    if not rule_ids:
+        return _rule_label(entry)
+    try:
+        row = await get_reject_rule(rule_ids[0])
+    except Exception:
+        row = None
+    if not row:
+        return _rule_label(entry)
+    name = str(row.get("name") or "").strip()
+    if name:
+        label = name
+    else:
+        rule = dict(row)
+        try:
+            rule["conditions"] = json.loads(row.get("conditions") or "[]") or []
+        except (TypeError, ValueError):
+            rule["conditions"] = []
+        label = await rule_summary(rule)
+    label = html.escape(label)
+    if len(label) > 60:
+        label = label[:57].rstrip() + "…"
+    return label
+
+
 def journal_line(entry: dict) -> str:
     """Одна строка экрана журнала: «Иванова Мария — @masha — 20.09 14:12 — «Москва: 1–2
-    курс» — попыток: 2» (+ «— возвращена на модерацию», если строка закрыта). ВСЕ подставляемые
-    значения экранированы через `html.escape` здесь — вызывающий печатает строку как есть с
-    `parse_mode="HTML"` и повторно экранировать не должен (T-31-05-04, тот же контракт, что у
-    `services.applications.prev_reject_line`/`edited_line`)."""
+    курс» — попыток: 2» (+ «— возвращена на модерацию»/причина «стейл»-закрытия, если строке
+    больше нечего предлагать). ВСЕ подставляемые значения экранированы через `html.escape`
+    здесь — вызывающий печатает строку как есть с `parse_mode="HTML"` и повторно экранировать
+    не должен (T-31-05-04, тот же контракт, что у `services.applications.prev_reject_line`/
+    `edited_line`). `rule_display` (если строка пришла из `journal_page`, план 31-11) уже
+    готова и экранирована — второй раз не обрабатывается; прямые вызовы (тесты плана 31-05,
+    строка без `rule_display`) падают в прежний `_rule_label`."""
     name = html.escape(str(entry.get("full_name") or "") or "—")
     username = _username_label(entry.get("username"))
     stamp = _short_stamp(entry.get("last_triggered_at"))
-    rule_label = _rule_label(entry)
+    rule_label = entry.get("rule_display") or _rule_label(entry)
     attempts = entry.get("attempt_count") or 0
-    suffix = " — возвращена на модерацию" if entry.get("returned_to_moderation_at") else ""
+    if entry.get("returned_to_moderation_at"):
+        suffix = " — возвращена на модерацию"
+    elif entry.get("stale_reason"):
+        suffix = f" — {entry['stale_reason']}"
+    else:
+        suffix = ""
     return f'{name} — {username} — {stamp} — «{rule_label}» — попыток: {attempts}{suffix}'
 
 
