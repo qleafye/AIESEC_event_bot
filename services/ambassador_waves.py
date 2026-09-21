@@ -22,7 +22,11 @@ import statistics
 from datetime import datetime
 
 import cities
+import settings_ops
 from database.db import (
+    NO_DEADLINE_AT,
+    create_task,
+    create_wave,
     get_display_names,
     get_pending_submissions,
     get_pending_submissions_count,
@@ -34,6 +38,7 @@ from database.db import (
     sum_referral_coins_for_wave,
     sum_task_coins_for_wave,
     wave_at,
+    waves_overlapping,
 )
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
@@ -243,3 +248,125 @@ async def referral_ratio_hint() -> str | None:
         )
     except Exception:
         return None
+
+
+# ── Plan 32-10: правила админки волн — даты, права, копия, редактируемые поля ─────────────
+
+def _fmt_wave_date(raw: str | None) -> str:
+    """ISO «%Y-%m-%d %H:%M:%S» -> человеческое «ДД.ММ.ГГГГ»; мусор — как есть (fail-soft, та
+    же идиома, что `game_labels.task_deadline_admin`)."""
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y")
+    except (TypeError, ValueError):
+        return str(raw or "—")
+
+
+def wave_editable_fields(wave: dict) -> set[str]:
+    """Что можно править в каждом состоянии волны (32-CONTEXT.md, «Claude's Discretion»):
+    `draft` — даты, вводный текст, число призовых мест, город, состав заданий (волна ещё не
+    разослана, менять нечего опасаться); `active` ДО отправки стартовых сообщений
+    (`started_notified_at` пуст) — то же самое; `active` ПОСЛЕ отправки — ТОЛЬКО вводный текст
+    и число призовых мест: амбассадоры уже получили список заданий с дедлайнами, менять его
+    задним числом нечестно, поэтому даты и состав заперты; `closing` — только число призовых
+    мест (даты события уже наступили, двигать их бессмысленно); `announced` — ничего (D-17:
+    снимок призёров неизменяем)."""
+    state = (wave or {}).get("state")
+    full = {"dates", "intro_text", "prize_places", "event_city", "tasks"}
+    if state == "draft":
+        return full
+    if state == "active":
+        if not (wave or {}).get("started_notified_at"):
+            return full
+        return {"intro_text", "prize_places"}
+    if state == "closing":
+        return {"prize_places"}
+    return set()  # announced и любое незнакомое состояние — ничего
+
+
+async def validate_wave_dates(starts_at: str, ends_at: str, event_city: str | None, *,
+                               exclude_id: int | None = None) -> str | None:
+    """Готовое человеческое объяснение проблемы с датами волны, или `None`, если всё хорошо —
+    ни одного кода/id в тексте (проверяется тестом). `starts_at`/`ends_at` — ISO-сортируемые
+    строки «%Y-%m-%d %H:%M:%S» (та же форма, что хранит `database.db`). При принятом в этом
+    слое соглашении «начало — 00:00:00 своего дня, конец — 23:59:59 своего дня» перепутанные
+    местами даты и «волна длиной ноль дней» дают один и тот же признак `ends_at <= starts_at`
+    — единая проверка, единое объяснение."""
+    if ends_at <= starts_at:
+        return (
+            "Дата конца должна быть позже даты начала — проверьте, не перепутаны ли даты "
+            "местами."
+        )
+    conflicts = await waves_overlapping(starts_at, ends_at, event_city, exclude_id=exclude_id)
+    if conflicts:
+        other = conflicts[0]
+        return (
+            f"Пересекается с «{wave_number_label(other)}» "
+            f"({_fmt_wave_date(other.get('starts_at'))}–{_fmt_wave_date(other.get('ends_at'))}). "
+            "Поправьте даты так, чтобы волны не пересекались."
+        )
+    return None
+
+
+async def can_edit_wave(admin_id: int, wave: dict) -> bool:
+    """Право на город (32-CONTEXT.md key_links: `settings_ops.per_city_visible_codes`) —
+    `per_city_visible_codes(admin_id)` содержит город волны, либо волна «для всех городов»
+    (`event_city` пуст) и админ видит ВСЕ города (то есть не привязан ровно к одному)."""
+    codes = set(await settings_ops.per_city_visible_codes(admin_id))
+    city = (wave or {}).get("event_city")
+    if city is None:
+        return codes == set(cities.city_codes())
+    return city in codes
+
+
+async def editable_city_codes(admin_id: int) -> list[str]:
+    """Те же права, что `can_edit_wave`, но для экрана создания — волны ещё нет, спрашивать
+    не у чего."""
+    return await settings_ops.per_city_visible_codes(admin_id)
+
+
+async def copy_wave(src_wave_id: int, starts_at: str, ends_at: str, *,
+                     created_by: int | None) -> int:
+    """D-13 «Скопировать прошлую»: новая волна-черновик с городом/вводным текстом/числом
+    призовых мест исходной, плюс копия её АКТИВНЫХ заданий (текст/название/категория/баллы/
+    типы подтверждения/город/аудитория те же), дедлайн каждого сдвинут на ту же величину, что
+    и сама волна (разница между новым и старым `starts_at`). Задание исходной волны без
+    собственного срока (`NO_DEADLINE_AT`) копируется тоже без срока — сдвигать служебную
+    метку бессмысленно. Сдвинутый дедлайн, вылезший за конец НОВОЙ волны, подрезается до её
+    конца (иначе задание могло бы «пережить» волну, в которую его скопировали). Архивные
+    задания не копируются. Возвращает id новой волны."""
+    src = await get_wave(src_wave_id)
+    if not src:
+        raise ValueError("Исходная волна не найдена")
+
+    new_id = await create_wave(
+        starts_at, ends_at,
+        intro_text=src.get("intro_text"),
+        prize_places=src.get("prize_places"),
+        event_city=src.get("event_city"),
+        created_by=created_by,
+    )
+
+    old_start = datetime.strptime(src["starts_at"], "%Y-%m-%d %H:%M:%S")
+    new_start = datetime.strptime(starts_at, "%Y-%m-%d %H:%M:%S")
+    shift = new_start - old_start
+    new_end_dt = datetime.strptime(ends_at, "%Y-%m-%d %H:%M:%S")
+
+    for t in await list_wave_tasks(src_wave_id, active_only=True):
+        old_deadline = t.get("deadline_at")
+        if old_deadline == NO_DEADLINE_AT:
+            new_deadline = NO_DEADLINE_AT
+        else:
+            try:
+                shifted = datetime.strptime(old_deadline, "%Y-%m-%d %H:%M:%S") + shift
+            except (TypeError, ValueError):
+                shifted = new_end_dt
+            if shifted > new_end_dt:
+                shifted = new_end_dt
+            new_deadline = shifted.strftime("%Y-%m-%d %H:%M:%S")
+        await create_task(
+            t["text"], t["category"], t["coins"], t["proof_type"], new_deadline, created_by,
+            event_city=t.get("event_city"), title=t.get("title"),
+            photo_file_id=t.get("photo_file_id"), wave_id=new_id,
+            audience=t.get("audience") or "all",
+        )
+    return new_id
