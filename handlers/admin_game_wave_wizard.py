@@ -25,7 +25,6 @@ WR-06: шаги `WaveEdit.*` раньше писали в БД по значен
 итоги объявили). `_wave_edit_guard` перечитывает волну и заново проверяет право
 (`can_edit_wave`) и открытость поля (`wave_editable_fields`) ПЕРЕД каждой записью.
 """
-import html as html_module
 from datetime import datetime
 
 from aiogram import F, types
@@ -446,7 +445,7 @@ async def _show_create_confirm(message: types.Message, state: FSMContext):
     lines = [
         f"Волна {number}",
         f"{_gw._fmt(starts_at)}–{_gw._fmt(ends_at)} ({days} дн.)",
-        f"Вводный текст: {html_module.escape(intro) if intro else 'нет'}",
+        f"Вводный текст: {intro if intro else 'нет'}",
         f"Город: {await _gw._city_display(city)}",
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[

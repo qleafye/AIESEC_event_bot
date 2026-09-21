@@ -382,6 +382,20 @@ def test_wave_create_go_creates_draft_with_continuing_number(tmp_path):
 # Задача 3: карточка волны — правка / активация / удаление / копия
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
+def test_card_shows_intro_html_as_stored_without_second_escape(tmp_path):
+    """Вводный текст хранится готовым HTML (`message.html_text`): «&» уже лежит как «&amp;»,
+    жирный — тегом. Второй escape на карточке показывал менеджеру «&amp;amp;» и «&lt;b&gt;»."""
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(
+        _dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID,
+        intro_text="<b>Старт</b> &amp; вперёд",
+    ))
+    text, _kb = _run(w._wave_card_screen(ADMIN_ID, _run(db.get_wave(wid))))
+    assert "<b>Старт</b> &amp; вперёд" in text
+    assert "&amp;amp;" not in text and "&lt;b&gt;" not in text
+
+
 def test_card_locked_fields_after_start_sent_shows_explanation(tmp_path, monkeypatch):
     _ready(tmp_path)
     from handlers import admin_game_waves as w
