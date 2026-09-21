@@ -455,6 +455,20 @@ async def init_db():
         # пишется ТОЛЬКО через set_user_lang ниже — закрытое множество {"ru", "en", None}.
         await _ensure_column(db, "users", "lang", "TEXT")
 
+        # Phase 31 (31-02, D-20/D-26): состояние автоотказа делегата — РЕАЛЬНЫЕ колонки
+        # `users`, а не эфемерная пометка вроде `_edited_note`: их читают три независимых
+        # процесса (`tools/rebuild_sheet_headless.py` — колонка «Детали» листа,
+        # `dashboard/queries.py` — срез воронки, фильтр рассылки D-28 ниже), и эфемерная
+        # пометка не пережила бы ни один из них. Все NULL у существующих (2000+) строк —
+        # «автоотказа не было». `auto_reject_rule_ids`/`flagged_rule_ids` — JSON-списки id
+        # правил (правило-отказ и правило-пометка — разные списки, D-04: если сработали оба,
+        # побеждает отказ, но пометка не стирается). `auto_rule_note` — готовая человеческая
+        # строка для колонки «Детали», собирает вызывающий сервис (план 31-05).
+        await _ensure_column(db, "users", "auto_reject_rule_ids", "TEXT")
+        await _ensure_column(db, "users", "auto_rejected_at", "TEXT")
+        await _ensure_column(db, "users", "flagged_rule_ids", "TEXT")
+        await _ensure_column(db, "users", "auto_rule_note", "TEXT")
+
         await db.execute('''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 key TEXT PRIMARY KEY,
@@ -1038,6 +1052,69 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_application_decisions_due "
             "ON application_decisions(effects_sent_at, undone_at, effects_due_at)"
+        )
+
+        # Phase 31 (31-02, D-05/D-15): правила автоотказа по анкете. Условия правила хранятся
+        # ОДНОЙ JSON-колонкой (`conditions`), а не нормализованной схемой условий — D-02
+        # фиксирует ровно два булевых уровня (группы через ИЛИ, условия внутри группы через
+        # И) без вложенности и без скобок, нормализовывать нечего: вторая таблица условий
+        # добавила бы JOIN там, где чистый оценщик (`reg_engine.evaluate_reject_rules`, план
+        # 31-01) всё равно грузит правило целиком и разбирает JSON в Python. Значения условий
+        # внутри `conditions` — ПОДПИСИ вариантов анкеты (та же конвенция, что у
+        # `reg_engine.compute_score`, см. 31-01), а не коды: правило хранится в терминах того,
+        # что видел менеджер в редакторе, и переживает переименование кода варианта. `enabled`
+        # по умолчанию 0 (D-15): на событиях, где правила ещё не настраивали, автоотказ не
+        # включается сам — общий рубильник модуля живёт в `bot_settings` (план 31-05), но и на
+        # уровне ОДНОГО правила по умолчанию ничего не меняется, пока менеджер явно не включит.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reject_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                city TEXT,
+                tracks TEXT NOT NULL,
+                conditions TEXT NOT NULL,
+                action TEXT NOT NULL,
+                reject_text TEXT,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                paused_reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                created_by INTEGER
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reject_rules_scope ON reject_rules(enabled, city)"
+        )
+
+        # Phase 31 (31-02, D-18/D-24): журнал срабатываний автоотказа — ОТДЕЛЬНАЯ таблица от
+        # `application_decisions` (комментарий выше), потому что у неё другой жизненный цикл:
+        # у `application_decisions` есть окно отмены (`undone_at`) и решение принимается один
+        # раз за раз; здесь возврат на модерацию (`returned_to_moderation_at`) возможен в ЛЮБОЙ
+        # момент после срабатывания, а повторное срабатывание того же правила не плодит новую
+        # строку — растёт `attempt_count` (D-24, лимита попыток нет, это явное решение
+        # владельца). Частичный уникальный индекс `idx_auto_reject_log_live` гарантирует, что
+        # «живая» (`returned_to_moderation_at IS NULL`) строка у делегата ровно одна: возврат
+        # закрывает её, следующее срабатывание заводит новую живую строку, а не второй
+        # активный журнал на одного человека.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS auto_reject_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                rule_ids TEXT NOT NULL,
+                reject_texts TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 1,
+                first_triggered_at TEXT NOT NULL,
+                last_triggered_at TEXT NOT NULL,
+                returned_to_moderation_at TEXT,
+                returned_by INTEGER
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auto_reject_log_tid ON auto_reject_log(telegram_id)"
+        )
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_auto_reject_log_live "
+            "ON auto_reject_log(telegram_id) WHERE returned_to_moderation_at IS NULL"
         )
 
         # Phase 15 (STAT-03, D-06): append-only registration-funnel event log -- the top of
@@ -4651,6 +4728,102 @@ async def reorder_faq_items(ordered_ids: list[int]) -> None:
                 "UPDATE faq_items SET position = ? WHERE id = ?", (idx, item_id)
             )
         await db.commit()
+
+
+# ── Phase 31 (31-02, D-05/D-16): аксессоры reject_rules — CRUD правил автоотказа ────────────
+
+# Белый список колонок для `update_reject_rule` (T-31-02-01): имя колонки никогда не приходит
+# из вызывающего в сыром виде — SET собирается только из этих литералов, тот же приём, что у
+# `_FAQ_UPDATABLE_FIELDS`.
+_REJECT_RULE_UPDATABLE_FIELDS = (
+    "name", "city", "tracks", "conditions", "action", "reject_text", "enabled", "paused_reason",
+)
+
+
+async def list_reject_rules(*, city_scope=None, enabled_only: bool = False) -> list[dict]:
+    """Список для экрана менеджера. `city_scope` — тот же дескриптор `cities.city_scope`, что
+    и `list_faq_items`: `include_null=True`, потому что правило «все города» (`city IS NULL`)
+    обязано быть видно из ЛЮБОГО городского скоупа (та же семантика, что у
+    `admin_faq._card_out_of_scope`). Порядок — правила «все города» первыми (`city IS NULL
+    DESC`), затем по городу и id — стабильный порядок списка между перезагрузками экрана."""
+    frag, city_params = _city_clause(city_scope, "city", include_null=True)
+    where_parts = []
+    params: list = []
+    if frag:
+        where_parts.append(frag)
+        params.extend(city_params)
+    if enabled_only:
+        where_parts.append("enabled = 1")
+    where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM reject_rules {where_sql} "
+            "ORDER BY city IS NULL DESC, city, id",
+            tuple(params),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_reject_rule(rule_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reject_rules WHERE id = ?", (rule_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def create_reject_rule(*, name: str | None, city: str | None, tracks: str,
+                              conditions: str, action: str, reject_text: str | None,
+                              enabled: int, created_by: int | None) -> int:
+    """`tracks`/`conditions` приходят уже сериализованными JSON-строками — сервисный слой
+    (план 31-04) владеет форматом, эта функция его не разбирает и не проверяет."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO reject_rules (name, city, tracks, conditions, action, reject_text, "
+            "enabled, created_at, updated_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, city, tracks, conditions, action, reject_text, enabled, now, now, created_by),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def update_reject_rule(rule_id: int, **fields) -> bool:
+    """T-31-02-01: SET собирается ТОЛЬКО из `_REJECT_RULE_UPDATABLE_FIELDS` — ключ вне списка
+    молча игнорируется (не поднимает исключение), значения уходят параметрами. `updated_at`
+    проставляется сам при любом непустом наборе изменений."""
+    updates = {k: v for k, v in fields.items() if k in _REJECT_RULE_UPDATABLE_FIELDS}
+    if not updates:
+        return False
+    updates["updated_at"] = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    set_sql = ", ".join(f"{col} = ?" for col in updates)
+    params = list(updates.values()) + [rule_id]
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"UPDATE reject_rules SET {set_sql} WHERE id = ?", params
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_reject_rule(rule_id: int) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute("DELETE FROM reject_rules WHERE id = ?", (rule_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def count_reject_rules(*, enabled_only: bool = False) -> int:
+    where_sql = " WHERE enabled = 1" if enabled_only else ""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM reject_rules{where_sql}"
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
 
 # ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
