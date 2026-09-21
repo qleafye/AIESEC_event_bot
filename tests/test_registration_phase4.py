@@ -116,6 +116,13 @@ def test_active_sheet_row_full_width_when_all_on(tmp_path):
         await db.init_db()
         for k in reg.REG_DEFAULTS:
             await db.set_setting(k, "on")
+        # Quick 260921 (fix, найден при исполнении фазы 31): reg_scoring_enabled/
+        # reject_rules_enabled — модуль-рубильники, не вопросы анкеты, REG_DEFAULTS их больше
+        # не подхватывает (reg_engine.MODULE_SWITCH_TOGGLES) — «полная ширина» требует явно
+        # включить и их: колонки «Балл»/«IT 3+» гейтятся на reg_scoring_enabled.
+        from reg_engine import MODULE_SWITCH_TOGGLES
+        for k in MODULE_SWITCH_TOGGLES:
+            await db.set_setting(k, "on")
         headers = await reg.active_sheet_headers()
         assert len(headers) == len(reg.SHEET_HEADERS)  # every gated column enabled
 
