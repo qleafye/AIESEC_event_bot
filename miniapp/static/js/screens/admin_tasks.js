@@ -12,7 +12,11 @@ import { icon } from "../icons.js";
 const PAGE = 25;
 
 function taskRow(h, navigate, item) {
-  const metaParts = [item.category_label, `до ${item.deadline_short}`, `${item.pending + item.approved} сдач`];
+  // Phase 32 (32-14, D-27): предлог «до» — только у задания со сроком; без срока сервер
+  // уже прислал готовую подпись словами (`item.deadline_display`, реестр через
+  // `game_labels.task_deadline_admin`) — свой литерал «без срока» тут не заводим.
+  const deadlinePart = item.has_deadline ? `до ${item.deadline_short}` : item.deadline_display;
+  const metaParts = [item.category_label, deadlinePart, `${item.pending + item.approved} сдач`];
   if (item.archived) metaParts.push("архив");
   const badges = [];
   if (item.pending > 0) badges.push(h("span", { class: "chip warn", text: `на проверке: ${item.pending}` }));

@@ -797,6 +797,9 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     # Превью «как видит делегат» — та же вёрстка, что у карточки делегата (card.js, план
     # 19.1-05): структурные поля, не card_text-блоб.
     assert "card.category_label" in text and "card.deadline_display" in text
+    # Phase 32 (32-14, D-27): условие по `has_deadline` в шаблоне есть — предлог «до» не
+    # печатается впустую у задания без срока (проверка, что ветку не забыли).
+    assert "card.has_deadline" in text
     # Дедлайн — пресеты с сервера + своя дата с примером формата в подсказке.
     assert "deadline_presets" in text and "deadline_example" in text and "ДД.ММ.ГГГГ ЧЧ:ММ" in text
     # Фото: размер проверяется до отправки, текст из реестра; затем PATCH с part_token.
