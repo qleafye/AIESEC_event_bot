@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
+import aiosqlite
 import pytest
 
 from config import config
@@ -344,6 +345,66 @@ def test_claim_referral_credit_idempotent(tmp_path):
     rows = _run(db.list_referral_credits(referrer_id=1))
     assert len(rows) == 1
     assert _run(db.count_referral_credits(1, None)) == 1
+
+
+def test_claim_referral_credit_atomic_writes_credit_and_coins_together(tmp_path):
+    """WR-01 (32-REVIEW.md): успешный вызов пишет И строку-квитанцию `referral_credits`, И
+    строку леджера `coins` — одним вызовом, одной транзакцией."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _seed_user(2)
+    won = _run(db.claim_referral_credit_atomic(
+        2, 1, 50, None, reason="Приглашённый: Тест", changed_by=None, source="approval",
+    ))
+    assert won is True
+    credit = _run(db.get_referral_credit(2))
+    assert credit is not None and credit["coins"] == 50 and credit["source"] == "approval"
+    assert _run(db.get_balance(1)) == 50
+
+
+def test_claim_referral_credit_atomic_lost_race_awards_nothing(tmp_path):
+    """Проигранная гонка (квитанция уже есть) не имеет права начислить монеты второй раз —
+    вторая половина транзакции не выполняется вовсе."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _seed_user(2)
+    first = _run(db.claim_referral_credit_atomic(
+        2, 1, 50, None, reason="x", changed_by=None, source="approval",
+    ))
+    second = _run(db.claim_referral_credit_atomic(
+        2, 1, 50, None, reason="x", changed_by=None, source="approval",
+    ))
+    assert first is True
+    assert second is False
+    assert _run(db.get_balance(1)) == 50
+
+
+def test_claim_referral_credit_atomic_rolls_back_fully_on_commit_failure(tmp_path, monkeypatch):
+    """WR-01 — сердце находки: раньше `claim_referral_credit` и `add_coins` были ДВУМЯ
+    отдельными соединениями/коммитами — сбой между ними оставлял квитанцию без монет
+    навсегда (повтор/бэкафилл видят квитанцию и молча пропускают). Теперь это ОДНА
+    транзакция: если коммит падает (`database is locked`, рестарт), закрытие соединения без
+    коммита откатывает ОБЕ вставленные строки разом — сиротской квитанции остаться не
+    должно."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _seed_user(2)
+
+    async def flaky_commit(self):
+        raise sqlite3.OperationalError("database is locked")
+
+    original_commit = aiosqlite.Connection.commit
+    monkeypatch.setattr(aiosqlite.Connection, "commit", flaky_commit)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            _run(db.claim_referral_credit_atomic(
+                2, 1, 50, None, reason="x", changed_by=None, source="approval",
+            ))
+    finally:
+        monkeypatch.setattr(aiosqlite.Connection, "commit", original_commit)
+
+    assert _run(db.get_referral_credit(2)) is None  # ни квитанции...
+    assert _run(db.get_balance(1)) == 0             # ...ни монет
 
 
 def test_insert_wave_results_immutable(tmp_path):

@@ -10,11 +10,13 @@
 для менеджера. Поэтому начисление — ОДНА функция, врезанная во ВСЕ три пути одинаково, а не три
 независимые копии одного правила.
 
-Идемпотентность держит БАЗА ДАННЫХ, а не Python: `database.db.claim_referral_credit` —
-`INSERT OR IGNORE` против `PRIMARY KEY (invitee_id)` у `referral_credits` + `rowcount == 1`.
-Повторный вызов (устаревшая кнопка «Принять всех», два менеджера, бот и веб одновременно,
-«отклонили и одобрили снова») физически не может создать вторую строку — проверки
-«а не начисляли ли мы уже» в этом модуле нет вовсе (T-32-05-01).
+Идемпотентность держит БАЗА ДАННЫХ, а не Python: `database.db.claim_referral_credit_atomic` —
+`INSERT OR IGNORE` против `PRIMARY KEY (invitee_id)` у `referral_credits` + `rowcount == 1`,
+затем в ТОЙ ЖЕ транзакции `INSERT INTO coins` (фикс находки WR-01, 32-REVIEW.md: раньше это
+были два отдельных соединения/коммита — сбой между ними навсегда терял начисление). Повторный
+вызов (устаревшая кнопка «Принять всех», два менеджера, бот и веб одновременно, «отклонили и
+одобрили снова») физически не может создать вторую строку — проверки «а не начисляли ли мы
+уже» в этом модуле нет вовсе (T-32-05-01).
 
 Две служебные точки, которые пишут `users.status = 'approved'` НАПРЯМУЮ, минуя все три шва выше, —
 `handlers/uat_seed.py` (команда `/uat`, сидер состояний на стенде) и `tools/shoot_screens.py`
@@ -37,8 +39,7 @@ from __future__ import annotations
 import logging
 
 from database.db import (
-    add_coins,
-    claim_referral_credit,
+    claim_referral_credit_atomic,
     count_referral_credits,
     get_referral_credit,
     get_user,
@@ -77,9 +78,11 @@ async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None)
     участвует (`wave_eligible`, D-31/D-38: вступивший посреди волны в неё не попадает) —
     иначе `wave_id = None`, баллы идут только в общий зачёт.
 
-    Запись — `claim_referral_credit` (см. модульный докстринг про идемпотентность): при
-    проигранной гонке (`False`) `add_coins` НЕ вызывается вовсе — выигравший вызов уже
-    начислил, эта функция тихо возвращает `None`.
+    Запись — `claim_referral_credit_atomic` (WR-01, 32-REVIEW.md): квитанция
+    `referral_credits` и начисление в `coins` пишутся ОДНОЙ транзакцией, не двумя отдельными
+    соединениями — сбой между ними раньше навсегда терял начисление (квитанция есть, монет
+    нет, повтор её видит и молча пропускает). При проигранной гонке (`False`) вторая половина
+    не выполняется вовсе, эта функция тихо возвращает `None`.
 
     Вся функция fail-soft (T-32-05-05): любое исключение логируется, возвращается `None` —
     сбой начисления не имеет права отменить уже состоявшееся одобрение заявки, статус
@@ -107,17 +110,14 @@ async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None)
         if wave and wave_eligible(referrer, wave):
             wave_id = int(wave["id"])
 
-        won = await claim_referral_credit(
-            int(invitee_id), referrer_id, coins, wave_id, source="approval",
+        invitee_name = (invitee.get("full_name") or "").strip() or "Без имени"
+        won = await claim_referral_credit_atomic(
+            int(invitee_id), referrer_id, coins, wave_id,
+            reason=_invitee_reason(invitee), changed_by=changed_by, source="approval",
         )
         if not won:
             return None
 
-        invitee_name = (invitee.get("full_name") or "").strip() or "Без имени"
-        await add_coins(
-            referrer_id, coins, reason=_invitee_reason(invitee),
-            changed_by=changed_by, source="referral",
-        )
         return {
             "referrer_id": referrer_id, "coins": coins, "wave_id": wave_id,
             "invitee_name": invitee_name,
@@ -200,14 +200,11 @@ async def backfill_approved(*, dry_run: bool) -> dict:
         if dry_run:
             continue
 
-        won = await claim_referral_credit(
-            invitee_id, referrer_id, coins, None, source="backfill",
+        won = await claim_referral_credit_atomic(
+            invitee_id, referrer_id, coins, None,
+            reason=_invitee_reason(invitee), changed_by=None, source="backfill",
         )
         if won:
-            await add_coins(
-                referrer_id, coins, reason=_invitee_reason(invitee),
-                changed_by=None, source="referral",
-            )
             credited += 1
             coins_total += coins
 

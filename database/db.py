@@ -5681,6 +5681,41 @@ async def claim_referral_credit(invitee_id: int, referrer_id: int, coins: int,
         return cursor.rowcount == 1
 
 
+async def claim_referral_credit_atomic(invitee_id: int, referrer_id: int, coins: int,
+                                        wave_id: int | None, *, reason: str,
+                                        changed_by: int | None, source: str = "approval") -> bool:
+    """WR-01 (32-REVIEW.md): `claim_referral_credit` + `add_coins` в ОДНОЙ транзакции вместо
+    двух отдельных соединений/коммитов. Раньше сбой (`database is locked`, рестарт бота)
+    МЕЖДУ строкой-квитанцией `referral_credits` и записью в леджер `coins` навсегда терял
+    начисление: квитанция уже есть, монет нет, а повторный вызов и бэкафилл видят квитанцию
+    (`get_referral_credit`) и молча пропускают — начислить второй раз уже нельзя.
+
+    `INSERT OR IGNORE` против `PRIMARY KEY (invitee_id)` побеждает первым, как и раньше;
+    `rowcount != 1` значит, что этого приглашённого уже начислил другой вызов (гонка/повтор) —
+    вторая половина (`INSERT INTO coins`) не выполняется вовсе, транзакция коммитится без
+    изменений. `source` — это `referral_credits.source` (`'approval'`/`'backfill'`);
+    `coins.source` жёстко `'referral'`, byte-identical прежнему отдельному
+    `add_coins(..., source="referral")`. Старый `claim_referral_credit` НЕ удалён — им
+    по-прежнему пользуются тесты и код, которым нужна голая квитанция без начисления."""
+    credited_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO referral_credits "
+            "(invitee_id, referrer_id, coins, wave_id, credited_at, source) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (invitee_id, referrer_id, coins, wave_id, credited_at, source),
+        )
+        won = cursor.rowcount == 1
+        if won:
+            await db.execute(
+                "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source, "
+                "task_id) VALUES (?, ?, ?, ?, ?, 'referral', NULL)",
+                (referrer_id, coins, reason, changed_by, credited_at),
+            )
+        await db.commit()
+        return won
+
+
 async def get_referral_credit(invitee_id: int) -> dict | None:
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
