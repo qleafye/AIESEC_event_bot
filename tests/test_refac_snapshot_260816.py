@@ -413,6 +413,13 @@ def _build_snapshot_lines():
 # снимка сдвинулась бы (реордер), а не просто добавилась. Re-captured by RUNNING
 # `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
 # 538-строчного снимка: ровно 2 вставки (4 + 7 строк), 0 удалений, 0 реордеров.
+# Drift note (Phase 31, план 31-08, задача 3, D-12/D-26: копирование/удаление, 549 -> 553
+# handlers -- PURE APPEND): 4 callback_query-хендлера (`arr_copy`/`arr_copygo`/`arr_d`/
+# `arr_dgo`) встали СРАЗУ ПОСЛЕ `arr_text` и ПЕРЕД `sync_sheet` — хвост того же блока
+# `handlers/admin_reject_rules.py`, что задача 2. Re-captured by RUNNING
+# `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
+# 549-строчного снимка: ровно одна вставка из 4 строк, 0 удалений, 0 реордеров — этим планом
+# 31-08 весь шов `handlers/admin_reject_rules.py` завершён (531 -> 553 суммарно за три коммита).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -637,6 +644,10 @@ admin|callback_query|arr_citypick|arr_citypick:*
 admin|callback_query|arr_track_toggle|arr_track:*
 admin|callback_query|arr_name_start|arr_name:*
 admin|callback_query|arr_text_start|arr_text:*
+admin|callback_query|arr_copy_start|arr_copy:*
+admin|callback_query|arr_copy_go|arr_copygo:*
+admin|callback_query|arr_delete_confirm|arr_d:*
+admin|callback_query|arr_delete_go|arr_dgo:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1138,7 +1149,11 @@ def test_snapshot_total_handler_count_is_292():
     # `arr_city`/`arr_citypick`/`arr_track`/`arr_name`/`arr_text` — карточка правила по макету
     # D-09) (538 -> 549); чистая вставка, `arr_t` регистрацию не менял (только тело), diff'ом
     # (difflib.SequenceMatcher) подтверждено 0 удалений/реордеров.
-    assert len(GOLDEN_SNAPSHOT) == 549
+    # Phase 31 (план 31-08, задача 3): +4 handlers/admin_reject_rules.py callback_query
+    # (`arr_copy`/`arr_copygo`/`arr_d`/`arr_dgo` — копирование в другой город, удаление с
+    # подтверждением) (549 -> 553); чистая вставка, diff'ом (difflib.SequenceMatcher)
+    # подтверждено 0 удалений/реордеров.
+    assert len(GOLDEN_SNAPSHOT) == 553
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
