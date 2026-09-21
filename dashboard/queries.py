@@ -49,6 +49,10 @@ _SETTING_DEFAULTS = {
     "event_city_enabled": "off",
     "event_name": None,
     "event_season": None,
+    # Phase 31 (31-03, D-15): общий рубильник модуля правил автоотказа — по умолчанию
+    # выключен, ступень воронки/разбивка по правилам (31-07, D-27) гейтятся ИМЕННО этим
+    # флагом, та же дисциплина, что у payment_enabled/ступени «Оплатили».
+    "reject_rules_enabled": "off",
 }
 
 
@@ -457,8 +461,28 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
         ("Начали анкету", _distinct_event_count("form_started")),
         ("Дошли до конца", _distinct_event_count("form_completed")),
         ("На модерации", _status_count("pending")),
-        ("Одобрено", _status_count("approved")),
     ]
+    # Phase 31 (31-07, D-27): ступень «🤖 Автоотказ» ПОСЛЕ «На модерации» и ПЕРЕД «Одобрено»
+    # (воронка читается как путь заявки: сначала на модерации, дальше — либо автоотказ, либо
+    # ручное решение). Гейт — `reject_rules_enabled`, та же дисциплина, что у ступени
+    # «Оплатили» под `payment_enabled`: пока модуль выключен, дашборд ЛЮБОГО другого
+    # мероприятия не меняется ни на бит. Тот же состав фрагментов, что у `_status_count`
+    # (`_scope_sql` + собственное условие + та же отсечка `funnel_tracking_since`) — без
+    # отсечки ступень считала бы импортированных делегатов вне трекинга, и воронка перестала
+    # бы сходиться с соседними ступенями.
+    if flags.get("reject_rules_enabled") == "on":
+        auto_reject_parts = parts + [
+            "(auto_reject_rule_ids IS NOT NULL AND TRIM(auto_reject_rule_ids) NOT IN ('', '[]'))"
+        ]
+        auto_reject_params = params
+        if tracking_since is not None:
+            auto_reject_parts = auto_reject_parts + ["registration_date >= ?"]
+            auto_reject_params = auto_reject_params + (tracking_since,)
+        auto_rejected = _scalar(
+            conn, f"SELECT COUNT(*) FROM users{_where(auto_reject_parts)}", auto_reject_params
+        ) or 0
+        stages.append(("🤖 Автоотказ", auto_rejected))
+    stages.append(("Одобрено", _status_count("approved")))
     if flags.get("payment_enabled") == "on":
         payment_parts = parts + ["payment_status = ?"]
         payment_params = params + ("paid",)
@@ -470,6 +494,61 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
         ) or 0
         stages.append(("Оплатили", paid))
     return stages
+
+
+def _reject_rule_labels(conn) -> dict[int, str]:
+    """`{id: человеческое имя}` для всех правил автоотказа — id правила менеджеру НЕ
+    показываем: имя правила, если менеджер его задал, иначе первые слова текста отказа,
+    иначе «Правило без названия»."""
+    labels: dict[int, str] = {}
+    rows = conn.execute("SELECT id, name, reject_text FROM reject_rules").fetchall()
+    for row in rows:
+        name = (row["name"] or "").strip()
+        if name:
+            labels[row["id"]] = name
+            continue
+        text = (row["reject_text"] or "").strip()
+        if text:
+            labels[row["id"]] = " ".join(text.split()[:6])
+            continue
+        labels[row["id"]] = "Правило без названия"
+    return labels
+
+
+def auto_reject_breakdown(conn, scope: Scope) -> list[tuple[str, int]]:
+    """Разбивка «какое правило сколько отсеяло» — по ЖИВЫМ (не возвращённым на модерацию)
+    строкам `auto_reject_log`, под тем же `_scope_sql`, что и `funnel()`. `rule_ids` — это
+    JSON-список id правил ОДНОЙ колонкой: SQLite не умеет группировать список внутри ячейки,
+    а объём журнала измеряется сотнями строк — Counter в Python дешевле второй таблицы связей.
+    Битая строка JSON пропускается с продолжением: одна кривая запись не имеет права уронить
+    дашборд. Отсортировано по убыванию — самое широкое (проблемное) правило видно первым."""
+    import json
+    from collections import Counter
+
+    parts, params = _scope_sql(conn, scope)
+    where_parts = parts + ["l.returned_to_moderation_at IS NULL"]
+    where = _where(where_parts)
+    rows = conn.execute(
+        "SELECT l.rule_ids FROM auto_reject_log l "
+        f"JOIN users u ON u.telegram_id = l.telegram_id{where}",
+        params,
+    ).fetchall()
+    labels = _reject_rule_labels(conn)
+    counter: Counter[str] = Counter()
+    for row in rows:
+        try:
+            rule_ids = json.loads(row["rule_ids"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(rule_ids, list):
+            continue
+        for rule_id in rule_ids:
+            try:
+                rule_id = int(rule_id)
+            except (TypeError, ValueError):
+                continue
+            counter[labels.get(rule_id, "Правило без названия")] += 1
+    return counter.most_common()
 
 
 # ── динамика по дням (D-14) ──────────────────────────────────────────────────────────────
