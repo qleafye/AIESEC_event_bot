@@ -3079,6 +3079,27 @@ def course_number(value) -> int | None:
     return int(match.group()) if match else None
 
 
+def age_on(birth_raw: str | None, target_raw: str | None) -> int | None:
+    """Возраст на ПРОИЗВОЛЬНУЮ дату (Phase 31, D-31) — обе даты строкой `%d.%m.%Y`: тот же
+    формат, в котором `validate_answer` хранит `birth_date`, и тот же, что заводит новая
+    настройка «Дата начала форума» (`date_only`, план 31-03). Логика вычета — та же, что у
+    `moderation_card._msk_age_from_birth_date` (разница лет минус единица, если `(месяц,
+    день)` цели раньше `(месяц, день)` рождения), но ОБЕ даты — параметры: функция ничего не
+    читает из окружения и «текущее время» никак не резолвит — «сегодня» здесь ни при чём,
+    нужна именно дата форума. `None` на любом недостающем/нераспознанном входе или когда
+    целевая дата раньше даты рождения — D-31 трактует это как «условие не выполнено», а не
+    как «выполнено»."""
+    if not birth_raw or not target_raw:
+        return None
+    try:
+        born = datetime.strptime(str(birth_raw).strip(), "%d.%m.%Y")
+        target = datetime.strptime(str(target_raw).strip(), "%d.%m.%Y")
+    except (TypeError, ValueError):
+        return None
+    years = target.year - born.year - ((target.month, target.day) < (born.month, born.day))
+    return years if years >= 0 else None
+
+
 def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
     """Чистая формула ТЗ §3.6 — без БД, без aiogram, синхронная (тот же класс функции, что
     `decide_status`). `rules` — заранее собранный словарь `scoring_rules()`; `answers` — плоский
