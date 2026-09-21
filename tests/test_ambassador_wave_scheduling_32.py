@@ -97,17 +97,17 @@ def _run_scheduled(tmp_path, monkeypatch, body):
 # Задача 1: старт волны
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def test_schedule_wave_start_dm_job_id_and_replace_existing(tmp_path, monkeypatch):
+def test_schedule_wave_start_job_id_and_replace_existing(tmp_path, monkeypatch):
     run_at = datetime.now() + timedelta(days=1)
     later = run_at + timedelta(hours=1)
 
     async def body(s):
-        sched.schedule_wave_start_dm(7, 100, run_at)
-        assert s.get_job("wave_start_dm_7_100") is not None
-        # Повторная постановка той же пары (wave_id, ambassador_id) заменяет джобу, а не
-        # плодит вторую.
-        sched.schedule_wave_start_dm(7, 100, later)
-        jobs = [j for j in s.get_jobs() if j.id == "wave_start_dm_7_100"]
+        sched.schedule_wave_start(7, run_at)
+        assert s.get_job("wave_start_7") is not None
+        # Повторная постановка той же волны (переармирование, правка дат) заменяет джобу, а
+        # не плодит вторую.
+        sched.schedule_wave_start(7, later)
+        jobs = [j for j in s.get_jobs() if j.id == "wave_start_7"]
         assert len(jobs) == 1
         assert jobs[0].next_run_time.replace(tzinfo=None) == later
 
@@ -118,13 +118,12 @@ def test_cancel_wave_jobs_removes_start_and_end_fail_soft(tmp_path, monkeypatch)
     run_at = datetime.now() + timedelta(days=1)
 
     async def body(s):
-        sched.schedule_wave_start_dm(7, 100, run_at)
-        sched.schedule_wave_start_dm(7, 101, run_at)
+        sched.schedule_wave_start(7, run_at)
         sched.schedule_wave_end(7, run_at)
-        sched.cancel_wave_jobs(7, [100, 101, 999])  # 999 никогда не ставился — fail-soft
-        assert s.get_job("wave_start_dm_7_100") is None
-        assert s.get_job("wave_start_dm_7_101") is None
+        sched.cancel_wave_jobs(7)
+        assert s.get_job("wave_start_7") is None
         assert s.get_job("wave_end_7") is None
+        sched.cancel_wave_jobs(7)  # ничего не стоит — fail-soft, не падает
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -216,23 +215,96 @@ def test_send_wave_start_dm_task_without_deadline_labeled(tmp_path, monkeypatch)
     assert "без срока" in text
 
 
-def test_schedule_wave_start_for_all_blocked_recipient_does_not_abort_others(tmp_path, monkeypatch):
+def test_send_wave_start_blocked_recipient_does_not_abort_others(tmp_path, monkeypatch):
+    """Регрессия: заблокировавший бота получатель — свой try/except в `send_wave_start_dm`,
+    фан-аут в `send_wave_start` не обрывается на нём."""
     _ready(tmp_path)
     _make_ambassador(1)
     _make_ambassador(2)
     bot = _with_bot(monkeypatch, FakeBot(forbidden_ids={1}))
     wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
     _run(db.set_wave_state(wave_id, "active"))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 1, 0, 0, 1))
+
+    _run(sched.send_wave_start(wave_id))
+    assert [c[0] for c in bot.sent] == [2]
+
+
+def test_send_wave_start_includes_ambassador_who_joined_after_scheduling(tmp_path, monkeypatch):
+    """Регрессия ГЛАВНОГО бага фикса: джоба волны поставлена, когда участников ещё нет; амбассадор
+    появляется ПОСЛЕ постановки, но ДО `starts_at` волны — он полноправный участник по
+    `wave_eligible`, и `send_wave_start` (одна джоба на волну, получатели разворачиваются на
+    срабатывании) его находит и отправляет ему сообщение."""
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
 
     async def body(s):
-        n = await sched.schedule_wave_start_for_all(wave_id)
-        assert n == 2
-        await sched.send_wave_start_dm(wave_id, 1)  # заблокировал бота
-        await sched.send_wave_start_dm(wave_id, 2)  # всё равно получает
-        return True
+        await sched.schedule_wave_start_for_all(wave_id)  # постановка — участников пока нет
+        await db.add_user({
+            "telegram_id": 1,
+            "full_name": "Delegate 1",
+            "registration_date": "2026-01-01 00:00:00",
+            "event_city": None,
+        })
+        await db.set_ambassador_flag(1, active=True, at="2026-09-28 00:00:00")  # ДО starts_at
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 1, 0, 0, 1))
+        await sched.send_wave_start(wave_id)
 
-    assert _run_scheduled(tmp_path, monkeypatch, body)
-    assert [c[0] for c in bot.sent] == [2]
+    _run_scheduled(tmp_path, monkeypatch, body)
+    assert [c[0] for c in bot.sent] == [1]
+
+
+def test_send_wave_start_marks_once_second_call_sends_nothing(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 1, 0, 0, 1))
+
+    _run(sched.send_wave_start(wave_id))
+    wave = _run(db.get_wave(wave_id))
+    assert wave["started_notified_at"]
+    assert len(bot.sent) == 1
+
+    _run(sched.send_wave_start(wave_id))  # повторное срабатывание/переармирование — тишина
+    assert len(bot.sent) == 1
+
+
+def test_send_wave_start_future_starts_at_reschedules_no_send(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-10 00:00:00", "2026-10-20 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 1, 0, 0, 0))
+
+    async def body(s):
+        sched.schedule_wave_start(wave_id, datetime(2026, 10, 1, 0, 1, 0))  # ошибочно рано
+        await sched.send_wave_start(wave_id)
+        job = s.get_job(f"wave_start_{wave_id}")
+        assert job is not None
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 10, 0, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+    assert bot.sent == []
+    wave = _run(db.get_wave(wave_id))
+    assert wave["started_notified_at"] is None
+
+
+def test_send_wave_start_draft_or_missing_wave_silent(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    # состояние остаётся 'draft'
+    _run(sched.send_wave_start(wave_id))
+    assert bot.sent == []
+
+    _run(sched.send_wave_start(999999))  # такой волны нет вовсе
+    assert bot.sent == []
 
 
 def test_send_wave_start_dm_quiet_hours_queues_not_cancels(tmp_path, monkeypatch):
@@ -255,7 +327,9 @@ def test_send_wave_start_dm_quiet_hours_queues_not_cancels(tmp_path, monkeypatch
     assert _run(_count()) == 1
 
 
-def test_schedule_wave_start_for_all_marks_wave_started_once(tmp_path, monkeypatch):
+def test_schedule_wave_start_for_all_no_mark_replaces_single_job(tmp_path, monkeypatch):
+    """Постановка джобы — не отправка: `started_notified_at` не встаёт, повторная постановка
+    (переармирование) заменяет ту же джобу `wave_start_{id}`, а не плодит вторую."""
     _ready(tmp_path)
     _with_bot(monkeypatch)
     _make_ambassador(1)
@@ -265,15 +339,14 @@ def test_schedule_wave_start_for_all_marks_wave_started_once(tmp_path, monkeypat
     async def body(s):
         n1 = await sched.schedule_wave_start_for_all(wave_id)
         wave = await db.get_wave(wave_id)
-        first_mark = wave["started_notified_at"]
-        assert first_mark
-        n2 = await sched.schedule_wave_start_for_all(wave_id)  # повторный фан-аут
-        wave2 = await db.get_wave(wave_id)
-        return n1, n2, first_mark, wave2["started_notified_at"]
+        assert wave["started_notified_at"] is None
+        n2 = await sched.schedule_wave_start_for_all(wave_id)  # повторная постановка
+        jobs = [j for j in s.get_jobs() if j.id == f"wave_start_{wave_id}"]
+        return n1, n2, len(jobs)
 
-    n1, n2, first_mark, second_mark = _run_scheduled(tmp_path, monkeypatch, body)
+    n1, n2, job_count = _run_scheduled(tmp_path, monkeypatch, body)
     assert n1 == 1 and n2 == 1
-    assert first_mark == second_mark  # started_notified_at не перезаписан вторым вызовом
+    assert job_count == 1
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -393,7 +466,7 @@ def test_reconcile_wave_jobs_idempotent_expected_job_ids_no_sends(tmp_path, monk
         ids_first = {j.id for j in s.get_jobs()}
         assert f"wave_end_{wave_id}" in ids_first
         assert f"task_deadline_reminder_{task_id}" in ids_first
-        assert any(jid.startswith(f"wave_start_dm_{wave_id}_") for jid in ids_first)
+        assert f"wave_start_{wave_id}" in ids_first
         assert bot.sent == []  # постановка джоб — не отправка
 
         await sched.reconcile_wave_jobs()  # второй вызов — идемпотентно, тот же набор id
