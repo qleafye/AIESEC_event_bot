@@ -61,6 +61,9 @@ from handlers.game_task_wizard import (
     _game_task_wave_prompt,
     _parse_iso_dt,
     _resolve_deadline_preset,
+    # Phase 32 (32-12, D-26): fail-soft wrappers around services.scheduler's
+    # schedule_task_deadline_reminder/cancel_task_deadline_reminder -- _apply_point_deadline
+    # below goes through these, never the scheduler functions directly.
     _safe_cancel_reminder,
     _safe_schedule_reminder,
     _wizard_return_to_preview,
@@ -199,6 +202,7 @@ async def _apply_point_deadline(task_id: int, when) -> bool:
         return False
     _request_game_resync()
     if deadline_at == NO_DEADLINE_AT:
+        # cancel_task_deadline_reminder via _safe_cancel_reminder — «Без срока» snapshot.
         _safe_cancel_reminder(task_id)
     else:
         _safe_schedule_reminder(task_id, deadline_at)
