@@ -69,6 +69,8 @@ _FUNNEL_BASELINE_LABELS: dict[str, str] = {
     "Начали анкету": "начавших анкету",
     "Дошли до конца": "дошедших до конца",
     "На модерации": "отправленных на модерацию",
+    # Phase 31 (31-07, D-27): ступень «🤖 Автоотказ» — та же родительный падеж, что у соседей.
+    "🤖 Автоотказ": "автоотклонённых",
     "Одобрено": "одобренных",
     "Оплатили": "оплативших",
 }
@@ -222,6 +224,15 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
 
     funnel_rows = queries.funnel(conn, scope) if flags.get("dashboard_block_funnel") == "on" else None
     funnel_since = queries.funnel_tracking_since(conn) if funnel_rows is not None else None
+    # Phase 31 (31-07, D-27): разбивка «какое правило сколько отсеяло» — под ОБОИМИ
+    # тумблерами (блок воронки И reject_rules_enabled). Выключен любой из двух -> в шаблон
+    # уходит None, блок не рисуется вовсе — та же дисциплина module-off, что у остальных
+    # блоков дашборда.
+    auto_reject_rows = (
+        queries.auto_reject_breakdown(conn, scope)
+        if funnel_rows is not None and flags.get("reject_rules_enabled") == "on"
+        else None
+    )
     daily_rows = (
         queries.daily_registrations(conn, scope)
         if flags.get("dashboard_block_dynamics") == "on"
@@ -310,6 +321,10 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
         "funnel": _funnel_display(funnel_rows, funnel_since),
+        # Пустой список тоже уходит в шаблон «как есть» — Jinja2 читает пустой список как
+        # falsy, блок не рисуется без отдельного has_data (D-27: «блок не рисуется при пустом
+        # или None-значении»).
+        "auto_reject_breakdown": _bar_rows(auto_reject_rows) if auto_reject_rows else None,
         "dynamics_enabled": daily_rows is not None,
         "daily_chart": daily_chart,
         "city_cut": (

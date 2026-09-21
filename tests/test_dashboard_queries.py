@@ -1023,6 +1023,25 @@ def test_auto_reject_breakdown_cut_by_city_scope(tmp_path):
     assert spb_rows == [("Курс", 1)]
 
 
+def test_funnel_stage_labels_consistent_across_main_and_compare(tmp_path):
+    """Сторож дрейфа трёх копий подписи ступени (`queries.funnel()`,
+    `main._FUNNEL_BASELINE_LABELS`, `compare._CANONICAL_FUNNEL_LABELS`) — та же проблема,
+    которую ловит существующий комментарий в `compare.py`. Оба необязательных тумблера
+    включены, чтобы в списке ступеней оказались обе опциональные ступени («🤖 Автоотказ» и
+    «Оплатили») — иначе тест не проверил бы их вовсе."""
+    from dashboard.compare import _CANONICAL_FUNNEL_LABELS
+    from dashboard.main import _FUNNEL_BASELINE_LABELS
+
+    path = _use_tmp_db(tmp_path)
+    _seed(settings={"reject_rules_enabled": "on", "payment_enabled": "on"})
+    with dash_db.read_conn(path) as conn:
+        stages = funnel(conn, Scope())
+    assert len(stages) == 7  # все шесть ступеней + автоотказ при обоих тумблерах включённых
+    for label, _ in stages:
+        assert label in _FUNNEL_BASELINE_LABELS, f"'{label}' отсутствует в _FUNNEL_BASELINE_LABELS"
+        assert label in _CANONICAL_FUNNEL_LABELS, f"'{label}' отсутствует в _CANONICAL_FUNNEL_LABELS"
+
+
 # ── registration_start (Phase 26.1 Plan 01, SD-03) ───────────────────────────────────────
 
 def test_registration_start_scoped_by_season_differs_from_funnel_tracking_since(tmp_path):
