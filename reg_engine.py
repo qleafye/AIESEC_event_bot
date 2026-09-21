@@ -141,18 +141,43 @@ def _is_short_track(participant_type: str | None) -> bool:
     return participant_type == SHORT_TRACK
 
 
-# REG-01/D-06 (06-04): REG_DEFAULTS is DERIVED from settings_schema.SETTINGS_SCHEMA (every
-# registered "toggle"-type entry), not a hand-maintained literal — the registry is the single
-# source of truth for reg_q_* defaults.
+# Quick 260921 (found during phase 31 execution): two registered "toggle"-type entries are
+# NOT questionnaire questions — `reg_scoring_enabled` (phase 28) and `reject_rules_enabled`
+# (phase 31) are module master-switches, group "apps". `reg_presets.apply_reg_preset` (and
+# `handlers/admin_reg_percity`'s "сбросить к умолчанию") sweep every REG_DEFAULTS key and
+# write "off" to whatever isn't in the preset's "on" list — that sweep is exactly right for
+# reg_q_* questions but must never reach a module switch, or tapping the "🏛 Форум"/"🎤
+# Конференция" preset silently turns scoring/auto-reject off with no message to anyone.
+# Explicit allowlist (not "every non-reg_q_ toggle", to fail loudly the next time a module
+# switch is added as "toggle" instead of "enum" like payment_enabled/menu_*/event_city_enabled
+# already do): a key showing up here on purpose is the ESCAPE HATCH for that pattern, checked
+# by tests/test_preset_does_not_touch_module_switches_260921.py.
+MODULE_SWITCH_TOGGLES = {"reg_scoring_enabled", "reject_rules_enabled"}
+
+# REG-01/D-06 (06-04): REG_DEFAULTS is DERIVED from settings_schema.SETTINGS_SCHEMA — every
+# registered "toggle"-type entry in group "reg_questions" (every reg_q_* key), NOT every
+# toggle-type entry — the registry is the single source of truth for reg_q_* defaults, but
+# MODULE_SWITCH_TOGGLES above are toggle-typed for the manager-facing UI while living outside
+# the group presets are allowed to sweep. Same discriminator `settings_ops.
+# reg_question_track_base` already uses for the same reason (group == "reg_questions").
 REG_DEFAULTS = {
-    k: v["default"] for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"
+    k: v["default"] for k, v in SETTINGS_SCHEMA.items()
+    if v["type"] == "toggle" and v.get("group") == "reg_questions"
 }
 
 
 async def _is_step_enabled(setting_key: str) -> bool:
     val = await get_setting(setting_key)
     if val is None:
-        return REG_DEFAULTS.get(setting_key, "on") == "on"
+        # Quick 260921: read the registry default directly, not REG_DEFAULTS.get(key, "on")
+        # — REG_DEFAULTS no longer carries every toggle key (see comment above), so that
+        # fallback would silently flip an un-set module switch (e.g. reg_scoring_enabled,
+        # asked via SHEET_COLUMNS' "Балл"/"IT 3+" gate in handlers/reg_schema.py) from its
+        # registered default "off" to "on". Byte-identical result for every reg_q_* key
+        # (SETTINGS_SCHEMA[key]["default"] is exactly what REG_DEFAULTS used to hold).
+        entry = SETTINGS_SCHEMA.get(setting_key)
+        default = entry["default"] if entry else "on"
+        return default == "on"
     return val == "on"
 
 
