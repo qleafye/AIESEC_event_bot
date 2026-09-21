@@ -48,9 +48,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import reg_engine
-from cities import cities_module_on, normalize_city
-from database.db import add_submission_part, create_submission, get_reg_draft, get_task, get_user, upsert_reg_draft
+from cities import cities_module_on, city_scope, normalize_city
+from database.db import (
+    add_submission_part,
+    create_submission,
+    get_reg_draft,
+    get_task,
+    get_user,
+    list_waves,  # Phase 32 (32-06): доступные амбассадору волны — для visible_tasks_for
+    upsert_reg_draft,
+)
+from game_labels import visible_tasks_for  # Phase 32 (32-06, D-28/D-36, T-32-06-02)
 from services import i18n
+from services.ambassador_waves import eligible_wave_ids  # Phase 32 (32-06)
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -303,6 +313,17 @@ async def create_submission_route(
     if await cities_module_on() and task.get("event_city"):
         if normalize_city((user or {}).get("event_city")) != normalize_city(task["event_city"]):
             raise HTTPException(404, {"reason": "task_not_found"})
+    # Rule 2 (32-06, D-28/D-36, T-32-06-02): «сдать» — третья поверхность, где живёт задание;
+    # список и карточка уже перепроверяют видимость, но прямой POST по `task_id` их обходит
+    # так же, как обходил бы прямой callback в боте — без этой проверки амбассадорское задание
+    # (или задание чужой волны) можно сдать, зная только его id, минуя список вовсе.
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    wave_ids: set[int] = set()
+    if is_ambassador:
+        scope = city_scope(normalize_city(user.get("event_city"))) if await cities_module_on() else None
+        wave_ids = eligible_wave_ids(user, await list_waves(city_scope=scope))
+    if not visible_tasks_for([task], is_ambassador=is_ambassador, eligible_wave_ids=wave_ids):
+        raise HTTPException(404, {"reason": "task_not_found"})
 
     if not body.parts:
         raise HTTPException(400, {

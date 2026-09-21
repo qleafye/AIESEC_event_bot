@@ -15,6 +15,7 @@ from database.db import (
     get_user_rank,
     create_question,
     list_active_tasks,
+    list_waves,  # Phase 32 (32-06, D-31/D-38): доступные амбассадору волны для visible_tasks_for
     get_task,
     get_active_submission,
     create_submission,
@@ -27,6 +28,8 @@ from database.db import (
     get_reg_draft,
     has_faq_for_city,  # Quick 260906-8uq: экран «❓ Частые вопросы» + гейт формы вопроса
     list_faq_for_city,
+    set_ambassador_flag,  # Phase 32 (32-06, D-32/D-38): выход/возврат амбассадора
+    set_ambassador_path,  # Phase 32 (32-06, D-24): путь меняет только порядок показа заданий
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
@@ -35,6 +38,13 @@ from handlers import reg_i18n
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
+    # Phase 32 (32-06, D-27/D-28/D-31/D-36/D-38): один делегатский помощник — амбассадорский
+    # блок/порядок по пути на весь проект, срок словами вместо служебной метки.
+    task_deadline_text as _game_task_deadline_text,
+    visible_tasks_for, sort_tasks_for_ambassador, ambassador_block_index,
+)
+from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
+    eligible_wave_ids, current_wave_for, wave_rating_view, wave_number_label,
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
@@ -326,6 +336,9 @@ async def _render_game_task_line(
     category = tr(category)  # game_category_label_* — теперь в делегатском корпусе (group "game")
     deadline, overdue = _game_task_deadline_short(task)
     overdue_mark = " ⏰" if overdue else ""
+    # Phase 32 (32-06, D-27): задание без срока (`deadline` пустая строка) показывает словами
+    # `_game_task_deadline_text` («без срока» по умолчанию), а не «до » с пустым хвостом.
+    deadline_word = f"{tr('до')} {deadline}" if deadline else await _game_task_deadline_text(task)
 
     limit = await get_setting_typed("game_resubmit_limit")
     if limit:
@@ -337,7 +350,7 @@ async def _render_game_task_line(
             ), False
 
     if active is None:
-        tail = f"{category} · {task['coins']}🪙 · {tr('до')} {deadline}"
+        tail = f"{category} · {task['coins']}🪙 · {deadline_word}"
         if overdue:
             tail += f" — {tr('срок вышел, сдать ещё можно')}"
         return f"{index}. 📤 <b>{title}</b>{overdue_mark}\n{tail}", True
@@ -353,7 +366,7 @@ async def _render_game_task_line(
         return f"{index}. ✅ <b>{title}</b>\n{tr('принято')} (+{coins_awarded}🪙)", False
     # 'rejected' submissions never come back from get_active_submission (D-05) -- unreachable
     # in practice, kept as a fail-soft fallback rather than a silent KeyError.
-    tail = f"{category} · {task['coins']}🪙 · {tr('до')} {deadline}"
+    tail = f"{category} · {task['coins']}🪙 · {deadline_word}"
     if overdue:
         tail += f" — {tr('срок вышел, сдать ещё можно')}"
     return f"{index}. 📤 <b>{title}</b>{overdue_mark}\n{tail}", True
@@ -368,19 +381,40 @@ async def _game_task_list_screen(
 
     Phase 16 (16-01, GAME-UI-01): paginated at `PAGE_SIZE`, numbering is GLOBAL across pages
     (continues from `page*PAGE_SIZE + 1`), a page-nav row ("‹" / "N / M" no-op / "›") is added
-    only when there's more than one page."""
+    only when there's more than one page.
+
+    Phase 32 (32-06, D-24/D-28/D-31/D-36/D-38): один делегат — один запрос `get_user` (было два
+    отдельных условных чтения); тот же `user`/`code` идут и в фильтр видимости заданий, и в
+    список доступных волн амбассадора."""
     tr_map = tr_map or {}
-    if await cities_module_on():
-        user = await get_user(user_id)
-        code = normalize_city(user.get("event_city") if user else None)
+    user = await get_user(user_id)
+    cities_on = await cities_module_on()
+    code = normalize_city(user.get("event_city") if user else None) if cities_on else None
+    if cities_on:
         tasks = await list_active_tasks(city_scope=city_scope(code))
     else:
         tasks = await list_active_tasks()
+
+    # Phase 32 (32-06, D-28/D-31/D-38): единственное правило видимости на проект — ДО сортировки,
+    # иначе амбассадорское задание (audience="ambassadors") утечёт не-амбассадору, а задание
+    # чужой волны — амбассадору, для которого эта волна недоступна.
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    wave_ids: set[int] = set()
+    if is_ambassador:
+        waves = await list_waves(city_scope=city_scope(code) if cities_on else None)
+        wave_ids = eligible_wave_ids(user, waves)
+    tasks = visible_tasks_for(tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids)
+
     # Квик 260919-m9x: порядок — не тот, в котором отдаёт БД (`ORDER BY deadline_at ASC`,
     # просроченные сверху): открытые задания идут первыми, просроченные — в хвост. Иначе на
     # первой странице (шесть штук) делегат видел августовские задания, а свежее уезжало на
     # вторую — и сдавал ответ в просроченное. Тот же хелпер у списка в Mini App.
     tasks = sort_tasks_for_delegate(tasks)
+    # Phase 32 (32-06, D-24/D-28): амбассадорский блок поднимается наверх, внутри него —
+    # задания выбранного пути первыми; у не-амбассадора без пути результат байт-в-байт прежний.
+    tasks = sort_tasks_for_ambassador(
+        tasks, is_ambassador=is_ambassador, path=user.get("ambassador_path") if user else None,
+    )
     if not tasks:
         return reg_i18n.tr_text(await get_setting_typed("game_task_list_empty"), lang, tr_map), None
 
@@ -393,9 +427,18 @@ async def _game_task_list_screen(
         page_label = await get_setting_typed("game_task_list_page_label")
         lines.append(reg_i18n.tr_fmt(page_label, lang, tr_map, page=page + 1, total=total_pages))
 
+    # Phase 32 (32-06, D-28): сколько первых элементов УЖЕ отсортированного списка — блок
+    # амбассадора; заголовок вставляется ровно перед первым его заданием (глобальный индекс 0),
+    # только если блок непуст — пустой блок не меняет экран ни на байт.
+    block_count = ambassador_block_index(tasks) if is_ambassador else 0
+
     buttons = []
     for offset, task in enumerate(page_tasks):
-        i = page * PAGE_SIZE + offset + 1
+        global_index = page * PAGE_SIZE + offset
+        i = global_index + 1
+        if block_count and global_index == 0:
+            header = reg_i18n.tr_text(await get_setting_typed("ambassador_block_header_text"), lang, tr_map)
+            lines.append(f"<b>{header}</b>")
         active = await get_active_submission(task["id"], user_id)
         line, needs_button = await _render_game_task_line(i, task, active, user_id, lang, tr_map)
         lines.append(line)
@@ -701,12 +744,11 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
 
     prompt = await _build_proof_prompt(task)
     prompt = reg_i18n.tr_text(prompt, lang, tr_map)
-    try:
-        deadline_passed = (
-            datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S") <= msk_now()
-        )
-    except (TypeError, ValueError):
-        deadline_passed = False
+    # Phase 32 (32-06, D-27): единственный разбор `deadline_at` — общий помощник
+    # `game_labels.task_deadline_short` (тот же, что красит строку в списке/карточке), а не
+    # собственная копия `strptime` здесь — задание без срока (`NO_DEADLINE_AT`) никогда не даёт
+    # «просрочено» (helper возвращает `("", False)`), и правило одно на весь проект.
+    _, deadline_passed = _game_task_deadline_short(task)
     if deadline_passed:
         # Делегат не должен узнавать об этом только из отсутствия коинов -- предупреждаем
         # прямо в промпте, отправка при этом РАЗРЕШЕНА (A-05, созвон 13.08).
