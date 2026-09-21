@@ -25,7 +25,9 @@ import { attachSwipe } from "../swipe.js";
 
 // Порядок трек-чипов после «Все» (D-08) — коды совпадают с services.applications.TRACK_FILTERS.
 const TRACK_CHIP_ORDER = [["full", "full"], ["party", "party"], ["short", "short"]];
-const EDITED_BADGE_KINDS = ["edited", "resubmit", "prev_reject"];
+// Правила автоотказа (D-20/D-23): rule_flag/auto_reject/auto_reject_cleared — тот же accent-чип,
+// что и edited/resubmit/prev_reject, второй ветки рендера не заводим.
+const EDITED_BADGE_KINDS = ["edited", "resubmit", "prev_reject", "rule_flag", "auto_reject", "auto_reject_cleared"];
 
 // unmount() — отдельная функция вне render(), поэтому то, что она обязана снять (жест,
 // таймер тоста), живёт на уровне модуля, а не в замыкании render().
@@ -57,6 +59,7 @@ export async function render(root, params, ctx) {
   let offset = 0;
   let track = null; // null | "full" | "party" | "short"
   let changedOnly = false;
+  let flaggedOnly = false;
   let busy = false;
   let currentCard = null;
   let filtersData = null; // последний непустой filters — чипы/шаблоны переживают пустую страницу
@@ -165,6 +168,9 @@ export async function render(root, params, ctx) {
     }
     if (chips.changed) {
       filtersRow.append(chipBtn(chips.changed, changedOnly, () => { changedOnly = !changedOnly; offset = 0; load(); }));
+    }
+    if (chips.flagged) {
+      filtersRow.append(chipBtn(chips.flagged, flaggedOnly, () => { flaggedOnly = !flaggedOnly; offset = 0; load(); }));
     }
   }
 
@@ -489,6 +495,7 @@ export async function render(root, params, ctx) {
       const query = new URLSearchParams({ offset: String(offset) });
       if (track) query.set("track", track);
       if (changedOnly) query.set("changed", "1");
+      if (flaggedOnly) query.set("flagged", "1");
       card = await api(`/applications/next?${query.toString()}`);
     } catch (err) {
       cardHolder.classList.remove("is-loading");
