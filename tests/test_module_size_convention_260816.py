@@ -156,7 +156,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2545,
+        2561,
+        "Phase 32 (32-03, D-21): +24 строки — словарь `_DYNAMIC_SETTING_HINTS` (ключ настройки "
+        "-> имя функции-подсказки) рядом с `_settings_edit_screen` + общий хвост в конце "
+        "branches (2)/(3), дописывающий результат `services.ambassador_waves.referral_ratio_"
+        "hint()` к тексту экрана правки `ambassador_referral_coins`, когда он не None; "
+        "2537 -> 2561, потолок 2561 без запаса — следующая правка этого файла обязана поднять "
+        "потолок в этом же коммите. "
         "Phase 32 (32-02, амбассадорский слой): +42 строки — 22 новых ключа группы game "
         "(3 числовых + 19 текстовых + wave_end_manager_text) дописаны в _GAME_FIELD_ORDER, "
         "плюс отдельный тумблер `wave_rating_show_names` (не в FIELD_ORDER — правится кнопкой, "

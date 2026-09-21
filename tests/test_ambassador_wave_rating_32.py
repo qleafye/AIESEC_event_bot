@@ -1,11 +1,13 @@
 """Phase 32 План 3 (D-14/D-16/D-17/D-21/D-29/D-31/D-32/D-38): сервис
-`services.ambassador_waves` — участие в волне, рейтинг волны на чтении, сводка конца волны.
+`services.ambassador_waves` — участие в волне, рейтинг волны на чтении, сводка конца волны,
+подсказка соотношения баллов.
 
-Задача 1: `wave_eligible`/`eligible_wave_ids`/`current_wave_for`/`wave_rating`/
-`wave_rating_view` — привязка задания к волне переживает поздний просмотр (D-14), участие
-подчиняется D-31/D-32/D-38, имена скрываются на уровне данных (D-29).
-Задача 2: `wave_end_summary`/`close_wave`/`wave_number_label`. Задача 3 (подсказка
-соотношения баллов) дописывается в этот же файл следующим коммитом.
+Три раздела по задачам плана:
+- Задача 1: `wave_eligible`/`eligible_wave_ids`/`current_wave_for`/`wave_rating`/
+  `wave_rating_view` — привязка задания к волне переживает поздний просмотр (D-14), участие
+  подчиняется D-31/D-32/D-38, имена скрываются на уровне данных (D-29).
+- Задача 2: `wave_end_summary`/`close_wave`/`wave_number_label`.
+- Задача 3: `referral_ratio_hint` + подсказка на экране `handlers.admin_settings`.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, та же фикстура
 временной БД, что `tests/test_ambassador_waves_db_32.py::_ready`.
@@ -19,6 +21,7 @@ from datetime import datetime
 from config import config
 from database import db
 import services.ambassador_waves as waves
+from handlers.admin_settings import _settings_edit_screen
 
 
 def _ready(tmp_path, name="test_ambassador_wave_rating_32.db"):
@@ -347,3 +350,68 @@ def test_wave_number_label_no_word_nazvanie_uses_number():
     label = waves.wave_number_label({"number": 3})
     assert "название" not in label.lower()
     assert "3" in label
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: подсказка соотношения баллов
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_referral_ratio_hint_none_when_no_active_tasks(tmp_path):
+    _ready(tmp_path)
+    assert _run(waves.referral_ratio_hint()) is None
+
+
+def test_referral_ratio_hint_contains_ratio_and_median(tmp_path):
+    _ready(tmp_path)
+    for coins in (50, 100, 150):
+        _run(db.create_task(f"T{coins}", "Light", coins, "photo", "2026-10-01 00:00:00", None))
+    _run(db.set_setting("ambassador_referral_coins", "100"))
+
+    hint = _run(waves.referral_ratio_hint())
+    assert hint is not None
+    assert "1" in hint
+    assert "100" in hint
+
+
+def test_referral_ratio_hint_zero_says_not_awarded(tmp_path):
+    _ready(tmp_path)
+    _run(db.create_task("T", "Light", 100, "photo", "2026-10-01 00:00:00", None))
+    _run(db.set_setting("ambassador_referral_coins", "0"))
+
+    hint = _run(waves.referral_ratio_hint())
+    assert hint is not None
+    assert "не начисля" in hint
+
+
+def test_settings_screen_shows_hint_for_referral_key(tmp_path):
+    _ready(tmp_path)
+    _run(db.create_task("T", "Light", 100, "photo", "2026-10-01 00:00:00", None))
+    _run(db.set_setting("ambassador_referral_coins", "50"))
+
+    text, _kb = _run(_settings_edit_screen("ambassador_referral_coins", None))
+    assert "≈" in text
+
+
+def test_settings_screen_no_hint_for_neighbor_key(tmp_path):
+    _ready(tmp_path)
+    _run(db.create_task("T", "Light", 100, "photo", "2026-10-01 00:00:00", None))
+    _run(db.set_setting("ambassador_referral_coins", "50"))
+
+    text, _kb = _run(_settings_edit_screen("game_resubmit_limit", None))
+    assert "≈" not in text
+    assert "приглашённый" not in text
+
+
+def test_settings_screen_survives_exception_inside_hint(tmp_path, monkeypatch):
+    """Подсказка не имеет права уронить экран настроек — исключение внутри подсчёта
+    (замоканный list_active_tasks) не мешает экрану отрисоваться (T-32-03-05)."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "50"))
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(waves, "list_active_tasks", _boom)
+    text, kb = _run(_settings_edit_screen("ambassador_referral_coins", None))
+    assert text
+    assert kb is not None
