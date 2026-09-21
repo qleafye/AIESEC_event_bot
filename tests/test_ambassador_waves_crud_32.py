@@ -441,8 +441,8 @@ def test_delete_requires_confirm_and_clears_wave_id_and_jobs(tmp_path, monkeypat
 
     cancelled = {}
 
-    def fake_cancel_wave_jobs(wave_id, ambassador_ids):
-        cancelled["wave"] = (wave_id, list(ambassador_ids))
+    def fake_cancel_wave_jobs(wave_id):
+        cancelled["wave"] = wave_id
 
     monkeypatch.setattr(w, "cancel_wave_jobs", fake_cancel_wave_jobs)
 
