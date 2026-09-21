@@ -180,6 +180,18 @@ def sort_tasks_for_delegate(tasks: list[dict]) -> list[dict]:
     return sorted(tasks, key=key)
 
 
+def fill_template(template: str, **subs) -> str:
+    """Подстановка в шаблон, который правит менеджер (T-073-03-05, тот же приём, что
+    `handlers/reg_i18n.py::tr_fmt`) — `.replace("{key}", str(value))` цепочкой, НЕ
+    `.format()`. Менеджерский текст может содержать посторонний `{`/`}` (случайно набранный
+    символ, скопированная ссылка вида `{id}`), на котором `.format()` поднимает `KeyError`/
+    `IndexError`/`ValueError` и роняет всю отправку; лишний неизвестный `{плейсхолдер}`
+    остаётся в тексте как есть, а не превращается в исключение."""
+    for key, value in subs.items():
+        template = template.replace("{" + key + "}", str(value))
+    return template
+
+
 def penalized_coins(coins: int, percent: int) -> int:
     """Phase 32 (32-04, D-25/D-35): единственная формула штрафа за сдачу после дедлайна на
     весь проект — карточка задания (`penalty_hint_line` ниже) и одобрение сдачи (план 32-07)
@@ -205,7 +217,7 @@ async def penalty_hint_line(task: dict) -> str | None:
     coins = task["coins"]
     penalized = penalized_coins(coins, percent)
     template = await get_setting_typed("game_task_penalty_hint_text")
-    return template.format(deadline=dt.strftime("%d.%m %H:%M"), penalized=penalized, coins=coins)
+    return fill_template(template, deadline=dt.strftime("%d.%m %H:%M"), penalized=penalized, coins=coins)
 
 
 async def render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
@@ -329,6 +341,7 @@ def ambassador_block_index(tasks: list[dict]) -> int:
 __all__ = [
     "ambassador_block_index",
     "category_label",
+    "fill_template",
     "penalized_coins",
     "penalty_hint_line",
     "proof_types_label",
