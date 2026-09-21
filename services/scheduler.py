@@ -1375,13 +1375,11 @@ async def send_wave_end_ping(wave_id: int) -> None:
     повторное срабатывание после переармирования, или менеджер уже объявил итоги руками) —
     молча выходим, ни одного сообщения (T-32-08-03).
 
-    Деволюция от буквального текста плана: `handlers.admin_caps.notify_by_capability` не
-    принимает `reply_markup`, а этот файл (`handlers/admin_caps.py`) в параллели правит
-    другой исполнитель — вне `files_modified` этого плана. Вместо него здесь используется тот
-    же публичный примитив резолва получателей `capability_holders(cap, city=...)`, которым
-    сам `notify_by_capability` резолвит круг адресатов (тот же city-скоуп и тот же fallback на
-    `config.ADMIN_IDS`, если у capability вовсе нет держателей — T-32-08-02), плюс `_safe_send`
-    на отправку — одно сообщение с текстом И клавиатурой, а не текст separate от кнопок."""
+    Текстовая обёртка над капабилити в `handlers/admin_caps.py` не поддерживает `reply_markup`
+    (текст и кнопки шли бы раздельно), поэтому здесь используется публичный примитив резолва
+    получателей `capability_holders(cap, city=...)` напрямую — тот же city-скоуп и тот же
+    fallback на `config.ADMIN_IDS`, если у capability вовсе нет держателей (T-32-08-02),
+    плюс `_safe_send` на отправку одним сообщением с текстом и клавиатурой вместе."""
     try:
         from services.ambassador_waves import close_wave, wave_end_summary, wave_number_label
         from handlers.admin_caps import capability_holders
