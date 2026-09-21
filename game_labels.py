@@ -16,11 +16,13 @@ Phase 16 (16-03, GAME-UI-03): сюда же переехал ЧИСТЫЙ рен
 Фейл-софт: неизвестный код категории/типа подтверждения никогда не роняет рендер —
 возвращается как есть.
 
-Phase 32 (32-04, D-25/D-27): сюда же — показ задания без срока делегату («без срока», а не
-служебная метка «конца времён») и штраф за просрочку (одна формула на проект, строка-подсказка
-на карточке ДО сдачи). Менеджерским экранам — свой синхронный `task_deadline_admin` (без
-реестра, формат параметром): перевод существующих читателей на него — планы 32-06, 32-07 и
-32-14 (см. «Карту читателей» в 32-04-PLAN.md), не этот план.
+Phase 32 (32-04, D-25/D-27/D-28/D-24): сюда же — показ задания без срока делегату («без
+срока», а не служебная метка «конца времён»), штраф за просрочку (одна формула на проект,
+строка-подсказка на карточке ДО сдачи) и видимость/порядок заданий для амбассадора
+(`visible_tasks_for`, `sort_tasks_for_ambassador`) — ОДНА функция каждого правила для бота и
+Mini App разом, а не по копии на поверхность. Менеджерским экранам — свой синхронный
+`task_deadline_admin` (без реестра, формат параметром): перевод существующих читателей на
+него — планы 32-06, 32-07 и 32-14 (см. «Карту читателей» в 32-04-PLAN.md), не этот план.
 """
 import html
 from datetime import datetime
@@ -244,16 +246,99 @@ async def render_task_card_text(task: dict, status_line: str, attempt: int | Non
     return "\n".join(lines)
 
 
+def visible_tasks_for(
+    tasks: list[dict], *, is_ambassador: bool, eligible_wave_ids: set[int],
+) -> list[dict]:
+    """Phase 32 (32-04, D-28/D-31/D-38): единственное правило видимости задания на весь
+    проект — бот (`handlers/user_actions.py`) и Mini App (`miniapp/routers/tasks.py`) зовут
+    ЭТУ функцию, а не пишут фильтр в экране (T-32-04-01: вторая копия правила была бы дырой).
+
+    Задание с `audience == "ambassadors"` не отдаётся не-амбассадору (D-28); `audience`,
+    равный `None`/пустой строке, читается как «всем» (у существующих заданий колонка
+    пуста). Задание с непустым `wave_id` не отдаётся амбассадору, для которого эта волна
+    недоступна (`wave_id not in eligible_wave_ids`) — D-31 «вступил посреди волны, участвует
+    только в заданиях вне волн», то же правило автоматически закрывает вернувшегося (D-38).
+    Всё остальное отдаётся. Исходный список не меняется — только фильтрует, состав не
+    сортирует (сортировка — `sort_tasks_for_ambassador`)."""
+    result = []
+    for task in tasks:
+        audience = task.get("audience") or "all"
+        if audience == "ambassadors" and not is_ambassador:
+            continue
+        wave_id = task.get("wave_id")
+        if is_ambassador and wave_id and wave_id not in eligible_wave_ids:
+            continue
+        result.append(task)
+    return result
+
+
+# D-02: «путь» — предпочтение ПОРЯДКА показа, а не новое поле задания (у задания уже есть
+# `category` — заводить вторую ось означало бы два источника правды, которые может развести
+# правка одного без другого). "invite" поднимает категорию Referral (задания «пригласи»),
+# "content" — все остальные категории; путь, которого нет в словаре (в т.ч. `None` — «не
+# выбран»), не участвует в сортировке вовсе (D-24).
+_PATH_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "invite": ("Referral",),
+    "content": tuple(c for c in GAME_CATEGORIES if c != "Referral"),
+}
+
+
+def sort_tasks_for_ambassador(
+    tasks: list[dict], *, is_ambassador: bool, path: str | None,
+) -> list[dict]:
+    """Phase 32 (32-04, D-24/D-28): второй чистый пересорт ПОВЕРХ `sort_tasks_for_delegate`
+    (порядок по сроку сохраняется внутри каждой группы) — единственный для бота и Mini App.
+    У амбассадора задания `audience == "ambassadors"` поднимаются в начало отдельным блоком
+    независимо от пути (D-28); внутри каждого блока первыми идут задания выбранного пути —
+    `path` меняет ТОЛЬКО порядок, не состав и не баллы (D-02, D-24). Путь можно не выбирать:
+    `path=None` не меняет порядок вовсе (у не-амбассадора без пути результат байт-в-байт
+    равен `sort_tasks_for_delegate`). Перестановка, а не фильтр — состав как множество `id`
+    на входе и выходе совпадает."""
+    ordered = sort_tasks_for_delegate(tasks)
+    if not is_ambassador and path is None:
+        return ordered
+    path_categories = _PATH_CATEGORIES.get(path, ())
+
+    def block_key(task: dict) -> int:
+        audience = task.get("audience") or "all"
+        return 0 if (is_ambassador and audience == "ambassadors") else 1
+
+    def path_key(task: dict) -> int:
+        if not path_categories:
+            return 0
+        return 0 if task.get("category") in path_categories else 1
+
+    # sorted() стабильна: внутри одинаковых (block_key, path_key) порядок из `ordered`
+    # (по сроку) сохраняется.
+    return sorted(ordered, key=lambda t: (block_key(t), path_key(t)))
+
+
+def ambassador_block_index(tasks: list[dict]) -> int:
+    """Phase 32 (32-04, D-28): сколько первых элементов УЖЕ ОТСОРТИРОВАННОГО
+    (`sort_tasks_for_ambassador`) списка относятся к амбассадорскому блоку — экрану нужно
+    знать, куда вставить заголовок `ambassador_block_header_text`. Ноль, если блока нет."""
+    count = 0
+    for task in tasks:
+        if (task.get("audience") or "all") == "ambassadors":
+            count += 1
+        else:
+            break
+    return count
+
+
 __all__ = [
+    "ambassador_block_index",
     "category_label",
     "penalized_coins",
     "penalty_hint_line",
     "proof_types_label",
     "render_task_card_text",
+    "sort_tasks_for_ambassador",
     "sort_tasks_for_delegate",
     "task_deadline",
     "task_deadline_admin",
     "task_deadline_short",
     "task_deadline_text",
     "task_has_deadline",
+    "visible_tasks_for",
 ]
