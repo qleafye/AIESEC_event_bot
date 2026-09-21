@@ -47,6 +47,11 @@ from database.db import (
     CHAT_IN,
     CHAT_OUT,
     get_chat_filter_options,
+    # Phase 31 (31-02/31-07, D-28): поле фильтра «Автоотказ по правилу» — выбор
+    # «отклонён»/«не отклонён».
+    AUTO_REJECT_YES,
+    AUTO_REJECT_NO,
+    get_auto_reject_filter_options,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -922,6 +927,9 @@ _FILTER_FIELD_LABELS = {
     # Квик 260914-rgr (RGR-01..07): это членство в ЧАТЕ мероприятия (Telegram-группа
     # делегатов), а не «Город»/«Статус» — подписи двух полей должны различаться на экране.
     "delegate_chat": "Чат делегатов",
+    # Phase 31 (31-02/31-07, D-28): попал ли делегат под срабатывание правила автоотказа —
+    # значение хранится в `users.auto_reject_rule_ids`, отдельной колонки `auto_reject` нет.
+    "auto_reject": "Автоотказ по правилу",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -949,6 +957,13 @@ _PICKER_FIELDS = {
     # `db._FILTER_COLUMNS` (see there — `delegate_chat` is virtual there). No separate
     # handler needed for the same reason as `event_city`/`season`/`resume` above.
     "delegate_chat",
+    # Phase 31 (31-02/31-07, D-28) — same двойная регистрация rule: ОБЯЗАНО быть
+    # зарегистрировано И здесь, И в `db._FILTER_COLUMNS` (see there — `auto_reject` is
+    # virtual there), иначе фильтр виден на экране и молча не доходит до SQL — менеджер
+    # уверен, что шлёт сегменту, а рассылка уходит всем (тот же прецедент D-19, что у
+    # `event_city`/`season`/`resume`/`delegate_chat` выше). No separate handler needed for
+    # the same reason as those fields.
+    "auto_reject",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -1016,7 +1031,7 @@ def _filter_summary(filters: list[dict]) -> str:
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
-                     show_chat: bool = False) -> InlineKeyboardMarkup:
+                     show_chat: bool = False, show_auto_reject: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1054,6 +1069,11 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # «Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
     if show_chat:
         kb.append([InlineKeyboardButton(text="💬 Чат делегатов", callback_data="filter_f_delegate_chat")])
+    # Phase 31 (31-02/31-07, D-28): кнопка только когда в базе реально есть и автоотклонённые,
+    # и нет — фильтровать не по чему, когда все по одну сторону (тот же довод, что у
+    # «Резюме»/«Чата делегатов»/«Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
+    if show_auto_reject:
+        kb.append([InlineKeyboardButton(text="🤖 Автоотказ по правилу", callback_data="filter_f_auto_reject")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -1084,10 +1104,14 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
 
     chats = await chat_tracking.bound_chats()
     chat_options = await get_chat_filter_options(chats)
+    # Phase 31 (31-02/31-07, D-28): порог считается ТЕМ ЖЕ списком, который потом покажет
+    # пикер (get_auto_reject_filter_options) — второй карты значений нет.
+    auto_reject_options = await get_auto_reject_filter_options()
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
-                         show_chat=len(chat_options) > 1)
+                         show_chat=len(chat_options) > 1,
+                         show_auto_reject=len(auto_reject_options) > 1)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1182,6 +1206,19 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (in/out) не показываем (правило
         # «бот для людей»).
         labels = {CHAT_IN: "в чате", CHAT_OUT: "не в чате"}
+    elif field == "auto_reject":
+        # Phase 31 (31-02/31-07, D-28): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
+        # event_city/season/resume/delegate_chat выше: инлайн-кнопки не истекают, вчерашнее
+        # меню с кнопкой «Автоотказ» живо и сегодня, когда автоотказов в базе больше нет.
+        options = await get_auto_reject_filter_options()
+        if len(options) < 2:
+            await callback.answer(
+                "Автоотказов в базе пока нет — фильтровать не по чему.", show_alert=True,
+            )
+            return
+        # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
+        # «бот для людей»).
+        labels = {AUTO_REJECT_YES: "Отклонён правилом", AUTO_REJECT_NO: "Не отклонён правилом"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1317,6 +1354,11 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
             "field": field, "value": value, "label": labels.get(value, value),
             "chats": chats_payload,
         })
+    elif field == "auto_reject":
+        # Phase 31 (31-02/31-07, D-28): `label` есть ВСЕГДА — оба значения (AUTO_REJECT_YES/
+        # AUTO_REJECT_NO) сентинелы, та же причина, что у «Резюме»/«Чата делегатов» выше.
+        labels = data.get("filter_option_labels") or {}
+        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
