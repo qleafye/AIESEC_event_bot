@@ -16,6 +16,7 @@ from database.db import (
     create_question,
     list_active_tasks,
     list_waves,  # Phase 32 (32-06, D-31/D-38): доступные амбассадору волны для visible_tasks_for
+    get_wave,  # Phase 32 (32-06): экран рейтинга волны
     get_task,
     get_active_submission,
     create_submission,
@@ -44,7 +45,7 @@ from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 
     visible_tasks_for, sort_tasks_for_ambassador, ambassador_block_index,
 )
 from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
-    eligible_wave_ids, current_wave_for, wave_rating_view, wave_number_label,
+    eligible_wave_ids, current_wave_for, wave_rating_view, wave_number_label, wave_eligible,
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
@@ -455,6 +456,16 @@ async def _game_task_list_screen(
         if page < total_pages - 1:
             nav_row.append(InlineKeyboardButton(text="›", callback_data=f"gtasks_page:{page + 1}"))
         buttons.append(nav_row)
+
+    # Phase 32 (32-06, D-29): кнопка рейтинга волны — только амбассадору, у которого прямо
+    # сейчас есть доступная активная волна (та же пара current_wave_for + wave_eligible, что
+    # обработчик `ambwave` перепроверит заново по своему тапу — кнопка НЕ несёт wave_id, гейт
+    # целиком на стороне обработчика, T-32-06-01).
+    if is_ambassador:
+        current_wave = await current_wave_for(code)
+        if current_wave and wave_eligible(user, current_wave):
+            wave_label = reg_i18n.tr_text("🏅 Рейтинг волны", lang, tr_map)
+            buttons.append([InlineKeyboardButton(text=wave_label, callback_data="ambwave")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     return "\n\n".join(lines), kb
@@ -1490,3 +1501,84 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
         return
     from handlers.reg_silence_fallback import offer_if_resumable
     await offer_if_resumable(message)
+
+
+# ── Phase 32 (32-06, D-29): экран рейтинга волны ─────────────────────────────────────────────
+# В самом хвосте файла (golden-снапшот `tests/test_refac_snapshot_260816.py` фиксирует порядок
+# роутера — новый callback_query-хендлер обязан быть чистым аппендом, а не вставкой посреди
+# уже существующего callback_query-блока).
+
+async def _wave_rating_screen(
+    wave_id: int, viewer_id: int, lang: str = "ru", tr_map: dict | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Phase 32 (32-06, D-29): экран рейтинга ТЕКУЩЕЙ волны — заголовок с номером волны, при
+    включённом тумблере имён топ строками «место. имя — баллы» (имена экранированы,
+    T-32-06-05), затем строка собственного места (видна ВСЕГДА, даже когда имена скрыты —
+    `wave_rating_view.rows` в этом случае просто пуст, второй код ветвления здесь не нужен:
+    граница раскрытия данных — на уровне сервиса, план 32-03). «← Назад» возвращает список
+    заданий тем же `_game_task_list_screen`."""
+    tr_map = tr_map or {}
+    wave = await get_wave(wave_id)
+    header = reg_i18n.tr_text(await get_setting_typed("wave_rating_header_text"), lang, tr_map)
+    lines = [f"{header} · {wave_number_label(wave)}"]
+
+    view = await wave_rating_view(wave_id, viewer_id)
+    if view["rows"]:
+        lines.append("")
+        for row in view["rows"]:
+            lines.append(f"{row['place']}. {html.escape(str(row['name']))} — {row['points']}🪙")
+
+    own = view["own"]
+    if own is not None:
+        gap = own["gap_to_prize"] if own["gap_to_prize"] is not None else 0
+        own_line = reg_i18n.tr_fmt(
+            await get_setting_typed("wave_rating_own_line_text"), lang, tr_map,
+            rank=own["place"], total=own["total"], place=view["prize_places"], gap=gap,
+        )
+        lines.append("")
+        lines.append(own_line)
+
+    back_text = reg_i18n.tr_text("◀️ Назад", lang, tr_map)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=back_text, callback_data="gtasks_back:0"),
+    ]])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data == "ambwave")
+async def show_wave_rating(callback: types.CallbackQuery):
+    """Phase 32 (32-06, D-29, T-32-06-01): кнопка в списке заданий не несёт `wave_id` — гейт
+    целиком здесь, ПЕРЕД любым чтением рейтинга (кнопка в Telegram не истекает: экран мог быть
+    отрисован ещё до того, как нажавший вышел из амбассадоров или волна закрылась).
+    Не амбассадор/не участник ТЕКУЩЕЙ волны -> короткий alert, сообщение не перерисовывается.
+    Активной волны нет вовсе -> это нормальное пустое состояние, не отказ — редактируем
+    сообщение на `wave_rating_closed_text`, а не молчим alert'ом."""
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    user = await get_user(callback.from_user.id)
+    cities_on = await cities_module_on()
+    code = normalize_city(user.get("event_city") if user else None) if cities_on else None
+    current_wave = await current_wave_for(code)
+
+    if current_wave is None:
+        text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
+        back_text = reg_i18n.tr_text("◀️ Назад", lang, tr_map)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=back_text, callback_data="gtasks_back:0"),
+        ]])
+        await callback.message.edit_text(text, reply_markup=kb)
+        await callback.answer()
+        return
+
+    is_ambassador = bool(user and user.get("is_ambassador"))
+    if not is_ambassador or not wave_eligible(user, current_wave):
+        await callback.answer(
+            reg_i18n.tr_text(
+                "Рейтинг волны виден только участникам текущей волны амбассадоров.", lang, tr_map,
+            ),
+            show_alert=True,
+        )
+        return
+
+    text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()

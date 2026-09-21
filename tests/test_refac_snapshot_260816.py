@@ -420,6 +420,14 @@ def _build_snapshot_lines():
 # `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
 # 549-строчного снимка: ровно одна вставка из 4 строк, 0 удалений, 0 реордеров — этим планом
 # 31-08 весь шов `handlers/admin_reject_rules.py` завершён (531 -> 553 суммарно за три коммита).
+#
+# Drift note (32-06, задача 2, D-29: экран рейтинга волны, 578 -> 579 handlers -- PURE APPEND):
+# один новый callback_query-хендлер `show_wave_rating` (`ambwave`) встал в самый хвост
+# user_actions.router, сразу после `faq_ask` (последний хендлер файла handlers/user_actions.py
+# на момент этого плана) — кнопка «🏅 Рейтинг волны» в списке заданий не несёт wave_id, гейт
+# целиком в самом хендлере (T-32-06-01). Re-captured by RUNNING `_build_snapshot_lines()`
+# against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего 578-строчного снимка: ровно
+# одна вставка из 1 строки, 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -999,6 +1007,7 @@ user_actions|callback_query|info_place|info_place
 user_actions|callback_query|faq_page|faq_list:*
 user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
+user_actions|callback_query|show_wave_rating|ambwave
 """.strip("\n").splitlines()
 
 
@@ -1216,7 +1225,9 @@ def test_snapshot_total_handler_count_is_292():
     # в хвост файла не требовался. Пересчитано RUNNING `_build_snapshot_lines()` и сверено
     # diff'ом (difflib.SequenceMatcher) с прежним 577-строчным снимком: ровно одна вставка
     # одной строки, ни одна другая строка не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 578
+    # 32-06 задача 2: экран рейтинга волны, +1 user_actions.callback_query show_wave_rating
+    # (ambwave), хвост user_actions.router (578 -> 579).
+    assert len(GOLDEN_SNAPSHOT) == 579
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
