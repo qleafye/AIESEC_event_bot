@@ -25,13 +25,13 @@ import cities
 import settings_ops
 from database.db import (
     NO_DEADLINE_AT,
+    announce_wave_atomic,
     create_task,
     create_wave,
     get_display_names,
     get_pending_submissions,
     get_pending_submissions_count,
     get_wave,
-    insert_wave_results,
     list_active_tasks,
     list_ambassadors,
     list_wave_tasks,
@@ -183,7 +183,10 @@ async def wave_end_summary(wave_id: int) -> dict:
     wave = await get_wave(wave_id)
     rating = await wave_rating(wave_id)
     prize_places = int((wave or {}).get("prize_places") or await get_setting_typed("wave_prize_places"))
-    top = rating[:prize_places]
+    # CR-07: «спортивное» место (1-2-2-4), не срез по позиции в списке — при ничьей на границе
+    # призовых мест срез рисовал бы менеджеру топ, где один из двух равных по баллам участников
+    # не попал в список, хотя после объявления итогов попадут ОБА (см. `announce_results` ниже).
+    top = [r for r in rating if r["place"] <= prize_places]
 
     pending = 0
     pending_near_cutoff = 0
@@ -239,40 +242,71 @@ async def prize_places_for(wave: dict) -> int:
 
 
 async def announce_results(wave_id: int) -> dict | None:
-    """D-16/D-17: объявление итогов волны — ровно один раз. Атомарный переход `closing ->
-    announced` (`set_wave_state(..., expected_state="closing")`) — ПЕРВАЯ операция функции, та
-    же идиома, что у `close_wave`/`approve_user_atomic`: не выигранный переход (волна уже
-    объявлена, ещё идёт, или её вовсе нет) — функция НИЧЕГО не пишет и возвращает `None`,
-    двойной тап по кнопке «Объявить итоги» не создаёт второго объявления (T-32-11-02).
+    """D-16/D-17: объявление итогов волны — ровно один раз.
 
-    После выигранного перехода читается ТЕКУЩИЙ `wave_rating` — призовые места
-    (`prize_places_for`) и личное место/баллы каждого участника берутся из ЭТОГО момента, одной
-    меткой времени (`announced_at`) на все строки снимка. В БД (`insert_wave_results`) пишутся
-    ТОЛЬКО призовые места — D-17 говорит про список призёров, не про всех участников; полные
-    `standings` (место, баллы КАЖДОГО участника волны) возвращаются вызывающей стороне вместе
-    со снимком, чтобы рассылка итогов (план 32-11, задача 3) не резолвила рейтинг заново —
-    сдача, одобренная уже ПОСЛЕ этой секунды, не имеет права задним числом поменять то, что
-    увидят участники в сообщении об итогах (T-32-11-01), хотя в общий зачёт она пойдёт (D-17).
+    CR-06: рейтинг читается ДО открытия транзакции (`wave_rating` — read-only), а сам переход
+    состояния `closing -> announced` и запись снимка ВСЕХ участников волны идут ОДНОЙ
+    транзакцией (`announce_wave_atomic`) — тем же арбитром гонки, что раньше был отдельный
+    `set_wave_state`. До этой правки переход коммитился первым отдельным вызовом, а снимок —
+    вторым: падение между ними (`database is locked`, рестарт при деплое) оставляло волну
+    `announced` БЕЗ единой строки снимка и без кнопки восстановления в UI. `rowcount != 1`
+    (волна уже объявлена, ещё идёт, или её вовсе нет) — функция ничего не пишет и возвращает
+    `None`, двойной тап по кнопке «Объявить итоги» не создаёт второго объявления (T-32-11-02).
+
+    CR-07: призёр — КАЖДЫЙ, чьё «спортивное» место (1-2-2-4, см. `wave_rating`) не превышает
+    число призовых мест, а не первые N позиций списка — при равенстве баллов на границе срез по
+    позиции отдавал бы приз только одному из разделивших место, хотя оба физически заняли его
+    (`is_winner` в снимке отражает именно это правило, а не длину списка).
+
+    В БД (`announce_wave_atomic`) пишутся ВСЕ участники волны — не только призёры (D-17: личное
+    место невыигравшего тоже нельзя пересчитать заново задним числом); полные `standings` (место,
+    баллы КАЖДОГО участника) возвращаются вызывающей стороне для обратной совместимости
+    вызывающего кода, рассылка итогов (план 32-11) читает снимок из БД напрямую, а не через
+    этот аргумент — сдача, одобренная уже ПОСЛЕ этой секунды, не имеет права задним числом
+    поменять то, что увидят участники в сообщении об итогах (T-32-11-01), хотя в общий зачёт
+    она пойдёт (D-17).
 
     Коинов здесь не начисляется вовсе (D-19) — приз («счастливый билет») только текст в
     шаблоне итогов, бот ничего не выдаёт и не начисляет сам.
 
     Возвращает `{wave, winners: [...], standings: {user_id: (place, points)}, total}` либо
     `None`, если переход не выигран."""
-    if not await set_wave_state(wave_id, "announced", expected_state="closing"):
+    wave = await get_wave(wave_id)
+    if not wave or wave.get("state") != "closing":
         return None
 
-    wave = await get_wave(wave_id)
     rating = await wave_rating(wave_id)
     places = await prize_places_for(wave)
-    winners = rating[:places]
+    winners = [r for r in rating if r["place"] <= places]
+    winner_ids = {int(r["user_id"]) for r in winners}
 
     announced_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
-    rows = [(int(r["user_id"]), int(r["place"]), int(r["points"])) for r in winners]
-    await insert_wave_results(wave_id, rows, announced_at)
+    rows = [
+        (int(r["user_id"]), int(r["place"]), int(r["points"]), int(r["user_id"]) in winner_ids)
+        for r in rating
+    ]
+    if not await announce_wave_atomic(wave_id, rows, announced_at):
+        return None  # проиграли гонку (или волну откатили между чтением и записью) — молчим
 
+    wave = await get_wave(wave_id)
     standings = {int(r["user_id"]): (int(r["place"]), int(r["points"])) for r in rating}
     return {"wave": wave, "winners": winners, "standings": standings, "total": len(rating)}
+
+
+async def prize_tie_note(wave_id: int) -> str | None:
+    """CR-07: человеческая строка для экрана подтверждения «Объявить итоги», когда на границе
+    призовых мест ничья и призёров окажется больше, чем призовых мест (например, `prize_places
+    = 3`, а два участника делят 3-е место — призёров будет 4). `None`, если ничьей на границе
+    нет — обычный случай, экран не меняется."""
+    wave = await get_wave(wave_id)
+    if not wave:
+        return None
+    rating = await wave_rating(wave_id)
+    places = await prize_places_for(wave)
+    winners_count = len([r for r in rating if r["place"] <= places])
+    if winners_count <= places:
+        return None
+    return f"Из-за равенства баллов призёров {winners_count}, а не {places}."
 
 
 # ── Задача 3 (D-21): подсказка соотношения баллов на экране настройки ─────────────────────

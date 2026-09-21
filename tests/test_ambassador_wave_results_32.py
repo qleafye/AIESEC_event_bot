@@ -105,7 +105,10 @@ def test_prize_places_for_uses_wave_override_then_setting_then_floor_at_one(tmp_
     assert _run(aw.prize_places_for({})) == 3
 
 
-def test_announce_results_writes_exactly_prize_places_rows_and_transitions_state(tmp_path):
+def test_announce_results_writes_exactly_prize_places_winner_rows_and_transitions_state(tmp_path):
+    """CR-06(б): `get_wave_results(wave_id)` по умолчанию — только строки-призёры (ровно
+    `prize_places`, здесь нет ничьей на границе); полный снимок (`winners_only=False`)
+    содержит ВСЕХ участников волны, включая непризовые места."""
     _ready(tmp_path)
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     _seed_ambassador(1)
@@ -124,9 +127,16 @@ def test_announce_results_writes_exactly_prize_places_rows_and_transitions_state
 
     wave = _run(db.get_wave(wave_id))
     assert wave["state"] == "announced"
-    rows = _run(db.get_wave_results(wave_id))
+    rows = _run(db.get_wave_results(wave_id))  # по умолчанию — только призёры
     assert len(rows) == 2
     assert {r["user_id"] for r in rows} == {1, 2}
+    assert all(r["is_winner"] for r in rows)
+
+    full = _run(db.get_wave_results(wave_id, winners_only=False))
+    assert len(full) == 3  # ВСЕ участники, не только призёры (CR-06)
+    assert {r["user_id"] for r in full} == {1, 2, 3}
+    is_winner_by_uid = {r["user_id"]: bool(r["is_winner"]) for r in full}
+    assert is_winner_by_uid == {1: True, 2: True, 3: False}
 
 
 def test_announce_results_repeat_call_returns_none_snapshot_unchanged(tmp_path):
@@ -169,13 +179,18 @@ def test_announce_results_late_approval_keeps_snapshot_but_changes_general_ledge
     result = _run(aw.announce_results(wave_id))
     assert result["standings"][2] == (2, 10)
     snapshot_before = _run(db.get_wave_results(wave_id))
+    full_snapshot_before = _run(db.get_wave_results(wave_id, winners_only=False))
     balance_before = _run(db.get_balance(2))
 
     # Сдача участника 2 проверена уже ПОСЛЕ объявления — начисление задним числом.
     _award(2, task_id, 1000)
 
     snapshot_after = _run(db.get_wave_results(wave_id))
-    assert snapshot_after == snapshot_before  # снимок не изменился
+    assert snapshot_after == snapshot_before  # снимок призёров не изменился
+    # CR-06: личное место НЕ-призёра тоже заморожено — его нельзя пересчитать заново, если
+    # снимок хранил бы только призёров (D-17).
+    full_snapshot_after = _run(db.get_wave_results(wave_id, winners_only=False))
+    assert full_snapshot_after == full_snapshot_before
     balance_after = _run(db.get_balance(2))
     assert balance_after == balance_before + 1000  # общий зачёт изменился
 
@@ -204,9 +219,10 @@ def test_announce_results_prize_places_one_vs_three(tmp_path):
 
 
 def test_announce_results_tie_at_cutoff_is_deterministic(tmp_path):
-    """Равные баллы на границе призовых мест — спортивное ранжирование (1-2-2-4), срез по
-    prize_places строго по индексу (детерминированная вторичная сортировка `wave_rating`:
-    раньше вступивший выше, затем меньший telegram_id)."""
+    """Равные баллы на границе призовых мест — спортивное ранжирование (1-2-2-4); здесь ничья
+    занимает ровно `prize_places` строк, так что старый срез по позиции и новое правило «место
+    <= prize_places» (CR-07) дают один и тот же результат — регрессия на «не сломали простой
+    случай», отдельный тест ниже проверяет случай, где они расходятся."""
     _ready(tmp_path)
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     _seed_ambassador(1, since="2025-01-01 00:00:00")
@@ -222,6 +238,30 @@ def test_announce_results_tie_at_cutoff_is_deterministic(tmp_path):
     assert result["standings"][1] == (1, 20)
     assert result["standings"][2] == (1, 20)
     assert result["standings"][3] == (3, 10)  # спортивное ранжирование: 1,1,3 — не 1,1,2
+
+
+def test_announce_results_tie_exceeds_prize_places_all_tied_are_winners(tmp_path):
+    """CR-07: три участника делят 1-е место при `prize_places = 2` — раньше срез
+    `rating[:places]` отдавал приз только двум из трёх, хотя все трое физически заняли 1-е
+    место; новое правило «место <= prize_places» делает призёрами всех троих."""
+    _ready(tmp_path)
+    wave_id, task_id = _make_wave_with_task(prize_places=2)
+    _seed_ambassador(1, since="2025-01-01 00:00:00")
+    _seed_ambassador(2, since="2025-01-02 00:00:00")
+    _seed_ambassador(3, since="2025-01-03 00:00:00")
+    _seed_ambassador(4, since="2025-01-04 00:00:00")
+    _award(1, task_id, 50)
+    _award(2, task_id, 50)
+    _award(3, task_id, 50)  # трое делят 1-е место
+    _award(4, task_id, 10)
+
+    result = _run(aw.announce_results(wave_id))
+    winner_ids = {w["user_id"] for w in result["winners"]}
+    assert winner_ids == {1, 2, 3}  # больше, чем prize_places=2 — и это правильно (ничья)
+    assert all(result["standings"][uid] == (1, 50) for uid in (1, 2, 3))
+
+    rows = _run(db.get_wave_results(wave_id))  # снимок призёров — та же тройка
+    assert {r["user_id"] for r in rows} == {1, 2, 3}
 
 
 def test_announce_results_no_coin_writes():
@@ -326,6 +366,37 @@ def test_wavefin_go_confirm_mentions_winners_list_wont_change(tmp_path):
     assert f"wavefin_do:{wave_id}" in _kb_callbacks(kb)
 
 
+def test_wavefin_go_confirm_mentions_tie_when_winners_exceed_prize_places(tmp_path):
+    """CR-07: экран подтверждения предупреждает менеджера ДО объявления, если ничья на границе
+    призовых мест даёт больше призёров, чем самих мест — иначе первое, что он узнаёт об этом,
+    происходит уже ПОСЛЕ объявления, когда список призёров заперт (D-17)."""
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=2)
+    for uid in (1, 2, 3):
+        _seed_ambassador(uid, since=f"2025-01-0{uid} 00:00:00")
+        _award(uid, task_id, 50)  # трое делят 1-е место -> призёров больше, чем 2 места
+
+    cb = FakeCallback(f"wavefin_go:{wave_id}", user_id=ADMIN_ID)
+    _run(w.wave_finish_confirm(cb, _new_state(ADMIN_ID)))
+    text, _kb = cb.message.edits[-1]
+    assert "призёров 3" in text
+    assert "а не 2" in text
+
+
+def test_wavefin_go_confirm_no_tie_note_without_tie(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wave_id, task_id = _make_wave_with_task(prize_places=2)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+
+    cb = FakeCallback(f"wavefin_go:{wave_id}", user_id=ADMIN_ID)
+    _run(w.wave_finish_confirm(cb, _new_state(ADMIN_ID)))
+    text, _kb = cb.message.edits[-1]
+    assert "равенства баллов" not in text
+
+
 def test_wavefin_do_rejected_for_manager_of_other_city(tmp_path):
     _ready(tmp_path)
     from handlers import admin_game_waves as w
@@ -349,7 +420,7 @@ def test_wavefin_do_repeat_answers_already_announced_no_second_broadcast(tmp_pat
     _award(1, task_id, 10)
 
     scheduled = []
-    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid, standings: scheduled.append(wid))
+    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid: scheduled.append(wid))
 
     cb1 = FakeCallback(f"wavefin_do:{wave_id}", user_id=ADMIN_ID)
     _run(w.wave_finish_go(cb1, _new_state(ADMIN_ID)))
@@ -367,7 +438,7 @@ def test_wave_card_has_no_edit_buttons_after_announcement(tmp_path, monkeypatch)
     wave_id, task_id = _make_wave_with_task(prize_places=1)
     _seed_ambassador(1)
     _award(1, task_id, 10)
-    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid, standings: None)
+    monkeypatch.setattr(w, "schedule_wave_results_broadcast", lambda wid: None)
 
     cb = FakeCallback(f"wavefin_do:{wave_id}", user_id=ADMIN_ID)
     _run(w.wave_finish_go(cb, _new_state(ADMIN_ID)))
@@ -453,10 +524,12 @@ def _announce(wave_id):
 
 
 def test_schedule_wave_results_broadcast_job_id_and_replace_existing(tmp_path, monkeypatch):
+    """CR-06: джоба принимает ТОЛЬКО `wave_id` (как все остальные джобы этого файла) — снимок
+    читается из БД на срабатывании, не передаётся аргументом джобы."""
     async def body(s):
-        sched.schedule_wave_results_broadcast(7, {1: (1, 10)})
+        sched.schedule_wave_results_broadcast(7)
         assert s.get_job("wave_results_broadcast_7") is not None
-        sched.schedule_wave_results_broadcast(7, {1: (1, 10), 2: (2, 5)})  # переставили
+        sched.schedule_wave_results_broadcast(7)  # переставили — не плодит вторую джобу
         jobs = [j for j in s.get_jobs() if j.id == "wave_results_broadcast_7"]
         assert len(jobs) == 1
 
@@ -467,8 +540,18 @@ def test_send_wave_results_not_announced_state_silent(tmp_path, monkeypatch):
     _ready(tmp_path)
     bot = _with_bot(monkeypatch)
     wave_id, _task_id = _make_wave_with_task()  # состояние 'closing', не 'announced'
-    import json
-    _run(sched.send_wave_results(wave_id, json.dumps({"1": [1, 10]})))
+    _run(sched.send_wave_results(wave_id))
+    assert bot.sent == []
+
+
+def test_send_wave_results_no_snapshot_silent(tmp_path, monkeypatch):
+    """Волна `announced` без единой строки снимка (в теории недостижимо после CR-06, но
+    защита от пустого/битого состояния — фейл-софт, не исключение)."""
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    wave_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("08.10.2026")))
+    _run(db.set_wave_state(wave_id, "announced"))
+    _run(sched.send_wave_results(wave_id))
     assert bot.sent == []
 
 
@@ -480,11 +563,9 @@ def test_send_wave_results_winner_gets_two_messages_non_winner_one(tmp_path, mon
     _seed_ambassador(2, full_name="Участник")
     _award(1, task_id, 50)
     _award(2, task_id, 10)
-    result = _announce(wave_id)
+    _announce(wave_id)
 
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
 
     recipients = [c[0] for c in bot.sent]
     assert recipients.count(1) == 2  # призёр
@@ -493,7 +574,7 @@ def test_send_wave_results_winner_gets_two_messages_non_winner_one(tmp_path, mon
 
 def test_send_wave_results_reads_snapshot_not_live_rating(tmp_path, monkeypatch):
     """Регрессия: после подмены wave_rating содержимое сообщений не меняется — рассылка не
-    зовёт wave_rating вовсе, а читает переданный standings_json + снимок `get_wave_results`."""
+    зовёт `wave_rating` вовсе, а читает ПОЛНЫЙ снимок `get_wave_results(..., winners_only=False)`."""
     _ready(tmp_path, "t3c.db")
     bot = _with_bot(monkeypatch)
     wave_id, task_id = _make_wave_with_task(prize_places=1)
@@ -501,16 +582,13 @@ def test_send_wave_results_reads_snapshot_not_live_rating(tmp_path, monkeypatch)
     _seed_ambassador(2)
     _award(1, task_id, 50)
     _award(2, task_id, 10)
-    result = _announce(wave_id)
-
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _announce(wave_id)
 
     async def fake_rating(_wid):
         raise AssertionError("send_wave_results НЕ должна звать wave_rating")
     monkeypatch.setattr("services.ambassador_waves.wave_rating", fake_rating)
 
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
     texts = {c[0]: c[1] for c in bot.sent}
     assert "10" in texts[2]  # баллы участника 2 в тексте — из snapshot, не пересчитаны
     assert "2-е" in texts[2] or "2" in texts[2]
@@ -524,14 +602,11 @@ def test_send_wave_results_late_approval_does_not_change_texts(tmp_path, monkeyp
     _seed_ambassador(2)
     _award(1, task_id, 50)
     _award(2, task_id, 10)
-    result = _announce(wave_id)
-
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _announce(wave_id)
 
     _award(2, task_id, 1000)  # одобрили ПОСЛЕ объявления — рейтинг изменился
 
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
     texts = {c[0]: c[1] for c in bot.sent}
     assert "10" in texts[2]
     assert "1010" not in texts[2]
@@ -544,12 +619,10 @@ def test_send_wave_results_blocked_recipient_does_not_abort_others(tmp_path, mon
     _seed_ambassador(2)
     _award(1, task_id, 50)
     _award(2, task_id, 10)
-    result = _announce(wave_id)
+    _announce(wave_id)
     bot = _with_bot(monkeypatch, FakeBot(forbidden_ids={1}))
 
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
     assert 2 in [c[0] for c in bot.sent]  # получатель 2 не пострадал от блокировки получателя 1
 
 
@@ -559,13 +632,11 @@ def test_send_wave_results_quiet_hours_queues(tmp_path, monkeypatch):
     wave_id, task_id = _make_wave_with_task(prize_places=1)
     _seed_ambassador(1)
     _award(1, task_id, 10)
-    result = _announce(wave_id)
+    _announce(wave_id)
     _run(db.set_setting("quiet_hours_enabled", "on"))  # default-окно 22:00-09:00
 
     monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 9, 23, 0, 0))
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
     assert bot.sent == []  # не отправлено сейчас — положено в очередь тихих часов
 
 
@@ -575,12 +646,10 @@ def test_send_wave_results_manually_reset_state_sends_nothing(tmp_path, monkeypa
     wave_id, task_id = _make_wave_with_task(prize_places=1)
     _seed_ambassador(1)
     _award(1, task_id, 10)
-    result = _announce(wave_id)
+    _announce(wave_id)
     _run(db.set_wave_state(wave_id, "closing"))  # откатили руками
 
-    import json
-    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
-    _run(sched.send_wave_results(wave_id, standings_json))
+    _run(sched.send_wave_results(wave_id))
     assert bot.sent == []
 
 
@@ -588,3 +657,78 @@ def test_send_wave_results_no_wave_rating_call_in_source():
     import inspect
     src = inspect.getsource(sched.send_wave_results)
     assert "wave_rating" not in src
+
+
+# ── CR-06: возобновляемость рассылки итогов (notified_at) ─────────────────────────────────
+
+def test_send_wave_results_second_run_does_not_resend_to_already_notified(tmp_path, monkeypatch):
+    """Повторный запуск джобы (переармирование после сбоя/рестарта) не шлёт второе сообщение
+    уже уведомлённым — идемпотентность держит персональная отметка `notified_at`."""
+    _ready(tmp_path, "t3h.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    _announce(wave_id)
+
+    _run(sched.send_wave_results(wave_id))
+    first_count = len(bot.sent)
+    assert first_count == 3  # призёр (2 сообщения) + не призёр (1)
+
+    _run(sched.send_wave_results(wave_id))  # повторный тик — как после переармирования
+    assert len(bot.sent) == first_count  # ни одного нового сообщения
+
+
+def test_send_wave_results_resumes_only_unnotified_tail(tmp_path, monkeypatch):
+    """Частичная рассылка (упала джоба/бот после первого получателя) возобновляется и досылает
+    ТОЛЬКО тех, у кого `notified_at` ещё пуст — CR-06(3)."""
+    _ready(tmp_path, "t3i.db")
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    result = _announce(wave_id)
+    now = datetime(2026, 10, 9, 12, 0, 0).strftime("%Y-%m-%d %H:%M:%S")
+    _run(db.mark_wave_result_notified(wave_id, 1, now))  # участник 1 уже получил итог раньше
+
+    bot = _with_bot(monkeypatch)
+    _run(sched.send_wave_results(wave_id))
+    recipients = [c[0] for c in bot.sent]
+    assert 1 not in recipients  # уже отмечен — не дублируем
+    assert 2 in recipients
+
+
+def test_reconcile_wave_jobs_rearms_announced_wave_with_unnotified_snapshot(tmp_path, monkeypatch):
+    """CR-06: восстановление после потери джобы рассылки итогов (пересозданный `jobs.sqlite`,
+    простой дольше `_MISFIRE_GRACE_SECONDS`) — `reconcile_wave_jobs` ставит джобу заново для
+    ЛЮБОЙ `announced`-волны с хотя бы одной неразосланной строкой снимка."""
+    _ready(tmp_path, "t3j.db")
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+    _announce(wave_id)  # снимок есть, джобу рассылки никто не ставил (симулируем потерю)
+
+    async def body(s):
+        await sched.reconcile_wave_jobs()
+        assert s.get_job(f"wave_results_broadcast_{wave_id}") is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reconcile_wave_jobs_skips_fully_notified_announced_wave(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3k.db")
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+    _announce(wave_id)
+    now = datetime(2026, 10, 9, 12, 0, 0).strftime("%Y-%m-%d %H:%M:%S")
+    _run(db.mark_wave_result_notified(wave_id, 1, now))  # уже разослано целиком
+
+    async def body(s):
+        await sched.reconcile_wave_jobs()
+        assert s.get_job(f"wave_results_broadcast_{wave_id}") is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
