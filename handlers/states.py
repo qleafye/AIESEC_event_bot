@@ -247,6 +247,15 @@ class MiniAppTheme(StatesGroup):
     pattern = State()          # паттерн плиты, фото (необязательно)
 
 
+class RejectRuleEdit(StatesGroup):
+    # Phase 31 (31-08, D-09/D-21): экран карточки правила (handlers/admin_reject_rules.py) —
+    # правка имени и текста отказа. Правило id — в state.get_data() ("rre_rule_id"), тот же
+    # приём, что FaqItem несёт item id. Право "settings" ("state:RejectRuleEdit:*" в
+    # handlers/admin_caps.py).
+    name = State()
+    text = State()
+
+
 class AdminI18nEdit(StatesGroup):
     # Phase 27 (27-06, LANG-05/LANG-09): экран «🌐 Английские тексты» (handlers/admin_i18n.py)
     # — ручная правка одного английского текста. Одно состояние: цель правки (какую строку
