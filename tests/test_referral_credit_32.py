@@ -623,7 +623,7 @@ def test_legacy_default_city_referrer_gets_wave_id_when_cities_module_on(tmp_pat
     _make_ambassador(9403, since="2026-01-01 00:00:00")  # event_city=None — легаси дефолтного города
     _seed_user(9503, referrer_id=9403)
 
-    _run(applications.claim_approve(9503))
+    _approve_immediate(9503)
     credit = _run(db.get_referral_credit(9503))
 
     assert credit is not None
