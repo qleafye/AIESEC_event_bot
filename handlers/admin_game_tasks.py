@@ -23,6 +23,7 @@ registered BEFORE the step handlers below -- «Отмена»/`/cancel` never re
 """
 import html as html_module
 import logging
+from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -30,6 +31,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from settings_schema import get_setting_typed
 from database.db import (
+    NO_DEADLINE_AT,
     TASK_AUDIENCES,
     get_task,
     get_wave,
@@ -57,6 +59,7 @@ from handlers.game_task_wizard import (
     _game_task_deadline_preset_kb,
     _game_task_deadline_prompt,
     _game_task_wave_prompt,
+    _parse_iso_dt,
     _resolve_deadline_preset,
     _wizard_return_to_preview,
 )
@@ -163,7 +166,11 @@ async def game_task_editdeadline_start(callback: types.CallbackQuery, state: FSM
     task_id, task = await _task_from_callback(callback)
     if task is None:
         return
-    await state.set_data({"gte_task_id": task_id})
+    # Phase 32 (32-12, D-27): a wave task shows the «По умолчанию — конец волны» preset too —
+    # its wave is re-read here, once, and the resolved end date is parked in FSM data (the
+    # preset callback below is the only other reader).
+    wave = await get_wave(task["wave_id"]) if task.get("wave_id") else None
+    await state.set_data({"gte_task_id": task_id, "gte_wave_ends_at": (wave or {}).get("ends_at")})
     prompt = (
         f"📅 <b>{html_module.escape(task_title(task))}</b>\n\n"
         "Новый дедлайн — выберите готовый вариант кнопкой или введите дату текстом в формате "
@@ -171,7 +178,7 @@ async def game_task_editdeadline_start(callback: types.CallbackQuery, state: FSM
     )
     # The edit card itself becomes the prompt (one live message); a preset tap edits it back
     # into the card, «❌ Отмена» (= gtedit:<id>) restores it, a typed date re-sends the card.
-    kb = _game_task_deadline_preset_kb("gteditdeadline", f"gtedit:{task_id}")
+    kb = _game_task_deadline_preset_kb("gteditdeadline", f"gtedit:{task_id}", wave_end=bool(wave))
     try:
         await callback.message.edit_text(prompt, parse_mode="HTML", reply_markup=kb)
     except Exception:
@@ -181,7 +188,10 @@ async def game_task_editdeadline_start(callback: types.CallbackQuery, state: FSM
 
 
 async def _apply_point_deadline(task_id: int, when) -> bool:
-    if not await update_task_deadline(task_id, _fmt_dt(when)):
+    """Правка дедлайна СУЩЕСТВУЮЩЕГО задания — общая хвостовая точка для ввода текстом и
+    пресетов (включая «Без срока»/«По умолчанию — конец волны», Phase 32 32-12 задача 2)."""
+    deadline_at = when if isinstance(when, str) else _fmt_dt(when)
+    if not await update_task_deadline(task_id, deadline_at):
         return False
     _request_game_resync()
     return True
@@ -214,11 +224,15 @@ async def game_task_editdeadline_preset(callback: types.CallbackQuery, state: FS
     if task_id is None or await state.get_state() != GameTaskEdit.deadline.state:
         await callback.answer("Правка уже закрыта — откройте задание заново", show_alert=True)
         return
-    when = _resolve_deadline_preset(callback.data.split(":", 1)[1])
+    # Phase 32 (32-12, D-27): «Без срока» resolves to the NO_DEADLINE_AT string (skips the
+    # past-time check below), «wave_end» resolves via the end date parked by
+    # game_task_editdeadline_start above.
+    wave_end_at = _parse_iso_dt(data.get("gte_wave_ends_at"))
+    when = _resolve_deadline_preset(callback.data.split(":", 1)[1], wave_end_at=wave_end_at)
     if when is None:
         await callback.answer("Неизвестный вариант", show_alert=True)
         return
-    if when <= _now_moscow_naive():
+    if isinstance(when, datetime) and when <= _now_moscow_naive():
         await callback.answer("Это время уже прошло — выберите другой вариант", show_alert=True)
         return
     if not await _apply_point_deadline(task_id, when):
@@ -226,7 +240,8 @@ async def game_task_editdeadline_preset(callback: types.CallbackQuery, state: FS
         await state.set_state(None)
         return
     await state.set_state(None)
-    await callback.answer(f"Дедлайн: {when.strftime('%d.%m.%Y %H:%M')}")
+    label = "без срока" if when == NO_DEADLINE_AT else when.strftime('%d.%m.%Y %H:%M')
+    await callback.answer(f"Дедлайн: {label}")
     task = await get_task(task_id)
     text, kb = await _ag._task_edit_screen(task)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -280,17 +295,20 @@ async def game_task_preview_close(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("gtdeadline_preset:"))
 async def game_task_deadline_preset(callback: types.CallbackQuery, state: FSMContext):
-    """Preset tap on the wizard's deadline prompt -- resolves to a datetime and proceeds
-    exactly as if it had been typed (`_finish_deadline_step`: same preview, same photo/no-photo
-    branch). Past-time edge (today 23:59 already gone) -> same rejection as manual entry."""
+    """Preset tap on the wizard's deadline prompt -- resolves to a datetime (or, Phase 32
+    32-12, D-27, «Без срока»/«По умолчанию — конец волны») and proceeds exactly as if it had
+    been typed (`_finish_deadline_step`: same preview, same photo/no-photo branch). Past-time
+    edge (today 23:59 already gone) -> same rejection as manual entry."""
     if await state.get_state() != GameTaskCreate.deadline.state:
         await callback.answer("Этот шаг уже пройден", show_alert=True)
         return
-    when = _resolve_deadline_preset(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+    wave_end_at = _parse_iso_dt(data.get("gt_wave_ends_at"))
+    when = _resolve_deadline_preset(callback.data.split(":", 1)[1], wave_end_at=wave_end_at)
     if when is None:
         await callback.answer("Неизвестный вариант", show_alert=True)
         return
-    if when <= _now_moscow_naive():
+    if isinstance(when, datetime) and when <= _now_moscow_naive():
         await callback.answer("Это время уже прошло — выберите другой вариант", show_alert=True)
         return
     try:
