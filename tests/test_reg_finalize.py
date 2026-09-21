@@ -10,6 +10,7 @@ pytest-asyncio недоступен — async через asyncio.run(), фикс
 резолвятся заново при каждом вызове, поэтому монкипатч исходного модуля срабатывает).
 """
 import asyncio
+import json
 
 from config import config
 from database import db
@@ -245,6 +246,131 @@ def test_finalize_data_edit_resubmit_rejected_sets_pending_and_marks_history(tmp
     assert user["status"] == "pending"
     markers = [h for h in history if h["changes"] == [{"column": "status", "old": "rejected", "new": "pending"}]]
     assert len(markers) == 1
+
+
+# ── Phase 31 (31-06, D-19/D-23): правила автоотказа не трогают уже поданные заявки ──────────
+
+def test_reject_rules_do_not_touch_pending(tmp_path, monkeypatch):
+    """T-31-06-01/D-19: сохранение/включение правила НЕ меняет статус уже поданных заявок.
+    Оценка правил происходит ТОЛЬКО внутри `_finalize_data_impl` (подача/правка СВОЕЙ анкеты)
+    — пакетного прохода по очереди в проекте нет и не появится."""
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "ADMIN_IDS", [1])
+
+    async def go():
+        uids = [900800501, 900800502, 900800503]
+        for uid in uids:
+            await _seed_user(uid, status="pending", course="1")
+
+        from services.reject_rules import save_rule
+        rule_id, err = await save_rule(
+            1, None, name=None, city=None, tracks=["full"],
+            conditions=[[{"step": "course", "op": "in", "values": ["1", "2"]}]],
+            action="reject", reject_text="Курс закрыт.", enabled=True,
+        )
+        await db.set_setting("reject_rules_enabled", "on")
+
+        users_after = {uid: await db.get_user(uid) for uid in uids}
+        log_rows = await db.list_auto_reject_log(include_returned=True)
+        decisions = [await db.get_last_application_decision(uid) for uid in uids]
+        return err, rule_id, users_after, log_rows, decisions
+
+    err, rule_id, users_after, log_rows, decisions = asyncio.run(go())
+    assert err is None
+    assert rule_id is not None
+    for user in users_after.values():
+        assert user["status"] == "pending"
+        assert user.get("auto_reject_rule_ids") in (None, "null")
+    assert log_rows == []
+    assert all(d is None for d in decisions)
+
+
+def test_edit_clears_auto_reject_badge(tmp_path):
+    """T-31-06 acceptance: правка, снявшая правило, отправляет заявку на РУЧНУЮ модерацию с
+    отдельным бейджем (auto_reject_cleared), даже если на событии ВКЛЮЧЕНО автоодобрение —
+    оценщик структурно не умеет вернуть "approved" (план 31-01), решает человек."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "manual")
+        await db.set_setting("reject_rules_enabled", "on")
+        await db.create_reject_rule(
+            name=None, city=None, tracks=json.dumps(["full"]),
+            conditions=json.dumps([[{"step": "course", "op": "in", "values": ["1", "2"]}]]),
+            action="reject", reject_text="Курс закрыт.", enabled=1, created_by=1,
+        )
+
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "1"}}
+        result_new = await rf.finalize_data(UID, "@x", draft)
+        assert result_new["status"] == "rejected"
+
+        # Включённое автоодобрение — гарантия D-23 «даже если включено».
+        await db.set_setting("full_approval", "auto")
+
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit",
+            "answers": {"course": "3"}, "updated_by": "miniapp",
+        }
+        result_edit = await rf.finalize_data(UID, "@x", edit_draft)
+        user = await db.get_user(UID)
+        history = await db.get_answer_history(UID, limit=5)
+        return result_edit, user, history
+
+    result_edit, user, history = asyncio.run(go())
+    assert result_edit["status"] == "pending"
+    assert user["status"] == "pending"
+    assert user.get("auto_reject_rule_ids") in (None, "null")
+
+    cleared_rows = [
+        h for h in history
+        if any(c.get("auto_reject_cleared") for c in (h.get("changes") or []))
+    ]
+    assert len(cleared_rows) == 1
+    marker = next(c for c in cleared_rows[0]["changes"] if c.get("auto_reject_cleared"))
+    assert marker["column"] == "status" and marker["old"] == "rejected" and marker["new"] == "pending"
+    assert marker["rule_field"] == "course"
+    assert marker["rule_field_old"] == "1"
+    assert marker["rule_field_new"] == "3"
+
+    # НЕ тот же маркер, что обычная повторная подача (та не несёт auto_reject_cleared).
+    plain_resubmit = [
+        h for h in history
+        if h["changes"] == [{"column": "status", "old": "rejected", "new": "pending"}]
+    ]
+    assert plain_resubmit == []
+
+
+def test_edit_still_matching_rule_rejects_again_with_growing_attempt_count(tmp_path):
+    """D-24: делегат, переподавший анкету с тем же ответом, получает отказ снова — лимита
+    попыток в финале нет, в журнале растёт счётчик."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "manual")
+        await db.set_setting("reject_rules_enabled", "on")
+        await db.create_reject_rule(
+            name=None, city=None, tracks=json.dumps(["full"]),
+            conditions=json.dumps([[{"step": "course", "op": "in", "values": ["1", "2"]}]]),
+            action="reject", reject_text="Курс закрыт.", enabled=1, created_by=1,
+        )
+        draft = {"telegram_id": UID, "kind": "new", "answers": {"course": "1"}}
+        await rf.finalize_data(UID, "@x", draft)
+
+        # Правка НЕ трогает условие правила — оно срабатывает снова.
+        edit_draft = {
+            "telegram_id": UID, "kind": "edit",
+            "answers": {"phone": "+79990001122"}, "updated_by": "bot",
+        }
+        result_edit = await rf.finalize_data(UID, "@x", edit_draft)
+        log_rows = await db.list_auto_reject_log(include_returned=True)
+        return result_edit, log_rows
+
+    result_edit, log_rows = asyncio.run(go())
+    assert result_edit["status"] == "rejected"
+    assert len(log_rows) == 1
+    assert log_rows[0]["attempt_count"] == 2
 
 
 # ── двойной финал (T-21-02) ──────────────────────────────────────────────────────────────

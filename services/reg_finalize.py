@@ -204,6 +204,57 @@ async def _auto_reject_patch(telegram_id: int, answers: dict, status: str) -> di
         return {}
 
 
+async def _auto_reject_cleared_marker(old_rule_ids_raw: str | None, changes: list[dict]) -> dict:
+    """Phase 31 (31-06, D-23, Pitfall 2): маркер статус-перехода `rejected -> pending`,
+    расширяющий СУЩЕСТВУЮЩИЙ маркер (`{"column": "status", "old": "rejected", "new":
+    "pending"}`) ключом `auto_reject_cleared` — та же форма, что «🔁 Повторная подача», но
+    отличимая ей самой сиблингом: `admin_moderation.py::_edit_badges_for` обязан различать их
+    ПО ЭТОМУ ключу, иначе снявшая правило правка выглядела бы как обычная переподача.
+
+    `rule_field`/`rule_field_old`/`rule_field_new` — какое ИМЕННО изменённое поле относится к
+    условиям правила, которое раньше отклоняло заявку (для бейджа «⚠️ сменил ответ после
+    автоотказа: Курс 1 → 3»). Первое из `changes`, чей column встречается в условиях ЛЮБОГО из
+    старых сработавших правил — этого достаточно для человекочитаемого бейджа. Правило
+    удалено/условия битые/правки не коснулись полей правила (например снялось из-за смены
+    forum_date, не ответа) -> маркер всё равно ставится, просто без `rule_field` — сам факт
+    «снялось» важнее детализации."""
+    from database.db import get_reject_rule
+
+    marker: dict = {"column": "status", "old": "rejected", "new": "pending", "auto_reject_cleared": True}
+    try:
+        old_rule_ids = json.loads(old_rule_ids_raw or "[]") or []
+    except (TypeError, ValueError):
+        old_rule_ids = []
+
+    steps_in_rules: set = set()
+    for rule_id in old_rule_ids:
+        try:
+            row = await get_reject_rule(rule_id)
+        except Exception:
+            row = None
+        if not row:
+            continue
+        try:
+            conditions = json.loads(row.get("conditions") or "[]") or []
+        except (TypeError, ValueError):
+            conditions = []
+        for group in conditions:
+            for cond in group or []:
+                step = (cond or {}).get("step")
+                if step:
+                    steps_in_rules.add(step)
+
+    for change in changes:
+        column = change.get("column")
+        step = reg_engine.column_to_step(column) if column else None
+        if step and step in steps_in_rules:
+            marker["rule_field"] = column
+            marker["rule_field_old"] = change.get("old")
+            marker["rule_field_new"] = change.get("new")
+            break
+    return marker
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
@@ -278,6 +329,12 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             changed_columns = [c["column"] for c in changes]
             source = draft.get("updated_by") or "bot"
             season = old.get("season")
+            # Phase 31 (31-06, D-23): считаем ДО ветвления ниже — правка отклонённой автоправилом
+            # заявки НЕ проходит по маршруту обычной «🔁 Повторная подача» (Pitfall 2: тот же
+            # плоский маркер `{"column": "status", "old": "rejected", ...}` иначе достался бы
+            # ОБОИМ переходам неразличимо). Статус остаётся "rejected" здесь — решает блок
+            # автоотказа ниже (после пересчёта балла), он же пишет единственный маркер истории.
+            was_auto_rejected = bool(old.get("auto_reject_rule_ids"))
 
             if changes:
                 patch = {c["column"]: answers.get(c["column"]) for c in changes}
@@ -287,7 +344,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 )
                 await mark_user_edited(telegram_id, source)
 
-                if status == "rejected":
+                if status == "rejected" and not was_auto_rejected:
                     # D-10: повторная подача отклонённой анкеты -> pending, отдельная запись
                     # истории {"column": "status", ...}, которую admin_moderation.py (21-07,
                     # _edit_badges_for) уже умеет распознавать как признак «🔁 Повторная подача».
@@ -299,7 +356,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                         source, season,
                     )
                     await set_user_status(telegram_id, status)
-                elif await get_setting_typed("toggle_reg_edit_remoderation") == "on":
+                elif status != "rejected" and await get_setting_typed("toggle_reg_edit_remoderation") == "on":
                     # D-12: тумблер «Изменённая анкета — снова на модерацию».
                     remoderated = True
                     status = "pending"
@@ -334,6 +391,80 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 await update_user_answers(
                     telegram_id, score_patch, allowed_columns=["score", "is_it_3plus"]
                 )
+
+            # Phase 31 (31-06, D-23/D-24): повторная оценка правил автоотказа по ПОЛНОМУ
+            # текущему набору ответов (`answers`, не по патчу) — тем же `_auto_reject_patch`,
+            # что и ветка новой заявки (D-07: один класс функции). Место — ПОСЛЕ применения
+            # патча и пересчёта балла (answers уже содержит актуальные значения ВСЕХ полей, не
+            # только тронутых этим вызовом patch'ем). `event_city`/`participant_type` НЕ входят
+            # в `answer_columns()` (метаданные заявки, не шаги анкеты) — добавляем их из `old`
+            # явно, иначе `active_rules()` увидит `event_city=None` и потеряет городской скоуп.
+            # (`was_auto_rejected` уже вычислен выше, до ветки резаба/ремодерации.)
+            eval_answers = {
+                **answers,
+                "event_city": old.get("event_city"),
+                "participant_type": old.get("participant_type"),
+            }
+            auto_patch = await _auto_reject_patch(telegram_id, eval_answers, status)
+            if auto_patch:
+                if auto_patch["status_override"] == "rejected":
+                    # Исход 1 (D-24): правило снова сработало (или впервые — на правке ранее
+                    # не отклонённой заявки) — тот же отказ, лимита попыток нет;
+                    # record_auto_reject растит счётчик живой строки журнала.
+                    column_patch = {
+                        "auto_reject_rule_ids": auto_patch["auto_reject_rule_ids"],
+                        "auto_rejected_at": auto_patch["auto_rejected_at"],
+                        "flagged_rule_ids": auto_patch["flagged_rule_ids"],
+                        "auto_rule_note": auto_patch["auto_rule_note"],
+                    }
+                    if "rejected_at" in auto_patch:
+                        column_patch["rejected_at"] = auto_patch["rejected_at"]
+                    await update_user_answers(
+                        telegram_id, column_patch,
+                        allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note", "rejected_at"],
+                    )
+                    status = "rejected"
+                    auto_rejected = True
+                    await set_user_status(telegram_id, status)
+                    from services.reject_journal import record_auto_reject
+                    await record_auto_reject(
+                        telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
+                    )
+                else:
+                    # Пометка (flag) статус не меняет — заявка остаётся на обычной модерации.
+                    column_patch = {
+                        "flagged_rule_ids": auto_patch["flagged_rule_ids"],
+                        "auto_rule_note": auto_patch["auto_rule_note"],
+                    }
+                    await update_user_answers(
+                        telegram_id, column_patch,
+                        allowed_columns=["flagged_rule_ids", "auto_rule_note"],
+                    )
+                flagged_rule_ids_out = auto_patch["flag_rule_ids"]
+            elif was_auto_rejected:
+                # Исход 2 (D-23): делегат БЫЛ автоотклонён, правило больше не срабатывает —
+                # статус ВСЕГДА pending, даже при включённом автоодобрении события: решает
+                # человек, оценщик структурно не умеет вернуть "approved" (план 31-01). Колонки
+                # автоотказа обнуляются; отдельный маркер истории (Pitfall 2) — НЕ переиспользуем
+                # маркер обычной повторной подачи, бейдж обязан отличаться.
+                status = "pending"
+                await set_user_status(telegram_id, status)
+                await update_user_answers(
+                    telegram_id,
+                    {
+                        "auto_reject_rule_ids": None, "auto_rejected_at": None,
+                        "flagged_rule_ids": None, "auto_rule_note": None,
+                    },
+                    allowed_columns=[
+                        "auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note",
+                    ],
+                )
+                cleared_marker = await _auto_reject_cleared_marker(
+                    old.get("auto_reject_rule_ids"), changes,
+                )
+                await record_answer_history(telegram_id, [cleared_marker], source, season)
+            # Исход 3: делегат не был автоотклонён, и правило не сработало — поведение ветки
+            # `edit` байт-в-байт прежнее (auto_patch пуст, was_auto_rejected ложно).
         else:
             answers = reg_engine.with_defaults(raw_answers)
             data = dict(answers)
