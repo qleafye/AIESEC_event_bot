@@ -406,6 +406,14 @@ def test_copy_go_rejects_city_without_right(tmp_path):
     assert len(all_rules) == 1
 
 
+def test_rule_reject_count_no_longer_scans_journal_in_python():
+    """WR-01: счётчик обязан считать в SQL, а не вычитывать журнал целиком (был `limit=100000`)
+    в Python-цикле — сторож ловит регрессию к старой O(journal size) реализации."""
+    source = inspect.getsource(admin_reject_rules._rule_reject_count)
+    assert "100000" not in source
+    assert "count_auto_reject_log_for_rule" in source
+
+
 def test_delete_confirm_shows_autodescription_and_disable_alternative(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk", reject_text="Причина", enabled=1))
