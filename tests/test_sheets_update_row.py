@@ -182,6 +182,25 @@ def test_update_row_alert_after_retries_exhausted(monkeypatch):
     assert main.update_calls == []
 
 
+# ── Phase 31 (31-06, D-26): пометка автоотказа в «Детали» — та же вкладка, та же ширина ─────
+
+def test_update_row_auto_reject_note_in_details_same_width_same_tab(monkeypatch):
+    header = ["id", "Статус", "ФИО", "Детали"]
+    named = RecordingWorksheet("СПб", rows=[["555", "На модерации", "Иван Иванов", "-"]], header=header)
+    main = RecordingWorksheet("main", rows=[], header=header)
+    _patch_fake_sheets(monkeypatch, {"__main__": main, "СПб": named})
+
+    new_row = ["555", "Отклонена", "Иван Иванов", "🤖 Автоотказ 20.09 (правило: Курс закрыт)"]
+
+    async def go():
+        return await sheets.update_row_by_id("СПб", 555, new_row)
+
+    assert asyncio.run(go()) is True
+    assert named.update_calls == [([new_row], "A2:D2")]
+    assert len(new_row) == len(header)  # число колонок не изменилось
+    assert main.update_calls == []  # та же вкладка, не главный лист
+
+
 # ── no Sheets credentials configured: skip without raising ──────────────────────────────────
 
 def test_update_row_skips_without_credentials(monkeypatch, caplog):

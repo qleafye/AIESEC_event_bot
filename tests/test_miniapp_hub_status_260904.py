@@ -125,6 +125,35 @@ def test_pending_and_approved_have_no_reason_line(client):
     assert body_approved["reason_line"] is None
 
 
+def test_auto_rejected_delegate_sees_reason_and_date_like_manual_reject(client):
+    """Phase 31 (31-06, D-22): экран статуса заявки после автоотказа — тот же, что при обычном
+    отказе (статус, причина, дата). `hub_status` читает `application_decisions`/`users.
+    rejected_at` универсально, без ветвления по `decided_by` — запись с сентинелом
+    AUTO_DECIDED_BY уже даёт паритет без единой правки hub.py (Pitfall 1)."""
+    from services.reject_journal import AUTO_DECIDED_BY
+
+    _set("reg_form_status_screen", "on")
+    _run(_sql(
+        "UPDATE users SET rejected_at = '2026-09-20 10:00:00' WHERE telegram_id = ?",
+        (REJECTED_ID,),
+    ))
+    _run(_sql(
+        "INSERT INTO application_decisions "
+        "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at, effects_sent_at) "
+        "VALUES (?, 'rejected', ?, ?, '2026-09-20 10:00:00', '2026-09-20 10:00:00', "
+        "'2026-09-20 10:00:00')",
+        (REJECTED_ID, "Мест на выбранный курс уже нет — набор на него закрыт.", AUTO_DECIDED_BY),
+    ))
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "rejected"
+    assert body["reason_line"] == (
+        "Причина: Мест на выбранный курс уже нет — набор на него закрыт."
+    )
+    assert body["reason_text"] == "Мест на выбранный курс уже нет — набор на него закрыт."
+    assert body["reason_date"]  # непусто — как после обычного отказа, не «автоматически»
+
+
 def test_unregistered_does_not_crash(client):
     # form_gate пропускает незарегистрированного (он тот, у кого ещё нет анкеты) — ручка не
     # должна падать 500, даже если по плану 260904-aup он читается как "approved" (пустая

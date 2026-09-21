@@ -182,6 +182,14 @@ def _sheet_details(data: dict) -> str:
     # читаем готовую строку, никакой логики форматирования.
     if data.get("_edited_note"):
         parts.append(str(data["_edited_note"]))
+    # Phase 31 (31-06, D-26): пометка автоотказа/правила-пометки — «Детали» ЕДИНСТВЕННАЯ
+    # колонка листа для неё (новую колонку посреди сезона не заводим, инцидент 13.09). В
+    # отличие от `_edited_note` (эфемерная, собирается в post_finalize из changed_columns),
+    # `auto_rule_note` — ПЕРСИСТЕНТНАЯ колонка users (её пишет `services.reg_finalize.
+    # _auto_reject_patch`) — здесь только читаем готовое значение из `data` (= `full`, строка
+    # users), никакой логики форматирования.
+    if data.get("auto_rule_note"):
+        parts.append(str(data["auto_rule_note"]))
     return " | ".join(parts) if parts else "-"
 
 
