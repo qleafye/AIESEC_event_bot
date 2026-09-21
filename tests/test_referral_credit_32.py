@@ -481,7 +481,12 @@ def test_backfill_apply_creates_rows_without_wave_source_backfill(tmp_path):
 
     summary = _run(referrals.backfill_approved(dry_run=False))
 
-    assert summary == {"candidates": 1, "credited": 1, "coins": 25, "ambassadors": 1}
+    assert summary == {
+        "candidates": 1, "credited": 1, "coins": 25, "ambassadors": 1,
+        "season": None, "breakdown": [
+            {"referrer_id": 9202, "referrer_name": "Delegate 9202", "invitees": 1, "coins": 25},
+        ],
+    }
     con = sqlite3.connect(config.DB_PATH)
     try:
         row = con.execute(
@@ -501,7 +506,10 @@ def test_backfill_second_run_does_not_duplicate(tmp_path):
     _run(referrals.backfill_approved(dry_run=False))
     summary2 = _run(referrals.backfill_approved(dry_run=False))
 
-    assert summary2 == {"candidates": 0, "credited": 0, "coins": 0, "ambassadors": 0}
+    assert summary2 == {
+        "candidates": 0, "credited": 0, "coins": 0, "ambassadors": 0,
+        "season": None, "breakdown": [],
+    }
     assert _referral_credit_count() == 1
 
 
@@ -519,6 +527,70 @@ def test_backfill_skips_already_live_credited_invitee(tmp_path):
 
     assert summary["candidates"] == 0
     assert _referral_credit_count() == 1
+
+
+# ── WR-17 (32-REVIEW.md): бэкафилл фильтруется по сезону, dry-run показывает список ────────
+
+def _seed_invitee_with_season(tid, referrer_id, season, *, full_name=None):
+    """`_seed_user` не пробрасывает `season` (колонка `users.season` — план 07.3) — своя
+    сборка ровно для этой группы тестов."""
+    _run(db.add_user({
+        "telegram_id": tid,
+        "full_name": full_name or f"Delegate {tid}",
+        "registration_date": f"2026-09-01 00:00:{tid % 60:02d}",
+        "referrer_id": referrer_id,
+        "season": season,
+    }))
+    _run(db.set_user_status(tid, "approved"))
+
+
+def test_backfill_filters_by_current_season(tmp_path):
+    """Легаси/импортированные делегаты прошлого сезона (season != текущий, либо season вовсе
+    NULL) не имеют права попасть в бэкафилл этого события."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _run(db.set_setting("event_season", "YL26"))
+    _make_ambassador(9601)
+    _seed_invitee_with_season(9701, 9601, "YL26")  # текущий сезон -- кандидат
+    _seed_invitee_with_season(9702, 9601, "YL25")  # прошлый сезон -- НЕ кандидат
+    _seed_invitee_with_season(9703, 9601, None)    # без сезона (импорт/легаси) -- НЕ кандидат
+
+    summary = _run(referrals.backfill_approved(dry_run=True))
+
+    assert summary["candidates"] == 1
+    assert summary["season"] == "YL26"
+
+
+def test_backfill_explicit_season_overrides_current_setting(tmp_path):
+    """`--season` из CLI обязан пробиваться сквозь дефолт «текущий event_season»."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _run(db.set_setting("event_season", "YL26"))
+    _make_ambassador(9602)
+    _seed_invitee_with_season(9704, 9602, "YL25")
+
+    summary = _run(referrals.backfill_approved(dry_run=True, season="YL25"))
+
+    assert summary["candidates"] == 1
+    assert summary["season"] == "YL25"
+
+
+def test_backfill_dry_run_breakdown_lists_ambassador_invitees_and_coins(tmp_path):
+    """Предпросмотр обязан показывать, КОМУ и СКОЛЬКО начислится, а не только итоговые числа
+    — операция необратима (D-22), проверять «на глаз» три голых числа нельзя."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _run(db.set_setting("event_season", "YL26"))
+    _make_ambassador(9603, full_name="Ирина Амбассадор")
+    _seed_invitee_with_season(9705, 9603, "YL26")
+    _seed_invitee_with_season(9706, 9603, "YL26")
+
+    summary = _run(referrals.backfill_approved(dry_run=True))
+
+    assert summary["breakdown"] == [
+        {"referrer_id": 9603, "referrer_name": "Ирина Амбассадор", "invitees": 2, "coins": 50},
+    ]
+    assert _referral_credit_count() == 0  # по-прежнему предпросмотр, ничего не пишет
 
 
 # ── Волна (D-31/D-38): wave_id резолвится в момент начисления, только если пригласивший

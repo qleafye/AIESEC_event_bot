@@ -3,10 +3,15 @@
 До запуска амбассадорского слоя часть приглашённых уже была одобрена — эта операция находит
 их и начисляет баллы пригласившим-амбассадорам через ту же идемпотентную точку
 (`services.referrals.backfill_approved`), что использует и «живое» одобрение
-(`database.db.claim_referral_credit` — `INSERT OR IGNORE` по PRIMARY KEY, повтор запуска
-безопасен). `wave_id` у бэкафилла ВСЕГДА `None` и `source='backfill'` — задним числом баллы
-идут ТОЛЬКО в общий зачёт, ни в одну волну (правило волны применимо только к моменту самого
-события одобрения).
+(`database.db.claim_referral_credit_atomic` — `INSERT OR IGNORE` по PRIMARY KEY, повтор
+запуска безопасен). `wave_id` у бэкафилла ВСЕГДА `None` и `source='backfill'` — задним числом
+баллы идут ТОЛЬКО в общий зачёт, ни в одну волну (правило волны применимо только к моменту
+самого события одобрения).
+
+WR-17 (32-REVIEW.md): кандидаты ограничены ТЕКУЩИМ сезоном (`bot_settings.event_season`) —
+без этого фильтра под бэкафилл попадали и легаси-строки без сезона, и делегаты, импортированные
+из прошлого события. `--season` переопределяет сезон явно (например, для разового прогона по
+архивным данным).
 
 НЕОБРАТИМО: как и «живое» начисление, баллы бэкафилла не отзываются задним числом (D-22).
 
@@ -14,6 +19,7 @@
 
     docker exec youlead26-bot-1 python /app/tools/backfill_referral_credits.py
     docker exec youlead26-bot-1 python /app/tools/backfill_referral_credits.py --apply
+    docker exec youlead26-bot-1 python /app/tools/backfill_referral_credits.py --season "YL'26"
 """
 from __future__ import annotations
 
@@ -35,24 +41,35 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 
-async def _init_and_run(dry_run: bool) -> dict:
+async def _init_and_run(dry_run: bool, season: str | None) -> dict:
     """`database.db.init_db()` НЕ зовём — таблицы/колонки уже существуют на боевой БД
     (план 32-01 их создал миграцией при обычном старте бота); этот скрипт открывает
     существующий файл БД как есть и ничего не запускает поверх него (ни polling, ни
     планировщик) — только `services.referrals.backfill_approved`."""
     from services.referrals import backfill_approved
 
-    return await backfill_approved(dry_run=dry_run)
+    return await backfill_approved(dry_run=dry_run, season=season)
 
 
-def main(apply: bool) -> int:
+def main(apply: bool, season: str | None) -> int:
     dry_run = not apply
-    summary = asyncio.run(_init_and_run(dry_run))
+    summary = asyncio.run(_init_and_run(dry_run, season))
 
+    season_label = summary["season"] or "не задан (сезон не сконфигурирован)"
+    print(f"Сезон: {season_label}")
     print(f"Кандидатов (одобрен приглашённый, пригласивший сейчас амбассадор): {summary['candidates']}")
+
+    if summary["breakdown"]:
+        print("\nАмбассадор — приглашённых — баллов:")
+        for entry in summary["breakdown"]:
+            print(
+                f"  {entry['referrer_name']} (#{entry['referrer_id']}) — "
+                f"{entry['invitees']} — {entry['coins']}"
+            )
+
     if dry_run:
         print(
-            f"ПРЕДПОКАЗ («что будет» при --apply): начислено бы {summary['credited']} "
+            f"\nПРЕДПОКАЗ («что будет» при --apply): начислено бы {summary['credited']} "
             f"приглашённым, суммарно {summary['coins']} баллов, {summary['ambassadors']} "
             "амбассадорам."
         )
@@ -60,7 +77,7 @@ def main(apply: bool) -> int:
         return 0
 
     print(
-        f"Начислено: {summary['credited']} приглашённых, суммарно {summary['coins']} баллов, "
+        f"\nНачислено: {summary['credited']} приглашённых, суммарно {summary['coins']} баллов, "
         f"{summary['ambassadors']} амбассадорам."
     )
     print("Операция необратима — баллы бэкафилла, как и «живое» начисление, не отзываются.")
@@ -79,5 +96,12 @@ if __name__ == "__main__":
         "--apply", action="store_true",
         help="реально начислить баллы (необратимо — без этого флага только отчёт)",
     )
+    parser.add_argument(
+        "--season", default=None,
+        help=(
+            "фильтр по сезону (WR-17): по умолчанию — текущий bot_settings.event_season; "
+            "укажи явно, чтобы прогнать по архивному сезону"
+        ),
+    )
     args = parser.parse_args()
-    raise SystemExit(main(args.apply))
+    raise SystemExit(main(args.apply, args.season))
