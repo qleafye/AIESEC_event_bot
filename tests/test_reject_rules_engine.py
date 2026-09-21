@@ -65,3 +65,82 @@ def test_age_on_empty_target_date():
 def test_age_on_target_before_birth():
     assert reg_engine.age_on("01.01.2020", "15.10.2010") is None
 
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: reject_condition_category / condition_operators / rule_pause_reason
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("step_key,expected_category", [
+    ("course", "select"),
+    ("study_field", "select"),
+    ("stack", "multi"),
+    ("age", "int"),
+    ("birth_date", "birth_date"),
+    ("arrival_date", "date"),
+    ("resume", "file"),
+    ("expectations", "text"),
+])
+def test_reject_condition_category(step_key, expected_category):
+    assert reg_engine.reject_condition_category(step_key) == expected_category
+
+
+def test_operator_sets_are_closed():
+    assert reg_engine.REJECT_RULE_OPERATORS["select"] == ("in", "not_in")
+    assert reg_engine.REJECT_RULE_OPERATORS["multi"] == ("in", "not_in")
+    assert reg_engine.REJECT_RULE_OPERATORS["int"] == ("lt", "gt", "between")
+    assert reg_engine.REJECT_RULE_OPERATORS["date"] == ("before", "after")
+    assert reg_engine.REJECT_RULE_OPERATORS["birth_date"] == ("before", "after", "age_on_forum_lt")
+    assert reg_engine.REJECT_RULE_OPERATORS["text"] == ("filled", "empty")
+    assert reg_engine.REJECT_RULE_OPERATORS["file"] == ("has_file", "no_file")
+
+
+def test_condition_operators_is_thin_wrapper():
+    assert reg_engine.condition_operators("course") == ("in", "not_in")
+    assert reg_engine.condition_operators("birth_date") == ("before", "after", "age_on_forum_lt")
+    assert reg_engine.condition_operators("resume") == ("has_file", "no_file")
+
+
+_COURSE_RULE = {
+    "id": 1, "name": None, "city": None, "tracks": ["full"],
+    "conditions": [[{"step": "course", "op": "in", "values": ["1", "2"]}]],
+    "action": "reject", "reject_text": "Места на 1-2 курс закончились.",
+    "enabled": 1, "paused_reason": None,
+}
+
+
+def test_rule_pause_reason_on_disabled_question():
+    reason = reg_engine.rule_pause_reason(_COURSE_RULE, enabled_steps=[], options_by_step={})
+    assert reason is not None
+    assert "Курс" in reason  # человеческая подпись, не сырой step_key
+
+
+def test_rule_pause_reason_on_vanished_option():
+    reason = reg_engine.rule_pause_reason(
+        _COURSE_RULE,
+        enabled_steps=["course"],
+        options_by_step={"course": ["3", "4", "5+"]},  # «1»/«2» больше нет среди вариантов
+    )
+    assert reason is not None
+    assert "Курс" in reason
+
+
+def test_rule_pause_reason_healthy_rule():
+    reason = reg_engine.rule_pause_reason(
+        _COURSE_RULE,
+        enabled_steps=["course"],
+        options_by_step={"course": ["1", "2", "3", "4", "5+", "Магистратура/Аспирантура"]},
+    )
+    assert reason is None
+
+
+def test_rule_pause_reason_step_missing_from_options_by_step():
+    # Список вариантов этого шага просто не собрали — значения условия НЕ проверяются.
+    reason = reg_engine.rule_pause_reason(
+        _COURSE_RULE, enabled_steps=["course"], options_by_step={},
+    )
+    assert reason is None
+
+
+def test_rule_pause_reason_empty_rule_is_healthy():
+    empty_rule = {**_COURSE_RULE, "conditions": []}
+    assert reg_engine.rule_pause_reason(empty_rule, enabled_steps=[], options_by_step={}) is None
