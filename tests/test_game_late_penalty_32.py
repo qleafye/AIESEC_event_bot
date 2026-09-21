@@ -269,3 +269,45 @@ def test_grev_approve_amount_step_coins_row_has_task_id(tmp_path):
     rows = asyncio.run(_coin_rows_for(DELEGATE_ID))
     assert len(rows) == 1
     assert rows[0]["task_id"] == task_id
+
+
+# ── Task 3: менеджерские экраны заданий печатают срок общим помощником ────────────────────
+
+def test_manager_task_list_line_no_deadline_says_words_not_9999(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(deadline_at=db.NO_DEADLINE_AT)
+    task = asyncio.run(db.get_task(task_id))
+    line = asyncio.run(admin_gamification._game_task_line(task, 1))
+    assert "без срока" in line
+    assert "9999" not in line
+    assert "до без срока" not in line
+
+
+def test_manager_task_list_line_with_deadline_matches_prior_format(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(deadline_at="2026-08-25 23:59:00")
+    task = asyncio.run(db.get_task(task_id))
+    line = asyncio.run(admin_gamification._game_task_line(task, 1))
+    assert "до 25.08 23:59" in line
+
+
+def test_task_edit_screen_no_deadline_says_words(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(deadline_at=db.NO_DEADLINE_AT)
+    task = asyncio.run(db.get_task(task_id))
+    text, _kb = asyncio.run(admin_gamification._task_edit_screen(task))
+    assert "без срока" in text
+    assert "9999" not in text
+    assert "до без срока" not in text
+
+
+def test_task_edit_screen_with_deadline_matches_prior_format(tmp_path):
+    _db_ready(tmp_path)
+    task_id = _seed_task(deadline_at="2026-08-25 23:59:00")
+    task = asyncio.run(db.get_task(task_id))
+    text, _kb = asyncio.run(admin_gamification._task_edit_screen(task))
+    assert "до 25.08 23:59" in text
+
+
+def test_private_deadline_display_helper_removed():
+    assert not hasattr(admin_gamification, "_game_task_deadline_display")
