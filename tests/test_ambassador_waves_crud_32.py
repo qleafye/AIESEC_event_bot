@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 
 import cities
 from config import config
@@ -21,6 +24,53 @@ ADMIN_ID = 921001
 MSK_MANAGER_ID = 921002
 SPB_MANAGER_ID = 921003
 STRANGER_MANAGER_ID = 921004
+
+
+def _new_state(uid: int) -> FSMContext:
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
+
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self, text=None):
+        self.text = text
+        self.html_text = text
+        self.answers = []
+        self.edits = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, reply_markup))
+        return self
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edits.append((text, reply_markup))
+        return self
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID, text=None):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage(text)
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _last(msg: FakeMessage):
+    """(text, kb) последнего message.answer(...)."""
+    return msg.answers[-1] if msg.answers else (None, None)
+
+
+def _kb_callbacks(kb):
+    if kb is None:
+        return []
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
 
 
 def _ready(tmp_path, name="test_ambassador_waves_crud_32.db"):
@@ -201,6 +251,130 @@ def test_copy_wave_clamps_deadline_to_new_wave_end(tmp_path):
     new_id = _run(aw.copy_wave(src_id, new_starts, new_ends, created_by=ADMIN_ID))
     tasks = _run(db.list_wave_tasks(new_id, active_only=False))
     assert tasks[0]["deadline_at"] == new_ends
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: экран списка волн и визард создания (handlers/admin_game_waves.py)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _enable_cities():
+    _run(db.set_setting("event_city_enabled", "on"))
+
+
+def test_wave_list_screen_has_no_state_codes(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    _run(db.set_wave_state(wid, "announced"))
+    text, kb = _run(w._wave_list_screen(ADMIN_ID))
+    for code in ("draft", "active", "closing", "announced"):
+        assert code not in text
+    assert "итоги объявлены" in text
+
+
+def test_wave_create_dates_both_via_semicolon(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"wc_mode": "create", "wc_city": None}))
+    _run(state.set_state(WaveCreate.dates))
+    msg = FakeMessage("01.10.2026; 21.10.2026")
+    _run(w.wave_create_dates_step(msg, state))
+    data = _run(state.get_data())
+    assert data["wc_starts"] == "2026-10-01 00:00:00"
+    assert data["wc_ends"] == "2026-10-21 23:59:59"
+    current = _run(state.get_state())
+    assert current == WaveCreate.intro.state
+
+
+def test_wave_create_single_date_asks_second(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"wc_mode": "create", "wc_city": None}))
+    _run(state.set_state(WaveCreate.dates))
+    msg1 = FakeMessage("01.10.2026")
+    _run(w.wave_create_dates_step(msg1, state))
+    assert _run(state.get_state()) == WaveCreate.dates.state
+    assert (_run(state.get_data())).get("wc_start") == "01.10.2026"
+    text1, _ = _last(msg1)
+    assert "конца" in text1.lower()
+
+    msg2 = FakeMessage("21.10.2026")
+    _run(w.wave_create_dates_step(msg2, state))
+    data = _run(state.get_data())
+    assert data["wc_starts"] == "2026-10-01 00:00:00"
+    assert data["wc_ends"] == "2026-10-21 23:59:59"
+
+
+def test_wave_create_garbage_input_stays_in_state_with_example(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"wc_mode": "create", "wc_city": None}))
+    _run(state.set_state(WaveCreate.dates))
+    msg = FakeMessage("когда-нибудь потом")
+    _run(w.wave_create_dates_step(msg, state))
+    assert _run(state.get_state()) == WaveCreate.dates.state
+    text, _ = _last(msg)
+    assert "ДД.ММ.ГГГГ" in text or "дд.мм.гггг" in text.lower()
+
+
+def test_wave_create_overlap_rejected_names_conflicting_wave(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"wc_mode": "create", "wc_city": None}))
+    _run(state.set_state(WaveCreate.dates))
+    msg = FakeMessage("05.10.2026; 15.10.2026")
+    _run(w.wave_create_dates_step(msg, state))
+    text, _ = _last(msg)
+    assert "Волна 1" in text
+    # Не продвинулись дальше шага дат — подтверждения ещё не показали.
+    assert _run(state.get_state()) == WaveCreate.dates.state
+
+
+def test_wave_card_stale_button_wrong_city_manager_gets_explanation(tmp_path):
+    """T-32-10-01: устаревшая кнопка `wave:{id}` на волну чужого города — объяснение, не
+    карточка (менеджер привязан к городу ПОСЛЕ того, как кнопка могла быть отрисована)."""
+    _ready(tmp_path)
+    _enable_cities()
+    city_a, city_b = _codes()
+    wave_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), event_city=city_b, created_by=ADMIN_ID))
+    _bind_manager(MSK_MANAGER_ID, city_a)
+    from handlers import admin_game_waves as w
+    state = _new_state(MSK_MANAGER_ID)
+    cb = FakeCallback(f"wave:{wave_id}", user_id=MSK_MANAGER_ID)
+    _run(w.show_wave_card(cb, state))
+    assert cb.answers
+    text, show_alert = cb.answers[-1]
+    assert show_alert is True
+    assert not cb.message.edits  # экран НЕ перерисован
+
+
+def test_wave_create_go_creates_draft_with_continuing_number(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    # Первая волна города — номер 1, уже существует.
+    _run(db.create_wave(_dt("01.01.2026"), _dt_end("05.01.2026"), created_by=ADMIN_ID))
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({
+        "wc_mode": "create", "wc_city": None,
+        "wc_starts": _dt("01.11.2026"), "wc_ends": _dt_end("10.11.2026"), "wc_intro": None,
+    }))
+    _run(state.set_state(WaveCreate.confirm))
+    cb = FakeCallback("wccreate_go", user_id=ADMIN_ID)
+    _run(w.wave_create_go(cb, state))
+    waves = _run(db.list_waves())
+    new_wave = next(x for x in waves if x["starts_at"] == _dt("01.11.2026"))
+    assert new_wave["state"] == "draft"
+    assert new_wave["number"] == 2
 
 
 def test_copy_wave_skips_archived_tasks(tmp_path):
