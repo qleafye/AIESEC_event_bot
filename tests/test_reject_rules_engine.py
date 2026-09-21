@@ -144,3 +144,216 @@ def test_rule_pause_reason_step_missing_from_options_by_step():
 def test_rule_pause_reason_empty_rule_is_healthy():
     empty_rule = {**_COURSE_RULE, "conditions": []}
     assert reg_engine.rule_pause_reason(empty_rule, enabled_steps=[], options_by_step={}) is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: evaluate_reject_rules — группы И/ИЛИ по всем операторам
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _rule(rule_id, conditions, *, action="reject", reject_text="отказ", enabled=1,
+          paused_reason=None):
+    return {
+        "id": rule_id, "name": None, "city": None, "tracks": ["full"],
+        "conditions": conditions, "action": action, "reject_text": reject_text,
+        "enabled": enabled, "paused_reason": paused_reason,
+    }
+
+
+# (answers, condition, birth_date, forum_date, expect_fires) — один оператор каждого вида.
+_OPERATOR_CASES = [
+    ("in — курс совпал",
+     {"course": "1"}, {"step": "course", "op": "in", "values": ["1", "2"]}, None, None, True),
+    ("in — курс не совпал",
+     {"course": "3"}, {"step": "course", "op": "in", "values": ["1", "2"]}, None, None, False),
+    ("not_in — курс не в списке",
+     {"course": "3"}, {"step": "course", "op": "not_in", "values": ["1", "2"]}, None, None, True),
+    ("not_in — курс в списке",
+     {"course": "1"}, {"step": "course", "op": "not_in", "values": ["1", "2"]}, None, None, False),
+    ("multi in — пересечение непусто",
+     {"stack": "Python, Java"}, {"step": "stack", "op": "in", "values": ["Python"]}, None, None, True),
+    ("multi in — пересечения нет",
+     {"stack": "Go, Rust"}, {"step": "stack", "op": "in", "values": ["Python"]}, None, None, False),
+    ("lt — возраст меньше порога",
+     {"age": "17"}, {"step": "age", "op": "lt", "values": [18]}, None, None, True),
+    ("lt — возраст не меньше порога",
+     {"age": "20"}, {"step": "age", "op": "lt", "values": [18]}, None, None, False),
+    ("gt — курс больше порога",
+     {"course": "5+"}, {"step": "course", "op": "gt", "values": [4]}, None, None, True),
+    ("between — курс в диапазоне",
+     {"course": "3"}, {"step": "course", "op": "between", "values": [2, 4]}, None, None, True),
+    ("between — курс вне диапазона",
+     {"course": "1"}, {"step": "course", "op": "between", "values": [2, 4]}, None, None, False),
+    ("before — дата раньше",
+     {"arrival_date": "01.10.2026"},
+     {"step": "arrival_date", "op": "before", "values": ["05.10.2026"]}, None, None, True),
+    ("after — дата позже",
+     {"arrival_date": "10.10.2026"},
+     {"step": "arrival_date", "op": "after", "values": ["05.10.2026"]}, None, None, True),
+    ("age_on_forum_lt — младше порога на дату форума",
+     {}, {"step": "birth_date", "op": "age_on_forum_lt", "values": [18]},
+     "01.01.2009", "15.10.2026", True),
+    ("age_on_forum_lt — не младше порога",
+     {}, {"step": "birth_date", "op": "age_on_forum_lt", "values": [18]},
+     "01.01.2000", "15.10.2026", False),
+    ("age_on_forum_lt — нет даты рождения -> условие не выполнено",
+     {}, {"step": "birth_date", "op": "age_on_forum_lt", "values": [18]}, None, "15.10.2026", False),
+    ("filled — заполнено",
+     {"expectations": "хочу нетворкинг"}, {"step": "expectations", "op": "filled", "values": []},
+     None, None, True),
+    ("filled — прочерк считается пустым",
+     {"expectations": "-"}, {"step": "expectations", "op": "filled", "values": []}, None, None, False),
+    ("empty — не заполнено",
+     {"expectations": ""}, {"step": "expectations", "op": "empty", "values": []}, None, None, True),
+    ("has_file — резюме файлом",
+     {"resume_file_id": "abc123"}, {"step": "resume", "op": "has_file", "values": []},
+     None, None, True),
+    ("no_file — резюме нет нигде",
+     {}, {"step": "resume", "op": "no_file", "values": []}, None, None, True),
+    ("no_file — резюме есть ссылкой",
+     {"resume_url": "https://example.com/cv.pdf"},
+     {"step": "resume", "op": "no_file", "values": []}, None, None, False),
+]
+
+
+@pytest.mark.parametrize("label,answers,cond,birth_date,forum_date,expect_fires", _OPERATOR_CASES,
+                          ids=[c[0] for c in _OPERATOR_CASES])
+def test_single_operator_cases(label, answers, cond, birth_date, forum_date, expect_fires):
+    rules = [_rule(1, [[cond]])]
+    result = reg_engine.evaluate_reject_rules(
+        answers, rules, birth_date=birth_date, forum_date=forum_date,
+    )
+    fired = bool(result["reject_rule_ids"])
+    assert fired == expect_fires, label
+
+
+def test_and_within_group_both_must_match():
+    conditions = [[
+        {"step": "course", "op": "in", "values": ["1", "2"]},
+        {"step": "expectations", "op": "filled", "values": []},
+    ]]
+    rules = [_rule(1, conditions)]
+    # Курс совпадает, но expectations пуст — группа целиком (И) не срабатывает.
+    result = reg_engine.evaluate_reject_rules({"course": "1", "expectations": ""}, rules)
+    assert result["status_override"] is None
+    # Обе половины группы истинны — правило срабатывает.
+    result2 = reg_engine.evaluate_reject_rules(
+        {"course": "1", "expectations": "хочу приехать"}, rules,
+    )
+    assert result2["status_override"] == "rejected"
+
+
+def test_or_between_groups_second_group_fires():
+    conditions = [
+        [{"step": "course", "op": "in", "values": ["1", "2"]}],
+        [{"step": "resume", "op": "no_file", "values": []}],
+    ]
+    rules = [_rule(1, conditions)]
+    result = reg_engine.evaluate_reject_rules({"course": "5+"}, rules)  # первая группа ложна
+    assert result["status_override"] == "rejected"  # вторая (нет резюме) — истинна
+
+
+def test_reject_wins_over_flag_and_flag_still_recorded():
+    reject_rule = _rule(1, [[{"step": "course", "op": "in", "values": ["1"]}]],
+                         action="reject", reject_text="Курс закрыт.")
+    flag_rule = _rule(2, [[{"step": "resume", "op": "no_file", "values": []}]],
+                       action="flag")
+    result = reg_engine.evaluate_reject_rules({"course": "1"}, [reject_rule, flag_rule])
+    assert result["status_override"] == "rejected"
+    assert result["reject_rule_ids"] == [1]
+    assert result["flag_rule_ids"] == [2]
+
+
+def test_all_triggered_reject_texts_concatenated_in_input_order():
+    rule_a = _rule(1, [[{"step": "course", "op": "in", "values": ["1"]}]],
+                    reject_text="Текст А")
+    rule_b = _rule(2, [[{"step": "resume", "op": "no_file", "values": []}]],
+                    reject_text="Текст Б")
+    result = reg_engine.evaluate_reject_rules({"course": "1"}, [rule_a, rule_b])
+    assert result["reject_texts"] == ["Текст А", "Текст Б"]
+
+
+def test_masters_not_caught_by_course_rule():
+    # D-32: «Магистратура/Аспирантура» — отдельное значение курса, не 1/2 — правило «курс
+    # один из: 1, 2» его не ловит, развилка по возрасту тут не нужна.
+    rule = _rule(1, [[{"step": "course", "op": "in", "values": ["1", "2"]}]])
+    result = reg_engine.evaluate_reject_rules(
+        {"course": "Магистратура/Аспирантура", "education_status": "Да, в ВУЗе или колледже"},
+        [rule],
+    )
+    assert result["status_override"] is None
+    assert result["reject_rule_ids"] == []
+
+
+def test_paused_rule_never_fires():
+    rule = _rule(1, [[{"step": "course", "op": "in", "values": ["1"]}]],
+                  paused_reason="Курс — вопрос выключен")
+    result = reg_engine.evaluate_reject_rules({"course": "1"}, [rule])
+    assert result["status_override"] is None
+
+
+def test_disabled_rule_never_fires():
+    rule = _rule(1, [[{"step": "course", "op": "in", "values": ["1"]}]], enabled=0)
+    result = reg_engine.evaluate_reject_rules({"course": "1"}, [rule])
+    assert result["status_override"] is None
+
+
+def test_empty_conditions_never_fire():
+    rule = _rule(1, [])
+    result = reg_engine.evaluate_reject_rules({"course": "1"}, [rule])
+    assert result["status_override"] is None
+    empty_group_rule = _rule(2, [[]])
+    result2 = reg_engine.evaluate_reject_rules({"course": "1"}, [empty_group_rule])
+    assert result2["status_override"] is None
+
+
+def test_returning_delegate_evaluated_same_as_new():
+    # D-06: у evaluate_reject_rules нет ни параметра, ни ветки про повторную подачу — те же
+    # ответы дают тот же результат вне зависимости от prev_season в answers.
+    rule = _rule(1, [[{"step": "course", "op": "in", "values": ["1"]}]])
+    answers_new = {"course": "1"}
+    answers_returning = {"course": "1", "prev_season": "YL 25"}
+    result_new = reg_engine.evaluate_reject_rules(answers_new, [rule])
+    result_returning = reg_engine.evaluate_reject_rules(answers_returning, [rule])
+    assert result_new["status_override"] == result_returning["status_override"] == "rejected"
+    params = list(inspect.signature(reg_engine.evaluate_reject_rules).parameters)
+    assert "prev_season" not in params
+
+
+_ALL_TEST_RULES_FOR_APPROVAL_SWEEP = [
+    _rule(1, [[{"step": "course", "op": "in", "values": ["1", "2"]}]], action="reject"),
+    _rule(2, [[{"step": "resume", "op": "no_file", "values": []}]], action="flag"),
+    _rule(3, [[{"step": "age", "op": "lt", "values": [18]}]], action="reject"),
+    _rule(4, [], action="reject"),
+    _rule(5, [[{"step": "course", "op": "in", "values": ["9"]}]], action="reject", enabled=0),
+]
+
+
+def test_evaluator_never_approves():
+    # D-03/T-31-01-02: перебор по разным входам — status_override не принимает "approved" ни
+    # при одном наборе правил/ответов.
+    sample_answers = [
+        {},
+        {"course": "1"},
+        {"course": "3", "age": "20", "resume_file_id": "x"},
+        {"course": "Магистратура/Аспирантура"},
+    ]
+    for answers in sample_answers:
+        result = reg_engine.evaluate_reject_rules(answers, _ALL_TEST_RULES_FOR_APPROVAL_SWEEP)
+        assert result["status_override"] in ("rejected", None)
+        assert result["status_override"] != "approved"
+
+
+def test_broken_condition_does_not_raise_and_yields_false():
+    # T-31-01-01: заведомо битый values (between без второго элемента) не пробрасывает
+    # исключение — условие просто не срабатывает.
+    broken_rule = _rule(1, [[{"step": "course", "op": "between", "values": [2]}]])
+    result = reg_engine.evaluate_reject_rules({"course": "3"}, [broken_rule])
+    assert result["status_override"] is None
+
+    unknown_operator_rule = _rule(2, [[{"step": "course", "op": "not_a_real_operator", "values": []}]])
+    result2 = reg_engine.evaluate_reject_rules({"course": "1"}, [unknown_operator_rule])
+    assert result2["status_override"] is None
+
+    unknown_step_rule = _rule(3, [[{"step": "no_such_step", "op": "in", "values": ["x"]}]])
+    result3 = reg_engine.evaluate_reject_rules({"course": "1"}, [unknown_step_rule])
+    assert result3["status_override"] is None
