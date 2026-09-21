@@ -165,6 +165,40 @@ def test_card_404_for_unknown(client):
     assert resp.status_code == 404 and resp.json()["reason"] == "not_found"
 
 
+# ── «без срока» (план 32-14, D-27) ──────────────────────────────────────────────────────
+
+def test_card_no_deadline_shows_words_not_sentinel(client):
+    t = _task(deadline=bot_db.NO_DEADLINE_AT)
+    body = _get(client, f"/{t}").json()
+    assert body["has_deadline"] is False
+    assert body["deadline_display"] == "без срока"
+    assert "9999" not in body["deadline_display"]
+
+
+def test_row_has_deadline_flag_for_both_kinds(client):
+    t_with = _task()
+    t_without = _task(deadline=bot_db.NO_DEADLINE_AT)
+    body = _get(client).json()
+    by_id = {i["id"]: i for i in body["items"]}
+    assert by_id[t_with]["has_deadline"] is True
+    assert by_id[t_without]["has_deadline"] is False
+    assert by_id[t_without]["deadline_short"] == ""
+    assert by_id[t_without]["deadline_display"] == "без срока"
+    assert "9999" not in by_id[t_without]["deadline_display"]
+
+
+def test_patch_other_field_keeps_no_deadline_sentinel(client):
+    """T-32-14-02: правка соседнего поля не перезаписывает «без срока» настоящей датой —
+    проверяем строку в БД, а не только ответ."""
+    t = _task(deadline=bot_db.NO_DEADLINE_AT)
+    resp = _patch(client, t, {"title": "Новый заголовок"})
+    assert resp.status_code == 200, resp.text
+    task_out = resp.json()["task"]
+    assert task_out["has_deadline"] is False
+    assert task_out["deadline_display"] == "без срока"
+    assert _task_row(t)["deadline_at"] == bot_db.NO_DEADLINE_AT
+
+
 # ── точечные правки ──────────────────────────────────────────────────────────────────────
 
 def _snapshot(task_id, skip):

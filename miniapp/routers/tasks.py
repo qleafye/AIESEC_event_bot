@@ -16,8 +16,6 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from cities import cities_module_on, city_scope, normalize_city
@@ -37,7 +35,10 @@ from game_labels import (
     render_task_card_text,
     sort_tasks_for_ambassador,
     sort_tasks_for_delegate,
+    task_deadline,  # Phase 32 (32-14): единственный разбор `deadline_at` — вместо своего strptime
     task_deadline_short,
+    task_deadline_text,  # Phase 32 (32-14): готовая подпись срока делегату («без срока» из реестра)
+    task_has_deadline,
     visible_tasks_for,
 )
 from services import i18n
@@ -131,6 +132,11 @@ async def _list_item(task: dict, user_id: int, lang: str = "ru", tr_map: dict | 
         "coins": task["coins"],
         "deadline_at": task["deadline_at"],
         "deadline_short": deadline_short,
+        # Phase 32 (32-14, D-27): признак наличия срока + готовая делегатская подпись
+        # (короткая дата ИЛИ «без срока» из реестра, тем же путём перевода, что category_label
+        # выше) — фронт больше не собирает «до …» сам и не видит служебную метку.
+        "has_deadline": task_has_deadline(task),
+        "deadline_text": i18n.tr(await task_deadline_text(task), lang, tr_map),
         "overdue": overdue,
         "photo_file_id": task.get("photo_file_id"),
         **state,
@@ -190,18 +196,18 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
     }
 
 
-def _deadline_days_left(deadline_at, overdue: bool) -> int | None:
+def _deadline_days_left(task: dict, overdue: bool) -> int | None:
     """Целое число полных дней от московского «сегодня» (`miniapp.timeutil.today_msk`) до
-    `deadline_at` (`"%Y-%m-%d %H:%M:%S"`, тот же формат, что `game_labels.task_deadline_short`
-    разбирает). Просроченное задание уже несёт `overdue_hint` — вторую строку не дублируем;
-    дедлайна нет или дата не разбирается -> `None`."""
-    if overdue or not deadline_at:
+    срока задания. Phase 32 (32-14, D-27): дата берётся через общий `game_labels.task_deadline`
+    (метка «конца времён» отдаёт `None`, значит у задания без срока строки «осталось N дней»
+    не будет вовсе — вместо обратного отсчёта на ~2,9 млн дней). Просроченное задание уже несёт
+    `overdue_hint` — вторую строку не дублируем; дедлайна нет или дата не разбирается -> `None`."""
+    if overdue:
         return None
-    try:
-        target = datetime.strptime(deadline_at, "%Y-%m-%d %H:%M:%S").date()
-    except (TypeError, ValueError):
+    target_dt = task_deadline(task)
+    if target_dt is None:
         return None
-    delta = (target - today_msk()).days
+    delta = (target_dt.date() - today_msk()).days
     return delta if delta >= 0 else None
 
 
@@ -247,7 +253,7 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
     # прислать», строки фактов (макет 05-task.png) — все подписи из реестра, числа
     # подставляются здесь (D-06).
     deadline_left_tpl = await i18n.tr_setting("miniapp_task_deadline_left_text", lang, tr_map)
-    days_left = _deadline_days_left(task.get("deadline_at"), item["overdue"])
+    days_left = _deadline_days_left(task, item["overdue"])
     deadline_left_text = (
         deadline_left_tpl.format(days=days_left) if (days_left is not None and deadline_left_tpl) else None
     )

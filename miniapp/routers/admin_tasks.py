@@ -48,7 +48,14 @@ from database.db import (
     update_task_text,
     update_task_title,
 )
-from game_labels import category_label, proof_types_label, render_task_card_text, task_deadline_short
+from game_labels import (
+    category_label,
+    proof_types_label,
+    render_task_card_text,
+    task_deadline_admin,  # Phase 32 (32-14): единственный менеджерский разбор срока
+    task_deadline_short,
+    task_has_deadline,
+)
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
@@ -196,19 +203,21 @@ async def _row(task: dict, number: int, counts: dict) -> dict:
         "coins": task["coins"],
         "deadline_at": task["deadline_at"],
         "deadline_short": deadline_short,
+        # Phase 32 (32-14, D-27): признак наличия срока — веб-список ставит «до …» только
+        # при `has_deadline`, иначе шаблон печатает готовую строку `deadline_display`.
+        "has_deadline": task_has_deadline(task),
+        # У задания со сроком — тот же короткий формат, что `deadline_short` (JS этим полем
+        # в этой ветке не пользуется, печатает по-прежнему `deadline_short` байт-в-байт как
+        # раньше); у задания без срока — слова «без срока» вместо пустой строки (Rule 2: без
+        # этого поля список менеджера не мог бы показать готовые слова, не заводя свой литерал
+        # в JS, что задача 2 запрещает).
+        "deadline_display": task_deadline_admin(task, "%d.%m"),
         "overdue": overdue,
         "archived": bool(task.get("archived_at")),
         "pending": c.get("pending", 0),
         "approved": c.get("approved", 0),
         "has_photo": bool(task.get("photo_file_id")),
     }
-
-
-def _deadline_display(task: dict) -> str:
-    try:
-        return datetime.strptime(task["deadline_at"], STORAGE_FMT).strftime("%d.%m.%Y %H:%M")
-    except (TypeError, ValueError):
-        return str(task.get("deadline_at") or "—")
 
 
 async def _card(task: dict) -> dict:
@@ -222,7 +231,12 @@ async def _card(task: dict) -> dict:
         "category_label": await category_label(str(task["category"])),
         "coins": task["coins"],
         "deadline_at": task["deadline_at"],
-        "deadline_display": _deadline_display(task),
+        # Phase 32 (32-14, D-27): формат хранения прежний (`%d.%m.%Y %H:%M`), поэтому у
+        # задания со сроком ответ байт-в-байт тот же, что и до плана; у задания без срока —
+        # слова «без срока» вместо служебной метки «31.12.9999 23:59». Приватный
+        # `_deadline_display` удалён — единственный разбор менеджерского срока теперь тут.
+        "deadline_display": task_deadline_admin(task, "%d.%m.%Y %H:%M"),
+        "has_deadline": task_has_deadline(task),
         "proof_type": task.get("proof_type"),
         "proof_label": await proof_types_label(task.get("proof_type")),
         "event_city": city,

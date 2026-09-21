@@ -343,9 +343,9 @@ def _deadline(days: int) -> str:
 
 
 def _task(title: str, *, days: int = 3, city: str | None = None, category: str = "Light",
-          coins: int = 10, proof: str = "photo") -> int:
+          coins: int = 10, proof: str = "photo", deadline_at: str | None = None) -> int:
     return _run(bot_db.create_task(
-        f"{title} — описание", category, coins, proof, _deadline(days), None,
+        f"{title} — описание", category, coins, proof, deadline_at or _deadline(days), None,
         event_city=city, title=title,
     ))
 
@@ -495,11 +495,15 @@ def test_task_card_pending_and_missing(client):
 # «нужно прислать», строка проверки ────────────────────────────────────────────────────────
 
 def test_task_card_deadline_left_text_present_for_future_deadline(client):
+    # Phase 32 (32-14, D-27): дата берётся через общий `game_labels.task_deadline`, а не
+    # собственным `datetime.strptime` по `deadline_at` — зеркало теперь смотрит на тот же
+    # помощник, что и роутер, иначе тест продолжал бы проходить даже со своей копией разбора.
+    import game_labels
     from miniapp.timeutil import today_msk
 
     t = _task("Свежее", days=5)
     task = _run(bot_db.get_task(t))
-    target = datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S").date()
+    target = game_labels.task_deadline(task).date()
     expected_days = (target - today_msk()).days
     body = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
     assert body["deadline_left_text"] == f"осталось {expected_days} дн."
@@ -512,6 +516,34 @@ def test_task_card_deadline_left_text_none_when_overdue(client):
     assert body["overdue"] is True
     assert body["deadline_left_text"] is None
     assert body["overdue_hint"]  # своя строка уже есть — не дублируем вторым текстом
+
+
+# ── «без срока» (план 32-14, D-27) ──────────────────────────────────────────────────────
+
+def test_task_list_has_deadline_true_for_normal_task(client):
+    _task("Обычное")
+    item = _tasks(client)["items"][0]
+    assert item["has_deadline"] is True
+    assert item["deadline_text"] == item["deadline_short"]
+
+
+def test_task_list_no_deadline_shows_words_not_sentinel(client):
+    _task("Без срока", deadline_at=bot_db.NO_DEADLINE_AT)
+    item = _tasks(client)["items"][0]
+    assert item["has_deadline"] is False
+    assert item["deadline_short"] == ""
+    assert item["deadline_text"] == "без срока"
+    assert "9999" not in item["deadline_text"]
+
+
+def test_task_card_no_deadline_has_no_days_left(client):
+    t = _task("Без срока", deadline_at=bot_db.NO_DEADLINE_AT)
+    body = client.get(f"/app/api/tasks/{t}", headers=_hdr(DELEGATE_ID)).json()
+    assert body["has_deadline"] is False
+    assert body["deadline_text"] == "без срока"
+    assert body["deadline_left_text"] is None
+    assert body["overdue"] is False
+    assert "9999" not in body["card_text"]
 
 
 def test_task_card_ships_todo_proof_and_review_texts(client):
