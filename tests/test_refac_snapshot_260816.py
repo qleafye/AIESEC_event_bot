@@ -665,6 +665,12 @@ admin|callback_query|arc_preset_pick|arc_preset:*
 admin|callback_query|arc_dry|arc_dry:*
 admin|callback_query|arc_gate|arc_gate:*
 admin|callback_query|arc_dry_go|arc_dry_go:*
+admin|callback_query|admin_reject_journal_open|admin_reject_journal
+admin|callback_query|arj_page|arj_p:*
+admin|callback_query|arj_toggle_returned|arj_all:*
+admin|callback_query|arj_back_confirm|arj_back:*
+admin|callback_query|arj_back_go|arj_backgo:*
+admin|callback_query|arj_csv_export|arj_csv
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1185,7 +1191,15 @@ def test_snapshot_total_handler_count_is_292():
     # 553-строчным снимком: ровно одно удаление (arr_noop) в позиции ~215 и ровно две вставки
     # (2 строки в позиции ~25 внутри message-блока, 16 строк в самом хвосте callback_query-
     # блока) — ни одна другая строка не поменялась и не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 570
+    # Phase 31 (план 31-11): журнал «🤖 Автоотказы» — новый шов handlers/admin_reject_journal.py,
+    # импортируется хвостом из handlers/admin_reject_cond.py (самая последняя строка того
+    # файла), поэтому все его хендлеры встают в САМЫЙ ХВОСТ admin.router: +6 admin.callback_query
+    # (admin_reject_journal_open/arj_page/arj_toggle_returned/arj_back_confirm/arj_back_go/
+    # arj_csv_export), встали сразу после arc_dry_go и перед sync_sheet (570 -> 576). Пересчитано
+    # RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним
+    # 570-строчным снимком: ровно одна вставка из 6 строк, ни одна другая строка не поменялась и
+    # не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 576
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

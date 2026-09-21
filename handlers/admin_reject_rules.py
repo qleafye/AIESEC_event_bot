@@ -12,10 +12,9 @@
 
 Запись правила — ТОЛЬКО через `services.reject_rules.save_rule`/`delete_rule` (план 31-04),
 второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
-в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот
-же приём, что `handlers/admin_faq.py::_card_out_of_scope`). Копия правила (D-12) ВСЕГДА
-выключена; удаление подтверждается экраном, который называет последствия (CLAUDE.md, форма
-`handlers/admin_faq.py::afaq_delete_confirm`)."""
+в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот же
+приём, что `handlers/admin_faq.py::_card_out_of_scope`). Копия правила (D-12) ВСЕГДА выключена;
+удаление подтверждается экраном, называющим последствия (форма `admin_faq.py::afaq_delete_confirm`)."""
 import html as html_module
 import json
 
@@ -45,8 +44,7 @@ from settings_schema import get_setting_typed
 RULES_PAGE = 8
 
 # Человеческие подписи операторов (D-01/D-09) — своя копия таблицы `services.reject_rules.
-# rule_summary` (не импорт приватного имени соседнего модуля): карточка печатает условия
-# построчно (bullet-список), автоописание — одной строкой через " и ".
+# rule_summary` (не импорт приватного имени соседнего): карточка печатает условия bullet-списком.
 _OPERATOR_LABELS = {
     "in": "один из", "not_in": "ни один из",
     "lt": "меньше", "gt": "больше", "between": "между",
@@ -57,9 +55,8 @@ _OPERATOR_LABELS = {
 }
 _NO_VALUE_OPERATORS = ("filled", "empty", "has_file", "no_file")
 
-# D-05: три чекбокса «Полная / Краткая / Вечеринка» — «Вечеринка» покрывает ОБА внутренних
-# кода сразу (как `services.applications.TRACK_FILTERS`); внутренние коды менеджеру не
-# показываются нигде (T-31-08-03: код в callback_data — один из ТРЁХ UI-кодов, закрытое множество).
+# D-05: три чекбокса «Полная / Краткая / Вечеринка» — «Вечеринка» покрывает ОБА внутренних кода
+# сразу (`services.applications.TRACK_FILTERS`); коды менеджеру не показываются нигде (T-31-08-03).
 _TRACK_UI = (("full", "Полная"), ("short", "Краткая"), ("party", "Вечеринка"))
 _TRACK_CODES = {
     "full": ("full",),
@@ -237,6 +234,9 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
     buttons.append([InlineKeyboardButton(text="➕ Новое правило", callback_data="arr_new")])
     master_label = "🚫 Выключить все правила" if kill_switch_on else "✅ Включить все правила"
     buttons.append([InlineKeyboardButton(text=master_label, callback_data="arr_master")])
+    # План 31-11: журнал живёт отдельным швом (handlers/admin_reject_journal.py) — вход отсюда,
+    # где менеджер только что настраивал правила.
+    buttons.append([InlineKeyboardButton(text="🤖 Автоотказы", callback_data="admin_reject_journal")])
 
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_reject_rules")])
