@@ -9,7 +9,9 @@
 
 Модуль aiogram-free: тот же разрез, что у `services/applications.py` против
 `handlers/admin_moderation.py` — сообщение делегату о возврате на модерацию
-(`reject_rules_return_text`) шлёт ВЫЗЫВАЮЩИЙ хендлер, не этот модуль.
+(`reject_rules_return_text`) шлёт ВЫЗЫВАЮЩИЙ хендлер, не этот модуль. Свои копии `_short_stamp`/
+`_username_label` (не импорт из `handlers/admin_app_list.py`) — тот модуль тянет aiogram на
+уровне импорта, сервис обязан оставаться его свободным (сторож — grep в acceptance плана).
 
 Инцидент 06.09 (тихое массовое автоодобрение): в этом модуле сознательно НЕТ ни одной функции,
 применяющей правила или возврат пакетом — каждая запись журнала пишется и возвращается по
@@ -18,13 +20,21 @@
 """
 from __future__ import annotations
 
+import csv
+import html
+import io
 import json
 import logging
+from datetime import datetime
 
+from cities import city_scope
 from database.db import (
     claim_auto_reject_return,
+    count_auto_reject_log,
+    export_auto_reject_log_rows,
     get_auto_reject_log_entry,
     get_user,
+    list_auto_reject_log,
     revert_user_to_pending,
     update_user_answers,
     upsert_auto_reject_log,
@@ -44,6 +54,10 @@ logger = logging.getLogger(__name__)
 # уже пропускает неположительные `decided_by` (план 31-02) — резолвить «менеджера» с id `-1`
 # не нужно.
 AUTO_DECIDED_BY = -1
+
+# Пагинация экрана журнала (CLAUDE.md: при 1000+ заявках список обязан быть постраничным, а не
+# сообщением на запись).
+JOURNAL_PAGE = 10
 
 
 async def record_auto_reject(telegram_id: int, rule_ids: list[int], reject_texts: list[str]) -> int:
@@ -112,3 +126,113 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
         allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "auto_rule_note"],
     )
     return claimed, None
+
+
+async def _admin_scope(admin_id: int):
+    """`per_city_visible_codes(admin_id)` -> `cities.city_scope` для SQL-фильтра журнала.
+    `per_city_visible_codes` всегда возвращает либо ПОЛНЫЙ список кодов (суперадмин или
+    непривязанный менеджер — «доступны все города»), либо список РОВНО из одного элемента
+    (привязанный менеджер) — второго случая (несколько, но не все) функция не производит,
+    поэтому единственная развилка здесь — «один код» -> точечный скоуп, иначе -> без фильтра."""
+    codes = await per_city_visible_codes(admin_id)
+    if len(codes) == 1:
+        return city_scope(codes[0])
+    return None
+
+
+async def journal_page(admin_id: int, *, offset: int = 0, include_returned: bool = False
+                        ) -> tuple[list[dict], int]:
+    """Страница журнала + общий счётчик по ОДНОМУ набору фильтров (правило `services.
+    applications.queue_page`: список и счётчик обязаны ходить по одному скоупу, иначе «Всего:
+    N» разойдётся со списком под ним)."""
+    scope = await _admin_scope(admin_id)
+    total = await count_auto_reject_log(city_scope=scope, include_returned=include_returned)
+    rows = await list_auto_reject_log(
+        city_scope=scope, limit=JOURNAL_PAGE, offset=offset, include_returned=include_returned,
+    )
+    return rows, total
+
+
+def _short_stamp(raw) -> str:
+    """`ДД.ММ ЧЧ:ММ` из метки, которая УЖЕ московская (`last_triggered_at` пишется `msk_now`,
+    второй сдвиг дал бы «будущее»). Собственная копия `handlers.admin_app_list._short_stamp`:
+    тот модуль тянет aiogram на уровне импорта, сервис обязан оставаться его свободным.
+    Фейл-софт: пустая или нераспознанная метка — «—»."""
+    if not raw:
+        return "—"
+    text = str(raw)[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            stamp = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        return stamp.strftime("%d.%m %H:%M")
+    return "—"
+
+
+def _username_label(raw) -> str:
+    """Собственная копия `handlers.admin_app_list._username` (тот же довод, что у
+    `_short_stamp` выше)."""
+    if not raw:
+        return "(без ника)"
+    return html.escape("@" + str(raw).strip().lstrip("@"))
+
+
+def _rule_label(entry: dict) -> str:
+    """Человеческое имя сработавшего правила для строки экрана. Журнал хранит СНИМОК —
+    `rule_ids`/`reject_texts` на момент срабатывания, а не живую ссылку на `reject_rules`
+    (правило могло быть переименовано или удалено к моменту, когда менеджер открыл журнал) —
+    поэтому источник здесь один: `reject_texts` (у правила своего имени в снимке нет). Берётся
+    ПЕРВЫЙ текст (первое сработавшее правило), обрезается до первого предложения, короткий
+    остаток — до 60 символов с многоточием, чтобы строка списка не расползалась на нескольких
+    делегатов подряд."""
+    try:
+        texts = json.loads(entry.get("reject_texts") or "[]")
+    except (TypeError, ValueError):
+        texts = []
+    if not texts:
+        return "—"
+    first = str(texts[0]).strip()
+    if not first:
+        return "—"
+    for sep in (".", "!", "?"):
+        idx = first.find(sep)
+        if idx != -1:
+            first = first[: idx + 1]
+            break
+    if len(first) > 60:
+        first = first[:57].rstrip() + "…"
+    return html.escape(first)
+
+
+def journal_line(entry: dict) -> str:
+    """Одна строка экрана журнала: «Иванова Мария — @masha — 20.09 14:12 — «Москва: 1–2
+    курс» — попыток: 2» (+ «— возвращена на модерацию», если строка закрыта). ВСЕ подставляемые
+    значения экранированы через `html.escape` здесь — вызывающий печатает строку как есть с
+    `parse_mode="HTML"` и повторно экранировать не должен (T-31-05-04, тот же контракт, что у
+    `services.applications.prev_reject_line`/`edited_line`)."""
+    name = html.escape(str(entry.get("full_name") or "") or "—")
+    username = _username_label(entry.get("username"))
+    stamp = _short_stamp(entry.get("last_triggered_at"))
+    rule_label = _rule_label(entry)
+    attempts = entry.get("attempt_count") or 0
+    suffix = " — возвращена на модерацию" if entry.get("returned_to_moderation_at") else ""
+    return f'{name} — {username} — {stamp} — «{rule_label}» — попыток: {attempts}{suffix}'
+
+
+async def export_csv(admin_id: int) -> tuple[str, bytes]:
+    """D-29: выгрузка журнала файлом для отчёта партнёрам. Разделитель «;» и BOM-кодировка
+    ниже по коду — конвенция проекта для Excel-RU (тот же приём, что `handlers/
+    admin_broadcasts.py::cmd_export`) — запятая сломала бы файл менеджеру в локали RU.
+    Формульная инъекция уже обезврежена на стороне `export_auto_reject_log_rows` (`_csv_safe`,
+    план 31-02, T-31-02-02) — второй копии защиты здесь не заводим."""
+    scope = await _admin_scope(admin_id)
+    headers, rows = await export_auto_reject_log_rows(city_scope=scope)
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    output.seek(0)
+    file_bytes = output.getvalue().encode('utf-8-sig')
+    filename = f"auto_reject_journal_{msk_now().strftime('%Y-%m-%d')}.csv"
+    return filename, file_bytes
