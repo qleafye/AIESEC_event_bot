@@ -75,6 +75,21 @@ async def current_wave_for(event_city: str | None, *, now: datetime | None = Non
     return await wave_at(ts, event_city)
 
 
+async def current_wave_for_city_raw(event_city_raw: str | None, *,
+                                     now: datetime | None = None) -> dict | None:
+    """WR-03 (32-REVIEW.md): та же волна, что `current_wave_for`, но НОРМАЛИЗУЕТ сырой
+    `users.event_city` ПЕРЕД поиском — легаси-амбассадор дефолтного города (`event_city IS
+    NULL`, таких ~590 на проде) иначе матчит только волны «все города» (`wave_at(ts, None)`
+    отбирает лишь `event_city IS NULL`), теряя волну своего дефолтного города, хотя видит её
+    задания и стоит в её рейтинге (та же `normalize_city`, что везде в проекте). Когда модуль
+    городов выключен, семантика — прежняя (`None` = без городов вовсе, нормализация не
+    применяется) — эта функция сама решает, нужна ли она, вызывающей стороне (`services.
+    referrals`, которая намеренно не заводит зависимость от `cities`, см. её докстринг) думать
+    об этом не нужно."""
+    city = cities.normalize_city(event_city_raw) if await cities.cities_module_on() else None
+    return await current_wave_for(city, now=now)
+
+
 async def wave_rating(wave_id: int) -> list[dict]:
     """Рейтинг волны: сумма баллов за задания этой волны (по привязке задания, не по дате
     начисления — D-14а) + авто-баллы за приглашённых, начисленные в датах волны (D-14б),
