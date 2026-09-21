@@ -15,11 +15,17 @@ Phase 16 (16-03, GAME-UI-03): сюда же переехал ЧИСТЫЙ рен
 
 Фейл-софт: неизвестный код категории/типа подтверждения никогда не роняет рендер —
 возвращается как есть.
+
+Phase 32 (32-04, D-25/D-27): сюда же — показ задания без срока делегату («без срока», а не
+служебная метка «конца времён») и штраф за просрочку (одна формула на проект, строка-подсказка
+на карточке ДО сдачи). Менеджерским экранам — свой синхронный `task_deadline_admin` (без
+реестра, формат параметром): перевод существующих читателей на него — планы 32-06, 32-07 и
+32-14 (см. «Карту читателей» в 32-04-PLAN.md), не этот план.
 """
 import html
 from datetime import datetime
 
-from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, parse_proof_types, task_title
+from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
@@ -69,11 +75,25 @@ async def proof_types_label(raw: str | None) -> str:
 def task_deadline(task: dict) -> datetime | None:
     """`deadline_at` строкой -> naive-датой по Москве, как её и вводил менеджер, или `None`
     (дедлайна нет / строку не разобрать). Единственный разбор этого поля в модуле —
-    `task_deadline_short` и `sort_tasks_for_delegate` зовут его, а не strptime по копии."""
+    `task_deadline_short` и `sort_tasks_for_delegate` зовут его, а не strptime по копии.
+
+    Phase 32 (32-04, D-27): `deadline_at`, равная служебной метке `NO_DEADLINE_AT` (задание
+    без собственного дедлайна), тоже даёт `None` — так задание «без срока» никогда не
+    считается просроченным и автоматически встаёт в хвост открытых у `sort_tasks_for_delegate`
+    (группа 0, ключ `_NO_DEADLINE` = `datetime.max`, дальше всех настоящих дат)."""
+    if task.get("deadline_at") == NO_DEADLINE_AT:
+        return None
     try:
         return datetime.strptime(task["deadline_at"], "%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError, KeyError):
         return None
+
+
+def task_has_deadline(task: dict) -> bool:
+    """Phase 32 (32-04, D-27): единственный предикат «у задания есть срок» на весь проект —
+    напоминания (план 32-08), штраф (`penalty_hint_line` ниже, план 32-07) и визард (план
+    32-12) зовут его, а не сравнивают `deadline_at` со строкой сами."""
+    return task_deadline(task) is not None
 
 
 def task_deadline_short(task: dict) -> tuple[str, bool]:
@@ -85,11 +105,48 @@ def task_deadline_short(task: dict) -> tuple[str, bool]:
     `datetime.now()`. Дедлайн менеджер вводит по Москве, а контейнер на проде живёт в UTC:
     задание «до 23:59» считалось открытым ещё три часа, до 02:59 МСК следующих суток —
     расходилось и со строкой «срок вышел», и с обратным отсчётом дней в приложении, который
-    уже считался по Москве (`miniapp/routers/tasks.py::_deadline_days_left`)."""
+    уже считался по Москве (`miniapp/routers/tasks.py::_deadline_days_left`).
+
+    Phase 32 (32-04, D-27): задание без срока (метка `NO_DEADLINE_AT`) даёт `("", False)` —
+    пустую строку, не сырую служебную метку; поведение для разбираемой даты и для мусора
+    (строка есть, но не парсится, или поля нет вовсе) не меняется."""
+    if task.get("deadline_at") == NO_DEADLINE_AT:
+        return "", False
     dt = task_deadline(task)
     if dt is None:
         return str(task.get("deadline_at") or "—"), False
     return dt.strftime("%d.%m"), dt <= msk_now()
+
+
+async def task_deadline_text(task: dict) -> str:
+    """Phase 32 (32-04, D-27): срок ДЕЛЕГАТУ человеческими словами — короткая дата (как и
+    раньше), а при отсутствии срока текст из реестра `game_task_no_deadline_text` («без
+    срока» по умолчанию) вместо пустой строки/служебной метки. Единственное место, где текст
+    показа срока делегату подставляется из реестра — карточка (`render_task_card_text`) и
+    любой будущий делегатский экран зовут эту функцию, а не собирают строку сами."""
+    short, _overdue = task_deadline_short(task)
+    if short:
+        return short
+    return await get_setting_typed("game_task_no_deadline_text")
+
+
+def task_deadline_admin(task: dict, fmt: str = "%d.%m %H:%M") -> str:
+    """Phase 32 (32-04, D-27): срок МЕНЕДЖЕРУ — синхронная, реестра не читает (менеджерские
+    экраны проекта собираются литералами модуля, та же граница, что у бейджа
+    `handlers/game_review_render.py`). Формат приходит параметром: бот печатает
+    `%d.%m %H:%M`, веб-редактор Mini App — `%d.%m.%Y %H:%M`. Срока нет -> литерал «без срока»;
+    строку разобрать не удалось -> прежний фейл-софт (значение как есть, `—` для пустого) —
+    byte-identical копия `_game_task_deadline_display` (`handlers/admin_gamification.py`) для
+    ветки успешного разбора. Единственный помощник, которым менеджерским экранам разрешено
+    печатать срок — приватные копии удаляют планы 32-07 и 32-14, дальше собственный
+    `strptime` по `deadline_at` запрещён структурным сторожем плана 32-14."""
+    raw = task.get("deadline_at")
+    if raw == NO_DEADLINE_AT:
+        return "без срока"
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").strftime(fmt)
+    except (TypeError, ValueError):
+        return str(raw or "—")
 
 
 # Сортировочный «конец времён» для задания без дедлайна: такое задание не просрочено
@@ -121,6 +178,34 @@ def sort_tasks_for_delegate(tasks: list[dict]) -> list[dict]:
     return sorted(tasks, key=key)
 
 
+def penalized_coins(coins: int, percent: int) -> int:
+    """Phase 32 (32-04, D-25/D-35): единственная формула штрафа за сдачу после дедлайна на
+    весь проект — карточка задания (`penalty_hint_line` ниже) и одобрение сдачи (план 32-07)
+    считают ОДНО и то же, тест сравнивает обе точки (T-32-04-04). `percent` вне 0..100
+    приводится к границам (защита от опечатки в настройке, D-35 — «один процент на
+    событие»); результат округляется ВНИЗ (`coins - coins * percent // 100`), чтобы делегат
+    никогда не получил больше обещанного, и не может уйти в минус."""
+    percent = max(0, min(100, percent))
+    return max(0, coins - coins * percent // 100)
+
+
+async def penalty_hint_line(task: dict) -> str | None:
+    """Phase 32 (32-04, D-25): строка штрафа ДО сдачи — «после дедлайна — 70 баллов вместо
+    100». `None`, если у задания нет срока (штраф без дедлайна бессмыслен) ИЛИ
+    `game_late_penalty_percent` равен 0 — на событиях без штрафа (дефолт на каждом живом
+    событии) карточка не меняется вовсе."""
+    if not task_has_deadline(task):
+        return None
+    percent = await get_setting_typed("game_late_penalty_percent")
+    if not percent:
+        return None
+    dt = task_deadline(task)
+    coins = task["coins"]
+    penalized = penalized_coins(coins, percent)
+    template = await get_setting_typed("game_task_penalty_hint_text")
+    return template.format(deadline=dt.strftime("%d.%m %H:%M"), penalized=penalized, coins=coins)
+
+
 async def render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
     """Phase 16 (16-01, GAME-UI-01): the task CARD shown when a delegate taps a task's button
     on the list -- title, RU category/coins/deadline, a composed status/attempt line, a
@@ -130,15 +215,27 @@ async def render_task_card_text(task: dict, status_line: str, attempt: int | Non
     own). `attempt` is accepted for interface parity with the caller (pre-composed into
     `status_line` already, not re-derived here). Accepts a real `game_tasks` row OR a
     task-shaped dict (the wizard preview builds one from FSM data before anything is saved).
-    Moved here verbatim from user_actions.py in 16-03 (GAME-UI-03)."""
+    Moved here verbatim from user_actions.py in 16-03 (GAME-UI-03).
+
+    Phase 32 (32-04, D-25/D-27): деталь дедлайна на второй строке получает ветку «без срока»
+    (вместо «до {дата}» — просто текст `task_deadline_text`, без «до»); сразу под ней —
+    строка штрафа `penalty_hint_line`, когда та не `None`. При проценте штрафа 0 и наличии
+    срока вторая строка и остальной рендер байт-в-байт равны поведению до этого плана."""
     title = html.escape(task_title(task))
     category = await category_label(task["category"])
     deadline, overdue = task_deadline_short(task)
-    lines = [f"<b>{title}</b>", f"{category} · {task['coins']}🪙 · до {deadline}"]
+    if deadline:
+        deadline_line = f"{category} · {task['coins']}🪙 · до {deadline}"
+    else:
+        deadline_line = f"{category} · {task['coins']}🪙 · {await task_deadline_text(task)}"
+    lines = [f"<b>{title}</b>", deadline_line]
     if overdue:
         # A-05 (созвон 13.08): дедлайн мягкий, сдача разрешена, решение по коинам остаётся за
         # менеджером. Phase 17.1 (17.1-01): сама формулировка — в реестре.
         lines.append(await get_setting_typed("game_task_overdue_hint_text"))
+    penalty_line = await penalty_hint_line(task)
+    if penalty_line is not None:
+        lines.append(penalty_line)
     status_label = await get_setting_typed("game_task_detail_status_label")
     lines.append(status_label.format(status=status_line))
     lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'))}")
@@ -149,9 +246,14 @@ async def render_task_card_text(task: dict, status_line: str, attempt: int | Non
 
 __all__ = [
     "category_label",
+    "penalized_coins",
+    "penalty_hint_line",
     "proof_types_label",
     "render_task_card_text",
     "sort_tasks_for_delegate",
     "task_deadline",
+    "task_deadline_admin",
     "task_deadline_short",
+    "task_deadline_text",
+    "task_has_deadline",
 ]
