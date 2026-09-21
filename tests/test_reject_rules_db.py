@@ -307,6 +307,53 @@ def test_list_and_count_auto_reject_log_exclude_returned_by_default(tmp_path):
     assert len(_run(db.list_auto_reject_log(include_returned=True))) == 1
 
 
+def test_count_auto_reject_log_for_rule_matches_exact_id_not_prefix_or_suffix(tmp_path):
+    """WR-01: правило 1 не имеет права засчитать срабатывания правил 10/11/21 — точное
+    совпадение элемента JSON-массива (`json_each`), не подстрока сериализованной строки."""
+    _ready(tmp_path)
+    _seed_user(2101, event_city="msk")
+    _seed_user(2102, event_city="msk")
+    _seed_user(2103, event_city="msk")
+    _seed_user(2104, event_city="msk")
+    _run(db.upsert_auto_reject_log(2101, "[1]", '["a"]', "2026-09-20 10:00:00"))
+    _run(db.upsert_auto_reject_log(2102, "[10]", '["a"]', "2026-09-20 10:01:00"))
+    _run(db.upsert_auto_reject_log(2103, "[11]", '["a"]', "2026-09-20 10:02:00"))
+    _run(db.upsert_auto_reject_log(2104, "[21]", '["a"]', "2026-09-20 10:03:00"))
+
+    assert _run(db.count_auto_reject_log_for_rule(1)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(10)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(11)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(21)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(2)) == 0
+
+
+def test_count_auto_reject_log_for_rule_counts_row_with_several_rule_ids(tmp_path):
+    _ready(tmp_path)
+    _seed_user(2105, event_city="msk")
+    _run(db.upsert_auto_reject_log(2105, "[1, 2, 3]", '["a", "b", "c"]', "2026-09-20 10:00:00"))
+    assert _run(db.count_auto_reject_log_for_rule(1)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(2)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(3)) == 1
+    assert _run(db.count_auto_reject_log_for_rule(4)) == 0
+
+
+def test_count_auto_reject_log_for_rule_respects_city_scope(tmp_path):
+    _ready(tmp_path)
+    _seed_user(2106, event_city="msk")
+    _seed_user(2107, event_city="spb")
+    _run(db.upsert_auto_reject_log(2106, "[5]", '["a"]', "2026-09-20 10:00:00"))
+    _run(db.upsert_auto_reject_log(2107, "[5]", '["a"]', "2026-09-20 10:01:00"))
+
+    assert _run(db.count_auto_reject_log_for_rule(5, city_scope=("msk", ()))) == 1
+    assert _run(db.count_auto_reject_log_for_rule(5, city_scope=("spb", ()))) == 1
+    assert _run(db.count_auto_reject_log_for_rule(5)) == 2
+
+
+def test_count_auto_reject_log_for_rule_zero_rows(tmp_path):
+    _ready(tmp_path)
+    assert _run(db.count_auto_reject_log_for_rule(999)) == 0
+
+
 def test_export_auto_reject_log_rows_passes_values_through_csv_safe(tmp_path):
     """ФИО делегата, начинающееся с `=` (анкета — свободный текст, ничем не ограничена),
     обязано пройти `_csv_safe` (T-31-02-02, CWE-1236) в выгрузке журнала."""

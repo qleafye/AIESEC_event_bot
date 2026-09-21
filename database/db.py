@@ -5083,6 +5083,28 @@ async def count_auto_reject_log(*, city_scope=None, include_returned: bool = Fal
             return int(row[0]) if row and row[0] is not None else 0
 
 
+async def count_auto_reject_log_for_rule(rule_id: int, *, city_scope=None,
+                                          include_returned: bool = False) -> int:
+    """Число строк журнала, где сработало ИМЕННО это правило — COUNT в SQL вместо вычитывания
+    журнала целиком в Python (карточка «🗑 Удалить правило» раньше грузила до 100000 строк с
+    JOIN на каждый рендер). `rule_ids` — JSON-массив id (`record_auto_reject`); `json_each`
+    разворачивает массив построчно, `je.value = ?` — точное совпадение элемента (не LIKE по
+    сериализованной строке: правило 1 не имеет права засчитать срабатывание 10/11/21). Тот же
+    WHERE-билдер, что у списка/счётчика журнала (`_auto_reject_log_where`) — городской скоуп и
+    include_returned ведут себя одинаково."""
+    where_sql, params = _auto_reject_log_where(city_scope, include_returned)
+    rule_match = "EXISTS (SELECT 1 FROM json_each(l.rule_ids) je WHERE je.value = ?)"
+    where_sql = f"{where_sql} AND {rule_match}" if where_sql else f"WHERE {rule_match}"
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM auto_reject_log l LEFT JOIN users u "
+            f"ON u.telegram_id = l.telegram_id {where_sql}",
+            (*params, rule_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
 async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
