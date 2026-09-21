@@ -295,6 +295,11 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         cuts.append({"title": title, "rows": _bar_rows(rows), "has_data": bool(rows)})
 
     game_stats = queries.game_block(conn, scope) if flags.get("dashboard_block_game") == "on" else None
+    ambassadors = (
+        queries.ambassador_block(conn, scope)
+        if flags.get("dashboard_block_ambassadors") == "on"
+        else None
+    )
     referrals = (
         queries.referral_block(conn, scope)
         if flags.get("dashboard_block_referrals") == "on"
@@ -364,6 +369,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         ),
         "bot_username": cfg.bot_username,
         "game": game_stats,
+        "ambassadors": ambassadors,
         "referrals": referrals,
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,

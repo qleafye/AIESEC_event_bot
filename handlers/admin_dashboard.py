@@ -19,7 +19,7 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 # Порядок блоков на странице дашборда (D-14): воронка -> динамика ->
-# города/источники/вузы/курсы/направления -> где бросают -> гейма -> рефералы.
+# города/источники/вузы/курсы/направления -> где бросают -> гейма -> амбассадоры -> рефералы.
 DASHBOARD_BLOCKS = [
     "dashboard_block_funnel",
     "dashboard_block_dynamics",
@@ -31,6 +31,7 @@ DASHBOARD_BLOCKS = [
     "dashboard_block_utm",
     "dashboard_block_months",
     "dashboard_block_game",
+    "dashboard_block_ambassadors",
     "dashboard_block_referrals",
 ]
 
