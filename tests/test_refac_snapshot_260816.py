@@ -446,6 +446,8 @@ admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
 admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
 admin|message|arr_name_step|state:RejectRuleEdit:*
 admin|message|arr_text_step|state:RejectRuleEdit:*
+admin|message|arc_num_cancel|state:RejectCond:*
+admin|message|arc_num_step|state:RejectCond:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -634,7 +636,6 @@ admin|callback_query|admin_reject_rules|admin_reject_rules
 admin|callback_query|arr_page|arr_p:*
 admin|callback_query|arr_master_toggle|arr_master
 admin|callback_query|arr_toggle_enabled|arr_t:*
-admin|callback_query|arr_noop|arr_noop
 admin|callback_query|arr_new_start|arr_new
 admin|callback_query|arr_preset_pick|arr_preset:*
 admin|callback_query|arr_view|arr_v:*
@@ -648,6 +649,22 @@ admin|callback_query|arr_copy_start|arr_copy:*
 admin|callback_query|arr_copy_go|arr_copygo:*
 admin|callback_query|arr_delete_confirm|arr_d:*
 admin|callback_query|arr_delete_go|arr_dgo:*
+admin|callback_query|arc_add|arc_add:*
+admin|callback_query|arc_steppage|arc_steppage:*
+admin|callback_query|arc_step|arc_step:*
+admin|callback_query|arc_op|arc_op:*
+admin|callback_query|arc_val_toggle|arc_val:*
+admin|callback_query|arc_valpage|arc_valpage:*
+admin|callback_query|arc_valdone|arc_valdone:*
+admin|callback_query|arc_num_start|arc_num:*
+admin|callback_query|arc_dellist|arc_dellist:*
+admin|callback_query|arc_del|arc_del:*
+admin|callback_query|arc_cancel|arc_cancel:*
+admin|callback_query|arc_presetlist|arc_presetlist:*
+admin|callback_query|arc_preset_pick|arc_preset:*
+admin|callback_query|arc_dry|arc_dry:*
+admin|callback_query|arc_gate|arc_gate:*
+admin|callback_query|arc_dry_go|arc_dry_go:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1153,7 +1170,22 @@ def test_snapshot_total_handler_count_is_292():
     # (`arr_copy`/`arr_copygo`/`arr_d`/`arr_dgo` — копирование в другой город, удаление с
     # подтверждением) (549 -> 553); чистая вставка, diff'ом (difflib.SequenceMatcher)
     # подтверждено 0 удалений/реордеров.
-    assert len(GOLDEN_SNAPSHOT) == 553
+    # Phase 31 (план 31-10): конструктор условий правила — новый шов
+    # handlers/admin_reject_cond.py, импортируется хвостом из handlers/admin_reject_rules.py
+    # (самая последняя строка того файла), поэтому все его хендлеры встают в САМЫЙ ХВОСТ
+    # admin.router. -1 admin.callback_query (arr_noop — заглушка конструктора снесена целиком,
+    # кнопки карточки правила теперь ведут в arc_add/arc_dellist/arc_dry/arc_gate напрямую);
+    # +2 admin.message (arc_num_cancel/arc_num_step — ввод числа/даты для условий int/date/
+    # birth_date, RejectCond.num), встали сразу после arr_text_step и перед cancel_city_form
+    # (первым message-хендлером блока CityForm); +16 admin.callback_query (arc_add/arc_steppage/
+    # arc_step/arc_op/arc_val_toggle/arc_valpage/arc_valdone/arc_num_start/arc_dellist/arc_del/
+    # arc_cancel/arc_presetlist/arc_preset_pick/arc_dry/arc_gate/arc_dry_go), встали в хвост
+    # callback_query-блока admin.router, сразу после arr_delete_go (553 -> 570). Пересчитано
+    # RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
+    # 553-строчным снимком: ровно одно удаление (arr_noop) в позиции ~215 и ровно две вставки
+    # (2 строки в позиции ~25 внутри message-блока, 16 строк в самом хвосте callback_query-
+    # блока) — ни одна другая строка не поменялась и не переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 570
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -256,6 +256,16 @@ class RejectRuleEdit(StatesGroup):
     text = State()
 
 
+class RejectCond(StatesGroup):
+    # Phase 31 (31-10, D-01): конструктор условия правила (handlers/admin_reject_cond.py) —
+    # состояние ставится ТОЛЬКО на шаге ввода числа/даты текстом (arc_num); выбор вопроса/
+    # оператора/значений — чистые callback'и без ожидания сообщения, id правила/группы/шаг/
+    # оператор/отмеченные индексы живут в state.get_data() (arc_rule/arc_group/arc_step/
+    # arc_op/arc_checked/arc_voff), тот же приём, что RejectRuleEdit несёт rre_rule_id. Право
+    # "settings" (state:RejectCond:* в handlers/admin_caps.py).
+    num = State()
+
+
 class AdminI18nEdit(StatesGroup):
     # Phase 27 (27-06, LANG-05/LANG-09): экран «🌐 Английские тексты» (handlers/admin_i18n.py)
     # — ручная правка одного английского текста. Одно состояние: цель правки (какую строку

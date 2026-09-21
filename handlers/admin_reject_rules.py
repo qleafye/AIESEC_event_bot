@@ -7,9 +7,8 @@
 `handlers.admin` импортируется на уровне модуля, `handlers.admin_sections` — лениво внутри
 функций (цикл на уровне модуля: `admin_sections` импортирует этот шов хвостом).
 
-Конструктор условий («➕ условие в группу N» / «➕ новая группа (ИЛИ)») и журнал автоотказов —
-ОТДЕЛЬНЫЕ швы (планы 31-10/31-11, потолок размера модуля, не архитектурная граница): здешние
-кнопки-заготовки ведут на заглушку `arr_noop`.
+Конструктор условий и счётчик dry-run — ОТДЕЛЬНЫЙ шов (потолок размера модуля, не архитектурная
+граница): кнопки карточки ведут в `handlers/admin_reject_cond.py` (импорт хвостом, конец файла).
 
 Запись правила — ТОЛЬКО через `services.reject_rules.save_rule`/`delete_rule` (план 31-04),
 второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
@@ -307,11 +306,6 @@ async def arr_toggle_enabled(callback: types.CallbackQuery):
         )
 
 
-@router.callback_query(F.data == "arr_noop")
-async def arr_noop(callback: types.CallbackQuery):
-    await callback.answer("Скоро — конструктор условий появится в следующем обновлении.", show_alert=True)
-
-
 # ── Новое правило: заготовка или своё ─────────────────────────────────────────
 
 async def render_new_rule_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
@@ -428,11 +422,13 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
     buttons: list[list[InlineKeyboardButton]] = []
     groups = rule.get("conditions") or []
     if not groups:
-        buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data="arr_noop")])
+        buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data=f"arc_add:{rule_id}:-1")])
     else:
         for idx in range(1, len(groups) + 1):
-            buttons.append([InlineKeyboardButton(text=f"➕ условие в группу {idx}", callback_data="arr_noop")])
-    buttons.append([InlineKeyboardButton(text="➕ новая группа (ИЛИ)", callback_data="arr_noop")])
+            buttons.append([InlineKeyboardButton(text=f"➕ условие в группу {idx}", callback_data=f"arc_add:{rule_id}:{idx - 1}")])
+    buttons.append([InlineKeyboardButton(text="➕ новая группа (ИЛИ)", callback_data=f"arc_add:{rule_id}:-1")])
+    if groups:
+        buttons.append([InlineKeyboardButton(text="🗑 Удалить условие", callback_data=f"arc_dellist:{rule_id}")])
 
     buttons.append([InlineKeyboardButton(text=f"↔ Действие: {action_label}", callback_data=f"arr_act:{rule_id}")])
     buttons.append([InlineKeyboardButton(text=f"🏙 Город: {city_text}", callback_data=f"arr_city:{rule_id}")])
@@ -447,9 +443,10 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
 
     buttons.append([InlineKeyboardButton(text="✏ Имя правила", callback_data=f"arr_name:{rule_id}")])
     buttons.append([InlineKeyboardButton(text="✏ Текст отказа", callback_data=f"arr_text:{rule_id}")])
+    buttons.append([InlineKeyboardButton(text="🔢 Сколько заявок попадёт", callback_data=f"arc_dry:{rule_id}")])
     buttons.append([InlineKeyboardButton(
         text=("🚫 Выключить" if rule.get("enabled") else "✅ Включить"),
-        callback_data=f"arr_t:{rule_id}",
+        callback_data=f"arc_gate:{rule_id}",
     )])
     buttons.append([InlineKeyboardButton(text="📋 Скопировать в другой город", callback_data=f"arr_copy:{rule_id}")])
     buttons.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"arr_d:{rule_id}")])
@@ -848,3 +845,6 @@ async def arr_delete_go(callback: types.CallbackQuery):
     text, kb = await render_rules_screen(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Правило удалено навсегда.")
+
+
+from handlers import admin_reject_cond  # noqa: E402,F401 — конструктор условий (arc_*), хвостом

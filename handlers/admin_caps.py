@@ -545,6 +545,12 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_reject_rules": "settings",
     "arr_*": "settings",
     "state:RejectRuleEdit:*": "settings",
+    # Phase 31 (31-10, D-01/D-13/D-16): конструктор условий (handlers/admin_reject_cond.py) —
+    # тот же класс экрана, тем же правом; один префиксный ключ на всё пространство callback'ов
+    # (arc_add/arc_steppage/arc_step/arc_op/arc_val/arc_valpage/arc_valdone/arc_num/arc_del/
+    # arc_dellist/arc_preset/arc_dry/arc_gate/arc_dry_go/arc_cancel — все начинаются с "arc_").
+    "arc_*": "settings",
+    "state:RejectCond:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
