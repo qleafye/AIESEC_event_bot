@@ -188,3 +188,235 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
         )
 
     return rules
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: CRUD, права по городу, валидация условий, очередь перевода
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+async def can_edit_city(admin_id: int, city: str | None) -> bool:
+    """ПРАВО менеджера редактировать правило данного города (D-16) — не фильтр отображения.
+    Вызывается в КАЖДОМ мутирующем вызове сервиса (`save_rule`/`delete_rule`), а не только при
+    отрисовке списка — инлайн-клавиатуры не истекают, тот же довод, что у CITY-05/09.3.
+
+    Правило конкретного города (`city` не `None`) доступно, если код города входит в
+    `settings_ops.per_city_visible_codes(admin_id)` — суперадмину и менеджеру без привязки
+    видны все города, привязанному менеджеру — только его. Правило «все города» (`city is
+    None`) доступно ТОЛЬКО тому, у кого нет привязки к городу (суперадмин или менеджер без
+    города, `database.db.get_staff_city` вернул `None`) — привязанный менеджер не имеет права
+    завести или включить общее правило."""
+    if city is None:
+        if admin_id in config.ADMIN_IDS:
+            return True
+        bound = await get_staff_city(admin_id)
+        return bound is None
+    visible = await per_city_visible_codes(admin_id)
+    return normalize_city(city) in visible
+
+
+async def rules_for_admin(admin_id: int) -> list[dict]:
+    """Список для экрана менеджера — `list_reject_rules` со скоупом по видимым городам плюс
+    разбор JSON-колонок `tracks`/`conditions`. Суперадмин и менеджер без привязки видят все
+    правила (тот же скоуп, что `can_edit_city` разрешает редактировать)."""
+    bound_city = None if admin_id in config.ADMIN_IDS else await get_staff_city(admin_id)
+    rows = await list_reject_rules(city_scope=city_scope(bound_city))
+    out = []
+    for row in rows:
+        rule = dict(row)
+        try:
+            rule["tracks"] = json.loads(row.get("tracks") or "[]") or []
+        except (TypeError, ValueError):
+            rule["tracks"] = []
+        try:
+            rule["conditions"] = json.loads(row.get("conditions") or "[]") or []
+        except (TypeError, ValueError):
+            rule["conditions"] = []
+        out.append(rule)
+    return out
+
+
+async def validate_condition(
+    step: str, op: str, values, *, event_city: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Нормализует одно условие или отдаёт человеческую причину отказа (без кодов вопросов/
+    вариантов в тексте — CLAUDE.md «бот для людей»). `event_city` принят по контракту
+    `<interfaces>` плана для единообразия с остальными функциями модуля; `reg_engine.options`
+    сегодня не резолвит варианты по городу (список вариантов вопроса в проекте общий на все
+    города), поэтому параметр здесь не влияет на результат — честно, не притворяется, что
+    город учтён там, где его не читает ни один источник данных.
+
+    - `step` обязан быть ключом `REG_FLOW`;
+    - `op` обязан входить в `reg_engine.condition_operators(step)`;
+    - для категорий select/multi каждое значение обязано присутствовать в ЖИВОМ
+      `reg_engine.options(step)` — иначе отказ в тоне `settings_validation` («такого варианта
+      нет»), без показа кода;
+    - int-операторы приводят значения к `int` (`between` — ровно два, первое меньше второго);
+    - `before`/`after` разбирают значение как `%d.%m.%Y`; `age_on_forum_lt` — положительное
+      целое; `filled`/`empty`/`has_file`/`no_file` принудительно обнуляют `values`."""
+    if step not in _REG_FLOW_STEPS:
+        return None, "Такого вопроса анкеты не существует — обновите экран и попробуйте снова."
+
+    allowed_ops = condition_operators(step)
+    if op not in allowed_ops:
+        return None, "Такое условие недоступно для этого вопроса — обновите экран и попробуйте снова."
+
+    category = reject_condition_category(step)
+    values = list(values or [])
+
+    if category in ("select", "multi"):
+        if not values:
+            return None, "Отметьте хотя бы один вариант."
+        live_options = await options(step)
+        if any(value not in live_options for value in values):
+            return None, (
+                "Такого варианта больше нет — отметьте варианты галочками, обновите экран и "
+                "попробуйте ещё раз."
+            )
+        return {"step": step, "op": op, "values": values}, None
+
+    if category == "int":
+        try:
+            numbers = [int(v) for v in values]
+        except (TypeError, ValueError):
+            return None, "Нужно число."
+        if op == "between":
+            if len(numbers) != 2 or numbers[0] >= numbers[1]:
+                return None, "Нужны два числа, первое меньше второго."
+        elif len(numbers) != 1:
+            return None, "Нужно одно число."
+        return {"step": step, "op": op, "values": numbers}, None
+
+    if category in ("date", "birth_date") and op in ("before", "after"):
+        if len(values) != 1:
+            return None, "Нужна одна дата в формате ДД.ММ.ГГГГ."
+        raw_date = str(values[0]).strip()
+        try:
+            datetime.strptime(raw_date, "%d.%m.%Y")
+        except (TypeError, ValueError):
+            return None, "Не понял дату — пришлите в формате ДД.ММ.ГГГГ, например 15.10.2026."
+        return {"step": step, "op": op, "values": [raw_date]}, None
+
+    if category == "birth_date" and op == "age_on_forum_lt":
+        try:
+            years = int(values[0])
+        except (TypeError, ValueError, IndexError):
+            return None, "Нужно положительное число лет."
+        if years <= 0:
+            return None, "Нужно положительное число лет."
+        return {"step": step, "op": op, "values": [years]}, None
+
+    if category == "text" and op in ("filled", "empty"):
+        return {"step": step, "op": op, "values": []}, None
+
+    if category == "file" and op in ("has_file", "no_file"):
+        return {"step": step, "op": op, "values": []}, None
+
+    return None, "Неизвестное условие — обновите экран и попробуйте снова."
+
+
+_VALID_ACTIONS = ("reject", "flag")  # D-03: закрытое множество, автоодобрения нет
+
+
+async def save_rule(admin_id: int, rule_id: int | None, **fields) -> tuple[int | None, str | None]:
+    """Единственная дверь записи правила. `(id, None)` при успехе, `(None, причина)` при
+    нарушении прав или валидации — причина человеческая, без кодов.
+
+    1. `can_edit_city` для НОВОГО города правила И (при правке) для СТАРОГО города строки из
+       базы — менеджер не может «увести» чужое правило в свой город (T-31-04-01).
+    2. Все условия прогоняются через `validate_condition`.
+    3. `action` обязан быть `"reject"` или `"flag"` (D-03).
+    4. При `action == "reject"` и включении правила обязателен непустой `reject_text` (D-21).
+    5. Сериализация `tracks`/`conditions` в JSON, вызов `create_reject_rule`/`update_reject_rule`.
+    6. Текст отказа ставится в очередь машинного перевода (D-25), сбой очереди не теряет
+       правило."""
+    new_city = fields.get("city")
+
+    if rule_id is not None:
+        existing = await get_reject_rule(rule_id)
+        if existing is None:
+            return None, "Правило не найдено — возможно, его уже удалили."
+        if not await can_edit_city(admin_id, existing.get("city")):
+            return None, "Нет прав редактировать правило этого города."
+
+    if not await can_edit_city(admin_id, new_city):
+        return None, "Нет прав сохранить правило в этот город."
+
+    action = fields.get("action")
+    if action not in _VALID_ACTIONS:
+        return None, "Неизвестное действие правила."
+
+    raw_groups = fields.get("conditions") or []
+    normalized_groups: list[list[dict]] = []
+    for group in raw_groups:
+        normalized_group: list[dict] = []
+        for cond in group or []:
+            normalized, error = await validate_condition(
+                (cond or {}).get("step"), (cond or {}).get("op"), (cond or {}).get("values"),
+                event_city=new_city,
+            )
+            if error:
+                return None, error
+            normalized_group.append(normalized)
+        normalized_groups.append(normalized_group)
+
+    enabled = 1 if fields.get("enabled") else 0
+    reject_text = str(fields.get("reject_text") or "").strip() or None
+    if action == "reject" and enabled and not reject_text:
+        return None, "Без текста отказа делегат не поймёт причину — впишите текст."
+
+    tracks = fields.get("tracks") or ["full"]
+    tracks_json = json.dumps(list(tracks), ensure_ascii=False)
+    conditions_json = json.dumps(normalized_groups, ensure_ascii=False)
+    name = fields.get("name")
+
+    if rule_id is None:
+        new_id = await create_reject_rule(
+            name=name, city=new_city, tracks=tracks_json, conditions=conditions_json,
+            action=action, reject_text=reject_text, enabled=enabled, created_by=admin_id,
+        )
+        await _maybe_enqueue_rule_text_translation(reject_text, new_id)
+        return new_id, None
+
+    await update_reject_rule(
+        rule_id,
+        name=name, city=new_city, tracks=tracks_json, conditions=conditions_json,
+        action=action, reject_text=reject_text, enabled=enabled,
+    )
+    await _maybe_enqueue_rule_text_translation(reject_text, rule_id)
+    return rule_id, None
+
+
+async def delete_rule(admin_id: int, rule_id: int) -> tuple[bool, str | None]:
+    """Та же проверка права (T-31-04-01), затем `delete_reject_rule`."""
+    existing = await get_reject_rule(rule_id)
+    if existing is None:
+        return False, "Правило не найдено — возможно, его уже удалили."
+    if not await can_edit_city(admin_id, existing.get("city")):
+        return False, "Нет прав удалить правило этого города."
+    deleted = await delete_reject_rule(rule_id)
+    return deleted, None if deleted else "Не удалось удалить правило."
+
+
+async def _maybe_enqueue_rule_text_translation(text: str | None, rule_id: int | None) -> None:
+    """Постановка текста отказа правила в очередь машинного перевода (D-25) — форма
+    СКОПИРОВАНА с `database.db._maybe_enqueue_city_label_translation`, а не вызов существующего
+    `database.db._maybe_enqueue_translation`: тот хук висит на `set_setting` и гейтится
+    `services.i18n_sources.is_delegate_dynamic_key` (сверяет ключ реестра `bot_settings`), а
+    текст правила живёт не в `bot_settings` — в колонке `reject_rules.reject_text`, второго
+    ключа реестра под него не заводится. Тот же гейт (`delegate_lang_enabled`), тот же широкий
+    fail-soft `except` с логом (T-31-04-05): сбой очереди перевода не должен потерять уже
+    сохранённое правило — делегат получит русский текст, пока перевода нет (D-25)."""
+    try:
+        if not text:
+            return
+        if await get_setting_typed("delegate_lang_enabled") != "on":
+            return
+        await enqueue_translation(
+            "en", src_hash(text), text, origin_key=f"reject_rule__{rule_id}",
+        )
+    except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (T-31-04-05)
+        logger.error(
+            "services.reject_rules._maybe_enqueue_rule_text_translation: очередь перевода не "
+            "приняла текст правила id=%s (%s)",
+            rule_id, exc,
+        )
