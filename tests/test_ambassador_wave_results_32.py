@@ -388,3 +388,188 @@ def test_wavefin_callback_format_matches_scheduler_button():
     assert 'F.data.startswith("wavefin:")' in handlers_src
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: рассылка итогов и поздравления призёрам (services/scheduler.py)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+class FakeBot:
+    def __init__(self, forbidden_ids=frozenset()):
+        self.sent = []  # [(chat_id, text, parse_mode, reply_markup)]
+        self.forbidden_ids = set(forbidden_ids)
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        if chat_id in self.forbidden_ids:
+            raise TelegramForbiddenError(method=None, message="bot was blocked by the user")
+        self.sent.append((chat_id, text, parse_mode, reply_markup))
+        return None
+
+
+def _with_bot(monkeypatch, bot=None):
+    bot = bot or FakeBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    return bot
+
+
+def _build_scheduler(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    return AsyncIOScheduler(
+        jobstores={"default": SQLAlchemyJobStore(url=f"sqlite:///{tmp_path / 'jobs.sqlite'}")},
+        timezone=sched.MOSCOW_TZ,
+    )
+
+
+def _run_scheduled(tmp_path, monkeypatch, body):
+    s = _build_scheduler(tmp_path)
+    monkeypatch.setattr(sched, "_scheduler", s)
+
+    async def go():
+        s.start(paused=True)
+        try:
+            return await body(s)
+        finally:
+            s.shutdown(wait=False)
+
+    return asyncio.run(go())
+
+
+def _announce(wave_id):
+    return _run(aw.announce_results(wave_id))
+
+
+def test_schedule_wave_results_broadcast_job_id_and_replace_existing(tmp_path, monkeypatch):
+    async def body(s):
+        sched.schedule_wave_results_broadcast(7, {1: (1, 10)})
+        assert s.get_job("wave_results_broadcast_7") is not None
+        sched.schedule_wave_results_broadcast(7, {1: (1, 10), 2: (2, 5)})  # переставили
+        jobs = [j for j in s.get_jobs() if j.id == "wave_results_broadcast_7"]
+        assert len(jobs) == 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_send_wave_results_not_announced_state_silent(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    wave_id, _task_id = _make_wave_with_task()  # состояние 'closing', не 'announced'
+    import json
+    _run(sched.send_wave_results(wave_id, json.dumps({"1": [1, 10]})))
+    assert bot.sent == []
+
+
+def test_send_wave_results_winner_gets_two_messages_non_winner_one(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3b.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1, full_name="Победитель")
+    _seed_ambassador(2, full_name="Участник")
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    result = _announce(wave_id)
+
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _run(sched.send_wave_results(wave_id, standings_json))
+
+    recipients = [c[0] for c in bot.sent]
+    assert recipients.count(1) == 2  # призёр
+    assert recipients.count(2) == 1  # не призёр
+
+
+def test_send_wave_results_reads_snapshot_not_live_rating(tmp_path, monkeypatch):
+    """Регрессия: после подмены wave_rating содержимое сообщений не меняется — рассылка не
+    зовёт wave_rating вовсе, а читает переданный standings_json + снимок `get_wave_results`."""
+    _ready(tmp_path, "t3c.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    result = _announce(wave_id)
+
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+
+    async def fake_rating(_wid):
+        raise AssertionError("send_wave_results НЕ должна звать wave_rating")
+    monkeypatch.setattr("services.ambassador_waves.wave_rating", fake_rating)
+
+    _run(sched.send_wave_results(wave_id, standings_json))
+    texts = {c[0]: c[1] for c in bot.sent}
+    assert "10" in texts[2]  # баллы участника 2 в тексте — из snapshot, не пересчитаны
+    assert "2-е" in texts[2] or "2" in texts[2]
+
+
+def test_send_wave_results_late_approval_does_not_change_texts(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3d.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    result = _announce(wave_id)
+
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+
+    _award(2, task_id, 1000)  # одобрили ПОСЛЕ объявления — рейтинг изменился
+
+    _run(sched.send_wave_results(wave_id, standings_json))
+    texts = {c[0]: c[1] for c in bot.sent}
+    assert "10" in texts[2]
+    assert "1010" not in texts[2]
+
+
+def test_send_wave_results_blocked_recipient_does_not_abort_others(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3e.db")
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _seed_ambassador(2)
+    _award(1, task_id, 50)
+    _award(2, task_id, 10)
+    result = _announce(wave_id)
+    bot = _with_bot(monkeypatch, FakeBot(forbidden_ids={1}))
+
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _run(sched.send_wave_results(wave_id, standings_json))
+    assert 2 in [c[0] for c in bot.sent]  # получатель 2 не пострадал от блокировки получателя 1
+
+
+def test_send_wave_results_quiet_hours_queues(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3f.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+    result = _announce(wave_id)
+    _run(db.set_setting("quiet_hours_enabled", "on"))  # default-окно 22:00-09:00
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 9, 23, 0, 0))
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _run(sched.send_wave_results(wave_id, standings_json))
+    assert bot.sent == []  # не отправлено сейчас — положено в очередь тихих часов
+
+
+def test_send_wave_results_manually_reset_state_sends_nothing(tmp_path, monkeypatch):
+    _ready(tmp_path, "t3g.db")
+    bot = _with_bot(monkeypatch)
+    wave_id, task_id = _make_wave_with_task(prize_places=1)
+    _seed_ambassador(1)
+    _award(1, task_id, 10)
+    result = _announce(wave_id)
+    _run(db.set_wave_state(wave_id, "closing"))  # откатили руками
+
+    import json
+    standings_json = json.dumps({str(uid): list(v) for uid, v in result["standings"].items()})
+    _run(sched.send_wave_results(wave_id, standings_json))
+    assert bot.sent == []
+
+
+def test_send_wave_results_no_wave_rating_call_in_source():
+    import inspect
+    src = inspect.getsource(sched.send_wave_results)
+    assert "wave_rating" not in src
