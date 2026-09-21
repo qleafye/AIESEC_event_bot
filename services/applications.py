@@ -33,6 +33,7 @@
 from __future__ import annotations
 
 import html as html_module
+import json
 from datetime import datetime, timedelta
 
 import moderation_card
@@ -47,6 +48,7 @@ from database.db import (
     get_last_application_decision,
     get_pending_count,
     get_pending_users,
+    get_reject_rule,
     get_setting,
     get_user,
     record_application_decision,
@@ -193,6 +195,106 @@ async def edit_badges_for(user: dict) -> tuple[str | None, str | None, bool]:
     return edited_line, resubmit_line, has_history
 
 
+def _parse_rule_ids(raw) -> list:
+    """`users.flagged_rule_ids`/`users.auto_reject_rule_ids` -> список id, битый/пустой JSON
+    -> `[]` (fail-soft, та же дисциплина, что у остального разбора JSON-колонок в этом файле)."""
+    if not raw:
+        return []
+    try:
+        return json.loads(raw) or []
+    except (TypeError, ValueError):
+        return []
+
+
+async def _resolve_rule_label(rule_id) -> str:
+    """id правила -> человеческая подпись: своё имя (D-10), если менеджер его задал, иначе
+    первые слова текста отказа — тот же приём, что `services/reg_finalize.py::_auto_rule_label`
+    (обе функции решают одну задачу на разных срезах данных: та читает свежесработавший список
+    правил, эта — персистентную колонку users спустя произвольное время, поэтому резолвит ЗАНОВО
+    через `database.db.get_reject_rule`, а не хранимый `auto_rule_note`). Правило удалено ->
+    «правило удалено» (T-31-09-05: id менеджеру не показываем ни в одной ветке)."""
+    try:
+        rule = await get_reject_rule(rule_id)
+    except Exception:
+        rule = None
+    if not rule:
+        return "правило удалено"
+    name = str(rule.get("name") or "").strip()
+    if name:
+        return name
+    text = str(rule.get("reject_text") or "").strip()
+    if not text:
+        return "без описания"
+    words = text.split()
+    short = " ".join(words[:6])
+    return short + "…" if len(words) > 6 else short
+
+
+async def _rule_badge_entries(user: dict) -> list[tuple[str, str]]:
+    """(kind, text) пары бейджей пометки/автоотказа по персистентным колонкам users
+    (`flagged_rule_ids`/`auto_reject_rule_ids`) — общий строитель для `rule_badge_lines` (бот,
+    плоский список строк) и `card_payload` (веб, нужен `kind` для фронта). При нескольких
+    сработавших id берётся первый — та же дисциплина, что у `_auto_rule_label`/`auto_rule_note`
+    в `services/reg_finalize.py` (один, самый информативный, а не список из N имён на строку)."""
+    entries: list[tuple[str, str]] = []
+    flag_ids = _parse_rule_ids(user.get("flagged_rule_ids"))
+    if flag_ids:
+        label = await _resolve_rule_label(flag_ids[0])
+        entries.append(("rule_flag", f"⚠️ Помечена правилом: {label}"))
+    reject_ids = _parse_rule_ids(user.get("auto_reject_rule_ids"))
+    if reject_ids:
+        label = await _resolve_rule_label(reject_ids[0])
+        entries.append(("auto_reject", f"🤖 Автоотказ по правилу: {label}"))
+    return entries
+
+
+async def rule_badge_lines(user: dict) -> list[str]:
+    """Плоский список готовых строк (порядок: пометка -> автоотказ) для карточки бота —
+    `admin_moderation.py` печатает их как есть, ПОСЛЕ собственного `html.escape` (карточка бота
+    экранирует готовые строки сама, тот же контракт, что у `prev_reject_line(escape_reason=True)`).
+    Карточка веба (`card_payload`) использует `_rule_badge_entries` напрямую, чтобы приложить
+    `kind` к каждой строке — значения там ЧИСТЫЙ текст (D-01, экранирование — забота фронта)."""
+    return [text for _, text in await _rule_badge_entries(user)]
+
+
+async def auto_reject_cleared_line(user: dict) -> str | None:
+    """D-23: «⚠️ Сменил ответ после автоотказа: Курс 1 → 3» — правка, которая сняла ранее
+    сработавшее правило отказа. Читает ТУ ЖЕ выборку `get_answer_history(limit=1)`, что уже
+    читает `edit_badges_for` выше (второй запрос не нужен). Форму кортежа `edit_badges_for` НЕ
+    меняем (T-23-28, тот же довод, что у `prev_reject_line`) — отдельная функция.
+
+    Ключа `auto_reject_cleared` в маркере статуса (`services/reg_finalize.py::
+    _auto_reject_cleared_marker`) нет -> `None` — карточка ведёт себя ровно как до этой фазы.
+    Есть, но без `rule_field` (правило удалено/условия битые/правка не коснулась полей правила,
+    например снялось из-за смены даты форума, а не ответа) -> строка БЕЗ детализации поля, сам
+    факт «снялось» важнее подробностей — та же развилка, что в докстринге
+    `_auto_reject_cleared_marker`.
+
+    ВАЖНО: вызывающий обязан НЕ печатать `resubmit_line` одновременно с этой строкой — иначе
+    менеджер увидит два противоречивых объяснения одного перехода `rejected -> pending`
+    (Pitfall 2)."""
+    tid = user.get("telegram_id")
+    if tid is None:
+        return None
+    history = await get_answer_history(tid, limit=1)
+    if not history:
+        return None
+    changes = history[0].get("changes") or []
+    marker = next(
+        (c for c in changes if c.get("column") == "status" and c.get("auto_reject_cleared")),
+        None,
+    )
+    if marker is None:
+        return None
+    rule_field = marker.get("rule_field")
+    if not rule_field:
+        return "⚠️ Сменил ответ после автоотказа"
+    field_label = COLUMN_TO_LABEL.get(rule_field, rule_field)
+    old = marker.get("rule_field_old")
+    new = marker.get("rule_field_new")
+    return f"⚠️ Сменил ответ после автоотказа: {field_label} {old} → {new}"
+
+
 async def prev_reject_line(user: dict, *, escape_reason: bool = False) -> str | None:
     """Quick 260904-liz: «🚫 Ранее отклонена: <причина>» для карточки повторно поданной заявки
     — читает `last_rejection_reason` по `user["telegram_id"]` (единый аксессор с экраном
@@ -282,21 +384,27 @@ async def out_of_scope(city: str | None, telegram_id: int) -> bool:
 # ── Очередь (D-08) ────────────────────────────────────────────────────────────────────────
 
 async def queue_page(*, scope, offset: int = 0, track: str | None = None,
-                      changed_only: bool = False) -> tuple[dict | None, int]:
+                      changed_only: bool = False, flagged_only: bool = False) -> tuple[dict | None, int]:
     """Одна карточка очереди + общий счётчик — СЧЁТЧИК И ВЫБОРКА идут по ОДНОМУ набору
     фильтров (T-23-04), иначе «Осталось: N» врёт. `None` в первом элементе — очередь пуста
     на этом offset (конец очереди или пустой скоуп).
 
     Phase 28 (28-08, SU-08): тумблер `apps_queue_sort_by_score` читается ЗДЕСЬ (вызывающий),
     не в `database.db.get_pending_users` — та в реестр не ходит. Счётчик от порядка не
-    зависит, второго похода в реестр для него не нужно."""
-    total = await get_pending_count(city_scope=scope, track=track, changed_only=changed_only)
+    зависит, второго похода в реестр для него не нужно.
+
+    Phase 31 (31-09, D-20): `flagged_only=True` — очередь «только помеченные правилами» (то же
+    имя и та же ветка, что уже течёт через `changed_only` в `database.db.get_pending_users`/
+    `get_pending_count`). Дефолт `False` оставляет существующих вызывающих байт-в-байт."""
+    total = await get_pending_count(
+        city_scope=scope, track=track, changed_only=changed_only, flagged_only=flagged_only,
+    )
     if total == 0 or offset >= total:
         return None, total
     order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
     rows = await get_pending_users(
         limit=1, offset=offset, city_scope=scope, track=track, changed_only=changed_only,
-        order_by_score=order_by_score,
+        order_by_score=order_by_score, flagged_only=flagged_only,
     )
     return (rows[0] if rows else None), total
 
@@ -374,10 +482,19 @@ async def card_payload(user: dict) -> dict:
             badges.append({"kind": "score", "text": score_badge_text(score)})
             if user.get("is_it_3plus"):
                 badges.append({"kind": "it_3plus", "text": IT_3PLUS_BADGE_TEXT})
+    # Phase 31 (31-09, D-20): бейджи пометки/автоотказа — ПЕРЕД edited/resubmit, причина
+    # попадания заявки в очередь важнее пометки о правке.
+    for kind, text in await _rule_badge_entries(user):
+        badges.append({"kind": kind, "text": text})
     edited_line, resubmit_line, _has_history = await edit_badges_for(user)
     if edited_line:
         badges.append({"kind": "edited", "text": edited_line})
-    if resubmit_line:
+    # Phase 31 (31-09, D-23): «сменил ответ после автоотказа» печатается ВМЕСТО «🔁 Повторная
+    # подача», когда она непуста — два противоречивых объяснения одного перехода не показываем.
+    cleared_line = await auto_reject_cleared_line(user)
+    if cleared_line:
+        badges.append({"kind": "auto_reject_cleared", "text": cleared_line})
+    elif resubmit_line:
         badges.append({"kind": "resubmit", "text": resubmit_line})
     prev = await prev_reject_line(user)
     if prev:
