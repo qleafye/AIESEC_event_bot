@@ -13,12 +13,13 @@ REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema
 веб-путь применения пресета «СкиллАп» обязан звать ТОТ ЖЕ bulk-writer, что кнопка в боте
 (T-28-10-01/03: один детерминированный писатель настроек — не две копии правила).
 
-Зависимости — ТОЛЬКО `database.db` (`set_setting`) и `reg_engine` (`REG_DEFAULTS`), ни одного
+Зависимости — ТОЛЬКО `database.db` (`set_setting`) и `reg_engine` (`REG_DEFAULTS`,
+`MODULE_SWITCH_TOGGLES`), ни одного
 импорта `aiogram`/`handlers.*` (сторож tests/test_skillup_preset_28.py::
 test_reg_presets_module_is_aiogram_free).
 """
 from database.db import set_setting
-from reg_engine import REG_DEFAULTS
+from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
 # A preset lists the reg_q_* keys to turn ON (everything else in REG_DEFAULTS is turned
@@ -117,16 +118,27 @@ async def apply_reg_preset(preset_key: str) -> None:
     """Bulk-write reg_q_* + payment_enabled for the chosen preset (byte-for-byte body of the
     former `handlers.admin_reg_config._apply_event_preset`), then (Phase 28, 28-10) any
     arbitrary registry keys listed in preset["settings"]. Every REG_DEFAULTS key (every
-    toggle-type key in SETTINGS_SCHEMA, not only reg_q_*) is set explicitly — on if it's in
-    the preset's "on" list, off otherwise — so the result is deterministic regardless of
-    prior per-question overrides (T-28-10-03). Order matters: question toggles first, the
-    "settings" block second — a preset value in "settings" must win over whatever the
-    REG_DEFAULTS pass just wrote for that same key (not applicable to today's presets, since
-    "settings" keys are never toggle-typed, but keeps the contract explicit)."""
+    reg_q_* toggle — NOT module switches, see `reg_engine.MODULE_SWITCH_TOGGLES`) is set
+    explicitly — on if it's in the preset's "on" list, off otherwise — so the result is
+    deterministic regardless of prior per-question overrides (T-28-10-03). Order matters:
+    question toggles first, the "settings" block second — a preset value in "settings" must
+    win over whatever the REG_DEFAULTS pass just wrote for that same key (not applicable to
+    today's presets, since "settings" keys are never toggle-typed, but keeps the contract
+    explicit).
+
+    Quick 260921 (found during phase 31 execution): `reg_scoring_enabled`/`reject_rules_enabled`
+    are toggle-typed but excluded from REG_DEFAULTS on purpose — a preset that doesn't mention
+    them must leave the manager's current choice untouched, not silently force it off. Only
+    the "skillup" preset opts a module switch IN today (`reg_scoring_enabled` in its "on"
+    list) — honoured below by writing "on" for exactly the module switches a preset lists,
+    never "off" for the ones it omits."""
     preset = REG_PRESETS[preset_key]
     on_set = set(preset["on"])
     for key in REG_DEFAULTS:
         await set_setting(key, "on" if key in on_set else "off")
+    for key in MODULE_SWITCH_TOGGLES:
+        if key in on_set:
+            await set_setting(key, "on")
     await set_setting("payment_enabled", preset["payment_enabled"])
     for key, value in preset.get("settings", {}).items():
         await set_setting(key, value)
