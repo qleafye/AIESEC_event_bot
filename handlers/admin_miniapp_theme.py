@@ -30,12 +30,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
+import dashboard_favicon
 import web_theme
 from database.db import get_setting
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from settings_schema import get_setting_typed, option_label, option_labels
 from handlers.admin import router
-from handlers.states import MiniAppTheme
+from handlers.states import EditSetting, MiniAppTheme
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,20 @@ async def build_miniapp_theme_keyboard() -> InlineKeyboardMarkup:
     _state, coin_key, _label, _hint = _ASSET_SLOT_BY_NAME["coin_icon"]
     rows.extend(_asset_slot_button_rows("coin_icon", await get_setting_typed(coin_key)))
 
+    # ── Квик 260921: иконка вкладки ДАШБОРДА (не Mini App) — вне _ASSET_SLOTS, приёмник
+    # документом через общий EditSetting.waiting_for_file, см. miniapp_theme_photo_start.
+    favicon_value = await get_setting_typed(dashboard_favicon.SETTING_KEY)
+    favicon_mark = "✅ " if favicon_value else "☐ "
+    rows.append([InlineKeyboardButton(
+        text=f"{favicon_mark}{dashboard_favicon.LABEL}",
+        callback_data=f"miniapp_theme_photo:{dashboard_favicon.SETTING_KEY}",
+    )])
+    if favicon_value:
+        rows.append([InlineKeyboardButton(
+            text=f"🗑 Убрать: {dashboard_favicon.LABEL}",
+            callback_data=f"miniapp_theme_remove_photo:{dashboard_favicon.SETTING_KEY}",
+        )])
+
     rows.append([InlineKeyboardButton(text="← К оформлению", callback_data="admin_miniapp_settings")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -497,6 +512,17 @@ async def miniapp_theme_toggle_pattern(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("miniapp_theme_photo:"))
 async def miniapp_theme_photo_start(callback: types.CallbackQuery, state: FSMContext):
     slot_name = callback.data.split(":", 1)[1]
+    # Квик 260921: иконка вкладки дашборда — вне _ASSET_SLOTS (документ, не фото), приёмник
+    # общий EditSetting.waiting_for_file + raw_file_key (тот же путь, что у PDF согласий в
+    # handlers/admin_settings.py), своей MiniAppTheme-ручки не заводит.
+    if slot_name == dashboard_favicon.SETTING_KEY:
+        await callback.message.edit_text(
+            dashboard_favicon.UPLOAD_PROMPT_HTML, parse_mode="HTML", reply_markup=_cancel_edit_keyboard(),
+        )
+        await state.set_state(EditSetting.waiting_for_file)
+        await state.set_data({"raw_file_key": dashboard_favicon.SETTING_KEY})
+        await callback.answer()
+        return
     entry = _ASSET_SLOT_BY_NAME.get(slot_name)
     if entry is None:
         await callback.answer("Неизвестная кнопка", show_alert=True)
@@ -511,6 +537,11 @@ async def miniapp_theme_photo_start(callback: types.CallbackQuery, state: FSMCon
 @router.callback_query(F.data.startswith("miniapp_theme_remove_photo:"))
 async def miniapp_theme_remove_photo(callback: types.CallbackQuery):
     slot_name = callback.data.split(":", 1)[1]
+    if slot_name == dashboard_favicon.SETTING_KEY:
+        await delete_setting_by_admin(callback.from_user.id, dashboard_favicon.SETTING_KEY)
+        await callback.answer(f"«{dashboard_favicon.LABEL}» убрана")
+        await _rerender_theme(callback)
+        return
     entry = _ASSET_SLOT_BY_NAME.get(slot_name)
     if entry is None:
         await callback.answer("Неизвестная кнопка", show_alert=True)

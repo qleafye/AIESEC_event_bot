@@ -107,20 +107,36 @@ def _read_setting(conn, key: str):
     return row["value"] if row is not None else None
 
 
-def _event_logo_url(conn) -> "str | None":
-    """Фаза 26-02 (RT-01/RT-05): `miniapp_logo` — тот же ключ, что читает Mini App в
-    «🎨 Оформление». Значение проверяется тем же `FILE_ID_RE`, что и прокси
-    `GET /api/file/{file_id}` (T-26-02-01) — второго правила валидации file_id заводить не
-    нужно, мусор в ключе просто гасится в `None`, а не попадает в HTML.
-
-    Страницы `login.html`/`no_access.html` этот хелпер не зовут — они сегодня не ходят в БД
-    вовсе, и ради favicon заводить им подключение не нужно: `base.html` в их контексте видит
-    неопределённую `event_logo_url` (Jinja2 отдаёт её как ложное значение) и молча уходит в
-    откат на иконку АЙСЕК."""
-    value = _read_setting(conn, "miniapp_logo")
+def _asset_url(conn, key: str) -> "str | None":
+    """Общий резолвер «ключ реестра -> `/api/file/{value}`», проверенный тем же `FILE_ID_RE`,
+    что и сам прокси (T-26-02-01) — второго правила валидации file_id не заводим, мусор в
+    ключе просто гасится в `None`, а не попадает в HTML."""
+    value = _read_setting(conn, key)
     if not value or not FILE_ID_RE.match(value):
         return None
     return f"/api/file/{value}"
+
+
+def _event_logo_url(conn) -> "str | None":
+    """Фаза 26-02 (RT-01/RT-05): `miniapp_logo` — тот же ключ, что читает Mini App в
+    «🎨 Оформление». ЛОГО мероприятия на странице (`<img class="event-logo">`) — не favicon,
+    см. `_favicon_url` ниже для вкладки браузера (квик 260921, разведены по разным ключам).
+
+    Страницы `login.html`/`no_access.html` этот хелпер не зовут — они сегодня не ходят в БД
+    вовсе, и ради лого заводить им подключение не нужно: их шаблоны просто не рисуют `<img>`
+    без `event_logo_url` в контексте."""
+    return _asset_url(conn, "miniapp_logo")
+
+
+def _favicon_url(conn) -> "str | None":
+    """Квик 260921: своя иконка вкладки браузера дашборда — `dashboard_favicon`, отдельный
+    ключ реестра от лого мероприятия (`miniapp_logo`), загружается ДОКУМЕНТОМ (не фото) с
+    экрана «🎭 Пресеты и ручки оформления» (handlers/admin_miniapp_theme.py,
+    dashboard_favicon.py). Порядок отката: своя иконка -> лого мероприятия -> ничего (пустой
+    `favicon_url` в `base.html` уходит на статичную иконку АЙСЕК, тот же приём, что раньше
+    был завязан на `event_logo_url`) — менеджер, ничего не загрузивший отдельно, видит во
+    вкладке браузера то же лого, что видел до этого квика."""
+    return _asset_url(conn, "dashboard_favicon") or _asset_url(conn, "miniapp_logo")
 
 
 def _thousands(value) -> str:
@@ -312,6 +328,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
         "event_logo_url": _event_logo_url(conn),
+        "favicon_url": _favicon_url(conn),
         "viewer": viewer,
         "scope": scope,
         "city_options": city_options,
@@ -393,6 +410,7 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
         "event_logo_url": _event_logo_url(conn),
+        "favicon_url": _favicon_url(conn),
         "viewer": viewer,
         "scope": scope,
         "chat_bindings": all_chats,
