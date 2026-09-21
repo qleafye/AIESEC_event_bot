@@ -204,3 +204,129 @@ def test_card_contains_penalty_amounts_at_nonzero_percent(tmp_path):
     card = asyncio.run(game_labels.render_task_card_text(task, "новое", None))
     assert "70" in card
     assert "100" in card
+
+
+# ── visible_tasks_for: одна функция видимости для бота и Mini App ─────────────────────────
+
+def test_non_ambassador_does_not_see_ambassador_only_task():
+    tasks = [_task(id=1, audience="ambassadors"), _task(id=2, audience="all")]
+    visible = game_labels.visible_tasks_for(tasks, is_ambassador=False, eligible_wave_ids=set())
+    assert [t["id"] for t in visible] == [2]
+
+
+def test_ambassador_sees_ambassador_only_task():
+    tasks = [_task(id=1, audience="ambassadors"), _task(id=2, audience="all")]
+    visible = game_labels.visible_tasks_for(tasks, is_ambassador=True, eligible_wave_ids=set())
+    assert {t["id"] for t in visible} == {1, 2}
+
+
+def test_empty_audience_column_reads_as_all():
+    tasks = [_task(id=1, audience=None), _task(id=2, audience="")]
+    visible = game_labels.visible_tasks_for(tasks, is_ambassador=False, eligible_wave_ids=set())
+    assert {t["id"] for t in visible} == {1, 2}
+
+
+def test_ambassador_joined_mid_wave_does_not_see_that_wave_but_sees_wave_free_tasks():
+    # D-31: вступил посреди волны 5 -> волна 5 недоступна (не в eligible_wave_ids), задания вне
+    # волн (wave_id пуст) видны всегда. D-38: то же правило закрывает вернувшегося.
+    tasks = [
+        _task(id=1, wave_id=5),
+        _task(id=2, wave_id=None),
+        _task(id=3, wave_id=6),
+    ]
+    visible = game_labels.visible_tasks_for(tasks, is_ambassador=True, eligible_wave_ids={6})
+    assert {t["id"] for t in visible} == {2, 3}
+
+
+def test_non_ambassador_wave_filter_does_not_apply():
+    # Не-амбассадору фильтр по волне не нужен вовсе — его отсекает audience, а не wave_id.
+    tasks = [_task(id=1, wave_id=5, audience="all")]
+    visible = game_labels.visible_tasks_for(tasks, is_ambassador=False, eligible_wave_ids=set())
+    assert [t["id"] for t in visible] == [1]
+
+
+def test_visible_tasks_for_does_not_mutate_input():
+    tasks = [_task(id=1, audience="ambassadors"), _task(id=2)]
+    before = list(tasks)
+    game_labels.visible_tasks_for(tasks, is_ambassador=False, eligible_wave_ids=set())
+    assert tasks == before
+
+
+# ── sort_tasks_for_ambassador: перестановка, а не фильтр ───────────────────────────────────
+
+def test_sort_for_ambassador_is_a_permutation_not_a_filter():
+    tasks = [_task(id=1, category="Light"), _task(id=2, category="Referral", audience="ambassadors"),
+              _task(id=3, category="Hard")]
+    sorted_tasks = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path="invite")
+    assert {t["id"] for t in sorted_tasks} == {1, 2, 3}
+    assert len(sorted_tasks) == len(tasks)
+
+
+def test_sort_for_ambassador_path_none_matches_delegate_sort_byte_for_byte():
+    tasks = [_task(id=1, category="Light"), _task(id=2, category="Referral")]
+    plain = game_labels.sort_tasks_for_delegate(tasks)
+    ambassador_order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=False, path=None)
+    assert [t["id"] for t in ambassador_order] == [t["id"] for t in plain]
+
+
+def test_sort_for_ambassador_invite_path_puts_referral_above_same_deadline_light():
+    tasks = [
+        _task(id=1, category="Light", deadline_at="2099-01-01 00:00:00"),
+        _task(id=2, category="Referral", deadline_at="2099-01-01 00:00:00"),
+    ]
+    order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path="invite")
+    assert [t["id"] for t in order] == [2, 1]
+
+
+def test_sort_for_ambassador_content_path_puts_non_referral_above_referral():
+    tasks = [
+        _task(id=1, category="Referral", deadline_at="2099-01-01 00:00:00"),
+        _task(id=2, category="Light", deadline_at="2099-01-01 00:00:00"),
+    ]
+    order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path="content")
+    assert [t["id"] for t in order] == [2, 1]
+
+
+def test_ambassador_block_always_on_top_regardless_of_path():
+    tasks = [
+        _task(id=1, category="Referral", audience="all"),
+        _task(id=2, category="Light", audience="ambassadors"),
+    ]
+    for path in (None, "invite", "content"):
+        order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path=path)
+        assert order[0]["id"] == 2, f"сломалось при path={path!r}"
+
+
+def test_path_does_not_change_coins_or_membership():
+    tasks = [_task(id=1, category="Light", coins=10), _task(id=2, category="Referral", coins=20)]
+    order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path="invite")
+    coins_by_id = {t["id"]: t["coins"] for t in order}
+    assert coins_by_id == {1: 10, 2: 20}
+
+
+# ── ambassador_block_index ─────────────────────────────────────────────────────────────────
+
+def test_ambassador_block_index_counts_leading_ambassador_tasks():
+    tasks = [
+        _task(id=1, category="Light", audience="ambassadors"),
+        _task(id=2, category="Referral", audience="ambassadors"),
+        _task(id=3, category="Hard", audience="all"),
+    ]
+    order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path=None)
+    assert game_labels.ambassador_block_index(order) == 2
+
+
+def test_ambassador_block_index_zero_when_no_ambassador_tasks():
+    tasks = [_task(id=1, audience="all"), _task(id=2, audience="all")]
+    order = game_labels.sort_tasks_for_ambassador(tasks, is_ambassador=True, path=None)
+    assert game_labels.ambassador_block_index(order) == 0
+
+
+# ── _PATH_CATEGORIES: путь — не новое поле задания ──────────────────────────────────────────
+
+def test_path_categories_is_commented_not_a_new_task_field():
+    # Словарь опирается на существующую ось category — задание без пути (path=None) вообще не
+    # проходит через него (_PATH_CATEGORIES.get(None, ()) == ()).
+    assert game_labels._PATH_CATEGORIES.get(None, ()) == ()
+    assert "Referral" in game_labels._PATH_CATEGORIES["invite"]
+    assert "Referral" not in game_labels._PATH_CATEGORIES["content"]
