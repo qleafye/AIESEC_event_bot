@@ -33,7 +33,6 @@ from database.db import (
     create_wave,
     delete_wave,
     get_wave,
-    list_ambassadors,
     list_wave_tasks,
     list_waves,
     next_wave_number,
@@ -436,14 +435,7 @@ async def wave_delete_go(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Волна с объявленными итогами не удаляется", show_alert=True)
         return
 
-    ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
-    ambassador_ids = []
-    for a in ambassadors:
-        u = dict(a)
-        u["is_ambassador"] = 1
-        if aw.wave_eligible(u, wave):
-            ambassador_ids.append(int(a["telegram_id"]))
-    cancel_wave_jobs(wave_id, ambassador_ids)
+    cancel_wave_jobs(wave_id)
     for t in await list_wave_tasks(wave_id, active_only=True):
         cancel_task_deadline_reminder(t["id"])
 
