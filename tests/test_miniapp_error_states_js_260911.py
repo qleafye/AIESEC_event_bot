@@ -329,7 +329,8 @@ async function api1(path) {
     calls1++;
     if (calls1 === 1) throw err(500, "server_error");
     return { items: [{ id: 1, title: "Задание", category: "cat", category_label: "Категория",
-      coins: 5, deadline_at: null, deadline_short: "скоро", overdue: false, status: "new" }],
+      coins: 5, deadline_at: null, deadline_short: "скоро", has_deadline: true,
+      deadline_text: "скоро", overdue: false, status: "new" }],
       total: 1, empty_text: null };
   }
   throw new Error("unexpected " + path);
@@ -358,7 +359,8 @@ async function api3(path) {
   if (path.startsWith("/tasks?")) {
     calls3++;
     if (calls3 === 1) return { items: [{ id: 1, title: "T1", category: "c", category_label: "C",
-      coins: 1, deadline_at: null, deadline_short: "x", overdue: false, status: "new" }],
+      coins: 1, deadline_at: null, deadline_short: "x", has_deadline: true, deadline_text: "x",
+      overdue: false, status: "new" }],
       total: 5, empty_text: null };
     throw err(500, "server_error");
   }
@@ -381,6 +383,7 @@ _CARD_SCRIPT = _FAKE_DOM_PRELUDE + """
 const mod = await import(%(url)s);
 const task = {
   id: 1, title: "Задание", category_label: "Категория", deadline_short: "скоро",
+  has_deadline: true, deadline_text: "скоро",
   coins: 5, deadline_left_text: null, overdue_hint: null, todo_eyebrow: "Что сделать",
   text: "Текст задания", proof_hint: "Фото", proof_eyebrow: "Нужно прислать",
   proof_note: "заметка", proof_type: "photo", status_line: "новое", review_note: "проверка",
@@ -597,6 +600,108 @@ def test_tasks_show_more_failure_shows_error_state(tasks_result):
 
 def test_coins_show_more_failure_shows_error_state(coins_result):
     assert coins_result["showMoreFailShowsError"] is True
+
+
+# ── план 32-14 (D-27): «без срока» на списке и карточке задания ─────────────────────────
+#
+# Задание СО сроком рендерится байт-в-байт как раньше («Категория · до 17.09»); задание БЕЗ
+# срока показывает слова «без срока» — без обрубка «Категория · до » и без служебной метки
+# «конца времён» («9999»).
+
+_TASKS_DEADLINE_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+
+function itemsFor(hasDeadline) {
+  return hasDeadline
+    ? [{ id: 1, title: "Задание", category: "cat", category_label: "Категория", coins: 5,
+        deadline_at: "2026-09-17 23:59:00", deadline_short: "17.09", has_deadline: true,
+        deadline_text: "17.09", overdue: false, status: "new" }]
+    : [{ id: 2, title: "Задание", category: "cat", category_label: "Категория", coins: 5,
+        deadline_at: "9999-12-31 23:59:59", deadline_short: "", has_deadline: false,
+        deadline_text: "без срока", overdue: false, status: "new" }];
+}
+
+async function render(hasDeadline) {
+  const root = document.createElement("div");
+  async function api(path) {
+    if (path.startsWith("/hub")) return {};
+    if (path.startsWith("/tasks?")) return { items: itemsFor(hasDeadline), total: 1, empty_text: null };
+    throw new Error("unexpected " + path);
+  }
+  await mod.render(root, {}, { h, api, navigate: () => {}, me: {} });
+  const metaNode = root.querySelector(".flat-row-meta");
+  return metaNode ? metaNode.textContent : null;
+}
+
+const metaWithDeadline = await render(true);
+const metaNoDeadline = await render(false);
+
+console.log(JSON.stringify({ metaWithDeadline, metaNoDeadline }));
+"""
+
+_CARD_DEADLINE_SCRIPT = _FAKE_DOM_PRELUDE + """
+const mod = await import(%(url)s);
+
+function taskFor(hasDeadline) {
+  const base = {
+    id: 1, title: "Задание", category_label: "Категория", coins: 5,
+    deadline_left_text: null, overdue_hint: null, todo_eyebrow: "Что сделать",
+    text: "Текст задания", proof_hint: "Фото", proof_eyebrow: "Нужно прислать",
+    proof_note: "заметка", proof_type: "photo", status_line: "новое", review_note: "проверка",
+    overdue: false, can_submit: true, photo_file_id: null,
+  };
+  return hasDeadline
+    ? { ...base, deadline_short: "17.09", has_deadline: true, deadline_text: "17.09" }
+    : { ...base, deadline_short: "", has_deadline: false, deadline_text: "без срока" };
+}
+
+async function render(hasDeadline) {
+  const root = document.createElement("div");
+  async function api(path) { return taskFor(hasDeadline); }
+  await mod.render(root, { id: "1" }, { h, api, navigate: () => {}, setMainButton: () => {}, me: {} });
+  const eyebrow = root.querySelector(".plate-eyebrow");
+  return eyebrow ? eyebrow.textContent : null;
+}
+
+const eyebrowWithDeadline = await render(true);
+const eyebrowNoDeadline = await render(false);
+
+console.log(JSON.stringify({ eyebrowWithDeadline, eyebrowNoDeadline }));
+"""
+
+
+@pytest.fixture(scope="module")
+def tasks_deadline_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "tasks.js").resolve().as_uri())
+    return _run_script(node, _TASKS_DEADLINE_SCRIPT % {"url": url})
+
+
+@pytest.fixture(scope="module")
+def card_deadline_result(node) -> dict:
+    url = json.dumps((SCREENS_DIR / "card.js").resolve().as_uri())
+    return _run_script(node, _CARD_DEADLINE_SCRIPT % {"url": url})
+
+
+def test_tasks_list_with_deadline_renders_exactly_as_before(tasks_deadline_result):
+    assert tasks_deadline_result["metaWithDeadline"] == "Категория · до 17.09"
+
+
+def test_tasks_list_no_deadline_shows_words_not_stub_or_sentinel(tasks_deadline_result):
+    text = tasks_deadline_result["metaNoDeadline"]
+    assert text == "Категория · без срока"
+    assert "· до " not in text
+    assert "9999" not in text
+
+
+def test_card_with_deadline_renders_exactly_as_before(card_deadline_result):
+    assert card_deadline_result["eyebrowWithDeadline"] == "Категория · до 17.09"
+
+
+def test_card_no_deadline_shows_words_not_stub_or_sentinel(card_deadline_result):
+    text = card_deadline_result["eyebrowNoDeadline"]
+    assert text == "Категория · без срока"
+    assert "· до " not in text
+    assert "9999" not in text
 
 
 # ── задача 3: submit.js — гейт закрытой сдачи + порядок карточки ────────────────────────

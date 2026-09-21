@@ -27,7 +27,12 @@ function metaLine(item) {
   }
   const known = STATUS_META[item.status];
   if (known) return `${item.category_label} · ${known}`;
-  return `${item.category_label} · до ${item.deadline_short}`;
+  // Phase 32 (32-14, D-27): предлог «до» — только у задания со сроком; без срока сервер
+  // уже прислал готовую подпись словами (`item.deadline_text`, реестр
+  // `game_task_no_deadline_text`) — свой литерал «без срока» тут не заводим.
+  return item.has_deadline
+    ? `${item.category_label} · до ${item.deadline_short}`
+    : `${item.category_label} · ${item.deadline_text}`;
 }
 
 function coinsTrailing(h, item) {

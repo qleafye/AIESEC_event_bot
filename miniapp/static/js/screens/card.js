@@ -37,8 +37,12 @@ async function draw(root, params, ctx) {
     img.addEventListener("error", () => img.remove());
     plate.append(img);
   }
+  // Phase 32 (32-14, D-27): предлог «до» — только у задания со сроком; без срока сервер
+  // уже прислал готовую подпись словами (`task.deadline_text`, реестр
+  // `game_task_no_deadline_text`) — свой литерал «без срока» тут не заводим.
+  const deadlinePart = task.has_deadline ? `до ${task.deadline_short}` : task.deadline_text;
   plate.append(
-    h("p", { class: "plate-eyebrow", text: [task.category_label, `до ${task.deadline_short}`].join(" · ") }),
+    h("p", { class: "plate-eyebrow", text: [task.category_label, deadlinePart].join(" · ") }),
     h("h1", { text: task.title }),
     h("hr", { class: "plate-rule" }),
   );

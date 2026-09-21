@@ -123,10 +123,13 @@ function renderOnboarding(root, ctx, onDone) {
 }
 
 // Строка приоритетного действия (D-06): статус-или-срок — то же правило, что было у
-// deadlineRow (принято / срок вышел / до {deadline_short}), это не новый литерал.
+// deadlineRow (принято / срок вышел / до {deadline_short}), это не новый литерал. Ветка
+// «срок вышел» остаётся первой и не меняется (Phase 32, 32-14, D-27) — предлог «до» ставится
+// только при `has_deadline`, иначе печатается готовая подпись сервера (`item.deadline_text`).
 function nextActionMeta(item) {
   if (item.status === "approved") return "принято";
-  return item.overdue ? "срок вышел" : `до ${item.deadline_short}`;
+  if (item.overdue) return "срок вышел";
+  return item.has_deadline ? `до ${item.deadline_short}` : item.deadline_text;
 }
 
 function nextActionReward(item) {
