@@ -42,6 +42,7 @@ from database.db import (
     claim_referral_credit_atomic,
     count_referral_credits,
     get_referral_credit,
+    get_setting,
     get_user,
     list_applications_page,
 )
@@ -156,29 +157,44 @@ async def approved_referrals_in_wave(referrer_id: int, wave_id: int | None) -> i
     return await count_referral_credits(referrer_id, wave_id)
 
 
-async def backfill_approved(*, dry_run: bool) -> dict:
+async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict:
     """Разовое начисление задним числом (D-23) — по всем `users` со `status = 'approved'` и
     непустым `referrer_id`, у кого ЕЩЁ НЕТ строки в `referral_credits` и чей пригласивший
     ПРЯМО СЕЙЧАС амбассадор. `wave_id` ВСЕГДА `None`, `source = 'backfill'` — задним числом
     баллы идут ТОЛЬКО в общий зачёт, ни в одну волну (правило волны применимо только к
     «живому» одобрению, где волна пригласившего резолвится в момент самого события).
 
+    WR-17 (32-REVIEW.md): кандидаты фильтруются по `users.season` — БЕЗ этого фильтра под
+    бэкафилл попадали и легаси-строки (season пуст, дефолт миграции — таких около 590), и
+    482 делегата, импортированных из прошлого сезона (`season` = прошлый сезон явно, задача
+    была именно НЕ дать им упереться в тупик на `/start`, а не выдать баллы задним числом).
+    `season=None` (по умолчанию, как у CLI-обёртки без `--season`) резолвит ТЕКУЩИЙ
+    `bot_settings.event_season`; явный `season=""`/строка сравнивается буквально —
+    `invitee.get("season")` и цель сравниваются как есть (`None == None` у события без
+    настроенного сезона — единственный случай, где фильтр остаётся «пропускающим», как и до
+    этой находки, если сезон вообще не сконфигурирован).
+
     `dry_run=True` (по умолчанию у CLI-обёртки `tools/backfill_referral_credits.py`) ничего не
     пишет в базу — но возвращает те же поля, что и реальный запуск, спроецированные из числа
-    кандидатов («что БЫ произошло»), для предпоказа перед `--apply` (менеджер должен увидеть
-    цифры ДО необратимой записи, а не после).
+    кандидатов («что БЫ произошло»), плюс `breakdown` — список «амбассадор — сколько
+    приглашённых — сколько баллов» для предпоказа перед `--apply` (операция необратима, D-22
+    — менеджер обязан увидеть, КОМУ и СКОЛЬКО начислится, а не только три голых числа).
 
     Уже начисленный «живым» путём приглашённый (одиночное/массовое/авто-одобрение, source
     `'approval'`) в кандидаты не попадает — `get_referral_credit` уже нашёл строку.
     Повторный запуск бэкафилла идемпотентен по той же причине: второй проход видит те же
     строки `referral_credits`, что первый уже создал, и пропускает их."""
     coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
+    resolved_season = season if season is not None else (
+        (await get_setting("event_season") or "").strip() or None
+    )
     rows = await list_applications_page(status="approved", limit=100000, offset=0)
 
     candidates = 0
     credited = 0
     coins_total = 0
     ambassadors: set[int] = set()
+    breakdown: dict[int, dict] = {}
 
     for row in rows:
         invitee_id = int(row["telegram_id"])
@@ -186,6 +202,8 @@ async def backfill_approved(*, dry_run: bool) -> dict:
             continue
         invitee = await get_user(invitee_id)
         if not invitee:
+            continue
+        if (invitee.get("season") or None) != resolved_season:
             continue
         referrer_id_raw = invitee.get("referrer_id")
         if not referrer_id_raw:
@@ -199,6 +217,14 @@ async def backfill_approved(*, dry_run: bool) -> dict:
 
         candidates += 1
         ambassadors.add(referrer_id)
+        entry = breakdown.setdefault(referrer_id, {
+            "referrer_id": referrer_id,
+            "referrer_name": (referrer.get("full_name") or "").strip() or f"#{referrer_id}",
+            "invitees": 0,
+            "coins": 0,
+        })
+        entry["invitees"] += 1
+        entry["coins"] += coins
         if dry_run:
             continue
 
@@ -216,5 +242,6 @@ async def backfill_approved(*, dry_run: bool) -> dict:
 
     return {
         "candidates": candidates, "credited": credited, "coins": coins_total,
-        "ambassadors": len(ambassadors),
+        "ambassadors": len(ambassadors), "season": resolved_season,
+        "breakdown": sorted(breakdown.values(), key=lambda e: (-e["coins"], e["referrer_id"])),
     }
