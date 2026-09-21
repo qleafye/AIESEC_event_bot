@@ -86,7 +86,9 @@ logger = logging.getLogger(__name__)
 # pre-registry literal table. Remaining (unmigrated) groups below stay literal tuples — no
 # change — until their own migration wave (coexistence invariant, SC#3).
 _EVENT_FIELD_ORDER = [
-    "event_date", "event_time", "event_place_name", "event_place_address",
+    # Phase 31 (31-03, D-30): дата начала форума — сразу после «дата для делегата», менеджер
+    # читает «дата для делегата → дата для расчётов» подряд.
+    "event_date", "forum_date", "event_time", "event_place_name", "event_place_address",
     "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
     "start_text_returning",
     # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два
@@ -141,6 +143,12 @@ _REG_FIELD_ORDER = [
     # Владелец 17.09: четвёртая ветка развилки — «Написать текстом», вопрос показывается ТОЛЬКО
     # в этой ветке (не общий reg_q_resume/prompt).
     "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
+    # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — по плану сосед reject_text, но
+    # reject_text физически переехал на экран «📋 Заявки» (Phase 20, _APPS_FIELD_ORDER) при
+    # реорганизации IA — реестровая метаданность (`SETTINGS_SCHEMA[key]["group"]`) у обоих
+    # ключей по-прежнему "reg". Кладём в хвост «📝 Регистрация» — это D-18-текст об анкете
+    # (что дальше с ЗАЯВКОЙ), а не решение о заявке (то живёт на экране «📋 Заявки»).
+    "reject_rules_return_text",
 ]
 
 # Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
@@ -306,7 +314,10 @@ _SETTINGS_DISPLAY_DEFAULTS = {
 # unchanged per D-10).
 _EVENT_GROUP_KEYS = [
     k for k in _EVENT_FIELD_ORDER
-    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum")
+    # Phase 31 (31-03, D-30): "date_only" добавлен к фильтру — forum_date иначе рендерился бы
+    # в _EVENT_FIELD_ORDER, но не попадал на реальный экран «🎪 Событие/Медиа» (тот же баг
+    # класса «тихо невидимый ключ», что фильтр здесь и призван не пускать).
+    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum", "date_only")
 ]
 
 SETTINGS_GROUPS = [

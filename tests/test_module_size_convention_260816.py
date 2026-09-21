@@ -156,7 +156,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2450,
+        2470,
+        "Phase 31 (31-03, D-30/D-18/D-15): +11 строк — forum_date в _EVENT_FIELD_ORDER "
+        "(комментарий про порядок дат) + фильтр _EVENT_GROUP_KEYS расширен типом date_only "
+        "(иначе новый ключ не попал бы на реальный экран) + reject_rules_return_text в хвосте "
+        "_REG_FIELD_ORDER (с комментарием, почему не рядом с reject_text — тот физически на "
+        "экране «📋 Заявки» с Phase 20); reject_rules_enabled — только SETTINGS_SCHEMA, своего "
+        "хендлера не заводили; 2450 -> 2461, потолок 2470 с небольшим запасом. "
         "Квик 260919-mlu (Task 3): +15 строк — развилка «была своя вкладка, имя меняется» "
         "перед гейтом 260815-3hw в settings_edit_value (ленивый вызов "
         "handlers/admin_sheet_tabs.py::tab_change_screen, вся ветвящаяся логика и три новых "
