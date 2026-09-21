@@ -101,7 +101,10 @@ from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers
     _game_task_deadline_preset_kb, _render_game_task_confirm_card, _resolve_deadline_preset,  # noqa: F401
     _show_wizard_preview, _wizard_return_to_preview,  # noqa: F401
     _game_task_audience_prompt, _game_task_deadline_prompt, _game_task_wave_prompt,  # noqa: F401
-    _safe_cancel_reminder, _safe_schedule_reminder,  # Phase 32 (32-12): reminder side effects
+    # Phase 32 (32-12, D-26): fail-soft wrappers around services.scheduler's
+    # schedule_task_deadline_reminder/cancel_task_deadline_reminder (see game_task_wizard.py) --
+    # every call site below goes through these, never the scheduler functions directly.
+    _safe_cancel_reminder, _safe_schedule_reminder,
 )
 from cities import (
     admin_selected_city,
@@ -287,7 +290,8 @@ async def game_task_archive_go(callback: types.CallbackQuery):
         return
     if await archive_task(task_id):
         _request_game_resync()  # Phase 09.1 (D, GAME-07): archive is a debounced resync trigger
-        _safe_cancel_reminder(task_id)  # Phase 32 (32-12, T-32-12-05): no orphaned reminder
+        # Phase 32 (32-12, T-32-12-05): cancel_task_deadline_reminder via _safe_cancel_reminder.
+        _safe_cancel_reminder(task_id)
         await callback.answer("Задание убрано в архив")
     else:
         await callback.answer("Задание уже в архиве", show_alert=True)
@@ -396,7 +400,8 @@ async def game_task_delete_go(callback: types.CallbackQuery):
         return
     if await delete_task(task_id):
         _request_game_resync()
-        _safe_cancel_reminder(task_id)  # Phase 32 (32-12, T-32-12-05): no orphaned reminder
+        # Phase 32 (32-12, T-32-12-05): cancel_task_deadline_reminder via _safe_cancel_reminder.
+        _safe_cancel_reminder(task_id)
         await callback.answer("Задание удалено")
     else:
         # delete_task's own SQL-level NOT EXISTS gate refused -- a submission landed between
