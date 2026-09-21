@@ -538,6 +538,26 @@ def test_active_wave_eligible_referrer_gets_wave_id(tmp_path):
     assert credit["wave_id"] == wave_id
 
 
+def test_legacy_default_city_referrer_gets_wave_id_when_cities_module_on(tmp_path):
+    """WR-03 (32-REVIEW.md): легаси-амбассадор дефолтного города (`event_city IS NULL`, ~590
+    таких на проде) не должен терять баллы за приглашённого в рейтинге волны только из-за
+    того, что его `event_city` не нормализован перед поиском волны. Раньше `current_wave_for`
+    получал сырой `None` и матчил только волны «все города» (`wave_at(ts, None)`), хотя
+    амбассадор фактически видит задания и стоит в рейтинге волны своего (дефолтного) города."""
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("ambassador_referral_coins", "15"))
+    wave_id = _active_wave(event_city="msk")
+    _make_ambassador(9403, since="2026-01-01 00:00:00")  # event_city=None — легаси дефолтного города
+    _seed_user(9503, referrer_id=9403)
+
+    _run(applications.claim_approve(9503))
+    credit = _run(db.get_referral_credit(9503))
+
+    assert credit is not None
+    assert credit["wave_id"] == wave_id
+
+
 def test_mid_wave_joiner_referrer_gets_no_wave_id(tmp_path):
     """D-31/D-38: пригласивший стал амбассадором ПОСЛЕ старта активной волны — в неё не
     участвует, начисление идёт (D-37 не нарушен — он ДЕЙСТВУЮЩИЙ амбассадор), но `wave_id`
