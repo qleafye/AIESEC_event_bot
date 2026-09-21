@@ -17,6 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin_gamification
+from handlers.game_review_render import _render_submission_card
 
 ADMIN_ID = 932901
 DELEGATE_ID = 932902
@@ -211,6 +212,49 @@ def test_grev_approve_coins_row_has_task_id(tmp_path):
     rows = asyncio.run(_coin_rows_for(DELEGATE_ID))
     assert len(rows) == 1
     assert rows[0]["task_id"] == task_id
+
+
+# ── Task 2: карточка проверки показывает итог заранее ─────────────────────────────────────
+
+def _submission_row(task_coins=100, deadline_at="2026-08-10 23:59:00",
+                     submitted_at="2026-08-14 10:00:00"):
+    return {
+        "task_title": None, "task_text": "Задание", "task_category": "Light",
+        "task_coins": task_coins, "task_proof_type": "text", "user_full_name": "Дельгат",
+        "user_username": "delegate1", "content_type": "text", "content": "пост",
+        "task_archived_at": None, "submitted_at": submitted_at, "task_deadline_at": deadline_at,
+    }
+
+
+def test_review_card_shows_penalized_total_when_late_and_percent_set():
+    row = _submission_row()
+    text = _render_submission_card(row, 1, 1, penalty_percent=30)
+    assert "70" in text and "100" in text
+    assert "штраф" in text
+
+
+def test_review_card_zero_percent_matches_prior_render_byte_for_byte():
+    row = _submission_row()
+    baseline = _render_submission_card(row, 1, 1)
+    zero_percent = _render_submission_card(row, 1, 1, penalty_percent=0)
+    assert zero_percent == baseline
+    assert "штраф" not in zero_percent
+
+
+def test_review_card_on_time_submission_has_no_penalty_line():
+    row = _submission_row(deadline_at="2026-08-25 23:59:00")
+    text = _render_submission_card(row, 1, 1, penalty_percent=30)
+    assert "штраф" not in text
+    assert "после дедлайна" not in text
+
+
+def test_review_card_no_deadline_task_has_neither_badge_nor_penalty_line():
+    # NO_DEADLINE_AT ("9999-12-31 23:59:59") строкового сравнения "после дедлайна" никогда не
+    # проходит (любая настоящая сдача раньше этой метки) — бейдж и строка штрафа не появляются.
+    row = _submission_row(deadline_at=db.NO_DEADLINE_AT)
+    text = _render_submission_card(row, 1, 1, penalty_percent=30)
+    assert "штраф" not in text
+    assert "после дедлайна" not in text
 
 
 def test_grev_approve_amount_step_coins_row_has_task_id(tmp_path):
