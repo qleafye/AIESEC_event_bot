@@ -31,6 +31,7 @@ from database.db import (
     get_pending_submissions,
     get_pending_submissions_count,
     get_wave,
+    insert_wave_results,
     list_active_tasks,
     list_ambassadors,
     list_wave_tasks,
@@ -221,6 +222,57 @@ def wave_number_label(wave: dict) -> str:
     """Единственное место, где номер волны превращается в человеческую строку «Волна N» —
     названия у волны нет (D-10); используют и экраны, и рассылки."""
     return f"Волна {(wave or {}).get('number', '?')}"
+
+
+async def prize_places_for(wave: dict) -> int:
+    """D-18: своё число призовых мест волны, если задано, иначе общая настройка
+    `wave_prize_places`; меньше единицы (кривые данные — 0 или отрицательное) приводится к
+    единице — волна без единого призового места не имеет смысла."""
+    raw = (wave or {}).get("prize_places")
+    if not raw:
+        raw = await get_setting_typed("wave_prize_places")
+    try:
+        n = int(raw or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n >= 1 else 1
+
+
+async def announce_results(wave_id: int) -> dict | None:
+    """D-16/D-17: объявление итогов волны — ровно один раз. Атомарный переход `closing ->
+    announced` (`set_wave_state(..., expected_state="closing")`) — ПЕРВАЯ операция функции, та
+    же идиома, что у `close_wave`/`approve_user_atomic`: не выигранный переход (волна уже
+    объявлена, ещё идёт, или её вовсе нет) — функция НИЧЕГО не пишет и возвращает `None`,
+    двойной тап по кнопке «Объявить итоги» не создаёт второго объявления (T-32-11-02).
+
+    После выигранного перехода читается ТЕКУЩИЙ `wave_rating` — призовые места
+    (`prize_places_for`) и личное место/баллы каждого участника берутся из ЭТОГО момента, одной
+    меткой времени (`announced_at`) на все строки снимка. В БД (`insert_wave_results`) пишутся
+    ТОЛЬКО призовые места — D-17 говорит про список призёров, не про всех участников; полные
+    `standings` (место, баллы КАЖДОГО участника волны) возвращаются вызывающей стороне вместе
+    со снимком, чтобы рассылка итогов (план 32-11, задача 3) не резолвила рейтинг заново —
+    сдача, одобренная уже ПОСЛЕ этой секунды, не имеет права задним числом поменять то, что
+    увидят участники в сообщении об итогах (T-32-11-01), хотя в общий зачёт она пойдёт (D-17).
+
+    Коинов здесь не начисляется вовсе (D-19) — приз («счастливый билет») только текст в
+    шаблоне итогов, бот ничего не выдаёт и не начисляет сам.
+
+    Возвращает `{wave, winners: [...], standings: {user_id: (place, points)}, total}` либо
+    `None`, если переход не выигран."""
+    if not await set_wave_state(wave_id, "announced", expected_state="closing"):
+        return None
+
+    wave = await get_wave(wave_id)
+    rating = await wave_rating(wave_id)
+    places = await prize_places_for(wave)
+    winners = rating[:places]
+
+    announced_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    rows = [(int(r["user_id"]), int(r["place"]), int(r["points"])) for r in winners]
+    await insert_wave_results(wave_id, rows, announced_at)
+
+    standings = {int(r["user_id"]): (int(r["place"]), int(r["points"])) for r in rating}
+    return {"wave": wave, "winners": winners, "standings": standings, "total": len(rating)}
 
 
 # ── Задача 3 (D-21): подсказка соотношения баллов на экране настройки ─────────────────────
