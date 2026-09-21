@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from config import config
 from cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
-from database.db import get_reject_rule, get_staff_city, list_auto_reject_log
+from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
@@ -166,18 +166,9 @@ def _condition_groups_text(conditions: list[list[dict]]) -> str:
 
 
 async def _rule_reject_count(rule_id: int) -> int:
-    """Число ЖИВЫХ строк журнала с ИМЕННО этим правилом — читает журнал целиком (правило может
-    быть «все города») и разбирает JSON `rule_ids` в Python; второго счётчика не заводим."""
-    rows = await list_auto_reject_log(city_scope=None, limit=100000, offset=0, include_returned=False)
-    count = 0
-    for row in rows:
-        try:
-            ids = json.loads(row.get("rule_ids") or "[]")
-        except (TypeError, ValueError):
-            ids = []
-        if rule_id in ids:
-            count += 1
-    return count
+    """Число ЖИВЫХ строк журнала с ИМЕННО этим правилом — COUNT в SQL (`database.db.
+    count_auto_reject_log_for_rule`), без города (правило может быть «все города»)."""
+    return await count_auto_reject_log_for_rule(rule_id, city_scope=None, include_returned=False)
 
 
 # ── Экран списка ──────────────────────────────────────────────────────────────
