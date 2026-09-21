@@ -66,6 +66,7 @@ from database.db import (
     get_task,
     get_user,
     get_user_by_username,
+    get_wave,
     list_all_submissions,
     list_all_tasks,
     list_manual_coin_entries,
@@ -81,6 +82,7 @@ from services.sheets import sync_named_worksheet
 from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
+from services.ambassador_waves import can_edit_wave, wave_editable_fields
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
 from handlers.game_labels import proof_types_label as _registry_proof_types_label
@@ -629,7 +631,7 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
         await state.update_data(gt_event_city=None, gt_city_step_shown=False)
         # Phase 32 (32-12, D-12): следующий шаг — кнопочная волна (gtwave:{id|none}, обработчик
         # game_task_wave_step живёт в handlers/admin_game_tasks.py).
-        await _game_task_wave_prompt(callback.message, state)
+        await _game_task_wave_prompt(callback.message, state, callback.from_user.id)
         await callback.answer()
         return
     bound = await _bound_task_city(callback.from_user.id)
@@ -644,7 +646,7 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
             gt_city_step_shown=True,
         )
         # Phase 32 (32-12, D-12): та же волна (gtwave:{id|none}), что и в ветке выше.
-        await _game_task_wave_prompt(callback.message, state)
+        await _game_task_wave_prompt(callback.message, state, callback.from_user.id)
         await callback.answer()
         return
     await state.update_data(gt_city_step_shown=True)
@@ -676,7 +678,7 @@ async def game_task_city_step(callback: types.CallbackQuery, state: FSMContext):
             return
         await state.update_data(gt_event_city=code, gt_event_city_label=await city_label(code))
     # Phase 32 (32-12, D-12/D-28): дальше — gtwave:{id|none}, затем gtaud:{all|ambassadors}.
-    await _game_task_wave_prompt(callback.message, state)
+    await _game_task_wave_prompt(callback.message, state, callback.from_user.id)
     await callback.answer()
 
 
@@ -699,8 +701,20 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
     """«✅ Опубликовать» on the final preview (Phase 16, 16-03, Экран 7) -- the callback stayed
     `gtconfirm`, the write below and its ADMIN_CAPS entry are unchanged from Phase 9. Phase 32
     (32-12, D-12/D-28): `wave_id`/`audience` go straight to `create_task`; a task WITH a real
-    deadline gets its D-26 reminder armed right after (fail-soft, `_safe_schedule_reminder`)."""
+    deadline gets its D-26 reminder armed right after (fail-soft, `_safe_schedule_reminder`).
+
+    WR-07: волна перечитывается заново — менеджер мог дойти до подтверждения уже после того,
+    как волну удалили или её состав заперла стартовая рассылка; в этом случае задание не
+    создаётся с висячим `wave_id`, а менеджер возвращается на шаг выбора волны."""
     data = await state.get_data()
+    wave_id = data.get("gt_wave_id")
+    if wave_id is not None:
+        wave = await get_wave(wave_id)
+        if wave is None or not await can_edit_wave(callback.from_user.id, wave) \
+                or "tasks" not in wave_editable_fields(wave):
+            await callback.answer("Волна стала недоступна — выберите другую", show_alert=True)
+            await _game_task_wave_prompt(callback.message, state, callback.from_user.id)
+            return
     task_id = await create_task(
         text=data["gt_text"],
         category=data["gt_category"],
@@ -1544,8 +1558,12 @@ async def grev_approve_custom_start(callback: types.CallbackQuery, state: FSMCon
         await callback.answer(_SUBMISSION_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
     await state.update_data(grev_submission_id=sid)
+    # WR-15: штраф применяется и к «своей сумме» (T-32-07-01) — менеджер должен узнать об этом
+    # ДО ввода числа, а не только по факту в ответе «Одобрено».
+    late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
+    hint = " — сдано после дедлайна, к сумме применится штраф" if late else ""
     await callback.message.answer(
-        f"Сколько монет начислить? (по умолчанию {task['coins']}):",
+        f"Сколько монет начислить? (по умолчанию {task['coins']}{hint}):",
         reply_markup=get_cancel_kb(),
     )
     await state.set_state(GameReview.approve_amount)
@@ -1634,7 +1652,15 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
             )
         except Exception as e:
             logger.error(f"Failed to notify user {submission['user_id']} of task approval: {e}")
-        await message.answer("Одобрено.", reply_markup=ReplyKeyboardRemove())
+        # WR-15: «своя сумма» — решение менеджера, но штраф мог его урезать; менеджер должен
+        # увидеть точные числа, а не только «Одобрено.» без объяснения разницы.
+        if late and coins != base_amount:
+            await message.answer(
+                f"Одобрено: начислено {coins} из {base_amount} — штраф за просрочку.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            await message.answer("Одобрено.", reply_markup=ReplyKeyboardRemove())
     else:
         await message.answer("Уже обработано.", reply_markup=ReplyKeyboardRemove())
     await state.set_state(None)

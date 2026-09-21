@@ -24,6 +24,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
+import cities
 from config import config
 from database import db
 import services.scheduler as sched
@@ -578,3 +579,98 @@ def test_scheduler_unavailable_does_not_block_archive(tmp_path, monkeypatch):
     asyncio.run(admin_gamification.game_task_archive_go(FakeCallback(f"gtarchive_go:{task_id}")))
     task = asyncio.run(db.get_task(task_id))
     assert task["archived_at"] is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревизия 32-FIX (WR-07): право на волну и открытый состав перепроверяются заново — на
+# шаге «Волна», в списке волн этого шага и повторно при «✅ Опубликовать».
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _bind_manager(manager_id, city):
+    asyncio.run(db.add_staff(manager_id, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(manager_id, city))
+
+
+def test_wave_step_rejects_wave_locked_after_start_notified(tmp_path):
+    """Стартовая рассылка ушла между показом кнопки и тапом — состав волны заперт, задание в
+    неё больше не добавляется."""
+    _db_ready(tmp_path)
+    wave_id = _mk_wave(state="active")
+    asyncio.run(db.mark_wave_started(wave_id, "2026-09-30 09:00:00"))
+    state = _new_state()
+    _drive_to_wave_step(state)
+    cb = FakeCallback(f"gtwave:{wave_id}")
+    asyncio.run(admin_game_tasks.game_task_wave_step(cb, state))
+    assert cb.answers and cb.answers[-1][1] is True
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_wave_id") is None
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave
+
+
+def test_wave_step_rejects_wave_of_other_city_for_bound_manager(tmp_path):
+    """Городской менеджер не может привязать задание к волне «все города», которую по
+    `can_edit_wave` он не вправе трогать, хотя кнопка волны в его списке есть."""
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    codes = cities.city_codes()
+    city_a, city_b = codes[0], codes[1]
+    wave_id = asyncio.run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-15 23:59:59", event_city=city_b, created_by=ADMIN_ID,
+    ))
+    manager_id = 921777
+    _bind_manager(manager_id, city_a)
+    state = _new_state(manager_id)
+    cb = FakeCallback(f"gtwave:{wave_id}", user_id=manager_id)
+    asyncio.run(admin_game_tasks.game_task_wave_step(cb, state))
+    assert cb.answers and cb.answers[-1][1] is True
+    data = asyncio.run(state.get_data())
+    assert data.get("gt_wave_id") is None
+
+
+def test_wave_prompt_excludes_locked_wave_from_button_list(tmp_path):
+    """WR-07: на шаге выбора показываем только волны, куда добавить задание сейчас можно."""
+    _db_ready(tmp_path)
+    open_id = _mk_wave(state="draft")
+    locked_id = _mk_wave(state="active")
+    asyncio.run(db.mark_wave_started(locked_id, "2026-09-30 09:00:00"))
+    state = _new_state()
+    target = FakeMessage()
+    asyncio.run(game_task_wizard._game_task_wave_prompt(target, state, ADMIN_ID))
+    kb = target.answer_markups[-1]
+    data = _flat_callback_data(kb)
+    assert f"gtwave:{open_id}" in data
+    assert f"gtwave:{locked_id}" not in data
+
+
+def test_gtconfirm_rechecks_wave_deleted_mid_wizard(tmp_path):
+    """Волну удалили, пока менеджер шёл по визарду до подтверждения — задание не создаётся с
+    висячим `wave_id`, менеджер возвращается на шаг выбора волны."""
+    _db_ready(tmp_path)
+    wave_id = _mk_wave()
+    state = _new_state()
+    _drive_to_deadline(state, wave_cb=f"gtwave:{wave_id}")
+    msg = FakeMessage(text="01.01.2099 00:00")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.confirm
+    asyncio.run(db.delete_wave(wave_id))
+    cb = FakeCallback("gtconfirm")
+    asyncio.run(admin_gamification.game_task_confirm(cb, state))
+    assert asyncio.run(db.list_all_tasks()) == []
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave
+    assert cb.answers and cb.answers[-1][1] is True
+
+
+def test_gtconfirm_rechecks_wave_locked_after_start_notified(tmp_path):
+    """Та же перепроверка, если волна не удалена, а её состав заперла стартовая рассылка,
+    ушедшая уже ПОСЛЕ выбора волны в визарде."""
+    _db_ready(tmp_path)
+    wave_id = _mk_wave(state="active")
+    state = _new_state()
+    _drive_to_deadline(state, wave_cb=f"gtwave:{wave_id}")
+    msg = FakeMessage(text="01.01.2099 00:00")
+    asyncio.run(admin_gamification.game_task_deadline_step(msg, state))
+    asyncio.run(db.mark_wave_started(wave_id, "2026-09-30 09:00:00"))
+    cb = FakeCallback("gtconfirm")
+    asyncio.run(admin_gamification.game_task_confirm(cb, state))
+    assert asyncio.run(db.list_all_tasks()) == []
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave
