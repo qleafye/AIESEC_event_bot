@@ -21,8 +21,12 @@ from datetime import datetime
 
 from database.db import (
     get_display_names,
+    get_pending_submissions,
+    get_pending_submissions_count,
     get_wave,
     list_ambassadors,
+    list_wave_tasks,
+    set_wave_state,
     sum_referral_coins_for_wave,
     sum_task_coins_for_wave,
     wave_at,
@@ -150,3 +154,58 @@ async def wave_rating_view(wave_id: int, viewer_id: int) -> dict:
         "prize_places": prize_places,
         "rows": rating if show_names == "on" else [],
     }
+
+
+# ── Задача 2 (D-16/D-17): сводка конца волны и переход состояния ──────────────────────────
+
+async def wave_end_summary(wave_id: int) -> dict:
+    """Данные для сообщения менеджеру в конце волны (D-16) — только числа, сама формулировка
+    текста живёт в ключе реестра `wave_end_manager_text`. `top` — первые N строк
+    `wave_rating` (N = своё число волны либо общая настройка `wave_prize_places`). `pending` —
+    сколько сдач по заданиям ИМЕННО этой волны сейчас `pending` (задания чужой волны и «вне
+    волн» не считаются). `pending_near_cutoff` — сколько из них принадлежат амбассадорам,
+    чьё текущее место сейчас в пределах одного призового места от отсечки («эти проверить в
+    первую очередь»); если посчитать невозможно — 0, а не исключение (fail-soft, того же духа,
+    что и `referral_ratio_hint`, T-32-03-05)."""
+    wave = await get_wave(wave_id)
+    rating = await wave_rating(wave_id)
+    prize_places = int((wave or {}).get("prize_places") or await get_setting_typed("wave_prize_places"))
+    top = rating[:prize_places]
+
+    pending = 0
+    pending_near_cutoff = 0
+    try:
+        wave_tasks = await list_wave_tasks(wave_id, active_only=False)
+        task_ids = {int(t["id"]) for t in wave_tasks}
+        if task_ids:
+            total_pending = await get_pending_submissions_count()
+            pending_rows = await get_pending_submissions(limit=total_pending) if total_pending else []
+            wave_pending = [r for r in pending_rows if int(r.get("task_id") or 0) in task_ids]
+            pending = len(wave_pending)
+            if pending and len(rating) >= prize_places > 0:
+                cutoff_points = rating[prize_places - 1]["points"]
+                near_users = set()
+                for r in wave_pending:
+                    uid = r.get("user_id")
+                    place_row = next((row for row in rating if row["user_id"] == uid), None)
+                    if place_row and abs(place_row["place"] - prize_places) <= 1:
+                        near_users.add(uid)
+                pending_near_cutoff = len(near_users)
+    except Exception:
+        pending = 0
+        pending_near_cutoff = 0
+
+    return {"wave": wave, "top": top, "pending": pending, "pending_near_cutoff": pending_near_cutoff}
+
+
+async def close_wave(wave_id: int) -> bool:
+    """Переход `active -> closing`, True только у того вызова, который реально перевёл волну —
+    повторный тик джобы (или второй одновременный клик) не имеет права «закрыть» волну дважды
+    и заново дёрнуть менеджера (T-32-03-03)."""
+    return await set_wave_state(wave_id, "closing", expected_state="active")
+
+
+def wave_number_label(wave: dict) -> str:
+    """Единственное место, где номер волны превращается в человеческую строку «Волна N» —
+    названия у волны нет (D-10); используют и экраны, и рассылки."""
+    return f"Волна {(wave or {}).get('number', '?')}"
