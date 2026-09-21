@@ -12,9 +12,16 @@ Telegram или пересобирать таблицу самому — еди�
 - `submission_created` -> `services.game_digest.notify_submission(bot, ...)` — тот же путь
   уведомления менеджеров, что и у сдачи из бота (режим «каждую сдачу»/дайджест решает сама
   функция).
-- `submission_reviewed` / `task_changed` -> `services.game_sync.request_resync()`
-  — debounced, синхронная, схлопывает пачку событий в один ребилд вкладок геймы. Делегата о
-  решении по сдаче уведомляет сам Mini App (план 19-05) — повторно НЕ уведомляем.
+- `submission_reviewed` -> `services.game_sync.request_resync()` — debounced, синхронная,
+  схлопывает пачку событий в один ребилд вкладок геймы. Делегата о решении по сдаче уведомляет
+  сам Mini App (план 19-05) — повторно НЕ уведомляем.
+- `task_changed` -> тот же `request_resync()` ПЛЮС (фикс WR-13 фазы 32) переармирование
+  напоминания за сутки до дедлайна: перечитывает задание и зовёт
+  `services.scheduler.schedule_task_deadline_reminder`/`cancel_task_deadline_reminder` —
+  единственный путь, каким создание/правка/архивация/удаление задания в Mini App может
+  тронуть джобу APScheduler бота (сам планировщик живёт только в процессе бота). До этого
+  фикса задание, созданное или получившее срок ИЗ Mini App, никогда не получало напоминание —
+  ветка умела только просить ребилд вкладок геймы.
 - `coins_manual` (16.09) -> `services.coins_notify.notify_manual_coins(bot, ...)` + тот же
   `request_resync()`. Ручные монеты из приложения делегату НЕ приходили вовсе: ветка умела
   только ребилд вкладок, тогда как путь из чата (мастер «🪙 Монеты», `/coins`) уведомлял. Текст
@@ -113,9 +120,40 @@ async def _reset_fsm(bot, telegram_id: int, reason: str) -> None:
                 "доставлено (%s)", telegram_id, exc,
             )
 
-# Закрытый набор kind -> "просто попросить ребилд" (T-19-55). submission_created и coins_manual
-# обрабатываются отдельными ветками ниже (у них свои обработчики поверх request_resync).
-_RESYNC_KINDS = frozenset({"submission_reviewed", "task_changed"})
+# Закрытый набор kind -> "просто попросить ребилд" (T-19-55). submission_created, coins_manual
+# и task_changed обрабатываются отдельными ветками ниже (у них свои обработчики поверх
+# request_resync).
+_RESYNC_KINDS = frozenset({"submission_reviewed"})
+
+
+async def _handle_task_changed(payload: dict) -> None:
+    """Фикс WR-13 (фаза 32): создание/правка/архивация/удаление задания из Mini App
+    переармирует напоминание за сутки до дедлайна (D-26) — единственная точка, где событие
+    Mini App доходит до планировщика бота. Перечитывает задание ЗАНОВО (не доверяет
+    payload) — к моменту разбора очереди задание могло смениться ещё раз.
+
+    Удалено / в архиве / без срока -> снимаем джобу (fail-soft, `cancel_task_deadline_
+    reminder` сама терпит отсутствие джобы). Есть срок -> `schedule_task_deadline_reminder`;
+    если он вернул False (момент `дедлайн - 24ч` уже в прошлом — дедлайн сдвинули раньше,
+    чем на сутки вперёд), старую джобу снимаем явно — иначе она сработает уже ПОСЛЕ нового,
+    более раннего дедлайна и напомнит слишком поздно."""
+    from database.db import get_task
+    from services.scheduler import cancel_task_deadline_reminder, schedule_task_deadline_reminder
+    from game_labels import task_deadline
+
+    task_id = payload.get("task_id")
+    if task_id is None:
+        return
+    task = await get_task(task_id)
+    if task is None or task.get("archived_at"):
+        cancel_task_deadline_reminder(task_id)
+        return
+    deadline = task_deadline(task)
+    if deadline is None:
+        cancel_task_deadline_reminder(task_id)
+        return
+    if not schedule_task_deadline_reminder(task_id, deadline):
+        cancel_task_deadline_reminder(task_id)
 
 
 async def _handle_manual_coins(bot, payload: dict) -> None:
@@ -154,6 +192,10 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         )
         return
     if kind in _RESYNC_KINDS:
+        request_resync()
+        return
+    if kind == "task_changed":
+        await _handle_task_changed(payload)
         request_resync()
         return
     if kind == "coins_manual":
