@@ -1233,7 +1233,7 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
     бота) не обрывает фан-аут остальным."""
     try:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
-        from services.ambassador_waves import wave_eligible, wave_number_label
+        from services.ambassador_waves import wave_eligible
         from services import quiet_hours, i18n
         import game_labels
 
@@ -1249,9 +1249,15 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
 
         lines = []
         for t in tasks:
-            deadline_txt = await game_labels.task_deadline_text(t)
+            # WR-12: `game_labels.task_deadline_text` уже возвращает готовое «без срока» для
+            # задания без дедлайна — приклеивать «до » нужно ТОЛЬКО когда срок реально есть,
+            # иначе делегат видит «до без срока».
+            if game_labels.task_has_deadline(t):
+                deadline_tail = f"до {await game_labels.task_deadline_text(t)}"
+            else:
+                deadline_tail = await game_labels.task_deadline_text(t)
             lines.append(
-                f"• {html.escape(str(task_title(t)))} — {int(t['coins'])} баллов, до {deadline_txt}"
+                f"• {html.escape(str(task_title(t)))} — {int(t['coins'])} баллов, {deadline_tail}"
             )
         tasks_block = "\n".join(lines)
 
@@ -1265,12 +1271,18 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # обрубок/висящее двоеточие; дефолт шаблона несёт перевод строки ПЕРЕД {intro}, так
         # что пустая подстановка оставляет лишнюю пустую строку — схлопываем её здесь, а не
         # правкой дефолта реестра (менеджер волен переписать шаблон по-своему).
+        # WR-09: `intro_text` в БД — уже готовый HTML (`message.html_text` на записи), НЕ
+        # сырой текст — повторный `html.escape` здесь превращал форматирование менеджера в
+        # буквальные `&amp;`/`<b>`.
         intro = (wave.get("intro_text") or "").strip()
-        intro_block = html.escape(intro) if intro else ""
+        intro_block = intro
 
+        # CR-05: подстановка в текст, который правит менеджер, — цепочкой `.replace`
+        # (`game_labels.fill_template`), НЕ `.format()`: посторонний `{`/`}` в тексте
+        # менеджера не должен ронять рассылку целиком (T-073-03-05).
         template = i18n.tr(await get_setting_typed("wave_start_message_text"), lang, tr_map)
-        text = template.format(
-            wave=wave_number_label(wave), ends=ends_txt, intro=intro_block, tasks=tasks_block,
+        text = game_labels.fill_template(
+            template, wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
         )
         if not intro:
             text = text.replace("\n\n\n", "\n\n")
@@ -1367,6 +1379,11 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         if deadline - timedelta(hours=24) > now:
             schedule_task_deadline_reminder(task_id, deadline)
             return
+        if deadline <= now:
+            # Дедлайн сдвинули РАНЬШЕ уже после постановки этой джобы — «скоро дедлайн» после
+            # самого дедлайна вводит в заблуждение (WR-13в), не переставляем на прошедший
+            # момент, просто не шлём.
+            return
 
         wave_id = task.get("wave_id")
         if wave_id:
@@ -1388,19 +1405,25 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         deadline_txt = await game_labels.task_deadline_text(task)
 
         for uid in recipients:
-            if await get_active_submission(task_id, uid):
-                continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
-            lang, tr_map = await i18n.context(uid)
-            template = i18n.tr(template_raw, lang, tr_map)
-            text = template.format(
-                task=html.escape(str(title)), coins=int(task["coins"]), deadline=deadline_txt,
-            )
+            # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
+            # обрывать напоминание остальным несдавшим — тот же приём, что в `send_wave_results`.
+            try:
+                if await get_active_submission(task_id, uid):
+                    continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                lang, tr_map = await i18n.context(uid)
+                template = i18n.tr(template_raw, lang, tr_map)
+                text = game_labels.fill_template(
+                    template, task=html.escape(str(title)), coins=int(task["coins"]),
+                    deadline=deadline_txt,
+                )
 
-            async def _sender(cid=uid, txt=text):
-                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                async def _sender(cid=uid, txt=text):
+                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
 
-            await quiet_hours.send_or_queue_text(now, uid, text, sender=_sender, parse_mode="HTML")
-            await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+                await quiet_hours.send_or_queue_text(now, uid, text, sender=_sender, parse_mode="HTML")
+                await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+            except Exception as e:
+                logger.error(f"send_task_deadline_reminder({task_id}) recipient {uid} failed: {e}")
     except Exception as e:
         logger.error(f"send_task_deadline_reminder({task_id}) failed: {e}")
 
@@ -1409,9 +1432,18 @@ async def send_task_deadline_reminder(task_id: int) -> None:
 
 def schedule_wave_end(wave_id: int, ends_at: datetime) -> None:
     """Разовая джоба `f"wave_end_{wave_id}"` на момент конца волны. `replace_existing=True` —
-    сдвиг даты волны просто перезаписывает джобу, без ручной отмены со стороны вызывающего."""
+    сдвиг даты волны просто перезаписывает джобу, без ручной отмены со стороны вызывающего.
+
+    WR-05: `ends_at` в прошлом (бот лежал дольше `_MISFIRE_GRACE_SECONDS`, `jobs.sqlite`
+    пересоздан, или волну завели/запустили задним числом) — та же ловушка и тот же приём, что
+    уже применяется к старту волны (`schedule_wave_start_for_all`): «сейчас + минута», а не
+    просроченный `run_date`, который APScheduler тихо выбрасывает как misfire — без этого
+    волна оставалась `active` навсегда, а объявить итоги было неоткуда (карточка `active`-волны
+    кнопки «Итоги» не показывает)."""
+    now = _now_moscow_naive()
+    run_at = ends_at if ends_at > now else now + timedelta(minutes=1)
     get_scheduler().add_job(
-        send_wave_end_ping, "date", run_date=ends_at, args=[wave_id],
+        send_wave_end_ping, "date", run_date=run_at, args=[wave_id],
         id=f"wave_end_{wave_id}", replace_existing=True,
     )
 
@@ -1428,7 +1460,8 @@ async def send_wave_end_ping(wave_id: int) -> None:
     fallback на `config.ADMIN_IDS`, если у capability вовсе нет держателей (T-32-08-02),
     плюс `_safe_send` на отправку одним сообщением с текстом и клавиатурой вместе."""
     try:
-        from services.ambassador_waves import close_wave, wave_end_summary, wave_number_label
+        import game_labels
+        from services.ambassador_waves import close_wave, wave_end_summary
         from handlers.admin_caps import capability_holders
 
         if not await close_wave(wave_id):
@@ -1443,9 +1476,11 @@ async def send_wave_end_ping(wave_id: int) -> None:
         ]
         top_txt = "; ".join(top_lines) if top_lines else "пока пусто"
 
+        # CR-05: `.replace`-подстановка (fill_template), не `.format()` — менеджерский текст
+        # может содержать посторонний `{`/`}`.
         template = await get_setting_typed("wave_end_manager_text")
-        text = template.format(
-            wave=wave_number_label(wave), top=top_txt, pending=summary["pending"],
+        text = game_labels.fill_template(
+            template, wave=wave.get("number"), top=top_txt, pending=summary["pending"],
         )
         markup = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🏁 Объявить итоги", callback_data=f"wavefin:{wave_id}")],
@@ -1464,59 +1499,59 @@ async def send_wave_end_ping(wave_id: int) -> None:
 
 
 # ── Phase 32 (32-11, D-16/D-17): рассылка итогов волны из неизменяемого снимка ───────────
-# `standings_json` — сериализованный `services.ambassador_waves.announce_results()["standings"]`
-# ({user_id: [place, points]} для ВСЕХ участников волны на момент объявления, не только
-# призёров). Обычные джобы этого файла берут только int-id и перечитывают живое состояние
-# ПЕРЕД отправкой (Pitfall 3) — здесь так не получится: если бы `send_wave_results` сама звала
-# `wave_rating(wave_id)` в момент срабатывания (минутой позже постановки, а после переармирования
-# — и часами/днями позже), сдача, одобренная уже ПОСЛЕ объявления, задним числом поменяла бы
-# личное место участника в рассылке — ровно то, что D-17 запрещает (T-32-11-01). `standings_json`
-# — обычная строка (json.dumps), а не Bot/closure — так же picklable и переживает рестарт
-# (SQLAlchemyJobStore), как и int-аргументы остальных джоб этого файла.
+# CR-06: джоба принимает ТОЛЬКО `wave_id` (как все остальные джобы этого файла) и читает ВЕСЬ
+# снимок из БД (`database.db.get_wave_results(wave_id, winners_only=False)`) — до этой правки
+# личные места/баллы всех НЕ-призёров жили ТОЛЬКО в JSON-аргументе джобы: потеря джобы
+# (`jobs.sqlite` пересоздан, простой дольше `_MISFIRE_GRACE_SECONDS`) или падение посреди
+# рассылки теряло их навсегда — пересчитать из `wave_rating` задним числом D-17 запрещает.
+# Персональная отметка `notified_at` на каждой строке снимка делает рассылку идемпотентной и
+# возобновляемой: повторный запуск (после сбоя, после `reconcile_wave_jobs`) шлёт только тем,
+# кому ещё не ушло, не задваивая уже получивших.
 
-def schedule_wave_results_broadcast(wave_id: int, standings: dict[int, tuple[int, int]]) -> None:
+def schedule_wave_results_broadcast(wave_id: int) -> None:
     """Разовая джоба рассылки итогов ОДНОЙ волны, id `wave_results_broadcast_{wave_id}`,
     `replace_existing=True`. «Сейчас + минута», не «прямо сейчас внутри хендлера»: рассылка
     сотням участников не должна выполняться внутри обработчика кнопки менеджера (T-32-11-06) и
     обязана пережить рестарт бота — тот же приём, что `schedule_payment_reminder`/`schedule_
     wave_start`."""
     run_at = _now_moscow_naive() + timedelta(minutes=1)
-    payload = json.dumps({str(uid): list(v) for uid, v in standings.items()})
     get_scheduler().add_job(
-        send_wave_results, "date", run_date=run_at, args=[wave_id, payload],
+        send_wave_results, "date", run_date=run_at, args=[wave_id],
         id=f"wave_results_broadcast_{wave_id}", replace_existing=True,
     )
 
 
-async def send_wave_results(wave_id: int, standings_json: str) -> None:
-    """Date-job target: рассылка итогов волны (D-16/D-17). Идемпотентна по факту: волна не в
-    состоянии 'announced' (откатили руками, повторное срабатывание после переармирования) —
-    молча выходим, ничего не отправляя.
+async def send_wave_results(wave_id: int) -> None:
+    """Date-job target: рассылка итогов волны (D-16/D-17). Идемпотентна и возобновляема: волна
+    не в состоянии 'announced' (откатили руками) — молча выходим; каждая строка снимка с уже
+    проставленным `notified_at` пропускается (CR-06) — повторное срабатывание/переармирование
+    досылает только хвост, не задваивая доставленное.
 
-    Список призёров — из НЕИЗМЕНЯЕМОГО снимка `get_wave_results` (а не пересчитанный `wave_
-    rating`, вызова которого в этой функции НЕТ намеренно — см. комментарий к разделу выше);
-    личное место/баллы КАЖДОГО участника — из `standings_json`, замороженного в момент
-    объявления. Каждому участнику уходит `wave_results_announce_text`; призёрам (по снимку)
-    ДОПОЛНИТЕЛЬНО — `wave_results_winner_text` с текстом приза `wave_results_prize_text` (D-19:
-    сам приз бот не выдаёт, это только текст). Оба сообщения — через `services.i18n.context`
-    (язык участника), `quiet_hours.send_or_queue_text` и `_safe_send` (внутри `sender`), с
-    паузой между получателями; сбой одного получателя (заблокировал бота) не обрывает
-    остальных — `_safe_send` сама глотает permanent-ошибки, не поднимая исключение наружу."""
+    Снимок — ЕДИНСТВЕННЫЙ источник личных мест/баллов (`database.db.get_wave_results(wave_id,
+    winners_only=False)`), не пересчитанный на лету рейтинг волны (сдача, одобренная уже ПОСЛЕ
+    объявления, не имеет права задним числом поменять то, что участник увидит в сообщении об
+    итогах — T-32-11-01). Каждому неотправленному участнику уходит `wave_results_announce_text`;
+    призёрам (`is_winner` в снимке) ДОПОЛНИТЕЛЬНО — `wave_results_winner_text` с текстом приза
+    `wave_results_prize_text` (D-19: сам приз бот не выдаёт, это только текст). Оба сообщения —
+    через `services.i18n.context` (язык участника), `quiet_hours.send_or_queue_text` и
+    `_safe_send` (внутри `sender`), с паузой между получателями; свой `try/except` НА КАЖДОГО
+    получателя (CR-05) — сбой одного (кривой src в i18n, блокировка бота) не обрывает рассылку
+    остальным."""
     try:
-        from database.db import get_wave, get_wave_results, get_display_names
-        from services.ambassador_waves import wave_number_label
+        from database.db import get_wave, get_wave_results, get_display_names, mark_wave_result_notified
+        import game_labels
         from services import quiet_hours, i18n
 
         wave = await get_wave(wave_id)
         if not wave or wave.get("state") != "announced":
             return
 
-        standings = {
-            int(uid): (int(v[0]), int(v[1])) for uid, v in json.loads(standings_json).items()
-        }
-        total = len(standings)
+        snapshot = await get_wave_results(wave_id, winners_only=False)  # уже ORDER BY place ASC
+        if not snapshot:
+            return
+        total = len(snapshot)
 
-        winners = await get_wave_results(wave_id)
+        winners = [r for r in snapshot if r["is_winner"]]
         winner_ids = {int(w["user_id"]) for w in winners}
         winner_names = await get_display_names([int(w["user_id"]) for w in winners])
         winners_txt = "; ".join(
@@ -1527,35 +1562,50 @@ async def send_wave_results(wave_id: int, standings_json: str) -> None:
         announce_raw = await get_setting_typed("wave_results_announce_text")
         winner_raw = await get_setting_typed("wave_results_winner_text")
         prize_raw = await get_setting_typed("wave_results_prize_text")
-        wave_label = wave_number_label(wave)
+        wave_number = wave.get("number")
         now = _now_moscow_naive()
 
-        for user_id, (place, points) in standings.items():
-            lang, tr_map = await i18n.context(user_id)
-            text = i18n.tr(announce_raw, lang, tr_map).format(
-                wave=wave_label, winners=winners_txt, place=place, total=total, points=points,
-            )
+        for row in snapshot:
+            if row.get("notified_at"):
+                continue  # этому участнику итоги уже ушли — не задваиваем (CR-06)
+            user_id = int(row["user_id"])
+            place = int(row["place"])
+            points = int(row["points"])
+            try:
+                if not await mark_wave_result_notified(
+                    wave_id, user_id, now.strftime("%Y-%m-%d %H:%M:%S"),
+                ):
+                    continue  # отметил параллельный тик той же джобы — не шлём вторично
 
-            async def _sender(cid=user_id, txt=text):
-                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                lang, tr_map = await i18n.context(user_id)
+                text = game_labels.fill_template(
+                    i18n.tr(announce_raw, lang, tr_map),
+                    wave=wave_number, winners=winners_txt, place=place, total=total, points=points,
+                )
 
-            await quiet_hours.send_or_queue_text(now, user_id, text, sender=_sender, parse_mode="HTML")
-            await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
+                async def _sender(cid=user_id, txt=text):
+                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
 
-            if user_id not in winner_ids:
-                continue
-            prize_text = i18n.tr(prize_raw, lang, tr_map)
-            winner_text = i18n.tr(winner_raw, lang, tr_map).format(
-                wave=wave_label, place=place, points=points, prize=prize_text,
-            )
+                await quiet_hours.send_or_queue_text(now, user_id, text, sender=_sender, parse_mode="HTML")
+                await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
 
-            async def _winner_sender(cid=user_id, txt=winner_text):
-                await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                if user_id not in winner_ids:
+                    continue
+                prize_text = i18n.tr(prize_raw, lang, tr_map)
+                winner_text = game_labels.fill_template(
+                    i18n.tr(winner_raw, lang, tr_map),
+                    wave=wave_number, place=place, points=points, prize=prize_text,
+                )
 
-            await quiet_hours.send_or_queue_text(
-                now, user_id, winner_text, sender=_winner_sender, parse_mode="HTML",
-            )
-            await asyncio.sleep(0.05)
+                async def _winner_sender(cid=user_id, txt=winner_text):
+                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+
+                await quiet_hours.send_or_queue_text(
+                    now, user_id, winner_text, sender=_winner_sender, parse_mode="HTML",
+                )
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.error(f"send_wave_results({wave_id}) recipient {user_id} failed: {e}")
     except Exception as e:
         logger.error(f"send_wave_results({wave_id}) failed: {e}")
 
@@ -1570,9 +1620,17 @@ async def reconcile_wave_jobs() -> None:
     напоминание не воскрешается) и джобу конца волны. Идемпотентно: все идентификаторы
     детерминированные, `replace_existing=True` не плодит дублей — повторный вызов на уже
     полностью взведённом хранилище — no-op по факту (джобы просто перезаписываются теми же
-    значениями)."""
+    значениями).
+
+    CR-06: по волнам `announced` с неразосланными строками снимка (`notified_at IS NULL` хотя
+    бы у одной) заново ставит джобу рассылки итогов — потерянная джоба (пересозданный
+    `jobs.sqlite`, простой дольше `_MISFIRE_GRACE_SECONDS`, необработанное исключение в старой
+    версии рассылки) лечится обычным рестартом бота, без ручного SQL и без повторной отправки
+    уже уведомлённым (`send_wave_results` сама пропускает строки с проставленным `notified_at`)."""
     try:
-        from database.db import list_waves, list_wave_tasks
+        from database.db import (
+            list_waves, list_wave_tasks, count_wave_results_pending_notify,
+        )
         import game_labels
 
         waves = await list_waves(states=("active",))
@@ -1591,5 +1649,10 @@ async def reconcile_wave_jobs() -> None:
                 deadline = game_labels.task_deadline(t)
                 if deadline is not None:
                     schedule_task_deadline_reminder(int(t["id"]), deadline)
+
+        for wave in await list_waves(states=("announced",)):
+            wave_id = int(wave["id"])
+            if await count_wave_results_pending_notify(wave_id) > 0:
+                schedule_wave_results_broadcast(wave_id)
     except Exception as e:
         logger.error(f"reconcile_wave_jobs failed: {e}")

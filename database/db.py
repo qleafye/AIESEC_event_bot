@@ -970,13 +970,25 @@ async def init_db():
         # user_id)` — не отдельный AUTOINCREMENT id — физически не даёт повторному «Объявить
         # итоги» переписать уже объявленную строку: запись идёт только через
         # `INSERT OR IGNORE`, повтор возвращает 0 вставленных строк, а не тихую перезапись.
+        #
+        # Ревью фазы 32 (CR-06): снимок хранит ВСЕХ участников волны на момент объявления, не
+        # только призёров — личное место невыигравшего задним числом пересчитать нечем (D-17),
+        # а рассылка итогов должна читать готовый снимок, а не гонять `wave_rating` заново.
+        # `is_winner` отличает призовые строки (их и раньше возвращал `get_wave_results`) от
+        # рядовых участников — фаза 32 ни разу не выкатывалась, менять схему уже созданной
+        # таблицы можно свободно, без `_ensure_column`/миграции старых данных.
+        # `notified_at` — персональная отметка «этому участнику итоги уже отправлены»: без неё
+        # частичная рассылка (упал бот/джоба потеряна) не возобновляема и либо теряет хвост
+        # получателей навсегда, либо задваивает уже отправленным при повторном запуске.
         await db.execute('''
             CREATE TABLE IF NOT EXISTS wave_results (
                 wave_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
                 place INTEGER NOT NULL,
                 points INTEGER NOT NULL,
+                is_winner INTEGER NOT NULL DEFAULT 1,
                 announced_at TEXT NOT NULL,
+                notified_at TEXT,
                 PRIMARY KEY (wave_id, user_id)
             )
         ''')
@@ -5699,19 +5711,25 @@ async def count_referral_credits(referrer_id: int, wave_id: int | None) -> int:
             return int(row[0]) if row else 0
 
 
-# ── Phase 32 (32-01, D-17): снимок итогов волны — аксессоры ────────────────────────────────
+# ── Phase 32 (32-01/32-11, D-16/D-17): снимок итогов волны — аксессоры ─────────────────────
 
 async def insert_wave_results(wave_id: int, rows: list[tuple[int, int, int]],
                                announced_at: str) -> int:
-    """`rows` — список (user_id, place, points). Одна транзакция, `INSERT OR IGNORE` против
-    `PRIMARY KEY (wave_id, user_id)` — повторный вызов вставляет 0 строк, снимок остаётся
-    неизменным (D-17). Возвращает число РЕАЛЬНО вставленных строк."""
+    """`rows` — список (user_id, place, points), каждая строка пишется как призовая
+    (`is_winner = 1`) — прежнее, всё ещё живое поведение этого аксессора (используется вне
+    `announce_results`, например бэкафиллом/тестами очистки пользователя). Одна транзакция,
+    `INSERT OR IGNORE` против `PRIMARY KEY (wave_id, user_id)` — повторный вызов вставляет 0
+    строк, снимок остаётся неизменным (D-17). Возвращает число РЕАЛЬНО вставленных строк.
+
+    Полный снимок ВСЕХ участников волны (не только призёров), нужный `announce_results`,
+    пишет `announce_wave_atomic` ниже — она же атомарно переводит волну в `announced`."""
     inserted = 0
     async with _connect() as db:
         for user_id, place, points in rows:
             cursor = await db.execute(
-                "INSERT OR IGNORE INTO wave_results (wave_id, user_id, place, points, announced_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO wave_results "
+                "(wave_id, user_id, place, points, is_winner, announced_at) "
+                "VALUES (?, ?, ?, ?, 1, ?)",
                 (wave_id, user_id, place, points, announced_at),
             )
             inserted += cursor.rowcount
@@ -5719,13 +5737,79 @@ async def insert_wave_results(wave_id: int, rows: list[tuple[int, int, int]],
         return inserted
 
 
-async def get_wave_results(wave_id: int) -> list[dict]:
+async def announce_wave_atomic(
+    wave_id: int, rows: list[tuple[int, int, int, bool]], announced_at: str,
+) -> bool:
+    """CR-06: переход `closing -> announced` и запись снимка ВСЕХ участников волны ОДНОЙ
+    транзакцией/одним `_connect()` — тот же приём, что `approve_user_atomic`: `rowcount == 1`
+    у `UPDATE ... WHERE state = 'closing'` — единственный арбитр гонки (двойной клик «Объявить
+    итоги», два менеджера одновременно). Проигравший вызов не пишет ни строки — до этой правки
+    переход состояния коммитился ПЕРВЫМ отдельным вызовом, а снимок — вторым, и падение между
+    ними (`database is locked`, рестарт) оставляло волну `announced` без единой строки снимка,
+    без пути восстановления из UI.
+
+    `rows` — (user_id, place, points, is_winner) для КАЖДОГО участника волны на момент
+    объявления, посчитанного вызывающим ДО открытия этой транзакции (рейтинг — read-only,
+    коротким чтением до флипа; сам флип и остаётся арбитром гонки, а не повторным чтением
+    рейтинга внутри транзакции). Возвращает True, только если ИМЕННО этот вызов выполнил
+    переход — вызывающий в этом случае и только в этом обязан ставить джобу рассылки."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE ambassador_waves SET state = 'announced' WHERE id = ? AND state = 'closing'",
+            (wave_id,),
+        )
+        if cursor.rowcount != 1:
+            await db.commit()
+            return False
+        for user_id, place, points, is_winner in rows:
+            await db.execute(
+                "INSERT OR IGNORE INTO wave_results "
+                "(wave_id, user_id, place, points, is_winner, announced_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (wave_id, user_id, place, points, 1 if is_winner else 0, announced_at),
+            )
+        await db.commit()
+        return True
+
+
+async def get_wave_results(wave_id: int, *, winners_only: bool = True) -> list[dict]:
+    """По умолчанию — ТОЛЬКО призёры (`is_winner = 1`), прежнее поведение этого аксессора для
+    существующих читателей (карточка волны, тесты очистки пользователя, бэкафилл). CR-06:
+    рассылке итогов и «сколько ещё не разослано» нужен ПОЛНЫЙ снимок — `winners_only=False`."""
+    where = " AND is_winner = 1" if winners_only else ""
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM wave_results WHERE wave_id = ? ORDER BY place ASC", (wave_id,),
+            f"SELECT * FROM wave_results WHERE wave_id = ?{where} ORDER BY place ASC", (wave_id,),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
+
+
+async def mark_wave_result_notified(wave_id: int, user_id: int, when: str) -> bool:
+    """CR-06: персональная отметка «этому участнику итоги волны уже отправлены» —
+    `notified_at IS NULL` в WHERE делает рассылку идемпотентной и возобновляемой (тот же приём,
+    что `mark_wave_started`/`mark_nudged`): повторный тик джобы после сбоя/переармирования не
+    шлёт второе сообщение уже отправленным, а недослав хвост — отправляет только его."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE wave_results SET notified_at = ? "
+            "WHERE wave_id = ? AND user_id = ? AND notified_at IS NULL",
+            (when, wave_id, user_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def count_wave_results_pending_notify(wave_id: int) -> int:
+    """CR-06: сколько строк снимка волны ещё не разослано — `reconcile_wave_jobs` этим числом
+    решает, нужно ли заново ставить джобу рассылки итогов для `announced`-волны."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM wave_results WHERE wave_id = ? AND notified_at IS NULL",
+            (wave_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else 0
 
 
 # ── Phase 32 (32-01, D-14): суммы для рейтинга волны — сырой SQL, правила в сервисе плана
