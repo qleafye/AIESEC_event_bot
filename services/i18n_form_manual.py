@@ -692,6 +692,11 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "🏅 Рейтинг волны": "🏅 Wave ranking",
     "Рейтинг волны виден только участникам текущей волны амбассадоров.": "The wave ranking is only visible to participants of the current ambassador wave.",
     "Да, выйти": "Yes, leave",
+    # Ревью фазы 32 (WR-11): «Ты в тройке призёров» противоречило настраиваемому числу
+    # призовых мест (при `prize_places = 5` пятое место тоже получало «тройку») — новый
+    # дефолт корректен для любого числа мест, старая строка выше оставлена как исторический
+    # ключ ручного перевода (могла остаться в БД у события, которое уже переопределило текст).
+    "Ты среди призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}\nСпасибо за работу в этой волне.": "You're among the winners of wave {wave} — {place} place, {points} points!\n{prize}\nThanks for your work in this wave.",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {
