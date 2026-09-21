@@ -265,3 +265,102 @@ def test_set_ambassador_flag_active_false_keeps_since(tmp_path):
     assert user["is_ambassador"] == 0
     assert user["ambassador_since"] == "2026-09-01 00:00:00"
     assert user["ambassador_left_at"] == "2026-09-20 00:00:00"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: аксессоры начислений и сторож пожизненного рейтинга
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_claim_referral_credit_idempotent(tmp_path):
+    """Двойной claim_referral_credit для одного приглашённого — True, потом False, в
+    таблице ровно одна строка (T-32-01-01)."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _seed_user(2)
+    first = _run(db.claim_referral_credit(2, 1, 50, None))
+    second = _run(db.claim_referral_credit(2, 1, 50, None))
+    assert first is True
+    assert second is False
+    rows = _run(db.list_referral_credits(referrer_id=1))
+    assert len(rows) == 1
+    assert _run(db.count_referral_credits(1, None)) == 1
+
+
+def test_insert_wave_results_immutable(tmp_path):
+    """Повторный insert_wave_results — 0 вставок, содержимое снимка не меняется (D-17)."""
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    first = _run(db.insert_wave_results(
+        wave_id, [(1, 1, 100), (2, 2, 80)], "2026-10-09 00:00:00",
+    ))
+    second = _run(db.insert_wave_results(
+        wave_id, [(1, 1, 999), (2, 2, 999)], "2026-10-10 00:00:00",
+    ))
+    assert first == 2
+    assert second == 0
+    results = _run(db.get_wave_results(wave_id))
+    assert [r["points"] for r in results] == [100, 80]
+
+
+def test_sum_task_coins_for_wave_scoped_and_ignores_legacy(tmp_path):
+    """Делегат с двумя заданиями ОДНОЙ волны и одним заданием ДРУГОЙ волны получает по
+    sum_task_coins_for_wave ровно суммы своей волны; строка coins без task_id (легаси) в
+    суммы волны не попадает (Pitfall 4)."""
+    _ready(tmp_path)
+    _seed_user(1)
+    wave_a = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    wave_b = _run(db.create_wave("2026-11-01 00:00:00", "2026-11-08 00:00:00"))
+    task_a1 = _run(db.create_task(
+        "A1", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_a,
+    ))
+    task_a2 = _run(db.create_task(
+        "A2", "Light", 20, "photo", "2026-10-06 00:00:00", None, wave_id=wave_a,
+    ))
+    task_b1 = _run(db.create_task(
+        "B1", "Light", 30, "photo", "2026-11-05 00:00:00", None, wave_id=wave_b,
+    ))
+    _run(db.add_coins(1, 10, source="task", task_id=task_a1))
+    _run(db.add_coins(1, 20, source="task", task_id=task_a2))
+    _run(db.add_coins(1, 30, source="task", task_id=task_b1))
+    _run(db.add_coins(1, 999, source="task"))  # легаси-строка без task_id — не в счёт волны
+    sums_a = _run(db.sum_task_coins_for_wave(wave_a))
+    sums_b = _run(db.sum_task_coins_for_wave(wave_b))
+    assert sums_a[1] == 30
+    assert sums_b[1] == 30
+
+
+def test_lifetime_leaderboard_unchanged_by_new_coin_sources(tmp_path):
+    """Сторож пожизненного рейтинга (D-15): на наборе ручных, задачных и реферальных
+    начислений get_leaderboard/get_user_rank дают те же числа, что прямая сумма SUM(delta)
+    по ВСЕМ строкам журнала — в общий зачёт идёт ВСЁ, новая колонка task_id функции не меняет."""
+    _ready(tmp_path)
+    _seed_user(1)
+    _seed_user(2)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    task_id = _run(db.create_task(
+        "A", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id,
+    ))
+    _run(db.add_coins(1, 50, source="manual"))
+    _run(db.add_coins(1, 10, source="task", task_id=task_id))
+    _run(db.add_coins(2, 100))  # легаси, source=None, task_id=None
+    _run(db.add_coins(2, 25, source="referral"))  # реферальное начисление в общем журнале
+
+    leaderboard = _run(db.get_leaderboard(10))
+    rank_1 = _run(db.get_user_rank(1))
+    rank_2 = _run(db.get_user_rank(2))
+
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        direct = dict(con.execute(
+            "SELECT user_id, SUM(delta) FROM coins GROUP BY user_id"
+        ).fetchall())
+    finally:
+        con.close()
+
+    lb_by_user = {row["user_id"]: row["balance"] for row in leaderboard}
+    assert lb_by_user == direct
+
+    ordered = sorted(direct.items(), key=lambda kv: -kv[1])
+    expected_rank = {uid: i + 1 for i, (uid, _) in enumerate(ordered)}
+    assert rank_1 == expected_rank[1]
+    assert rank_2 == expected_rank[2]
