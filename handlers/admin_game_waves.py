@@ -49,6 +49,7 @@ from services.scheduler import (
     cancel_wave_jobs,
     schedule_task_deadline_reminder,
     schedule_wave_end,
+    schedule_wave_results_broadcast,
     schedule_wave_start_for_all,
 )
 from settings_validation import validate_setting_value
@@ -728,6 +729,98 @@ async def wave_create_cancel(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# ── план 32-11 (D-16/D-17): итоги волны — подготовленный топ, подтверждение менеджера ──────
+# Кнопка `wavefin:{wave_id}` приходит из `services.scheduler.send_wave_end_ping` личным
+# сообщением менеджеру (не через карточку волны в админке) — `_wave_from_prefix` даёт ту же
+# проверку прав на город (T-32-11-03), что и у остальных изменяющих действий этого файла, и
+# заодно человеческий ответ на устаревшую/чужую кнопку.
+
+async def _wave_finish_screen(wave: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран D-16: подготовленный ботом топ + число сдач на проверке. Кнопка перехода к очереди
+    проверки печатается ТОЛЬКО когда очередь непустая — CLAUDE.md запрещает рисовать кнопку,
+    которой сейчас нечего делать."""
+    summary = await aw.wave_end_summary(wave["id"])
+    top_lines = [
+        f"{row['place']}. {html_module.escape(str(row.get('name') or row['user_id']))} — {row['points']}"
+        for row in summary["top"]
+    ]
+    lines = [
+        f"🏁 {aw.wave_number_label(wave)} закончилась",
+        "Топ:\n" + ("\n".join(top_lines) if top_lines else "пока пусто"),
+    ]
+    pending = summary["pending"]
+    buttons: list[list[InlineKeyboardButton]] = []
+    if pending:
+        lines.append(
+            f"На проверке ещё {pending} сдач — их результат в призёры уже не попадёт, если "
+            "объявить итоги сейчас. Сначала проверьте, потом объявляйте."
+        )
+        buttons.append([InlineKeyboardButton(
+            text="📋 Открыть сдачи на проверке", callback_data="admin_game_review",
+        )])
+    buttons.append([InlineKeyboardButton(text="🏁 Объявить итоги", callback_data=f"wavefin_go:{wave['id']}")])
+    buttons.append([InlineKeyboardButton(text="← К карточке волны", callback_data=f"wave:{wave['id']}")])
+    return "\n\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("wavefin:"))
+async def wave_finish_screen(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavefin:")
+    if wave is None:
+        return
+    if wave["state"] == "announced":
+        await callback.answer("Итоги этой волны уже объявлены", show_alert=True)
+        return
+    if wave["state"] != "closing":
+        await callback.answer("Волна ещё не закончилась", show_alert=True)
+        return
+    await state.clear()
+    text, kb = await _wave_finish_screen(wave)
+    await _ag._edit_or_send_screen(callback.message, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wavefin_go:"))
+async def wave_finish_confirm(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavefin_go:")
+    if wave is None:
+        return
+    if wave["state"] != "closing":
+        await callback.answer(
+            "Итоги этой волны уже объявлены" if wave["state"] == "announced" else "Волна ещё не закончилась",
+            show_alert=True,
+        )
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, объявить", callback_data=f"wavefin_do:{wave_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"wave:{wave_id}")],
+    ])
+    await callback.message.edit_text(
+        f"🏁 <b>Объявить итоги {aw.wave_number_label(wave)}?</b>\n\n"
+        "Список призёров после этого не изменится: сдача, которую проверят позже, в призы уже "
+        "не попадёт. Всем участникам волны уйдёт сообщение с их местом, призёрам — отдельное "
+        "поздравление.",
+        parse_mode="HTML", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wavefin_do:"))
+async def wave_finish_go(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavefin_do:")
+    if wave is None:
+        return
+    result = await aw.announce_results(wave_id)
+    if result is None:
+        await callback.answer("Итоги этой волны уже объявлены", show_alert=True)
+    else:
+        schedule_wave_results_broadcast(wave_id, result["standings"])
+        await callback.answer("Итоги объявлены")
+    updated = await get_wave(wave_id)
+    text, kb = await _wave_card_screen(callback.from_user.id, updated)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 __all__ = [
     "show_wave_card", "show_wave_list", "wave_create_start", "wave_copy_last_start",
     "wave_create_dates_step", "wave_create_intro_step", "wave_create_intro_skip",
@@ -735,4 +828,5 @@ __all__ = [
     "wave_edit_field_start", "wave_edit_dates_step", "wave_edit_intro_step",
     "wave_edit_prize_step", "wave_activate_confirm", "wave_activate_go",
     "wave_delete_confirm", "wave_delete_go", "wave_copy_from_card",
+    "wave_finish_screen", "wave_finish_confirm", "wave_finish_go",
 ]
