@@ -213,6 +213,24 @@ def test_send_wave_start_dm_task_without_deadline_labeled(tmp_path, monkeypatch)
     _run(sched.send_wave_start_dm(wave_id, 1))
     text = bot.sent[0][1]
     assert "без срока" in text
+    assert "до без срока" not in text  # WR-12: приклеенное "до " не должно дублировать текст
+
+
+def test_send_wave_start_dm_intro_html_not_double_escaped(tmp_path, monkeypatch):
+    """WR-09: `intro_text` в БД — уже готовый HTML (`message.html_text` на записи); повторный
+    `html.escape` на показе превращал форматирование менеджера в буквальные `&amp;`/`<b>`."""
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-08 00:00:00",
+        intro_text="Зови друзей & делай контент <b>активно</b>",
+    ))
+    _run(db.set_wave_state(wave_id, "active"))
+    _run(sched.send_wave_start_dm(wave_id, 1))
+    text = bot.sent[0][1]
+    assert "Зови друзей & делай контент <b>активно</b>" in text
+    assert "&amp;" not in text
 
 
 def test_send_wave_start_blocked_recipient_does_not_abort_others(tmp_path, monkeypatch):
@@ -417,6 +435,46 @@ def test_send_task_deadline_reminder_rejected_submission_counts_as_not_submitted
     assert [c[0] for c in bot.sent] == [1]  # отклонённая сдача — не сдал, напоминание уходит
 
 
+def test_send_task_deadline_reminder_deadline_already_passed_sends_nothing(tmp_path, monkeypatch):
+    """WR-13(в): дедлайн сдвинули РАНЬШЕ уже после постановки джобы — «скоро дедлайн» ПОСЛЕ
+    самого дедлайна вводит в заблуждение, джоба не шлёт и не пытается переставить себя на
+    прошедший момент."""
+    _ready(tmp_path, "t2h.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    task_id = _run(db.create_task(
+        "AlreadyDue", "Light", 10, "photo", "2026-10-04 12:00:00", None, wave_id=wave_id,
+    ))
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 5, 0, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert bot.sent == []
+
+
+def test_send_task_deadline_reminder_manager_template_with_stray_brace_does_not_abort(tmp_path, monkeypatch):
+    """CR-05: менеджерский текст с посторонней `{` не должен ронять напоминание целиком —
+    `.replace`-подстановка (`game_labels.fill_template`) оставляет неизвестный плейсхолдер как
+    есть, а не поднимает `KeyError`/`ValueError`, как `.format()`."""
+    _ready(tmp_path, "t2i.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    _run(db.set_setting("wave_deadline_reminder_text", "пиши в чат {ссылка} до {deadline}"))
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    task_id = _run(db.create_task(
+        "Task", "Light", 10, "photo", "2026-10-05 12:00:00", None, wave_id=wave_id,
+    ))
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert len(bot.sent) == 1
+    text = bot.sent[0][1]
+    assert "{ссылка}" in text  # неизвестный плейсхолдер остался как есть, не упал
+    assert "{deadline}" not in text  # известный — подставлен
+
+
 def test_send_task_deadline_reminder_deadline_pushed_forward_reschedules(tmp_path, monkeypatch):
     _ready(tmp_path, "t2e.db")
     bot = _with_bot(monkeypatch)
@@ -529,6 +587,7 @@ def test_send_wave_end_ping_only_city_managers_and_has_numbers(tmp_path, monkeyp
     chat_id, text, parse_mode, markup = bot.sent[0]
     assert chat_id == 42
     assert "Волна" in text
+    assert "Волна Волна" not in text  # WR-10: {wave} — только номер, слово уже в шаблоне
     assert markup is not None and len(markup.inline_keyboard) == 2
     callbacks = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert f"wavefin:{wave_id}" in callbacks
@@ -584,5 +643,23 @@ def test_schedule_wave_end_replace_existing(tmp_path, monkeypatch):
         jobs = [j for j in s.get_jobs() if j.id == "wave_end_9"]
         assert len(jobs) == 1
         assert jobs[0].next_run_time.replace(tzinfo=None) == d2
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_wave_end_past_date_catches_up_now_plus_minute(tmp_path, monkeypatch):
+    """WR-05: `ends_at` в прошлом (бот лежал дольше `_MISFIRE_GRACE_SECONDS`, `jobs.sqlite`
+    пересоздан, волну завели/запустили задним числом) — та же ловушка и тот же приём, что уже
+    применяется к старту волны: «сейчас + минута», а не просроченный `run_date`, который
+    APScheduler тихо выбрасывает как misfire (волна оставалась `active` навсегда)."""
+    now = datetime(2026, 10, 10, 12, 0, 0)
+    past = now - timedelta(days=3)
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: now)
+
+    async def body(s):
+        sched.schedule_wave_end(9, past)
+        job = s.get_job("wave_end_9")
+        assert job is not None
+        assert job.next_run_time.replace(tzinfo=None) == now + timedelta(minutes=1)
 
     _run_scheduled(tmp_path, monkeypatch, body)

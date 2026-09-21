@@ -41,7 +41,7 @@ from database.db import (
     update_task_deadline,
     update_wave,
 )
-from game_labels import task_deadline, task_deadline_admin
+from game_labels import task_deadline, task_deadline_admin, task_has_deadline
 from keyboards.builders import get_cancel_kb
 from services import ambassador_waves as aw
 from services.scheduler import (
@@ -139,8 +139,13 @@ async def _wave_card_screen(admin_id: int, wave: dict) -> tuple[str, InlineKeybo
         f"Город: {await _city_display(wave.get('event_city'))}",
     ]
     if tasks:
+        # WR-12: `task_deadline_admin` для задания без срока уже возвращает готовое «без
+        # срока» — приклеенное безусловно «до » давало менеджеру «до без срока».
         task_lines = [
-            f"• {html_module.escape(str(task_title(t)))} — {t['coins']}🪙, до {task_deadline_admin(t)}"
+            (
+                f"• {html_module.escape(str(task_title(t)))} — {t['coins']}🪙, "
+                f"{'до ' + task_deadline_admin(t) if task_has_deadline(t) else task_deadline_admin(t)}"
+            )
             for t in tasks
         ]
         lines.append("Задания волны:\n" + "\n".join(task_lines))
@@ -798,12 +803,21 @@ async def wave_finish_confirm(callback: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="✅ Да, объявить", callback_data=f"wavefin_do:{wave_id}")],
         [InlineKeyboardButton(text="← Отмена", callback_data=f"wave:{wave_id}")],
     ])
-    await callback.message.edit_text(
-        f"🏁 <b>Объявить итоги {aw.wave_number_label(wave)}?</b>\n\n"
+    lines = [
+        f"🏁 <b>Объявить итоги {aw.wave_number_label(wave)}?</b>",
+        "",
         "Список призёров после этого не изменится: сдача, которую проверят позже, в призы уже "
         "не попадёт. Всем участникам волны уйдёт сообщение с их местом, призёрам — отдельное "
         "поздравление.",
-        parse_mode="HTML", reply_markup=kb,
+    ]
+    # CR-07: при ничьей на границе призовых мест призёров окажется больше, чем самих мест —
+    # менеджер должен узнать об этом ДО подтверждения, а не после (список призёров сразу
+    # заперт, D-17).
+    tie_note = await aw.prize_tie_note(wave_id)
+    if tie_note:
+        lines.append(tie_note)
+    await callback.message.edit_text(
+        "\n".join(lines), parse_mode="HTML", reply_markup=kb,
     )
     await callback.answer()
 
@@ -817,7 +831,8 @@ async def wave_finish_go(callback: types.CallbackQuery, state: FSMContext):
     if result is None:
         await callback.answer("Итоги этой волны уже объявлены", show_alert=True)
     else:
-        schedule_wave_results_broadcast(wave_id, result["standings"])
+        # CR-06: джоба читает снимок из БД сама — standings больше не передаётся аргументом.
+        schedule_wave_results_broadcast(wave_id)
         await callback.answer("Итоги объявлены")
     updated = await get_wave(wave_id)
     text, kb = await _wave_card_screen(callback.from_user.id, updated)
