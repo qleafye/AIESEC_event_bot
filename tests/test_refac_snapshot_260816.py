@@ -776,6 +776,7 @@ admin|callback_query|admin_i18n_retranslate_confirm|admin_i18n_retr:*
 admin|callback_query|admin_i18n_retranslate_go|admin_i18n_retr_go:*
 admin|callback_query|admin_i18n_seed|admin_i18n_seed
 admin|callback_query|show_applications|admin_applications
+admin|callback_query|appr_flag_toggle|appr_flag:*
 admin|callback_query|appr_skip|appr_skip:*
 admin|callback_query|appr_resume|appr_resume:*
 admin|callback_query|appr_approve|appr_approve:*
@@ -1199,7 +1200,13 @@ def test_snapshot_total_handler_count_is_292():
     # RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним
     # 570-строчным снимком: ровно одна вставка из 6 строк, ни одна другая строка не поменялась и
     # не переставилась.
-    assert len(GOLDEN_SNAPSHOT) == 576
+    # Phase 31 (план 31-11, задача 3): чип «только помеченные правилами» в очереди бота — новый
+    # хендлер admin.callback_query appr_flag_toggle, встал в handlers/admin_moderation.py СРАЗУ
+    # ПОСЛЕ show_applications и ПЕРЕД appr_skip (576 -> 577). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним 576-строчным
+    # снимком: ровно одна вставка одной строки, ни одна другая строка не поменялась и не
+    # переставилась.
+    assert len(GOLDEN_SNAPSHOT) == 577
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
