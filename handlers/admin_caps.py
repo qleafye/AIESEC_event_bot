@@ -333,6 +333,9 @@ ADMIN_CAPS: dict[str, str] = {
     "appr_reject:*": "moderate_reg",
     "appr_resume:*": "moderate_reg",
     "appr_skip:*": "moderate_reg",
+    # Phase 31 (31-11, D-20): чип «только помеченные правилами» — та же капа, что весь
+    # остальной appr_* (действие над очередью заявок, не настройка).
+    "appr_flag:*": "moderate_reg",
     "admin_stuck_questions": "moderate_reg",  # T-08-33 quick task, part D: stuck-question list
     # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов» — экран, фильтр/страница,
     # ответ из экрана. `admin_stuck_questions` ОСТАЁТСЯ выше — callback жив как алиас на тот же
