@@ -160,3 +160,108 @@ def test_no_deadline_at_constant():
 def test_task_audiences_and_wave_states_constants():
     assert db.TASK_AUDIENCES == ("all", "ambassadors")
     assert db.WAVE_STATES == ("draft", "active", "closing", "announced")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: аксессоры волн, заданий, амбассадоров
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_wave_numbering_per_city(tmp_path):
+    _ready(tmp_path)
+    w1 = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00", event_city="msk"))
+    w2 = _run(db.create_wave("2026-10-09 00:00:00", "2026-10-16 00:00:00", event_city="msk"))
+    w3 = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00", event_city="spb"))
+    assert _run(db.get_wave(w1))["number"] == 1
+    assert _run(db.get_wave(w2))["number"] == 2
+    assert _run(db.get_wave(w3))["number"] == 1
+
+
+def test_create_task_old_call_stays_outside_waves_and_all_audience(tmp_path):
+    """Старый вызов create_task без новых kwargs продолжает создавать задание вне волн и
+    видимое всем — старые call sites не ломаются."""
+    _ready(tmp_path)
+    task_id = _run(db.create_task(
+        "Сделай штуку", "Light", 10, "photo", "2026-10-01 00:00:00", None,
+    ))
+    task = _run(db.get_task(task_id))
+    assert task["wave_id"] is None
+    assert task["audience"] == "all"
+
+
+def test_update_wave_rejects_unknown_field(tmp_path):
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    with pytest.raises(ValueError):
+        _run(db.update_wave(wave_id, state="active"))
+
+
+def test_update_wave_known_field(tmp_path):
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    assert _run(db.update_wave(wave_id, intro_text="Привет!")) is True
+    assert _run(db.get_wave(wave_id))["intro_text"] == "Привет!"
+
+
+def test_set_wave_state_expected_state_wins_once(tmp_path):
+    """Два одновременных перехода с expected_state выигрывает ровно один — второй возвращает
+    False, потому что state больше не 'active'."""
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    first = _run(db.set_wave_state(wave_id, "closing", expected_state="active"))
+    second = _run(db.set_wave_state(wave_id, "closing", expected_state="active"))
+    assert first is True
+    assert second is False
+
+
+def test_delete_wave_clears_own_tasks_not_others(tmp_path):
+    _ready(tmp_path)
+    wave_a = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    wave_b = _run(db.create_wave("2026-11-01 00:00:00", "2026-11-08 00:00:00"))
+    task_a = _run(db.create_task(
+        "A", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_a,
+    ))
+    task_b = _run(db.create_task(
+        "B", "Light", 10, "photo", "2026-11-05 00:00:00", None, wave_id=wave_b,
+    ))
+    assert _run(db.delete_wave(wave_a)) is True
+    assert _run(db.get_task(task_a))["wave_id"] is None
+    assert _run(db.get_task(task_b))["wave_id"] == wave_b
+    assert _run(db.get_wave(wave_a)) is None
+
+
+def test_waves_overlapping_catches_edge_touch_not_adjacent(tmp_path):
+    _ready(tmp_path)
+    base = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    # касание краем (новая волна начинается в момент конца существующей) — пересечение
+    touching = _run(db.waves_overlapping(
+        "2026-10-08 00:00:00", "2026-10-15 00:00:00", None, exclude_id=None,
+    ))
+    assert any(row["id"] == base for row in touching)
+    # соседний отрезок без касания — не пересечение
+    adjacent = _run(db.waves_overlapping(
+        "2026-10-09 00:00:00", "2026-10-16 00:00:00", None, exclude_id=None,
+    ))
+    assert not any(row["id"] == base for row in adjacent)
+
+
+def test_wave_at_returns_none_for_draft(tmp_path):
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    # ещё черновик — wave_at ничего не находит
+    assert _run(db.wave_at("2026-10-03 00:00:00", None)) is None
+    _run(db.set_wave_state(wave_id, "active"))
+    found = _run(db.wave_at("2026-10-03 00:00:00", None))
+    assert found is not None
+    assert found["id"] == wave_id
+
+
+def test_set_ambassador_flag_active_false_keeps_since(tmp_path):
+    _ready(tmp_path)
+    _seed_user(1)
+    _run(db.set_ambassador_flag(1, active=True, at="2026-09-01 00:00:00"))
+    _run(db.set_ambassador_flag(1, active=False, at="2026-09-20 00:00:00"))
+    user = _run(db.get_user(1))
+    assert user["is_ambassador"] == 0
+    assert user["ambassador_since"] == "2026-09-01 00:00:00"
+    assert user["ambassador_left_at"] == "2026-09-20 00:00:00"
