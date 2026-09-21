@@ -21,6 +21,7 @@ from database import db
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES
 from handlers import admin as admin_mod
 from handlers import admin_gamification
+from handlers import admin_game_tasks
 from handlers.admin_caps import required_capability
 from handlers.states import GameTaskCreate
 
@@ -175,6 +176,10 @@ def _drive_to_confirm(state, *, text="Пост со скрином #знаком
     if proof is not None:
         asyncio.run(admin_gamification.game_task_proof_step(FakeCallback(f"gtproof:{proof}"), state))
     asyncio.run(admin_gamification.game_task_proof_done(FakeCallback("gtproof_done"), state))
+    # Phase 32 (32-12): «Волна» («Вне волн») -> «Аудитория» («Всем делегатам») now sit between
+    # the proof-type step and the deadline prompt.
+    asyncio.run(admin_game_tasks.game_task_wave_step(FakeCallback("gtwave:none"), state))
+    asyncio.run(admin_game_tasks.game_task_audience_step(FakeCallback("gtaud:all"), state))
     deadline_message = FakeMessage(text=deadline)
     asyncio.run(admin_gamification.game_task_deadline_step(deadline_message, state))
     return deadline_message
@@ -263,7 +268,7 @@ def test_game_task_proof_done_stores_comma_joined_and_advances_to_deadline(tmp_p
     callback = FakeCallback("gtproof_done")
     asyncio.run(admin_gamification.game_task_proof_done(callback, state))
     assert asyncio.run(state.get_data())["gt_proof_type"] == "photo,text"  # GAME_PROOF_TYPES order
-    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave  # Phase 32 (32-12)
 
 
 def test_game_task_proof_done_allows_empty_selection(tmp_path):
@@ -276,7 +281,7 @@ def test_game_task_proof_done_allows_empty_selection(tmp_path):
     asyncio.run(admin_gamification.game_task_proof_done(callback, state))
     assert callback.answers == [(None, False)]  # plain answer, no alert
     assert asyncio.run(state.get_data())["gt_proof_type"] == ""
-    assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave  # Phase 32 (32-12)
 
 
 def test_game_task_deadline_step_rejects_unparseable_and_past_dates(tmp_path):

@@ -100,6 +100,7 @@ from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers
     _PROMPT_TEXT, _PROMPT_TEXT_EMPTY, _finish_deadline_step, _game_task_confirm_kb,  # noqa: F401
     _game_task_deadline_preset_kb, _render_game_task_confirm_card, _resolve_deadline_preset,  # noqa: F401
     _show_wizard_preview, _wizard_return_to_preview,  # noqa: F401
+    _game_task_audience_prompt, _game_task_deadline_prompt, _game_task_wave_prompt,  # noqa: F401
 )
 from cities import (
     admin_selected_city,
@@ -602,29 +603,19 @@ async def game_task_proof_step(callback: types.CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
-async def _game_task_deadline_prompt(target, state: FSMContext):
-    """Shared by game_task_proof_done (module off), game_task_city_step (module on) and the
-    final-step «✏️ Изменить → 📅 Дедлайн» re-entry -- same prompt/state either way. Phase 16
-    (16-03): ONE message -- the prompt carries the inline preset keyboard (сегодня 23:59 / +3 /
-    +7 / своя дата / отмена); the reply «Отмена» keyboard from the earlier free-text steps is
-    still on screen, and typed «Отмена»/`/cancel` keep working via cancel_game_task_create."""
-    await target.answer(
-        _PROMPT_DEADLINE, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel"),
-    )
-    await state.set_state(GameTaskCreate.deadline)
-
-
 @router.callback_query(F.data == "gtproof_done")
 async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext):
     """CONTEXT.md A: an empty selection is legal here -- no not-empty guard, unlike
     registration.py's process_multi_done. Phase 09.1 (B): gated "Кому задание?" step --
-    module off means zero new buttons/steps, straight to the pre-09.1 deadline prompt."""
+    module off means zero new buttons/steps, straight to the wave step (Phase 32, 32-12)."""
     data = await state.get_data()
     codes = [p for p in GAME_PROOF_TYPES if p in set(data.get("gt_proof_types", []))]
     await state.update_data(gt_proof_type=",".join(codes))
     if not await cities_module_on():
         await state.update_data(gt_event_city=None, gt_city_step_shown=False)
-        await _game_task_deadline_prompt(callback.message, state)
+        # Phase 32 (32-12, D-12): следующий шаг — кнопочная волна (gtwave:{id|none}, обработчик
+        # game_task_wave_step живёт в handlers/admin_game_tasks.py).
+        await _game_task_wave_prompt(callback.message, state)
         await callback.answer()
         return
     bound = await _bound_task_city(callback.from_user.id)
@@ -638,7 +629,8 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
             gt_event_city_label=await city_label(bound),
             gt_city_step_shown=True,
         )
-        await _game_task_deadline_prompt(callback.message, state)
+        # Phase 32 (32-12, D-12): та же волна (gtwave:{id|none}), что и в ветке выше.
+        await _game_task_wave_prompt(callback.message, state)
         await callback.answer()
         return
     await state.update_data(gt_city_step_shown=True)
@@ -669,7 +661,8 @@ async def game_task_city_step(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer("Неизвестный город", show_alert=True)
             return
         await state.update_data(gt_event_city=code, gt_event_city_label=await city_label(code))
-    await _game_task_deadline_prompt(callback.message, state)
+    # Phase 32 (32-12, D-12/D-28): дальше — gtwave:{id|none}, затем gtaud:{all|ambassadors}.
+    await _game_task_wave_prompt(callback.message, state)
     await callback.answer()
 
 
@@ -690,7 +683,8 @@ async def game_task_deadline_step(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "gtconfirm")
 async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
     """«✅ Опубликовать» on the final preview (Phase 16, 16-03, Экран 7) -- the callback stayed
-    `gtconfirm`, the write below and its ADMIN_CAPS entry are unchanged from Phase 9."""
+    `gtconfirm`, the write below and its ADMIN_CAPS entry are unchanged from Phase 9. Phase 32
+    (32-12, D-12/D-28): `wave_id`/`audience` go straight to `create_task`."""
     data = await state.get_data()
     await create_task(
         text=data["gt_text"],
@@ -702,6 +696,8 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         event_city=data.get("gt_event_city"),
         title=data.get("gt_title"),
         photo_file_id=data.get("gt_photo_file_id"),
+        wave_id=data.get("gt_wave_id"),
+        audience=data.get("gt_audience") or "all",
     )
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
     await state.set_state(None)

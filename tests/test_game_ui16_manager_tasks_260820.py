@@ -411,7 +411,8 @@ from services.scheduler import _now_moscow_naive  # noqa: E402
 
 def _drive_to_deadline(state, title="Задание", text="Текст задания", photo=None, coins="30"):
     """gtnew -> title -> text -> photo/skip -> category -> coins -> proof done (module off) ->
-    deadline prompt. Returns the callback whose message got the deadline prompt."""
+    Phase 32 (32-12): волна («Вне волн») -> аудитория («Всем делегатам») -> deadline prompt.
+    Returns the callback whose message got the deadline prompt."""
     asyncio.run(admin_gamification.game_task_new(FakeCallback("gtnew"), state))
     asyncio.run(admin_gamification.game_task_title_step(FakeMessage(text=title), state))
     asyncio.run(admin_gamification.game_task_text_step(FakeMessage(text=text), state))
@@ -422,8 +423,12 @@ def _drive_to_deadline(state, title="Задание", text="Текст зада�
     asyncio.run(admin_gamification.game_task_category_step(FakeCallback("gtcat:Light"), state))
     asyncio.run(admin_gamification.game_task_coins_step(FakeMessage(text=coins), state))
     asyncio.run(admin_gamification.game_task_proof_step(FakeCallback("gtproof:photo"), state))
-    cb = FakeCallback("gtproof_done")
-    asyncio.run(admin_gamification.game_task_proof_done(cb, state))
+    asyncio.run(admin_gamification.game_task_proof_done(FakeCallback("gtproof_done"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.wave
+    asyncio.run(admin_game_tasks.game_task_wave_step(FakeCallback("gtwave:none"), state))
+    assert asyncio.run(state.get_state()) == GameTaskCreate.audience
+    cb = FakeCallback("gtaud:all")
+    asyncio.run(admin_game_tasks.game_task_audience_step(cb, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline
     return cb
 
@@ -487,7 +492,7 @@ def test_wizard_preset_past_time_is_rejected_like_manual(tmp_path, monkeypatch):
     _drive_to_deadline(state)
     # «сегодня 23:59» уже прошло -- эмулируем поздний вечер: резолвер вернёт прошедшее время
     monkeypatch.setattr(admin_game_tasks, "_resolve_deadline_preset",
-                        lambda code: _now_moscow_naive() - timedelta(minutes=1))
+                        lambda code, wave_end_at=None: _now_moscow_naive() - timedelta(minutes=1))
     cb = FakeCallback("gtdeadline_preset:today")
     asyncio.run(admin_game_tasks.game_task_deadline_preset(cb, state))
     assert asyncio.run(state.get_state()) == GameTaskCreate.deadline

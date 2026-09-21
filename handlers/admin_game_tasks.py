@@ -30,13 +30,16 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from settings_schema import get_setting_typed
 from database.db import (
+    TASK_AUDIENCES,
     get_task,
+    get_wave,
     task_title,
     update_task_coins,
     update_task_deadline,
     update_task_text,
 )
 from keyboards.builders import get_cancel_kb
+from services.ambassador_waves import wave_number_label
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync
 from handlers.states import GameTaskCreate, GameTaskEdit
@@ -49,9 +52,13 @@ from handlers.game_task_wizard import (
     _PROMPT_TEXT,
     _PROMPT_TEXT_EMPTY,
     _finish_deadline_step,
+    _game_task_audience_prompt,
     _game_task_confirm_kb,
     _game_task_deadline_preset_kb,
+    _game_task_deadline_prompt,
+    _game_task_wave_prompt,
     _resolve_deadline_preset,
+    _wizard_return_to_preview,
 )
 from handlers.admin import router, _parse_positive_int
 # Module reference, NOT `from ... import name`: when a test imports handlers.admin_gamification
@@ -306,6 +313,8 @@ _WIZARD_EDIT_FIELDS = (
     ("text", "📄 Описание"),
     ("category", "🏷 Категория"),
     ("coins", "💰 Монеты"),
+    ("wave", "🌊 Волна"),  # Phase 32 (32-12, D-12)
+    ("audience", "👥 Аудитория"),  # Phase 32 (32-12, D-28)
     ("deadline", "📅 Дедлайн"),
     ("photo", "📷 Фото"),
 )
@@ -386,12 +395,57 @@ async def game_task_wizard_edit_field(callback: types.CallbackQuery, state: FSMC
     elif field == "coins":
         await message.answer(_PROMPT_COINS, reply_markup=get_cancel_kb())
         await state.set_state(GameTaskCreate.coins)
+    elif field == "wave":
+        await _game_task_wave_prompt(message, state)
+    elif field == "audience":
+        await _game_task_audience_prompt(message, state)
     elif field == "deadline":
-        await _ag._game_task_deadline_prompt(message, state)
+        await _game_task_deadline_prompt(message, state)
     else:  # photo
         prompt = await get_setting_typed("game_task_photo_prompt")
         await message.answer(f"{prompt}\n\n⏭ Пропустить = задание без обложки.", reply_markup=_ag._game_task_photo_kb())
         await state.set_state(GameTaskCreate.photo)
+    await callback.answer()
+
+
+# ── creation wizard: wave + audience steps (Phase 32, 32-12, D-12/D-28) ────────────────────
+
+@router.callback_query(F.data.startswith("gtwave:"))
+async def game_task_wave_step(callback: types.CallbackQuery, state: FSMContext):
+    """D-12: «🚫 Вне волн» (`gtwave:none`) или конкретная волна — перечитывается заново на
+    каждый тап (T-32-12-01: кнопка из истории чата не двигает состояние на удалённой/чужой
+    волне, тот же фейл-софт, что у `game_task_city_step`)."""
+    raw = callback.data.split(":", 1)[1]
+    if raw == "none":
+        await state.update_data(gt_wave_id=None, gt_wave_label=None, gt_wave_ends_at=None)
+    else:
+        wave = await get_wave(int(raw)) if raw.isdigit() else None
+        if wave is None or wave.get("state") not in ("draft", "active"):
+            await callback.answer("Неизвестная волна", show_alert=True)
+            return
+        await state.update_data(
+            gt_wave_id=wave["id"], gt_wave_label=wave_number_label(wave),
+            gt_wave_ends_at=wave.get("ends_at"),
+        )
+    if await _wizard_return_to_preview(callback.message, state):
+        await callback.answer()
+        return
+    await _game_task_audience_prompt(callback.message, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("gtaud:"))
+async def game_task_audience_step(callback: types.CallbackQuery, state: FSMContext):
+    """D-28: «Всем делегатам» / «Только амбассадорам» — кодов на экране нет (T-32-12-02)."""
+    audience = callback.data.split(":", 1)[1]
+    if audience not in TASK_AUDIENCES:
+        await callback.answer("Неизвестный вариант", show_alert=True)
+        return
+    await state.update_data(gt_audience=audience)
+    if await _wizard_return_to_preview(callback.message, state):
+        await callback.answer()
+        return
+    await _game_task_deadline_prompt(callback.message, state)
     await callback.answer()
 
 
@@ -403,6 +457,7 @@ __all__ = [
     "game_task_preview", "game_task_preview_close",
     "game_task_deadline_preset", "game_task_deadline_custom",
     "game_task_wizard_edit_menu", "game_task_wizard_back", "game_task_wizard_edit_field",
+    "game_task_wave_step", "game_task_audience_step",
 ]
 
 # Phase 32 (32-10): «🌊 Волны» — новый шов, импортирован В ХВОСТЕ этого файла (та же
