@@ -45,6 +45,10 @@ _SETTING_DEFAULTS = {
     "dashboard_block_months": "on",
     "dashboard_block_game": "off",
     "dashboard_block_referrals": "on",
+    # Phase 32 (32-09, D-33/D-34): срез амбассадоров и волн — по умолчанию выключен, как и
+    # dashboard_block_game, чтобы прод любого события, ещё не дошедшего до этой фазы, не
+    # менялся ни на бит.
+    "dashboard_block_ambassadors": "off",
     "payment_enabled": "off",
     "event_city_enabled": "off",
     "event_name": None,
@@ -1635,4 +1639,266 @@ def referral_block(conn, scope: Scope) -> dict | None:
         "top": referral_top(conn, scope),
         "daily": daily_rows,
         "city_cut": referral_city_breakdown(conn, scope),
+    }
+
+
+# ── амбассадоры и волны (D-33/D-34) ──────────────────────────────────────────────────────
+#
+# Формулы — `.planning/phases/32-ambassador-waves/32-RESEARCH-DOMAIN.md`, раздел «Metric
+# Definitions (D-33)». Схема — план 32-01 (`ambassador_waves`/`wave_results`/
+# `referral_credits`, колонки `game_tasks.wave_id`/`audience`, `coins.task_id`,
+# `users.is_ambassador`/`ambassador_since`). Сервис `services/ambassador_waves.py`
+# (параллельный план 32-03) считает ТЕ ЖЕ метрики для бота — держать в синхроне с этим модулем
+# при изменении формул; здесь — независимая read-only реализация (дашборд не импортирует
+# сервисы бота, см. модульный докстринг файла), сверка чисел — тест
+# `test_ambassador_block_matches_domain_fixture` на общей фикстуре.
+
+_AMBASSADOR_ROWS_LIMIT = 20
+
+# Копия `database.db.NO_DEADLINE_AT` — модуль НЕ импортирует `database.db` (см. докстринг
+# файла), дрейф ловит `test_ambassador_no_deadline_sentinel_matches_bot_db`.
+_NO_DEADLINE_AT = "9999-12-31 23:59:59"
+
+
+def _ambassador_current_wave(conn, scope: Scope) -> "dict | None":
+    """Волна, в чьи даты попадает «сейчас» (МСК); если такой нет — последняя ОБЪЯВЛЕННАЯ
+    волна скоупа. Единственная таблица в запросе — `ambassador_waves`, колонка `event_city`
+    не квалифицируется (`_user_scoped_parts` здесь не нужен, ни с чем не джойнимся)."""
+    city_frag, city_params = _city_sql(conn, scope.city)
+    parts = [city_frag] if city_frag else []
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    row = conn.execute(
+        f"SELECT * FROM ambassador_waves{_where(parts + ['starts_at <= ?', 'ends_at >= ?'])} "
+        "ORDER BY starts_at DESC LIMIT 1",
+        tuple(city_params) + (now, now),
+    ).fetchone()
+    if row is None:
+        row = conn.execute(
+            f"SELECT * FROM ambassador_waves{_where(parts + ['state = ?'])} "
+            "ORDER BY ends_at DESC LIMIT 1",
+            tuple(city_params) + ("announced",),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def _ambassador_funnel(conn, scope: Scope) -> list[dict]:
+    """Воронка приглашённых на амбассадора: подали / одобрены / оплатили / уже принесли
+    баллы (`referral_credits`). Группировка одним запросом по ВСЕМ `referrer_id` (без скоупа
+    приглашённого — воронка про амбассадора, не про город приглашённого), скоуп применяется
+    только к списку самих амбассадоров. Сортировка по числу одобренных, потолок —
+    `_AMBASSADOR_ROWS_LIMIT`."""
+    parts, params = _scope_sql(conn, scope)
+    ambassadors = conn.execute(
+        f"SELECT telegram_id, username FROM users{_where(parts + ['is_ambassador = 1'])}",
+        params,
+    ).fetchall()
+    if not ambassadors:
+        return []
+    amb_usernames = {row["telegram_id"]: row["username"] for row in ambassadors}
+
+    funnel_rows = conn.execute(
+        "SELECT referrer_id, COUNT(*) AS submitted, "
+        "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved, "
+        "SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS paid "
+        "FROM users WHERE referrer_id IS NOT NULL GROUP BY referrer_id"
+    ).fetchall()
+    funnel_by_id = {row["referrer_id"]: row for row in funnel_rows}
+
+    credited_rows = conn.execute(
+        "SELECT referrer_id, COUNT(*) AS credited FROM referral_credits GROUP BY referrer_id"
+    ).fetchall()
+    credited_by_id = {row["referrer_id"]: row["credited"] for row in credited_rows}
+
+    result = []
+    for telegram_id, username in amb_usernames.items():
+        row = funnel_by_id.get(telegram_id)
+        result.append({
+            "telegram_id": telegram_id,
+            "username": username,
+            "submitted": row["submitted"] if row else 0,
+            "approved": (row["approved"] or 0) if row else 0,
+            "paid": (row["paid"] or 0) if row else 0,
+            "credited": credited_by_id.get(telegram_id, 0),
+        })
+    result.sort(key=lambda r: (-r["approved"], r["telegram_id"]))
+    return result[:_AMBASSADOR_ROWS_LIMIT]
+
+
+def _ambassador_wave_rating(conn, scope: Scope, wave: "dict | None") -> list[dict]:
+    """Рейтинг ТЕКУЩЕЙ волны: баллы = сумма `coins` по заданиям волны (привязка задания,
+    не дата проверки, D-14а) + сумма `referral_credits` этой волны (D-14б). `[]`, если волны
+    сейчас нет в скоупе."""
+    if wave is None:
+        return []
+    parts, params = _scope_sql(conn, scope)
+
+    task_sql = (
+        "SELECT c.user_id AS user_id, SUM(c.delta) AS points FROM coins c "
+        "JOIN users ON users.telegram_id = c.user_id "
+        "JOIN game_tasks t ON t.id = c.task_id "
+        f"{_where(_user_scoped_parts(parts) + ['t.wave_id = ?', 'c.delta > 0'])} "
+        "GROUP BY c.user_id"
+    )
+    points: dict[int, int] = {
+        row["user_id"]: row["points"] or 0
+        for row in conn.execute(task_sql, params + (wave["id"],)).fetchall()
+    }
+
+    ref_sql = (
+        "SELECT rc.referrer_id AS user_id, SUM(rc.coins) AS points FROM referral_credits rc "
+        "JOIN users ON users.telegram_id = rc.referrer_id "
+        f"{_where(parts + ['rc.wave_id = ?'])} GROUP BY rc.referrer_id"
+    )
+    for row in conn.execute(ref_sql, params + (wave["id"],)).fetchall():
+        points[row["user_id"]] = points.get(row["user_id"], 0) + (row["points"] or 0)
+
+    if not points:
+        return []
+    placeholders = ", ".join("?" for _ in points)
+    usernames = {
+        row["telegram_id"]: row["username"]
+        for row in conn.execute(
+            f"SELECT telegram_id, username FROM users WHERE telegram_id IN ({placeholders})",
+            tuple(points),
+        ).fetchall()
+    }
+    rows = [
+        {"telegram_id": uid, "username": usernames.get(uid), "points": pts}
+        for uid, pts in points.items()
+    ]
+    rows.sort(key=lambda r: (-r["points"], r["telegram_id"]))
+    return rows[:_AMBASSADOR_ROWS_LIMIT]
+
+
+def _ambassador_lifetime_top(conn, scope: Scope) -> list[dict]:
+    """Верхушка общего зачёта (D-15: весь `coins`, без фильтра по волне) среди амбассадоров
+    скоупа страницы."""
+    parts, params = _scope_sql(conn, scope)
+    sql = (
+        "SELECT c.user_id AS user_id, users.username AS username, SUM(c.delta) AS points "
+        "FROM coins c JOIN users ON users.telegram_id = c.user_id "
+        f"{_where(parts + ['users.is_ambassador = 1'])} "
+        "GROUP BY c.user_id, users.username ORDER BY points DESC, c.user_id ASC LIMIT ?"
+    )
+    rows = conn.execute(sql, params + (_AMBASSADOR_ROWS_LIMIT,)).fetchall()
+    return [
+        {"telegram_id": row["user_id"], "username": row["username"], "points": row["points"] or 0}
+        for row in rows
+    ]
+
+
+def _ambassador_past_winners(conn, scope: Scope) -> list[dict]:
+    """Призёры прошлых волн из неизменяемого снимка `wave_results` (D-17), скоуп страницы
+    квалифицирован к колонке-владельцу — `users.event_city`/`users.season` (победитель, не
+    сама волна): волна и её призёры всегда одного города, поэтому это то же самое множество,
+    но без второй ручной квалификации алиаса `w.`."""
+    parts, params = _scope_sql(conn, scope)
+    sql = (
+        "SELECT w.number AS number, wr.place AS place, wr.points AS points, "
+        "wr.user_id AS user_id, users.username AS username "
+        "FROM wave_results wr "
+        "JOIN ambassador_waves w ON w.id = wr.wave_id "
+        "JOIN users ON users.telegram_id = wr.user_id"
+        f"{_where(_user_scoped_parts(parts))} ORDER BY w.number DESC, wr.place ASC LIMIT ?"
+    )
+    rows = conn.execute(sql, params + (_AMBASSADOR_ROWS_LIMIT,)).fetchall()
+    return [
+        {
+            "wave_number": row["number"], "place": row["place"], "points": row["points"],
+            "telegram_id": row["user_id"], "username": row["username"],
+        }
+        for row in rows
+    ]
+
+
+def _ambassador_wave_tasks(conn, scope: Scope, wave: "dict | None") -> list[dict]:
+    """По каждому заданию ТЕКУЩЕЙ волны: сдано всего / вовремя / с просрочкой. Задание с
+    `deadline_at == _NO_DEADLINE_AT` (сентинел «без срока») — все его сдачи «вовремя» (план,
+    формула D-33: «задание без срока попадает в вовремя, а не в просрочку»)."""
+    if wave is None:
+        return []
+    parts, params = _scope_sql(conn, scope)
+    sql = (
+        "SELECT t.id AS id, t.title AS title, t.text AS text, t.deadline_at AS deadline_at, "
+        "s.submitted_at AS submitted_at FROM game_submissions s "
+        "JOIN users ON users.telegram_id = s.user_id "
+        "JOIN game_tasks t ON t.id = s.task_id "
+        f"{_where(_user_scoped_parts(parts) + ['t.wave_id = ?'])}"
+    )
+    rows = conn.execute(sql, params + (wave["id"],)).fetchall()
+
+    by_task: dict[int, dict] = {}
+    for row in rows:
+        entry = by_task.setdefault(row["id"], {
+            "title": _task_title(row["title"], row["text"]),
+            "submitted": 0, "on_time": 0, "late": 0,
+        })
+        entry["submitted"] += 1
+        deadline = row["deadline_at"]
+        if deadline == _NO_DEADLINE_AT or row["submitted_at"] <= deadline:
+            entry["on_time"] += 1
+        else:
+            entry["late"] += 1
+
+    result = []
+    for entry in by_task.values():
+        entry["on_time_share"] = (
+            round(entry["on_time"] / entry["submitted"] * 100, 1) if entry["submitted"] else None
+        )
+        result.append(entry)
+    result.sort(key=lambda r: r["submitted"], reverse=True)
+    return result[:_AMBASSADOR_ROWS_LIMIT]
+
+
+def ambassador_block(conn, scope: Scope) -> "dict | None":
+    """`None`, если тумблер `dashboard_block_ambassadors` выключен ИЛИ в скоупе страницы нет
+    ни одного амбассадора (та же семантика «тумблер + наличие данных», что у `game_block`/
+    `referral_block`). Соединение только на чтение — ни одного INSERT/UPDATE (T-32-09-04)."""
+    flags = dashboard_flags(conn)
+    if flags.get("dashboard_block_ambassadors") != "on":
+        return None
+
+    parts, params = _scope_sql(conn, scope)
+    total = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador = 1'])}", params
+    ) or 0
+    if total == 0:
+        return None
+
+    wave = _ambassador_current_wave(conn, scope)
+    active = 0
+    activation_share = None
+    if wave is not None:
+        active_sql = (
+            "SELECT COUNT(DISTINCT s.user_id) FROM game_submissions s "
+            "JOIN users ON users.telegram_id = s.user_id "
+            "JOIN game_tasks t ON t.id = s.task_id "
+            f"{_where(_user_scoped_parts(parts) + ['users.is_ambassador = 1', 't.wave_id = ?', 's.submitted_at >= ?', 's.submitted_at <= ?'])}"
+        )
+        active = _scalar(
+            conn, active_sql, params + (wave["id"], wave["starts_at"], wave["ends_at"])
+        ) or 0
+        eligible_sql = (
+            f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador = 1', '(ambassador_since IS NULL OR ambassador_since <= ?)'])}"
+        )
+        eligible = _scalar(conn, eligible_sql, params + (wave["starts_at"],)) or 0
+        activation_share = round(active / eligible * 100, 1) if eligible else None
+
+    wave_view = None
+    if wave is not None:
+        wave_view = {
+            "number": wave["number"], "starts_at": wave["starts_at"], "ends_at": wave["ends_at"],
+            "state": wave["state"],
+        }
+
+    return {
+        "total": total,
+        "wave": wave_view,
+        "active": active,
+        "activation_share": activation_share,
+        "funnel": _ambassador_funnel(conn, scope),
+        "wave_rating": _ambassador_wave_rating(conn, scope, wave),
+        "lifetime": _ambassador_lifetime_top(conn, scope),
+        "past_winners": _ambassador_past_winners(conn, scope),
+        "tasks": _ambassador_wave_tasks(conn, scope, wave),
     }
