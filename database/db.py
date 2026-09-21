@@ -5199,20 +5199,23 @@ def parse_proof_types(raw: str | None) -> list[str]:
 async def create_task(text: str, category: str, coins: int, proof_type: str,
                        deadline_at: str, created_by: int | None, *,
                        event_city: str | None = None, title: str | None = None,
-                       photo_file_id: str | None = None) -> int:
+                       photo_file_id: str | None = None,
+                       wave_id: int | None = None, audience: str = "all") -> int:
     """`event_city` is kwarg-only (Phase 09.1 B) so every existing positional call site
     (including pre-09.1 tests) stays valid and keeps creating a NULL-city ("all cities")
     task unless a caller opts in. `title`/`photo_file_id` (quick 260819-gtl) are kwarg-only
     for the same reason -- every pre-existing call site keeps creating a NULL-title/NULL-photo
-    task (rendered via task_title()'s fallback) unless a caller opts in."""
+    task (rendered via task_title()'s fallback) unless a caller opts in.
+    `wave_id`/`audience` (Phase 32, 32-01, D-08/D-12) — same discipline: every existing call
+    site keeps creating a task outside any wave, visible to everyone, exactly as before."""
     created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO game_tasks (text, category, coins, proof_type, deadline_at, "
-            "created_by, created_at, event_city, title, photo_file_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_by, created_at, event_city, title, photo_file_id, wave_id, audience) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (text, category, coins, proof_type, deadline_at, created_by, created_at,
-             event_city, title, photo_file_id),
+             event_city, title, photo_file_id, wave_id, audience),
         )
         await db.commit()
         return cursor.lastrowid
@@ -5293,6 +5296,44 @@ async def update_task_deadline(task_id: int, deadline_at: str) -> bool:
         return cursor.rowcount == 1
 
 
+async def update_task_wave(task_id: int, wave_id: int | None) -> bool:
+    """Привязывает (или снимает, `wave_id=None`) задание к волне. True iff задание
+    существовало. Плоский UPDATE — та же идиома, что у соседних update_task_*."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET wave_id = ? WHERE id = ?", (wave_id, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def update_task_audience(task_id: int, audience: str) -> bool:
+    """True iff задание существовало. `audience` вне TASK_AUDIENCES — ValueError (не
+    молчаливое игнорирование неизвестного значения)."""
+    if audience not in TASK_AUDIENCES:
+        raise ValueError(f"Unknown task audience: {audience!r}")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE game_tasks SET audience = ? WHERE id = ?", (audience, task_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def list_wave_tasks(wave_id: int, *, active_only: bool = True) -> list[dict]:
+    """Задания одной волны. `active_only=True` (по умолчанию) исключает архивные — та же
+    идиома, что `list_active_tasks`; `active_only=False` — все задания волны, включая архив
+    (для менеджерского экрана истории волны)."""
+    extra = " AND archived_at IS NULL" if active_only else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM game_tasks WHERE wave_id = ?{extra} ORDER BY deadline_at ASC",
+            (wave_id,),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def get_task(task_id: int) -> dict | None:
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
@@ -5338,6 +5379,232 @@ async def list_all_tasks(*, city_scope=None, include_null: bool = True) -> list[
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM game_tasks{extra} ORDER BY created_at DESC", tuple(city_params)
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+# ── Phase 32 (32-01, D-10): волны — аксессоры ───────────────────────────────────────────────
+
+async def next_wave_number(event_city: str | None) -> int:
+    """Следующий номер волны внутри города — своя нумерация на каждый город (вторая волна
+    того же города получает номер 2, первая волна другого города — снова 1). `event_city`
+    сравнивается точно (IS ? при NULL, равенство иначе), а не через _city_clause — здесь
+    нужна не «фильтрация с учётом NULL=все», а строгая группа «этот город» / «без города»."""
+    async with _connect() as db:
+        if event_city is None:
+            async with db.execute(
+                "SELECT COALESCE(MAX(number), 0) FROM ambassador_waves WHERE event_city IS NULL"
+            ) as cursor:
+                row = await cursor.fetchone()
+        else:
+            async with db.execute(
+                "SELECT COALESCE(MAX(number), 0) FROM ambassador_waves WHERE event_city = ?",
+                (event_city,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        return int(row[0]) + 1
+
+
+async def create_wave(starts_at: str, ends_at: str, *, intro_text: str | None = None,
+                       prize_places: int | None = None, event_city: str | None = None,
+                       created_by: int | None = None) -> int:
+    """Номер волны берёт `next_wave_number`, состояние всегда стартует 'draft'."""
+    number = await next_wave_number(event_city)
+    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO ambassador_waves (number, starts_at, ends_at, intro_text, "
+            "prize_places, state, event_city, created_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)",
+            (number, starts_at, ends_at, intro_text, prize_places, event_city, created_by,
+             created_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_wave(wave_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM ambassador_waves WHERE id = ?", (wave_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def list_waves(*, city_scope=None, include_null: bool = True,
+                      states: tuple[str, ...] | None = None) -> list[dict]:
+    """Ближайшая по датам старта — первая (`starts_at DESC, id DESC`)."""
+    frag, params = _city_clause(city_scope, "event_city", include_null=include_null)
+    clauses = [frag] if frag else []
+    params = list(params)
+    if states:
+        placeholders = ", ".join("?" for _ in states)
+        clauses.append(f"state IN ({placeholders})")
+        params += list(states)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT * FROM ambassador_waves{where} ORDER BY starts_at DESC, id DESC",
+            tuple(params),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+_WAVE_UPDATABLE_FIELDS = {"starts_at", "ends_at", "intro_text", "prize_places", "event_city"}
+
+
+async def update_wave(wave_id: int, **fields) -> bool:
+    """Белый список ровно `_WAVE_UPDATABLE_FIELDS` — любой другой ключ (например `state`,
+    у него своя атомарная точка записи `set_wave_state`) поднимает ValueError, не
+    игнорируется молча (в отличие от `update_user_answers`, где чужой ключ — не ошибка
+    вызывающего, а здесь вызывающий — только код этого проекта)."""
+    unknown = set(fields) - _WAVE_UPDATABLE_FIELDS
+    if unknown:
+        raise ValueError(f"Unknown wave field(s): {sorted(unknown)}")
+    if not fields:
+        return False
+    for c in fields:
+        _assert_identifier(c)
+    set_clause = ", ".join(f"{c} = ?" for c in fields)
+    params = list(fields.values()) + [wave_id]
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"UPDATE ambassador_waves SET {set_clause} WHERE id = ?", params,
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def set_wave_state(wave_id: int, state: str, *, expected_state: str | None = None) -> bool:
+    """Тот же приём, что `approve_user_atomic` — необязательный `expected_state` в WHERE:
+    два одновременных перехода (два клика «Объявить итоги») выигрывает ровно один."""
+    if state not in WAVE_STATES:
+        raise ValueError(f"Unknown wave state: {state!r}")
+    sql = "UPDATE ambassador_waves SET state = ? WHERE id = ?"
+    params = [state, wave_id]
+    if expected_state is not None:
+        sql += " AND state = ?"
+        params.append(expected_state)
+    async with _connect() as db:
+        cursor = await db.execute(sql, params)
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def mark_wave_started(wave_id: int, when: str) -> bool:
+    """True iff это первый вызов для этой волны — `started_notified_at IS NULL` в WHERE не
+    даёт второй рассылке «волна началась» перезаписать метку."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE ambassador_waves SET started_notified_at = ? "
+            "WHERE id = ? AND started_notified_at IS NULL",
+            (when, wave_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def delete_wave(wave_id: int) -> bool:
+    """Задания волны НЕ удаляются — становятся «вне волн» (wave_id=NULL), обе операции в
+    одной транзакции (общий `_connect()` без промежуточного commit)."""
+    async with _connect() as db:
+        await db.execute("UPDATE game_tasks SET wave_id = NULL WHERE wave_id = ?", (wave_id,))
+        cursor = await db.execute("DELETE FROM ambassador_waves WHERE id = ?", (wave_id,))
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def waves_overlapping(starts_at: str, ends_at: str, event_city: str | None, *,
+                             exclude_id: int | None = None) -> list[dict]:
+    """Пересечение отрезков — `starts_at <= ?[новый ends_at] AND ends_at >= ?[новый
+    starts_at]`. Тот же город ИЛИ волна «все города»; состояние 'draft' пересечение не
+    обходит — черновикам тоже запрещено пересекаться."""
+    sql = (
+        "SELECT * FROM ambassador_waves WHERE starts_at <= ? AND ends_at >= ? "
+        "AND (event_city IS NULL"
+    )
+    params = [ends_at, starts_at]
+    if event_city is not None:
+        sql += " OR event_city = ?"
+        params.append(event_city)
+    sql += ")"
+    if exclude_id is not None:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def wave_at(ts: str, event_city: str | None) -> dict | None:
+    """Волна, в чьи даты попадает метка `ts`, состояние не 'draft', ближайшая по
+    `starts_at DESC` (несколько волн одного города физически не пересекаются —
+    `waves_overlapping` это гарантирует на записи, но черновик исключён явно здесь)."""
+    sql = (
+        "SELECT * FROM ambassador_waves WHERE starts_at <= ? AND ends_at >= ? "
+        "AND state != 'draft' AND (event_city IS NULL"
+    )
+    params = [ts, ts]
+    if event_city is not None:
+        sql += " OR event_city = ?"
+        params.append(event_city)
+    sql += ") ORDER BY starts_at DESC LIMIT 1"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+# ── Phase 32 (32-01, D-24/D-31/D-32): амбассадоры — аксессоры ──────────────────────────────
+
+async def set_ambassador_flag(telegram_id: int, *, active: bool, at: str) -> bool:
+    """Единственная точка записи is_ambassador/ambassador_since/ambassador_left_at.
+    `active=True` — is_ambassador=1, ambassador_since=at, ambassador_left_at=NULL (новый
+    заход снова активен). `active=False` — is_ambassador=0, ambassador_left_at=at,
+    ambassador_since НЕ трогает (когда человек стал амбассадором — исторический факт)."""
+    async with _connect() as db:
+        if active:
+            cursor = await db.execute(
+                "UPDATE users SET is_ambassador = 1, ambassador_since = ?, "
+                "ambassador_left_at = NULL WHERE telegram_id = ?",
+                (at, telegram_id),
+            )
+        else:
+            cursor = await db.execute(
+                "UPDATE users SET is_ambassador = 0, ambassador_left_at = ? "
+                "WHERE telegram_id = ?",
+                (at, telegram_id),
+            )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def set_ambassador_path(telegram_id: int, path: str | None) -> bool:
+    """`path=None` очищает выбор. True iff пользователь существовал."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET ambassador_path = ? WHERE telegram_id = ?",
+            (path, telegram_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def list_ambassadors(*, city_scope=None, include_null: bool = True) -> list[dict]:
+    """Все users с is_ambassador = 1."""
+    frag, params = _city_clause(city_scope, "event_city", include_null=include_null)
+    extra = f" AND {frag}" if frag else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, full_name, username, event_city, ambassador_since, "
+            f"ambassador_path FROM users WHERE is_ambassador = 1{extra}",
+            tuple(params),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
