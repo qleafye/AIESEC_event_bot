@@ -253,9 +253,13 @@ OTHER_AMB_ID = 941777  # второй амбассадор той же волн�
 class _FakeMessage:
     def __init__(self):
         self.edits: list[tuple[str, dict]] = []
+        self.answers: list[tuple[str, dict]] = []
 
     async def edit_text(self, text, **kw):
         self.edits.append((text, kw))
+
+    async def answer(self, text=None, **kw):
+        self.answers.append((text, kw))
 
 
 class _FakeWaveCallback:
@@ -371,3 +375,132 @@ def test_wave_rating_no_active_wave_shows_closed_text_not_alert(client):  # noqa
     assert cb.message.edits
     text = cb.message.edits[0][0]
     assert "нет активной волны" in text.lower() or "волн" in text.lower()
+
+
+# ── Задача 3: путь, выход/возврат амбассадора, подпись начисления за приглашённого ──────────
+
+from handlers import reg_ambassador as amb_mod  # noqa: E402
+
+
+class _FakeBotMe:
+    def __init__(self, username="TestBot"):
+        self.username = username
+
+
+class _FakeBot:
+    """`get_me()` — тот же фолбэк-приём, что `services/scheduler.py::_nudge_keyboard`."""
+
+    async def get_me(self):
+        return _FakeBotMe()
+
+
+class _FakeRegCallback(_FakeWaveCallback):
+    """Тот же фейк, что у экрана рейтинга волны, плюс `.bot`/`message.edit_reply_markup` —
+    нужны `regamb_want`."""
+
+    def __init__(self, user_id: int, data: str = "ambwave"):
+        super().__init__(user_id, data)
+        self.bot = _FakeBot()
+        self.message.edit_reply_markup = self._noop
+
+    async def _noop(self, **kw):
+        pass
+
+
+def test_ambassador_path_pick_marks_current_choice_on_button(client):  # noqa: F811
+    _make_ambassador(DELEGATE_ID)
+    cb = _FakeRegCallback(DELEGATE_ID, data="ambpath:invite")
+    _run(ua_mod.ambassador_path_pick(cb, _FakeBot()))
+    assert _run(bot_db.get_user(DELEGATE_ID))["ambassador_path"] == "invite"
+    _text, kw = cb.message.edits[0]
+    kb = kw["reply_markup"]
+    labels = [b.text for row in kb.inline_keyboard for b in row]
+    assert any(t.startswith("✅") and "Зову людей" in t for t in labels)
+
+
+def test_ambassador_path_change_does_not_change_visible_task_set(client):  # noqa: F811
+    """D-24: путь меняет ТОЛЬКО порядок показа — состав заданий (как множество id) до и после
+    смены пути обязан совпасть байт-в-байт."""
+    _make_ambassador(DELEGATE_ID)
+    t1 = _task("Контент", audience="ambassadors")
+    t2 = _task("Обычное")
+
+    def visible_titles():
+        text, _kb = _run(ua_mod._game_task_list_screen(DELEGATE_ID))
+        return {title for title in ("Контент", "Обычное") if title in text}
+
+    titles_before = visible_titles()
+    _run(bot_db.set_ambassador_path(DELEGATE_ID, "invite"))
+    titles_after = visible_titles()
+    assert titles_before == titles_after == {"Контент", "Обычное"}
+
+
+def test_ambleave_without_confirm_changes_nothing_in_db(client):  # noqa: F811
+    _make_ambassador(DELEGATE_ID)
+    cb = _FakeWaveCallback(DELEGATE_ID, data="ambleave")
+    _run(ua_mod.ambassador_leave_start(cb))
+    user = _run(bot_db.get_user(DELEGATE_ID))
+    assert user["is_ambassador"] == 1
+    assert cb.message.edits  # экран подтверждения показан
+    assert "Точно" in cb.message.edits[0][0] or "рассылки" in cb.message.edits[0][0].lower()
+
+
+def test_ambleave_go_clears_ambassador_keeps_balance_and_current_wave_rating(client):  # noqa: F811
+    wave_id = _active_wave()
+    since = _fmt(datetime.now() - timedelta(days=10))
+    _make_ambassador(DELEGATE_ID, since=since)
+    _credit_wave_task(DELEGATE_ID, wave_id, 25)
+    balance_before = _run(bot_db.get_balance(DELEGATE_ID))
+
+    cb = _FakeWaveCallback(DELEGATE_ID, data="ambleave_go")
+    _run(ua_mod.ambassador_leave_confirm(cb))
+
+    user = _run(bot_db.get_user(DELEGATE_ID))
+    assert user["is_ambassador"] == 0
+    assert user["ambassador_left_at"]
+    assert _run(bot_db.get_balance(DELEGATE_ID)) == balance_before
+    from services.ambassador_waves import wave_rating
+    ids_in_rating = {row["user_id"] for row in _run(wave_rating(wave_id))}
+    assert DELEGATE_ID not in ids_in_rating
+
+
+def test_ambjoin_restores_flag_with_fresh_since_current_wave_unavailable_next_available(client):  # noqa: F811
+    wave_id = _active_wave(days_ago_start=2, days_ahead_end=10)
+    cb = _FakeWaveCallback(DELEGATE_ID, data="ambjoin")
+    _run(ua_mod.ambassador_join(cb, _FakeBot()))
+    user = _run(bot_db.get_user(DELEGATE_ID))
+    assert user["is_ambassador"] == 1 and user["ambassador_since"]
+
+    from services.ambassador_waves import eligible_wave_ids as _eligible
+    current = _run(bot_db.get_wave(wave_id))
+    assert wave_id not in _eligible(user, [current])  # вступил ПОСЛЕ старта текущей волны
+
+    next_wave_id = _run(bot_db.create_wave(
+        starts_at=_fmt(datetime.now() + timedelta(days=11)),
+        ends_at=_fmt(datetime.now() + timedelta(days=20)),
+    ))
+    next_wave = _run(bot_db.get_wave(next_wave_id))
+    assert next_wave_id in _eligible(user, [next_wave])
+
+
+def test_regamb_want_fills_ambassador_since(client):  # noqa: F811
+    uid = DELEGATE_ID + 1
+    _run(bot_db.add_user({
+        "telegram_id": uid, "full_name": "Новый Амбассадор", "registration_date": "2026-08-01",
+    }))
+    cb = _FakeRegCallback(uid, data="regamb:want")
+    _run(amb_mod.regamb_want(cb))
+    user = _run(bot_db.get_user(uid))
+    assert user["is_ambassador"] == 1
+    assert user["ambassador_since"]
+
+
+def test_coin_history_referral_source_labeled_by_registry(client):  # noqa: F811
+    _run(bot_db.set_setting("balance_source_referral_label", "за приглашённого"))
+    _run(bot_db.add_coins(DELEGATE_ID, 15, source="referral"))
+    manual = "вручную"
+    task = "задание"
+    referral = "за приглашённого"
+    rows = _run(bot_db.list_coin_entries_for_user(DELEGATE_ID, limit=5, offset=0))
+    line = ua_mod._format_coin_entry_line(rows[0], manual, task, referral)
+    assert "за приглашённого" in line

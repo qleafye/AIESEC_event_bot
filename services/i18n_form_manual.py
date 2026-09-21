@@ -685,6 +685,8 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Ты в тройке призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}\nСпасибо за работу в этой волне.": "You're in the top three of wave {wave} — {place} place, {points} points!\n{prize}\nThanks for your work in this wave.",
     "Открыть задания": "Open tasks",
     "Волна {wave} началась и продлится до {ends}.\n{intro}\n\nЗадания волны:\n{tasks}\n\nСдать можно и позже дедлайна — баллов будет меньше.": "Wave {wave} has started and runs until {ends}.\n{intro}\n\nWave tasks:\n{tasks}\n\nYou can still submit after the deadline — you'll just get fewer points.",
+    # Phase 32 (32-06, D-36): третья подпись источника в истории монет, рядом с manual/task.
+    "за приглашённого": "for a referral",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {

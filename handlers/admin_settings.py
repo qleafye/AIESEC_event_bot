@@ -232,7 +232,7 @@ _GAME_FIELD_ORDER = [
     "game_category_label_referral", "game_category_label_special",
     "game_task_list_empty", "game_task_list_page_label", "game_task_detail_status_label",
     "balance_screen_header", "balance_history_empty",
-    "balance_source_manual_label", "balance_source_task_label",
+    "balance_source_manual_label", "balance_source_task_label", "balance_source_referral_label",
     # Phase 17.1 (17.1-01): RU-подписи типов подтверждения + подсказка «срок вышел» рядом с
     # RU-категориями выше; «🏆 Рейтинг», «📜 История монет» и рефералка — хвост делегатских
     # текстов монетного блока, доехавший до реестра.
