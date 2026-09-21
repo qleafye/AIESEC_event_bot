@@ -29,11 +29,31 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 import cities
 from cities import ALL_CITIES_LABEL, admin_selected_city
-from database.db import create_wave, get_wave, list_wave_tasks, list_waves, next_wave_number
+from database.db import (
+    create_wave,
+    delete_wave,
+    get_wave,
+    list_ambassadors,
+    list_wave_tasks,
+    list_waves,
+    next_wave_number,
+    set_wave_state,
+    task_title,
+    update_task_deadline,
+    update_wave,
+)
+from game_labels import task_deadline, task_deadline_admin
 from keyboards.builders import get_cancel_kb
 from services import ambassador_waves as aw
+from services.scheduler import (
+    cancel_task_deadline_reminder,
+    cancel_wave_jobs,
+    schedule_task_deadline_reminder,
+    schedule_wave_end,
+    schedule_wave_start_for_all,
+)
 from settings_validation import validate_setting_value
-from handlers.states import WaveCreate
+from handlers.states import WaveCreate, WaveEdit
 from handlers.admin import router
 # Модульная ссылка (не `from ... import name`): та же осторожность с порядком импорта, что у
 # handlers/admin_game_tasks.py::_ag — на момент импорта этого файла admin_gamification может
@@ -100,31 +120,94 @@ def _to_end_of_day(ddmmyyyy: str) -> str:
     return datetime.strptime(ddmmyyyy, "%d.%m.%Y").strftime("%Y-%m-%d 23:59:59")
 
 
-# ── карточка волны (полная версия — задача 3; здесь минимальная read-only заглушка, чтобы
-# визард создания/копии мог на неё перейти сразу после записи) ─────────────────────────────
+# ── карточка волны (задача 3): правка полей, активация, удаление, копия «с карточки» ────────
 
 async def _wave_card_screen(admin_id: int, wave: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """Кнопки строятся ровно по `wave_editable_fields` — недоступную в текущем состоянии
+    кнопку не рисуем вовсе (правило проекта: менеджеру не показывают заведомо отказывающую
+    кнопку), а под запертыми полями активной волны печатаем одну строку объяснения."""
     tasks = await list_wave_tasks(wave["id"], active_only=False)
+    editable = aw.wave_editable_fields(wave)
     intro = wave.get("intro_text")
+    prize = wave.get("prize_places")
+
     lines = [
         f"{aw.wave_number_label(wave)} · {_STATE_LABELS.get(wave['state'], wave['state'])}",
         f"{_fmt(wave['starts_at'])}–{_fmt(wave['ends_at'])}",
         f"Вводный текст: {html_module.escape(intro) if intro else 'нет'}",
+        f"Призовых мест: {prize if prize else 'как везде'}",
         f"Город: {await _city_display(wave.get('event_city'))}",
-        f"Заданий в волне: {len(tasks)}",
     ]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="← К списку волн", callback_data="admin_game_waves")],
-    ])
-    return "\n".join(lines), kb
+    if tasks:
+        task_lines = [
+            f"• {html_module.escape(str(task_title(t)))} — {t['coins']}🪙, до {task_deadline_admin(t)}"
+            for t in tasks
+        ]
+        lines.append("Задания волны:\n" + "\n".join(task_lines))
+    else:
+        lines.append("Заданий в волне пока нет.")
+    participants = len(await aw.wave_rating(wave["id"]))
+    lines.append(f"Участников: {participants}")
+    if wave["state"] == "active" and wave.get("started_notified_at"):
+        lines.append(
+            "📌 Стартовое сообщение уже отправлено — даты и состав заданий менять больше "
+            "нельзя."
+        )
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    if "dates" in editable:
+        buttons.append([InlineKeyboardButton(text="📅 Даты", callback_data=f"waveedit:{wave['id']}:dates")])
+    if "intro_text" in editable:
+        buttons.append([InlineKeyboardButton(text="📝 Вводный текст", callback_data=f"waveedit:{wave['id']}:intro_text")])
+    if "prize_places" in editable:
+        buttons.append([InlineKeyboardButton(text="🏅 Призовых мест", callback_data=f"waveedit:{wave['id']}:prize_places")])
+    if wave["state"] == "draft":
+        buttons.append([InlineKeyboardButton(text="▶️ Запустить волну", callback_data=f"waveactivate:{wave['id']}")])
+    if wave["state"] != "announced":
+        buttons.append([InlineKeyboardButton(text="📋 Скопировать эту волну", callback_data=f"wavecopy:{wave['id']}")])
+        buttons.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"wavedel:{wave['id']}")])
+    buttons.append([InlineKeyboardButton(text="← К списку волн", callback_data="admin_game_waves")])
+    return "\n\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _wave_from_prefix(callback: types.CallbackQuery, prefix: str) -> tuple[int | None, dict | None]:
+    """`<prefix><id>` -> (id, wave) с проверкой прав ПЕРЕД любым чтением/записью (T-32-10-01) —
+    единая точка входа для всех изменяющих обработчиков карточки волны."""
+    try:
+        wave_id = int(callback.data[len(prefix):])
+    except ValueError:
+        await callback.answer("Некорректная волна", show_alert=True)
+        return None, None
+    wave = await get_wave(wave_id)
+    if wave is None:
+        await callback.answer("Волна не найдена — возможно, её уже удалили", show_alert=True)
+        return None, None
+    if not await aw.can_edit_wave(callback.from_user.id, wave):
+        await callback.answer("Эта волна другого города — доступа нет", show_alert=True)
+        return None, None
+    return wave_id, wave
 
 
 @router.callback_query(F.data.startswith("wave:"))
 async def show_wave_card(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wave:")
+    if wave is None:
+        return
+    await state.clear()
+    text, kb = await _wave_card_screen(callback.from_user.id, wave)
+    await _ag._edit_or_send_screen(callback.message, text, kb)
+    await callback.answer()
+
+
+# ── правка одного поля с карточки ────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("waveedit:"))
+async def wave_edit_field_start(callback: types.CallbackQuery, state: FSMContext):
     try:
-        wave_id = int(callback.data.split(":", 1)[1])
+        _, wave_id_s, field = callback.data.split(":", 2)
+        wave_id = int(wave_id_s)
     except ValueError:
-        await callback.answer("Некорректная волна", show_alert=True)
+        await callback.answer("Некорректное поле", show_alert=True)
         return
     wave = await get_wave(wave_id)
     if wave is None:
@@ -133,9 +216,249 @@ async def show_wave_card(callback: types.CallbackQuery, state: FSMContext):
     if not await aw.can_edit_wave(callback.from_user.id, wave):
         await callback.answer("Эта волна другого города — доступа нет", show_alert=True)
         return
+    if field not in aw.wave_editable_fields(wave):
+        await callback.answer("Это поле сейчас нельзя менять", show_alert=True)
+        return
+
+    await state.set_data({"we_wave_id": wave_id})
+    if field == "dates":
+        await state.set_state(WaveEdit.dates)
+        await callback.message.answer(_DATE_HELP, parse_mode="HTML", reply_markup=get_cancel_kb())
+    elif field == "intro_text":
+        await state.set_state(WaveEdit.intro_text)
+        await callback.message.answer(
+            "Пришлите новый вводный текст волны, или «-», чтобы убрать его.",
+            reply_markup=get_cancel_kb(),
+        )
+    else:  # prize_places
+        await state.set_state(WaveEdit.prize_places)
+        await callback.message.answer(
+            "Пришлите число призовых мест для этой волны, например 3, или «-», чтобы "
+            "использовать общую настройку.",
+            reply_markup=get_cancel_kb(),
+        )
+    await callback.answer()
+
+
+async def _wave_edit_done(message: types.Message, state: FSMContext, wave_id: int, done_text: str):
     await state.clear()
-    text, kb = await _wave_card_screen(callback.from_user.id, wave)
-    await _ag._edit_or_send_screen(callback.message, text, kb)
+    updated = await get_wave(wave_id)
+    if updated is None:
+        return
+    text, kb = await _wave_card_screen(message.from_user.id, updated)
+    await message.answer(done_text, reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(WaveEdit.dates)
+async def wave_edit_dates_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    wave_id = data.get("we_wave_id")
+    wave = await get_wave(wave_id)
+    if wave is None:
+        await message.answer("Волна не найдена — возможно, её уже удалили.")
+        await state.clear()
+        return
+
+    parts = _split_date_input(message.text or "")
+    pending_start = data.get("we_start")
+    if pending_start and len(parts) == 1:
+        end = _parse_one_date(parts[0])
+        if end is None:
+            await message.answer(_DATE_HELP, parse_mode="HTML")
+            return
+        start_ddmmyyyy = pending_start
+    elif len(parts) in (1, 2):
+        parsed = [_parse_one_date(p) for p in parts]
+        if any(p is None for p in parsed):
+            await message.answer(_DATE_HELP, parse_mode="HTML")
+            return
+        if len(parsed) == 1:
+            await state.update_data(we_start=parsed[0])
+            await message.answer(_SECOND_DATE_PROMPT, parse_mode="HTML")
+            return
+        start_ddmmyyyy, end = parsed
+    else:
+        await message.answer(_DATE_HELP, parse_mode="HTML")
+        return
+
+    new_starts = _to_start_of_day(start_ddmmyyyy)
+    new_ends = _to_end_of_day(end)
+    error = await aw.validate_wave_dates(new_starts, new_ends, wave.get("event_city"), exclude_id=wave_id)
+    if error:
+        await state.update_data(we_start=None)
+        await message.answer(error)
+        return
+
+    old_ends = wave["ends_at"]
+    await update_wave(wave_id, starts_at=new_starts, ends_at=new_ends)
+    # Дедлайны заданий волны, равные ПРЕЖНЕМУ концу волны (то есть заведённые «по умолчанию»,
+    # без собственного срока), сдвигаются вместе с волной; заданию с собственным более ранним
+    # сроком дата не трогается.
+    for t in await list_wave_tasks(wave_id, active_only=True):
+        if t.get("deadline_at") == old_ends:
+            await update_task_deadline(t["id"], new_ends)
+
+    if wave.get("state") == "active":
+        new_ends_dt = datetime.strptime(new_ends, "%Y-%m-%d %H:%M:%S")
+        schedule_wave_end(wave_id, new_ends_dt)
+        if not wave.get("started_notified_at"):
+            await schedule_wave_start_for_all(wave_id)
+        for t in await list_wave_tasks(wave_id, active_only=True):
+            dl = task_deadline(t)
+            if dl is not None:
+                schedule_task_deadline_reminder(t["id"], dl)
+
+    await _wave_edit_done(message, state, wave_id, "✅ Даты обновлены.")
+
+
+@router.message(WaveEdit.intro_text)
+async def wave_edit_intro_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    wave_id = data.get("we_wave_id")
+    wave = await get_wave(wave_id)
+    if wave is None:
+        await message.answer("Волна не найдена — возможно, её уже удалили.")
+        await state.clear()
+        return
+    raw = (message.html_text or message.text or "").strip()
+    new_intro = None if raw == "-" else raw
+    await update_wave(wave_id, intro_text=new_intro)
+    await _wave_edit_done(message, state, wave_id, "✅ Вводный текст обновлён.")
+
+
+@router.message(WaveEdit.prize_places)
+async def wave_edit_prize_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    wave_id = data.get("we_wave_id")
+    wave = await get_wave(wave_id)
+    if wave is None:
+        await message.answer("Волна не найдена — возможно, её уже удалили.")
+        await state.clear()
+        return
+    raw = (message.text or "").strip()
+    if raw == "-":
+        new_value = None
+    else:
+        try:
+            new_value = int(raw)
+        except ValueError:
+            new_value = 0
+        if new_value <= 0:
+            await message.answer(
+                "Нужно целое число больше нуля, например 3, или «-» для общей настройки."
+            )
+            return
+    await update_wave(wave_id, prize_places=new_value)
+    await _wave_edit_done(message, state, wave_id, "✅ Число призовых мест обновлено.")
+
+
+# ── активация ─────────────────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("waveactivate:"))
+async def wave_activate_confirm(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "waveactivate:")
+    if wave is None:
+        return
+    if wave["state"] != "draft":
+        await callback.answer("Волну уже нельзя запустить из этого состояния", show_alert=True)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="▶️ Да, запустить", callback_data=f"waveactivate_go:{wave_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"wave:{wave_id}")],
+    ])
+    await callback.message.edit_text(
+        f"▶️ <b>Запустить {aw.wave_number_label(wave)}?</b>\n\n"
+        "Всем участникам сразу уйдёт стартовое сообщение со списком заданий волны и "
+        "дедлайнами. После этого даты и состав заданий менять будет нельзя — рассылка уже "
+        "ушла.",
+        parse_mode="HTML", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("waveactivate_go:"))
+async def wave_activate_go(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "waveactivate_go:")
+    if wave is None:
+        return
+    ok = await set_wave_state(wave_id, "active", expected_state="draft")
+    if not ok:
+        await callback.answer("Волна уже запущена", show_alert=True)
+        updated = await get_wave(wave_id)
+        text, kb = await _wave_card_screen(callback.from_user.id, updated)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    await schedule_wave_start_for_all(wave_id)
+    ends_dt = datetime.strptime(wave["ends_at"], "%Y-%m-%d %H:%M:%S")
+    schedule_wave_end(wave_id, ends_dt)
+    for t in await list_wave_tasks(wave_id, active_only=True):
+        dl = task_deadline(t)
+        if dl is not None:
+            schedule_task_deadline_reminder(t["id"], dl)
+
+    await callback.answer("Волна запущена")
+    updated = await get_wave(wave_id)
+    text, kb = await _wave_card_screen(callback.from_user.id, updated)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── удаление ──────────────────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("wavedel:"))
+async def wave_delete_confirm(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavedel:")
+    if wave is None:
+        return
+    if wave["state"] == "announced":
+        await callback.answer("Волна с объявленными итогами не удаляется", show_alert=True)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"wavedel_go:{wave_id}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"wave:{wave_id}")],
+    ])
+    await callback.message.edit_text(
+        f"🗑 <b>Удалить {aw.wave_number_label(wave)}?</b>\n\n"
+        "Пропадёт сама волна и её рейтинг. Задания волны останутся — они станут заданиями "
+        "вне волн, уже начисленные баллы никуда не денутся.",
+        parse_mode="HTML", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("wavedel_go:"))
+async def wave_delete_go(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavedel_go:")
+    if wave is None:
+        return
+    if wave["state"] == "announced":
+        await callback.answer("Волна с объявленными итогами не удаляется", show_alert=True)
+        return
+
+    ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
+    ambassador_ids = []
+    for a in ambassadors:
+        u = dict(a)
+        u["is_ambassador"] = 1
+        if aw.wave_eligible(u, wave):
+            ambassador_ids.append(int(a["telegram_id"]))
+    cancel_wave_jobs(wave_id, ambassador_ids)
+    for t in await list_wave_tasks(wave_id, active_only=True):
+        cancel_task_deadline_reminder(t["id"])
+
+    await delete_wave(wave_id)
+    await callback.answer("Волна удалена")
+    text, kb = await _wave_list_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("wavecopy:"))
+async def wave_copy_from_card(callback: types.CallbackQuery, state: FSMContext):
+    wave_id, wave = await _wave_from_prefix(callback, "wavecopy:")
+    if wave is None:
+        return
+    await _start_wave_copy(callback.message, state, wave)
     await callback.answer()
 
 
@@ -417,4 +740,7 @@ __all__ = [
     "show_wave_card", "show_wave_list", "wave_create_start", "wave_copy_last_start",
     "wave_create_dates_step", "wave_create_intro_step", "wave_create_intro_skip",
     "wave_create_redates", "wave_create_go", "wave_copy_go", "wave_create_cancel",
+    "wave_edit_field_start", "wave_edit_dates_step", "wave_edit_intro_step",
+    "wave_edit_prize_step", "wave_activate_confirm", "wave_activate_go",
+    "wave_delete_confirm", "wave_delete_go", "wave_copy_from_card",
 ]

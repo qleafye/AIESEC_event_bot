@@ -452,6 +452,14 @@ def _build_snapshot_lines():
 # callback-хендлер admin_game_tasks.py) и ПЕРЕД `show_admin_polls`. Re-captured by RUNNING
 # `_build_snapshot_lines()` against HEAD и diffed (`difflib.SequenceMatcher`) против прежнего
 # 584-строчного снимка: ровно две вставки (2 + 9 строк), 0 удалений, 0 реордеров.
+# Drift note (32-10, задача 3: карточка волны — правка/активация/удаление/копия, 595 -> 604
+# handlers -- PURE APPEND): `_wave_card_screen`/`show_wave_card` физически определены В ФАЙЛЕ
+# РАНЬШЕ визарда создания/копии (задача 2), поэтому их новые хендлеры регистрируются раньше
+# по порядку: 3 message-хендлера (state:WaveEdit:*) встали СРАЗУ ПОСЛЕ
+# game_task_editdeadline_step и ПЕРЕД wave_create_dates_step; 6 callback_query-хендлеров
+# встали СРАЗУ ПОСЛЕ show_wave_card и ПЕРЕД show_wave_list. Пересчитано RUNNING
+# `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
+# 595-строчным снимком: ровно две вставки (3 + 6 строк), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -543,6 +551,9 @@ admin|message|grev_reject_reason|state:GameReview:*
 admin|message|game_task_editdesc_step|state:GameTaskEdit:*
 admin|message|game_task_editcoins_step|state:GameTaskEdit:*
 admin|message|game_task_editdeadline_step|state:GameTaskEdit:*
+admin|message|wave_edit_dates_step|state:WaveEdit:*
+admin|message|wave_edit_intro_step|state:WaveEdit:*
+admin|message|wave_edit_prize_step|state:WaveEdit:*
 admin|message|wave_create_dates_step|state:WaveCreate:*
 admin|message|wave_create_intro_step|state:WaveCreate:*
 admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
@@ -896,6 +907,12 @@ admin|callback_query|game_task_wizard_edit_menu|gtwiz_edit_menu
 admin|callback_query|game_task_wizard_back|gtwiz_back
 admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
 admin|callback_query|show_wave_card|wave:*
+admin|callback_query|wave_edit_field_start|waveedit:*
+admin|callback_query|wave_activate_confirm|waveactivate:*
+admin|callback_query|wave_activate_go|waveactivate_go:*
+admin|callback_query|wave_delete_confirm|wavedel:*
+admin|callback_query|wave_delete_go|wavedel_go:*
+admin|callback_query|wave_copy_from_card|wavecopy:*
 admin|callback_query|show_wave_list|admin_game_waves
 admin|callback_query|wave_create_start|wavenew
 admin|callback_query|wave_copy_last_start|wavecopy
@@ -1271,7 +1288,9 @@ def test_snapshot_total_handler_count_is_292():
     # user_actions.router (579 -> 584).
     # 32-10 задача 2: «🌊 Волны» — список + визард создания/копии, +2 admin.message
     # (state:WaveCreate:*) + +9 admin.callback_query, handlers/admin_game_waves.py (584 -> 595).
-    assert len(GOLDEN_SNAPSHOT) == 595
+    # 32-10 задача 3: карточка волны, +3 admin.message (state:WaveEdit:*) + +6
+    # admin.callback_query (595 -> 604).
+    assert len(GOLDEN_SNAPSHOT) == 604
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
