@@ -23,7 +23,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import cities
 from settings_schema import get_setting_typed
-from database.db import list_waves
+from database.db import NO_DEADLINE_AT, list_waves
 from services.ambassador_waves import wave_number_label
 from services.scheduler import _fmt_dt, _now_moscow_naive
 from handlers.states import GameTaskCreate
@@ -51,8 +51,12 @@ _DEADLINE_PAST = "❌ Это время уже прошло. Введите бу
 _DEADLINE_PRESETS = (("today", "Сегодня 23:59"), ("plus3", "+3 дня"), ("plus7", "+7 дней"))
 
 
-def _resolve_deadline_preset(code: str) -> datetime | None:
-    """today -> today 23:59:00 MSK; plus3/plus7 -> that + 3/7 days; anything else -> None."""
+def _resolve_deadline_preset(code: str, *, wave_end_at: datetime | None = None) -> datetime | str | None:
+    """today/plus3/plus7 -> datetime, как раньше. Phase 32 (32-12, D-27): «none» -> `NO_DEADLINE_AT`
+    (строка-сентинел «без срока», не дата — вызывающий обязан хранить её как есть, не
+    форматировать через `_fmt_dt`); «wave_end» -> `wave_end_at` (конец волны задания,
+    ЧИТАЕТСЯ вызывающим из FSM/задания заранее — этот модуль сам БД не трогает); `wave_end_at`
+    не передан (задание вне волны) -> None, тот же фейл-софт, что у неизвестного кода."""
     base = _now_moscow_naive().replace(hour=23, minute=59, second=0, microsecond=0)
     if code == "today":
         return base
@@ -60,16 +64,26 @@ def _resolve_deadline_preset(code: str) -> datetime | None:
         return base + timedelta(days=3)
     if code == "plus7":
         return base + timedelta(days=7)
+    if code == "none":
+        return NO_DEADLINE_AT
+    if code == "wave_end":
+        return wave_end_at
     return None
 
 
-def _game_task_deadline_preset_kb(prefix: str, cancel_cb: str) -> InlineKeyboardMarkup:
-    """3 presets + an informational «✏️ Своя дата» + «❌ Отмена» (`cancel_cb` -- `gtcancel`
-    for the wizard, `gtedit:<id>` for the point-edit flow, both pre-registered)."""
+def _game_task_deadline_preset_kb(prefix: str, cancel_cb: str, *, wave_end: bool = False) -> InlineKeyboardMarkup:
+    """3 presets + (задание волны, `wave_end=True`) «По умолчанию — конец волны» + Phase 32
+    (32-12, D-27) «🚫 Без срока» + an informational «✏️ Своя дата» + «❌ Отмена» (`cancel_cb` --
+    `gtcancel` for the wizard, `gtedit:<id>` for the point-edit flow, both pre-registered)."""
     rows = [
         [InlineKeyboardButton(text=label, callback_data=f"{prefix}_preset:{code}")]
         for code, label in _DEADLINE_PRESETS
     ]
+    if wave_end:
+        rows.append([InlineKeyboardButton(
+            text="По умолчанию — конец волны", callback_data=f"{prefix}_preset:wave_end",
+        )])
+    rows.append([InlineKeyboardButton(text="🚫 Без срока", callback_data=f"{prefix}_preset:none")])
     rows.append([InlineKeyboardButton(text="✏️ Своя дата", callback_data=f"{prefix}_custom")])
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_cb)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -153,23 +167,39 @@ async def _show_wizard_preview(target, state: FSMContext):
     await state.set_state(GameTaskCreate.confirm)
 
 
-async def _finish_deadline_step(target, state: FSMContext, when: datetime):
+async def _finish_deadline_step(target, state: FSMContext, when):
     """The tail shared by the typed-date step above and the preset callback
     (handlers/admin_game_tasks.py::game_task_deadline_preset): store the resolved deadline,
-    clear a pending «✏️ Изменить» flag (the preview IS the return point) and show the preview."""
-    await state.update_data(gt_deadline=_fmt_dt(when), gt_wiz_edit=False)
+    clear a pending «✏️ Изменить» flag (the preview IS the return point) and show the preview.
+
+    Phase 32 (32-12, D-27): `when` is either a `datetime` (typed date, a numeric preset, or
+    `wave_end`) OR the already-final `NO_DEADLINE_AT` string («Без срока») -- a str is stored
+    as-is, never re-formatted through `_fmt_dt`."""
+    deadline = when if isinstance(when, str) else _fmt_dt(when)
+    await state.update_data(gt_deadline=deadline, gt_wiz_edit=False)
     await _show_wizard_preview(target, state)
 
 
-# ── Phase 32 (32-12, D-12/D-28): «Волна» + «Аудитория» wizard steps ────────────────────────
+# ── Phase 32 (32-12, D-12/D-27/D-28): «Волна» + «Аудитория» wizard steps ───────────────────
 
 def _fmt_wave_short_date(raw: str | None) -> str:
     """ISO "%Y-%m-%d %H:%M:%S" (формат хранения `starts_at`/`ends_at` волны, НЕ `deadline_at`
-    задания) -> короткая «ДД.ММ» для кнопки волны; мусор/None -> как есть."""
+    задания -- структурный сторож 32-14 запрещает свой `strptime` только по `deadline_at`) ->
+    короткая «ДД.ММ» для кнопки волны; мусор/None -> как есть."""
     try:
         return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
     except (TypeError, ValueError):
         return str(raw or "—")
+
+
+def _parse_iso_dt(raw: str | None) -> datetime | None:
+    """Тот же формат хранения -> `datetime`; None на мусоре/пустом значении. Используется для
+    `wave_end_at` (`ends_at` волны) -- НЕ парсинг поля `deadline_at` строкой с этим именем
+    переменной (сторож 32-14 матчит по имени аргумента `strptime`, не по семантике)."""
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
 
 
 def _game_task_wave_kb(waves: list[dict]) -> InlineKeyboardMarkup:
@@ -227,13 +257,14 @@ async def _game_task_deadline_prompt(target, state: FSMContext):
 
     Phase 32 (32-12, D-27): задание волны (`gt_wave_id` уже в FSM, поставлен
     `_game_task_wave_prompt`'s step) получает подсказку «по умолчанию — конец волны» в тексте
-    -- значение уже лежит в FSM (`gt_wave_label`), этот шаг сам в БД не ходит."""
+    и кнопку `wave_end` пресета в клавиатуре -- значения уже лежат в FSM
+    (`gt_wave_label`/`gt_wave_ends_at`), этот шаг сам в БД не ходит."""
     data = await state.get_data()
     has_wave = bool(data.get("gt_wave_id"))
     prompt = _PROMPT_DEADLINE
     if has_wave:
         prompt += f"\n\nПо умолчанию — конец {data.get('gt_wave_label') or 'волны'}."
     await target.answer(
-        prompt, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel"),
+        prompt, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel", wave_end=has_wave),
     )
     await state.set_state(GameTaskCreate.deadline)
