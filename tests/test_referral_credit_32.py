@@ -393,3 +393,110 @@ def test_approval_status_writers_guard():
 
     missing = expected_files - actual_files
     assert not missing, f"Ожидаемые швы пропали из исходников: {missing} — план устарел?"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: подсказка модератору на карточке заявки + бэкафилл задним числом
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _badge_kinds(payload):
+    return [b["kind"] for b in payload["badges"]]
+
+
+def test_referrer_badge_shown_with_count_when_referrer_is_ambassador(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "20"))
+    _make_ambassador(9001, full_name="Амбассадор Иванов")
+    # Один уже одобренный приглашённый этого амбассадора — счётчик должен увидеть 1.
+    _seed_user(9101, referrer_id=9001)
+    _run(applications.claim_approve(9101))
+    assert _referral_credit_count() == 1
+
+    # Новая заявка ТОГО ЖЕ амбассадора, ещё не одобрена — карточка должна показать бейдж.
+    _seed_user(9102, referrer_id=9001)
+    payload = _run(applications.card_payload(_run(db.get_user(9102))))
+
+    assert "referrer" in _badge_kinds(payload)
+    referrer_badge = next(b for b in payload["badges"] if b["kind"] == "referrer")
+    assert "Амбассадор Иванов" in referrer_badge["text"]
+    assert "1" in referrer_badge["text"]
+
+
+def test_referrer_badge_absent_when_referrer_not_ambassador(tmp_path):
+    _ready(tmp_path)
+    _seed_user(9003)  # обычный делегат, не амбассадор
+    _seed_user(9103, referrer_id=9003)
+
+    payload = _run(applications.card_payload(_run(db.get_user(9103))))
+
+    assert "referrer" not in _badge_kinds(payload)
+
+
+def test_referrer_badge_absent_when_no_referrer(tmp_path):
+    _ready(tmp_path)
+    _seed_user(9104)
+
+    payload = _run(applications.card_payload(_run(db.get_user(9104))))
+
+    assert "referrer" not in _badge_kinds(payload)
+
+
+def test_backfill_dry_run_writes_nothing_but_counts_candidates(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _make_ambassador(9201)
+    _seed_user(9301, referrer_id=9201, status="approved")
+    _seed_user(9302, referrer_id=9201, status="approved")
+
+    summary = _run(referrals.backfill_approved(dry_run=True))
+
+    assert summary["candidates"] == 2
+    assert _referral_credit_count() == 0  # dry-run ничего не пишет
+
+
+def test_backfill_apply_creates_rows_without_wave_source_backfill(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _make_ambassador(9202)
+    _seed_user(9303, referrer_id=9202, status="approved")
+
+    summary = _run(referrals.backfill_approved(dry_run=False))
+
+    assert summary == {"candidates": 1, "credited": 1, "coins": 25, "ambassadors": 1}
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        row = con.execute(
+            "SELECT wave_id, source FROM referral_credits WHERE invitee_id = ?", (9303,)
+        ).fetchone()
+    finally:
+        con.close()
+    assert row == (None, "backfill")
+
+
+def test_backfill_second_run_does_not_duplicate(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _make_ambassador(9203)
+    _seed_user(9304, referrer_id=9203, status="approved")
+
+    _run(referrals.backfill_approved(dry_run=False))
+    summary2 = _run(referrals.backfill_approved(dry_run=False))
+
+    assert summary2 == {"candidates": 0, "credited": 0, "coins": 0, "ambassadors": 0}
+    assert _referral_credit_count() == 1
+
+
+def test_backfill_skips_already_live_credited_invitee(tmp_path):
+    """Уже начисленный «живым» путём (source='approval') приглашённый в кандидаты
+    бэкафилла не попадает."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "25"))
+    _make_ambassador(9204)
+    _seed_user(9305, referrer_id=9204)
+    _run(applications.claim_approve(9305))  # «живое» начисление, source='approval'
+    assert _referral_credit_count() == 1
+
+    summary = _run(referrals.backfill_approved(dry_run=True))
+
+    assert summary["candidates"] == 0
+    assert _referral_credit_count() == 1
