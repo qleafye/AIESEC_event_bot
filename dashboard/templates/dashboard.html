@@ -176,6 +176,24 @@
   </section>
   {% endif %}
 
+  {# Какое правило сколько отсеяло (Phase 31, 31-07, D-27) — та же разметка bar-row, что у
+     блока «Где бросают» ниже: вторую систему стилей не заводим. Блок не рисуется при пустом
+     или None-значении (гейт — оба тумблера, см. dashboard/main.py). #}
+  {% if auto_reject_breakdown %}
+  <section class="block">
+    <h2 class="block-title">Какое правило сколько отсеяло</h2>
+    <div class="card">
+      {% for row in auto_reject_breakdown %}
+      <div class="bar-row">
+        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+        <span class="val">{{ row.count | thousands }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   {# Динамика по дням (D-14) #}
   {% if dynamics_enabled %}
   <section class="block">
