@@ -5560,16 +5560,20 @@ async def waves_overlapping(starts_at: str, ends_at: str, event_city: str | None
                              exclude_id: int | None = None) -> list[dict]:
     """Пересечение отрезков — `starts_at <= ?[новый ends_at] AND ends_at >= ?[новый
     starts_at]`. Тот же город ИЛИ волна «все города»; состояние 'draft' пересечение не
-    обходит — черновикам тоже запрещено пересекаться."""
-    sql = (
-        "SELECT * FROM ambassador_waves WHERE starts_at <= ? AND ends_at >= ? "
-        "AND (event_city IS NULL"
-    )
+    обходит — черновикам тоже запрещено пересекаться.
+
+    WR-04 (32-REVIEW.md): проверка симметрична. Новая волна ОДНОГО города конфликтует с
+    существующей волной того же города ИЛИ волной «все города» (`event_city IS NULL OR
+    event_city = ?`) — это направление работало и раньше. Новая волна «все города»
+    (`event_city is None`) обязана конфликтовать с ЛЮБОЙ существующей волной в тех же датах,
+    какого бы города та ни была — общая волна физически перекрывает все города разом, поэтому
+    здесь фильтр по городу не добавляется вовсе (раньше оставалось `event_city IS NULL`, и
+    городская волна в тех же датах пролетала мимо проверки)."""
+    sql = "SELECT * FROM ambassador_waves WHERE starts_at <= ? AND ends_at >= ?"
     params = [ends_at, starts_at]
     if event_city is not None:
-        sql += " OR event_city = ?"
+        sql += " AND (event_city IS NULL OR event_city = ?)"
         params.append(event_city)
-    sql += ")"
     if exclude_id is not None:
         sql += " AND id != ?"
         params.append(exclude_id)
