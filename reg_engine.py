@@ -3195,6 +3195,132 @@ def rule_pause_reason(rule: dict, enabled_steps, options_by_step: dict) -> str |
     return None
 
 
+def _condition_matches(
+    cond: dict, answers: dict, birth_date: str | None, forum_date: str | None,
+) -> bool:
+    """Один предикат условия автоотказа. ЛЮБОЙ неразобранный вход — неизвестный шаг/оператор,
+    нераспознанная дата, битый/короткий `values`, отсутствие `birth_date`/`forum_date` для
+    `age_on_forum_lt` — даёт `False`, НИКОГДА не пробрасывает исключение (T-31-01-01: падение
+    предиката не имеет права потерять заявку, D-31 «нет данных — условие не выполнено»)."""
+    try:
+        step = cond.get("step")
+        op = cond.get("op")
+        values = cond.get("values") or []
+        if not step or not op:
+            return False
+        category = reject_condition_category(step)
+        column = STEP_TO_COLUMN.get(step, step)
+        raw_value = answers.get(column)
+
+        if op in ("in", "not_in"):
+            if category == "multi":
+                selected = [item.strip() for item in str(raw_value or "").split(", ") if item.strip()]
+                hit = bool(set(selected) & set(values))
+            else:
+                hit = raw_value in values
+            return hit if op == "in" else not hit
+
+        if op in ("lt", "gt", "between"):
+            number = course_number(raw_value)
+            if number is None:
+                return False
+            if op == "lt":
+                return number < values[0]
+            if op == "gt":
+                return number > values[0]
+            lo, hi = values[0], values[1]
+            return lo <= number <= hi
+
+        if op in ("before", "after"):
+            if not raw_value:
+                return False
+            value_dt = datetime.strptime(str(raw_value).strip(), "%d.%m.%Y")
+            target_dt = datetime.strptime(str(values[0]).strip(), "%d.%m.%Y")
+            return value_dt < target_dt if op == "before" else value_dt > target_dt
+
+        if op == "age_on_forum_lt":
+            age = age_on(birth_date, forum_date)
+            if age is None:
+                return False
+            return age < values[0]
+
+        if op in ("filled", "empty"):
+            text = str(raw_value or "").strip()
+            is_filled = bool(text) and text != "-"
+            return is_filled if op == "filled" else not is_filled
+
+        if op in ("has_file", "no_file"):
+            has = any(bool(str(answers.get(col) or "").strip()) for col in _REJECT_FILE_COLUMNS)
+            return has if op == "has_file" else not has
+
+        return False
+    except Exception:
+        return False
+
+
+def evaluate_reject_rules(
+    answers: dict, rules: list[dict], *, birth_date: str | None = None, forum_date: str | None = None,
+) -> dict:
+    """Чистая формула автоотказа (D-07) — без БД, без aiogram, синхронная (тот же класс
+    функции, что `compute_score`/`decide_status`). `rules` — уже ОТФИЛЬТРОВАННЫЙ список
+    активных правил (enabled, не на паузе, подходящих по городу/треку — фильтрует загрузчик
+    `services/reject_rules.py::active_rules`, план 31-04; здесь фильтрация намеренно НЕ
+    повторяется, тот же приём, что `scoring_rules()` собирает готовый словарь для
+    `compute_score`). `answers` — плоский словарь ответов анкеты (те же ключи, что кладёт
+    `with_defaults`/`add_user`).
+
+    Группы условий — И внутри группы, ИЛИ между группами (D-02):
+    `any(all(...) for group in conditions)`. Пустой список групп и пустая группа = правило НЕ
+    срабатывает (незаполненное правило никого не отклоняет — тот же дух «пустое множество =
+    правило не срабатывает», что у `scoring_rules`/`compute_score`).
+
+    Срабатывание с действием «отклонить» даёт `id` правила и непустой текст в
+    `reject_rule_ids`/`reject_texts`, в порядке входного списка правил (D-04: порядок правил на
+    решение не влияет, оцениваются ВСЕ). Срабатывание с «пометить» даёт `flag_rule_ids`. Отказ
+    сильнее пометки (D-04): при непустом `reject_rule_ids` вернувшийся `status_override` всегда
+    `"rejected"`, но `flag_rule_ids` заполняется НЕЗАВИСИМО от этого — журнал и карточка обязаны
+    видеть обе стороны.
+
+    `status_override` принимает ровно два значения — `"rejected"` или пустой (D-03). Второй
+    статус решения (положительный, «одобрено» — тот, что возвращает `decide_status`) в теле
+    этой функции не встречается нигде — вернуть его структурно невозможно (инцидент 06.09:
+    молчаливое авторешение по правилу не проектируется, а не просто не используется)."""
+    answers = answers or {}
+    reject_rule_ids: list[int] = []
+    reject_texts: list[str] = []
+    flag_rule_ids: list[int] = []
+
+    for rule in rules or []:
+        if not rule.get("enabled"):
+            continue
+        if rule.get("paused_reason"):
+            continue
+        groups = rule.get("conditions") or []
+        fired = any(
+            bool(group) and all(
+                _condition_matches(cond, answers, birth_date, forum_date) for cond in group
+            )
+            for group in groups
+        )
+        if not fired:
+            continue
+        action = rule.get("action")
+        if action == "reject":
+            reject_rule_ids.append(rule.get("id"))
+            text = str(rule.get("reject_text") or "").strip()
+            if text:
+                reject_texts.append(text)
+        elif action == "flag":
+            flag_rule_ids.append(rule.get("id"))
+
+    return {
+        "status_override": "rejected" if reject_rule_ids else None,
+        "reject_rule_ids": reject_rule_ids,
+        "reject_texts": reject_texts,
+        "flag_rule_ids": flag_rule_ids,
+    }
+
+
 def compute_score(answers: dict, rules: dict) -> tuple[int, bool]:
     """Чистая формула ТЗ §3.6 — без БД, без aiogram, синхронная (тот же класс функции, что
     `decide_status`). `rules` — заранее собранный словарь `scoring_rules()`; `answers` — плоский
