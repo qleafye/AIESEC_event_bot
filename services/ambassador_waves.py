@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import statistics
 from datetime import datetime
 
 from database.db import (
@@ -24,6 +25,7 @@ from database.db import (
     get_pending_submissions,
     get_pending_submissions_count,
     get_wave,
+    list_active_tasks,
     list_ambassadors,
     list_wave_tasks,
     set_wave_state,
@@ -209,3 +211,30 @@ def wave_number_label(wave: dict) -> str:
     """Единственное место, где номер волны превращается в человеческую строку «Волна N» —
     названия у волны нет (D-10); используют и экраны, и рассылки."""
     return f"Волна {(wave or {}).get('number', '?')}"
+
+
+# ── Задача 3 (D-21): подсказка соотношения баллов на экране настройки ─────────────────────
+
+async def referral_ratio_hint() -> str | None:
+    """Подсказка менеджеру рядом с полем `ambassador_referral_coins` (D-21, риск в
+    32-RESEARCH-DOMAIN.md «D-14 + D-21»): во сколько заданий средней категории превращается
+    текущая сумма за приглашённого. Fail-soft — любое исключение внутри возвращает `None`,
+    подсказка не имеет права уронить экран настроек (T-32-03-05)."""
+    try:
+        tasks = await list_active_tasks()
+        coins_values = sorted(int(t["coins"]) for t in tasks if t.get("coins") is not None)
+        if not coins_values:
+            return None
+        median = statistics.median(coins_values)
+        referral_coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
+        if referral_coins == 0:
+            return "Сейчас 0 — баллы за приглашённого не начисляются"
+        if median <= 0:
+            return None
+        ratio = round(referral_coins / median, 1)
+        return (
+            f"Сейчас 1 приглашённый ≈ {ratio} заданий средней категории "
+            f"(среднее задание — {median:g} баллов)"
+        )
+    except Exception:
+        return None
