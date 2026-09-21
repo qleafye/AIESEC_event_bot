@@ -687,6 +687,11 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Волна {wave} началась и продлится до {ends}.\n{intro}\n\nЗадания волны:\n{tasks}\n\nСдать можно и позже дедлайна — баллов будет меньше.": "Wave {wave} has started and runs until {ends}.\n{intro}\n\nWave tasks:\n{tasks}\n\nYou can still submit after the deadline — you'll just get fewer points.",
     # Phase 32 (32-06, D-36): третья подпись источника в истории монет, рядом с manual/task.
     "за приглашённого": "for a referral",
+    # Литералы делегатского хаба амбассадора (`lit:user_actions.*`): кнопка рейтинга волны,
+    # отказ не-участнику, подтверждение выхода из амбассадоров.
+    "🏅 Рейтинг волны": "🏅 Wave ranking",
+    "Рейтинг волны виден только участникам текущей волны амбассадоров.": "The wave ranking is only visible to participants of the current ambassador wave.",
+    "Да, выйти": "Yes, leave",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {
