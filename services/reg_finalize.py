@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -111,14 +112,108 @@ async def _score_patch(answers: dict) -> dict:
         return {}
 
 
+def _auto_rule_label(rule_id, rules_by_id: dict) -> str:
+    """Человеческая подпись сработавшего правила для колонки «Детали»/уведомления менеджеру —
+    своё имя правила (D-10), если менеджер его задал, иначе первые слова текста отказа. Ни id,
+    ни код условия сюда не попадают (CLAUDE.md «бот для людей»)."""
+    rule = rules_by_id.get(rule_id) or {}
+    name = str(rule.get("name") or "").strip()
+    if name:
+        return name
+    text = str(rule.get("reject_text") or "").strip()
+    if not text:
+        return "без описания"
+    words = text.split()
+    short = " ".join(words[:6])
+    return short + "…" if len(words) > 6 else short
+
+
+async def _auto_reject_patch(telegram_id: int, answers: dict, status: str) -> dict:
+    """Phase 31 (31-06, D-01..D-32): оценка правил автоотказа — рядом с `_score_patch`, по её
+    образцу. Гейт первым действием: `active_rules` вернул пустой список (общий рубильник
+    `reject_rules_enabled` выключен или для этого города/трека нет активных правил) -> `{}`
+    СРАЗУ, ни одного лишнего похода в базу.
+
+    Вызывается ПОСЛЕ `decide_status`/`set_user_status` в ветке новой заявки и ПОСЛЕ того, как
+    `add_user` уже сохранил ВСЕ ответы делегата (D-14 фазы «Правила автоотказа»: заявка
+    принимается ЦЕЛИКОМ — ни один вопрос анкеты не пропускается, делегат доходит до конца — и
+    только ПОТОМ правило может её отклонить); в ветке `edit` — после полного пересчёта текущих
+    ответов (план 31-06, задача 3).
+
+    Весь блок — собственный try/except с `logger.error`: сбой оценки правил (сеть, битые
+    условия правила, что угодно) не имеет права потерять заявку — анкета сохраняется обычным
+    путём, та же дисциплина, что у `_score_patch`/резолва season выше в этом файле.
+
+    Возвращает пустой словарь при отсутствии срабатывания, иначе словарь с колонками для
+    узкого UPDATE (`auto_reject_rule_ids`, `auto_rejected_at`, `flagged_rule_ids`,
+    `auto_rule_note`, и `rejected_at` — только когда сработал отказ) плюс хвостовые ключи для
+    вызывающего (`status_override`, `reject_rule_ids`, `reject_texts`), которые в narrow UPDATE
+    не идут."""
+    from services.reject_rules import active_rules, forum_date_for
+
+    try:
+        rules = await active_rules(
+            event_city=answers.get("event_city"),
+            participant_type=answers.get("participant_type"),
+        )
+        if not rules:
+            return {}
+
+        forum_date = await forum_date_for(answers.get("event_city"))
+        result = reg_engine.evaluate_reject_rules(
+            answers, rules,
+            birth_date=answers.get("birth_date"), forum_date=forum_date,
+        )
+        reject_rule_ids = result["reject_rule_ids"]
+        reject_texts = result["reject_texts"]
+        flag_rule_ids = result["flag_rule_ids"]
+        if not reject_rule_ids and not flag_rule_ids:
+            return {}
+
+        rules_by_id = {r.get("id"): r for r in rules}
+        now_stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        if reject_rule_ids:
+            label = _auto_rule_label(reject_rule_ids[0], rules_by_id)
+            note = f"🤖 Автоотказ {msk_now().strftime('%d.%m')} (правило: {label})"
+        else:
+            label = _auto_rule_label(flag_rule_ids[0], rules_by_id)
+            note = f"⚠️ Помечена правилом: {label}"
+
+        patch: dict = {
+            "auto_reject_rule_ids": (
+                json.dumps(reject_rule_ids, ensure_ascii=False) if reject_rule_ids else None
+            ),
+            "auto_rejected_at": now_stamp if reject_rule_ids else None,
+            "flagged_rule_ids": (
+                json.dumps(flag_rule_ids, ensure_ascii=False) if flag_rule_ids else None
+            ),
+            "auto_rule_note": note,
+            "status_override": result["status_override"],
+            "reject_rule_ids": reject_rule_ids,
+            "reject_texts": reject_texts,
+            "flag_rule_ids": flag_rule_ids,
+        }
+        if reject_rule_ids:
+            patch["rejected_at"] = now_stamp
+        return patch
+    except Exception as e:
+        logger.error(
+            f"Auto-reject rules evaluation failed for {telegram_id}, application preserved "
+            f"without auto-reject: {e}"
+        )
+        return {}
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
     собранный вызывающим из FSM-данных чата, пока бот сам не пишет в `reg_drafts`).
 
     Возвращает `{"status", "mode", "changed_columns", "remoderated", "resubmitted",
-    "resume_file_id", "resume_file_name"}` — этого достаточно и боту, и (в будущем) роутеру
-    Mini App, чтобы решить, какой текст показать и что передать в `post_finalize`.
+    "resume_file_id", "resume_file_name", "auto_rejected", "flagged_rule_ids"}` — этого
+    достаточно и боту, и (в будущем) роутеру Mini App, чтобы решить, какой текст показать и
+    что передать в `post_finalize`. Два последних ключа (Phase 31, 31-06) — хвостовые,
+    существующие вызывающие их просто не читают.
 
     Perf (замер 260917): десяток последовательных get_setting/get_setting_typed (season,
     scoring, registration_mode, full/short/party_approval и т.д.) — ни одного сетевого
@@ -161,6 +256,10 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
     resubmitted = False
     status = None
     answers = raw_answers
+    # Phase 31 (31-06): хвостовые ключи возвращаемого словаря — существующие вызывающие их
+    # просто не читают (byte-compat), план 31-08/31-11 читает через finalize_data напрямую.
+    auto_rejected = False
+    flagged_rule_ids_out: list = []
 
     try:
         if mode == "edit":
@@ -315,6 +414,37 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             except Exception as e:
                 logger.error(f"Failed to set status for {telegram_id}: {e}")
 
+            # Phase 31 (31-06, D-14 фазы): оценка правил автоотказа — ПОСЛЕ decide_status/
+            # set_user_status и после того, как add_user уже сохранил ВСЕ ответы делегата
+            # (заявка принимается ЦЕЛИКОМ, ни один вопрос анкеты не пропускается) — и только
+            # теперь правило может её отклонить. Данные — синхронно, здесь; эффекты делегату/
+            # менеджеру/лист — в post_finalize (Pattern 4 «данные синхронно, эффекты async»).
+            auto_patch = await _auto_reject_patch(telegram_id, data, status)
+            if auto_patch:
+                column_patch = {
+                    "auto_reject_rule_ids": auto_patch["auto_reject_rule_ids"],
+                    "auto_rejected_at": auto_patch["auto_rejected_at"],
+                    "flagged_rule_ids": auto_patch["flagged_rule_ids"],
+                    "auto_rule_note": auto_patch["auto_rule_note"],
+                }
+                if "rejected_at" in auto_patch:
+                    column_patch["rejected_at"] = auto_patch["rejected_at"]
+                await update_user_answers(
+                    telegram_id, column_patch,
+                    allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "flagged_rule_ids", "auto_rule_note", "rejected_at"],
+                )
+                flagged_rule_ids_out = auto_patch["flag_rule_ids"]
+                if auto_patch["status_override"] == "rejected":
+                    # Пометка (flag) статус НЕ меняет — заявка остаётся на обычной модерации
+                    # с бейджем (auto_rule_note уже записан узким UPDATE выше).
+                    status = "rejected"
+                    auto_rejected = True
+                    await set_user_status(telegram_id, status)
+                    from services.reject_journal import record_auto_reject
+                    await record_auto_reject(
+                        telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
+                    )
+
             try:
                 await record_reg_event(
                     telegram_id, "form_completed",
@@ -348,6 +478,9 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
         "resubmitted": resubmitted,
         "resume_file_id": answers.get("resume_file_id"),
         "resume_file_name": answers.get("resume_file_name"),
+        # Phase 31 (31-06): хвостовые ключи — существующие вызывающие их просто не читают.
+        "auto_rejected": auto_rejected,
+        "flagged_rule_ids": flagged_rule_ids_out,
     }
 
 
