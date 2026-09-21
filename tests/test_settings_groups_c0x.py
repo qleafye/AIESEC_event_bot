@@ -695,15 +695,13 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
     "reg_q_mini_portfolio": "off",
     "reg_q_mini_direction": "off",
     "reg_q_case_optin": "off",
-    # Phase 28 (28-07, SU-08): reg_scoring_enabled — тип "toggle" НАРОЧНО (не парный шаг
-    # REG_FLOW, см. комментарий у ключа в settings_schema.py), поэтому REG_DEFAULTS его тоже
-    # подхватывает; default "off" (D-06).
-    "reg_scoring_enabled": "off",
-    # Phase 31 (31-03, D-15): reject_rules_enabled — тот же класс ключа, что reg_scoring_enabled
-    # выше (toggle, group "apps", не парный шаг REG_FLOW); default "off" — на других событиях
-    # ничего не меняется.
-    "reject_rules_enabled": "off",
 }
+# Quick 260921 (fix, найден при исполнении фазы 31): `reg_scoring_enabled`/`reject_rules_enabled`
+# больше НЕ входят в этот оракул — были ошибочно добавлены сюда фазами 28/31 (28-07/31-03) как
+# «REG_DEFAULTS их тоже подхватывает», но они не парный шаг REG_FLOW, а модуль-рубильники
+# (group "apps"); пресет типа события выключал их молча вместе с вопросами анкеты — см.
+# `reg_engine.MODULE_SWITCH_TOGGLES`. Их дефолт "off" не изменился, просто больше не читается
+# через REG_DEFAULTS-фолбэк — см. `tests/test_preset_does_not_touch_module_switches_260921.py`.
 
 # NOTE (deviation, Rule 1): 06-04-PLAN.md's interfaces table labels this a "44-key" oracle,
 # but handlers/registration.py:197-241's actual REG_DEFAULTS literal has 43 keys (verified by
@@ -711,9 +709,9 @@ _FROZEN_REG_DEFAULTS_ORACLE = {
 # pins the VERIFIED source count (43), not the plan's stated count, per the "byte-for-byte
 # matches registration.py:197-241 exactly" acceptance criterion (source is the ground truth).
 # Phase 28 (28-01): +8 новых reg_q_* ключей (default "off") — 43 + 8 = 51.
-# Phase 28 (28-07): +1 reg_scoring_enabled (default "off") — 51 + 1 = 52.
-# Phase 31 (31-03): +1 reject_rules_enabled (default "off") — 52 + 1 = 53.
-assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 53  # sanity — must match the live table (source-verified)
+# Quick 260921: reg_scoring_enabled/reject_rules_enabled removed (see comment above) — count
+# stays 51, not 53 (28-07/31-03 wrongly bumped it to 52/53).
+assert len(_FROZEN_REG_DEFAULTS_ORACLE) == 51  # sanity — must match the live table (source-verified)
 
 # Feature-switch (enum) defaults verified byte-for-byte from the live call sites
 # (06-04-PLAN.md interfaces table) — DO NOT guess, DO NOT edit without re-checking the
@@ -750,14 +748,26 @@ def test_reg_defaults_parity():
 
 
 def test_toggle_keys_coverage():
+    # Quick 260921 (fix): the old blanket "every toggle key must be in REG_DEFAULTS" assertion
+    # WAS the bug — it forced reg_scoring_enabled/reject_rules_enabled (module switches, group
+    # "apps") into the set every event-type preset sweeps and force-writes "off" to whatever
+    # it doesn't mention. See reg_engine.MODULE_SWITCH_TOGGLES for the explicit allowlist that
+    # replaces this blanket rule.
     from handlers.reg_schema import REG_DEFAULTS
+    from reg_engine import MODULE_SWITCH_TOGGLES
 
     toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}
     assert set(REG_DEFAULTS.keys()) <= toggle_keys_in_schema, (
         "every REG_DEFAULTS key must exist in SETTINGS_SCHEMA with type toggle"
     )
-    assert toggle_keys_in_schema <= set(REG_DEFAULTS.keys()), (
-        "every SETTINGS_SCHEMA type-toggle key must be in REG_DEFAULTS"
+    assert not (set(REG_DEFAULTS.keys()) & MODULE_SWITCH_TOGGLES), (
+        "REG_DEFAULTS must never contain a module-switch toggle — presets sweep every "
+        "REG_DEFAULTS key and would force it off"
+    )
+    non_question_toggles = toggle_keys_in_schema - set(REG_DEFAULTS.keys())
+    assert non_question_toggles == MODULE_SWITCH_TOGGLES, (
+        "новый тумблер модуля: либо сделайте его enum on/off, как payment_enabled, либо "
+        "добавьте в MODULE_SWITCH_TOGGLES — иначе пресет анкеты будет молча его выключать"
     )
 
 
