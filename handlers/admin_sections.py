@@ -151,6 +151,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
+        # Phase 32 (32-10, D-06/D-10): «🌊 Волны» — сразу после «Задания» (interfaces плана).
+        ("screen", "admin_game_waves", "🌊 Волны"),
         ("op", "admin_game_review"),
         ("op", "admin_coins_manual"),
         ("op", "admin_coins_journal"),

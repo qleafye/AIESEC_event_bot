@@ -266,6 +266,28 @@ class RejectCond(StatesGroup):
     num = State()
 
 
+class WaveCreate(StatesGroup):
+    # Phase 32 (32-10, D-06/D-10/D-11): визард создания волны (handlers/admin_game_waves.py)
+    # — даты (одной строкой через «;» или по одной), необязательный вводный текст, карточка
+    # подтверждения. Право `moderate_game` ("state:WaveCreate:*" в handlers/admin_caps.py).
+    # Тот же визард переиспользует «📋 Скопировать эту волну» (даты запрашиваются тем же
+    # шагом, дальше идёт copy_wave вместо create_wave) — различает флаг wc_copy_src в
+    # state.get_data().
+    dates = State()
+    intro = State()
+    confirm = State()
+
+
+class WaveEdit(StatesGroup):
+    # Phase 32 (32-10): точечная правка ОДНОГО поля существующей волны с карточки — даты/
+    # вводный текст/число призовых мест, одно поле за раз (тот же приём, что GameTaskEdit).
+    # Волна id — в state.get_data() ("we_wave_id"), право `moderate_game`
+    # ("state:WaveEdit:*" в handlers/admin_caps.py).
+    dates = State()
+    intro_text = State()
+    prize_places = State()
+
+
 class AdminI18nEdit(StatesGroup):
     # Phase 27 (27-06, LANG-05/LANG-09): экран «🌐 Английские тексты» (handlers/admin_i18n.py)
     # — ручная правка одного английского текста. Одно состояние: цель правки (какую строку
