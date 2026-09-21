@@ -322,6 +322,39 @@ async def prev_reject_line(user: dict, *, escape_reason: bool = False) -> str | 
     return tmpl.replace("{reason}", shown_reason)
 
 
+async def _referrer_badge_line(user: dict) -> str | None:
+    """Phase 32 (32-05, задача 3, T-32-05-04): «🤝 Пригласил(а) Имя Фамилия — уже N
+    одобренных в этой волне» — ТОЛЬКО когда у заявки непустой `referrer_id`, пригласивший
+    существует и он ПРЯМО СЕЙЧАС амбассадор (тот же гейт, что `services.referrals.
+    credit_for_approved`, — обычный делегат со старой реф-ссылкой бейджа не порождает).
+    Волна — `current_wave_for(город пригласившего)`, только если пригласивший в ней
+    участвует (`wave_eligible`), иначе счётчик — вне волн (`wave_id=None`, общий зачёт).
+
+    Fail-soft: любая ошибка — бейджа просто нет, карточка заявки не падает (та же
+    дисциплина, что `referral_ratio_hint`, T-32-03-05)."""
+    try:
+        referrer_id = user.get("referrer_id")
+        if not referrer_id:
+            return None
+        referrer = await get_user(int(referrer_id))
+        if not referrer or int(referrer.get("is_ambassador") or 0) != 1:
+            return None
+
+        from services.ambassador_waves import current_wave_for, wave_eligible
+        from services.referrals import approved_referrals_in_wave
+
+        wave_id = None
+        wave = await current_wave_for(referrer.get("event_city"))
+        if wave and wave_eligible(referrer, wave):
+            wave_id = int(wave["id"])
+        already = await approved_referrals_in_wave(int(referrer_id), wave_id)
+
+        name = (referrer.get("full_name") or "").strip() or "Без имени"
+        return f"🤝 Пригласил(а) {name} — уже {already} одобренных в этой волне"
+    except Exception:
+        return None
+
+
 def _history_changes(raw_changes: list[dict] | None) -> list[dict]:
     """Одна запись `reg_answer_history.changes` -> `[{label, old, new}]` для «было → стало»
     (D-03, Known Stub #1 из 23-05). Дословно правило `handlers/admin_moderation.py::appr_history`:
@@ -502,6 +535,15 @@ async def card_payload(user: dict) -> dict:
     consent_line = await consent_card_line(user.get("telegram_id"))
     if consent_line:
         badges.append({"kind": "consent", "text": consent_line})
+
+    # Phase 32 (32-05, задача 3, T-32-05-04): подсказка модератору ДО одобрения — кто
+    # пригласил и сколько уже одобренных приглашённых у этого амбассадора в текущей волне.
+    # Единственная защита против накрутки альт-аккаунтами, раз баллы после начисления не
+    # отзываются (D-22) — значит рычаг должен стоять строго до клика «Одобрить». Fail-soft:
+    # любая ошибка — бейджа просто нет, карточка не падает.
+    referrer_line = await _referrer_badge_line(user)
+    if referrer_line:
+        badges.append({"kind": "referrer", "text": referrer_line})
 
     # Приёмка 17.09 (п.2)/19.09 (находки №2/№3): порядок — файл (самый информативный артефакт)
     # -> ссылка (R2b) -> текст -> мини-профиль -> нет; `moderation_card.resume_summary` —
