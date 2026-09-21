@@ -15,6 +15,9 @@ pytest-asyncio недоступен в этом окружении — async ч�
 from __future__ import annotations
 
 import asyncio
+import json
+import pathlib
+import re
 import sqlite3
 
 from config import config
@@ -48,7 +51,9 @@ def _seed_user(tid, *, referrer_id=None, event_city=None, full_name=None, status
 
 
 def _make_ambassador(tid, *, event_city=None, full_name=None, since="2026-01-01 00:00:00"):
-    _seed_user(tid, event_city=event_city, full_name=full_name)
+    # status="approved" — амбассадор сам уже одобренный делегат, иначе дефолтный "pending"
+    # (см. _seed_user) подхватило бы его же строку под массовое одобрение в тестах задачи 2.
+    _seed_user(tid, event_city=event_city, full_name=full_name, status="approved")
     _run(db.set_ambassador_flag(tid, active=True, at=since))
 
 
@@ -218,3 +223,173 @@ def test_pending_application_no_credit(tmp_path):
 
     assert result is None
     assert _referral_credit_count() == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: массовое одобрение и авто-одобрение — два оставшихся шва + тест-сторож
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_bulk_approve_credits_three_invitees_of_one_ambassador(tmp_path):
+    """Врезка №2 (массовое одобрение): «Принять всех» на 3 приглашённых одного амбассадора —
+    3 строки referral_credits, сводка возвращает правильные числа (D-20/D-22)."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "30"))
+    _make_ambassador(5001)
+    for tid in (6001, 6002, 6003):
+        _seed_user(tid, referrer_id=5001)
+
+    ids, summary = _run(applications.claim_approve_all_with_credits(None))
+
+    assert sorted(ids) == [6001, 6002, 6003]
+    assert summary == {"credited": 3, "coins": 90, "ambassadors": 1}
+    assert _referral_credit_count() == 3
+
+
+def test_stale_approve_all_second_click_no_new_credits(tmp_path):
+    """Устаревшая кнопка «Принять всех», нажатая второй раз — approve_all_pending возвращает
+    пустой список (WR-04), credit_for_approved_bulk по пустому списку не создаёт итераций,
+    сводка нулевая — вторая строка в тексте подтверждения не появляется."""
+    _ready(tmp_path)
+    _run(db.set_setting("ambassador_referral_coins", "30"))
+    _make_ambassador(5002)
+    _seed_user(6004, referrer_id=5002)
+
+    ids1, summary1 = _run(applications.claim_approve_all_with_credits(None))
+    ids2, summary2 = _run(applications.claim_approve_all_with_credits(None))
+
+    assert ids1 == [6004]
+    assert summary1 == {"credited": 1, "coins": 30, "ambassadors": 1}
+    assert ids2 == []
+    assert summary2 == {"credited": 0, "coins": 0, "ambassadors": 0}
+    assert _referral_credit_count() == 1
+
+
+def test_full_approval_auto_credits_ambassador(tmp_path, monkeypatch):
+    """Врезка №3 (авто-одобрение): `full_approval=auto` зовёт `credit_for_approved` напрямую
+    внутри `services/reg_finalize.py` — единственный путь, который не проходит ни через
+    `claim_approve`, ни через `claim_approve_all_with_credits`."""
+    from services import reg_finalize as rf
+
+    _ready(tmp_path)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+    _make_ambassador(7001)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        await db.set_setting("ambassador_referral_coins", "40")
+        draft = {
+            "telegram_id": 8001, "kind": "new",
+            "answers": {"full_name": "Новый Делегат"},
+            "meta": {"referrer_id": 7001},
+        }
+        return await rf.finalize_data(8001, "@newbie", draft)
+
+    result = _run(go())
+
+    assert result["status"] == "approved"
+    assert _referral_credit_count() == 1
+    rows = _coins_rows(source="referral", user_id=7001)
+    assert len(rows) == 1 and rows[0][1] == 40
+
+
+def test_auto_rejected_applicant_no_credit(tmp_path):
+    """Автоотказ фазы 31 побеждает даже при `full_approval=auto` — статус становится
+    `rejected`, а не `approved`, начисления нет (D-20)."""
+    from services import reg_finalize as rf
+
+    _ready(tmp_path)
+    _make_ambassador(7002)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        await db.set_setting("ambassador_referral_coins", "40")
+        await db.set_setting("reject_rules_enabled", "on")
+        await db.create_reject_rule(
+            name=None, city=None, tracks=json.dumps(["full"]),
+            conditions=json.dumps([[{"step": "course", "op": "in", "values": ["1"]}]]),
+            action="reject", reject_text="Мест нет.", enabled=1, created_by=1,
+        )
+        draft = {
+            "telegram_id": 8002, "kind": "new",
+            "answers": {"full_name": "Автоотказник", "course": "1"},
+            "meta": {"referrer_id": 7002},
+        }
+        return await rf.finalize_data(8002, "@x", draft)
+
+    result = _run(go())
+
+    assert result["status"] == "rejected"
+    assert _referral_credit_count() == 0
+
+
+# ── Тест-сторож швов (D-20, T-32-05-07): список мест, где users.status становится 'approved' ─
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_SCAN_DIRS = ("services", "handlers", "miniapp", "tools", "database")
+_RAW_SQL_RE = re.compile(r"SET status\s*=\s*'approved'")
+_SET_STATUS_CALL_RE = re.compile(r"\bset_user_status\(")
+
+# Три боевых шва (начисляют через credit_for_approved/credit_for_approved_bulk) и два
+# осознанных исключения (dev-инструменты, начисления НЕ делают, T-32-05-07).
+_EXPECTED_APPROVAL_WRITERS = {
+    "database/db.py": (
+        "боевой шов: approve_user_atomic + approve_all_pending (RAW UPDATE) — их зовут "
+        "services.applications.claim_approve / claim_approve_all_with_credits, которые сами "
+        "зовут credit_for_approved(_bulk)"
+    ),
+    "services/reg_finalize.py": (
+        "боевой шов: full_approval=auto/short_approval=auto/party_approval=auto зовёт "
+        "credit_for_approved напрямую (план 32-05, задача 2)"
+    ),
+    "handlers/uat_seed.py": (
+        "осознанное исключение (T-32-05-07): сидер состояний команды /uat на стенде — "
+        "не боевой путь одобрения, начисления намеренно нет"
+    ),
+    "tools/shoot_screens.py": (
+        "осознанное исключение (T-32-05-07): генератор скриншотов для документации — "
+        "не боевой путь одобрения, начисления намеренно нет"
+    ),
+}
+
+
+def _scan_approval_status_writers() -> dict[str, list[int]]:
+    found: dict[str, list[int]] = {}
+    for top in _SCAN_DIRS:
+        top_dir = _REPO_ROOT / top
+        if not top_dir.exists():
+            continue
+        for path in top_dir.rglob("*.py"):
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except UnicodeDecodeError:
+                continue
+            for i, line in enumerate(lines, start=1):
+                if _RAW_SQL_RE.search(line):
+                    found.setdefault(rel, []).append(i)
+                elif _SET_STATUS_CALL_RE.search(line) and "def set_user_status" not in line:
+                    found.setdefault(rel, []).append(i)
+    return found
+
+
+def test_approval_status_writers_guard():
+    """Обход исходников: все места, где `users.status` становится `'approved'` (RAW UPDATE
+    или вызов `set_user_status`), обязаны быть в явном ожидаемом списке. Появление НОВОГО
+    файла означает новый путь одобрения — он либо начисляет (врезан `credit_for_approved`),
+    либо добавлен в исключения с объяснением, а не тихо забыт."""
+    found = _scan_approval_status_writers()
+    actual_files = set(found)
+    expected_files = set(_EXPECTED_APPROVAL_WRITERS)
+
+    unexpected = actual_files - expected_files
+    assert not unexpected, (
+        "Новое место, где заявка становится одобренной: "
+        + "; ".join(f"{f}:{ln}" for f in sorted(unexpected) for ln in found[f])
+        + " — либо врежьте credit_for_approved, либо добавьте файл в список исключений "
+        "с объяснением (tests/test_referral_credit_32.py::_EXPECTED_APPROVAL_WRITERS)."
+    )
+
+    missing = expected_files - actual_files
+    assert not missing, f"Ожидаемые швы пропали из исходников: {missing} — план устарел?"

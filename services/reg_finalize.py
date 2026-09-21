@@ -602,6 +602,20 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                         status = "pending"
                         await set_user_status(telegram_id, status)
 
+            # Phase 32 (32-05, D-20): путь `full_approval=auto`/`short_approval=auto`/
+            # `party_approval=auto` — единственное место, где заявка становится `approved`
+            # МИМО и claim_approve, и claim_approve_all_with_credits (32-RESEARCH.md,
+            # Pitfall 2: единого шва «заявку одобрили» в проекте нет). `status` здесь уже
+            # финальный (после decide_status и всей ветки автоотказа выше). try/except
+            # отдельно от самого одобрения — сбой начисления не имеет права откатить уже
+            # записанный статус (T-32-05-05).
+            if status == "approved":
+                try:
+                    from services.referrals import credit_for_approved
+                    await credit_for_approved(telegram_id)
+                except Exception as e:
+                    logger.error(f"credit_for_approved failed for {telegram_id}: {e}")
+
             try:
                 await record_reg_event(
                     telegram_id, "form_completed",

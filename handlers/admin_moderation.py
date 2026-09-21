@@ -32,7 +32,6 @@ from database.db import (
     get_setting,
     get_pending_users,
     get_pending_count,
-    approve_all_pending,
     get_receipt_pending_users,
     get_receipt_pending_count,
     update_payment_status,
@@ -41,6 +40,7 @@ from database.db import (
 from services.applications import (
     TRACK_LABELS,
     claim_approve,
+    claim_approve_all_with_credits,
     claim_reject,
     record_decision,
     COLUMN_TO_LABEL as _COLUMN_TO_LABEL,
@@ -592,7 +592,10 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # отдельный хвост mass_approve_effects (не apply_decision_effects), последнее решение по
     # делегату из этой ветки last_rejection_reason/prev_reject_line просто не увидят (нет
     # причины отказа тут в принципе, только approve).
-    ids = await approve_all_pending(city_scope=city_scope(confirmed))  # atomic flip first (D-11)
+    # Phase 32 (32-05, D-20/D-22): бот больше не зовёт approve_all_pending напрямую — общий шов
+    # с веб-обёрткой claim_approve_all, чтобы начисление рефералки не могло разъехаться между
+    # путями (та же атомарная UPDATE ... RETURNING первым делом, credit_summary — вторым шагом).
+    ids, credit_summary = await claim_approve_all_with_credits(city_scope(confirmed))  # atomic flip first (D-11)
     # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
     # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
     # tell the admin it's already done and refresh the card.
@@ -619,6 +622,13 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     from services.scheduler import _now_moscow_naive
     notice = await quiet_hours.manager_notice(_now_moscow_naive(), ids[0])
     confirm_text = f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…"
+    # D-20/D-22: массовый побочный эффект не имеет права быть молчаливым — строка только
+    # когда начисления реально были (инцидент 06.09 — тихое массовое действие без следа).
+    if credit_summary["credited"]:
+        confirm_text += (
+            f"\n🤝 Баллы за приглашённых: начислено {credit_summary['coins']} "
+            f"амбассадорам ({credit_summary['ambassadors']})"
+        )
     if notice:
         confirm_text += f"\n{notice}"
     try:
