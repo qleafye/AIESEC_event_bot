@@ -22,9 +22,12 @@ from dashboard.timeutil import msk_now
 from dashboard.queries import (
     ALLOWED_BREAKDOWNS,
     Scope,
+    _AMBASSADOR_ROWS_LIMIT,
+    _NO_DEADLINE_AT,
     _QUESTION_STATUS_CASE,
     _SETTING_DEFAULTS,
     _task_title,
+    ambassador_block,
     auto_reject_breakdown,
     breakdown,
     city_comparison,
@@ -65,6 +68,7 @@ async def _seed_async(
     cities=None, settings=None, users=None, reg_events=None, reg_started=None,
     game_tasks=None, game_submissions=None, application_decisions=None, coins=None,
     delegate_questions=None, reject_rules=None, auto_reject_log=None,
+    ambassador_waves=None, wave_results=None, referral_credits=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -149,6 +153,28 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO auto_reject_log ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
+        # Phase 32 (32-09): волны/призёры/начисления за приглашённых, для среза амбассадоров.
+        for row in ambassador_waves or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO ambassador_waves ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
+        for row in wave_results or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO wave_results ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
+            )
+        for row in referral_credits or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO referral_credits ({cols}) VALUES ({placeholders})",
                 tuple(row.values()),
             )
         await conn.commit()
@@ -2283,6 +2309,194 @@ def test_referral_block_shape(tmp_path):
     # заявки — сравниваем конкретный день словарём, а не весь список литералом.
     assert dict(block["daily"])["2026-09-01"] == 1
     assert block["city_cut"] == []  # event_city_enabled по умолчанию "off"
+
+
+# ── амбассадоры и волны (D-33/D-34) ───────────────────────────────────────────────────────
+#
+# `test_ambassador_block_full_metrics_on_fixture` — та самая «общая фикстура», на которой
+# сверяются числа дашборда; формулы обязаны совпадать с `services/ambassador_waves.py`
+# (параллельный план 32-03) — при изменении формулы в одном месте обновить и второе.
+
+def test_ambassador_block_none_when_toggle_off(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[{"telegram_id": 1, "is_ambassador": 1, "status": "approved"}])
+    with dash_db.read_conn(path) as conn:
+        assert ambassador_block(conn, Scope()) is None
+
+
+def test_ambassador_block_none_when_toggle_on_but_no_ambassadors(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        users=[{"telegram_id": 1, "status": "approved"}],
+    )
+    with dash_db.read_conn(path) as conn:
+        assert ambassador_block(conn, Scope()) is None
+
+
+def test_ambassador_no_deadline_sentinel_matches_bot_db():
+    """Дрейф копии `_NO_DEADLINE_AT` от источника истины `database.db.NO_DEADLINE_AT`
+    (32-01) — тот же приём, что `_SETTING_DEFAULTS`/`_task_title`."""
+    assert _NO_DEADLINE_AT == bot_db.NO_DEADLINE_AT
+
+
+def test_ambassador_block_full_metrics_on_fixture(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            # amb1 — амбассадор с начала, активна в волне 2, приводит трёх приглашённых.
+            {"telegram_id": 201, "username": "amb1", "is_ambassador": 1,
+             "event_city": "msk", "status": "approved"},
+            # amb2 — присоединилась ПОСРЕДИ волны 2 (D-31): в eligible-знаменатель не входит.
+            {"telegram_id": 202, "username": "amb2", "is_ambassador": 1,
+             "event_city": "msk", "status": "approved", "ambassador_since": "2026-09-10 00:00:00"},
+            # amb3 — eligible, но в волне 2 НЕ сдавала ничего (не активна).
+            {"telegram_id": 203, "username": "amb3", "is_ambassador": 1,
+             "event_city": "msk", "status": "approved"},
+            # amb4 — eligible, активна, но сдала задание A с просрочкой.
+            {"telegram_id": 204, "username": "amb4", "is_ambassador": 1,
+             "event_city": "msk", "status": "approved"},
+            # приглашённые amb1: поданный / одобренный-неоплативший / одобренный-оплативший
+            {"telegram_id": 301, "referrer_id": 201, "status": "pending"},
+            {"telegram_id": 302, "referrer_id": 201, "status": "approved",
+             "payment_status": "not_paid"},
+            {"telegram_id": 303, "referrer_id": 201, "status": "approved",
+             "payment_status": "paid"},
+            # амбассадор другого города — не должен попасть в срез Scope(city="msk").
+            {"telegram_id": 401, "username": "amb_spb", "is_ambassador": 1,
+             "event_city": "spb", "status": "approved"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 1, "starts_at": "2026-01-01 00:00:00",
+             "ends_at": "2026-01-31 23:59:59", "state": "announced", "event_city": "msk",
+             "created_at": "2026-01-01 00:00:00"},
+            {"id": 2, "number": 2, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "msk",
+             "created_at": "2026-09-01 00:00:00"},
+            {"id": 3, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "spb",
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+        game_tasks=[
+            {"id": 10, "text": "Задание A", "category": "photo", "coins": 50,
+             "proof_type": "photo", "deadline_at": "2026-09-15 00:00:00",
+             "created_at": "2026-09-01 00:00:00", "event_city": "msk", "wave_id": 2,
+             "audience": "ambassadors"},
+            {"id": 11, "text": "Задание B, без срока", "category": "text", "coins": 30,
+             "proof_type": "text", "deadline_at": _NO_DEADLINE_AT,
+             "created_at": "2026-09-01 00:00:00", "event_city": "msk", "wave_id": 2,
+             "audience": "ambassadors"},
+        ],
+        game_submissions=[
+            {"task_id": 10, "user_id": 201, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-09-10 00:00:00", "status": "approved"},  # вовремя
+            {"task_id": 11, "user_id": 201, "content_type": "text", "content": "b",
+             "submitted_at": "2026-09-20 00:00:00", "status": "approved"},  # без срока = вовремя
+            {"task_id": 10, "user_id": 204, "content_type": "photo", "content": "c",
+             "submitted_at": "2026-09-16 00:00:00", "status": "approved"},  # просрочка
+        ],
+        coins=[
+            {"user_id": 201, "delta": 50, "reason": "task A", "task_id": 10, "source": "task",
+             "timestamp": "2026-09-10 00:05:00"},
+            {"user_id": 201, "delta": 30, "reason": "task B", "task_id": 11, "source": "task",
+             "timestamp": "2026-09-20 00:05:00"},
+            {"user_id": 204, "delta": 35, "reason": "task A (штраф)", "task_id": 10,
+             "source": "task", "timestamp": "2026-09-16 00:05:00"},
+            # amb3 — очки ВНЕ волны (ручное начисление): идут только в общий зачёт (D-15).
+            {"user_id": 203, "delta": 15, "reason": "manual", "task_id": None,
+             "source": "manual", "timestamp": "2026-02-01 00:00:00"},
+        ],
+        referral_credits=[
+            {"invitee_id": 302, "referrer_id": 201, "coins": 10, "wave_id": 2,
+             "credited_at": "2026-09-12 00:00:00", "source": "approval"},
+            {"invitee_id": 303, "referrer_id": 201, "coins": 10, "wave_id": 2,
+             "credited_at": "2026-09-13 00:00:00", "source": "approval"},
+        ],
+        wave_results=[
+            {"wave_id": 1, "user_id": 203, "place": 1, "points": 99,
+             "announced_at": "2026-02-01 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope(city="msk"))
+
+    assert block["total"] == 4  # amb1..amb4, БЕЗ amb_spb
+    assert block["wave"]["number"] == 2
+    assert block["active"] == 2  # amb1, amb4 сдали хоть одно задание волны 2
+    assert block["activation_share"] == round(2 / 3 * 100, 1)  # eligible: amb1, amb3, amb4
+
+    funnel_by_id = {row["telegram_id"]: row for row in block["funnel"]}
+    assert funnel_by_id[201] == {
+        "telegram_id": 201, "username": "amb1",
+        "submitted": 3, "approved": 2, "paid": 1, "credited": 2,
+    }
+    assert funnel_by_id[204]["submitted"] == 0  # amb4 без приглашённых
+
+    rating_by_id = {row["telegram_id"]: row["points"] for row in block["wave_rating"]}
+    assert rating_by_id[201] == 100  # 50 + 30 (задания) + 10 + 10 (рефералы волны 2)
+    assert rating_by_id[204] == 35
+    assert 203 not in rating_by_id  # очки amb3 вне волны 2 в рейтинг волны не идут
+
+    lifetime_by_id = {row["telegram_id"]: row["points"] for row in block["lifetime"]}
+    assert lifetime_by_id == {201: 80, 204: 35, 203: 15}  # общий зачёт — БЕЗ фильтра по волне
+
+    assert block["past_winners"] == [
+        {"wave_number": 1, "place": 1, "points": 99, "telegram_id": 203, "username": "amb3"},
+    ]
+
+    tasks_by_title = {row["title"]: row for row in block["tasks"]}
+    assert tasks_by_title["Задание A"]["submitted"] == 2
+    assert tasks_by_title["Задание A"]["on_time"] == 1
+    assert tasks_by_title["Задание A"]["late"] == 1
+    assert tasks_by_title["Задание B, без срока"]["submitted"] == 1
+    assert tasks_by_title["Задание B, без срока"]["on_time"] == 1
+    assert tasks_by_title["Задание B, без срока"]["late"] == 0
+
+    # Другой город (spb) не виден в скоупе msk.
+    assert 401 not in {row["telegram_id"] for row in block["funnel"]}
+
+
+def test_ambassador_block_city_scope_excludes_other_city(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "username": "msk_amb", "is_ambassador": 1,
+             "event_city": "msk", "status": "approved"},
+            {"telegram_id": 2, "username": "spb_amb", "is_ambassador": 1,
+             "event_city": "spb", "status": "approved"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "msk",
+             "created_at": "2026-09-01 00:00:00"},
+            {"id": 2, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "spb",
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_block = ambassador_block(conn, Scope(city="msk"))
+        spb_block = ambassador_block(conn, Scope(city="spb"))
+
+    assert msk_block["total"] == 1
+    assert {row["telegram_id"] for row in msk_block["funnel"]} == {1}
+    assert spb_block["total"] == 1
+    assert {row["telegram_id"] for row in spb_block["funnel"]} == {2}
+
+
+def test_ambassador_block_rows_limit_constant_used():
+    """Сторож текста T-32-09-03: своя константа потолка строк должна фигурировать в теле
+    каждой списочной функции блока, а не только в объявлении (не даёт тихо забыть `LIMIT`
+    в новой функции при будущей правке)."""
+    text = DASHBOARD_QUERIES_FILE.read_text(encoding="utf-8")
+    start = text.index("_AMBASSADOR_ROWS_LIMIT = 20")
+    end = text.index("\ndef ambassador_block")
+    body = text[start:end]
+    assert body.count("_AMBASSADOR_ROWS_LIMIT") >= 5  # объявление + funnel/rating/lifetime/winners/tasks
 
 
 # ── T-15-03-03 (D-17): нет ПД в исходнике модуля ─────────────────────────────────────────
