@@ -163,6 +163,9 @@ async def _wave_card_screen(admin_id: int, wave: dict) -> tuple[str, InlineKeybo
         buttons.append([InlineKeyboardButton(text="🏅 Призовых мест", callback_data=f"waveedit:{wave['id']}:prize_places")])
     if wave["state"] == "draft":
         buttons.append([InlineKeyboardButton(text="▶️ Запустить волну", callback_data=f"waveactivate:{wave['id']}")])
+    if wave["state"] == "closing":
+        # Личное сообщение о конце волны менеджер мог потерять — итоги объявляются и отсюда.
+        buttons.append([InlineKeyboardButton(text="🏁 Итоги волны", callback_data=f"wavefin:{wave['id']}")])
     if wave["state"] != "announced":
         buttons.append([InlineKeyboardButton(text="📋 Скопировать эту волну", callback_data=f"wavecopy:{wave['id']}")])
         buttons.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"wavedel:{wave['id']}")])
