@@ -29,7 +29,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import cities
 from settings_schema import get_setting_typed
 from database.db import NO_DEADLINE_AT, list_waves
-from services.ambassador_waves import wave_number_label
+from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
 from services.scheduler import (
     _fmt_dt,
     _now_moscow_naive,
@@ -238,14 +238,23 @@ def _game_task_audience_kb() -> InlineKeyboardMarkup:
     ])
 
 
-async def _game_task_wave_prompt(target, state: FSMContext):
+async def _game_task_wave_prompt(target, state: FSMContext, admin_id: int):
     """D-12: шаг «Волна» — список draft/active волн ГОРОДА ЗАДАНИЯ (`cities.city_scope`,
     `gt_event_city` уже лежит в FSM к этому шагу). Волн для этого города нет -- та же
-    единственная кнопка «Вне волн», текст объясняет, где завести волну (T-32-12: тупика нет)."""
+    единственная кнопка «Вне волн», текст объясняет, где завести волну (T-32-12: тупика нет).
+
+    WR-07: список сразу фильтруется до волн, куда СЕЙЧАС можно добавить задание — своё право
+    на волну (`can_edit_wave`, город менеджера мог не совпасть с городом «для всех городов») и
+    открытый состав (`"tasks" in wave_editable_fields`, стартовая рассылка уже могла уйти) --
+    кнопка на экране не должна вести туда, куда потом всё равно откажут (CLAUDE.md)."""
     data = await state.get_data()
     waves = await list_waves(
         city_scope=cities.city_scope(data.get("gt_event_city")), states=("draft", "active"),
     )
+    waves = [
+        w for w in waves
+        if await can_edit_wave(admin_id, w) and "tasks" in wave_editable_fields(w)
+    ]
     text = "К какой волне относится задание?"
     if not waves:
         text += "\n\nВолн пока нет — заведите в «🎮 Геймификация → Волны»."
