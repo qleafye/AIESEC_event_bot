@@ -474,6 +474,62 @@ def test_undo_decision_after_flush_returns_already(tmp_path):
     assert _run(db.get_user(2002))["status"] == "approved"  # эффекты состоялись, отката нет
 
 
+def test_wr02_web_approve_undo_before_window_never_credits_referrer(tmp_path):
+    """Фикс WR-02 (фаза 32): менеджер одобрил в Mini App, тут же нажал «Отменить» (в пределах
+    5-секундного окна) — амбассадор, пригласивший делегата, НЕ должен получить баллы. До
+    фикса `claim_approve` начисляло СРАЗУ, откат решения деньги не забирал (D-22 запрещает их
+    снять) — приглашённый оставался неодобренным ни секунды, а баллы уже ушли."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _run(db.set_setting("ambassador_referral_coins", "100"))
+    _seed_user(3001, participant_type="full", status="approved")  # амбассадор
+    _run(db.set_ambassador_flag(3001, active=True, at="2026-01-01 00:00:00"))
+    _seed_user(3002, participant_type="full", status="pending", referrer_id=3001)
+
+    won = _run(applications.claim_approve(3002))
+    assert won is True
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    decision_id = _run(applications.record_decision(3002, "approved", None, 999, now))
+
+    result = _run(applications.undo_decision(decision_id))
+    assert result == {"ok": True, "telegram_id": 3002}
+    assert _run(db.get_user(3002))["status"] == "pending"
+
+    # Ни одного начисления — ни в момент approve, ни после отмены.
+    assert _run(db.get_referral_credit(3002)) is None
+    assert _run(db.get_balance(3001)) == 0
+
+
+def test_wr02_web_approve_flush_after_window_credits_referrer_once(tmp_path):
+    """Симметричный случай: то же одобрение, но окно истекло БЕЗ отмены — начисление
+    происходит в `flush_due_decisions`, ровно один раз."""
+    _use_tmp_db(tmp_path)
+    _run(db.init_db())
+    _run(db.set_setting("ambassador_referral_coins", "100"))
+    _seed_user(3003, participant_type="full", status="approved")  # амбассадор
+    _run(db.set_ambassador_flag(3003, active=True, at="2026-01-01 00:00:00"))
+    _seed_user(3004, participant_type="full", status="pending", referrer_id=3003)
+
+    assert _run(applications.claim_approve(3004)) is True
+    now = datetime(2026, 1, 1, 12, 0, 0)
+    _run(applications.record_decision(3004, "approved", None, 999, now))
+    assert _run(db.get_referral_credit(3004)) is None  # ещё не пережило окно
+
+    later = now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1)
+    enqueued = []
+    flushed = _run(applications.flush_due_decisions(later, lambda k, p: enqueued.append((k, p))))
+    assert flushed == 1
+
+    credit = _run(db.get_referral_credit(3004))
+    assert credit is not None and credit["coins"] == 100
+    assert _run(db.get_balance(3003)) == 100
+
+    # Повторный сбор той же (уже неживой) строки ничего не начисляет дважды.
+    flushed_again = _run(applications.flush_due_decisions(later, lambda k, p: enqueued.append((k, p))))
+    assert flushed_again == 0
+    assert _run(db.get_balance(3003)) == 100
+
+
 def test_undo_decision_unknown_id_returns_already(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.init_db())
