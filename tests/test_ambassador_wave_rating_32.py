@@ -1,10 +1,11 @@
-"""Phase 32 План 3 (D-14/D-29/D-31/D-32/D-38): сервис `services.ambassador_waves` — участие
-в волне и рейтинг волны на чтении.
+"""Phase 32 План 3 (D-14/D-16/D-17/D-21/D-29/D-31/D-32/D-38): сервис
+`services.ambassador_waves` — участие в волне, рейтинг волны на чтении, сводка конца волны.
 
 Задача 1: `wave_eligible`/`eligible_wave_ids`/`current_wave_for`/`wave_rating`/
 `wave_rating_view` — привязка задания к волне переживает поздний просмотр (D-14), участие
-подчиняется D-31/D-32/D-38, имена скрываются на уровне данных (D-29). Задачи 2 (сводка конца
-волны) и 3 (подсказка соотношения баллов) дописываются в этот же файл следующими коммитами.
+подчиняется D-31/D-32/D-38, имена скрываются на уровне данных (D-29).
+Задача 2: `wave_end_summary`/`close_wave`/`wave_number_label`. Задача 3 (подсказка
+соотношения баллов) дописывается в этот же файл следующим коммитом.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, та же фикстура
 временной БД, что `tests/test_ambassador_waves_db_32.py::_ready`.
@@ -274,3 +275,75 @@ def test_wave_rating_view_gap_to_prize_zero_in_zone_and_positive_below_cutoff(tm
 
     view_below = _run(waves.wave_rating_view(wave_id, 4))  # 4-е место, 40 против отсечки 80
     assert view_below["own"]["gap_to_prize"] == 40
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: сводка конца волны и переход состояния
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_wave_end_summary_top_and_pending(tmp_path):
+    _ready(tmp_path)
+    _make_ambassador(1)
+    _make_ambassador(2)
+    _make_ambassador(3)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    task_1 = _run(db.create_task("T1", "Light", 100, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id))
+    task_2 = _run(db.create_task("T2", "Light", 50, "photo", "2026-10-06 00:00:00", None, wave_id=wave_id))
+    _run(db.add_coins(1, 100, source="task", task_id=task_1))
+    _run(db.add_coins(2, 50, source="task", task_id=task_2))
+    # ещё две сдачи на проверке
+    _run(db.create_submission(task_1, 3, "photo", "f1", "2026-10-06 00:00:00"))
+    _run(db.create_submission(task_2, 1, "photo", "f2", "2026-10-07 00:00:00"))
+
+    summary = _run(waves.wave_end_summary(wave_id))
+    assert summary["pending"] == 2
+    assert [r["points"] for r in summary["top"]] == [100, 50, 0]
+
+
+def test_wave_end_summary_pending_excludes_other_wave_and_outside(tmp_path):
+    """pending не считает сдачи по заданиям чужой волны и по заданиям «вне волн»."""
+    _ready(tmp_path)
+    _make_ambassador(1)
+    wave_a = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    wave_b = _run(db.create_wave("2026-11-01 00:00:00", "2026-11-08 00:00:00"))
+    task_a = _run(db.create_task("A", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_a))
+    task_b = _run(db.create_task("B", "Light", 10, "photo", "2026-11-05 00:00:00", None, wave_id=wave_b))
+    task_out = _run(db.create_task("Out", "Light", 10, "photo", "2026-10-05 00:00:00", None))
+    _run(db.create_submission(task_a, 1, "photo", "fa", "2026-10-06 00:00:00"))
+    _run(db.create_submission(task_b, 1, "photo", "fb", "2026-11-06 00:00:00"))
+    _run(db.create_submission(task_out, 1, "photo", "fo", "2026-10-06 00:00:00"))
+
+    summary = _run(waves.wave_end_summary(wave_a))
+    assert summary["pending"] == 1
+
+
+def test_close_wave_true_then_false(tmp_path):
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    first = _run(waves.close_wave(wave_id))
+    second = _run(waves.close_wave(wave_id))
+    assert first is True
+    assert second is False
+
+
+def test_close_wave_calls_set_wave_state_with_expected_state_active(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+
+    calls = []
+
+    async def _spy(wid, state, *, expected_state=None):
+        calls.append((wid, state, expected_state))
+        return await db.set_wave_state(wid, state, expected_state=expected_state)
+
+    monkeypatch.setattr(waves, "set_wave_state", _spy)
+    _run(waves.close_wave(wave_id))
+    assert calls == [(wave_id, "closing", "active")]
+
+
+def test_wave_number_label_no_word_nazvanie_uses_number():
+    label = waves.wave_number_label({"number": 3})
+    assert "название" not in label.lower()
+    assert "3" in label
