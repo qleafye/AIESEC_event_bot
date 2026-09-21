@@ -328,6 +328,94 @@ def test_one_broken_row_does_not_block_the_rest(tmp_path, monkeypatch):
     assert ok["processed_at"]
 
 
+# ── task_changed переармирует напоминание о дедлайне (фикс WR-13, фаза 32) ──────────────
+
+def test_task_changed_schedules_reminder_for_task_with_deadline(tmp_path, monkeypatch):
+    """Создание/правка задания в Mini App ставит/переставляет джобу напоминания — Mini App
+    сам не может позвать APScheduler (живёт в процессе бота), только через эту очередь."""
+    _init(tmp_path)
+    from datetime import datetime, timedelta
+    deadline = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    task_id = _run(bot_db.create_task("Текст", "Light", 10, "text", deadline, None))
+
+    calls = []
+    monkeypatch.setattr(sched, "schedule_task_deadline_reminder", lambda tid, dl: calls.append((tid, dl)) or True)
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    _enqueue("task_changed", {"task_id": task_id})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert len(calls) == 1 and calls[0][0] == task_id
+
+
+def test_task_changed_cancels_reminder_when_task_deleted(tmp_path, monkeypatch):
+    _init(tmp_path)
+    cancels = []
+    monkeypatch.setattr(sched, "cancel_task_deadline_reminder", lambda tid: cancels.append(tid))
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    _enqueue("task_changed", {"task_id": 424242})  # задание никогда не существовало / удалено
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert cancels == [424242]
+
+
+def test_task_changed_cancels_reminder_when_task_archived(tmp_path, monkeypatch):
+    _init(tmp_path)
+    from datetime import datetime, timedelta
+    deadline = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+    task_id = _run(bot_db.create_task("Текст", "Light", 10, "text", deadline, None))
+    _run(bot_db.archive_task(task_id))
+
+    cancels = []
+    monkeypatch.setattr(sched, "cancel_task_deadline_reminder", lambda tid: cancels.append(tid))
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    _enqueue("task_changed", {"task_id": task_id})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert cancels == [task_id]
+
+
+def test_task_changed_cancels_reminder_when_no_deadline(tmp_path, monkeypatch):
+    _init(tmp_path)
+    task_id = _run(bot_db.create_task("Текст", "Light", 10, "text", bot_db.NO_DEADLINE_AT, None))
+
+    cancels = []
+    monkeypatch.setattr(sched, "cancel_task_deadline_reminder", lambda tid: cancels.append(tid))
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    _enqueue("task_changed", {"task_id": task_id})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert cancels == [task_id]
+
+
+def test_task_changed_cancels_stale_job_when_new_deadline_already_too_close(tmp_path, monkeypatch):
+    """`schedule_task_deadline_reminder` возвращает False, когда `дедлайн - 24ч` уже в
+    прошлом (дедлайн сдвинули раньше) — старую джобу обязаны снять явно, иначе она
+    сработает уже после нового, более раннего срока."""
+    _init(tmp_path)
+    from datetime import datetime, timedelta
+    deadline = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    task_id = _run(bot_db.create_task("Текст", "Light", 10, "text", deadline, None))
+
+    monkeypatch.setattr(sched, "schedule_task_deadline_reminder", lambda tid, dl: False)
+    cancels = []
+    monkeypatch.setattr(sched, "cancel_task_deadline_reminder", lambda tid: cancels.append(tid))
+    monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
+    _enqueue("task_changed", {"task_id": task_id})
+
+    done = _run(miniapp_outbox.drain(FakeBot()))
+
+    assert done == 1
+    assert cancels == [task_id]
+
+
 # ── drain никогда не начисляет монеты ────────────────────────────────────────────────────
 
 def test_drain_never_imports_or_calls_add_coins():
