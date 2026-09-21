@@ -7,6 +7,11 @@ callbacks, «✏️ Изменить» re-entry, point-edit deadline) -- admin_g
 size ceiling (tests/test_module_size_convention_260816.py) and admin_game_tasks.py cannot be
 imported from it (circular seam import), so the shared pieces live here.
 
+Phase 32 (32-12, D-12/D-27/D-28): the wave/audience wizard steps also live here for the same
+reason -- admin_gamification.py had little budget left against its 2020-line ceiling; the
+`_game_task_deadline_prompt` shared prompt (previously local to admin_gamification.py) moved
+here too, since it now sits right next to the wave/audience prompts in the wizard's step chain.
+
 Names keep their leading underscore: admin_gamification.py re-exports them under the same
 names (existing tests reach `admin_gamification._render_game_task_confirm_card`).
 """
@@ -16,7 +21,10 @@ from datetime import datetime, timedelta
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import cities
 from settings_schema import get_setting_typed
+from database.db import list_waves
+from services.ambassador_waves import wave_number_label
 from services.scheduler import _fmt_dt, _now_moscow_naive
 from handlers.states import GameTaskCreate
 from handlers.game_labels import render_task_card_text
@@ -113,13 +121,19 @@ async def _render_game_task_confirm_card(data: dict) -> str:
     ONE shared function (title, RU category, coins, deadline, status «новое», proof hint,
     description in <blockquote expandable> -- HTML-escaped inside, T-09-05/T-16-01-03), then
     the manager-only «Кому:» line. Phase 09.1 (B): «Кому:» appears only when the city step
-    was actually shown (gt_city_step_shown, resolved once by game_task_proof_done)."""
+    was actually shown (gt_city_step_shown, resolved once by game_task_proof_done).
+
+    Phase 32 (32-12, D-12/D-28): плюс «Волна:»/«Аудитория:» строки — человеческие подписи
+    только, ни идентификатора волны, ни кода `ambassadors` на экране (T-32-12-02)."""
     header = await get_setting_typed("game_wizard_preview_title")
     card = await render_task_card_text(_wizard_task_like(data), "новое", None)
     parts = [header, "", card]
     if data.get("gt_city_step_shown"):
         city_label_text = data.get("gt_event_city_label") or "🌍 Все города"
         parts += ["", f"Кому: {html_module.escape(str(city_label_text))}"]
+    wave_line = html_module.escape(str(data.get("gt_wave_label") or "Вне волн"))
+    audience_line = "Только амбассадорам" if data.get("gt_audience") == "ambassadors" else "Всем делегатам"
+    parts += ["", f"Волна: {wave_line}", f"Аудитория: {audience_line}"]
     return "\n".join(parts)
 
 
@@ -145,3 +159,81 @@ async def _finish_deadline_step(target, state: FSMContext, when: datetime):
     clear a pending «✏️ Изменить» flag (the preview IS the return point) and show the preview."""
     await state.update_data(gt_deadline=_fmt_dt(when), gt_wiz_edit=False)
     await _show_wizard_preview(target, state)
+
+
+# ── Phase 32 (32-12, D-12/D-28): «Волна» + «Аудитория» wizard steps ────────────────────────
+
+def _fmt_wave_short_date(raw: str | None) -> str:
+    """ISO "%Y-%m-%d %H:%M:%S" (формат хранения `starts_at`/`ends_at` волны, НЕ `deadline_at`
+    задания) -> короткая «ДД.ММ» для кнопки волны; мусор/None -> как есть."""
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d %H:%M:%S").strftime("%d.%m")
+    except (TypeError, ValueError):
+        return str(raw or "—")
+
+
+def _game_task_wave_kb(waves: list[dict]) -> InlineKeyboardMarkup:
+    """D-12: кнопочный шаг «Волна» — «🚫 Вне волн» (`gtwave:none`) всегда первой строкой, дальше
+    по одной кнопке на волну в состоянии draft/active (фильтр состояний -- обязанность
+    вызывающего, `list_waves(states=...)`). Волн нет вовсе -- «Вне волн» остаётся
+    единственной кнопкой (T-32-12: тупика нет, объясняющий текст — в `_game_task_wave_prompt`)."""
+    rows = [[InlineKeyboardButton(text="🚫 Вне волн", callback_data="gtwave:none")]]
+    for w in waves:
+        label = (
+            f"{wave_number_label(w)} · {_fmt_wave_short_date(w.get('starts_at'))}"
+            f"–{_fmt_wave_short_date(w.get('ends_at'))}"
+        )
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"gtwave:{w['id']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _game_task_audience_kb() -> InlineKeyboardMarkup:
+    """D-28: «Всем делегатам» / «Только амбассадорам» — кодов (`all`/`ambassadors`) на экране
+    нет (T-32-12-02)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Всем делегатам", callback_data="gtaud:all")],
+        [InlineKeyboardButton(text="Только амбассадорам", callback_data="gtaud:ambassadors")],
+    ])
+
+
+async def _game_task_wave_prompt(target, state: FSMContext):
+    """D-12: шаг «Волна» — список draft/active волн ГОРОДА ЗАДАНИЯ (`cities.city_scope`,
+    `gt_event_city` уже лежит в FSM к этому шагу). Волн для этого города нет -- та же
+    единственная кнопка «Вне волн», текст объясняет, где завести волну (T-32-12: тупика нет)."""
+    data = await state.get_data()
+    waves = await list_waves(
+        city_scope=cities.city_scope(data.get("gt_event_city")), states=("draft", "active"),
+    )
+    text = "К какой волне относится задание?"
+    if not waves:
+        text += "\n\nВолн пока нет — заведите в «🎮 Геймификация → Волны»."
+    await target.answer(text, reply_markup=_game_task_wave_kb(waves))
+    await state.set_state(GameTaskCreate.wave)
+
+
+async def _game_task_audience_prompt(target, state: FSMContext):
+    """D-28: «Кому это задание?» — «Всем делегатам» / «Только амбассадорам»."""
+    await target.answer("Кому это задание?", reply_markup=_game_task_audience_kb())
+    await state.set_state(GameTaskCreate.audience)
+
+
+async def _game_task_deadline_prompt(target, state: FSMContext):
+    """Shared by game_task_proof_done/game_task_wave_step -> game_task_audience_step (module
+    off/on, wave chosen or not), the final-step «✏️ Изменить → 📅 Дедлайн» re-entry and the
+    point-edit card -- same prompt/state either way. Phase 16 (16-03): ONE message -- the
+    prompt carries the inline preset keyboard; the reply «Отмена» keyboard from the earlier
+    free-text steps is still on screen, and typed «Отмена»/`/cancel` keep working via
+    cancel_game_task_create.
+
+    Phase 32 (32-12, D-27): задание волны (`gt_wave_id` уже в FSM, поставлен
+    `_game_task_wave_prompt`'s step) получает подсказку «по умолчанию — конец волны» в тексте
+    -- значение уже лежит в FSM (`gt_wave_label`), этот шаг сам в БД не ходит."""
+    data = await state.get_data()
+    has_wave = bool(data.get("gt_wave_id"))
+    prompt = _PROMPT_DEADLINE
+    if has_wave:
+        prompt += f"\n\nПо умолчанию — конец {data.get('gt_wave_label') or 'волны'}."
+    await target.answer(
+        prompt, reply_markup=_game_task_deadline_preset_kb("gtdeadline", "gtcancel"),
+    )
+    await state.set_state(GameTaskCreate.deadline)

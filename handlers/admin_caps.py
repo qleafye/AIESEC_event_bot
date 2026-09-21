@@ -738,6 +738,10 @@ ADMIN_CAPS: dict[str, str] = {
     "gtproof_done": "moderate_game",
     # Phase 09.1 (B): "Кому задание?" city step -- new callback, gated behind cities_module_on.
     "gttcity:*": "moderate_game",
+    # Phase 32 (32-12, D-12/D-28): «Волна»/«Аудитория» button-choice steps -- new callbacks,
+    # right after the city step in the wizard chain.
+    "gtwave:*": "moderate_game",
+    "gtaud:*": "moderate_game",
     "gtconfirm": "moderate_game",
     "gtcancel": "moderate_game",
     "state:GameTaskCreate:*": "moderate_game",

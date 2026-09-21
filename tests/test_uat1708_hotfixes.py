@@ -460,7 +460,7 @@ def test_game_task_proof_done_bound_manager_skips_city_step(tmp_path):
     assert data.get("gt_event_city") == "spb"
     assert data.get("gt_city_step_shown") is True
     assert data.get("gt_event_city_label") == asyncio.run(cities.city_label("spb"))
-    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:wave"  # Phase 32 (32-12)
     # "Кому задание?" screen must not have been shown
     assert not any("Кому задание" in (t or "") for t, _ in cb.message.sent)
 
@@ -523,7 +523,7 @@ def test_game_task_city_step_bound_manager_own_city_passes(tmp_path):
 
     asyncio.run(admin_gamification.game_task_city_step(cb, state))
 
-    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:wave"  # Phase 32 (32-12)
     data = asyncio.run(state.get_data())
     assert data.get("gt_event_city") == "spb"
 
@@ -535,7 +535,7 @@ def test_game_task_city_step_superadmin_unrestricted(tmp_path):
 
     asyncio.run(admin_gamification.game_task_city_step(cb, state))
 
-    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:wave"  # Phase 32 (32-12)
     data = asyncio.run(state.get_data())
     assert data.get("gt_event_city") == "msk"
 
@@ -555,7 +555,7 @@ def test_game_task_proof_done_module_off_byte_identical_path(tmp_path):
     data = asyncio.run(state.get_data())
     assert data.get("gt_event_city") is None
     assert data.get("gt_city_step_shown") is False
-    assert asyncio.run(state.get_state()) == "GameTaskCreate:deadline"
+    assert asyncio.run(state.get_state()) == "GameTaskCreate:wave"  # Phase 32 (32-12)
 
 
 def test_gate_no_legacy_admin_check_remains_in_bound_task_city():

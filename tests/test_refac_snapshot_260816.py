@@ -460,6 +460,15 @@ def _build_snapshot_lines():
 # встали СРАЗУ ПОСЛЕ show_wave_card и ПЕРЕД show_wave_list. Пересчитано RUNNING
 # `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
 # 595-строчным снимком: ровно две вставки (3 + 6 строк), 0 удалений, 0 реордеров.
+#
+# Drift note (32-12, задача 1, D-12/D-28: шаги «Волна»/«Аудитория» визарда задания, 604 -> 606
+# handlers -- PURE APPEND): 2 новых callback_query-хендлера (`game_task_wave_step`/
+# `game_task_audience_step`, шов `handlers/admin_game_tasks.py`) физически определены СРАЗУ
+# ПОСЛЕ `game_task_wizard_edit_field` (последний хендлер этого шва) и ПЕРЕД хвостовым импортом
+# `handlers/admin_game_waves.py` — встали в тот же промежуток порядка, между
+# `game_task_wizard_edit_field` и `show_wave_card`. Пересчитано RUNNING
+# `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним 604-строчным
+# снимком: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -906,6 +915,8 @@ admin|callback_query|game_task_deadline_custom|gtdeadline_custom
 admin|callback_query|game_task_wizard_edit_menu|gtwiz_edit_menu
 admin|callback_query|game_task_wizard_back|gtwiz_back
 admin|callback_query|game_task_wizard_edit_field|gtwiz_edit:*
+admin|callback_query|game_task_wave_step|gtwave:*
+admin|callback_query|game_task_audience_step|gtaud:*
 admin|callback_query|show_wave_card|wave:*
 admin|callback_query|wave_edit_field_start|waveedit:*
 admin|callback_query|wave_activate_confirm|waveactivate:*
@@ -1290,7 +1301,9 @@ def test_snapshot_total_handler_count_is_292():
     # (state:WaveCreate:*) + +9 admin.callback_query, handlers/admin_game_waves.py (584 -> 595).
     # 32-10 задача 3: карточка волны, +3 admin.message (state:WaveEdit:*) + +6
     # admin.callback_query (595 -> 604).
-    assert len(GOLDEN_SNAPSHOT) == 604
+    # 32-12 задача 1: шаги «Волна»/«Аудитория» визарда задания, +2 admin.callback_query
+    # (game_task_wave_step/game_task_audience_step) (604 -> 606).
+    assert len(GOLDEN_SNAPSHOT) == 606
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
