@@ -147,6 +147,35 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
     return claimed, None
 
 
+async def journal_entry_detail(admin_id: int, entry_id: int) -> tuple[dict | None, str | None]:
+    """Одна строка журнала + делегатские поля для экрана подтверждения возврата (`arj_back`,
+    план 31-11) — та же проверка права на город, что `return_to_moderation` делает перед
+    `claim` (T-31-11-01/05): подтверждение обязано перепроверить право САМО, клавиатура в чате
+    не истекает. `(None, причина)` — запись недоступна или вне scope менеджера; при успехе
+    `entry` несёт `full_name`/`username`/`event_city` (та же форма, что строки `journal_page`)
+    плюс `rule_display` (см. `_resolve_rule_display`) и `returnable` (живая по БД строка И
+    делегат всё ещё `rejected` — иначе экрану нечего подтверждать, см. `journal_page`)."""
+    entry = await get_auto_reject_log_entry(entry_id)
+    if entry is None:
+        return None, "Запись недоступна — обновите список"
+    telegram_id = entry["telegram_id"]
+    user = await get_user(telegram_id)
+    delegate_city = (user or {}).get("event_city")
+    if delegate_city:
+        visible = await per_city_visible_codes(admin_id)
+        if delegate_city not in visible:
+            return None, "Эта заявка не из вашего города"
+    entry = dict(entry)
+    entry["full_name"] = (user or {}).get("full_name")
+    entry["username"] = (user or {}).get("username")
+    entry["event_city"] = delegate_city
+    entry["rule_display"] = await _resolve_rule_display(entry)
+    entry["returnable"] = (
+        entry.get("returned_to_moderation_at") is None and (user or {}).get("status") == "rejected"
+    )
+    return entry, None
+
+
 async def _admin_scope(admin_id: int):
     """`per_city_visible_codes(admin_id)` -> `cities.city_scope` для SQL-фильтра журнала.
     `per_city_visible_codes` всегда возвращает либо ПОЛНЫЙ список кодов (суперадмин или

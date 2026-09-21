@@ -551,6 +551,11 @@ ADMIN_CAPS: dict[str, str] = {
     # arc_dellist/arc_preset/arc_dry/arc_gate/arc_dry_go/arc_cancel — все начинаются с "arc_").
     "arc_*": "settings",
     "state:RejectCond:*": "settings",
+    # Phase 31 (31-11, D-18/D-19): журнал «🤖 Автоотказы» — moderate_reg (работа модератора,
+    # не настройщика), хотя вход виден с экрана правил под settings; экран журнала
+    # перепроверяет своё право сам (не полагается на переход с чужого правом экрана).
+    "admin_reject_journal": "moderate_reg",
+    "arj_*": "moderate_reg",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
