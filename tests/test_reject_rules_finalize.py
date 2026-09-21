@@ -493,3 +493,53 @@ def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, mo
     assert "🤖" in text
     assert "Автоотказ" in text
     assert "Курс закрыт совсем." in text
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: правка анкеты снимает правило, и гарантии неприкосновенности очереди
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+async def _count_coins(user_id) -> int:
+    async with db._connect() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM coins WHERE user_id = ?", (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+def test_auto_rejected_referral_earns_nothing(tmp_path):
+    """31-CONTEXT.md «Claude's Discretion»: авто-начислений за рефералов сегодня нет вовсе —
+    тест фиксирует это инвариантом, чтобы автоотказ не стал лазейкой при будущей геймификации."""
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "manual")
+        await _enable_reject_rules()
+        await _seed_course_rule()
+        referrer_id = 910800900
+        draft = {
+            "telegram_id": UID, "kind": "new",
+            "answers": {"course": "1", "referrer_id": referrer_id},
+        }
+        result = await rf.finalize_data(UID, "@x", draft)
+        balance = await db.get_balance(referrer_id)
+        coins_rows = await _count_coins(referrer_id)
+        return result, balance, coins_rows
+
+    result, balance, coins_rows = asyncio.run(go())
+    assert result["status"] == "rejected"
+    assert balance == 0
+    assert coins_rows == 0
+
+
+def test_no_batch_sweep_functions_exist():
+    """Threat register T-31-06-01: пакетного прохода по очереди в проекте нет и не появится —
+    структурная проверка отсутствия таких функций (то же, что grep-акцептанс плана)."""
+    import re
+
+    for path in ("services/reject_rules.py", "services/reject_journal.py", "services/reg_finalize.py"):
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+        assert not re.search(r"def .*(apply_rules_to_queue|apply_to_pending|sweep)", src), path
