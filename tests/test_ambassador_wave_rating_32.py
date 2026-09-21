@@ -18,6 +18,7 @@ import asyncio
 import json
 from datetime import datetime
 
+import cities
 from config import config
 from database import db
 import services.ambassador_waves as waves
@@ -229,6 +230,79 @@ def test_equal_points_share_place_and_shift_next(tmp_path):
     assert places[1] == 1
     assert places[2] == 1
     assert places[3] == 3
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Городской скоуп волны (баг: `wave_rating` звал `list_ambassadors(city_scope=...)` сырой
+# строкой `wave["event_city"]`, а не дескриптором `cities.city_scope(...)`; на любой волне с
+# реальным городом `database.db._city_clause` падал `ValueError: too many values to unpack`
+# — см. `tests/test_ambassador_wave_scheduling_32.py::test_send_wave_end_ping_only_city_
+# managers_and_has_numbers`, где этот баг был задокументирован, но не исправлен)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_wave_rating_city_scoped_wave_includes_only_that_city(tmp_path):
+    """Волна Тюмени видит амбассадоров Тюмени, но не амбассадора явно другого города
+    (Москвы)."""
+    _ready(tmp_path)
+    _make_ambassador(1, event_city="tyumen")
+    _make_ambassador(2, event_city="msk")
+    wave_id = _run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-08 00:00:00", event_city="tyumen",
+    ))
+    task_id = _run(db.create_task("A", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id))
+    _run(db.add_coins(1, 10, source="task", task_id=task_id))
+
+    ids = {r["user_id"] for r in _run(waves.wave_rating(wave_id))}
+    assert 1 in ids
+    assert 2 not in ids
+
+
+def test_wave_rating_city_scoped_wave_view_and_end_summary_work(tmp_path):
+    """`wave_rating_view` и `wave_end_summary` не падают на волне с реальным городом."""
+    _ready(tmp_path)
+    _make_ambassador(1, event_city="tyumen")
+    wave_id = _run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-08 00:00:00", event_city="tyumen",
+    ))
+    task_id = _run(db.create_task("A", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id))
+    _run(db.add_coins(1, 10, source="task", task_id=task_id))
+
+    view = _run(waves.wave_rating_view(wave_id, 1))
+    assert view["own"]["points"] == 10
+
+    summary = _run(waves.wave_end_summary(wave_id))
+    assert summary["top"][0]["user_id"] == 1
+
+
+def test_wave_rating_all_cities_wave_unchanged(tmp_path):
+    """Волна «все города» (event_city=None) рейтингует всех, независимо от их города, — та же
+    семантика, что и до фикса."""
+    _ready(tmp_path)
+    _make_ambassador(1, event_city="tyumen")
+    _make_ambassador(2, event_city="msk")
+    _make_ambassador(3, event_city=None)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+
+    ids = {r["user_id"] for r in _run(waves.wave_rating(wave_id))}
+    assert ids == {1, 2, 3}
+
+
+def test_wave_rating_default_city_scope_catches_null_and_own_code(tmp_path):
+    """Волна дефолтного города (Москва, `cities.city_scope("msk")` — дескриптор ИСКЛЮЧЕНИЕМ
+    остальных городов) видит и явных московских амбассадоров, и тех, у кого `event_city`
+    пустой/NULL (не мигрировавшие до модуля городов), но не амбассадоров других городов."""
+    assert cities.city_scope("msk") == ("msk", ("spb", "tyumen"))
+    _ready(tmp_path)
+    _make_ambassador(1, event_city="msk")
+    _make_ambassador(2, event_city=None)
+    _make_ambassador(3, event_city="spb")
+    _make_ambassador(4, event_city="tyumen")
+    wave_id = _run(db.create_wave(
+        "2026-10-01 00:00:00", "2026-10-08 00:00:00", event_city="msk",
+    ))
+
+    ids = {r["user_id"] for r in _run(waves.wave_rating(wave_id))}
+    assert ids == {1, 2}
 
 
 def test_names_hidden_when_toggle_off_checks_structure_content(tmp_path):
