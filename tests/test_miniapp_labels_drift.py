@@ -38,8 +38,13 @@ REG_LABELS_KEYS_SNAPSHOT = [
     "reg_q_mini_projects", "reg_q_mini_portfolio", "reg_q_mini_direction", "reg_q_case_optin",
 ]
 
-GAME_LABELS_PUBLIC = ["category_label", "proof_types_label", "render_task_card_text",
-                      "sort_tasks_for_delegate", "task_deadline", "task_deadline_short"]
+GAME_LABELS_PUBLIC = [
+    # Phase 32 (32-04, задача 1): «без срока» и штраф на карточке — пять новых публичных
+    # имён добавлены в __all__ рядом со старыми шестью.
+    "category_label", "penalized_coins", "penalty_hint_line", "proof_types_label",
+    "render_task_card_text", "sort_tasks_for_delegate", "task_deadline",
+    "task_deadline_admin", "task_deadline_short", "task_deadline_text", "task_has_deadline",
+]
 
 
 def _loaded_aiogram(code: str) -> list[str]:
