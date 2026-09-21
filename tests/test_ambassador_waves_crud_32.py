@@ -377,6 +377,156 @@ def test_wave_create_go_creates_draft_with_continuing_number(tmp_path):
     assert new_wave["number"] == 2
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: карточка волны — правка / активация / удаление / копия
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_card_locked_fields_after_start_sent_shows_explanation(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    _run(db.set_wave_state(wid, "active"))
+    _run(db.mark_wave_started(wid, "2026-09-30 09:00:00"))
+    wave = _run(db.get_wave(wid))
+    text, kb = _run(w._wave_card_screen(ADMIN_ID, wave))
+    calls = _kb_callbacks(kb)
+    assert not any(c and c.startswith("waveedit:") and c.endswith(":dates") for c in calls)
+    assert "нельзя" in text.lower()
+    assert any(c and c.startswith("waveedit:") and c.endswith(":intro_text") for c in calls)
+
+
+def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))
+    calls = {"start_for_all": 0, "wave_end": [], "reminders": []}
+
+    async def fake_start_for_all(wave_id):
+        calls["start_for_all"] += 1
+        return 0
+
+    def fake_wave_end(wave_id, ends_at):
+        calls["wave_end"].append((wave_id, ends_at))
+
+    def fake_reminder(task_id, deadline):
+        calls["reminders"].append((task_id, deadline))
+        return True
+
+    monkeypatch.setattr(w, "schedule_wave_start_for_all", fake_start_for_all)
+    monkeypatch.setattr(w, "schedule_wave_end", fake_wave_end)
+    monkeypatch.setattr(w, "schedule_task_deadline_reminder", fake_reminder)
+
+    cb = FakeCallback(f"waveactivate_go:{wid}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_activate_go(cb, state))
+
+    assert calls["start_for_all"] == 1
+    assert len(calls["wave_end"]) == 1
+    wave = _run(db.get_wave(wid))
+    assert wave["state"] == "active"
+
+    # Повторная активация — состояние уже не 'draft', джоб больше не ставим.
+    cb2 = FakeCallback(f"waveactivate_go:{wid}", user_id=ADMIN_ID)
+    _run(w.wave_activate_go(cb2, state))
+    assert calls["start_for_all"] == 1
+    assert len(calls["wave_end"]) == 1
+    assert cb2.answers and cb2.answers[-1][1] is True
+
+
+def test_delete_requires_confirm_and_clears_wave_id_and_jobs(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    tid = _run(db.create_task("Задание", "Light", 10, "text", "2026-10-10 23:59:59", ADMIN_ID, wave_id=wid))
+
+    cancelled = {}
+
+    def fake_cancel_wave_jobs(wave_id, ambassador_ids):
+        cancelled["wave"] = (wave_id, list(ambassador_ids))
+
+    monkeypatch.setattr(w, "cancel_wave_jobs", fake_cancel_wave_jobs)
+
+    # Шаг подтверждения не удаляет.
+    confirm_cb = FakeCallback(f"wavedel:{wid}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_delete_confirm(confirm_cb, state))
+    assert _run(db.get_wave(wid)) is not None
+    edit_text = confirm_cb.message.edits[-1][0]
+    assert "пропадёт" in edit_text.lower()
+    assert "останется" in edit_text.lower() or "останутся" in edit_text.lower()
+
+    go_cb = FakeCallback(f"wavedel_go:{wid}", user_id=ADMIN_ID)
+    _run(w.wave_delete_go(go_cb, state))
+    assert _run(db.get_wave(wid)) is None
+    task = _run(db.get_task(tid))
+    assert task["wave_id"] is None
+    assert "wave" in cancelled
+
+
+def test_delete_announced_wave_rejected(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    _run(db.set_wave_state(wid, "announced"))
+    cb = FakeCallback(f"wavedel:{wid}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_delete_confirm(cb, state))
+    assert cb.answers and cb.answers[-1][1] is True
+    assert _run(db.get_wave(wid)) is not None
+
+
+def test_copy_from_card_opens_new_wave_card(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_game_waves as w
+    from handlers.states import WaveCreate
+    src_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    cb = FakeCallback(f"wavecopy:{src_id}", user_id=ADMIN_ID)
+    state = _new_state(ADMIN_ID)
+    _run(w.wave_copy_from_card(cb, state))
+    assert _run(state.get_state()) == WaveCreate.dates.state
+
+    _run(state.update_data(wc_starts=_dt("01.12.2026"), wc_ends=_dt_end("10.12.2026")))
+    msg = FakeMessage("")
+    _run(w._show_copy_confirm(msg, state))
+    _, kb = _last(msg)
+    go_callback = next(c for c in _kb_callbacks(kb) if c.startswith("wavecopy_go:"))
+
+    go_cb = FakeCallback(go_callback, user_id=ADMIN_ID, text="")
+    _run(w.wave_copy_go(go_cb, state))
+    assert len(go_cb.message.answers) == 2
+    card_text = go_cb.message.answers[-1][0]
+    assert "Волна 2" in card_text
+
+
+def test_wrong_city_manager_blocked_on_every_mutating_callback(tmp_path):
+    """T-32-10-01: право на город проверяется на КАЖДОМ изменяющем обработчике карточки."""
+    _ready(tmp_path)
+    _enable_cities()
+    city_a, city_b = _codes()
+    wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), event_city=city_b, created_by=ADMIN_ID))
+    _bind_manager(MSK_MANAGER_ID, city_a)
+    from handlers import admin_game_waves as w
+
+    checks = [
+        (w.wave_edit_field_start, f"waveedit:{wid}:dates"),
+        (w.wave_activate_confirm, f"waveactivate:{wid}"),
+        (w.wave_activate_go, f"waveactivate_go:{wid}"),
+        (w.wave_delete_confirm, f"wavedel:{wid}"),
+        (w.wave_delete_go, f"wavedel_go:{wid}"),
+        (w.wave_copy_from_card, f"wavecopy:{wid}"),
+    ]
+    for handler, data in checks:
+        cb = FakeCallback(data, user_id=MSK_MANAGER_ID)
+        state = _new_state(MSK_MANAGER_ID)
+        _run(handler(cb, state))
+        assert cb.answers, f"{handler.__name__} не ответил"
+        assert cb.answers[-1][1] is True, f"{handler.__name__} не показал alert"
+    # Волна не изменилась ни одним из вызовов.
+    wave = _run(db.get_wave(wid))
+    assert wave is not None
+    assert wave["event_city"] == city_b
+
+
 def test_copy_wave_skips_archived_tasks(tmp_path):
     _ready(tmp_path)
     src_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
