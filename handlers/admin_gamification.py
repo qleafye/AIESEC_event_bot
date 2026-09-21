@@ -84,8 +84,9 @@ from services.game_sync import request_resync as _request_game_resync, set_rebui
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
 from handlers.game_labels import proof_types_label as _registry_proof_types_label
-from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-35): единая формула штрафа/срок
+from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-27/D-35): единая формула штрафа/срок
     penalized_coins,
+    task_deadline_admin,
     task_has_deadline,
 )
 from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
@@ -132,13 +133,12 @@ logger = logging.getLogger(__name__)
 # moderation queue wave 4 will add. T-09-05: task text is shown to every delegate later
 # (wave 3, parse_mode="HTML") — escaped on EVERY render, not just once at creation.
 
-def _game_task_deadline_display(t: dict) -> str:
-    """dd.mm HH:MM (sketch, Экран 6) -- season lives inside one year, the year is noise for a
-    manager scanning 10-20 rows; the full date is still on the edit card's prompt."""
-    try:
-        return datetime.strptime(t["deadline_at"], "%Y-%m-%d %H:%M:%S").strftime("%d.%m %H:%M")
-    except (TypeError, ValueError):
-        return str(t["deadline_at"] or "—")
+def _game_task_deadline_line(t: dict) -> str:
+    """«до {дата}» при наличии срока — иначе просто «без срока» (не «до без срока», D-27).
+    Дата/литерал берутся из общего менеджерского помощника game_labels.task_deadline_admin —
+    приватного разбора deadline_at в этом файле больше нет."""
+    deadline = task_deadline_admin(t)
+    return f"до {deadline}" if task_has_deadline(t) else deadline
 
 
 async def _game_task_line(t: dict, index: int) -> str:
@@ -152,7 +152,7 @@ async def _game_task_line(t: dict, index: int) -> str:
     category = html_module.escape(await category_label(str(t["category"])))
     return (
         f"{index}. <b>{title}</b>\n"
-        f"{category} · {t['coins']}🪙 · до {_game_task_deadline_display(t)}"
+        f"{category} · {t['coins']}🪙 · {_game_task_deadline_line(t)}"
     )
 
 
@@ -737,7 +737,7 @@ async def _task_edit_screen(task: dict) -> tuple[str, InlineKeyboardMarkup]:
     submissions = await count_task_submissions(task_id)
     lines = [
         f"✏️ <b>{title}</b>",
-        f"{category} · {task['coins']}🪙 · до {_game_task_deadline_display(task)}",
+        f"{category} · {task['coins']}🪙 · {_game_task_deadline_line(task)}",
         f"Обложка: {'есть' if task.get('photo_file_id') else 'нет'}",
         f"Сдач: {submissions}",
     ]
