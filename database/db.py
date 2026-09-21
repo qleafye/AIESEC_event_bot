@@ -4547,8 +4547,12 @@ async def resolve_decision_managers(decided_by_ids: list[int]) -> dict[int, str]
     источник подписи — собственная строка менеджера в `users`: `full_name`, а если её нет —
     `@username`. Кого не нашли вовсе (менеджер никогда не писал боту, роль выдана вручную по
     id) — подпись `менеджер #<id>`, голый id без слова наружу не идёт (CLAUDE.md: кодовые
-    значения человеку не показываем)."""
-    ids = sorted({i for i in decided_by_ids if i})
+    значения человеку не показываем).
+
+    Phase 31 (31-02): `i > 0` (не просто `if i`) — сентинел автоотказа `AUTO_DECIDED_BY = -1`
+    (единственное объявление — план 31-05, `services/reject_journal.py`) не должен уезжать в
+    этот запрос: у него нет строки в `users`, и подпись «менеджер #-1» была бы враньём."""
+    ids = sorted({i for i in decided_by_ids if i and i > 0})
     if not ids:
         return {}
     placeholders = ",".join("?" for _ in ids)
@@ -4824,6 +4828,142 @@ async def count_reject_rules(*, enabled_only: bool = False) -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
+
+
+# ── Phase 31 (31-02, D-18/D-24): аксессоры auto_reject_log — журнал автоотказов ─────────────
+
+# Тот же приём, что `_COIN_JOURNAL_SELECT`: одна строка SELECT с JOIN переиспользуется списком,
+# счётчиком и выгрузкой — второй копии условия/join не заводится. LEFT JOIN (не INNER) на
+# случай, если строка users когда-нибудь пропадёт (users.telegram_id — не FK в этой схеме).
+_AUTO_REJECT_LOG_SELECT = (
+    "SELECT l.*, u.full_name, u.username, u.event_city FROM auto_reject_log l "
+    "LEFT JOIN users u ON u.telegram_id = l.telegram_id"
+)
+
+
+def _auto_reject_log_where(city_scope, include_returned: bool) -> tuple[str, list]:
+    """Общий WHERE для list_auto_reject_log/count_auto_reject_log — счётчик и список ОБЯЗАНЫ
+    ходить по одному набору условий (тот же принцип, что у queue_page), иначе «Всего: N»
+    расходится со списком под ним."""
+    where = []
+    params: list = []
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    if not include_returned:
+        where.append("l.returned_to_moderation_at IS NULL")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    return where_sql, params
+
+
+async def upsert_auto_reject_log(telegram_id: int, rule_ids_json: str, reject_texts_json: str,
+                                  now: str) -> int:
+    """D-24: НЕТ лимита попыток — это явное решение владельца, зафиксированное здесь
+    докстрингом, чтобы позже никто не «починил» это ограничением. Если у делегата есть ЖИВАЯ
+    строка (`returned_to_moderation_at IS NULL`) — один UPDATE, увеличивающий attempt_count и
+    переписывающий rule_ids/reject_texts/last_triggered_at; иначе INSERT с attempt_count = 1 и
+    first_triggered_at = last_triggered_at = now. RETURNING id — тот же приём, что
+    `approve_all_pending`."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "UPDATE auto_reject_log SET attempt_count = attempt_count + 1, "
+            "rule_ids = ?, reject_texts = ?, last_triggered_at = ? "
+            "WHERE telegram_id = ? AND returned_to_moderation_at IS NULL "
+            "RETURNING id",
+            (rule_ids_json, reject_texts_json, now, telegram_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            await db.commit()
+            return row["id"]
+        async with db.execute(
+            "INSERT INTO auto_reject_log (telegram_id, rule_ids, reject_texts, attempt_count, "
+            "first_triggered_at, last_triggered_at) VALUES (?, ?, ?, 1, ?, ?) RETURNING id",
+            (telegram_id, rule_ids_json, reject_texts_json, now, now),
+        ) as cursor:
+            row = await cursor.fetchone()
+        await db.commit()
+        return row["id"]
+
+
+async def list_auto_reject_log(*, city_scope=None, limit: int = 15, offset: int = 0,
+                                include_returned: bool = False) -> list[dict]:
+    """Страница журнала «🤖 Автоотказы» — JOIN к users ради full_name/username/event_city,
+    городской скоуп той же `_city_clause(scope, "u.event_city")`, что и остальные городские
+    выборки. Порядок — last_triggered_at DESC, id DESC (новые срабатывания сверху)."""
+    where_sql, params = _auto_reject_log_where(city_scope, include_returned)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"{_AUTO_REJECT_LOG_SELECT} {where_sql} "
+            "ORDER BY l.last_triggered_at DESC, l.id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_auto_reject_log(*, city_scope=None, include_returned: bool = False) -> int:
+    where_sql, params = _auto_reject_log_where(city_scope, include_returned)
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM auto_reject_log l LEFT JOIN users u "
+            f"ON u.telegram_id = l.telegram_id {where_sql}",
+            tuple(params),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+
+async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM auto_reject_log WHERE id = ?", (entry_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def claim_auto_reject_return(entry_id: int, admin_id: int, now: str) -> dict | None:
+    """Условный UPDATE ... WHERE returned_to_moderation_at IS NULL — выигрывает ровно один
+    вызов, та же дисциплина, что `claim_application_undo`: двойной тап по кнопке «вернуть на
+    модерацию» не имеет права сработать дважды."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "UPDATE auto_reject_log SET returned_to_moderation_at = ?, returned_by = ? "
+            "WHERE id = ? AND returned_to_moderation_at IS NULL RETURNING *",
+            (now, admin_id, entry_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+        await db.commit()
+        return dict(row) if row else None
+
+
+async def export_auto_reject_log_rows(*, city_scope=None) -> tuple[list[str], list[tuple]]:
+    """D-29: выгрузка журнала файлом для отчёта партнёрам. ВСЕ значения, пришедшие из анкеты
+    делегата или текста менеджера (ФИО/ник/тексты правил), проходят существующий `_csv_safe`
+    (T-31-02-02, CWE-1236) — вторую копию этой защиты не заводим. Возврат включается в выгрузку
+    (`include_returned=True`) — отчёт партнёрам обязан показывать полную историю, а не только
+    текущих отказников."""
+    headers = [
+        "ФИО", "Ник", "Город", "Первое срабатывание", "Последнее срабатывание",
+        "Попытки", "ID правил", "Тексты правил", "Возврат на модерацию",
+    ]
+    rows = await list_auto_reject_log(
+        city_scope=city_scope, limit=-1, offset=0, include_returned=True,
+    )
+    out_rows = []
+    for row in rows:
+        out_rows.append(tuple(_csv_safe(cell) for cell in (
+            row.get("full_name"), row.get("username"), row.get("event_city"),
+            row.get("first_triggered_at"), row.get("last_triggered_at"),
+            row.get("attempt_count"), row.get("rule_ids"), row.get("reject_texts"),
+            "да" if row.get("returned_to_moderation_at") else "нет",
+        )))
+    return headers, out_rows
 
 
 # ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
