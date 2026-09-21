@@ -94,7 +94,7 @@ async def _wave_card_screen(admin_id: int, wave: dict) -> tuple[str, InlineKeybo
     lines = [
         f"{aw.wave_number_label(wave)} · {_STATE_LABELS.get(wave['state'], wave['state'])}",
         f"{_fmt(wave['starts_at'])}–{_fmt(wave['ends_at'])}",
-        f"Вводный текст: {html_module.escape(intro) if intro else 'нет'}",
+        f"Вводный текст: {intro if intro else 'нет'}",
         f"Призовых мест: {prize if prize else 'как везде'}",
         f"Город: {await _city_display(wave.get('event_city'))}",
     ]
