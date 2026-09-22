@@ -411,6 +411,9 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             # Владелец 15.09: «последняя сверка» на карточке — тот же MAX(updated_at), что
             # раньше показывал снесённый экран «💬 Чат» в боте.
             "last_sync": queries.chat_last_sync_at(conn, chat["chat_id"]),
+            # Рейтинг активности делегатов в чате (задача 21.09): сообщения, ответы, медиа —
+            # агрегаты из chat_activity за всё время, отфильтровано по скоупу (город/сезон).
+            "leaderboard": queries.chat_activity_leaderboard(conn, scope, chat, limit=50),
         })
 
     return {
