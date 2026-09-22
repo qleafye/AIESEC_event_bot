@@ -1351,9 +1351,22 @@ async def _task_out_of_wave_recipients(task: dict) -> list[int]:
         return [int(r["telegram_id"]) for r in rows]
     city = task.get("event_city")
     users = await get_all_users_dicts()
-    if city:
-        return [int(u["telegram_id"]) for u in users if u.get("event_city") == city]
-    return [int(u["telegram_id"]) for u in users]
+    if not city:
+        return [int(u["telegram_id"]) for u in users]
+    # WR-03 (32-REVIEW.md), тот же хвост в задании вне волн: «пусто/неизвестно = дефолтный
+    # город» — везде в проекте (`cities.normalize_city`), а не только там, где город явно
+    # заполнен. Сырое `== city` теряло делегатов дефолтного города с `event_city IS NULL`
+    # (легаси-строки, импорт прошлого сезона) — они видят задание в списке (та же
+    # `visible_tasks_for`/`list_active_tasks(city_scope=...)` нормализация), но напоминание о
+    # дедлайне до них не доходило. Нормализация включается только при включённом модуле
+    # городов — при выключенном `event_city` у задания в принципе не выставляется.
+    if await cities.cities_module_on():
+        target = cities.normalize_city(city)
+        return [
+            int(u["telegram_id"]) for u in users
+            if cities.normalize_city(u.get("event_city")) == target
+        ]
+    return [int(u["telegram_id"]) for u in users if u.get("event_city") == city]
 
 
 async def send_task_deadline_reminder(task_id: int) -> None:

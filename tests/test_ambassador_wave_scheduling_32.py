@@ -508,6 +508,30 @@ def test_send_task_deadline_reminder_deadline_pushed_forward_reschedules(tmp_pat
     _run_scheduled(tmp_path, monkeypatch, body)
 
 
+def test_send_task_deadline_reminder_out_of_wave_default_city_legacy_delegate_gets_it(
+    tmp_path, monkeypatch,
+):
+    """32-FIX-common-2 (хвост WR-03): задание ВНЕ волн привязано к дефолтному городу
+    (`event_city="msk"`), делегат — легаси-строка с `event_city IS NULL`. Он видит это же
+    задание в списке (`list_active_tasks(city_scope=...)` уже нормализует пустой город в
+    дефолтный), но раньше `_task_out_of_wave_recipients` сравнивал `u["event_city"] == city`
+    сырым равенством — `None != "msk"` молча выкидывал его из напоминания. Делегат другого
+    (не дефолтного) города остаётся исключён."""
+    _ready(tmp_path, "t2j.db")
+    bot = _with_bot(monkeypatch)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _seed_user(1, event_city=None)  # легаси дефолтного города (msk) — как ~590 строк на проде
+    _seed_user(2, event_city="spb")  # другой город — не должен получить
+    task_id = _run(db.create_task(
+        "Задание вне волн", "Light", 10, "photo", "2026-10-05 12:00:00", None, event_city="msk",
+    ))
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    recipients = [c[0] for c in bot.sent]
+    assert recipients == [1]
+
+
 def test_reconcile_wave_jobs_idempotent_expected_job_ids_no_sends(tmp_path, monkeypatch):
     _ready(tmp_path, "t2f.db")
     bot = _with_bot(monkeypatch)
