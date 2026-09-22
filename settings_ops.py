@@ -562,6 +562,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # раздела «📋 Заявки» в admin_sections.SECTIONS, сразу перед toggle_reg_edit_remoderation
     # (тот вне этого словаря — его SETTINGS_SCHEMA group="reg", не "toggles").
     "reg_edit_policy": "apps",
+    # Квик 260922-wrg: «можно ли отклонённому подать анкету заново в этом сезоне» — строка
+    # ("toggle", …) раздела «📋 Заявки» в admin_sections.SECTIONS, сразу после
+    # toggle_reg_edit_policy (та же пара «можно ли», что и reg_edit_policy выше).
+    "reg_resubmit_after_reject": "apps",
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — строки ("toggle", …) раздела
     # «📝 Анкета» в admin_sections.SECTIONS, сразу после toggle_resume_filename_short_mode
     # (артборд 13, порядок: мастер → чипы → поиск → образование → повторяемые → счётчик →

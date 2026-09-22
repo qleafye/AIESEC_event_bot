@@ -64,6 +64,7 @@ from reg_engine import multi_max
 # ярус A i18n_ui_en, не второй список литералов.
 from handlers import reg_i18n
 from i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
+from services import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,13 @@ async def rereg_start(callback: types.CallbackQuery, state: FSMContext):
             await reg_i18n.tr_for(callback, "Ты уже зарегистрирован(а) на этот сезон"),
             show_alert=True,
         )
+        return
+    # Квик 260922-wrg (задача 1, T-wrg-01): resubmit_gate читает СНОВА ту же строку user,
+    # уже загруженную ПО ТАПНУВШЕМУ выше — при запрете FSM не трогаем вовсе (не state.clear
+    # ниже, не _prior_answers), делегат остаётся с прежним экраном и алертом закрытия.
+    _rs_ok, _rs_text = await reg_edit_policy.resubmit_gate(user)
+    if not _rs_ok:
+        await callback.answer((_rs_text or "")[:200], show_alert=True)
         return
     await callback.answer()
     try:

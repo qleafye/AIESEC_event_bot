@@ -125,6 +125,11 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # «что делать с правкой» (toggle_reg_edit_remoderation): читается парой, сначала
         # разрешение, потом последствие правки.
         ("toggle", "toggle_reg_edit_policy"),
+        # Квик 260922-wrg: «можно ли отклонённому подать анкету заново» — СРАЗУ ПОСЛЕ
+        # toggle_reg_edit_policy (обе строки про «можно ли делегату что-то сделать», читаются
+        # подряд), ПЕРЕД toggle_reg_edit_remoderation (та — про последствие правки, третья в
+        # тройке, но своя пара с ней не рвётся: обе идут ДО remoderation).
+        ("toggle", "toggle_reg_resubmit_after_reject"),
         ("toggle", "toggle_reg_edit_remoderation"),
         ("toggle", "toggle_quiet_hours"),
         # Quick 260911-805 (W4-03): вход на экран «🌙 Тихие часы» — СРАЗУ ПОД строкой тумблера

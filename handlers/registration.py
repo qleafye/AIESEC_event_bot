@@ -2024,7 +2024,15 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.error(f"reg_resume draft lookup failed for {user_id}: {e}")
         _draft_probe = None
     _not_registered_or_rejected = (not user) or ((user.get("status") or "approved") == "rejected")
-    if _draft_probe and _draft_probe.get("kind") == "new" and _not_registered_or_rejected:
+    # Квик 260922-wrg (задача 1): черновик первичной подачи отклонённого делегата предлагаем
+    # «Продолжить/Заново» только если ему вообще можно подать заново в этом сезоне — при
+    # запрете поток обязан дойти до ветки возвращенца ниже и увидеть текст закрытия, а не
+    # экран восстановления черновика, который всё равно упрётся в finalize_registration.
+    # Для незарегистрированного (user is None) resubmit_gate не наш гейт вовсе (True, None).
+    _draft_resume_allowed = True
+    if user and (user.get("status") or "approved") == "rejected":
+        _draft_resume_allowed, _ = await reg_edit_policy.resubmit_gate(user)
+    if _draft_probe and _draft_probe.get("kind") == "new" and _not_registered_or_rejected and _draft_resume_allowed:
         try:
             _resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
         except Exception as e:
@@ -2053,6 +2061,16 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
         is_returning = False
     if is_returning:
+        # Квик 260922-wrg (задача 1): отклонённый ТЕКУЩЕГО сезона при «нельзя» не видит
+        # баннер возвращенца и кнопку rereg_start вовсе — только текст закрытия. Возвращенца
+        # ПРОШЛОГО сезона (и отклонённого, и approved/pending) resubmit_gate не касается — он
+        # всегда True (не наш гейт, reg_engine.is_past_season_row в resubmit_gate это уже
+        # учитывает), сюда попадает read-through без разницы в поведении.
+        _rs_ok, _rs_text = await reg_edit_policy.resubmit_gate(user)
+        if not _rs_ok:
+            await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(user_id), user_id)
+            await reg_i18n.say(message, _rs_text)
+            return
         prev_label = (user.get("season") or "").strip() or "прошлом событии"
         returning_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
         returning_text = await reg_i18n.tr_for(message, returning_text)  # Quick 260906: ДО .replace(season)!
@@ -2443,6 +2461,22 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     data = await state.get_data()
     uid = message.from_user.id
     username = f"@{message.from_user.username}" if message.from_user.username else "-"
+
+    # Квик 260922-wrg (задача 1, T-wrg-01): страховка на случай обхода /start и rereg_start —
+    # если строка пользователя УЖЕ отклонена и resubmit_gate её запрещает, ничего не пишем.
+    # Fail-soft читается: сбой get_user деградирует к «нет строки», как и остальные чтения
+    # в этой функции — не блокирует легитимную первичную подачу.
+    try:
+        _existing_user = await get_user(uid)
+    except Exception as e:
+        logger.error(f"finalize_registration: get_user failed for {uid}: {e}")
+        _existing_user = None
+    if _existing_user and (_existing_user.get("status") or "approved") == "rejected":
+        _rs_ok, _rs_text = await reg_edit_policy.resubmit_gate(_existing_user)
+        if not _rs_ok:
+            await state.clear()
+            await _safe_answer(message, _rs_text, reply_markup=await get_main_menu_kb(uid))
+            return
 
     # Phase 21 (21-09, T-21-02): бот теперь САМ ведёт reg_drafts (_start_registration_flow +
     # _sync_draft_out/_stamp_reg_step, план 21-09) — claim_reg_draft обычно находит и забирает

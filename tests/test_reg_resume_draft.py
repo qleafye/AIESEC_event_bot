@@ -726,3 +726,38 @@ def test_resume_file_edit_patch_does_not_crash_on_missing_column(tmp_path):
     result, user = asyncio.run(go())
     assert user is not None
     assert user["resume_file_id"] == "FILE_ID_2"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260922-wrg (задача 1): черновик kind='new' отклонённого текущего сезона при «нельзя»
+# (reg_resubmit_after_reject=deny) не предлагает «Продолжить/Заново» — поток доходит до ветки
+# возвращенца в cmd_start и видит текст закрытия. Полная параметрика (deny/allow, прошлый
+# сезон) живёт в tests/test_reg_edit_policy_260911.py; здесь — регресс-смоук в родном файле
+# черновика, тот же RESUME_UID-паттерн, что у соседних тестов выше.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+RESUBMIT_DRAFT_UID = USER_ID + 950
+
+
+def test_new_draft_not_offered_for_rejected_current_season_when_resubmit_denied(tmp_path):
+    _use_tmp_db(tmp_path, "wrg_resubmit_draft.db")
+
+    async def go():
+        await db.set_setting("event_season", "YL'26")
+        await db.add_user({
+            "telegram_id": RESUBMIT_DRAFT_UID, "full_name": "Отклонённый Делегат",
+            "registration_date": "2026-08-01 10:00:00", "season": "YL'26",
+        })
+        await db.set_user_status(RESUBMIT_DRAFT_UID, "rejected")
+        await _seed_new_draft(RESUBMIT_DRAFT_UID)
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("reg_resubmit_closed_text", "Повторная подача закрыта.")
+        msg = _KBCapturingMessage(RESUBMIT_DRAFT_UID, "delegate")
+        state = _new_state(RESUBMIT_DRAFT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = asyncio.run(go())
+    inline = _inline_kb_msgs(msg)
+    assert not any("reg_resume:continue" in _callback_datas(rm) for (_, rm, _) in inline)
+    assert any(t == "Повторная подача закрыта." for t in _texts(msg))
