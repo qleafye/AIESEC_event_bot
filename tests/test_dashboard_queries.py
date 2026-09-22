@@ -192,6 +192,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
         row = kpi_row(conn, Scope())
     assert row == {
         "total": 0, "today": 0, "week": 0, "week_delta": 0,
+        "total_real": 0, "today_real": 0, "week_real": 0, "week_delta_real": 0,
         "conversion": None, "tracking_since": None,
         "processing_avg_minutes": None, "processing_avg_label": "—",
         "game_review_avg_minutes": None, "game_review_avg_label": "—",

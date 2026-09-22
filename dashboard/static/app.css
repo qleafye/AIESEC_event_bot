@@ -303,6 +303,7 @@ a, button {
 
 @media (min-width: 900px) {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+  .kpi-grid--3 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
   /* Шесть плиток в один ряд нечитаемы (в плитках времени — текст вроде «меньше минуты»),
      поэтому раскладка 3×2, а не 6×1. */
