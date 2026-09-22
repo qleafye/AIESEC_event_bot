@@ -140,8 +140,6 @@
           <tr>
             <th>Делегат</th>
             <th class="num">Сообщений</th>
-            <th class="num">Ответов</th>
-            <th class="num">% ответов</th>
             <th class="num">С медиа</th>
           </tr>
         </thead>
@@ -150,15 +148,13 @@
           <tr>
             <td data-label="Делегат">{{ row.display_name }}</td>
             <td data-label="Сообщений" class="num">{{ row.messages | thousands }}</td>
-            <td data-label="Ответов" class="num">{{ row.replies | thousands }}</td>
-            <td data-label="% ответов" class="num">{% if row.reply_rate is none %}—{% else %}{{ row.reply_rate }}%{% endif %}</td>
             <td data-label="С медиа" class="num">{{ row.media | thousands }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       </div>
-      <p class="empty-note">Топ-50 по числу сообщений за всё время. % ответов — доля сообщений-ответов (reply) от общего числа.</p>
+      <p class="empty-note">Топ-50 по числу сообщений за всё время.</p>
       {% else %}
       <p class="empty-note">Появится после первых сообщений в чате (нужен включённый учёт активности).</p>
       {% endif %}
