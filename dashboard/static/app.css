@@ -303,7 +303,6 @@ a, button {
 
 @media (min-width: 900px) {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
-  .kpi-grid--3 { grid-template-columns: repeat(3, 1fr); }
   .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
   /* Шесть плиток в один ряд нечитаемы (в плитках времени — текст вроде «меньше минуты»),
      поэтому раскладка 3×2, а не 6×1. */
@@ -323,6 +322,10 @@ a, button {
 }
 
 .kpi.primary { border-left: 3px solid var(--accent); }
+
+/* Ряд «реальные заявки» — те же карточки и та же 4-колоночная сетка, что у основного ряда,
+   чтобы плитки вставали под соответствующие колонки, а не плоским вложенным рядом. */
+.kpi-grid--real { margin-top: var(--gap); }
 
 /* Display-роль (UI-SPEC §Typography, 19.1-03): Raleway 800 tabular-nums — отступление от
    более раннего dataviz-аудита (Lato 700 пропорциональные), явно затребовано этим планом. */
