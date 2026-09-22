@@ -1255,17 +1255,21 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         tasks = await list_wave_tasks(wave_id, active_only=True)
         lang, tr_map = await i18n.context(ambassador_id)
 
+        # IN-06 (32-REVIEW.md): «баллов»/«до» собирались f-строкой в обход i18n.tr — англоязычный
+        # амбассадор видел их русскими, хотя весь остальной текст ЛС переведён.
+        coins_word = i18n.tr("баллов", lang, tr_map)
+        deadline_prefix = i18n.tr("до", lang, tr_map)
         lines = []
         for t in tasks:
             # WR-12: `game_labels.task_deadline_text` уже возвращает готовое «без срока» для
             # задания без дедлайна — приклеивать «до » нужно ТОЛЬКО когда срок реально есть,
             # иначе делегат видит «до без срока».
             if game_labels.task_has_deadline(t):
-                deadline_tail = f"до {await game_labels.task_deadline_text(t)}"
+                deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t)}"
             else:
                 deadline_tail = await game_labels.task_deadline_text(t)
             lines.append(
-                f"• {html.escape(str(task_title(t)))} — {int(t['coins'])} баллов, {deadline_tail}"
+                f"• {html.escape(str(task_title(t)))} — {int(t['coins'])} {coins_word}, {deadline_tail}"
             )
         tasks_block = "\n".join(lines)
 

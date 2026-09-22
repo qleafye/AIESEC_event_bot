@@ -45,7 +45,7 @@ from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 
     task_visible_to,  # WR-08 (32-REVIEW.md): гейт прямого входа по task_id
 )
 from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
-    current_wave_for, wave_rating_view, wave_number_label, wave_eligible, wave_visibility_ids,
+    current_wave_for, wave_rating_view, wave_eligible, wave_visibility_ids,
     latest_closing_wave_for,  # IN-09б (32-REVIEW.md): рейтинг closing-волны после ends_at
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
@@ -1570,7 +1570,9 @@ async def _wave_rating_screen(
     tr_map = tr_map or {}
     wave = await get_wave(wave_id)
     header = reg_i18n.tr_text(await get_setting_typed("wave_rating_header_text"), lang, tr_map)
-    lines = [f"{header} · {wave_number_label(wave)}"]
+    # IN-06: «Волна N» — не через reg_i18n, слово переводится отдельно (номер языка не имеет).
+    wave_word = reg_i18n.tr_text("Волна", lang, tr_map)
+    lines = [f"{header} · {wave_word} {(wave or {}).get('number', '?')}"]
 
     view = await wave_rating_view(wave_id, viewer_id)
     if view["rows"]:

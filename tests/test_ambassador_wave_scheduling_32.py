@@ -230,6 +230,28 @@ def test_send_wave_start_dm_task_without_deadline_labeled(tmp_path, monkeypatch)
     assert "до без срока" not in text  # WR-12: приклеенное "до " не должно дублировать текст
 
 
+def test_send_wave_start_dm_english_ambassador_gets_translated_task_line(tmp_path, monkeypatch):
+    """32-FIX-common-2 (хвост IN-06): «баллов»/«до» собирались f-строкой ПОВЕРХ уже переведённого
+    шаблона (`i18n.fill_template` подставляет {tasks} ПОСЛЕ перевода шаблона) — англоязычный
+    амбассадор видел строку задания русской, даже когда сам шаблон переведён. Проверяем именно
+    строку задания (единственное, что чинит этот фикс) — перевод самого шаблона `wave_start_
+    message_text` зависит от того, засеяна ли `database.db.translations`, что вне этого теста."""
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    _run(db.set_setting("delegate_lang_enabled", "on"))
+    _run(db.set_user_lang(1, "en"))
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    _run(db.create_task("Task", "Light", 10, "photo", "2026-10-05 12:00:00", None, wave_id=wave_id))
+
+    _run(sched.send_wave_start_dm(wave_id, 1))
+    text = bot.sent[0][1]
+    assert "Task — 10 points, until 05.10" in text
+    assert "10 баллов" not in text
+    assert "до 05.10" not in text
+
+
 def test_send_wave_start_dm_intro_html_not_double_escaped(tmp_path, monkeypatch):
     """WR-09: `intro_text` в БД — уже готовый HTML (`message.html_text` на записи); повторный
     `html.escape` на показе превращал форматирование менеджера в буквальные `&amp;`/`<b>`."""

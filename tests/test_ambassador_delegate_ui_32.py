@@ -327,6 +327,22 @@ def test_wave_rating_screen_shows_top_and_own_line_when_names_on(client):  # noq
     assert "Второй Амбассадор" in text  # тумблер включён по умолчанию — топ с именами
 
 
+def test_wave_rating_screen_wave_label_translated_for_english_ambassador(client):  # noqa: F811
+    """32-FIX-common-2 (хвост IN-06): метка «Волна N» собиралась через `wave_number_label` в
+    обход `reg_i18n` — англоязычный амбассадор видел русское слово «Волна» посреди
+    переведённого экрана рейтинга."""
+    wave_id = _active_wave()
+    _make_ambassador(DELEGATE_ID, since=_fmt(datetime.now() - timedelta(days=10)))
+    _run(bot_db.set_setting("delegate_lang_enabled", "on"))
+    _run(bot_db.set_user_lang(DELEGATE_ID, "en"))
+
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+    text = cb.message.edits[0][0]
+    assert "Wave 1" in text
+    assert "Волна" not in text
+
+
 def test_wave_rating_hides_other_names_when_toggle_off_but_keeps_own_line(client):  # noqa: F811
     wave_id = _active_wave()
     since = _fmt(datetime.now() - timedelta(days=10))
