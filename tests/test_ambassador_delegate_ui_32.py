@@ -418,6 +418,40 @@ def test_ambassador_path_pick_marks_current_choice_on_button(client):  # noqa: F
     assert any(t.startswith("✅") and "Зову людей" in t for t in labels)
 
 
+def test_ambassador_path_pick_none_stores_null_not_literal(client):  # noqa: F811
+    """32-FIX-common-2 (хвост IN-03): «none» из callback обязан лечь в БД как NULL, а не
+    литеральной строкой "none" — та же семантика, что у «никогда не выбирал»."""
+    _make_ambassador(DELEGATE_ID)
+    _run(bot_db.set_ambassador_path(DELEGATE_ID, "invite"))  # сначала явный выбор
+    cb = _FakeRegCallback(DELEGATE_ID, data="ambpath:none")
+    _run(ua_mod.ambassador_path_pick(cb, _FakeBot()))
+    assert _run(bot_db.get_user(DELEGATE_ID))["ambassador_path"] is None
+
+    _text, kw = cb.message.edits[0]
+    labels = [b.text for row in kw["reply_markup"].inline_keyboard for b in row]
+    assert any(t.startswith("✅") and "Пока не выбрал" in t for t in labels)
+
+
+def test_ambassador_path_pick_rejects_unknown_value_silently(client):  # noqa: F811
+    """32-FIX-common-2 (хвост IN-03): значение из callback.data — белый список
+    invite/content/none; произвольная строка (поддельный/устаревший callback) не пишется в БД
+    и не перерисовывает экран."""
+    _make_ambassador(DELEGATE_ID)
+    cb = _FakeRegCallback(DELEGATE_ID, data="ambpath:sql_injection_or_garbage")
+    _run(ua_mod.ambassador_path_pick(cb, _FakeBot()))
+    assert _run(bot_db.get_user(DELEGATE_ID))["ambassador_path"] is None
+    assert not cb.message.edits
+
+
+def test_ambassador_path_pick_rejects_non_ambassador(client):  # noqa: F811
+    """32-FIX-common-2 (хвост IN-03): кнопка не должна появляться у обычного делегата, но
+    старый/поддельный callback по тому же data не должен ничего писать за него."""
+    cb = _FakeRegCallback(DELEGATE_ID, data="ambpath:invite")  # DELEGATE_ID НЕ амбассадор
+    _run(ua_mod.ambassador_path_pick(cb, _FakeBot()))
+    assert _run(bot_db.get_user(DELEGATE_ID))["ambassador_path"] is None
+    assert not cb.message.edits
+
+
 def test_ambassador_path_change_does_not_change_visible_task_set(client):  # noqa: F811
     """D-24: путь меняет ТОЛЬКО порядок показа — состав заданий (как множество id) до и после
     смены пути обязан совпасть байт-в-байт."""
