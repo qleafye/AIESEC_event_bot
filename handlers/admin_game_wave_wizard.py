@@ -266,12 +266,23 @@ async def wave_edit_dates_step(message: types.Message, state: FSMContext):
 
 @router.message(WaveEdit.intro_text)
 async def wave_edit_intro_step(message: types.Message, state: FSMContext):
+    # IN-04: фото/стикер/голосовое без подписи — `message.text` и `message.caption` оба None;
+    # без этой проверки шаг молча писал бы пустую строку в `intro_text`, стирая прежний текст
+    # (раньше `message.html_text or message.text or ""` давало то же самое "" на пустом входе,
+    # только менеджер об этом не узнавал). FSM не сбрасываем — менеджер может прислать текст
+    # ещё раз, попытка не потрачена впустую.
+    if not (message.text or message.caption):
+        await message.answer(
+            "Не понял — пришлите текстовое сообщение (можно с форматированием), или «-», "
+            "чтобы убрать вводный текст."
+        )
+        return
     data = await state.get_data()
     wave_id = data.get("we_wave_id")
     wave = await _wave_edit_guard(message, state, wave_id, "intro_text")
     if wave is None:
         return
-    raw = (message.html_text or message.text or "").strip()
+    raw = (message.html_text or "").strip()
     new_intro = None if raw == "-" else raw
     await update_wave(wave_id, intro_text=new_intro)
     await _wave_edit_done(message, state, wave_id, "✅ Вводный текст обновлён.")
@@ -436,7 +447,15 @@ async def _wave_dates_collected(message: types.Message, state: FSMContext, data:
 
 @router.message(WaveCreate.intro)
 async def wave_create_intro_step(message: types.Message, state: FSMContext):
-    text = (message.html_text or message.text or "").strip()
+    # IN-04: та же проверка, что у wave_edit_intro_step — фото/стикер/голосовое без подписи не
+    # должны молча стать «волной без вводного текста», FSM не сбрасываем.
+    if not (message.text or message.caption):
+        await message.answer(
+            "Не понял — пришлите текстовое сообщение (можно с форматированием) или нажмите "
+            "«⏭ Без текста»."
+        )
+        return
+    text = (message.html_text or "").strip()
     await state.update_data(wc_intro=text or None)
     await _show_create_confirm(message, state)
 
