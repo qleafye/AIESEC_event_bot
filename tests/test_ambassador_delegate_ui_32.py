@@ -377,6 +377,51 @@ def test_wave_rating_no_active_wave_shows_closed_text_not_alert(client):  # noqa
     assert "нет активной волны" in text.lower() or "волн" in text.lower()
 
 
+def test_wave_rating_after_ends_at_closing_wave_shows_final_table_not_closed_text(client):  # noqa: F811
+    """32-FIX-common-2 (хвост IN-09б): после `ends_at` `current_wave_for` больше не матчит
+    волну по датам, но пока итоги не объявлены (`closing`), участник обязан видеть финальную
+    таблицу с пометкой, а не «нет активной волны» — снимок призёров ещё не готов, но рейтинг
+    посчитать можно (та же `wave_rating`, что и во время волны)."""
+    since = _fmt(datetime.now() - timedelta(days=10))
+    wave_id = _run(bot_db.create_wave(
+        starts_at=since, ends_at=_fmt(datetime.now() - timedelta(hours=1)),
+    ))
+    _run(bot_db.set_wave_state(wave_id, "active"))
+    _run(bot_db.set_wave_state(wave_id, "closing", expected_state="active"))
+    _make_ambassador(DELEGATE_ID, since=since)
+    task_id = _task("Задание волны для рейтинга", wave_id=wave_id, audience="ambassadors")
+    _run(bot_db.add_coins(DELEGATE_ID, 40, source="task", task_id=task_id))
+
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+
+    assert not any(show_alert for _t, show_alert in cb.alerts)
+    assert cb.message.edits
+    text = cb.message.edits[0][0]
+    assert "Волна закончилась — итоги готовятся." in text
+    assert "40" in text  # финальная таблица реального рейтинга, не пустой экран
+
+
+def test_wave_rating_after_ends_at_no_closing_wave_still_shows_closed_text(client):  # noqa: F811
+    """Волна уже `announced` (итоги объявлены) — это НЕ closing, старое пустое состояние без
+    изменений."""
+    since = _fmt(datetime.now() - timedelta(days=10))
+    wave_id = _run(bot_db.create_wave(
+        starts_at=since, ends_at=_fmt(datetime.now() - timedelta(hours=1)),
+    ))
+    _run(bot_db.set_wave_state(wave_id, "active"))
+    _run(bot_db.set_wave_state(wave_id, "closing", expected_state="active"))
+    _run(bot_db.announce_wave_atomic(wave_id, [], _fmt(datetime.now())))
+    _make_ambassador(DELEGATE_ID, since=since)
+
+    cb = _FakeWaveCallback(DELEGATE_ID)
+    _run(ua_mod.show_wave_rating(cb))
+
+    assert not any(show_alert for _t, show_alert in cb.alerts)
+    text = cb.message.edits[0][0]
+    assert "итоги готовятся" not in text.lower()
+
+
 # ── Задача 3: путь, выход/возврат амбассадора, подпись начисления за приглашённого ──────────
 
 from handlers import reg_ambassador as amb_mod  # noqa: E402

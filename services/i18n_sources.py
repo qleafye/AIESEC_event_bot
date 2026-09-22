@@ -424,6 +424,8 @@ def code_literals() -> list[tuple[str, str]]:
         "Рейтинг волны виден только участникам текущей волны амбассадоров.",
     ))
     items.append(("lit:user_actions.ambassador_leave_confirm_yes", "Да, выйти"))
+    # 32-FIX-common-2 (хвост IN-09б): рейтинг closing-волны без объявленных итогов.
+    items.append(("lit:user_actions.wave_rating_closing_note", "Волна закончилась — итоги готовятся."))
 
     items.append(("lit:payment.receipt_bad_mime", "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото."))
     items.append(("lit:payment.receipt_too_large_doc", "❌ Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера."))
