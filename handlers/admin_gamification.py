@@ -86,11 +86,13 @@ from services.ambassador_waves import can_edit_wave, wave_editable_fields
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
 from handlers.game_labels import proof_types_label as _registry_proof_types_label
-from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-27/D-35): единая формула штрафа/срок
-    penalized_coins,
+from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/подсказка штрафа
     task_deadline_admin,
     task_has_deadline,
 )
+from services.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
+# та же функция, что зовёт Mini App (miniapp/routers/review.py::review_approve), больше не
+# собственная копия здесь.
 from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
     _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
     _coinsman_amount_kb, _coinsman_confirm_kb, _coinsman_person_kb, _proof_types_label,  # noqa: F401
@@ -1290,20 +1292,6 @@ async def _get_submission_and_task(submission_id: int) -> tuple[dict | None, dic
     return submission, task
 
 
-async def _award_for(submission: dict, task: dict, base_coins: int) -> tuple[int, bool]:
-    """Сколько начислить за сдачу с учётом просрочки, и была ли просрочка. Единственное место в
-    файле, где считается штраф (T-32-07-01/02) — обе точки одобрения (`grev_approve`,
-    `grev_approve_amount_step`) зовут ЭТО, а не пересчитывают штраф сами. Просрочка — та же
-    строковая идиома, что и у бейджа карточки проверки (`handlers/game_review_render.py`):
-    `submitted_at > deadline_at` как строки. Формула штрафа — единственная на проект,
-    `game_labels.penalized_coins`."""
-    late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
-    if not late:
-        return base_coins, False
-    percent = await get_setting_typed("game_late_penalty_percent")
-    return penalized_coins(base_coins, percent), True
-
-
 async def _show_current_submission(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending submission (DB-driven, restart-safe) — byte-for-
     byte the same batched-pagination loop as `_show_current_card` (limit=50 per batch, CLAUDE.md:
@@ -1499,7 +1487,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
     base_coins = task["coins"]
     # Phase 32 (32-07, D-35): штраф за просрочку — ДО claim_submission, одно и то же число
     # уходит и в запись сдачи, и в журнал монет (T-32-07-02); нулевой процент не меняет coins.
-    coins, late = await _award_for(submission, task, base_coins)
+    coins, late = await award_for(submission, task, base_coins)
     # T-09-11: add_coins is called ONLY from this branch, after claim_submission's atomic
     # UPDATE ... WHERE status = 'pending' actually flipped the row — a concurrent second tap
     # on the same card gets won=False and never reaches add_coins (exactly one credit, ever).
@@ -1628,7 +1616,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
     base_amount = amount
     # Phase 32 (32-07, D-35): тот же штраф, что у grev_approve — «своя сумма» не обходит правило
     # (T-32-07-01).
-    coins, late = await _award_for(submission, task, base_amount)
+    coins, late = await award_for(submission, task, base_amount)
     won = await claim_submission(sid, message.from_user.id, "approved", coins_awarded=coins)
     if won:
         await add_coins(
