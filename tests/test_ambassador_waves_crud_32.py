@@ -39,6 +39,9 @@ class FakeMessage:
     def __init__(self, text=None, user_id=ADMIN_ID):
         self.text = text
         self.html_text = text
+        # IN-04: реальный `aiogram.types.Message` всегда несёт `caption` (None для сообщений
+        # без медиа) — по умолчанию тоже None, тесты фото/стикера без подписи задают его сами.
+        self.caption = None
         self.from_user = FakeUser(user_id)
         self.answers = []
         self.edits = []
@@ -751,3 +754,44 @@ def test_wave_copy_last_explains_when_nothing_editable(tmp_path):
     text, kb = cb.message.answers[-1]
     assert "нечего" in text.lower()
     assert "wavenew" in _kb_callbacks(kb)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревизия 32-FIX-common-2: IN-04 — фото/стикер/голосовое без подписи на шаге вводного текста
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_wave_edit_intro_step_asks_for_text_on_message_without_text_or_caption(tmp_path):
+    """IN-04: фото/стикер/голосовое без подписи — `message.text` и `message.caption` оба None.
+    Раньше это молча стирало прежний вводный текст (пустая строка, а не «-», — не запускала
+    ветку сброса, но и не сохраняла старое значение). FSM не сбрасывается — менеджер может
+    прислать текст ещё раз."""
+    _ready(tmp_path)
+    from handlers import admin_game_wave_wizard as w
+    from handlers.states import WaveEdit
+    wid = _run(db.create_wave(
+        _dt("01.10.2026"), _dt_end("10.10.2026"), intro_text="Старый текст", created_by=ADMIN_ID,
+    ))
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"we_wave_id": wid}))
+    _run(state.set_state(WaveEdit.intro_text))
+    msg = FakeMessage(text=None)  # caption тоже None по умолчанию (см. FakeMessage.__init__)
+    _run(w.wave_edit_intro_step(msg, state))
+    wave = _run(db.get_wave(wid))
+    assert wave["intro_text"] == "Старый текст"
+    assert _run(state.get_state()) == WaveEdit.intro_text.state
+    assert "текстовое" in msg.answers[-1][0].lower()
+
+
+def test_wave_create_intro_step_asks_for_text_on_message_without_text_or_caption(tmp_path):
+    """IN-04: та же проверка на шаге вводного текста НОВОЙ волны — фото без подписи не должно
+    молча стать «волной без вводного текста»."""
+    _ready(tmp_path)
+    from handlers import admin_game_wave_wizard as w
+    from handlers.states import WaveCreate
+    state = _new_state(ADMIN_ID)
+    _run(state.set_data({"wc_mode": "create", "wc_city": None}))
+    _run(state.set_state(WaveCreate.intro))
+    msg = FakeMessage(text=None)
+    _run(w.wave_create_intro_step(msg, state))
+    assert _run(state.get_state()) == WaveCreate.intro.state
+    assert "текстовое" in msg.answers[-1][0].lower()
