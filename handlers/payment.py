@@ -156,7 +156,7 @@ async def _schedule_deadline_reminders(telegram_id: int):
     scheduler.schedule_payment_reminder uses replace_existing, and send_payment_reminder
     self-guards on paid/receipt_sent so a user who pays before it fires is never pinged."""
     deadline_str = await get_setting("payment_deadline")
-    if not deadline_str:
+    if not deadline_str or not deadline_str.strip():
         return
     try:
         from datetime import datetime, timedelta
