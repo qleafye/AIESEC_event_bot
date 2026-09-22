@@ -112,3 +112,52 @@ def test_activate_confirm_shows_immediate_text_when_start_already_passed(tmp_pat
     assert not cb.answers or cb.answers[-1][1] is not True
     text = cb.message.edits[-1]
     assert "в течение минуты" in text
+
+
+# ── ревизия 32-FIX-common-2 (остаток WR-16): те же проверки на самом нажатии «Да, запустить» ──
+# Экран подтверждения перепроверял пустоту/просроченный конец, а сам клик по «Да, запустить»
+# (`wave_activate_go`) — нет: между показом экрана и нажатием состав заданий или даты волны
+# могли смениться (менеджер Б успел удалить последнее задание, или экран висел с вечера, пока
+# дата конца не прошла). Тесты ниже зовут `wave_activate_go` НАПРЯМУЮ, минуя экран
+# подтверждения, — так же, как устаревшая кнопка попала бы к обработчику в проде.
+
+def test_activate_go_rejects_empty_wave_bypassing_confirm_screen(tmp_path):
+    _db_ready(tmp_path)
+    wid = _run(db.create_wave("2099-10-01 00:00:00", "2099-10-15 23:59:59", created_by=ADMIN_ID))
+    cb = FakeCallback(f"waveactivate_go:{wid}")
+    _run(w.wave_activate_go(cb, _new_state()))
+    assert cb.answers and cb.answers[-1][1] is True
+    assert "добавьте задания" in cb.answers[-1][0].lower()
+    wave = _run(db.get_wave(wid))
+    assert wave["state"] == "draft"  # запуск не состоялся
+
+
+def test_activate_go_rejects_past_end_date_bypassing_confirm_screen(tmp_path):
+    _db_ready(tmp_path)
+    wid = _run(db.create_wave("2020-01-01 00:00:00", "2020-01-10 23:59:59", created_by=ADMIN_ID))
+    _run(db.create_task("Задание", "Light", 10, "text", "2020-01-10 23:59:59", ADMIN_ID, wave_id=wid))
+    cb = FakeCallback(f"waveactivate_go:{wid}")
+    _run(w.wave_activate_go(cb, _new_state()))
+    assert cb.answers and cb.answers[-1][1] is True
+    assert "поправьте даты" in cb.answers[-1][0].lower() or "уже прошла" in cb.answers[-1][0].lower()
+    wave = _run(db.get_wave(wid))
+    assert wave["state"] == "draft"
+
+
+def test_activate_go_blocks_when_last_task_removed_between_screen_and_click(tmp_path):
+    """Сценарий ревью: менеджер видел экран подтверждения с заданием, но пока он думал,
+    последнее задание волны удалили (или архивировали) — запуск всё равно отклоняется."""
+    _db_ready(tmp_path)
+    wid = _run(db.create_wave("2099-10-01 00:00:00", "2099-10-15 23:59:59", created_by=ADMIN_ID))
+    tid = _run(db.create_task("Задание", "Light", 10, "text", "2099-10-15 23:59:59", ADMIN_ID, wave_id=wid))
+    confirm_cb = FakeCallback(f"waveactivate:{wid}")
+    _run(w.wave_activate_confirm(confirm_cb, _new_state()))
+    assert not confirm_cb.answers or confirm_cb.answers[-1][1] is not True  # экран показан, не отказ
+
+    _run(db.archive_task(tid))
+    go_cb = FakeCallback(f"waveactivate_go:{wid}")
+    _run(w.wave_activate_go(go_cb, _new_state()))
+    assert go_cb.answers and go_cb.answers[-1][1] is True
+    assert "добавьте задания" in go_cb.answers[-1][0].lower()
+    wave = _run(db.get_wave(wid))
+    assert wave["state"] == "draft"
