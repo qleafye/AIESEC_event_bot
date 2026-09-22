@@ -675,3 +675,74 @@ def test_copy_wave_skips_archived_tasks(tmp_path):
     new_id = _run(aw.copy_wave(src_id, _dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))
     tasks = _run(db.list_wave_tasks(new_id, active_only=False))
     assert tasks == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревизия 32-FIX-common-2: IN-05а/б — общая волна vs чужой город, «Скопировать прошлую»
+# ищет СВОЮ волну, а не самую свежую видимую
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_general_wave_alert_differs_from_wrong_city_alert(tmp_path):
+    """IN-05а: тап по общей волне («все города») и по волне другого города дают РАЗНЫЕ
+    объяснения — раньше оба говорили «Эта волна другого города», хотя у общей волны никакого
+    «правильного» города вообще нет (её правит главный менеджер)."""
+    _ready(tmp_path)
+    _enable_cities()
+    city_a, city_b = _codes()
+    general_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
+    other_city_id = _run(db.create_wave(
+        _dt("01.11.2026"), _dt_end("10.11.2026"), event_city=city_b, created_by=ADMIN_ID,
+    ))
+    _bind_manager(MSK_MANAGER_ID, city_a)
+    from handlers import admin_game_waves as w
+
+    cb_general = FakeCallback(f"wave:{general_id}", user_id=MSK_MANAGER_ID)
+    _run(w.show_wave_card(cb_general, _new_state(MSK_MANAGER_ID)))
+    general_text = cb_general.answers[-1][0]
+    assert "общая волна" in general_text.lower()
+    assert "главный менеджер" in general_text.lower()
+
+    cb_other = FakeCallback(f"wave:{other_city_id}", user_id=MSK_MANAGER_ID)
+    _run(w.show_wave_card(cb_other, _new_state(MSK_MANAGER_ID)))
+    other_text = cb_other.answers[-1][0]
+    assert "другого города" in other_text.lower()
+    assert other_text != general_text
+
+
+def test_wave_copy_last_picks_most_recent_editable_wave(tmp_path):
+    """IN-05б: «Скопировать прошлую» ищет самую свежую волну СРЕДИ ТЕХ, что менеджер может
+    редактировать — более свежая, но недоступная (общая) волна раньше побеждала и отвечала
+    «Нет прав на эту волну», хотя своя волна для копии у менеджера была."""
+    _ready(tmp_path)
+    _enable_cities()
+    city_a, _city_b = _codes()
+    own_id = _run(db.create_wave(
+        _dt("01.09.2026"), _dt_end("10.09.2026"), event_city=city_a, created_by=ADMIN_ID,
+    ))
+    _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))  # общая, свежее
+    _bind_manager(MSK_MANAGER_ID, city_a)
+    from handlers import admin_game_wave_wizard as w
+    from handlers.states import WaveCreate
+    cb = FakeCallback("wavecopy", user_id=MSK_MANAGER_ID)
+    state = _new_state(MSK_MANAGER_ID)
+    _run(w.wave_copy_last_start(cb, state))
+    assert _run(state.get_state()) == WaveCreate.dates.state
+    assert (_run(state.get_data())).get("wc_copy_src") == own_id
+
+
+def test_wave_copy_last_explains_when_nothing_editable(tmp_path):
+    """IN-05б: единственная видимая волна — общая, менеджер её не редактирует. Раньше это
+    давало «Нет прав на эту волну»; теперь — понятное объяснение и кнопка «Новая волна»."""
+    _ready(tmp_path)
+    _enable_cities()
+    city_a, _city_b = _codes()
+    _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))  # только общая
+    _bind_manager(MSK_MANAGER_ID, city_a)
+    from handlers import admin_game_wave_wizard as w
+    cb = FakeCallback("wavecopy", user_id=MSK_MANAGER_ID)
+    state = _new_state(MSK_MANAGER_ID)
+    _run(w.wave_copy_last_start(cb, state))
+    assert _run(state.get_state()) is None
+    text, kb = cb.message.answers[-1]
+    assert "нечего" in text.lower()
+    assert "wavenew" in _kb_callbacks(kb)

@@ -354,9 +354,25 @@ async def wave_copy_last_start(callback: types.CallbackQuery, state: FSMContext)
     if not waves:
         await callback.answer("Волн пока нет — сначала создайте одну", show_alert=True)
         return
-    src = waves[0]  # list_waves: ORDER BY starts_at DESC, id DESC — самая свежая первая
-    if not await aw.can_edit_wave(admin_id, src):
-        await callback.answer("Нет прав на эту волну", show_alert=True)
+    # IN-05б: раньше бралась самая свежая волна из ВИДИМЫХ (часто — общая «все города», её
+    # правит главный менеджер) и отвечала «Нет прав на эту волну», хотя у менеджера могла быть
+    # своя волна для копии. Ищем самую свежую из тех, что реально проходят `can_edit_wave`
+    # (`list_waves`: ORDER BY starts_at DESC, id DESC — уже отсортированы).
+    src = None
+    for w in waves:
+        if await aw.can_edit_wave(admin_id, w):
+            src = w
+            break
+    if src is None:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Новая волна", callback_data="wavenew")],
+        ])
+        await callback.message.answer(
+            "Пока нечего скопировать — среди волн, которые вам доступны, ни одной нет. "
+            "Создайте новую волну.",
+            reply_markup=kb,
+        )
+        await callback.answer()
         return
     await _start_wave_copy(callback.message, state, src)
     await callback.answer()

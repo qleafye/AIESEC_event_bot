@@ -151,7 +151,15 @@ async def _wave_from_prefix(callback: types.CallbackQuery, prefix: str) -> tuple
         await callback.answer("Волна не найдена — возможно, её уже удалили", show_alert=True)
         return None, None
     if not await aw.can_edit_wave(callback.from_user.id, wave):
-        await callback.answer("Эта волна другого города — доступа нет", show_alert=True)
+        # IN-05а: городской менеджер видит в списке и общую волну (`event_city is None`),
+        # ждущую главного менеджера, — «Эта волна другого города» вводила его в заблуждение,
+        # будто где-то есть «правильный» город для неё.
+        if wave.get("event_city") is None:
+            await callback.answer(
+                "Это общая волна для всех городов — её правит главный менеджер", show_alert=True,
+            )
+        else:
+            await callback.answer("Эта волна другого города — доступа нет", show_alert=True)
         return None, None
     return wave_id, wave
 
