@@ -223,6 +223,40 @@ def _funnel_display(rows: "list[tuple[str, int]] | None", tracking_since: "str |
     return {"steps": steps, "has_data": has_data, "baseline_label": baseline_label, "since": since}
 
 
+# Решение владельца 23.09 (DASHBOARD-IA-PROPOSAL-260923): раздел «Откуда приходят» показывает
+# разрез «Источник» отдельно от остальных разрезов (раздел «Кто подаёт»), но сам разрез
+# по-прежнему считается общим циклом по `_BREAKDOWN_CUTS` — эта функция просто вынимает его
+# из уже посчитанного списка `cuts`, не трогая порядок и SQL-запросы.
+def _split_source_cut(cuts: list[dict]) -> "tuple[dict | None, list[dict]]":
+    source_cut = None
+    rest: list[dict] = []
+    for cut in cuts:
+        if source_cut is None and cut["title"] == "Источник":
+            source_cut = cut
+        else:
+            rest.append(cut)
+    return source_cut, rest
+
+
+def _page_sections(ctx: dict) -> list[dict]:
+    """Список непустых разделов главной страницы дашборда в порядке предложения
+    (DASHBOARD-IA-PROPOSAL-260923) — пустой раздел не попадает в список, вместе с ним
+    исчезает и его кнопка в липком оглавлении (шаблон рисует и раздел, и кнопку только по
+    `id in section_ids`). "Сейчас" и "Модерация и ответы" всегда в списке — там всегда есть
+    хотя бы плитка KPI/«Среднее время обработки», гасить их нечем."""
+    sections = [{"id": "now", "title": "Сейчас"}]
+    if ctx["dynamics_enabled"] or ctx["funnel"] or ctx["dropout"] or ctx["months"]:
+        sections.append({"id": "flow", "title": "Поток заявок"})
+    sections.append({"id": "moderation", "title": "Модерация и ответы"})
+    if ctx["utm"] or ctx["source_cut"] or ctx["referrals"]:
+        sections.append({"id": "sources", "title": "Откуда приходят"})
+    if ctx["cuts"]:
+        sections.append({"id": "who", "title": "Кто подаёт"})
+    if ctx["game"] or ctx["ambassadors"] or ctx["chat_bindings"]:
+        sections.append({"id": "engagement", "title": "Вовлечение"})
+    return sections
+
+
 def _city_label(conn, code: "str | None") -> "str | None":
     if not code:
         return None
@@ -240,13 +274,13 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
 
     funnel_rows = queries.funnel(conn, scope) if flags.get("dashboard_block_funnel") == "on" else None
     funnel_since = queries.funnel_tracking_since(conn) if funnel_rows is not None else None
-    # Phase 31 (31-07, D-27): разбивка «какое правило сколько отсеяло» — под ОБОИМИ
-    # тумблерами (блок воронки И reject_rules_enabled). Выключен любой из двух -> в шаблон
-    # уходит None, блок не рисуется вовсе — та же дисциплина module-off, что у остальных
-    # блоков дашборда.
+    # Решение владельца 23.09 (DASHBOARD-IA-PROPOSAL-260923): разбивка «какое правило сколько
+    # отсеяло» переехала в раздел «Модерация и ответы» и больше не привязана к воронке —
+    # раньше блок гасился ОБОИМИ тумблерами (блок воронки И reject_rules_enabled), теперь
+    # только reject_rules_enabled, та же дисциплина module-off, что у остальных блоков.
     auto_reject_rows = (
         queries.auto_reject_breakdown(conn, scope)
-        if funnel_rows is not None and flags.get("reject_rules_enabled") == "on"
+        if flags.get("reject_rules_enabled") == "on"
         else None
     )
     daily_rows = (
@@ -329,7 +363,12 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             "counts": [count for _, count in daily_rows],
         }
 
-    return {
+    # Решение владельца 23.09: раздел «Откуда приходят» показывает разрез «Источник» отдельно
+    # от раздела «Кто подаёт» (остальные разрезы) — сам разрез по-прежнему из общего цикла
+    # `_BREAKDOWN_CUTS` выше, `_split_source_cut` только перекладывает готовый элемент.
+    source_cut, cuts = _split_source_cut(cuts)
+
+    ctx = {
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
         "event_logo_url": _event_logo_url(conn),
@@ -342,7 +381,8 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
-        # Вторая строка KPI («реальные заявки») видна только при включённом автоотказе.
+        # Подписи «реальных N» под первыми плитками «Сейчас» видны только при включённом
+        # автоотказе (решение владельца 23.09: отдельного ряда «Реальные заявки» больше нет).
         "reject_rules_enabled": flags.get("reject_rules_enabled") == "on",
         "funnel": _funnel_display(funnel_rows, funnel_since),
         # Пустой список тоже уходит в шаблон «как есть» — Jinja2 читает пустой список как
@@ -354,6 +394,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "city_cut": (
             {"rows": city_cut} if city_cut is not None else None
         ),
+        "source_cut": source_cut,
         "cuts": cuts,
         "dropout": (
             {"rows": _bar_rows(dropout_rows), "has_data": bool(dropout_rows)}
@@ -376,6 +417,9 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
     }
+    ctx["page_sections"] = _page_sections(ctx)
+    ctx["section_ids"] = {s["id"] for s in ctx["page_sections"]}
+    return ctx
 
 
 def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict) -> dict:
