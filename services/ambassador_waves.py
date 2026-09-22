@@ -135,6 +135,19 @@ async def current_wave_for_city_raw(event_city_raw: str | None, *,
     return await current_wave_for(city, now=now)
 
 
+async def latest_closing_wave_for(user: dict | None, *, city_scope=None) -> dict | None:
+    """IN-09б (32-REVIEW.md): волна, чьи итоги ещё не объявлены (`closing`), в которой этот
+    амбассадор реально участвует — экрану рейтинга нужна она ПОСЛЕ `ends_at`: `current_wave_for`
+    (`db.wave_at`) матчит волну только пока `ts` внутри `[starts_at, ends_at]`, а после конца
+    волны отдаёт `None` независимо от состояния, хотя итоги (`announce_results`) менеджер мог
+    ещё не нажать. `list_waves` уже сортирует по `starts_at DESC` — первая волна, где
+    `wave_eligible` истинно, самая свежая."""
+    for wave in await list_waves(city_scope=city_scope, states=("closing",)):
+        if wave_eligible(user, wave):
+            return wave
+    return None
+
+
 async def wave_rating(wave_id: int) -> list[dict]:
     """Рейтинг волны: сумма баллов за задания этой волны (по привязке задания, не по дате
     начисления — D-14а) + авто-баллы за приглашённых, начисленные в датах волны (D-14б),

@@ -46,6 +46,7 @@ from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 
 )
 from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
     current_wave_for, wave_rating_view, wave_number_label, wave_eligible, wave_visibility_ids,
+    latest_closing_wave_for,  # IN-09б (32-REVIEW.md): рейтинг closing-волны после ends_at
 )
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
@@ -1600,32 +1601,29 @@ async def show_wave_rating(callback: types.CallbackQuery):
     целиком здесь, ПЕРЕД любым чтением рейтинга (кнопка в Telegram не истекает: экран мог быть
     отрисован ещё до того, как нажавший вышел из амбассадоров или волна закрылась).
     Не амбассадор/не участник ТЕКУЩЕЙ волны -> короткий alert, сообщение не перерисовывается.
-    Активной волны нет вовсе -> это нормальное пустое состояние, не отказ — редактируем
-    сообщение на `wave_rating_closed_text`, а не молчим alert'ом."""
+    Активной волны нет вовсе -> IN-09б: если есть closing-волна без объявленных итогов, её
+    финальная таблица; иначе `wave_rating_closed_text` — нормальное пустое состояние, не отказ."""
     lang, tr_map = await reg_i18n.ctx_for(callback)
     user = await get_user(callback.from_user.id)
     cities_on = await cities_module_on()
     code = normalize_city(user.get("event_city") if user else None) if cities_on else None
+    is_ambassador = bool(user and user.get("is_ambassador"))
     current_wave = await current_wave_for(code)
 
     if current_wave is None:
-        text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
-        back_text = reg_i18n.tr_text("◀️ Назад", lang, tr_map)
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=back_text, callback_data="gtasks_back:0"),
-        ]])
-        await callback.message.edit_text(text, reply_markup=kb)
+        closing = is_ambassador and await latest_closing_wave_for(user, city_scope=city_scope(code) if cities_on else None)
+        if closing:
+            text, kb = await _wave_rating_screen(closing["id"], callback.from_user.id, lang, tr_map)
+            text += "\n\n" + reg_i18n.tr_text("Волна закончилась — итоги готовятся.", lang, tr_map)
+        else:
+            text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Назад", lang, tr_map), callback_data="gtasks_back:0")]])
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         await callback.answer()
         return
 
-    is_ambassador = bool(user and user.get("is_ambassador"))
     if not is_ambassador or not wave_eligible(user, current_wave):
-        await callback.answer(
-            reg_i18n.tr_text(
-                "Рейтинг волны виден только участникам текущей волны амбассадоров.", lang, tr_map,
-            ),
-            show_alert=True,
-        )
+        await callback.answer(reg_i18n.tr_text("Рейтинг волны виден только участникам текущей волны амбассадоров.", lang, tr_map), show_alert=True)
         return
 
     text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map)
