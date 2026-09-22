@@ -241,12 +241,59 @@ a, button {
   border-top: 1px solid var(--border);
 }
 
+/* ── Оглавление разделов (решение владельца 23.09, DASHBOARD-IA-PROPOSAL-260923) ──────── */
+
+/* Липкая строка-якорей под шапкой — на мобильном листается вбок (overflow-x), а не
+   переносится (white-space: nowrap), кнопки — те же .switch-link, что у свитчеров города/
+   сезона выше, вторую систему чипов не заводим. Фон — токеном (--bg, фон страницы), а не
+   hex: дашборд всегда светлый (D-06), но сторожевой тест грепает литералы цвета в этом
+   файле независимо от темы. */
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  padding: var(--sp-2) 0;
+  margin-bottom: var(--gap);
+  background: var(--bg);
+}
+
+.section-nav .switch-link { flex: 0 0 auto; }
+
 /* ── Blocks ─────────────────────────────────────────────────────────────────────────── */
 
 /* padding-top — editorial-воздух между секциями (D-01) поверх --block-gap, без нового токена. */
 .block {
   margin-bottom: var(--block-gap);
   padding-top: var(--sp-2);
+}
+
+/* Раздел (6 штук на странице, решение владельца 23.09) — обёртка над несколькими .block,
+   scroll-margin-top компенсирует липкое оглавление (~40px высотой + отступы), чтобы якорь
+   (id раздела — на самой .page-section) не прятал заголовок под .section-nav. */
+.page-section {
+  scroll-margin-top: 56px;
+  margin-top: var(--sp-6);
+}
+
+.page-section:first-of-type { margin-top: 0; }
+
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--sp-4);
+  color: var(--text);
+}
+
+@media (min-width: 900px) {
+  .section-title { font-size: 26px; }
 }
 
 .block-title {
@@ -303,13 +350,6 @@ a, button {
 
 @media (min-width: 900px) {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
-  .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
-  /* Шесть плиток в один ряд нечитаемы (в плитках времени — текст вроде «меньше минуты»),
-     поэтому раскладка 3×2, а не 6×1. */
-  .kpi-grid--6 { grid-template-columns: repeat(3, 1fr); }
-  /* Семь плиток раскладываются 4+3, а не 3+3+1 — последняя строка из одной плитки читается
-     как «что-то отвалилось». */
-  .kpi-grid--7 { grid-template-columns: repeat(4, 1fr); }
 }
 
 .kpi {
@@ -322,10 +362,6 @@ a, button {
 }
 
 .kpi.primary { border-left: 3px solid var(--accent); }
-
-/* Ряд «реальные заявки» — те же карточки и та же 4-колоночная сетка, что у основного ряда,
-   чтобы плитки вставали под соответствующие колонки, а не плоским вложенным рядом. */
-.kpi-grid--real { margin-top: var(--gap); }
 
 /* Display-роль (UI-SPEC §Typography, 19.1-03): Raleway 800 tabular-nums — отступление от
    более раннего dataviz-аудита (Lato 700 пропорциональные), явно затребовано этим планом. */
