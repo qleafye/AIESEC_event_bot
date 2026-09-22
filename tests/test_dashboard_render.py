@@ -53,7 +53,7 @@ def _use_tmp_db(tmp_path, name: str = "dashboard_render.db") -> str:
 async def _seed_async(
     *, cities=None, settings=None, users=None, staff=None, reg_events=None,
     reg_started=None, game_tasks=None, game_submissions=None, application_decisions=None,
-    coins=None, delegate_questions=None,
+    coins=None, delegate_questions=None, ambassador_waves=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -122,6 +122,13 @@ async def _seed_async(
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO coins ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        # 32-FIX-common-2 (хвост IN-08): волны — для проверки метки «Волна N · Город» в шаблоне.
+        for row in ambassador_waves or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO ambassador_waves ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         for row in delegate_questions or []:
             cols = ", ".join(row.keys())
@@ -835,6 +842,30 @@ def test_ambassador_block_shown_when_toggle_on_with_data(tmp_path):
     assert "Амбассадоры" in resp.text
     assert "@amb_x" in resp.text
     assert "Волна сейчас не идёт" in resp.text  # волн не заведено — блок жив без них
+
+
+def test_ambassador_wave_label_shows_city_in_all_cities_scope(tmp_path):
+    """32-FIX-common-2 (хвост IN-08): в «все города» рядом с номером волны обязан появиться
+    город — без него «Волна N» разных городов на одном экране неразличимы."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=[
+            {"telegram_id": 501, "username": "amb_x", "is_ambassador": 1, "status": "approved",
+             "event_city": "msk"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 2, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "msk",
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+    )
+    client = _stats_manager_client(
+        db_path, extra_settings={"dashboard_block_ambassadors": "on"}
+    )
+    resp = client.get("/")
+    assert "Волна 2 · Москва" in resp.text
 
 
 def test_bound_manager_has_no_city_switcher_and_no_foreign_city_data(tmp_path):

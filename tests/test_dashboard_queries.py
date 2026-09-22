@@ -2458,6 +2458,94 @@ def test_ambassador_block_full_metrics_on_fixture(tmp_path):
     assert 401 not in {row["telegram_id"] for row in block["funnel"]}
 
 
+def test_ambassador_funnel_excludes_invitee_from_other_season(tmp_path):
+    """32-FIX-common-2 (хвост IN-08): воронка приглашённых фильтруется СВОИМ сезоном
+    приглашённого (D-13 — season=None значит текущий), а не показывает всех сезонов разом —
+    амбассадор, приглашавший в прошлом сезоне, не должен выглядеть активнее, чем он есть в
+    разрезе ТЕКУЩЕГО события."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on", "event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "username": "amb", "is_ambassador": 1, "status": "approved",
+             "season": "YL26"},
+            {"telegram_id": 301, "referrer_id": 1, "status": "approved", "season": "YL26"},
+            # приглашённый ПРОШЛОГО сезона — не должен войти в воронку текущего среза.
+            {"telegram_id": 302, "referrer_id": 1, "status": "approved", "season": "YL25"},
+        ],
+        referral_credits=[
+            {"invitee_id": 301, "referrer_id": 1, "coins": 10, "wave_id": None,
+             "credited_at": "2026-09-12 00:00:00", "source": "approval"},
+            {"invitee_id": 302, "referrer_id": 1, "coins": 10, "wave_id": None,
+             "credited_at": "2025-09-12 00:00:00", "source": "backfill"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope())
+    funnel_by_id = {row["telegram_id"]: row for row in block["funnel"]}
+    assert funnel_by_id[1]["submitted"] == 1  # только YL26, не оба сезона
+    assert funnel_by_id[1]["credited"] == 1
+
+
+def test_ambassador_wave_label_shows_city_only_in_all_cities_scope(tmp_path):
+    """32-FIX-common-2 (хвост IN-08): в скоупе одного города номер волны и так однозначен —
+    город рядом не нужен; в «все города» у каждого города своя нумерация, и без города
+    «Волна 2» Москвы и «Волна 2» Петербурга неразличимы на экране."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on", "event_city_enabled": "on"},
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        users=[
+            {"telegram_id": 1, "username": "amb", "is_ambassador": 1, "status": "approved",
+             "event_city": "msk"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 2, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": "msk",
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        all_cities_block = ambassador_block(conn, Scope())
+        msk_block = ambassador_block(conn, Scope(city="msk"))
+
+    assert all_cities_block["wave"]["city"] == "Москва"
+    assert msk_block["wave"]["city"] is None  # город уже выбран скоупом — избыточно
+
+
+def test_ambassador_wave_tasks_excludes_rejected_submissions(tmp_path):
+    """32-FIX-common-2 (хвост IN-08): отклонённая сдача не считается «сданной» — менеджер её
+    отверг, задание фактически не выполнено, ни в «сдано», ни в «вовремя» её быть не должно."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_ambassadors": "on"},
+        users=[
+            {"telegram_id": 1, "username": "amb", "is_ambassador": 1, "status": "approved"},
+        ],
+        ambassador_waves=[
+            {"id": 1, "number": 1, "starts_at": "2026-09-01 00:00:00",
+             "ends_at": "2026-12-31 23:59:59", "state": "active", "event_city": None,
+             "created_at": "2026-09-01 00:00:00"},
+        ],
+        game_tasks=[
+            {"id": 10, "text": "Задание", "category": "photo", "coins": 50, "proof_type": "photo",
+             "deadline_at": "2026-09-15 00:00:00", "created_at": "2026-09-01 00:00:00",
+             "event_city": None, "wave_id": 1, "audience": "ambassadors"},
+        ],
+        game_submissions=[
+            {"task_id": 10, "user_id": 1, "content_type": "photo", "content": "a",
+             "submitted_at": "2026-09-10 00:00:00", "status": "approved"},
+            {"task_id": 10, "user_id": 1, "content_type": "photo", "content": "b",
+             "submitted_at": "2026-09-11 00:00:00", "status": "rejected"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        block = ambassador_block(conn, Scope())
+    tasks_by_title = {row["title"]: row for row in block["tasks"]}
+    assert tasks_by_title["Задание"]["submitted"] == 1
+    assert tasks_by_title["Задание"]["on_time"] == 1
+
+
 def test_ambassador_block_city_scope_excludes_other_city(tmp_path):
     path = _use_tmp_db(tmp_path)
     _seed(
