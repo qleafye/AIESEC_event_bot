@@ -437,6 +437,20 @@ def test_schedule_task_deadline_reminder_replace_not_duplicate(tmp_path, monkeyp
     _run_scheduled(tmp_path, monkeypatch, body)
 
 
+def test_send_task_deadline_reminder_draft_wave_sends_nothing(tmp_path, monkeypatch):
+    """Задание черновой волны делегатам не видно — напоминание о нём не уходит, даже если
+    джоба взведена при создании задания (волна может так и остаться черновиком)."""
+    _ready(tmp_path, "t2draft.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))  # draft
+    task_id = _run(db.create_task("Deadline task", "Light", 10, "photo", "2026-10-05 12:00:00", None, wave_id=wave_id))
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert bot.sent == []
+
+
 def test_send_task_deadline_reminder_submitted_user_skipped_not_submitted_gets_it(tmp_path, monkeypatch):
     _ready(tmp_path, "t2c.db")
     bot = _with_bot(monkeypatch)

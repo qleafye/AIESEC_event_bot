@@ -8,11 +8,9 @@ Mini App не могло позвать (aiogram-модуль), поэтому `
 (бот или Mini App), что двигало места в рейтинге волны.
 
 Сам модуль aiogram-free (`game_labels.py`/`settings_schema.py` — уже используются и Mini App, и
-ботом), поэтому его можно звать из обоих процессов. `handlers/admin_gamification.py::_award_for`
-пока остаётся собственной копией — этот фикс не имеет права трогать `handlers/*`; при
-следующей правке того файла стоит перевести обе точки одобрения бота
-(`grev_approve`/`grev_approve_amount_step`) на эту функцию, чтобы формула считалась в одном
-месте буквально, а не только «даёт тот же результат»."""
+ботом), поэтому его можно звать из обоих процессов. Обе точки одобрения бота
+(`grev_approve`/`grev_approve_amount_step` в `handlers/admin_gamification.py`) тоже зовут
+эту функцию — формула считается в одном месте буквально."""
 from __future__ import annotations
 
 from game_labels import penalized_coins, task_has_deadline
