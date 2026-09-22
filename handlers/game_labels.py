@@ -11,6 +11,7 @@ from game_labels import (  # noqa: F401 — явный реэкспорт пуб
     _PROOF_TYPE_KEY,
     ambassador_block_index,
     category_label,
+    fill_template,
     penalized_coins,
     penalty_hint_line,
     proof_types_label,

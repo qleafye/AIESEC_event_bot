@@ -710,7 +710,8 @@ def test_review_screen_one_card_four_actions_and_already_is_calm():
     assert "offset += 1" in text
     # Четыре действия (editorial-минимал 19.1-06: главное действие — MainButton «Принять
     # · +N», без эмодзи — D-13; вторичные — обведённый ряд, «Отклонить» с иконкой x).
-    assert "Принять · +${card.task.coins}" in text
+    # Сумма на кнопке — уже со штрафом за просрочку, если он есть (та же, что начислит бот).
+    assert "Принять · +${displayCoins}" in text
     for label in ("Своя сумма", "Отклонить", "Пропустить"):
         assert label in text, label
     assert 'icon("x")' in text  # «Отклонить» — иконка вместо эмодзи
