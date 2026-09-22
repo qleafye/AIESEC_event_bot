@@ -183,6 +183,29 @@ def test_status_screen_module_is_registered_in_routes():
     assert routes.get("#/status") == "screens/status.js"
 
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260922-wrg (задача 2, A-5): reg_resubmit_after_reject=deny убирает resubmit_button_text
+# на расширенном экране тоже (не только сокращённую плиту хаба, тот же приём).
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_resubmit_button_text_none_when_denied_with_status_screen_on(client):
+    _enable_status_screen()
+    _run(_sql("UPDATE users SET season = 'YL''26' WHERE telegram_id = ?", (REJECTED_ID,)))
+    _set("event_season", "YL'26")
+    _set("reg_resubmit_after_reject", "deny")
+    body = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID)).json()
+    assert body["status"] == "rejected"
+    assert body["resubmit_button_text"] is None
+    # соседние поля причины не тронуты запретом повторной подачи
+    assert body["saved_answers_label"]
+
+
+def test_resubmit_button_text_present_when_allowed_with_status_screen_on(client):
+    _enable_status_screen()
+    body = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID)).json()
+    assert body["resubmit_button_text"]
+
+
 def test_status_screen_module_exists_and_exports_render():
     from tests.test_miniapp_frontend import MINIAPP_STATIC
 

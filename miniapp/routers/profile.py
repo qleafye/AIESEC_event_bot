@@ -327,7 +327,11 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     user = await get_user(p.telegram_id) or {}
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
-    can_edit, edit_closed_text = await reg_edit_policy.edit_gate(user)
+    # Квик 260922-wrg (задача 2): open_gate = edit_gate + resubmit_gate — единая точка входа
+    # (delegate_gate уже отсекает rejected/pending, поэтому здесь resubmit_gate на практике
+    # видит только approved/legacy-статусы и всегда разрешает — символическая, но нужная
+    # унификация с form.py/reg_resume.py).
+    can_edit, edit_closed_text = await reg_edit_policy.open_gate(user)
     edit_closed_text = i18n.tr(edit_closed_text, lang, tr_map) if edit_closed_text else edit_closed_text
     status = user.get("status") or "approved"
     payment_status = user.get("payment_status") or "not_paid"

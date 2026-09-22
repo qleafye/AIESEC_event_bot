@@ -27,7 +27,7 @@ from cities import get_setting_typed_for_city
 from database.db import get_referrals, get_setting, get_user, settings_snapshot
 from payment_options import parse_options
 import reg_engine
-from services import applications, i18n
+from services import applications, i18n, reg_edit_policy
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, form_gate
@@ -227,6 +227,27 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
     # локальный хелпер на файл, второй общий мотор не заводим).
     haptics_on = await get_setting_typed("reg_form_haptics") == "on"
 
+    # Квик 260922-wrg (задача 2, B-2): ДО веток по статусу — делегат прошлого сезона (любой
+    # статус) возвращенец, а не «Одобрена»/«Отклонена» — та же граница, что form_status
+    # (`miniapp/deps.py`), read_engine.is_past_season_row, не is_returning_row (B-3: отклонённый
+    # ТЕКУЩЕГО сезона обязан остаться в обычной ветке rejected ниже, с причиной отказа).
+    # status_screen_enabled=False — «расширенного» экрана статуса для возвращенца нет, плита
+    # ведёт делегата прямо на #/form (тот же приём, что rejected без status_screen_enabled,
+    # см. renderTilesOnlyHub/renderDelegateHub в hub.js).
+    event_season = await get_setting_typed("event_season") or None
+    if reg_engine.is_past_season_row(user, event_season):
+        prev_label = (user.get("season") or "").strip() or "прошлом событии"
+        heading_tpl = await i18n.tr_setting("start_text_returning", lang, tr_map)
+        heading = heading_tpl.replace("{season}", prev_label) if heading_tpl else None
+        cta_text = await i18n.tr_setting("start_returning_cta_text", lang, tr_map)
+        return {
+            "status": "returning", "heading": heading, "body": None, "days": None,
+            "cta_text": cta_text, "event_dates": event_dates, "event_place": event_place,
+            "reason_line": None, "status_screen_enabled": False,
+            "haptics_enabled": haptics_on, **_STATUS_SCREEN_EXTRAS_OFF,
+            "tile_text": heading,
+        }
+
     if status == "pending":
         heading = await i18n.tr_setting("miniapp_hub_pending_heading_text", lang, tr_map)
         body_tpl = await i18n.tr_setting("miniapp_hub_pending_body_text", lang, tr_map)
@@ -267,6 +288,13 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
         reason = await applications.last_rejection_reason(p.telegram_id)
         reason_tpl = await i18n.tr_setting("miniapp_hub_rejected_reason_text", lang, tr_map)
         reason_line = reason_tpl.replace("{reason}", reason) if (reason and reason_tpl) else None
+        # Квик 260922-wrg (задача 2, A-5): «нельзя» (reg_resubmit_after_reject=deny) у
+        # отклонённого ТЕКУЩЕГО сезона (мы уже здесь — возвращенец прошлого сезона отфильтрован
+        # веткой is_past_season_row выше) убирает ОБЕ кнопки повторной подачи — причина отказа и
+        # остальные поля остаются как есть, делегат по-прежнему видит, почему его отклонили.
+        resubmit_ok, _ = await reg_edit_policy.resubmit_gate(user)
+        if not resubmit_ok:
+            cta_text = None
         extra = {
             "badge": await i18n.tr_setting("reg_status_rejected_badge_text", lang, tr_map),
             "title": await i18n.tr_setting("reg_status_rejected_title_text", lang, tr_map),
@@ -286,7 +314,9 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             # такая функциональность не появится отдельным планом (см. SUMMARY, Known Stubs).
             "fix_fields": None,
             "saved_answers_label": await i18n.tr_setting("reg_status_saved_answers_label_text", lang, tr_map),
-            "resubmit_button_text": await i18n.tr_setting("reg_status_resubmit_button_text", lang, tr_map),
+            "resubmit_button_text": (
+                await i18n.tr_setting("reg_status_resubmit_button_text", lang, tr_map) if resubmit_ok else None
+            ),
             "tile_text": await i18n.tr_setting("reg_status_tile_rejected_text", lang, tr_map),
         } if status_screen_on else _STATUS_SCREEN_EXTRAS_OFF
         return {

@@ -17,7 +17,9 @@ import { personNode } from "../person.js";
 // Phase 30 (30-05, задача 3, A2-07): плита статуса заявки. Тумблер `reg_form_status_screen`
 // решает СЕРВЕР (`status.status_screen_enabled`, `miniapp/routers/hub.py::hub_status`) —
 // выключен -> клиент не видит ни одного нового поля, плита остаётся сегодняшней (не кликается).
-const STATUS_TONE = { pending: "accent", approved: "success", rejected: "danger" };
+// Квик 260922-wrg (задача 2, B-2): "returning" — тот же нейтральный тон, что "pending", своей
+// CSS-палитры не заводим.
+const STATUS_TONE = { pending: "accent", approved: "success", rejected: "danger", returning: "accent" };
 
 // `motion.js::haptic` не знает про `reg_form_haptics` (та управляет ТОЛЬКО модулем анкеты,
 // form_types.js::haptic — свой локальный хелпер с тем же принципом) — плита статуса живёт в
@@ -283,14 +285,19 @@ async function renderDelegateHub(root, ctx) {
   // тумблер оставляет слот пустым, делегат не видит ничего нового (сегодняшнее поведение).
   if (statusR.status === "fulfilled") {
     const status = statusR.value;
-    if (status && status.status_screen_enabled && status.tile_text) {
+    // Квик 260922-wrg (задача 2, B-2): "returning" не несёт status_screen_enabled (сервер его
+    // всегда шлёт false — у возвращенца нет расширенного экрана статуса), но плита всё равно
+    // положена — тап ведёт прямо на #/form, а не на #/status.
+    const isReturning = status && status.status === "returning";
+    if (status && status.tile_text && (status.status_screen_enabled || isReturning)) {
       const tone = STATUS_TONE[status.status] || "accent";
-      const openStatus = () => { statusHaptic(status); navigate("#/status"); };
+      const openStatus = () => { statusHaptic(status); navigate(isReturning ? "#/form" : "#/status"); };
       statusSlot.append(h("button", {
         class: `next-action status-tile status-${tone}`, type: "button",
         "aria-label": status.tile_text, onClick: openStatus,
       },
-        icon(status.status === "approved" ? "check" : status.status === "rejected" ? "alert-triangle" : "clock-4"),
+        icon(status.status === "approved" ? "check" : status.status === "rejected" ? "alert-triangle"
+          : isReturning ? "refresh-cw" : "clock-4"),
         h("div", { class: "next-action-body" }, h("div", { class: "next-action-title", text: status.tile_text })),
         h("span", { class: "flat-row-chev" }, icon("chevron-right")),
       ));
@@ -353,7 +360,10 @@ async function renderTilesOnlyHub(root, ctx, items) {
   // статус вообще может нести текст — approved/none/draft получают heading: None и ручку
   // можно не звать вовсе. Отказ ручки -> плиты нет, плитки на месте (тот же fail-soft, что
   // у MANAGER_FETCHERS ниже по файлу, T-19.1-16).
-  if (ctx.me.form_status === "pending" || ctx.me.form_status === "rejected" || ctx.me.form_status === "approved") {
+  if (
+    ctx.me.form_status === "pending" || ctx.me.form_status === "rejected"
+    || ctx.me.form_status === "approved" || ctx.me.form_status === "returning"
+  ) {
     try {
       const status = await api("/hub/status");
       // Одобренная заявка несёт текст ТОЛЬКО в новых полях (`tile_text`/`title`) — `heading`/
@@ -384,7 +394,10 @@ async function renderTilesOnlyHub(root, ctx, items) {
             if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openStatus(); }
           });
           plate.append(h("span", { class: "flat-row-chev" }, icon("chevron-right")));
-        } else if (status.status === "rejected" && status.cta_text) {
+        } else if ((status.status === "rejected" || status.status === "returning") && status.cta_text) {
+          // Квик 260922-wrg (задача 2, B-2/A-5): тот же приём, что у rejected без расширенного
+          // экрана — кнопка ведёт прямо на #/form (у rejected при deny cta_text уже None,
+          // сервер убрал кнопку сам, см. hub_status).
           plate.append(h("button", {
             class: "btn", type: "button", text: status.cta_text,
             onClick: () => navigate("#/form"),

@@ -162,3 +162,85 @@ def test_unregistered_does_not_crash(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["heading"] is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260922-wrg (задача 2, B-2/B-3/A-5): плита возвращенца, gate повторной подачи.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _set_season(telegram_id: int, season: str | None):
+    _run(_sql("UPDATE users SET season = ? WHERE telegram_id = ?", (season, telegram_id)))
+
+
+def test_approved_past_season_gets_returning_plate_not_approved(client):
+    """B-1/B-2: approved прошлого сезона — возвращенец, а не «Одобрена»."""
+    _set("event_season", "YL'26")
+    _set_season(DELEGATE_ID, "YL'25")
+    _set("start_text_returning", "Привет снова, {season}!")
+    _set("start_returning_cta_text", "🚀 Обновить анкету")
+    resp = client.get("/app/api/hub/status", headers=_hdr(DELEGATE_ID))
+    body = resp.json()
+    assert body["status"] == "returning"
+    assert "YL'25" in body["heading"]
+    assert body["cta_text"] == "🚀 Обновить анкету"
+    assert body["status_screen_enabled"] is False
+    assert body["tile_text"] == body["heading"]
+
+
+def test_rejected_past_season_gets_returning_plate_not_rejected(client):
+    """B-1: rejected прошлого сезона — тоже возвращенец, не экран отказа с причиной."""
+    _set("event_season", "YL'26")
+    _set_season(REJECTED_ID, "YL'25")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "returning"
+    assert body["reason_line"] is None
+
+
+def test_rejected_current_season_keeps_rejected_plate_with_reason(client):
+    """B-3: отклонённый ТЕКУЩЕГО сезона (season == event_season) — прежняя плита отказа."""
+    _set("event_season", "YL'26")
+    _set_season(REJECTED_ID, "YL'26")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "rejected"
+
+
+def test_rejected_no_season_configured_keeps_rejected_plate(client):
+    """event_season не настроен -> is_past_season_row всегда False (fail-soft byte-в-byte)."""
+    _set_season(REJECTED_ID, None)
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "rejected"
+
+
+def test_resubmit_deny_removes_cta_for_rejected_current_season(client):
+    """A-5: «нельзя» убирает cta_text у отклонённого ТЕКУЩЕГО сезона."""
+    _set("event_season", "YL'26")
+    _set_season(REJECTED_ID, "YL'26")
+    _set("reg_resubmit_after_reject", "deny")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "rejected"
+    assert body["cta_text"] is None
+
+
+def test_resubmit_allow_keeps_cta_for_rejected_current_season(client):
+    _set("event_season", "YL'26")
+    _set_season(REJECTED_ID, "YL'26")
+    _set("reg_resubmit_after_reject", "allow")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["cta_text"]
+
+
+def test_resubmit_deny_does_not_touch_returning_past_season_plate(client):
+    """Deny не касается возвращенца прошлого сезона — та же плита, с cta."""
+    _set("event_season", "YL'26")
+    _set_season(REJECTED_ID, "YL'25")
+    _set("reg_resubmit_after_reject", "deny")
+    _set("start_returning_cta_text", "🚀 Обновить анкету")
+    resp = client.get("/app/api/hub/status", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["status"] == "returning"
+    assert body["cta_text"] == "🚀 Обновить анкету"
