@@ -19,6 +19,7 @@ from dashboard.config import DashboardConfig
 from dashboard.main import create_app
 from dashboard.queries import (
     Scope,
+    chat_activity_leaderboard,
     chat_bindings,
     chat_joins_daily,
     chat_last_sync_at,
@@ -194,6 +195,29 @@ def test_chat_not_joined_excludes_those_present(tmp_path):
         rows = chat_not_joined(conn, Scope(), chat)
     assert [r["telegram_id"] for r in rows] == [2]
     assert "full_name" not in rows[0] and "username" not in rows[0]
+
+
+def test_chat_activity_leaderboard_sorts_and_names_by_nick(tmp_path):
+    """Рейтинг: сумма по дням, сортировка по сообщениям; ник из users.username («@ник» или
+    «-» без ника) печатается одной собачкой, без ника — telegram_id; чужой чат не считается."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[
+            {"telegram_id": 1, "full_name": "А", "username": "@alpha", "status": "approved", "event_city": None},
+            {"telegram_id": 2, "full_name": "Б", "username": "-", "status": "approved", "event_city": None},
+        ],
+        chat_activity=[
+            {"chat_id": CHAT_ID, "telegram_id": 1, "day": "2026-01-01", "messages": 2, "replies": 1, "media": 0},
+            {"chat_id": CHAT_ID, "telegram_id": 1, "day": "2026-01-02", "messages": 2, "replies": 1, "media": 1},
+            {"chat_id": CHAT_ID, "telegram_id": 2, "day": "2026-01-01", "messages": 7, "replies": 0, "media": 0},
+            {"chat_id": SPB_CHAT_ID, "telegram_id": 1, "day": "2026-01-01", "messages": 99, "replies": 0, "media": 0},
+        ],
+    )
+    chat = {"city": None, "chat_id": CHAT_ID, "title": "x", "label": "x"}
+    with dash_db.read_conn(path) as conn:
+        rows = chat_activity_leaderboard(conn, Scope(), chat)
+    assert [r["display_name"] for r in rows] == ["2", "@alpha"]
+    assert rows[1] == {"display_name": "@alpha", "messages": 4, "replies": 2, "media": 1, "reply_rate": 50}
 
 
 # ── маршрут /chat (TestClient) ───────────────────────────────────────────────────────────
