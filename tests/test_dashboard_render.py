@@ -54,6 +54,7 @@ async def _seed_async(
     *, cities=None, settings=None, users=None, staff=None, reg_events=None,
     reg_started=None, game_tasks=None, game_submissions=None, application_decisions=None,
     coins=None, delegate_questions=None, ambassador_waves=None,
+    reject_rules=None, auto_reject_log=None,
 ):
     async with bot_db._connect() as conn:
         for code, label, enabled, sort_order in cities or []:
@@ -136,6 +137,20 @@ async def _seed_async(
             await conn.execute(
                 f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
                 tuple(row.values()),
+            )
+        # Решение владельца 2 (23.09, DASHBOARD-IA-PROPOSAL-260923): для теста «разбивка
+        # правил без воронки» — те же таблицы, что у test_dashboard_queries.py.
+        for row in reject_rules or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO reject_rules ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in auto_reject_log or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO auto_reject_log ({cols}) VALUES ({placeholders})", tuple(row.values())
             )
         await conn.commit()
 
@@ -408,6 +423,8 @@ def _seed_full_fixture(db_path, *, payment_enabled=True, event_city_enabled=True
 
 
 def test_all_seven_blocks_present_when_toggles_on(tmp_path):
+    """Решение владельца 23.09 (DASHBOARD-IA-PROPOSAL-260923): «Разрезы» переименованы в
+    «Кто подаёт» (раздел страницы), плюс липкое оглавление разделов."""
     db_path = _use_tmp_db(tmp_path)
     _seed_full_fixture(db_path)
     client = _stats_manager_client(db_path)
@@ -416,9 +433,10 @@ def test_all_seven_blocks_present_when_toggles_on(tmp_path):
     text = resp.text
     assert "<h1>YouLead" in text
     assert 'class="kpi-grid' in text
+    assert 'class="section-nav"' in text
     assert "Воронка регистрации" in text
     assert "Динамика регистраций" in text
-    assert "Разрезы" in text
+    assert "Кто подаёт" in text
     assert "Где бросают" in text
     assert "Геймификация" in text
     assert "Рефералы" in text
@@ -998,6 +1016,9 @@ def _seed_game_review_fixture(db_path):
 
 
 def test_game_review_tile_and_extended_block_shown_with_data(tmp_path):
+    """Решение владельца 23.09: плитка «Модерация заданий» переехала ИЗ шапочного KPI ВНУТРЬ
+    блока «Геймификация» (после её заголовка), а дубль «На проверке»/«Ждут проверки» убран —
+    осталась одна плитка «Ждут проверки»."""
     db_path = _use_tmp_db(tmp_path)
     _seed_game_review_fixture(db_path)
     client = _stats_manager_client(db_path)
@@ -1008,8 +1029,10 @@ def test_game_review_tile_and_extended_block_shown_with_data(tmp_path):
     assert "от сдачи задания до решения менеджера" in text
     assert "Коинов начислено" in text
     assert "Ждут проверки" in text
+    assert text.index("Модерация заданий") > text.index("Геймификация")
     assert "Топ заданий" in text
     assert "Сделать фото стенда" in text  # подпись задания из фикстуры
+    assert ">На проверке<" not in text
     # Кодов статусов/источников коинов в видимом тексте страницы быть не должно (только в
     # именах переменных Jinja, которые в HTML не попадают).
     assert ">pending<" not in text
@@ -1018,7 +1041,7 @@ def test_game_review_tile_and_extended_block_shown_with_data(tmp_path):
 
 def test_game_review_tile_absent_without_game_data(tmp_path):
     """Тумблер включён, но `game_submissions` пуста -- блок и плитка не показываются (D-12),
-    а шестая плитка не ломает существующий пятиплиточный ряд."""
+    а раздел «Модерация и ответы» с плиткой «Среднее время обработки» не задет."""
     db_path = _use_tmp_db(tmp_path)
     _seed(settings={"dashboard_block_game": "on"})
     client = _stats_manager_client(db_path)
@@ -1062,6 +1085,9 @@ def _seed_questions_fixture(db_path):
 
 
 def test_questions_block_shows_counters_and_avg(tmp_path):
+    """Решение владельца 23.09: плитка-дубль «Ответ на вопрос» убрана целиком (осталась
+    «Среднее время ответа»), «Без ответа»/«В работе» — подстрока delta «без ответа N ·
+    в работе N» под плиткой «Ждут ответа» (регистр — как в шаблоне, не отдельные плитки)."""
     db_path = _use_tmp_db(tmp_path)
     _seed_questions_fixture(db_path)
     client = _stats_manager_client(db_path)
@@ -1069,9 +1095,10 @@ def test_questions_block_shows_counters_and_avg(tmp_path):
     assert resp.status_code == 200
     text = resp.text
     assert "Вопросы делегатов" in text
-    assert "Ответ на вопрос" in text
-    assert "Без ответа" in text
-    assert "В работе" in text
+    assert "Ответ на вопрос" not in text
+    assert "Среднее время ответа" in text
+    assert "без ответа" in text
+    assert "в работе" in text
     assert "Отвечено" in text
     assert "Ждут ответа" in text
     assert "35 мин" in text
@@ -1088,20 +1115,144 @@ def test_questions_block_top_managers_rendered(tmp_path):
     assert "Аня Менеджер" in text
 
 
-def test_kpi_grid_class_counts_visible_tiles(tmp_path):
-    """Три случая: без вопросов и без геймы -> `kpi-grid--5`; с вопросами без геймы ->
-    `kpi-grid--6`; с вопросами и геймой -> `kpi-grid--7` (клиент/логин переиспользуются, БД
-    дополняется между запросами -- тот же приём, что у `test_empty_game_and_disabled_toggle_
-    both_hide_game_block`)."""
+_NOW_SECTION_KPI_TILE_RE = re.compile(r'<div class="kpi(?=["\s])')
+
+
+def _now_section_html(text: str) -> str:
+    """Вырезает разметку раздела «Сейчас» (от `id="now"` до начала следующего раздела) —
+    «Модерация и ответы» рисуется всегда, поэтому следующий `<section class="page-section"`
+    гарантированно найдётся."""
+    m = re.search(
+        r'<section class="page-section" id="now".*?(?=<section class="page-section" id=")',
+        text, re.S,
+    )
+    assert m, "раздел «Сейчас» не найден в HTML"
+    return m.group(0)
+
+
+def test_now_section_has_four_tiles(tmp_path):
+    """Решение владельца 23.09: раздел «Сейчас» — ровно 4 плитки при любых данных (вопросы/
+    гейма переехали в другие разделы, ряда `kpi-grid--N` больше нет вовсе)."""
     db_path = _use_tmp_db(tmp_path)
     client = _stats_manager_client(db_path)
     resp = client.get("/")
-    assert 'class="kpi-grid kpi-grid--5"' in resp.text
+    assert len(_NOW_SECTION_KPI_TILE_RE.findall(_now_section_html(resp.text))) == 4
+    assert "kpi-grid--" not in resp.text
 
     _seed_questions_fixture(db_path)
     resp2 = client.get("/")
-    assert 'class="kpi-grid kpi-grid--6"' in resp2.text
+    assert len(_NOW_SECTION_KPI_TILE_RE.findall(_now_section_html(resp2.text))) == 4
+    assert "kpi-grid--" not in resp2.text
 
     _seed_game_review_fixture(db_path)
     resp3 = client.get("/")
-    assert 'class="kpi-grid kpi-grid--7"' in resp3.text
+    assert len(_NOW_SECTION_KPI_TILE_RE.findall(_now_section_html(resp3.text))) == 4
+    assert "kpi-grid--" not in resp3.text
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# Раздел страницы (решение владельца 23.09, DASHBOARD-IA-PROPOSAL-260923): порядок разделов,
+# скрытие пустых вместе с кнопкой оглавления, плитка «На модерации», разбивка правил без
+# воронки.
+# ═══════════════════════════════════════════════════════════════════════════════════════
+
+def test_sections_render_in_proposal_order(tmp_path):
+    """Полный фикстур-сид (`_seed_full_fixture`, гейма включена) -- все 6 разделов идут в
+    порядке предложения, и то же самое в липком оглавлении."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    text = resp.text
+    section_order = ("now", "flow", "moderation", "sources", "who", "engagement")
+    section_positions = [text.index(f'id="{sid}"') for sid in section_order]
+    assert section_positions == sorted(section_positions)
+    nav_positions = [text.index(f'href="#{sid}"') for sid in section_order]
+    assert nav_positions == sorted(nav_positions)
+
+
+def test_empty_section_hidden_with_its_nav_button(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed_full_fixture(db_path)
+    client = _stats_manager_client(
+        db_path,
+        extra_settings={
+            "dashboard_block_utm": "off",
+            "dashboard_block_sources": "off",
+            "dashboard_block_referrals": "off",
+        },
+    )
+    resp = client.get("/")
+    text = resp.text
+    assert 'id="sources"' not in text
+    assert 'href="#sources"' not in text
+
+    # «Вовлечение» пуст без геймы/амбассадоров и без привязанного чата (дефолты выключены).
+    db_path2 = _use_tmp_db(tmp_path, name="dashboard_render_no_engagement.db")
+    _seed(users=[{"telegram_id": 1, "status": "approved"}])
+    client2 = _stats_manager_client(db_path2)
+    resp2 = client2.get("/")
+    text2 = resp2.text
+    assert 'id="engagement"' not in text2
+    assert 'href="#engagement"' not in text2
+
+
+def test_now_tiles_show_real_subtitle_only_with_reject_rules(tmp_path):
+    """Решение владельца 1 (23.09): подпись «реальных N» под первыми плитками «Сейчас»
+    видна только при включённом автоотказе, отдельного ряда `kpi-grid--real` больше нет."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": None},
+        {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+    ])
+    client = _stats_manager_client(db_path)
+    resp_off = client.get("/")
+    assert "реальных" not in resp_off.text
+    assert "kpi-grid--real" not in resp_off.text
+
+    _seed(settings={"reject_rules_enabled": "on"})
+    resp_on = client.get("/")
+    assert "реальных" in resp_on.text
+    assert "kpi-grid--real" not in resp_on.text
+
+
+def test_pending_tile_shows_count_and_oldest(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "status": "pending", "registration_date": "2020-01-01 00:00:00"},
+        {"telegram_id": 2, "status": "pending", "registration_date": "2020-01-01 01:00:00"},
+    ])
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    text = resp.text
+    assert "На модерации" in text
+    assert "самая старая ждёт" in text
+
+
+def test_reject_breakdown_shown_without_funnel_toggle(tmp_path):
+    """Решение владельца 2 (23.09): «Какое правило сколько отсеяло» гейтится только
+    `reject_rules_enabled`, БЕЗ привязки к тумблеру воронки `dashboard_block_funnel`."""
+    db_path = _use_tmp_db(tmp_path)
+    _seed(
+        settings={"dashboard_block_funnel": "off", "reject_rules_enabled": "on"},
+        users=[{"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1]"}],
+        reject_rules=[{
+            "name": "Слишком юн", "city": None, "tracks": "[]", "conditions": "[]",
+            "action": "reject", "reject_text": None, "enabled": 1,
+            "created_at": "2026-01-01 00:00:00", "updated_at": "2026-01-01 00:00:00",
+        }],
+        auto_reject_log=[{
+            "telegram_id": 1, "rule_ids": "[1]", "reject_texts": "[]", "attempt_count": 1,
+            "first_triggered_at": "2026-01-01 00:00:00", "last_triggered_at": "2026-01-01 00:00:00",
+            "returned_to_moderation_at": None,
+        }],
+    )
+    client = _stats_manager_client(db_path)
+    resp = client.get("/")
+    text = resp.text
+    assert "Какое правило сколько отсеяло" in text
+    assert "Воронка регистрации" not in text
+
+    _seed(settings={"reject_rules_enabled": "off"})
+    resp2 = client.get("/")
+    assert "Какое правило сколько отсеяло" not in resp2.text

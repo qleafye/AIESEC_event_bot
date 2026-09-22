@@ -104,7 +104,9 @@ def test_dashboard_page_shows_visible_empty_kpi_labels_not_only_title_attr(tmp_p
 
     resp = client.get("/")
     assert resp.status_code == 200
-    # Пункт 6: видимые подписи пустого состояния — не title="…" (hover-only).
-    assert "Появится, когда бот начнёт отслеживать входы" in resp.text
-    assert 'title="Появится, когда бот начнёт отслеживать входы"' not in resp.text
+    # Пункт 6: видимые подписи пустого состояния — не title="…" (hover-only). Решение
+    # владельца 23.09 (DASHBOARD-IA-PROPOSAL-260923): конверсия переехала из плитки KPI в
+    # заголовок воронки, подпись пустого состояния — рядом с заголовком, тем же текстом.
+    assert "Конверсия появится, когда бот начнёт отслеживать входы" in resp.text
+    assert 'title="Конверсия появится, когда бот начнёт отслеживать входы"' not in resp.text
     assert "Появится после первых решений по заявкам" in resp.text
