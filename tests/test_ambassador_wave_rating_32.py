@@ -391,6 +391,35 @@ def test_wave_rating_view_gap_to_prize_zero_in_zone_and_positive_below_cutoff(tm
     assert view_below["own"]["gap_to_prize"] == 40
 
 
+def test_wave_rating_view_negative_own_prize_places_treated_as_one(tmp_path):
+    """32-FIX-common-2 (хвост IN-02): своё число призовых мест волны валидирует только визард
+    (`handlers/admin_game_wave_wizard.py`, `new_value <= 0` — отдельный шов, чинить не в этом
+    плане); `database.db.update_wave` само значение не проверяет — кривая запись (миграция,
+    прямой SQL) с отрицательным `prize_places` доходит до сервисного слоя как есть. Раньше
+    голое вычисление `int(wave["prize_places"] or ...)` брало отрицательное число ЦЕЛИКОМ (оно
+    truthy — `or` до настройки не доходит) и индексировало `rating[prize_places - 1]` С КОНЦА
+    списка — отсечка «до приза» получалась от предпоследнего участника вместо первого.
+    `prize_places_for` приводит такое значение к минимум единице."""
+    _ready(tmp_path)
+    for uid, points in ((1, 100), (2, 80), (3, 60)):
+        _make_ambassador(uid)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    task_id = _run(db.create_task("A", "Light", 100, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id))
+    for uid, points in ((1, 100), (2, 80), (3, 60)):
+        _run(db.add_coins(uid, points, source="task", task_id=task_id))
+    _run(db.update_wave(wave_id, prize_places=-1))
+
+    wave = _run(db.get_wave(wave_id))
+    assert _run(waves.prize_places_for(wave)) == 1
+
+    view = _run(waves.wave_rating_view(wave_id, 1))
+    assert view["prize_places"] == 1
+    assert view["own"]["gap_to_prize"] == 0  # лидер и так в «первой» призовой зоне
+
+    view_second = _run(waves.wave_rating_view(wave_id, 2))
+    assert view_second["own"]["gap_to_prize"] == 20  # против отсечки в 100 (1-е место), не -2-го
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Задача 2: сводка конца волны и переход состояния
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -429,6 +458,25 @@ def test_wave_end_summary_pending_excludes_other_wave_and_outside(tmp_path):
 
     summary = _run(waves.wave_end_summary(wave_a))
     assert summary["pending"] == 1
+
+
+def test_wave_end_summary_negative_own_prize_places_treated_as_one(tmp_path):
+    """32-FIX-common-2 (хвост IN-02): та же защита в `wave_end_summary` — с кривым
+    отрицательным `prize_places` на волне (см. соседний тест `wave_rating_view` за полным
+    объяснением, откуда оно берётся) голое `place <= prize_places` не совпадало НИ С ОДНИМ
+    местом (`place` всегда >= 1), «топ» в сводке менеджеру был бы пуст, хотя объявленные
+    итоги (`announce_results`, тот же `prize_places_for`) всё равно назвали бы призёра."""
+    _ready(tmp_path)
+    _make_ambassador(1)
+    _make_ambassador(2)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    task_id = _run(db.create_task("T", "Light", 100, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id))
+    _run(db.add_coins(1, 100, source="task", task_id=task_id))
+    _run(db.add_coins(2, 50, source="task", task_id=task_id))
+    _run(db.update_wave(wave_id, prize_places=-1))
+
+    summary = _run(waves.wave_end_summary(wave_id))
+    assert [r["points"] for r in summary["top"]] == [100]  # 1-е место, не пустой срез
 
 
 def test_close_wave_true_then_false(tmp_path):
