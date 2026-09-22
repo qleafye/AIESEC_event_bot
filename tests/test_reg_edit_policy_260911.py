@@ -150,13 +150,14 @@ def test_edit_gate_fails_soft_on_registry_error(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_toggle_row_present_before_remoderation_row():
-    """Строка стоит в разделе «apps» СРАЗУ ПЕРЕД toggle_reg_edit_remoderation — читается
-    парой: сначала «можно ли», потом «что делать с правкой»."""
+    """Строка стоит в разделе «apps» ПЕРЕД toggle_reg_edit_remoderation — читается тройкой:
+    сначала «можно ли править», потом «можно ли подать заново» (Квик 260922-wrg, встал
+    СРАЗУ ПОСЛЕ этой строки), потом «что делать с правкой»."""
     apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
     callbacks = [row[1] for row in apps_rows if row[0] == "toggle"]
     i_policy = callbacks.index("toggle_reg_edit_policy")
     i_remod = callbacks.index("toggle_reg_edit_remoderation")
-    assert i_policy == i_remod - 1
+    assert i_policy < i_remod
 
 
 def test_settings_toggle_rows_contains_reg_edit_policy_row(tmp_path):
@@ -396,6 +397,7 @@ def test_submit_kind_new_passes_even_when_never(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 from handlers import registration as reg
+from handlers import reg_flow
 from handlers import reg_handoff
 from handlers import reg_resume
 
@@ -578,3 +580,590 @@ def test_reg_resume_restart_yes_still_works_when_never(tmp_path):
     cb, draft = _run(go())
     assert draft is None  # черновик всё равно удалён
     assert any("Изменения отменены" in (t or "") for t in _texts(cb.message))
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260922-wrg (задача 1) — «🔁 Повторная подача после отказа»: resubmit_allowed_for
+# (чистая), resubmit_gate (fail-soft + дефолт текста), open_gate, reg_engine.is_past_season_row,
+# кнопка-цикл раздела «📋 Заявки», врезки в /start, rereg_start, finalize_registration.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+import reg_engine
+
+
+# ── resubmit_allowed_for — чистое правило ────────────────────────────────────────────────────
+
+def test_resubmit_allow_permits_rejected_current_season():
+    assert reg_edit_policy.resubmit_allowed_for("allow", status="rejected", current_season=True) is True
+
+
+def test_resubmit_deny_forbids_rejected_current_season():
+    assert reg_edit_policy.resubmit_allowed_for("deny", status="rejected", current_season=True) is False
+
+
+def test_resubmit_deny_permits_rejected_past_season():
+    """Возвращенец прошлого сезона — тумблер его не касается ни при каком положении."""
+    assert reg_edit_policy.resubmit_allowed_for("deny", status="rejected", current_season=False) is True
+
+
+@pytest.mark.parametrize("status", ["approved", "pending", None, ""])
+def test_resubmit_deny_does_not_gate_non_rejected_status(status):
+    assert reg_edit_policy.resubmit_allowed_for("deny", status=status, current_season=True) is True
+
+
+def test_resubmit_unknown_policy_fails_soft_to_allowed():
+    assert reg_edit_policy.resubmit_allowed_for("bogus", status="rejected", current_season=True) is True
+
+
+# ── resubmit_gate — реестр + fail-soft ───────────────────────────────────────────────────────
+
+def test_resubmit_gate_default_allow_passes(tmp_path):
+    _ready(tmp_path, "resubmit_gate_default.db")
+    row = {"status": "rejected", "season": None}
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(row))
+    assert can_resubmit is True
+    assert text is None
+
+
+def test_resubmit_gate_deny_forbids_with_default_text(tmp_path):
+    _ready(tmp_path, "resubmit_gate_deny.db")
+    _run(db.set_setting("reg_resubmit_after_reject", "deny"))
+    row = {"status": "rejected", "season": None}
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(row))
+    assert can_resubmit is False
+    assert text == SETTINGS_SCHEMA["reg_resubmit_closed_text"]["default"]
+
+
+def test_resubmit_gate_deny_uses_custom_text(tmp_path):
+    _ready(tmp_path, "resubmit_gate_custom.db")
+    _run(db.set_setting("reg_resubmit_after_reject", "deny"))
+    _run(db.set_setting("reg_resubmit_closed_text", "Напишите менеджеру @manager."))
+    row = {"status": "rejected", "season": None}
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(row))
+    assert can_resubmit is False
+    assert text == "Напишите менеджеру @manager."
+
+
+def test_resubmit_gate_past_season_rejected_passes_even_when_deny(tmp_path):
+    _ready(tmp_path, "resubmit_gate_past.db")
+    _run(db.set_setting("event_season", "YL'26"))
+    _run(db.set_setting("reg_resubmit_after_reject", "deny"))
+    row = {"status": "rejected", "season": "YL'25"}
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(row))
+    assert can_resubmit is True
+    assert text is None
+
+
+def test_resubmit_gate_approved_status_always_passes(tmp_path):
+    _ready(tmp_path, "resubmit_gate_approved.db")
+    _run(db.set_setting("reg_resubmit_after_reject", "deny"))
+    row = {"status": "approved", "season": None}
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(row))
+    assert can_resubmit is True
+    assert text is None
+
+
+def test_resubmit_gate_fails_soft_on_registry_error(tmp_path, monkeypatch):
+    _ready(tmp_path, "resubmit_gate_error.db")
+
+    async def boom(key):
+        raise RuntimeError("сбой чтения реестра")
+
+    monkeypatch.setattr(reg_edit_policy, "get_setting_typed", boom)
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate({"status": "rejected"}))
+    assert can_resubmit is True
+    assert text is None
+
+
+def test_resubmit_gate_none_row_passes():
+    can_resubmit, text = _run(reg_edit_policy.resubmit_gate(None))
+    assert can_resubmit is True
+    assert text is None
+
+
+# ── open_gate — edit_gate + resubmit_gate ────────────────────────────────────────────────────
+
+def test_open_gate_edit_closed_wins_over_resubmit(tmp_path):
+    _ready(tmp_path, "open_gate_edit_closed.db")
+    _run(db.set_setting("reg_edit_policy", "never"))
+    row = {"status": "approved", "season": None, "registration_date": "2026-01-01 00:00:00"}
+    can_open, text = _run(reg_edit_policy.open_gate(row))
+    assert can_open is False
+    assert text == SETTINGS_SCHEMA["reg_edit_closed_text"]["default"]
+
+
+def test_open_gate_resubmit_closed_when_edit_open(tmp_path):
+    _ready(tmp_path, "open_gate_resubmit_closed.db")
+    _run(db.set_setting("reg_resubmit_after_reject", "deny"))
+    row = {"status": "rejected", "season": None}
+    can_open, text = _run(reg_edit_policy.open_gate(row))
+    assert can_open is False
+    assert text == SETTINGS_SCHEMA["reg_resubmit_closed_text"]["default"]
+
+
+def test_open_gate_passes_when_both_open(tmp_path):
+    _ready(tmp_path, "open_gate_both_open.db")
+    row = {"status": "approved", "season": None, "registration_date": "2026-01-01 00:00:00"}
+    can_open, text = _run(reg_edit_policy.open_gate(row))
+    assert can_open is True
+    assert text is None
+
+
+# ── reg_engine.is_past_season_row ────────────────────────────────────────────────────────────
+
+def test_is_past_season_row_true_when_differs():
+    assert reg_engine.is_past_season_row({"season": "YL'25"}, "YL'26") is True
+
+
+def test_is_past_season_row_false_when_same():
+    assert reg_engine.is_past_season_row({"season": "YL'26"}, "YL'26") is False
+
+
+def test_is_past_season_row_false_when_row_season_empty():
+    assert reg_engine.is_past_season_row({"season": None}, "YL'26") is False
+
+
+def test_is_past_season_row_false_when_event_season_empty():
+    assert reg_engine.is_past_season_row({"season": "YL'25"}, None) is False
+
+
+def test_is_past_season_row_false_when_row_none():
+    assert reg_engine.is_past_season_row(None, "YL'26") is False
+
+
+# ── Кнопка-цикл раздела «📋 Заявки» ───────────────────────────────────────────────────────────
+
+def test_resubmit_toggle_row_present_right_after_edit_policy_row():
+    apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
+    callbacks = [row[1] for row in apps_rows if row[0] == "toggle"]
+    i_policy = callbacks.index("toggle_reg_edit_policy")
+    i_resubmit = callbacks.index("toggle_reg_resubmit_after_reject")
+    i_remod = callbacks.index("toggle_reg_edit_remoderation")
+    assert i_resubmit == i_policy + 1
+    assert i_remod == i_resubmit + 1
+
+
+def test_settings_toggle_rows_contains_reg_resubmit_row(tmp_path):
+    _ready(tmp_path, "resubmit_toggle_rows.db")
+    rows = _run(st.settings_toggle_rows())
+    assert "toggle_reg_resubmit_after_reject" in rows
+    button = rows["toggle_reg_resubmit_after_reject"][0][0]
+    assert button.callback_data == "toggle_reg_resubmit_after_reject"
+    label = SETTINGS_SCHEMA["reg_resubmit_after_reject"]["label"]
+    assert label in button.text
+    assert "можно" in button.text
+    assert "нельзя" in button.text
+
+
+def test_resubmit_toggle_cycles_two_positions_and_back(tmp_path):
+    _ready(tmp_path, "resubmit_toggle_cycle.db")
+    cb = FakeCallback("toggle_reg_resubmit_after_reject")
+    seen = []
+    for _ in range(3):
+        _run(st.toggle_reg_resubmit_after_reject(cb))
+        seen.append(_run(db.get_setting("reg_resubmit_after_reject")))
+    assert seen == ["deny", "allow", "deny"]
+
+
+def test_resubmit_toggle_alert_is_human_never_shows_raw_codes(tmp_path):
+    _ready(tmp_path, "resubmit_toggle_alert.db")
+    cb = FakeCallback("toggle_reg_resubmit_after_reject")
+    _run(st.toggle_reg_resubmit_after_reject(cb))
+    text, show_alert = cb.answers[-1]
+    assert show_alert is True
+    assert "allow" not in text
+    assert "deny" not in text
+    assert "нельзя" in text or "заново" in text
+
+
+def test_admin_caps_maps_resubmit_toggle_to_settings_capability():
+    from handlers.admin_caps import ADMIN_CAPS
+    assert ADMIN_CAPS["toggle_reg_resubmit_after_reject"] == "settings"
+
+
+# ── /start возвращенца: deny/allow, прошлый сезон при deny сохраняет кнопку ────────────────
+
+RESUBMIT_UID = 800400
+
+
+def _resubmit_ready(tmp_path, name="reg_resubmit_chat.db"):
+    config.DB_PATH = str(tmp_path / name)
+    _run(db.init_db())
+    _run(db.set_setting("event_season", "YL'26"))
+
+
+def test_start_returning_rejected_current_season_denied_no_button(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("reg_resubmit_closed_text", "Заявки в этом сезоне закрыты.")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert all("rereg_start" not in _callback_datas(rm) for (_, rm, _) in inline)
+    assert any(t == "Заявки в этом сезоне закрыты." for t in _texts(msg))
+
+
+def test_start_returning_rejected_current_season_allowed_has_button(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert any("rereg_start" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+def test_start_returning_rejected_past_season_keeps_button_even_when_deny(tmp_path):
+    """Возвращенец прошлого сезона — тумблер его не касается вовсе."""
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'25")
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert any("rereg_start" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+def test_start_returning_approved_past_season_keeps_button_when_deny(tmp_path):
+    """Approved прошлого сезона — тоже не rejected текущего, тумблер не касается."""
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="approved", season="YL'25")
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert any("rereg_start" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+# ── rereg_start: deny блокирует без сброса FSM, allow проходит как раньше ──────────────────
+
+def test_rereg_start_denied_when_deny_rejected_current_season(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("reg_resubmit_closed_text", "Нельзя, сезон закрыт.")
+        state = _new_state(RESUBMIT_UID)
+        cb = _FakeCallback("rereg_start", RESUBMIT_UID, "delegate")
+        await reg_flow.rereg_start(cb, state)
+        data = await state.get_data()
+        fsm_state = await state.get_state()
+        return cb, data, fsm_state
+
+    cb, data, fsm_state = _run(go())
+    text, show_alert = cb.answers[-1]
+    assert text == "Нельзя, сезон закрыт."
+    assert show_alert is True
+    assert "_prior_answers" not in data
+    assert fsm_state is None
+
+
+def test_rereg_start_allowed_when_allow_rejected_current_season(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        state = _new_state(RESUBMIT_UID)
+        cb = _FakeCallback("rereg_start", RESUBMIT_UID, "delegate")
+        await reg_flow.rereg_start(cb, state)
+        data = await state.get_data()
+        return data
+
+    data = _run(go())
+    assert "_prior_answers" in data
+
+
+# ── черновик (offer_resume): rejected при deny не предлагается ─────────────────────────────
+
+def test_start_rejected_new_draft_not_offered_when_deny(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        await db.upsert_reg_draft(
+            RESUBMIT_UID, kind="new", participant_type="full", step="phone",
+            patch={"age": "20"}, source="bot",
+        )
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("reg_resubmit_closed_text", "Нельзя подать заново.")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert not any("reg_resume:continue" in _callback_datas(rm) for (_, rm, _) in inline)
+    assert any(t == "Нельзя подать заново." for t in _texts(msg))
+
+
+def test_start_rejected_new_draft_still_offered_when_allow(tmp_path):
+    _resubmit_ready(tmp_path)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        await db.upsert_reg_draft(
+            RESUBMIT_UID, kind="new", participant_type="full", step="phone",
+            patch={"age": "20"}, source="bot",
+        )
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await reg.cmd_start(msg, state, bot=object(), command=None)
+        return msg
+
+    msg = _run(go())
+    inline = _inline_kb_msgs(msg)
+    assert any("reg_resume:continue" in _callback_datas(rm) for (_, rm, _) in inline)
+
+
+# ── finalize_registration: страховка на случай обхода /start ───────────────────────────────
+#
+# Ниже врезки claim_reg_draft заглушён сентинелом: если он вызван — страховка НЕ заблокировала
+# (дошли до тела функции дальше неё), если нет — заблокировала раньше него. Тот же приём, что
+# `monkeypatch.setattr(reg, "upsert_reg_draft", boom)` в tests/test_reg_resume_draft.py.
+
+def test_finalize_registration_blocked_for_rejected_current_season_when_deny(tmp_path, monkeypatch):
+    _resubmit_ready(tmp_path)
+
+    async def boom(*a, **k):
+        raise AssertionError("страховка обязана заблокировать ДО claim_reg_draft")
+
+    monkeypatch.setattr(reg, "claim_reg_draft", boom)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("reg_resubmit_closed_text", "Нельзя завершить.")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await state.update_data(full_name="Новое Имя")
+        await reg.finalize_registration(msg, state, bot=object())
+        return msg
+
+    msg = _run(go())
+    assert any(t == "Нельзя завершить." for t in _texts(msg))
+
+
+def test_finalize_registration_passes_through_for_rejected_current_season_when_allow(tmp_path, monkeypatch):
+    _resubmit_ready(tmp_path)
+    reached = []
+
+    async def sentinel(*a, **k):
+        reached.append(1)
+        raise RuntimeError("sentinel stop -- доказывает, что страховка НЕ заблокировала")
+
+    monkeypatch.setattr(reg, "claim_reg_draft", sentinel)
+
+    async def go():
+        await _register(RESUBMIT_UID, "delegate", status="rejected", season="YL'26")
+        msg = _KBMsg(RESUBMIT_UID, "delegate")
+        state = _new_state(RESUBMIT_UID)
+        await state.update_data(full_name="Новое Имя")
+        try:
+            await reg.finalize_registration(msg, state, bot=object())
+        except RuntimeError:
+            pass
+        return reached
+
+    reached = _run(go())
+    assert reached == [1]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Правка 260922-wrg (владелец): «настройки должны работать по городам» — reg_edit_policy,
+# reg_resubmit_after_reject, reg_resubmit_closed_text помечены "per_city": True и резолвятся
+# через cities.get_setting_typed_for_city(key, user_row.get("event_city")). Город A «нельзя»,
+# город B «можно» -> разные решения одним и тем же гейтом на разных строках.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+import cities as cities_mod
+
+
+def _two_cities():
+    return [
+        {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+        {"code": "spb", "label": "СПб", "tab_base": "", "enabled": 1, "sort_order": 1},
+    ]
+
+
+def test_resubmit_gate_per_city_msk_deny_spb_allow(tmp_path):
+    """Ядро правки владельца: один и тот же тумблер `reg_resubmit_after_reject` может быть
+    «нельзя» у одного города и «можно» (общее значение) у другого — resubmit_gate отдаёт
+    РАЗНЫЕ решения по `event_city` строки, не глобальный ответ на всех."""
+    _ready(tmp_path, "resubmit_percity.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            await db.set_setting("event_season", "YL'26")
+            composed = cities_mod.per_city_key("reg_resubmit_after_reject", "msk")
+            await db.set_setting(composed, "deny")
+            row_msk = {"status": "rejected", "season": "YL'26", "event_city": "msk"}
+            row_spb = {"status": "rejected", "season": "YL'26", "event_city": "spb"}
+            return (
+                await reg_edit_policy.resubmit_gate(row_msk),
+                await reg_edit_policy.resubmit_gate(row_spb),
+            )
+
+        (msk_ok, msk_text), (spb_ok, spb_text) = _run(go())
+        assert msk_ok is False  # Москва: своё значение "deny"
+        assert msk_text == SETTINGS_SCHEMA["reg_resubmit_closed_text"]["default"]
+        assert spb_ok is True  # СПб: своего значения нет -> общий дефолт "allow"
+        assert spb_text is None
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_resubmit_gate_per_city_uses_city_own_closed_text(tmp_path):
+    _ready(tmp_path, "resubmit_percity_text.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            await db.set_setting("event_season", "YL'26")
+            await db.set_setting(cities_mod.per_city_key("reg_resubmit_after_reject", "msk"), "deny")
+            await db.set_setting(
+                cities_mod.per_city_key("reg_resubmit_closed_text", "msk"),
+                "Москва: заявки закрыты.",
+            )
+            row_msk = {"status": "rejected", "season": "YL'26", "event_city": "msk"}
+            return await reg_edit_policy.resubmit_gate(row_msk)
+
+        ok, text = _run(go())
+        assert ok is False
+        assert text == "Москва: заявки закрыты."
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_resubmit_gate_module_off_collapses_to_global_despite_city_override(tmp_path):
+    """Модуль городов выключен -> общий ответ байт-в-байт, даже если у Москвы где-то
+    завалялось собственное значение (cities.get_setting_typed_for_city's own contract)."""
+    _ready(tmp_path, "resubmit_percity_off.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting(cities_mod.per_city_key("reg_resubmit_after_reject", "msk"), "deny")
+            row_msk = {"status": "rejected", "season": None, "event_city": "msk"}
+            return await reg_edit_policy.resubmit_gate(row_msk)
+
+        ok, text = _run(go())
+        assert ok is True  # event_city_enabled никогда не был "on" в этом тесте
+        assert text is None
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_edit_gate_per_city_never_for_one_city_always_for_other(tmp_path):
+    """reg_edit_policy тоже per_city (правка владельца) — тот же приём проверен на edit_gate."""
+    _ready(tmp_path, "edit_gate_percity.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            await db.set_setting(cities_mod.per_city_key("reg_edit_policy", "msk"), "never")
+            row_msk = {
+                "status": "approved", "season": None, "event_city": "msk",
+                "registration_date": "2026-01-01 00:00:00",
+            }
+            row_spb = {
+                "status": "approved", "season": None, "event_city": "spb",
+                "registration_date": "2026-01-01 00:00:00",
+            }
+            return (
+                await reg_edit_policy.edit_gate(row_msk),
+                await reg_edit_policy.edit_gate(row_spb),
+            )
+
+        (msk_ok, _), (spb_ok, _) = _run(go())
+        assert msk_ok is False  # Москва: своё "never"
+        assert spb_ok is True  # СПб: общий дефолт "always"
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+# ── Админ-тумблер: правка идёт для города из шапки (тот же паттерн, что reg_resume_mode) ──
+
+RESUBMIT_ADMIN_UID = ADMIN_ID
+
+
+def test_toggle_reg_resubmit_writes_composed_key_for_header_city(tmp_path):
+    _ready(tmp_path, "resubmit_toggle_percity.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            await cities_mod.set_admin_city(RESUBMIT_ADMIN_UID, "msk")
+            cb = FakeCallback("toggle_reg_resubmit_after_reject")
+            await st.toggle_reg_resubmit_after_reject(cb)
+            composed_msk = cities_mod.per_city_key("reg_resubmit_after_reject", "msk")
+            composed_spb = cities_mod.per_city_key("reg_resubmit_after_reject", "spb")
+            msk_val = await db.get_setting(composed_msk)
+            spb_val = await db.get_setting(composed_spb)
+            global_val = await db.get_setting("reg_resubmit_after_reject")
+            return cb, msk_val, spb_val, global_val
+
+        cb, msk_val, spb_val, global_val = _run(go())
+        assert msk_val == "deny"  # своё значение только у Москвы
+        assert not spb_val  # СПб не тронут
+        assert not global_val  # общий ключ не тронут -- писали составной
+        text, show_alert = cb.answers[-1]
+        assert show_alert is True
+        assert "Москва" in text
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_toggle_reg_resubmit_all_cities_header_uses_global_key(tmp_path):
+    """Шапка = «все города» (ALL_CITIES) -> сегодняшняя глобальная ветка, ключ без города."""
+    _ready(tmp_path, "resubmit_toggle_allcities.db")
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            await cities_mod.set_admin_city(RESUBMIT_ADMIN_UID, cities_mod.ALL_CITIES)
+            cb = FakeCallback("toggle_reg_resubmit_after_reject")
+            await st.toggle_reg_resubmit_after_reject(cb)
+            return await db.get_setting("reg_resubmit_after_reject")
+
+        global_val = _run(go())
+        assert global_val == "deny"
+    finally:
+        cities_mod.set_cities_for_test(saved)

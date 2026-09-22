@@ -148,6 +148,9 @@ EXPECTED_PER_CITY_KEYS = {
     # Phase 31 (31-03, D-30): дата начала форума — per_city как её соседи event_date/
     # event_time (у разных городов форум может стартовать в разный день).
     "forum_date",
+    # Правка 260922-wrg (владелец, «настройки по городам»): тумблер правки/повторной подачи
+    # и её закрытый текст — по городам, тот же приём, что registration_mode/reg_resume_mode.
+    "reg_edit_policy", "reg_resubmit_after_reject", "reg_resubmit_closed_text",
 }
 
 

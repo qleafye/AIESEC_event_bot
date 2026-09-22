@@ -187,6 +187,10 @@ _APPS_FIELD_ORDER = [
     # бесплатно попаданием в этот список; сам переключатель положения (reg_edit_policy) —
     # group "toggles", живёт в settings_toggle_rows, здесь НЕ добавляется.
     "reg_edit_closed_text",
+    # Квик 260922-wrg: текст делегату при закрытой повторной подаче после отказа — тот же
+    # приём, что у reg_edit_closed_text выше; сам переключатель (reg_resubmit_after_reject) —
+    # group "toggles", здесь НЕ добавляется.
+    "reg_resubmit_closed_text",
     # Квик 260916: окно тишины дайджеста заявок — обычное числовое поле; сам режим
     # (reg_submit_notify_mode) — только тумблер, в этот список НЕ входит (менеджер не должен
     # печатать код варианта), тот же приём, что у game_submit_digest_minutes в группе "game".
@@ -679,12 +683,39 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     # положений (см. _next_enum_value/_cycle_enum_setting ниже), подпись строится тем же
     # приёмом «текущее → новое», что и её сосед reg_edit_remod_text выше (эта кнопка стоит
     # ПЕРЕД ним в разделе «📋 Заявки» — сначала «можно ли», потом «что делать с правкой»).
-    reg_edit_policy_val = await get_setting_typed("reg_edit_policy")
+    # Правка 260922-wrg: ключ стал per_city (владелец) — та же ветка header_code/per_city_ctx,
+    # что registration_mode выше, «•» маркер «у города своё» — тот же приём, что у
+    # `admin_reg_percity._resume_mode_toggle_button`.
+    if per_city_ctx:
+        reg_edit_policy_val = await get_setting_typed_for_city("reg_edit_policy", header_code)
+        _reg_edit_policy_own_key = per_city_key("reg_edit_policy", header_code)
+        _reg_edit_policy_own = bool(_reg_edit_policy_own_key and await get_setting(_reg_edit_policy_own_key))
+    else:
+        reg_edit_policy_val = await get_setting_typed("reg_edit_policy")
+        _reg_edit_policy_own = False
     reg_edit_policy_label = SETTINGS_SCHEMA["reg_edit_policy"]["label"]
     reg_edit_policy_next = _next_enum_value("reg_edit_policy", reg_edit_policy_val)
     reg_edit_policy_text = (
-        f"{reg_edit_policy_label}: {option_label('reg_edit_policy', reg_edit_policy_val)} → "
+        ("• " if _reg_edit_policy_own else "")
+        + f"{reg_edit_policy_label}: {option_label('reg_edit_policy', reg_edit_policy_val)} → "
         f"{option_label('reg_edit_policy', reg_edit_policy_next)}"
+    )
+    # Квик 260922-wrg: «можно ли отклонённому подать анкету заново» — тот же приём «текущее →
+    # новое», что и reg_edit_policy_text выше (эта кнопка стоит СРАЗУ ПОСЛЕ него в разделе
+    # «📋 Заявки»), тоже per_city.
+    if per_city_ctx:
+        reg_resubmit_val = await get_setting_typed_for_city("reg_resubmit_after_reject", header_code)
+        _reg_resubmit_own_key = per_city_key("reg_resubmit_after_reject", header_code)
+        _reg_resubmit_own = bool(_reg_resubmit_own_key and await get_setting(_reg_resubmit_own_key))
+    else:
+        reg_resubmit_val = await get_setting_typed("reg_resubmit_after_reject")
+        _reg_resubmit_own = False
+    reg_resubmit_label = SETTINGS_SCHEMA["reg_resubmit_after_reject"]["label"]
+    reg_resubmit_next = _next_enum_value("reg_resubmit_after_reject", reg_resubmit_val)
+    reg_resubmit_text = (
+        ("• " if _reg_resubmit_own else "")
+        + f"{reg_resubmit_label}: {option_label('reg_resubmit_after_reject', reg_resubmit_val)} → "
+        f"{option_label('reg_resubmit_after_reject', reg_resubmit_next)}"
     )
     # Phase 28 (28-06, SU-05/SU-06/SU-07): подписи — из реестра, тот же приём, что у
     # delegate_lang_* выше.
@@ -834,6 +865,7 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
         "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
         "toggle_reg_edit_policy": _row(reg_edit_policy_text, "toggle_reg_edit_policy"),
+        "toggle_reg_resubmit_after_reject": _row(reg_resubmit_text, "toggle_reg_resubmit_after_reject"),
         "toggle_reg_edit_remoderation": _row(reg_edit_remod_text, "toggle_reg_edit_remoderation"),
         "toggle_quiet_hours": _row(quiet_hours_toggle_text, "toggle_quiet_hours"),
         "toggle_chat_tracking_enabled": _row(chat_tracking_toggle_text, "toggle_chat_tracking_enabled"),
@@ -1299,16 +1331,48 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
     """Переключить enum-настройку на следующее положение цикла, ответить человеческим
     алертом (никогда не кодом значения) и перерисовать раздел — тот же хвост, что у
     `_toggle_module_setting`. `hints` — код положения -> короткое пояснение последствия,
-    подставляется В ДОПОЛНЕНИЕ к подписи `option_label`, не вместо неё."""
+    подставляется В ДОПОЛНЕНИЕ к подписи `option_label`, не вместо неё.
+
+    Правка 260922-wrg: ключи `SETTINGS_SCHEMA[key]["per_city"] is True` (сегодня —
+    `reg_edit_policy`/`reg_resubmit_after_reject`) переключаются ДЛЯ ГОРОДА ШАПКИ, тот же
+    паттерн, что `handlers/admin_reg_percity.py::reg_resume_mode_toggle` (право проверяется
+    через `_per_city_visible_codes`, ключ пишется составным через `cities.per_city_key`,
+    алерт называет город). Ключ без `per_city` (`reg_submit_notify_mode`/
+    `delegate_lang_ask_on_start`) или шапка = «все города»/модуль городов выключен —
+    байт-в-байт сегодняшняя глобальная ветка ниже."""
     label = SETTINGS_SCHEMA[key]["label"]
+    admin_id = callback.from_user.id
+    if is_per_city(key):
+        header_code = await admin_selected_city(admin_id)
+        per_city_ctx = bool(header_code and header_code != ALL_CITIES)
+        if per_city_ctx:
+            visible = await _per_city_visible_codes(admin_id)
+            if header_code not in visible:
+                await callback.answer("Этот город правит суперадмин", show_alert=True)
+                return
+            composed = per_city_key(key, header_code)
+            if composed is None:
+                await callback.answer("Неизвестный город", show_alert=True)
+                return
+            current = await get_setting_typed_for_city(key, header_code)
+            new_val = _next_enum_value(key, current)
+            await set_setting_by_admin(admin_id, composed, new_val)
+            human = option_label(key, new_val)
+            hint = hints.get(new_val, "")
+            city_txt = await city_label(header_code)
+            await callback.answer(f"{label} — {city_txt}: {human}\n\n{hint}", show_alert=True)
+            from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+            text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            return
     current = await get_setting_typed(key)
     new_val = _next_enum_value(key, current)
-    await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await set_setting_by_admin(admin_id, key, new_val)
     human = option_label(key, new_val)
     hint = hints.get(new_val, "")
     await callback.answer(f"{label}: {human}\n\n{hint}", show_alert=True)
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
-    text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+    text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
@@ -1546,6 +1610,17 @@ async def toggle_reg_edit_policy(callback: types.CallbackQuery):
         "always": "Правит когда захочет — как было.",
         "until_decision": "До одобрения можно, после — нет. Отклонённый исправит и подаст заново.",
         "never": "Поданную анкету не изменить. Первичная подача работает.",
+    })
+
+
+@router.callback_query(F.data == "toggle_reg_resubmit_after_reject")
+async def toggle_reg_resubmit_after_reject(callback: types.CallbackQuery):
+    # Квик 260922-wrg: цикл из двух положений — правило само живёт в
+    # `services/reg_edit_policy.py` (resubmit_gate), здесь только переключатель и человеческий
+    # алерт. Отклонённых прошлого сезона это не касается ни при каком положении.
+    await _cycle_enum_setting(callback, "reg_resubmit_after_reject", {
+        "allow": "Отклонённые могут исправить и подать анкету заново — как было.",
+        "deny": "Отклонённый в этом сезоне больше не подаст анкету. Прошлые делегаты — могут.",
     })
 
 

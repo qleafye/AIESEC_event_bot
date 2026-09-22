@@ -2490,6 +2490,28 @@ def is_returning_row(user: dict | None, event_season: str | None) -> bool:
     return False
 
 
+def is_past_season_row(row: dict | None, event_season: str | None) -> bool:
+    """Квик 260922-wrg: «строка из ПРОШЛОГО сезона» — уже без чтения статуса, в отличие от
+    `is_returning_row` (та ещё смотрит на `status == 'rejected'`). Нужна отдельно для двух
+    задач квика: (1) `services/reg_edit_policy.resubmit_gate` отличает «отклонён В ЭТОМ
+    сезоне» (гейтится тумблером) от «отклонён/одобрен в ПРОШЛОМ сезоне, обычный возвращенец»
+    (гейт его не касается); (2) Mini App считает делегата прошлого сезона возвращенцем
+    (`miniapp/deps.py::form_status`) независимо от статуса — approved прошлого сезона ТОЖЕ
+    возвращенец, чего `is_returning_row` не покрывает (approved текущего статуса для неё не
+    triggers).
+
+    True только когда ОБА поля заданы (непустые) И различаются — пустой `season` строки
+    (предзаведённая/незаполненная запись) или пустой `event_season` (модуль сезона не
+    настроен) читаются как «не прошлый сезон», тот же fail-soft принцип, что у
+    `is_returning_row`."""
+    if not row:
+        return False
+    season = row.get("season")
+    if not season or not event_season:
+        return False
+    return season != event_season
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # Phase 21 (21-06, FORM-SYNC-01/03) — validate_answer / apply_answer / merge_answers: вторая
 # половина движка. Судья ввода теперь один — и для чата бота, и (план 21-10) для Mini App
