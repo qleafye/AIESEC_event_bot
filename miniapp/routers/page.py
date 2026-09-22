@@ -48,6 +48,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# Квик 260922-wrg (задача 2, B-2): подпись статуса "returning" человеческая, НЕ код — но
+# `reg_labels.STATUS_LABELS` её не несёт (её читают листы/purge/application_effects, там
+# "returning" не статус БД, а производная form_status — второй смысл того же слова заводить
+# нельзя, см. context квика). Локальная константа только для этого экрана.
+_RETURNING_STATUS_LABEL = "Нужна новая анкета"
+
 # Тексты экранов состояний: имя в контексте шаблона -> ключ реестра.
 STATE_TEXT_KEYS = {
     "open_in_bot": "miniapp_open_in_bot_text",
@@ -313,7 +319,10 @@ async def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # анкетой видели его снова на новом устройстве/после очистки localStorage, потому что
         # клиент решал это сам (только по localStorage). Здесь ТОЛЬКО «кому положено» —
         # «показывали ли уже на этом устройстве» по-прежнему решает localStorage в hub.js.
-        show_onboarding = not p.is_staff and status in ("none", "draft") and form_access
+        # Квик 260922-wrg (задача 2, B-2): "returning" -- туда же, куда "none"/"draft" --
+        # возвращенец прошлого сезона ещё не подал анкету ТЕКУЩЕГО сезона, привет-экран и
+        # "дом приложения — анкета" ему положены так же, как новичку/черновику.
+        show_onboarding = not p.is_staff and status in ("none", "draft", "returning") and form_access
         theme_settings = {key: read_setting(conn, key) for key in web_theme.THEME_KEYS.values()}
         assets = {name: read_setting(conn, key) for name, key in web_theme.ASSET_KEYS.items()}
         onboarding_text = read_setting(conn, "miniapp_onboarding_text") or ""
@@ -368,9 +377,13 @@ async def me(request: Request, p: Principal = Depends(principal)) -> dict:
         # `users` нет — статус тоже "none") всегда попадает в хаб, а не на чужую для него
         # анкету; плитка «Анкета» остаётся видна через `form_access`.
         "form_status": status,
-        "form_status_label": i18n.tr(STATUS_LABELS.get(status, ""), lang, tr_map),
+        "form_status_label": i18n.tr(
+            _RETURNING_STATUS_LABEL if status == "returning" else STATUS_LABELS.get(status, ""),
+            lang, tr_map,
+        ),
         "form_access": form_access,
-        "form_first": form_access and sections["form"] and status in ("none", "draft") and not p.caps,
+        # Квик 260922-wrg (B-2): "returning" -- туда же, куда "none"/"draft".
+        "form_first": form_access and sections["form"] and status in ("none", "draft", "returning") and not p.caps,
         "show_onboarding": show_onboarding,
         # Оформление (D-03/D-04/D-08/D-15/D-16) — новые поля, старые выше НЕ переименованы.
         "theme_preset": resolved["preset"],

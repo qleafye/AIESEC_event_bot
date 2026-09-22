@@ -302,6 +302,29 @@ def test_me_form_status_contract(client):
     assert body["form_access"] is True
 
 
+# Квик 260922-wrg (задача 2, B-1/B-2): делегат прошлого сезона (любой статус) — "returning",
+# form_first/show_onboarding как у none/draft, подпись человеческая (не код "returning").
+def test_me_form_status_returning_for_past_season_row(client):
+    _set("event_season", "YL'26")
+    _run(_sql("UPDATE users SET season = 'YL''25' WHERE telegram_id = ?", (DELEGATE_ID,)))
+    body = _me(client, DELEGATE_ID)
+    assert body["form_status"] == "returning"
+    assert body["form_first"] is True
+    assert body["form_access"] is True
+    assert body["form_status_label"]
+    assert body["form_status_label"] != "returning"
+    assert body["show_onboarding"] is True
+
+
+def test_me_form_status_stays_rejected_for_current_season_row(client):
+    """B-3: отклонённый ТЕКУЩЕГО сезона (season == event_season) — обычный "rejected", не
+    "returning" (тумблер/причина отказа его касаются, экран отказа не подменяется плитой)."""
+    _set("event_season", "YL'26")
+    _run(_sql("UPDATE users SET season = 'YL''26' WHERE telegram_id = ?", (REJECTED_ID,)))
+    body = _me(client, REJECTED_ID)
+    assert body["form_status"] == "rejected"
+
+
 def test_me_form_first_false_for_manager_without_own_application(client):
     """Находка 21-13: у менеджера (`caps` не пустой, строки `users` нет) `form_status`
     тоже "none" — без гварда его бы кидало на анкету вместо хаба. `form_access` не меняется:

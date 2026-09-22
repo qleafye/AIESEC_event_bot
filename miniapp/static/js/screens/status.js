@@ -53,6 +53,14 @@ async function draw(root, params, ctx) {
   const { h, api, navigate, setMainButton } = ctx;
   const status = await api("/hub/status");
 
+  // Квик 260922-wrg (задача 2, B-2): «returning» — анкеты ТЕКУЩЕГО сезона ещё нет, прямой
+  // заход на #/status (закладка/чужая ссылка) обязан вести на форму, а не на хаб — тот же
+  // смысл, что у плиты хаба (кнопка/тап уже ведут на #/form).
+  if (status && status.status === "returning") {
+    navigate("#/form");
+    return;
+  }
+
   // Выключенный тумблер — сегодняшнее поведение вместо экрана: назад на хаб, никакого
   // «пустого» экрана делегат не увидит (deviation rule 3, checkpoints.md — automation-first).
   if (!status || !status.status_screen_enabled) {
