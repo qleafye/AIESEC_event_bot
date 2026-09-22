@@ -177,6 +177,21 @@ async def show_wave_card(callback: types.CallbackQuery, state: FSMContext):
 
 # ── активация ─────────────────────────────────────────────────────────────────────────────
 
+async def _wave_activation_blocker(wave_id: int, wave: dict) -> str | None:
+    """WR-16 (остаток): общая проверка «можно ли вообще запускать эту волну» — общая для
+    экрана подтверждения (`wave_activate_confirm`) и самого нажатия «Да, запустить»
+    (`wave_activate_go`). Между показом экрана и нажатием кнопки состав заданий или даты волны
+    могли смениться (менеджер Б успел вмешаться, старое сообщение с кнопкой ещё живо) — раньше
+    это перепроверял только экран подтверждения, а сам запуск проверял только состояние волны.
+    Возвращает готовое человеческое объяснение отказа, или `None`, если запускать можно."""
+    if not await list_wave_tasks(wave_id, active_only=True):
+        return f"Сначала добавьте задания: «🎯 Задания» → «➕ Новое» → {aw.wave_number_label(wave)}"
+    ends_dt = datetime.strptime(wave["ends_at"], "%Y-%m-%d %H:%M:%S")
+    if ends_dt <= msk_now():
+        return "Дата конца волны уже прошла — поправьте даты и запустите снова"
+    return None
+
+
 @router.callback_query(F.data.startswith("waveactivate:"))
 async def wave_activate_confirm(callback: types.CallbackQuery, state: FSMContext):
     wave_id, wave = await _wave_from_prefix(callback, "waveactivate:")
@@ -185,19 +200,11 @@ async def wave_activate_confirm(callback: types.CallbackQuery, state: FSMContext
     if wave["state"] != "draft":
         await callback.answer("Волну уже нельзя запустить из этого состояния", show_alert=True)
         return
-    # WR-16: пустую волну запускать нечего — амбассадоры получат «Задания волны:» с пустым
-    # списком, отменить рассылку будет нельзя, состав уже заперт.
-    if not await list_wave_tasks(wave_id, active_only=True):
-        await callback.answer(
-            f"Сначала добавьте задания: «🎯 Задания» → «➕ Новое» → {aw.wave_number_label(wave)}",
-            show_alert=True,
-        )
+    blocker = await _wave_activation_blocker(wave_id, wave)
+    if blocker:
+        await callback.answer(blocker, show_alert=True)
         return
     now = msk_now()
-    ends_dt = datetime.strptime(wave["ends_at"], "%Y-%m-%d %H:%M:%S")
-    if ends_dt <= now:
-        await callback.answer("Дата конца волны уже прошла — поправьте даты и запустите снова", show_alert=True)
-        return
     starts_dt = datetime.strptime(wave["starts_at"], "%Y-%m-%d %H:%M:%S")
     # WR-16: раньше текст безусловно обещал рассылку «сразу» — на самом деле она уходит в
     # starts_at, а «сразу» верно только для уже наступившей даты начала.
@@ -223,6 +230,14 @@ async def wave_activate_confirm(callback: types.CallbackQuery, state: FSMContext
 async def wave_activate_go(callback: types.CallbackQuery, state: FSMContext):
     wave_id, wave = await _wave_from_prefix(callback, "waveactivate_go:")
     if wave is None:
+        return
+    # WR-16 (остаток): между экраном подтверждения и этим нажатием состав заданий или даты
+    # волны могли смениться — та же проверка, что показывала экран подтверждения.
+    blocker = await _wave_activation_blocker(wave_id, wave)
+    if blocker:
+        await callback.answer(blocker, show_alert=True)
+        text, kb = await _wave_card_screen(callback.from_user.id, wave)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
     ok = await set_wave_state(wave_id, "active", expected_state="draft")
     if not ok:

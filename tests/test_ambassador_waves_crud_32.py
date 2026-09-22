@@ -414,6 +414,11 @@ def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
     _ready(tmp_path)
     from handlers import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))
+    # WR-16 (остаток, ревизия 32-FIX-common-2): `wave_activate_go` теперь тоже отказывает
+    # волне без заданий — этот тест проверяет саму расстановку джоб, а не запрет пустой волны
+    # (тот сюжет покрыт tests/test_wave_activate_guard_wr16_260922.py), поэтому у волны есть
+    # задание.
+    _run(db.create_task("Задание", "Light", 10, "text", _dt_end("10.11.2026"), ADMIN_ID, wave_id=wid))
     calls = {"start_for_all": 0, "wave_end": [], "reminders": []}
 
     async def fake_start_for_all(wave_id):
