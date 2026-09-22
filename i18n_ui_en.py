@@ -201,6 +201,10 @@ UI_EN: dict[str, str] = {
     "принято": "accepted",
     "отклонено": "rejected",
     "до": "until",
+    # 32-FIX-common-2 (хвост IN-06): список заданий волны в ЛС амбассадору (services/scheduler.py)
+    # и метка «Волна N» на экране рейтинга (handlers/user_actions.py::_wave_rating_screen).
+    "баллов": "points",
+    "Волна": "Wave",
     "срок вышел, сдать ещё можно": "deadline passed, you can still submit",
     "попытка": "attempt",
     "из": "of",
