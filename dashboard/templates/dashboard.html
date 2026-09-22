@@ -488,7 +488,9 @@
         </div>
         {% if ambassadors.wave %}
         <div class="kpi">
-          <div class="num">Волна {{ ambassadors.wave.number }}</div>
+          {# IN-08 (32-REVIEW.md): в «все города» номер волны сам по себе неоднозначен — у
+             каждого города своя нумерация; `city` заполнен только в этом режиме (queries.py). #}
+          <div class="num">Волна {{ ambassadors.wave.number }}{% if ambassadors.wave.city %} · {{ ambassadors.wave.city }}{% endif %}</div>
           <div class="lbl">{{ ambassadors.wave.starts_at[:10] }} — {{ ambassadors.wave.ends_at[:10] }}</div>
         </div>
         {% else %}
