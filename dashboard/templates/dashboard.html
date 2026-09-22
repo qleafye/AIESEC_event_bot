@@ -50,218 +50,262 @@
     </nav>
     {% endif %}
 
-    {# Квик 260914-rgr (RGR-01..07): ссылка только когда хотя бы один чат привязан — иначе
-       вести некуда, страница /chat сама покажет ту же инструкцию текстом. #}
-    {% if chat_bindings %}
-    <nav class="switchers" aria-label="Разделы">
-      <a class="switch-link" href="/chat">💬 Чат</a>
-    </nav>
-    {% endif %}
-
     <div class="updated-note">
       Данные на момент открытия страницы.
       {% if kpi.tracking_since %}Отслеживаем с {{ kpi.tracking_since }}.{% endif %}
     </div>
   </header>
 
-  {# KPI-строка (D-14) #}
-  <section class="block">
-    <h2 class="visually-hidden">Ключевые показатели</h2>
-    {% set kpi_tiles = 5 + (1 if questions else 0) + (1 if game else 0) %}
-    <div class="kpi-grid kpi-grid--{{ kpi_tiles }}">
-      <div class="kpi primary">
-        <div class="num">{{ kpi.total | thousands }}</div>
-        <div class="lbl">Всего заявок</div>
-      </div>
-      <div class="kpi">
-        <div class="num">{{ kpi.today | thousands }}</div>
-        <div class="lbl">Сегодня</div>
-      </div>
-      <div class="kpi">
-        <div class="num">{{ kpi.week | thousands }}</div>
-        <div class="lbl">За 7 дней</div>
-        {% if kpi.week_delta > 0 %}
-        <div class="delta up"><span aria-hidden="true">▲</span> <span class="visually-hidden">рост на</span>{{ kpi.week_delta | thousands }} к прошлой неделе</div>
-        {% elif kpi.week_delta < 0 %}
-        <div class="delta down"><span aria-hidden="true">▼</span> <span class="visually-hidden">снижение на</span>{{ (-kpi.week_delta) | thousands }} к прошлой неделе</div>
-        {% else %}
-        <div class="delta">без изменений к прошлой неделе</div>
-        {% endif %}
-      </div>
-      <div class="kpi">
-        <div class="num">{% if kpi.conversion is none %}—{% else %}{{ kpi.conversion }}%{% endif %}</div>
-        <div class="lbl">Конверсия старт → заявка</div>
-        {# Квик 12.09 (UI-аудит, пункт 6): видимая строка вместо hover-only title — на
-           тач-экране подсказки по наведению недоступны. #}
-        {% if kpi.conversion is none %}
-        <div class="delta">Появится, когда бот начнёт отслеживать входы</div>
-        {% endif %}
-      </div>
-      <div class="kpi">
-        <div class="num text">{{ kpi.processing_avg_label }}</div>
-        <div class="lbl">Среднее время обработки</div>
-        {% if kpi.processing_avg_minutes is none %}
-        <div class="delta">Появится после первых решений по заявкам</div>
-        {% else %}
-        <div class="delta">от подачи анкеты до решения менеджера</div>
-        {% endif %}
-      </div>
-      {# Гашение по `questions` (а не по отдельному чтению настройки) намеренно: у вопросов
-         делегатов нет тумблера (D-2 квика 260910-tt5) — `questions_block` сам возвращает None
-         при отсутствии вопросов в скоупе, плитка появляется ровно там же, где и блок, и не
-         висит вечным «—» у события без единого вопроса. #}
-      {% if questions %}
-      <div class="kpi">
-        <div class="num text">{{ kpi.question_answer_avg_label }}</div>
-        <div class="lbl">Ответ на вопрос</div>
-        {% if kpi.question_answer_avg_minutes is none %}
-        <div class="delta">Появится после первых ответов делегатам</div>
-        {% else %}
-        <div class="delta">от вопроса делегата до доставленного ответа</div>
-        {% endif %}
-      </div>
-      {% endif %}
-      {# Гашение по `game` (а не по отдельному чтению тумблера) намеренно: `game_block` уже
-         сам возвращает None и при выключенном тумблере, и при отсутствии сдач в скоупе —
-         плитка появляется ровно там же, где и блок, и не висит вечным «—» у события без
-         геймификации. #}
-      {% if game %}
-      <div class="kpi">
-        <div class="num text">{{ kpi.game_review_avg_label }}</div>
-        <div class="lbl">Модерация заданий</div>
-        {% if kpi.game_review_avg_minutes is none %}
-        <div class="delta">Появится после первых проверок сдач</div>
-        {% else %}
-        <div class="delta">от сдачи задания до решения менеджера</div>
-        {% endif %}
-      </div>
-      {% endif %}
-    </div>
+  {# Липкое оглавление разделов (решение владельца 23.09, DASHBOARD-IA-PROPOSAL-260923) —
+     `page_sections` уже отфильтрован от пустых разделов в build_page_context, здесь только
+     рендер кнопок-якорей. #}
+  <nav class="section-nav" aria-label="Разделы страницы">
+    {% for s in page_sections %}
+    <a class="switch-link" href="#{{ s.id }}">{{ s.title }}</a>
+    {% endfor %}
+  </nav>
 
-    {# Вторая строка KPI — «реальные заявки» без автоотклонённых (квик 20260922) #}
-    {% if reject_rules_enabled and kpi.total_real is defined %}
-    <div class="kpi-grid kpi-grid--real">
-      <div class="kpi">
-        <div class="num">{{ kpi.total_real | thousands }}</div>
-        <div class="lbl">Реальные заявки</div>
-        <div class="delta">без автоотклонённых по правилам</div>
+  {# ═══ Раздел 1: Сейчас ═══ #}
+  {% if 'now' in section_ids %}
+  <section class="page-section" id="now" aria-labelledby="now-title">
+    <h2 class="section-title" id="now-title">Сейчас</h2>
+
+    <section class="block">
+      <h2 class="visually-hidden">Ключевые показатели</h2>
+      <div class="kpi-grid">
+        <div class="kpi primary">
+          <div class="num">{{ kpi.total | thousands }}</div>
+          <div class="lbl">Всего заявок</div>
+          {# Решение владельца 1 (23.09): отдельного ряда «Реальные заявки» больше нет —
+             подпись «реальных N» под числом, видна только при включённом автоотказе. #}
+          {% if reject_rules_enabled %}
+          <div class="delta">реальных {{ kpi.total_real | thousands }}</div>
+          {% endif %}
+        </div>
+        <div class="kpi">
+          <div class="num">{{ kpi.today | thousands }}</div>
+          <div class="lbl">Сегодня</div>
+          {% if reject_rules_enabled %}
+          <div class="delta">реальных {{ kpi.today_real | thousands }}</div>
+          {% endif %}
+        </div>
+        <div class="kpi">
+          <div class="num">{{ kpi.week | thousands }}</div>
+          <div class="lbl">За 7 дней</div>
+          {% if kpi.week_delta > 0 %}
+          <div class="delta up"><span aria-hidden="true">▲</span> <span class="visually-hidden">рост на</span>{{ kpi.week_delta | thousands }} к прошлой неделе</div>
+          {% elif kpi.week_delta < 0 %}
+          <div class="delta down"><span aria-hidden="true">▼</span> <span class="visually-hidden">снижение на</span>{{ (-kpi.week_delta) | thousands }} к прошлой неделе</div>
+          {% else %}
+          <div class="delta">без изменений к прошлой неделе</div>
+          {% endif %}
+          {% if reject_rules_enabled %}
+          <div class="delta">реальных {{ kpi.week_real | thousands }}</div>
+          {% endif %}
+        </div>
+        {# «На модерации» — новая плитка (решение владельца 23.09): сколько заявок ждёт
+           решения менеджера прямо сейчас и сколько ждёт самая старая из них. #}
+        <div class="kpi">
+          <div class="num">{{ kpi.pending | thousands }}</div>
+          <div class="lbl">На модерации</div>
+          {% if kpi.pending_oldest_minutes is not none %}
+          <div class="delta">самая старая ждёт {{ kpi.pending_oldest_label }}</div>
+          {% elif kpi.pending == 0 %}
+          <div class="delta">очередь пуста</div>
+          {% endif %}
+        </div>
       </div>
-      <div class="kpi">
-        <div class="num">{{ kpi.today_real | thousands }}</div>
-        <div class="lbl">Сегодня</div>
-      </div>
-      <div class="kpi">
-        <div class="num">{{ kpi.week_real | thousands }}</div>
-        <div class="lbl">За 7 дней</div>
-        {% if kpi.week_delta_real > 0 %}
-        <div class="delta up"><span aria-hidden="true">▲</span> {{ kpi.week_delta_real | thousands }} к прошлой неделе</div>
-        {% elif kpi.week_delta_real < 0 %}
-        <div class="delta down"><span aria-hidden="true">▼</span> {{ (-kpi.week_delta_real) | thousands }} к прошлой неделе</div>
+    </section>
+  </section>
+  {% endif %}
+
+  {# ═══ Раздел 2: Поток заявок ═══ #}
+  {% if 'flow' in section_ids %}
+  <section class="page-section" id="flow" aria-labelledby="flow-title">
+    <h2 class="section-title" id="flow-title">Поток заявок</h2>
+
+    {# Динамика по дням (D-14) #}
+    {% if dynamics_enabled %}
+    <section class="block">
+      <h2 class="block-title">Динамика регистраций</h2>
+      <div class="card">
+        {% if daily_chart %}
+        <div class="chart-wrap">
+          <canvas id="daily-chart"
+                  role="img"
+                  aria-label="Регистрации по дням: {{ daily_chart.labels[0] }} — {{ daily_chart.labels[-1] }}, заявок в день"
+                  data-labels='{{ daily_chart.labels | tojson }}'
+                  data-values='{{ daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+        </div>
+        <p class="empty-note" id="daily-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
+        <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+        <details class="chart-table">
+          <summary>Таблица</summary>
+          <table>
+            <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
+            <tbody>
+              {% for label in daily_chart.labels %}
+              <tr><td>{{ label }}</td><td class="num">{{ daily_chart.counts[loop.index0] | thousands }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
         {% else %}
-        <div class="delta">без изменений к прошлой неделе</div>
+        <p class="empty-note">Появится после первой заявки — график строится по дате регистрации.</p>
         {% endif %}
       </div>
-    </div>
+    </section>
+    {% endif %}
+
+    {# Воронка (D-07/D-08). Конверсия старт → заявка переехала из плитки KPI в заголовок
+       (решение владельца 23.09). #}
+    {% if funnel %}
+    <section class="block">
+      <h2 class="block-title">Воронка регистрации{% if kpi.conversion is not none %} · конверсия старт → заявка {{ kpi.conversion }}%{% endif %}</h2>
+      {% if kpi.conversion is none %}
+      {# Квик 12.09 (UI-аудит, пункт 6): видимая строка вместо hover-only title. #}
+      <div class="updated-note">Конверсия появится, когда бот начнёт отслеживать входы</div>
+      {% endif %}
+      {% if funnel.since %}
+      <div class="updated-note">с {{ funnel.since }} — по событиям бота</div>
+      {% endif %}
+      <div class="card">
+        {% if funnel.has_data %}
+        <div class="funnel">
+          {% for step in funnel.steps %}
+          <div class="funnel-step">
+            {# Квик 12.09 (UI-аудит, пункт 5): ступень событийного трекинга без единого события
+               при ненулевых ступенях состояния записи — не «все потерялись», а «трекинга не
+               было» (делегаты, импортированные мимо анкеты). Честно про отсутствие данных, а
+               не «0%» рядом с ненулевой соседней ступенью. #}
+            {% if step.untracked %}
+            <div class="n">—</div>
+            <div class="l">{{ step.label }}</div>
+            <div class="pct">нет данных трекинга</div>
+            <div class="funnel-bar" aria-hidden="true"><span style="width:0%"></span></div>
+            {% else %}
+            <div class="n">{{ step.count | thousands }}</div>
+            <div class="l">{{ step.label }}</div>
+            <div class="pct">{% if step.is_baseline %}база для процентов ниже{% else %}{{ step.pct | round | int }}% от {{ funnel.baseline_label }}{% endif %}</div>
+            <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-note">Появится после первых входов в бота — воронка строится по событиям регистрации.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# «Где бросают» (D-07) — сразу за воронкой (решение владельца 23.09). #}
+    {% if dropout %}
+    <section class="block">
+      <h2 class="block-title">Где бросают</h2>
+      <div class="card">
+        {% if dropout.has_data %}
+        {% for row in dropout.rows %}
+        <div class="bar-row">
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="empty-note">Пока никто не бросил анкету на полпути — здесь появятся вопросы, на которых делегаты останавливаются.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# «По месяцам» (квик 260906-dmq) — свёрнуто в details, «По месяцам» остаётся только в
+       summary (решение владельца 23.09). #}
+    {% if months %}
+    <section class="block">
+      <div class="card">
+        <details class="chart-table">
+          <summary>По месяцам</summary>
+          {% if months.has_data %}
+          <div class="table-wrap">
+          <table class="responsive">
+            <thead>
+              <tr>
+                <th>Месяц</th>
+                <th class="num">Заявок</th>
+                <th class="num">Одобрено</th>
+                <th>Топ-3 каналов</th>
+                <th>Топ-3 меток</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in months.rows %}
+              <tr>
+                <td data-label="Месяц">{{ row.month }}</td>
+                <td class="num" data-label="Заявок">{{ row.total | thousands }}</td>
+                <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
+                <td data-label="Топ-3 каналов">{% if row.top_sources %}{% for value, count in row.top_sources %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
+                <td data-label="Топ-3 меток">{% if row.top_tags %}{% for value, count in row.top_tags %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+          {% else %}
+          <p class="empty-note">Заявок пока нет — как только появятся, здесь будет разбивка по месяцам.</p>
+          {% endif %}
+        </details>
+      </div>
+    </section>
     {% endif %}
   </section>
+  {% endif %}
 
-  {# Воронка (D-07/D-08) #}
-  {% if funnel %}
-  <section class="block">
-    <h2 class="block-title">Воронка регистрации</h2>
-    {% if funnel.since %}
-    <div class="updated-note">с {{ funnel.since }} — по событиям бота</div>
-    {% endif %}
-    <div class="card">
-      {% if funnel.has_data %}
-      <div class="funnel">
-        {% for step in funnel.steps %}
-        <div class="funnel-step">
-          {# Квик 12.09 (UI-аудит, пункт 5): ступень событийного трекинга без единого события
-             при ненулевых ступенях состояния записи — не «все потерялись», а «трекинга не
-             было» (делегаты, импортированные мимо анкеты). Честно про отсутствие данных, а
-             не «0%» рядом с ненулевой соседней ступенью. #}
-          {% if step.untracked %}
-          <div class="n">—</div>
-          <div class="l">{{ step.label }}</div>
-          <div class="pct">нет данных трекинга</div>
-          <div class="funnel-bar" aria-hidden="true"><span style="width:0%"></span></div>
+  {# ═══ Раздел 3: Модерация и ответы ═══ #}
+  {% if 'moderation' in section_ids %}
+  <section class="page-section" id="moderation" aria-labelledby="moderation-title">
+    <h2 class="section-title" id="moderation-title">Модерация и ответы</h2>
+
+    {# Плитка «Среднее время обработки» (квик 260908-dbo, DBO-KPI-01). #}
+    <section class="block">
+      <h2 class="visually-hidden">Обработка заявок</h2>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="num text">{{ kpi.processing_avg_label }}</div>
+          <div class="lbl">Среднее время обработки</div>
+          {% if kpi.processing_avg_minutes is none %}
+          <div class="delta">Появится после первых решений по заявкам</div>
           {% else %}
-          <div class="n">{{ step.count | thousands }}</div>
-          <div class="l">{{ step.label }}</div>
-          <div class="pct">{% if step.is_baseline %}база для процентов ниже{% else %}{{ step.pct | round | int }}% от {{ funnel.baseline_label }}{% endif %}</div>
-          <div class="funnel-bar" aria-hidden="true"><span style="width:{{ step.pct }}%"></span></div>
+          <div class="delta">от подачи анкеты до решения менеджера</div>
           {% endif %}
+        </div>
+      </div>
+    </section>
+
+    {# Какое правило сколько отсеяло (Phase 31, 31-07, D-27; решение владельца 2 от 23.09) —
+       та же разметка bar-row, что у «Где бросают»: вторую систему стилей не заводим. Гейт —
+       только reject_rules_enabled (dashboard/main.py), больше не привязан к воронке. #}
+    {% if auto_reject_breakdown %}
+    <section class="block">
+      <h2 class="block-title">Какое правило сколько отсеяло</h2>
+      <div class="card">
+        {% for row in auto_reject_breakdown %}
+        <div class="bar-row">
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
         </div>
         {% endfor %}
       </div>
-      {% else %}
-      <p class="empty-note">Появится после первых входов в бота — воронка строится по событиям регистрации.</p>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
+    </section>
+    {% endif %}
 
-  {# Какое правило сколько отсеяло (Phase 31, 31-07, D-27) — та же разметка bar-row, что у
-     блока «Где бросают» ниже: вторую систему стилей не заводим. Блок не рисуется при пустом
-     или None-значении (гейт — оба тумблера, см. dashboard/main.py). #}
-  {% if auto_reject_breakdown %}
-  <section class="block">
-    <h2 class="block-title">Какое правило сколько отсеяло</h2>
-    <div class="card">
-      {% for row in auto_reject_breakdown %}
-      <div class="bar-row">
-        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
-        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
-        <span class="val">{{ row.count | thousands }}</span>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
-
-  {# Динамика по дням (D-14) #}
-  {% if dynamics_enabled %}
-  <section class="block">
-    <h2 class="block-title">Динамика регистраций</h2>
-    <div class="card">
-      {% if daily_chart %}
-      <div class="chart-wrap">
-        <canvas id="daily-chart"
-                role="img"
-                aria-label="Регистрации по дням: {{ daily_chart.labels[0] }} — {{ daily_chart.labels[-1] }}, заявок в день"
-                data-labels='{{ daily_chart.labels | tojson }}'
-                data-values='{{ daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
-      </div>
-      <p class="empty-note" id="daily-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
-      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
-      <details class="chart-table">
-        <summary>Таблица</summary>
-        <table>
-          <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
-          <tbody>
-            {% for label in daily_chart.labels %}
-            <tr><td>{{ label }}</td><td class="num">{{ daily_chart.counts[loop.index0] | thousands }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </details>
-      {% else %}
-      <p class="empty-note">Появится после первой заявки — график строится по дате регистрации.</p>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {# Разрезы (D-14) #}
-  {% if city_cut or cuts %}
-  <section class="block">
-    <h2 class="block-title">Разрезы</h2>
-    <div class="cuts-grid">
-
-      {% if city_cut %}
+    {# Города — бывший кусок «Разрезов» (D-14), переехал сюда: менеджер модерирует по
+       городу, ему нужны эти числа рядом с остальной модерацией (решение владельца 23.09). #}
+    {% if city_cut %}
+    <section class="block">
+      <h2 class="block-title">Города</h2>
       <div class="card">
-        <h3 class="cut-title">Города</h3>
         {% if city_cut.rows %}
         <div class="table-wrap">
         <table class="responsive">
@@ -282,13 +326,135 @@
         <p class="empty-note">Пока ни одной заявки в этом сезоне.</p>
         {% endif %}
       </div>
-      {% endif %}
+    </section>
+    {% endif %}
 
-      {% for cut in cuts %}
+    {# Вопросы делегатов (квик 260910-tt5): без тумблера (D-2), гейт по наличию данных живёт в
+       questions_block. 6 плиток → 4 (решение владельца 23.09): «Ответ на вопрос» (дубль
+       «Среднего времени ответа») убран целиком. #}
+    {% if questions %}
+    <section class="block">
+      <h2 class="block-title">Вопросы делегатов</h2>
       <div class="card">
-        <h3 class="cut-title">{{ cut.title }}</h3>
-        {% if cut.has_data %}
-        {% for row in cut.rows %}
+        {# Подписи состояний -- те же, что у чипов журнала вопросов в боте
+           (services/questions.py::FILTER_LABELS): два экрана обязаны называть одни и те же
+           состояния одинаково. #}
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ questions.total | thousands }}</div><div class="lbl">Всего вопросов</div></div>
+          <div class="kpi">
+            <div class="num">{{ questions.waiting_now | thousands }}</div>
+            <div class="lbl">Ждут ответа</div>
+            <div class="delta">без ответа {{ questions.new | thousands }} · в работе {{ questions.in_work | thousands }}</div>
+            {% if questions.oldest_waiting_minutes is not none %}
+            <div class="delta">самый старый ждёт {{ questions.oldest_waiting_label }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi">
+            <div class="num">{{ questions.answered | thousands }}</div>
+            <div class="lbl">Отвечено</div>
+            {% if questions.answered_share is not none %}
+            <div class="delta">{{ questions.answered_share }}% всех вопросов</div>
+            {% endif %}
+          </div>
+          <div class="kpi">
+            <div class="num text">{{ questions.avg_answer_label }}</div>
+            <div class="lbl">Среднее время ответа</div>
+            <div class="delta">от вопроса до доставленного ответа</div>
+          </div>
+        </div>
+        {% if questions.top_managers %}
+        <h3 class="cut-title">Кто отвечает</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Менеджер</th><th class="num">Ответов</th></tr></thead>
+          <tbody>
+            {% for manager in questions.top_managers %}
+            <tr>
+              <td data-label="Менеджер">{{ manager.name }}</td>
+              <td class="num" data-label="Ответов">{{ manager.answered | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ═══ Раздел 4: Откуда приходят ═══ #}
+  {% if 'sources' in section_ids %}
+  <section class="page-section" id="sources" aria-labelledby="sources-title">
+    <h2 class="section-title" id="sources-title">Откуда приходят</h2>
+
+    {# «Метки кампаний» (квик 260905-qqg, правка квик 260914-tj3) #}
+    {% if utm %}
+    <section class="block">
+      <h2 class="block-title">Метки кампаний</h2>
+      {% if utm.since %}
+      <div class="updated-note">старты и конверсия — с {{ utm.since }} (начало трекинга событий)</div>
+      {% endif %}
+      <div class="card">
+        {% if utm.has_data %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th>Метка</th>
+              <th class="num">Зашли</th>
+              <th class="num">Начали анкету</th>
+              <th class="num">Заявки</th>
+              <th class="num">Одобрено</th>
+              <th class="num">Конверсия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in utm.rows %}
+            <tr>
+              <td data-label="Метка">{{ row.tag }}</td>
+              <td class="num" data-label="Зашли">{{ row.starts | thousands }}</td>
+              <td class="num" data-label="Начали анкету">{{ row.form_started | thousands }}</td>
+              <td class="num" data-label="Заявки">
+                <div class="cell-stack">
+                  <div>{{ row.completed_tracked | thousands }}</div>
+                  {% if row.completed_tracked != row.completed %}
+                  <div class="cell-note">заявки всего: {{ row.completed | thousands }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="num" data-label="Одобрено">
+                <div class="cell-stack">
+                  <div>{{ row.approved_tracked | thousands }}</div>
+                  {% if row.approved_tracked != row.approved %}
+                  <div class="cell-note">одобрено всего: {{ row.approved | thousands }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="num" data-label="Конверсия">{% if row.conversion is none %}—{% else %}{{ row.conversion }}%{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="empty-note">Меток пока нет. Раздайте ссылку вида t.me/{{ bot_username }}?start=src_vk_post (только латиница, цифры, _ и -) —
+          метка из ссылки попадёт сюда, а вопрос «Источник» такому делегату бот не задаст.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# Источник — вынут из общих «Разрезов» в отдельную карточку (решение владельца 23.09,
+       dashboard/main.py::_split_source_cut). Та же разметка разреза, что была в цикле cuts. #}
+    {% if source_cut %}
+    <section class="block">
+      <h2 class="block-title">Каналы</h2>
+      <div class="card">
+        <h3 class="cut-title">Источник</h3>
+        {% if source_cut.has_data %}
+        {% for row in source_cut.rows %}
         <div class="bar-row">
           <span class="label" title="{{ row.label }}">{{ row.label }}</span>
           <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
@@ -299,491 +465,374 @@
         <p class="empty-note">Появится, когда делегаты ответят на этот вопрос анкеты — проверьте, что он включён в форме регистрации.</p>
         {% endif %}
       </div>
-      {% endfor %}
-
-    </div>
-  </section>
-  {% endif %}
-
-  {# «Метки кампаний» (квик 260905-qqg, правка квик 260914-tj3) #}
-  {% if utm %}
-  <section class="block">
-    <h2 class="block-title">Метки кампаний</h2>
-    {% if utm.since %}
-    <div class="updated-note">старты и конверсия — с {{ utm.since }} (начало трекинга событий)</div>
+    </section>
     {% endif %}
-    <div class="card">
-      {% if utm.has_data %}
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead>
-          <tr>
-            <th>Метка</th>
-            <th class="num">Зашли</th>
-            <th class="num">Начали анкету</th>
-            <th class="num">Заявки</th>
-            <th class="num">Одобрено</th>
-            <th class="num">Конверсия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in utm.rows %}
-          <tr>
-            <td data-label="Метка">{{ row.tag }}</td>
-            <td class="num" data-label="Зашли">{{ row.starts | thousands }}</td>
-            <td class="num" data-label="Начали анкету">{{ row.form_started | thousands }}</td>
-            <td class="num" data-label="Заявки">
-              <div class="cell-stack">
-                <div>{{ row.completed_tracked | thousands }}</div>
-                {% if row.completed_tracked != row.completed %}
-                <div class="cell-note">заявки всего: {{ row.completed | thousands }}</div>
-                {% endif %}
-              </div>
-            </td>
-            <td class="num" data-label="Одобрено">
-              <div class="cell-stack">
-                <div>{{ row.approved_tracked | thousands }}</div>
-                {% if row.approved_tracked != row.approved %}
-                <div class="cell-note">одобрено всего: {{ row.approved | thousands }}</div>
-                {% endif %}
-              </div>
-            </td>
-            <td class="num" data-label="Конверсия">{% if row.conversion is none %}—{% else %}{{ row.conversion }}%{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-      <p class="empty-note">Меток пока нет. Раздайте ссылку вида t.me/{{ bot_username }}?start=src_vk_post (только латиница, цифры, _ и -) —
-        метка из ссылки попадёт сюда, а вопрос «Источник» такому делегату бот не задаст.</p>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
 
-  {# «По месяцам» (квик 260906-dmq) #}
-  {% if months %}
-  <section class="block">
-    <h2 class="block-title">По месяцам</h2>
-    <div class="card">
-      {% if months.has_data %}
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead>
-          <tr>
-            <th>Месяц</th>
-            <th class="num">Заявок</th>
-            <th class="num">Одобрено</th>
-            <th>Топ-3 каналов</th>
-            <th>Топ-3 меток</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in months.rows %}
-          <tr>
-            <td data-label="Месяц">{{ row.month }}</td>
-            <td class="num" data-label="Заявок">{{ row.total | thousands }}</td>
-            <td class="num" data-label="Одобрено">{{ row.approved | thousands }}</td>
-            <td data-label="Топ-3 каналов">{% if row.top_sources %}{% for value, count in row.top_sources %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
-            <td data-label="Топ-3 меток">{% if row.top_tags %}{% for value, count in row.top_tags %}{{ value }} · {{ count | thousands }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-      <p class="empty-note">Заявок пока нет — как только появятся, здесь будет разбивка по месяцам.</p>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {# «Где бросают» (D-07) #}
-  {% if dropout %}
-  <section class="block">
-    <h2 class="block-title">Где бросают</h2>
-    <div class="card">
-      {% if dropout.has_data %}
-      {% for row in dropout.rows %}
-      <div class="bar-row">
-        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
-        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
-        <span class="val">{{ row.count | thousands }}</span>
-      </div>
-      {% endfor %}
-      {% else %}
-      <p class="empty-note">Пока никто не бросил анкету на полпути — здесь появятся вопросы, на которых делегаты останавливаются.</p>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {# Гейма (D-12, расширено квик 260910-qgn) #}
-  {% if game %}
-  <section class="block">
-    <h2 class="block-title">Геймификация</h2>
-    <div class="card">
-      <div class="kpi-grid secondary">
-        <div class="kpi">
-          <div class="num">{{ game.participants | thousands }}</div>
-          <div class="lbl">Участников</div>
-          {% if game.participants_share is not none %}
-          <div class="delta">{{ game.participants_share }}% одобренных делегатов</div>
-          {% endif %}
+    {# Рефералы: гейт «тумблер + данные» живёт в referral_block, ровно как у геймы/вопросов.
+       7 плиток → 4 (решение владельца 23.09). #}
+    {% if referrals %}
+    <section class="block">
+      <h2 class="block-title">Рефералы</h2>
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num">{{ referrals.summary.referred_total | thousands }}</div>
+            <div class="lbl">Заявок по ссылкам</div>
+            {% if referrals.summary.referred_share is not none %}
+            <div class="delta">{{ referrals.summary.referred_share }}% всех заявок</div>
+            {% endif %}
+            <div class="delta">на модерации {{ referrals.summary.referred_pending | thousands }} · одобрено {{ referrals.summary.referred_approved | thousands }} · отклонено {{ referrals.summary.referred_rejected | thousands }}</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ referrals.summary.ambassadors | thousands }}</div>
+            <div class="lbl">Имеют свою ссылку</div>
+            <div class="delta">нажали «Хочу свою ссылку»</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ referrals.summary.candidates | thousands }}</div>
+            <div class="lbl">Кандидаты в амбассадоры</div>
+            <div class="delta">ответили «да» на вопрос анкеты</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ referrals.summary.inviters | thousands }}</div>
+            <div class="lbl">Привели хотя бы одного</div>
+          </div>
         </div>
-        <div class="kpi"><div class="num">{{ game.pending | thousands }}</div><div class="lbl">На проверке</div></div>
-        <div class="kpi">
-          <div class="num">{{ game.approved | thousands }}</div>
-          <div class="lbl">Одобрено</div>
-          {% if game.approved_share is not none %}
-          <div class="delta">{{ game.approved_share }}% всех сдач</div>
-          {% endif %}
-        </div>
-        <div class="kpi"><div class="num">{{ game.rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
-      </div>
-      <div class="kpi-grid secondary">
-        <div class="kpi"><div class="num">{{ game.submissions_total | thousands }}</div><div class="lbl">Сдач всего</div></div>
-        <div class="kpi">
-          <div class="num">{{ game.coins_total | thousands }}</div>
-          <div class="lbl">Коинов начислено</div>
-          <div class="delta">за задания {{ game.coins_task | thousands }} · вручную {{ game.coins_manual | thousands }}</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ game.coins_per_participant | thousands }}</div>
-          <div class="lbl">коинов на участника</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ game.pending | thousands }}</div>
-          <div class="lbl">Ждут проверки</div>
-          {% if game.pending_oldest_minutes is not none %}
-          <div class="delta">самая старая ждёт {{ game.pending_oldest_label }}</div>
-          {% endif %}
-        </div>
-      </div>
-      {% if game.top_tasks %}
-      <h3 class="cut-title">Топ заданий</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Задание</th><th class="num">Сдач</th><th class="num">Принято</th></tr></thead>
-        <tbody>
-          {% for task in game.top_tasks %}
-          <tr>
-            <td data-label="Задание">{{ task.title }}</td>
-            <td class="num" data-label="Сдач">{{ task.submissions | thousands }}</td>
-            <td class="num" data-label="Принято">{{ task.approved | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-      {% if game.by_category %}
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Категория</th><th class="num">Одобрено</th></tr></thead>
-        <tbody>
-          {% for category, count in game.by_category.items() %}
-          <tr>
-            <td data-label="Категория">{{ category }}</td>
-            <td class="num" data-label="Одобрено">{{ count | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
 
-  {# Амбассадоры и волны (D-33/D-34): гейт «тумблер + данные» живёт в ambassador_block,
-     ровно как у геймы/вопросов. Имена — только @username (D-17, ФИО этот модуль не читает). #}
-  {% if ambassadors %}
-  <section class="block">
-    <h2 class="block-title">Амбассадоры</h2>
-    <div class="card">
-      <div class="kpi-grid secondary">
-        <div class="kpi"><div class="num">{{ ambassadors.total | thousands }}</div><div class="lbl">Амбассадоров</div></div>
-        <div class="kpi">
-          <div class="num">{{ ambassadors.active | thousands }}</div>
-          <div class="lbl">Активны в волне</div>
-          {% if ambassadors.activation_share is not none %}
-          <div class="delta">{{ ambassadors.activation_share }}% доступных волне</div>
-          {% endif %}
-        </div>
-        {% if ambassadors.wave %}
-        <div class="kpi">
-          {# IN-08 (32-REVIEW.md): в «все города» номер волны сам по себе неоднозначен — у
-             каждого города своя нумерация; `city` заполнен только в этом режиме (queries.py). #}
-          <div class="num">Волна {{ ambassadors.wave.number }}{% if ambassadors.wave.city %} · {{ ambassadors.wave.city }}{% endif %}</div>
-          <div class="lbl">{{ ambassadors.wave.starts_at[:10] }} — {{ ambassadors.wave.ends_at[:10] }}</div>
-        </div>
-        {% else %}
-        <div class="kpi"><div class="num text">—</div><div class="lbl">Волна сейчас не идёт</div></div>
-        {% endif %}
-      </div>
-
-      {% if ambassadors.funnel %}
-      <h3 class="cut-title">Воронка приглашённых по амбассадору</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead>
-          <tr>
-            <th>Амбассадор</th><th class="num">Подали</th><th class="num">Одобрены</th>
-            <th class="num">Оплатили</th><th class="num">Начислено</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in ambassadors.funnel %}
-          <tr>
-            <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
-            <td class="num" data-label="Подали">{{ row.submitted | thousands }}</td>
-            <td class="num" data-label="Одобрены">{{ row.approved | thousands }}</td>
-            <td class="num" data-label="Оплатили">{{ row.paid | thousands }}</td>
-            <td class="num" data-label="Начислено">{{ row.credited | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if ambassadors.wave_rating %}
-      <h3 class="cut-title">Рейтинг текущей волны</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
-        <tbody>
-          {% for row in ambassadors.wave_rating %}
-          <tr>
-            <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
-            <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if ambassadors.lifetime %}
-      <h3 class="cut-title">Общий зачёт</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
-        <tbody>
-          {% for row in ambassadors.lifetime %}
-          <tr>
-            <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
-            <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if ambassadors.past_winners %}
-      <h3 class="cut-title">Призёры прошлых волн</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Волна</th><th class="num">Место</th><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
-        <tbody>
-          {% for row in ambassadors.past_winners %}
-          <tr>
-            <td data-label="Волна">Волна {{ row.wave_number }}</td>
-            <td class="num" data-label="Место">{{ row.place }}</td>
-            <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
-            <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if ambassadors.tasks %}
-      <h3 class="cut-title">Задания волны</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Задание</th><th class="num">Сдано</th><th class="num">Вовремя</th><th class="num">С просрочкой</th></tr></thead>
-        <tbody>
-          {% for row in ambassadors.tasks %}
-          <tr>
-            <td data-label="Задание">{{ row.title }}</td>
-            <td class="num" data-label="Сдано">{{ row.submitted | thousands }}</td>
-            <td class="num" data-label="Вовремя">{{ row.on_time | thousands }}</td>
-            <td class="num" data-label="С просрочкой">{{ row.late | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {# Рефералы: гейт «тумблер + данные» живёт в referral_block, ровно как у геймы/вопросов. #}
-  {% if referrals %}
-  <section class="block">
-    <h2 class="block-title">Рефералы</h2>
-    <div class="card">
-      <div class="kpi-grid secondary">
-        <div class="kpi">
-          <div class="num">{{ referrals.summary.referred_total | thousands }}</div>
-          <div class="lbl">Заявок по ссылкам</div>
-          {% if referrals.summary.referred_share is not none %}
-          <div class="delta">{{ referrals.summary.referred_share }}% всех заявок</div>
-          {% endif %}
-        </div>
-        <div class="kpi"><div class="num">{{ referrals.summary.referred_pending | thousands }}</div><div class="lbl">На модерации</div></div>
-        <div class="kpi"><div class="num">{{ referrals.summary.referred_approved | thousands }}</div><div class="lbl">Одобрено</div></div>
-        <div class="kpi"><div class="num">{{ referrals.summary.referred_rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
-      </div>
-      <div class="kpi-grid secondary">
-        <div class="kpi">
-          <div class="num">{{ referrals.summary.ambassadors | thousands }}</div>
-          <div class="lbl">Имеют свою ссылку</div>
-          <div class="delta">нажали «Хочу свою ссылку»</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ referrals.summary.candidates | thousands }}</div>
-          <div class="lbl">Кандидаты в амбассадоры</div>
-          <div class="delta">ответили «да» на вопрос анкеты</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ referrals.summary.inviters | thousands }}</div>
-          <div class="lbl">Привели хотя бы одного</div>
-        </div>
-      </div>
-
-      {% if referrals.top %}
-      <h3 class="cut-title">Топ пригласивших</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead>
-          <tr>
-            <th>Пригласивший</th>
-            <th>Город</th>
-            <th>Статус</th>
-            <th>Амбассадор</th>
-            <th class="num">Привёл всего</th>
-            <th class="num">Из них одобрено</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in referrals.top %}
-          <tr>
-            <td data-label="Пригласивший">
-              {% if row.deleted %}Удалён (ID {{ row.telegram_id }}){% elif row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}
-            </td>
-            <td data-label="Город">{{ row.city or "—" }}</td>
-            <td data-label="Статус">{{ row.status_label }}</td>
-            <td data-label="Амбассадор">{{ "Да" if row.is_ambassador else "—" }}</td>
-            <td class="num" data-label="Привёл всего">{{ row.total | thousands }}</td>
-            <td class="num" data-label="Из них одобрено">{{ row.approved | thousands }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% endif %}
-
-      {% if referrals_daily_chart %}
-      <h3 class="cut-title">Динамика по дням</h3>
-      <div class="chart-wrap">
-        <canvas id="referrals-chart"
-                role="img"
-                aria-label="Заявки по реф-ссылкам по дням: {{ referrals_daily_chart.labels[0] }} — {{ referrals_daily_chart.labels[-1] }}, заявок в день"
-                data-labels='{{ referrals_daily_chart.labels | tojson }}'
-                data-values='{{ referrals_daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
-      </div>
-      <p class="empty-note" id="referrals-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
-      <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
-      <details class="chart-table">
-        <summary>Таблица</summary>
-        <table>
-          <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
+        {% if referrals.top %}
+        <h3 class="cut-title">Топ пригласивших</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th>Пригласивший</th>
+              <th>Город</th>
+              <th>Статус</th>
+              <th>Амбассадор</th>
+              <th class="num">Привёл всего</th>
+              <th class="num">Из них одобрено</th>
+            </tr>
+          </thead>
           <tbody>
-            {% for label in referrals_daily_chart.labels %}
-            <tr><td>{{ label }}</td><td class="num">{{ referrals_daily_chart.counts[loop.index0] | thousands }}</td></tr>
+            {% for row in referrals.top %}
+            <tr>
+              <td data-label="Пригласивший">
+                {% if row.deleted %}Удалён (ID {{ row.telegram_id }}){% elif row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}
+              </td>
+              <td data-label="Город">{{ row.city or "—" }}</td>
+              <td data-label="Статус">{{ row.status_label }}</td>
+              <td data-label="Амбассадор">{{ "Да" if row.is_ambassador else "—" }}</td>
+              <td class="num" data-label="Привёл всего">{{ row.total | thousands }}</td>
+              <td class="num" data-label="Из них одобрено">{{ row.approved | thousands }}</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
-      </details>
-      {% endif %}
+        </div>
+        {% endif %}
 
-      {% if referrals.city_cut %}
-      <h3 class="cut-title">По городам</h3>
-      {% for row in referrals.city_cut %}
-      <div class="bar-row">
-        <span class="label" title="{{ row.label }}">{{ row.label }}</span>
-        <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
-        <span class="val">{{ row.count | thousands }}</span>
+        {% if referrals_daily_chart %}
+        <h3 class="cut-title">Динамика по дням</h3>
+        <div class="chart-wrap">
+          <canvas id="referrals-chart"
+                  role="img"
+                  aria-label="Заявки по реф-ссылкам по дням: {{ referrals_daily_chart.labels[0] }} — {{ referrals_daily_chart.labels[-1] }}, заявок в день"
+                  data-labels='{{ referrals_daily_chart.labels | tojson }}'
+                  data-values='{{ referrals_daily_chart.counts | tojson }}'>График не загрузился — значения по дням в таблице ниже.</canvas>
+        </div>
+        <p class="empty-note" id="referrals-chart-fallback" hidden>График не загрузился — значения по дням в таблице ниже.</p>
+        <noscript><p class="empty-note">График не загрузился — значения по дням в таблице ниже.</p></noscript>
+        <details class="chart-table">
+          <summary>Таблица</summary>
+          <table>
+            <thead><tr><th>Дата</th><th class="num">Заявок</th></tr></thead>
+            <tbody>
+              {% for label in referrals_daily_chart.labels %}
+              <tr><td>{{ label }}</td><td class="num">{{ referrals_daily_chart.counts[loop.index0] | thousands }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+        {% endif %}
+
+        {% if referrals.city_cut %}
+        <h3 class="cut-title">По городам</h3>
+        {% for row in referrals.city_cut %}
+        <div class="bar-row">
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
       </div>
-      {% endfor %}
-      {% endif %}
-    </div>
+    </section>
+    {% endif %}
   </section>
   {% endif %}
 
-  {# Вопросы делегатов (квик 260910-tt5): без тумблера (D-2), гейт по наличию данных живёт в
-     questions_block -- секция целиком под {% if questions %}, ровно как у геймы. #}
-  {% if questions %}
-  <section class="block">
-    <h2 class="block-title">Вопросы делегатов</h2>
-    <div class="card">
-      {# Подписи состояний -- те же, что у чипов журнала вопросов в боте
-         (services/questions.py::FILTER_LABELS): два экрана обязаны называть одни и те же
-         состояния одинаково. #}
-      <div class="kpi-grid secondary">
-        <div class="kpi"><div class="num">{{ questions.total | thousands }}</div><div class="lbl">Всего вопросов</div></div>
-        <div class="kpi"><div class="num">{{ questions.new | thousands }}</div><div class="lbl">Без ответа</div></div>
-        <div class="kpi">
-          <div class="num">{{ questions.in_work | thousands }}</div>
-          <div class="lbl">В работе</div>
-          <div class="delta">взяты, ответ ещё не доставлен</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ questions.answered | thousands }}</div>
-          <div class="lbl">Отвечено</div>
-          {% if questions.answered_share is not none %}
-          <div class="delta">{{ questions.answered_share }}% всех вопросов</div>
-          {% endif %}
-        </div>
-      </div>
-      <div class="kpi-grid secondary">
-        <div class="kpi">
-          <div class="num text">{{ questions.avg_answer_label }}</div>
-          <div class="lbl">Среднее время ответа</div>
-          <div class="delta">от вопроса до доставленного ответа</div>
-        </div>
-        <div class="kpi">
-          <div class="num">{{ questions.waiting_now | thousands }}</div>
-          <div class="lbl">Ждут ответа</div>
-          {% if questions.oldest_waiting_minutes is not none %}
-          <div class="delta">самый старый ждёт {{ questions.oldest_waiting_label }}</div>
-          {% endif %}
-        </div>
-      </div>
-      {% if questions.top_managers %}
-      <h3 class="cut-title">Кто отвечает</h3>
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead><tr><th>Менеджер</th><th class="num">Ответов</th></tr></thead>
-        <tbody>
-          {% for manager in questions.top_managers %}
-          <tr>
-            <td data-label="Менеджер">{{ manager.name }}</td>
-            <td class="num" data-label="Ответов">{{ manager.answered | thousands }}</td>
-          </tr>
+  {# ═══ Раздел 5: Кто подаёт ═══ #}
+  {% if 'who' in section_ids %}
+  <section class="page-section" id="who" aria-labelledby="who-title">
+    <h2 class="section-title" id="who-title">Кто подаёт</h2>
+    <section class="block">
+      <h2 class="visually-hidden">Разрезы заявок</h2>
+      <div class="cuts-grid">
+        {% for cut in cuts %}
+        <div class="card">
+          <h3 class="cut-title">{{ cut.title }}</h3>
+          {% if cut.has_data %}
+          {% for row in cut.rows %}
+          <div class="bar-row">
+            <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+            <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+            <span class="val">{{ row.count | thousands }}</span>
+          </div>
           {% endfor %}
-        </tbody>
-      </table>
+          {% else %}
+          <p class="empty-note">Появится, когда делегаты ответят на этот вопрос анкеты — проверьте, что он включён в форме регистрации.</p>
+          {% endif %}
+        </div>
+        {% endfor %}
       </div>
-      {% endif %}
-    </div>
+    </section>
+  </section>
+  {% endif %}
+
+  {# ═══ Раздел 6: Вовлечение ═══ #}
+  {% if 'engagement' in section_ids %}
+  <section class="page-section" id="engagement" aria-labelledby="engagement-title">
+    <h2 class="section-title" id="engagement-title">Вовлечение</h2>
+
+    {# Гейма (D-12, расширено квик 260910-qgn). Дубль «На проверке»/«Ждут проверки» убран —
+       одна плитка «Ждут проверки»; «Модерация заданий» переехала сюда из шапочного KPI
+       (решение владельца 23.09). #}
+    {% if game %}
+    <section class="block">
+      <h2 class="block-title">Геймификация</h2>
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num">{{ game.participants | thousands }}</div>
+            <div class="lbl">Участников</div>
+            {% if game.participants_share is not none %}
+            <div class="delta">{{ game.participants_share }}% одобренных делегатов</div>
+            {% endif %}
+          </div>
+          <div class="kpi">
+            <div class="num">{{ game.pending | thousands }}</div>
+            <div class="lbl">Ждут проверки</div>
+            {% if game.pending_oldest_minutes is not none %}
+            <div class="delta">самая старая ждёт {{ game.pending_oldest_label }}</div>
+            {% endif %}
+          </div>
+          <div class="kpi">
+            <div class="num">{{ game.approved | thousands }}</div>
+            <div class="lbl">Одобрено</div>
+            {% if game.approved_share is not none %}
+            <div class="delta">{{ game.approved_share }}% всех сдач</div>
+            {% endif %}
+          </div>
+          <div class="kpi"><div class="num">{{ game.rejected | thousands }}</div><div class="lbl">Отклонено</div></div>
+        </div>
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ game.submissions_total | thousands }}</div><div class="lbl">Сдач всего</div></div>
+          <div class="kpi">
+            <div class="num">{{ game.coins_total | thousands }}</div>
+            <div class="lbl">Коинов начислено</div>
+            <div class="delta">за задания {{ game.coins_task | thousands }} · вручную {{ game.coins_manual | thousands }}</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ game.coins_per_participant | thousands }}</div>
+            <div class="lbl">коинов на участника</div>
+          </div>
+          <div class="kpi">
+            <div class="num text">{{ kpi.game_review_avg_label }}</div>
+            <div class="lbl">Модерация заданий</div>
+            {% if kpi.game_review_avg_minutes is none %}
+            <div class="delta">Появится после первых проверок сдач</div>
+            {% else %}
+            <div class="delta">от сдачи задания до решения менеджера</div>
+            {% endif %}
+          </div>
+        </div>
+        {% if game.top_tasks %}
+        <h3 class="cut-title">Топ заданий</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Задание</th><th class="num">Сдач</th><th class="num">Принято</th></tr></thead>
+          <tbody>
+            {% for task in game.top_tasks %}
+            <tr>
+              <td data-label="Задание">{{ task.title }}</td>
+              <td class="num" data-label="Сдач">{{ task.submissions | thousands }}</td>
+              <td class="num" data-label="Принято">{{ task.approved | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        {% if game.by_category %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Категория</th><th class="num">Одобрено</th></tr></thead>
+          <tbody>
+            {% for category, count in game.by_category.items() %}
+            <tr>
+              <td data-label="Категория">{{ category }}</td>
+              <td class="num" data-label="Одобрено">{{ count | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# Амбассадоры и волны (D-33/D-34): гейт «тумблер + данные» живёт в ambassador_block,
+       ровно как у геймы/вопросов. Имена — только @username (D-17, ФИО этот модуль не читает).
+       «Общий зачёт» и «Призёры прошлых волн» свёрнуты в details (решение владельца 23.09). #}
+    {% if ambassadors %}
+    <section class="block">
+      <h2 class="block-title">Амбассадоры</h2>
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ ambassadors.total | thousands }}</div><div class="lbl">Амбассадоров</div></div>
+          <div class="kpi">
+            <div class="num">{{ ambassadors.active | thousands }}</div>
+            <div class="lbl">Активны в волне</div>
+            {% if ambassadors.activation_share is not none %}
+            <div class="delta">{{ ambassadors.activation_share }}% доступных волне</div>
+            {% endif %}
+          </div>
+          {% if ambassadors.wave %}
+          <div class="kpi">
+            {# IN-08 (32-REVIEW.md): в «все города» номер волны сам по себе неоднозначен — у
+               каждого города своя нумерация; `city` заполнен только в этом режиме (queries.py). #}
+            <div class="num">Волна {{ ambassadors.wave.number }}{% if ambassadors.wave.city %} · {{ ambassadors.wave.city }}{% endif %}</div>
+            <div class="lbl">{{ ambassadors.wave.starts_at[:10] }} — {{ ambassadors.wave.ends_at[:10] }}</div>
+          </div>
+          {% else %}
+          <div class="kpi"><div class="num text">—</div><div class="lbl">Волна сейчас не идёт</div></div>
+          {% endif %}
+        </div>
+
+        {% if ambassadors.funnel %}
+        <h3 class="cut-title">Воронка приглашённых по амбассадору</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th>Амбассадор</th><th class="num">Подали</th><th class="num">Одобрены</th>
+              <th class="num">Оплатили</th><th class="num">Начислено</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ambassadors.funnel %}
+            <tr>
+              <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
+              <td class="num" data-label="Подали">{{ row.submitted | thousands }}</td>
+              <td class="num" data-label="Одобрены">{{ row.approved | thousands }}</td>
+              <td class="num" data-label="Оплатили">{{ row.paid | thousands }}</td>
+              <td class="num" data-label="Начислено">{{ row.credited | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+
+        {% if ambassadors.wave_rating %}
+        <h3 class="cut-title">Рейтинг текущей волны</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
+          <tbody>
+            {% for row in ambassadors.wave_rating %}
+            <tr>
+              <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
+              <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+
+        {% if ambassadors.lifetime %}
+        <details class="chart-table">
+          <summary>Общий зачёт</summary>
+          <div class="table-wrap">
+          <table class="responsive">
+            <thead><tr><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
+            <tbody>
+              {% for row in ambassadors.lifetime %}
+              <tr>
+                <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
+                <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </details>
+        {% endif %}
+
+        {% if ambassadors.past_winners %}
+        <details class="chart-table">
+          <summary>Призёры прошлых волн</summary>
+          <div class="table-wrap">
+          <table class="responsive">
+            <thead><tr><th>Волна</th><th class="num">Место</th><th>Амбассадор</th><th class="num">Баллы</th></tr></thead>
+            <tbody>
+              {% for row in ambassadors.past_winners %}
+              <tr>
+                <td data-label="Волна">Волна {{ row.wave_number }}</td>
+                <td class="num" data-label="Место">{{ row.place }}</td>
+                <td data-label="Амбассадор">{% if row.username %}@{{ row.username }}{% else %}ID {{ row.telegram_id }}{% endif %}</td>
+                <td class="num" data-label="Баллы">{{ row.points | thousands }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </details>
+        {% endif %}
+
+        {% if ambassadors.tasks %}
+        <h3 class="cut-title">Задания волны</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Задание</th><th class="num">Сдано</th><th class="num">Вовремя</th><th class="num">С просрочкой</th></tr></thead>
+          <tbody>
+            {% for row in ambassadors.tasks %}
+            <tr>
+              <td data-label="Задание">{{ row.title }}</td>
+              <td class="num" data-label="Сдано">{{ row.submitted | thousands }}</td>
+              <td class="num" data-label="Вовремя">{{ row.on_time | thousands }}</td>
+              <td class="num" data-label="С просрочкой">{{ row.late | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# Квик 260914-rgr (RGR-01..07): ссылка только когда хотя бы один чат привязан — иначе
+       вести некуда, страница /chat сама покажет ту же инструкцию текстом. #}
+    {% if chat_bindings %}
+    <section class="block">
+      <div class="card">
+        <a class="switch-link" href="/chat">💬 Чат делегатов — активность и рейтинг</a>
+      </div>
+    </section>
+    {% endif %}
   </section>
   {% endif %}
 
