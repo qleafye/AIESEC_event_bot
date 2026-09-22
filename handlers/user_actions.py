@@ -1185,7 +1185,7 @@ async def _referral_screen(
     if is_ambassador:
         prompt = reg_i18n.tr_text(await get_setting_typed("ambassador_path_prompt_text"), lang, tr_map)
         text += "\n\n" + prompt
-        current_path = user.get("ambassador_path")
+        current_path = user.get("ambassador_path") or "none"  # IN-03: NULL -> метка "none"
         path_row = []
         for code, key in (
             ("invite", "ambassador_path_label_invite"),
@@ -1640,13 +1640,13 @@ async def show_wave_rating(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("ambpath:"))
 async def ambassador_path_pick(callback: types.CallbackQuery, bot: Bot):
-    """Путь меняет ТОЛЬКО порядок показа заданий (D-24) — состав и баллы не трогает; `path`
-    хранится литералом invite/content/none, экран перерисовывается с отметкой текущего выбора."""
+    """Путь меняет ТОЛЬКО порядок показа (D-24); в БД — invite/content/NULL. IN-03: белый список."""
     path = callback.data.split(":", 1)[1]
-    await set_ambassador_path(callback.from_user.id, path)
-    lang, tr_map = await reg_i18n.ctx_for(callback)
-    text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
-    await callback.message.edit_text(text, reply_markup=kb)
+    if path in ("invite", "content", "none") and (user := await get_user(callback.from_user.id)) and user.get("is_ambassador"):
+        await set_ambassador_path(callback.from_user.id, None if path == "none" else path)
+        lang, tr_map = await reg_i18n.ctx_for(callback)
+        text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
+        await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
