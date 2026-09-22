@@ -137,6 +137,32 @@
       </div>
       {% endif %}
     </div>
+
+    {# Вторая строка KPI — «реальные заявки» без автоотклонённых (квик 20260922) #}
+    {% if flags.reject_rules_enabled == "on" and kpi.total_real is defined %}
+    <div class="kpi-grid kpi-grid--3 secondary">
+      <div class="kpi">
+        <div class="num">{{ kpi.total_real | thousands }}</div>
+        <div class="lbl">Реальные заявки</div>
+        <div class="delta">без автоотклонённых по правилам</div>
+      </div>
+      <div class="kpi">
+        <div class="num">{{ kpi.today_real | thousands }}</div>
+        <div class="lbl">Сегодня</div>
+      </div>
+      <div class="kpi">
+        <div class="num">{{ kpi.week_real | thousands }}</div>
+        <div class="lbl">За 7 дней</div>
+        {% if kpi.week_delta_real > 0 %}
+        <div class="delta up"><span aria-hidden="true">▲</span> {{ kpi.week_delta_real | thousands }} к прошлой неделе</div>
+        {% elif kpi.week_delta_real < 0 %}
+        <div class="delta down"><span aria-hidden="true">▼</span> {{ (-kpi.week_delta_real) | thousands }} к прошлой неделе</div>
+        {% else %}
+        <div class="delta">без изменений к прошлой неделе</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
   </section>
 
   {# Воронка (D-07/D-08) #}
