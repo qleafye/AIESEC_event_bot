@@ -1390,7 +1390,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
     existing=True` не удваивает) и выходим, не рассылая рано."""
     try:
         from database.db import get_task, get_active_submission, list_ambassadors, get_wave, task_title
-        from services.ambassador_waves import wave_eligible
+        from services.ambassador_waves import wave_eligible, wave_open
         from services import quiet_hours, i18n
         import game_labels
 
@@ -1413,7 +1413,10 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         wave_id = task.get("wave_id")
         if wave_id:
             wave = await get_wave(int(wave_id))
-            if not wave:
+            # Задание волны, которая ещё не началась (черновик или запущенная заранее), делегатам
+            # не видно — напоминать о нём нечего. Джоба взводится при создании задания, а волна
+            # может так и остаться черновиком.
+            if not wave or not wave_open(wave, now=now):
                 return
             import cities
             recipients = []
