@@ -28,6 +28,7 @@ CSRF (T-19-04): мутирующие запросы (POST/PATCH/PUT/DELETE) по
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -38,6 +39,11 @@ from database.db import get_reg_draft
 from settings_schema import _parse_setting
 
 from miniapp.auth import verify_init_data
+# Квик 260922-wrg (задача 2, B-1): is_past_season_row — тот же предикат, что бот использует
+# в ветке возвращенца /start; reg_engine уже используется миниапп-роутерами (aiogram-free).
+import reg_engine
+
+logger = logging.getLogger(__name__)
 
 CSRF_HEADER = "X-Requested-With"
 CSRF_HEADER_VALUE = "fetch"
@@ -238,18 +244,33 @@ def form_access_denial(conn, p: Principal) -> str | None:
 
 def form_status(conn, telegram_id: int) -> str:
     """Статус анкеты делегата: `draft` — есть незаконченный черновик новой анкеты
-    (`reg_drafts.kind == 'new'`), `none` — заявки ещё нет (нет строки `users`), иначе
-    статус заявки (`pending`|`approved`|`rejected`; legacy без статуса — `approved`).
-    none/draft — анкета ещё не подана, дом приложения — экран анкеты (D-24)."""
+    (`reg_drafts.kind == 'new'`), `none` — заявки ещё нет (нет строки `users`),
+    `returning` — строка есть, но из ПРОШЛОГО сезона (любой статус, квик 260922-wrg, B-1),
+    иначе статус заявки (`pending`|`approved`|`rejected`; legacy без статуса — `approved`).
+    none/draft/returning — анкета ТЕКУЩЕГО сезона ещё не подана, дом приложения — экран
+    анкеты (D-24 + B-2 этого квика).
+
+    B-1: `returning` проверяется через `reg_engine.is_past_season_row`, НЕ
+    `is_returning_row` — та тоже возвращает True для «rejected текущего сезона», а этот
+    случай обязан остаться экраном отказа с причиной (B-3), не плитой возвращенца. Сбой
+    чтения `event_season` — fail-soft к прежнему поведению (season не сравнивается)."""
     row = conn.execute(
         "SELECT kind FROM reg_drafts WHERE telegram_id = ?", (telegram_id,)
     ).fetchone()
     if row is not None and row["kind"] == "new":
         return "draft"
-    registered, status = _user_status(conn, telegram_id)
-    if not registered:
+    urow = conn.execute(
+        "SELECT status, season FROM users WHERE telegram_id = ?", (telegram_id,)
+    ).fetchone()
+    if urow is None:
         return "none"
-    return status or "approved"
+    try:
+        event_season = read_setting(conn, "event_season") or None
+        if reg_engine.is_past_season_row(dict(urow), event_season):
+            return "returning"
+    except Exception:
+        logger.error("form_status: is_past_season_row failed, fail-soft к прежнему статусу", exc_info=True)
+    return urow["status"] or "approved"
 
 
 def form_gate(request: Request, p: Principal = Depends(principal)) -> Principal:

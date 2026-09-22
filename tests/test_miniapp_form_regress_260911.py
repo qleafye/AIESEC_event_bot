@@ -30,6 +30,7 @@ from tests.test_miniapp_frontend import (
 from tests.test_miniapp_form import _draft_row, _fill, _seed_draft
 from tests.test_miniapp_routes import (
     DELEGATE_ID,
+    REJECTED_ID,
     UNREGISTERED_ID,
     _cfg,
     _client,
@@ -493,3 +494,101 @@ def test_empty_bootstrap_patch_then_submit_writes_no_fake_history(tmp_path):
     after = _run(bot_db.get_user(DELEGATE_ID))
     assert before == after
     assert _run(bot_db.get_answer_history(DELEGATE_ID)) == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Квик 260922-wrg (задача 2): 409 edit_closed на форме отклонённого ТЕКУЩЕГО сезона при
+# «нельзя» — открытие/сохранение (GET/PATCH); прошлый сезон (возвращенец) не гейтится вовсе.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _deny_current_season_rejected(tmp_path, name):
+    # НЕ заводим reg_drafts заранее: `_load_context` сама выводит kind="new" для rejected
+    # (has_submitted_anketa ложна независимо от сезона), а любой заранее заведённый черновик
+    # с непустыми answers достаётся боту по умолчанию (active_surface -- см. draft_holder) и
+    # ловит 409 held_by_bot РАНЬШЕ edit_gate — вообще другой сценарий, не наш.
+    db_path = _use_tmp_db(tmp_path, name)
+    _standard_seed()
+    _fill(REJECTED_ID, season="YL'26")
+    _set("event_season", "YL'26")
+    _set("reg_resubmit_after_reject", "deny")
+    _set("reg_resubmit_closed_text", "Повторная подача закрыта.")
+    return db_path
+
+
+def test_get_draft_edit_closed_for_rejected_current_season_when_denied(tmp_path):
+    db_path = _deny_current_season_rejected(tmp_path, "wrg_resubmit_get.db")
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(REJECTED_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "new"
+    assert body["edit_closed"] is True
+    assert body["edit_closed_text"] == "Повторная подача закрыта."
+
+
+def test_patch_draft_409_edit_closed_for_rejected_current_season_when_denied(tmp_path):
+    db_path = _deny_current_season_rejected(tmp_path, "wrg_resubmit_patch.db")
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(REJECTED_ID),
+        json={"version": 0, "answers": {"age": "21"}},
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["reason"] == "edit_closed"
+    assert body["text"] == "Повторная подача закрыта."
+    assert _draft_row(REJECTED_ID) is None  # ничего не записано
+
+
+def test_submit_draft_409_edit_closed_for_rejected_current_season_when_denied(tmp_path):
+    db_path = _deny_current_season_rejected(tmp_path, "wrg_resubmit_submit.db")
+    client = _client(_cfg(db_path))
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(REJECTED_ID))
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["reason"] == "edit_closed"
+    assert body["text"] == "Повторная подача закрыта."
+    assert _draft_row(REJECTED_ID) is None  # claim_reg_draft не вызывался вовсе
+
+
+def test_get_draft_edit_open_for_rejected_past_season_when_denied(tmp_path):
+    """Возвращенец прошлого сезона (season != event_season) — тумблер его не касается."""
+    db_path = _use_tmp_db(tmp_path, "wrg_resubmit_past.db")
+    _standard_seed()
+    _fill(REJECTED_ID, season="YL'25")
+    _set("event_season", "YL'26")
+    _set("reg_resubmit_after_reject", "deny")
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(REJECTED_ID))
+    body = resp.json()
+    assert body["edit_closed"] is False
+    assert body["edit_closed_text"] is None
+
+
+def test_patch_draft_passes_for_rejected_current_season_when_allowed(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "wrg_resubmit_allow.db")
+    _standard_seed()
+    _fill(REJECTED_ID, season="YL'26")
+    _set("event_season", "YL'26")
+    client = _client(_cfg(db_path))
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(REJECTED_ID),
+        json={"version": 0, "answers": {"age": "21"}},
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_get_draft_prefills_for_approved_past_season_returning_delegate(tmp_path):
+    """B-2/prefill: возвращенец прошлого сезона (approved, season != event_season) открывает
+    форму kind='new' с прошлыми ответами (prior_badge_text непуст) — не менялось этим квиком
+    (reg_engine.is_returning_row уже покрывал approved-прошлого-сезона), регресс-сторож."""
+    db_path = _use_tmp_db(tmp_path, "wrg_prefill_returning.db")
+    _standard_seed()
+    _fill(DELEGATE_ID, season="YL'25", event_city=None)
+    _set("event_season", "YL'26")
+    client = _client(_cfg(db_path))
+    resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "new"
+    assert body["prior_badge_text"]

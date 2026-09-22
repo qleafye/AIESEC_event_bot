@@ -257,18 +257,23 @@ async def _registration_closed(event_city: str | None) -> bool:
 
 
 async def _edit_gate(ctx: dict) -> tuple[bool, str | None]:
-    """Квик 260911-w2m: можно ли делегату сейчас записать/отправить правку УЖЕ ПОДАННОЙ
-    анкеты — тонкая обёртка над `services.reg_edit_policy.edit_gate`.
+    """Квик 260911-w2m + 260922-wrg (задача 2): можно ли делегату сейчас записать/отправить
+    правку УЖЕ ПОДАННОЙ анкеты — тонкая обёртка над `services.reg_edit_policy.open_gate`
+    (edit_gate + resubmit_gate: правка одобренной/pending И повторная подача после отказа —
+    одна точка входа на все три поверхности формы, T-wrg-02).
 
-    Первичная подача (`ctx["kind"] != "edit"`) НЕ гейтится и не платит лишним чтением
-    реестра — `(True, None)` немедленно. Проверка дублирует признак `kind`, а не полагается
-    только на статус пользователя ВНУТРИ `edit_gate`, потому что `kind` может прийти из
-    строки `reg_drafts` (черновик правки, заведённый ДО того, как менеджер закрыл правку) —
-    источник правды один и тот же (`reg_engine.has_submitted_anketa` внутри `edit_gate`),
-    здесь просто короткое замыкание для самого частого случая (новая анкета)."""
-    if ctx["kind"] != "edit":
+    Первичная подача (`ctx["kind"] != "edit"`) НЕ гейтится `edit_gate` (Р-1: `has_submitted_
+    anketa` уже ложна) — но МОЖЕТ гейтиться `resubmit_gate`, если строка отклонена (именно
+    поэтому у отклонённого делегата `kind` вообще становится "new" — has_submitted_anketa
+    ложна для rejected). Короткое замыкание сохранено ТОЛЬКО для случая, когда `resubmit_gate`
+    в принципе не наш гейт (строки нет вовсе ИЛИ статус ≠ rejected) — самый частый случай
+    (первая регистрация с нуля) по-прежнему не платит лишним чтением реестра."""
+    if ctx["kind"] == "edit":
+        return await reg_edit_policy.open_gate(ctx["user_row"])
+    user_row = ctx.get("user_row")
+    if not user_row or (user_row.get("status") or "approved") != "rejected":
         return True, None
-    return await reg_edit_policy.edit_gate(ctx["user_row"])
+    return await reg_edit_policy.resubmit_gate(user_row)
 
 
 def _continue_deeplink(bot_username: str | None) -> str | None:
