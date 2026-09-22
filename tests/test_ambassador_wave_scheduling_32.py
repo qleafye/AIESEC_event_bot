@@ -559,6 +559,46 @@ def test_reconcile_wave_jobs_idempotent_expected_job_ids_no_sends(tmp_path, monk
     _run_scheduled(tmp_path, monkeypatch, body)
 
 
+def test_reconcile_wave_jobs_rearms_out_of_wave_task_with_future_deadline(tmp_path, monkeypatch):
+    """32-FIX-common-2 (хвост WR-13б): раньше переармирование при старте бота обходило только
+    задания активных волн (`list_wave_tasks` по каждой `active`-волне) — задание ВНЕ волн
+    (`wave_id` пуст) со сроком в будущем после пересозданного `jobs.sqlite`/долгого простоя
+    оставалось без джобы напоминания навсегда, до ручной правки задания."""
+    _ready(tmp_path, "t2g.db")
+    _with_bot(monkeypatch)
+    out_of_wave_id = _run(db.create_task(
+        "Вне волн", "Light", 10, "photo", "2026-10-20 12:00:00", None,
+    ))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 20, 12, 0, 0))
+
+    async def body(s):
+        await sched.reconcile_wave_jobs()
+        assert s.get_job(f"task_deadline_reminder_{out_of_wave_id}") is not None
+
+        await sched.reconcile_wave_jobs()  # второй вызов — идемпотентно, джоба не задваивается
+        jobs = [j for j in s.get_jobs() if j.id == f"task_deadline_reminder_{out_of_wave_id}"]
+        assert len(jobs) == 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reconcile_wave_jobs_does_not_resurrect_past_out_of_wave_deadline(tmp_path, monkeypatch):
+    """Прошедшее напоминание вне волн не воскрешается — тот же контракт, что и у волновых
+    заданий (`schedule_task_deadline_reminder` сама отказывается ставить джобу в прошлое)."""
+    _ready(tmp_path, "t2h2.db")
+    _with_bot(monkeypatch)
+    past_deadline_id = _run(db.create_task(
+        "Просрочено вне волн", "Light", 10, "photo", "2026-09-01 12:00:00", None,
+    ))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 20, 12, 0, 0))
+
+    async def body(s):
+        await sched.reconcile_wave_jobs()
+        assert s.get_job(f"task_deadline_reminder_{past_deadline_id}") is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Задача 3: сводка менеджеру в конце волны
 # ══════════════════════════════════════════════════════════════════════════════════════════
