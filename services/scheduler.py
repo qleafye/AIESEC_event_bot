@@ -1639,10 +1639,19 @@ async def reconcile_wave_jobs() -> None:
     бы у одной) заново ставит джобу рассылки итогов — потерянная джоба (пересозданный
     `jobs.sqlite`, простой дольше `_MISFIRE_GRACE_SECONDS`, необработанное исключение в старой
     версии рассылки) лечится обычным рестартом бота, без ручного SQL и без повторной отправки
-    уже уведомлённым (`send_wave_results` сама пропускает строки с проставленным `notified_at`)."""
+    уже уведомлённым (`send_wave_results` сама пропускает строки с проставленным `notified_at`).
+
+    WR-13(б) (32-FIX-common-2): выше переармируются только задания волн из `states=("active",)`
+    — задание ВНЕ волн (`wave_id` пуст) со своим сроком раньше вообще не переармировалось,
+    хотя напоминание о нём ставит тот же `schedule_task_deadline_reminder` (визард бота при
+    создании — `handlers/admin_game_waves.py`, а любую правку дедлайна из Mini App лечит
+    отдельная точка `task_changed`). Ниже — второй проход по всем активным (не архивным)
+    заданиям без волны; идемпотентно (та же `replace_existing=True`), прошедшее напоминание не
+    воскрешается — `schedule_task_deadline_reminder` сама возвращает `False` на прошедший
+    момент и джобу не ставит."""
     try:
         from database.db import (
-            list_waves, list_wave_tasks, count_wave_results_pending_notify,
+            list_active_tasks, list_waves, list_wave_tasks, count_wave_results_pending_notify,
         )
         import game_labels
 
@@ -1662,6 +1671,13 @@ async def reconcile_wave_jobs() -> None:
                 deadline = game_labels.task_deadline(t)
                 if deadline is not None:
                     schedule_task_deadline_reminder(int(t["id"]), deadline)
+
+        for t in await list_active_tasks():
+            if t.get("wave_id"):
+                continue  # уже переармировано выше вместе со своей волной
+            deadline = game_labels.task_deadline(t)
+            if deadline is not None:
+                schedule_task_deadline_reminder(int(t["id"]), deadline)
 
         for wave in await list_waves(states=("announced",)):
             wave_id = int(wave["id"])
