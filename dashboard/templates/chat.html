@@ -128,38 +128,6 @@
       {% endif %}
     </div>
 
-    {# Таблица «не в чате» — без выгрузки/CSV (D-10 задачи 4). ФИО/ник здесь НЕТ намеренно:
-       dashboard/queries.py — единственный модуль дашборда с жёстким сторожем «без ПД»
-       (D-17, tests/test_dashboard_queries.py::test_queries_module_never_selects_pii_columns);
-       telegram_id — рабочий идентификатор, по нему человека находят в самом боте
-       («📇 Список заявок»), где ПД уже показывается штатно. #}
-    <div class="card">
-      <h3 class="block-title">Не в чате</h3>
-      {% if card.not_joined %}
-      <div class="table-wrap">
-      <table class="responsive">
-        <thead>
-          <tr>
-            <th>Telegram ID</th>
-            <th>Город</th>
-            <th>Одобрен</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in card.not_joined %}
-          <tr>
-            <td data-label="Telegram ID">{{ row.telegram_id }}</td>
-            <td data-label="Город">{{ row.city or "—" }}</td>
-            <td data-label="Одобрен">{{ row.approved_at or "—" }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-      <p class="empty-note">Пока все одобренные в чате.</p>
-      {% endif %}
-    </div>
   </section>
   {% endfor %}
 
