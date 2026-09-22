@@ -199,7 +199,11 @@ async def wave_rating_view(wave_id: int, viewer_id: int) -> dict:
     мест (тогда «отсечки» ещё нет). `viewer_id` не участник волны -> `own = None`."""
     wave = await get_wave(wave_id)
     rating = await wave_rating(wave_id)
-    prize_places = int((wave or {}).get("prize_places") or await get_setting_typed("wave_prize_places"))
+    # IN-02 (32-REVIEW.md): `prize_places_for` — единственное место, где число призовых мест
+    # приводится к минимум единице; голое `wave["prize_places"] or get_setting_typed(...)`
+    # пропускало 0 как есть (валидация настройки его не отсекает) — при `prize_places = 0`
+    # `rating[prize_places - 1]` ниже стало бы `rating[-1]` (последнее место вместо отсечки).
+    prize_places = await prize_places_for(wave)
     total = len(rating)
 
     own = None
@@ -242,7 +246,9 @@ async def wave_end_summary(wave_id: int) -> dict:
     что и `referral_ratio_hint`, T-32-03-05)."""
     wave = await get_wave(wave_id)
     rating = await wave_rating(wave_id)
-    prize_places = int((wave or {}).get("prize_places") or await get_setting_typed("wave_prize_places"))
+    # IN-02 (32-REVIEW.md): та же защита от `prize_places = 0`, что и в `wave_rating_view` —
+    # `prize_places_for` приводит к минимум единице, голое значение из волны/настройки — нет.
+    prize_places = await prize_places_for(wave)
     # CR-07: «спортивное» место (1-2-2-4), не срез по позиции в списке — при ничьей на границе
     # призовых мест срез рисовал бы менеджеру топ, где один из двух равных по баллам участников
     # не попал в список, хотя после объявления итогов попадут ОБА (см. `announce_results` ниже).
