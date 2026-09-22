@@ -25,7 +25,6 @@ from database.db import (
     get_task,
     get_user,
     list_active_tasks,
-    list_waves,  # Phase 32 (32-06): доступные амбассадору волны — для visible_tasks_for
     task_title,
 )
 from game_labels import (
@@ -42,7 +41,7 @@ from game_labels import (
     visible_tasks_for,
 )
 from services import i18n
-from services.ambassador_waves import eligible_wave_ids  # Phase 32 (32-06)
+from services.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
@@ -79,20 +78,25 @@ async def delegate_city_scope(user_id: int):
     return city_scope(normalize_city(user.get("event_city") if user else None))
 
 
-async def _ambassador_gate(user_id: int) -> tuple[dict | None, object, bool, set[int]]:
+async def _ambassador_gate(user_id: int) -> tuple[dict | None, object, bool, set[int], set[int]]:
     """Phase 32 (32-06, D-28/D-31/D-36/D-38): ОДИН `get_user` — и городской скоуп (как у
     `delegate_city_scope`), и `is_ambassador`/`ambassador_path`/доступные волны берутся из него
-    же. Возвращает `(user, city_scope, is_ambassador, eligible_wave_ids)` — вызывающая сторона
-    (`tasks_list`/`task_card`) кормит их в `visible_tasks_for`/`sort_tasks_for_ambassador`, ТУ
-    ЖЕ пару функций, что и бот (единственное правило видимости на проект, T-32-06-02)."""
+    же. Возвращает `(user, city_scope, is_ambassador, eligible_wave_ids, open_wave_ids)` —
+    вызывающая сторона (`tasks_list`/`task_card`/`tasks_progress`) кормит их в
+    `visible_tasks_for`/`sort_tasks_for_ambassador`, ТЕ ЖЕ функции, что и бот (единственное
+    правило видимости на проект, T-32-06-02).
+
+    Хвост CR-03 (32-FIX-common-2): раньше `open_wave_ids` не считался вовсе (только
+    `eligible_wave_ids`, и только для амбассадора) — задание черновой/будущей/уже закрытой
+    волны с `audience="all"` было видно и обычному делегату (`visible_tasks_for` без
+    `open_wave_ids` не сужает такие задания). `wave_visibility_ids` — тот же аксессор, что
+    зовёт `handlers/user_actions.py::_game_task_list_screen`, теперь Mini App читает волны им
+    же, а не собирает вторую копию правила."""
     user = await get_user(user_id)
     scope = city_scope(normalize_city(user.get("event_city") if user else None)) if await cities_module_on() else None
     is_ambassador = bool(user and user.get("is_ambassador"))
-    wave_ids: set[int] = set()
-    if is_ambassador:
-        waves = await list_waves(city_scope=scope)
-        wave_ids = eligible_wave_ids(user, waves)
-    return user, scope, is_ambassador, wave_ids
+    wave_ids, open_ids = await wave_visibility_ids(user, city_scope=scope)
+    return user, scope, is_ambassador, wave_ids, open_ids
 
 
 async def submission_state(task_id: int, user_id: int) -> dict:
@@ -152,9 +156,11 @@ async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
     Rule 1 (32-06, D-28/D-36): без фильтра «N из M» считало бы амбассадорские задания в
     знаменателе для ОБЫЧНОГО делегата — плита хаба показала бы завышенный total, которого он
     физически не может закрыть (задания ему не видны вовсе)."""
-    _user, _scope, is_ambassador, wave_ids = await _ambassador_gate(user_id)
+    _user, _scope, is_ambassador, wave_ids, open_ids = await _ambassador_gate(user_id)
     all_tasks = await list_active_tasks(city_scope=city_scope)
-    all_tasks = visible_tasks_for(all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids)
+    all_tasks = visible_tasks_for(
+        all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_ids,
+    )
     done = 0
     for task in all_tasks:
         state = await submission_state(task["id"], user_id)
@@ -170,12 +176,16 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
-    user, scope, is_ambassador, wave_ids = await _ambassador_gate(p.telegram_id)
+    user, scope, is_ambassador, wave_ids, open_ids = await _ambassador_gate(p.telegram_id)
     all_tasks = await list_active_tasks(city_scope=scope)
     # Phase 32 (32-06, D-28/D-31/D-36/D-38): то же правило видимости, что у бота — ДО сортировки
     # (T-32-06-02: вторая забытая копия — дыра, поэтому структурный сторож ниже проверяет, что
-    # рядом с `list_active_tasks` в этом файле всегда есть `visible_tasks_for`).
-    all_tasks = visible_tasks_for(all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids)
+    # рядом с `list_active_tasks` в этом файле всегда есть `visible_tasks_for`). Хвост CR-03:
+    # `open_wave_ids` сужает задание `audience="all"` черновой/будущей волны для НЕ-амбассадора
+    # тоже — раньше сюда передавался только `eligible_wave_ids`.
+    all_tasks = visible_tasks_for(
+        all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_ids,
+    )
     # Квик 260919-m9x: тот же порядок, что у списка бота (`sort_tasks_for_delegate`) —
     # открытые задания первыми, просроченные в хвосте; пагинация режет уже отсортированное.
     all_tasks = sort_tasks_for_delegate(all_tasks)
@@ -220,8 +230,10 @@ async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
     # Phase 32 (32-06, D-28/D-36, T-32-06-01/02): прямой запрос по id обходит список — карточка
     # перепроверяет видимость САМА (`visible_tasks_for` на списке из одного задания), иначе
     # амбассадорская ссылка/чужая волна утекли бы не-амбассадору, знающему id.
-    _user_for_gate, _scope, _is_amb, _wave_ids = await _ambassador_gate(p.telegram_id)
-    if not visible_tasks_for([task], is_ambassador=_is_amb, eligible_wave_ids=_wave_ids):
+    _user_for_gate, _scope, _is_amb, _wave_ids, _open_ids = await _ambassador_gate(p.telegram_id)
+    if not visible_tasks_for(
+        [task], is_ambassador=_is_amb, eligible_wave_ids=_wave_ids, open_wave_ids=_open_ids,
+    ):
         raise HTTPException(404, {"reason": "task_not_found"})
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
