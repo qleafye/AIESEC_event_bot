@@ -5548,12 +5548,26 @@ async def mark_wave_started(wave_id: int, when: str) -> bool:
 
 async def delete_wave(wave_id: int) -> bool:
     """Задания волны НЕ удаляются — становятся «вне волн» (wave_id=NULL), обе операции в
-    одной транзакции (общий `_connect()` без промежуточного commit)."""
+    одной транзакции (общий `_connect()` без промежуточного commit).
+
+    IN-07 (32-REVIEW.md): защита состояния — теперь ПРЯМО в SQL (`state != 'announced'`), не
+    только в хендлере по заранее прочитанной строке волны. Раньше гонка «менеджер А объявил
+    итоги — менеджер Б в ту же секунду жмёт "Удалить" на карточке, открытой ДО объявления»
+    удаляла уже объявленную волну и оставляла осиротевший `wave_results`: SQL ничего не
+    перепроверял, только хендлер сверял устаревшее чтение. Detach заданий (`wave_id = NULL`)
+    выполняется, только если DELETE реально сработал (`rowcount == 1`) — если волна не
+    удалилась (проиграна гонка или её уже нет), её задания не должны потерять привязку к
+    волне, которая осталась стоять. Сигнатура и поведение при успехе не меняются — вызывающий
+    код (`handlers/admin_game_waves.py::wave_delete_go`) уже не проверяет результат."""
     async with _connect() as db:
-        await db.execute("UPDATE game_tasks SET wave_id = NULL WHERE wave_id = ?", (wave_id,))
-        cursor = await db.execute("DELETE FROM ambassador_waves WHERE id = ?", (wave_id,))
+        cursor = await db.execute(
+            "DELETE FROM ambassador_waves WHERE id = ? AND state != 'announced'", (wave_id,),
+        )
+        deleted = cursor.rowcount == 1
+        if deleted:
+            await db.execute("UPDATE game_tasks SET wave_id = NULL WHERE wave_id = ?", (wave_id,))
         await db.commit()
-        return cursor.rowcount == 1
+        return deleted
 
 
 async def waves_overlapping(starts_at: str, ends_at: str, event_city: str | None, *,

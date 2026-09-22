@@ -231,6 +231,30 @@ def test_delete_wave_clears_own_tasks_not_others(tmp_path):
     assert _run(db.get_wave(wave_a)) is None
 
 
+def test_delete_wave_refuses_announced_state_in_sql_not_only_handler(tmp_path):
+    """32-FIX-common-2 (хвост IN-07): защита состояния теперь ПРЯМО в SQL (`state !=
+    'announced'`), не только в хендлере по заранее прочитанной строке — раньше гонка «менеджер
+    А объявил итоги волны, менеджер Б в ту же секунду жмёт "Удалить" на карточке, открытой ДО
+    объявления» удаляла уже объявленную волну и осиротошала `wave_results`. Задание, всё ещё
+    привязанное к announced-волне, обязано СОХРАНИТЬ привязку — детач выполняется только
+    когда DELETE реально сработал."""
+    _ready(tmp_path)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    task_id = _run(db.create_task(
+        "Announced task", "Light", 10, "photo", "2026-10-05 00:00:00", None, wave_id=wave_id,
+    ))
+    _run(db.set_wave_state(wave_id, "active"))
+    _run(db.set_wave_state(wave_id, "closing", expected_state="active"))
+    announced_at = "2026-10-08 12:00:00"
+    assert _run(db.announce_wave_atomic(wave_id, [], announced_at)) is True
+
+    result = _run(db.delete_wave(wave_id))
+
+    assert result is False
+    assert _run(db.get_wave(wave_id)) is not None
+    assert _run(db.get_task(task_id))["wave_id"] == wave_id
+
+
 def test_waves_overlapping_catches_edge_touch_not_adjacent(tmp_path):
     _ready(tmp_path)
     base = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
