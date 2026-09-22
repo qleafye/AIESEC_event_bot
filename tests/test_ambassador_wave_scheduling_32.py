@@ -687,6 +687,36 @@ def test_send_wave_end_ping_double_fire_exactly_one_send(tmp_path, monkeypatch):
     assert len(bot.sent) == 1
 
 
+def test_send_wave_end_ping_quiet_hours_queues_but_still_closes_wave(tmp_path, monkeypatch):
+    """32-FIX-common-2 (хвост IN-09а): переход `active -> closing` — сразу, тихие часы
+    откладывают только саму отправку менеджерам (тот же приём, что `send_wave_start_dm`).
+    Раньше сообщение уходило напрямую через `_safe_send`, мимо тихих часов, ровно в момент
+    конца волны (23:59:59 по умолчанию — самое обычное время для тихих часов менеджера)."""
+    _ready(tmp_path, "t3e.db")
+    bot = _with_bot(monkeypatch)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    _run(db.set_setting("quiet_hours_enabled", "on"))  # default-окно 22:00-09:00
+
+    async def fake_holders(cap, *, city=None):
+        return [42]
+    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 8, 23, 0, 0))
+
+    _run(sched.send_wave_end_ping(wave_id))
+
+    assert bot.sent == []  # не отправлено сейчас — положено в очередь тихих часов
+    wave = _run(db.get_wave(wave_id))
+    assert wave["state"] == "closing"  # переход состояния не ждёт утра
+
+    async def _count():
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM delayed_notifications") as cur:
+                row = await cur.fetchone()
+                return row[0]
+    assert _run(_count()) == 1
+
+
 def test_send_wave_end_ping_escapes_name(tmp_path, monkeypatch):
     _ready(tmp_path, "t3d.db")
     bot = _with_bot(monkeypatch)

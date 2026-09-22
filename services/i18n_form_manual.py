@@ -697,6 +697,8 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     # дефолт корректен для любого числа мест, старая строка выше оставлена как исторический
     # ключ ручного перевода (могла остаться в БД у события, которое уже переопределило текст).
     "Ты среди призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}\nСпасибо за работу в этой волне.": "You're among the winners of wave {wave} — {place} place, {points} points!\n{prize}\nThanks for your work in this wave.",
+    # 32-FIX-common-2 (хвост IN-09б): экран рейтинга closing-волны без объявленных итогов.
+    "Волна закончилась — итоги готовятся.": "The wave has ended — the results are being prepared.",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {

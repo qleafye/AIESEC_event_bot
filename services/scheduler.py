@@ -1478,10 +1478,16 @@ async def send_wave_end_ping(wave_id: int) -> None:
     Текстовая обёртка над капабилити в `handlers/admin_caps.py` не поддерживает `reply_markup`
     (текст и кнопки шли бы раздельно), поэтому здесь используется публичный примитив резолва
     получателей `capability_holders(cap, city=...)` напрямую — тот же city-скоуп и тот же
-    fallback на `config.ADMIN_IDS`, если у capability вовсе нет держателей (T-32-08-02),
-    плюс `_safe_send` на отправку одним сообщением с текстом и клавиатурой вместе."""
+    fallback на `config.ADMIN_IDS`, если у capability вовсе нет держателей (T-32-08-02).
+
+    IN-09а (32-REVIEW.md): переход волны `active -> closing` (`close_wave`) происходит
+    ВСЕГДА, независимо от тихих часов — только сама отправка менеджерам откладывается
+    (`quiet_hours.send_or_queue_text`, тот же приём, что `send_wave_start_dm`). Раньше
+    сообщение уходило напрямую через `_safe_send` в 23:59:59 (момент конца волны) мимо тихих
+    часов менеджера."""
     try:
         import game_labels
+        from services import quiet_hours
         from services.ambassador_waves import close_wave, wave_end_summary
         from handlers.admin_caps import capability_holders
 
@@ -1511,9 +1517,14 @@ async def send_wave_end_ping(wave_id: int) -> None:
         recipients = await capability_holders("moderate_game", city=city)
         if not recipients:
             recipients = list(config.ADMIN_IDS)
+        now = _now_moscow_naive()
         for uid in recipients:
-            await _safe_send(
-                lambda cid: _bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup), uid,
+            async def _sender(cid=uid):
+                await _safe_send(
+                    lambda c: _bot.send_message(c, text, parse_mode="HTML", reply_markup=markup), cid,
+                )
+            await quiet_hours.send_or_queue_text(
+                now, uid, text, sender=_sender, parse_mode="HTML", reply_markup=markup,
             )
     except Exception as e:
         logger.error(f"send_wave_end_ping({wave_id}) failed: {e}")
