@@ -549,6 +549,17 @@ async def draft_patch(
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
+    # Квик 260922-wrg (находка перф-сторожа tests/test_reg_miniapp_perf_260917.py): open_gate
+    # (edit_gate + resubmit_gate, задача 2) удвоил число ранних, ДО этого квика не-снимковых
+    # чтений реестра (_edit_gate ниже) — тот же класс N+1, что чинил квик 260917 у соседних
+    # ручек (`_draft_response`/`hub`). Снимок на ВЕСЬ PATCH (не только на финальный
+    # `_draft_response`, тот и так снимковый и реентерабелен) — тонкая обёртка/`_impl`-хвост,
+    # тот же приём, что у `hub`/`_hub_impl` в `miniapp/routers/hub.py`.
+    async with settings_snapshot():
+        return await _draft_patch_impl(body, request, p)
+
+
+async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) -> dict:
     ctx = await _load_context(p.telegram_id)
     # Phase 27 (задача «Mini App на английском»): одна загрузка карты переводов на весь PATCH —
     # ниже переиспользуется и для ранних 409/403 (владение/правка/закрытая регистрация), и для
