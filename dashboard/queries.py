@@ -1689,10 +1689,16 @@ def _ambassador_current_wave(conn, scope: Scope) -> "dict | None":
 
 def _ambassador_funnel(conn, scope: Scope) -> list[dict]:
     """Воронка приглашённых на амбассадора: подали / одобрены / оплатили / уже принесли
-    баллы (`referral_credits`). Группировка одним запросом по ВСЕМ `referrer_id` (без скоупа
-    приглашённого — воронка про амбассадора, не про город приглашённого), скоуп применяется
-    только к списку самих амбассадоров. Сортировка по числу одобренных, потолок —
-    `_AMBASSADOR_ROWS_LIMIT`."""
+    баллы (`referral_credits`). Группировка одним запросом по ВСЕМ `referrer_id` (без городского
+    скоупа приглашённого — воронка про амбассадора, не про город приглашённого), городской скоуп
+    применяется только к списку самих амбассадоров. Сортировка по числу одобренных, потолок —
+    `_AMBASSADOR_ROWS_LIMIT`.
+
+    IN-08 (32-REVIEW.md): приглашённый фильтруется СВОИМ сезоном (`_season_sql`, D-13 —
+    `season=None` значит текущий) — раньше воронка считала приглашённых ВСЕХ сезонов, и
+    амбассадор, приглашавший людей в прошлом сезоне, показывал завышенную воронку в разрезе
+    текущего события. Городской скоуп на приглашённого по-прежнему не накладывается (см. абзац
+    выше) — только сезон."""
     parts, params = _scope_sql(conn, scope)
     ambassadors = conn.execute(
         f"SELECT telegram_id, username FROM users{_where(parts + ['is_ambassador = 1'])}",
@@ -1702,16 +1708,21 @@ def _ambassador_funnel(conn, scope: Scope) -> list[dict]:
         return []
     amb_usernames = {row["telegram_id"]: row["username"] for row in ambassadors}
 
+    season_frag, season_params = _season_sql(conn, scope.season)
     funnel_rows = conn.execute(
         "SELECT referrer_id, COUNT(*) AS submitted, "
         "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved, "
         "SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS paid "
-        "FROM users WHERE referrer_id IS NOT NULL GROUP BY referrer_id"
+        f"FROM users{_where(['referrer_id IS NOT NULL', season_frag])} GROUP BY referrer_id",
+        tuple(season_params),
     ).fetchall()
     funnel_by_id = {row["referrer_id"]: row for row in funnel_rows}
 
     credited_rows = conn.execute(
-        "SELECT referrer_id, COUNT(*) AS credited FROM referral_credits GROUP BY referrer_id"
+        "SELECT rc.referrer_id, COUNT(*) AS credited FROM referral_credits rc "
+        f"JOIN users u ON u.telegram_id = rc.invitee_id{_where([season_frag])} "
+        "GROUP BY rc.referrer_id",
+        tuple(season_params),
     ).fetchall()
     credited_by_id = {row["referrer_id"]: row["credited"] for row in credited_rows}
 
@@ -1851,16 +1862,21 @@ def _ambassador_past_winners(conn, scope: Scope) -> list[dict]:
 def _ambassador_wave_tasks(conn, scope: Scope, wave: "dict | None") -> list[dict]:
     """По каждому заданию ТЕКУЩЕЙ волны: сдано всего / вовремя / с просрочкой. Задание с
     `deadline_at == _NO_DEADLINE_AT` (сентинел «без срока») — все его сдачи «вовремя» (план,
-    формула D-33: «задание без срока попадает в вовремя, а не в просрочку»)."""
+    формула D-33: «задание без срока попадает в вовремя, а не в просрочку»).
+
+    IN-08 (32-REVIEW.md): отклонённая сдача (`status = 'rejected'`) — не сдача с точки зрения
+    этой метрики (менеджер её отверг, задание фактически не выполнено) — раньше она всё равно
+    попадала в «сдано» и, если пришла до дедлайна, в «вовремя», завышая оба числа."""
     if wave is None:
         return []
     parts, params = _scope_sql(conn, scope)
+    not_rejected = "s.status != 'rejected'"
     sql = (
         "SELECT t.id AS id, t.title AS title, t.text AS text, t.deadline_at AS deadline_at, "
         "s.submitted_at AS submitted_at FROM game_submissions s "
         "JOIN users ON users.telegram_id = s.user_id "
         "JOIN game_tasks t ON t.id = s.task_id "
-        f"{_where(_user_scoped_parts(parts) + ['t.wave_id = ?'])}"
+        f"{_where(_user_scoped_parts(parts) + ['t.wave_id = ?', not_rejected])}"
     )
     rows = conn.execute(sql, params + (wave["id"],)).fetchall()
 
@@ -1923,9 +1939,19 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
 
     wave_view = None
     if wave is not None:
+        # IN-08 (32-REVIEW.md): в режиме «все города» (`scope.city is None`) номер волны сам
+        # по себе неоднозначен — у каждого города своя нумерация («Волна 2» Москвы и «Волна 2»
+        # Петербурга — разные волны). Город показываем ТОЛЬКО когда скоуп не сужен и у волны
+        # вообще есть свой город (волна «все города» — `event_city` пуст — города не имеет).
+        wave_city = None
+        if scope.city is None and wave.get("event_city"):
+            city_row = conn.execute(
+                "SELECT label FROM cities WHERE code = ?", (wave["event_city"],)
+            ).fetchone()
+            wave_city = city_row["label"] if city_row is not None else wave["event_city"]
         wave_view = {
             "number": wave["number"], "starts_at": wave["starts_at"], "ends_at": wave["ends_at"],
-            "state": wave["state"],
+            "state": wave["state"], "city": wave_city,
         }
 
     return {
