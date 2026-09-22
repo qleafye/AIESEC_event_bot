@@ -1471,6 +1471,60 @@ def chat_not_joined(conn, scope: Scope, chat: dict, limit: int = 200) -> list[di
     return out
 
 
+def chat_activity_leaderboard(conn, scope: Scope, chat: dict, limit: int = 50) -> list[dict]:
+    """Рейтинг активности делегатов в чате — агрегаты по `chat_activity` (всё время), только
+    делегаты из скоупа города/сезона. Сортировка: сначала по сообщениям (по убыванию), затем
+    по replies. Подпись участника: @username (из `users.username`) или telegram_id, если ник
+    отсутствует — та же дисциплина D-17, что `chat_not_joined` (без ФИО и контактов из анкеты).
+
+    Поля строки:
+    - `display_name`: @username или `telegram_id` — то, что видит менеджер в таблице;
+    - `messages`: сумма сообщений за всё время;
+    - `replies`: сумма ответов (replies) за всё время;
+    - `media`: сумма сообщений с медиа;
+    - `reply_rate`: процент ответов от messages (0..100, округлено до целого), None если
+      messages=0 (защита от деления на 0).
+
+    Фильтр города/сезона: только telegram_id из `users` в `scope` попадают в агрегацию.
+    Привязка чата к городу (`chat["city"]`) учтена через `scope` — `build_chat_context` уже
+    передаёт отфильтрованные карточки по `viewer["bound_city"]`. Дополнительный `_chat_scope_ok`
+    остаётся страховочным, как у `chat_not_joined`."""
+    if not _chat_scope_ok(scope, chat):
+        return []
+    parts, params = _scope_sql(conn, scope)
+    # Собираем telegram_id делегатов в скоупе, чтобы ограничить агрегацию chat_activity
+    user_ids_sql = f"SELECT telegram_id FROM users{_where(parts)}"
+    rows = conn.execute(
+        f"SELECT ca.telegram_id, u.username, "
+        "SUM(ca.messages) AS messages, SUM(ca.replies) AS replies, SUM(ca.media) AS media "
+        "FROM chat_activity ca "
+        "JOIN users u ON u.telegram_id = ca.telegram_id "
+        f"WHERE ca.chat_id = ? AND ca.telegram_id IN ({user_ids_sql}) "
+        "GROUP BY ca.telegram_id, u.username "
+        "ORDER BY messages DESC, replies DESC LIMIT ?",
+        (chat["chat_id"], *params, limit),
+    ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        username = row["username"]
+        telegram_id = row["telegram_id"]
+        messages = row["messages"] or 0
+        replies = row["replies"] or 0
+        media = row["media"] or 0
+        reply_rate = round(replies / messages * 100) if messages > 0 else None
+        # В users.username бот пишет «@ник» или «-» без ника (handlers/registration.py).
+        nick = (username or "").strip().lstrip("@")
+        display_name = f"@{nick}" if nick and nick != "-" else str(telegram_id)
+        out.append({
+            "display_name": display_name,
+            "messages": messages,
+            "replies": replies,
+            "media": media,
+            "reply_rate": reply_rate,
+        })
+    return out
+
+
 # ── рефералы (задача владельца «считать в дашборде инфу по рефералкам») ─────────────────────
 #
 # Источник — ИСКЛЮЧИТЕЛЬНО `users.referrer_id` (поданные заявки). Ни `reg_started`, ни
