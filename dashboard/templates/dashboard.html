@@ -140,7 +140,7 @@
 
     {# Вторая строка KPI — «реальные заявки» без автоотклонённых (квик 20260922) #}
     {% if reject_rules_enabled and kpi.total_real is defined %}
-    <div class="kpi-grid kpi-grid--3 secondary">
+    <div class="kpi-grid kpi-grid--real">
       <div class="kpi">
         <div class="num">{{ kpi.total_real | thousands }}</div>
         <div class="lbl">Реальные заявки</div>
