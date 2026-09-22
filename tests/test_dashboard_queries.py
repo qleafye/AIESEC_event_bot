@@ -13,6 +13,8 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from config import config
 from database import db as bot_db
 from settings_schema import SETTINGS_SCHEMA
@@ -197,6 +199,7 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
         "processing_avg_minutes": None, "processing_avg_label": "—",
         "game_review_avg_minutes": None, "game_review_avg_label": "—",
         "question_answer_avg_minutes": None, "question_answer_avg_label": "—",
+        "pending": 0, "pending_oldest_minutes": None, "pending_oldest_label": "—",
     }
 
 
@@ -295,6 +298,63 @@ def test_kpi_row_real_applications(tmp_path):
     assert row["today_real"] == 1  # сегодня только telegram_id=1 (без автореджекта)
     assert row["week"] == 3
     assert row["week_real"] == 2
+
+
+# ── kpi_row: плитка «На модерации» (решение владельца 23.09, DASHBOARD-IA-PROPOSAL-260923) ──
+
+def test_kpi_row_pending_empty_db_is_zero_and_none(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+    assert row["pending"] == 0
+    assert row["pending_oldest_minutes"] is None
+    assert row["pending_oldest_label"] == format_processing_time(None)
+
+
+def test_kpi_row_pending_counts_and_oldest_label(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    now = msk_now()
+    two_hours_ago = (now - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    thirty_min_ago = (now - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+    _seed(users=[
+        {"telegram_id": 1, "registration_date": two_hours_ago, "status": "pending"},
+        {"telegram_id": 2, "registration_date": thirty_min_ago, "status": "pending"},
+        {"telegram_id": 3, "registration_date": now.strftime("%Y-%m-%d %H:%M:%S"), "status": "approved"},
+    ])
+
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+
+    assert row["pending"] == 2
+    assert row["pending_oldest_minutes"] == pytest.approx(120, abs=2)
+    assert row["pending_oldest_label"] != "—"
+
+
+def test_kpi_row_pending_respects_scope(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_season": "YL26"},
+        users=[
+            {"telegram_id": 1, "event_city": "spb", "season": "YL26", "status": "pending"},
+            {"telegram_id": 2, "event_city": "msk", "season": "RusCo25", "status": "pending"},
+        ],
+    )
+    with dash_db.read_conn(path) as conn:
+        msk_row = kpi_row(conn, Scope(city="msk"))
+    assert msk_row["pending"] == 0  # ни город, ни сезон делегатов не совпадают со скоупом
+
+
+def test_kpi_row_pending_oldest_broken_date_is_failsoft(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        {"telegram_id": 1, "registration_date": "не дата", "status": "pending"},
+    ])
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())  # не должно падать
+    assert row["pending"] == 1
+    assert row["pending_oldest_minutes"] is None
 
 
 # ── format_processing_time / _avg_processing_minutes (квик 260908-dbo) ──────────────────

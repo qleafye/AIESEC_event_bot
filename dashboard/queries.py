@@ -384,6 +384,34 @@ def kpi_row(conn, scope: Scope) -> dict:
     game_review = _avg_game_review_minutes(conn, parts, params)
     question_answer = _avg_question_answer_minutes(conn, parts, params)
 
+    # Плитка «На модерации» раздела «Сейчас» (решение владельца 23.09,
+    # DASHBOARD-IA-PROPOSAL-260923): сколько заявок ждёт решения менеджера прямо сейчас и
+    # сколько ждёт самая старая из них. `ORDER BY julianday(...) ASC LIMIT 1`, а не `MIN`, —
+    # та же причина, что у `questions_block`/`game_block`: смешанные форматы дат в
+    # `registration_date` сравнивать побайтово нельзя.
+    pending = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
+        params + ("pending",),
+    ) or 0
+    pending_oldest_raw = _scalar(
+        conn,
+        "SELECT registration_date FROM users"
+        f"{_where(parts + ['status = ?'])} ORDER BY julianday(registration_date) ASC LIMIT 1",
+        params + ("pending",),
+    )
+    pending_oldest_minutes = None
+    if pending_oldest_raw:
+        try:
+            registered = datetime.fromisoformat(pending_oldest_raw)
+        except (ValueError, TypeError):
+            # Битый штамп -- не роняем страницу, просто нечем посчитать возраст (тот же
+            # fail-soft, что у questions_block/game_block).
+            registered = None
+        if registered is not None:
+            age = (msk_now() - registered).total_seconds() / 60.0
+            if age >= 0:
+                pending_oldest_minutes = round(age, 1)
+
     return {
         "total": total,
         "today": today_count,
@@ -401,6 +429,9 @@ def kpi_row(conn, scope: Scope) -> dict:
         "game_review_avg_label": format_processing_time(game_review),
         "question_answer_avg_minutes": question_answer,
         "question_answer_avg_label": format_processing_time(question_answer),
+        "pending": pending,
+        "pending_oldest_minutes": pending_oldest_minutes,
+        "pending_oldest_label": format_processing_time(pending_oldest_minutes),
     }
 
 
