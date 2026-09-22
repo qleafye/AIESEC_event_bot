@@ -342,6 +342,8 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
+        # Вторая строка KPI («реальные заявки») видна только при включённом автоотказе.
+        "reject_rules_enabled": flags.get("reject_rules_enabled") == "on",
         "funnel": _funnel_display(funnel_rows, funnel_since),
         # Пустой список тоже уходит в шаблон «как есть» — Jinja2 читает пустой список как
         # falsy, блок не рисуется без отдельного has_data (D-27: «блок не рисуется при пустом
