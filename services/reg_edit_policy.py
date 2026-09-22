@@ -19,19 +19,42 @@ D-10 повторной подачи). Второй трактовки стат�
 registration.py` уже применяют в других местах. Импортированная строка без статуса ведёт
 себя как approved только когда положение реально смотрит на статус («until_decision») —
 при дефолте "always" эта ветка вообще не читается.
-"""
+
+Квик 260922-wrg (задача 1): второе, независимое правило — «можно ли ОТКЛОНЁННОМУ делегату
+подать анкету ЗАНОВО» (`resubmit_allowed_for`/`resubmit_gate`), живёт в этом же модуле рядом
+с `edit_gate`, но НЕ смешивается с ним: `edit_gate` отклонённого вообще не гейтит (Р-1 выше),
+а `resubmit_gate` гейтит ТОЛЬКО отклонённого. `open_gate` — общая точка входа для трёх
+поверхностей Mini App (профиль/форма), которым нужны ОБА правила разом: сначала `edit_gate`
+(правка уже поданной), затем, если он разрешил, `resubmit_gate` (повторная подача после
+отказа). Гейт не касается ТЕКУЩЕГО сезона делегата, если строка вообще из ПРОШЛОГО сезона —
+`reg_engine.is_past_season_row` отличает «отклонён в этом сезоне» (гейтится) от «возвращенец
+из прошлого сезона» (не гейтится, он и так проходит первичную подачу).
+
+Правка 260922-wrg (владелец, «настройки должны работать по городам»): `reg_edit_policy` и
+`reg_resubmit_after_reject`/`reg_resubmit_closed_text` — `SETTINGS_SCHEMA[key]["per_city"] is
+True`. Оба гейта резолвят их через `cities.get_setting_typed_for_city(key,
+user_row.get("event_city"))` — та же лестница, что у любого другого per-city ключа (модуль
+городов выключен ИЛИ у делегата нет `event_city` ИЛИ у города нет своего значения -> общее
+значение байт-в-байт, `cities.py` уже это гарантирует). `event_season`, наоборот, НЕ per-city
+(сезон — свойство события целиком, не города) — читается как раньше, простым
+`get_setting_typed`."""
 from __future__ import annotations
 
 import logging
 
 import reg_engine
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
 ALWAYS = "always"
 UNTIL_DECISION = "until_decision"
 NEVER = "never"
+
+# Квик 260922-wrg: положения тумблера «🔁 Повторная подача после отказа».
+ALLOW = "allow"
+DENY = "deny"
 
 
 def edit_allowed_for(policy: str, *, submitted: bool, status: str | None) -> bool:
@@ -65,9 +88,14 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
 
     Любой сбой чтения реестра — fail-soft `(True, None)` с `logger.error`, тем же приёмом,
     что и прочие резолвы настроек в проекте (никогда не блокировать делегата из-за сбоя
-    инфраструктуры)."""
+    инфраструктуры).
+
+    Правка 260922-wrg: `reg_edit_policy` — per_city, резолвится по `event_city` СТРОКИ
+    (`user_row.get("event_city")`), не по городу вызывающего админа/делегата откуда-то ещё —
+    единственный источник города здесь та же строка, что несёт остальные поля гейта."""
     try:
-        policy = await get_setting_typed("reg_edit_policy")
+        city = (user_row or {}).get("event_city")
+        policy = await get_setting_typed_for_city("reg_edit_policy", city)
         season = await get_setting_typed("event_season") or None
         submitted = reg_engine.has_submitted_anketa(user_row, season)
         status = (user_row or {}).get("status")
@@ -80,3 +108,57 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     except Exception:
         logger.error("reg_edit_policy.edit_gate: сбой чтения реестра, fail-soft к «разрешено»", exc_info=True)
         return True, None
+
+
+def resubmit_allowed_for(policy: str, *, status: str | None, current_season: bool) -> bool:
+    """Чистая функция правила «можно ли подать анкету ЗАНОВО после отказа» — без единого
+    чтения БД/реестра, тестируется параметрически (тот же приём, что `edit_allowed_for`).
+
+    Гейт применяется ТОЛЬКО к отклонённому делегату ТЕКУЩЕГО сезона — любой другой статус
+    (`approved`/`pending`/пусто) не наш гейт вовсе, а отклонённый ПРОШЛОГО сезона — обычный
+    возвращенец (`current_season=False`), ему всегда можно, у него нет «повторной подачи»,
+    для него это первичная подача нового сезона. Неизвестное/будущее значение `policy` —
+    fail-soft в «разрешено», тот же принцип, что `edit_allowed_for`."""
+    if status != "rejected":
+        return True
+    if not current_season:
+        return True
+    if policy == DENY:
+        return False
+    return True
+
+
+async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
+    """Асинхронная точка входа правила повторной подачи — тот же контракт, что `edit_gate`:
+    `(True, None)` при разрешении, `(False, text)` при запрете (текст никогда не пуст —
+    пустое значение в БД подменяется дефолтом `SETTINGS_SCHEMA["reg_resubmit_closed_text"]`),
+    любой сбой чтения реестра — fail-soft `(True, None)` с `logger.error`.
+
+    Правка 260922-wrg: `reg_resubmit_after_reject`/`reg_resubmit_closed_text` — оба per_city,
+    резолвятся по тому же `user_row.get("event_city")`, что и `edit_gate` выше."""
+    try:
+        city = (user_row or {}).get("event_city")
+        policy = await get_setting_typed_for_city("reg_resubmit_after_reject", city)
+        season = await get_setting_typed("event_season") or None
+        status = (user_row or {}).get("status")
+        current_season = not reg_engine.is_past_season_row(user_row, season)
+        if resubmit_allowed_for(policy, status=status, current_season=current_season):
+            return True, None
+        text = await get_setting_typed_for_city("reg_resubmit_closed_text", city)
+        if not text:
+            text = SETTINGS_SCHEMA["reg_resubmit_closed_text"]["default"]
+        return False, text
+    except Exception:
+        logger.error("reg_edit_policy.resubmit_gate: сбой чтения реестра, fail-soft к «разрешено»", exc_info=True)
+        return True, None
+
+
+async def open_gate(user_row: dict | None) -> tuple[bool, str | None]:
+    """Общая точка входа для трёх поверхностей Mini App (профиль/PATCH/submit): сначала
+    `edit_gate` (правка уже поданной анкеты), при разрешении — `resubmit_gate` (повторная
+    подача после отказа). Порядок важен только для текста алерта — оба правила fail-soft и
+    независимы друг от друга."""
+    can_edit, text = await edit_gate(user_row)
+    if not can_edit:
+        return can_edit, text
+    return await resubmit_gate(user_row)

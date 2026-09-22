@@ -40,7 +40,7 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2571,
+        2605,
         "19.09 (квик 08-sheets-dashboard, коммит 259890f): +2 строки — построители строк листа "
         "переведены с database.db._csv_safe на _sheet_safe, докстринги объясняют, почему "
         "нейтрализация формул на RAW-записи не нужна; потолок поднят до фактического размера. "
@@ -148,7 +148,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "новичка без строки `users`; docstring комментария разросся тем же приёмом. Потолок, "
         "поднятый коммитом находки #3, считал от размера ДО этого фикса и разошёлся с фактом на "
         "2 строки — досчитано здесь же, в той же волне; потолок 2571 (фактический размер, обе "
-        "находки волны учтены).",
+        "находки волны учтены). "
+        "+34 строки (квик 260922-wrg, задача 1): тумблер повторной подачи после отказа — врезка "
+        "в ветку возвращенца `cmd_start` (проверка `reg_edit_policy.resubmit_gate` перед "
+        "баннером, при запрете текст закрытия без кнопки rereg_start), в условие предложения "
+        "черновика (`_draft_resume_allowed`) и страховка в `finalize_registration` (повторное "
+        "чтение строки пользователя, отказ до записи); само правило живёт в "
+        "services/reg_edit_policy.py, здесь только точки врезки; потолок поднят до фактического "
+        "размера.",
     ),
     "admin_gamification.py": (
         2020,
@@ -156,7 +163,19 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2561,
+        2636,
+        "Правка 260922-wrg (владелец, «настройки по городам»): +49 строк — "
+        "`_cycle_enum_setting` стал per-city-aware (ветка для `cities.is_per_city(key)`: право "
+        "через `_per_city_visible_codes`, составной ключ через `per_city_key`, алерт называет "
+        "город, тот же паттерн, что `admin_reg_percity.reg_resume_mode_toggle`), кнопки "
+        "reg_edit_policy_text/reg_resubmit_text читают `get_setting_typed_for_city` и метят "
+        "«•» свои переопределения; 2587 -> 2636, потолок поднят до фактического размера. "
+        "Квик 260922-wrg (задача 1): +26 строк — тумблер «🔁 Повторная подача после отказа»: "
+        "запись reg_resubmit_closed_text в _APPS_FIELD_ORDER, блок «текущее → новое» "
+        "(reg_resubmit_val/label/next/text, тот же приём, что у reg_edit_policy_text выше), "
+        "строка в settings_toggle_rows() и хендлер toggle_reg_resubmit_after_reject через "
+        "общий `_cycle_enum_setting`; правило само живёт в services/reg_edit_policy.py, здесь "
+        "только вызовы; 2561 -> 2587, потолок поднят до фактического размера. "
         "Phase 32 (32-03, D-21): +24 строки — словарь `_DYNAMIC_SETTING_HINTS` (ключ настройки "
         "-> имя функции-подсказки) рядом с `_settings_edit_screen` + общий хвост в конце "
         "branches (2)/(3), дописывающий результат `services.ambassador_waves.referral_ratio_"
@@ -434,7 +453,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1057,
+        1058,
+        "Квик 260922-wrg (задача 1): +1 строка — capability-запись "
+        "toggle_reg_resubmit_after_reject (settings — та же капа, что её сосед "
+        "toggle_reg_edit_policy); 1057 -> 1058. "
         "План 32-11 (D-16/D-17): +7 строк — capability-записи экрана итогов волны "
         "(wavefin:*/wavefin_go:*/wavefin_do:*, moderate_game — та же капа, что весь остальной "
         "экран волн) + комментарий про ловушку префиксов; 1050 -> 1057. "

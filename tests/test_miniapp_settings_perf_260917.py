@@ -71,6 +71,17 @@ def _seed_realistic_settings():
     for key in per_city_keys:
         for code in ("msk", "spb", "tyumen"):
             _set(per_city_key(key, code), "override")
+    # Квик 260922-wrg: цикл выше пишет мусорное значение КАЖДОМУ третьему ключу реестра по
+    # ПОЗИЦИИ в `editable_keys()` — любая правка реестра, добавляющая/удаляющая ключи ДО
+    # инфраструктурных гейтов (`miniapp_enabled`/`miniapp_section_*`) по порядку объявления,
+    # может случайно попасть их индексом в эту треть и выключить приложение целиком или один
+    # раздел ("текст-значение" != "on") посреди теста, который проверяет СОЕДИНЕНИЯ, а не эти
+    # тумблеры. Возвращаем гейты в "on" явно, по имени (не по позиции) — тест не должен быть
+    # хрупким к росту реестра.
+    _set("miniapp_enabled", "on")
+    for key in keys:
+        if key == "miniapp_enabled" or key.startswith("miniapp_section_"):
+            _set(key, "on")
 
 
 def _setup(tmp_path, name="miniapp_settings_perf.db"):

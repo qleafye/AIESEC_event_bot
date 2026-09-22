@@ -635,6 +635,7 @@ admin|callback_query|toggle_apps_queue_sort_by_score|toggle_apps_queue_sort_by_s
 admin|callback_query|toggle_reg_submit_notify|toggle_reg_submit_notify
 admin|callback_query|toggle_reg_edit_remoderation|toggle_reg_edit_remoderation
 admin|callback_query|toggle_reg_edit_policy|toggle_reg_edit_policy
+admin|callback_query|toggle_reg_resubmit_after_reject|toggle_reg_resubmit_after_reject
 admin|callback_query|toggle_payment_reminders|toggle_payment_reminders
 admin|callback_query|toggle_uni_mode|toggle_uni_mode
 admin|callback_query|toggle_edu_conditional|toggle_edu_conditional
@@ -1341,7 +1342,12 @@ def test_snapshot_total_handler_count_is_292():
     # точка вставки, что и остальные хендлеры этого шва). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 606-строчным снимком: ровно одна
     # вставка из 3 строк, 0 удалений, 0 реордеров (606 -> 609).
-    assert len(GOLDEN_SNAPSHOT) == 611
+    # Квик 260922-wrg (задача 1): +1 admin_settings.py callback_query
+    # toggle_reg_resubmit_after_reject, встал сразу после toggle_reg_edit_policy и перед
+    # toggle_payment_reminders (та же точка регистрации в файле, что у toggle_reg_edit_policy
+    # выше) — чистая вставка, пересчитано `_build_snapshot_lines()` и сверено diff'ом с прежним
+    # 611-строчным снимком: ровно одна вставка, 0 удалений, 0 реордеров (611 -> 612).
+    assert len(GOLDEN_SNAPSHOT) == 612
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

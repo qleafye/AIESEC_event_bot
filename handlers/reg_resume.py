@@ -84,7 +84,9 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
     # запереть делегата с черновиком, который нельзя ни отправить, ни отменить.
     if (draft.get("kind") or "new") == "edit":
         user_row = await get_user(telegram_id)
-        can_edit, closed_text = await reg_edit_policy.edit_gate(user_row)
+        # Квик 260922-wrg: open_gate = edit_gate + resubmit_gate — та же точка входа закрывает
+        # и правку уже поданной, и повторную подачу после отказа одной строкой.
+        can_edit, closed_text = await reg_edit_policy.open_gate(user_row)
         if not can_edit:
             await reg_i18n.say(tap_message, closed_text, reply_markup=await get_main_menu_kb(telegram_id))
             return
