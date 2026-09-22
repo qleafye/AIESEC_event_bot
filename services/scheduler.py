@@ -1148,11 +1148,19 @@ def schedule_wave_start(wave_id: int, run_at: datetime) -> None:
 
 
 def cancel_wave_jobs(wave_id: int) -> None:
-    """Снимает джобу старта волны и джобу конца волны. Каждое снятие в своём `try/except`
-    (та же идиома, что `cancel_payment_reminders`) — джоба уже сработала или её вовсе не
-    было, оба случая нормальные, не ошибка вызывающего."""
+    """Снимает джобу старта волны, джобу конца волны и джобу рассылки итогов. Каждое снятие в
+    своём `try/except` (та же идиома, что `cancel_payment_reminders`) — джоба уже сработала
+    или её вовсе не было, оба случая нормальные, не ошибка вызывающего.
+
+    IN-07 (32-REVIEW.md): `wave_results_broadcast_{wave_id}` (`schedule_wave_results_
+    broadcast`) раньше не входил в этот список — удаление волны (`wave_delete_go`) не снимало
+    джобу рассылки итогов, если она успела встать до удаления (объявили — сразу удалили);
+    джоба переживала волну и на сработавшем таймере читала уже несуществующий `wave_id` из
+    БД, ничего не находила и не отправляла, но не собиралась вовсе."""
     sched = get_scheduler()
-    for job_id in (f"wave_start_{wave_id}", f"wave_end_{wave_id}"):
+    for job_id in (
+        f"wave_start_{wave_id}", f"wave_end_{wave_id}", f"wave_results_broadcast_{wave_id}",
+    ):
         try:
             sched.remove_job(job_id)
         except Exception:
