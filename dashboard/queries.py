@@ -340,6 +340,30 @@ def kpi_row(conn, scope: Scope) -> dict:
         params + (prev_week_start, prev_week_end),
     ) or 0
 
+    # Статистика «реальных заявок» — без автоотклонённых по правилам курса (Phase 31)
+    no_auto_reject = "(auto_reject_rule_ids IS NULL OR TRIM(auto_reject_rule_ids) IN ('', '[]'))"
+    total_real = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users{_where(parts + [no_auto_reject])}",
+        params,
+    ) or 0
+    today_real = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users{_where(parts + [no_auto_reject, 'substr(registration_date, 1, 10) = ?'])}",
+        params + (today,),
+    ) or 0
+    week_real = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users{_where(parts + [no_auto_reject, 'substr(registration_date, 1, 10) >= ?'])}",
+        params + (week_start,),
+    ) or 0
+    prev_week_real = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users"
+        f"{_where(parts + [no_auto_reject, 'substr(registration_date, 1, 10) >= ?', 'substr(registration_date, 1, 10) <= ?'])}",
+        params + (prev_week_start, prev_week_end),
+    ) or 0
+
     tracking_since = _scalar(conn, f"SELECT MIN(ts) FROM reg_events{_where(parts)}", params)
     starts = _scalar(
         conn, f"SELECT COUNT(DISTINCT telegram_id) FROM reg_events{_where(parts + ['event = ?'])}",
@@ -365,6 +389,10 @@ def kpi_row(conn, scope: Scope) -> dict:
         "today": today_count,
         "week": week_count,
         "week_delta": week_count - prev_week_count,
+        "total_real": total_real,
+        "today_real": today_real,
+        "week_real": week_real,
+        "week_delta_real": week_real - prev_week_real,
         "conversion": conversion,
         "tracking_since": tracking_since,
         "processing_avg_minutes": processing,

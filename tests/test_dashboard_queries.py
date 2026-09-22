@@ -272,6 +272,30 @@ def test_season_scope_null_lands_in_current_season_other_season_excluded(tmp_pat
     assert past_row["total"] == 1
 
 
+def test_kpi_row_real_applications(tmp_path):
+    """Поля *_real исключают заявки с непустым auto_reject_rule_ids (квик 20260922)."""
+    path = _use_tmp_db(tmp_path)
+    now = msk_now()
+    today = now.strftime("%Y-%m-%d 12:00:00")
+    week_ago = (now - timedelta(days=3)).strftime("%Y-%m-%d 12:00:00")
+
+    _seed(users=[
+        {"telegram_id": 1, "registration_date": today, "status": "pending", "auto_reject_rule_ids": None},
+        {"telegram_id": 2, "registration_date": today, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+        {"telegram_id": 3, "registration_date": week_ago, "status": "pending", "auto_reject_rule_ids": "[]"},
+    ])
+
+    with dash_db.read_conn(path) as conn:
+        row = kpi_row(conn, Scope())
+
+    assert row["total"] == 3
+    assert row["total_real"] == 2  # исключается telegram_id=2 с "[1]"
+    assert row["today"] == 2
+    assert row["today_real"] == 1  # сегодня только telegram_id=1 (без автореджекта)
+    assert row["week"] == 3
+    assert row["week_real"] == 2
+
+
 # ── format_processing_time / _avg_processing_minutes (квик 260908-dbo) ──────────────────
 
 def test_format_processing_time_boundaries():
