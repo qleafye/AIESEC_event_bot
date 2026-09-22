@@ -316,7 +316,7 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "fix_eyebrow": None, "fix_fields": None, "saved_answers_label": None,
             "resubmit_button_text": None,
             "tile_text": (
-                (await i18n.tr_setting("reg_status_tile_approved_text", lang, tr_map) or "").replace(
+                (await i18n.tr_setting_for_city("reg_status_tile_approved_text", event_city, lang, tr_map) or "").replace(
                     "{дата}", payment["due_date"]
                 ) if payment else "Одобрена"
             ),
