@@ -226,6 +226,12 @@ _FORM_INTRO = {
         "Type your own {entity} — the manager will see it exactly as you wrote it."
     ),
     "Другой {entity}": "Other {entity}",
+    # Квик 260923-p37 (D-09): закрытие регистрации на город по дате — RU дефолты реестра
+    # (city_reg_closed_text/city_reg_all_closed_text) байт-в-байт, {city} переносится дословно.
+    "Регистрация на {city} закрыта. Можно зарегистрироваться на другой форум:": (
+        "Registration for {city} is closed. You can register for another forum:"
+    ),
+    "Регистрация закрыта.": "Registration is closed.",
 }
 
 
