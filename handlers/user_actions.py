@@ -32,6 +32,11 @@ from database.db import (
     set_ambassador_path,  # Phase 32 (32-06, D-24): путь меняет только порядок показа заданий
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+# Квик 260923-en2 (задача 3): тот же дефолт-текст возвращенца, что /start уже шлёт
+# (handlers/registration.py::cmd_start, DEFAULT_START_RETURNING_TEXT) — второй копии
+# литерала не заводим. Циклического импорта нет: handlers/__init__.py импортирует
+# registration ПЕРЕД user_actions, registration.py user_actions не импортирует нигде.
+from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
@@ -69,7 +74,7 @@ from services.game_digest import notify_submission as notify_game_submission  # 
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from config import config
-from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
+from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -105,6 +110,46 @@ async def ensure_registered(message: types.Message) -> bool:
             message,
             await get_setting("reject_text") or "К сожалению, твоя заявка отклонена.",
         )
+    return False
+
+
+async def _returning_text_if_past_season(
+    telegram_id: int, user: dict | None, lang: str, tr_map: dict,
+) -> str | None:
+    """Квик 260923-en2 (решение владельца 23.09 «закрой разделы до новой анкеты»): та же
+    граница, что уже закрывает игровые ручки Mini App (`miniapp/deps.py::_is_past_season`) —
+    `users.season` задан и отличается от `event_season` (`reg_engine.is_past_season_row`).
+    Возвращает готовый (переведённый, с подставленным {season}) текст баннера возвращенца,
+    либо `None`, если делегат ТЕКУЩЕГО сезона (доступ разрешён). Сбой чтения `event_season` —
+    fail-soft к `None` (прежнее поведение), тот же приём, что у `handlers.registration.cmd_start`
+    и `miniapp/deps.py::form_status`."""
+    try:
+        event_season = await get_setting_typed("event_season") or None
+        if not is_past_season_row(user, event_season):
+            return None
+    except Exception as e:
+        logger.error(f"_returning_text_if_past_season: сбой чтения event_season для {telegram_id}: {e}")
+        return None
+    prev_label = ((user or {}).get("season") or "").strip() or "прошлом событии"
+    raw_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
+    return reg_i18n.tr_fmt(raw_text, lang, tr_map, season=prev_label)
+
+
+async def ensure_current_season(message: types.Message) -> bool:
+    """Квик 260923-en2: вызывается СРАЗУ после `ensure_registered` в игровых хендлерах
+    (монеты/рейтинг/задания/реф-ссылка) — `ensure_registered` целиком не трогаем, программа/
+    спикеры/контакты/FAQ/инфо-меню этот гейт не проходят и остаются открыты возвращенцу.
+    Кнопку «🚀 Обновить анкету» не дублируем — ветка возвращенца `/start` уже её даёт, здесь
+    только подсказка нажать `/start`, если баннер сам её не несёт."""
+    user = await get_user(message.from_user.id)
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    text = await _returning_text_if_past_season(message.from_user.id, user, lang, tr_map)
+    if text is None:
+        return True
+    if "/start" not in text:
+        hint = reg_i18n.tr_text("Нажми /start, чтобы обновить анкету.", lang, tr_map)
+        text = f"{text}\n\n{hint}"
+    await reg_i18n.say(message, text)
     return False
 
 
@@ -250,6 +295,8 @@ async def _balance_history_screen(
 async def show_my_coins(message: types.Message):
     if not await ensure_registered(message):
         return
+    if not await ensure_current_season(message):
+        return
     lang, tr_map = await reg_i18n.ctx_for(message)
     text, kb = await _balance_screen(message.from_user.id, lang, tr_map)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -297,6 +344,8 @@ async def gbal_back(callback: types.CallbackQuery):
 @router.message(Command("рейтинг", "rating", "leaderboard"))
 async def show_leaderboard(message: types.Message):
     if not await ensure_registered(message):
+        return
+    if not await ensure_current_season(message):
         return
     rows = await get_leaderboard(10)
     rank = await get_user_rank(message.from_user.id)
@@ -474,6 +523,8 @@ async def _game_task_list_screen(
 @router.message(F.text.in_(MENU_TEXTS["menu_game_tasks"]))
 async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
+        return
+    if not await ensure_current_season(message):
         return
     lang, tr_map = await reg_i18n.ctx_for(message)
     text, kb = await _game_task_list_screen(message.from_user.id, page=0, lang=lang, tr_map=tr_map)
@@ -1211,6 +1262,8 @@ async def _referral_screen(
 async def my_referral_link(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
+    if not await ensure_current_season(message):
+        return
     lang, tr_map = await reg_i18n.ctx_for(message)
     text, kb = await _referral_screen(message.from_user.id, bot, lang, tr_map)
     await message.answer(text, reply_markup=kb)
@@ -1219,6 +1272,8 @@ async def my_referral_link(message: types.Message, bot: Bot):
 @router.message(F.text.in_(MENU_TEXTS["menu_invites"]))
 async def my_referrals(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
+        return
+    if not await ensure_current_season(message):
         return
 
     lang, tr_map = await reg_i18n.ctx_for(message)
@@ -1607,6 +1662,14 @@ async def show_wave_rating(callback: types.CallbackQuery):
     финальная таблица; иначе `wave_rating_closed_text` — нормальное пустое состояние, не отказ."""
     lang, tr_map = await reg_i18n.ctx_for(callback)
     user = await get_user(callback.from_user.id)
+    # Квик 260923-en2 (задача 3): кнопка «Рейтинг волны» в списке заданий не истекает — экран
+    # мог быть отрисован ДО того, как делегат стал возвращенцем прошлого сезона; та же граница,
+    # что у ensure_current_season, здесь через callback.answer(show_alert=True), т.к. это
+    # колбэк, не сообщение.
+    _past_season_text = await _returning_text_if_past_season(callback.from_user.id, user, lang, tr_map)
+    if _past_season_text is not None:
+        await callback.answer(_past_season_text, show_alert=True)
+        return
     cities_on = await cities_module_on()
     code = normalize_city(user.get("event_city") if user else None) if cities_on else None
     is_ambassador = bool(user and user.get("is_ambassador"))
