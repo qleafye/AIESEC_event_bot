@@ -215,13 +215,16 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     # свежей БД пунктов FAQ нет.
     # menu_lang (Phase 27, 27-04) — единственный menu_* с default "off" (не "on"): кнопка не
     # рисуется, пока менеджер не включит модуль (`delegate_lang_enabled`) И саму кнопку.
+    # menu_checkin_qr (квик 260923, форум-чекин) рисуется только при checkin_qr_enabled=on
+    # (двойной гейт, тот же приём, что у menu_miniapp) — master-тумблер в дефолте выключен.
     expected_texts = [
         label for key, label in MENU_BUTTONS
-        if key not in ("menu_miniapp", "menu_faq", "menu_lang")
+        if key not in ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
     ]
     assert after_texts == expected_texts, (
         "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
-        "— Mini App выключен, FAQ пуст, и кроме «🌐 Язык / Language» — default off"
+        "— Mini App выключен, FAQ пуст, кроме «🌐 Язык / Language» — default off, и кроме "
+        "«🎟 Мой QR» — checkin_qr_enabled default off"
     )
 
 
