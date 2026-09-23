@@ -1834,6 +1834,43 @@ async def get_user_by_username(username: str):
                 return dict(row)
             return None
 
+
+async def get_reg_started_by_username(username: str):
+    """Зеркало `get_user_by_username`, но по `reg_started` — для человека, который нажал
+    /start, но анкету не подал (правило «строка в users только на подачу», см. quick k4y).
+    Тот же двусторонний ltrim/COLLATE NOCASE, что и `find_user_id_by_username` — терпимо
+    и к формату ввода, и к формату хранения username в базе. Не проверяет, есть ли уже
+    строка в `users` — это забота вызывающего (person_search дергает эту функцию только
+    после промаха по `get_user_by_username`)."""
+    needle = username_needle(username)
+    if needle is None:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_started WHERE ltrim(username, '@') = ? COLLATE NOCASE", (needle,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+
+async def get_reg_started_by_id(telegram_id: int):
+    """Зеркало `get_reg_started_by_username`, но по telegram_id — нужен person_search для
+    числовых запросов, чтобы найти человека, нажавшего /start, но не подавшего анкету, тем
+    же способом, что и по username."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM reg_started WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+
 def _escape_like(q: str) -> str:
     """`%`, `_` и сам `\\` во вводе — буквально, не подстановочно (ESCAPE '\\' в запросе)."""
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
