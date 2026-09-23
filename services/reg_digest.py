@@ -59,60 +59,55 @@ def notify_mode_label(mode) -> str:
     return REG_SUBMIT_NOTIFY_MODE_LABELS.get(mode, REG_SUBMIT_NOTIFY_MODE_LABELS["each"])
 
 
-def _auto_reject_suffix(count: int) -> str:
-    """D-17: «, из них 🤖 N автоотказов» — ТОЛЬКО при ненулевом счётчике (пустой хвост
-    оставляет `build_digest_text` байт-в-байт прежним для событий без правил автоотказа).
-    Русское склонение (1/2-4/5-20) — тот же стандартный приём, что `services.proxy_session.
-    _plural_ru`, своя копия здесь (мелкая чистая функция, второй общий модуль не заводим)."""
-    if not count:
-        return ""
-    n = abs(count) % 100
-    if 11 <= n <= 14:
-        word = "автоотказов"
-    else:
-        tail = n % 10
-        if tail == 1:
-            word = "автоотказ"
-        elif 2 <= tail <= 4:
-            word = "автоотказа"
-        else:
-            word = "автоотказов"
-    return f", из них 🤖 {count} {word}"
-
-
-def build_digest_text(names: list[str], auto_reject_count: int = 0,
-                       rule_counts: list[tuple[str, int]] | None = None,
-                       all_auto: bool = False) -> str:
-    """«📥 Новые заявки: N — Иванова, Петров → 📋 Заявки[, из них 🤖 K автоотказов]». `names` —
-    уже в нужном порядке; HTML-экранирование здесь, не у вызывающего. Хвост длиннее MAX_NAMES
-    сворачивается. `auto_reject_count` (Phase 31, 31-06, D-17) — хвостовой kwarg с дефолтом 0,
-    существующие вызывающие получают байт-в-байт прежний текст.
-
-    Квик 260923 (D-D): `rule_counts`/`all_auto` — тоже хвостовые kwargs с дефолтами None/False,
-    без них поведение не меняется. `rule_counts` (список «имя правила -> K», по убыванию)
-    добавляет ВТОРУЮ строку «🤖 Автоотказ: N — «Имя» K, …» — она печатается при любом ненулевом
-    `auto_reject_count`, есть у неё разбивка или нет. `all_auto=True` (вся пачка — автоотказы,
-    ни одной живой заявки на модерации) меняет ЗАГОЛОВОК: вместо «📥 Новые заявки: … → 📋
-    Заявки» — «🤖 Автоотказ: … → 🚫 Правила автоотказа → 🤖 Автоотказы» (ссылка на «📋 Заявки»
-    была бы враньём — там таких заявок уже нет, они в журнале автоотказов)."""
-    total = len(names)
-    shown = [html.escape(str(n)) for n in names[:MAX_NAMES]]
-    people = ", ".join(shown)
-    rest = total - len(shown)
+def _bullets(names: list[str]) -> list[str]:
+    """Имена столбиком «• Имя»; хвост длиннее MAX_NAMES сворачивается в «• и ещё N»."""
+    lines = [f"• {html.escape(str(n))}" for n in names[:MAX_NAMES]]
+    rest = len(names) - MAX_NAMES
     if rest > 0:
-        people = f"{people} и ещё {rest}"
-    if all_auto and auto_reject_count:
-        header = f"🤖 Автоотказ: {total} — {people} → 🚫 Правила автоотказа → 🤖 Автоотказы"
-    else:
-        header = (
-            f"📥 Новые заявки: {total} — {people} → 📋 Заявки"
-            f"{_auto_reject_suffix(auto_reject_count)}"
-        )
-    lines = [header]
-    if auto_reject_count and rule_counts:
-        parts = ", ".join(f"«{html.escape(str(name))}» {count}" for name, count in rule_counts)
-        lines.append(f"🤖 Автоотказ: {auto_reject_count} — {parts}")
-    return "\n".join(lines)
+        lines.append(f"• и ещё {rest}")
+    return lines
+
+
+def _period_label(period: tuple[str, str] | None) -> str:
+    """(«15:20», «15:42») -> « · 15:20–15:42»; одинаковые края -> « · 15:42»; None -> ""."""
+    if not period:
+        return ""
+    start, end = period
+    return f" · {end}" if start == end else f" · {start}–{end}"
+
+
+def build_digest_text(pending_names: list[str], auto_names: list[str] | None = None,
+                      rule_counts: list[tuple[str, int]] | None = None,
+                      period: tuple[str, str] | None = None) -> str:
+    """Текст пачки уведомлений о заявках (владелец 23.09: «уродская строка» -> столбик).
+
+    Два блока: «📥 Новые заявки» (ушли на модерацию) и «🤖 Автоотказ» (отклонены правилами,
+    с разбивкой по правилам). Пустой блок не печатается. Период пачки («15:20–15:42») — в
+    заголовке первого блока, чтобы было видно, за какое время собрано. Каждый блок кончается
+    строкой «куда идти» — путём кнопками в админке. HTML-экранирование имён — здесь."""
+    auto_names = auto_names or []
+    period_text = _period_label(period)
+    blocks: list[list[str]] = []
+    if pending_names:
+        blocks.append([
+            f"📥 <b>Новые заявки: {len(pending_names)}</b>{period_text}",
+            *_bullets(pending_names),
+            "Открыть: 📋 Заявки",
+        ])
+        period_text = ""
+    if auto_names:
+        block = [f"🤖 <b>Автоотказ: {len(auto_names)}</b>{period_text}", *_bullets(auto_names)]
+        if rule_counts:
+            if len(rule_counts) == 1:
+                block.append(f"Правило «{html.escape(str(rule_counts[0][0]))}»")
+            else:
+                parts = ", ".join(
+                    f"«{html.escape(str(name))}» — {count}" for name, count in rule_counts
+                )
+                block.append(f"По правилам: {parts}")
+        block.append("Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы")
+        blocks.append(block)
+    return "\n\n".join("\n".join(b) for b in blocks)
 
 
 # ── Async helpers ─────────────────────────────────────────────────────────────
@@ -229,8 +224,11 @@ async def send_reg_digest(city: str | None) -> int:
         rows = await list_unsent_reg_digest(city)
         if not rows:
             return 0
-        names = [await _display_name(r["telegram_id"]) for r in rows]
-        auto_reject_count = sum(1 for r in rows if r.get("auto_rejected"))
+        pending_names = [
+            await _display_name(r["telegram_id"]) for r in rows if not r.get("auto_rejected")
+        ]
+        auto_names = [await _display_name(r["telegram_id"]) for r in rows if r.get("auto_rejected")]
+        auto_reject_count = len(auto_names)
         # Квик 260923 (D-D): разбивка по правилам — по СНИМКУ строк ЭТОЙ пачки (live_only=False,
         # тот же принцип, что и сам auto_reject_count выше: к моменту отправки менеджер мог уже
         # вернуть заявку из журнала, пачка описывает то, что произошло на постановке).
@@ -238,8 +236,9 @@ async def send_reg_digest(city: str | None) -> int:
         if auto_reject_count:
             auto_ids = [r["telegram_id"] for r in rows if r.get("auto_rejected")]
             _, rule_counts = await auto_reject_summary(telegram_ids=auto_ids, live_only=False)
-        all_auto = bool(auto_reject_count) and auto_reject_count == len(rows)
-        text = build_digest_text(names, auto_reject_count, rule_counts, all_auto)
+        stamps = [str(r.get("created_at") or "") for r in rows]
+        period = (stamps[0][11:16], stamps[-1][11:16]) if all(len(t) >= 16 for t in stamps) else None
+        text = build_digest_text(pending_names, auto_names, rule_counts, period)
         sent = await notify_by_capability(_sched._bot, CAP, text, parse_mode="HTML", city=city)
         await mark_reg_digest_sent(
             [r["id"] for r in rows], msk_now().strftime("%Y-%m-%d %H:%M:%S")
