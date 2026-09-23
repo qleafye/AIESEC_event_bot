@@ -167,8 +167,14 @@ export function haptic(kind) {
   const feedback = tg && tg.HapticFeedback;
   if (!feedback) return;
   try {
-    if (kind === "success" && typeof feedback.notificationOccurred === "function") {
-      feedback.notificationOccurred("success");
+    // B-3 (FORUM-CHECKIN.md, D-08): сканер форума добавил "warning"/"error" — обе идут через
+    // тот же `notificationOccurred`, что уже несёт "success" (Telegram Bot API поддерживает
+    // ровно три вида уведомления, никакой новый транспорт не нужен).
+    if (
+      (kind === "success" || kind === "warning" || kind === "error")
+      && typeof feedback.notificationOccurred === "function"
+    ) {
+      feedback.notificationOccurred(kind);
     } else if (kind === "light" && typeof feedback.impactOccurred === "function") {
       feedback.impactOccurred("light");
     }
