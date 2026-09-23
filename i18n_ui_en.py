@@ -353,4 +353,5 @@ MENU_EN: dict[str, str] = {
     "🎯 Задания": "🎯 Tasks",
     "📱 Приложение": "📱 App",
     "💳 Оплата": "💳 Payment",
+    "🎟 Мой QR": "🎟 My QR",
 }
