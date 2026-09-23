@@ -37,7 +37,8 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from config import config
 from database.db import (
-    auto_reject_summary, get_city_counts, get_pending_count, get_setting, get_staff_city,
+    auto_reject_names, auto_reject_summary, get_city_counts, get_pending_count, get_setting,
+    get_staff_city,
 )
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
@@ -121,14 +122,19 @@ async def _pending_breakdown_suffix(total: int) -> str:
     return f" ({', '.join(parts)})"
 
 
-async def _auto_reject_count_since(since: str | None, city_scope_desc) -> int:
-    """Квик 260923 (D-B): N автоотказов, живых по БД, с метки прошлой сводки — 0 без единого
-    похода в БД, если модуль автоотказа выключен (та же дисциплина module-off, что у
-    `_pending_breakdown_suffix`)."""
+async def _auto_reject_block(since: str | None, city_scope_desc) -> str | None:
+    """Блок «🤖 Автоотказ с прошлой сводки» (имена столбиком + правило + путь в админке) — тот
+    же вид, что в пачке уведомлений (`services.reg_digest.auto_reject_block`). `None` без
+    единого похода в БД при выключенном модуле автоотказа и `None`, если автоотказов не было."""
     if not await get_setting_typed("reject_rules_enabled"):
-        return 0
-    count, _rules = await auto_reject_summary(since=since, city_scope=city_scope_desc)
-    return count
+        return None
+    names = await auto_reject_names(since=since, city_scope=city_scope_desc)
+    if not names:
+        return None
+    _count, rules = await auto_reject_summary(since=since, city_scope=city_scope_desc)
+    from services.reg_digest import auto_reject_block  # lazy: reg_digest тянет планировщик
+    title = f"🤖 <b>Автоотказ с прошлой сводки: {len(names)}</b>"
+    return "\n".join(auto_reject_block(title, names, rules))
 
 
 async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
@@ -155,28 +161,28 @@ async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
     if bound:
         code = normalize_city(bound)
         count = await get_pending_count(city_scope=city_scope(code))
-        auto_count = await _auto_reject_count_since(since, city_scope(code))
-        if count <= 0 and auto_count <= 0:
+        auto_block = await _auto_reject_block(since, city_scope(code))
+        if count <= 0 and auto_block is None:
             return None
         lines = []
         if count > 0:
             label = await city_label(code)
             lines.append(f"📋 Заявок в ожидании ({label}): {count}. Открой /admin → Заявки.")
-        if auto_count > 0:
-            lines.append(f"🤖 Автоотказ с прошлой сводки: {auto_count}")
-        return "\n".join(lines)
+        if auto_block:
+            lines.append(auto_block)
+        return "\n\n".join(lines)
 
     count = await get_pending_count()
-    auto_count = await _auto_reject_count_since(since, None)
-    if count <= 0 and auto_count <= 0:
+    auto_block = await _auto_reject_block(since, None)
+    if count <= 0 and auto_block is None:
         return None
     lines = []
     if count > 0:
         suffix = await _pending_breakdown_suffix(count)
         lines.append(f"📋 Заявок в ожидании: {count}{suffix}. Открой /admin → Заявки.")
-    if auto_count > 0:
-        lines.append(f"🤖 Автоотказ с прошлой сводки: {auto_count}")
-    return "\n".join(lines)
+    if auto_block:
+        lines.append(auto_block)
+    return "\n\n".join(lines)
 
 
 async def pending_reminder_loop(bot):

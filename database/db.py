@@ -5282,6 +5282,28 @@ async def auto_reject_summary(*, since: str | None = None, until: str | None = N
     return len(people_ids), ranked
 
 
+async def auto_reject_names(*, since: str | None = None, city_scope=None) -> list[str]:
+    """ФИО живых автоотклонённых (та же выборка, что `auto_reject_summary(live_only=True)`)
+    в порядке срабатывания — для блока «🤖 Автоотказ» в периодической сводке ожидания."""
+    conditions = ["l.returned_to_moderation_at IS NULL", "u.status = 'rejected'"]
+    params: list = []
+    if since is not None:
+        conditions.append("l.last_triggered_at >= ?")
+        params.append(since)
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        conditions.append(city_frag)
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(NULLIF(u.full_name, ''), CAST(u.telegram_id AS TEXT)) "
+            "FROM auto_reject_log l JOIN users u ON u.telegram_id = l.telegram_id "
+            f"WHERE {' AND '.join(conditions)} ORDER BY l.last_triggered_at, l.id",
+            params,
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
 async def auto_reject_sheet_rows() -> tuple[list[str], list[list]]:
     """D-E: шапка + строки живых автоотклонённых для вкладки «🤖 Автоотказы» (полная
     перезапись, `services.sheets.sync_named_worksheet`). Живая строка = не возвращена журналом

@@ -476,6 +476,7 @@ def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, mo
             calls.append((cap, text, kwargs.get("city")))
 
         monkeypatch.setattr(admin_caps, "notify_by_capability", fake_notify)
+        await db.set_setting("pending_notify_mode", "instant")
 
         await _seed_user(
             UID, status="rejected",
@@ -493,6 +494,35 @@ def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, mo
     assert "🤖" in text
     assert "Автоотказ" in text
     assert "Курс закрыт совсем." in text
+
+
+def test_auto_reject_goes_to_pending_summary_when_applications_are_batched(tmp_path, monkeypatch):
+    """Владелец 23.09: заявки приходят сводкой раз в N -> автоотказ отдельно не шлётся, его
+    имя попадает в ту же сводку ожидания (services/reminders.py)."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [777])
+
+    async def go():
+        from handlers import admin_caps
+        calls = []
+
+        async def fake_notify(bot, cap, text, **kwargs):
+            calls.append(text)
+
+        monkeypatch.setattr(admin_caps, "notify_by_capability", fake_notify)
+        await db.set_setting("pending_notify_mode", "batched")
+        await _seed_user(
+            UID, status="rejected",
+            auto_reject_rule_ids=json.dumps([1]), auto_rejected_at="2026-09-20 10:00:00",
+            auto_rule_note="🤖 Автоотказ",
+        )
+        await _seed_live_journal_entry(UID, [1], ["Курс закрыт совсем."], "2026-09-20 10:00:00")
+        await rf.post_finalize(FakeBot(), UID, "new")
+        return calls
+
+    assert asyncio.run(go()) == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

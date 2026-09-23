@@ -411,6 +411,7 @@ def test_notify_application_digest_mode_stamps_auto_rejected_flag(tmp_path, monk
     fake = _FakeScheduler()
     monkeypatch.setattr(sched, "_scheduler", fake)
     asyncio.run(db.set_setting("reg_submit_notify_mode", "digest"))
+    asyncio.run(db.set_setting("pending_notify_mode", "instant"))
 
     asyncio.run(rd.notify_application(
         _Bot(), telegram_id=DELEGATE_MSK, admin_text="🤖 Автоотказ: Иванова", auto_rejected=True,
