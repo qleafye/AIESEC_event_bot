@@ -16,6 +16,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
+import cities
 from config import config
 from database import db
 from database.db import _connect
@@ -224,3 +225,76 @@ def test_counter_reflects_current_season_and_arrivals(tmp_path):
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     texts = _flat_text(cb.message)
     assert any("Пришли: 1 из 2 одобренных" in t for t in texts)
+
+
+# ── A2 (FORUM-CHECKIN.md): счётчик по городам, 03.10 регионы + Москва набирает параллельно ──
+
+async def _insert_user_city(telegram_id, city, *, status="approved", season="YL'26"):
+    async with _connect() as conn:
+        await conn.execute(
+            "INSERT INTO users (telegram_id, full_name, status, season, event_city) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, f"Тест {telegram_id}", status, season, city),
+        )
+        await conn.commit()
+
+
+def test_counter_all_cities_breaks_down_per_city_with_total(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__spb", "СПб"))
+    asyncio.run(db.set_setting("city_label__msk", "Москва"))
+    # По умолчанию (без явного выбора) `admin_selected_city` скопирует менеджера на дефолтный
+    # город (msk) -- та же логика, что у остальных экранов админки; здесь нужен явный выбор
+    # «Все города», чтобы увидеть построчную разбивку A2.
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+    # msk -- ещё набор, никто не пришёл; spb -- форум уже идёт, один пришёл из двух одобренных;
+    # tyumen -- нет одобренных вовсе -> строка города не должна появиться (A2).
+    asyncio.run(_insert_user_city(1, "spb"))
+    asyncio.run(_insert_user_city(2, "spb"))
+    asyncio.run(_insert_user_city(3, "msk"))
+    asyncio.run(db.get_or_create_checkin_token(1))
+    asyncio.run(db.record_checkin(1, "entry", source="miniapp"))
+
+    cb = _FakeCallback("admin_checkin", ADMIN_ID)
+    asyncio.run(admin_checkin.show_admin_checkin(cb))
+    text = _flat_text(cb.message)[0]
+    assert "СПб: пришли 1 из 2" in text
+    assert "Москва: пришли 0 из 1" in text
+    assert "Тюмень" not in text  # нет одобренных -- строку не показываем
+    assert "Итого: 1 из 3" in text
+
+
+def test_counter_scoped_manager_sees_only_own_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb"))
+    asyncio.run(_insert_user_city(1, "spb"))
+    asyncio.run(_insert_user_city(2, "msk"))
+    asyncio.run(db.get_or_create_checkin_token(1))
+    asyncio.run(db.record_checkin(1, "entry", source="miniapp"))
+
+    cb = _FakeCallback("admin_checkin", ADMIN_ID)
+    asyncio.run(admin_checkin.show_admin_checkin(cb))
+    text = _flat_text(cb.message)[0]
+    assert "Пришли: 1 из 1 одобренных" in text  # только СПб, Москва не примешивается
+    assert "Итого" not in text
+    assert "Москва" not in text
+
+
+def test_counter_module_off_stays_unscoped_byte_for_byte(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    # event_city_enabled НЕ включаем -- старое поведение (общий счётчик, без городов).
+    asyncio.run(_insert_user_city(1, "spb"))
+    asyncio.run(_insert_user_city(2, "msk"))
+    asyncio.run(db.get_or_create_checkin_token(1))
+    asyncio.run(db.record_checkin(1, "entry", source="miniapp"))
+
+    cb = _FakeCallback("admin_checkin", ADMIN_ID)
+    asyncio.run(admin_checkin.show_admin_checkin(cb))
+    text = _flat_text(cb.message)[0]
+    assert "Пришли: 1 из 2 одобренных" in text
+    assert "Итого" not in text
