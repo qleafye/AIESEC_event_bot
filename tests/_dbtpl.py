@@ -57,10 +57,19 @@ def _run_coro_sync(coro):
     errors: list[BaseException] = []
 
     def _worker():
+        loop = asyncio.new_event_loop()
         try:
-            asyncio.run(coro)
+            loop.run_until_complete(coro)
+            # aiosqlite закрывает соединение через СВОЙ фоновый поток (call_soon_threadsafe
+            # на этот же луп); без паузы луп иногда успевает закрыться в run_until_complete
+            # раньше, чем этот поток дошлёт финальный результат -- безобидный, но шумный
+            # "RuntimeError: Event loop is closed" в PytestUnhandledThreadExceptionWarning
+            # (замечено на батче 260923). Один лишний цикл лупа даёт этому потоку время.
+            loop.run_until_complete(asyncio.sleep(0.05))
         except BaseException as exc:  # noqa: BLE001 -- пробрасываем в вызывающий поток как есть
             errors.append(exc)
+        finally:
+            loop.close()
 
     t = threading.Thread(target=_worker)
     t.start()
