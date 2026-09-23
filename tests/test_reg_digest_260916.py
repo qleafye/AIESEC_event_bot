@@ -338,57 +338,48 @@ def test_edit_is_never_batched(tmp_path, monkeypatch):
 
 def test_build_digest_text_escapes_and_collapses_the_tail():
     assert rd.build_digest_text(["Иванова", "<b>Петров</b>"]) == (
-        "📥 Новые заявки: 2 — Иванова, &lt;b&gt;Петров&lt;/b&gt; → 📋 Заявки"
+        "📥 <b>Новые заявки: 2</b>\n"
+        "• Иванова\n"
+        "• &lt;b&gt;Петров&lt;/b&gt;\n"
+        "Открыть: 📋 Заявки"
     )
     long = rd.build_digest_text([f"Имя{i}" for i in range(18)])
-    assert long.startswith("📥 Новые заявки: 18 — Имя0, ")
-    assert "Имя14 и ещё 3 → 📋 Заявки" in long
+    assert long.startswith("📥 <b>Новые заявки: 18</b>\n• Имя0\n")
+    assert "• Имя14\n• и ещё 3\nОткрыть: 📋 Заявки" in long
     assert "Имя15" not in long
 
 
-# ── Phase 31 (31-06, D-17): счётчик автоотказов в дайджесте ──────────────────
+# ── Автоотказы в пачке (владелец 23.09: столбиком, с правилом и периодом) ──────
 
-def test_build_digest_text_zero_auto_reject_is_byte_identical():
-    """Событие без правил автоотказа — текст байт-в-байт прежний (дефолт `auto_reject_count=0`
-    не добавляет хвост)."""
-    assert rd.build_digest_text(["Иванова", "Петров"]) == rd.build_digest_text(
-        ["Иванова", "Петров"], 0,
-    )
-    assert ", из них" not in rd.build_digest_text(["Иванова", "Петров"], 0)
+def test_build_digest_text_without_auto_rejects_has_no_auto_block():
+    text = rd.build_digest_text(["Иванова", "Петров"], [])
+    assert "Автоотказ" not in text and "Правила автоотказа" not in text
 
 
-def test_build_digest_text_appends_auto_reject_suffix_with_ru_plural():
-    text1 = rd.build_digest_text(["Иванова"], 1)
-    text2 = rd.build_digest_text(["Иванова", "Петров"], 2)
-    text5 = rd.build_digest_text(["А", "Б", "В", "Г", "Д"], 5)
-    assert text1.endswith(", из них 🤖 1 автоотказ")
-    assert text2.endswith(", из них 🤖 2 автоотказа")
-    assert text5.endswith(", из них 🤖 5 автоотказов")
-
-
-# ── Квик 260923 (D-D): разбивка по правилам в тексте пачки ────────────────────
-
-def test_build_digest_text_mixed_batch_appends_rule_breakdown_line():
+def test_build_digest_text_mixed_batch_two_blocks_with_period():
     text = rd.build_digest_text(
-        ["Иванова", "Петров"], 1, [("Младше 16", 1)],
+        ["Иванова"], ["Петров"], [("Младше 16", 1)], period=("15:20", "15:42"),
+    )
+    assert text == (
+        "📥 <b>Новые заявки: 1</b> · 15:20–15:42\n"
+        "• Иванова\n"
+        "Открыть: 📋 Заявки\n"
+        "\n"
+        "🤖 <b>Автоотказ: 1</b>\n"
+        "• Петров\n"
+        "Правило «Младше 16»\n"
+        "Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы"
+    )
+
+
+def test_build_digest_text_only_auto_and_several_rules():
+    text = rd.build_digest_text(
+        [], ["Иванова", "Петров"], [("Курс", 1), ("Младше 16", 1)], period=("15:42", "15:42"),
     )
     lines = text.splitlines()
-    assert lines[0] == "📥 Новые заявки: 2 — Иванова, Петров → 📋 Заявки, из них 🤖 1 автоотказ"
-    assert lines[1] == "🤖 Автоотказ: 1 — «Младше 16» 1"
-
-
-def test_build_digest_text_all_auto_swaps_header_and_cta():
-    text = rd.build_digest_text(
-        ["Иванова"], 1, [("Младше 16", 1)], all_auto=True,
-    )
-    lines = text.splitlines()
-    assert lines[0] == "🤖 Автоотказ: 1 — Иванова → 🚫 Правила автоотказа → 🤖 Автоотказы"
-    assert "📥 Новые заявки" not in text
-    assert lines[1] == "🤖 Автоотказ: 1 — «Младше 16» 1"
-
-
-def test_build_digest_text_rule_counts_none_is_byte_identical():
-    assert rd.build_digest_text(["Иванова"], 1) == rd.build_digest_text(["Иванова"], 1, None, False)
+    assert lines[0] == "🤖 <b>Автоотказ: 2</b> · 15:42"
+    assert "📥" not in text and "📋 Заявки" not in text
+    assert "По правилам: «Курс» — 1, «Младше 16» — 1" in lines
 
 
 def test_send_reg_digest_appends_rule_breakdown_and_all_auto_header(tmp_path, monkeypatch):
@@ -408,8 +399,10 @@ def test_send_reg_digest_appends_rule_breakdown_and_all_auto_header(tmp_path, mo
     asyncio.run(rd.send_reg_digest("msk"))
 
     assert calls[0]["text"] == (
-        "🤖 Автоотказ: 1 — Иванова → 🚫 Правила автоотказа → 🤖 Автоотказы\n"
-        "🤖 Автоотказ: 1 — «Младше 16» 1"
+        "🤖 <b>Автоотказ: 1</b> · 12:00\n"
+        "• Иванова\n"
+        "Правило «Младше 16»\n"
+        "Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы"
     )
 
 
@@ -451,9 +444,8 @@ def test_send_reg_digest_counts_auto_rejected_from_queue_not_live_status(tmp_pat
     assert asyncio.run(rd.send_reg_digest("msk")) == 1
 
     assert len(calls) == 1
-    assert calls[0]["text"] == (
-        "📥 Новые заявки: 2 — Иванова, Петров → 📋 Заявки, из них 🤖 1 автоотказ"
-    )
+    assert calls[0]["text"].startswith("📥 <b>Новые заявки: 1</b> · 12:00\n• Петров\n")
+    assert "🤖 <b>Автоотказ: 1</b>\n• Иванова" in calls[0]["text"]
 
 
 def test_send_reg_digest_sends_once_per_city_and_marks_rows(tmp_path, monkeypatch):
@@ -471,7 +463,9 @@ def test_send_reg_digest_sends_once_per_city_and_marks_rows(tmp_path, monkeypatc
 
     assert len(calls) == 1
     assert calls[0]["city"] == "msk" and calls[0]["cap"] == "moderate_reg"
-    assert calls[0]["text"] == "📥 Новые заявки: 2 — Иванова, &lt;Петров&gt; → 📋 Заявки"
+    assert calls[0]["text"] == (
+        "📥 <b>Новые заявки: 2</b> · 12:00\n• Иванова\n• &lt;Петров&gt;\nОткрыть: 📋 Заявки"
+    )
     assert asyncio.run(db.list_unsent_reg_digest("msk")) == []
     assert len(asyncio.run(db.list_unsent_reg_digest("spb"))) == 1  # чужой город не тронут
 
