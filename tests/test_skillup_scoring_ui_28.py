@@ -47,6 +47,7 @@ from tests.test_miniapp_routes import (
     _standard_seed,
     _use_tmp_db,
 )
+from tests._dbtpl import fast_init_db
 
 ROOT = Path(__file__).resolve().parent.parent
 FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
@@ -58,7 +59,7 @@ def _run(coro):
 
 def _admin_ready(tmp_path, name="skillup_scoring_ui_28.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(bot_db.init_db())
+    fast_init_db()
 
 
 class FakeUser:

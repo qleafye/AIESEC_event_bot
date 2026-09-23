@@ -18,6 +18,7 @@ import json
 from config import config
 from database import db
 import services.applications as applications
+from tests._dbtpl import fast_init_db
 
 UID = 920900100
 
@@ -28,7 +29,7 @@ def _run(coro):
 
 def _ready(tmp_path, name="reject_rules_badges.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
 
 
 # add_user's fixed INSERT column list doesn't include the Phase 31 columns — узкий UPDATE

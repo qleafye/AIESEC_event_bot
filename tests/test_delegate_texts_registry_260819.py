@@ -29,6 +29,7 @@ from handlers import user_actions as ua_mod
 from handlers.states import Registration
 from settings_schema import SETTINGS_SCHEMA
 from tests.test_registration_phase5 import _CapturingMessage as _RegCapturingMessage
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 941101
@@ -37,7 +38,7 @@ DELEGATE_ID = 941102
 
 def _db_ready(tmp_path, name="test_delegate_texts_registry.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

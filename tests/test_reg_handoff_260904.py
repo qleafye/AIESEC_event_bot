@@ -21,7 +21,7 @@ USER_ID = 910100200
 
 def _ready(tmp_path, name="reg_handoff.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
 
 
 def _run(coro):
@@ -782,6 +782,7 @@ def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_pa
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
 from cities import per_city_key
+from tests._dbtpl import fast_init_db
 
 
 def _only_age_and_vk_on():

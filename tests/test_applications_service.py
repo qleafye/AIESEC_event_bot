@@ -13,6 +13,7 @@ import moderation_card
 import services.applications as applications
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -54,7 +55,7 @@ def test_track_filters_shape():
 
 def test_queue_page_returns_row_and_matching_total(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1001, participant_type="full")
     _seed_user(1002, participant_type="short")
 
@@ -69,7 +70,7 @@ def test_queue_page_returns_row_and_matching_total(tmp_path):
 
 def test_queue_page_track_filter_narrows_both_count_and_row(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1101, participant_type="full")
     _seed_user(1102, participant_type="short")
 
@@ -80,7 +81,7 @@ def test_queue_page_track_filter_narrows_both_count_and_row(tmp_path):
 
 def test_queue_page_offset_past_total_is_empty(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1201, participant_type="full")
 
     row, total = _run(applications.queue_page(scope=None, offset=5))
@@ -90,7 +91,7 @@ def test_queue_page_offset_past_total_is_empty(tmp_path):
 
 def test_queue_page_empty_queue(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
 
     row, total = _run(applications.queue_page(scope=None, offset=0))
     assert row is None
@@ -101,27 +102,27 @@ def test_queue_page_empty_queue(tmp_path):
 
 def test_manager_scope_none_when_module_off(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     assert _run(applications.manager_scope("msk")) is None
 
 
 def test_manager_scope_none_when_city_none(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("event_city_enabled", "on"))
     assert _run(applications.manager_scope(None)) is None
 
 
 def test_out_of_scope_false_when_module_off(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1301, event_city="spb")
     assert _run(applications.out_of_scope("msk", 1301)) is False
 
 
 def test_out_of_scope_true_for_mismatched_city(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("event_city_enabled", "on"))
     _seed_user(1401, event_city="spb")
     assert _run(applications.out_of_scope("msk", 1401)) is True
@@ -129,7 +130,7 @@ def test_out_of_scope_true_for_mismatched_city(tmp_path):
 
 def test_out_of_scope_false_for_matching_city(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("event_city_enabled", "on"))
     _seed_user(1402, event_city="msk")
     assert _run(applications.out_of_scope("msk", 1402)) is False
@@ -139,7 +140,7 @@ def test_out_of_scope_false_for_matching_city(tmp_path):
 
 def test_card_payload_main_fields_respect_answer_limit(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     long_goal = "о" * 500
     _seed_user(1501, goal=long_goal)
     _run(db.set_setting("modcard_fields", "goal"))
@@ -154,7 +155,7 @@ def test_card_payload_main_fields_respect_answer_limit(tmp_path):
 
 def test_card_payload_extra_fields_not_truncated(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     long_goal = "о" * 500
     _seed_user(1502, goal=long_goal)
     _run(db.set_setting("modcard_fields", "age"))  # goal НЕ включён -> extra
@@ -168,7 +169,7 @@ def test_card_payload_extra_fields_not_truncated(tmp_path):
 
 def test_card_payload_resume_kinds(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1601, resume_file_id="file-abc")
     _seed_user(1602, resume_text="текстовое резюме")
     _seed_user(1603)
@@ -195,7 +196,7 @@ def test_card_payload_resume_link_kind(tmp_path):
     """Приёмка 17.09 (п.2): развилка резюме R2b (СкиллАп 5) — делегат дал ссылку вместо файла,
     карточка обязана показать «kind: link», а не молча падать в «нет резюме»."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1604, resume_link="https://example.com/cv")
 
     payload = _run(applications.card_payload(_run(db.get_user(1604))))
@@ -209,7 +210,7 @@ def test_card_payload_resume_file_prefers_nextcloud_url(tmp_path):
     """Приёмка 17.09 (п.2): файл резюме есть в Nextcloud (`resume_url`) — карточка отдаёт
     прямую ссылку, а не заставляет фронт идти за токен-эндпоинтом файла."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1605, resume_file_id="file-xyz", resume_url="https://cloud.example.com/s/tok/file.pdf")
 
     payload = _run(applications.card_payload(_run(db.get_user(1605))))
@@ -225,7 +226,7 @@ def test_card_payload_resume_priority_file_over_link_over_text(tmp_path):
     ссылка/текст (в проде это не встречается — развилка отвечает одной веткой, но карточка
     не должна зависеть от этого предположения)."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(
         1606, resume_file_id="file-priority", resume_link="https://example.com/cv",
         resume_text="текст",
@@ -239,7 +240,7 @@ def test_card_payload_resume_mini_kind(tmp_path):
     """Приёмка 19.09 (review-260919, находки №2/№3 «Модерация»): развилка резюме, ветка
     «мини-профиль» — карточка обязана показать три подполя, а не «нет резюме»."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(
         1608, mini_projects="Бот для АЙСЕК",
         mini_portfolio='[{"title": "GitHub", "description": "github.com/x"}]',
@@ -261,7 +262,7 @@ def test_card_payload_resume_warning_when_type_set_but_empty(tmp_path):
     """`resume_type` задан (делегат прошёл развилку), но ни один карман не заполнен — маркер
     потери данных, а не тихое «резюме не приложено»."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1609)
     _set_resume_type(1609, "mini")
 
@@ -275,7 +276,7 @@ def test_card_payload_resume_warning_when_type_set_but_empty(tmp_path):
 def test_card_payload_excludes_mini_resume_steps_from_fields(tmp_path):
     """Три шага мини-профиля не дублируются построчно — у них свой блок `resume.mini`."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1610, mini_projects="Проект")
     _set_resume_type(1610, "mini")
     _run(db.set_setting("modcard_fields", "age\nmini_projects\nmini_portfolio\nmini_direction"))
@@ -292,7 +293,7 @@ def test_card_payload_age_birth_date_reciprocal_no_cross_section_duplicate(tmp_p
     схема) — main_fields печатает «Возраст», а extra_fields («Показать всё») не повторяет ту же
     строку вторым проходом через `age`."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1611, age=19)
     _run(db.set_setting("modcard_fields", "birth_date"))
 
@@ -308,7 +309,7 @@ def test_card_payload_excludes_resume_link_step_from_fields(tmp_path):
     """Приёмка 17.09 (п.2): `resume_link` — та же ось, что `resume`, у неё теперь свой блок —
     строкой в main_fields/extra_fields она больше не дублируется."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1607, resume_link="https://example.com/cv")
     _run(db.set_setting("modcard_fields", "age\nresume_link"))
 
@@ -319,7 +320,7 @@ def test_card_payload_excludes_resume_link_step_from_fields(tmp_path):
 
 def test_card_payload_show_resume_reflects_enabled_steps(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1701)
     _run(db.set_setting("modcard_fields", "age\nresume"))
     assert _run(applications.card_payload(_run(db.get_user(1701))))["show_resume"] is True
@@ -330,7 +331,7 @@ def test_card_payload_show_resume_reflects_enabled_steps(tmp_path):
 
 def test_card_payload_history_reads_answer_history(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1801)
     _run(db.mark_user_edited(1801, "bot"))
 
@@ -342,7 +343,7 @@ def test_card_payload_history_reads_answer_history(tmp_path):
 
 def test_claim_approve_wins_once(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1901, participant_type="full")
 
     first = _run(applications.claim_approve(1901))
@@ -354,7 +355,7 @@ def test_claim_approve_wins_once(tmp_path):
 
 def test_claim_reject_wins_once(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1902, participant_type="full")
 
     first = _run(applications.claim_reject(1902))
@@ -365,7 +366,7 @@ def test_claim_reject_wins_once(tmp_path):
 
 def test_claim_approve_all_returns_flipped_ids(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1903, participant_type="full")
     _seed_user(1904, participant_type="short")
 
@@ -380,7 +381,7 @@ def test_claim_approve_stamps_approved_at_chat_and_web_single_path(tmp_path):
     # claim_approve — ОДНО имя для бота (appr_approve) и веба (miniapp/routers/applications.py)
     # — единственный путь одиночного одобрения; approved_at ставит approve_user_atomic.
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1905, participant_type="full")
     assert _run(db.get_user(1905))["approved_at"] is None
 
@@ -394,7 +395,7 @@ def test_claim_approve_stamps_approved_at_chat_and_web_single_path(tmp_path):
 def test_claim_approve_all_stamps_approved_at_web_mass_path(tmp_path):
     # claim_approve_all — «Принять всех» веб-слоя.
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1906, participant_type="full")
     _seed_user(1907, participant_type="short")
 
@@ -409,7 +410,7 @@ def test_bot_direct_approve_all_pending_also_stamps_approved_at(tmp_path):
     # НАПРЯМУЮ, минуя services.applications.claim_approve_all — approved_at обязан приехать
     # и по этому пути (та же атомарная UPDATE, живёт в database.db, а не в этом сервисе).
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1908, participant_type="full")
 
     ids = _run(db.approve_all_pending(city_scope=None))
@@ -420,7 +421,7 @@ def test_bot_direct_approve_all_pending_also_stamps_approved_at(tmp_path):
 def test_old_rows_approved_at_stays_null_until_approved(tmp_path):
     # Строка не одобрена (или ещё не тронута) — approved_at остаётся NULL, а не пустой строкой.
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1909, participant_type="full")
 
     ok = _run(applications.claim_reject(1909))
@@ -432,7 +433,7 @@ def test_old_rows_approved_at_stays_null_until_approved(tmp_path):
 
 def test_record_decision_then_undo_inside_window_reverts_and_nothing_flushes(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2001, participant_type="full", status="pending")
     won = _run(applications.claim_approve(2001))
     assert won is True
@@ -453,7 +454,7 @@ def test_record_decision_then_undo_inside_window_reverts_and_nothing_flushes(tmp
 
 def test_undo_decision_after_flush_returns_already(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2002, participant_type="full", status="pending")
     _run(applications.claim_approve(2002))
 
@@ -480,7 +481,7 @@ def test_wr02_web_approve_undo_before_window_never_credits_referrer(tmp_path):
     фикса `claim_approve` начисляло СРАЗУ, откат решения деньги не забирал (D-22 запрещает их
     снять) — приглашённый оставался неодобренным ни секунды, а баллы уже ушли."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("ambassador_referral_coins", "100"))
     _seed_user(3001, participant_type="full", status="approved")  # амбассадор
     _run(db.set_ambassador_flag(3001, active=True, at="2026-01-01 00:00:00"))
@@ -504,7 +505,7 @@ def test_wr02_web_approve_flush_after_window_credits_referrer_once(tmp_path):
     """Симметричный случай: то же одобрение, но окно истекло БЕЗ отмены — начисление
     происходит в `flush_due_decisions`, ровно один раз."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("ambassador_referral_coins", "100"))
     _seed_user(3003, participant_type="full", status="approved")  # амбассадор
     _run(db.set_ambassador_flag(3003, active=True, at="2026-01-01 00:00:00"))
@@ -532,14 +533,14 @@ def test_wr02_web_approve_flush_after_window_credits_referrer_once(tmp_path):
 
 def test_undo_decision_unknown_id_returns_already(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     result = _run(applications.undo_decision(999999))
     assert result == {"ok": False, "reason": "already"}
 
 
 def test_flush_due_decisions_skips_not_yet_due(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2003, participant_type="full", status="pending")
     _run(applications.claim_approve(2003))
 
@@ -556,14 +557,14 @@ def test_flush_due_decisions_skips_not_yet_due(tmp_path):
 
 def test_reject_message_text_default_prefix_and_reason(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     text = _run(applications.reject_message_text("плохое качество"))
     assert text == "К сожалению, твоя заявка отклонена.\n\nплохое качество"
 
 
 def test_reject_message_text_escapes_html(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("reject_text", "<b>Отказ</b>"))
     text = _run(applications.reject_message_text("<script>"))
     assert "<b>" not in text
@@ -573,14 +574,14 @@ def test_reject_message_text_escapes_html(tmp_path):
 
 def test_reject_message_text_no_reason_no_trailing_blank(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     text = _run(applications.reject_message_text(None))
     assert text == "К сожалению, твоя заявка отклонена."
 
 
 def test_reject_reason_templates_default_has_four_items(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     templates = _run(applications.reject_reason_templates())
     assert len(templates) == 4
     assert all(isinstance(t, str) and t for t in templates)
@@ -596,14 +597,14 @@ def test_undo_window_seconds_is_five():
 
 def test_last_rejection_reason_none_when_no_decisions(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2101, status="pending")
     assert _run(applications.last_rejection_reason(2101)) is None
 
 
 def test_last_rejection_reason_none_when_last_decision_is_approval(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2102, status="pending")
     assert _run(applications.claim_approve(2102))
     now = datetime(2026, 1, 1, 12, 0, 0)
@@ -613,7 +614,7 @@ def test_last_rejection_reason_none_when_last_decision_is_approval(tmp_path):
 
 def test_last_rejection_reason_none_when_reason_empty(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2103, status="pending")
     assert _run(applications.claim_reject(2103))
     now = datetime(2026, 1, 1, 12, 0, 0)
@@ -623,7 +624,7 @@ def test_last_rejection_reason_none_when_reason_empty(tmp_path):
 
 def test_last_rejection_reason_none_when_rejection_undone(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2104, status="pending")
     assert _run(applications.claim_reject(2104))
     now = datetime(2026, 1, 1, 12, 0, 0)
@@ -635,7 +636,7 @@ def test_last_rejection_reason_none_when_rejection_undone(tmp_path):
 
 def test_last_rejection_reason_returns_reason_of_live_rejection(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2105, status="pending")
     assert _run(applications.claim_reject(2105))
     now = datetime(2026, 1, 1, 12, 0, 0)

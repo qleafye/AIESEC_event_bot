@@ -18,11 +18,12 @@ from config import config
 from database import db
 import services.scheduler as sched
 from services import quiet_hours
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="wave_scheduling.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

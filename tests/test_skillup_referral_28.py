@@ -39,13 +39,14 @@ from handlers import reg_ambassador
 from tests.test_miniapp_routes import DELEGATE_ID, UNREGISTERED_ID, _cfg, _client, _hdr, _set, _standard_seed
 from tests.test_miniapp_routes import _use_tmp_db as _use_tmp_http_db
 from tests.test_miniapp_form import _seed_draft, bot_api  # noqa: F401 -- фикстура bot_api
+from tests._dbtpl import fast_init_db
 
 UID = 900806000
 
 
 def _use_tmp_db(tmp_path, name="test_skillup_referral_28.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _state(uid: int) -> FSMContext:

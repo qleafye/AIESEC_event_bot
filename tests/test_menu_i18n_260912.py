@@ -31,6 +31,7 @@ from handlers import reg_lang  # noqa: F401 -- регистрирует menu_lan
 from handlers import user_actions as ua_mod
 from i18n_ui_en import MENU_EN
 from keyboards.builders import MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb
+from tests._dbtpl import fast_init_db
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 UID = 813001
@@ -38,7 +39,7 @@ UID = 813001
 
 def _use_tmp_db(tmp_path, name="test_menu_i18n_260912.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _enable_lang_module():

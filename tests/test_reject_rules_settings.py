@@ -20,11 +20,12 @@ from database import db
 from services.i18n_sources import delegate_registry_keys
 from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 from settings_validation import validate_setting_value
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reject_rules_settings.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Задача 1: тип date_only ─────────────────────────────────────────────────────────────

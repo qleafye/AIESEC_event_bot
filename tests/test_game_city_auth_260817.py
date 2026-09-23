@@ -24,6 +24,7 @@ from handlers import admin as admin_mod
 from handlers import admin_gamification
 from handlers import admin_roles
 from handlers import user_actions as ua_mod
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 931001       # superadmin, config.ADMIN_IDS
@@ -35,7 +36,7 @@ STRANGER_ID = 931005     # holds no role, not a superadmin
 
 def _db_ready(tmp_path, dbname="test_game_city_auth_260817.db"):
     config.DB_PATH = str(tmp_path / dbname)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

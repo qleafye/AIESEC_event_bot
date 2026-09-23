@@ -8,6 +8,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -92,7 +93,7 @@ def test_active_sheet_headers_track_enabled_questions(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # Apply the forum preset via settings → sheet width shrinks below the full 44.
         on = set(reg.REG_PRESETS["forum"]["on"])
         for k in reg.REG_DEFAULTS:
@@ -113,7 +114,7 @@ def test_active_sheet_row_full_width_when_all_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for k in reg.REG_DEFAULTS:
             await db.set_setting(k, "on")
         # Quick 260921 (fix, найден при исполнении фазы 31): reg_scoring_enabled/
@@ -133,7 +134,7 @@ def test_source_tag_skips_source_question(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_source", "on")
         # Organic user (no tag) → source question asked.
         organic = await reg._get_enabled_steps({})
@@ -162,14 +163,14 @@ def test_summary_includes_new_fields():
 
 def test_consent_steps_absent_by_default(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
     assert not any(s.startswith("consent:") for s in steps)
 
 
 def test_consent_steps_run_before_name_when_enabled(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("consent_enabled", "on"))
     asyncio.run(db.set_setting("consent_list", "A|data\nB|policy\nbad-no-pipe\nNoKey|"))
     # Tatiana: согласие — самый первый шаг (перед ФИО), поэтому оно живёт в _get_consent_steps,
@@ -183,7 +184,7 @@ def test_consent_steps_run_before_name_when_enabled(tmp_path):
 
 def test_consent_defaults_to_personal_data_when_list_empty(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("consent_enabled", "on"))  # list empty → default consent
     consents = asyncio.run(reg._get_consent_steps())
     assert consents == ["consent:personal_data"]
@@ -193,7 +194,7 @@ def test_consent_defaults_to_personal_data_when_list_empty(tmp_path):
 
 def test_edu_conditional_on_skips_uni_when_not_studying(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     for k in ("reg_q_education", "reg_q_university", "reg_q_course", "reg_q_specialty"):
         asyncio.run(db.set_setting(k, "on"))
     steps = asyncio.run(reg._get_enabled_steps({"education_status": "Нет", "work_status": False}))
@@ -202,7 +203,7 @@ def test_edu_conditional_on_skips_uni_when_not_studying(tmp_path):
 
 def test_edu_conditional_off_shows_uni_always(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     for k in ("reg_q_education", "reg_q_university", "reg_q_course", "reg_q_specialty"):
         asyncio.run(db.set_setting(k, "on"))
     asyncio.run(db.set_setting("edu_conditional", "off"))
@@ -214,7 +215,7 @@ def test_edu_conditional_off_shows_uni_always(tmp_path):
 
 def test_get_options_uses_setting_then_default(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     # empty setting → defaults
     opts = asyncio.run(reg._get_options("city_options", ["X", "Y"]))
     assert opts == ["X", "Y"]
@@ -228,12 +229,12 @@ def test_get_options_uses_setting_then_default(tmp_path):
 
 def test_prompt_falls_back_to_default(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     assert asyncio.run(reg._prompt("age", "Сколько тебе лет?")) == "Сколько тебе лет?"
 
 
 def test_prompt_uses_admin_override(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("reg_prompt_age", "Введи возраст:"))
     assert asyncio.run(reg._prompt("age", "Сколько тебе лет?")) == "Введи возраст:"

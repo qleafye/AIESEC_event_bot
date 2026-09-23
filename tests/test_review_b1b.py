@@ -15,6 +15,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -36,7 +37,7 @@ def _seed_pending(telegram_id, reg_date="2026-01-01"):
 
 def test_pending_users_offset_pages_past_first_50(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     for i in range(60):
         # registration_date ASC, telegram_id ASC ordering — spread dates so order is stable.
         _seed_pending(i, reg_date=f"2026-01-01T00:00:{i:02d}")
@@ -54,7 +55,7 @@ def test_pending_users_offset_pages_past_first_50(tmp_path):
 
 def test_receipt_pending_users_offset_pages_past_first_50(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     for i in range(60):
         _seed_pending(i)
         asyncio.run(db.update_payment_status(i, "receipt_sent", receipt_file_id=f"F{i}"))
@@ -73,7 +74,7 @@ def test_receipt_pending_users_offset_pages_past_first_50(tmp_path):
 def test_receipt_pending_users_offset_default_unchanged(tmp_path):
     # <50-item behavior must stay byte-identical to before offset was added.
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_pending(1)
     asyncio.run(db.update_payment_status(1, "receipt_sent", receipt_file_id="F1"))
     pending = asyncio.run(db.get_receipt_pending_users())
@@ -122,7 +123,7 @@ def test_consent_key_matches_rejects_stale_and_empty():
 
 def test_sheet_row_aligns_to_frozen_schema_after_toggle(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     # Enable the Телефон question, freeze the schema to the header actually written.
     asyncio.run(db.set_setting("reg_q_phone", "on"))
@@ -145,6 +146,6 @@ def test_sheet_row_aligns_to_frozen_schema_after_toggle(tmp_path):
 def test_sheet_schema_falls_back_to_live_when_unset(tmp_path):
     # No snapshot persisted → behaves exactly like the old live active_sheet_headers().
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     live = asyncio.run(reg.active_sheet_headers())
     assert asyncio.run(reg.get_sheet_schema()) == live

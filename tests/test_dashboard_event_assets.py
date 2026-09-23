@@ -26,6 +26,7 @@ import web_theme
 from dashboard import files as dashboard_files
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
+from tests._dbtpl import fast_init_db
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 ADMIN_ID = 900001
@@ -35,7 +36,7 @@ APP_CSS = Path(__file__).resolve().parent.parent / "dashboard" / "static" / "app
 def _use_tmp_db(tmp_path, name: str = "dashboard_event_assets.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

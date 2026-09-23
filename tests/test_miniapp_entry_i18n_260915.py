@@ -15,6 +15,7 @@ from config import config
 from database import db
 
 from handlers import user_actions as ua_mod
+from tests._dbtpl import fast_init_db
 
 UID = 813915
 
@@ -43,7 +44,7 @@ class _FakeMessage:
 
 def _use_tmp_db(tmp_path, name="test_miniapp_entry_i18n_260915.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _enable_lang_module():

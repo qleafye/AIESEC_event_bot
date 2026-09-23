@@ -26,6 +26,7 @@ import services.applications as applications
 from config import config
 from database import db
 from tests.test_miniapp_labels_drift import _loaded_aiogram
+from tests._dbtpl import fast_init_db
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -88,7 +89,7 @@ class _FakeBot:
 
 def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     calls = []
 
     async def fake_approve_user(bot, tid):
@@ -109,7 +110,7 @@ def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch, t
 
 def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     count = {"n": 0}
 
     async def fake_approve_user(bot, tid):
@@ -130,7 +131,7 @@ def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch, tmp_p
 
 def test_apply_decision_effects_rejected_sends_one_message_then_sheet(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     calls = []
 
     async def fake_update_status_in_sheet(tid, label):
@@ -160,7 +161,7 @@ def test_apply_decision_effects_rejected_sends_one_message_then_sheet(monkeypatc
 
 def test_apply_decision_effects_rejected_send_failure_does_not_block_sheet(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     calls = []
 
     async def fake_update_status_in_sheet(tid, label):
@@ -202,7 +203,7 @@ def test_mass_approve_effects_empty_list_no_calls(monkeypatch):
 
 def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     calls = []
 
     async def fake_approve_user(bot, tid):
@@ -228,7 +229,7 @@ def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch, tmp_p
 
 def test_mass_approve_effects_retry_after_retries_once_others_continue(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     from aiogram.exceptions import TelegramRetryAfter
 
     attempts = {}
@@ -261,7 +262,7 @@ def test_mass_approve_effects_retry_after_retries_once_others_continue(monkeypat
 
 def test_card_payload_main_and_extra_do_not_overlap(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(801, education_status="Студент", city="Москва", age="20", goal="цель")
     _run(db.set_setting("modcard_fields", "age\ncity"))
 
@@ -276,7 +277,7 @@ def test_card_payload_main_and_extra_do_not_overlap(tmp_path):
 
 def test_card_payload_prev_season_badge_before_edited_and_track_badges_precede_it(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(804, participant_type="short", prev_season="legacy")
     _run(db.set_setting("modcard_fields", "age"))
 
@@ -291,7 +292,7 @@ def test_card_payload_prev_season_badge_before_edited_and_track_badges_precede_i
 
 def test_card_payload_show_resume_false_when_step_disabled(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(802, resume_text="мой опыт")
     _run(db.set_setting("modcard_fields", "age"))  # resume не включён
 
@@ -302,7 +303,7 @@ def test_card_payload_show_resume_false_when_step_disabled(tmp_path):
 
 def test_card_payload_empty_resume_is_kind_none(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(803)
 
     payload = _run(applications.card_payload(_run(db.get_user(803))))
@@ -316,7 +317,7 @@ def test_card_payload_empty_resume_is_kind_none(tmp_path):
 
 def test_card_payload_prev_reject_badge_after_resubmit_before_consent(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(810)
     assert _run(applications.claim_reject(810))
     _run(applications.record_decision(810, "rejected", "Мало опыта", 999, datetime(2026, 1, 1)))
@@ -338,7 +339,7 @@ def test_card_payload_prev_reject_badge_after_resubmit_before_consent(tmp_path):
 
 def test_card_payload_no_prev_reject_badge_without_past_rejection(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(811)
     payload = _run(applications.card_payload(_run(db.get_user(811))))
     assert "prev_reject" not in [b["kind"] for b in payload["badges"]]
@@ -346,7 +347,7 @@ def test_card_payload_no_prev_reject_badge_without_past_rejection(tmp_path):
 
 def test_card_payload_no_prev_reject_badge_when_reason_empty(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(812)
     assert _run(applications.claim_reject(812))
     _run(applications.record_decision(812, "rejected", "", 999, datetime(2026, 1, 1)))
@@ -356,7 +357,7 @@ def test_card_payload_no_prev_reject_badge_when_reason_empty(tmp_path):
 
 def test_card_payload_no_prev_reject_badge_when_last_decision_is_approval(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(813)
     assert _run(applications.claim_reject(813))
     _run(applications.record_decision(813, "rejected", "Не подходит", 999, datetime(2026, 1, 1)))
@@ -369,7 +370,7 @@ def test_card_payload_no_prev_reject_badge_when_last_decision_is_approval(tmp_pa
 
 def test_card_payload_no_prev_reject_badge_when_rejection_undone(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(814)
     assert _run(applications.claim_reject(814))
     decision_id = _run(applications.record_decision(814, "rejected", "Не подходит", 999, datetime(2026, 1, 1)))
@@ -385,7 +386,7 @@ def test_prev_reject_line_none_without_telegram_id():
 
 def test_prev_reject_line_escapes_reason_only_when_flagged(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(815)
     assert _run(applications.claim_reject(815))
     _run(applications.record_decision(815, "rejected", "<script>плохо</script>", 999, datetime(2026, 1, 1)))
@@ -437,7 +438,7 @@ def _due_now() -> datetime:
 
 def test_bot_and_web_reach_same_state(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1901, full_name="Bot Path")
     _seed_user(1902, full_name="Web Path")
 
@@ -481,7 +482,7 @@ def test_bot_and_web_reach_same_state(tmp_path, monkeypatch):
 
 def test_bot_and_web_reject_reach_same_state_with_identical_text(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1911, full_name="Bot Path")
     _seed_user(1912, full_name="Web Path")
 
@@ -542,7 +543,7 @@ def test_bot_reject_writes_journal_without_second_send(tmp_path, monkeypatch):
     получает сообщение об отказе РОВНО ОДИН раз — то, что уже отправил apply_decision_effects
     синхронно, ниже."""
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1971, full_name="Bot Reject Path")
 
     async def fake_update_status_in_sheet(tid, label):
@@ -587,7 +588,7 @@ def test_appr_reject_reason_records_journal_without_reason_in_log():
 
 def test_undo_leaves_no_trace(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1921)
 
     calls = []
@@ -617,7 +618,7 @@ def test_undo_leaves_no_trace(tmp_path, monkeypatch):
 
 def test_mass_approve_parity(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     # Два захода по два делегата — вторая пара сидируется ПОСЛЕ первого одобрения, иначе
     # атомарный `approve_all_pending` (общий и для бота, и для веба) заберёт все четыре сразу
     # и второму заходу нечего будет одобрять.
@@ -681,7 +682,7 @@ def test_card_fields_same_registry_key_drives_both_surfaces(tmp_path):
         assert 'moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))' in text
 
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1951, age="20", city="Москва")
 
     _run(db.set_setting("modcard_fields", "age"))
@@ -703,7 +704,7 @@ def test_file_scope_matches_service_scope(tmp_path):
     from miniapp.routers.files import _city_matches
 
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1961, event_city="spb")
     _seed_user(1962, event_city="msk")
 

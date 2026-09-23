@@ -25,6 +25,7 @@ from handlers import admin as _admin_mod  # noqa: F401
 from handlers import admin_settings
 from settings_schema import SETTINGS_SCHEMA
 from settings_validation import validate_setting_value
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path, name="test_city_reg_close_260923.db"):
@@ -112,7 +113,7 @@ def test_is_city_registration_open_true_without_date(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await cities.is_city_registration_open("spb")
 
     assert asyncio.run(go()) is True
@@ -123,7 +124,7 @@ def test_is_city_registration_open_true_before_close_date(tmp_path, monkeypatch)
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 9, 30, 23, 59))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return await cities.is_city_registration_open("spb")
@@ -136,7 +137,7 @@ def test_is_city_registration_open_false_exactly_at_midnight_of_close_date(tmp_p
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 1, 0, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return await cities.is_city_registration_open("spb")
@@ -149,7 +150,7 @@ def test_is_city_registration_open_false_after_close_date(tmp_path, monkeypatch)
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return await cities.is_city_registration_open("spb")
@@ -164,7 +165,7 @@ def test_is_city_registration_open_false_when_disabled_regardless_of_date(tmp_pa
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2020, 1, 1, 0, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _disable_city("spb")
         return await cities.is_city_registration_open("spb")
 
@@ -176,7 +177,7 @@ def test_enabled_cities_still_contains_date_closed_city(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return [c["code"] for c in await cities.enabled_cities()]
@@ -189,7 +190,7 @@ def test_open_cities_excludes_only_the_date_closed_city(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return [c["code"] for c in await cities.open_cities()]
@@ -201,7 +202,7 @@ def test_city_gate_module_off_always_go(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg_engine.city_gate("spb")
 
     assert asyncio.run(go()) == ("go", "spb")
@@ -211,7 +212,7 @@ def test_city_gate_event_city_open_go(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg_engine.city_gate("spb")
 
@@ -223,7 +224,7 @@ def test_city_gate_event_city_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return await reg_engine.city_gate("spb")
@@ -236,7 +237,7 @@ def test_city_gate_none_zero_open_all_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         for code in ("msk", "spb", "tyumen"):
             await _close_city(code, "01.10.2026")
@@ -250,7 +251,7 @@ def test_city_gate_none_one_open_go_with_that_code(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         await _close_city("tyumen", "01.10.2026")
@@ -263,7 +264,7 @@ def test_city_gate_none_two_or_more_open_fork(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg_engine.city_gate(None)
 
@@ -275,7 +276,7 @@ def test_should_show_city_fork_false_with_one_open_of_three_enabled(tmp_path, mo
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         await _close_city("tyumen", "01.10.2026")
@@ -289,7 +290,7 @@ def test_city_fork_options_excludes_date_closed_city(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         opts = await reg_engine.city_fork_options()
@@ -303,7 +304,7 @@ def test_validate_city_choice_rejects_date_closed_city(tmp_path, monkeypatch):
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         return await reg_engine.validate_city_choice("spb")
@@ -337,7 +338,7 @@ def test_reg_group_screen_shows_new_key_labels(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await admin_settings.render_settings_group_text("reg")
 
     text = asyncio.run(go())
@@ -354,7 +355,7 @@ def test_city_fork_kb_excludes_date_closed_city(tmp_path, monkeypatch):
     uid = 937001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         msg = _FakeMessage(uid, "u")
@@ -380,7 +381,7 @@ def test_deeplink_to_date_closed_city_shows_closed_screen_with_open_city_buttons
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         msg = _FakeMessage(uid, "u")
@@ -403,7 +404,7 @@ def test_deeplink_to_disabled_city_shows_closed_screen(tmp_path):
     started = []
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         orig = reg._start_registration_flow
 
@@ -439,7 +440,7 @@ def test_deeplink_when_all_cities_closed_shows_all_closed_text_no_buttons(tmp_pa
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         for code in ("msk", "spb", "tyumen"):
             await _close_city(code, "01.10.2026")
@@ -468,7 +469,7 @@ def test_bare_start_when_all_cities_closed_shows_all_closed_text(tmp_path, monke
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         for code in ("msk", "spb", "tyumen"):
             await _close_city(code, "01.10.2026")
@@ -488,7 +489,7 @@ def test_tap_open_city_from_closed_screen_preserves_referrer_and_starts_city(tmp
     referrer_id = 900001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         state = _new_state(uid)
@@ -521,7 +522,7 @@ def test_city_pick_rejects_date_closed_city_flow_not_started(tmp_path, monkeypat
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         state = _new_state(uid)
@@ -546,7 +547,7 @@ def test_bare_start_single_open_city_no_fork_autofills_event_city(tmp_path, monk
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         await _close_city("tyumen", "01.10.2026")
@@ -574,7 +575,7 @@ def test_deeplink_before_close_date_starts_registration_on_that_city(tmp_path, m
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         msg = _FakeMessage(uid, "u")
@@ -591,7 +592,7 @@ def test_registered_delegate_of_closed_city_sees_normal_menu_and_own_texts(tmp_p
     uid = 937009
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         await db.add_user({
@@ -623,7 +624,7 @@ def test_registered_delegate_edit_deeplink_not_gated_by_closed_city(tmp_path, mo
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
         await db.add_user({
@@ -644,7 +645,7 @@ def test_city_scope_unaffected_by_closing_city(tmp_path):
     before = cities.city_scope("spb")
 
     async def close():
-        await db.init_db()
+        fast_init_db()
         await _close_city("spb", "01.10.2026")
 
     asyncio.run(close())
@@ -656,7 +657,7 @@ def test_miniapp_registration_closed_before_and_after_close_date(tmp_path, monke
     _use_tmp_db(tmp_path)
 
     async def setup():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await _close_city("spb", "01.10.2026")
 
@@ -676,7 +677,7 @@ def test_miniapp_registration_closed_false_when_module_off(tmp_path, monkeypatch
     monkeypatch.setattr(cities, "msk_now", lambda: datetime(2026, 10, 5, 12, 0))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from miniapp.routers import form as form_mod
         return await form_mod._registration_closed("spb")
 

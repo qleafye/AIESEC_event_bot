@@ -44,7 +44,7 @@ UID = 900805000
 
 def _use_tmp_db(tmp_path, name="test_skillup_resume_fork_ui_28.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _state(uid: int) -> FSMContext:
@@ -782,6 +782,7 @@ from database import db as bot_db  # noqa: E402
 from tests.test_miniapp_routes import (  # noqa: E402
     DELEGATE_ID, _cfg, _client, _hdr, _set, _standard_seed, _use_tmp_db as _use_tmp_routes_db,
 )
+from tests._dbtpl import fast_init_db
 
 
 @pytest.fixture

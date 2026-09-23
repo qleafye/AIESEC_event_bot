@@ -29,7 +29,7 @@ def _run(coro):
 def _ready(tmp_path, name="faq_260906.db"):
     config.DB_PATH = str(tmp_path / name)
     config.GOOGLE_SHEET_ID = ""
-    _run(db.init_db())
+    fast_init_db()
 
 
 async def _seed_cities(rows):
@@ -444,7 +444,7 @@ MANAGER_ID = 8901202
 def _admin_ready(tmp_path, name="faq_admin_260906.db"):
     config.DB_PATH = str(tmp_path / name)
     config.GOOGLE_SHEET_ID = ""
-    _run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -669,6 +669,7 @@ def test_admin_faq_wired_into_apps_section_and_menu_rows():
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 from handlers import admin_questions  # noqa: E402 -- канонический порядок импорта хендлеров
+from tests._dbtpl import fast_init_db
 
 
 def _seed_answered_question(

@@ -20,7 +20,7 @@ ADMIN_ID = 900002
 
 def _admin_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_settings_groups_c0x.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -179,6 +179,7 @@ def test_settings_group_noop_just_answers(tmp_path):
 # .planning/phases/06-settings-schema-registry/06-01-PLAN.md / 06-CONTEXT.md (D-15/D-16/D-17).
 
 from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
+from tests._dbtpl import fast_init_db
 
 
 def test_parse_setting_text_passthrough():

@@ -20,6 +20,7 @@ from handlers import admin_settings
 from handlers.admin_caps import required_capability
 from handlers.states import CoinsManual
 from settings_schema import SETTINGS_SCHEMA
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 941601
@@ -29,7 +30,7 @@ DELEGATE2_ID = 941603
 
 def _db_ready(tmp_path, name="test_game_ui16_manager_review_260820.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

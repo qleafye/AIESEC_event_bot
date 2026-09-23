@@ -18,6 +18,7 @@ from database import db
 from handlers import admin_settings
 from handlers.admin_caps import role_caps_key, role_enabled_key
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930601
@@ -26,7 +27,7 @@ MANAGER_ID = 930602
 
 def _admin_ready(tmp_path, db_name="test_percity_write_recheck_093.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

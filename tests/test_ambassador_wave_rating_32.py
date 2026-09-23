@@ -23,11 +23,12 @@ from config import config
 from database import db
 import services.ambassador_waves as waves
 from handlers.admin_settings import _settings_edit_screen
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_ambassador_wave_rating_32.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

@@ -28,6 +28,7 @@ from config import config
 from database import db
 from handlers import group_chat
 from services import chat_tracking
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900701
 SECOND_ADMIN_ID = 900702
@@ -39,7 +40,7 @@ BOT_ID = 777000
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "chat.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 @contextmanager

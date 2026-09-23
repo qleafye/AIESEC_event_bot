@@ -18,6 +18,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from config import config
 from database import db
 import services.reminders as reminders_mod
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 926101
 MSK_MANAGER_ID = 926102
@@ -43,7 +44,7 @@ class _FakeBot:
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_pending_reminder_capability_260919.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

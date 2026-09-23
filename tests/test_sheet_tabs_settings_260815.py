@@ -29,6 +29,7 @@ from settings_schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
 import settings_ops
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 931501
@@ -40,7 +41,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -231,7 +232,7 @@ def _seed_setting(key, value):
 def test_get_sheet_main_sheet_tab_setting_resolves_by_name(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_setting("main_sheet_tab", "Реги бот")
     _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
@@ -245,7 +246,7 @@ def test_get_sheet_main_sheet_tab_setting_beats_env_when_both_set(tmp_path, monk
     button is authoritative even if .env still carries an old/different value."""
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_setting("main_sheet_tab", "Из админки")
     _patch_gspread_client(monkeypatch, ["STATISTICS", "Из админки", "Из .env"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "Из .env")
@@ -257,7 +258,7 @@ def test_get_sheet_main_sheet_tab_setting_beats_env_when_both_set(tmp_path, monk
 def test_get_sheet_main_sheet_tab_setting_auto_creates_when_missing(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_setting("main_sheet_tab", "Новая от менеджера")
     _patch_gspread_client(monkeypatch, ["STATISTICS"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
@@ -271,7 +272,7 @@ def test_get_sheet_main_sheet_tab_setting_auto_creates_when_missing(tmp_path, mo
 def test_get_sheet_env_tab_still_resolves_by_name_when_setting_unset(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "Реги бот")
 
@@ -284,7 +285,7 @@ def test_get_sheet_env_tab_still_resolves_by_name_when_setting_unset(tmp_path, m
 def test_get_sheet_refuses_when_nothing_configured_at_all(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
 
@@ -300,7 +301,7 @@ def test_get_sheet_refuses_when_nothing_configured_at_all(tmp_path, monkeypatch)
 def test_tab_explicitly_configured_true_from_bot_settings_alone(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("main_sheet_tab", "Реги бот"))
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
 
@@ -310,7 +311,7 @@ def test_tab_explicitly_configured_true_from_bot_settings_alone(tmp_path, monkey
 def test_tab_explicitly_configured_false_when_neither_set(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
 
     assert asyncio.run(sheets._tab_explicitly_configured()) is False
@@ -322,7 +323,7 @@ def test_rebuild_main_sheet_allowed_when_only_bot_settings_names_the_tab(tmp_pat
     plan exists to close (see plan objective)."""
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("main_sheet_tab", "Реги бот"))
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "fake-id")
     monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "fake-creds.json")
@@ -345,7 +346,7 @@ def test_sync_game_sheets_uses_registry_tab_names_by_default(tmp_path, monkeypat
     from database import db as db_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db_mod.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
     calls = []
@@ -428,7 +429,7 @@ def test_city_incomplete_tab_default_reads_registry(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg.city_incomplete_tab(None)
 
     assert asyncio.run(go()) == "Незавершённые"
@@ -440,7 +441,7 @@ def test_city_incomplete_tab_custom_default_from_registry(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("incomplete_sheet_tab", "Не доделали")
         return await reg.city_incomplete_tab(None)
 
@@ -449,7 +450,7 @@ def test_city_incomplete_tab_custom_default_from_registry(tmp_path):
 
 def test_tab_suffix_defaults_match_old_hardcodes():
     async def go():
-        await db.init_db()
+        fast_init_db()
         return (
             await cities.tab_suffix("short"),
             await cities.tab_suffix("party"),
@@ -465,7 +466,7 @@ def test_tab_suffix_normalizes_missing_leading_space(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("city_tab_suffix__short", "Акция")  # no leading space
         return await cities.tab_suffix("short")
 
@@ -478,7 +479,7 @@ def test_city_row_tab_uses_tab_suffix_helper(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_tab_suffix__short", "Промо")
         return await reg.city_row_tab("spb", "short")
@@ -492,7 +493,7 @@ def test_refresh_allowlist_reads_preselect_tab_via_registry(tmp_path, monkeypatc
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
 
         captured = {}
 

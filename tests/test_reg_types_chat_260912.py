@@ -25,13 +25,14 @@ from handlers import registration as reg
 from handlers import reg_types_composite, reg_types_lookup, reg_types_repeatable
 from handlers.states import Registration
 from reg_engine import parse_repeatable
+from tests._dbtpl import fast_init_db
 
 UID = 300912000
 
 
 def _use_tmp_db(tmp_path, name="test_reg_types_chat_260912.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _state(uid: int) -> FSMContext:

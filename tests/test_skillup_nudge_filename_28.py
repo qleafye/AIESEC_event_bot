@@ -19,6 +19,7 @@ import asyncio
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 DELEGATE_A = 940901
@@ -31,7 +32,7 @@ DELEGATE_PLAIN = 940906
 
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 class _FakeMeBot:

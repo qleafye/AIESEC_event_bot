@@ -23,6 +23,7 @@ from handlers import admin_gamification
 from handlers import admin_game_tasks
 from handlers import user_actions as ua_mod
 from handlers.states import GameTaskCreate
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 940901
@@ -72,7 +73,7 @@ def _flat_callback_data(kb):
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_city_tasks_091.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Task 1: game_tasks.event_city + city_scope kwarg on tasks/queue ─────────────────────────

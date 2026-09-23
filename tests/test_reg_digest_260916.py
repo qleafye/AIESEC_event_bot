@@ -14,6 +14,7 @@ from config import config
 from database import db
 from services import reg_digest as rd
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 933301
 DELEGATE_MSK = 933305
@@ -22,7 +23,7 @@ DELEGATE_SPB = 933306
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_submit_digest.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

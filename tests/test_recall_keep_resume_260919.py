@@ -35,6 +35,7 @@ from database import db
 from handlers import registration as reg
 from handlers import reg_flow
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 UID_A = 831001  # новичок: отвечает резюме файлом впервые, строки users ещё нет
 UID_B = 831002  # возвращенец: строка users уже есть, резюме — старый файл с прошлого сезона
@@ -42,7 +43,7 @@ UID_B = 831002  # возвращенец: строка users уже есть, р
 
 def _use_tmp_db(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _new_state(uid: int) -> FSMContext:

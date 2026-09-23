@@ -24,6 +24,7 @@ from handlers import admin_gamification
 from handlers import admin_game_tasks
 from handlers.admin_caps import required_capability
 from handlers.states import GameTaskCreate
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930901
@@ -31,7 +32,7 @@ ADMIN_ID = 930901
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_gamification_admin_phase9.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

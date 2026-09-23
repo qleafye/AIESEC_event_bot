@@ -18,6 +18,7 @@ from handlers import registration as reg
 from handlers import reg_extra_steps
 from handlers.states import Registration
 import reg_engine
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path, name="skillup_steps_28.db"):
@@ -55,7 +56,7 @@ def test_case_optin_screen_has_description(tmp_path):
     uid = 900282001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting(
             "reg_case_optin_description_text",
             "Финал очно, командами. Опыт не нужен.",
@@ -84,7 +85,7 @@ def test_case_optin_description_absent_when_not_configured(tmp_path):
     uid = 900282002
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _FakeMessage(uid)
         state = _state(uid)
         await reg._ask_step("case_optin", msg, state, 1, 5)
@@ -101,7 +102,7 @@ def test_case_optin_rejects_free_text(tmp_path):
     uid = 900282003
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _state(uid)
         await state.set_state(Registration.case_optin)
         msg = _FakeMessage(uid, text="может быть")
@@ -122,7 +123,7 @@ def test_mini_portfolio_skip_writes_dash(tmp_path):
     uid = 900282004
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _state(uid)
         await state.update_data(participant_type="full", full_name="Тест Тестов")
         await state.set_state(Registration.mini_portfolio)
@@ -143,7 +144,7 @@ def test_unknown_text_step_is_asked_not_silently_skipped(tmp_path):
     uid = 900282005
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _FakeMessage(uid)
         state = _state(uid)
         await reg._ask_step("mini_direction", msg, state, 1, 5)
@@ -161,7 +162,7 @@ def test_ask_step_unknown_state_is_fail_soft(tmp_path):
     uid = 900282006
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _FakeMessage(uid)
         state = _state(uid)
         # Несуществующий State — имитация опечатки в REG_FLOW/Registration.
@@ -180,7 +181,7 @@ def test_form_spec_contains_new_steps_when_enabled(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for key in ("reg_q_stack", "reg_q_experience", "reg_q_readiness", "reg_q_case_optin"):
             await db.set_setting(key, "on")
         spec = await reg_engine.form_spec({}, participant_type="full", event_city=None)
@@ -199,7 +200,7 @@ def test_form_spec_hides_new_steps_by_default(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg_engine.form_spec({}, participant_type="full", event_city=None)
 
     spec = asyncio.run(go())
@@ -213,7 +214,7 @@ def test_case_optin_spec_carries_description(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_case_optin_description_text", "Пояснение менеджера.")
         return await reg_engine.step_spec("case_optin", participant_type="full", event_city=None)
 

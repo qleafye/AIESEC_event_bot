@@ -13,7 +13,7 @@ from database import db
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_free_proof_091.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Task 1: game_submission_parts + accessors ────────────────────────────────────────────
@@ -138,7 +138,7 @@ _T2_DELEGATE_ID = 940902
 
 def _t2_db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_free_proof_091_t2.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [_T2_ADMIN_ID]
 
 
@@ -348,6 +348,7 @@ def test_t2_no_finalizing_sleep_only_album_ack_sleep():
 import handlers.admin as admin_mod
 from handlers import admin_gamification
 from handlers.states import GameTaskCreate
+from tests._dbtpl import fast_init_db
 
 _T3_MANAGER_ID = 940801
 _T3_DELEGATE_ID = 940802
@@ -407,7 +408,7 @@ class _T3FakeCallback:
 
 def _t3_db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_free_proof_091_t3.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [_T3_MANAGER_ID]
 
 

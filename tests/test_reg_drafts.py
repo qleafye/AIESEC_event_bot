@@ -13,13 +13,14 @@ from datetime import datetime, timedelta
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 USER_ID = 900100200
 
 
 def _ready(tmp_path, name="reg_drafts.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── upsert / get ──────────────────────────────────────────────────────────────────────────

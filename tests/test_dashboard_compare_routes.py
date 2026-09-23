@@ -27,6 +27,7 @@ from dashboard.cf_access import ACCESS_HEADER
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
 from dashboard.registry import EventSource
+from tests._dbtpl import fast_init_db
 
 TEAM_DOMAIN = "aiesec"
 AUD = "app-aud-tag"
@@ -39,7 +40,7 @@ SUPERADMIN_EMAIL = "admin@aiesec.ru"
 def _use_tmp_db(tmp_path, name: str) -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

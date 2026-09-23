@@ -21,6 +21,7 @@ from config import config
 from database import db
 from handlers import reg_i18n
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name="test_i18n_bot_render_27.db"):
@@ -28,7 +29,7 @@ def _db_ready(tmp_path, name="test_i18n_bot_render_27.db"):
     через get_setting даже на дефолтном списке) — тот же приём, что
     tests/test_i18n_options_roundtrip_27.py::_db_ready."""
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 UID = 820001
 

@@ -19,6 +19,7 @@ import asyncio
 from config import config
 from database.db import _connect, init_db
 from services.lookup import normalize_alias, search_lookup
+from tests._dbtpl import fast_init_db
 
 
 def _run(coro):
@@ -27,7 +28,7 @@ def _run(coro):
 
 def _ready(tmp_path, name="lookup_topup_260916.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(init_db())
+    fast_init_db()
 
 
 async def _count(kind):

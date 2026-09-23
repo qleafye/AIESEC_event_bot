@@ -18,6 +18,7 @@ from config import config
 from database import db
 from handlers import admin_gamification
 from handlers.game_review_render import _render_submission_card
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932901
 DELEGATE_ID = 932902
@@ -25,7 +26,7 @@ DELEGATE_ID = 932902
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_late_penalty_32.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

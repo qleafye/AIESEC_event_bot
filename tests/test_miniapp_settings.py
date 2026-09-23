@@ -26,6 +26,7 @@ from handlers import admin_miniapp_theme
 from handlers.states import MiniAppTheme
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 import web_theme
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900920
@@ -33,7 +34,7 @@ ADMIN_ID = 900920
 
 def _admin_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_miniapp_settings.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     config.DASHBOARD_PUBLIC_URL = "https://yl26.example.com"
 

@@ -17,12 +17,13 @@ from config import config
 from database import db as bot_db
 from services import miniapp_outbox
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 
 def _init(tmp_path, name="miniapp_outbox_job.db") -> str:
     path = str(tmp_path / name)
     config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 
@@ -447,7 +448,7 @@ def test_job_registered_with_expected_id_and_interval(tmp_path, monkeypatch):
     _isolate_scheduler(tmp_path, monkeypatch)
 
     async def go():
-        await bot_db.init_db()
+        fast_init_db()
         s = await sched.init_scheduler(bot=object())
         try:
             job = s.get_job("miniapp_outbox_drain")

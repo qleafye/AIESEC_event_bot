@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -43,7 +44,7 @@ def _seed_user(tid, *, participant_type=None, status="pending", edited_at=None):
 
 def test_get_pending_users_without_new_args_unchanged(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(1001, participant_type="full")
     _seed_user(1002, participant_type="short")
 
@@ -53,7 +54,7 @@ def test_get_pending_users_without_new_args_unchanged(tmp_path):
 
 def test_get_pending_count_without_new_args_unchanged(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(2001, participant_type="full")
     _seed_user(2002, participant_type="party_overnight")
     _seed_user(2003, status="approved")  # не в очереди
@@ -66,7 +67,7 @@ def test_get_pending_count_without_new_args_unchanged(tmp_path):
 
 def test_track_full_includes_null_and_full(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3001, participant_type="full")
     _seed_user(3002, participant_type=None)
     _seed_user(3003, participant_type="short")
@@ -77,7 +78,7 @@ def test_track_full_includes_null_and_full(tmp_path):
 
 def test_track_party_includes_both_party_variants(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3101, participant_type="party_overnight")
     _seed_user(3102, participant_type="party_noovernight")
     _seed_user(3103, participant_type="full")
@@ -88,7 +89,7 @@ def test_track_party_includes_both_party_variants(tmp_path):
 
 def test_track_short_only(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3201, participant_type="short")
     _seed_user(3202, participant_type="full")
 
@@ -98,7 +99,7 @@ def test_track_short_only(tmp_path):
 
 def test_track_unknown_value_means_no_filter(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3301, participant_type="full")
     _seed_user(3302, participant_type="short")
 
@@ -110,7 +111,7 @@ def test_track_unknown_value_means_no_filter(tmp_path):
 
 def test_changed_only_keeps_edited_rows(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3401, participant_type="full", edited_at=True)
     _seed_user(3402, participant_type="full")
 
@@ -123,7 +124,7 @@ def test_changed_only_keeps_edited_rows(tmp_path):
 
 def test_track_and_changed_only_combine_in_one_where(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(3501, participant_type="full", edited_at=True)
     _seed_user(3502, participant_type="full")
     _seed_user(3503, participant_type="short", edited_at=True)
@@ -140,7 +141,7 @@ def _iso(dt):
 
 def test_record_application_decision_returns_positive_id(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4001, "approved", None, 999, _iso(now), _iso(now + timedelta(seconds=5)),
@@ -150,7 +151,7 @@ def test_record_application_decision_returns_positive_id(tmp_path):
 
 def test_claim_due_application_decisions_only_when_due(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4101, "approved", None, 999, _iso(now), _iso(now + timedelta(seconds=5)),
@@ -166,7 +167,7 @@ def test_claim_due_application_decisions_only_when_due(tmp_path):
 
 def test_claim_application_undo_exactly_once(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4201, "approved", None, 999, _iso(now), _iso(now + timedelta(seconds=5)),
@@ -182,7 +183,7 @@ def test_claim_application_undo_exactly_once(tmp_path):
 
 def test_claim_application_undo_none_after_effects_sent(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4301, "approved", None, 999, _iso(now), _iso(now)),
@@ -197,7 +198,7 @@ def test_claim_application_undo_none_after_effects_sent(tmp_path):
 
 def test_claim_due_application_decisions_never_returns_undone(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4401, "approved", None, 999, _iso(now), _iso(now)),
@@ -212,7 +213,7 @@ def test_claim_due_application_decisions_never_returns_undone(tmp_path):
 
 def test_claim_due_application_decisions_returns_each_row_once(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     now = datetime.now()
     did = _run(db.record_application_decision(
         4501, "approved", None, 999, _iso(now), _iso(now)),
@@ -229,7 +230,7 @@ def test_claim_due_application_decisions_returns_each_row_once(tmp_path):
 
 def test_revert_user_to_pending_success_then_false(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4601, participant_type="full", status="approved")
 
     ok = _run(db.revert_user_to_pending(4601, "approved"))
@@ -244,7 +245,7 @@ def test_revert_user_to_pending_success_then_false(tmp_path):
 
 def test_revert_user_to_pending_wrong_from_status_no_op(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4701, participant_type="full", status="approved")
 
     ok = _run(db.revert_user_to_pending(4701, "rejected"))
@@ -258,7 +259,7 @@ def test_revert_user_to_pending_wrong_from_status_no_op(tmp_path):
 
 def test_set_and_find_user_avatar(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4801, participant_type="full")
 
     _run(db.set_user_avatar(4801, "AgAD_fake_file_id", "2026-09-03 00:00:00"))
@@ -270,7 +271,7 @@ def test_set_and_find_user_avatar(tmp_path):
 
 def test_find_user_by_avatar_file_id_unknown_returns_none(tmp_path):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
 
     found = _run(db.find_user_by_avatar_file_id("no-such-file-id"))
     assert found is None

@@ -27,6 +27,7 @@ from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-but
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920601
@@ -38,7 +39,7 @@ MSK_DELEGATE_ID = 920605
 
 def _admin_ready(tmp_path, db_name="test_admin_percity_menu.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

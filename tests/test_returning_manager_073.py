@@ -19,11 +19,12 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_returning_manager_073.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _seed(telegram_id: int, **overrides) -> None:

@@ -28,6 +28,7 @@ from handlers import admin_reg_percity  # module-size split: per-city questions/
 from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920901
@@ -40,7 +41,7 @@ PARTY_BASE_KEY = "reg_prompt_expectations__party"
 
 def _admin_ready(tmp_path, db_name="test_admin_percity_prompts_25.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

@@ -31,7 +31,7 @@ from tests.test_roles_phase8 import ADMIN_ID, _roles_ready
 
 def _ready(tmp_path, name="reg_edit_policy_260911.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -417,7 +417,7 @@ CHAT_UID = 800300
 
 def _chat_ready(tmp_path, name="reg_edit_policy_chat.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("event_season", "YL'26"))
 
 
@@ -788,7 +788,7 @@ RESUBMIT_UID = 800400
 
 def _resubmit_ready(tmp_path, name="reg_resubmit_chat.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
     _run(db.set_setting("event_season", "YL'26"))
 
 
@@ -1002,6 +1002,7 @@ def test_finalize_registration_passes_through_for_rejected_current_season_when_a
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 import cities as cities_mod
+from tests._dbtpl import fast_init_db
 
 
 def _two_cities():

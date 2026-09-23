@@ -22,6 +22,7 @@ from handlers import reg_types_lookup
 from services.i18n_form_manual import EVENT_TEXTS_260917, FORM_DEFAULT_EN
 from services.i18n_miniapp_manual import MANUAL_EN
 from services.i18n import src_hash
+from tests._dbtpl import fast_init_db
 
 # reg_lookup_hint_default_text живёт в MANUAL_EN (_FORM_INTRO, Квик 260915-skg), не в
 # FORM_DEFAULT_EN — карта теста собрана из всех трёх ручных словарей, как это делает реальный
@@ -33,7 +34,7 @@ UID = 260917100
 
 def _use_tmp_db(tmp_path, name="test_reg_lookup_i18n_260917.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _state(uid: int) -> FSMContext:

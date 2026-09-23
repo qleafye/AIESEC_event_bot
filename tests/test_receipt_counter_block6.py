@@ -10,6 +10,7 @@ from config import config
 from database import db
 from handlers import admin
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from tests._dbtpl import fast_init_db
 
 
 class _CapTarget:
@@ -40,7 +41,7 @@ def test_m02_first_receipt_card_shows_position_one_on_large_queue(tmp_path):
     config.DB_PATH = str(tmp_path / "rcpt_counter.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         n = 51  # > one 50-row batch → the exact case the old formula mis-counted
         for i in range(1, n + 1):
             await db.add_user({"telegram_id": i, "full_name": f"U{i}",

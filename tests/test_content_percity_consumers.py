@@ -44,6 +44,7 @@ from handlers import user_actions as ua_mod
 from handlers import registration as reg_mod
 from handlers import reg_schema as reg_schema_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 920901
 MSK_DELEGATE_ID = 920902
@@ -53,7 +54,7 @@ STRANGER_ID = 920904
 
 def _db_ready(tmp_path, name="test_content_percity_consumers.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

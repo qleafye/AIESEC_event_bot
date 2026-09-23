@@ -16,6 +16,7 @@ import pytest
 from config import config
 from database import db
 from handlers import admin_faq
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 8901301
@@ -28,7 +29,7 @@ def _run(coro):
 def _admin_ready(tmp_path, name="faq_hidden_vs_deleted.db"):
     config.DB_PATH = str(tmp_path / name)
     config.GOOGLE_SHEET_ID = ""
-    _run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

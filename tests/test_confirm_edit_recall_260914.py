@@ -26,6 +26,7 @@ from database import db
 from handlers import registration as reg
 from handlers import reg_flow
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 UID = 820001
 
@@ -136,7 +137,7 @@ def test_confirm_edit_shows_recall_screen_for_full_name(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         # Данные уже введены делегатом в ЭТОЙ сессии (не из строки users) -- ровно то, что
@@ -169,7 +170,7 @@ def test_confirm_edit_snapshot_drops_empty_and_service_keys(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(
@@ -206,7 +207,7 @@ def test_returning_delegate_without_marker_still_gets_prev_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25"}})
         assert row["prev_season"] == "YL'25"
@@ -221,7 +222,7 @@ def test_confirm_edit_marker_suppresses_prev_season_direct(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(
             UID, {"_prior_answers": {"season": "YL'25", "_from_confirm": True}}
@@ -238,7 +239,7 @@ def test_confirm_edit_recall_chain_preserves_answers_no_prev_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "full")
         await db.set_setting("event_season", "YL'26")
         # Настоящий возвращенец: строка users с прошлым сезоном -- сценарий, в котором риск
@@ -318,7 +319,7 @@ def test_confirm_edit_asks_consent_again_before_recall_when_enabled(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("consent_enabled", "on")
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)

@@ -15,6 +15,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_sheets  # module-size split (module-size convention): rebuild/sync moved out of admin_sheets.py
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
+from tests._dbtpl import fast_init_db
 
 
 def _users():
@@ -123,7 +124,7 @@ def test_rebuild_gives_spb_a_narrower_header_than_main_when_city_overrides_a_que
     config.ADMIN_IDS = [ADMIN_ID]
 
     async def prepare():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         # global toggle ON so the difference is visible; СПб overrides it back OFF.
         await db.set_setting("reg_q_formats", "on")

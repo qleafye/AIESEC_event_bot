@@ -10,6 +10,7 @@ import aiosqlite
 from config import config
 from database import db
 import tools.requeue_auto_approved as tool
+from tests._dbtpl import fast_init_db
 
 SEASON = "YL 26/2"
 WINDOW_FROM = "2026-09-06 08:00:00"
@@ -61,7 +62,7 @@ async def _insert_decision(telegram_id: int) -> None:
 
 async def _seed(tmp_path) -> None:
     """3 подходящие + 3 неподходящие-ловушки, как описано в behavior плана."""
-    await db.init_db()
+    fast_init_db()
 
     # Подходящие: approved, approved_at IS NULL, нет решения, дата внутри окна.
     await _insert_user(telegram_id=1001, username="ok1", registration_date="2026-09-06 08:30:00")

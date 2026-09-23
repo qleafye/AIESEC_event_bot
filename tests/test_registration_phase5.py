@@ -15,6 +15,7 @@ from database import db
 from handlers import registration as reg
 # Phase 13 REFAC (13-03): party_pick moved to handlers/reg_flow.py.
 from handlers import reg_flow
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -27,7 +28,7 @@ def test_full_track_matches_is_step_enabled_when_global_unset(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         expected = await reg._is_step_enabled("reg_q_age")
         actual = await reg._is_step_enabled_for_track("reg_q_age", "full")
         assert actual == expected
@@ -39,7 +40,7 @@ def test_full_track_matches_is_step_enabled_when_global_set(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "off")
         expected = await reg._is_step_enabled("reg_q_age")
         actual = await reg._is_step_enabled_for_track("reg_q_age", "full")
@@ -61,7 +62,7 @@ def test_party_inherits_when_override_absent_global_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # reg_q_age unset globally -> REG_DEFAULTS says "on"; __party absent -> inherit True.
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_overnight") is True
 
@@ -72,7 +73,7 @@ def test_party_inherits_when_override_absent_global_off(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "off")
         # __party absent -> inherit global "off".
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_overnight") is False
@@ -84,7 +85,7 @@ def test_party_override_wins_no_cross_contamination(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "off")
         await db.set_setting("reg_q_age__party", "on")
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_overnight") is True
@@ -98,7 +99,7 @@ def test_party_override_off_full_still_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "on")
         await db.set_setting("reg_q_age__party", "off")
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_overnight") is False
@@ -112,7 +113,7 @@ def test_single_party_key_governs_both_subtracks(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age__party", "off")
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_overnight") is False
         assert await reg._is_step_enabled_for_track("reg_q_age", "party_noovernight") is False
@@ -126,7 +127,7 @@ def test_party_noovernight_never_sees_overnight_steps(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # Turn every question on so the overnight-only rule is the only thing under test.
         for k in reg.REG_DEFAULTS:
             await db.set_setting(k, "on")
@@ -142,7 +143,7 @@ def test_party_overnight_may_see_housing(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for k in reg.REG_DEFAULTS:
             await db.set_setting(k, "on")
         steps = await reg._get_enabled_steps({"participant_type": "party_overnight", "arrival": "Заранее"})
@@ -156,7 +157,7 @@ def test_full_track_get_enabled_steps_unchanged_empty_data(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         empty = await reg._get_enabled_steps({})
         full = await reg._get_enabled_steps({"participant_type": "full"})
         assert empty == full
@@ -170,7 +171,7 @@ def test_full_track_regression_unaffected_by_party_override(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         before = await reg._get_enabled_steps({"participant_type": "full"})
         await db.set_setting("reg_q_age__party", "off")
         after = await reg._get_enabled_steps({"participant_type": "full"})
@@ -186,7 +187,7 @@ def test_prompt_no_settings_returns_default(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         assert await reg._prompt("housing", "default") == "default"
 
     asyncio.run(go())
@@ -196,7 +197,7 @@ def test_prompt_global_override_unchanged(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing", "Глобальный")
         assert await reg._prompt("housing", "default") == "Глобальный"
 
@@ -207,7 +208,7 @@ def test_prompt_full_track_never_reads_party_key(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing", "Глобальный")
         await db.set_setting("reg_prompt_housing__party", "Партийный")
         assert await reg._prompt("housing", "default", "full") == "Глобальный"
@@ -219,7 +220,7 @@ def test_prompt_party_track_reads_override(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing__party", "Партийный")
         assert await reg._prompt("housing", "default", "party_overnight") == "Партийный"
 
@@ -230,7 +231,7 @@ def test_prompt_party_track_falls_back_to_global_when_override_absent(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing", "Глобальный")
         assert await reg._prompt("housing", "default", "party_overnight") == "Глобальный"
 
@@ -242,7 +243,7 @@ def test_prompt_party_subtracks_share_same_override_key(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing__party", "Партийный")
         assert await reg._prompt("housing", "default", "party_overnight") == "Партийный"
         assert await reg._prompt("housing", "default", "party_noovernight") == "Партийный"
@@ -255,7 +256,7 @@ def test_prompt_two_positional_args_still_work(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         assert await reg._prompt("age", "Напиши свой возраст числом:") == "Напиши свой возраст числом:"
 
     asyncio.run(go())
@@ -267,7 +268,7 @@ def test_prompt_empty_party_override_falls_back_to_global(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_prompt_housing", "Глобальный")
         await db.set_setting("reg_prompt_housing__party", "")
         assert await reg._prompt("housing", "default", "party_overnight") == "Глобальный"
@@ -307,7 +308,7 @@ def test_apply_party_preset_writes_every_reg_flow_step_except_overnight_exempt(t
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await reg._apply_party_preset()
         distinct = set()
         for _step_key, setting_key, *_rest in reg.REG_FLOW:
@@ -328,7 +329,7 @@ def test_apply_party_preset_isolation_global_keys_untouched(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # Set a handful of global keys to known values, including some that overlap
         # with the party preset's "on" list and some that don't.
         await db.set_setting("reg_q_age", "off")
@@ -359,7 +360,7 @@ def test_apply_party_preset_on_keys_are_explicitly_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await reg._apply_party_preset()
         for k in reg.REG_PRESETS["party"]["on"]:
             assert await db.get_setting(f"{k}__party") == "on"
@@ -379,7 +380,7 @@ def test_apply_party_preset_never_writes_overnight_trio_keys(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await reg._apply_party_preset()
         for k in ("reg_q_housing", "reg_q_bed_sharing", "reg_q_bed_partner"):
             assert await db.get_setting(f"{k}__party") is None
@@ -394,7 +395,7 @@ def test_party_preset_leaves_overnight_guest_asked_when_globally_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_housing", "on")
         await db.set_setting("reg_q_bed_sharing", "on")
         await db.set_setting("reg_q_bed_partner", "on")
@@ -414,7 +415,7 @@ def test_party_preset_leaves_noovernight_guest_skipped_when_globally_on(tmp_path
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_housing", "on")
         await db.set_setting("reg_q_bed_sharing", "on")
         await db.set_setting("reg_q_bed_partner", "on")
@@ -468,7 +469,7 @@ def _finalize_row(tmp_path, telegram_id: int, participant_type: str, party_appro
     without driving the full FSM: resolve status via _decide_status, write the row via
     add_user, then set_user_status — the exact sequence finalize_registration performs."""
     async def go():
-        await db.init_db()
+        fast_init_db()
         if party_approval is not None:
             await db.set_setting("party_approval", party_approval)
         await db.set_setting("full_approval", full_approval)
@@ -527,7 +528,7 @@ def test_approve_text_for_full_track_uses_global_when_set(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("approve_text", "Глобальный текст одобрения")
         assert await reg._approve_text_for("full") == "Глобальный текст одобрения"
 
@@ -538,7 +539,7 @@ def test_approve_text_for_full_track_falls_back_to_hardcoded_default(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         assert await reg._approve_text_for("full") == reg.DEFAULT_APPROVE_TEXT
 
     asyncio.run(go())
@@ -548,7 +549,7 @@ def test_approve_text_for_party_uses_party_override_when_set(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("approve_text", "Глобальный текст одобрения")
         await db.set_setting("approve_text__party", "Добро пожаловать на вечеринку!")
         assert await reg._approve_text_for("party_overnight") == "Добро пожаловать на вечеринку!"
@@ -560,7 +561,7 @@ def test_approve_text_for_party_falls_back_to_global_when_override_absent(tmp_pa
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("approve_text", "Глобальный текст одобрения")
         assert await reg._approve_text_for("party_overnight") == "Глобальный текст одобрения"
 
@@ -572,7 +573,7 @@ def test_approve_text_for_party_noovernight_shares_same_override_key(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("approve_text__party", "Добро пожаловать на вечеринку!")
         assert await reg._approve_text_for("party_noovernight") == "Добро пожаловать на вечеринку!"
 
@@ -583,7 +584,7 @@ def test_approve_text_for_party_empty_override_falls_back_to_global(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("approve_text", "Глобальный текст одобрения")
         await db.set_setting("approve_text__party", "")
         assert await reg._approve_text_for("party_overnight") == "Глобальный текст одобрения"
@@ -621,7 +622,7 @@ def test_should_show_fork_false_when_fork_question_unset_for_every_combo(tmp_pat
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_enabled", "on")
         for party_track, recovered_track, is_registered in _INPUT_COMBOS:
             assert await reg._should_show_fork(party_track, recovered_track, is_registered) is False
@@ -634,7 +635,7 @@ def test_should_show_fork_false_when_deep_link_track_resolved_even_both_settings
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
         assert await reg._should_show_fork("party_overnight", None, False) is False
@@ -647,7 +648,7 @@ def test_should_show_fork_false_when_party_enabled_off_even_fork_question_on(tmp
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         # party_enabled left unset -> defaults "off"
         assert await reg._should_show_fork(None, None, False) is False
@@ -659,7 +660,7 @@ def test_should_show_fork_false_when_already_registered(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
         assert await reg._should_show_fork(None, None, True) is False
@@ -671,7 +672,7 @@ def test_should_show_fork_true_when_both_settings_on_no_track_not_registered(tmp
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
         assert await reg._should_show_fork(None, None, False) is True
@@ -757,7 +758,7 @@ def test_cr01_fork_persists_referrer_id_immediately(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
 
@@ -805,7 +806,7 @@ def test_me05_registered_user_not_locked_out_by_preselect_gate(tmp_path, monkeyp
     monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})  # non-empty, excludes our user
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("preselect_enabled", "on")
         await db.set_setting("preselect_fail_text", "SENTINEL_FAIL")
         await db.set_setting("preselect_no_username_text", "SENTINEL_NOUSER")
@@ -830,7 +831,7 @@ def test_me05_new_user_still_gated_by_preselect(tmp_path, monkeypatch):
     monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("preselect_enabled", "on")
         await db.set_setting("preselect_fail_text", "SENTINEL_FAIL")
         uid = 710002
@@ -848,7 +849,7 @@ def test_high01_bare_restart_on_fork_preserves_referrer(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
 
@@ -885,7 +886,7 @@ def test_cr01_referred_user_picks_full_still_lands_with_referrer_id(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
         # Phase 7 (SHORT-01/_resolve_track): registration_mode's registry default is "short",
@@ -935,7 +936,7 @@ def test_cr01_source_tagged_user_picks_party_track_still_lands_with_source(tmp_p
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_fork_question", "on")
         await db.set_setting("party_enabled", "on")
 

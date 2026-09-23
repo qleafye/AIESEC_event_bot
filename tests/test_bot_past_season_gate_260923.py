@@ -10,6 +10,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 923901
 DELEGATE_ID = 923902
@@ -17,7 +18,7 @@ DELEGATE_ID = 923902
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_bot_past_season_gate_260923.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

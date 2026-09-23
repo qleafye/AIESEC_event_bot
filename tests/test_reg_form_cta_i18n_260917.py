@@ -14,13 +14,14 @@ from config import config
 from database import db
 from handlers import reg_i18n
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 UID = 260917001
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_form_cta_i18n_260917.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.DASHBOARD_PUBLIC_URL = "https://yl26.example.com"
     asyncio.run(db.set_setting("miniapp_enabled", "on"))
 

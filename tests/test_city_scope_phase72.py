@@ -11,6 +11,7 @@ import asyncio
 from config import config
 from database import db
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 910101
@@ -42,7 +43,7 @@ def test_admin_selected_city_module_off_is_always_none(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "off")
         await db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb")
         assert await cities.admin_selected_city(ADMIN_ID) is None
@@ -54,7 +55,7 @@ def test_admin_selected_city_module_on_empty_setting_defaults_to_msk(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         assert await cities.admin_selected_city(ADMIN_ID) == "msk"
 
@@ -65,7 +66,7 @@ def test_admin_selected_city_module_on_reads_stored_choice(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "spb")
         assert await cities.admin_selected_city(ADMIN_ID) == "spb"
@@ -77,7 +78,7 @@ def test_set_admin_city_known_code_writes_and_returns_true(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         ok = await cities.set_admin_city(ADMIN_ID, "spb")
         assert ok is True
         assert await db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}") == "spb"
@@ -89,7 +90,7 @@ def test_set_admin_city_unknown_code_rejected_and_writes_nothing(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         ok = await cities.set_admin_city(ADMIN_ID, "'; DROP")
         assert ok is False
         assert await db.get_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}") is None
@@ -128,7 +129,7 @@ def _seed_city(telegram_id, event_city, status="pending", payment_status=None):
 
 def _seed_five_cities(tmp_path, status="pending"):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_city(1, None, status=status)
     _seed_city(2, "msk", status=status)
     _seed_city(3, "spb", status=status)
@@ -178,7 +179,7 @@ def test_approve_all_pending_no_scope_flips_everyone(tmp_path):
 
 def test_receipt_pending_queue_city_scoped(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_city(1, None, status="approved", payment_status="receipt_sent")
     _seed_city(2, "spb", status="approved", payment_status="receipt_sent")
     _seed_city(3, "tyumen", status="approved", payment_status="receipt_sent")
@@ -201,7 +202,7 @@ def test_receipt_pending_queue_city_scoped(tmp_path):
 
 def test_get_city_counts_returns_raw_event_city_values_including_null_and_garbage(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_city(1, None, status="pending")
     _seed_city(2, "msk", status="approved")
     _seed_city(3, "spb", status="pending")

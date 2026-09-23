@@ -10,6 +10,7 @@ import inspect
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp(tmp_path):
@@ -22,7 +23,7 @@ def test_full_mode_no_short_incomplete_matches_pre_phase_formula(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "full")
         # a pile of __short-only toggles is turned on, but nothing gates on them without
         # either the mode being "short" or a live short reg_started row
@@ -47,7 +48,7 @@ def test_short_mode_short_only_column_is_present(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await db.set_setting("reg_q_city", "off")
         await db.set_setting("reg_q_city__short", "on")
@@ -62,7 +63,7 @@ def test_short_mode_global_only_column_still_present_union_not_replace(tmp_path)
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await db.set_setting("reg_q_university", "on")
         # no reg_q_university__short key set at all (absent → short gate resolves to False)
@@ -79,7 +80,7 @@ def test_toggle_rollback_keeps_merge_until_reg_started_row_cleared(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await db.set_setting("reg_q_city", "off")
         await db.set_setting("reg_q_city__short", "on")
@@ -110,7 +111,7 @@ def test_has_short_incomplete_matrix(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         assert await db.has_short_incomplete() is False
 
         await db.mark_reg_started(1, "u", "full")
@@ -131,7 +132,7 @@ def test_merged_headers_no_duplicates_and_sheet_columns_order(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await db.set_setting("reg_q_city__short", "on")
         await db.set_setting("reg_q_university", "on")
@@ -157,7 +158,7 @@ def test_incomplete_sheet_row_projects_short_only_field(tmp_path):
     import json
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await db.set_setting("reg_q_city", "off")
         await db.set_setting("reg_q_city__short", "on")

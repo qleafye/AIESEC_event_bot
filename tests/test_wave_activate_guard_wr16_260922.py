@@ -17,6 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin_game_waves as w
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932001
 
@@ -61,7 +62,7 @@ class FakeCallback:
 
 def _db_ready(tmp_path, name="wave_activate_guard.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

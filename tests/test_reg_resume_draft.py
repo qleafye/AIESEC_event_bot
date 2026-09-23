@@ -32,13 +32,14 @@ from handlers.states import Registration
 from services import reg_finalize as rf
 
 from tests.test_reg_resume_ttl_260820 import USER_ID
+from tests._dbtpl import fast_init_db
 
 OTHER_ID = USER_ID + 1
 
 
 def _use_tmp_db(tmp_path, name="test_reg_resume_draft.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _new_state(uid: int) -> FSMContext:

@@ -24,6 +24,7 @@ from handlers import admin_settings, admin_settings_lists
 from handlers.admin_caps import required_capability
 from handlers.states import EditSetting
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900822
 LIST_KEY = "source_options"
@@ -32,7 +33,7 @@ SOURCE_LIST = "Соцсети Юлид\nСоцсети АЙСЕК\nДругое"
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_settings_list_items.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

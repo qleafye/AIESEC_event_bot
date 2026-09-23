@@ -19,6 +19,7 @@ import pytest
 from config import config
 from database import db
 import services.quiet_hours as qh
+from tests._dbtpl import fast_init_db
 
 DELEGATE = 960916
 NOW = datetime(2026, 9, 16, 23, 30)
@@ -37,7 +38,7 @@ def _after_quiet_window() -> datetime:
 
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 class _RecordingBot:

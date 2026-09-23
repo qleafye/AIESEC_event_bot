@@ -10,6 +10,7 @@ from database import db
 from handlers import admin
 from handlers import admin_reg_config  # Phase 13 (13-05): _refresh_party_sheet_header moved here
 import services.sheets as sheets
+from tests._dbtpl import fast_init_db
 
 
 def _drain():
@@ -30,7 +31,7 @@ def test_medium01_resync_when_party_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr(sheets, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_enabled", "on")
         await admin_reg_config._refresh_party_sheet_header()
         await _drain()()
@@ -52,7 +53,7 @@ def test_medium01_no_resync_when_party_disabled(tmp_path, monkeypatch):
     monkeypatch.setattr(sheets, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # party_enabled unset → off by default
         await admin_reg_config._refresh_party_sheet_header()
         await _drain()()
