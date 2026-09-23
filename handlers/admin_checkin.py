@@ -24,6 +24,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
+from cities import cities_module_on, city_label, city_scope, enabled_cities
 from database.db import (
     count_approved_current_season,
     count_checkins_by_point,
@@ -31,6 +32,7 @@ from database.db import (
     record_checkin,
 )
 from handlers.admin import router
+from handlers.admin_core import _admin_city_scope
 from handlers.states import CheckinImport
 from keyboards.builders import get_cancel_kb
 from services.checkin import (
@@ -60,19 +62,64 @@ _DENIAL_LABELS = {
 }
 
 
-async def _counter_line() -> str:
-    """«Пришли: N из M одобренных» (задача 4) — считает по точке «Вход»; строкой, не отдельной
-    кнопкой (менеджер видит её при каждом заходе в раздел, без лишнего нажатия)."""
-    approved = await count_approved_current_season()
-    arrived = await count_checkins_by_point(ENTRY_POINT)
-    return f"Пришли: {arrived} из {approved} одобренных"
+async def _one_city_line(label: str, city_sc) -> tuple[str, int, int] | None:
+    """Строка «<Город>: пришли N из M» + сырые числа для итога. `None`, если в городе нет ни
+    одного одобренного текущего сезона (задача A2 просила показывать только города, где есть
+    одобренные -- пустой регион 30.10 не должен маячить строкой «0 из 0» рядом с 03.10)."""
+    approved = await count_approved_current_season(city_scope=city_sc)
+    if approved == 0:
+        return None
+    arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=city_sc)
+    return f"{label}: пришли {arrived} из {approved}", arrived, approved
+
+
+async def _counter_line(admin_id: int) -> str:
+    """«Пришли: N из M одобренных» (задача A2, FORUM-CHECKIN.md) — считает по точке «Вход».
+
+    03.10 форумы СПб и Тюмени идут ОДНОВРЕМЕННО с ещё открытым набором в Москве -- один общий
+    счётчик на всё событие путает «пришедших в регионе» с «ещё набирающимися в Москве».
+    Три ветки:
+    1. Менеджер закреплён за одним городом (`_admin_city_scope` -- тот же резолвер, что у
+       очереди заявок) -- показываем ТОЛЬКО его город, без построчного списка остальных.
+    2. Модуль городов выключен -- старое нескопированное поведение байт-в-байт (city_scope=None
+       и на счётчике, и на знаменателе).
+    3. Менеджер видит «Все города» -- построчно по каждому включённому городу, где есть хотя бы
+       один одобренный текущего сезона, плюс «Итого» под списком."""
+    own_scope = await _admin_city_scope(admin_id)
+    if own_scope is not None:
+        approved = await count_approved_current_season(city_scope=own_scope)
+        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=own_scope)
+        return f"Пришли: {arrived} из {approved} одобренных"
+
+    if not await cities_module_on():
+        approved = await count_approved_current_season()
+        arrived = await count_checkins_by_point(ENTRY_POINT)
+        return f"Пришли: {arrived} из {approved} одобренных"
+
+    lines: list[str] = []
+    total_arrived = 0
+    total_approved = 0
+    for c in await enabled_cities():
+        code = c["code"]
+        result = await _one_city_line(await city_label(code), city_scope(code))
+        if result is None:
+            continue
+        line, arrived, approved = result
+        lines.append(line)
+        total_arrived += arrived
+        total_approved += approved
+
+    if not lines:
+        return "Пришли: 0 из 0 одобренных"
+    lines.append(f"Итого: {total_arrived} из {total_approved}")
+    return "\n".join(lines)
 
 
 @router.callback_query(F.data == "admin_checkin")
 async def show_admin_checkin(callback: types.CallbackQuery):
     text = (
         "✅ <b>Отметки на форуме</b>\n\n"
-        f"{await _counter_line()}\n\n"
+        f"{await _counter_line(callback.from_user.id)}\n\n"
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
         "отмечу всех, кого найду."
     )
@@ -189,7 +236,7 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     if remaining > 0:
         lines.append(f"…и ещё {remaining}")
     lines.append("")
-    lines.append(await _counter_line())
+    lines.append(await _counter_line(callback.from_user.id))
 
     from handlers.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
     await callback.message.answer(
