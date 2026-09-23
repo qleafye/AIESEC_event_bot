@@ -50,6 +50,28 @@ async def _event_tag() -> str:
     return "EVENT"
 
 
+def build_payload(tag: str, full_name: str, city: str, token: str) -> str:
+    """Чистая сборка строки QR — вынесена отдельно от `build_checkin_qr`, чтобы формат
+    (порядок полей, разделитель «·», плейсхолдер «—» для пустых ФИО/города) был проверяем
+    юнит-тестом без генерации самой картинки/обращения к БД. Токен ВСЕГДА последним полем —
+    см. докстринг модуля."""
+    full_name = (full_name or "").strip() or "—"
+    city = (city or "").strip() or "—"
+    return _QR_SEP.join([tag, full_name, city, token])
+
+
+async def build_checkin_payload(user: dict) -> str | None:
+    """Строка содержимого QR для делегата `user`, БЕЗ рендера картинки — переиспользуется и
+    `build_checkin_qr` ниже, и юнит-тестом на формат. Генерирует и сохраняет `checkin_token`,
+    если его ещё нет (лениво, `get_or_create_checkin_token`). `None`, если пользователя нет."""
+    telegram_id = user["telegram_id"]
+    token = await get_or_create_checkin_token(telegram_id)
+    if not token:
+        return None
+    tag = await _event_tag()
+    return build_payload(tag, user.get("full_name"), user.get("event_city"), token)
+
+
 async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     """`(png_bytes, caption)` для делегата `user` (строка `database.db.get_user`). Генерирует
     и сохраняет `checkin_token`, если его ещё нет (лениво, `get_or_create_checkin_token`) —
@@ -58,15 +80,9 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     `caption` возвращается НЕ переведённым (русский, из реестра `checkin_qr_caption_text`) —
     перевод на английский, как и у остальных ответов делегату, делает вызывающий
     (`reg_i18n.tr_text`) перед отправкой."""
-    telegram_id = user["telegram_id"]
-    token = await get_or_create_checkin_token(telegram_id)
-    if not token:
-        raise ValueError(f"build_checkin_qr: нет пользователя {telegram_id}")
-
-    tag = await _event_tag()
-    full_name = (user.get("full_name") or "").strip() or "—"
-    city = (user.get("event_city") or "").strip() or "—"
-    payload = _QR_SEP.join([tag, full_name, city, token])
+    payload = await build_checkin_payload(user)
+    if payload is None:
+        raise ValueError(f"build_checkin_qr: нет пользователя {user.get('telegram_id')}")
 
     qr = segno.make(payload)
     buf = io.BytesIO()
