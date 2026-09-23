@@ -198,6 +198,11 @@ _APPS_FIELD_ORDER = [
     # (reg_submit_notify_mode) — только тумблер, в этот список НЕ входит (менеджер не должен
     # печатать код варианта), тот же приём, что у game_submit_digest_minutes в группе "game".
     "reg_submit_digest_minutes",
+    # Квик 260923 (форум-чекин, D-01..D-04): редактор экрана достаётся бесплатно попаданием в
+    # этот список (иначе менеджер их в боте не увидит вовсе, правило файла, см. preselect_*
+    # выше) — сам master-тумблер checkin_qr_enabled НЕ здесь (type "enum", живёт в
+    # settings_toggle_rows/admin_sections.SECTIONS, как остальные тумблеры «📋 Заявки»).
+    "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
