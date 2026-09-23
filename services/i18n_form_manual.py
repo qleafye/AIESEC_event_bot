@@ -659,6 +659,15 @@ _REGISTRY_TEXTS_EN = {
     "📲 Подхватил ответы, которые вы ввели в приложении.": "📲 Picked up the answers you entered in the app.",
     "Список спикеров формируется и скоро появится здесь.": "The speaker list is being put together and will appear here soon.",
     "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.": "Want to join again? Let's update your application — I'll offer to keep your previous answers.",
+    # Квик 260923 (форум-чекин): подпись к личному QR и текст «QR ещё не выдаётся» (кнопка
+    # «🎟 Мой QR» главного меню, group "reg" — делегатский текст, checkin_qr_caption_text /
+    # checkin_qr_disabled_text).
+    "🎟 Твой QR для отметки на форуме.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
+        "🎟 Your QR code for check-in at the forum.\n\n"
+        "Save it in advance (for example, take a screenshot) — the venue may have no network, "
+        "but a photo from the chat opens even without the internet."
+    ),
+    "QR для чек-ина пока не выдаётся — загляни сюда позже.": "The check-in QR isn't issued yet — check back here later.",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
