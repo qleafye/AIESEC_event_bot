@@ -86,7 +86,7 @@ def test_init_db_migrates_legacy_source_label_and_is_idempotent(tmp_path):
             await conn.commit()
 
         # Повторный init_db — та самая точка, где живёт одноразовая нормализация.
-        fast_init_db()
+        await db.init_db()
 
         rows = {}
         async with db._connect() as conn:
@@ -119,7 +119,7 @@ def test_init_db_migration_is_idempotent_on_second_run(tmp_path):
             )
             await conn.commit()
 
-        fast_init_db()  # первый прогон после вставки — приводит подпись
+        await db.init_db()  # первый прогон после вставки — приводит подпись
 
         async with db._connect() as conn:
             cur = await conn.execute(

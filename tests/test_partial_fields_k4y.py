@@ -73,7 +73,7 @@ def test_migration_is_idempotent(tmp_path):
 
     async def go():
         fast_init_db()
-        fast_init_db()  # second call on already-migrated DB must not raise
+        await db.init_db()  # second call on already-migrated DB must not raise
 
     asyncio.run(go())
 
