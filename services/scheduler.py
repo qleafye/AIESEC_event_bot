@@ -262,6 +262,12 @@ async def init_scheduler(bot):
     sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
     _add_interval_job(sync_incomplete_sheet_job, "incomplete_sheet_sync", timedelta(hours=sync_hours))
 
+    # Квик 260923 (AUTOREJ-REPORT, D-F): та же каденция, что «Незавершённые» выше — отдельного
+    # ключа интервала не заводим. Джоба сама молчит, если auto_reject_sheet_tab пуст.
+    _add_interval_job(
+        sync_auto_reject_sheet_job, "auto_reject_sheet_sync", timedelta(hours=sync_hours)
+    )
+
     # Quick 260907-4ai (P0 SkillUp5): догрузка резюме, не улетевшего в Nextcloud на финале
     # (облако лежало/таймаут) — джоба сама молчит, когда Nextcloud не настроен, поэтому
     # отдельного тумблера нет.
@@ -831,6 +837,29 @@ async def sync_incomplete_sheet_job():
             await sync_named_worksheet(tab, headers, sheet_rows)
     except Exception as e:
         logger.error(f"sync_incomplete_sheet_job failed: {e}")
+
+
+async def sync_auto_reject_sheet_job() -> int:
+    """Квик 260923 (AUTOREJ-REPORT, D-E/D-F): interval-job target (no args, picklable) — та же
+    форма, что `sync_incomplete_sheet_job` выше, та же каденция (`incomplete_sync_hours`,
+    подпись ключа расширена на обе вкладки — отдельного интервала под эту вкладку не заводим).
+
+    Пустое/пробельное `auto_reject_sheet_tab` -> вкладка НЕ ведётся, до `sync_named_worksheet`
+    дело не доходит вовсе (D-E: событие без модуля автоотказа не получает лишней вкладки).
+    Возвращает число строк (0 при пустом имени/пустом журнале), -1 при ошибке — тот же
+    контракт, что у `services.sheets.sync_named_worksheet`, чтобы вызывающий (`arp_sync`,
+    handlers/admin_reject_reports.py) мог отличить «нечего было выгружать» от «сбой листа»."""
+    try:
+        tab = (await get_setting("auto_reject_sheet_tab") or "").strip()
+        if not tab:
+            return 0
+        from database.db import auto_reject_sheet_rows
+        from services.sheets import sync_named_worksheet
+        headers, rows = await auto_reject_sheet_rows()
+        return await sync_named_worksheet(tab, headers, rows)
+    except Exception as e:
+        logger.error(f"sync_auto_reject_sheet_job failed: {e}")
+        return -1
 
 
 async def _flush_due_application_decisions(now: datetime) -> None:
