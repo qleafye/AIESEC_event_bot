@@ -772,6 +772,12 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     daily_digest_label = SETTINGS_SCHEMA["daily_digest_enabled"]["label"]
     daily_digest_text = (f"{daily_digest_label}: ✅ Вкл → ❌ Выкл" if daily_digest_on == "on"
                          else f"{daily_digest_label}: ❌ Выкл → ✅ Вкл")
+    # Квик 260923 (форум-чекин, D-01..D-04): master-тумблер выпуска QR — тот же приём, что у
+    # соседей (label из реестра, текущее -> новое).
+    checkin_qr_on = await get_setting_typed("checkin_qr_enabled")
+    checkin_qr_label = SETTINGS_SCHEMA["checkin_qr_enabled"]["label"]
+    checkin_qr_text = (f"{checkin_qr_label}: ✅ Вкл → ❌ Выкл" if checkin_qr_on == "on"
+                       else f"{checkin_qr_label}: ❌ Выкл → ✅ Вкл")
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — сами хендлеры живут в шве
     # `handlers/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
     # 260816.py), строки кнопок — здесь, как у всех остальных тумблеров раздела «📝 Анкета»
@@ -884,6 +890,7 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
         # сводка менеджерам «📊 Итоги дня».
         "toggle_reg_submit_notify": _row(reg_notify_text, "toggle_reg_submit_notify"),
         "toggle_daily_digest": _row(daily_digest_text, "toggle_daily_digest"),
+        "toggle_checkin_qr_enabled": _row(checkin_qr_text, "toggle_checkin_qr_enabled"),
         # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0».
         "toggle_reg_form_v2": _row(reg_form_v2_text, "toggle_reg_form_v2"),
         "toggle_reg_form_chips": _row(reg_form_chips_text, "toggle_reg_form_chips"),
@@ -1458,6 +1465,15 @@ async def toggle_daily_digest(callback: types.CallbackQuery):
     # «📊 Итоги дня: во сколько» в группе «🔧 Система» и применяется после перезапуска.
     await _toggle_module_setting(
         callback, "daily_digest_enabled", SETTINGS_SCHEMA["daily_digest_enabled"]["label"],
+    )
+
+
+@router.callback_query(F.data == "toggle_checkin_qr_enabled")
+async def toggle_checkin_qr_enabled(callback: types.CallbackQuery):
+    # Квик 260923 (форум-чекин, D-01..D-04): master-тумблер выпуска QR — enum on/off, дефолт
+    # OFF (D-15 fail-safe lineage), тот же общий хелпер, что у соседей-модулей.
+    await _toggle_module_setting(
+        callback, "checkin_qr_enabled", SETTINGS_SCHEMA["checkin_qr_enabled"]["label"],
     )
 
 

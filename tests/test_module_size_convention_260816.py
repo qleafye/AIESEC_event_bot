@@ -172,7 +172,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2645,
+        2665,
+        "Квик 260923 (форум-чекин, D-01..D-04): +12 строк — master-тумблер checkin_qr_enabled "
+        "в settings_toggle_rows() (блок «текущее → новое», тот же приём, что у daily_digest "
+        "выше) + строка в возвращаемом словаре + хендлер toggle_checkin_qr_enabled через общий "
+        "_toggle_module_setting, встал сразу после toggle_daily_digest; 2639 -> 2655, потолок "
+        "с небольшим запасом. "
         "Квик 260923-p37 (CITY-REG-CLOSE): +3 строки — три ключа закрытия регистрации на "
         "город (city_reg_close_date/city_reg_closed_text/city_reg_all_closed_text) в "
         "_REG_FIELD_ORDER сразу после city_fork_text; экран/логика живут в cities.py/"
