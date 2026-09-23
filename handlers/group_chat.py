@@ -61,6 +61,28 @@ router.chat_member.filter(F.chat.type.in_({"group", "supergroup"}))
 _MEDIA_ATTRS = ("photo", "video", "document", "voice", "video_note", "animation", "sticker", "audio")
 
 
+def _is_real_reply(message: types.Message) -> bool:
+    """Настоящий ответ пользователя, а не автопривязка Telegram к корню топика.
+
+    В форум-группах (супергруппа с топиками, `is_topic_message=True`) `reply_to_message`
+    указывает на корневое сообщение топика у КАЖДОГО сообщения в нём, даже если человек ничего
+    руками не отвечал — иначе `chat_activity.replies` в топиках равнялся `messages`. Корень
+    топика узнаётся по `forum_topic_created` на нём самом либо по совпадению его
+    `message_id` с `message.message_thread_id` (оба поля добавлены в aiogram под форумы, есть
+    в установленной версии). В обычных группах (не топики) `is_topic_message` не выставлен —
+    поведение не меняется, любой `reply_to_message` — реальный ответ."""
+    replied = message.reply_to_message
+    if not replied:
+        return False
+    if getattr(message, "is_topic_message", False):
+        if getattr(replied, "forum_topic_created", None) is not None:
+            return False
+        thread_id = getattr(message, "message_thread_id", None)
+        if thread_id is not None and getattr(replied, "message_id", None) == thread_id:
+            return False
+    return True
+
+
 async def _dm(bot: Bot, user_id: int, text: str, reply_markup=None) -> bool:
     """Личное сообщение с fail-soft: неудача (человек не открывал бота, заблокировал его и
     т.п.) не рвёт вызывающий хендлер, только сигналит `False` — вызывающий сам решает, звать
@@ -195,7 +217,7 @@ async def on_group_message(message: types.Message):
     bound = await chat_tracking.bound_chats()
     if not any(b["chat_id"] == message.chat.id for b in bound):
         return
-    reply = bool(message.reply_to_message)
+    reply = _is_real_reply(message)
     media = any(getattr(message, attr, None) for attr in _MEDIA_ATTRS)
     await bump_chat_activity(message.chat.id, message.from_user.id, reply=reply, media=media)
 

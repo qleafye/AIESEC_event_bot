@@ -137,18 +137,35 @@ class FakeCallback:
 class FakeGroupMessage:
     """Дублирует поля, которые читает `group_chat.on_group_message` — намеренно несёт
     `.text`, который хендлер НИКОГДА не обязан прочитать (проверяется отдельным тестом
-    схемы таблиц ниже)."""
+    схемы таблиц ниже).
+
+    `is_topic_message`/`message_thread_id` — поля форум-топика (RGR-баг: в топике
+    `reply_to_message` указывает на корень топика у КАЖДОГО сообщения, не только у настоящих
+    ответов)."""
 
     def __init__(self, user_id, chat_id=CHAT_ID, reply_to_message=None, media_attr=None,
-                 text="секретный текст делегата, которого в БД быть не должно"):
+                 text="секретный текст делегата, которого в БД быть не должно",
+                 is_topic_message=False, message_thread_id=None):
         self.from_user = User(id=user_id, is_bot=False, first_name="Делегат")
         self.chat = Chat(id=chat_id, type="supergroup")
         self.reply_to_message = reply_to_message
         self.text = text
+        self.is_topic_message = is_topic_message
+        self.message_thread_id = message_thread_id
         for attr in group_chat._MEDIA_ATTRS:
             setattr(self, attr, None)
         if media_attr:
             setattr(self, media_attr, object())
+
+
+class _FakeRepliedMessage:
+    """Сообщение, на которое отвечают — либо обычное (обычная группа/реальный ответ в
+    топике), либо корень топика (`forum_topic_created` заполнен, `message_id` совпадает с
+    `message_thread_id` отвечающего сообщения)."""
+
+    def __init__(self, message_id, forum_topic_created=None):
+        self.message_id = message_id
+        self.forum_topic_created = forum_topic_created
 
 
 async def _events_for(chat_id, telegram_id):
@@ -435,6 +452,69 @@ def test_catch_all_bumps_activity_when_tracking_on_and_chat_bound(tmp_path):
                 return await cursor.fetchone()
 
     assert asyncio.run(_row()) == (1, 0, 1)
+
+
+async def _replies_row(chat_id, telegram_id):
+    async with db._connect() as conn:
+        async with conn.execute(
+            "SELECT messages, replies FROM chat_activity WHERE chat_id = ? AND telegram_id = ?",
+            (chat_id, telegram_id),
+        ) as cursor:
+            return await cursor.fetchone()
+
+
+def test_catch_all_counts_reply_in_regular_group(tmp_path):
+    """Обычная группа (не топик): ответ на любое чужое сообщение — реальный reply."""
+    _ready(tmp_path)
+    asyncio.run(db.set_setting("chat_tracking_enabled", "on"))
+    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
+
+    asyncio.run(group_chat.on_group_message(
+        FakeGroupMessage(STRANGER_ID, reply_to_message=_FakeRepliedMessage(message_id=5))
+    ))
+
+    assert asyncio.run(_replies_row(CHAT_ID, STRANGER_ID)) == (1, 1)
+
+
+def test_catch_all_does_not_count_reply_in_regular_group_without_one(tmp_path):
+    _ready(tmp_path)
+    asyncio.run(db.set_setting("chat_tracking_enabled", "on"))
+    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
+
+    asyncio.run(group_chat.on_group_message(FakeGroupMessage(STRANGER_ID)))
+
+    assert asyncio.run(_replies_row(CHAT_ID, STRANGER_ID)) == (1, 0)
+
+
+def test_catch_all_topic_message_without_explicit_reply_is_not_a_reply(tmp_path):
+    """RGR-баг: в топике `reply_to_message` есть у КАЖДОГО сообщения (указывает на корень
+    топика) — если пользователь ничего руками не отвечал, это не должно считаться reply'ем."""
+    _ready(tmp_path)
+    asyncio.run(db.set_setting("chat_tracking_enabled", "on"))
+    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
+    topic_root = _FakeRepliedMessage(message_id=42, forum_topic_created=object())
+
+    asyncio.run(group_chat.on_group_message(FakeGroupMessage(
+        STRANGER_ID, reply_to_message=topic_root,
+        is_topic_message=True, message_thread_id=42,
+    )))
+
+    assert asyncio.run(_replies_row(CHAT_ID, STRANGER_ID)) == (1, 0)
+
+
+def test_catch_all_topic_message_with_explicit_reply_is_a_reply(tmp_path):
+    """В топике настоящий ответ на ЧУЖОЕ сообщение (не на корень топика) — reply."""
+    _ready(tmp_path)
+    asyncio.run(db.set_setting("chat_tracking_enabled", "on"))
+    asyncio.run(chat_tracking.bind_chat(ADMIN_ID, CHAT_ID, "Делегаты", None))
+    other_message = _FakeRepliedMessage(message_id=99)
+
+    asyncio.run(group_chat.on_group_message(FakeGroupMessage(
+        STRANGER_ID, reply_to_message=other_message,
+        is_topic_message=True, message_thread_id=42,
+    )))
+
+    assert asyncio.run(_replies_row(CHAT_ID, STRANGER_ID)) == (1, 1)
 
 
 def test_catch_all_noop_when_tracking_off(tmp_path):
