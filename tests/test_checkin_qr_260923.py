@@ -8,8 +8,14 @@
 - `services.checkin.build_payload`/`build_checkin_payload` — формат строки внутри QR
   (`тег·ФИО·город·токен`), без декодирования самой картинки (см. задание — декодировать не
   обязательно, проверяется собранная строка).
+- `services.checkin.checkin_denial` — единая точка допуска D-02: нет пользователя, статус не
+  `'approved'` строго (NULL/`'waitlist'`/легаси, которые `ensure_registered` пропускает), делегат
+  прошлого сезона (`reg_engine.is_past_season_row`) — 482 импортированных approved-делегата
+  26/1 не должны получить пропуск на текущий форум.
 - `handlers.user_actions.show_my_checkin_qr` — гейт «не одобрен» (переиспользует
-  `ensure_registered`, отдельного текста для этого случая не заводили) и гейт «тумблер выкл».
+  `ensure_registered`, отдельного текста для этого случая не заводили), гейт «тумблер выкл» и
+  строгий допуск `checkin_denial` (прошлый сезон -> текст возвращенца, не-approved -> текст
+  ожидания).
 - `keyboards.builders.get_main_menu_kb` — кнопка «🎟 Мой QR» скрыта, пока `checkin_qr_enabled`
   выключен (дефолт), и появляется при включённом тумблере.
 
@@ -47,6 +53,13 @@ def _seed_user(uid, city="Казань", full_name="Иванов Иван"):
 def _set_status(uid, status):
     conn = sqlite3.connect(config.DB_PATH)
     conn.execute("UPDATE users SET status = ? WHERE telegram_id = ?", (status, uid))
+    conn.commit()
+    conn.close()
+
+
+def _set_season(uid, season):
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET season = ? WHERE telegram_id = ?", (season, uid))
     conn.commit()
     conn.close()
 
@@ -178,6 +191,64 @@ def test_build_checkin_qr_returns_png_bytes_and_caption(tmp_path):
     assert caption and "QR" in caption
 
 
+# ── services.checkin.checkin_denial: правило допуска D-02 ───────────────────────────────────
+
+def test_checkin_denial_past_season_approved_user_is_denied(tmp_path):
+    """482 импортированных делегата 26/1 со status='approved' не должны получить пропуск на
+    текущий форум — прошлый сезон блокирует ДАЖЕ одобренную заявку."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, "approved")
+    _set_season(UID, "YL 26/1")
+    asyncio.run(_set_setting("event_season", "YL 26/2"))
+    user = asyncio.run(db.get_user(UID))
+    assert asyncio.run(checkin_mod.checkin_denial(user)) == "past_season"
+
+
+def test_checkin_denial_null_status_is_denied(tmp_path):
+    """`ensure_registered._gate_decision` пропускает NULL как легаси-approved -- QR обязан
+    быть строже: NULL/неизвестный статус не даёт пропуска на площадку."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, None)
+    user = asyncio.run(db.get_user(UID))
+    assert asyncio.run(checkin_mod.checkin_denial(user)) == "not_approved"
+
+
+def test_checkin_denial_waitlist_status_is_denied(tmp_path):
+    """Будущий статус waitlist -- тоже не 'approved' строго, допуска нет."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, "waitlist")
+    user = asyncio.run(db.get_user(UID))
+    assert asyncio.run(checkin_mod.checkin_denial(user)) == "not_approved"
+
+
+def test_checkin_denial_current_season_approved_user_is_allowed(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, "approved")
+    _set_season(UID, "YL 26/2")
+    asyncio.run(_set_setting("event_season", "YL 26/2"))
+    user = asyncio.run(db.get_user(UID))
+    assert asyncio.run(checkin_mod.checkin_denial(user)) is None
+
+
+def test_checkin_denial_empty_event_season_approved_user_is_allowed(tmp_path):
+    """Модуль сезона ещё не настроен (`event_season` пуст) -- fail-soft, тот же приём, что у
+    `reg_engine.is_past_season_row`: approved делегат допускается, а не блокируется вслепую."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, "approved")
+    _set_season(UID, "YL 26/1")
+    user = asyncio.run(db.get_user(UID))
+    assert asyncio.run(checkin_mod.checkin_denial(user)) is None
+
+
+def test_checkin_denial_no_user_is_denied():
+    assert asyncio.run(checkin_mod.checkin_denial(None)) == "no_user"
+
+
 # ── handlers.user_actions.show_my_checkin_qr: гейты D-02/D-03 ───────────────────────────────
 
 class _FakeChat:
@@ -237,6 +308,34 @@ def test_show_my_checkin_qr_sends_photo_for_approved_user(tmp_path):
     asyncio.run(ua_mod.show_my_checkin_qr(message))
     assert message.photos, "одобренный делегат обязан получить QR"
     assert not message.answers
+
+
+def test_show_my_checkin_qr_denies_past_season_approved_user(tmp_path):
+    """D-02: одобренный делегат ПРОШЛОГО сезона получает текст возвращенца, не QR."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, "approved")
+    _set_season(UID, "YL 26/1")
+    asyncio.run(_set_setting("event_season", "YL 26/2"))
+    asyncio.run(_set_setting("checkin_qr_enabled", "on"))
+    message = _FakeMessage()
+    asyncio.run(ua_mod.show_my_checkin_qr(message))
+    assert not message.photos, "прошлый сезон не даёт пропуска на текущий форум"
+    assert message.answers
+    assert "YL 26/1" in message.answers[0]
+
+
+def test_show_my_checkin_qr_denies_null_status_user(tmp_path):
+    """NULL-статус (легаси/незаполненный) не должен получить QR, хотя ensure_registered его
+    пропускает как «допущен»."""
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _set_status(UID, None)
+    asyncio.run(_set_setting("checkin_qr_enabled", "on"))
+    message = _FakeMessage()
+    asyncio.run(ua_mod.show_my_checkin_qr(message))
+    assert not message.photos
+    assert message.answers
 
 
 def test_show_my_checkin_qr_module_off_sends_disabled_text_not_photo(tmp_path):
