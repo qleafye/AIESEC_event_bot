@@ -163,7 +163,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2636,
+        2645,
+        "Квик 260923-p37 (CITY-REG-CLOSE): +3 строки — три ключа закрытия регистрации на "
+        "город (city_reg_close_date/city_reg_closed_text/city_reg_all_closed_text) в "
+        "_REG_FIELD_ORDER сразу после city_fork_text; экран/логика живут в cities.py/"
+        "reg_engine.py/handlers/reg_city_gate.py, здесь только запись в порядок полей; "
+        "2636 -> 2639, потолок с небольшим запасом. "
         "Правка 260922-wrg (владелец, «настройки по городам»): +49 строк — "
         "`_cycle_enum_setting` стал per-city-aware (ветка для `cities.is_per_city(key)`: право "
         "через `_per_city_visible_codes`, составной ключ через `per_city_key`, алерт называет "

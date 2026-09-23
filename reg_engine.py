@@ -39,8 +39,9 @@ from config import config
 from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, RESUME_COLUMNS, settings_snapshot
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
-    ALL_CITIES, cities_module_on, city_codes, city_label, enabled_cities,
-    get_setting_typed_for_city, is_city_enabled, normalize_city, per_city_key,
+    ALL_CITIES, cities_module_on, city_codes, city_label,
+    get_setting_typed_for_city, is_city_registration_open,
+    normalize_city, open_cities, per_city_key,
 )
 from reg_labels import REG_LABELS
 import reg_options as _opts
@@ -996,17 +997,50 @@ async def should_show_fork(party_track: str | None, recovered_track: str | None,
 
 
 async def should_show_city_fork(event_city: str | None, is_registered: bool) -> bool:
-    """Pure(ish) gating helper for the city pre-flow screen, mirrors should_show_fork."""
+    """Pure(ish) gating helper for the city pre-flow screen, mirrors should_show_fork.
+
+    Квик 260923-p37 (D-04): читает `open_cities()`, а не `enabled_cities()` — закрытый по дате
+    город не должен появляться в развилке рядом с открытыми."""
     if event_city:
         return False
     if is_registered:
         return False
     if not await cities_module_on():
         return False
-    enabled = await enabled_cities()
-    if len(enabled) < 2:
+    open_ = await open_cities()
+    if len(open_) < 2:
         return False
     return True
+
+
+# ── Квик 260923-p37 (CITY-REG-CLOSE) ─────────────────────────────────────────────────────────
+
+async def city_gate(event_city: str | None) -> tuple[str, str | None]:
+    """Единое решение «что делать с городом НОВОЙ подачи» — общий гейт для бота
+    (`handlers.registration._city_fork_then_continue`) и Mini App (`miniapp.routers.form`).
+    Вызывается ТОЛЬКО для новой подачи — правка уже поданной анкеты его не зовёт (D-07): у
+    правки город уже зафиксирован в `users` и закрытие регистрации на город её не касается.
+
+    Возвращает `(kind, code)`:
+    - модуль городов выключен -> `("go", event_city)` — байт-в-байт прежнее поведение, дата
+      закрытия физически не может сработать без модуля (T-p37 fail-soft parity);
+    - `event_city` уже известен (deep-link/восстановленный) -> `("go", event_city)`, если город
+      открыт, иначе `("closed", event_city)`;
+    - `event_city` неизвестен -> смотрим `open_cities()`: 0 -> `("all_closed", None)` (D-05/D-06
+      «ни одного открытого»), 1 -> `("go", единственный_код)` (D-06: развилка не нужна, город
+      подставляется сам), >=2 -> `("fork", None)` (обычная развилка выбора)."""
+    if not await cities_module_on():
+        return "go", event_city
+    if event_city:
+        if await is_city_registration_open(event_city):
+            return "go", event_city
+        return "closed", event_city
+    open_ = await open_cities()
+    if not open_:
+        return "all_closed", None
+    if len(open_) == 1:
+        return "go", open_[0]["code"]
+    return "fork", None
 
 
 async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
@@ -1149,17 +1183,19 @@ async def party_track_options() -> list[dict]:
 
 
 async def city_fork_options() -> list[dict]:
-    """Варианты пикера города — по включённым городам в порядке CITIES, подпись из
-    `city_label` (per-city override менеджера): ровно то, что строит `_city_fork_kb` бота."""
-    return [{"code": c["code"], "label": await city_label(c["code"])} for c in await enabled_cities()]
+    """Варианты пикера города — по ОТКРЫТЫМ городам (D-04, квик 260923-p37: `open_cities()`,
+    не `enabled_cities()` — закрытый по дате город не предлагается) в порядке CITIES, подпись
+    из `city_label` (per-city override менеджера): ровно то, что строит `_city_fork_kb` бота."""
+    return [{"code": c["code"], "label": await city_label(c["code"])} for c in await open_cities()]
 
 
 async def validate_city_choice(code) -> tuple[str | None, str | None]:
-    """Порядок проверок — как в `city_pick`: закрытый словарь CITIES, затем `is_city_enabled`
-    (окно «нарисовали — выключили»)."""
+    """Порядок проверок — как в `city_pick`: закрытый словарь CITIES, затем
+    `is_city_registration_open` (окно «нарисовали — выключили/закрыли по дате», квик
+    260923-p37 расширил проверку с одного лишь `is_city_enabled`)."""
     if code not in city_codes():
         return None, CITY_CHOICE_INVALID_TEXT
-    if not await is_city_enabled(code):
+    if not await is_city_registration_open(code):
         return None, CITY_CLOSED_TEXT
     return code, None
 
