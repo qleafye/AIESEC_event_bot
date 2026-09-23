@@ -144,8 +144,11 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_apps_queue_sort_by_score"),
         # Квик 260923 (форум-чекин, D-01..D-04): master-тумблер выпуска личного QR — рядом с
         # прочими тумблерами очереди заявок (та же секция «Заявки»: делегат видит QR ПОСЛЕ
-        # одобрения, ровно как всё остальное здесь). Метка события и подпись под фото — текстом
-        # в группе "apps" ниже (settings_group:apps).
+        # одобрения, ровно как всё остальное здесь). Машинная метка события в QR — текстом в
+        # группе "apps" (settings_group:apps, экран не видит делегат). Подпись под фото и текст
+        # «модуль выключен» — group "reg" (settings_group:reg, раздел «📝 Анкета»), не "apps":
+        # это ДЕЛЕГАТСКИЙ текст, group "reg" — тот же корпус машинного перевода, что у соседних
+        # reject_text/pending_gate_text (services/i18n_sources.py::DELEGATE_GROUPS).
         ("toggle", "toggle_checkin_qr_enabled"),
         ("group", "apps"),
     ]),
