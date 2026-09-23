@@ -30,10 +30,16 @@ from database.db import (
     count_approved_current_season,
     count_checkins_by_point,
     get_user,
-    get_user_by_checkin_token,
     record_checkin,
 )
-from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, current_event_tag, parse_qr_payload
+from services.checkin import (
+    DENIAL_REASON_TEXT,
+    ENTRY_POINT,
+    checkin_denial,
+    current_event_tag,
+    parse_qr_payload,
+    resolve_scanned_user,
+)
 from services.person_search import search_people
 
 from miniapp.deps import Principal, require_cap, require_section
@@ -87,8 +93,7 @@ async def checkin_scan(
         }
 
     token = parsed.get("token")
-    user = await get_user_by_checkin_token(token) if token else None
-    denial_code = await checkin_denial(user)
+    user, denial_code = await resolve_scanned_user(token)
     if denial_code is not None:
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",

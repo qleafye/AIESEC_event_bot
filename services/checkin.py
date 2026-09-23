@@ -33,7 +33,7 @@ from datetime import datetime
 
 import segno
 
-from database.db import get_or_create_checkin_token
+from database.db import get_checkin_token_replacement, get_or_create_checkin_token, get_user_by_checkin_token
 from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
 from settings_schema import get_setting_typed
 
@@ -119,6 +119,10 @@ DENIAL_REASON_TEXT = {
     "not_approved": "Заявка ещё на рассмотрении",
     "past_season": "Делегат прошлого сезона",
     "foreign_event": "QR другого мероприятия",
+    # Форум-ночь B1 (идея №10): менеджер перевыпустил QR (handlers/admin.py::cmd_find_user ->
+    # checkin_reissue_yes) — этот код УЖЕ не откроет вход, даже если делегат ещё не успел
+    # открыть новый (database.db.get_checkin_token_replacement).
+    "token_replaced": "QR заменён — попросите делегата открыть новый в «🎟 Мой QR»",
 }
 
 
@@ -151,6 +155,23 @@ async def checkin_denial(user: dict | None) -> str | None:
     except Exception as e:
         logger.error(f"checkin_denial: event_season resolve failed for {user.get('telegram_id')}: {e}")
     return None
+
+
+async def resolve_scanned_user(token: str | None) -> tuple[dict | None, str | None]:
+    """Единая точка «токен из QR -> (делегат, код отказа)» — оборачивает
+    `get_user_by_checkin_token` + `checkin_denial` для ОБОИХ вызывающих
+    (`miniapp/routers/checkin.py`, `handlers/admin_checkin.py`), плюс форум-ночь B1 (идея №10,
+    перевыпуск QR): если токен НЕ находится в `users` (значит его больше нет — либо чужой QR,
+    либо СВОЙ, но уже перевыпущенный), сверяемся с `checkin_token_replacements` ПЕРЕД тем, как
+    сдаться на общем «не найден» — старый (замененный) QR получает свою причину
+    `'token_replaced'`, а не общий `'no_user'`, чтобы волонтёр понял: делегат СУЩЕСТВУЕТ,
+    просто открыл старый скриншот вместо нового «🎟 Мой QR»."""
+    user = await get_user_by_checkin_token(token) if token else None
+    if user is None and token:
+        replacement = await get_checkin_token_replacement(token)
+        if replacement is not None:
+            return None, "token_replaced"
+    return user, await checkin_denial(user)
 
 
 async def build_checkin_payload(user: dict) -> str | None:

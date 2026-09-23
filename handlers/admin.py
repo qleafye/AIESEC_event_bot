@@ -459,7 +459,12 @@ async def cmd_find_user(message: types.Message):
             f"Email: {html_module.escape(str(user['email'] or ''))}\n"
             f"Регистрация: {user['registration_date']}"
         )
-        await message.answer(text, parse_mode="HTML")
+        # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
+        # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
+        )]])
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 

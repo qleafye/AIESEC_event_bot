@@ -855,6 +855,13 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_point:*": "checkin",
     "state:CheckinImport:*": "checkin",
 
+    # Форум-ночь B1 (идея №10): перевыпуск QR — кнопка на карточке «/find» (cmd_find_user, та
+    # же капа «moderate_reg», что и у самой команды). Управление делегатским аккаунтом, не
+    # рутинное сканирование на входе -- поэтому «moderate_reg», не «checkin».
+    "checkin_reissue:*": "moderate_reg",
+    "checkin_reissue_yes:*": "moderate_reg",
+    "checkin_reissue_no": "moderate_reg",
+
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из
