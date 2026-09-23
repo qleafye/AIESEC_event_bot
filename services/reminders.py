@@ -36,12 +36,23 @@ import logging
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from config import config
-from database.db import get_city_counts, get_pending_count, get_setting, get_staff_city
+from database.db import (
+    auto_reject_summary, get_city_counts, get_pending_count, get_setting, get_staff_city,
+)
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL = 1800  # seconds (30 min)
+
+# Квик 260923 (D-B): метка «когда в прошлый раз ушла сводка ожидания» — ТОЛЬКО в памяти
+# процесса (не БД): напоминание и так шлётся заново каждый интервал, отдельная персистентная
+# джоба ради одной метки была бы избыточной. После рестарта окно откатывается на один интервал
+# (см. инициализацию в `pending_reminder_loop`) — первая сводка после рестарта может один раз
+# показать чуть более широкое окно автоотказов, чем «строго с прошлой сводки»; это не потеря
+# данных (auto_reject_summary читает БД, не саму метку), только чуть щедрее один раз.
+_last_summary_at: str | None = None
 
 # Recipients we can no longer reach: they blocked the bot, or their chat is gone / their id is
 # wrong (a deleted account answers "chat not found"). The reminder fires on a fixed interval
@@ -110,13 +121,31 @@ async def _pending_breakdown_suffix(total: int) -> str:
     return f" ({', '.join(parts)})"
 
 
-async def _text_for_recipient(uid: int) -> str | None:
-    """`None` — этому получателю сейчас нечего слать (его счётчик — 0). Иначе готовый текст.
+async def _auto_reject_count_since(since: str | None, city_scope_desc) -> int:
+    """Квик 260923 (D-B): N автоотказов, живых по БД, с метки прошлой сводки — 0 без единого
+    похода в БД, если модуль автоотказа выключен (та же дисциплина module-off, что у
+    `_pending_breakdown_suffix`)."""
+    if not await get_setting_typed("reject_rules_enabled"):
+        return 0
+    count, _rules = await auto_reject_summary(since=since, city_scope=city_scope_desc)
+    return count
+
+
+async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
+    """`None` — этому получателю сейчас нечего слать (счётчик ожидания и автоотказ оба нули).
+    Иначе готовый текст, из ОДНОЙ или ДВУХ строк.
 
     Owner correction (тот же день, квик 260919): ПРИВЯЗАННЫЙ к городу (`staff.city`, не
     суперадмин — D-12) получает счётчик СВОЕГО города; любой другой (staff без города,
     ADMIN_IDS) — ВСЕГДА общее число + разбивка по городам, независимо от того, что у него
-    выбрано в шапке панели (`cities.admin_selected_city` здесь намеренно не читается)."""
+    выбрано в шапке панели (`cities.admin_selected_city` здесь намеренно не читается).
+
+    Квик 260923 (D-B): `since` — метка прошлой сводки (`_last_summary_at`, передаётся вызывающим
+    циклом); при включённом модуле автоотказа и N>0 дописывается строка «🤖 Автоотказ с прошлой
+    сводки: N» — привязанный получатель видит счётчик своего города, непривязанный — общий.
+    Ожидание=0 и автоотказ>0 -> уходит ОДНА строка про автоотказ (первая строка про ожидание не
+    печатается пустой). При выключенном модуле (`reject_rules_enabled=off`) текст байт-в-байт
+    прежний — `_auto_reject_count_since` не ходит в БД вовсе."""
     from cities import cities_module_on, city_label, city_scope, normalize_city
 
     bound = None
@@ -126,16 +155,28 @@ async def _text_for_recipient(uid: int) -> str | None:
     if bound:
         code = normalize_city(bound)
         count = await get_pending_count(city_scope=city_scope(code))
-        if count <= 0:
+        auto_count = await _auto_reject_count_since(since, city_scope(code))
+        if count <= 0 and auto_count <= 0:
             return None
-        label = await city_label(code)
-        return f"📋 Заявок в ожидании ({label}): {count}. Открой /admin → Заявки."
+        lines = []
+        if count > 0:
+            label = await city_label(code)
+            lines.append(f"📋 Заявок в ожидании ({label}): {count}. Открой /admin → Заявки.")
+        if auto_count > 0:
+            lines.append(f"🤖 Автоотказ с прошлой сводки: {auto_count}")
+        return "\n".join(lines)
 
     count = await get_pending_count()
-    if count <= 0:
+    auto_count = await _auto_reject_count_since(since, None)
+    if count <= 0 and auto_count <= 0:
         return None
-    suffix = await _pending_breakdown_suffix(count)
-    return f"📋 Заявок в ожидании: {count}{suffix}. Открой /admin → Заявки."
+    lines = []
+    if count > 0:
+        suffix = await _pending_breakdown_suffix(count)
+        lines.append(f"📋 Заявок в ожидании: {count}{suffix}. Открой /admin → Заявки.")
+    if auto_count > 0:
+        lines.append(f"🤖 Автоотказ с прошлой сводки: {auto_count}")
+    return "\n".join(lines)
 
 
 async def pending_reminder_loop(bot):
@@ -146,11 +187,30 @@ async def pending_reminder_loop(bot):
 
     Lazy import (module docstring precedent — `reg_digest`/`game_digest`/`daily_digest` all do
     the same): `handlers.admin_caps` imports back into `handlers`, and `main.py` imports this
-    module at top level before `handlers` is guaranteed loaded."""
+    module at top level before `handlers` is guaranteed loaded.
+
+    Квик 260923 (D-B): `_last_summary_at` инициализируется РОВНО ОДИН РАЗ, на первый вход в эту
+    функцию (модульная метка переживает итерации, но не рестарт процесса — см. докстринг
+    константы), «сейчас минус текущий интервал» — первая сводка после старта бота ведёт себя
+    так, будто прошлая ушла ровно интервал назад, а не «с начала времён» (иначе холодный старт
+    отрапортовал бы про ВСЕ живые автоотказы сразу)."""
+    from datetime import timedelta
+
     from handlers.admin_caps import capability_holders
+
+    global _last_summary_at
+    if _last_summary_at is None:
+        try:
+            init_interval = await get_setting_typed("pending_reminder_interval")
+        except Exception:
+            init_interval = DEFAULT_INTERVAL
+        _last_summary_at = (msk_now() - timedelta(seconds=init_interval)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
     while True:
         interval = DEFAULT_INTERVAL
+        iteration_started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             # REG-02: read through the registry accessor (byte-identical to
             # _reminder_interval, see tests/test_settings_consumers_phase6.py).
@@ -160,7 +220,7 @@ async def pending_reminder_loop(bot):
                     if uid in _blocked_admins:
                         continue
                     try:
-                        text = await _text_for_recipient(uid)
+                        text = await _text_for_recipient(uid, since=_last_summary_at)
                         if text is None:
                             continue  # ничего не ждёт этого получателя — не будим зря
                         await bot.send_message(uid, text)
@@ -173,6 +233,10 @@ async def pending_reminder_loop(bot):
                         )
                     except Exception as e:
                         logger.error(f"Pending reminder: failed to notify recipient {uid}: {e}")
+                # Метка двигается вперёд ТОЛЬКО когда рассылка реально прогналась (рубильник
+                # включён) — выключенный модуль не имеет права молча съесть окно автоотказов,
+                # которое накопится к моменту, когда менеджер снова включит напоминание.
+                _last_summary_at = iteration_started_at
         except Exception as e:
             logger.error(f"Pending reminder loop iteration failed: {e}")
         await asyncio.sleep(interval)
