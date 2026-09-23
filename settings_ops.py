@@ -1005,6 +1005,8 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "penalized": "70",
     "top": "1. Иван — 300\n2. Мария — 280",
     "pending": "5",
+    # Квик 260923-p37 (CITY-REG-CLOSE): название закрытого города в city_reg_closed_text.
+    "city": "Санкт-Петербург",
 }
 
 
