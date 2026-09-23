@@ -225,9 +225,12 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     # свежей БД пунктов FAQ нет, отсутствие кнопки — ожидаемое поведение.
     # menu_lang (Phase 27, 27-04) — единственный menu_* с default "off": кнопка не рисуется,
     # пока менеджер не включит модуль (delegate_lang_enabled) И саму кнопку.
+    # menu_checkin_qr (квик 260923, форум-чекин) рисуется только при checkin_qr_enabled=on
+    # (двойной гейт, тот же приём, что у menu_miniapp) — master-тумблер в дефолте выключен,
+    # отсутствие кнопки — ожидаемое поведение.
     expected_order = [
         label for key, label in MENU_BUTTONS
-        if key not in ("menu_miniapp", "menu_faq", "menu_lang")
+        if key not in ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
     ]
     assert texts == expected_order
 
