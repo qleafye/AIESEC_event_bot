@@ -496,6 +496,15 @@ def _build_snapshot_lines():
 # `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним 609-строчным
 # снимком: 1 вставка из 2 строк (message) + 1 блочный реордер из 11 строк (callback_query,
 # 0 добавлений/удалений внутри блока) — итого 609 + 2 = 611.
+#
+# Drift note (квик 260923, AUTOREJ-REPORT, D-I: экран «📊 Отчётность автоотказа», 611 -> 613
+# handlers -- PURE APPEND): новый шов `handlers/admin_reject_reports.py`, импортирован из
+# хвоста `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_rules` (та же цепочка импортов
+# — сам `admin_reject_rules` тянет `admin_reject_cond`/`admin_reject_journal` своим хвостом
+# первым, поэтому физически 2 новые строки встали ПОСЛЕ `arj_csv_export` и ПЕРЕД `sync_sheet`).
+# 2 новых callback_query-хендлера (`admin_reject_reports`/`arp_sync`). Re-captured by RUNNING
+# `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
+# 611-строчного снимка: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -756,6 +765,8 @@ admin|callback_query|arj_toggle_returned|arj_all:*
 admin|callback_query|arj_back_confirm|arj_back:*
 admin|callback_query|arj_back_go|arj_backgo:*
 admin|callback_query|arj_csv_export|arj_csv
+admin|callback_query|admin_reject_reports|admin_reject_reports
+admin|callback_query|arp_sync|arp_sync
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1347,7 +1358,11 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_payment_reminders (та же точка регистрации в файле, что у toggle_reg_edit_policy
     # выше) — чистая вставка, пересчитано `_build_snapshot_lines()` и сверено diff'ом с прежним
     # 611-строчным снимком: ровно одна вставка, 0 удалений, 0 реордеров (611 -> 612).
-    assert len(GOLDEN_SNAPSHOT) == 612
+    # Квик 260923 (AUTOREJ-REPORT, D-I): +2 admin.callback_query (admin_reject_reports/arp_sync,
+    # handlers/admin_reject_reports.py) — чистая вставка, пересчитано `_build_snapshot_lines()`
+    # и сверено diff'ом с прежним 612-строчным снимком: ровно одна вставка из 2 строк, 0
+    # удалений, 0 реордеров (612 -> 614).
+    assert len(GOLDEN_SNAPSHOT) == 614
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
