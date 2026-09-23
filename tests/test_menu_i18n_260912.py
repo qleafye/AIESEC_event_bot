@@ -89,9 +89,11 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 # ── Задача 2: покрытие MENU_TEXTS ────────────────────────────────────────────────────────────
 
 def test_menu_texts_covers_all_thirteen_keys():
+    # Квик 260923 (форум-чекин, D-03): +1 ключ (menu_checkin_qr) -- имя теста историческое
+    # (осталось от 13 ключей до этой правки), assert ниже проверяет актуальное число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 13
+    assert len(MENU_TEXTS) == 14
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -122,6 +124,9 @@ _USER_ACTIONS_POINTS = [
     ("menu_faq", "show_faq"),
     ("menu_question", "ask_organizer_start"),
     ("menu_miniapp", "open_miniapp_button"),
+    # Квик 260923 (форум-чекин, D-03): маршрутизация не зависит от checkin_qr_enabled -- тот
+    # же приём, что у menu_miniapp выше (фильтр F.text.in_(...) матчит независимо от БД).
+    ("menu_checkin_qr", "show_my_checkin_qr"),
 ]
 
 
@@ -198,8 +203,10 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # файла независимо от языка, это тот же паритет, что и до Задачи 3. menu_lang по умолчанию
 # "off" (единственное исключение из конвенции menu_* default "on") -- тоже не будет без
 # отдельного явного `db.set_setting("menu_lang", "on")`, которого ни один тест этого файла не
-# делает.
-_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang")
+# делает. Квик 260923 (форум-чекин): menu_checkin_qr сам по себе default "on" (обычная
+# конвенция), но второй гейт checkin_qr_enabled -- default "off" -- скрывает кнопку, пока
+# менеджер явно не включит модуль (ни один тест этого файла его не включает).
+_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 
 

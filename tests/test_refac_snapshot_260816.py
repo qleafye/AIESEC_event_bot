@@ -1097,6 +1097,7 @@ user_actions|message|ask_organizer_start|
 user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
 user_actions|message|open_miniapp_button|
+user_actions|message|show_my_checkin_qr|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1362,7 +1363,12 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_reject_reports.py) — чистая вставка, пересчитано `_build_snapshot_lines()`
     # и сверено diff'ом с прежним 612-строчным снимком: ровно одна вставка из 2 строк, 0
     # удалений, 0 реордеров (612 -> 614).
-    assert len(GOLDEN_SNAPSHOT) == 614
+    # Квик 260923 (форум-чекин, D-01..D-04): +1 user_actions.message show_my_checkin_qr, встал
+    # сразу после open_miniapp_button и перед reg_handoff_idle_fallback (тот же приём, что у
+    # menu_miniapp) — чистая вставка, пересчитано `_build_snapshot_lines()` и сверено diff'ом
+    # с прежним 614-строчным снимком: ровно одна вставка из 1 строки, 0 удалений, 0 реордеров
+    # (614 -> 615).
+    assert len(GOLDEN_SNAPSHOT) == 615
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
