@@ -1001,6 +1001,9 @@ admin|callback_query|delete_user_cancel|delu_no
 admin|callback_query|show_admin_checkin|admin_checkin
 admin|callback_query|checkin_upload_start|checkin_upload_start
 admin|callback_query|checkin_point_pick|checkin_point:*
+admin|callback_query|checkin_reissue_confirm|checkin_reissue:*
+admin|callback_query|checkin_reissue_go|checkin_reissue_yes:*
+admin|callback_query|checkin_reissue_cancel|checkin_reissue_no
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1394,7 +1397,13 @@ def test_snapshot_total_handler_count_is_292():
     # сверено diff'ом (difflib.SequenceMatcher) с прежним 616-строчным снимком: ровно две
     # вставки (4 строки в message-блоке, 3 строки в callback_query-блоке), 0 удалений, 0
     # реордеров.
-    assert len(GOLDEN_SNAPSHOT) == 623
+    # Форум-ночь B1 (идея №10): +3 admin.callback_query (checkin_reissue_confirm/
+    # checkin_reissue_go/checkin_reissue_cancel, handlers/admin_checkin.py) — тот же шов,
+    # встают в самый хвост callback_query-блока admin.router (сразу после checkin_point_pick,
+    # перед первым хендлером payment.router) — чистая вставка, пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 623-строчным снимком: ровно одна
+    # вставка из 3 строк, 0 удалений, 0 реордеров (623 -> 626).
+    assert len(GOLDEN_SNAPSHOT) == 626
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
