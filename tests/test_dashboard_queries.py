@@ -31,6 +31,7 @@ from dashboard.queries import (
     _task_title,
     ambassador_block,
     auto_reject_breakdown,
+    auto_reject_people_count,
     breakdown,
     city_comparison,
     city_options,
@@ -1132,6 +1133,39 @@ def test_auto_reject_breakdown_cut_by_city_scope(tmp_path):
         spb_rows = auto_reject_breakdown(conn, Scope(city="spb"))
     assert msk_rows == [("Курс", 1)]
     assert spb_rows == [("Курс", 1)]
+
+
+# ── Квик 260923 (D-H): разбивка только по status='rejected' + число людей ────────────────────
+
+def test_auto_reject_breakdown_excludes_self_corrected_delegate(tmp_path):
+    """Живая строка журнала (не возвращена), но делегат сам поправил анкету — status='pending' —
+    больше не считается ни в разбивке, ни в числе людей."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": None}],
+        reject_rules=[_seed_reject_rule(name="Курс")],
+        auto_reject_log=[_seed_auto_reject_log_row(telegram_id=1, rule_ids="[1]")],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = auto_reject_breakdown(conn, Scope())
+        people = auto_reject_people_count(conn, Scope())
+    assert rows == []
+    assert people == 0
+
+
+def test_auto_reject_people_count_counts_distinct_people_not_rule_hits(tmp_path):
+    """Один человек под двумя правилами разом -> сумма разбивки 2, но людей — 1."""
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        users=[{"telegram_id": 1, "status": "rejected", "auto_reject_rule_ids": "[1,2]"}],
+        reject_rules=[_seed_reject_rule(name="Курс"), _seed_reject_rule(name="Трек")],
+        auto_reject_log=[_seed_auto_reject_log_row(telegram_id=1, rule_ids="[1,2]")],
+    )
+    with dash_db.read_conn(path) as conn:
+        rows = auto_reject_breakdown(conn, Scope())
+        people = auto_reject_people_count(conn, Scope())
+    assert sum(count for _label, count in rows) == 2
+    assert people == 1
 
 
 def test_funnel_stage_labels_consistent_across_main_and_compare(tmp_path):
