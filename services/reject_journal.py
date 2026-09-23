@@ -144,6 +144,23 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
         {"auto_reject_rule_ids": None, "auto_rejected_at": None, "auto_rule_note": None},
         allowed_columns=["auto_reject_rule_ids", "auto_rejected_at", "auto_rule_note"],
     )
+
+    # Квик 260923 (AUTOREJ-REPORT, D-G): лист таблицы после возврата продолжал показывать
+    # «Отклонена» — return_to_moderation переводит делегата в БД, а строку листа никто не
+    # трогал. Тот же fail-soft приём, что revert_user_to_pending выше: возврат УЖЕ зафиксирован
+    # (claim выигран, статус в БД сменён) — сбой листа только логируется, не откатывает возврат.
+    try:
+        from reg_labels import STATUS_LABELS
+        from services.sheets import update_status_in_sheet
+        await update_status_in_sheet(telegram_id, STATUS_LABELS["pending"])
+        from services.scheduler import sync_auto_reject_sheet_job
+        await sync_auto_reject_sheet_job()
+    except Exception as e:
+        logger.warning(
+            "reject_journal.return_to_moderation: лист не обновлён после возврата %s (%s) — "
+            "возврат в БД уже зафиксирован, не откатывается", telegram_id, e,
+        )
+
     return claimed, None
 
 
