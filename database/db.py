@@ -1876,11 +1876,20 @@ def _escape_like(q: str) -> str:
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _normalize_search_text(s: str | None) -> str:
+    """Регистронезависимость + ё/е: на стойке форума и в чате фамилию чаще всего набирают
+    без «ё» («Королев» вместо «Королёв») — обе буквы сворачиваются в «е» ПОСЛЕ `.lower()`
+    (у «Ё» тоже, `"Ё".lower() == "ё"`). Остальные символы не трогает. Общая для обеих сторон
+    сравнения в `search_users_by_name` (колонка через SQL-функцию `py_lower`, и сам паттерн
+    поиска) — иначе «королев» не находил бы «Королёв», а «Королёв» не находил бы «Королев»."""
+    return (s or "").lower().replace("ё", "е")
+
+
 async def search_users_by_name(
     q: str, limit: int = 20, *, city_scope=None, include_university: bool = False,
 ) -> list[dict]:
-    """Phase 19 (19-07): поиск получателя монет по части имени (без учёта регистра) для
-    Mini App. `city_scope` — дескриптор `cities.city_scope(...)` (как у
+    """Phase 19 (19-07): поиск получателя монет по части имени (без учёта регистра, ё и е —
+    один символ) для Mini App. `city_scope` — дескриптор `cities.city_scope(...)` (как у
     `get_pending_submissions`): привязанный менеджер видит только делегатов своего города.
     Отдаёт только опознавательный минимум — telegram_id, full_name, username, event_city;
     ПД (телефон, e-mail, вуз) сюда не попадают (T-19-47). Пустой запрос -> пусто.
@@ -1895,14 +1904,15 @@ async def search_users_by_name(
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
     # SQLite COLLATE NOCASE сворачивает регистр только ASCII a-z/A-Z — кириллица (например,
-    # «Иван» -> «иван») через неё не находится. Регистронезависимость даём вручную питоновским
-    # `str.lower()` через пользовательскую SQL-функцию.
-    pattern = f"%{_escape_like(needle)}%".lower()
+    # «Иван» -> «иван») через неё не находится. Регистронезависимость и ё/е даём вручную
+    # питоновским `_normalize_search_text` через пользовательскую SQL-функцию — на ОБЕИХ
+    # сторонах сравнения (паттерн и колонка), иначе одна из сторон не свернётся.
+    pattern = _normalize_search_text(f"%{_escape_like(needle)}%")
     columns = "telegram_id, full_name, username, event_city"
     if include_university:
         columns += ", university"
     async with _connect() as db:
-        await db.create_function("py_lower", 1, lambda s: (s or "").lower())
+        await db.create_function("py_lower", 1, _normalize_search_text)
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT {columns} FROM users "
