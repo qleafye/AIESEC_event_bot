@@ -228,6 +228,9 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
     # План 31-11: журнал живёт отдельным швом (handlers/admin_reject_journal.py) — вход отсюда,
     # где менеджер только что настраивал правила.
     buttons.append([InlineKeyboardButton(text="🤖 Автоотказы", callback_data="admin_reject_journal")])
+    # Квик 260923 (AUTOREJ-REPORT, D-I): «📊 Отчётность» — вкладка таблицы и потолок пачки,
+    # тем же входом, рядом с журналом (handlers/admin_reject_reports.py).
+    buttons.append([InlineKeyboardButton(text="📊 Отчётность", callback_data="admin_reject_reports")])
 
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_reject_rules")])
