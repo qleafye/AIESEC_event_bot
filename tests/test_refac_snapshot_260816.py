@@ -632,6 +632,7 @@ admin|callback_query|toggle_nudge_enabled|toggle_nudge_enabled
 admin|callback_query|toggle_quiet_hours|toggle_quiet_hours
 admin|callback_query|toggle_chat_tracking_enabled|toggle_chat_tracking_enabled
 admin|callback_query|toggle_daily_digest|toggle_daily_digest
+admin|callback_query|toggle_checkin_qr_enabled|toggle_checkin_qr_enabled
 admin|callback_query|toggle_wave_rating_show_names|toggle_wave_rating_show_names
 admin|callback_query|toggle_delegate_lang_enabled|toggle_delegate_lang_enabled
 admin|callback_query|toggle_delegate_lang_ask_on_start|toggle_delegate_lang_ask_on_start
@@ -1368,7 +1369,12 @@ def test_snapshot_total_handler_count_is_292():
     # menu_miniapp) — чистая вставка, пересчитано `_build_snapshot_lines()` и сверено diff'ом
     # с прежним 614-строчным снимком: ровно одна вставка из 1 строки, 0 удалений, 0 реордеров
     # (614 -> 615).
-    assert len(GOLDEN_SNAPSHOT) == 615
+    # Квик 260923 (форум-чекин, D-01..D-04): +1 admin.callback_query toggle_checkin_qr_enabled
+    # (handlers/admin_settings.py), встал сразу после toggle_daily_digest и перед
+    # toggle_wave_rating_show_names — чистая вставка, пересчитано `_build_snapshot_lines()` и
+    # сверено diff'ом с прежним 615-строчным снимком: ровно одна вставка из 1 строки, 0
+    # удалений, 0 реордеров (615 -> 616).
+    assert len(GOLDEN_SNAPSHOT) == 616
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

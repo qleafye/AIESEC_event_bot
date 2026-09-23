@@ -151,6 +151,9 @@ EXPECTED_PER_CITY_KEYS = {
     # Правка 260922-wrg (владелец, «настройки по городам»): тумблер правки/повторной подачи
     # и её закрытый текст — по городам, тот же приём, что registration_mode/reg_resume_mode.
     "reg_edit_policy", "reg_resubmit_after_reject", "reg_resubmit_closed_text",
+    # Квик 260923 (форум-чекин, D-03): кнопка меню — та же ось per_city, что остальные menu_*
+    # выше (город может отдельно спрятать/показать любую кнопку меню).
+    "menu_checkin_qr",
 }
 
 
