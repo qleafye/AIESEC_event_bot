@@ -16,6 +16,7 @@ import asyncio
 
 from config import config
 from database import db as bot_db
+from tests._dbtpl import fast_init_db
 
 MAX_CONNECTS_PER_RENDER = 3
 
@@ -47,7 +48,7 @@ def _run(coro):
 
 def _admin_ready(tmp_path, db_name="test_admin_reg_percity_perf_260917.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    _run(bot_db.init_db())
+    fast_init_db()
 
 
 def test_render_questions_text_uses_one_connection_not_n_plus_one(tmp_path):

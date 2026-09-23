@@ -21,13 +21,14 @@ from services.i18n import src_hash as compute_src_hash
 
 from handlers.admin_caps import role_caps_key, role_enabled_key
 from tests.test_roles_phase8 import ADMIN_ID, MANAGER_ID, STRANGER_ID, _roles_ready, dispatch_callback
+from tests._dbtpl import fast_init_db
 
 LANG = "en"
 
 
 def _db_ready(tmp_path, name="test_i18n_admin_27.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

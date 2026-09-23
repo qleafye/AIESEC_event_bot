@@ -18,11 +18,12 @@ from config import config
 from database import db
 import services.reject_rules as rr
 from tests.test_miniapp_labels_drift import _loaded_aiogram
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_reject_rules_service.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

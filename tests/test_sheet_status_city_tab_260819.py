@@ -21,6 +21,7 @@ import gspread
 from config import config
 from database import db
 import services.sheets as sheets
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -86,7 +87,7 @@ def _user_row(telegram_id, event_city, participant_type="full"):
 
 
 async def _setup_city_user(telegram_id, event_city, participant_type="full"):
-    await db.init_db()
+    fast_init_db()
     await db.set_setting("event_city_enabled", "on")
     await db.add_user(_user_row(telegram_id, event_city, participant_type))
 
@@ -198,7 +199,7 @@ def test_bulk_update_groups_ids_by_tab(tmp_path, monkeypatch):
     _patch_fake_sheets(monkeypatch, {"__main__": main, "СПб": spb})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.add_user(_user_row(111, None))
         await db.add_user(_user_row(222, "spb"))
@@ -220,7 +221,7 @@ def test_bulk_update_falls_back_to_main_for_unresolved_city_row(tmp_path, monkey
     _patch_fake_sheets(monkeypatch, {"__main__": main, "СПб": spb})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.add_user(_user_row(333, "spb"))
         return await sheets.bulk_update_status_in_sheet({"333": "Отклонена"})
@@ -238,7 +239,7 @@ def test_bulk_update_not_found_anywhere_warns_and_excludes_from_count(tmp_path, 
     _patch_fake_sheets(monkeypatch, {"__main__": main, "СПб": spb})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.add_user(_user_row(888, "spb"))
         return await sheets.bulk_update_status_in_sheet({"888": "Отклонена"})

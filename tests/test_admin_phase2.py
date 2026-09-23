@@ -17,6 +17,7 @@ from handlers.admin_roles import (  # Phase 13 (13-04): settings-guide moved her
     SETTINGS_GUIDE_SECTIONS,
     SETTINGS_GUIDE_KEYS,
 )
+from tests._dbtpl import fast_init_db
 
 
 def test_parse_appr_with_id():
@@ -113,7 +114,7 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch, tmp_path
     при запуске в одиночку/первым в сессии."""
     uid = 42
     config.DB_PATH = str(tmp_path / "wr01.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     welcomed = []
 

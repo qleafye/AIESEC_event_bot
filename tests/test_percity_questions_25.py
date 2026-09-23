@@ -21,11 +21,12 @@ import reg_engine as e
 import settings_ops
 from handlers import admin_reg_config
 from handlers import reg_schema
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _module_on():

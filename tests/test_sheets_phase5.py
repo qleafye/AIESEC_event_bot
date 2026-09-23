@@ -10,6 +10,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 import services.sheets as sheets
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -173,7 +174,7 @@ def test_party_sheet_headers_default_includes_ungated_columns(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg.party_sheet_headers()
 
     headers = asyncio.run(go())
@@ -187,7 +188,7 @@ def test_party_sheet_headers_phone_off_removes_exactly_one_header(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_phone__party", "on")
         before = await reg.party_sheet_headers()
         await db.set_setting("reg_q_phone__party", "off")
@@ -207,7 +208,7 @@ def test_party_sheet_row_length_matches_headers_multiple_configs(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         results = []
         headers1 = await reg.party_sheet_headers()
         row1 = await reg.party_sheet_row(_base_party_data())
@@ -233,7 +234,7 @@ def test_party_sheet_row_track_cell_overnight(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         headers = await reg.party_sheet_headers()
         row = await reg.party_sheet_row(_base_party_data("party_overnight"))
         return dict(zip(headers, row))
@@ -246,7 +247,7 @@ def test_party_sheet_row_track_cell_noovernight(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         headers = await reg.party_sheet_headers()
         row = await reg.party_sheet_row(_base_party_data("party_noovernight"))
         return dict(zip(headers, row))
@@ -262,7 +263,7 @@ def test_party_sheet_row_keeps_formula_look_alike_raw(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         headers = await reg.party_sheet_headers()
         data = _base_party_data()
         data["full_name"] = "=cmd()"
@@ -286,7 +287,7 @@ def test_append_to_party_sheet_uses_default_tab_when_unset(tmp_path, monkeypatch
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await reg.append_to_party_sheet([1, 2, 3])
 
     asyncio.run(go())
@@ -303,7 +304,7 @@ def test_append_to_party_sheet_uses_configured_tab(tmp_path, monkeypatch):
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_sheet_tab", "MyPartyTab")
         await reg.append_to_party_sheet([1, 2, 3])
 
@@ -367,7 +368,7 @@ def test_finalize_registration_party_track_schedules_party_append_only(tmp_path,
     state = _FakeState({"full_name": "Party Guest", "participant_type": "party_overnight"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_approval", "manual")  # stays pending, no approve_user call
         await _run_finalize_and_drain(message, state, bot=None)
 
@@ -395,7 +396,7 @@ def test_finalize_registration_full_track_schedules_main_append_only(tmp_path, m
     state = _FakeState({"full_name": "Full Delegate", "participant_type": "full"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")  # stays pending, no approve_user call
         await _run_finalize_and_drain(message, state, bot=None)
 
@@ -420,7 +421,7 @@ def test_maybe_ensure_party_sheet_header_noop_when_party_disabled(tmp_path, monk
     monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await main._maybe_ensure_party_sheet_header()
 
     asyncio.run(go())
@@ -440,7 +441,7 @@ def test_maybe_ensure_party_sheet_header_calls_ensure_when_party_enabled(tmp_pat
     monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("party_enabled", "on")
         await main._maybe_ensure_party_sheet_header()
 

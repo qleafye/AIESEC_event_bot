@@ -8,6 +8,7 @@ from handlers import admin as admin_mod
 from handlers import registration as reg
 from handlers.admin_caps import required_capability
 from handlers.registration import _membership_status_to_bool, is_subscribed, _normalize_channel_ref
+from tests._dbtpl import fast_init_db
 
 ADMIN_PY = Path(__file__).resolve().parent.parent / "handlers" / "admin.py"
 # Phase 13 (13-05): broadcast_unsubscribed/incomplete now live in handlers/admin_broadcasts.py,
@@ -119,7 +120,7 @@ def test_finalize_persists_subscription_for_new_user(tmp_path, monkeypatch):
     state = _FakeState({"full_name": "New User", "participant_type": "full"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("contact_tg", "https://t.me/mychan")  # stored as a display link
         await db.set_setting("full_approval", "manual")  # stays pending → no bot sends needed
         assert await db.get_user(uid) is None  # brand-new, no row yet

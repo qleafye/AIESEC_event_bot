@@ -30,6 +30,7 @@ from config import config
 from database import db
 import services.timeutil as timeutil_mod
 from services.timeutil import msk_now, process_clock_is_utc
+from tests._dbtpl import fast_init_db
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
@@ -37,7 +38,7 @@ MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 def _fresh_db(tmp_path, name: str) -> str:
     path = str(tmp_path / name)
     config.DB_PATH = path
-    asyncio.run(db.init_db())
+    fast_init_db()
     return path
 
 

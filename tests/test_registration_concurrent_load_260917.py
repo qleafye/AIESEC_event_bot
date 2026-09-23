@@ -23,6 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db as bot_db
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 DELEGATE_COUNT = 50
 
@@ -33,7 +34,7 @@ def _run(coro):
 
 def _use_tmp_db(tmp_path, name="registration_concurrent_load.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(bot_db.init_db())
+    fast_init_db()
 
 
 def _state(uid):

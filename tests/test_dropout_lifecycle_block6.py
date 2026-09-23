@@ -8,6 +8,7 @@ import sqlite3
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp(tmp_path):
@@ -32,7 +33,7 @@ def test_md03_mark_reg_started_preserves_started_at_on_reentry(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.mark_reg_started(1, "user1")
         _set_started_at(1, "2020-01-01 00:00:00")  # pretend this was long ago
         await db.mark_reg_started(1, "user1_renamed")  # re-entry / next step
@@ -49,7 +50,7 @@ def test_md02_dropout_queries_exclude_registered_keep_rejected(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # tid 1: genuine dropout (reg_started, no users row)
         # tid 2: registered/approved — must be EXCLUDED from dropout views
         # tid 3: rejected re-registrant — must be KEPT (D-05a re-registration)

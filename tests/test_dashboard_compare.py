@@ -20,6 +20,7 @@ from database import db as bot_db
 from dashboard import compare
 from dashboard.config import DashboardConfig
 from dashboard.registry import EventSource
+from tests._dbtpl import fast_init_db
 
 COMPARE_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "compare.py"
 
@@ -27,7 +28,7 @@ COMPARE_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "compare.p
 def _use_tmp_db(tmp_path, name: str) -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

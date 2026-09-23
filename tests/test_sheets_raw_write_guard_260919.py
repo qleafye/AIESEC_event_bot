@@ -24,6 +24,7 @@ from pathlib import Path
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SHEETS_PY = _REPO_ROOT / "services" / "sheets.py"
@@ -80,7 +81,7 @@ def test_delegate_row_phone_and_username_have_no_leading_apostrophe(tmp_path):
     _use_tmp_db(tmp_path, "raw_guard_row.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_phone", "on")
         return await reg.active_sheet_row({
             "telegram_id": 1,
@@ -104,7 +105,7 @@ def test_csv_export_still_neutralizes_formula_injection(tmp_path):
     _use_tmp_db(tmp_path, "raw_guard_csv.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({
             "telegram_id": 1,
             "full_name": "=cmd()",

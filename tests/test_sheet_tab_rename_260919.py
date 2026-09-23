@@ -27,6 +27,7 @@ from handlers import admin_sheet_tabs
 from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
 import settings_ops
+from tests._dbtpl import fast_init_db
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +53,7 @@ def _db_ready(tmp_path):
     """Task 2+ хелперы (settings_ops) читают/пишут реальные bot_settings — в отличие от Task 1
     (моки Google, настройки не нужны), здесь БД нужна инициализированной."""
     config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_ops.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _reset_sheets_module_state():
@@ -441,7 +442,7 @@ class _FakeFSMState:
 
 def _t3_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_t3.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID_T3]
 
 
@@ -648,7 +649,7 @@ _T4_INITIAL_TITLES = [
 
 def _t4_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_sheet_tab_rename_260919_t4.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID_T4]
     asyncio.run(db.insert_city("spb", "Санкт-Петербург", "СПб", 1))
     cities.set_cities_for_test([dict(_T4_CITY)])

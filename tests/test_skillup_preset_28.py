@@ -21,6 +21,7 @@ from database import db
 from database.db import get_setting
 
 from tests.test_miniapp_labels_drift import _loaded_aiogram
+from tests._dbtpl import fast_init_db
 
 EXISTING_PRESETS_SNAPSHOT = {
     "forum": {
@@ -88,7 +89,7 @@ SCORING_SET_KEYS = {
 
 def _ready(tmp_path, name="test_skillup_preset_28.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Задача 1: перенос модуля ──────────────────────────────────────────────────────────────
@@ -227,7 +228,7 @@ def test_web_and_bot_apply_same_preset(tmp_path):
         return {key: await get_setting(key) for key in keys}
 
     config.DB_PATH = str(tmp_path / "web.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(settings_ops.apply_event_type_preset("skillup"))
     web_snapshot = asyncio.run(_snapshot())
 

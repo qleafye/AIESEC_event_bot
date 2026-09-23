@@ -8,6 +8,7 @@ import json
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp(tmp_path):
@@ -20,7 +21,7 @@ def test_set_reg_step_persists_partial_json(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.mark_reg_started(1, "vasya")
         await db.set_reg_step(1, "city", partial_json='{"full_name":"Иванов"}')
         rows = await db.get_incomplete_rows()
@@ -35,7 +36,7 @@ def test_set_reg_step_without_partial_json_does_not_wipe_snapshot(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.mark_reg_started(1, "vasya")
         await db.set_reg_step(1, "city", partial_json='{"full_name":"Иванов"}')
         # subsequent call without a snapshot (e.g. re-entry) must not reset to NULL
@@ -52,7 +53,7 @@ def test_get_incomplete_rows_none_partial_data_for_row_without_snapshot(tmp_path
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.mark_reg_started(1, "vasya")
         await db.set_reg_step(1, "city")  # no partial_json at all
         rows = await db.get_incomplete_rows()
@@ -71,8 +72,8 @@ def test_migration_is_idempotent(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
-        await db.init_db()  # second call on already-migrated DB must not raise
+        fast_init_db()
+        fast_init_db()  # second call on already-migrated DB must not raise
 
     asyncio.run(go())
 
@@ -83,7 +84,7 @@ def test_incomplete_sheet_headers_shape(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from handlers.registration import incomplete_sheet_headers
 
         headers = await incomplete_sheet_headers()
@@ -101,7 +102,7 @@ def test_incomplete_sheet_row_projects_answered_fields(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
@@ -122,7 +123,7 @@ def test_incomplete_sheet_row_unanswered_fields_are_dash(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
@@ -148,7 +149,7 @@ def test_incomplete_sheet_row_keeps_formula_look_alike_raw(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()
@@ -164,7 +165,7 @@ def test_incomplete_sheet_row_handles_none_and_broken_json(tmp_path):
     _use_tmp(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         from handlers.registration import incomplete_sheet_headers, incomplete_sheet_row
 
         headers = await incomplete_sheet_headers()

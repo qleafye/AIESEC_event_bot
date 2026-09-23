@@ -22,6 +22,7 @@ from config import config
 from database import db
 from services import reject_journal as rj
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 960001
 DELEGATE_A = 960010
@@ -30,7 +31,7 @@ DELEGATE_B = 960011
 
 def _ready(tmp_path, name="test_auto_reject_reporting.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

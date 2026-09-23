@@ -20,6 +20,7 @@ from pathlib import Path
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900901
 MANAGER_ID = 900902
@@ -30,7 +31,7 @@ OTHER_DELEGATE_ID = 900911
 
 def _ready(tmp_path, name="test_delete_user_260910.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

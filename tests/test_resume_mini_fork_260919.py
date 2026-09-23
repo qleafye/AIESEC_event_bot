@@ -19,11 +19,12 @@ from handlers import reg_schema
 from handlers import admin_reg_config
 from handlers import admin_reg_percity
 import services.sheets as sheets_mod
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_resume_mini_fork_260919.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

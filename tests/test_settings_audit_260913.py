@@ -25,6 +25,7 @@ from pathlib import Path
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 HANDLERS_DIR = Path(__file__).resolve().parent.parent / "handlers"
 
@@ -74,7 +75,7 @@ def test_no_raw_set_setting_calls_outside_allowlist():
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_settings_audit_260913.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_set_setting_by_admin_logs_author_and_persists(tmp_path, caplog):

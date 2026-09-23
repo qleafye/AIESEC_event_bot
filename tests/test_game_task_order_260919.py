@@ -17,6 +17,7 @@ import game_labels
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 941101
@@ -86,7 +87,7 @@ def test_overdue_is_measured_in_moscow_time(monkeypatch):
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_task_order.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     asyncio.run(db.add_user({
         "telegram_id": DELEGATE_ID, "full_name": "Делегат", "registration_date": "2026-08-01",

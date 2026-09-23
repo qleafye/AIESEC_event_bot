@@ -189,7 +189,7 @@ def _seed_access_db(tmp_path, name="access.db", staff=(), settings=None) -> str:
     tests/test_dashboard_queries.py."""
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
 
     async def _fill():
         for telegram_id, role, city in staff:
@@ -335,6 +335,7 @@ from datetime import date  # noqa: E402
 
 from dashboard import notify as notify_module  # noqa: E402
 from dashboard.notify import _seen_today, notify_access_request  # noqa: E402
+from tests._dbtpl import fast_init_db
 
 
 class _FakeResponse:

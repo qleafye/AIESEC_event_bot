@@ -4,6 +4,7 @@ import asyncio
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 def test_empty():
@@ -44,7 +45,7 @@ def test_injection_field_rejected():
 
 def _seed_users(n):
     async def go():
-        await db.init_db()
+        fast_init_db()
         for i in range(1, n + 1):
             await db.add_user({"telegram_id": i, "full_name": f"U{i}", "city": "Москва",
                                "registration_date": "2026-07-01 10:00:00"})

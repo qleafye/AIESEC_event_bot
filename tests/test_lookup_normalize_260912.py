@@ -4,7 +4,7 @@
 pytest-asyncio в этом окружении не установлен (правило проекта) — каждый async-вызов идёт
 через `asyncio.run()`. БД поднимается по образцу `_ready(tmp_path)`
 (`tests/test_reg_engine_parity.py`/`tests/test_reg_resume_ttl_260820.py`): `config.DB_PATH`
-в `tmp_path` + `asyncio.run(init_db())`.
+в `tmp_path` + `fast_init_db()`.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from services.lookup import (
     search_lookup,
     top_chips,
 )
+from tests._dbtpl import fast_init_db
 
 
 def _run(coro):
@@ -28,7 +29,7 @@ def _run(coro):
 
 def _ready(tmp_path, name="lookup_260912.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(init_db())
+    fast_init_db()
 
 
 async def _clear_lookup(kind):

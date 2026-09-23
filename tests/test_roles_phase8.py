@@ -31,6 +31,7 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900801
@@ -41,7 +42,7 @@ STRANGER_ID = 900804
 
 def _roles_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_roles_phase8.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

@@ -49,6 +49,7 @@ from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920701
@@ -61,7 +62,7 @@ DELEGATE_ID = 920705
 def _db_ready(tmp_path, name="test_content_percity_offparity.db"):
     """Свежая база. `event_city_enabled` НЕ выставляется — ни на "on", ни на "off"."""
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

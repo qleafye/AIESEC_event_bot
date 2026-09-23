@@ -17,6 +17,7 @@ import asyncio
 import game_labels
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 320401
@@ -24,7 +25,7 @@ ADMIN_ID = 320401
 
 def _db_ready(tmp_path, name="test_game_task_visibility_32.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

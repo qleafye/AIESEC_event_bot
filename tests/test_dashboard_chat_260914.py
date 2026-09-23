@@ -28,6 +28,7 @@ from dashboard.queries import (
     chat_overview,
 )
 from dashboard.registry import EventSource
+from tests._dbtpl import fast_init_db
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 ADMIN_ID = 900001
@@ -39,7 +40,7 @@ SPB_CHAT_ID = -1002222222222
 def _use_tmp_db(tmp_path, name="dashboard_chat.db") -> str:
     path = str(tmp_path / name)
     config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

@@ -13,13 +13,14 @@ from config import config
 from database import db
 import reg_engine
 from services import reg_finalize as rf
+from tests._dbtpl import fast_init_db
 
 UID = 900800400
 
 
 def _ready(tmp_path, name="test_skillup_resume_fork_28.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -175,7 +176,7 @@ class _FakeCallback:
 
 def _admin_ready(tmp_path, name="test_skillup_resume_fork_28_admin.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

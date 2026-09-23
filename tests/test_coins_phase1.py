@@ -7,6 +7,7 @@ from handlers import admin as admin_mod
 from handlers.admin import _parse_coins_amount
 from handlers.admin_caps import required_capability
 from handlers.user_actions import render_leaderboard
+from tests._dbtpl import fast_init_db
 
 
 # ── /coins amount parsing ────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ def test_coins_handler_is_capability_guarded():
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_coins_phase1.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_render_leaderboard_lists_names_ranked(tmp_path):

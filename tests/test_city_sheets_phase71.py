@@ -9,6 +9,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -29,7 +30,7 @@ def test_city_row_tab_none_when_module_off(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg.city_row_tab("spb", None)
 
     assert asyncio.run(go()) is None
@@ -41,7 +42,7 @@ def test_city_row_tab_moscow_regression_all_tracks(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return (
             await reg.city_row_tab(None, None),
@@ -59,7 +60,7 @@ def test_city_row_tab_non_default_city_main_short_party(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return (
             await reg.city_row_tab("spb", None),
@@ -78,7 +79,7 @@ def test_city_row_tab_respects_tab_base_override(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_tab__spb", "Питер")
         return await reg.city_row_tab("spb", "short")
@@ -90,7 +91,7 @@ def test_city_incomplete_tab_default_and_moscow(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         before_toggle = await reg.city_incomplete_tab(None)
         await db.set_setting("event_city_enabled", "on")
         return (
@@ -168,7 +169,7 @@ def test_finalize_registration_none_city_uses_legacy_main_appender(tmp_path, mon
     state = _FakeState({"full_name": "No City Delegate"})  # no "event_city" key at all
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("full_approval", "manual")
         await _run_finalize_and_drain(message, state, bot=None)
@@ -188,7 +189,7 @@ def test_finalize_registration_msk_city_uses_legacy_main_appender(tmp_path, monk
     state = _FakeState({"full_name": "Moscow Delegate", "event_city": "msk"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("full_approval", "manual")
         await _run_finalize_and_drain(message, state, bot=None)
@@ -206,7 +207,7 @@ def test_finalize_registration_spb_full_track_routes_to_named_tab(tmp_path, monk
     state = _FakeState({"full_name": "SPb Delegate", "event_city": "spb"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("full_approval", "manual")
         await _run_finalize_and_drain(message, state, bot=None)
@@ -232,7 +233,7 @@ def test_finalize_registration_spb_party_track_routes_to_named_party_tab(tmp_pat
     })
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("party_approval", "manual")
         await _run_finalize_and_drain(message, state, bot=None)
@@ -259,7 +260,7 @@ def test_finalize_registration_spb_short_track_routes_to_named_short_tab(tmp_pat
     })
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("short_approval", "manual")
         await _run_finalize_and_drain(message, state, bot=None)
@@ -294,7 +295,7 @@ def test_maybe_ensure_city_sheet_headers_noop_when_module_off(tmp_path, monkeypa
     calls = _patch_ensure_named(monkeypatch, main)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await main._maybe_ensure_city_sheet_headers()
 
     asyncio.run(go())
@@ -308,7 +309,7 @@ def test_maybe_ensure_city_sheet_headers_creates_only_non_default_main_tabs(tmp_
     calls = _patch_ensure_named(monkeypatch, main)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         # registration_mode defaults to "short" (SETTINGS_SCHEMA) -- pin "full" explicitly so
         # this test isolates the MAIN-tab-only case (party is off by default already).
@@ -327,7 +328,7 @@ def test_maybe_ensure_city_sheet_headers_respects_per_city_disable(tmp_path, mon
     calls = _patch_ensure_named(monkeypatch, main)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("registration_mode", "full")
         await db.set_setting("city_enabled__tyumen", "off")
@@ -346,7 +347,7 @@ def test_maybe_ensure_city_sheet_headers_party_enabled_adds_party_tab(tmp_path, 
     calls = _patch_ensure_named(monkeypatch, main)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("party_enabled", "on")
         await main._maybe_ensure_city_sheet_headers()
@@ -364,7 +365,7 @@ def test_maybe_ensure_city_sheet_headers_short_mode_adds_short_tab(tmp_path, mon
     calls = _patch_ensure_named(monkeypatch, main)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("registration_mode", "short")
         await main._maybe_ensure_city_sheet_headers()
@@ -384,7 +385,7 @@ def test_maybe_ensure_city_sheet_headers_fail_soft_per_tab(tmp_path, monkeypatch
     calls = _patch_ensure_named(monkeypatch, main, raise_on={"СПб"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await main._maybe_ensure_city_sheet_headers()  # must not raise
 

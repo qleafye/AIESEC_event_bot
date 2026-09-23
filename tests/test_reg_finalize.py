@@ -21,13 +21,14 @@ from services import reg_finalize as rf
 from services import miniapp_outbox
 from services import sheets as sheets_service
 from miniapp import outbox as mo
+from tests._dbtpl import fast_init_db
 
 UID = 900800100
 
 
 def _ready(tmp_path, name="reg_finalize.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _seed_user(uid, status="approved", **overrides):

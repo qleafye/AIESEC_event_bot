@@ -19,11 +19,12 @@ import io
 from config import config
 from database import db
 from services import reject_journal as rj
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_reject_rules_journal.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [900001]
 
 

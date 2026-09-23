@@ -14,11 +14,12 @@ import asyncio
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_gamification_phase9.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Task 1: game_tasks / game_submissions tables + accessors ────────────────────────────────

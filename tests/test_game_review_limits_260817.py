@@ -24,13 +24,14 @@ import handlers.admin as admin_mod
 from handlers import admin_gamification
 from handlers import user_actions as ua_mod
 from handlers.states import GameSubmit
+from tests._dbtpl import fast_init_db
 
 
 # ── shared DB setup ───────────────────────────────────────────────────────────────────────
 
 def _db_ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── T2-style fixtures (delegate side, copied from tests/test_game_free_proof_091.py) ──────

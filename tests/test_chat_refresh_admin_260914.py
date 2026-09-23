@@ -17,6 +17,7 @@ from config import config
 from database import db
 from services import chat_tracking
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900801
 STRANGER_ID = 900802
@@ -26,7 +27,7 @@ CHAT_ID = -1009988877766
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "chat_refresh.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _seed_approved(n, start=800000, city=None):

@@ -28,6 +28,7 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_gamification
 from handlers import registration as reg_mod
 from handlers.admin_caps import CapabilityMiddleware, required_capability
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 940801
@@ -38,7 +39,7 @@ MANAGER_SPB_ID = 940804  # bound to spb, NOT in config.ADMIN_IDS
 
 def _ready(tmp_path, dbname="test_uat1708_hotfixes.db"):
     config.DB_PATH = str(tmp_path / dbname)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

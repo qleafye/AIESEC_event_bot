@@ -34,13 +34,14 @@ from services.i18n_form_manual import (
     seed,
 )
 from services.i18n_sources import corpus
+from tests._dbtpl import fast_init_db
 
 _PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
 
 
 def _db_ready(tmp_path, name="test_i18n_form_manual_coverage.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # --- (а) покрытие корпуса по умолчанию -------------------------------------------------------

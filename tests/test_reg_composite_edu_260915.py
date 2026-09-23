@@ -18,6 +18,7 @@ from reg_engine import (
     validate_answer,
 )
 from settings_schema import SETTINGS_SCHEMA
+from tests._dbtpl import fast_init_db
 
 AGE_ERROR = "Укажи корректный возраст числом от 10 до 120."
 EDU_ERROR = "Выбери один из вариантов."
@@ -31,7 +32,7 @@ _ALL_ON_FLAGS = {
 
 def _ready(tmp_path, name="reg_composite_edu_260915.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 # ── parse_age: int/str/bool/None, границы 10..120 не двигаются ─────────────────────────────

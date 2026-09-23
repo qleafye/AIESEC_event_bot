@@ -16,6 +16,7 @@ from database import db
 from i18n_ui_en import UI_EN
 from services.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
 from settings_schema import SETTINGS_SCHEMA
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path, name="test_i18n_core_27.db"):
@@ -23,7 +24,7 @@ def _use_tmp_db(tmp_path, name="test_i18n_core_27.db"):
     # от порядка запуска файлов (иначе settings_toggle_rows() падает на "no such table:
     # bot_settings" при запуске файла в одиночку без предшествующей инициализации БД).
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── tr() ─────────────────────────────────────────────────────────────────────────────────

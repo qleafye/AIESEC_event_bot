@@ -14,6 +14,7 @@ from config import config
 from database import db
 from services import daily_digest as dd
 from services.timeutil import msk_now
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 944401
 MANAGER_A = 944402
@@ -31,7 +32,7 @@ OTHER_DAY_STAMP = "2026-01-15 12:00:00"
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_daily_digest.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

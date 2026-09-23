@@ -7,6 +7,7 @@ import asyncio
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -26,7 +27,7 @@ def _seed(telegram_id, status, reg_date):
 
 def test_approve_user_atomic_wins_once(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed(1, "pending", "2025-01-01")
 
     assert asyncio.run(db.approve_user_atomic(1)) is True
@@ -37,7 +38,7 @@ def test_approve_user_atomic_wins_once(tmp_path):
 
 def test_reject_user_only_flips_pending(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed(2, "pending", "2025-01-01")
     _seed(3, "approved", "2025-01-01")
 
@@ -52,7 +53,7 @@ def test_reject_user_only_flips_pending(tmp_path):
 
 def test_pending_queue_order_and_count(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed(10, "pending", "2025-03-03 09:00:00")
     _seed(11, "pending", "2025-01-01 09:00:00")  # oldest
     _seed(12, "pending", "2025-02-02 09:00:00")
@@ -72,7 +73,7 @@ def test_pending_queue_order_and_count(tmp_path):
 
 def test_conference_fields_roundtrip(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.add_user({
         "telegram_id": 99,
         "full_name": "Конф Юзер",
@@ -95,7 +96,7 @@ def test_conference_fields_roundtrip(tmp_path):
 
 def test_approve_all_pending_flips_once(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed(20, "pending", "2025-01-01")
     _seed(21, "pending", "2025-01-02")
     _seed(22, "pending", "2025-01-03")

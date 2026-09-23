@@ -25,6 +25,7 @@ from database import db as bot_db
 
 from dashboard.config import DashboardConfig, load_config
 from dashboard.main import create_app
+from tests._dbtpl import fast_init_db
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 ADMIN_ID = 900001
@@ -35,7 +36,7 @@ STATS_MANAGER_ID = 900600
 def _use_tmp_db(tmp_path, name: str = "dashboard_routes.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

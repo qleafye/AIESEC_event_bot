@@ -18,6 +18,7 @@ from database.db import init_db, set_setting
 
 from miniapp.routers.settings import _reg_questions_matrix
 from settings_schema import SETTINGS_SCHEMA
+from tests._dbtpl import fast_init_db
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "settings.js"
@@ -26,7 +27,7 @@ APP_JS = ROOT / "miniapp" / "static" / "js" / "app.js"
 
 def _ready(tmp_path, name="miniapp_settings_fixes_260915.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 def _row_for(rows, step_key):

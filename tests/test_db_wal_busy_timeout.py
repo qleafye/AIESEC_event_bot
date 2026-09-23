@@ -11,12 +11,13 @@ import aiosqlite
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _init(tmp_path) -> str:
     path = str(tmp_path / "wal_test.db")
     config.DB_PATH = path
-    asyncio.run(db.init_db())
+    fast_init_db()
     return path
 
 

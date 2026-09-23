@@ -16,11 +16,12 @@ from database import db
 from handlers import admin
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from settings_schema import SETTINGS_SCHEMA
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_season_data_073.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _full_user_data(telegram_id: int, **overrides) -> dict:
@@ -173,7 +174,7 @@ def test_migration_preserves_existing_rows(tmp_path):
 
     async def _run():
         await db.add_user(_full_user_data(111, season=None, prev_season=None))
-        await db.init_db()
+        fast_init_db()
         return await db.get_user(111)
 
     user = asyncio.run(_run())

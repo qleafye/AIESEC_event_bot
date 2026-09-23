@@ -20,6 +20,7 @@ from database import db
 from handlers import admin_broadcasts
 from handlers.states import Broadcast
 from services import broadcast_run as br
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900910
 OTHER_ADMIN_ID = 900911
@@ -28,7 +29,7 @@ OTHER_ADMIN_ID = 900911
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "confirm_stop.db")
     config.ADMIN_IDS = [ADMIN_ID, OTHER_ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _patch_audience(monkeypatch, ids):

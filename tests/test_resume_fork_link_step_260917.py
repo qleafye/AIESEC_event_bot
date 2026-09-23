@@ -5,11 +5,12 @@ import asyncio
 import reg_engine
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_fork_link_step_260917.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_link_branch_asks_link_in_fork_mode_without_separate_toggle(tmp_path):

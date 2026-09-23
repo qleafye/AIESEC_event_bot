@@ -27,6 +27,7 @@ from handlers import admin_reg_percity  # module-size split: per-city questions/
 from handlers.admin_caps import role_caps_key, role_enabled_key
 from handlers.reg_schema import REG_FLOW
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920801
@@ -35,7 +36,7 @@ MANAGER_ID = 920802
 
 def _admin_ready(tmp_path, db_name="test_admin_percity_questions_25.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

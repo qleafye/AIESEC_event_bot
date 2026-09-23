@@ -24,6 +24,7 @@ from aiogram.exceptions import (
 from config import config
 import database.db as db
 import services.scheduler as scheduler
+from tests._dbtpl import fast_init_db
 
 
 def _forbidden():
@@ -168,7 +169,7 @@ class _FakeBot:
 def _run_one_reminder_iteration(bot, admin_ids, monkeypatch, tmp_path):
     """One full pending_reminder_loop iteration against a throwaway DB, then stop."""
     config.DB_PATH = str(tmp_path / "test_permanent_send_errors_260816.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     import services.reminders as reminders_mod
 

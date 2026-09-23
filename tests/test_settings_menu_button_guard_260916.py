@@ -26,13 +26,14 @@ from config import config
 from database import db
 from handlers import admin_settings
 from keyboards.builders import MENU_TEXTS, ADMIN_REREG_BUTTON_TEXT
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900916
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_settings_menu_button_guard.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

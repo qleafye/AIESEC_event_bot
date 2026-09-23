@@ -35,6 +35,7 @@ from tests.test_reg_resume_draft import (
     _seed_new_draft,
     _texts,
 )
+from tests._dbtpl import fast_init_db
 
 FORM_JS = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "form.js"
 
@@ -117,7 +118,7 @@ def test_patch_without_step_leaves_draft_step_unchanged(client):
 
 def _use_tmp_bot_db(tmp_path, name="test_reg_step_done_bot.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_resume_from_draft_marker_finalizes_without_asking(tmp_path, monkeypatch):

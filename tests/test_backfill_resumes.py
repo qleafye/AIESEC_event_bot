@@ -12,6 +12,7 @@ import aiosqlite
 from config import config
 from database import db
 from scripts.backfill_resumes import select_pending_resumes
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -30,7 +31,7 @@ def _seed(telegram_id, reg_date="2026-01-01", **extra):
 
 def test_select_pending_resumes_picks_only_missing(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     # (a) has file, no url        -> PICKED
     _seed(1, resume_file_id="FILE_A")

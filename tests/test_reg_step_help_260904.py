@@ -18,11 +18,12 @@ import database.db as db
 import reg_engine
 from config import config
 from database.db import init_db
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_step_help_260904.db")
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 @pytest.mark.parametrize("step_key", ["vk", "phone", "email", "full_name", "age", "resume"])

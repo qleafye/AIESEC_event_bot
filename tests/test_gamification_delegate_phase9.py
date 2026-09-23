@@ -19,6 +19,7 @@ from database import db
 from handlers import user_actions as ua_mod
 from handlers.states import GameSubmit
 from keyboards.builders import get_main_menu_kb
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930901
@@ -28,7 +29,7 @@ STRANGER_ID = 930903
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_gamification_delegate_phase9.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

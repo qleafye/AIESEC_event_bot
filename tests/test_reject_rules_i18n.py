@@ -12,13 +12,14 @@ from config import config
 from database import db
 import services.reject_rules as rr
 from services.i18n import src_hash
+from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900200001
 
 
 def _ready(tmp_path, name="test_reject_rules_i18n.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
 
 

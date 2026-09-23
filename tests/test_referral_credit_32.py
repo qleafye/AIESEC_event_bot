@@ -24,11 +24,12 @@ from datetime import datetime
 from config import config
 from database import db
 from services import applications, referrals
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_referral_credit_32.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

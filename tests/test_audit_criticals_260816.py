@@ -21,6 +21,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import CapabilityMiddleware, required_capability
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900801
@@ -29,7 +30,7 @@ GAME_MANAGER_ID = 900803
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_audit_criticals.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

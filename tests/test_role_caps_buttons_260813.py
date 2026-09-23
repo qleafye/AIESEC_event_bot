@@ -17,6 +17,7 @@ from handlers import admin as admin_mod
 from handlers import admin_roles
 from handlers import admin_caps
 from handlers.admin_caps import ALL_CAPABILITIES, role_caps_key
+from tests._dbtpl import fast_init_db
 
 ROLE = "reg_manager"
 
@@ -49,7 +50,7 @@ class _FakeCallback:
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_forum.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _labels(markup):

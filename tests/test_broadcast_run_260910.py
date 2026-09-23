@@ -16,6 +16,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from config import config
 from database import db
 from services import broadcast_run as br
+from tests._dbtpl import fast_init_db
 
 
 def _isolate(tmp_path):
@@ -35,7 +36,7 @@ def test_full_run_writes_broadcast_row_and_deliveries(tmp_path, monkeypatch):
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "привет", 5)
 
         async def send_one(chat_id):
@@ -68,7 +69,7 @@ def test_album_send_one_returns_several_ids_one_row_each(tmp_path, monkeypatch):
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "[альбом x 3]", 1)
 
         async def send_one(chat_id):
@@ -92,7 +93,7 @@ def test_stop_before_third_iteration_sends_exactly_two(tmp_path, monkeypatch):
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "hi", 5)
         calls = []
 
@@ -126,7 +127,7 @@ def test_stop_is_addressed_by_broadcast_id(tmp_path, monkeypatch):
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid1 = await db.create_broadcast(1, "a", 3)
         bid2 = await db.create_broadcast(1, "b", 3)
         br.request_stop(bid1)
@@ -153,7 +154,7 @@ def test_forbidden_recipient_counts_blocked_and_does_not_crash(tmp_path, monkeyp
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "hi", 3)
 
         async def send_one(chat_id):
@@ -177,7 +178,7 @@ def test_retry_after_success_counts_delivered_not_blocked(tmp_path, monkeypatch)
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "hi", 1)
         attempts = {"n": 0}
 
@@ -218,7 +219,7 @@ def test_run_revoke_deletes_every_saved_pair_and_marks_revoked(tmp_path, monkeyp
     _fast_sleep(monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "hi", 3)
 
         async def send_one(chat_id):

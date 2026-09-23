@@ -12,11 +12,12 @@ from config import config
 from database import db
 from services import i18n
 from services.i18n_miniapp_manual import MANUAL_EN, ORIGIN, seed
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name="test_i18n_miniapp_manual.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_seed_applies_every_manual_entry(tmp_path):

@@ -45,12 +45,13 @@ from tests.test_miniapp_routes import (
     _use_tmp_db,
 )
 from tests.test_miniapp_form import _seed_draft, bot_api  # noqa: F401 -- фикстура, не вызов
+from tests._dbtpl import fast_init_db
 
 # ── Общие хелперы (приём tests/test_registration_send_guard_260816.py) ────────────────────
 
 def _db_ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _module_on():

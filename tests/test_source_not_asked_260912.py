@@ -15,6 +15,7 @@ import reg_options
 from config import config
 from database import db
 from reg_engine import with_defaults
+from tests._dbtpl import fast_init_db
 
 
 # ── with_defaults ────────────────────────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ def test_transport_options_untouched_by_source_rename():
 
 def _init_tmp_db(tmp_path, db_name="test_source_not_asked_260912.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_init_db_migrates_legacy_source_label_and_is_idempotent(tmp_path):
@@ -85,7 +86,7 @@ def test_init_db_migrates_legacy_source_label_and_is_idempotent(tmp_path):
             await conn.commit()
 
         # Повторный init_db — та самая точка, где живёт одноразовая нормализация.
-        await db.init_db()
+        fast_init_db()
 
         rows = {}
         async with db._connect() as conn:
@@ -118,7 +119,7 @@ def test_init_db_migration_is_idempotent_on_second_run(tmp_path):
             )
             await conn.commit()
 
-        await db.init_db()  # первый прогон после вставки — приводит подпись
+        fast_init_db()  # первый прогон после вставки — приводит подпись
 
         async with db._connect() as conn:
             cur = await conn.execute(

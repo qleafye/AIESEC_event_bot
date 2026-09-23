@@ -12,6 +12,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from services.nextcloud import _file_link, file_name_from_link, upload_resume, upload_text_resume
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -22,7 +23,7 @@ def _use_tmp_db(tmp_path):
 
 def test_resume_url_column_added(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     conn = sqlite3.connect(config.DB_PATH)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
     conn.close()
@@ -35,7 +36,7 @@ def test_resume_url_sheet_column_present(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_resume", "on")
         headers = await reg.active_sheet_headers()
         assert "Резюме (ссылка)" in headers
@@ -134,7 +135,7 @@ def test_add_user_preserves_resume_url(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({
             "telegram_id": 555,
             "full_name": "Res Ume",

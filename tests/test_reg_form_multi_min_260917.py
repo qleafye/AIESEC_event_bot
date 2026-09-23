@@ -14,11 +14,12 @@ from config import config
 from database import db
 import reg_engine
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_reg_form_multi_min_260917.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── multi_min_select: единая точка правды ───────────────────────────────────────────────────

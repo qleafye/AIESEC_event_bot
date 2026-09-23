@@ -42,6 +42,7 @@ from handlers.user_actions import reg_handoff_idle_fallback
 # reg_silence_fallback.router exactly once) is therefore not a style choice, it is the only
 # safe way to prove real cross-router dispatch for this module.
 from tests.test_refac_snapshot_260816 import _full_dispatcher, _spied
+from tests._dbtpl import fast_init_db
 
 UID = 841001
 ADMIN_UID = 841002
@@ -50,7 +51,7 @@ STAFF_UID = 841003
 
 def _use_tmp_db(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_UID]
 
 

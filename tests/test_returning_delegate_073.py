@@ -25,6 +25,7 @@ from handlers import registration as reg
 # Phase 13 REFAC (13-03): rereg_start moved to handlers/reg_flow.py.
 from handlers import reg_flow
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 UID = 800001
 OTHER_UID = 800002
@@ -140,7 +141,7 @@ def test_start_returning_shows_button(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'25")
 
@@ -160,7 +161,7 @@ def test_start_returning_uses_registry_text(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await db.set_setting("start_text_returning", "Привет, {season}! <b>снова</b> {tricky}")
         await _register(UID, "delegate", status="approved", season="YL'25")
@@ -180,7 +181,7 @@ def test_start_rejected_gets_button(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(UID, "delegate", status="rejected", season=None)
 
         msg = _KBCapturingMessage(UID, "delegate")
@@ -199,7 +200,7 @@ def test_start_current_season_parity(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'26")
 
@@ -219,7 +220,7 @@ def test_start_no_season_configured_parity(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(UID, "delegate", status="approved", season=None)
 
         msg = _KBCapturingMessage(UID, "delegate")
@@ -236,7 +237,7 @@ def test_start_returning_predicate_failure_is_soft(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(UID, "delegate", status="approved", season="YL'25")
 
         real_get_setting = reg.get_setting
@@ -265,7 +266,7 @@ def test_start_returning_preserves_deeplink(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'25")
         # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
@@ -291,7 +292,7 @@ def test_cmd_start_new_user_parity(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
 
         msg = _KBCapturingMessage(UID, "newbie")
@@ -312,7 +313,7 @@ def test_rereg_start_rejects_non_returning(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'26")
 
@@ -334,7 +335,7 @@ def test_rereg_start_rejects_unknown_user(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
 
         state = _new_state(OTHER_UID)
         callback = _FakeCallback("rereg_start", OTHER_UID, "ghost")
@@ -354,7 +355,7 @@ def test_rereg_start_snapshots_own_row_only(tmp_path):
     a_id, b_id = UID, OTHER_UID
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(a_id, "alice", status="rejected", season=None, full_name="Алиса Алисова")
         await _register(b_id, "bob", status="rejected", season=None, full_name="Борис Борисов")
 
@@ -376,7 +377,7 @@ def test_rereg_start_shows_city_fork(tmp_path):
     saved = list(cities_mod.CITIES)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         cities_mod.set_cities_for_test([
             {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
@@ -405,7 +406,7 @@ def test_rereg_start_city_module_off_no_city_screen(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(UID, "delegate", status="rejected", season=None)
 
         state = _new_state(UID)
@@ -427,7 +428,7 @@ def test_prior_answers_survives_state_clear(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         prior = {"telegram_id": UID, "full_name": "Прошлый Прошлов"}
         state = _new_state(UID)
         await state.update_data(_prior_answers=prior)
@@ -445,7 +446,7 @@ def test_prior_answers_not_in_incomplete_snapshot(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("consent_enabled", "on")
 
         recorded = []
@@ -493,7 +494,7 @@ def test_advance_summary_always_carries_confirm_keyboard(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "full")
         await _register(UID, "delegate", status="rejected", season=None)
         # work_status=0 (не 1): иначе включается доп. шаг "work_sphere", для которого нет

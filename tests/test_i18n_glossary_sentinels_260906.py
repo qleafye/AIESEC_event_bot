@@ -30,6 +30,7 @@ from services.i18n_glossary import (
     split_trailing_symbols,
     strip_gender_suffix,
 )
+from tests._dbtpl import fast_init_db
 
 
 # ── apply(): изолированный сентинел переживает косметический дрейф движка ──────────────────
@@ -224,7 +225,7 @@ def test_strip_gender_suffix_noop_when_absent():
 
 def _db_ready(tmp_path, name="test_i18n_glossary_sentinels_260906.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 class _EchoDriver:

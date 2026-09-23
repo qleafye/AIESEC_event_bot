@@ -5,13 +5,14 @@ import asyncio
 from config import config
 from database import db
 from services import i18n
+from tests._dbtpl import fast_init_db
 
 UID = 777001
 
 
 def _use_tmp_db(tmp_path):
     config.DB_PATH = str(tmp_path / "test_lang_before_user_row_260916.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_choice_is_kept_without_users_row(tmp_path):

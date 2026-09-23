@@ -18,6 +18,7 @@ from database import db
 from handlers import admin as admin_mod  # noqa: F401 -- seam-imports admin_gamification
 from handlers import admin_gamification
 import services.game_sheets as game_sheets
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 930991
 MANAGER_ID = 930992
@@ -42,7 +43,7 @@ def _city_registry():
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_city_tabs.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     config.EVENT_CITY_DEFAULT = "msk"
 

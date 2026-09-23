@@ -3,6 +3,7 @@ import asyncio
 
 import database.db as db
 import handlers.payment as pay
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -17,7 +18,7 @@ def test_parse_lc_requisites_skips_blank_and_pipeless():
 
 def test_resolve_uses_lc_card_case_insensitive(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_requisites", "ОБЩАЯ КАРТА"))
     asyncio.run(db.set_setting("payment_requisites_by_lc", "Moscow | КАРТА МСК"))
     asyncio.run(db.add_user({"telegram_id": 1, "full_name": "A B",
@@ -27,7 +28,7 @@ def test_resolve_uses_lc_card_case_insensitive(tmp_path):
 
 def test_resolve_falls_back_to_shared_when_lc_unmatched(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_requisites", "ОБЩАЯ КАРТА"))
     asyncio.run(db.set_setting("payment_requisites_by_lc", "Moscow | КАРТА МСК"))
     asyncio.run(db.add_user({"telegram_id": 2, "full_name": "A B",
@@ -37,7 +38,7 @@ def test_resolve_falls_back_to_shared_when_lc_unmatched(tmp_path):
 
 def test_resolve_falls_back_when_no_lc_map(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_requisites", "ОБЩАЯ КАРТА"))
     asyncio.run(db.add_user({"telegram_id": 3, "full_name": "A B",
                              "registration_date": "2026-07-01", "local_committee": "Moscow"}))

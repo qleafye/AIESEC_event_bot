@@ -17,7 +17,7 @@
 `prior_answers_for`+`has_prior_resume`/эквивалентное выражение из `_ask_step_or_recall`.
 
 БД поднимается по образцу `_ready(tmp_path)` из `tests/test_reg_resume_ttl_260820.py`
-(`config.DB_PATH = tmp_path/...` + `asyncio.run(init_db())`), pytest-asyncio недоступен —
+(`config.DB_PATH = tmp_path/...` + `fast_init_db()`), pytest-asyncio недоступен —
 async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
@@ -31,11 +31,12 @@ from reg_labels import REG_LABELS
 # Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
 # выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
 import reg_engine as SOURCE  # noqa: E402
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_engine_parity.db")
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 # ── Раздел prompts ───────────────────────────────────────────────────────────────────────────

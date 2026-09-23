@@ -20,13 +20,14 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers import reg_lang
+from tests._dbtpl import fast_init_db
 
 UID = 812001
 
 
 def _use_tmp_db(tmp_path, name="test_lang_switch_260912.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _enable_module():

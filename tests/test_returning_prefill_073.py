@@ -20,6 +20,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 UID = 810001
 OTHER_UID = 810002
@@ -129,7 +130,7 @@ def test_no_prior_answers_falls_through(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full")
@@ -145,7 +146,7 @@ def test_prior_empty_value_falls_through(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"university": "-"})
@@ -160,7 +161,7 @@ def test_prior_value_shows_recall_screen(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"university": "МГУ"})
@@ -180,7 +181,7 @@ def test_recall_screen_escapes_value(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"university": "<b>x</b>"})
@@ -197,7 +198,7 @@ def test_recall_bool_display(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"is_ambassador_candidate": 1})
@@ -217,7 +218,7 @@ def test_recall_stamps_dropout_step(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         stamped = []
         real_set_reg_step = reg.set_reg_step
 
@@ -241,7 +242,7 @@ def test_recall_ignore_text(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.set_state(Registration.recall_pending)
@@ -257,7 +258,7 @@ def test_consents_never_recalled(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("consent_enabled", "on")
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
@@ -279,7 +280,7 @@ def test_keep_writes_value_into_fsm(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", _prior_answers={"university": "МГУ"},
@@ -301,7 +302,7 @@ def test_keep_maps_aliased_columns(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full",
@@ -339,7 +340,7 @@ def test_keep_value_reaches_db(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             full_name="Тест Тестов", participant_type="full",
@@ -369,7 +370,7 @@ def test_change_asks_real_question(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", _prior_answers={"university": "МГУ"},
@@ -390,7 +391,7 @@ def test_stale_recall_tap_ignored(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", _prior_answers={"age": 20, "university": "МГУ"},
@@ -420,7 +421,7 @@ def test_resume_keep_restores_prior_into_fsm_and_survives_finalize(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # Seed a real prior DB row with resume_file_id="AAA".
         await _register(UID, "delegate", status="rejected", resume_file_id="AAA")
         msg = _KBCapturingMessage(UID, "delegate")
@@ -459,7 +460,7 @@ def test_resume_screen_hides_file_id(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"resume_file_id": "AAA"})
@@ -475,7 +476,7 @@ def test_resume_change_asks_upload(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", _prior_answers={"resume_file_id": "AAA"},
@@ -496,7 +497,7 @@ def test_resume_no_prior_asks_normally(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full")
@@ -529,7 +530,7 @@ def test_finalize_writes_current_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {})
         assert row["season"] == "YL'26"
@@ -541,7 +542,7 @@ def test_finalize_new_delegate_no_prev_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {})
         assert row["prev_season"] is None
@@ -553,7 +554,7 @@ def test_finalize_returning_sets_prev_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25"}})
         assert row["prev_season"] == "YL'25"
@@ -565,7 +566,7 @@ def test_finalize_returning_legacy_prev_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {"_prior_answers": {"season": None}})
         assert row["prev_season"] == "legacy"
@@ -577,7 +578,7 @@ def test_finalize_resets_payment_on_new_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="approved", season="YL'25")
         await db.update_payment_status(UID, "receipt_sent")
@@ -597,7 +598,7 @@ def test_finalize_keeps_payment_same_season(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         await _register(UID, "delegate", status="rejected", season="YL'26")
         await db.update_payment_status(UID, "receipt_sent")
@@ -614,7 +615,7 @@ def test_finalize_no_season_configured(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register(UID, "delegate", status="approved", season="YL'25")
         await db.update_payment_status(UID, "receipt_sent")
         await db.update_payment_status(UID, "paid", payment_option="full")
@@ -631,7 +632,7 @@ def test_finalize_does_not_inherit_referrer(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_season", "YL'26")
         row = await _run_finalize(UID, {"_prior_answers": {"season": "YL'25", "referrer_id": 777}})
         assert row.get("referrer_id") != 777
@@ -643,7 +644,7 @@ def test_finalize_season_resolve_failure_is_soft(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
 
         real_get_setting = reg.get_setting
 
@@ -667,7 +668,7 @@ def test_full_name_recall_screen_for_returning(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await state.update_data(participant_type="full", _prior_answers={"full_name": "Иванов Иван"})
@@ -687,7 +688,7 @@ def test_full_name_newcomer_asks_directly(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _KBCapturingMessage(UID, "delegate")
         state = _new_state(UID)
         await reg._ask_full_name(msg, state)
@@ -701,7 +702,7 @@ def test_full_name_keep_writes_fsm_and_continues_to_first_step(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # хотя бы один включённый вопрос трека -> после «Оставить» должен пойти первый шаг
         await db.set_setting("reg_q_age", "on")
         state = _new_state(UID)
@@ -726,7 +727,7 @@ def test_full_name_change_asks_plain_question(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", _prior_answers={"full_name": "Иванов Иван"},

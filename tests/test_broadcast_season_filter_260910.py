@@ -28,6 +28,7 @@ import json
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 # ── Задача 1: «SQL» — whitelist, ветка _build_filter_clause, SEASON_NONE ───────────────
@@ -96,7 +97,7 @@ def _seed_season_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_season_filter_260910.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         rows = [
             (1, "YL 26/2"), (2, "YL 26/2"), (3, "YL 26/2"),
             (4, "YL 26/1"), (5, "YL 26/1"),
@@ -141,7 +142,7 @@ def test_get_season_filter_options_no_legacy_rows_no_sentinel(tmp_path):
     config.DB_PATH = str(tmp_path / "test_season_filter_no_legacy_260910.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({
             "telegram_id": 1, "full_name": "User 1",
             "registration_date": "2026-01-01 09:00:00", "season": "YL 26/2",
@@ -158,7 +159,7 @@ def test_get_season_filter_options_no_legacy_rows_no_sentinel(tmp_path):
 
 def test_get_season_filter_options_empty_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_season_filter_empty_260910.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     assert asyncio.run(db.get_season_filter_options()) == []
 
 
@@ -233,7 +234,7 @@ def _seed_users(tmp_path, dbname, rows):
     config.ADMIN_IDS = [ADMIN_ID]
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for tid, season in rows:
             await db.add_user({
                 "telegram_id": tid,

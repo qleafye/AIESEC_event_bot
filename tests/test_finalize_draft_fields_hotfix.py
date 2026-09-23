@@ -17,6 +17,7 @@ import asyncio
 from config import config
 from database import db
 from services import reg_finalize as rf
+from tests._dbtpl import fast_init_db
 
 UID_A = 900800200
 UID_B = 900800201
@@ -25,7 +26,7 @@ UID_C = 900800202
 
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_finalize_data_new_pulls_city_track_source_referrer_from_draft(tmp_path, monkeypatch):

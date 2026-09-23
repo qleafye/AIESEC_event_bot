@@ -11,7 +11,7 @@
 
 Стиль и конвенции скопированы из tests/test_timezone_fix_260816.py:
 - pytest-asyncio в окружении нет -> каждый async-вызов гоняется через asyncio.run().
-- config.DB_PATH указывает на tmp_path-файл, БД поднимается через asyncio.run(db.init_db()).
+- config.DB_PATH указывает на tmp_path-файл, БД поднимается через fast_init_db().
 - Импорт в правимой функции ЛОКАЛЬНЫЙ (внутри _schedule_deadline_reminders), поэтому
   патчатся атрибуты МОДУЛЯ services.scheduler (sched_mod._now_moscow_naive /
   sched_mod.schedule_payment_reminder) — не атрибуты handlers.payment, там их просто нет.
@@ -29,13 +29,14 @@ from database.db import add_user, set_setting
 
 import services.scheduler as sched_mod
 import handlers.payment as pay
+from tests._dbtpl import fast_init_db
 
 TELEGRAM_ID = 260817001
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_payment_tz_260817.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _seed_user(telegram_id: int = TELEGRAM_ID):

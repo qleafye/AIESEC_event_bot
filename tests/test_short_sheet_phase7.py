@@ -11,6 +11,7 @@ import inspect
 from config import config
 from database import db
 from handlers import registration as reg
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -23,7 +24,7 @@ def test_short_sheet_headers_width_follows_short_gate_only(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         # Global toggles deliberately set OPPOSITE of the short-set below — proves isolation:
         # if short_sheet_headers ever fell back to the global gate, phone/city would vanish
         # and alumni_status would appear instead.
@@ -46,7 +47,7 @@ def test_short_sheet_headers_zero_keys_is_system_only(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg.short_sheet_headers()
 
     headers = asyncio.run(go())
@@ -62,7 +63,7 @@ def test_short_sheet_row_keeps_formula_look_alike_raw(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         headers = await reg.short_sheet_headers()
         data = {
             "telegram_id": 1, "username": "@x", "registration_date": "2026-08-07 10:00:00",
@@ -151,7 +152,7 @@ def test_append_to_short_sheet_uses_default_tab_when_unset(tmp_path, monkeypatch
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await reg.append_to_short_sheet([1, 2, 3])
 
     asyncio.run(go())
@@ -168,7 +169,7 @@ def test_append_to_short_sheet_uses_configured_tab(tmp_path, monkeypatch):
     monkeypatch.setattr(reg, "append_to_named_sheet", fake_append)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("short_sheet_tab", "Акция")
         await reg.append_to_short_sheet([1, 2, 3])
 
@@ -190,7 +191,7 @@ def test_maybe_ensure_short_sheet_header_noop_when_mode_full(tmp_path, monkeypat
     monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "full")
         await main._maybe_ensure_short_sheet_header()
 
@@ -210,7 +211,7 @@ def test_maybe_ensure_short_sheet_header_calls_ensure_once_when_mode_short(tmp_p
     monkeypatch.setattr(main.sheets_service, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await main._maybe_ensure_short_sheet_header()
 
@@ -227,7 +228,7 @@ def test_active_sheet_headers_unchanged_by_short_toggles(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         before = await reg.active_sheet_headers()
         await db.set_setting("reg_q_phone__short", "on")
         await db.set_setting("reg_q_city__short", "on")

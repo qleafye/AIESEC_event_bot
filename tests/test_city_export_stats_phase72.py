@@ -18,6 +18,7 @@ from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930101
@@ -30,7 +31,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

@@ -15,6 +15,7 @@ from database import db
 from handlers import registration as reg
 from handlers import reg_lang
 from keyboards.builders import get_main_menu_kb
+from tests._dbtpl import fast_init_db
 
 UID = 810001
 OTHER_UID = 810002
@@ -22,7 +23,7 @@ OTHER_UID = 810002
 
 def _use_tmp_db(tmp_path, name="test_i18n_lang_27.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _enable_module(ask_on_start="on"):

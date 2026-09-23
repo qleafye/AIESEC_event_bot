@@ -31,6 +31,7 @@ from tests.test_miniapp_routes import (
     _standard_seed,
     _use_tmp_db as _use_tmp_route_db,
 )
+from tests._dbtpl import fast_init_db
 
 PHOTO_ID = "AgACAgIAAxkBAAIavatarSmall01"
 BIG_PHOTO_ID = "AgACAgIAAxkBAAIavatarBig0001"
@@ -88,7 +89,7 @@ class FakePhotos:
 
 def test_cached_avatar_skips_bot_api(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4901)
     _run(db.set_user_avatar(4901, PHOTO_ID, "2026-09-01 00:00:00"))
     fake = FakePhotos()
@@ -103,7 +104,7 @@ def test_cached_avatar_skips_bot_api(tmp_path, monkeypatch):
 
 def test_empty_cache_fetches_and_caches_smallest_size(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4902)
     fake = FakePhotos(photos=_photo_response())
     monkeypatch.setattr(telegram_api, "get_user_profile_photos", fake)
@@ -119,7 +120,7 @@ def test_empty_cache_fetches_and_caches_smallest_size(tmp_path, monkeypatch):
 
 def test_second_call_reuses_cache_without_new_bot_api_call(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4903)
     fake = FakePhotos(photos=_photo_response())
     monkeypatch.setattr(telegram_api, "get_user_profile_photos", fake)
@@ -136,7 +137,7 @@ def test_second_call_reuses_cache_without_new_bot_api_call(tmp_path, monkeypatch
 
 def test_no_photos_returns_none_and_caches_negative_result(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4904)
     fake = FakePhotos(photos=[], total_count=0)
     monkeypatch.setattr(telegram_api, "get_user_profile_photos", fake)
@@ -153,7 +154,7 @@ def test_no_photos_returns_none_and_caches_negative_result(tmp_path, monkeypatch
 
 def test_negative_cache_is_not_rechecked_within_ttl(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4905)
     fake = FakePhotos(photos=[], total_count=0)
     monkeypatch.setattr(telegram_api, "get_user_profile_photos", fake)
@@ -171,7 +172,7 @@ def test_negative_cache_is_not_rechecked_within_ttl(tmp_path, monkeypatch):
 
 def test_telegram_api_error_returns_none_without_caching(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    _run(db.init_db())
+    fast_init_db()
     _seed_user(4906)
     fake_error = FakePhotos(error=True)
     monkeypatch.setattr(telegram_api, "get_user_profile_photos", fake_error)

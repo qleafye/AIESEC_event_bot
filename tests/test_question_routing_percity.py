@@ -23,6 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 920201
 MSK_MANAGER_ID = 920202
@@ -33,7 +34,7 @@ DELEGATE_ID = 920205
 
 def _roles_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_question_routing_percity.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

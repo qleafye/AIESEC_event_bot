@@ -19,6 +19,7 @@ from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
 from cities import CITIES
 import cities as cities_mod
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900101
@@ -31,7 +32,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -203,7 +204,7 @@ def test_render_cities_text_has_deep_link_and_label_escaped(tmp_path):
 
 def test_get_incomplete_rows_with_city_returns_six_tuple(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     async def go():
         await db.mark_reg_started(1, "vasya", event_city="spb")
@@ -223,7 +224,7 @@ def test_get_incomplete_rows_with_city_returns_six_tuple(tmp_path):
 def test_get_incomplete_rows_unaffected_still_five_tuple(tmp_path):
     """get_incomplete_rows() itself must stay untouched — existing tests rely on the 5-tuple."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     async def go():
         await db.mark_reg_started(1, "vasya", event_city="spb")
@@ -239,7 +240,7 @@ def test_incomplete_city_batches_module_off_collapses_to_single_default_tab(tmp_
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "off")
         await db.mark_reg_started(1, "a", event_city="msk")
         await db.mark_reg_started(2, "b", event_city="spb")
@@ -258,7 +259,7 @@ def test_incomplete_city_batches_module_on_splits_msk_and_spb(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.mark_reg_started(1, "a", event_city="msk")
         await db.mark_reg_started(2, "b", event_city="spb")
@@ -277,7 +278,7 @@ def test_incomplete_city_batches_default_tab_present_even_when_empty(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.mark_reg_started(2, "b", event_city="spb")
 
@@ -294,7 +295,7 @@ def test_incomplete_city_batches_null_event_city_goes_to_default_tab(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.mark_reg_started(1, "a")  # no event_city -> NULL in reg_started
 
@@ -316,7 +317,7 @@ def test_incomplete_city_batches_headers_shared_across_batches(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.mark_reg_started(1, "a", event_city="msk")
         await db.mark_reg_started(2, "b", event_city="spb")
@@ -334,7 +335,7 @@ def test_incomplete_city_batches_empty_non_default_city_tab_never_materialized(t
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
 
         batches = await reg_mod.incomplete_city_batches()

@@ -292,6 +292,7 @@ from handlers import admin_sections as sec
 from handlers import admin_settings
 from handlers import admin_modcard
 from handlers.admin_caps import ADMIN_CAPS
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path):
@@ -299,7 +300,7 @@ def _db_ready(tmp_path):
     from database import db
 
     config.DB_PATH = str(tmp_path / "test_app_card_fields_260902.db")
-    _run(db.init_db())
+    fast_init_db()
 
 
 class _FakeUser:
