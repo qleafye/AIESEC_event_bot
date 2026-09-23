@@ -685,6 +685,7 @@ ADMIN_CAPS: dict[str, str] = {
     "settings_toggle_short_approval": "settings",
     "state:EditSetting:*": "settings",
     "state:StaffAdd:*": "settings",
+    "toggle_checkin_qr_enabled": "settings",  # Квик 260923 (форум-чекин)
     "toggle_consent_enabled": "settings",
     "toggle_consent_recollect": "settings",
     "toggle_delegate_lang_enabled": "settings",  # Phase 27
