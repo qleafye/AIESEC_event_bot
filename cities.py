@@ -20,6 +20,7 @@ Design (mirrors settings_schema.py's one-directional dependency, D-01):
 import logging
 import re
 import time
+from datetime import datetime
 
 from config import config
 from database.db import (
@@ -27,6 +28,10 @@ from database.db import (
     list_cities_rows, count_cities, insert_city,
 )
 from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+# Квик 260923-p37 (D-02): импорт МОДУЛЬНЫМ именем (не `from services.timeutil import msk_now as
+# _msk_now`) — тест закрытия города монки-патчит именно `cities.msk_now`, чтобы заморозить
+# «сейчас» без правки системных часов.
+from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +316,49 @@ async def enabled_cities() -> list[dict]:
     out = []
     for c in CITIES:
         if await is_city_enabled(c["code"]):
+            out.append(c)
+    return out
+
+
+# ── Квик 260923-p37 (CITY-REG-CLOSE): закрытие регистрации на город по дате ─────────────────
+#
+# `is_city_registration_open`/`open_cities` — ОТДЕЛЬНАЯ функция-правда от `enabled_cities`/
+# `is_city_enabled` выше: те обслуживают админку, контент-тексты и рассылки, где закрытый по
+# дате город обязан оставаться видимым (менеджер продолжает его администрировать, делегат
+# закрытого города продолжает получать свои per-city тексты) — их семантика этим квиком не
+# меняется НИ СТРОКОЙ. Эта пара — то, что видит НОВЫЙ делегат: развилка выбора города при
+# /start и deep-link `?start=city_{code}` на конкретный город.
+
+async def city_reg_close_date(code: str) -> datetime | None:
+    """Дата закрытия регистрации на город (`city_reg_close_date`, per-city, тип date_only) —
+    `None`, если не задана. Fail-open (T-p37-05): если сохранённое значение почему-то не
+    datetime (не должно случиться — `_parse_setting`/`validate_setting_value` уже гарантируют
+    формат, но резолвер городов не полагается на это молча), город считается НЕ закрытым, а не
+    закрытым «по умолчанию» — опечатка менеджера не должна тихо заблокировать регистрацию."""
+    value = await get_setting_typed_for_city("city_reg_close_date", code)
+    return value if isinstance(value, datetime) else None
+
+
+async def is_city_registration_open(code: str) -> bool:
+    """Функция-правда «открыт ли город для НОВОЙ подачи» (D-02/D-03). `False`, если город
+    выключен (`is_city_enabled`) — выключение по-прежнему сильнее любой даты. `False`, если
+    задана `city_reg_close_date` и `msk_now() >= эта дата` — дата хранится как полночь дня
+    (`_parse_setting` для date_only не несёт времени), поэтому сравнение «>=» и есть «закрылось
+    ровно в 00:00 указанного дня по Москве». Иначе `True`."""
+    if not await is_city_enabled(code):
+        return False
+    close_date = await city_reg_close_date(code)
+    if close_date is not None and msk_now() >= close_date:
+        return False
+    return True
+
+
+async def open_cities() -> list[dict]:
+    """`CITIES` в их порядке, отфильтрованные `is_city_registration_open` — развилка выбора
+    города и deep-link на конкретный город читают ЭТУ функцию, не `enabled_cities()`."""
+    out = []
+    for c in CITIES:
+        if await is_city_registration_open(c["code"]):
             out.append(c)
     return out
 
