@@ -38,9 +38,10 @@
 """
 import html
 import logging
+from datetime import timedelta
 
 from cities import cities_module_on, city_label, city_scope, enabled_cities
-from database.db import daily_digest_stats, get_display_names
+from database.db import auto_reject_summary, daily_digest_stats, get_display_names
 from settings_schema import get_setting_typed
 from services.timeutil import msk_now
 
@@ -81,8 +82,13 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
                       city_title: str | None = None) -> str | None:
     """Готовый HTML сводки, или None, если оба раздела пусты (тогда не шлём вовсе).
 
-    Имена экранируются здесь, не у вызывающего."""
-    apps_active = any(stats[k] for k in ("apps_new", "apps_approved", "apps_rejected"))
+    Имена экранируются здесь, не у вызывающего. Квик 260923 (D-A): `stats["auto_rejected"]`/
+    `stats["auto_reject_rules"]` — хвостовые ключи с дефолтом 0/[] (`.get`, не `[...]`),
+    существующие вызывающие без них получают байт-в-байт прежний текст. Блок заявок считается
+    активным и когда день целиком состоял из одних автоотказов (менеджеру важно узнать, что
+    правила поработали, даже если ни одного решения человек не принимал)."""
+    auto_rejected = stats.get("auto_rejected", 0)
+    apps_active = any(stats[k] for k in ("apps_new", "apps_approved", "apps_rejected")) or bool(auto_rejected)
     game_active = any(stats[k] for k in ("game_submissions", "game_reviewed", "coins_awarded"))
     if not apps_active and not game_active:
         return None
@@ -100,6 +106,10 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
         for manager_id, approved, rejected in stats["app_managers"][:MAX_ROWS]:
             who = html.escape(manager_name(manager_id, names))
             lines.append(f"   {who} — {approved} ✅ / {rejected} ❌")
+        if auto_rejected:
+            lines.append(f"🤖 Автоотказ: {auto_rejected}")
+            for rule_name, count in stats.get("auto_reject_rules", [])[:MAX_ROWS]:
+                lines.append(f"   «{html.escape(str(rule_name))}» — {count}")
     else:
         lines.append(f"📋 Заявки: сегодня тихо, ждут {stats['apps_pending']}")
 
@@ -171,6 +181,21 @@ async def send_city_digest(bot, city: str | None) -> int:
     except Exception as e:
         logger.error(f"daily_digest: stats for {city!r} failed: {e}")
         return 0
+
+    # Квик 260923 (D-A): честные цифры автоотказа — отдельно от decided_by. Гейт
+    # reject_rules_enabled — событие без модуля автоотказа не тратит запрос впустую, и стата
+    # остаётся дефолтной (0/[]) для build_digest_text.
+    if await get_setting_typed("reject_rules_enabled"):
+        try:
+            since = f"{day} 00:00:00"
+            until_day = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            count, rules = await auto_reject_summary(
+                since=since, until=f"{until_day} 00:00:00", city_scope=city_scope(city),
+            )
+            stats["auto_rejected"] = count
+            stats["auto_reject_rules"] = rules
+        except Exception as e:
+            logger.warning(f"daily_digest: auto_reject_summary for {city!r} failed: {e}")
 
     manager_ids = [m[0] for m in stats["app_managers"]] + [m[0] for m in stats["game_managers"]]
     try:

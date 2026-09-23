@@ -5188,6 +5188,169 @@ async def export_auto_reject_log_rows(*, city_scope=None) -> tuple[list[str], li
     return headers, out_rows
 
 
+# ── Квик 260923 (AUTOREJ-REPORT): честные цифры автоотказа для отчётности менеджерам ─────────
+#
+# Одна общая функция вместо трёх мест, где отдельно считали «сколько людей отсеяли правила»:
+# «Итоги дня» (D-A), сводка ожидания (D-B) и пачка уведомлений (D-D) — у всех троих одна и та
+# же форма ответа (число людей + разбивка по правилам), различаются только фильтры. Имена
+# правил — намеренно СВОЯ копия логики `dashboard.queries._reject_rule_labels` (имя правила ->
+# первые 6 слов текста отказа -> «Правило без названия»): `database/db.py` не имеет права
+# импортировать `dashboard/*` (разные процессы, dashboard — read-only читатель этого файла).
+
+async def auto_reject_summary(*, since: str | None = None, until: str | None = None,
+                               telegram_ids: list[int] | None = None, city_scope=None,
+                               live_only: bool = True) -> tuple[int, list[tuple[str, int]]]:
+    """Число людей + разбивка «какое правило сколько отсеяло» (по убыванию) по строкам
+    `auto_reject_log`.
+
+    `live_only=True` (дефолт, «Итоги дня»/сводка ожидания) — строка ЕЩЁ живая
+    (`returned_to_moderation_at IS NULL`) И делегат всё ещё `status='rejected'` (сам поправивший
+    анкету делегат больше не считается, D-H). `live_only=False` (пачка уведомлений, D-D) — счёт
+    идёт по переданным `telegram_ids` независимо от текущего статуса: к моменту отправки пачки
+    менеджер мог уже вернуть заявку из журнала, но пачка описывает то, что произошло НА
+    ПОСТАНОВКЕ (тот же принцип, что у `services.reg_digest.send_reg_digest`).
+
+    `since`/`until` фильтруют `last_triggered_at` в полуинтервале `[since, until)`.
+    `telegram_ids=[]` (пустой список, не `None`) -> `(0, [])` без обращения к БД — пачка без
+    автоотказов не имеет права ходить в БД зря. Битая строка `rule_ids` пропускается (fail-soft,
+    тот же приём, что у `dashboard.queries.auto_reject_breakdown`)."""
+    if telegram_ids is not None and not telegram_ids:
+        return 0, []
+
+    conditions: list[str] = []
+    params: list = []
+    if live_only:
+        conditions.append("l.returned_to_moderation_at IS NULL")
+        conditions.append("u.status = 'rejected'")
+    if since is not None:
+        conditions.append("l.last_triggered_at >= ?")
+        params.append(since)
+    if until is not None:
+        conditions.append("l.last_triggered_at < ?")
+        params.append(until)
+    if telegram_ids is not None:
+        placeholders = ", ".join("?" for _ in telegram_ids)
+        conditions.append(f"l.telegram_id IN ({placeholders})")
+        params.extend(telegram_ids)
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        conditions.append(city_frag)
+        params.extend(city_params)
+    where_sql = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT l.telegram_id, l.rule_ids FROM auto_reject_log l "
+            f"JOIN users u ON u.telegram_id = l.telegram_id{where_sql}",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+        async with db.execute(
+            "SELECT id, name, reject_text FROM reject_rules"
+        ) as cursor:
+            rule_rows = await cursor.fetchall()
+
+    labels: dict[int, str] = {}
+    for r in rule_rows:
+        name = (r["name"] or "").strip()
+        if name:
+            labels[r["id"]] = name
+            continue
+        text = (r["reject_text"] or "").strip()
+        labels[r["id"]] = " ".join(text.split()[:6]) if text else "Правило без названия"
+
+    people_ids: set[int] = set()
+    counter: dict[str, int] = {}
+    for row in rows:
+        people_ids.add(row["telegram_id"])
+        try:
+            rule_ids = json.loads(row["rule_ids"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(rule_ids, list):
+            continue
+        for rid in rule_ids:
+            try:
+                rid = int(rid)
+            except (TypeError, ValueError):
+                continue
+            label = labels.get(rid, "Правило без названия")
+            counter[label] = counter.get(label, 0) + 1
+
+    ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    return len(people_ids), ranked
+
+
+async def auto_reject_sheet_rows() -> tuple[list[str], list[list]]:
+    """D-E: шапка + строки живых автоотклонённых для вкладки «🤖 Автоотказы» (полная
+    перезапись, `services.sheets.sync_named_worksheet`). Живая строка = не возвращена журналом
+    И делегат всё ещё `status='rejected'` — та же дисциплина, что у `auto_reject_summary`
+    (`live_only=True`)/`dashboard.queries.auto_reject_breakdown` (D-H). Правила — человеческими
+    именами (та же логика имён, что в `auto_reject_summary` выше), ID правил в выгрузку не
+    попадают. Город — код (`u.event_city`), человеческую подпись подставляет вызывающая джоба
+    (`services/scheduler.py`, у неё есть `cities`, этот файл его не импортирует). Все строковые
+    ячейки — через `_csv_safe` (T-en3-01, CWE-1236)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT u.full_name, u.username, u.phone, u.email, u.event_city, u.university, "
+            "u.course, l.rule_ids, l.reject_texts, l.first_triggered_at, l.last_triggered_at, "
+            "l.attempt_count, l.telegram_id "
+            "FROM auto_reject_log l JOIN users u ON u.telegram_id = l.telegram_id "
+            "WHERE l.returned_to_moderation_at IS NULL AND u.status = 'rejected' "
+            "ORDER BY l.last_triggered_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        async with db.execute(
+            "SELECT id, name, reject_text FROM reject_rules"
+        ) as cursor:
+            rule_rows = await cursor.fetchall()
+
+    labels: dict[int, str] = {}
+    for r in rule_rows:
+        name = (r["name"] or "").strip()
+        if name:
+            labels[r["id"]] = name
+            continue
+        text = (r["reject_text"] or "").strip()
+        labels[r["id"]] = " ".join(text.split()[:6]) if text else "Правило без названия"
+
+    headers = [
+        "ФИО", "Ник", "Телефон", "Почта", "Город", "Вуз", "Курс", "Правила",
+        "Текст отказа", "Первое срабатывание", "Последнее срабатывание", "Попыток",
+        "Telegram ID",
+    ]
+    out_rows: list[list] = []
+    for row in rows:
+        try:
+            rule_ids = json.loads(row["rule_ids"])
+        except (TypeError, ValueError):
+            rule_ids = []
+        if not isinstance(rule_ids, list):
+            rule_ids = []
+        rule_names = []
+        for rid in rule_ids:
+            try:
+                rid = int(rid)
+            except (TypeError, ValueError):
+                continue
+            rule_names.append(labels.get(rid, "Правило без названия"))
+        try:
+            reject_texts = json.loads(row["reject_texts"])
+            if not isinstance(reject_texts, list):
+                reject_texts = []
+        except (TypeError, ValueError):
+            reject_texts = []
+        out_rows.append([_csv_safe(cell) for cell in (
+            row["full_name"], row["username"], row["phone"], row["email"], row["event_city"],
+            row["university"], row["course"], ", ".join(rule_names), " / ".join(reject_texts),
+            row["first_triggered_at"], row["last_triggered_at"], row["attempt_count"],
+            row["telegram_id"],
+        )])
+    return headers, out_rows
+
+
 # ── Phase 9 (GAME-01/02/03): task model + submission queue ──────────────────────────────────
 #
 # GAME_CATEGORIES (D-06) — a single classification axis, no RESULT/INTERACTIVE/NETWORK track
@@ -7373,10 +7536,17 @@ async def daily_digest_stats(day: str, *, city_scope=None) -> dict:
             stats["apps_pending"] = (await cursor.fetchone())[0] or 0
 
         per_manager: dict[int, list[int]] = {}
+        # Квик 260923: сентинел автоотказа (`services.reject_journal.AUTO_DECIDED_BY == -1`)
+        # не менеджер — `d.decided_by > 0` убирает автоотказ И из этой выборки (per_manager),
+        # И из `stats["apps_rejected"]` (она считается из тех же строк ниже) разом: менеджер
+        # больше не видит строку «менеджер #-1» и «отклонено» больше не путает решение
+        # человека со срабатыванием правила (D-A). Честные цифры автоотказа — отдельно, через
+        # `auto_reject_summary` (см. ниже по файлу).
         async with db.execute(
             "SELECT d.decided_by, d.decision, COUNT(*) FROM application_decisions d "
             "JOIN users u ON u.telegram_id = d.telegram_id "
-            "WHERE substr(d.decided_at, 1, 10) = ? AND d.undone_at IS NULL" + join_where +
+            "WHERE substr(d.decided_at, 1, 10) = ? AND d.undone_at IS NULL "
+            "AND d.decided_by > 0" + join_where +
             " GROUP BY d.decided_by, d.decision", [day, *city_params],
         ) as cursor:
             for decided_by, decision, count in await cursor.fetchall():
