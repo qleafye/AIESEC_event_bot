@@ -70,6 +70,9 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📜 Журнал монет", "admin_coins_journal"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
+    # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +
+    # загрузка выгрузки офлайн-сканера (handlers/admin_checkin.py).
+    ("✅ Отметки на форуме", "admin_checkin"),
 ]
 
 

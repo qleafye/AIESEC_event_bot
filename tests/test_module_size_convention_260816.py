@@ -413,7 +413,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "Потолок опущен 945->925 тем же днём: `_notify_manual_coins` переехала в "
         "`services/coins_notify.py` (её же зовёт разборщик outbox'а Mini App — ручные монеты "
         "из приложения делегату не приходили вовсе), здесь остался реэкспорт под прежним "
-        "именем (939 -> 910) — потолок по фактическому размеру + ~1.5%.",
+        "именем (939 -> 910) — потолок по фактическому размеру + ~1.5%. "
+        "Phase 12 (FORUM-CHECKIN.md): +6 строк — шов-импорт `from handlers import "
+        "admin_checkin` («✅ Отметки на форуме») в самый хвост файла, после admin_purge "
+        "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
         1830,
@@ -484,7 +487,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1064,
+        1069,
+        "Phase 12 (FORUM-CHECKIN.md): +5 строк (7 добавлено, 2 удалено — заменён комментарий-"
+        "заглушка) — capability-записи раздела «✅ Отметки на форуме» (admin_checkin/"
+        "checkin_upload_start/checkin_point:*/state:CheckinImport:*, своя капа `checkin` — "
+        "первые реальные ключи для неё, раньше существовала в ALL_CAPABILITIES/ROLES без "
+        "единой строки меню); 1064 -> 1069. "
         "Квик 260923-p37 (QR чек-ина, задача 3): +1 строка — capability-запись "
         "toggle_checkin_qr_enabled (settings — та же капа, что её соседи "
         "toggle_chat_tracking_enabled/toggle_delegate_lang_enabled); 1063 -> 1064. "

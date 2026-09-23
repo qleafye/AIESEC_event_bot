@@ -609,6 +609,10 @@ admin|message|poll_question_step|state:PollCreate:*
 admin|message|poll_options_step|state:PollCreate:*
 admin|message|poll_schedule_when|state:PollCreate:*
 admin|message|cmd_delete_user|cmd:delete_user
+admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
+admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
+admin|message|checkin_import_file_step|state:CheckinImport:*
+admin|message|checkin_import_file_invalid|state:CheckinImport:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -994,6 +998,9 @@ admin|callback_query|poll_send_now|poll_send_now
 admin|callback_query|poll_schedule_start|poll_schedule
 admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
+admin|callback_query|show_admin_checkin|admin_checkin
+admin|callback_query|checkin_upload_start|checkin_upload_start
+admin|callback_query|checkin_point_pick|checkin_point:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1374,7 +1381,20 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_wave_rating_show_names — чистая вставка, пересчитано `_build_snapshot_lines()` и
     # сверено diff'ом с прежним 615-строчным снимком: ровно одна вставка из 1 строки, 0
     # удалений, 0 реордеров (615 -> 616).
-    assert len(GOLDEN_SNAPSHOT) == 616
+    # Phase 12 (FORUM-CHECKIN.md, раздел «✅ Отметки на форуме»): +7 handlers/admin_checkin.py —
+    # шов импортируется из ХВОСТА handlers/admin.py (после admin_purge), поэтому все его
+    # хендлеры встают в самый хвост СВОЕГО observer-блока: +4 admin.message
+    # (cancel_checkin_import — два декоратора, Command("cancel")/F.text=="Отмена", значит два
+    # отдельных registration-объекта на одну функцию; checkin_import_file_step;
+    # checkin_import_file_invalid), встали сразу после cmd_delete_user и перед первым
+    # callback_query-хендлером admin.router (show_admin_stats); +3 admin.callback_query
+    # (show_admin_checkin/checkin_upload_start/checkin_point_pick), встали в самый хвост
+    # callback_query-блока admin.router, сразу после delete_user_cancel и перед первым
+    # хендлером payment.router (616 -> 623). Пересчитано RUNNING `_build_snapshot_lines()` и
+    # сверено diff'ом (difflib.SequenceMatcher) с прежним 616-строчным снимком: ровно две
+    # вставки (4 строки в message-блоке, 3 строки в callback_query-блоке), 0 удалений, 0
+    # реордеров.
+    assert len(GOLDEN_SNAPSHOT) == 623
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
