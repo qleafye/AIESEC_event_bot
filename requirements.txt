@@ -7,6 +7,9 @@ gspread>=6.0,<7.0
 google-auth
 apscheduler==3.11.2
 sqlalchemy>=2.0,<3.0
+# Квик 260923 (форум-чекин, D-01/D-04): персональный QR делегата для отметки на форуме.
+# Чистый Python, PNG без Pillow — не тянет системные библиотеки рендеринга изображений.
+segno
 
 # Phase 27 (27-03, LANG-04/LANG-10): встроенный драйвер перевода делегатской анкеты
 # (services/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -1418,6 +1419,20 @@ async def init_db():
                 "UPDATE users SET source = ? WHERE source = ?",
                 (reg_options.SOURCE_NOT_ASKED, reg_options.SOURCE_NOT_ASKED_LEGACY),
             )
+
+        # Квик 260923 (форум-чекин, D-01): персональный QR для отметки на форуме. Колонка
+        # аддитивная (_ensure_column — существующие записи не трогает), значение НЕ бэкафилится:
+        # генерируется лениво при первом запросе QR (get_or_create_checkin_token ниже), поэтому
+        # у делегата, ни разу не открывавшего «🎟 Мой QR», колонка остаётся NULL. Частичный
+        # уникальный индекс (WHERE checkin_token IS NOT NULL) — тот же приём, что у
+        # idx_auto_reject_log_live выше: NULL не участвует в уникальности, а не-NULL значения
+        # обязаны различаться (страховка от коллизии secrets.token_urlsafe на уровне схемы, не
+        # только по вероятности).
+        await _ensure_column(db, "users", "checkin_token", "TEXT")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_checkin_token "
+            "ON users(checkin_token) WHERE checkin_token IS NOT NULL"
+        )
 
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
@@ -7688,3 +7703,58 @@ async def get_display_names(ids) -> dict[int, str]:
                 int(row[0]): row[1] for row in await cursor.fetchall()
                 if row[1] and str(row[1]).strip()
             }
+
+
+# Квик 260923 (форум-чекин, D-01): сколько раз перегенерировать `secrets.token_urlsafe` при
+# встрече с уже занятым значением, прежде чем сдаться и упасть громко. Коллизия на масштабе
+# проекта (1000-1500 строк, CLAUDE.md) при 8 байтах энтропии практически невозможна — предел
+# только защита от бесконечного цикла, если что-то в схеме сломано.
+_CHECKIN_TOKEN_MAX_ATTEMPTS = 5
+
+
+async def get_or_create_checkin_token(telegram_id: int) -> str | None:
+    """Ленивая выдача токена чек-ина: первый запрос генерирует случайный
+    `secrets.token_urlsafe(8)` (~11 символов, НЕ Telegram ID — не угадать) и сохраняет в
+    `users.checkin_token`; второй и последующие запросы того же делегата отдают ТОТ ЖЕ токен.
+    Бэкафилла нет — у пользователя, не запросившего QR ни разу, колонка остаётся NULL.
+
+    Возвращает `None`, если пользователя нет вовсе. Гонка (два параллельных запроса одного
+    делегата) закрыта самим SQL: `UPDATE ... WHERE checkin_token IS NULL` — при проигрыше
+    (rowcount == 0) функция перечитывает строку и отдаёт токен, который успел записать
+    конкурентный вызов, а не молча перезаписывает его своим кандидатом."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT checkin_token FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        if row["checkin_token"]:
+            return row["checkin_token"]
+
+        for _ in range(_CHECKIN_TOKEN_MAX_ATTEMPTS):
+            candidate = secrets.token_urlsafe(8)
+            try:
+                cursor = await db.execute(
+                    "UPDATE users SET checkin_token = ? "
+                    "WHERE telegram_id = ? AND checkin_token IS NULL",
+                    (candidate, telegram_id),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                continue
+            if cursor.rowcount:
+                return candidate
+            # Строку между SELECT и UPDATE успел заполнить конкурентный вызов — читаем то, что
+            # он записал, вместо того чтобы молча потерять его результат.
+            async with db.execute(
+                "SELECT checkin_token FROM users WHERE telegram_id = ?", (telegram_id,)
+            ) as cursor2:
+                row2 = await cursor2.fetchone()
+            return row2["checkin_token"] if row2 else None
+
+        raise RuntimeError(
+            f"get_or_create_checkin_token: не удалось выдать уникальный токен для {telegram_id} "
+            f"за {_CHECKIN_TOKEN_MAX_ATTEMPTS} попыток"
+        )
