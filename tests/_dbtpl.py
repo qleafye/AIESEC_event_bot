@@ -32,8 +32,41 @@ import asyncio
 import os
 import shutil
 import tempfile
+import threading
 
 _TEMPLATE_PATH: str | None = None
+
+
+def _run_coro_sync(coro):
+    """Запускает корутину синхронно вне зависимости от того, крутится ли уже event loop
+    в текущем потоке.
+
+    fast_init_db() заменяет как голые вызовы (`asyncio.run(init_db())` — нет своего луп'а),
+    так и `await db.init_db()` внутри тестовых `async def go(): ...`, запущенных через
+    СНАРУЖИ `asyncio.run(go())`. В первом случае можно звать `asyncio.run()` напрямую; во
+    втором луп уже крутится, и `asyncio.run()` внутри него падает `RuntimeError: asyncio.run()
+    cannot be called from a running event loop` -- строим шаблон в отдельном потоке со своим
+    собственным лупом (`config` -- обычный модульный объект, не thread-local, `join()` ниже
+    даёт нужный happens-before без дополнительной синхронизации)."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+
+    errors: list[BaseException] = []
+
+    def _worker():
+        try:
+            asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 -- пробрасываем в вызывающий поток как есть
+            errors.append(exc)
+
+    t = threading.Thread(target=_worker)
+    t.start()
+    t.join()
+    if errors:
+        raise errors[0]
 
 
 def _build_template() -> str:
@@ -51,7 +84,7 @@ def _build_template() -> str:
     original_db_path = config.DB_PATH
     try:
         config.DB_PATH = template_path
-        asyncio.run(init_db())
+        _run_coro_sync(init_db())
     finally:
         config.DB_PATH = original_db_path
 
