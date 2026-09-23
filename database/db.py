@@ -1434,6 +1434,34 @@ async def init_db():
             "ON users(checkin_token) WHERE checkin_token IS NOT NULL"
         )
 
+        # Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-20): таблица отметок «пришёл» — вход и (в
+        # будущем) сессии программы на одной схеме. `point` = "entry" для входа
+        # (services.checkin.ENTRY_POINT), id/слаг сессии — для будущих слотов (сессий сегодня
+        # ещё нет). `UNIQUE(telegram_id, point)` + `INSERT OR IGNORE` (record_checkin ниже)
+        # хранит ПЕРВЫЙ скан на точку — верно для входа (D-10: «повторы отбрасываются»). D-20
+        # («на сессии засчитывается ПОСЛЕДНИЙ скан слота») ломает этот идемпотентный INSERT —
+        # когда появятся сессии, `record_checkin` для их `point` обязан переключиться на UPSERT
+        # (`ON CONFLICT DO UPDATE SET scanned_at=...`), вход продолжает жить на INSERT OR IGNORE.
+        # `source` — miniapp (сканер внутри Mini App, будущая фаза) | csv (загрузка выгрузки
+        # офлайн-сканера) | manual (по фамилии/от руки, D-11/D-12). `approx_time` — 1, если
+        # время скана не удалось прочитать из файла и подставлено время загрузки (D-10).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                point TEXT NOT NULL,
+                scanned_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                approx_time INTEGER NOT NULL DEFAULT 0,
+                by_staff_id INTEGER,
+                created_at TEXT NOT NULL,
+                UNIQUE(telegram_id, point)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_checkins_point ON checkins(point)"
+        )
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -7758,3 +7786,91 @@ async def get_or_create_checkin_token(telegram_id: int) -> str | None:
             f"get_or_create_checkin_token: не удалось выдать уникальный токен для {telegram_id} "
             f"за {_CHECKIN_TOKEN_MAX_ATTEMPTS} попыток"
         )
+
+
+async def get_user_by_checkin_token(token: str | None) -> dict | None:
+    """Делегат по токену из QR (последнее поле, `services.checkin.build_payload`/
+    `parse_qr_payload`). Тёзки не путаются (D-13) — токен уникален по построению (частичный
+    индекс `idx_users_checkin_token` выше)."""
+    if not token:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE checkin_token = ?", (token,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def record_checkin(
+    telegram_id: int,
+    point: str,
+    *,
+    source: str,
+    scanned_at: str | None = None,
+    approx: bool = False,
+    by_staff_id: int | None = None,
+) -> tuple[str, str]:
+    """Идемпотентно по (telegram_id, point) — хранит ПЕРВЫЙ скан на точку (D-10; про D-20
+    «последний скан слота» для будущих сессий — см. докстринг таблицы `checkins` в `init_db`).
+    Возвращает ("new", время_этой_отметки) при первой отметке, ("duplicate",
+    время_ПЕРВОЙ_отметки) — если отметка уже была (для строки «уже был в ЧЧ:ММ»)."""
+    stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, point),
+        ) as cursor:
+            existing = await cursor.fetchone()
+        if existing:
+            return "duplicate", existing["scanned_at"]
+        await db.execute(
+            "INSERT OR IGNORE INTO checkins "
+            "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+        )
+        await db.commit()
+        async with db.execute(
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, point),
+        ) as cursor:
+            final = await cursor.fetchone()
+    if final is None:
+        return "new", stamp  # не должно случаться, но не роняем вызывающего
+    return ("new", final["scanned_at"]) if final["scanned_at"] == stamp else ("duplicate", final["scanned_at"])
+
+
+async def count_checkins_by_point(point: str) -> int:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM checkins WHERE point = ?", (point,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+async def count_approved_current_season(*, city_scope=None) -> int:
+    """Одобренные делегаты ТЕКУЩЕГО сезона — тот же признак «не прошлый делегат», что
+    `reg_engine.is_past_season_row` (`season IS NULL OR season = event_season`). Знаменатель
+    строки «Пришли: N из M одобренных» (handlers/admin_checkin.py)."""
+    event_season = (await get_setting("event_season") or "").strip()
+    where_parts = ["status = 'approved'"]
+    params: list = []
+    if event_season:
+        where_parts.append("(season IS NULL OR season = ?)")
+        params.append(event_season)
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    if city_frag:
+        where_parts.append(city_frag)
+        params.extend(city_params)
+    where_sql = " AND ".join(where_parts)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM users WHERE {where_sql}", params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
