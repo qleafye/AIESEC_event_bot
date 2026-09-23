@@ -7495,6 +7495,12 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # invitee_id вдобавок не даёт начислить второй раз, если тот же Telegram-аккаунт
     # зарегистрируется заново — удаление строки открыло бы дублирующее начисление.
     ("referral_credits", "referrer_id", "referral_credits"),
+    # Phase 12 (FORUM-CHECKIN.md): checkins.telegram_id — личная отметка «пришёл» делегата
+    # (вход/сессия форума). Тот же журнал делегатского следа, что chat_activity/reg_events
+    # выше — уходит вместе с человеком. by_staff_id в той же строке — id волонтёра/менеджера,
+    # который отметил (CSV/manual), это авторская колонка, не трогаем отдельно: строка
+    # целиком уходит вместе с делегатом.
+    ("checkins", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
