@@ -13,13 +13,23 @@
 допущенного делегата.
 
 Формат текста внутри QR — `{tag}·{full_name}·{city}·{token}`, разделитель «·» (не запятая и не
-пробел — оба встречаются в свободных полях ФИО/города). Порядок ЗАКРЕПЛЁН: будущий парсер CSV
-сканера ищет метку события в НАЧАЛЕ строки и берёт токен ХВОСТОМ — последним полем после
-последнего «·». Менять порядок нельзя без синхронной правки парсера."""
+пробел — оба встречаются в свободных полях ФИО/города). Порядок ЗАКРЕПЛЁН: парсер CSV сканера
+ищет метку события в НАЧАЛЕ строки и берёт токен ХВОСТОМ — последним полем после последнего
+«·». Менять порядок нельзя без синхронной правки парсера.
+
+Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-13): вторая половина модуля — `parse_qr_payload`
+(обратная операция к `build_payload`) и разбор выгрузки офлайн-приложения-сканера
+(`decode_scan_export`/`find_checkin_records`) для `handlers/admin_checkin.py`. Доступ к БД
+(токен делегата, запись отметки, счётчики) — `database/db.py`
+(`get_or_create_checkin_token`/`get_user_by_checkin_token`/`record_checkin`/
+`count_checkins_by_point`/`count_approved_current_season`), здесь — только чистая логика."""
 from __future__ import annotations
 
+import csv
 import io
 import logging
+import re
+from datetime import datetime
 
 import segno
 
@@ -30,6 +40,13 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 _QR_SEP = "·"
+
+# Phase 12 (FORUM-CHECKIN.md, D-08/D-18): точка входа «Вход» — тот же `point`, что
+# `database.db.record_checkin`/`count_checkins_by_point` считают по умолчанию. Сессии
+# программы (будущая фаза) получат свои point-код/слаг, вход остаётся отдельной
+# константой — она уже размечена кнопкой в `handlers/admin_checkin.py`.
+ENTRY_POINT = "entry"
+ENTRY_POINT_LABEL = "🚪 Вход"
 
 _DEFAULT_CAPTION = (
     "🎟 Твой QR для отметки на форуме.\n\n"
@@ -52,6 +69,14 @@ async def _event_tag() -> str:
     return "EVENT"
 
 
+async def current_event_tag() -> str:
+    """Публичная асинхронная обёртка `_event_tag()` — единственная точка, которую зовёт
+    `handlers/admin_checkin.py` при разборе выгрузки офлайн-сканера (`find_checkin_records`
+    ниже), чтобы искать код нашего события в файле ТЕМ ЖЕ значением, что уходит в свежий QR —
+    генерация и разбор физически не могут разойтись, читая один и тот же `_event_tag()`."""
+    return await _event_tag()
+
+
 def build_payload(tag: str, full_name: str, city: str, token: str) -> str:
     """Чистая сборка строки QR — вынесена отдельно от `build_checkin_qr`, чтобы формат
     (порядок полей, разделитель «·», плейсхолдер «—» для пустых ФИО/города) был проверяем
@@ -60,6 +85,22 @@ def build_payload(tag: str, full_name: str, city: str, token: str) -> str:
     full_name = (full_name or "").strip() or "—"
     city = (city or "").strip() or "—"
     return _QR_SEP.join([tag, full_name, city, token])
+
+
+def parse_qr_payload(qr_payload: str) -> dict:
+    """Обратная операция к `build_payload` — разбирает строку из отсканированного QR на поля
+    `{"tag": ..., "full_name": ..., "city": ..., "token": ...}`. Токен ВСЕГДА последнее поле
+    (см. докстринг модуля и `build_payload`), метка события — первое; никогда не бросает
+    исключение — терпима к «чужому»/повреждённому коду (меньше 4 полей): токен есть, если хоть
+    один разделитель нашёлся, ФИО/город — только при ровно 4 полях (собственный формат)."""
+    parts = (qr_payload or "").split(_QR_SEP)
+    if len(parts) < 2:
+        return {"tag": "", "full_name": "", "city": "", "token": (parts[0].strip() if parts else "")}
+    token = parts[-1].strip()
+    tag = parts[0].strip()
+    full_name = parts[1].strip() if len(parts) >= 4 else ""
+    city = parts[2].strip() if len(parts) >= 4 else ""
+    return {"tag": tag, "full_name": full_name, "city": city, "token": token}
 
 
 async def checkin_denial(user: dict | None) -> str | None:
@@ -123,3 +164,124 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
 
     caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
     return buf.getvalue(), caption
+
+
+# ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
+#
+# «Под любое приложение»: бот не полагается на конкретную структуру колонок конкретного
+# сканера — ищет строки/ячейки, начинающиеся с текущей метки события + разделителя, ЛЮБЫМ из
+# двух независимых способов (обычный CSV/TSV-разбор ловит ячейку целиком; сырой regex-скан по
+# всему тексту ловит тот же код внутри JSON/произвольного текста, где csv.reader его бы
+# токенизировал неверно) — и объединяет находки без дублей. Доступ к БД (токен делегата, запись
+# отметки, счётчики) — в `database/db.py`; здесь — только чистая логика плюс `current_event_tag`
+# выше. Хендлер бота — `handlers/admin_checkin.py`.
+
+_DECODE_ENCODINGS = ("utf-8-sig", "utf-8", "cp1251")
+
+_ISO_DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?")
+_DMY_DT_RE = re.compile(r"^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$")
+_EPOCH_RE = re.compile(r"^\d{9,13}$")
+
+
+def decode_scan_export(data: bytes) -> str:
+    """Байты выгрузки -> текст. Перебирает кодировки по очереди (utf-8 с BOM/без, cp1251 —
+    частая для файлов, выгруженных на русской Windows); последний вариант заменяет
+    нераспознанные байты, а не падает — лучше кривая пара символов, чем отказ разобрать файл
+    целиком."""
+    for enc in _DECODE_ENCODINGS:
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def _parse_cell_datetime(cell: str) -> datetime | None:
+    cell = (cell or "").strip()
+    if not cell:
+        return None
+    if _ISO_DT_RE.match(cell):
+        try:
+            return datetime.fromisoformat(cell[:19].replace("T", " ") if "T" not in cell[:19] else cell[:19])
+        except ValueError:
+            try:
+                return datetime.fromisoformat(cell.rstrip("Zz")[:19])
+            except ValueError:
+                return None
+    m = _DMY_DT_RE.match(cell)
+    if m:
+        d, mo, y, h, mi, s = m.groups()
+        try:
+            return datetime(int(y), int(mo), int(d), int(h), int(mi), int(s or 0))
+        except ValueError:
+            return None
+    if _EPOCH_RE.match(cell):
+        try:
+            n = int(cell)
+            if n > 10 ** 12:  # миллисекунды
+                n //= 1000
+            return datetime.fromtimestamp(n)
+        except (ValueError, OSError, OverflowError):
+            return None
+    return None
+
+
+def _sniff_dialect(sample: str):
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        return None
+
+
+def find_checkin_records(text: str, tag: str) -> list[dict]:
+    """Каждая находка кода нашего события в `text` (CSV/TSV/TXT/JSON — любой экспорт
+    приложения-сканера): `{"qr": <строка QR>, "scanned_at": "YYYY-MM-DD HH:MM:SS" | None}`.
+    `scanned_at` — время из СОСЕДНЕЙ ячейки той же строки CSV, если она похожа на дату-время
+    (ISO / «дд.мм.гггг чч:мм[:сс]» / unix-эпоха секунды-или-миллисекунды); `None` — время скана
+    в файле не нашлось, вызывающий (`handlers/admin_checkin.py`) подставляет время загрузки с
+    флагом «примерное» (D-10). Без дублей — один и тот же QR-текст входит в результат один раз,
+    даже если обе стратегии его поймали."""
+    if not tag or not text:
+        return []
+    prefix = f"{tag}{_QR_SEP}"
+    records: list[dict] = []
+    seen: set[str] = set()
+
+    # Стратегия 1: настоящий CSV/TSV-разбор (уважает кавычки/встроенные разделители) —
+    # позволяет заодно посмотреть на СОСЕДНИЕ ячейки той же строки в поисках времени скана.
+    sample = text[:4096]
+    dialect = _sniff_dialect(sample)
+    try:
+        reader = csv.reader(io.StringIO(text), dialect) if dialect else csv.reader(io.StringIO(text))
+        for row in reader:
+            cells = [(c or "").strip() for c in row]
+            for idx, cell in enumerate(cells):
+                if not cell.startswith(prefix) or cell in seen:
+                    continue
+                seen.add(cell)
+                scanned_at = None
+                for other_idx, other in enumerate(cells):
+                    if other_idx == idx:
+                        continue
+                    dt = _parse_cell_datetime(other)
+                    if dt:
+                        scanned_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        break
+                records.append({"qr": cell, "scanned_at": scanned_at})
+    except csv.Error:
+        pass
+
+    # Стратегия 2: сырой regex-скан всего текста — ловит код там, где построчный CSV-разбор
+    # его не токенизировал (JSON-экспорт вроде Binary Eye, произвольный текст). Без контекста
+    # строки — время скана здесь всегда None (примерное). Обрезаем ТОЛЬКО по типичным
+    # разделителям колонок/JSON/переносам строк — не по пробелу: поле ФИО внутри самого QR
+    # (D-04, «Иванов Иван») законно содержит пробел, и обрезка по \s откусила бы фамилию от
+    # имени, оставляя в `seen` не ту строку, что нашла стратегия 1 (дубль вместо дедупа).
+    pattern = re.compile(re.escape(prefix) + r'[^,;\t\r\n"\'\]}]*')
+    for m in pattern.finditer(text):
+        cell = m.group(0)
+        if cell not in seen:
+            seen.add(cell)
+            records.append({"qr": cell, "scanned_at": None})
+
+    return records
