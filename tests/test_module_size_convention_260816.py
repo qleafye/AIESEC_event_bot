@@ -484,7 +484,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1063,
+        1064,
+        "Квик 260923-p37 (QR чек-ина, задача 3): +1 строка — capability-запись "
+        "toggle_checkin_qr_enabled (settings — та же капа, что её соседи "
+        "toggle_chat_tracking_enabled/toggle_delegate_lang_enabled); 1063 -> 1064. "
         "Квик 260923 (AUTOREJ-REPORT, D-I): +5 строк — capability-записи экрана «📊 Отчётность "
         "автоотказа» (admin_reject_reports/arp_*, settings — та же капа, что экран «🚫 Правила "
         "автоотказа», переход без разрыва прав); 1058 -> 1063. "
