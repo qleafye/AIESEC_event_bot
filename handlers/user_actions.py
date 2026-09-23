@@ -75,7 +75,7 @@ from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
-from services.checkin import build_checkin_qr  # Квик 260923: форум-чекин, D-01..D-04
+from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -1586,12 +1586,32 @@ async def open_miniapp_button(message: types.Message):
 # обязаны регистрироваться раньше него, иначе aiogram отдаст текст туда first-match).
 @router.message(F.text.in_(MENU_TEXTS["menu_checkin_qr"]))
 async def show_my_checkin_qr(message: types.Message):
-    # D-02: «одобрен» — тот же гейт, что у остальных пунктов меню (ensure_registered уже
-    # объясняет делегату pending/rejected человеческим текстом реестра, сюда за своим текстом
-    # для этого случая заводить не нужно).
+    # ensure_registered закрывает «нет анкеты»/pending/rejected человеческим текстом реестра
+    # (см. ensure_registered выше). Но её _gate_decision пропускает legacy/NULL/будущий
+    # waitlist как «допущен» ради обратной совместимости ~590 старых записей — QR это
+    # МАТЕРИАЛЬНЫЙ пропуск на площадку (D-02), такой лёгкий гейт для него мал. Правило допуска
+    # к самому чек-ину — отдельная строгая проверка `services.checkin.checkin_denial` ниже.
     if not await ensure_registered(message):
         return
     lang, tr_map = await reg_i18n.ctx_for(message)
+    user = await get_user(message.from_user.id)
+    denial = await checkin_denial(user)
+    if denial == "past_season":
+        # Тот же текст возвращенца, что уже закрывает игровые разделы (ensure_current_season) —
+        # 482 импортированных approved-делегата 26/1 не должны получить пропуск на этот форум.
+        text = await _returning_text_if_past_season(message.from_user.id, user, lang, tr_map)
+        if text is None:  # defensive: checkin_denial и _returning_text_if_past_season сверяют
+            # event_season одинаково (reg_engine.is_past_season_row) — расхождения не должно
+            # быть, но пустой ответ не должен молча пройти дальше к выдаче QR.
+            text = reg_i18n.tr_text(await get_setting_typed("checkin_qr_disabled_text"), lang, tr_map)
+        await message.answer(text)
+        return
+    if denial is not None:  # 'no_user' (гонка удаления между ensure_registered и этим вызовом)
+        # или 'not_approved' (легаси/NULL/waitlist, которых ensure_registered пропускает) —
+        # тот же переведённый текст ожидания, что видят pending-делегаты у ensure_registered.
+        text = reg_i18n.tr_text(await get_setting_typed("pending_gate_text"), lang, tr_map)
+        await message.answer(text)
+        return
     # Защитная перепроверка модуля (D-03/T-19-54 idiom): кнопка не рисуется в меню, пока
     # checkin_qr_enabled выключен (keyboards/builders.py::get_main_menu_kb), но застрявшая у
     # делегата клавиатура переживает выключение тумблера — обязана ответить понятным текстом,
