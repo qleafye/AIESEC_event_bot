@@ -7,9 +7,10 @@
 без aiogram-типов на входе (`dict` строки `users`), возвращает `(png_bytes, caption)` —
 вызывающий сам решает, как отправить (`answer_photo`, будущая рассылка и т.п.).
 
-Статус делегата («одобрен») эта функция НЕ проверяет — гейт D-02 живёт у вызывающего
-(`ensure_registered` в хендлере меню; будущая рассылка обязана применить свой). Здесь только
-генерация содержимого для уже допущенного делегата.
+Статус делегата («одобрен») эта функция НЕ проверяет — гейт D-02 живёт в `checkin_denial()`
+ниже, вызывающий (хендлер меню `show_my_checkin_qr`; будущая рассылка накануне форума)
+ОБЯЗАН позвать её сам ПЕРЕД `build_checkin_qr`. Здесь только генерация содержимого для уже
+допущенного делегата.
 
 Формат текста внутри QR — `{tag}·{full_name}·{city}·{token}`, разделитель «·» (не запятая и не
 пробел — оба встречаются в свободных полях ФИО/города). Порядок ЗАКРЕПЛЁН: будущий парсер CSV
@@ -23,6 +24,7 @@ import logging
 import segno
 
 from database.db import get_or_create_checkin_token
+from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,37 @@ def build_payload(tag: str, full_name: str, city: str, token: str) -> str:
     full_name = (full_name or "").strip() or "—"
     city = (city or "").strip() or "—"
     return _QR_SEP.join([tag, full_name, city, token])
+
+
+async def checkin_denial(user: dict | None) -> str | None:
+    """Единая точка правила допуска к чек-ину форума (решение владельца D-02: «QR только
+    одобренным, наличие QR = пропуск на форум»). Переиспускается и хендлером меню
+    (`handlers/user_actions.py::show_my_checkin_qr`), и БУДУЩЕЙ рассылкой QR накануне форума —
+    обе точки обязаны звать её ПЕРЕД `build_checkin_qr`.
+
+    Допуск есть, только если ВСЕ три условия верны: (1) пользователь существует, (2) его
+    `status` строго `'approved'` (в отличие от `handlers.user_actions._gate_decision`, здесь
+    NULL/неизвестные/будущий `waitlist` НЕ допускаются — тот гейт разрешает их ради обратной
+    совместимости ~590 легаси-записей, а QR — материальный пропуск на площадку, легаси-станд
+    там неуместен), (3) делегат НЕ прошлого сезона (`reg_engine.is_past_season_row` сверяет
+    `users.season` с текущим `event_season`) — иначе 482 импортированных делегата 26/1 со
+    `status='approved'` получили бы пропуск на текущий форум.
+
+    Возвращает код причины отказа (`'no_user' | 'not_approved' | 'past_season'`) или `None`,
+    если допуск есть. Чтение `event_season` — fail-soft (тот же приём, что у
+    `handlers/user_actions.py::_returning_text_if_past_season`): сбой чтения настройки не
+    должен блокировать пропуск уже одобренному делегату текущего события."""
+    if not user:
+        return "no_user"
+    if user.get("status") != "approved":
+        return "not_approved"
+    try:
+        event_season = await get_setting_typed("event_season") or None
+        if is_past_season_row(user, event_season):
+            return "past_season"
+    except Exception as e:
+        logger.error(f"checkin_denial: event_season resolve failed for {user.get('telegram_id')}: {e}")
+    return None
 
 
 async def build_checkin_payload(user: dict) -> str | None:
