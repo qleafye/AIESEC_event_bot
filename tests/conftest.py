@@ -31,3 +31,28 @@ pytest импортирует conftest.py ДО сборки любого тес�
 (`config.DB_PATH = tmp_path / ...`), conftest ничего не сбрасывает между тестами.
 """
 from handlers import registration, user_actions, admin, payment  # noqa: F401  -- порядок как в main.py
+
+# Квик форум-ночь (A2): часть тестов (например, tests/test_content_percity_consumers.py::
+# test_approve_text_party_track_no_party_override_still_ignores_city) намеренно НЕ выставляет
+# config.DB_PATH сама -- рассчитывает на то, что предыдущий тест В ТОМ ЖЕ ФАЙЛЕ уже открыл
+# свою tmp_path-БД, и эта БД переживает до конца сессии. Прогон файла целиком поэтому
+# детерминированно зелёный, а прогон ОДНОГО такого теста -- нет: config.DB_PATH остаётся
+# дефолтом из config.py ("data/forum.db"), и есть ли там рабочая (пусть пустая) таблица
+# bot_settings, зависит от случайного состояния файла на диске конкретной машины/ворктри --
+# в свежем `git worktree add` схемы там ещё нет, отсюда "no such table: bot_settings" именно
+# и только в свежем ворктри (не дефект get_setting: она и так fail-soft на ОТСУТСТВИЕ строки,
+# просто не переживает ОТСУТСТВИЕ таблицы). Чтобы прогон отдельного теста не зависел от
+# постороннего файла на диске, готовим здесь -- один раз на процесс (воркер pytest-xdist) --
+# валидную пустую схему и подставляем её в config.DB_PATH ДО сборки тестов; тесты, которые
+# сами вызывают fast_init_db()/init_db() со своим tmp_path, тут же перезапишут config.DB_PATH
+# и разницы не заметят.
+import os as _os
+import tempfile as _tempfile
+
+from config import config as _config
+from tests._dbtpl import fast_init_db as _fast_init_db
+
+_config.DB_PATH = _os.path.join(
+    _tempfile.mkdtemp(prefix="gsd_conftest_default_db_"), "default.db"
+)
+_fast_init_db()
