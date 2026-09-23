@@ -54,6 +54,13 @@ def _city_matches(event_city: str | None, city_scope) -> bool:
     return event_city is None or event_city not in exclude
 
 
+def _normalize_name(s: str | None) -> str:
+    """Тот же ё/е-фолд, что `database.db._normalize_search_text` (там же обоснование): на
+    стойке форума фамилию чаще всего набирают без «ё». `reg_started.partial_data` — сырой
+    JSON, не SQL-колонка, поэтому сравнение идёт в Python, а не через ту же SQL-функцию."""
+    return (s or "").lower().replace("ё", "е")
+
+
 def _parse_partial(partial_json: str | None) -> dict:
     """Тот же паттерн деградации, что `handlers.registration.incomplete_sheet_row`:
     отсутствующий/битый JSON -> пустой словарь, не исключение."""
@@ -141,7 +148,7 @@ async def search_people(
     ]
     if include_started and len(results) < limit:
         seen_ids = {r["user_id"] for r in results}
-        needle = value.lower()
+        needle = _normalize_name(value)
         for tid, username, _started_at, _last_step, partial_json, event_city in (
             await db.get_incomplete_rows_with_city()
         ):
@@ -151,7 +158,7 @@ async def search_people(
                 continue
             partial = _parse_partial(partial_json)
             full_name = partial.get("full_name") or ""
-            if needle not in full_name.lower():
+            if needle not in _normalize_name(full_name):
                 continue
             results.append(_from_reg_started_row(
                 {"telegram_id": tid, "username": username, "event_city": event_city},
