@@ -7815,33 +7815,39 @@ async def record_checkin(
     """Идемпотентно по (telegram_id, point) — хранит ПЕРВЫЙ скан на точку (D-10; про D-20
     «последний скан слота» для будущих сессий — см. докстринг таблицы `checkins` в `init_db`).
     Возвращает ("new", время_этой_отметки) при первой отметке, ("duplicate",
-    время_ПЕРВОЙ_отметки) — если отметка уже была (для строки «уже был в ЧЧ:ММ»)."""
+    время_ПЕРВОЙ_отметки) — если отметка уже была (для строки «уже был в ЧЧ:ММ»).
+
+    T-12-03 (Rule 1, ревью): new/duplicate решает СТРОГО `cursor.rowcount` самой INSERT OR
+    IGNORE, а не отдельная предварительная SELECT + сравнение `scanned_at == stamp`. Прежняя
+    версия делала SELECT-check ДО инсерта и потом сверяла время: два скана одного делегата на
+    одну точку в ОДНУ и ту же секунду (частый случай при параллельных волонтёрах на форуме,
+    03.10 несколько стоек одновременно) считают одинаковый `stamp`, и «проигравший» гонку
+    инсерт видел чужую (уже вставленную конкурентом) строку с ТЕМ ЖЕ значением `scanned_at` —
+    сравнение молча признавало его «new» вместо «duplicate», двойной счёт в «Пришли: N из M».
+    `rowcount` не зависит от совпадения секунд: ровно один конкурентный вызов физически
+    вставляет строку (rowcount == 1 -- "new"), остальные получают rowcount == 0 от `UNIQUE
+    (telegram_id, point)` и обязаны перечитать ПЕРВУЮ отметку для строки «уже был в ЧЧ:ММ»."""
     stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
     created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
-            (telegram_id, point),
-        ) as cursor:
-            existing = await cursor.fetchone()
-        if existing:
-            return "duplicate", existing["scanned_at"]
-        await db.execute(
+        cursor = await db.execute(
             "INSERT OR IGNORE INTO checkins "
             "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
         )
         await db.commit()
+        if cursor.rowcount:
+            return "new", stamp
         async with db.execute(
             "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
             (telegram_id, point),
-        ) as cursor:
-            final = await cursor.fetchone()
-    if final is None:
-        return "new", stamp  # не должно случаться, но не роняем вызывающего
-    return ("new", final["scanned_at"]) if final["scanned_at"] == stamp else ("duplicate", final["scanned_at"])
+        ) as cur2:
+            existing = await cur2.fetchone()
+    if existing is None:
+        return "new", stamp  # не должно случаться (rowcount==0 без строки в базе), но не роняем вызывающего
+    return "duplicate", existing["scanned_at"]
 
 
 async def count_checkins_by_point(point: str) -> int:
