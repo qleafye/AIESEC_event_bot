@@ -39,10 +39,8 @@ from pydantic import BaseModel, Field
 
 import reg_engine
 from cities import (
-    cities_module_on,
     ensure_cities_fresh,
     get_setting_typed_for_city,
-    is_city_enabled,
 )
 from database.db import (
     claim_reg_draft,
@@ -246,14 +244,14 @@ async def _pre_items(
 
 
 async def _registration_closed(event_city: str | None) -> bool:
-    """D-11: «регистрация закрыта режимом города» — единственный существующий в боте сигнал
-    для конкретного города (общего тумблера «закрыть регистрацию совсем» бот сегодня не имеет;
-    появится — эта функция станет его первой проверкой). Единственный/безгородской ивент
-    (`cities_module_on() == False`) никогда не «закрыт» этой проверкой — паритет с ботом, где
-    такое событие сегодня тоже нельзя закрыть переключателем города."""
-    if not event_city or not await cities_module_on():
-        return False
-    return not await is_city_enabled(event_city)
+    """D-11 + квик 260923-p37 (D-08): «регистрация закрыта городом» — тот же судья, что у бота
+    (`reg_engine.city_gate`), не своя копия правила. Модуль городов выключен -> `city_gate`
+    всегда `("go", ...)` -> `False` (паритет с ботом: безгородской ивент нельзя закрыть
+    переключателем города). `event_city` пуст И включённых-открытых городов 0 -> `"all_closed"`
+    -> `True` (D-06: до этого квика пустой `event_city` никогда не считался закрытым — теперь
+    считается, ровно как у бота, когда открытых городов не осталось)."""
+    kind, _ = await reg_engine.city_gate(event_city)
+    return kind in ("closed", "all_closed")
 
 
 async def _edit_gate(ctx: dict) -> tuple[bool, str | None]:
@@ -744,6 +742,19 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
                 # тот же столбец, переспрашивает уже отвеченное («✍️ Продолжить в чате»).
                 step_to_store = reg_engine.STEP_DONE
 
+    # Квик 260923-p37 (D-06): «единственный открытый город» подставляется и приложению — той же
+    # логикой, что `_city_fork_then_continue` бота, когда развилка вообще не нужна (открыт ровно
+    # один город). Только для НОВОЙ подачи и только когда город ещё не выбран ни через deep-
+    # link, ни через PATCH этого запроса — правку (kind == "edit") это не касается.
+    final_event_city = pre_patch.get("event_city") or ctx["event_city"]
+    if ctx["kind"] == "new" and not final_event_city:
+        try:
+            gate_kind, gate_code = await reg_engine.city_gate(None)
+            if gate_kind == "go" and gate_code:
+                final_event_city = gate_code
+        except Exception as e:
+            logger.error("reg draft patch: city_gate auto-fill failed telegram_id=%s: %s", p.telegram_id, e)
+
     # Quick 260904-3vm (эстафета): "ничей" черновик (holder is None — пуст или только что
     # создаётся) занимается МОЛЧА приложением; уже занятый приложением — как раньше, без событий.
     silent_takeover = ctx["holder"] is None
@@ -751,7 +762,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
         p.telegram_id,
         kind=ctx["kind"],
         participant_type=effective_track,
-        event_city=pre_patch.get("event_city") or ctx["event_city"],
+        event_city=final_event_city,
         step=step_to_store,
         patch=delta,
         source="miniapp",

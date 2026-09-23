@@ -29,7 +29,7 @@ from database.db import get_user, get_setting, record_user_consent, delete_reg_d
 from database.db import RESUME_RECALL_COLUMNS
 from settings_schema import get_setting_typed
 from services.consent import tapped_button_text
-from cities import CITIES, is_city_enabled
+from cities import CITIES, is_city_registration_open
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.registration import (
@@ -204,17 +204,19 @@ async def party_fallback_full(callback: types.CallbackQuery, state: FSMContext):
 async def city_pick(callback: types.CallbackQuery, state: FSMContext):
     """CITY-03 city-screen tap. The code is checked against the CLOSED CITIES vocabulary
     (T-071-09: no crafted callback payload can select a city outside the registry) before any
-    action; is_city_enabled is re-checked AFTER render (T-071-10, render-then-flip window —
-    same pattern as party_pick's party_enabled re-check). Continues through the SAME
-    _continue_after_city tail cmd_start uses, so the party fork still fires if applicable and
-    referrer/source attribution (persisted into FSM by cmd_start before showing this screen)
-    is picked back up there, not passed again here."""
+    action; is_city_registration_open is re-checked AFTER render (T-071-10, render-then-flip
+    window — same pattern as party_pick's party_enabled re-check; квик 260923-p37 (T-p37-02)
+    widened this re-check from is_city_enabled to also catch a date-close that landed between
+    the screen being drawn and this tap). Continues through the SAME _continue_after_city tail
+    cmd_start uses, so the party fork still fires if applicable and referrer/source attribution
+    (persisted into FSM by cmd_start before showing this screen) is picked back up there, not
+    passed again here."""
     code = callback.data.split(":", 1)[1]
     if code not in {c["code"] for c in CITIES}:
         await callback.answer(await reg_i18n.tr_for(callback, CITY_CHOICE_INVALID_TEXT), show_alert=True)
         return
 
-    if not await is_city_enabled(code):
+    if not await is_city_registration_open(code):
         await callback.answer(await reg_i18n.tr_for(callback, CITY_CLOSED_TEXT), show_alert=True)
         return
 

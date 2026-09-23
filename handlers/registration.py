@@ -16,7 +16,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _sheet_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below; квик 260919: _csv_safe -> _sheet_safe (08-sheets-dashboard) — Sheets-строки больше не нейтрализуются, gspread пишет явным RAW
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
-from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_enabled, city_label, enabled_cities, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key
+from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -138,6 +138,10 @@ DEFAULT_REG_COMPLETE_TEXT = (
 # moved to the root aiogram-free reg_engine.py — the single engine bot AND Mini App call
 # (D-03, FORM-SYNC-01). Old private names kept as aliases so every existing call site in this
 # file and in handlers/reg_flow.py, handlers/reg_consent.py, tests/*.py keeps working unchanged.
+# Квик 260923-p37 (CITY-REG-CLOSE): модульный импорт (не `from reg_engine import city_gate`) —
+# `_city_fork_then_continue` уже несёт свой keyword-параметр `city_gate`, бэйр-имя функции
+# затенялось бы им внутри тела.
+import reg_engine
 from reg_engine import (
     REG_STEP_TYPES, STEP_TO_COLUMN, SELECT_CONFIG, MULTI_CONFIG, RECALLABLE_STEPS,
     enabled_steps, option_list_for, is_step_enabled_for_track, prompt,
@@ -1165,13 +1169,11 @@ DEFAULT_CITY_FORK_TEXT = SETTINGS_SCHEMA["city_fork_text"]["default"]
 
 
 async def _city_fork_kb() -> InlineKeyboardMarkup:
-    """One button per ENABLED city, in CITIES (.env) order — label comes from city_label
-    (admin-editable per-city override), callback_data is a closed `city_pick:{code}` token
-    built from the registry, never from user input."""
-    rows = []
-    for c in await enabled_cities():
-        rows.append([InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"city_pick:{c['code']}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    """One button per OPEN city (enabled AND not closed by date, quick 260923-p37) — delegates
+    to handlers.reg_city_gate.open_city_kb (lazy import: that module doesn't import this one,
+    but keeping the same "no module-level cross-seam import" idiom as reg_lang below)."""
+    from handlers.reg_city_gate import open_city_kb
+    return await open_city_kb()
 
 
 # Phase 09.2-04 (CITY-04): проверено RESEARCH Pitfall 2 — гейт не зависит от
@@ -2135,6 +2137,9 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
                     await state.update_data(source=source_tag, _source_from_tag=True)
                 await _city_fork_then_continue(
                     message, state, user.get("event_city"), referrer_id, source_tag, None, None,
+                    # Квик 260923-p37 (D-07): правка уже поданной анкеты — город уже
+                    # зафиксирован в users, закрытие регистрации на город её не гейтит.
+                    city_gate=False,
                 )
                 return
 
@@ -2232,9 +2237,14 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # keeps the global start_text (that IS the right answer — CONTEXT A). Once the city is
     # already known (deep-link or recovered from an in-flight reg_started row), the newcomer
     # should see their own city's welcome text before ever reaching the city-fork screen.
+    # Квик 260923-p37 (D-05): пропускаем per-city подмену для города, закрытого по дате/
+    # выключенного — иначе делегат сначала видит приветствие закрытого города, а СЛЕДОМ экран
+    # «регистрация закрыта» (send_city_closed ниже, в _city_fork_then_continue). Глобальный
+    # start_text в этой ветке — верное поведение, не деградация (CONTEXT A).
     if effective_city:
         try:
-            start_text = await get_setting_for_city("start_text", effective_city) or DEFAULT_START_TEXT
+            if await is_city_registration_open(effective_city):
+                start_text = await get_setting_for_city("start_text", effective_city) or DEFAULT_START_TEXT
         except Exception as e:
             logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
 
@@ -2245,6 +2255,29 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
 
 
+async def _persist_fork_attribution(
+    state: FSMContext,
+    referrer_id: int | None,
+    source_tag: str | None,
+    dl_party_track: str | None,
+    recovered_track: str | None,
+) -> None:
+    """CR-01/HIGH-01 preserve idiom, extracted квик 260923-p37: persist attribution (and any
+    track already known via deep-link/recovery) BEFORE an early return to a screen that waits
+    for a tap, so a later `_continue_after_city` call (city_pick, or a tap on an open city from
+    the "город закрыт" screen) can round-trip it through FSM. Shared by BOTH early-return
+    screens (fork and "закрыт") — a tap from either one must not lose the referrer/campaign tag."""
+    _existing = await state.get_data()
+    await state.update_data(
+        referrer_id=referrer_id or _existing.get("referrer_id"),
+        source=source_tag or _existing.get("source"),
+        _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
+        participant_type=(dl_party_track or recovered_track) or _existing.get("participant_type"),
+    )
+    if dl_party_track:
+        await state.update_data(_track_from_link=True)
+
+
 async def _city_fork_then_continue(
     message: types.Message,
     state: FSMContext,
@@ -2253,6 +2286,7 @@ async def _city_fork_then_continue(
     source_tag: str | None,
     dl_party_track: str | None,
     recovered_track: str | None,
+    city_gate: bool = True,
 ):
     """Phase 07.3 (RET-02): the former tail of cmd_start (city-fork screen or straight to
     _continue_after_city), extracted the same way 07.1 extracted _continue_after_city — so both
@@ -2266,8 +2300,28 @@ async def _city_fork_then_continue(
     from party_track via the party-gate's fail-soft except-branch, which returns before reaching
     this tail) — kept as an expression rather than a third parameter so this function's
     signature stays exactly what plan 04 is told to expect.
+
+    Квик 260923-p37 (D-05/D-06/D-07): `city_gate` — True for every NEW submission entry point
+    (bare /start, deep-link, admin_rereg, rereg_start). The ONE caller that must NOT gate is the
+    already-registered-delegate "?start=edit" branch above in cmd_start — правка уже поданной
+    анкеты не должна ни спрашивать закрытый город заново, ни подставлять единственный открытый
+    город вместо реального города делегата (D-07) — it passes `city_gate=False`.
     """
     user_id = message.from_user.id
+    if city_gate:
+        try:
+            gate_kind, gate_code = await reg_engine.city_gate(effective_city)
+        except Exception as e:
+            logger.error(f"city gate check failed for {user_id}: {e}")
+            gate_kind, gate_code = "go", effective_city
+        if gate_kind in ("closed", "all_closed"):
+            await _persist_fork_attribution(state, referrer_id, source_tag, dl_party_track, recovered_track)
+            await state.update_data(event_city=None)  # закрытый город не наследуется дальше по цепочке
+            from handlers.reg_city_gate import send_city_closed
+            await send_city_closed(message, gate_code)
+            return
+        effective_city = gate_code  # "go": то же значение, либо единственный открытый город (D-06)
+
     # Phase 07.1 (CITY-03): pre-flow city screen. Fixed order with the party fork
     # (07.1-CONTEXT.md): party-closed gate -> welcome -> CITY -> party fork -> start. We
     # reach this point only when there is no existing non-rejected users row (the
@@ -2278,18 +2332,7 @@ async def _city_fork_then_continue(
         logger.error(f"city fork gate check failed for {user_id}: {e}")
         show_city = False
     if show_city:
-        # Same CR-01/HIGH-01 preserve idiom as the party fork below — persist attribution
-        # (and the party track already known via deep-link/recovery) BEFORE the early return,
-        # so city_pick's later call to _continue_after_city can round-trip it through FSM.
-        _existing = await state.get_data()
-        await state.update_data(
-            referrer_id=referrer_id or _existing.get("referrer_id"),
-            source=source_tag or _existing.get("source"),
-            _source_from_tag=bool(source_tag) or bool(_existing.get("_source_from_tag")),
-            participant_type=(dl_party_track or recovered_track) or _existing.get("participant_type"),
-        )
-        if dl_party_track:
-            await state.update_data(_track_from_link=True)
+        await _persist_fork_attribution(state, referrer_id, source_tag, dl_party_track, recovered_track)
         city_fork_text = await get_setting_typed("city_fork_text")  # Phase 17.1 (17.1-03): реестр
         # Квик 260917-en: приёмка 17.09 — владелец явно попросил переводить и кнопки городов
         # («Москва, 30-31 октября»); прежнее решение (Quick 260906, «данные v1, не UI-текст»)
