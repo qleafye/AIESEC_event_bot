@@ -135,7 +135,9 @@ async def search_people(
         return []
     results = [
         _from_users_row(row)
-        for row in await db.search_users_by_name(value, limit, city_scope=city_scope)
+        for row in await db.search_users_by_name(
+            value, limit, city_scope=city_scope, include_university=True,
+        )
     ]
     if include_started and len(results) < limit:
         seen_ids = {r["user_id"] for r in results}
