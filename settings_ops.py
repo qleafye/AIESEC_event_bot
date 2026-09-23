@@ -601,6 +601,9 @@ TOGGLE_SECTION: dict[str, str] = {
     # delegate_chat_title, group="system") — тумблер остаётся рядом со своими соседями и в
     # боте, и в Mini App.
     "chat_tracking_enabled": "manage",
+    # Квик 260923 (форум-чекин, D-01..D-04): master-тумблер выпуска QR — строка ("toggle", …)
+    # раздела «📋 Заявки» в `admin_sections.SECTIONS`, сразу после toggle_apps_queue_sort_by_score.
+    "checkin_qr_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
