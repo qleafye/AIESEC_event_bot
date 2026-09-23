@@ -79,7 +79,7 @@ def test_text_for_recipient_appends_auto_reject_line_when_enabled(tmp_path):
     text = asyncio.run(reminders_mod._text_for_recipient(ADMIN_ID, since="2000-01-01 00:00:00"))
 
     assert text is not None
-    assert "🤖 Автоотказ с прошлой сводки: 1" in text
+    assert "🤖 <b>Автоотказ с прошлой сводки: 1</b>" in text
 
 
 def test_text_for_recipient_zero_pending_and_one_auto_reject_sends_only_auto_line(tmp_path):
@@ -91,7 +91,11 @@ def test_text_for_recipient_zero_pending_and_one_auto_reject_sends_only_auto_lin
 
     text = asyncio.run(reminders_mod._text_for_recipient(ADMIN_ID, since="2000-01-01 00:00:00"))
 
-    assert text == "🤖 Автоотказ с прошлой сводки: 1"
+    lines = text.splitlines()
+    assert lines[0] == "🤖 <b>Автоотказ с прошлой сводки: 1</b>"  # без строки про ожидание
+    assert lines[1].startswith("• ")  # имя столбиком
+    assert "Правило «Младше 16»" in lines
+    assert lines[-1] == "Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы"
 
 
 def test_text_for_recipient_both_zero_returns_none(tmp_path):
@@ -129,7 +133,7 @@ def test_text_for_recipient_bound_manager_sees_own_city_auto_reject_count(tmp_pa
         reminders_mod._text_for_recipient(MSK_MANAGER_ID, since="2000-01-01 00:00:00")
     )
 
-    assert "🤖 Автоотказ с прошлой сводки: 1" in text  # только свой город, не оба
+    assert "🤖 <b>Автоотказ с прошлой сводки: 1</b>" in text  # только свой город, не оба
 
 
 def test_pending_reminder_loop_initializes_watermark_on_first_call(tmp_path, monkeypatch):

@@ -31,7 +31,7 @@ from datetime import datetime, timedelta
 
 from cities import cities_module_on, normalize_city
 from database.db import (
-    auto_reject_summary, enqueue_reg_digest, get_user, list_unsent_reg_digest,
+    auto_reject_summary, enqueue_reg_digest, get_setting, get_user, list_unsent_reg_digest,
     mark_reg_digest_sent,
 )
 from settings_schema import REG_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
@@ -96,18 +96,27 @@ def build_digest_text(pending_names: list[str], auto_names: list[str] | None = N
         ])
         period_text = ""
     if auto_names:
-        block = [f"🤖 <b>Автоотказ: {len(auto_names)}</b>{period_text}", *_bullets(auto_names)]
-        if rule_counts:
-            if len(rule_counts) == 1:
-                block.append(f"Правило «{html.escape(str(rule_counts[0][0]))}»")
-            else:
-                parts = ", ".join(
-                    f"«{html.escape(str(name))}» — {count}" for name, count in rule_counts
-                )
-                block.append(f"По правилам: {parts}")
-        block.append("Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы")
-        blocks.append(block)
+        blocks.append(auto_reject_block(
+            f"🤖 <b>Автоотказ: {len(auto_names)}</b>{period_text}", auto_names, rule_counts,
+        ))
     return "\n\n".join("\n".join(b) for b in blocks)
+
+
+def auto_reject_block(title: str, names: list[str],
+                      rule_counts: list[tuple[str, int]] | None) -> list[str]:
+    """Строки блока «🤖 Автоотказ»: заголовок, имена столбиком, правило(а), путь в админке.
+    Общий для пачки уведомлений и периодической сводки ожидания (services/reminders.py)."""
+    block = [title, *_bullets(names)]
+    if rule_counts:
+        if len(rule_counts) == 1:
+            block.append(f"Правило «{html.escape(str(rule_counts[0][0]))}»")
+        else:
+            parts = ", ".join(
+                f"«{html.escape(str(name))}» — {count}" for name, count in rule_counts
+            )
+            block.append(f"По правилам: {parts}")
+    block.append("Журнал и возврат на модерацию: 🚫 Правила автоотказа → 🤖 Автоотказы")
+    return block
 
 
 # ── Async helpers ─────────────────────────────────────────────────────────────
@@ -178,6 +187,15 @@ def arm_digest_job(city: str | None, minutes: int, *, first_queued_at: str | Non
     )
 
 
+async def auto_rejects_go_to_summary() -> bool:
+    """Заявки приходят сводкой раз в N («🔔 Уведомление о заявке» = пачкой) и сама сводка
+    включена -> автоотказ не шлётся отдельно: его имена попадают в ту же сводку ожидания
+    (services/reminders.py). Иначе — прежний путь (сразу или пачкой уведомлений)."""
+    if await get_setting_typed("pending_notify_mode") != "batched":
+        return False
+    return await get_setting("pending_reminder_enabled") != "off"
+
+
 async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw=None,
                              is_new: bool = True, auto_rejected: bool = False) -> None:
     """Точка входа из post_finalize: выбрать режим и отправить/отложить.
@@ -188,6 +206,8 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
     отправке — к моменту отправки менеджер мог вернуть заявку из журнала, и счётчик соврал
     бы)."""
     from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
+    if is_new and auto_rejected and await auto_rejects_go_to_summary():
+        return  # владелец 23.09: автоотказы — той же периодической сводкой, что и заявки
     city = await resolve_city(city_raw)
     mode = await get_setting_typed("reg_submit_notify_mode") if is_new else "each"
     if mode == "digest":
