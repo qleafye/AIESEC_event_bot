@@ -1,0 +1,214 @@
+// Экран «Сканер» (Phase 12, FORUM-CHECKIN.md, D-08/D-11/D-12/D-13, идея №9): отметка на
+// форуме. Основной путь — Telegram.WebApp.showScanQrPopup в НЕПРЕРЫВНОМ режиме: колбэк
+// qrTextReceived возвращает false (попап не закрывается), следующий скан продолжает отмечать
+// без повторного тапа «Сканировать» (D-08). Запасной путь на этом же экране — поиск по
+// фамилии (D-11/D-12: телефон делегата сел, а сеть есть), кнопка «Отметить» шлёт ту же
+// отметку через /checkin/manual. Счётчик прихода вверху — /checkin/stats (задача A2:
+// построчно по городам, когда сервер отдаёт `cities`, иначе один общий счётчик).
+//
+// Защита от повторного скана: камера в непрерывном режиме присылает ОДИН И ТОТ ЖЕ текст QR
+// много раз за секунды, пока волонтёр не отвёл камеру — `RESCAN_GUARD_MS` глушит повторы
+// того же текста, а не блокирует скан вовсе (другой делегат сканируется сразу).
+//
+// Точка — пока всегда «Вход» (ENTRY_POINT/ENTRY_POINT_LABEL в services/checkin.py); когда
+// появятся точки сессий (D-18), сюда добавится пикер — сегодня выбирать не из чего.
+
+import { flatRow, errorText, noticeBox } from "../ui.js";
+import { haptic } from "../motion.js";
+
+const POINT = "entry";
+const POINT_LABEL = "🚪 Вход";
+const SEARCH_DEBOUNCE_MS = 300;
+const RESCAN_GUARD_MS = 3000;
+
+const NETWORK_TEXT = "Нет связи — переходите на приложение-сканер.";
+const NO_SCANNER_TEXT = "Обновите Telegram — сканер QR недоступен в этой версии. Ищите делегата по фамилии ниже.";
+
+const STATUS_TONE = {
+  new: "success",
+  duplicate: "warn",
+  denied: "error",
+  not_found: "error",
+  foreign_event: "error",
+};
+const STATUS_HEADING = {
+  new: "Отмечен",
+  denied: "Не пропущен",
+  not_found: "Не пропущен",
+  foreign_event: "Не пропущен",
+};
+const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };
+
+// Сеть не ответила (fetch упал до HTTP-статуса) — ApiError всегда несёт число в `.status`,
+// «сырой» TypeError браузера — нет; тот же приём различения, что нужен только этому экрану
+// (остальные экраны молча используют общий screenText("network_error") без развилки).
+function isNetworkError(err) {
+  return !(err && typeof err.status === "number");
+}
+
+function timeOnly(stamp) {
+  if (!stamp) return "";
+  const text = String(stamp);
+  const spaceIdx = text.indexOf(" ");
+  return (spaceIdx >= 0 ? text.slice(spaceIdx + 1) : text).slice(0, 5);
+}
+
+export async function render(root, params, ctx) {
+  const { h, api } = ctx;
+
+  const { el: notice, say } = noticeBox(h);
+  const statsBox = h("div", { class: "checkin-stats" }, h("span", { class: "muted", text: "Загрузка…" }));
+  const plaque = h("div", { class: "checkin-plaque hidden" });
+  const scanBtn = h("button", { class: "btn", type: "button", text: "📷 Сканировать" });
+  const searchInput = h("input", { class: "input", type: "text", placeholder: "Фамилия делегата" });
+  const searchResults = h("div", { class: "flat-list" });
+  const fallbackNote = h("p", { class: "muted hidden", text: NO_SCANNER_TEXT });
+
+  root.append(
+    h("h1", { text: "Сканер" }),
+    statsBox,
+    notice,
+    h("div", { class: "field" },
+      h("label", { text: "Точка" }),
+      h("div", { class: "chip accent", text: POINT_LABEL }),
+    ),
+    h("div", { class: "task-actions" }, scanBtn),
+    fallbackNote,
+    plaque,
+    h("h2", { text: "Поиск по фамилии" }),
+    h("div", { class: "field" }, searchInput),
+    searchResults,
+  );
+
+  async function loadStats() {
+    let stats;
+    try {
+      stats = await api("/checkin/stats");
+    } catch (err) {
+      statsBox.replaceChildren(h("span", {
+        class: "muted", text: isNetworkError(err) ? NETWORK_TEXT : "Счётчик недоступен.",
+      }));
+      return;
+    }
+    if (stats.cities) {
+      const rows = stats.cities.map((c) => h("div", { text: `${c.label}: пришли ${c.arrived} из ${c.approved}` }));
+      rows.push(h("div", { class: "checkin-stats-total", text: `Итого: ${stats.arrived} из ${stats.approved}` }));
+      statsBox.replaceChildren(...rows);
+    } else {
+      statsBox.replaceChildren(h("span", { text: `Пришли: ${stats.arrived} из ${stats.approved} одобренных` }));
+    }
+  }
+
+  function showPlaque(res) {
+    const tone = STATUS_TONE[res.status] || "error";
+    plaque.className = `checkin-plaque tone-${tone}`;
+    const dot = tone === "success" ? "🟢" : tone === "warn" ? "🟡" : "🔴";
+    const heading = res.status === "duplicate"
+      ? `Уже был в ${timeOnly(res.scanned_at)}`
+      : (STATUS_HEADING[res.status] || "Не пропущен");
+    plaque.replaceChildren(...[
+      h("div", { class: "checkin-plaque-dot", text: dot }),
+      h("div", { class: "checkin-plaque-heading", text: heading }),
+      res.full_name ? h("div", { class: "checkin-plaque-name", text: res.full_name }) : null,
+      res.city ? h("div", { class: "checkin-plaque-city", text: res.city }) : null,
+      res.reason_text ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
+    ].filter(Boolean));
+    haptic(HAPTIC_BY_TONE[tone] || "error");
+  }
+
+  let scanBusy = false;
+  async function submitScan(payloadText) {
+    if (scanBusy) return;
+    scanBusy = true;
+    try {
+      const res = await api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: POINT } });
+      showPlaque(res);
+      await loadStats();
+    } catch (err) {
+      say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
+    } finally {
+      scanBusy = false;
+    }
+  }
+
+  // ── скан QR: непрерывный режим ────────────────────────────────────────────────────────
+  let lastText = null;
+  let lastAt = 0;
+  function onQrText(text) {
+    const now = Date.now();
+    if (text === lastText && now - lastAt < RESCAN_GUARD_MS) return false;
+    lastText = text;
+    lastAt = now;
+    submitScan(text);
+    return false; // попап НЕ закрывается — следующий скан продолжает отмечать (D-08)
+  }
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const canScan = Boolean(tg && typeof tg.showScanQrPopup === "function");
+  if (!canScan) {
+    scanBtn.setAttribute("disabled", "");
+    fallbackNote.className = "muted";
+  }
+  scanBtn.addEventListener("click", () => {
+    if (!canScan) return;
+    tg.showScanQrPopup({ text: "Наведите камеру на QR делегата" }, onQrText);
+  });
+
+  // ── поиск по фамилии (D-11/D-12) ──────────────────────────────────────────────────────
+  let searchTimer = null;
+
+  function resultRow(person) {
+    const metaBase = [person.city, person.username ? `@${person.username}` : null, person.university]
+      .filter(Boolean).join(" · ") || "—";
+    const meta = person.eligible ? metaBase : `${metaBase} — ${person.reason_text || "не допущен"}`;
+    const btn = h("button", { class: "btn secondary", type: "button", text: "Отметить" });
+    if (!person.eligible) btn.setAttribute("disabled", "");
+    btn.addEventListener("click", async () => {
+      if (btn.hasAttribute("disabled")) return;
+      btn.setAttribute("disabled", "");
+      try {
+        const res = await api("/checkin/manual", {
+          method: "POST", body: { telegram_id: person.telegram_id, point: POINT },
+        });
+        showPlaque(res);
+        await loadStats();
+      } catch (err) {
+        say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
+      } finally {
+        btn.removeAttribute("disabled");
+      }
+    });
+    return flatRow(h, { title: person.full_name, meta, trailing: btn });
+  }
+
+  async function search(q) {
+    const needle = q.trim();
+    searchResults.replaceChildren();
+    if (needle.length < 2) return;
+    let items;
+    try {
+      const page = await api(`/checkin/search?q=${encodeURIComponent(needle)}`);
+      items = page.items;
+    } catch (err) {
+      searchResults.append(h("p", {
+        class: "error-inline",
+        text: isNetworkError(err) ? NETWORK_TEXT : "Не удалось найти — попробуйте ещё раз.",
+      }));
+      return;
+    }
+    if (searchInput.value.trim() !== needle) return; // ушли дальше, пока грузили
+    if (items.length === 0) {
+      searchResults.append(h("p", { class: "muted", text: "Никого не нашли — проверьте написание." }));
+      return;
+    }
+    searchResults.append(...items.map(resultRow));
+  }
+
+  searchInput.addEventListener("input", () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    const value = searchInput.value;
+    searchTimer = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
+  });
+
+  await loadStats();
+}
