@@ -847,8 +847,13 @@ ADMIN_CAPS: dict[str, str] = {
     "state:WaveCreate:*": "moderate_game",
     "state:WaveEdit:*": "moderate_game",
 
-    # checkin: no keys yet -- Phase 12. Capability already exists in
-    # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
+    # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
+    # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
+    # `checkin` — до этого она существовала в ALL_CAPABILITIES/ROLES без единой строки меню.
+    "admin_checkin": "checkin",
+    "checkin_upload_start": "checkin",
+    "checkin_point:*": "checkin",
+    "state:CheckinImport:*": "checkin",
 
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ

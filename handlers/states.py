@@ -298,3 +298,11 @@ class AdminI18nEdit(StatesGroup):
     # (src_hash/src_text/origin_key) и куда вернуться после сохранения) целиком живёт в
     # state.get_data() (i18n_hash/i18n_src_text/i18n_origin_key/i18n_return), как у CoinsManual.
     text = State()
+
+
+class CheckinImport(StatesGroup):
+    # Phase 12 (FORUM-CHECKIN.md, D-09/D-10): загрузка выгрузки офлайн-приложения-сканера
+    # (handlers/admin_checkin.py) — один шаг ожидания файла; выбор точки («🚪 Вход») — кнопка
+    # без текстового ввода, второго State не заводим (то же решение, что у CoinsManual/
+    # CityForm: подтверждение — callback, читающий state.get_data(), а не отдельный State).
+    waiting_file = State()

@@ -908,3 +908,9 @@ from handlers import admin_polls  # noqa: E402
 # after the gamification+polls tail (golden snapshot: a clean append, no reorder of anything
 # above). Command is intentionally invisible everywhere else — see handlers/admin_purge.py.
 from handlers import admin_purge  # noqa: E402
+
+# Phase 12 (FORUM-CHECKIN.md): shared-router seam import for «✅ Отметки на форуме»
+# (handlers/admin_checkin.py) — registers show_admin_checkin/checkin_upload_start/
+# checkin_import_file_step/checkin_import_file_invalid/cancel_checkin_import/
+# checkin_point_pick in the very tail of admin.router (golden snapshot: a clean append).
+from handlers import admin_checkin  # noqa: E402

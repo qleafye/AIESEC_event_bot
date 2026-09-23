@@ -850,16 +850,23 @@ def test_action_only_row_never_autoopens_end_to_end(tmp_path):
     assert "admin_rebuild_sheet" in section_cb
 
 
-def test_no_sections_shows_explanatory_message(tmp_path):
+def test_no_sections_shows_explanatory_message(tmp_path, monkeypatch):
+    # Phase 12 (FORUM-CHECKIN): «checkin» обзавелась своей строкой меню (admin_checkin), так
+    # что все семь настоящих ALL_CAPABILITIES теперь маппятся хотя бы на один ряд
+    # _ADMIN_MENU_ROWS -- больше нет реальной, включённой капы с нулём видимых строк, чтобы
+    # прогнать «непустой набор прав, ноль видимых строк» через путь БД/ролей (причина, по
+    # которой прежняя версия этого теста подменяла game_manager -> "checkin", отпала). Проверяемый
+    # инвариант (D-16: у реальной роли без единой строки — объясняющее сообщение, никогда не
+    # пустая клавиатура) — про собственную ветку `cmd_admin_help` для пустого списка строк, а не
+    # про то, какая капа сегодня пуста, поэтому гоняем её напрямую через monkeypatch
+    # `resolve_capabilities` на капу, у которой по построению ноль строк меню (тот же приём, что
+    # `test_middleware_does_not_touch_foreign_router_events` выше).
     _roles_ready(tmp_path)
-    # 09-02 (GAME-01) gave moderate_game a menu row ("📋 Задания"), so game_manager's default
-    # caps no longer map to zero rows -- override role_caps_game_manager to "checkin" (Phase 12,
-    # not built yet -- still zero _ADMIN_MENU_ROWS today) to keep exercising a real,
-    # currently-enabled role with nothing to show.
-    from handlers.admin_caps import role_caps_key
 
-    asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
-    asyncio.run(db.set_setting(role_caps_key("game_manager"), "checkin"))
+    async def _fake_resolve(_telegram_id):
+        return {"__no_menu_rows_fixture__"}
+
+    monkeypatch.setattr(admin_mod, "resolve_capabilities", _fake_resolve)
 
     message = FakeMessage(text="/admin", user_id=GAME_MANAGER_ID, chat_id=GAME_MANAGER_ID)
     state = _fresh_state(GAME_MANAGER_ID)
