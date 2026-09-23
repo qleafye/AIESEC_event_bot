@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from datetime import datetime
 
 from config import config
 from database import db
@@ -103,6 +104,36 @@ def test_record_checkin_explicit_scanned_at_and_approx(tmp_path):
     )
     assert status == "new"
     assert ts == "2026-10-03 09:15:00"
+
+
+# T-12-03 (Rule 1): две одновременные отметки в ОДНУ секунду больше не путаются -- new/duplicate
+# решает `cursor.rowcount`, а не сравнение времени (см. докстринг `record_checkin`).
+
+def test_record_checkin_concurrent_same_second_only_one_new(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    fixed = datetime(2026, 10, 3, 9, 0, 0)
+    monkeypatch.setattr(db, "msk_now", lambda: fixed)
+
+    n = 20
+
+    async def _run_all():
+        return await asyncio.gather(
+            *[db.record_checkin(UID, "entry", source="miniapp") for _ in range(n)]
+        )
+
+    results = asyncio.run(_run_all())
+    statuses = [r[0] for r in results]
+    assert statuses.count("new") == 1, f"ровно одна отметка должна выиграть гонку, получили: {statuses}"
+    assert statuses.count("duplicate") == n - 1
+
+    stamp = "2026-10-03 09:00:00"
+    # ВСЕ отметки (и "new", и "duplicate") обязаны показывать ОДНО и то же время первой
+    # отметки -- дубли не подменяют время выигравшего конкурента своим собственным.
+    for status, ts in results:
+        assert ts == stamp, f"{status} отдал чужое/иное время: {ts!r}"
+
+    assert asyncio.run(db.count_checkins_by_point("entry")) == 1  # физически одна строка, не n
 
 
 # ── count_checkins_by_point / count_approved_current_season ────────────────────────────────
