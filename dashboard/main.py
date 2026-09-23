@@ -283,6 +283,12 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         if flags.get("reject_rules_enabled") == "on"
         else None
     )
+    # Квик 260923 (D-H): число РАЗНЫХ людей за той же живой выборкой — подпись «сумма больше
+    # числа людей» печатается в шаблоне ТОЛЬКО когда разбивка по правилам это доказывает
+    # (человек может попасть под несколько правил разом).
+    auto_reject_people = (
+        queries.auto_reject_people_count(conn, scope) if auto_reject_rows else None
+    )
     daily_rows = (
         queries.daily_registrations(conn, scope)
         if flags.get("dashboard_block_dynamics") == "on"
@@ -389,6 +395,14 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         # falsy, блок не рисуется без отдельного has_data (D-27: «блок не рисуется при пустом
         # или None-значении»).
         "auto_reject_breakdown": _bar_rows(auto_reject_rows) if auto_reject_rows else None,
+        # Квик 260923 (D-H): подпись «сумма больше числа людей» — только когда разбивка по
+        # правилам это доказывает (сумма > people). auto_reject_rows пуст/None -> оба None,
+        # шаблон ничего не рисует.
+        "auto_reject_people": auto_reject_people,
+        "auto_reject_sum_exceeds_people": bool(
+            auto_reject_rows and auto_reject_people is not None
+            and sum(count for _label, count in auto_reject_rows) > auto_reject_people
+        ),
         "dynamics_enabled": daily_rows is not None,
         "daily_chart": daily_chart,
         "city_cut": (

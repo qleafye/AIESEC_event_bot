@@ -578,24 +578,43 @@ def _reject_rule_labels(conn) -> dict[int, str]:
     return labels
 
 
-def auto_reject_breakdown(conn, scope: Scope) -> list[tuple[str, int]]:
-    """Разбивка «какое правило сколько отсеяло» — по ЖИВЫМ (не возвращённым на модерацию)
-    строкам `auto_reject_log`, под тем же `_scope_sql`, что и `funnel()`. `rule_ids` — это
-    JSON-список id правил ОДНОЙ колонкой: SQLite не умеет группировать список внутри ячейки,
-    а объём журнала измеряется сотнями строк — Counter в Python дешевле второй таблицы связей.
-    Битая строка JSON пропускается с продолжением: одна кривая запись не имеет права уронить
-    дашборд. Отсортировано по убыванию — самое широкое (проблемное) правило видно первым."""
-    import json
-    from collections import Counter
-
+def _live_auto_reject_rows(conn, scope: Scope):
+    """Строки `auto_reject_log`, которые считаются ЖИВЫМИ для отчётности (D-H, квик 260923):
+    не возвращены на модерацию И делегат всё ещё `status='rejected'` — сам поправивший анкету
+    делегат (статус успел смениться, а строка журнала ещё не отмечена возвратом) больше не
+    считается. Общий шов для `auto_reject_breakdown`/`auto_reject_people_count` — счётчик и
+    разбивка обязаны ходить по ОДНОМУ набору условий, иначе «сумма правил» разойдётся с «числом
+    людей» не по смыслу (несколько правил на человека), а по рассинхрону выборок."""
     parts, params = _scope_sql(conn, scope)
-    where_parts = parts + ["l.returned_to_moderation_at IS NULL"]
+    where_parts = parts + ["l.returned_to_moderation_at IS NULL", "u.status = 'rejected'"]
     where = _where(where_parts)
-    rows = conn.execute(
-        "SELECT l.rule_ids FROM auto_reject_log l "
+    return conn.execute(
+        "SELECT l.telegram_id, l.rule_ids FROM auto_reject_log l "
         f"JOIN users u ON u.telegram_id = l.telegram_id{where}",
         params,
     ).fetchall()
+
+
+def auto_reject_people_count(conn, scope: Scope) -> int:
+    """D-H: число РАЗНЫХ людей за живыми строками (см. `_live_auto_reject_rows`) — один человек
+    может попасть под несколько правил разом, поэтому сумма `auto_reject_breakdown` может быть
+    БОЛЬШЕ этого числа; дашборд подписывает разницу отдельной строкой, когда это так."""
+    rows = _live_auto_reject_rows(conn, scope)
+    return len({row["telegram_id"] for row in rows})
+
+
+def auto_reject_breakdown(conn, scope: Scope) -> list[tuple[str, int]]:
+    """Разбивка «какое правило сколько отсеяло» — по ЖИВЫМ (не возвращённым на модерацию,
+    делегат всё ещё `status='rejected'` — D-H) строкам `auto_reject_log`, под тем же
+    `_scope_sql`, что и `funnel()`. `rule_ids` — это JSON-список id правил ОДНОЙ колонкой:
+    SQLite не умеет группировать список внутри ячейки, а объём журнала измеряется сотнями
+    строк — Counter в Python дешевле второй таблицы связей. Битая строка JSON пропускается с
+    продолжением: одна кривая запись не имеет права уронить дашборд. Отсортировано по убыванию —
+    самое широкое (проблемное) правило видно первым."""
+    import json
+    from collections import Counter
+
+    rows = _live_auto_reject_rows(conn, scope)
     labels = _reject_rule_labels(conn)
     counter: Counter[str] = Counter()
     for row in rows:
