@@ -40,7 +40,16 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "registration.py": (
-        2605,
+        2650,
+        "Квик 260923-p37 (CITY-REG-CLOSE): +43 строки — общий гейт закрытия города по дате "
+        "врезан в `_city_fork_then_continue` (keyword-параметр `city_gate`, вызов "
+        "`reg_engine.city_gate`/`handlers.reg_city_gate.send_city_closed` на closed/"
+        "all_closed, подстановка единственного открытого города на «go»), атрибуция вынесена в "
+        "отдельный `_persist_fork_attribution` (общий для развилки и экрана «закрыт»), правка "
+        "уже поданной анкеты зовёт `city_gate=False` (D-07), а `_city_fork_kb` схлопнулась до "
+        "делегирования в новый шов `handlers/reg_city_gate.py`; само правило и экран «город "
+        "закрыт» живут в новом шве, здесь — точки врезки; 2605 -> 2648, потолок с небольшим "
+        "запасом. "
         "19.09 (квик 08-sheets-dashboard, коммит 259890f): +2 строки — построители строк листа "
         "переведены с database.db._csv_safe на _sheet_safe, докстринги объясняют, почему "
         "нейтрализация формул на RAW-записи не нужна; потолок поднят до фактического размера. "
