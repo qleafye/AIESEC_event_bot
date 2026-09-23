@@ -8,6 +8,7 @@ HTML-экранированием и сворачиванием хвоста, м
 pytest-asyncio в проекте нет — async гоняется через asyncio.run(); БД — tmp_path.
 """
 import asyncio
+from datetime import datetime, timedelta
 
 from config import config
 from database import db
@@ -93,6 +94,14 @@ def test_schema_keys_present_with_human_labels():
     assert minutes["type"] == "int" and minutes["group"] == "apps" and minutes["default"] == 15
     assert "через сколько минут тишины" in minutes["prompt"].lower()
     assert "например 15" in minutes["prompt"]
+
+
+def test_schema_key_max_minutes_defaults_to_zero_uncapped():
+    """Квик 260923 (D-C): дефолт 0 = без потолка — поведение прежнее для остальных событий."""
+    from settings_schema import SETTINGS_SCHEMA
+    cap = SETTINGS_SCHEMA["reg_submit_digest_max_minutes"]
+    assert cap["type"] == "int" and cap["group"] == "apps" and cap["default"] == 0
+    assert "не ограничивать" in cap["prompt"].lower()
 
 
 def test_minutes_is_a_plain_field_mode_is_toggle_only():
@@ -249,6 +258,66 @@ def test_digest_mode_city_routing_separate_jobs(tmp_path, monkeypatch):
     assert [r["telegram_id"] for r in asyncio.run(db.list_unsent_reg_digest("spb"))] == [DELEGATE_SPB]
 
 
+# ── Квик 260923 (D-C): потолок ожидания пачки ──────────────────────────────────
+
+def test_arm_digest_job_cap_zero_is_byte_identical(tmp_path, monkeypatch):
+    """cap_minutes=0 (дефолт) -> run_at ровно now+minutes, потолок не участвует вовсе."""
+    _db_ready(tmp_path)
+    fake = _FakeScheduler()
+    monkeypatch.setattr(sched, "_scheduler", fake)
+    fixed_now = datetime(2026, 9, 23, 10, 0, tzinfo=sched.MOSCOW_TZ)
+    monkeypatch.setattr(rd, "datetime", _FrozenDatetime(fixed_now))
+
+    rd.arm_digest_job(None, 15)
+
+    run_date = fake.add_calls[0][2]["run_date"]
+    assert run_date == fixed_now + timedelta(minutes=15)
+
+
+def test_arm_digest_job_cap_shortens_run_at_when_queue_is_not_quiet(tmp_path, monkeypatch):
+    """Первая заявка в очереди — 25 минут назад, окно тишины 15, потолок 30 -> сводка уходит
+    через 5 минут от «сейчас» (потолок сработал раньше окна тишины)."""
+    _db_ready(tmp_path)
+    fake = _FakeScheduler()
+    monkeypatch.setattr(sched, "_scheduler", fake)
+    fixed_now = datetime(2026, 9, 23, 10, 0, tzinfo=sched.MOSCOW_TZ)
+    monkeypatch.setattr(rd, "datetime", _FrozenDatetime(fixed_now))
+    first_queued_at = (fixed_now - timedelta(minutes=25)).strftime("%Y-%m-%d %H:%M:%S")
+
+    rd.arm_digest_job(None, 15, first_queued_at=first_queued_at, cap_minutes=30)
+
+    run_date = fake.add_calls[0][2]["run_date"]
+    assert run_date == fixed_now + timedelta(minutes=5)
+
+
+def test_arm_digest_job_cap_never_goes_to_the_past(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    fake = _FakeScheduler()
+    monkeypatch.setattr(sched, "_scheduler", fake)
+    fixed_now = datetime(2026, 9, 23, 10, 0, tzinfo=sched.MOSCOW_TZ)
+    monkeypatch.setattr(rd, "datetime", _FrozenDatetime(fixed_now))
+    first_queued_at = (fixed_now - timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
+
+    rd.arm_digest_job(None, 15, first_queued_at=first_queued_at, cap_minutes=30)
+
+    run_date = fake.add_calls[0][2]["run_date"]
+    assert run_date == fixed_now  # потолок уже прошёл — не в прошлое, а «сейчас»
+
+
+class _FrozenDatetime:
+    """Подменяет ИМЯ `datetime` внутри `services.reg_digest` целиком (единственный
+    потребитель — `arm_digest_job`, вызывает только `.now(tz)` и `.strptime(...)`)."""
+
+    def __init__(self, frozen):
+        self._frozen = frozen
+
+    def now(self, tz=None):
+        return self._frozen
+
+    def strptime(self, *a, **kw):
+        return datetime.strptime(*a, **kw)
+
+
 def test_edit_is_never_batched(tmp_path, monkeypatch):
     """Правка/переподача уже поданной анкеты уходит менеджеру СРАЗУ даже в режиме «пачкой»:
     это не «новая заявка», и текст у неё свой — «что именно изменилось»."""
@@ -295,6 +364,53 @@ def test_build_digest_text_appends_auto_reject_suffix_with_ru_plural():
     assert text1.endswith(", из них 🤖 1 автоотказ")
     assert text2.endswith(", из них 🤖 2 автоотказа")
     assert text5.endswith(", из них 🤖 5 автоотказов")
+
+
+# ── Квик 260923 (D-D): разбивка по правилам в тексте пачки ────────────────────
+
+def test_build_digest_text_mixed_batch_appends_rule_breakdown_line():
+    text = rd.build_digest_text(
+        ["Иванова", "Петров"], 1, [("Младше 16", 1)],
+    )
+    lines = text.splitlines()
+    assert lines[0] == "📥 Новые заявки: 2 — Иванова, Петров → 📋 Заявки, из них 🤖 1 автоотказ"
+    assert lines[1] == "🤖 Автоотказ: 1 — «Младше 16» 1"
+
+
+def test_build_digest_text_all_auto_swaps_header_and_cta():
+    text = rd.build_digest_text(
+        ["Иванова"], 1, [("Младше 16", 1)], all_auto=True,
+    )
+    lines = text.splitlines()
+    assert lines[0] == "🤖 Автоотказ: 1 — Иванова → 🚫 Правила автоотказа → 🤖 Автоотказы"
+    assert "📥 Новые заявки" not in text
+    assert lines[1] == "🤖 Автоотказ: 1 — «Младше 16» 1"
+
+
+def test_build_digest_text_rule_counts_none_is_byte_identical():
+    assert rd.build_digest_text(["Иванова"], 1) == rd.build_digest_text(["Иванова"], 1, None, False)
+
+
+def test_send_reg_digest_appends_rule_breakdown_and_all_auto_header(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    calls = _capture_notify(monkeypatch)
+    monkeypatch.setattr(sched, "_bot", _Bot())
+    _add_delegate(DELEGATE_MSK, "msk", "Иванова")
+    rid = asyncio.run(db.create_reject_rule(
+        name="Младше 16", city=None, tracks="[]", conditions="{}", action="reject",
+        reject_text=None, enabled=1, created_by=None,
+    ))
+    from services.reject_journal import record_auto_reject
+    asyncio.run(record_auto_reject(DELEGATE_MSK, [rid], ["текст"]))
+    now = "2026-09-16 12:00:00"
+    asyncio.run(db.enqueue_reg_digest(DELEGATE_MSK, "msk", now, auto_rejected=1))
+
+    asyncio.run(rd.send_reg_digest("msk"))
+
+    assert calls[0]["text"] == (
+        "🤖 Автоотказ: 1 — Иванова → 🚫 Правила автоотказа → 🤖 Автоотказы\n"
+        "🤖 Автоотказ: 1 — «Младше 16» 1"
+    )
 
 
 def test_notify_application_digest_mode_stamps_auto_rejected_flag(tmp_path, monkeypatch):

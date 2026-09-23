@@ -31,7 +31,8 @@ from datetime import datetime, timedelta
 
 from cities import cities_module_on, normalize_city
 from database.db import (
-    enqueue_reg_digest, get_user, list_unsent_reg_digest, mark_reg_digest_sent,
+    auto_reject_summary, enqueue_reg_digest, get_user, list_unsent_reg_digest,
+    mark_reg_digest_sent,
 )
 from settings_schema import REG_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
 from services import scheduler as _sched
@@ -79,18 +80,39 @@ def _auto_reject_suffix(count: int) -> str:
     return f", из них 🤖 {count} {word}"
 
 
-def build_digest_text(names: list[str], auto_reject_count: int = 0) -> str:
+def build_digest_text(names: list[str], auto_reject_count: int = 0,
+                       rule_counts: list[tuple[str, int]] | None = None,
+                       all_auto: bool = False) -> str:
     """«📥 Новые заявки: N — Иванова, Петров → 📋 Заявки[, из них 🤖 K автоотказов]». `names` —
     уже в нужном порядке; HTML-экранирование здесь, не у вызывающего. Хвост длиннее MAX_NAMES
     сворачивается. `auto_reject_count` (Phase 31, 31-06, D-17) — хвостовой kwarg с дефолтом 0,
-    существующие вызывающие получают байт-в-байт прежний текст."""
+    существующие вызывающие получают байт-в-байт прежний текст.
+
+    Квик 260923 (D-D): `rule_counts`/`all_auto` — тоже хвостовые kwargs с дефолтами None/False,
+    без них поведение не меняется. `rule_counts` (список «имя правила -> K», по убыванию)
+    добавляет ВТОРУЮ строку «🤖 Автоотказ: N — «Имя» K, …» — она печатается при любом ненулевом
+    `auto_reject_count`, есть у неё разбивка или нет. `all_auto=True` (вся пачка — автоотказы,
+    ни одной живой заявки на модерации) меняет ЗАГОЛОВОК: вместо «📥 Новые заявки: … → 📋
+    Заявки» — «🤖 Автоотказ: … → 🚫 Правила автоотказа → 🤖 Автоотказы» (ссылка на «📋 Заявки»
+    была бы враньём — там таких заявок уже нет, они в журнале автоотказов)."""
     total = len(names)
     shown = [html.escape(str(n)) for n in names[:MAX_NAMES]]
     people = ", ".join(shown)
     rest = total - len(shown)
     if rest > 0:
         people = f"{people} и ещё {rest}"
-    return f"📥 Новые заявки: {total} — {people} → 📋 Заявки{_auto_reject_suffix(auto_reject_count)}"
+    if all_auto and auto_reject_count:
+        header = f"🤖 Автоотказ: {total} — {people} → 🚫 Правила автоотказа → 🤖 Автоотказы"
+    else:
+        header = (
+            f"📥 Новые заявки: {total} — {people} → 📋 Заявки"
+            f"{_auto_reject_suffix(auto_reject_count)}"
+        )
+    lines = [header]
+    if auto_reject_count and rule_counts:
+        parts = ", ".join(f"«{html.escape(str(name))}» {count}" for name, count in rule_counts)
+        lines.append(f"🤖 Автоотказ: {auto_reject_count} — {parts}")
+    return "\n".join(lines)
 
 
 # ── Async helpers ─────────────────────────────────────────────────────────────
@@ -130,9 +152,31 @@ async def _display_name(telegram_id: int) -> str:
     return str(telegram_id)
 
 
-def arm_digest_job(city: str | None, minutes: int) -> None:
-    """Поставить/перевзвести джобу дайджеста для города на now+minutes (окно тишины)."""
-    run_at = datetime.now(_sched.MOSCOW_TZ) + timedelta(minutes=minutes)
+def arm_digest_job(city: str | None, minutes: int, *, first_queued_at: str | None = None,
+                    cap_minutes: int = 0) -> None:
+    """Поставить/перевзвести джобу дайджеста для города на now+minutes (окно тишины).
+
+    Квик 260923 (D-C): `first_queued_at`/`cap_minutes` — хвостовые kwargs, `cap_minutes=0`
+    (дефолт) не меняет расчёт вовсе (байт-в-байт прежнее `now+minutes`). При `cap_minutes>0` и
+    заданном `first_queued_at` (created_at первой ещё НЕ отправленной строки очереди города,
+    МСК-строка) — потолок: сводка уходит не позже `first_queued_at + cap_minutes`, даже если
+    поток заявок не стихает и окно тишины постоянно откладывается. `run_at` никогда не уходит
+    в прошлое (`max(..., now)`) — потолок может сработать «уже пора», а не «через N минут»."""
+    now = datetime.now(_sched.MOSCOW_TZ)
+    run_at = now + timedelta(minutes=minutes)
+    if cap_minutes and first_queued_at:
+        try:
+            first_dt = datetime.strptime(first_queued_at, "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=_sched.MOSCOW_TZ
+            )
+        except (TypeError, ValueError):
+            first_dt = None
+        if first_dt is not None:
+            capped = first_dt + timedelta(minutes=cap_minutes)
+            if capped < run_at:
+                run_at = capped
+            if run_at < now:
+                run_at = now
     _sched.get_scheduler().add_job(
         send_reg_digest, "date", run_date=run_at, args=[city],
         id=digest_job_id(city), replace_existing=True,
@@ -157,7 +201,17 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
             auto_rejected=1 if auto_rejected else 0,
         )
         minutes = await get_setting_typed("reg_submit_digest_minutes")
-        arm_digest_job(city, minutes)
+        # Квик 260923 (D-C): потолок читает первую ещё НЕ отправленную строку очереди этого
+        # города — она и есть точка отсчёта «не позже N минут» (список отсортирован по id, т.е.
+        # по порядку постановки). cap_minutes=0 (дефолт) -> запрос не идёт в лишнюю сторону,
+        # arm_digest_job сам не трогает расчёт при cap_minutes=0.
+        cap_minutes = await get_setting_typed("reg_submit_digest_max_minutes")
+        first_queued_at = None
+        if cap_minutes:
+            queue_rows = await list_unsent_reg_digest(city)
+            if queue_rows:
+                first_queued_at = queue_rows[0]["created_at"]
+        arm_digest_job(city, minutes, first_queued_at=first_queued_at, cap_minutes=cap_minutes)
         return
     await notify_by_capability(bot, CAP, admin_text, parse_mode="HTML", city=city)
 
@@ -177,7 +231,15 @@ async def send_reg_digest(city: str | None) -> int:
             return 0
         names = [await _display_name(r["telegram_id"]) for r in rows]
         auto_reject_count = sum(1 for r in rows if r.get("auto_rejected"))
-        text = build_digest_text(names, auto_reject_count)
+        # Квик 260923 (D-D): разбивка по правилам — по СНИМКУ строк ЭТОЙ пачки (live_only=False,
+        # тот же принцип, что и сам auto_reject_count выше: к моменту отправки менеджер мог уже
+        # вернуть заявку из журнала, пачка описывает то, что произошло на постановке).
+        rule_counts: list[tuple[str, int]] = []
+        if auto_reject_count:
+            auto_ids = [r["telegram_id"] for r in rows if r.get("auto_rejected")]
+            _, rule_counts = await auto_reject_summary(telegram_ids=auto_ids, live_only=False)
+        all_auto = bool(auto_reject_count) and auto_reject_count == len(rows)
+        text = build_digest_text(names, auto_reject_count, rule_counts, all_auto)
         sent = await notify_by_capability(_sched._bot, CAP, text, parse_mode="HTML", city=city)
         await mark_reg_digest_sent(
             [r["id"] for r in rows], msk_now().strftime("%Y-%m-%d %H:%M:%S")
@@ -197,10 +259,19 @@ async def rearm_pending_digests() -> list[str | None]:
         if not rows:
             return armed
         minutes = await get_setting_typed("reg_submit_digest_minutes")
+        cap_minutes = await get_setting_typed("reg_submit_digest_max_minutes")
         sched = _sched.get_scheduler()
         for city in dict.fromkeys(r["city"] for r in rows):
             if sched.get_job(digest_job_id(city)) is None:
-                arm_digest_job(city, minutes)
+                # Тот же расчёт потолка, что у notify_application (D-C) — это восстановление
+                # расписания после рестарта, а не новая логика: первая строка ЭТОГО города
+                # (rows уже упорядочены по id).
+                first_queued_at = next(
+                    (r["created_at"] for r in rows if r["city"] == city), None
+                )
+                arm_digest_job(
+                    city, minutes, first_queued_at=first_queued_at, cap_minutes=cap_minutes
+                )
                 armed.append(city)
         if armed:
             logger.warning(f"reg_digest: re-armed {len(armed)} digest job(s) after restart: {armed}")
