@@ -4,7 +4,9 @@ import logging
 from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command, StateFilter
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import (
+    FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, BufferedInputFile,
+)
 from aiogram.fsm.context import FSMContext
 from database.db import (
     get_user,
@@ -73,6 +75,7 @@ from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
+from services.checkin import build_checkin_qr  # Квик 260923: форум-чекин, D-01..D-04
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -1574,6 +1577,47 @@ async def open_miniapp_button(message: types.Message):
         logger.error(f"open_miniapp_button: failed for {message.from_user.id}: {e}")
         text = reg_i18n.tr_text(await get_setting_typed("miniapp_disabled_text"), lang, tr_map)
         await message.answer(text)
+
+
+# ── Квик 260923 (форум-чекин, D-01..D-04): личный QR одобренного делегата ───────────────────
+# Точка входа — reply-кнопка «🎟 Мой QR» (menu_checkin_qr, keyboards/builders.py::MENU_BUTTONS).
+# Дописана СРАЗУ ПОСЛЕ open_miniapp_button и ПЕРЕД reg_handoff_idle_fallback (тот — фолбэк
+# StateFilter(None)+F.text без ограничений, ловит любой необработанный текст; кнопки меню
+# обязаны регистрироваться раньше него, иначе aiogram отдаст текст туда first-match).
+@router.message(F.text.in_(MENU_TEXTS["menu_checkin_qr"]))
+async def show_my_checkin_qr(message: types.Message):
+    # D-02: «одобрен» — тот же гейт, что у остальных пунктов меню (ensure_registered уже
+    # объясняет делегату pending/rejected человеческим текстом реестра, сюда за своим текстом
+    # для этого случая заводить не нужно).
+    if not await ensure_registered(message):
+        return
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    # Защитная перепроверка модуля (D-03/T-19-54 idiom): кнопка не рисуется в меню, пока
+    # checkin_qr_enabled выключен (keyboards/builders.py::get_main_menu_kb), но застрявшая у
+    # делегата клавиатура переживает выключение тумблера — обязана ответить понятным текстом,
+    # а не молча упасть на build_checkin_qr.
+    try:
+        enabled = await get_setting_typed("checkin_qr_enabled") == "on"
+    except Exception as e:
+        logger.error(f"show_my_checkin_qr: checkin_qr_enabled resolve failed for {message.from_user.id}: {e}")
+        enabled = False
+    if not enabled:
+        text = reg_i18n.tr_text(await get_setting_typed("checkin_qr_disabled_text"), lang, tr_map)
+        await message.answer(text)
+        return
+    try:
+        user = await get_user(message.from_user.id)
+        png_bytes, caption = await build_checkin_qr(user)
+    except Exception as e:
+        # Fail-soft: сбой генерации QR (например, гонка удаления пользователя) не должен
+        # ронять обработчик — тот же приём, что у open_miniapp_button выше.
+        logger.error(f"show_my_checkin_qr: build_checkin_qr failed for {message.from_user.id}: {e}")
+        text = reg_i18n.tr_text(await get_setting_typed("checkin_qr_disabled_text"), lang, tr_map)
+        await message.answer(text)
+        return
+    caption = reg_i18n.tr_text(caption, lang, tr_map)
+    photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
+    await message.answer_photo(photo, caption=caption)
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —

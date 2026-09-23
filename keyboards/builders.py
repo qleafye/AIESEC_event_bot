@@ -61,6 +61,10 @@ MENU_BUTTONS = [
     # меню»), иначе тап по показанной, но мёртвой кнопке (модуль ещё выключен) был бы
     # нарушением «бот для людей».
     ("menu_lang", "🌐 Язык / Language"),
+    # Квик 260923 (форум-чекин, D-03): личный QR одобренного делегата — та же форма записи,
+    # что и у menu_miniapp выше (двойной гейт: своя видимость menu_checkin_qr + модуль
+    # checkin_qr_enabled, см. get_main_menu_kb ниже).
+    ("menu_checkin_qr", "🎟 Мой QR"),
 ]
 
 # Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
@@ -179,6 +183,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: has_faq_for_city resolve failed for {telegram_id}: {e}")
         faq_on = False
 
+    # Квик 260923 (форум-чекин, D-03): checkin_qr_enabled — тот же приём, что и miniapp_on
+    # выше (одно чтение до цикла, fail-soft к False). Проверка «одобрена ли заявка» здесь
+    # НЕ делается — это гейт клика (handlers/user_actions.py::ensure_registered), не гейт
+    # видимости кнопки, тот же баланс "лишнее чтение user" vs "менеджер выключил", что у
+    # прочих module-флагов этой функции.
+    checkin_qr_on = False
+    try:
+        checkin_qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: checkin_qr_enabled resolve failed: {e}")
+        checkin_qr_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -202,6 +218,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Phase 27 (27-04): вторая половина гейта — сама кнопка value=="on" (проверено
             # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.
             if key == "menu_lang" and not lang_module_on:
+                continue
+            # Квик 260923 (форум-чекин, D-03): вторая половина гейта — сама кнопка value=="on"
+            # недостаточна, пока менеджер не включил модуль checkin_qr_enabled.
+            if key == "menu_checkin_qr" and not checkin_qr_on:
                 continue
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
