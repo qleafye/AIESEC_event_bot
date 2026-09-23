@@ -522,6 +522,9 @@ def test_render_snapshot_apps(tmp_path):
         # Квик 260916: окно тишины дайджеста заявок — новый хвост группы (сам режим
         # reg_submit_notify_mode — тумблер раздела, в группу не входит).
         "reg_submit_digest_minutes",
+        # Квик 260923 (форум-чекин, D-01..D-04): метка события + подпись/текст «выключен» —
+        # новый хвост группы (сам master-тумблер checkin_qr_enabled — тумблер раздела).
+        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -538,6 +541,8 @@ def test_render_snapshot_apps(tmp_path):
         "🔁 Повторная подача закрыта: текст делегату",
         # Квик 260916: окно тишины дайджеста заявок.
         "📥 Дайджест заявок: окно тишины (мин)",
+        # Квик 260923 (форум-чекин): метка события + подпись/текст «выключен».
+        "🎟 Метка события в QR чек-ина", "🎟 Подпись к QR чек-ина", "🎟 QR чек-ина выключен: текст",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -551,6 +556,9 @@ def test_render_snapshot_apps(tmp_path):
         # Квик 260922-wrg: дефолтный текст отказа в повторной подаче — тоже настоящий
         # текстовый дефолт.
         "🔁 Повторная подача закрыта: текст делегату",
+        # Квик 260923 (форум-чекин): подпись и текст «выключен» имеют непустой дефолт в
+        # реестре (checkin_event_tag — default None, остаётся «не задано»).
+        "🎟 Подпись к QR чек-ина", "🎟 QR чек-ина выключен: текст",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -961,9 +969,12 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Квик 260911-w2m: reg_edit_closed_text — новый хвост _APPS_FIELD_ORDER.
     # Квик 260916: reg_submit_digest_minutes — новый хвост _APPS_FIELD_ORDER.
     # Квик 260922-wrg: reg_resubmit_closed_text — встал СРАЗУ ПОСЛЕ reg_edit_closed_text.
-    assert admin_settings._settings_group_keys("apps")[-6:] == [
+    # Квик 260923 (форум-чекин): метка события + подпись/текст «выключен» — новый хвост
+    # _APPS_FIELD_ORDER.
+    assert admin_settings._settings_group_keys("apps")[-9:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
-        "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes"]
+        "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
+        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
