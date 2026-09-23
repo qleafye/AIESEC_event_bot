@@ -174,7 +174,7 @@ def test_migration_preserves_existing_rows(tmp_path):
 
     async def _run():
         await db.add_user(_full_user_data(111, season=None, prev_season=None))
-        fast_init_db()
+        await db.init_db()
         return await db.get_user(111)
 
     user = asyncio.run(_run())

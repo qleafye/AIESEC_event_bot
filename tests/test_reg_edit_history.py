@@ -189,7 +189,7 @@ def test_new_tables_and_columns_do_not_wipe_existing_data(tmp_path):
 
     async def go():
         await _seed_user()
-        fast_init_db()  # повторный вызов на непустой БД
+        await db.init_db()  # повторный вызов на непустой БД
         return await db.get_user(USER_ID)
 
     user = asyncio.run(go())
