@@ -22,6 +22,7 @@ from handlers import admin_gamification
 from handlers import user_actions as ua_mod
 from handlers.admin_caps import required_capability
 from handlers.states import GameTaskCreate, GameTaskEdit
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 931001
@@ -30,7 +31,7 @@ DELEGATE_ID = 931002
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_title_photo_260819.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

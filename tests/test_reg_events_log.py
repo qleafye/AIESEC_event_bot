@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 import cities
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path, name="test_reg_events.db"):
@@ -28,7 +29,7 @@ def _use_tmp_db(tmp_path, name="test_reg_events.db"):
 
 def test_init_db_creates_reg_events_table_and_index_idempotently(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.init_db())  # idempotent re-run must not raise
 
     async def _table_exists():
@@ -56,7 +57,7 @@ def test_record_reg_event_and_kinds_exported():
 
 def test_record_reg_event_three_kinds_land_as_three_rows(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.record_reg_event(1, "start"))
     asyncio.run(db.record_reg_event(1, "form_started", event_city="spb", season="26/1"))
     asyncio.run(db.record_reg_event(1, "form_completed", event_city="spb", season="26/1"))
@@ -78,7 +79,7 @@ def test_record_reg_event_three_kinds_land_as_three_rows(tmp_path):
 
 def test_record_reg_event_repeat_is_append_not_dedup(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.record_reg_event(42, "start"))
     asyncio.run(db.record_reg_event(42, "start"))
 
@@ -94,7 +95,7 @@ def test_record_reg_event_repeat_is_append_not_dedup(tmp_path):
 
 def test_record_reg_event_unknown_kind_still_writes_and_warns(tmp_path, caplog):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     with caplog.at_level("WARNING"):
         asyncio.run(db.record_reg_event(7, "totally_unexpected"))
 
@@ -124,7 +125,7 @@ def _seed_user(telegram_id, event_city, university="MGU", prev_season=None):
 
 def test_get_stats_no_scope_byte_identical_result(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_user(1, "spb")
     _seed_user(2, "msk")
     total_default, unis_default = asyncio.run(db.get_stats())
@@ -135,7 +136,7 @@ def test_get_stats_no_scope_byte_identical_result(tmp_path):
 
 def test_get_stats_city_scope_counts_only_that_city(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     _seed_user(1, "spb")
     _seed_user(2, "spb")
@@ -147,7 +148,7 @@ def test_get_stats_city_scope_counts_only_that_city(tmp_path):
 
 def test_get_returning_count_no_scope_byte_identical(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_user(1, "spb", prev_season="25/2")
     _seed_user(2, "msk")
     default = asyncio.run(db.get_returning_count())
@@ -157,7 +158,7 @@ def test_get_returning_count_no_scope_byte_identical(tmp_path):
 
 def test_get_returning_count_city_scope_narrows(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     _seed_user(1, "spb", prev_season="25/2")
     _seed_user(2, "msk", prev_season="25/2")
@@ -223,7 +224,7 @@ def test_start_hook_fires_exactly_once_row(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555001
     msg = _FakeMessage(uid, "tester")
@@ -245,7 +246,7 @@ def test_record_reg_event_failure_never_breaks_start(tmp_path, monkeypatch):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     async def _boom(*a, **k):
         raise RuntimeError("reg_events write failed")
@@ -271,7 +272,7 @@ def test_start_hook_with_city_deep_link_carries_event_city(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555003
     msg = _FakeMessage(uid, "tester3")
@@ -294,7 +295,7 @@ def test_start_hook_without_deep_link_leaves_event_city_null(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555004
     msg = _FakeMessage(uid, "tester4")
@@ -315,7 +316,7 @@ def test_start_hook_without_deep_link_leaves_event_city_null(tmp_path):
 
 def test_backfill_reg_event_city_fills_only_own_null_start_row(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.record_reg_event(1, "start"))  # own NULL start -> gets filled
     asyncio.run(db.record_reg_event(2, "start"))  # other user's NULL start -> untouched
     asyncio.run(db.record_reg_event(1, "form_started", event_city="msk"))  # other event -> untouched
@@ -339,7 +340,7 @@ def test_backfill_reg_event_city_fills_only_own_null_start_row(tmp_path):
 
 def test_backfill_reg_event_city_noop_on_falsy_city(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.record_reg_event(9, "start"))
 
     asyncio.run(db.backfill_reg_event_city(9, None))
@@ -363,7 +364,7 @@ def test_start_hook_with_src_deep_link_writes_source_tag(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555006
     msg = _FakeMessage(uid, "tester6")
@@ -386,7 +387,7 @@ def test_start_hook_without_args_leaves_source_tag_null(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555007
     msg = _FakeMessage(uid, "tester7")
@@ -409,7 +410,7 @@ def test_start_hook_with_city_deep_link_leaves_source_tag_null(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555008
     msg = _FakeMessage(uid, "tester8")
@@ -432,7 +433,7 @@ def test_form_started_flow_writes_source_tag_from_deep_link(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555009
     msg = _FakeMessage(uid, "tester9")
@@ -455,7 +456,7 @@ def test_form_started_flow_manual_source_answer_is_not_a_tag(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     uid = 555010
     msg = _FakeMessage(uid, "tester10")
@@ -478,7 +479,7 @@ def test_form_started_flow_manual_source_answer_is_not_a_tag(tmp_path):
 
 def test_init_db_rerun_keeps_old_reg_events_rows_with_null_source_tag(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.record_reg_event(1, "start"))
 
     asyncio.run(db.init_db())  # re-run migration on a DB with pre-existing rows
@@ -498,7 +499,7 @@ def test_form_started_backfills_city_onto_earlier_null_start_row(tmp_path):
     from handlers import registration as reg_mod
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
     uid = 555005

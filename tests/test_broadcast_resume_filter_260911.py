@@ -35,6 +35,7 @@ import sqlite3
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 # ── Задача 1: «SQL» — whitelist, виртуальное поле, ветка _build_filter_clause ───────────────
@@ -49,7 +50,7 @@ def test_filter_columns_whitelist_guard(tmp_path):
     виртуальным в `_FILTER_VIRTUAL_FIELDS`. Ловит и опечатку в имени колонки, и виртуальное
     поле, забытое в наборе."""
     config.DB_PATH = str(tmp_path / "test_resume_whitelist_guard.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     con = sqlite3.connect(config.DB_PATH)
     try:
         real_cols = {row[1] for row in con.execute("PRAGMA table_info(users)")}
@@ -64,7 +65,7 @@ def test_filter_columns_whitelist_guard(tmp_path):
 def test_get_distinct_filter_values_resume_returns_empty_not_crash(tmp_path):
     """Сегодня та же строка кода собрала бы `SELECT DISTINCT resume` — `OperationalError`."""
     config.DB_PATH = str(tmp_path / "test_resume_distinct_no_crash.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     assert asyncio.run(db.get_distinct_filter_values("resume")) == []
 
 
@@ -152,7 +153,7 @@ def _seed_resume_kinds(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_kinds.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         rows = [
             (1, {"resume_file_id": "file123"}),
             (2, {"resume_text": "мой опыт..."}),
@@ -200,7 +201,7 @@ def _seed_incident_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_incident.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         rows = [
             (1, "2026-09-01 09:00:00", {"resume_file_id": "f1"}),   # до отсечки, есть
             (2, "2026-09-02 09:00:00", {}),                          # до отсечки, нет (не задет)
@@ -241,7 +242,7 @@ def test_get_resume_filter_options_both_sides(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_options_both.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({"telegram_id": 1, "full_name": "A", "registration_date": "2026-01-01 09:00:00",
                             "resume_file_id": "f1"})
         await db.add_user({"telegram_id": 2, "full_name": "B", "registration_date": "2026-01-01 09:01:00"})
@@ -254,7 +255,7 @@ def test_get_resume_filter_options_all_have_resume(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_options_all_has.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({"telegram_id": 1, "full_name": "A", "registration_date": "2026-01-01 09:00:00",
                             "resume_file_id": "f1"})
         await db.add_user({"telegram_id": 2, "full_name": "B", "registration_date": "2026-01-01 09:01:00",
@@ -268,7 +269,7 @@ def test_get_resume_filter_options_all_missing_resume(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_options_all_missing.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.add_user({"telegram_id": 1, "full_name": "A", "registration_date": "2026-01-01 09:00:00"})
         await db.add_user({"telegram_id": 2, "full_name": "B", "registration_date": "2026-01-01 09:01:00",
                             "resume_file_id": "-"})
@@ -279,7 +280,7 @@ def test_get_resume_filter_options_all_missing_resume(tmp_path):
 
 def test_get_resume_filter_options_empty_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_resume_options_empty.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     assert asyncio.run(db.get_resume_filter_options()) == []
 
 
@@ -355,7 +356,7 @@ def _seed_resume_users(tmp_path, dbname, rows):
     config.ADMIN_IDS = [ADMIN_ID]
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for tid, extra in rows:
             data = {
                 "telegram_id": tid,
@@ -425,7 +426,7 @@ def test_render_filter_menu_none_have_resume_hides_button(tmp_path):
 def test_render_filter_menu_empty_base_hides_resume_button(tmp_path):
     config.DB_PATH = str(tmp_path / "render_empty_resume.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
     from handlers import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))

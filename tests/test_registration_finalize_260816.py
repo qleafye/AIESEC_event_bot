@@ -21,6 +21,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from services import reg_finalize
+from tests._dbtpl import fast_init_db
 
 
 class _FakeFromUser:
@@ -106,7 +107,7 @@ def test_double_tap_confirm_writes_exactly_one_user_and_one_append(tmp_path, mon
     monkeypatch.setattr(reg_finalize, "add_user", slow_add_user)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")  # заявка остаётся pending, bot не нужен
         await asyncio.gather(
             reg.finalize_registration(_FakeMessage(uid), _FakeState(_data()), bot=None),
@@ -131,7 +132,7 @@ def test_guard_released_after_normal_completion(tmp_path, monkeypatch):
     monkeypatch.setattr(reg_finalize, "add_user", counting_add_user)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")
         for _ in range(2):  # ПОСЛЕДОВАТЕЛЬНО — гвард не должен блокировать навсегда
             await reg.finalize_registration(_FakeMessage(uid), _FakeState(_data()), bot=None)
@@ -161,7 +162,7 @@ def test_guard_released_when_finalize_raises(tmp_path, monkeypatch):
     msg = _FakeMessage(uid)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")
         await reg.finalize_registration(msg, _FakeState(_data()), bot=None)
 
@@ -185,7 +186,7 @@ def _run_locked_db_finalize(tmp_path, monkeypatch, uid):
     state = _FakeState(_data())
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")
         await db.mark_reg_started(uid, "tester", participant_type="full")
         await reg.finalize_registration(msg, state, bot=None)  # не должно поднять исключение
@@ -233,7 +234,7 @@ def test_happy_path_still_creates_the_user_row(tmp_path, monkeypatch):
     uid = 880021
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("full_approval", "manual")
         await reg.finalize_registration(_FakeMessage(uid), _FakeState(_data("Обычный Путь")), bot=None)
         await _drain()

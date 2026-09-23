@@ -21,6 +21,7 @@ from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out 
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_gamification
 from handlers.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930301
@@ -30,7 +31,7 @@ STAFF_ID = 930303
 
 def _admin_ready(tmp_path, *, db_name="test_city_header_093.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
@@ -303,7 +304,7 @@ def test_admin_keyboard_for_header_label_real_city_unchanged(tmp_path):
 
 def test_admin_keyboard_for_no_header_when_module_off(tmp_path):
     config.DB_PATH = str(tmp_path / "test_city_header_093_off.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     # event_city_enabled намеренно не включён -- дефолт "off"
     kb = asyncio.run(admin_mod.admin_keyboard_for(ADMIN_ID))
@@ -499,7 +500,7 @@ def test_game_task_city_kb_module_off_step_not_shown(tmp_path):
     вообще, независимо от шапки. Уже покрыто test_game_city_tasks_091.py, дублируем один раз
     здесь на новую сигнатуру функции, чтобы сигнатурный рефакторинг не мог тихо это сломать."""
     config.DB_PATH = str(tmp_path / "test_city_header_093_task3_off.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     # event_city_enabled намеренно не включён
     state = _fresh_state(ADMIN_ID)

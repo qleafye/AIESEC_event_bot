@@ -21,13 +21,14 @@ from config import config
 from database import db
 from services.timeutil import msk_now
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from tests._dbtpl import fast_init_db
 
 USER_ID = 703402465  # тот самый делегат из разбора
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_resume_ttl.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _seed_started(hours_ago: float, city="tyumen", track="full"):

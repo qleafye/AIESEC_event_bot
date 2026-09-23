@@ -24,7 +24,7 @@ ALLOWED_COLUMNS = {"full_name", "phone", "university"}
 
 def _ready(tmp_path, name="reg_edit_history.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _seed_user():
@@ -189,7 +189,7 @@ def test_new_tables_and_columns_do_not_wipe_existing_data(tmp_path):
 
     async def go():
         await _seed_user()
-        await db.init_db()  # повторный вызов на непустой БД
+        fast_init_db()  # повторный вызов на непустой БД
         return await db.get_user(USER_ID)
 
     user = asyncio.run(go())
@@ -215,7 +215,7 @@ CARD_USER_ID = 900300401
 
 def _ready_card(tmp_path, name="reg_edit_history_card.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_card_shows_edited_line_when_present():
@@ -330,6 +330,7 @@ from settings_schema import SETTINGS_SCHEMA  # noqa: E402
 from handlers.admin_sections import SECTIONS  # noqa: E402
 from handlers.admin_caps import ADMIN_CAPS  # noqa: E402
 from handlers import admin_settings  # noqa: E402
+from tests._dbtpl import fast_init_db
 
 
 def test_toggle_lives_in_apps_section():

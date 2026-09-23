@@ -20,13 +20,14 @@ from database import db
 from handlers import admin_settings
 from handlers.settings_validation import validate_setting_value
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900801
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_settings_validation.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

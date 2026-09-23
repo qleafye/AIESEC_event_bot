@@ -20,6 +20,7 @@ from database import db
 from handlers import admin_gamification  # Phase 13 (13-04): grev_*/show_game_review moved here
 from handlers.admin_caps import required_capability
 from handlers.states import GameReview
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 930901
@@ -29,7 +30,7 @@ DELEGATE_ID = 930902
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_gamification_review_phase9.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

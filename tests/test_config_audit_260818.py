@@ -15,11 +15,12 @@ import asyncio
 from config import config
 from database import db
 import settings_schema
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name="test_config_audit_260818.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Task 1: GOOGLE_SHEET_TAB one-time seed ───────────────────────────────────────────────────

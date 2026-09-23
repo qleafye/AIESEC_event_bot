@@ -23,6 +23,7 @@ from database import db
 from handlers import admin_reject_cond as arc
 from handlers.admin_caps import required_capability
 from handlers.states import RejectCond
+from tests._dbtpl import fast_init_db
 
 
 def _run(coro):
@@ -36,7 +37,7 @@ BOUND_SPB_ID = 900400003   # привязан к spb
 
 def _ready(tmp_path, name="test_reject_rules_cond.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
 
 

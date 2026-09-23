@@ -16,6 +16,7 @@ from handlers import registration as reg
 # process_date_input, its sole caller.
 from handlers.reg_flow import _validate_date_range
 from handlers.payment import _parse_options
+from tests._dbtpl import fast_init_db
 
 
 def test_main_tab_active_sheet_row_keeps_cell_raw_no_apostrophe(tmp_path):
@@ -25,7 +26,7 @@ def test_main_tab_active_sheet_row_keeps_cell_raw_no_apostrophe(tmp_path):
     config.DB_PATH = str(tmp_path / "csv_main.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         data = {
             "telegram_id": 1,
             "full_name": "=HYPERLINK(\"http://evil\",\"click\")",
@@ -116,7 +117,7 @@ def test_consent_missing_does_not_block_finalize(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("consent_enabled", "on")
         await db.set_setting("consent_list", "Обработка ПД|pd")
         await db.set_setting("full_approval", "manual")  # stays pending → no bot sends

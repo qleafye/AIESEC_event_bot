@@ -16,6 +16,7 @@ from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out 
 from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS, _apply_short_preset
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900002
@@ -27,7 +28,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

@@ -16,6 +16,7 @@ from database import db
 from handlers import admin_broadcasts
 from services import chat_tracking
 from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900901
 MSK_CHAT_ID = -1001111111111
@@ -25,7 +26,7 @@ SPB_CHAT_ID = -1002222222222
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "chat_filter.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _add_user(tid, status="approved", city=None):

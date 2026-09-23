@@ -14,6 +14,7 @@ import aiosqlite
 from config import config
 from database import db
 import tools.send_resume_recovery as tool
+from tests._dbtpl import fast_init_db
 
 SEASON = "YL 26/2"
 WINDOW_FROM = "2026-09-05 14:30:00"
@@ -63,7 +64,7 @@ async def _seed_base() -> None:
     """Базовый набор: A-кандидат (rejected, без резюме), B-кандидат (approved, без резюме),
     pending-кандидат, кандидат с резюме (исключается), кандидат вне окна, кандидат другого
     сезона."""
-    await db.init_db()
+    fast_init_db()
 
     await _insert_user(
         telegram_id=1001, username="reject1", status="rejected",
@@ -206,7 +207,7 @@ def test_already_sent_ids_ignores_unrelated_broadcasts(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_broadcast(1, "обычная рассылка про парковку", 1)
         await db.record_broadcast_delivery(bid, 42, 1)
         assert await tool.already_sent_ids() == set()
@@ -250,7 +251,7 @@ def test_test_to_sends_exactly_two_messages_and_creates_no_broadcast_rows(tmp_pa
         return fake_bot
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         rc = await tool.main(test_to=777, bot_factory=fake_factory)
         assert rc == 0
         assert len(fake_bot.sent) == 2
@@ -269,7 +270,7 @@ def test_test_to_texts_contain_bot_username_from_get_me(tmp_path):
         return fake_bot
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await tool.main(test_to=777, bot_factory=fake_factory)
         texts = [text for _, text in fake_bot.sent]
         assert texts[0] == tool.TEXT_A

@@ -30,6 +30,7 @@ from handlers import admin as admin_mod
 from handlers import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 import services.sheets as sheets
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -146,7 +147,7 @@ def test_get_sheet_empty_tab_refuses_instead_of_resolving_by_position(tmp_path, 
     first. The refusal must also leave NO pin behind — a guess must not become permanent."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     _patch_gspread_client(monkeypatch, ["STATISTICS", "Реги бот"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
@@ -165,7 +166,7 @@ def test_get_sheet_legacy_pin_still_wins_over_position(tmp_path, monkeypatch):
     that title by name, across a cache reset and a fresh client, no matter what is first."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_pin("Реги бот")
 
     _patch_gspread_client(monkeypatch, ["Party", "Реги бот"])
@@ -184,7 +185,7 @@ def test_get_sheet_refuses_when_pinned_tab_deleted(tmp_path, monkeypatch):
     replacement is a human decision — refuse instead of re-guessing by position."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
-    asyncio.run(db.init_db())
+    fast_init_db()
     _seed_pin("Реги бот")
 
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
@@ -305,7 +306,7 @@ ADMIN_ID = 900813
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

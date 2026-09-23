@@ -21,6 +21,7 @@ from handlers import admin_reg_percity  # module-size split: per-city questions/
 from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS
+from tests._dbtpl import fast_init_db
 
 
 def _new_state(uid: int) -> FSMContext:
@@ -36,7 +37,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -254,7 +255,7 @@ def test_preset_confirm_forum_still_applies_globally(tmp_path):
 
 def test_party_settings_resolve_to_safe_defaults_when_unset(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     assert (asyncio.run(db.get_setting("party_enabled")) or "off") == "off"
     assert (asyncio.run(db.get_setting("party_fork_question")) or "off") == "off"
     assert (asyncio.run(db.get_setting("party_approval")) or "manual") == "manual"
@@ -371,7 +372,7 @@ def test_filter_clause_accepts_participant_type():
 
 def test_get_distinct_filter_values_returns_all_tracks(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.add_user({
         "telegram_id": 1, "full_name": "A", "registration_date": "2026-01-01",
         "participant_type": "full",

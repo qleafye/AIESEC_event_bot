@@ -20,6 +20,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from config import config
 from database import db
 from handlers import admin_caps
+from tests._dbtpl import fast_init_db
 
 ADMIN_A = 910001  # обычный админ, всегда доступен
 ADMIN_BLOCKED = 910002  # заблокировал бота
@@ -28,7 +29,7 @@ ADMIN_C = 910003  # ещё один обычный админ
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "notify_blocked.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_A, ADMIN_BLOCKED, ADMIN_C]
     admin_caps._blocked_notified_at.clear()
 

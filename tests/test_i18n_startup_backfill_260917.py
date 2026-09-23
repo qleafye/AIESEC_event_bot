@@ -18,13 +18,14 @@ from config import config
 from database import db
 from services import i18n_worker
 from services.i18n import src_hash
+from tests._dbtpl import fast_init_db
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def _db_ready(tmp_path, name="test_i18n_startup_backfill_260917.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── bulk_seed: не переставляет уже переведённые строки ────────────────────────────────────

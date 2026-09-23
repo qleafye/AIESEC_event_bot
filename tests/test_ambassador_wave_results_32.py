@@ -25,6 +25,7 @@ from config import config
 from database import db
 from services import ambassador_waves as aw
 import services.scheduler as sched
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 921101
@@ -34,7 +35,7 @@ SPB_MANAGER_ID = 921103
 
 def _ready(tmp_path, name="wave_results.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

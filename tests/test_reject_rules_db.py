@@ -20,11 +20,12 @@ import sqlite3
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_reject_rules_db.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _run(coro):

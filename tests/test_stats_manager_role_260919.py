@@ -14,6 +14,7 @@ import asyncio
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900901
@@ -24,7 +25,7 @@ STATS_ROLE = "stats_manager"
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_stats_manager_role.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -99,7 +100,7 @@ def test_dashboard_has_stats_true_for_stats_manager(tmp_path):
 
     path = str(tmp_path / "access.db")
     config.DB_PATH = path
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
 
     with dash_db.read_conn(path) as conn:
@@ -112,7 +113,7 @@ def test_dashboard_has_stats_false_when_role_disabled(tmp_path):
 
     path = str(tmp_path / "access.db")
     config.DB_PATH = path
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
     asyncio.run(db.set_setting("role_stats_manager_enabled", "off"))
 

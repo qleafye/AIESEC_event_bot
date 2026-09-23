@@ -13,6 +13,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import reg_consent, reg_i18n
+from tests._dbtpl import fast_init_db
 
 UID = 260917002
 _TITLE = "Согласие на обработку персональных данных"
@@ -20,7 +21,7 @@ _TITLE = "Согласие на обработку персональных да
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_consent_title_i18n_260917.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 class _FakeChat:

@@ -23,6 +23,7 @@ import reg_engine
 from config import config
 from database.db import init_db
 from reg_labels import REG_LABELS
+from tests._dbtpl import fast_init_db
 
 _DRIFTED = [
     ("education_status", "reg_q_education"),
@@ -39,7 +40,7 @@ _DRIFTED = [
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_reg_engine_labels.db")
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 def test_every_reg_flow_step_label_matches_bot_dictionary(tmp_path):

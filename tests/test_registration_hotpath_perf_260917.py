@@ -27,6 +27,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db as bot_db
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 MAX_CONNECTS_PER_STEP_ANSWER = 15
 # /start для НОВОГО делегата (без deep-link) на этом сценарии ни разу не доходит до
@@ -63,7 +64,7 @@ def _run(coro):
 
 def _use_tmp_db(tmp_path, name="registration_hotpath_perf.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(bot_db.init_db())
+    fast_init_db()
 
 
 def _state(uid):

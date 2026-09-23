@@ -9,6 +9,7 @@ from database import db
 from settings_schema import SETTINGS_SCHEMA
 
 import services.i18n_sources as i18n_sources
+from tests._dbtpl import fast_init_db
 
 # Группы реестра, которые НИКОГДА не должны попасть в делегатский корпус (LANG-08 — это
 # сторож границы, а не формальность): чисто административные + `consent` (LANG-09, ручной
@@ -32,7 +33,7 @@ _TIER_A_SAMPLES = ("Отмена", "Напиши или нажми «Пропу�
 
 def _db_ready(tmp_path, name="test_i18n_sources_27.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_non_delegate_groups_excluded():

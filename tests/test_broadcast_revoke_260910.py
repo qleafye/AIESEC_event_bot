@@ -16,6 +16,7 @@ from config import config
 from database import db
 from handlers import admin_broadcasts
 from services import broadcast_run as br
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900920
 
@@ -23,7 +24,7 @@ ADMIN_ID = 900920
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "revoke.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _fast_sleep(monkeypatch):

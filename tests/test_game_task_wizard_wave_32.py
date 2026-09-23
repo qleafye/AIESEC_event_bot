@@ -32,6 +32,7 @@ from handlers import admin_gamification
 from handlers import admin_game_tasks
 from handlers import game_task_wizard
 from handlers.states import GameTaskCreate
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 321001
@@ -39,7 +40,7 @@ ADMIN_ID = 321001
 
 def _db_ready(tmp_path, name="wave_wizard.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

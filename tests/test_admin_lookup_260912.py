@@ -17,6 +17,7 @@ import handlers.reg_types_lookup as reg_types_lookup
 import reg_engine
 from settings_schema import get_setting_typed
 from services import lookup as lookup_service
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900901
 
@@ -65,7 +66,7 @@ class _FakeState:
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_admin_lookup_260912.db")
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 def test_empty_queue_shows_calm_text_not_empty_screen(tmp_path):

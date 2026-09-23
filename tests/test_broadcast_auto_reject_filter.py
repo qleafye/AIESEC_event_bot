@@ -19,6 +19,7 @@ import asyncio
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 # ── двойная регистрация + SQL-сторож (границы с 31-02, не дублируется, только проверка связки) ──
@@ -48,7 +49,7 @@ def _seed_auto_reject_users(tmp_path, dbname, rows):
     config.DB_PATH = str(tmp_path / dbname)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for tid, rule_ids in rows:
             await db.add_user({
                 "telegram_id": tid,
@@ -190,7 +191,7 @@ def test_render_filter_menu_no_auto_rejects_hides_button(tmp_path):
     довод, что у «Резюме»/«Сезона» на пустой/однородной базе)."""
     config.DB_PATH = str(tmp_path / "render_no_auto_reject.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
     from handlers import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
@@ -203,7 +204,7 @@ def test_filter_pick_field_auto_reject_no_data_alerts_and_does_not_open_picker(t
     а не пустой экран."""
     config.DB_PATH = str(tmp_path / "pick_no_auto_reject.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
     from handlers import admin_broadcasts
     cb = FakeCallback("filter_f_auto_reject")
     state = FakeState()

@@ -22,6 +22,7 @@ from handlers import registration as reg
 # Phase 13 REFAC (13-03): admin_rereg moved to handlers/reg_flow.py.
 from handlers import reg_flow
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900001
 OTHER_ID = 900002
@@ -104,7 +105,7 @@ def test_admin_start_shows_main_menu_and_inline_rereg_button_only(tmp_path, monk
     monkeypatch.setattr(config, "ADMIN_IDS", [ADMIN_ID])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register_approved_admin(ADMIN_ID)
 
         msg = _KBCapturingMessage(ADMIN_ID, "admintester")
@@ -145,7 +146,7 @@ def test_admin_rereg_callback_rejects_non_admin(tmp_path, monkeypatch):
     monkeypatch.setattr(reg_flow, "_start_registration_flow", fake_start_registration_flow)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(OTHER_ID)
         callback = _FakeCallback("admin_rereg", OTHER_ID, "notadmin")
 
@@ -178,7 +179,7 @@ def test_admin_rereg_callback_starts_flow_as_tapping_admin(tmp_path, monkeypatch
     monkeypatch.setattr(reg, "mark_reg_started", spying_mark_reg_started)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await _register_approved_admin(ADMIN_ID)
 
         state = _new_state(ADMIN_ID)
@@ -206,7 +207,7 @@ def test_admin_rereg_shows_city_fork_when_cities_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ADMIN_IDS", [ADMIN_ID])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")  # 3 города по умолчанию -> форк
         await _register_approved_admin(ADMIN_ID)
 

@@ -30,6 +30,7 @@ from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 import cities
 import reg_engine
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920906
@@ -38,7 +39,7 @@ MANAGER_ID = 920907
 
 def _admin_ready(tmp_path, db_name="test_reg_help_editor_260906.db"):
     config.DB_PATH = str(tmp_path / db_name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

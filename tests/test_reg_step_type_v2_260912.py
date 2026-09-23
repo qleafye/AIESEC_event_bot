@@ -30,11 +30,12 @@ from reg_engine import (
     step_spec,
     step_type_v2,
 )
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="reg_step_type_v2.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(init_db())
+    fast_init_db()
 
 
 def _all_form_v2_toggles_on():

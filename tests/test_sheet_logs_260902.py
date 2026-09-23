@@ -19,6 +19,7 @@ from services import sheet_logs
 import handlers.admin_sections as sec
 from handlers.admin_caps import ADMIN_CAPS
 import handlers.admin_sheet_logs as ash
+from tests._dbtpl import fast_init_db
 
 
 def _run(coro):
@@ -28,7 +29,7 @@ def _run(coro):
 def _ready(tmp_path, name="sheet_logs.db"):
     config.DB_PATH = str(tmp_path / name)
     config.GOOGLE_SHEET_ID = ""  # тестовое окружение не должно ходить в сеть
-    _run(db.init_db())
+    fast_init_db()
     sheet_logs._sync_inflight = False
     sheet_logs._sync_task = None
 

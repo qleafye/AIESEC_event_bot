@@ -23,6 +23,7 @@ from handlers import admin_core  # Phase 13 (13-04): _admin_city_view moved here
 from handlers import admin_cities  # Phase 13 (13-05): admin_city_switch/pick moved here
 from handlers.admin_caps import ANY_CAPABILITY, required_capability
 import cities
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 920101
@@ -35,7 +36,7 @@ def _use_tmp_db(tmp_path):
 
 def _admin_ready(tmp_path):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

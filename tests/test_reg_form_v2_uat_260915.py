@@ -32,6 +32,7 @@ from tests.test_miniapp_routes import (
     _standard_seed,
     _use_tmp_db,
 )
+from tests._dbtpl import fast_init_db
 
 FORM_SCREEN_JS = SCREENS_DIR / "form.js"
 
@@ -59,7 +60,7 @@ def _ready(tmp_path, name="reg_form_v2_uat_260915.db", *, v2=True):
     (иначе ВУЗ/курс/программа не попадают в набор шагов, пока делегат не ответил «учусь», и
     поглощать нечего), вопрос «Амбассадор» включён (дефолт `off`)."""
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(init_db())
+    fast_init_db()
     for key in reg_engine.FORM_V2_TOGGLE_KEYS:
         asyncio.run(set_setting(f"reg_form_{key}", "on" if v2 else "off"))
     asyncio.run(set_setting("edu_conditional", "off"))

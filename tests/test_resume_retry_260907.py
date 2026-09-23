@@ -17,11 +17,12 @@ from config import config
 from database import db
 from settings_schema import SETTINGS_SCHEMA
 from services import nextcloud
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "resume_retry.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _insert_user(**cols):

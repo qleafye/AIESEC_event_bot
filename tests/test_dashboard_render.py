@@ -27,6 +27,7 @@ from database import db as bot_db
 
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
+from tests._dbtpl import fast_init_db
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 TOKENS_CSS = DASHBOARD_DIR / "static" / "tokens.css"
@@ -46,7 +47,7 @@ _HEX_OR_RGB_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\(")
 def _use_tmp_db(tmp_path, name: str = "dashboard_render.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

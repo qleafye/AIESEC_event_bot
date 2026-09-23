@@ -13,11 +13,12 @@ import pytest
 from config import config
 from database import db
 from services.i18n import src_hash
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name="test_i18n_enqueue_27.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _enable_module(monkeypatch=None, spawn_bulk_seed=False):

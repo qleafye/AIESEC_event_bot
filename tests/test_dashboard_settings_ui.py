@@ -16,6 +16,7 @@ from database import db
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_settings
 from handlers.admin_caps import ADMIN_CAPS, required_capability
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900901
@@ -23,7 +24,7 @@ ADMIN_ID = 900901
 
 def _admin_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_dashboard_settings_ui.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

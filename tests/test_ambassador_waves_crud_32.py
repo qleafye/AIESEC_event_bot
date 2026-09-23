@@ -18,6 +18,7 @@ import cities
 from config import config
 from database import db
 from services import ambassador_waves as aw
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 921001
@@ -79,7 +80,7 @@ def _kb_callbacks(kb):
 
 def _ready(tmp_path, name="test_ambassador_waves_crud_32.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

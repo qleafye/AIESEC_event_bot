@@ -29,6 +29,7 @@ from miniapp.deps import Principal, UploadActor, delegate_gate, require_cap, req
 from miniapp.main import create_app
 
 from tests.test_miniapp_auth import TOKEN, make_init_data
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900001
 DELEGATE_ID = 900100  # одобренный делегат без прав
@@ -42,7 +43,7 @@ BOUND_MANAGER_ID = 900601  # staff reg_manager, привязан к городу
 def _use_tmp_db(tmp_path, name: str = "miniapp_routes.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

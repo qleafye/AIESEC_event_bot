@@ -56,6 +56,7 @@ from dashboard.queries import (
     utm_table,
 )
 from services.questions import question_status
+from tests._dbtpl import fast_init_db
 
 DASHBOARD_QUERIES_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "queries.py"
 
@@ -63,7 +64,7 @@ DASHBOARD_QUERIES_FILE = Path(__file__).resolve().parent.parent / "dashboard" / 
 def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:
     path = str(tmp_path / name)
     config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

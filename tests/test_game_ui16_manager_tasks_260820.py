@@ -25,7 +25,7 @@ DELEGATE_ID = 941002
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_ui16_manager_tasks.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 
@@ -407,6 +407,7 @@ def test_preview_intro_registry_key_in_game_group():
 from database.db import GAME_CATEGORIES  # noqa: E402
 from handlers import game_task_wizard  # noqa: E402
 from services.scheduler import _now_moscow_naive  # noqa: E402
+from tests._dbtpl import fast_init_db
 
 
 def _drive_to_deadline(state, title="Задание", text="Текст задания", photo=None, coins="30"):

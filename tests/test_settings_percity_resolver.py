@@ -21,6 +21,7 @@ from config import config
 from database import db
 import settings_schema as s
 import cities
+from tests._dbtpl import fast_init_db
 
 
 # ── Task 1: состав per_city-ключей реестра ──────────────────────────────────────────
@@ -244,7 +245,7 @@ def _db_ready(tmp_path, name):
     """Свежая база. `event_city_enabled` НЕ выставляется, если явно не сказано иначе —
     так тест ловит и случайное изменение дефолта тумблера."""
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def test_per_city_key_builder_closed_set():

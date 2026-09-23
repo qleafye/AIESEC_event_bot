@@ -18,6 +18,7 @@ from database import db
 from handlers import user_actions as ua_mod
 from handlers import game_submit_counter as counter_mod
 from handlers.states import GameSubmit
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 160201
@@ -26,7 +27,7 @@ DELEGATE_ID = 160202
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_ui16_submit_counter.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

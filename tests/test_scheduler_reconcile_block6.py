@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from config import config
 from database import db
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 
 def _isolate(tmp_path, monkeypatch):
@@ -23,7 +24,7 @@ def test_me01_scheduler_timezone_is_moscow(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         s = await sched.init_scheduler(bot=object())
         try:
             assert "Moscow" in str(s.timezone)  # ME-01: naive run_dates interpreted as MSK
@@ -40,7 +41,7 @@ def test_me03_reconcile_rearms_pending_broadcast_with_missing_job(tmp_path, monk
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         future = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
         bid = await db.create_scheduled_broadcast("hi", None, None, future, created_by=1)
 
@@ -60,7 +61,7 @@ def test_me02_mark_broadcast_sending_claims_once(tmp_path, monkeypatch):
     config.DB_PATH = str(tmp_path / "me02.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast("x", None, None, "2026-07-01 14:30:00", created_by=1)
         assert await db.mark_broadcast_sending(bid) == 1  # first claim wins
         assert (await db.get_scheduled_broadcast(bid))["status"] == "sending"
@@ -77,7 +78,7 @@ def test_me02_fresh_sending_broadcast_not_reconciled(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         past = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
         bid = await db.create_scheduled_broadcast("mid", None, None, past, created_by=1)
         await db.mark_broadcast_sending(bid)  # claimed seconds ago → still "live"
@@ -97,7 +98,7 @@ def test_me03_reconcile_skips_already_sent(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         past = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
         bid = await db.create_scheduled_broadcast("done", None, None, past, created_by=1)
         await db.mark_broadcast_sent(bid)

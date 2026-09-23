@@ -26,6 +26,7 @@ from pathlib import Path
 
 from config import config
 from database import db
+from tests._dbtpl import fast_init_db
 
 USERS_A = 910101
 USERS_B = 910102
@@ -36,7 +37,7 @@ UNKNOWN_ID = 910301
 
 def _ready(tmp_path, name="test_username_lookup_at_sign_260911.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _now() -> str:

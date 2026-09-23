@@ -26,11 +26,12 @@ from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 from settings_schema import SETTINGS_SCHEMA
 
 from handlers.reg_schema import _apply_party_preset, _apply_short_preset
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="test_preset_module_switches_260921.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── (a) presets never turn a module switch off ─────────────────────────────────────────────

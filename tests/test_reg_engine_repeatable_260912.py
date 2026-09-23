@@ -14,11 +14,12 @@ from database import db as db_mod
 
 import reg_engine
 from handlers import reg_schema
+from tests._dbtpl import fast_init_db
 
 
 def _ready(tmp_path, name="reg_repeatable.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db_mod.init_db())
+    fast_init_db()
 
 
 # ── parse_repeatable: дуальное чтение (JSON-список / legacy-текст / пусто) ─────────────────

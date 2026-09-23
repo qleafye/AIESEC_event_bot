@@ -41,6 +41,7 @@ from settings_schema import SETTINGS_SCHEMA
 
 from tests.test_admin_sections_ia20 import FakeAnswerMessage, FakeCallback, FakePhoto, FakeState
 from tests.test_roles_phase8 import ADMIN_ID, _flat_callback_data, _roles_ready
+from tests._dbtpl import fast_init_db
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 FAVICON_FILE_ID = "AgACAgIAAxkBAAI" + "f" * 15  # 30 символов, проходит FILE_ID_RE
@@ -52,7 +53,7 @@ LOGO_FILE_ID = "BgACAgIAAxkBAAI" + "l" * 15
 def _use_tmp_db(tmp_path, name: str = "dashboard_favicon.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
-    asyncio.run(bot_db.init_db())
+    fast_init_db()
     return path
 
 

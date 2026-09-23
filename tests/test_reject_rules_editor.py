@@ -28,6 +28,7 @@ from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
 from handlers.states import RejectRuleEdit
 from settings_schema import get_setting_typed
+from tests._dbtpl import fast_init_db
 
 
 def _run(coro):
@@ -42,7 +43,7 @@ UNBOUND_ID = 900300004     # без привязки
 
 def _ready(tmp_path, name="test_reject_rules_editor.db"):
     config.DB_PATH = str(tmp_path / name)
-    _run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
 
 

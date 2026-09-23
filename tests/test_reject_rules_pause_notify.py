@@ -22,13 +22,14 @@ from database import db
 import reg_presets
 import services.reject_rules_notify as rrn
 import settings_audit
+from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900200001
 
 
 def _ready(tmp_path, name="test_reject_rules_pause_notify.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
 
 

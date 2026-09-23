@@ -16,6 +16,7 @@ from handlers import registration  # noqa: F401  -- первым: registration �
 from handlers import user_actions as ua_mod
 from handlers import reg_flow
 from handlers.states import GameSubmit, Registration
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 960901
 DELEGATE_ID = 960902
@@ -23,7 +24,7 @@ DELEGATE_ID = 960902
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "uat_fix_menu.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     asyncio.run(db.add_user({
         "telegram_id": DELEGATE_ID, "full_name": "Delegate", "registration_date": "2026-08-01",

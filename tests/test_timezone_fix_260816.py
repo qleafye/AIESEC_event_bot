@@ -48,13 +48,14 @@ from database.db import add_user, set_setting
 
 import services.scheduler as sched_mod
 from services.scheduler import MOSCOW_TZ, _now_moscow_naive
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 260816001
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_timezone_fix_260816.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

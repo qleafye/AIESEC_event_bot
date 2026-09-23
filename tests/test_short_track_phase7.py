@@ -17,6 +17,7 @@ from handlers import registration as reg
 # separately since it decorates the SAME shared reg.router but resolves its own
 # finalize_registration/_get_enabled_steps calls via reg_steps's own module globals.
 from handlers import reg_steps
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -71,7 +72,7 @@ def test_zero_short_keys_yields_no_enabled_steps(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         enabled = await reg._get_enabled_steps({"participant_type": "short"})
         assert enabled == []
@@ -99,7 +100,7 @@ def test_process_full_name_short_zero_keys_finalizes_without_asking(tmp_path, mo
     state = _FakeState({"participant_type": "short"})
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("registration_mode", "short")
         await reg_steps.process_full_name(message, state, bot=None)
 
@@ -115,7 +116,7 @@ def test_short_phone_override_isolated_from_global(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_phone__short", "on")
         enabled = await reg._get_enabled_steps({"participant_type": "short"})
         assert enabled == ["phone"]
@@ -131,7 +132,7 @@ def test_short_off_override_wins_over_global_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "on")
         await db.set_setting("reg_q_age__short", "off")
         enabled = await reg._get_enabled_steps({"participant_type": "short"})
@@ -144,7 +145,7 @@ def test_short_absent_key_does_not_inherit_global_on(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_age", "on")
         # No reg_q_age__short written at all.
         enabled = await reg._get_enabled_steps({"participant_type": "short"})
@@ -159,7 +160,7 @@ def test_full_track_steps_unchanged_by_short_keys(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         before = await reg._get_enabled_steps({"participant_type": "full"})
         await db.set_setting("reg_q_phone__short", "on")
         await db.set_setting("reg_q_age__short", "on")
@@ -177,7 +178,7 @@ def test_party_track_unaffected_by_short_namespace(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_city__party", "on")
         before = await reg._get_enabled_steps({"participant_type": "party_overnight"})
         assert "city" in before
@@ -199,7 +200,7 @@ def test_short_track_not_subject_to_party_housing_skip_rule(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("reg_q_housing__short", "on")
         await db.set_setting("reg_q_bed_sharing__short", "on")
         enabled = await reg._get_enabled_steps({"participant_type": "short"})
@@ -215,7 +216,7 @@ def test_resolve_track_table(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
 
         await db.set_setting("registration_mode", "short")
         assert await reg._resolve_track(None) == "short"

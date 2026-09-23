@@ -19,11 +19,12 @@ from handlers import reg_schema
 from handlers import registration as reg
 from handlers import admin_reg_config
 import services.sheets as sheets_mod
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _drain():

@@ -27,6 +27,7 @@ from config import config
 from database import db
 from handlers import registration as reg
 from handlers.states import Registration
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -115,7 +116,7 @@ def _ask_and_get_state(tmp_path, step_key, uid, prepare=None):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         if prepare is not None:
             await prepare()
         msg = _FakeMessage(chat_id=uid, fail_times=-1)  # каждая отправка падает
@@ -153,7 +154,7 @@ def test_advance_reaches_confirm_state_when_oversized_summary_send_fails(tmp_pat
     uid = 777021
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _state(uid)
         await state.update_data(
             participant_type="full",

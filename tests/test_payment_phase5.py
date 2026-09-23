@@ -8,6 +8,7 @@ import asyncio
 
 import database.db as db
 import handlers.payment as pay
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -127,7 +128,7 @@ def test_start_payment_step_single_visible_option_charges_visible_price(tmp_path
     party_overnight caller's single/free fallback must resolve label='С ночёвкой',
     price=1500 — never the 1000 ₽ tariff sitting at options[0]."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting(
         "payment_options", "Без ночёвки|1000|party_noovernight\nС ночёвкой|1500|party_overnight"
     ))
@@ -158,7 +159,7 @@ def test_start_payment_step_no_match_routes_to_free_completion(tmp_path, monkeyp
     """D-18: no tariff matches the caller's track -> free completion path, never a stalled
     empty keyboard."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_options", "Только вечеринка|1500|party_overnight"))
 
     called = {}
@@ -185,7 +186,7 @@ def test_process_payment_option_rejects_cross_track_selection(tmp_path, monkeypa
     with an alert, and neither update_payment_status nor _show_payment_details may run —
     closes T-05-05-03 (a stale keyboard from another track cannot buy a foreign tariff)."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_options", "Только вечеринка|1500|party_overnight"))
     asyncio.run(db.add_user({
         "telegram_id": 99, "full_name": "A B", "registration_date": "2026-07-01",
@@ -228,7 +229,7 @@ def test_process_payment_option_rejects_cross_track_selection(tmp_path, monkeypa
 
 def test_process_payment_option_allows_matching_track(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_options", "Только вечеринка|1500|party_overnight"))
     asyncio.run(db.add_user({
         "telegram_id": 100, "full_name": "A B", "registration_date": "2026-07-01",
@@ -274,7 +275,7 @@ def test_process_payment_option_untracked_option_resolves_track_for_completion_t
     a free option among several still gets approve_text__party — get_user is now called
     unconditionally (not gated on `tracks is not None`) precisely so this value is available."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_options", "Общий тариф|500"))
     asyncio.run(db.add_user({
         "telegram_id": 12346, "full_name": "A B", "registration_date": "2026-07-01",
@@ -319,7 +320,7 @@ def test_process_payment_option_untracked_option_no_users_row_defaults_to_full(t
     track resolution degrades to 'full', matching get_user's None-safe fallback everywhere
     else in the codebase (mirrors approve_user's try/except default)."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("payment_options", "Общий тариф|500"))
 
     details_called = {}
@@ -362,7 +363,7 @@ def test_show_payment_details_free_path_threads_participant_type_to_completion(t
     pass participant_type through to send_completion_and_bonus so a party delegate with a
     free tariff gets approve_text__party, not the global approve_text."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     called = {}
 
@@ -389,7 +390,7 @@ def test_show_payment_details_free_path_defaults_participant_type_to_none(tmp_pa
     """Byte-identical pre-Phase-5 behavior when the caller doesn't know the track — matches
     every pre-Phase-5 call site of send_completion_and_bonus."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
     called = {}
 
@@ -417,7 +418,7 @@ def test_free_tariff_party_delegate_receives_approve_text_party_end_to_end(tmp_p
     approve_text__party — not the global approve_text — driven through the REAL (unmocked)
     _show_payment_details -> send_completion_and_bonus -> _approve_text_for chain."""
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.set_setting("approve_text", "Глобальный текст"))
     asyncio.run(db.set_setting("approve_text__party", "Партийный текст"))
 
@@ -452,7 +453,7 @@ def test_upload_receipt_entry_threads_own_track_not_full(tmp_path, monkeypatch):
     import handlers.user_actions as user_actions
 
     _use_tmp_db(tmp_path)
-    asyncio.run(db.init_db())
+    fast_init_db()
     asyncio.run(db.add_user({
         "telegram_id": 777, "full_name": "Party Delegate", "registration_date": "2026-07-24",
         "participant_type": "party_overnight", "status": "approved", "payment_status": "not_paid",

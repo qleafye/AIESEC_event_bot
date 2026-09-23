@@ -23,6 +23,7 @@ import json
 from config import config
 from database import db
 from database.db import _build_filter_clause
+from tests._dbtpl import fast_init_db
 
 
 # ── Task 1: event_city in the filter whitelist + NULL-collapse branch ───────────────────
@@ -104,7 +105,7 @@ def _seed_broadcast_base(tmp_path):
     config.DB_PATH = str(tmp_path / "test_city_broadcast72.db")
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         for tid, city in ((1, None), (2, "msk"), (3, "spb"), (4, "spb"), (5, "tyumen")):
             await db.add_user({
                 "telegram_id": tid,
@@ -207,7 +208,7 @@ class FakeState:
 
 def _admin_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_city_broadcast_ui72.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

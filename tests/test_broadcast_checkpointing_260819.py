@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from config import config
 from database import db
 from services import scheduler as sched
+from tests._dbtpl import fast_init_db
 
 
 def _isolate(tmp_path, monkeypatch):
@@ -67,7 +68,7 @@ def test_resume_after_crash_skips_already_delivered(tmp_path, monkeypatch):
     _patch_audience(monkeypatch, [1, 2, 3, 4, 5])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi", None, None, "2026-01-01 10:00:00", created_by=1
         )
@@ -112,7 +113,7 @@ def test_failed_recipient_is_not_retried_on_resume(tmp_path, monkeypatch):
     _patch_audience(monkeypatch, [1, 2, 3])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi", None, None, "2026-01-01 10:00:00", created_by=1
         )
@@ -151,7 +152,7 @@ def test_reclaim_stale_sending_touches_only_old_rows(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         past = "2026-01-01 10:00:00"
         stale = await db.create_scheduled_broadcast("a", None, None, past, created_by=1)
         fresh = await db.create_scheduled_broadcast("b", None, None, past, created_by=1)
@@ -204,7 +205,7 @@ def test_full_pass_marks_sent_and_logs_counts(tmp_path, monkeypatch, caplog):
     _patch_audience(monkeypatch, [1, 2, 3])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi", None, None, "2026-01-01 10:00:00", created_by=1
         )
@@ -227,7 +228,7 @@ def test_second_fire_in_same_process_is_still_rejected(tmp_path, monkeypatch):
     _patch_audience(monkeypatch, [1, 2])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi", None, None, "2026-01-01 10:00:00", created_by=1
         )
@@ -249,7 +250,7 @@ def test_scheduled_broadcast_appears_in_journal_with_message_ids(tmp_path, monke
     _patch_audience(monkeypatch, [1, 2, 3])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi всем", None, None, "2026-01-01 10:00:00", created_by=42
         )
@@ -280,7 +281,7 @@ def test_scheduled_broadcast_resume_reuses_log_row(tmp_path, monkeypatch):
     _patch_audience(monkeypatch, [1, 2, 3])
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast(
             "hi", None, None, "2026-01-01 10:00:00", created_by=1
         )

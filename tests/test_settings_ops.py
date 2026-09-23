@@ -15,6 +15,7 @@ import pytest
 import settings_ops
 from settings_schema import SETTINGS_SCHEMA
 from tests.test_miniapp_labels_drift import _loaded_aiogram
+from tests._dbtpl import fast_init_db
 
 
 ADMIN_ID = 900022
@@ -62,7 +63,7 @@ def test_apply_event_type_preset_conference_turns_payment_and_consent_on(tmp_pat
 
     async def _run():
         _use_tmp_db(tmp_path)
-        await db.init_db()
+        fast_init_db()
         await settings_ops.apply_event_type_preset("conference")
         assert await get_setting("payment_enabled") == "on"
         assert await get_setting("consent_enabled") == "on"
@@ -76,7 +77,7 @@ def test_apply_event_type_preset_forum_turns_payment_and_consent_off(tmp_path):
 
     async def _run():
         _use_tmp_db(tmp_path)
-        await db.init_db()
+        fast_init_db()
         await settings_ops.apply_event_type_preset("forum")
         assert await get_setting("payment_enabled") == "off"
         assert await get_setting("consent_enabled") == "off"
@@ -90,7 +91,7 @@ def test_apply_event_type_preset_custom_does_not_change_values(tmp_path):
 
     async def _run():
         _use_tmp_db(tmp_path)
-        await db.init_db()
+        fast_init_db()
         await set_setting("payment_enabled", "on")
         await set_setting("consent_enabled", "off")
         await settings_ops.apply_event_type_preset("custom")

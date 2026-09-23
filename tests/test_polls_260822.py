@@ -24,6 +24,7 @@ from handlers import admin_poll_wizard as wiz
 from handlers import polls as polls_handlers
 from handlers.admin_caps import required_capability, ADMIN_CAPS
 from tests.test_roles_phase8 import FakeUser, FakeMessage, _flat_callback_data
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900901
 STRANGER_ID = 900904
@@ -32,7 +33,7 @@ STRANGER_ID = 900904
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "polls.db")
     config.ADMIN_IDS = [ADMIN_ID]
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 async def _add_user(tid, name="Иван", username="@ivan", status="approved", city=None, track="full"):

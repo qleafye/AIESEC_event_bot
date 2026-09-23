@@ -88,7 +88,7 @@ def test_time_format_validator_per_city_composite_uses_base_type():
 
 def _ready(tmp_path, name):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Task 2: механика — окно, очередь delayed_notifications, джоба разбора ─────────────────
@@ -616,6 +616,7 @@ from handlers import admin_broadcasts
 from handlers.states import Broadcast
 import handlers.admin_sections as sections_mod
 from tests.test_roles_phase8 import ADMIN_ID as _ROLES_ADMIN_ID, _roles_ready
+from tests._dbtpl import fast_init_db
 
 
 def _bcast_state(uid=1) -> FSMContext:

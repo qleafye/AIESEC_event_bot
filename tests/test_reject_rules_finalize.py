@@ -17,13 +17,14 @@ from services import reg_finalize as rf
 import services.reject_rules as reject_rules_mod
 from handlers import registration as reg_mod
 from services import sheets as sheets_service
+from tests._dbtpl import fast_init_db
 
 UID = 910800200
 
 
 def _ready(tmp_path, name="reject_rules_finalize.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 def _offline(monkeypatch):

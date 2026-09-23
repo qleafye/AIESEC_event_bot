@@ -31,6 +31,7 @@ from config import config
 from database import db
 from services import scheduler as sched
 from services.scheduler import MOSCOW_TZ
+from tests._dbtpl import fast_init_db
 
 
 def _isolate(tmp_path, monkeypatch):
@@ -76,7 +77,7 @@ def test_all_four_interval_jobs_registered(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         s = await sched.init_scheduler(bot=object())
         try:
             ids = {j.id for j in s.get_jobs()}
@@ -98,7 +99,7 @@ def test_stored_future_schedule_survives_restart(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         s1 = await sched.init_scheduler(bot=object())
         s1.pause()
         saved = datetime.now(MOSCOW_TZ) + timedelta(hours=7)
@@ -129,7 +130,7 @@ def test_stored_past_schedule_gets_boot_catchup(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         s1 = await sched.init_scheduler(bot=object())
         s1.pause()
         s1.modify_job(
@@ -160,7 +161,7 @@ def test_changed_interval_recomputes_schedule(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         s1 = await sched.init_scheduler(bot=object())
         before = s1.get_job("nudge_scan").next_run_time  # default 15 min
         await _restart(s1)
@@ -197,7 +198,7 @@ def test_stale_pending_broadcast_is_rearmed_into_the_future(tmp_path, monkeypatc
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
         bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
 
@@ -222,7 +223,7 @@ def test_pending_broadcast_inside_grace_keeps_its_original_run_date(tmp_path, mo
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         run_at = (sched._now_moscow_naive() - timedelta(hours=1)).replace(microsecond=0)
         bid = await db.create_scheduled_broadcast(
             "recent", None, None, sched._fmt_dt(run_at), created_by=1
@@ -246,7 +247,7 @@ def test_stale_rearm_does_not_rewrite_the_db_row(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
         bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
 
@@ -267,7 +268,7 @@ def test_stale_rearm_is_logged_with_the_original_time(tmp_path, monkeypatch, cap
     stale = sched._fmt_dt(sched._now_moscow_naive() - timedelta(days=3))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         bid = await db.create_scheduled_broadcast("stale", None, None, stale, created_by=1)
 
         s = await sched.init_scheduler(bot=object())

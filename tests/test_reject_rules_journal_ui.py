@@ -18,6 +18,7 @@ from handlers import admin_reject_journal as j
 from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
 from services.timeutil import msk_now
+from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900400001
 BOUND_MSK_ID = 900400002
@@ -26,7 +27,7 @@ BOUND_SPB_ID = 900400003
 
 def _ready(tmp_path, name="test_reject_rules_journal_ui.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
 
 

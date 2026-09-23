@@ -10,13 +10,14 @@ import asyncio
 from config import config
 from database import db
 from services.game_award import award_for
+from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932960
 
 
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_award_32fix.db")
-    asyncio.run(db.init_db())
+    fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
 
 

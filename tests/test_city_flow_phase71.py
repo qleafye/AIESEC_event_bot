@@ -15,6 +15,7 @@ from database import db
 from handlers import registration as reg
 # Phase 13 REFAC (13-03): city_pick/party_pick moved to handlers/reg_flow.py.
 from handlers import reg_flow
+from tests._dbtpl import fast_init_db
 
 
 def _use_tmp_db(tmp_path):
@@ -95,7 +96,7 @@ def test_should_show_city_fork_false_when_city_already_known(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg._should_show_city_fork("spb", False)
 
@@ -106,7 +107,7 @@ def test_should_show_city_fork_false_when_already_registered(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg._should_show_city_fork(None, True)
 
@@ -117,7 +118,7 @@ def test_should_show_city_fork_false_when_module_off(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         return await reg._should_show_city_fork(None, False)
 
     assert asyncio.run(go()) is False
@@ -127,7 +128,7 @@ def test_should_show_city_fork_true_when_on_and_three_cities_enabled(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg._should_show_city_fork(None, False)
 
@@ -138,7 +139,7 @@ def test_should_show_city_fork_false_after_disabling_down_to_one_city(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_enabled__spb", "off")
         await db.set_setting("city_enabled__tyumen", "off")
@@ -153,7 +154,7 @@ def test_city_fork_kb_lists_all_enabled_cities(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         return await reg._city_fork_kb()
 
@@ -166,7 +167,7 @@ def test_city_fork_kb_excludes_disabled_city(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_enabled__tyumen", "off")
         return await reg._city_fork_kb()
@@ -180,7 +181,7 @@ def test_city_fork_kb_button_text_uses_city_label_override(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         kb_before = await reg._city_fork_kb()
         await db.set_setting("city_label__spb", "СПб, 4 окт")
@@ -201,7 +202,7 @@ def test_start_registration_flow_with_city_survives_clear_and_reg_started(tmp_pa
     uid = 800001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(uid)
         await reg._start_registration_flow(_FakeMessage(uid, "u"), state, event_city="spb")
         data = await state.get_data()
@@ -218,7 +219,7 @@ def test_start_registration_flow_without_city_leaves_no_default(tmp_path):
     uid = 800002
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         state = _new_state(uid)
         await reg._start_registration_flow(_FakeMessage(uid, "u"), state)
         data = await state.get_data()
@@ -241,7 +242,7 @@ def test_module_off_bare_start_no_city_screen_regression(tmp_path):
     uid = 810001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, _new_state(uid), bot=object(), command=None)
         return msg
@@ -257,7 +258,7 @@ def test_module_on_bare_start_shows_three_city_buttons_flow_not_started(tmp_path
     uid = 810002
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, _new_state(uid), bot=object(), command=None)
@@ -282,7 +283,7 @@ def test_city_deeplink_skips_screen_starts_flow_with_city(tmp_path, monkeypatch)
     monkeypatch.setattr(reg, "_start_registration_flow", spy)
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         msg = _FakeMessage(uid, "u")
         await reg.cmd_start(msg, _new_state(uid), bot=object(), command=FakeCommand("city_spb"))
@@ -301,7 +302,7 @@ def test_collision_party_link_then_city_pick_track_authoritative(tmp_path):
     uid = 810004
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("party_enabled", "on")
         await db.set_setting("party_fork_question", "on")
@@ -329,7 +330,7 @@ def test_collision_city_link_then_manual_party_pick_city_preserved(tmp_path):
     uid = 810005
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("party_enabled", "on")
         await db.set_setting("party_fork_question", "on")
@@ -354,7 +355,7 @@ def test_collision_bare_start_city_then_party_then_full(tmp_path):
     uid = 810006
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("party_enabled", "on")
         await db.set_setting("party_fork_question", "on")
@@ -382,7 +383,7 @@ def test_attribution_survives_city_pick_referrer(tmp_path):
     referrer = uid + 1
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         # Решение владельца (17.09): числовой `?start=<id>` теперь тоже идёт через
         # `resolve_referrer` (существование в `users`) — реферер должен быть зарегистрирован,
@@ -407,7 +408,7 @@ def test_attribution_survives_city_pick_source_tag(tmp_path):
     uid = 810008
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         state = _new_state(uid)
         msg = _FakeMessage(uid, "u")
@@ -430,7 +431,7 @@ def test_underreg_through_release_city_screen_shown_track_recovered(tmp_path):
     uid = 810009
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         # SHORT-01: registration_mode's registry default is "short"; pin explicitly to "full"
         # so this test isolates the pre-release track-recovery behavior, not the promo override.
@@ -459,7 +460,7 @@ def test_city_pick_unknown_code_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(reg, "_start_registration_flow", lambda *a, **k: called.append(1))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         state = _new_state(uid)
         await reg_flow.city_pick(_FakeCallback("city_pick:atlantis", uid, "u"), state)
@@ -475,7 +476,7 @@ def test_city_pick_disabled_city_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(reg, "_start_registration_flow", lambda *a, **k: called.append(1))
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("city_enabled__tyumen", "off")
         state = _new_state(uid)
@@ -545,7 +546,7 @@ def test_bare_prerelease_row_no_exception_city_not_backfilled(tmp_path):
     uid = 820001
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.mark_reg_started(uid, "u", "full")
         assert await db.get_reg_started_city(uid) is None
         state = _new_state(uid)
@@ -566,7 +567,7 @@ def test_finalize_registration_no_event_city_key_users_row_null_main_sheet(tmp_p
     uid = 820002
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("full_approval", "manual")
         message = _FinalizeFakeMessage(uid)
@@ -586,7 +587,7 @@ def test_finalize_registration_spb_city_persists_on_users_row(tmp_path, monkeypa
     uid = 820003
 
     async def go():
-        await db.init_db()
+        fast_init_db()
         await db.set_setting("event_city_enabled", "on")
         await db.set_setting("full_approval", "manual")
         message = _FinalizeFakeMessage(uid)

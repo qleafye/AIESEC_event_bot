@@ -22,11 +22,12 @@ from config import config
 from database import db
 from handlers.admin_settings import _GAME_FIELD_ORDER
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from tests._dbtpl import fast_init_db
 
 
 def _db_ready(tmp_path, name="test_ambassador_settings_32.db"):
     config.DB_PATH = str(tmp_path / name)
-    asyncio.run(db.init_db())
+    fast_init_db()
 
 
 # ── Числа и тумблеры (Task 1) ───────────────────────────────────────────────────────────────
