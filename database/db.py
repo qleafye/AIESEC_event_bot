@@ -1876,12 +1876,19 @@ def _escape_like(q: str) -> str:
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-async def search_users_by_name(q: str, limit: int = 20, *, city_scope=None) -> list[dict]:
+async def search_users_by_name(
+    q: str, limit: int = 20, *, city_scope=None, include_university: bool = False,
+) -> list[dict]:
     """Phase 19 (19-07): поиск получателя монет по части имени (без учёта регистра) для
     Mini App. `city_scope` — дескриптор `cities.city_scope(...)` (как у
     `get_pending_submissions`): привязанный менеджер видит только делегатов своего города.
     Отдаёт только опознавательный минимум — telegram_id, full_name, username, event_city;
-    ПД (телефон, e-mail, вуз) сюда не попадают (T-19-47). Пустой запрос -> пусто."""
+    ПД (телефон, e-mail, вуз) сюда не попадают (T-19-47). Пустой запрос -> пусто.
+
+    `include_university=False` (default) сохраняет старое поведение байт-в-байт — Mini App
+    коин-пикер как искал без вуза, так и ищет. `include_university=True` (квик: общий сервис
+    поиска person_search, различает тёзок вузом) добавляет колонку `university` в SELECT и
+    в каждый словарь результата — вызывающий явно просит ПД, это не утечка по умолчанию."""
     needle = (q or "").strip()
     if not needle:
         return []
@@ -1891,11 +1898,14 @@ async def search_users_by_name(q: str, limit: int = 20, *, city_scope=None) -> l
     # «Иван» -> «иван») через неё не находится. Регистронезависимость даём вручную питоновским
     # `str.lower()` через пользовательскую SQL-функцию.
     pattern = f"%{_escape_like(needle)}%".lower()
+    columns = "telegram_id, full_name, username, event_city"
+    if include_university:
+        columns += ", university"
     async with _connect() as db:
         await db.create_function("py_lower", 1, lambda s: (s or "").lower())
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT telegram_id, full_name, username, event_city FROM users "
+            f"SELECT {columns} FROM users "
             f"WHERE py_lower(full_name) LIKE ? ESCAPE '\\'{extra} "
             "ORDER BY py_lower(full_name), telegram_id LIMIT ?",
             (pattern, *city_params, max(1, int(limit))),
