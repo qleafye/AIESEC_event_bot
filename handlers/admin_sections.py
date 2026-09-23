@@ -570,3 +570,7 @@ from handlers import admin_sheet_tabs  # noqa: E402,F401
 # Phase 31 (31-08, D-09/D-15): шов «🚫 Правила автоотказа» — импорт СРАЗУ ПОСЛЕ admin_sheet_tabs,
 # тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_reject_rules  # noqa: E402,F401
+
+# Квик 260923 (AUTOREJ-REPORT, D-I): шов «📊 Отчётность автоотказа» — импорт СРАЗУ ПОСЛЕ
+# admin_reject_rules, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_reject_reports  # noqa: E402,F401
