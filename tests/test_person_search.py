@@ -90,6 +90,40 @@ def test_search_by_name_finds_users_row(tmp_path):
     assert results[0]["user_id"] == 900802
 
 
+def test_search_by_name_ignores_yo_ye_distinction(tmp_path):
+    """На стойке форума фамилию чаще набирают без «ё» — «королев» обязан находить
+    «Королёв», и наоборот «Королёв» обязан находить «Королев»."""
+    _db_ready(tmp_path)
+    asyncio.run(db.add_user({
+        "telegram_id": 900802, "username": "@korolev", "full_name": "Королёв Иван",
+        "registration_date": "2026-01-01",
+    }))
+    asyncio.run(db.add_user({
+        "telegram_id": 900803, "username": "@korolev2", "full_name": "Королев Пётр",
+        "registration_date": "2026-01-01",
+    }))
+
+    without_yo = asyncio.run(person_search.search_people("королев"))
+    assert {r["user_id"] for r in without_yo} == {900802, 900803}
+
+    with_yo = asyncio.run(person_search.search_people("Королёв"))
+    assert {r["user_id"] for r in with_yo} == {900802, 900803}
+
+
+def test_name_fallback_to_reg_started_ignores_yo_ye_distinction(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.mark_reg_started(900900, "started_only", event_city="msk"))
+    asyncio.run(db.set_reg_step(
+        900900, "full_name", json.dumps({"full_name": "Королёв Иван"}),
+    ))
+
+    results = asyncio.run(person_search.search_people("королев"))
+
+    assert len(results) == 1
+    assert results[0]["user_id"] == 900900
+    assert results[0]["full_name"] == "Королёв Иван"
+
+
 def test_search_no_match_returns_empty(tmp_path):
     _db_ready(tmp_path)
     assert asyncio.run(person_search.search_people("@nobody_here")) == []
