@@ -57,6 +57,9 @@ SECTION_KEYS = [
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",
+    # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер» — рядом с остальными менеджерскими
+    # разделами, тот же общий toggle_miniapp_section подхватывает суффикс сам.
+    "miniapp_section_checkin",
 ]
 
 _SECTION_BY_SUFFIX = {key[len("miniapp_section_"):]: key for key in SECTION_KEYS}

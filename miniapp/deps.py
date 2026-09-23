@@ -75,6 +75,8 @@ SECTIONS = (
     "admin_tasks",
     "stats",
     "settings",
+    # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер» — отметка на форуме менеджером.
+    "checkin",
 )
 
 

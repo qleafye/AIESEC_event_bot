@@ -305,6 +305,8 @@ def test_me_delegate_via_initdata(tmp_path):
         "settings",
         # Quick 260906-8uq (FAQ-05): делегатский раздел «❓ Частые вопросы».
         "faq",
+        # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер» — отметка на форуме.
+        "checkin",
     }
     assert all(body["sections"].values())
     assert body["accent"] == "#037EF3"
