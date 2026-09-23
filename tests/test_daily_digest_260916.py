@@ -246,6 +246,139 @@ def test_undone_decision_is_not_counted(tmp_path):
     assert stats["apps_approved"] == 0 and stats["app_managers"] == []
 
 
+# ── Квик 260923 (D-A): автоотказ — не решение менеджера ───────────────────────
+
+def test_auto_rejected_decision_is_excluded_from_manager_stats(tmp_path):
+    """decided_by = AUTO_DECIDED_BY (-1) не входит ни в apps_rejected, ни в app_managers —
+    «менеджер #-1» никогда не должен появиться в «Итогах дня»."""
+    from services.reject_journal import AUTO_DECIDED_BY
+    _db_ready(tmp_path)
+    _add_delegate(DELEGATE_MSK, "msk", "Делегат Раз", status="rejected")
+    _add_delegate(DELEGATE_SPB, "spb", "Делегат Два", status="approved")
+    _decide(DELEGATE_MSK, "rejected", AUTO_DECIDED_BY)
+    _decide(DELEGATE_SPB, "approved", MANAGER_A)
+
+    stats = asyncio.run(db.daily_digest_stats(DAY))
+
+    assert stats["apps_rejected"] == 0  # автоотказ не считается решением
+    assert stats["apps_approved"] == 1
+    assert stats["app_managers"] == [(MANAGER_A, 1, 0)]  # менеджер #-1 не появился
+
+
+def _seed_reject_rule(**overrides):
+    fields = {
+        "name": None, "city": None, "tracks": "[]", "conditions": "{}",
+        "action": "reject", "reject_text": None, "enabled": 1, "created_by": None,
+    }
+    fields.update(overrides)
+    return asyncio.run(db.create_reject_rule(**fields))
+
+
+def _log_auto_reject(telegram_id, rule_ids):
+    from services.reject_journal import record_auto_reject
+    return asyncio.run(record_auto_reject(telegram_id, rule_ids, ["текст"] * len(rule_ids)))
+
+
+def test_auto_reject_summary_counts_live_rejected_only(tmp_path):
+    _db_ready(tmp_path)
+    rid = _seed_reject_rule(name="Младше 16")
+    _add_delegate(DELEGATE_MSK, "msk", "Раз", status="rejected")
+    _add_delegate(DELEGATE_SPB, "spb", "Два", status="pending")  # сам поправил анкету — D-H
+    _log_auto_reject(DELEGATE_MSK, [rid])
+    _log_auto_reject(DELEGATE_SPB, [rid])
+
+    count, rules = asyncio.run(db.auto_reject_summary())
+
+    assert count == 1
+    assert rules == [("Младше 16", 1)]
+
+
+def test_auto_reject_summary_scopes_by_day_window(tmp_path):
+    _db_ready(tmp_path)
+    rid = _seed_reject_rule(name="Младше 16")
+    _add_delegate(DELEGATE_MSK, "msk", "Раз", status="rejected")
+    _log_auto_reject(DELEGATE_MSK, [rid])
+
+    since = f"{DAY} 00:00:00"
+    until = "2099-01-01 00:00:00"
+    count, _ = asyncio.run(db.auto_reject_summary(since=since, until=until))
+    assert count == 1
+
+    count_out, _ = asyncio.run(db.auto_reject_summary(since="2000-01-01 00:00:00", until=since))
+    assert count_out == 0
+
+
+# ── Квик 260923 (D-A): текст «Итоги дня» с автоотказом ────────────────────────
+
+def test_build_digest_text_includes_auto_reject_block():
+    stats = _stats(
+        apps_new=5, apps_approved=3, apps_rejected=0, apps_pending=2,
+        app_managers=[(MANAGER_A, 3, 0)],
+        auto_rejected=2, auto_reject_rules=[("Младше 16", 2)],
+    )
+    text = dd.build_digest_text(stats, {MANAGER_A: "Марина"}, day_label="16.09")
+    assert "🤖 Автоотказ: 2" in text
+    assert "«Младше 16» — 2" in text
+
+
+def test_build_digest_text_no_auto_reject_line_when_zero_or_missing():
+    stats = _stats(apps_new=1, app_managers=[(MANAGER_A, 1, 0)])
+    text_no_key = dd.build_digest_text(stats, {MANAGER_A: "Марина"}, day_label="16.09")
+    assert "🤖 Автоотказ" not in text_no_key
+
+    stats_zero = _stats(apps_new=1, app_managers=[(MANAGER_A, 1, 0)], auto_rejected=0)
+    text_zero = dd.build_digest_text(stats_zero, {MANAGER_A: "Марина"}, day_label="16.09")
+    assert text_zero == text_no_key
+
+
+def test_build_digest_text_apps_active_with_only_auto_rejects():
+    """День, где не было ни одного решения человека — только автоотказы — всё равно печатает
+    блок «📋 Заявки» (иначе менеджер решит, что день был совсем пустым)."""
+    stats = _stats(apps_pending=0, auto_rejected=1, auto_reject_rules=[("Не из Москвы", 1)])
+    text = dd.build_digest_text(stats, {}, day_label="16.09")
+    assert text is not None
+    assert "📋 Заявки" in text
+    assert "🤖 Автоотказ: 1" in text
+
+
+def test_send_city_digest_includes_auto_reject_when_enabled(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("reject_rules_enabled", "on"))
+    rid = _seed_reject_rule(name="Младше 16")
+    _add_delegate(DELEGATE_MSK, "msk", "Раз", status="rejected")
+    _log_auto_reject(DELEGATE_MSK, [rid])
+    fixed = msk_now().replace(hour=21, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(dd, "msk_now", lambda: fixed)
+
+    async def fake_recipients(city):
+        return [ADMIN_ID]
+    monkeypatch.setattr(dd, "digest_recipients", fake_recipients)
+
+    bot = _Bot()
+    sent = asyncio.run(dd.send_city_digest(bot, None))
+
+    assert sent == 1
+    assert "🤖 Автоотказ: 1" in bot.sent[0][1]
+    assert "«Младше 16» — 1" in bot.sent[0][1]
+
+
+def test_send_city_digest_no_auto_reject_query_when_module_off(tmp_path, monkeypatch):
+    """reject_rules_enabled=off -> текст байт-в-байт прежний (модуль не трогается ни на бит)."""
+    _db_ready(tmp_path)
+    _add_delegate(DELEGATE_MSK, "msk", "Делегат Раз")
+    _decide(DELEGATE_MSK, "approved", MANAGER_A)
+    fixed = msk_now().replace(hour=21, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(dd, "msk_now", lambda: fixed)
+
+    async def fake_recipients(city):
+        return [ADMIN_ID]
+    monkeypatch.setattr(dd, "digest_recipients", fake_recipients)
+
+    bot = _Bot()
+    asyncio.run(dd.send_city_digest(bot, None))
+    assert "🤖 Автоотказ" not in bot.sent[0][1]
+
+
 def test_stats_count_game_and_coins(tmp_path):
     _db_ready(tmp_path)
     _add_delegate(DELEGATE_MSK, "msk", "Делегат Раз")
