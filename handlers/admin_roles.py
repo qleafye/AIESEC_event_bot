@@ -24,6 +24,7 @@ from config import config
 from settings_schema import get_setting_typed
 from database.db import (
     add_staff,
+    get_reg_started_by_username,
     get_setting,
     get_user,
     get_user_by_username,
@@ -783,15 +784,23 @@ async def roles_add_cancel(message: types.Message, state: FSMContext):
 @router.message(StaffAdd.waiting_for_person)
 async def roles_add_person(message: types.Message, state: FSMContext):
     telegram_id, marker = _resolve_staff_input(message)
+    reg_started_row = None  # человек нажал /start, но анкету не подал — users его не знает
     if telegram_id is None and marker is not None and marker.startswith("@"):
         user = await get_user_by_username(marker)
-        if user is None:
-            await message.answer(
-                f"Пользователь {html_module.escape(marker)} не найден в базе бота — "
-                "попросите числовой id."
-            )
-            return
-        telegram_id = user["telegram_id"]
+        if user is not None:
+            telegram_id = user["telegram_id"]
+        else:
+            # users_row_only_on_submit: анкета — не единственный способ узнать человека,
+            # тот, кто только жал /start, лежит в reg_started (найдено квик-задачей после
+            # жалобы «не найден в базе бота» на человека, реально писавшего боту).
+            reg_started_row = await get_reg_started_by_username(marker)
+            if reg_started_row is None:
+                await message.answer(
+                    f"Пользователь {html_module.escape(marker)} не найден в базе бота — "
+                    "попросите числовой id."
+                )
+                return
+            telegram_id = reg_started_row["telegram_id"]
         marker = None
 
     if telegram_id is None:
@@ -800,7 +809,15 @@ async def roles_add_person(message: types.Message, state: FSMContext):
 
     await state.clear()
     user = await get_user(telegram_id)
-    display_name = (user.get("full_name") or user.get("username")) if user else None
+    if user is not None:
+        display_name = user.get("full_name") or user.get("username")
+        note = ""
+    elif reg_started_row is not None:
+        display_name = reg_started_row.get("username")
+        note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>"
+    else:
+        display_name = None
+        note = ""
     display_name = html_module.escape(str(display_name or telegram_id))
 
     buttons = [
@@ -809,7 +826,7 @@ async def roles_add_person(message: types.Message, state: FSMContext):
     ]
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_roles")])
     await message.answer(
-        f"Кого назначить: {display_name}",
+        f"Кого назначить: {display_name}{note}",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
