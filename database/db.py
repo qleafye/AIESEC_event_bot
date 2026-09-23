@@ -7850,10 +7850,27 @@ async def record_checkin(
     return "duplicate", existing["scanned_at"]
 
 
-async def count_checkins_by_point(point: str) -> int:
+async def count_checkins_by_point(point: str, *, city_scope=None) -> int:
+    """T-12-04 (A2, FORUM-CHECKIN.md): `city_scope` — тот же дескриптор `cities.city_scope(...)`
+    и та же `_city_clause`, что у `count_approved_current_season` ниже, — оба числа строки
+    «Пришли: N из M» ОБЯЗАНЫ резолвиться одним городским правилом, иначе счётчик молча
+    разъедется по разным городам. 03.10 форумы СПб и Тюмени идут одновременно с ещё открытым
+    набором в Москве — общий (нескопированный) счётчик путает пришедших одного города с
+    одобренными другого; `city_scope=None` (дефолт) — старое нескопированное поведение,
+    байт-в-байт (модуль городов выключен или менеджер смотрит «Все города»)."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if not city_frag:
+        async with _connect() as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM checkins WHERE point = ?", (point,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return int(row[0] or 0) if row else 0
     async with _connect() as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM checkins WHERE point = ?", (point,)
+            "SELECT COUNT(*) FROM checkins c JOIN users u ON u.telegram_id = c.telegram_id "
+            f"WHERE c.point = ? AND {city_frag}",
+            [point] + city_params,
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0] or 0) if row else 0
