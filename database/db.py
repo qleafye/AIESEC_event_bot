@@ -1462,6 +1462,23 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_checkins_point ON checkins(point)"
         )
 
+        # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
+        # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
+        # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
+        # настоящему чужого/поддельного кода. PRIMARY KEY на old_token — реиссью одного и
+        # того же делегата дважды кладёт сюда ДВЕ РАЗНЫЕ строки (два разных сгенерированных
+        # токена), коллизия между СВОИМИ старыми токенами по построению невозможна
+        # (secrets.token_urlsafe), а с чужим активным (users.checkin_token) — тот же довод,
+        # что у idx_users_checkin_token выше: коллизия на масштабе проекта практически
+        # невозможна.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_token_replacements (
+                old_token TEXT PRIMARY KEY,
+                telegram_id INTEGER NOT NULL,
+                replaced_at TEXT NOT NULL
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -7501,6 +7518,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # который отметил (CSV/manual), это авторская колонка, не трогаем отдельно: строка
     # целиком уходит вместе с делегатом.
     ("checkins", "telegram_id", "checkin"),
+    # Форум-ночь B1 (идея №10): checkin_token_replacements.telegram_id — тот же личный след,
+    # что checkins выше (кто когда-то держал такой токен), группа общая "checkin".
+    ("checkin_token_replacements", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -7804,6 +7824,70 @@ async def get_user_by_checkin_token(token: str | None) -> dict | None:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM users WHERE checkin_token = ?", (token,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def reissue_checkin_token(telegram_id: int) -> str | None:
+    """Форум-ночь B1 (идея №10): менеджер перевыпускает QR делегату — старый токен (если он
+    вообще был выдан, лениво через `get_or_create_checkin_token`) уходит в
+    `checkin_token_replacements`, `users.checkin_token` получает новый случайный токен. Скан
+    старого QR после этого находит его в `checkin_token_replacements`
+    (`get_checkin_token_replacement` ниже) вместо `users` — `services.checkin.
+    resolve_scanned_user` превращает это в причину «QR заменён», а не «не найден».
+
+    Возвращает новый токен или `None`, если пользователя нет вовсе. Та же защита от
+    коллизии `secrets.token_urlsafe`, что `get_or_create_checkin_token` — до
+    `_CHECKIN_TOKEN_MAX_ATTEMPTS` попыток, затем громкий `RuntimeError` (не проглатываем
+    молча испорченную схему/исчерпанную энтропию)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT checkin_token FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        old_token = row["checkin_token"]
+
+        for _ in range(_CHECKIN_TOKEN_MAX_ATTEMPTS):
+            candidate = secrets.token_urlsafe(8)
+            try:
+                if old_token:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO checkin_token_replacements "
+                        "(old_token, telegram_id, replaced_at) VALUES (?, ?, ?)",
+                        (old_token, telegram_id, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+                    )
+                cursor2 = await db.execute(
+                    "UPDATE users SET checkin_token = ? WHERE telegram_id = ?",
+                    (candidate, telegram_id),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                continue
+            if cursor2.rowcount:
+                return candidate
+            return None
+
+        raise RuntimeError(
+            f"reissue_checkin_token: не удалось выдать уникальный токен для {telegram_id} "
+            f"за {_CHECKIN_TOKEN_MAX_ATTEMPTS} попыток"
+        )
+
+
+async def get_checkin_token_replacement(old_token: str | None) -> dict | None:
+    """`{"telegram_id": ..., "replaced_at": ...}`, если `old_token` был перевыпущен
+    (`reissue_checkin_token` выше) — `None`, если этот токен никогда не заменяли (или он
+    вообще никому не принадлежал)."""
+    if not old_token:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, replaced_at FROM checkin_token_replacements WHERE old_token = ?",
+            (old_token,),
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
