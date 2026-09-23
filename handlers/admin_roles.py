@@ -24,14 +24,13 @@ from config import config
 from settings_schema import get_setting_typed
 from database.db import (
     add_staff,
-    get_reg_started_by_username,
     get_setting,
     get_user,
-    get_user_by_username,
     list_staff,
     remove_staff,
     set_staff_city,
 )
+from services.person_search import search_people
 from settings_audit import set_setting_by_admin
 from handlers.states import StaffAdd
 from handlers.admin_caps import (
@@ -614,8 +613,8 @@ def _resolve_staff_input(message) -> tuple[int | None, str | None]:
 
     Returns (telegram_id, marker_or_error):
     - (id, None) — resolved directly (forward or numeric id); ready for role assignment.
-    - (None, "@username") — needs an async `get_user_by_username` lookup by the caller
-      (kept out of this function so it stays sync + DB-free, per docs/CONVENTIONS.md).
+    - (None, "@username") — needs an async `services.person_search.search_people` lookup by
+      the caller (kept out of this function so it stays sync + DB-free, per docs/CONVENTIONS.md).
     - (None, "<human error text>") — nothing usable; caller shows this text verbatim.
     """
     # Bot API 7.0 (январь 2024) убрал forward_from/forward_date/forward_sender_name из Message
@@ -651,7 +650,7 @@ def _resolve_staff_input(message) -> tuple[int | None, str | None]:
     if not body:
         return None, _STAFF_INPUT_ERROR
     if body.startswith("@"):
-        return None, body  # marker: caller resolves via get_user_by_username
+        return None, body  # marker: caller resolves via services.person_search.search_people
     if body.isascii() and body.isdigit():  # same unicode-digit guard as _parse_coins_amount
         return int(body), None
     return None, _STAFF_INPUT_ERROR
@@ -784,23 +783,14 @@ async def roles_add_cancel(message: types.Message, state: FSMContext):
 @router.message(StaffAdd.waiting_for_person)
 async def roles_add_person(message: types.Message, state: FSMContext):
     telegram_id, marker = _resolve_staff_input(message)
-    reg_started_row = None  # человек нажал /start, но анкету не подал — users его не знает
+    reg_started_person = None  # человек нажал /start, но анкету не подал — users его не знает
     if telegram_id is None and marker is not None and marker.startswith("@"):
-        user = await get_user_by_username(marker)
-        if user is not None:
-            telegram_id = user["telegram_id"]
-        else:
-            # users_row_only_on_submit: анкета — не единственный способ узнать человека,
-            # тот, кто только жал /start, лежит в reg_started (найдено квик-задачей после
-            # жалобы «не найден в базе бота» на человека, реально писавшего боту).
-            reg_started_row = await get_reg_started_by_username(marker)
-            if reg_started_row is None:
-                await message.answer(
-                    f"Пользователь {html_module.escape(marker)} не найден в базе бота — "
-                    "попросите числовой id."
-                )
-                return
-            telegram_id = reg_started_row["telegram_id"]
+        found = await search_people(marker, include_started=True)  # users, потом reg_started
+        if not found:
+            await message.answer(f"Пользователь {html_module.escape(marker)} не найден в базе бота — попросите числовой id.")
+            return
+        telegram_id = found[0]["user_id"]
+        reg_started_person = found[0] if found[0]["source"] == "reg_started" else None
         marker = None
 
     if telegram_id is None:
@@ -810,14 +800,10 @@ async def roles_add_person(message: types.Message, state: FSMContext):
     await state.clear()
     user = await get_user(telegram_id)
     if user is not None:
-        display_name = user.get("full_name") or user.get("username")
-        note = ""
-    elif reg_started_row is not None:
-        display_name = reg_started_row.get("username")
-        note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>"
+        display_name, note = user.get("full_name") or user.get("username"), ""
     else:
-        display_name = None
-        note = ""
+        display_name = reg_started_person.get("username") if reg_started_person else None
+        note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>" if reg_started_person else ""
     display_name = html_module.escape(str(display_name or telegram_id))
 
     buttons = [
