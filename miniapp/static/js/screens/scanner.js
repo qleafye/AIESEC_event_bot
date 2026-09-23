@@ -1,9 +1,16 @@
 // Экран «Сканер» (Phase 12, FORUM-CHECKIN.md, D-08/D-11/D-12/D-13, идея №9): отметка на
-// форуме. Основной путь — Telegram.WebApp.showScanQrPopup в НЕПРЕРЫВНОМ режиме: колбэк
-// qrTextReceived возвращает false (попап не закрывается), следующий скан продолжает отмечать
-// без повторного тапа «Сканировать» (D-08). Запасной путь на этом же экране — поиск по
-// фамилии (D-11/D-12: телефон делегата сел, а сеть есть), кнопка «Отметить» шлёт ту же
-// отметку через /checkin/manual. Счётчик прихода вверху — /checkin/stats (задача A2:
+// форуме. Основной путь — Telegram.WebApp.showScanQrPopup. Колбэк qrTextReceived САМ по себе
+// синхронный (Telegram зовёт его сразу после чтения QR, до любого ответа сервера) — решение
+// «закрыть/оставить попап» по факту (🟢 new / 🟡 duplicate / 🔴 отказ) известно только ПОСЛЕ
+// асинхронного /checkin/scan. Поэтому колбэк всегда возвращает false (попап не закрывается
+// сам), а закрытие для не-🟢-исходов делает submitScan() явным вызовом
+// `tg.closeScanQrPopup()`, когда ответ уже пришёл (квик A3): 🟢 new — попап остаётся открытым,
+// вибрация success, следующий скан продолжает отмечать без повторного тапа «Сканировать»
+// (D-08); 🟡 duplicate и 🔴 любой отказ/не найден/чужое мероприятие/ошибка сети — попап
+// закрывается, плашка с причиной получает кнопку «Сканировать дальше» (повторно открывает
+// попап). Запасной путь на этом же экране — поиск по фамилии (D-11/D-12: телефон делегата
+// сел, а сеть есть), кнопка «Отметить» шлёт ту же отметку через /checkin/manual (свой попап
+// не открывает — закрывать нечего). Счётчик прихода вверху — /checkin/stats (задача A2:
 // построчно по городам, когда сервер отдаёт `cities`, иначе один общий счётчик).
 //
 // Защита от повторного скана: камера в непрерывном режиме присылает ОДИН И ТОТ ЖЕ текст QR
@@ -99,21 +106,41 @@ export async function render(root, params, ctx) {
     }
   }
 
-  function showPlaque(res) {
+  const SCAN_POPUP_TEXT = "Зелёная вибрация — отмечен. Иначе окно закроется";
+
+  function startScan() {
+    if (!canScan) return;
+    tg.showScanQrPopup({ text: SCAN_POPUP_TEXT }, onQrText);
+  }
+
+  // closeButton=true — не-🟢 исход (duplicate/denied/not_found/foreign_event/сетевая ошибка):
+  // родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup() до этого показа), плашка
+  // получает крупную кнопку «Сканировать дальше», заново открывающую попап.
+  function showPlaque(res, { closeButton = false } = {}) {
     const tone = STATUS_TONE[res.status] || "error";
     plaque.className = `checkin-plaque tone-${tone}`;
     const dot = tone === "success" ? "🟢" : tone === "warn" ? "🟡" : "🔴";
     const heading = res.status === "duplicate"
       ? `Уже был в ${timeOnly(res.scanned_at)}`
       : (STATUS_HEADING[res.status] || "Не пропущен");
+    const nextBtn = h("button", { class: "btn checkin-plaque-next", type: "button", text: "📷 Сканировать дальше" });
+    nextBtn.addEventListener("click", () => {
+      plaque.classList.add("hidden");
+      startScan();
+    });
     plaque.replaceChildren(...[
       h("div", { class: "checkin-plaque-dot", text: dot }),
       h("div", { class: "checkin-plaque-heading", text: heading }),
       res.full_name ? h("div", { class: "checkin-plaque-name", text: res.full_name }) : null,
       res.city ? h("div", { class: "checkin-plaque-city", text: res.city }) : null,
       res.reason_text ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
+      closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");
+  }
+
+  function closeScanPopup() {
+    if (tg && typeof tg.closeScanQrPopup === "function") tg.closeScanQrPopup();
   }
 
   let scanBusy = false;
@@ -122,10 +149,14 @@ export async function render(root, params, ctx) {
     scanBusy = true;
     try {
       const res = await api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: POINT } });
-      showPlaque(res);
+      const isNew = res.status === "new";
+      if (!isNew) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
+      showPlaque(res, { closeButton: !isNew });
       await loadStats();
     } catch (err) {
-      say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
+      closeScanPopup(); // сетевая/любая другая ошибка — тоже 🔴, попап закрывается
+      const text = isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз.");
+      showPlaque({ status: "error", reason_text: text }, { closeButton: true });
     } finally {
       scanBusy = false;
     }
@@ -140,7 +171,7 @@ export async function render(root, params, ctx) {
     lastText = text;
     lastAt = now;
     submitScan(text);
-    return false; // попап НЕ закрывается — следующий скан продолжает отмечать (D-08)
+    return false; // синхронный колбэк не знает исход — попап закрывает submitScan() сам
   }
 
   const tg = window.Telegram && window.Telegram.WebApp;
@@ -149,10 +180,7 @@ export async function render(root, params, ctx) {
     scanBtn.setAttribute("disabled", "");
     fallbackNote.className = "muted";
   }
-  scanBtn.addEventListener("click", () => {
-    if (!canScan) return;
-    tg.showScanQrPopup({ text: "Наведите камеру на QR делегата" }, onQrText);
-  });
+  scanBtn.addEventListener("click", startScan);
 
   // ── поиск по фамилии (D-11/D-12) ──────────────────────────────────────────────────────
   let searchTimer = null;
