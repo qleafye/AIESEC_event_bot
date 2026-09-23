@@ -141,6 +141,24 @@ def _user_status(conn, telegram_id: int) -> tuple[bool, str | None]:
     return True, row["status"]
 
 
+def _is_past_season(conn, telegram_id: int) -> bool:
+    """Квик 260923-en2, решение владельца 23.09 («закрой разделы до новой анкеты»): та же
+    граница, что у `form_status` "returning" — строка `users.season` задана и отличается от
+    `event_season`. Сбой чтения — fail-soft к `False` (прежнее поведение), тот же приём, что в
+    `form_status`."""
+    try:
+        row = conn.execute(
+            "SELECT season FROM users WHERE telegram_id = ?", (telegram_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        event_season = read_setting(conn, "event_season") or None
+        return reg_engine.is_past_season_row(dict(row), event_season)
+    except Exception:
+        logger.error("_is_past_season: сбой чтения, fail-soft к прежнему поведению", exc_info=True)
+        return False
+
+
 def delegate_denial(conn, p: Principal) -> str | None:
     """Причина отказа делегатского гейта или `None` (пропущен). Вынесено из зависимости,
     чтобы `/app/api/me` мог отдать `is_delegate` без исключения."""
@@ -152,6 +170,11 @@ def delegate_denial(conn, p: Principal) -> str | None:
     if not registered:
         # Аналог `ensure_registered` в боте: без анкеты заданий нет.
         return "unregistered"
+    # Квик 260923-en2: делегат прошлого сезона (любой статус — approved/pending/rejected)
+    # закрыт от всех делегатских ручек ДО подачи анкеты нового сезона, та же граница, что
+    # form_status "returning" (миниапп/deps.py::form_status).
+    if _is_past_season(conn, p.telegram_id):
+        return "past_season"
     allowed, kind = _gate_decision(status)
     return None if allowed else kind
 
@@ -291,17 +314,21 @@ async def upload_actor(request: Request, p: Principal = Depends(principal)) -> U
     """Три сценария на один маршрут `POST /app/api/uploads`: делегат прикладывает часть сдачи,
     менеджер с правом из `STAFF_UPLOAD_CAPS` грузит обложку задания (план 19-06) или
     фото/файл настройки (Phase 22), ЛИБО (план 21-10, D-05)
-    делегат без прошедшего делегатского гейта (`unregistered`/`pending`/`rejected`), но с живым
-    черновиком анкеты, грузит резюме — тот же маршрут, третья ветка `delegate_denial`, не копия
-    (RESEARCH Pitfall 9: анкета — не `delegate_gate`). `cookie`/`staff_only_mode` НЕ пропускаются
-    этой веткой — это гейты режима доступа, а не статуса регистрации."""
+    делегат без прошедшего делегатского гейта (`unregistered`/`pending`/`rejected`/квик 260923-en2
+    `past_season`), но с живым черновиком анкеты, грузит резюме — тот же маршрут, третья ветка
+    `delegate_denial`, не копия (RESEARCH Pitfall 9: анкета — не `delegate_gate`). `cookie`/
+    `staff_only_mode` НЕ пропускаются этой веткой — это гейты режима доступа, а не статуса
+    регистрации."""
     with read_conn(request.app.state.cfg.db_path) as conn:
         kind = delegate_denial(conn, p)
     if kind is None:
         staff_upload = False
     elif p.caps & STAFF_UPLOAD_CAPS:
         staff_upload = True
-    elif kind in ("unregistered", "pending", "rejected") and await get_reg_draft(p.telegram_id) is not None:
+    elif (
+        kind in ("unregistered", "pending", "rejected", "past_season")
+        and await get_reg_draft(p.telegram_id) is not None
+    ):
         staff_upload = False
     else:
         raise HTTPException(403, {"reason": "delegate_gate", "kind": kind})
