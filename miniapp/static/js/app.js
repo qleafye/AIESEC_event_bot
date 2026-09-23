@@ -359,6 +359,41 @@ export function showState(state, detail) {
   screenEl.append(card);
 }
 
+// Квик 260923-en2: решение владельца 23.09 «закрой разделы до новой анкеты» — делегат
+// прошлого сезона получает 403 delegate_gate {kind: "past_season"} на всех делегатских
+// ручках. Кодовое имя kind человеку не показываем (CLAUDE.md «бот для людей») — вместо
+// общей ветки no-access с "(past_season)" рисуем отдельный экран с человеческим текстом
+// возвращенца (те же реестровые ключи start_text_returning/start_returning_cta_text, что
+// уже отдаёт /app/api/hub/status делегату этого же вида, квик 260922-wrg) и кнопкой на
+// анкету. Текст вставляется только через h()/textContent — innerHTML с интерполяцией не
+// используется (тот же сторож, что у остального app.js).
+async function showPastSeasonState() {
+  setMainButton(null);
+  clear(navEl);
+  const card = h("section", { class: "state", "data-state": "no-access" },
+    h("div", { class: "icon" }, icon(STATE_ICONS["no-access"] || "alert-triangle")),
+    h("h1", { text: STATE_TITLES["no-access"] || "" }),
+  );
+  let heading = "";
+  let ctaText = "";
+  try {
+    const status = await api("/hub/status");
+    heading = (status && status.heading) || "";
+    ctaText = (status && status.cta_text) || "";
+  } catch (_) {
+    // fail-soft: /hub/status недоступен — запасной текст ниже.
+  }
+  card.append(h("p", {
+    text: heading || "Разделы откроются после новой анкеты. Обновите анкету, чтобы снова открыть задания, монеты и рейтинг.",
+  }));
+  card.append(h("div", { class: "actions" },
+    h("a", { class: "btn", href: "#/form", text: ctaText || "Обновить анкету" }),
+    h("a", { class: "btn ghost", href: homeHash(), text: "На главную" }),
+  ));
+  clear(screenEl);
+  screenEl.append(card);
+}
+
 // ── навигация ────────────────────────────────────────────────────────────────────────────
 let me = null;
 let sectionLabels = {};
@@ -596,6 +631,12 @@ async function route() {
 async function start() {
   bootstrapTelegram();
   setAuthErrorHandler((state, payload) => {
+    // Квик 260923-en2: past_season — отдельный человеческий экран с кнопкой на анкету, не
+    // общий no-access с кодовым именем kind в детали.
+    if (state === "no-access" && payload && payload.kind === "past_season") {
+      showPastSeasonState();
+      return;
+    }
     const detail = payload && payload.kind ? `(${payload.kind})` : null;
     showState(state, state === "no-access" ? detail : null);
   });
