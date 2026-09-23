@@ -44,6 +44,7 @@ MINIAPP_KEYS = [
     "miniapp_section_settings",
     "miniapp_section_applications",  # Phase 23-01 (APP-TINDER-01, D-09): раздел «🗂 Отбор заявок»
     "miniapp_section_questions",  # Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов»
+    "miniapp_section_checkin",  # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер»
     # тексты
     "miniapp_open_text",
     "miniapp_open_button",
@@ -325,7 +326,8 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # (188 -> 192).
     # Правила автоотказа: +1 ключ подписи чипа-фильтра «только помеченные правилами»,
     # точная копия соседа miniapp_applications_filter_changed (192 -> 193).
-    assert len(MINIAPP_KEYS) == 193
+    # Phase 12 (FORUM-CHECKIN.md, D-08): +1 раздел-чекбокс «🎫 Сканер» (193 -> 194).
+    assert len(MINIAPP_KEYS) == 194
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -343,7 +345,8 @@ def test_every_miniapp_key_has_label_group_and_valid_type():
 def test_toggle_defaults():
     assert SETTINGS_SCHEMA["miniapp_enabled"]["default"] == "off"
     assert SETTINGS_SCHEMA["miniapp_staff_only"]["default"] == "off"
-    assert len(SECTION_KEYS) == 12  # Quick 260906-8uq: +miniapp_section_faq (11 -> 12)
+    # Quick 260906-8uq: +miniapp_section_faq (11 -> 12); Phase 12 (D-08): +miniapp_section_checkin (12 -> 13)
+    assert len(SECTION_KEYS) == 13
     for key in SECTION_KEYS:
         entry = SETTINGS_SCHEMA[key]
         assert entry["type"] == "enum" and entry["options"] == ["on", "off"], key

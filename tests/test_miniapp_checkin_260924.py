@@ -1,0 +1,277 @@
+"""Phase 12 (FORUM-CHECKIN.md, D-08/D-12/D-13, идея №9): сканер отметки на форуме в Mini App —
+`/app/api/checkin/*` (`miniapp/routers/checkin.py`). Харнесс — `tests/test_miniapp_routes.py`,
+тот же приём, что `tests/test_miniapp_admin_tasks.py`.
+
+Капа `checkin` НЕ входит ни в один `default_caps` роли (`handlers/admin_caps.py::ROLES`) —
+менеджер добавляет её вручную через `role_caps_*`; здесь она примешивается settings-сидом,
+как `tests/test_dashboard_auth.py` делает для остальных прав."""
+from __future__ import annotations
+
+import asyncio
+
+import aiosqlite
+
+from config import config as bot_config
+from database import db as bot_db
+from services.checkin import build_payload
+
+from tests.test_miniapp_routes import (
+    ADMIN_ID,
+    BOUND_MANAGER_ID,
+    GAME_MANAGER_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _seed,
+    _set,
+    _standard_seed,
+    _use_tmp_db,
+)
+
+BASE = "/app/api/checkin"
+TAG = "YL26"
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+async def _insert_user(
+    telegram_id, *, full_name="Иванов Иван", status="approved", season="YL'26",
+    city="msk", username=None, university=None,
+):
+    async with bot_db._connect() as conn:
+        await conn.execute(
+            "INSERT INTO users (telegram_id, full_name, status, season, event_city, username, university) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, full_name, status, season, city, username, university),
+        )
+        await conn.commit()
+
+
+def _token(telegram_id) -> str:
+    return _run(bot_db.get_or_create_checkin_token(telegram_id))
+
+
+def _qr(telegram_id, *, tag=TAG, full_name="Иванов Иван", city="Казань") -> str:
+    return build_payload(tag, full_name, city, _token(telegram_id))
+
+
+def _grant_checkin_to_game_manager():
+    """GAME_MANAGER_ID (не привязан к городу) получает checkin — базовые сценарии без
+    городского скоупа."""
+    _set("role_caps_game_manager", "moderate_game;checkin")
+
+
+def _grant_checkin_to_bound_manager():
+    """BOUND_MANAGER_ID (`reg_manager`, привязан к spb в `_standard_seed`) получает checkin —
+    сценарии городского скоупа A2/B2."""
+    _set("role_caps_reg_manager", "moderate_reg;moderate_receipts;checkin")
+
+
+def _seed_ready(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_checkin.db")
+    _standard_seed()
+    _run(bot_db.set_setting("event_season", "YL'26"))
+    return db_path
+
+
+def client_with(tmp_path):
+    db_path = _seed_ready(tmp_path)
+    return _client(_cfg(db_path))
+
+
+# ── /scan ────────────────────────────────────────────────────────────────────────────────
+
+def test_scan_without_cap_is_403(tmp_path):
+    client = client_with(tmp_path)
+    uid = 950001
+    _run(_insert_user(uid))
+    payload = _qr(uid)
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "no_cap"
+
+
+def test_scan_new_then_duplicate(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950002
+    _run(_insert_user(uid, full_name="Петров Пётр", city="spb"))
+    payload = _qr(uid, full_name="Петров Пётр", city="СПб")
+
+    r1 = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    assert r1.status_code == 200
+    body1 = r1.json()
+    assert body1["status"] == "new"
+    assert body1["full_name"] == "Петров Пётр"
+    assert body1["city"] == "spb"
+
+    r2 = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    body2 = r2.json()
+    assert body2["status"] == "duplicate"
+    assert body2["scanned_at"] == body1["scanned_at"]
+
+
+def test_scan_denied_not_approved_with_human_reason(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950003
+    _run(_insert_user(uid, status="pending"))
+    payload = _qr(uid)
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "denied"
+    assert body["reason_text"] == "Заявка ещё на рассмотрении"
+
+
+def test_scan_denied_past_season(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950004
+    _run(_insert_user(uid, status="approved", season="YL'25"))
+    payload = _qr(uid)
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "denied"
+    assert body["reason_text"] == "Делегат прошлого сезона"
+
+
+def test_scan_not_found_unknown_token(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    payload = build_payload(TAG, "Чужой Чужаков", "Тюмень", "no-such-token")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "not_found"
+    assert body["reason_text"] == "QR не найден — отправьте на стойку проблемных случаев"
+    assert body["full_name"] == "Чужой Чужаков"  # видно из самого QR (T-12-01, недоверенный ввод)
+
+
+def test_scan_foreign_event_tag(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950005
+    _run(_insert_user(uid))
+    payload = _qr(uid, tag="OTHERFEST")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "foreign_event"
+    assert body["reason_text"] == "QR другого мероприятия"
+
+
+# ── /manual ──────────────────────────────────────────────────────────────────────────────
+
+def test_manual_records_checkin_without_qr(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950006
+    _run(_insert_user(uid, full_name="Сидоров Сидор"))
+    resp = client.post(f"{BASE}/manual", json={"telegram_id": uid}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "new"
+    assert body["full_name"] == "Сидоров Сидор"
+    assert _run(bot_db.count_checkins_by_point("entry")) == 1
+
+
+def test_manual_denied_reason_for_unapproved(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950007
+    _run(_insert_user(uid, status="rejected"))
+    resp = client.post(f"{BASE}/manual", json={"telegram_id": uid}, headers=_hdr(GAME_MANAGER_ID))
+    assert resp.json()["status"] == "denied"
+
+
+# ── /search ──────────────────────────────────────────────────────────────────────────────
+
+def test_search_eligible_delegate_first_with_city_username_university(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(_insert_user(
+        950010, full_name="Иванова Мария", status="rejected", city="msk",
+        username="maria_i", university="ВШЭ",
+    ))
+    _run(_insert_user(
+        950011, full_name="Иванова Марина", status="approved", city="spb",
+        username="marina_i", university="СПбГУ",
+    ))
+    resp = client.get(f"{BASE}/search", params={"q": "Иванова"}, headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert items[0]["telegram_id"] == 950011  # одобренный текущего сезона -- первым (D-12)
+    assert items[0]["eligible"] is True
+    assert items[0]["username"] == "marina_i"
+    assert items[0]["university"] == "СПбГУ"
+    assert items[1]["telegram_id"] == 950010
+    assert items[1]["eligible"] is False
+    assert items[1]["reason_text"]
+
+
+def test_search_yo_e_fold(tmp_path):
+    """Ё=е при поиске по фамилии (D-12) — общий сервис person_search уже это гарантирует,
+    здесь только проверяем, что ручка сканера не потеряла это поведение при переиспользовании."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(_insert_user(950012, full_name="Фёдоров Фёдор", status="approved"))
+    resp = client.get(f"{BASE}/search", params={"q": "федоров"}, headers=_hdr(GAME_MANAGER_ID))
+    items = resp.json()["items"]
+    assert any(it["telegram_id"] == 950012 for it in items)
+
+
+# ── /stats (A2 breakdown) ────────────────────────────────────────────────────────────────
+
+def test_stats_bound_manager_sees_only_own_city(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _run(_insert_user(950020, city="spb"))
+    _run(_insert_user(950021, city="msk"))
+    _run(bot_db.record_checkin(950020, "entry", source="miniapp"))
+
+    resp = client.get(f"{BASE}/stats", headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body == {"arrived": 1, "approved": 1, "cities": None}
+
+
+def test_stats_unbound_admin_sees_breakdown_by_city(tmp_path):
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _run(_insert_user(950022, city="spb"))
+    _run(_insert_user(950023, city="spb"))
+    _run(_insert_user(950024, city="msk"))
+    _run(bot_db.record_checkin(950022, "entry", source="miniapp"))
+    # `_standard_seed()` уже посадил DELEGATE_ID approved БЕЗ event_city (NULL) -- дефолт-город
+    # (msk) считает такую строку своей (city_scope("msk") = исключающая форма, ловит NULL) —
+    # учитываем эту строку в ожиданиях явно, а не прячем её переустановкой сида.
+
+    resp = client.get(f"{BASE}/stats", headers=_hdr(ADMIN_ID))  # суперадмин -- никогда не скопирован
+    body = resp.json()
+    assert body["arrived"] == 1 and body["approved"] == 4
+    by_code = {c["code"]: c for c in body["cities"]}
+    assert by_code["spb"]["arrived"] == 1 and by_code["spb"]["approved"] == 2
+    assert by_code["msk"]["arrived"] == 0 and by_code["msk"]["approved"] == 2  # 950024 + DELEGATE_ID
+    assert "tyumen" not in by_code  # нет одобренных -- строки нет (A2)
+
+
+def test_stats_cities_module_off_is_unscoped(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(_insert_user(950025, city="spb"))
+    _run(_insert_user(950026, city="msk"))
+    # + DELEGATE_ID approved из `_standard_seed()` -> 3 одобренных всего.
+    resp = client.get(f"{BASE}/stats", headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body == {"arrived": 0, "approved": 3, "cities": None}
+
+
+# ── раздел выключен чекбоксом ────────────────────────────────────────────────────────────
+
+def test_section_off_gates_with_403(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _set("miniapp_section_checkin", "off")
+    resp = client.get(f"{BASE}/stats", headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "section_off"

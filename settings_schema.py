@@ -3905,6 +3905,15 @@ SETTINGS_SCHEMA = {
             "#/questions."
         ), "default": "on",
     },
+    # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «Сканер» менеджера — отметка на форуме.
+    "miniapp_section_checkin": {
+        "type": "enum", "group": "miniapp", "label": "🎫 Сканер (чек-ин)",
+        "options": ["on", "off"], "prompt": (
+            "Выключено — исчезают: плитка «🎫 Сканер» в хабе менеджера и экран #/scanner. "
+            "Право `checkin` при этом никуда не девается — просто скрывается вход в него из "
+            "приложения."
+        ), "default": "on",
+    },
     "miniapp_empty_questions": {
         "type": "text", "group": "miniapp", "label": "❓ Пустой журнал вопросов",
         "prompt": "Текст, когда вопросов делегатов пока нет (например: «Вопросов пока нет.»).",

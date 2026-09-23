@@ -52,6 +52,7 @@ SECTION_KEYS_EXPECTED = [
     "miniapp_section_admin_tasks",
     "miniapp_section_stats",
     "miniapp_section_settings",
+    "miniapp_section_checkin",  # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер»
 ]
 
 
@@ -131,7 +132,8 @@ async def _read_sections():
 
 # ── реестр ────────────────────────────────────────────────────────────────────────────────
 
-def test_exactly_twelve_miniapp_section_keys():
+def test_exactly_thirteen_miniapp_section_keys():
+    # Phase 12 (FORUM-CHECKIN.md, D-08): +miniapp_section_checkin (12 -> 13).
     keys = [k for k in SETTINGS_SCHEMA if k.startswith("miniapp_section_")]
     assert sorted(keys) == sorted(SECTION_KEYS_EXPECTED)
 
@@ -156,7 +158,7 @@ def test_miniapp_theme_keys_default(tmp_path):
 
 # ── экран 1 (admin_miniapp.py): рендер + чекбоксы ──────────────────────────────────────────
 
-def test_screen_shows_toggles_twelve_sections_and_theme_entry(tmp_path):
+def test_screen_shows_toggles_thirteen_sections_and_theme_entry(tmp_path):
     _admin_ready(tmp_path)
     kb = asyncio.run(admin_miniapp.build_miniapp_settings_keyboard())
     data = _flat_callback_data(kb)
