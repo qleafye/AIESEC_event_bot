@@ -358,7 +358,7 @@ def test_roles_assign_city_step_shown_only_to_superadmin(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
     cb = FakeCallback(f"roles_addrole:{MANAGER_SPB_ID}:reg_manager", STRANGER_ID)
-    asyncio.run(admin_roles.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb, FakeBot()))
 
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)
@@ -370,7 +370,7 @@ def test_roles_assign_city_step_shown_to_superadmin(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
 
     cb = FakeCallback(f"roles_addrole:{MANAGER_SPB_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_roles.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb, FakeBot()))
 
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)

@@ -185,6 +185,7 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
+    # Форум-ночь (форум-чекин): +1 (checkin_qr_broadcast_enabled, «📋 Заявки») -- 48 -> 49.
     # Квик 260923 (форум-чекин, D-01..D-04): +1 (checkin_qr_enabled, «📋 Заявки») -- 47 -> 48.
     # Квик 260922-wrg (задача 1): +1 (reg_resubmit_after_reject, «📋 Заявки») -- 46 -> 47.
     # Квик 260916: +1 (daily_digest_enabled, «📊 Итоги дня» — раздел «🔧 Управление») -- 45 -> 46.
@@ -198,7 +199,7 @@ def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     # Phase 28 (28-08, SU-08): +1 (apps_queue_sort_by_score) -- 26 -> 27.
     # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 (reg_skip_source_for_referred/
     # reg_referrer_must_be_ambassador/reg_offer_ref_link) -- 23 -> 26.
-    assert len(settings_ops.TOGGLE_SECTION) == 48
+    assert len(settings_ops.TOGGLE_SECTION) == 49
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 

@@ -640,6 +640,10 @@ async def init_db():
         # `broadcasts` (том же, что у мгновенных рассылок) — эта колонка хранит связь, чтобы
         # resume после рестарта переиспользовал ту же строку журнала, а не плодил вторую.
         await _ensure_column(db, "scheduled_broadcasts", "log_broadcast_id", "INTEGER")
+        # Форум-ночь п.7 (D-XX, «❗ Важное»): отложенная рассылка тоже может быть помечена
+        # важной — читается в services/scheduler.py::send_scheduled_broadcast перед тем, как
+        # завести/переиспользовать строку журнала `broadcasts` (важность копируется туда же).
+        await _ensure_column(db, "scheduled_broadcasts", "important", "INTEGER DEFAULT 0")
 
         # Quick 260910-okb (BC-01..06): журнал НЕМЕДЛЕННЫХ рассылок («отправить сейчас» из
         # handlers/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
@@ -657,6 +661,15 @@ async def init_db():
                 blocked INTEGER
             )
         ''')
+        # Форум-ночь п.7: важность рассылки + её полный текст (для делегатской кнопки
+        # «❗ Важное», database.db.important_messages_today — text_preview выше урезан до 80
+        # символов, для «найти потерянное в потоке» этого мало) + счётчик пропущенных
+        # тихим-режимом получателей (mute_skipped, для отчёта менеджеру). И для мгновенных
+        # (create_broadcast), и для отложенных рассылок (send_scheduled_broadcast переиспользует
+        # эту же строку журнала, см. log_broadcast_id выше) — одна точка правды.
+        await _ensure_column(db, "broadcasts", "important", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "broadcasts", "full_text", "TEXT")
+        await _ensure_column(db, "broadcasts", "mute_skipped", "INTEGER DEFAULT 0")
         # БЕЗ PRIMARY KEY: альбом отдаёт несколько message_id на один chat_id — по одной строке
         # на каждое доставленное сообщение, не одна на получателя.
         await db.execute('''
@@ -667,6 +680,16 @@ async def init_db():
                 sent_at TEXT
             )
         ''')
+        # Форум-ночь п.7 («🔕 Не присылать сегодня»): MSK-дата ('YYYY-MM-DD'), ДО конца которой
+        # (включительно) НЕважные рассылки этому делегату пропускаются при доставке. NULL —
+        # делегат ничего не отключал (или уже нажал «🔔 Присылать всё»).
+        await _ensure_column(db, "users", "mute_broadcasts_until", "TEXT")
+        # Форум-ночь п.7 ревью (находка 🟡): предложение «🔕» альбома — единственная форма
+        # доставки, которая ВСЁ ЕЩЁ уходит отдельным сообщением (media_group не принимает
+        # reply_markup, см. докстринг services/scheduler.py::send_mute_offer_if_eligible) — MSK-
+        # дата последнего показа этого предложения ЭТОМУ делегату не даёт слать его повторно
+        # после каждой неважной альбомной рассылки за один день (было — спам).
+        await _ensure_column(db, "users", "mute_offer_shown_date", "TEXT")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -1433,6 +1456,226 @@ async def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_checkin_token "
             "ON users(checkin_token) WHERE checkin_token IS NOT NULL"
         )
+
+        # Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-20): таблица отметок «пришёл» — вход и сессии
+        # программы на одной схеме. `point` = "entry" для входа (services.checkin.ENTRY_POINT),
+        # `"session:{id}"` (services.program.point_for_session) — для сессий. `UNIQUE(telegram_id,
+        # point)` + `INSERT OR IGNORE` (record_checkin ниже) хранит ПЕРВЫЙ скан на точку — верно
+        # для входа (D-10: «повторы отбрасываются»). D-20 («на сессии засчитывается ПОСЛЕДНИЙ
+        # скан слота») этому идемпотентному INSERT не подчиняется — сессии идут через ОТДЕЛЬНУЮ
+        # функцию `record_session_checkin` (delete-then-insert внутри слота параллельных сессий,
+        # `services.program.parallel_group`), вход продолжает жить на INSERT OR IGNORE как был.
+        # `source` — miniapp (сканер Mini App) | csv (загрузка выгрузки офлайн-сканера) | manual
+        # (по фамилии/от руки, D-11/D-12) | auto_session (услуга `services.checkin.record_arrival`
+        # сама подтверждает вход, когда делегата отметили на сессии, а на входе он ещё не был).
+        # `approx_time` — 1, если время скана не удалось прочитать из файла и подставлено время
+        # загрузки (D-10).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                point TEXT NOT NULL,
+                scanned_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                approx_time INTEGER NOT NULL DEFAULT 0,
+                by_staff_id INTEGER,
+                created_at TEXT NOT NULL,
+                UNIQUE(telegram_id, point)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_checkins_point ON checkins(point)"
+        )
+
+        # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
+        # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
+        # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
+        # настоящему чужого/поддельного кода. PRIMARY KEY на old_token — реиссью одного и
+        # того же делегата дважды кладёт сюда ДВЕ РАЗНЫЕ строки (два разных сгенерированных
+        # токена), коллизия между СВОИМИ старыми токенами по построению невозможна
+        # (secrets.token_urlsafe), а с чужим активным (users.checkin_token) — тот же довод,
+        # что у idx_users_checkin_token выше: коллизия на масштабе проекта практически
+        # невозможна.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_token_replacements (
+                old_token TEXT PRIMARY KEY,
+                telegram_id INTEGER NOT NULL,
+                replaced_at TEXT NOT NULL
+            )
+        ''')
+
+        # Форум-ночь п.3 (D-03, идея №2): кому и когда отправлен QR перед форумом + подтверждение
+        # «✅ Сохранил, открывается». `telegram_id` PRIMARY KEY — один QR-делегат = одна строка
+        # (в отличие от `checkins`, где `point` даёт несколько строк на человека — здесь точек
+        # нет, только «отправлено/подтверждено»). `event_city` — СНИМОК города на момент отправки
+        # (не JOIN на users.event_city): счётчик «QR получили N» города обязан оставаться верным,
+        # даже если делегат сменит город анкеты уже после рассылки. `sent_at` — время ПЕРВОЙ
+        # отправки (вечерняя рассылка/ручная кнопка «Разослать QR сейчас» — INSERT OR IGNORE,
+        # см. services.checkin_broadcast.send_broadcast — не двигается утренним повтором,
+        # чтобы «получили N» считало людей, а не отправки). `confirmed_at` NULL, пока делегат не
+        # нажал кнопку подтверждения (services.checkin_broadcast.confirm_receipt).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_qr_sends (
+                telegram_id INTEGER PRIMARY KEY,
+                event_city TEXT,
+                sent_at TEXT NOT NULL,
+                confirmed_at TEXT
+            )
+        ''')
+
+        # Форум-ночь п.6 (D-25, идея №14): «Не пришёл» — готовый шаблон рассылки с кнопками
+        # ответа делегата («Уже еду»/«Не смогу прийти»/«Я на месте»). Одна строка = один
+        # (делегат, день) — `UNIQUE(telegram_id, day)` даёт ДВОЙНУЮ службу без второй таблицы:
+        # (1) идемпотентность самой ОТПРАВКИ (повторный тап «Написать не пришедшим» в тот же
+        # день — INSERT OR IGNORE, тем, у кого уже есть строка за сегодня, второе сообщение не
+        # уходит), и (2) хранилище ОТВЕТА (UPDATE той же строки, когда делегат жмёт кнопку).
+        # `day` — календарный день ОТПРАВКИ (МСК), не день форума — двухдневная Москва
+        # (30–31.10) может слать этот шаблон оба дня, каждый день независимо идемпотентен.
+        # `event_city` — СНИМОК города на момент отправки, тот же приём, что `checkin_qr_sends`
+        # выше (счётчик сводки не должен уехать, если делегат сменит город анкеты позже).
+        # `response`/`responded_at` — NULL, пока делегат не ответил; значения — `database.db.
+        # CNA_COMING`/`CNA_CANT`/`CNA_HERE`.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_not_arrived (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                event_city TEXT,
+                sent_at TEXT NOT NULL,
+                response TEXT,
+                responded_at TEXT,
+                UNIQUE(telegram_id, day)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_checkin_not_arrived_day ON checkin_not_arrived(day)"
+        )
+
+        # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
+        # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
+        # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
+        # строк лексикографически совпадает со сравнением значения, лишний парсинг на каждый
+        # запрос не нужен (пересечение слотов/сортировка по времени — обычный `ORDER BY`/`<`).
+        # `services.program.point_for_session` уже готовит `f"session:{id}"` для будущей
+        # отметки на сессиях (FORUM-CHECKIN.md D-18..D-20) — не эта задача, только совместимое
+        # API. Удаление зала НЕ каскадит сессии (`delete_program_hall`) — они остаются без
+        # зала (`hall_id -> NULL`), а не пропадают из программы.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS program_halls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                name TEXT NOT NULL,
+                capacity INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_program_halls_city ON program_halls(city, sort_order)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS program_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                day TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                title TEXT NOT NULL,
+                speaker TEXT,
+                hall_id INTEGER REFERENCES program_halls(id),
+                description TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_program_sessions_city_day "
+            "ON program_sessions(city, day, start_time)"
+        )
+
+        # Форум-ночь п.9 (идея №15 бэклога чек-ина, D-24): «⭐ Отзыв о сессии одним тапом» —
+        # ОДНА строка на (делегат, сессия): `prompted_at` ставится ПЕРВОЙ (до самой отправки,
+        # `INSERT OR IGNORE`) — идемпотентность рассылки живёт на этом же UNIQUE, не на
+        # отдельном флаге. `rating`/`comment` пусты, пока делегат не ответил; повторный тап по
+        # другой оценке — обычный UPDATE той же строки (одна оценка на сессию, правило плана).
+        # `telegram_id` — не FK на users (тот же стиль, что `checkins`/`sos_reports`) —
+        # чек-ин/отзыв переживают отсутствие строки users в редких гонках порядка миграций.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS session_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                session_id INTEGER NOT NULL,
+                rating INTEGER,
+                comment TEXT,
+                prompted_at TEXT NOT NULL,
+                rated_at TEXT,
+                commented_at TEXT,
+                UNIQUE(telegram_id, session_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_feedback_session ON session_feedback(session_id)"
+        )
+
+        # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — карточка в чат оргов + захват/решение/
+        # эскалация. Метки времени — московские (`services.timeutil.msk_now()`, конвенция
+        # квика 260912-mcj для нового кода, delegate_questions/reg_answer_history остаются
+        # UTC-исключением по docstring `_MSK_MIGRATION_COLUMNS` выше и SOS в него не входит).
+        # `city` — СНИМОК города делегата на момент отправки (тот же приём, что
+        # `checkin_qr_sends.event_city`) — привязка чата SOS резолвится по нему. `chat_id`/
+        # `card_message_id` — где живёт карточка (группа оргов ИЛИ, при фоллбэке без
+        # привязанного чата, NULL — тред делегатского ответа в этом случае недоступен,
+        # см. `services/sos.py`). `claimed_by`/`resolved_by` — атомарные UPDATE ... WHERE
+        # IS NULL, тот же приём, что `claim_question`/T-08-33.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                category TEXT NOT NULL,
+                details_text TEXT,
+                details_photo_file_id TEXT,
+                latitude REAL,
+                longitude REAL,
+                chat_id INTEGER,
+                card_message_id INTEGER,
+                claimed_by INTEGER,
+                claimed_by_name TEXT,
+                claimed_at TEXT,
+                resolved_by INTEGER,
+                resolved_by_name TEXT,
+                resolved_at TEXT,
+                escalated_at TEXT,
+                created_at TEXT NOT NULL,
+                delivery_failed_at TEXT,
+                prior_open_report_id INTEGER
+            )
+        ''')
+        # Ревью 24.09 (находки 1/3): `delivery_failed_at` — карточка не дошла НИКУДА (ни в чат,
+        # ни фоллбэком в личку), `services/sos.py::record_delivery_outcome`; `prior_open_report_id`
+        # — снимок «у делегата уже был открытый SOS #N», когда окно повторного открытия
+        # (`sos_reopen_window_minutes`) истекло и делегат открыл новый, не дожидаясь ответа на
+        # старый (см. `handlers/sos.py::sos_pick_category`). `_ensure_column` — на случай, если
+        # таблица уже создана более ранней версией этой же ветки (cf0da0b) на стенде.
+        await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
+        await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sos_reports_city ON sos_reports(city)"
+        )
+
+        # Форум-ночь п.8: заявка «Привязать чат SOS» ждёт пересылки/команды `/sos_id` из
+        # целевой группы — `admin_id` PRIMARY KEY (одна незавершённая заявка на менеджера,
+        # повторный тап кнопки перезаписывает). Не делегатский след -> USER_PURGE_EXCLUDED
+        # (это бронирование действия менеджера, не данные делегата).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_chat_bind_pending (
+                admin_id INTEGER PRIMARY KEY,
+                city TEXT,
+                requested_at TEXT NOT NULL
+            )
+        ''')
 
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
@@ -3395,15 +3638,22 @@ async def create_scheduled_broadcast(
     filter_spec: str | None,
     scheduled_at: str,
     created_by: int,
+    *, important: bool = False,
 ) -> int:
-    """Insert a pending scheduled broadcast; return its new id (the job's only arg)."""
+    """Insert a pending scheduled broadcast; return its new id (the job's only arg).
+
+    `important` (форум-ночь п.7, kw-only с дефолтом False — существующие вызовы байт-в-байт
+    прежние): копируется в журнал `broadcasts` при отправке (services/scheduler.py::
+    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *)."""
     created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
-            "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
-            (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at),
+            "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at, "
+            "important) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at,
+             1 if important else 0),
         )
         await db.commit()
         return cursor.lastrowid
@@ -3536,15 +3786,24 @@ async def cleanup_deliveries(broadcast_id: int):
 # `services/broadcast_run.py` is the only caller of the write helpers below — kept here (not
 # there) so the module stays a pure send-loop with no DB-shape knowledge beyond these calls.
 
-async def create_broadcast(admin_id: int, text_preview: str, total: int) -> int:
-    """Insert a 'sending' row for an immediate broadcast; return its new id."""
+async def create_broadcast(
+    admin_id: int, text_preview: str, total: int,
+    *, important: bool = False, full_text: str | None = None,
+) -> int:
+    """Insert a 'sending' row for an immediate broadcast; return its new id.
+
+    Форум-ночь п.7: `important`/`full_text` — тот же ряд, что и у отложенной рассылки
+    (services/scheduler.py::send_scheduled_broadcast заводит/переиспользует ЭТУ ЖЕ строку
+    журнала через log_broadcast_id). kw-only с дефолтами — существующие позиционные вызовы
+    остаются байт-в-байт прежними."""
     started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO broadcasts "
-            "(admin_id, text_preview, started_at, status, total, delivered, blocked) "
-            "VALUES (?, ?, ?, 'sending', ?, 0, 0)",
-            (admin_id, text_preview, started_at, total),
+            "(admin_id, text_preview, started_at, status, total, delivered, blocked, "
+            "important, full_text) "
+            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?)",
+            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text),
         )
         await db.commit()
         return cursor.lastrowid
@@ -3562,13 +3821,18 @@ async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id:
         await db.commit()
 
 
-async def finish_broadcast(broadcast_id: int, status: str, delivered: int, blocked: int):
+async def finish_broadcast(
+    broadcast_id: int, status: str, delivered: int, blocked: int, mute_skipped: int = 0,
+):
+    """`mute_skipped` (форум-ночь п.7, дефолт 0 — существующие вызовы байт-в-байт прежние):
+    сколько получателей пропущено, потому что нажали «🔕 Не присылать сегодня» — отдельная
+    цифра от `blocked` (недоставленных Telegram'ом), для отчёта менеджеру."""
     finished_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ? "
-            "WHERE id = ?",
-            (status, delivered, blocked, finished_at, broadcast_id),
+            "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ?, "
+            "mute_skipped = ? WHERE id = ?",
+            (status, delivered, blocked, finished_at, mute_skipped, broadcast_id),
         )
         await db.commit()
 
@@ -3634,6 +3898,79 @@ async def cancel_scheduled_broadcast(broadcast_id: int):
             "UPDATE scheduled_broadcasts SET status = 'cancelled' WHERE id = ?", (broadcast_id,)
         )
         await db.commit()
+
+
+# ── Форум-ночь п.7 («🔕 Не присылать сегодня» + «❗ Важное») ──────────────────
+
+async def get_muted_today_ids(date_str: str) -> set[int]:
+    """Кто отключил НЕважные рассылки на `date_str` (MSK 'YYYY-MM-DD') — один запрос ДО цикла
+    доставки (и мгновенной bc_go, и отложенной send_scheduled_broadcast), а не чтение
+    `get_user` на каждого получателя."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE mute_broadcasts_until = ?", (date_str,)
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def set_broadcast_mute(telegram_id: int, date_str: str | None) -> None:
+    """`date_str` — MSK-дата, ДО конца которой НЕважные рассылки пропускаются; `None` снимает
+    заглушку («🔔 Присылать всё»)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET mute_broadcasts_until = ? WHERE telegram_id = ?",
+            (date_str, telegram_id),
+        )
+        await db.commit()
+
+
+async def get_mute_offer_shown_ids(date_str: str) -> set[int]:
+    """Кому УЖЕ показывали предложение «🔕» альбома сегодня (MSK 'YYYY-MM-DD') — один запрос
+    перед прогоном, тот же приём, что `get_muted_today_ids`. Только для альбомной ветки
+    (`services.scheduler.send_mute_offer_if_eligible`) — text/фото/документ несут кнопку «🔕»
+    ВНУТРИ самой рассылки и повторного показа не считают."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE mute_offer_shown_date = ?", (date_str,)
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def mark_mute_offer_shown(telegram_id: int, date_str: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET mute_offer_shown_date = ? WHERE telegram_id = ?",
+            (date_str, telegram_id),
+        )
+        await db.commit()
+
+
+async def important_messages_today(telegram_id: int, date_str: str) -> list[dict]:
+    """(text, sent_at) важных рассылок, ДОСТАВЛЕННЫХ этому делегату сегодня (MSK) — для кнопки
+    «❗ Важное» (handlers/user_actions.py::show_important_today). `GROUP BY b.id` схлопывает
+    альбом (несколько строк broadcast_deliveries на один chat_id) в одну запись."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT b.full_text AS text, MIN(d.sent_at) AS sent_at "
+            "FROM broadcast_deliveries d JOIN broadcasts b ON b.id = d.broadcast_id "
+            "WHERE d.chat_id = ? AND b.important = 1 AND substr(d.sent_at, 1, 10) = ? "
+            "GROUP BY b.id ORDER BY sent_at",
+            (telegram_id, date_str),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def has_important_today(telegram_id: int, date_str: str) -> bool:
+    """Гейт кнопки меню «❗ Важное» (keyboards/builders.py::get_main_menu_kb) — дешёвый EXISTS,
+    без сборки полного списка."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM broadcast_deliveries d JOIN broadcasts b ON b.id = d.broadcast_id "
+            "WHERE d.chat_id = ? AND b.important = 1 AND substr(d.sent_at, 1, 10) = ? LIMIT 1",
+            (telegram_id, date_str),
+        ) as cursor:
+            return await cursor.fetchone() is not None
 
 
 # ── Phase 3: dropout-nudge scan/mark (SCHED-03) ──────────────────────────────
@@ -3710,6 +4047,18 @@ _FILTER_COLUMNS = {
     # (не `users.auto_reject`, такой колонки нет) собственной веткой `_build_filter_clause`;
     # см. `_FILTER_VIRTUAL_FIELDS` ниже.
     "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14): «Отметка на форуме» (пришли/не пришли) как поле
+    # фильтра рассылки. Та же двойная регистрация (здесь и в
+    # `handlers.admin_broadcasts._PICKER_FIELDS`), тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ —
+    # условие собирается по таблице `checkins` собственной веткой `_build_filter_clause`; см.
+    # `_FILTER_VIRTUAL_FIELDS` ниже.
+    "checkin_entry",
+    # «Сессия программы» (были/не были на конкретной сессии) — та же двойная регистрация,
+    # тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ — условие тоже собирается по `checkins`, но
+    # значение сессии едет ВНУТРИ записи фильтра (`session_id`), а не выбирается из
+    # `get_distinct_filter_values` — у него собственный UI-мастер (город → день → сессия),
+    # не входит в `_PICKER_FIELDS`.
+    "checkin_session",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -3721,7 +4070,11 @@ _FILTER_COLUMNS = {
 # `elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS`, виртуальное поле
 # уходит в уже существующий `return []` (мина обезврежена ДО того, как её кто-то заденет —
 # сегодня `get_distinct_filter_values("resume")` никто не зовёт, но так не будет всегда).
-_FILTER_VIRTUAL_FIELDS = {"resume", "delegate_chat", "auto_reject"}
+_FILTER_VIRTUAL_FIELDS = {
+    "resume", "delegate_chat", "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14) — те же виртуальные поля, что резюме/чат/автоотказ выше.
+    "checkin_entry", "checkin_session",
+}
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
 # Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
@@ -3766,6 +4119,34 @@ AUTO_REJECT_NO = "no"
 # не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
 CHAT_IN = "in"
 CHAT_OUT = "out"
+
+# Форум-ночь п.6 (D-25, идея №14): поле фильтра рассылки «Отметка на форуме» — «пришли» / «не
+# пришли». Литерал ниже ОБЯЗАН побайтово совпадать с `services.checkin.ENTRY_POINT`
+# (`checkins.point` для входа) — не импортирован напрямую (services.checkin импортирует ЭТОТ
+# модуль, обратный импорт был бы циклом), совпадение проверяет
+# tests/test_checkin_broadcast_filter_260924.py::test_entry_point_literal_matches_service.
+CHECKIN_ENTRY_POINT = "entry"
+CHECKIN_YES = "yes"
+CHECKIN_NO = "no"
+
+# Поле фильтра рассылки «Сессия программы» — «были» / «не были» на КОНКРЕТНОЙ сессии (внутри
+# записи фильтра едет `session_id`, тот же приём, что `chats`/`exclude` у delegate_chat/
+# event_city выше — `database/db.py` не может импортировать `services.program`).
+SESSION_ATTENDED = "attended"
+SESSION_NOT_ATTENDED = "not_attended"
+
+
+def _approved_current_season_frag(event_season: str | None) -> tuple[str, list]:
+    """Общий гард «approved + текущий сезон» — `status = 'approved' AND (season IS NULL OR
+    season = ?)`. Переиспользуется в `checkin_entry`=`CHECKIN_NO` и в обеих ветках
+    `checkin_session` (баг форум-ночи: у «🚫 Не были на сессии X» этого гарда не было вовсе, в
+    отличие от соседней `checkin_entry`=`CHECKIN_NO` — в аудиторию попадали pending/rejected и
+    approved-делегаты прошлого сезона, 482 импортированных 26/1 без QR). `event_season=None`
+    (настройка не задана) — тот же fail-soft приём, что у `count_approved_current_season`:
+    сезон не фильтруется, ограничение остаётся только по `status`."""
+    season_frag = "(season IS NULL OR season = ?)" if event_season else "1=1"
+    params = [event_season] if event_season else []
+    return f"status = 'approved' AND {season_frag}", params
 
 
 def _resume_has_fragment() -> str:
@@ -3929,6 +4310,64 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 continue
             clauses.append("(" + " OR ".join(block_parts) + ")")
             params.extend(block_params)
+        elif field == "checkin_entry":
+            # Форум-ночь п.6 (D-25, идея №14): «✅ Пришли на форум» / «❌ Не пришли». «Пришли» —
+            # просто EXISTS отметки входа (только одобренные текущего сезона вообще МОГЛИ её
+            # получить, D-02 — второй раз это условие здесь не проверяем). «Не пришли» — этого
+            # НЕДОСТАТОЧНО инвертировать: NOT EXISTS сам по себе поймал бы ещё и отклонённых, и
+            # ожидающих, и approved-делегатов ПРОШЛОГО сезона (482 импортированных 26/1 — им QR
+            # вообще не выдаётся, D-02, и «мы тебя не видим на форуме» им писать нельзя). Поэтому
+            # «Не пришли» = approved ТЕКУЩЕГО сезона (сезон — снимок `event_season` на МОМЕНТ
+            # вызова, кладёт `_resolve_checkin_entry_season` в `count_and_list_filtered` НИЖЕ,
+            # тот же приём, что `exclude` у `event_city`/`chats` у `delegate_chat` — пересчитан
+            # заново на КАЖДЫЙ вызов, включая отложенную отправку) AND NOT EXISTS.
+            value = f.get("value")
+            exists_frag = (
+                "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                "AND c.point = ?)"
+            )
+            if value == CHECKIN_YES:
+                clauses.append(exists_frag)
+                params.append(CHECKIN_ENTRY_POINT)
+            elif value == CHECKIN_NO:
+                guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
+                clauses.append(f"({guard_frag} AND NOT {exists_frag})")
+                params.extend(guard_params)
+                params.append(CHECKIN_ENTRY_POINT)
+            else:
+                # WR-01, тот же довод, что у resume/event_city/season выше: неизвестное значение
+                # — fail closed, не «всем».
+                clauses.append("0")
+        elif field == "checkin_session":
+            # «Были на сессии …» / «Не были на сессии …» — `session_id` едет ВНУТРИ записи
+            # фильтра (см. докстринг `SESSION_ATTENDED`/`SESSION_NOT_ATTENDED` выше).
+            # `_invalid` (проставляет `_resolve_checkin_session_validity` в
+            # `count_and_list_filtered` НИЖЕ) — сессия могла быть удалена между планированием и
+            # отправкой: без этой проверки «не были» на несуществующей сессии совпало бы С КАЖДЫМ
+            # (NOT EXISTS на point, которого никогда не было ни у кого) — тот же WR-01 fail-closed
+            # довод, что у неизвестного event_city.
+            # Гард «approved + текущий сезон» (`_approved_current_season_frag`, `event_season` —
+            # снимок настройки, наполняет `_resolve_checkin_session_validity` НИЖЕ, тот же приём,
+            # что `_resolve_checkin_entry_season`) — БЕЗ него «не были на сессии» ловил бы ещё и
+            # pending/rejected/прошлый сезон, в точности та дыра, что у `checkin_entry` уже
+            # закрыта. На «были на сессии» гард тоже стоит: отмеченный неодобренный/чужого
+            # сезона — аномалия данных, но рассылка о программе форума должна оставаться
+            # согласованной с «Отметка на форуме», не только «не были».
+            value = f.get("value")
+            session_id = f.get("session_id")
+            if f.get("_invalid") or value not in (SESSION_ATTENDED, SESSION_NOT_ATTENDED) \
+                    or not isinstance(session_id, int):
+                clauses.append("0")
+            else:
+                exists_frag = (
+                    "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                    "AND c.point = ?)"
+                )
+                presence_frag = exists_frag if value == SESSION_ATTENDED else f"NOT {exists_frag}"
+                guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
+                clauses.append(f"({guard_frag} AND {presence_frag})")
+                params.extend(guard_params)
+                params.append(f"session:{session_id}")
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -4069,8 +4508,98 @@ async def get_chat_filter_options(chats: list[dict]) -> list[str]:
     return options
 
 
+async def get_checkin_entry_filter_options() -> list[str]:
+    """Порог показа кнопки «Отметка на форуме» — та же роль, что у `get_chat_filter_options`
+    выше: показываем сторону, только если по ней реально кто-то есть, иначе фильтровать не по
+    чему (до дня форума `checkins` пуста — кнопка «Пришли» не появится вовсе)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM checkins WHERE point = ?)", (CHECKIN_ENTRY_POINT,),
+        ) as cursor:
+            has_yes = (await cursor.fetchone())[0]
+    event_season = (await get_setting("event_season") or "").strip() or None
+    season_frag = "(season IS NULL OR season = ?)" if event_season else "1=1"
+    params = [event_season] if event_season else []
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT EXISTS(SELECT 1 FROM users WHERE status = 'approved' AND {season_frag} "
+            "AND NOT EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+            "AND c.point = ?))",
+            [*params, CHECKIN_ENTRY_POINT],
+        ) as cursor:
+            has_no = (await cursor.fetchone())[0]
+    options: list[str] = []
+    if has_yes:
+        options.append(CHECKIN_YES)
+    if has_no:
+        options.append(CHECKIN_NO)
+    return options
+
+
+async def any_program_sessions_exist() -> bool:
+    """Порог показа кнопок «Были на сессии …» / «Не были на сессии …» — прежде чем менеджер
+    завёл хотя бы одну сессию программы (`handlers/admin_program.py`), фильтровать по сессиям
+    не по чему."""
+    async with _connect() as db:
+        async with db.execute("SELECT EXISTS(SELECT 1 FROM program_sessions)") as cursor:
+            row = await cursor.fetchone()
+    return bool(row and row[0])
+
+
+async def _resolve_checkin_entry_season(filters: list[dict]) -> list[dict]:
+    """Наполняет `event_season` СНИМКОМ настройки на МОМЕНТ вызова для каждой записи
+    `checkin_entry`=`CHECKIN_NO` («Не пришли») — тот же приём, что `cities.
+    refresh_city_filter_spec` для `event_city.exclude`: пересчитывается заново на КАЖДЫЙ вызов
+    (превью и отложенная отправка), а не замораживается на момент, когда менеджер нажал кнопку
+    в мастере. Единая точка — здесь (внутри `count_and_list_filtered`), а не в каждом
+    вызывающем месте, чтобы будущий третий вызывающий не забыл про пересчёт."""
+    if not any(
+        isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO
+        for f in filters
+    ):
+        return filters
+    event_season = (await get_setting("event_season") or "").strip() or None
+    return [
+        {**f, "event_season": event_season}
+        if isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO
+        else f
+        for f in filters
+    ]
+
+
+async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:
+    """WR-01-style fail-closed: помечает `checkin_session`-записи с уже удалённым
+    `session_id` (`_invalid=True`) — без этой проверки удалённая между планированием и
+    отправкой сессия молча превратила бы «не были на сессии X» во «все» (см. докстринг ветки
+    `checkin_session` в `_build_filter_clause`). Заодно кладёт `event_season` СНИМКОМ настройки
+    на МОМЕНТ вызова — тот же приём, что `_resolve_checkin_entry_season` выше, переиспользован
+    здесь (не отдельная функция), потому что уже итерирует ровно те же записи `checkin_session`,
+    которым нужен гард `status = 'approved' AND (season IS NULL OR season = ?)`
+    (`_approved_current_season_frag`, обе ветки `attended`/`not_attended`)."""
+    if not any(isinstance(f, dict) and f.get("field") == "checkin_session" for f in filters):
+        return filters
+    event_season = (await get_setting("event_season") or "").strip() or None
+    cache: dict[int, bool] = {}
+    result: list[dict] = []
+    for f in filters:
+        if isinstance(f, dict) and f.get("field") == "checkin_session":
+            sid = f.get("session_id")
+            valid = False
+            if isinstance(sid, int):
+                if sid not in cache:
+                    cache[sid] = (await get_program_session(sid)) is not None
+                valid = cache[sid]
+            f = {**f, "event_season": event_season}
+            result.append(f if valid else {**f, "_invalid": True})
+        else:
+            result.append(f)
+    return result
+
+
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
     """Materialize the matched telegram_id list; the count preview is len(...)."""
+    filters = await _resolve_checkin_entry_season(filters)
+    filters = await _resolve_checkin_session_validity(filters)
     where, params = _build_filter_clause(filters)
     # ME-04: if the caller supplied filter(s) but every one was dropped (non-whitelisted field
     # / malformed spec), `where` degenerates to empty and the query would fan out to ALL users.
@@ -4692,6 +5221,230 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
         "in_work": int(in_work_n or 0),
         "answered": int(answered_n or 0),
     }
+
+
+# ── Форум-ночь п.8 (идея №19, SOS): sos_reports аксессоры ───────────────────────────────────
+#
+# Та же форма, что «Phase 8 (ROLE-01, D-13/D-14): delegate_questions accessors» выше — строка
+# создаётся ОДИН раз, атомарный захват (`claim_sos_report`) переворачивает `claimed_by` только
+# из NULL (T-08-33/D-14 идиома), `resolve_sos_report` закрывает случай «✅ Решено» без
+# предварительного «Беру» (COALESCE подставляет резолвера захватчиком одним UPDATE).
+
+async def create_sos_report(
+    telegram_id: int, city: str | None, category: str, details_text: str | None,
+    details_photo_file_id: str | None, latitude: float | None, longitude: float | None,
+    prior_open_report_id: int | None = None,
+) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO sos_reports (telegram_id, city, category, details_text, "
+            "details_photo_file_id, latitude, longitude, created_at, prior_open_report_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, city, category, details_text, details_photo_file_id, latitude,
+             longitude, msk_now().strftime("%Y-%m-%d %H:%M:%S"), prior_open_report_id),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_sos_report(report_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_reports WHERE id = ?", (report_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_open_sos_report(telegram_id: int) -> dict | None:
+    """Анти-спам (пункт 1 плана): «не чаще одного открытого SOS на делегата» — открытый значит
+    ещё не решённый (`resolved_at IS NULL`), взятый в работу тоже считается открытым. Последняя
+    (`ORDER BY id DESC`) — если строк несколько (не должно, но fail-soft на случай гонки)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_reports WHERE telegram_id = ? AND resolved_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def set_sos_card(report_id: int, chat_id: int, message_id: int) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET chat_id = ?, card_message_id = ? WHERE id = ?",
+            (chat_id, message_id, report_id),
+        )
+        await db.commit()
+
+
+async def claim_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
+    """Атомарный захват «🙋 Беру» — True только у ТОГО вызова, что перевернул строку
+    (rowcount==1); конкурентный второй тап того же момента получает False (та же идиома, что
+    `claim_question`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET claimed_by = ?, claimed_by_name = ?, claimed_at = ? "
+            "WHERE id = ? AND claimed_by IS NULL",
+            (admin_id, admin_name, msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def resolve_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
+    """«✅ Решено» — атомарно и независимо от того, был ли уже захват: `COALESCE` подставляет
+    резолвера захватчиком ОДНИМ UPDATE, если строка ещё открыта (`claimed_by IS NULL`) — орг,
+    решивший вопрос без предварительного «Беру», не оставляет карточку без ответственного."""
+    async with _connect() as db:
+        now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor = await db.execute(
+            "UPDATE sos_reports SET resolved_by = ?, resolved_by_name = ?, resolved_at = ?, "
+            "claimed_by = COALESCE(claimed_by, ?), claimed_by_name = COALESCE(claimed_by_name, ?), "
+            "claimed_at = COALESCE(claimed_at, ?) WHERE id = ? AND resolved_at IS NULL",
+            (admin_id, admin_name, now, admin_id, admin_name, now, report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def set_sos_delivery_failed(report_id: int, failed: bool) -> None:
+    """Находка 1 ревью 24.09: `services.sos.record_delivery_outcome` зовёт это ПОСЛЕ каждой
+    попытки доставки карточки (изначальной и повторной, `delivery_retry_job`) —
+    `failed=True` штампует момент, `failed=False` (доставка удалась) снимает пометку.
+    Идемпотентно в обе стороны — повторный вызов с тем же `failed` просто перезаписывает
+    метку тем же смыслом."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET delivery_failed_at = ? WHERE id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S") if failed else None, report_id),
+        )
+        await db.commit()
+
+
+async def set_sos_escalated(report_id: int) -> bool:
+    """Штамп эскалации — идемпотентно (`WHERE escalated_at IS NULL`): повторный тик той же
+    джобы (не должен случиться при корректном `replace_existing=True`, но fail-soft) не
+    перезатирает первую метку и не шлёт повтор дважды."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+# Статус строки sos_reports — ТРИ состояния, зеркало идиомы `_QUESTION_STATUS_SQL` выше:
+# открыт (никто не взял) / взят (claimed_by ЕСТЬ, ещё не решён) / решён.
+_SOS_STATUS_SQL = {
+    "open": "s.claimed_by IS NULL AND s.resolved_at IS NULL",
+    "claimed": "s.claimed_by IS NOT NULL AND s.resolved_at IS NULL",
+    "resolved": "s.resolved_at IS NOT NULL",
+}
+_SOS_ORDER_SQL = {
+    "open": "ORDER BY s.created_at ASC, s.id ASC",       # дольше без ответа -> выше
+    "claimed": "ORDER BY s.claimed_at ASC, s.id ASC",     # дольше в работе -> выше
+    "resolved": "ORDER BY s.resolved_at DESC, s.id DESC",  # свежие решённые сверху
+}
+
+
+async def list_sos_reports_page(*, status: str | None = None, city_scope=None,
+                                 today: str | None = None, limit: int = 6,
+                                 offset: int = 0) -> list[dict]:
+    """Страница экрана менеджера «🆘 SOS» (пункт 5 плана). `today` — «ГГГГ-ММ-ДД» (московская
+    дата, `services.timeutil.msk_now()`) — применяется ТОЛЬКО к фильтру "resolved" (пункт 5:
+    «решённые ЗА СЕГОДНЯ»), открытые/взятые видны независимо от даты (они ждут действия сейчас,
+    а не журнала). Неизвестный `status` -> без фильтра статуса вовсе (чип «Все»)."""
+    where = []
+    params: list = []
+    frag = _SOS_STATUS_SQL.get(status)
+    if frag:
+        where.append(frag)
+    if status == "resolved" and today:
+        where.append("date(s.resolved_at) = ?")
+        params.append(today)
+    city_frag, city_params = _city_clause(city_scope, "s.city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    order_sql = _SOS_ORDER_SQL.get(status, "ORDER BY s.created_at DESC, s.id DESC")
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT s.*, u.full_name AS user_full_name, u.username AS user_username "
+            "FROM sos_reports s LEFT JOIN users u ON u.telegram_id = s.telegram_id "
+            f"{where_sql} {order_sql} LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_sos_by_status(*, city_scope=None, today: str | None = None) -> dict[str, int]:
+    """Счётчики для шапки экрана: открыто/взято — за всё время (ждут действия ПРЯМО СЕЙЧАС),
+    решено — ТОЛЬКО за `today` (та же граница, что `list_sos_reports_page`)."""
+    city_frag, city_params = _city_clause(city_scope, "s.city")
+    base_where = [city_frag] if city_frag else []
+    resolved_where = base_where + (["date(s.resolved_at) = ?"] if today else [])
+    resolved_params = list(city_params) + ([today] if today else [])
+
+    def _where(fragments: list[str]) -> str:
+        return f"WHERE {' AND '.join(fragments)}" if fragments else ""
+
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s {_where([*base_where, _SOS_STATUS_SQL['open']])}",
+            tuple(city_params),
+        ) as cursor:
+            open_n = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s {_where([*base_where, _SOS_STATUS_SQL['claimed']])}",
+            tuple(city_params),
+        ) as cursor:
+            claimed_n = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s "
+            f"{_where([*resolved_where, _SOS_STATUS_SQL['resolved']])}",
+            tuple(resolved_params),
+        ) as cursor:
+            resolved_n = (await cursor.fetchone())[0]
+    return {
+        "open": int(open_n or 0),
+        "claimed": int(claimed_n or 0),
+        "resolved": int(resolved_n or 0),
+    }
+
+
+async def set_sos_bind_pending(admin_id: int, city: str | None) -> None:
+    """Заявка «Привязать чат SOS» (пункт 2 плана) — `INSERT OR REPLACE`: повторный тап кнопки
+    тем же менеджером перезаписывает (город мог смениться, старая заявка не должна ожить)."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO sos_chat_bind_pending (admin_id, city, requested_at) "
+            "VALUES (?, ?, ?)",
+            (admin_id, city, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
+
+
+async def get_sos_bind_pending(admin_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_chat_bind_pending WHERE admin_id = ?", (admin_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def clear_sos_bind_pending(admin_id: int) -> None:
+    async with _connect() as db:
+        await db.execute("DELETE FROM sos_chat_bind_pending WHERE admin_id = ?", (admin_id,))
+        await db.commit()
 
 
 # ── Квик 260914-rgq (RGQ-01): постраничный список заявок ────────────────────────────────────
@@ -7467,6 +8220,29 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # invitee_id вдобавок не даёт начислить второй раз, если тот же Telegram-аккаунт
     # зарегистрируется заново — удаление строки открыло бы дублирующее начисление.
     ("referral_credits", "referrer_id", "referral_credits"),
+    # Phase 12 (FORUM-CHECKIN.md): checkins.telegram_id — личная отметка «пришёл» делегата
+    # (вход/сессия форума). Тот же журнал делегатского следа, что chat_activity/reg_events
+    # выше — уходит вместе с человеком. by_staff_id в той же строке — id волонтёра/менеджера,
+    # который отметил (CSV/manual), это авторская колонка, не трогаем отдельно: строка
+    # целиком уходит вместе с делегатом.
+    ("checkins", "telegram_id", "checkin"),
+    # Форум-ночь B1 (идея №10): checkin_token_replacements.telegram_id — тот же личный след,
+    # что checkins выше (кто когда-то держал такой токен), группа общая "checkin".
+    ("checkin_token_replacements", "telegram_id", "checkin"),
+    # Форум-ночь п.3 (D-03, идея №2): checkin_qr_sends.telegram_id — кому и когда отправлен
+    # персональный QR + его подтверждение, тот же личный след, группа общая "checkin".
+    ("checkin_qr_sends", "telegram_id", "checkin"),
+    # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived.telegram_id — кому и когда ушёл
+    # шаблон «не пришёл» + его ответ, тот же личный след, группа общая "checkin".
+    ("checkin_not_arrived", "telegram_id", "checkin"),
+    # Форум-ночь п.8 (идея №19, SOS): sos_reports.telegram_id — личная заявка SOS делегата
+    # (категория/текст/фото/геопозиция), тот же личный след, что chat_activity/checkins выше.
+    # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
+    # отдельно (строка целиком уходит вместе с делегатом, как и у соседей этой таблицы).
+    ("sos_reports", "telegram_id", "sos"),
+    # Форум-ночь п.9 (идея №15, D-24): session_feedback.telegram_id — личная оценка/комментарий
+    # делегата к сессии, тот же личный след, что checkins/sos_reports выше.
+    ("session_feedback", "telegram_id", "session_feedback"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -7758,3 +8534,844 @@ async def get_or_create_checkin_token(telegram_id: int) -> str | None:
             f"get_or_create_checkin_token: не удалось выдать уникальный токен для {telegram_id} "
             f"за {_CHECKIN_TOKEN_MAX_ATTEMPTS} попыток"
         )
+
+
+async def get_user_by_checkin_token(token: str | None) -> dict | None:
+    """Делегат по токену из QR (последнее поле, `services.checkin.build_payload`/
+    `parse_qr_payload`). Тёзки не путаются (D-13) — токен уникален по построению (частичный
+    индекс `idx_users_checkin_token` выше)."""
+    if not token:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE checkin_token = ?", (token,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def reissue_checkin_token(telegram_id: int) -> str | None:
+    """Форум-ночь B1 (идея №10): менеджер перевыпускает QR делегату — старый токен (если он
+    вообще был выдан, лениво через `get_or_create_checkin_token`) уходит в
+    `checkin_token_replacements`, `users.checkin_token` получает новый случайный токен. Скан
+    старого QR после этого находит его в `checkin_token_replacements`
+    (`get_checkin_token_replacement` ниже) вместо `users` — `services.checkin.
+    resolve_scanned_user` превращает это в причину «QR заменён», а не «не найден».
+
+    Возвращает новый токен или `None`, если пользователя нет вовсе. Та же защита от
+    коллизии `secrets.token_urlsafe`, что `get_or_create_checkin_token` — до
+    `_CHECKIN_TOKEN_MAX_ATTEMPTS` попыток, затем громкий `RuntimeError` (не проглатываем
+    молча испорченную схему/исчерпанную энтропию)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT checkin_token FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        old_token = row["checkin_token"]
+
+        for _ in range(_CHECKIN_TOKEN_MAX_ATTEMPTS):
+            candidate = secrets.token_urlsafe(8)
+            try:
+                if old_token:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO checkin_token_replacements "
+                        "(old_token, telegram_id, replaced_at) VALUES (?, ?, ?)",
+                        (old_token, telegram_id, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+                    )
+                cursor2 = await db.execute(
+                    "UPDATE users SET checkin_token = ? WHERE telegram_id = ?",
+                    (candidate, telegram_id),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                continue
+            if cursor2.rowcount:
+                return candidate
+            return None
+
+        raise RuntimeError(
+            f"reissue_checkin_token: не удалось выдать уникальный токен для {telegram_id} "
+            f"за {_CHECKIN_TOKEN_MAX_ATTEMPTS} попыток"
+        )
+
+
+async def get_checkin_token_replacement(old_token: str | None) -> dict | None:
+    """`{"telegram_id": ..., "replaced_at": ...}`, если `old_token` был перевыпущен
+    (`reissue_checkin_token` выше) — `None`, если этот токен никогда не заменяли (или он
+    вообще никому не принадлежал)."""
+    if not old_token:
+        return None
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, replaced_at FROM checkin_token_replacements WHERE old_token = ?",
+            (old_token,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def record_checkin(
+    telegram_id: int,
+    point: str,
+    *,
+    source: str,
+    scanned_at: str | None = None,
+    approx: bool = False,
+    by_staff_id: int | None = None,
+) -> tuple[str, str]:
+    """Идемпотентно по (telegram_id, point) — хранит ПЕРВЫЙ скан на точку (D-10; про D-20
+    «последний скан слота» для будущих сессий — см. докстринг таблицы `checkins` в `init_db`).
+    Возвращает ("new", время_этой_отметки) при первой отметке, ("duplicate",
+    время_ПЕРВОЙ_отметки) — если отметка уже была (для строки «уже был в ЧЧ:ММ»).
+
+    T-12-03 (Rule 1, ревью): new/duplicate решает СТРОГО `cursor.rowcount` самой INSERT OR
+    IGNORE, а не отдельная предварительная SELECT + сравнение `scanned_at == stamp`. Прежняя
+    версия делала SELECT-check ДО инсерта и потом сверяла время: два скана одного делегата на
+    одну точку в ОДНУ и ту же секунду (частый случай при параллельных волонтёрах на форуме,
+    03.10 несколько стоек одновременно) считают одинаковый `stamp`, и «проигравший» гонку
+    инсерт видел чужую (уже вставленную конкурентом) строку с ТЕМ ЖЕ значением `scanned_at` —
+    сравнение молча признавало его «new» вместо «duplicate», двойной счёт в «Пришли: N из M».
+    `rowcount` не зависит от совпадения секунд: ровно один конкурентный вызов физически
+    вставляет строку (rowcount == 1 -- "new"), остальные получают rowcount == 0 от `UNIQUE
+    (telegram_id, point)` и обязаны перечитать ПЕРВУЮ отметку для строки «уже был в ЧЧ:ММ»."""
+    stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkins "
+            "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+        )
+        await db.commit()
+        if cursor.rowcount:
+            return "new", stamp
+        async with db.execute(
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, point),
+        ) as cur2:
+            existing = await cur2.fetchone()
+    if existing is None:
+        return "new", stamp  # не должно случаться (rowcount==0 без строки в базе), но не роняем вызывающего
+    return "duplicate", existing["scanned_at"]
+
+
+async def record_session_checkin(
+    telegram_id: int,
+    session_id: int,
+    slot_session_ids: list[int],
+    *,
+    source: str,
+    scanned_at: str | None = None,
+    approx: bool = False,
+    by_staff_id: int | None = None,
+) -> tuple[str, str, int | None]:
+    """Отметка на СЕССИИ (форум-ночь п.5, FORUM-CHECKIN.md D-18..D-20) — в отличие от
+    `record_checkin` выше (первый скан побеждает, точка «Вход»), здесь «последний скан СЛОТА
+    засчитывается» (D-20): делегат, ушедший с одной параллельной сессии на другую в ТОМ ЖЕ
+    временном слоте, обязан считаться на НОВОЙ, а не на старой. `slot_session_ids` — id ДРУГИХ
+    сессий слота (без самой `session_id`, слот строит `services.program.parallel_group`) — эта
+    функция ничего не знает о времени/пересечении сессий, только про то, какие point-строки
+    (`session:{id}`) — слот-соседи текущей.
+
+    Возвращает `(status, scanned_at, previous_session_id)`:
+      - `"duplicate"` — уже была отметка НА ЭТОЙ ЖЕ сессии — время первой отметки не трогаем
+        (тот же принцип D-10, что у входа), `previous_session_id` всегда `None`.
+      - `"moved"` — была отметка на ДРУГОЙ сессии этого же слота — та строка удаляется (делегат
+        физически не может быть на двух параллельных сессиях одновременно), новая сохраняется,
+        `previous_session_id` — id старой (вызывающий достаёт её название для строки «перенесено
+        с …»).
+      - `"new"` — в слоте не было ни одной отметки этого делегата вовсе.
+
+    `aiosqlite.IntegrityError` на финальном INSERT (тот же приём, что у `reissue_checkin_token`
+    выше) — редкая гонка двух волонтёров, отмечающих ОДНОГО делегата на РАЗНЫЕ сессии слота
+    практически одновременно: проигравший перечитывает уже вставленную конкурентом строку и
+    отвечает `"duplicate"` за НЕЁ, а не падает и не дублирует запись.
+
+    Ревью TOCTOU (критично): read-delete-insert выше — критическая секция, а не последовательность
+    независимых запросов. `UNIQUE(telegram_id, point)` защищает только ОДНУ точку, а не слот
+    целиком — если два волонтёра ОДНОВРЕМЕННО отмечают ОДНОГО делегата на ДВУХ разных сессиях
+    ОДНОГО слота, каждое соединение делает свой SELECT «других отметок слота нет» ДО того, как
+    сосед закоммитил свой DELETE+INSERT: без явной блокировки sqlite3/aiosqlite открывает
+    транзакцию лениво — только перед первым DML (INSERT/UPDATE/DELETE), не перед SELECT, — то
+    есть read идёт в autocommit-режиме без лока, оба видят «слот свободен» и оба доходят до
+    INSERT (по РАЗНЫМ `point`, поэтому constraint не срабатывает) -> в слоте остаются ДВЕ
+    отметки вместо одной (нарушение D-20). `await db.execute("BEGIN IMMEDIATE")` ниже ставится
+    ДО первого SELECT и берёт RESERVED-лок сразу (не отложенно): второе соединение, дошедшее до
+    своего `BEGIN IMMEDIATE` раньше, чем первое закоммитило/откатило, ждёт (busy_timeout —
+    `DB_BUSY_TIMEOUT_MS` у `_connect()` выше, 5с) и видит уже применённый DELETE+INSERT первого
+    ДО своего собственного SELECT."""
+    stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    point = f"session:{session_id}"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+                (telegram_id, point),
+            ) as cursor:
+                existing_here = await cursor.fetchone()
+            if existing_here is not None:
+                await db.rollback()  # ничего не писали -- лок можно снять сразу
+                return "duplicate", existing_here["scanned_at"], None
+
+            previous_session_id: int | None = None
+            if slot_session_ids:
+                other_points = [f"session:{sid}" for sid in slot_session_ids]
+                placeholders = ",".join("?" for _ in other_points)
+                async with db.execute(
+                    f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                    [telegram_id, *other_points],
+                ) as cursor:
+                    other_rows = await cursor.fetchall()
+                if other_rows:
+                    previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
+                    await db.execute(
+                        f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                        [telegram_id, *other_points],
+                    )
+            try:
+                await db.execute(
+                    "INSERT INTO checkins "
+                    "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                await db.rollback()
+                async with db.execute(
+                    "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+                    (telegram_id, point),
+                ) as cursor:
+                    raced = await cursor.fetchone()
+                return "duplicate", (raced["scanned_at"] if raced else stamp), None
+        except Exception:
+            await db.rollback()
+            raise
+
+    status = "moved" if previous_session_id is not None else "new"
+    return status, stamp, previous_session_id
+
+
+async def count_checkins_by_point(point: str, *, city_scope=None) -> int:
+    """T-12-04 (A2, FORUM-CHECKIN.md): `city_scope` — тот же дескриптор `cities.city_scope(...)`
+    и та же `_city_clause`, что у `count_approved_current_season` ниже, — оба числа строки
+    «Пришли: N из M» ОБЯЗАНЫ резолвиться одним городским правилом, иначе счётчик молча
+    разъедется по разным городам. 03.10 форумы СПб и Тюмени идут одновременно с ещё открытым
+    набором в Москве — общий (нескопированный) счётчик путает пришедших одного города с
+    одобренными другого; `city_scope=None` (дефолт) — старое нескопированное поведение,
+    байт-в-байт (модуль городов выключен или менеджер смотрит «Все города»)."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if not city_frag:
+        async with _connect() as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM checkins WHERE point = ?", (point,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return int(row[0] or 0) if row else 0
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM checkins c JOIN users u ON u.telegram_id = c.telegram_id "
+            f"WHERE c.point = ? AND {city_frag}",
+            [point] + city_params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+async def count_approved_current_season(*, city_scope=None) -> int:
+    """Одобренные делегаты ТЕКУЩЕГО сезона — тот же признак «не прошлый делегат», что
+    `reg_engine.is_past_season_row` (`season IS NULL OR season = event_season`). Знаменатель
+    строки «Пришли: N из M одобренных» (handlers/admin_checkin.py)."""
+    event_season = (await get_setting("event_season") or "").strip()
+    where_parts = ["status = 'approved'"]
+    params: list = []
+    if event_season:
+        where_parts.append("(season IS NULL OR season = ?)")
+        params.append(event_season)
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    if city_frag:
+        where_parts.append(city_frag)
+        params.extend(city_params)
+    where_sql = " AND ".join(where_parts)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM users WHERE {where_sql}", params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+# ── Форум-ночь п.3 (D-03, идея №2): рассылка QR накануне форума + утренний повтор ────────────
+
+async def list_approved_users(*, city_scope=None) -> list[dict]:
+    """Кандидатный пул для `services.checkin_broadcast`: строки `users` со `status='approved'`
+    в границах `city_scope`, БЕЗ фильтра по сезону — сезон (и статус ещё раз) перепроверяет
+    `services.checkin.checkin_denial` на КАЖДОЙ строке вызывающим кодом (задание просило
+    «через checkin_denial», не отдельную копию его правила SQL-условием), единственный источник
+    правды о допуске остаётся один. `city_scope=None` — без ограничения по городу (модуль
+    городов выключен)."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "status = 'approved'"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT * FROM users WHERE {where}", params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def checkin_qr_mark_sent(telegram_id: int, event_city: str | None, sent_at: str) -> bool:
+    """Идемпотентная отметка «QR отправлен» — `INSERT OR IGNORE` по `telegram_id` (PRIMARY
+    KEY): повторный вызов для уже отправленного делегата ничего не меняет и возвращает
+    `False` (звонящий код — `services.checkin_broadcast.send_broadcast` — строит выборку
+    получателей ИЗ `checkin_qr_sent_ids`, поэтому второй вызов на того же человека не должен
+    случаться в норме; это последний рубеж на гонку двух одновременных отправок одного города).
+    `True` — эта строка вставлена именно этим вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkin_qr_sends (telegram_id, event_city, sent_at) "
+            "VALUES (?, ?, ?)",
+            (telegram_id, event_city, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_qr_sent_ids(*, city_scope=None) -> set[int]:
+    """Кому УЖЕ отправлен QR (любой источник — вечерняя джоба/ручная кнопка), в границах
+    `city_scope` — по СНИМКУ `checkin_qr_sends.event_city` (город на момент отправки), не по
+    текущему `users.event_city`. Вызывающий (`send_broadcast`) вычитает этот набор из
+    кандидатного пула — идемпотентность рассылки: повторный запуск/рестарт не шлёт дважды."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = f" WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends{where}", city_params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def checkin_qr_unconfirmed_ids(*, city_scope=None) -> set[int]:
+    """Кому отправлен QR, но подтверждения «✅ Сохранил» ещё нет — аудитория утреннего
+    повтора (`services.checkin_broadcast.send_morning_repeat`), в границах `city_scope`."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "confirmed_at IS NULL"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends WHERE {where}", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def checkin_qr_confirmed_ids(*, city_scope=None) -> set[int]:
+    """Кто уже подтвердил «✅ Сохранил» — единственное, что исключает делегата из аудитории
+    утреннего повтора (`services.checkin_broadcast.send_morning_repeat`, находка ревью
+    260924: повтор обязан звать ВСЕХ допущенных города, кто ещё не подтвердил, а не только
+    тех, у кого уже есть строка `checkin_qr_sends` — иначе одобренный ПОСЛЕ вечерней рассылки
+    или потерянный из-за сбоя отправки делегат не получает QR никогда). В отличие от
+    `checkin_qr_unconfirmed_ids` (строка есть, `confirmed_at IS NULL`) эта выборка НЕ требует
+    существования строки вовсе — вызывающий вычитает результат из полного пула
+    `eligible_recipients`, а не пересекает с уже отправленными."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "confirmed_at IS NOT NULL"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends WHERE {where}", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def checkin_qr_confirm(telegram_id: int, confirmed_at: str) -> bool:
+    """Подтверждение «✅ Сохранил, открывается» — идемпотентно: `UPDATE ... WHERE confirmed_at
+    IS NULL` пишет метку только на ПЕРВОЕ нажатие (возвращает `True`); повторный тап той же
+    кнопки (двойной клик, форвард сообщения) находит `confirmed_at` уже не NULL, ничего не
+    меняет, возвращает `False` — вызывающий хендлер отвечает тем же дружелюбным текстом в обоих
+    случаях, разница видна только в возвращаемом флаге (для теста), не в ответе делегату.
+    `False` тоже, если строки нет вовсе (делегат не получал QR через эту рассылку — например,
+    сам открыл «🎟 Мой QR» до первой отправки)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE checkin_qr_sends SET confirmed_at = ? "
+            "WHERE telegram_id = ? AND confirmed_at IS NULL",
+            (confirmed_at, telegram_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
+    """`(получили, подтвердили)` — строка «✅ Отметки на форуме» (handlers/admin_checkin.py)."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = f" WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN confirmed_at IS NOT NULL THEN 1 ELSE 0 END) "
+            f"FROM checkin_qr_sends{where}",
+            city_params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    total = int(row[0] or 0) if row else 0
+    confirmed = int(row[1] or 0) if row and row[1] is not None else 0
+    return total, confirmed
+
+
+# ── Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» + ответы делегата ─────────────────────
+
+# Значения `checkin_not_arrived.response` — сентинелы (не булево), та же причина строки, что у
+# CHAT_IN/CHAT_OUT выше: переживают JSON/строковый круговорот там, где он есть, и человеку
+# нигде не показываются как код (только как подпись кнопки).
+CNA_COMING = "coming"
+CNA_CANT = "cant"
+CNA_HERE = "here"
+
+
+async def checkin_not_arrived_pending_ids(*, city_scope=None) -> list[int]:
+    """Кандидаты на сегодняшний шаблон «Не пришёл»: approved текущего сезона без отметки
+    «Вход» (то же условие, что ветка `checkin_entry`=`CHECKIN_NO` в `_build_filter_clause`,
+    второй копии условия не заводится), МИНУС те, кому шаблон уже уходил СЕГОДНЯ (МСК) — сама
+    идемпотентность «повторный тап в тот же день не шлёт дважды»."""
+    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
+    if city_scope is not None:
+        code, exclude = city_scope
+        filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})
+    candidates = await count_and_list_filtered(filters)
+    if not candidates:
+        return []
+    day = msk_now().strftime("%Y-%m-%d")
+    placeholders = ",".join("?" for _ in candidates)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_not_arrived WHERE day = ? "
+            f"AND telegram_id IN ({placeholders})",
+            (day, *candidates),
+        ) as cursor:
+            already = {row[0] for row in await cursor.fetchall()}
+    return [tid for tid in candidates if tid not in already]
+
+
+async def checkin_not_arrived_mark_sent(telegram_id: int, event_city: str | None, sent_at: str) -> bool:
+    """`INSERT OR IGNORE` по `(telegram_id, day)` — идемпотентная отправка на СЕГОДНЯ (`day` —
+    календарный день `sent_at`, МСК). `True` — эта строка вставлена именно этим вызовом."""
+    day = sent_at[:10]
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkin_not_arrived (telegram_id, day, event_city, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, day, event_city, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def record_checkin_not_arrived_response(telegram_id: int, day: str, response: str, responded_at: str) -> bool:
+    """Пишет ответ делегата в строку `(telegram_id, day)` — `day` приходит из `callback_data`
+    (см. докстринг `handlers/user_actions.py`), не из FSM (переживает рестарт контейнера).
+    Повторный тап любой из трёх кнопок на то же сообщение перезаписывает ответ (делегат мог
+    ошибиться и поправиться) — не идемпотентно в смысле «первый побеждает», идемпотентно в
+    смысле «строка всегда одна на (делегат, день)» (`UNIQUE`). `False` — строки ещё нет (не
+    должно случаться: кнопка приходит только в уже отправленном сообщении), не роняем
+    вызывающего."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE checkin_not_arrived SET response = ?, responded_at = ? "
+            "WHERE telegram_id = ? AND day = ?",
+            (response, responded_at, telegram_id, day),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_not_arrived_summary(*, city_scope=None, day: str | None = None) -> dict:
+    """Сводка менеджеру «Едут N · Не смогут M · Уже на месте K» (+ «без ответа») за `day`
+    (по умолчанию — сегодня, МСК). `city_scope` — по СНИМКУ `event_city` (город на момент
+    отправки), тот же приём, что `checkin_qr_sent_ids`."""
+    day = day or msk_now().strftime("%Y-%m-%d")
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "day = ?"
+    params: list = [day]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT response, COUNT(*) FROM checkin_not_arrived WHERE {where} GROUP BY response",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    counts = {row[0]: row[1] for row in rows}
+    no_response = counts.get(None, 0)
+    return {
+        "coming": counts.get(CNA_COMING, 0),
+        "cant": counts.get(CNA_CANT, 0),
+        "here": counts.get(CNA_HERE, 0),
+        "no_response": no_response,
+        "total": sum(counts.values()),
+    }
+
+
+# ── Форум-ночь п.4: расписание форума в боте (program_halls/program_sessions) ─────────────────
+# Бизнес-правила (разбор времени, предупреждение о занятости зала, слоты параллельных сессий,
+# копирование между городами) — в аiogram-free `services/program.py`; здесь только сырой CRUD,
+# тем же приёмом, что `services/reject_rules.py` поверх `reject_rules`/`auto_reject_log`.
+
+async def create_program_hall(city: str, name: str, capacity: int | None = None) -> int:
+    """Новый зал города — `sort_order` авто (следующий после максимального уже существующего
+    в этом городе): менеджер не вводит число сортировки руками (CLAUDE.md — кодовые значения
+    людям не показываем и вводить не просим)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM program_halls WHERE city = ?", (city,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        next_sort = int(row[0]) + 1 if row and row[0] is not None else 0
+        cursor = await db.execute(
+            "INSERT INTO program_halls (city, name, capacity, sort_order) VALUES (?, ?, ?, ?)",
+            (city, name, capacity, next_sort),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_program_halls(city: str) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_halls WHERE city = ? ORDER BY sort_order, id", (city,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_program_hall(hall_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_halls WHERE id = ?", (hall_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def rename_program_hall(hall_id: int, name: str) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE program_halls SET name = ? WHERE id = ?", (name, hall_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def count_program_sessions_for_hall(hall_id: int) -> int:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM program_sessions WHERE hall_id = ?", (hall_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+async def delete_program_hall(hall_id: int) -> bool:
+    """Удаление зала НЕ удаляет его сессии — они остаются в программе, только теряют
+    привязку (`hall_id -> NULL`); подтверждение на экране (handlers/admin_program.py) называет
+    их число ДО удаления, тем же приёмом, что `arr_delete_confirm`/`afaq_delete_confirm`."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE program_sessions SET hall_id = NULL, updated_at = ? WHERE hall_id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), hall_id),
+        )
+        cursor = await db.execute("DELETE FROM program_halls WHERE id = ?", (hall_id,))
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def create_program_session(
+    city: str, day: str, start_time: str, end_time: str, title: str, *,
+    speaker: str | None = None, hall_id: int | None = None, description: str | None = None,
+) -> int:
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO program_sessions "
+            "(city, day, start_time, end_time, title, speaker, hall_id, description, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (city, day, start_time, end_time, title, speaker, hall_id, description, stamp, stamp),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_program_session(session_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_sessions WHERE id = ?", (session_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+# Поля, которые `update_program_session` умеет частично патчить — тот же приём, что явный allow-
+# list колонок у любой другой PATCH-функции в этом файле (не SET из произвольных kwargs).
+_PROGRAM_SESSION_PATCH_FIELDS = (
+    "day", "start_time", "end_time", "title", "speaker", "hall_id", "description",
+)
+
+
+async def update_program_session(session_id: int, **fields) -> bool:
+    """Частичный PATCH — только ключи из `_PROGRAM_SESSION_PATCH_FIELDS`, `updated_at`
+    обновляется вместе с ними. Без единого известного поля UPDATE не выполняется вовсе,
+    возвращает `False` (как `rename_program_hall` без реального изменения)."""
+    keys = [k for k in fields if k in _PROGRAM_SESSION_PATCH_FIELDS]
+    if not keys:
+        return False
+    sets = [f"{key} = ?" for key in keys]
+    values = [fields[key] for key in keys]
+    sets.append("updated_at = ?")
+    values.append(msk_now().strftime("%Y-%m-%d %H:%M:%S"))
+    values.append(session_id)
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"UPDATE program_sessions SET {', '.join(sets)} WHERE id = ?", values,
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def delete_program_session(session_id: int) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute("DELETE FROM program_sessions WHERE id = ?", (session_id,))
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def list_program_sessions_for_city_day(city: str, day: str) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_sessions WHERE city = ? AND day = ? "
+            "ORDER BY start_time, end_time, id",
+            (city, day),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_program_days_for_city(city: str) -> list[str]:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT DISTINCT day FROM program_sessions WHERE city = ? ORDER BY day", (city,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [r[0] for r in rows]
+
+
+async def has_program_sessions_for_city(city: str) -> bool:
+    """Гейт кнопки делегата «🗓 Программа» (keyboards/builders.py::get_main_menu_kb) — дешёвый
+    `EXISTS`, а не подсчёт/выборка."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM program_sessions WHERE city = ? LIMIT 1", (city,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row is not None
+
+
+async def sessions_overlapping_hall(
+    city: str, day: str, hall_id: int, start_time: str, end_time: str, *,
+    exclude_id: int | None = None,
+) -> list[dict]:
+    """Сессии ДРУГОГО занятия ТОГО ЖЕ зала в ТОТ ЖЕ день, чей интервал `[start_time, end_time)`
+    пересекается с переданным — предупреждение словами (CLAUDE.md), не запрет: вызывающий
+    (`services.program.hall_conflict_warning`) показывает текст и спрашивает подтверждение,
+    сохранить разрешено в любом случае."""
+    params: list = [city, day, hall_id, end_time, start_time]
+    sql = (
+        "SELECT * FROM program_sessions WHERE city = ? AND day = ? AND hall_id = ? "
+        "AND start_time < ? AND ? < end_time"
+    )
+    if exclude_id is not None:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_all_program_sessions() -> list[dict]:
+    """Все сессии всех городов/дней — только для `services.session_feedback.reconcile_all()`
+    (перевзвод джоб отзыва на старте бота, тот же приём, что `reconcile_wave_jobs`); экраны
+    менеджера/делегата продолжают читать `list_program_sessions_for_city_day` (скоуп город+день)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM program_sessions") as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» ────────────────────────
+
+async def is_marked_for_session(telegram_id: int, session_id: int) -> bool:
+    """Итоговая отметка слота (D-20: «последний скан слота засчитывается» — `checkins.point`
+    хранит РОВНО одну строку на слот благодаря `record_session_checkin`) — единственная
+    проверка допуска к оценке: не отмеченный на этой сессии делегат не может её оценить, ни
+    получить приглашение (D-24). Точка отметки собрана строкой `f"session:{id}"` НАПРЯМУЮ, не
+    через `services.program.point_for_session` — тот модуль импортирует ИЗ `database.db`,
+    обратный импорт замкнул бы цикл (тот же довод, что у `record_session_checkin` выше)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM checkins WHERE telegram_id = ? AND point = ? LIMIT 1",
+            (telegram_id, f"session:{session_id}"),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row is not None
+
+
+async def list_marked_telegram_ids_for_session(session_id: int) -> list[int]:
+    """Круг получателей приглашения оценить сессию — те же строки, что видит `is_marked_for_
+    session` по одному, но списком (джоба рассылки, `services.session_feedback.deliver_
+    feedback_prompts`)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM checkins WHERE point = ?", (f"session:{session_id}",),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [r[0] for r in rows]
+
+
+async def create_session_feedback_prompt(telegram_id: int, session_id: int, prompted_at: str) -> bool:
+    """`INSERT OR IGNORE` — идемпотентность самой РАССЫЛКИ (не только оценки): джоба, тикнувшая
+    дважды (перепланирование при правке сессии + старый таймер не снялся, гонка reconcile на
+    рестарте), не шлёт делегату второе приглашение — `True` только у ПЕРВОЙ вставки, вызывающий
+    шлёт сообщение только тогда."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO session_feedback "
+            "(telegram_id, session_id, prompted_at) VALUES (?, ?, ?)",
+            (telegram_id, session_id, prompted_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def set_session_feedback_rating(telegram_id: int, session_id: int, rating: int, rated_at: str) -> bool:
+    """Повторный тап меняет оценку (правило плана: «одна оценка на делегата на сессию») —
+    обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе (делегат каким-то
+    образом дотянулся до чужого/устаревшего callback_data без приглашения) -> `False`,
+    вызывающий отвечает алертом, не пишет вслепую."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE session_feedback SET rating = ?, rated_at = ? "
+            "WHERE telegram_id = ? AND session_id = ?",
+            (rating, rated_at, telegram_id, session_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def set_session_feedback_comment(telegram_id: int, session_id: int, comment: str, commented_at: str) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE session_feedback SET comment = ?, commented_at = ? "
+            "WHERE telegram_id = ? AND session_id = ?",
+            (comment, commented_at, telegram_id, session_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def get_session_feedback(telegram_id: int, session_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM session_feedback WHERE telegram_id = ? AND session_id = ?",
+            (telegram_id, session_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def session_feedback_stats(session_id: int) -> dict:
+    """`{"avg": float|None, "rating_count": int, "comment_count": int}` для карточки сессии
+    (`handlers.admin_program.render_session_card`) — `avg is None`, если оценок ещё нет
+    («Пока нет оценок», не «0.0»)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT AVG(rating), COUNT(rating), "
+            "SUM(CASE WHEN comment IS NOT NULL AND comment != '' THEN 1 ELSE 0 END) "
+            "FROM session_feedback WHERE session_id = ?",
+            (session_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    avg, rating_count, comment_count = row if row else (None, 0, 0)
+    return {
+        "avg": float(avg) if avg is not None else None,
+        "rating_count": int(rating_count or 0),
+        "comment_count": int(comment_count or 0),
+    }
+
+
+async def session_feedback_stats_bulk(session_ids: list[int]) -> dict[int, dict]:
+    """Та же статистика, что `session_feedback_stats`, для НЕСКОЛЬКИХ сессий одним запросом —
+    экран «📊 Оценки сессий» дня (`handlers.session_feedback`) не бьёт БД по сессии в цикле.
+    Сессия без единой строки `session_feedback` — просто отсутствует в результате, вызывающий
+    подставляет нулевую статистику сам (тот же приём, что `program.sessions_for_city_day`
+    подставляет `hall_name=None` для сессий без зала)."""
+    if not session_ids:
+        return {}
+    placeholders = ",".join("?" for _ in session_ids)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT session_id, AVG(rating), COUNT(rating), "
+            f"SUM(CASE WHEN comment IS NOT NULL AND comment != '' THEN 1 ELSE 0 END) "
+            f"FROM session_feedback WHERE session_id IN ({placeholders}) GROUP BY session_id",
+            session_ids,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {
+        r[0]: {
+            "avg": float(r[1]) if r[1] is not None else None,
+            "rating_count": int(r[2] or 0),
+            "comment_count": int(r[3] or 0),
+        }
+        for r in rows
+    }
+
+
+async def list_session_feedback_comments(session_id: int, *, limit: int = 10, offset: int = 0) -> list[dict]:
+    """Комментарии сессии, новые сверху — постранично (экран «💬 Комментарии»)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, rating, comment, commented_at FROM session_feedback "
+            "WHERE session_id = ? AND comment IS NOT NULL AND comment != '' "
+            "ORDER BY commented_at DESC LIMIT ? OFFSET ?",
+            (session_id, limit, offset),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]

@@ -64,12 +64,18 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("⚙️ Настройки форума", "admin_settings"),
     ("📖 Справка по настройкам", "admin_settings_guide"),
     ("🏙 Города мероприятия", "admin_cities"),
+    # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
+    # handlers/admin_program.py.
+    ("🗓 Программа форума", "admin_program"),
     ("🎯 Задания", "admin_game_tasks"),  # Phase 16 (16-03): same label as the delegate's section
     ("🎮 Проверка заданий", "admin_game_review"),
     ("🪙 Монеты вручную", "admin_coins_manual"),
     ("📜 Журнал монет", "admin_coins_journal"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
+    # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +
+    # загрузка выгрузки офлайн-сканера (handlers/admin_checkin.py).
+    ("✅ Отметки на форуме", "admin_checkin"),
 ]
 
 

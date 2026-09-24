@@ -52,6 +52,13 @@ from database.db import (
     AUTO_REJECT_YES,
     AUTO_REJECT_NO,
     get_auto_reject_filter_options,
+    # Форум-ночь п.6 (D-25, идея №14): поле фильтра «Отметка на форуме» — выбор
+    # «пришли»/«не пришли».
+    CHECKIN_YES,
+    CHECKIN_NO,
+    get_checkin_entry_filter_options,
+    # «Сессия программы» — свой мастер (город → день → сессия), не входит в generic-пикер.
+    any_program_sessions_exist,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -66,6 +73,14 @@ from services.scheduler import (
     _now_moscow_naive,
     schedule_broadcast_job,
     cancel_broadcast_job,
+    # Форум-ночь п.7 («❗ Важное» + «🔕 Не присылать сегодня»): общий хвост доставки, тот же,
+    # что у services.scheduler::send_scheduled_broadcast — одна точка правды для пометки
+    # важности (встроена в содержимое) и клавиатуры получателя, не вторая копия.
+    important_prefix,
+    apply_important_prefix,
+    recipient_markup,
+    # Только альбом — media_group не принимает reply_markup, см. докстринг там же.
+    send_mute_offer_if_eligible,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
@@ -268,13 +283,21 @@ _ALBUM_MEDIA_CLASSES = {
 }
 
 
-def _media_from_album_dicts(album: list[dict]) -> list:
+def _media_from_album_dicts(album: list[dict], important_prefix_text: str | None = None) -> list:
+    """Форум-ночь п.7 (переделка): `bot.send_media_group` не принимает `reply_markup` — единственное
+    место встроить пометку важности альбома — подпись ПЕРВОГО элемента (`important_prefix_text`,
+    `None`/пусто — рассылка не важная, ни один элемент не трогается)."""
     media = []
+    first = True
     for item in album:
         cls = _ALBUM_MEDIA_CLASSES.get(item.get("type"))
         if cls is None:
             continue
-        media.append(cls(media=item["file_id"], caption=item.get("caption"), parse_mode="HTML"))
+        caption = item.get("caption")
+        if first and important_prefix_text:
+            caption = f"{important_prefix_text}\n\n{caption}" if caption else important_prefix_text
+        media.append(cls(media=item["file_id"], caption=caption, parse_mode="HTML"))
+        first = False
     return media
 
 
@@ -321,8 +344,17 @@ async def _send_confirm_prompt(
     предупреждения об аудитории «Всем»; отсутствие аргумента (`None`) сохраняет экран
     байт-в-байт прежним для любого вызова, который его не передаёт. `chat_id` здесь всегда
     личный чат отправителя с ботом — используется и как адрес доставки, и как исключаемый из
-    предупреждения sender_id."""
+    предупреждения sender_id.
+
+    Форум-ночь п.7: строка-тумблер «❗ Отметить как важное» — читает `bc_important` из FSM
+    (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
+    эту же функцию заново)."""
     warning = await _audience_warning(state, users_ids, chat_id)
+    important = bool((await state.get_data()).get("bc_important"))
+    important_btn = InlineKeyboardButton(
+        text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
+        callback_data="bc_important_toggle",
+    )
     from services import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
@@ -338,6 +370,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
+            [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -345,10 +378,28 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
+        [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
     await state.set_state(Broadcast.confirm)
+
+
+@router.callback_query(F.data == "bc_important_toggle", Broadcast.confirm)
+async def bc_important_toggle(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    """Форум-ночь п.7: тумблер на экране подтверждения — флаг в FSM, экран перерисовывается
+    той же `_send_confirm_prompt` (новым сообщением: предыдущая карточка подтверждения могла
+    нести отдельную «тихие часы»-ветку текста, редактирование на месте рискует расходиться)."""
+    data = await state.get_data()
+    important = not bool(data.get("bc_important"))
+    await state.update_data(bc_important=important)
+    users_ids = data.get("bc_users", [])
+    await callback.answer("❗ Отмечено как важное" if important else "Пометка снята")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _send_confirm_prompt(bot, callback.message.chat.id, state, len(users_ids), users_ids)
 
 
 async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: Bot, state: FSMContext, admin_id: int):
@@ -397,9 +448,21 @@ async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: 
     await state.update_data(
         bc_users=users_ids,
         bc_album=album_dicts,
-        bc_preview=f"[альбом x {len(album_dicts)}]",
+        bc_preview=_album_preview_text(album_dicts),
     )
     await _send_confirm_prompt(bot, admin_id, state, len(users_ids), users_ids)
+
+
+def _album_preview_text(album_dicts: list[dict]) -> str:
+    """Ревью 470ce5e..3703ba4 (находка 🟡): раньше `full_text` альбома был заглушкой
+    `«[альбом x N]»` — в экране делегата «❗ Важное» (handlers/user_actions.py::
+    show_important_today) он видел эту заглушку вместо реального текста. Склейка подписей
+    элементов (html, порядок как в альбоме) — если хоть одна есть; иначе честное «Альбом из N
+    фото/видео» вместо технического литерала со «x»."""
+    captions = [c for c in (item.get("caption") for item in album_dicts) if c]
+    if captions:
+        return "\n\n".join(captions)
+    return f"Альбом из {len(album_dicts)} фото/видео"
 
 @router.message(Broadcast.message)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
@@ -429,11 +492,28 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         return
 
     preview = message.html_text if (message.text or message.caption) else "[фото]"
+    # Форум-ночь п.7 (переделка): «текст» и «медиа» уходят РАЗНЫМИ методами Bot API
+    # (bc_go::send_one ниже) — `bot.copy_message` умеет подменить CAPTION медиа-сообщения
+    # (нужно для пометки важности), но не .text чисто текстового, поэтому чисто текстовая
+    # рассылка идёт `bot.send_message` с готовым текстом, а не копией. `bc_kind` — какой метод
+    # использовать, `bc_content_html` — то, что реально пойдёт в текст/подпись (без пометки —
+    # она приклеивается в bc_go по факту тумблера «❗»). `bc_reply_markup` — собственная
+    # клавиатура менеджера (например, пересланный пост с кнопками-ссылками), если Telegram её
+    # прислал вместе с сообщением — `recipient_markup` добавит строку «🔕» ПОСЛЕДНЕЙ поверх неё,
+    # не заменяя (MemoryStorage хранит объект в памяти как есть, без сериализации).
+    bc_kind = "text" if message.text else "media"
+    content_html = message.html_text if (bc_kind == "text" or message.caption) else None
     await state.update_data(
         bc_chat_id=message.chat.id,
         bc_message_id=message.message_id,
         bc_users=users_ids,
         bc_preview=preview,
+        bc_kind=bc_kind,
+        bc_content_html=content_html,
+        # getattr, не message.reply_markup напрямую: тестовые FakeMessage-дублёры соседних
+        # тестов (COMM-04/BC-01..06 и т.д.) этот атрибут не заводят вовсе — реальный
+        # aiogram.types.Message его несёт всегда (None у обычного сообщения делегата).
+        bc_reply_markup=getattr(message, "reply_markup", None),
     )
     await message.send_copy(message.chat.id)
     await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids), users_ids)
@@ -448,27 +528,81 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     перерисовка была под `except Exception: pass` — сбой edit (сообщение удалено, слишком
     старое, сеть) оставлял в чате живую карточку «Отправить/Отмена», на которую уже никто не
     отвечал (`bc_no` больше не ловил её — состояние очищено). Теперь `state.clear()` — ПОСЛЕ
-    отрисовки прогресса, а сбой edit чинится новым сообщением с той же клавиатурой."""
+    отрисовки прогресса, а сбой edit чинится новым сообщением с той же клавиатурой.
+
+    Форум-ночь п.7: `important` (тумблер экрана подтверждения) идёт ВСЕМ из `bc_users` —
+    «🔕» касается только НЕважных рассылок (D-XX), поэтому мут-фильтр применяется ТОЛЬКО когда
+    `important` выключен; `mute_skipped` — отдельная цифра отчёта, не входит в `total`."""
     data = await state.get_data()
     users_ids = data.get("bc_users", [])
     preview = data.get("bc_preview") or ""
     bc_chat_id = data.get("bc_chat_id")
     bc_message_id = data.get("bc_message_id")
     bc_album = data.get("bc_album")
+    # "media" — не "text" — дефолт НАРОЧНО: старое поведение (до этой переделки) было
+    # универсальным copy_message для ЛЮБОГО типа сообщения; "media"-ветка ближе всего к нему
+    # (copy_message остаётся основным механизмом доставки), "text" требует явного bc_kind из
+    # process_broadcast.
+    bc_kind = data.get("bc_kind", "media")
+    bc_content_html = data.get("bc_content_html")
+    bc_base_markup = data.get("bc_reply_markup")
+    important = bool(data.get("bc_important"))
     admin_id = callback.from_user.id
+
+    mute_skipped = 0
+    if not important:
+        from database.db import get_muted_today_ids
+        muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+        before_count = len(users_ids)
+        users_ids = [tid for tid in users_ids if tid not in muted]
+        mute_skipped = before_count - len(users_ids)
     total = len(users_ids)
 
-    bid = await create_broadcast(admin_id, preview[:80], total)
-    logger.info("broadcast %s started by %s: total=%s preview=%r", bid, admin_id, total, preview[:80])
+    bid = await create_broadcast(
+        admin_id, preview[:80], total, important=important, full_text=preview,
+    )
+    logger.info(
+        "broadcast %s started by %s: total=%s important=%s mute_skipped=%s preview=%r",
+        bid, admin_id, total, important, mute_skipped, preview[:80],
+    )
+
+    # Форум-ночь п.7 (переделка): пометка важности — ОДИН раз, до цикла получателей (не зависит
+    # от получателя, в отличие от клавиатуры ниже, которая зависит от гейта дня форума ГОРОДА
+    # получателя и строится внутри send_one). 1 API-вызов на получателя для text/media, до 2 —
+    # только для альбома в день, когда предложение «🔕» ещё не показывалось (send_media_group не
+    # принимает reply_markup, см. докстринг services/scheduler.py).
+    important_prefix_text = await important_prefix() if important else ""
 
     if bc_album:
         async def send_one(chat_id):
-            media = _media_from_album_dicts(bc_album)
+            media = _media_from_album_dicts(bc_album, important_prefix_text if important else None)
             results = await bot.send_media_group(chat_id, media)
-            return [m.message_id for m in results]
+            message_ids = [m.message_id for m in results]
+            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
+            if extra_mid is not None:
+                message_ids.append(extra_mid)
+                # Единственный случай двух API-вызовов на получателя — вторая пауза здесь же,
+                # не в базовой asyncio.sleep(0.05) run_broadcast (та рассчитана на 1 вызов и
+                # осталась байт-в-байт прежней для куда более частого одного вызова).
+                await asyncio.sleep(0.05)
+            return message_ids
+    elif bc_kind == "text":
+        async def send_one(chat_id):
+            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            text = apply_important_prefix(bc_content_html, important, important_prefix_text)
+            result = await bot.send_message(chat_id, text, reply_markup=markup)
+            return [result.message_id]
     else:
         async def send_one(chat_id):
-            result = await bot.copy_message(chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id)
+            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            # `caption=None`, когда рассылка НЕ важная — Telegram сохраняет исходную подпись
+            # копируемого сообщения байт-в-байт (никакого риска расхождения форматирования на
+            # самой частой, неважной ветке); подмена нужна ТОЛЬКО чтобы вписать пометку важности.
+            caption = apply_important_prefix(bc_content_html, important, important_prefix_text) if important else None
+            result = await bot.copy_message(
+                chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id,
+                caption=caption, reply_markup=markup,
+            )
             return [result.message_id]
 
     stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -519,7 +653,10 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         except Exception:
             pass
 
-    _spawn(run_broadcast(bid, users_ids, send_one, on_progress=on_progress, on_finish=on_finish))
+    _spawn(run_broadcast(
+        bid, users_ids, send_one, on_progress=on_progress, on_finish=on_finish,
+        mute_skipped=mute_skipped,
+    ))
 
 
 @router.callback_query(F.data == "bc_no", Broadcast.confirm)
@@ -576,13 +713,19 @@ _BROADCAST_STATUS_LABELS = {
 def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     """Один рендер и для итога рассылки (bc_go/bc_revgo on_finish), и для строки списка
     «Последние рассылки» (BC-05). Заголовок несёт статус+счётчики словами, которые уже видел
-    менеджер на экране прогресса — единый рендер не значит новую формулировку."""
+    менеджер на экране прогресса — единый рендер не значит новую формулировку.
+
+    Форум-ночь п.7: строка «🔕 не отправлено (тихий режим): N» — только когда `mute_skipped` > 0
+    (старые строки до миграции читают 0 через `_ensure_column`-дефолт, экран для них не
+    меняется ни байтом)."""
     status = row.get("status")
     delivered = row.get("delivered") or 0
     blocked = row.get("blocked") or 0
     total = row.get("total") or 0
+    mute_skipped = row.get("mute_skipped") or 0
     preview = html_module.escape(re.sub(r"<[^>]+>", "", row.get("text_preview") or ""))
     started_at = row.get("started_at") or "—"
+    important_prefix = "❗ " if row.get("important") else ""
 
     if status == "sending":
         headline = f"📨 Отправляется: {delivered} из {total}…"
@@ -592,9 +735,11 @@ def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         headline = "🗑 Удалена у получателей."
     else:
         headline = f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}"
+    if mute_skipped:
+        headline += f"\n🔕 Не отправлено (выключили уведомления на сегодня): {mute_skipped}"
 
     text = (
-        f"#{row.get('id')} — {started_at}\n"
+        f"{important_prefix}#{row.get('id')} — {started_at}\n"
         f"Автор: {row.get('admin_id')}\n"
         f"{preview}\n"
         f"Статус: {_BROADCAST_STATUS_LABELS.get(status, status or '—')}\n"
@@ -812,6 +957,10 @@ async def broadcast_schedule_quiet_choice(callback: types.CallbackQuery, state: 
 
 @router.message(Broadcast.schedule_message)
 async def broadcast_schedule_message(message: types.Message, state: FSMContext):
+    """Форум-ночь п.7: сообщение больше НЕ создаёт отложенную рассылку сразу — копит текст/
+    фото в FSM и показывает экран подтверждения с тумблером «❗ Отметить как важное» (тот же
+    приём, что BC-01/02 у мгновенной рассылки, `_send_confirm_prompt`/`bc_important_toggle`).
+    Создание строки переехало в `sched_go`."""
     data = await state.get_data()
     when = data.get("schedule_dt")
     if not when:
@@ -828,18 +977,80 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
     else:
         text = None
 
+    await state.update_data(sched_text=text, sched_photo=photo, bc_important=False)
+    await message.send_copy(message.chat.id)
+    await _send_schedule_confirm_prompt(message, state)
+
+
+async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
+    """Экран подтверждения отложенной рассылки — общий хвост для первого показа
+    (`broadcast_schedule_message`) и перерисовки после тумблера (`sched_important_toggle`)."""
+    data = await state.get_data()
+    when = data.get("schedule_dt")
+    important = bool(data.get("bc_important"))
+    important_btn = InlineKeyboardButton(
+        text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
+        callback_data="sched_important_toggle",
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
+        [important_btn],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="sched_no")],
+    ])
+    await target.answer(
+        f"Запланировать эту рассылку на {when.strftime('%d.%m.%Y %H:%M')}?", reply_markup=kb,
+    )
+    await state.set_state(Broadcast.schedule_confirm)
+
+
+@router.callback_query(F.data == "sched_important_toggle", Broadcast.schedule_confirm)
+async def sched_important_toggle(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    important = not bool(data.get("bc_important"))
+    await state.update_data(bc_important=important)
+    await callback.answer("❗ Отмечено как важное" if important else "Пометка снята")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _send_schedule_confirm_prompt(callback.message, state)
+
+
+@router.callback_query(F.data == "sched_no", Broadcast.schedule_confirm)
+async def sched_no(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer()
+    await callback.message.edit_text("Рассылка отменена.")
+
+
+@router.callback_query(F.data == "sched_go", Broadcast.schedule_confirm)
+async def sched_go(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    when = data.get("schedule_dt")
+    text = data.get("sched_text")
+    photo = data.get("sched_photo")
+    important = bool(data.get("bc_important"))
+    if not when:
+        await callback.answer()
+        await callback.message.edit_text("Сессия истекла, начните заново через /broadcast.")
+        await state.clear()
+        return
+
     filters = data.get("filters")
     filter_spec = json.dumps(filters, ensure_ascii=False) if filters else None
 
-    bid = await create_scheduled_broadcast(text, photo, filter_spec, _fmt_dt(when), message.from_user.id)
+    bid = await create_scheduled_broadcast(
+        text, photo, filter_spec, _fmt_dt(when), callback.from_user.id, important=important,
+    )
     schedule_broadcast_job(bid, when)
+    await state.clear()
+    await callback.answer()
 
     scope = "по фильтру" if filters else "всем пользователям"
-    await message.answer(
+    await callback.message.edit_text(
         f"✅ Рассылка #{bid} запланирована на {when.strftime('%d.%m.%Y %H:%M')} ({scope}).\n"
         "Управление: /scheduled"
     )
-    await state.clear()
 
 
 async def _render_scheduled_list(target) -> bool:
@@ -930,6 +1141,9 @@ _FILTER_FIELD_LABELS = {
     # Phase 31 (31-02/31-07, D-28): попал ли делегат под срабатывание правила автоотказа —
     # значение хранится в `users.auto_reject_rule_ids`, отдельной колонки `auto_reject` нет.
     "auto_reject": "Автоотказ по правилу",
+    # Форум-ночь п.6 (D-25, идея №14): отметка «Вход» в `checkins` — пришёл ли делегат на
+    # форум (не «одобрен», это отдельное поле «Статус» выше).
+    "checkin_entry": "Отметка на форуме",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -964,6 +1178,10 @@ _PICKER_FIELDS = {
     # `event_city`/`season`/`resume`/`delegate_chat` выше). No separate handler needed for
     # the same reason as those fields.
     "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14) — same двойная регистрация rule: also in
+    # `db._FILTER_COLUMNS`/`db._FILTER_VIRTUAL_FIELDS` (see there). No separate handler
+    # needed for the same reason as the fields above.
+    "checkin_entry",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -1031,7 +1249,8 @@ def _filter_summary(filters: list[dict]) -> str:
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
-                     show_chat: bool = False, show_auto_reject: bool = False) -> InlineKeyboardMarkup:
+                     show_chat: bool = False, show_auto_reject: bool = False,
+                     show_checkin: bool = False, show_sessions: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1074,6 +1293,18 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # «Резюме»/«Чата делегатов»/«Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
     if show_auto_reject:
         kb.append([InlineKeyboardButton(text="🤖 Автоотказ по правилу", callback_data="filter_f_auto_reject")])
+    # Форум-ночь п.6 (D-25, идея №14): кнопка только когда в `checkins` реально есть и
+    # пришедшие, и (approved текущего сезона) не пришедшие — тот же довод, что у соседей выше.
+    if show_checkin:
+        kb.append([InlineKeyboardButton(text="🚪 Отметка на форуме", callback_data="filter_f_checkin_entry")])
+    # Свой мастер (город → день → сессия, handlers/admin_broadcast_session_filter.py) — не
+    # входит в generic-пикер `_show_value_picker` (значение — конкретная сессия, а не пара
+    # сентинелов). Кнопка только когда менеджер завёл хотя бы одну сессию программы.
+    if show_sessions:
+        kb.append([
+            InlineKeyboardButton(text="🎤 Были на сессии…", callback_data="cksf_start:attended"),
+            InlineKeyboardButton(text="🚫 Не были на сессии…", callback_data="cksf_start:not_attended"),
+        ])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -1107,11 +1338,16 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Phase 31 (31-02/31-07, D-28): порог считается ТЕМ ЖЕ списком, который потом покажет
     # пикер (get_auto_reject_filter_options) — второй карты значений нет.
     auto_reject_options = await get_auto_reject_filter_options()
+    # Форум-ночь п.6 (D-25, идея №14): та же роль порога, что у auto_reject/chat выше.
+    checkin_options = await get_checkin_entry_filter_options()
+    show_sessions = await any_program_sessions_exist()
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
                          show_chat=len(chat_options) > 1,
-                         show_auto_reject=len(auto_reject_options) > 1)
+                         show_auto_reject=len(auto_reject_options) > 1,
+                         show_checkin=len(checkin_options) > 1,
+                         show_sessions=show_sessions)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1219,6 +1455,19 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
         # «бот для людей»).
         labels = {AUTO_REJECT_YES: "Отклонён правилом", AUTO_REJECT_NO: "Не отклонён правилом"}
+    elif field == "checkin_entry":
+        # Форум-ночь п.6 (D-25, идея №14): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
+        # соседей выше: инлайн-кнопки не истекают, вчерашнее меню с кнопкой «Отметка на
+        # форуме» живо и сегодня, когда все делегаты снова по одну сторону.
+        options = await get_checkin_entry_filter_options()
+        if len(options) < 2:
+            await callback.answer(
+                "Все делегаты по одну сторону — фильтровать не по чему.", show_alert=True,
+            )
+            return
+        # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
+        # «бот для людей»).
+        labels = {CHECKIN_YES: "пришли на форум", CHECKIN_NO: "не пришли"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1359,6 +1608,13 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # AUTO_REJECT_NO) сентинелы, та же причина, что у «Резюме»/«Чата делегатов» выше.
         labels = data.get("filter_option_labels") or {}
         filters.append({"field": field, "value": value, "label": labels.get(value, value)})
+    elif field == "checkin_entry":
+        # Форум-ночь п.6 (D-25, идея №14): `label` есть ВСЕГДА — оба значения (CHECKIN_YES/
+        # CHECKIN_NO) сентинелы, та же причина, что у соседей выше. `event_season` НЕ кладём
+        # сюда — он резолвится заново на КАЖДЫЙ вызов `count_and_list_filtered`
+        # (`database.db._resolve_checkin_entry_season`), а не замораживается на момент выбора.
+        labels = data.get("filter_option_labels") or {}
+        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
@@ -1411,10 +1667,21 @@ async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "filter_schedule", Broadcast.filter_field)
 async def filter_schedule(callback: types.CallbackQuery, state: FSMContext):
     # filters stay in FSM state; the schedule flow reads them as filter_spec
+    data = await state.get_data()
     await callback.answer()
-    await callback.message.edit_text(
-        "🕓 Введите дату и время рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30):"
-    )
+    text = "🕓 Введите дату и время рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30):"
+    if data.get("filters"):
+        # Форум-ночь п.6 (D-25): список по фильтру резолвится ЗАНОВО в момент отправки
+        # (`services.scheduler.send_scheduled_broadcast` -> `count_and_list_filtered`), не
+        # замораживается сейчас — за время ожидания состав может измениться (кто-то отметился
+        # на входе, заявку одобрили/отклонили). Менеджер должен знать это ДО того, как нажмёт
+        # «Запланировать», а не догадываться по факту отправки.
+        text = (
+            "⚠️ Список получателей пересчитается заново в момент отправки (если кто-то за это "
+            "время отметится на входе или сменит статус — письмо уйдёт актуальному списку).\n\n"
+            f"{text}"
+        )
+    await callback.message.edit_text(text)
     await state.set_state(Broadcast.schedule_when)
 
 
@@ -1431,3 +1698,8 @@ async def cmd_refresh_allowlist(message: types.Message):
         )
     else:
         await message.answer(f"✅ Allowlist обновлён: {size} username в списке.")
+
+
+# Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …» — свой шов, декорирует
+# тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
+from handlers import admin_broadcast_session_filter  # noqa: E402,F401

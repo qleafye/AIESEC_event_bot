@@ -126,7 +126,7 @@ class FakeBot:
         self.sent_messages.append(sent)
         return sent
 
-    async def copy_message(self, chat_id, from_chat_id, message_id):
+    async def copy_message(self, chat_id, from_chat_id, message_id, caption=None, reply_markup=None):
         self.copy_calls.append(chat_id)
         if chat_id in self.fail_chat_ids:
             from aiogram.exceptions import TelegramForbiddenError
@@ -305,9 +305,9 @@ def test_stop_button_halts_progress_before_total(tmp_path, monkeypatch):
         calls = {"n": 0}
         real_copy = bot.copy_message
 
-        async def copy_then_maybe_stop(chat_id, from_chat_id, message_id):
+        async def copy_then_maybe_stop(chat_id, from_chat_id, message_id, caption=None, reply_markup=None):
             calls["n"] += 1
-            result = await real_copy(chat_id, from_chat_id, message_id)
+            result = await real_copy(chat_id, from_chat_id, message_id, caption=caption, reply_markup=reply_markup)
             if calls["n"] == 2:
                 stop_cb = FakeCallback(
                     f"bc_stop:{bid}", user_id=ADMIN_ID, message=FakeSentMessage(2),
@@ -379,7 +379,9 @@ def test_album_three_messages_produce_one_preview_and_one_keyboard(tmp_path, mon
         assert len(bot.sent_messages) == 1  # и ровно одна клавиатура подтверждения
         data = await state.get_data()
         assert len(data.get("bc_album", [])) == 3
-        assert data.get("bc_preview") == "[альбом x 3]"
+        # Ревью 470ce5e..3703ba4 (находка 🟡): fallback без подписей — «Альбом из N фото/видео»,
+        # не технический литерал «[альбом x N]» (тот делегат видел бы в экране «❗ Важное»).
+        assert data.get("bc_preview") == "Альбом из 3 фото/видео"
         assert state.state == Broadcast.confirm
 
     asyncio.run(go())

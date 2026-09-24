@@ -141,7 +141,11 @@ _NON_LANGUAGE_PAY_KEYS: frozenset[str] = frozenset({
 
 # Квик 260917-en: `contact_person`/`contact_vk`/`contact_tg` — юзернейм/URL, не текст на языке
 # (машинный перевод URL/@username в лучшем случае no-op, в худшем — риск порчи ссылки).
-_NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({"contact_person", "contact_vk", "contact_tg"})
+_NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
+    "contact_person", "contact_vk", "contact_tg",
+    # Ревью 24.09 (находка 1): телефон/контакт, не язык — тот же довод, что contact_person.
+    "sos_fallback_contact_text",
+})
 
 _NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
     ADMIN_KEYS_IN_DELEGATE_GROUPS | _ADMIN_ONLY_GAME_KEYS | _NON_LANGUAGE_PAY_KEYS
@@ -443,10 +447,85 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:payment.tariff_unavailable", "Вариант больше не доступен."))
     items.append(("lit:payment.tariff_bad_value", "Некорректный вариант."))
 
+    # Находка при доработке форум-ночи (не эта задача, но тот же сторож): подтверждение «✅
+    # Сохранил, открывается» рассылки QR (services/checkin_broadcast.py) звало reg_i18n.tr_text
+    # с этим литералом без записи ни в один ярус — делегат с lang="en" видел бы русский текст
+    # (fail-soft тихо промолчал бы, guard-тест — нет). Добавлено сюда же, а не отдельным коммитом.
+    items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, увидимся на форуме!"))
+
+    # Форум-ночь п.6 (D-25, идея №14): ответ «Я на месте» на шаблон «Не пришёл»
+    # (handlers/user_actions.py::checkin_not_arrived_respond) — показывает QR-экран тем же
+    # приёмом, что и остальные литералы этого блока.
+    items.append((
+        "lit:user_actions.checkin_not_arrived_here_qr",
+        "Покажи этот экран волонтёру на входе.",
+    ))
+
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа»
+    # (handlers/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
+    # модуль, i18n_sources.py его не импортирует, строки продублированы буквально).
+    items.append(("lit:program.header", "Программа"))
+    items.append(("lit:program.pick_day", "Выберите день:"))
+    items.append(("lit:program.day_empty", "Сессий в этот день пока нет."))
+    items.append(("lit:program.all_empty", "Программа пока пуста."))
+    items.append(("lit:program.now_marker", "Идёт сейчас"))
+    items.append(("lit:program.next_marker", "Следующая"))
+    items.append(("lit:program.hall_label", "Зал:"))
+    items.append(("lit:program.speaker_label", "Спикер:"))
+    items.append(("lit:program.parallel_label", "параллельно"))
+    items.append(("lit:program.back_to_days", "← Дни"))
+
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): экран делегата «❗ Важное» (handlers/user_actions.py::
+    # show_important_today) — тот же приём, что литералы program выше.
+    items.append(("lit:user_actions.important_today_empty", "Сегодня важных рассылок не было."))
+    items.append(("lit:user_actions.important_today_header", "❗ Важные рассылки за сегодня:"))
+
+    # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4, п.5): тексты «🔕 Не присылать сегодня»
+    # (services/scheduler.py + handlers/user_actions.py) идут через `reg_i18n.tr_text`, та
+    # снимает ведущий эмодзи-префикс ДО поиска в `tr_map` (см. докстринг `reg_i18n.py::tr_text`
+    # и пример «🎟 Мой QR» выше по файлу) — ключи здесь БЕЗ эмодзи-префикса, ровно то, что реально
+    # ищет `tr()`. Предложение отключиться (альбом, не чаще раза в день) — без эмодзи-префикса,
+    # переносить нечего.
+    items.append((
+        "lit:scheduler.mute_offer_text",
+        "Сегодня многовато рассылок? Можно отключить необязательные до завтра:",
+    ))
+    items.append(("lit:scheduler.mute_button", "Не присылать сегодня"))
+    items.append(("lit:scheduler.unmute_button", "Присылать всё"))
+    items.append((
+        "lit:user_actions.mute_today_confirm",
+        "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».",
+    ))
+    items.append(("lit:user_actions.unmute_today_confirm", "Хорошо, снова присылаю все рассылки."))
+
     items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
     items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
     items.append(("lit:reg_schema.default_bonus_caption", "\U0001f381 Бонус за регистрацию!"))
+
+    # Форум-ночь п.8 (идея №19, SOS): делегатский экран «🆘 SOS» (`handlers/sos.py`) — категории
+    # (кнопки inline-клавиатуры, `services/sos.py::CATEGORY_LABELS`) и подпись кнопки запроса
+    # геопозиции идут через `reg_i18n.say(..., reply_markup=...)` -> `tr_kb` (переводит ТОЛЬКО
+    # `.text` кнопок), АСТ-сторож `test_i18n_literal_corpus_guard_260906.py` их не видит (тот
+    # смотрит на прямой текстовый аргумент вызова, не на кнопки внутри markup) — регистрируются
+    # здесь руками, тот же приём, что литералы program/scheduler выше.
+    items.append(("lit:services.sos.category_bad", "🤒 Плохо себя чувствую"))
+    items.append(("lit:services.sos.category_lost", "🧭 Потерялся"))
+    items.append(("lit:services.sos.category_item", "🔑 Потерял вещь"))
+    items.append(("lit:services.sos.category_other", "⚠️ Другое"))
+    items.append(("lit:sos.location_button", "📍 Отправить геопозицию"))
+
+    # Часть А (ревью SOS-переводов, `sos_recent_followup_text` уходил сырой русской строкой):
+    # шаблоны `services.sos.claim_status_parts` + переводимый фолбэк имени «коллега» —
+    # литералы кода, не реестра, регистрируются здесь тем же приёмом, что категории SOS выше.
+    items.append(("lit:services.sos.claim_status_claimed", "взял(а) {who}"))
+    items.append(("lit:services.sos.claim_status_open", "ещё не взяли"))
+    items.append(("lit:services.sos.claim_status_fallback_name", "коллега"))
+
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — алерт «недоступна»
+    # (`handlers/session_feedback.py::sfb_rate`/`sfb_offer_comment`), делегат без отметки на
+    # сессии или с чужим/устаревшим callback_data.
+    items.append(("lit:session_feedback.unavailable_alert", "Эта оценка тебе недоступна."))
 
     return items
 
