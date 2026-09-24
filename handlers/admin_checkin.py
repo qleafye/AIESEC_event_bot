@@ -335,6 +335,10 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         # формат/читаемость приложения волонтёра.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
     ])
+    # Бэклог п.10: сводка прихода — менеджерская (moderate_reg), волонтёру кнопку не рисуем.
+    from handlers.admin_caps import _holds, resolve_capabilities
+    if _holds(await resolve_capabilities(callback.from_user.id), "moderate_reg"):
+        kb.inline_keyboard.insert(0, [InlineKeyboardButton(text="📊 Статистика прихода", callback_data="checkin_stats")])
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
