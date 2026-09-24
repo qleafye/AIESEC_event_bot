@@ -84,6 +84,7 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     _ready(tmp_path)
     from datetime import datetime
     run_at = datetime(2026, 10, 2, 18, 0)
+    monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 9, 25, 12, 0))
     _patch_sched(monkeypatch, _FakeSched({"checkin_qr_evening:all": SimpleNamespace(next_run_time=run_at)}))
     _run(db.set_setting("forum_date", "03.10.2026"))
     _run(db.set_setting("checkin_qr_enabled", "on"))
@@ -197,3 +198,33 @@ def test_count_program_sessions_none_counts_all_cities(tmp_path):
     _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Б"))
     assert _run(count_program_sessions("spb")) == 1
     assert _run(count_program_sessions(None)) == 2
+
+
+def _date_row(tmp_path, monkeypatch, forum_date, now):
+    _ready(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "")
+    monkeypatch.setattr(afr, "msk_now", lambda: now)
+    _run(db.set_setting("forum_date", forum_date))
+    return _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+
+
+def test_past_forum_date_is_yellow_with_fix(tmp_path, monkeypatch):
+    """Дата прошлого форума (раньше сегодняшнего дня по МСК) — жёлтая строка с кнопкой правки."""
+    from datetime import datetime
+    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 4, 0, 5))
+    assert "🟡 Дата форума прошла (03.10.2026) — это прошлый форум? Обновите дату" in text
+    assert "settings_edit:forum_date" in _cbs(kb)
+
+
+def test_forum_today_is_green_today(tmp_path, monkeypatch):
+    from datetime import datetime
+    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 3, 23, 50))
+    assert "🟢 Дата форума: 03.10.2026 — сегодня" in text
+    assert "settings_edit:forum_date" not in _cbs(kb)
+
+
+def test_future_forum_date_is_plain_green(tmp_path, monkeypatch):
+    from datetime import datetime
+    text, _kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 2, 23, 59))
+    assert "🟢 Дата форума: 03.10.2026" in text.splitlines()
