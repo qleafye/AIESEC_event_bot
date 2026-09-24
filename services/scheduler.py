@@ -529,31 +529,22 @@ async def unmute_button(chat_id: int) -> InlineKeyboardButton:
     return await _translated_button(UNMUTE_BUTTON_TEXT, UNMUTE_TODAY_CALLBACK, chat_id)
 
 
-async def offer_mute_today_if_forum_day(chat_id: int) -> bool:
-    """True — сегодня день форума города ЭТОГО делегата (гейт кнопки «🔕», форум-ночь п.7:
-    «предпочтительно — только в дни форума города, иначе кнопка лишняя»)."""
-    try:
-        from database.db import get_user
-        from services.reject_rules import forum_date_for
-        user = await get_user(chat_id)
-        date_str = await forum_date_for((user or {}).get("event_city") if user else None)
-        return bool(date_str) and date_str == _now_moscow_naive().strftime("%d.%m.%Y")
-    except Exception as e:
-        logger.error(f"offer_mute_today_if_forum_day({chat_id}) failed: {e}")
-        return False
-
-
 async def recipient_markup(
     chat_id: int, important: bool, base_markup: InlineKeyboardMarkup | None = None,
 ) -> InlineKeyboardMarkup | None:
     """Клавиатура ПОЛУЧАТЕЛЯ рассылки: собственная клавиатура менеджера (`base_markup`, если
     есть — например, пересланный пост с кнопками-ссылками) + строка «🔕» ПОСЛЕДНЕЙ, когда
-    рассылка неважная и сегодня день форума города получателя. Кнопка ВНУТРИ клавиатуры самой
-    рассылки, не отдельным сообщением — правит находку ревью «предложение шлётся после каждой
-    рассылки» (было — спам ×2 на каждую неважную рассылку). `None`, если добавить нечего (нет
-    ни своей клавиатуры, ни повода предложить «🔕»)."""
+    рассылка неважная. Кнопка ВНУТРИ клавиатуры самой рассылки, не отдельным сообщением —
+    правит находку ревью «предложение шлётся после каждой рассылки» (было — спам ×2 на каждую
+    неважную рассылку). `None`, если добавить нечего (нет ни своей клавиатуры, ни повода
+    предложить «🔕»).
+
+    D-30 (решение владельца 24.09): кнопка доступна ВЕСЬ СЕЗОН, не только в день форума —
+    раньше гейт `offer_mute_today_if_forum_day` показывал её только в день форума города
+    получателя («иначе кнопка лишняя»), но заглушка полезна и вне форумных дней (например,
+    делегат хочет не получать анонсы до самого события). Гейт убран целиком."""
     rows = [list(row) for row in (base_markup.inline_keyboard if base_markup else [])]
-    if not important and await offer_mute_today_if_forum_day(chat_id):
+    if not important:
         rows.append([await mute_button(chat_id)])
     if not rows:
         return None
@@ -566,12 +557,13 @@ async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int
     text/фото/видео/документа — там кнопка теперь внутри `recipient_markup`). Не чаще раза в
     сутки (MSK) на получателя (`users.mute_offer_shown_date`) — иначе предложение спамило бы
     после КАЖДОЙ неважной альбомной рассылки за день (находка ревью). Важные рассылки никогда
-    не предлагают отключиться (D-XX: важное приходит всегда)."""
+    не предлагают отключиться (важное приходит всегда).
+
+    D-30 (24.09): весь сезон, не только в день форума — гейт `offer_mute_today_if_forum_day`
+    убран, см. докстринг `recipient_markup`."""
     if important:
         return None
     try:
-        if not await offer_mute_today_if_forum_day(chat_id):
-            return None
         from database.db import get_mute_offer_shown_ids, mark_mute_offer_shown
         today = _now_moscow_naive().strftime("%Y-%m-%d")
         already_shown = await get_mute_offer_shown_ids(today)
