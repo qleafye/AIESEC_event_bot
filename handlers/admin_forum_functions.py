@@ -38,6 +38,7 @@ from cities import (
 )
 from database.db import has_program_sessions_for_city
 from handlers.admin import router
+from handlers.admin_caps import _holds, required_capability, resolve_capabilities
 from handlers.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,
@@ -72,7 +73,21 @@ def _status(on: bool) -> str:
     return "✅ Вкл" if on else "❌ Выкл"
 
 
+# Хаб открывается под `moderate_reg` (ADMIN_CAPS["admin_forum_functions"]), но каждая строка
+# ведёт на РОДНОЙ экран своей функции под СВОЕЙ капой (`toggle_checkin_qr_enabled`/
+# `admin_miniapp_settings`/`admin_menu_buttons`/`prog_fbset:*` — все `settings`; `admin_checkin`
+# — `checkin`; SOS и рассылки QR/шпаргалки — тот же `moderate_reg`, что у самого хаба). Держатель
+# только `moderate_reg` тапнул бы «📱 Настройки приложения» и получил бы «Недостаточно прав» —
+# рисовать кнопку, на которую нельзя нажать, только сбивает с толку («бот для людей»: не
+# показываем недоступное). Статусная СТРОКА (✅/❌) остаётся видна всегда — это же тот факт,
+# который хаб и обещает показать «в одном месте», её читает и держатель одной `moderate_reg`.
 async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMarkup]:
+    caps = await resolve_capabilities(admin_id)
+
+    def visible(callback_data: str) -> bool:
+        cap = required_capability(callback_data=callback_data)
+        return cap is not None and _holds(caps, cap)
+
     label = await city_label(code) if await cities_module_on() else None
     lines = ["🎪 <b>Форум: функции</b>" + (f" — {html.escape(label)}" if label else ""), ""]
     buttons: list[list[InlineKeyboardButton]] = []
@@ -81,35 +96,40 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # читает его глобально); правится строкой «toggle_checkin_qr_enabled» раздела «📋 Заявки».
     qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
     lines.append(f"🎟 QR для входа: {_status(qr_on)}")
-    buttons.append([InlineKeyboardButton(text="🎟 Включить/выключить QR", callback_data="toggle_checkin_qr_enabled")])
+    if visible("toggle_checkin_qr_enabled"):
+        buttons.append([InlineKeyboardButton(text="🎟 Включить/выключить QR", callback_data="toggle_checkin_qr_enabled")])
 
     # 2. Рассылка QR накануне + утренний повтор — per_city, родной экран уже есть.
     qr_bc_on = await get_setting_typed_for_city("checkin_qr_broadcast_enabled", code) == "on"
     lines.append(f"🎟 Рассылка QR накануне + утренний повтор: {_status(qr_bc_on)}")
-    buttons.append([InlineKeyboardButton(
-        text="🎟 Настройки рассылки QR", callback_data=f"checkinqr_cfg:{_encode_city(code)}",
-    )])
+    if visible(f"checkinqr_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="🎟 Настройки рассылки QR", callback_data=f"checkinqr_cfg:{_encode_city(code)}",
+        )])
 
     # 3. Отметки на форуме — загрузка CSV офлайн-сканера + «📨 Написать не пришедшим». Ручные
     # действия под правом `checkin`, тумблера не требуют (D-36: тумблер нужен ФУНКЦИЯМ, которые
     # работают САМИ — ручная кнопка и так «выключена», пока никто не нажал).
     lines.append("✅ Отметки на форуме (загрузка CSV, «Не пришли»): ручная кнопка, без тумблера")
-    buttons.append([InlineKeyboardButton(text="✅ Отметки на форуме", callback_data="admin_checkin")])
+    if visible("admin_checkin"):
+        buttons.append([InlineKeyboardButton(text="✅ Отметки на форуме", callback_data="admin_checkin")])
 
     # 4. Сканер в Mini App — мастер-тумблер miniapp_section_checkin, НЕ per_city, правится на
     # экране «📱 Приложение» (там же общий master miniapp_enabled — сканер без него не откроется
     # ни при каком miniapp_section_checkin, поэтому ссылаемся на экран целиком, не дублируем).
     miniapp_on = await get_setting_typed("miniapp_section_checkin") == "on"
     lines.append(f"🎫 Сканер в приложении: {_status(miniapp_on)}")
-    buttons.append([InlineKeyboardButton(text="📱 Настройки приложения", callback_data="admin_miniapp_settings")])
+    if visible("admin_miniapp_settings"):
+        buttons.append([InlineKeyboardButton(text="📱 Настройки приложения", callback_data="admin_miniapp_settings")])
 
     # 5. Шпаргалка волонтёра накануне форума — per_city, НОВЫЙ экран этого модуля (был
     # недостающим по аудиту D-36).
     vol_on = await get_setting_typed_for_city("checkin_volunteer_guide_broadcast_enabled", code) == "on"
     lines.append(f"🎫 Шпаргалка волонтёра накануне форума: {_status(vol_on)}")
-    buttons.append([InlineKeyboardButton(
-        text="🎫 Настройки шпаргалки", callback_data=f"checkinvol_cfg:{_encode_city(code)}",
-    )])
+    if visible(f"checkinvol_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="🎫 Настройки шпаргалки", callback_data=f"checkinvol_cfg:{_encode_city(code)}",
+        )])
 
     # 6. Программа (кнопка делегата, D-29) — гейт «есть фото ИЛИ хотя бы одна сессия» решает
     # keyboards.builders.get_main_menu_kb на лету для каждого делегата; здесь показываем только
@@ -117,20 +137,23 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # (фото — глобальная настройка экрана «🎪 Событие», не форумный тумблер).
     has_sessions = await has_program_sessions_for_city(code)
     lines.append(f"🗓 Программа (сессии заведены): {_status(has_sessions)}")
-    buttons.append([InlineKeyboardButton(
-        text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data="admin_menu_buttons",
-    )])
+    if visible("admin_menu_buttons"):
+        buttons.append([InlineKeyboardButton(
+            text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data="admin_menu_buttons",
+        )])
 
     # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/session_feedback.py).
     fb_on = await sf.is_enabled_for_city(code)
     lines.append(f"⭐ Отзывы о сессиях: {_status(fb_on)}")
-    buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"prog_fbset:{code}")])
+    if visible(f"prog_fbset:{code}"):
+        buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"prog_fbset:{code}")])
 
     # 8. SOS — сама кнопка меню (menu_sos, см. пункт 6) + окно активности (forum_date +
     # sos_active_days); родной экран уже есть (handlers/admin_sos.py).
     sos_on = await is_sos_active_for_city(code)
     lines.append(f"🆘 SOS активен сейчас: {_status(sos_on)}")
-    buttons.append([InlineKeyboardButton(text="🆘 Настройки SOS", callback_data="admin_sos")])
+    if visible("admin_sos"):
+        buttons.append([InlineKeyboardButton(text="🆘 Настройки SOS", callback_data="admin_sos")])
 
     # 9. «🔕 Не присылать сегодня» — D-30: доступна делегату весь сезон намеренно, без
     # мастер-тумблера (отключать самообслуживание делегата — не то, что просил владелец).
