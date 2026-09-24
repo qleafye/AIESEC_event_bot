@@ -245,6 +245,8 @@ def _page_sections(ctx: dict) -> list[dict]:
     `id in section_ids`). "Сейчас" и "Модерация и ответы" всегда в списке — там всегда есть
     хотя бы плитка KPI/«Среднее время обработки», гасить их нечем."""
     sections = [{"id": "now", "title": "Сейчас"}]
+    if ctx.get("arrival"):
+        sections.append({"id": "arrival", "title": "Приход"})
     if ctx["dynamics_enabled"] or ctx["funnel"] or ctx["dropout"] or ctx["months"]:
         sections.append({"id": "flow", "title": "Поток заявок"})
     sections.append({"id": "moderation", "title": "Модерация и ответы"})
@@ -359,6 +361,9 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     # `questions_block` без чтения тумблера (D-2 квика 260910-tt5): вопрос делегата — базовая
     # функция, не отключаемый модуль, гейт по наличию данных живёт ВНУТРИ самой функции.
     questions_stats = queries.questions_block(conn, scope)
+    # Бэклог чек-ина п.10: «Приход» — без тумблера, гейт по данным внутри arrival_block (до
+    # первой отметки на форуме раздела нет).
+    arrival = queries.arrival_block(conn, scope)
 
     daily_chart = None
     if daily_rows is not None and daily_rows:
@@ -430,6 +435,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "referrals": referrals,
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
+        "arrival": arrival,
     }
     ctx["page_sections"] = _page_sections(ctx)
     ctx["section_ids"] = {s["id"] for s in ctx["page_sections"]}

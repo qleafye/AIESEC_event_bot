@@ -1180,6 +1180,9 @@ admin|callback_query|checkinvol_cfg_screen|checkinvol_cfg:*
 admin|callback_query|checkinvol_toggle_go|checkinvol_toggle:*
 admin|callback_query|checkinvol_time_start|checkinvol_time:*
 admin|callback_query|prog_view_toggle_go|prog_view_toggle:*
+admin|callback_query|checkin_stats_open|checkin_stats
+admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
+admin|callback_query|checkin_stats_csv|checkin_stats_csv
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1721,7 +1724,11 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после checkinvol_time_start и ПЕРЕД prog_fbday_open. Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним
     # 734-строчным снимком: ровно одна чистая вставка, 0 удалений, 0 реордеров (734 -> 735).
-    assert len(GOLDEN_SNAPSHOT) == 735
+    # Бэклог чек-ина п.10 («📊 Статистика прихода»): +3 admin.callback_query
+    # (checkin_stats_open/checkin_stats_refresh/checkin_stats_csv, handlers/admin_checkin_stats.py)
+    # — шов импортируется из хвоста handlers/admin.py, СРАЗУ ПОСЛЕ admin_program_view; встали
+    # сразу после prog_view_toggle_go и ПЕРЕД prog_fbday_open. Одна чистая вставка (735 -> 738).
+    assert len(GOLDEN_SNAPSHOT) == 738
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -951,6 +951,13 @@ ADMIN_CAPS: dict[str, str] = {
     "cna_send_go:*": "moderate_reg",
     "cna_send_no": "moderate_reg",
 
+    # Бэклог чек-ина п.10: «📊 Статистика прихода» (handlers/admin_checkin_stats.py) — сводка по
+    # всему городу для менеджера, не волонтёрская `checkin`; та же капа, что у соседних
+    # менеджерских экранов чек-ина выше.
+    "checkin_stats": "moderate_reg",
+    "checkin_stats_refresh": "moderate_reg",
+    "checkin_stats_csv": "moderate_reg",
+
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из
