@@ -76,6 +76,7 @@ from services.checkin_broadcast import (
 )
 from services.checkin_not_arrived import (
     pending_count as checkin_not_arrived_pending_count,
+    report_text as checkin_not_arrived_report_text,
     send as checkin_not_arrived_send,
     summary_text as checkin_not_arrived_summary_text,
 )
@@ -358,7 +359,7 @@ async def cna_send_confirm(callback: types.CallbackQuery):
         )
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Да, отправить", callback_data=f"cna_send_go:{_encode_city(code)}"),
+        InlineKeyboardButton(text="✅ Да, отправить", callback_data=f"cna_send_go:{_encode_city(code)}:{n}"),
         InlineKeyboardButton(text="Отмена", callback_data="cna_send_no"),
     ]])
     where = f" города {html.escape(await city_label(code))}" if code and await cities_module_on() else ""
@@ -373,7 +374,9 @@ async def cna_send_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("cna_send_go:"))
 async def cna_send_go(callback: types.CallbackQuery):
-    code = _decode_city(callback.data.split(":", 1)[1])
+    # «cna_send_go:<город>:<N с экрана подтверждения>»; старые кнопки — без N.
+    raw, _sep, n_raw = callback.data.split(":", 1)[1].partition(":")
+    code, expected = _decode_city(raw), int(n_raw) if n_raw.isdigit() else None
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
@@ -383,18 +386,7 @@ async def cna_send_go(callback: types.CallbackQuery):
     await callback.answer("Отправляю…")
     await callback.message.edit_text("⏳ Отправляю «Не пришёл»...", reply_markup=None)
     result = await checkin_not_arrived_send(city=code, city_scope=city_scope(code))
-    tail = (
-        f", не доставлено {result['failed']}" if result["failed"] else ""
-    )
-    text = (
-        f"✅ Отправлено {result['sent']} делегатам{tail} из {result['total']}."
-    )
-    if result["quiet"]:
-        text += (
-            f"\n🌙 {result['quiet']} делегатов сейчас в тихих часах — им не отправлено, "
-            "повторите позже."
-        )
-    await callback.message.answer(text)
+    await callback.message.answer(checkin_not_arrived_report_text(result, expected))
 
 
 @router.callback_query(F.data == "cna_send_no")

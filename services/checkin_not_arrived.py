@@ -116,6 +116,33 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     return {"sent": sent, "quiet": quiet, "failed": failed, "total": len(ids)}
 
 
+def report_text(result: dict, expected: int | None = None) -> str:
+    """Итог для менеджера после «📨 Написать не пришедшим». `expected` — сколько обещал экран
+    подтверждения. Ушло меньше — объясняем, куда делась разница: ошибку доставки видно
+    по счётчику `failed`, остальных между подтверждением и отправкой больше нет в списке —
+    отметились на входе или получили вопрос с параллельного нажатия (различить нельзя)."""
+    sent, failed, quiet = result["sent"], result["failed"], result["quiet"]
+    if expected and sent < expected:
+        text = f"✅ Ушло {sent} из {expected}."
+        reasons = []
+        gone = expected - sent - failed - quiet
+        if gone > 0:
+            reasons.append(f"{gone} за это время отметились на входе или уже получили вопрос")
+        if failed:
+            reasons.append(f"{failed} не получили сообщение (ошибка доставки)")
+        if reasons:
+            text += " Остальные: " + "; ".join(reasons) + "."
+    else:
+        tail = f", не доставлено {failed}" if failed else ""
+        text = f"✅ Отправлено {sent} делегатам{tail} из {result['total']}."
+    if quiet:
+        text += (
+            f"\n🌙 {quiet} делегатов сейчас в тихих часах — им не отправлено, "
+            "повторите позже."
+        )
+    return text
+
+
 async def summary_text(*, city_scope=None) -> str:
     """«Едут N · Не смогут M · Уже на месте K · без ответа R» за СЕГОДНЯ — строка экрана
     «✅ Отметки на форуме» (handlers/admin_checkin.py). `0` по всем — ещё никому не слали
