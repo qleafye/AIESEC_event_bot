@@ -213,10 +213,13 @@ async def log_denial(reason: str, *, staff_id: int | None, staff_name: str | Non
 
 
 async def _clear_arrived_in_sheet(telegram_id: int) -> None:
-    """Снят вход -> пустая ячейка «Пришёл» (тот же точечный апдейт, что при отметке)."""
+    """Снят вход -> «Пришёл» пересчитывается: время первого из ОСТАВШИХСЯ входов (вход каждый
+    день — снятие входа одного дня не стирает другой), нет входов — пустая ячейка. Тот же
+    точечный апдейт, что при отметке."""
     try:
+        from database.db import first_entry_scanned_at
         from services.sheets import update_arrived_in_sheet
-        await update_arrived_in_sheet(telegram_id, "")
+        await update_arrived_in_sheet(telegram_id, await first_entry_scanned_at(telegram_id) or "")
     except Exception:
         logger.exception("venue_log: не очистил «Пришёл» в таблице для %s", telegram_id)
 

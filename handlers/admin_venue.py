@@ -275,10 +275,20 @@ async def venue_revoke_confirm(callback: types.CallbackQuery):
     stamp = row.get("scanned_at") or ""
     lines = [f"🗑 <b>Снять отметку?</b>\n\n{name} — {label}, отмечен(а) {html.escape(stamp[:16])}", "", "Что изменится:"]
     if row["point"] == venue_log.ENTRY_POINT:
-        lines.append("• делегат снова считается не пришедшим: пропадёт из «Пришли N из M», "
-                     "попадёт в «Не пришли» и в рассылки для не пришедших;")
-        lines.append("• время в колонке «Пришёл» таблицы очистится.")
-        sessions = [m for m in await list_checkins_for_user(tid) if m["point"] != venue_log.ENTRY_POINT]
+        # Вход каждый день: снимается вход ЭТОГО дня, входы других дней остаются.
+        day = row.get("day") or stamp[:10]
+        day_label = f"{day[8:10]}.{day[5:7]}"
+        others = [m for m in await list_checkins_for_user(tid)
+                  if m["point"] == venue_log.ENTRY_POINT and m["id"] != row["id"]]
+        lines.append(f"• делегат снова считается не пришедшим {day_label}: пропадёт из «Пришли» "
+                     "за этот день, попадёт в «Не пришли» и в рассылки для не пришедших;")
+        if others:
+            lines.append("• вход в другие дни форума останется, в колонке «Пришёл» таблицы "
+                         "будет время самого раннего из них.")
+        else:
+            lines.append("• время в колонке «Пришёл» таблицы очистится.")
+        sessions = [m for m in await list_checkins_for_user(tid)
+                    if m["point"] != venue_log.ENTRY_POINT and (m.get("day") or "") == day]
         if sessions:
             lines.append(
                 f"\n⚠️ Отметки на сессиях ({len(sessions)}) останутся — если делегата не было "
