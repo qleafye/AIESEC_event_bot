@@ -1095,16 +1095,12 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
         text = await get_setting_typed("volunteer_invite_welcome_text")
     await reg_i18n.say(message, text)
 
-    # Форум-ночь B3 (идея №22): та же шпаргалка волонтёра, что roles_assign шлёт при ручной
-    # выдаче права checkin -- переиспользуем, не дублируем текст.
-    try:
-        guide_text = await get_setting_typed("checkin_volunteer_guide_text")
-        await bot.send_message(user_id, guide_text)
-    except Exception:
-        logger.warning(
-            "_handle_volunteer_invite: не удалось отправить шпаргалку волонтёра user_id=%s",
-            user_id, exc_info=True,
-        )
+    # Шпаргалка волонтёра — тем же путём, что при ручной выдаче права checkin: greet_new_holder
+    # сам решает «сейчас / уже отправлена накануне форума» и не шлёт её дважды. Уже державшему
+    # право (had_any_capability) новая шпаргалка не нужна.
+    if not had_any_capability:
+        from services.checkin_volunteer_broadcast import greet_new_holder
+        await greet_new_holder(bot, user_id)
 
     # Менеджеру-создателю ссылки -- «@user (Имя) зашёл по ссылке волонтёров <город>, N из M».
     if invite and invite.get("created_by"):
