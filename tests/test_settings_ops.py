@@ -67,6 +67,7 @@ def test_apply_event_type_preset_conference_turns_payment_and_consent_on(tmp_pat
         await settings_ops.apply_event_type_preset("conference")
         assert await get_setting("payment_enabled") == "on"
         assert await get_setting("consent_enabled") == "on"
+        assert await get_setting("reg_q_lc") == "on"
 
     asyncio.run(_run())
 

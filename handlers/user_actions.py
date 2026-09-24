@@ -1077,7 +1077,9 @@ async def info_date(callback: types.CallbackQuery):
     event_date = await get_setting_for_city("event_date", code)
     event_time = await get_setting_for_city("event_time", code)
     if event_date:
-        text = f"🗓 {tr('Форум пройдет')} <b>{html.escape(tr(event_date))}</b>!"
+        # Съезд АЙСЕК — не форум: фраза зависит от типа события, у форума прежняя.
+        lead = "Конференция пройдет" if await get_setting_typed("event_type") == "conference" else "Форум пройдет"
+        text = f"🗓 {tr(lead)} <b>{html.escape(tr(event_date))}</b>!"
         if event_time:
             text += f"\n⌚ {tr('Время')}: {html.escape(tr(event_time))}"
     else:

@@ -245,6 +245,7 @@ UI_EN: dict[str, str] = {
     "Адрес": "Address",
     "Наша площадка": "Our venue",
     "Форум пройдет": "The forum will take place",
+    "Конференция пройдет": "The conference will take place",
     "По всем вопросам пиши сюда": "For any questions, message here",
     "Наши группы": "Our groups",
 
@@ -345,6 +346,8 @@ MENU_EN: dict[str, str] = {
     "👥 Мои приглашённые": "👥 My invitees",
     "ℹ️ Информация о форуме": "ℹ️ Forum info",
     "📅 Программа форума": "📅 Forum schedule",
+    "ℹ️ О конференции": "ℹ️ Conference info",
+    "📅 Программа конференции": "📅 Conference schedule",
     "🗣 Спикеры": "🗣 Speakers",
     "📞 Контакты": "📞 Contacts",
     "❓ Задать вопрос": "❓ Ask a question",
