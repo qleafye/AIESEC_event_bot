@@ -28,6 +28,7 @@ from cities import (
     cities_module_on,
     city_label,
     city_scope,
+    default_city_code,
     enabled_cities,
     get_setting_typed_for_city,
     per_city_key,
@@ -36,8 +37,8 @@ from database.db import (
     checkin_qr_send_counts,
     count_approved_current_season,
     count_checkins_by_point,
+    get_program_session,
     get_user,
-    record_checkin,
     reissue_checkin_token,
 )
 from handlers.admin import router
@@ -57,8 +58,8 @@ from services.checkin import (
     current_event_tag,
     decode_scan_export,
     find_checkin_records,
-    mark_arrived_in_sheet,
     parse_qr_payload,
+    record_arrival,
     resolve_scanned_user,
 )
 from services.checkin_broadcast import (
@@ -66,6 +67,7 @@ from services.checkin_broadcast import (
     schedule_city_jobs,
     send_broadcast,
 )
+from services.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
 
@@ -269,16 +271,56 @@ async def checkin_import_file_step(message: types.Message, state: FSMContext, bo
         return  # остаёмся в waiting_file -- можно сразу прислать другой файл
 
     await state.update_data(checkin_records=records)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=ENTRY_POINT_LABEL, callback_data=f"checkin_point:{ENTRY_POINT}")],
-    ])
     await message.answer(f"Нашёл кодов: {len(records)}.", reply_markup=ReplyKeyboardRemove())
-    await message.answer("Отметить точкой:", reply_markup=kb)
+    city = await _resolve_checkin_screen_city(message.from_user.id)
+    if city is None:
+        await message.answer("Из какого города точка?", reply_markup=await _city_picker_kb())
+    else:
+        await message.answer("Отметить точкой:", reply_markup=await _point_picker_kb(city))
 
 
 @router.message(CheckinImport.waiting_file)
 async def checkin_import_file_invalid(message: types.Message):
     await message.answer("Пришли файл выгрузки документом (не фото и не архив).")
+
+
+# Форум-ночь п.5 (D-18): точки отметки — «Вход» + сессии СЕГОДНЯ выбранного города, «идёт
+# сейчас» — первыми (`services.program.checkin_session_points`). Город — тот же трёхветочный
+# приём, что `handlers/admin_program.py::_resolve_city_for_screen` (закреплённый город /
+# модуль выключен -> единственный дефолтный город / иначе -> экран выбора).
+
+async def _resolve_checkin_screen_city(admin_id: int) -> str | None:
+    own_scope = await _admin_city_scope(admin_id)
+    if own_scope is not None:
+        return own_scope[0]
+    if not await cities_module_on():
+        return default_city_code()
+    return None
+
+
+async def _point_picker_kb(city: str) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=ENTRY_POINT_LABEL, callback_data=f"checkin_point:{ENTRY_POINT}")],
+    ]
+    for sp in await checkin_session_points(city):
+        label = ("🔴 " if sp["live"] else "") + sp["label"]
+        buttons.append([InlineKeyboardButton(text=label, callback_data=f"checkin_point:{sp['point']}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _city_picker_kb() -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"checkin_point_city:{c['code']}")]
+        for c in await enabled_cities()
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(StateFilter(CheckinImport), F.data.startswith("checkin_point_city:"))
+async def checkin_point_city_pick(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    await callback.message.answer("Отметить точкой:", reply_markup=await _point_picker_kb(code))
+    await callback.answer()
 
 
 @router.callback_query(StateFilter(CheckinImport), F.data.startswith("checkin_point:"))
@@ -288,11 +330,18 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     records = data.get("checkin_records") or []
     await state.set_state(None)
 
+    # Точка выбрана ОДНА на весь загруженный файл — сессию (если это точка сессии) и её отчётный
+    # интервал времени (D-18..D-20) достаточно достать один раз, а не на каждую строку.
+    session = await get_program_session(int(point.split(":", 1)[1])) if point.startswith("session:") else None
+
     new_n = 0
     dup_n = 0
-    # (reason, row) -- reason — человеческая причина из _DENIAL_LABELS, а не жёстко
-    # закодированные категории: денайл-правило (services.checkin.checkin_denial) само решает
-    # допуск, отчёт только переводит код в текст (не дублирует логику допуска D-02).
+    moved_n = 0
+    outside_n = 0
+    # (reason, row) -- reason — человеческая причина из _DENIAL_LABELS/динамический текст
+    # `wrong_city`, а не жёстко закодированные категории: денайл-правило
+    # (services.checkin.checkin_denial/record_arrival) само решает допуск, отчёт только
+    # переводит код в текст (не дублирует логику допуска D-02/D-18).
     flagged: list[tuple[str, dict]] = []
 
     for rec in records:
@@ -303,20 +352,27 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
             flagged.append((_DENIAL_LABELS.get(denial_code, denial_code), parsed))
             continue
         approx = rec["scanned_at"] is None
-        status, ts = await record_checkin(
-            user["telegram_id"], point, source="csv",
+        result = await record_arrival(
+            user, point, source="csv",
             scanned_at=rec["scanned_at"], approx=approx,
             by_staff_id=callback.from_user.id,
         )
-        await mark_arrived_in_sheet(user["telegram_id"], status, ts)
-        if status == "new":
+        if result["status"] == "wrong_city":
+            flagged.append((result.get("reason_text", "другой город форума"), parsed))
+            continue
+        if session is not None and rec["scanned_at"] and scanned_outside_session_window(session, rec["scanned_at"]):
+            outside_n += 1
+        if result["status"] == "new":
             new_n += 1
+        elif result["status"] == "moved":
+            moved_n += 1
         else:
             dup_n += 1
 
     not_found_n = sum(1 for reason, _row in flagged if reason == _DENIAL_LABELS["no_user"])
     replaced_n = sum(1 for reason, _row in flagged if reason == _DENIAL_LABELS["token_replaced"])
-    not_approved_n = len(flagged) - not_found_n - replaced_n
+    wrong_city_n = sum(1 for reason, _row in flagged if reason not in _DENIAL_LABELS.values())
+    not_approved_n = len(flagged) - not_found_n - replaced_n - wrong_city_n
 
     lines = [
         "✅ <b>Отметки загружены</b>",
@@ -325,6 +381,12 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         f"не найдено: {not_found_n} · не одобрены: {not_approved_n} · "
         f"QR заменён: {replaced_n}",
     ]
+    if wrong_city_n:
+        lines.append(f"Другой город форума: {wrong_city_n}")
+    if moved_n:
+        lines.append(f"Перенесено с другой сессии слота: {moved_n}")
+    if outside_n:
+        lines.append(f"⚠️ Время скана вне интервала сессии: {outside_n} (всё равно отмечено)")
     shown = flagged[:_REPORT_ROW_LIMIT]
     if shown:
         lines.append("")

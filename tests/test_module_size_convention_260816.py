@@ -511,7 +511,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1104,
+        1107,
+        "Форум-ночь п.5 (D-18): +3 строки — capability-запись выбора города точек-сессий "
+        "загрузки CSV (checkin_point_city:*, капа «checkin» — та же, что у самого экрана "
+        "«✅ Отметки на форуме»/checkin_point:*); 1104 -> 1107, потолок до фактического "
+        "размера. "
         "Форум-ночь п.4 (расписание форума в боте): +4 строки — capability-записи раздела "
         "«🗓 Программа форума» (admin_program/prog_*/state:ProgramSessionField:*/"
         "state:ProgramHallName:*/state:ProgramDayCustom:*, капа «settings» — та же, что у "

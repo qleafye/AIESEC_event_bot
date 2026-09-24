@@ -863,6 +863,9 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_checkin": "checkin",
     "checkin_upload_start": "checkin",
     "checkin_point:*": "checkin",
+    # Форум-ночь п.5 (D-18): выбор города для точек-сессий загрузки CSV (менеджер без
+    # закреплённого города/модуль включён) — та же капа «checkin», что у самого экрана.
+    "checkin_point_city:*": "checkin",
     "state:CheckinImport:*": "checkin",
 
     # Форум-ночь B1 (идея №10): перевыпуск QR — кнопка на карточке «/find» (cmd_find_user, та

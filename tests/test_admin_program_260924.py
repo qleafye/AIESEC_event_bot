@@ -531,3 +531,31 @@ def test_copy_go_forbidden_for_bound_manager_of_other_destination_city(tmp_path)
     _run(admin_program_halls.prog_copy_go(go_cb))
     assert go_cb.answers and go_cb.answers[0][1] is True
     assert _run(db.list_program_sessions_for_city_day("tyumen", "2026-10-03")) == []
+
+
+# ── Карточка сессии: счётчик отметок «Отмечено: N (из вместимости)» (форум-ночь п.5) ────────
+
+def test_session_card_shows_zero_checkins_without_hall(tmp_path):
+    _ready(tmp_path)
+    sid = _run(db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    text, _kb = _run(admin_program.render_session_card(sid))
+    assert "Отмечено: 0" in text
+    assert "из" not in text.split("Отмечено:")[1].splitlines()[0]
+
+
+def test_session_card_shows_checkin_count_without_capacity(tmp_path):
+    _ready(tmp_path)
+    sid = _run(db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _run(db.record_session_checkin(1, sid, [], source="miniapp"))
+    _run(db.record_session_checkin(2, sid, [], source="miniapp"))
+    text, _kb = _run(admin_program.render_session_card(sid))
+    assert "Отмечено: 2" in text
+
+
+def test_session_card_shows_checkin_count_with_hall_capacity(tmp_path):
+    _ready(tmp_path)
+    hall_id = _run(db.create_program_hall("msk", "Большой зал", capacity=120))
+    sid = _run(db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие", hall_id=hall_id))
+    _run(db.record_session_checkin(1, sid, [], source="miniapp"))
+    text, _kb = _run(admin_program.render_session_card(sid))
+    assert "Отмечено: 1 из 120" in text

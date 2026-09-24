@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+from datetime import datetime
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -23,6 +24,7 @@ from database.db import _connect
 from handlers import admin_checkin
 from handlers.states import CheckinImport
 from services.checkin import build_payload
+from services import timeutil as timeutil_mod
 from settings_audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
@@ -297,4 +299,137 @@ def test_counter_module_off_stays_unscoped_byte_for_byte(tmp_path):
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     text = _flat_text(cb.message)[0]
     assert "Пришли: 1 из 2 одобренных" in text
-    assert "Итого" not in text
+
+
+# ── форум-ночь п.5 (D-18..D-20): точки-сессии в загрузке CSV ────────────────────────────────
+
+def _one_record_csv(tag="YL26", token="any-token"):
+    qr = build_payload(tag, "Кто-то", "Город", token)
+    return f"ts,qr\n2026-10-03T09:00:00,{qr}\n".encode("utf-8")
+
+
+def test_import_file_step_shows_point_picker_with_sessions_when_city_resolved(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    monkeypatch.setattr(timeutil_mod, "msk_now", lambda: datetime(2026, 10, 3, 10, 30))
+    default_code = cities.default_city_code()
+    sid = asyncio.run(db.create_program_session(default_code, "2026-10-03", "10:00", "11:00", "Открытие"))
+
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.set_state(CheckinImport.waiting_file))
+    message = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(_one_record_csv())
+    asyncio.run(admin_checkin.checkin_import_file_step(message, state, bot))
+
+    texts = _flat_text(message)
+    assert any("Отметить точкой" in t for t in texts)
+    kb = message.sent[-1][1]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "checkin_point:entry" in cbs
+    assert f"checkin_point:session:{sid}" in cbs
+
+
+def test_import_file_step_shows_city_picker_when_admin_sees_all_cities(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.set_state(CheckinImport.waiting_file))
+    message = _FakeMessage(ADMIN_ID, document=_FakeDocument())
+    bot = _FakeBot(_one_record_csv())
+    asyncio.run(admin_checkin.checkin_import_file_step(message, state, bot))
+
+    texts = _flat_text(message)
+    assert any("Из какого города точка" in t for t in texts)
+    kb = message.sent[-1][1]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert any(cb.startswith("checkin_point_city:") for cb in cbs)
+
+
+def test_checkin_point_city_pick_shows_point_picker_for_chosen_city(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    monkeypatch.setattr(timeutil_mod, "msk_now", lambda: datetime(2026, 10, 3, 10, 30))
+    sid = asyncio.run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+
+    cb = _FakeCallback("checkin_point_city:spb", ADMIN_ID)
+    asyncio.run(admin_checkin.checkin_point_city_pick(cb))
+
+    kb = cb.message.sent[-1][1]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "checkin_point:entry" in cbs
+    assert f"checkin_point:session:{sid}" in cbs
+
+
+def test_checkin_point_pick_session_new_wrong_city_and_not_found(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(_insert_user(1, status="approved", season="YL'26", full_name="Иванов Иван"))
+    sid = asyncio.run(db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+
+    async def _set_city(uid, city):
+        async with _connect() as conn:
+            await conn.execute("UPDATE users SET event_city = ? WHERE telegram_id = ?", (city, uid))
+            await conn.commit()
+
+    asyncio.run(_set_city(1, "msk"))
+    asyncio.run(_insert_user(2, status="approved", season="YL'26", full_name="Петров Пётр"))
+    asyncio.run(_set_city(2, "spb"))  # другой город форума -- отказ
+
+    tok1 = asyncio.run(db.get_or_create_checkin_token(1))
+    tok2 = asyncio.run(db.get_or_create_checkin_token(2))
+    qr_ok = build_payload("YL26", "Иванов Иван", "Казань", tok1)
+    qr_wrong_city = build_payload("YL26", "Петров Пётр", "Москва", tok2)
+    qr_unknown = build_payload("YL26", "Чужой Чужаков", "Тюмень", "no-such-token")
+
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.update_data(checkin_records=[
+        {"qr": qr_ok, "scanned_at": "2026-10-03 10:05:00"},
+        {"qr": qr_wrong_city, "scanned_at": "2026-10-03 10:05:00"},
+        {"qr": qr_unknown, "scanned_at": None},
+    ]))
+    cb = _FakeCallback(f"checkin_point:session:{sid}", ADMIN_ID)
+    asyncio.run(admin_checkin.checkin_point_pick(cb, state))
+    report = _flat_text(cb.message)[0]
+    assert "Отмечено новых: 1" in report
+    assert "не найдено: 1" in report
+    assert "Другой город форума: 1" in report
+    assert asyncio.run(db.count_checkins_by_point(f"session:{sid}")) == 1
+    assert asyncio.run(db.count_checkins_by_point("entry")) == 1  # авто-вход от новой сессии
+
+
+def test_checkin_point_pick_session_moved_and_outside_time_window(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(_insert_user(1, status="approved", season="YL'26", full_name="Иванов Иван"))
+
+    async def _set_city(uid, city):
+        async with _connect() as conn:
+            await conn.execute("UPDATE users SET event_city = ? WHERE telegram_id = ?", (city, uid))
+            await conn.commit()
+
+    asyncio.run(_set_city(1, "msk"))
+    sid1 = asyncio.run(db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Зал А"))
+    sid2 = asyncio.run(db.create_program_session("msk", "2026-10-03", "10:30", "11:30", "Зал Б"))
+    tok1 = asyncio.run(db.get_or_create_checkin_token(1))
+    qr_ok = build_payload("YL26", "Иванов Иван", "Казань", tok1)
+
+    # Первая выгрузка -- отметка на sid1.
+    state1 = _new_state(ADMIN_ID)
+    asyncio.run(state1.update_data(checkin_records=[{"qr": qr_ok, "scanned_at": "2026-10-03 10:05:00"}]))
+    cb1 = _FakeCallback(f"checkin_point:session:{sid1}", ADMIN_ID)
+    asyncio.run(admin_checkin.checkin_point_pick(cb1, state1))
+    assert "Отмечено новых: 1" in _flat_text(cb1.message)[0]
+
+    # Вторая выгрузка -- тот же делегат перешёл на sid2 (D-20 «перенос»), время скана вне
+    # интервала sid2 (10:30-11:30 ±30 мин = 10:00-12:00) -- «05:00» вне окна.
+    state2 = _new_state(ADMIN_ID)
+    asyncio.run(state2.update_data(checkin_records=[{"qr": qr_ok, "scanned_at": "2026-10-03 05:00:00"}]))
+    cb2 = _FakeCallback(f"checkin_point:session:{sid2}", ADMIN_ID)
+    asyncio.run(admin_checkin.checkin_point_pick(cb2, state2))
+    report2 = _flat_text(cb2.message)[0]
+    assert "Перенесено с другой сессии слота: 1" in report2
+    assert "Время скана вне интервала сессии: 1" in report2
+    assert asyncio.run(db.count_checkins_by_point(f"session:{sid1}")) == 0
+    assert asyncio.run(db.count_checkins_by_point(f"session:{sid2}")) == 1
