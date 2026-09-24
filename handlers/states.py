@@ -359,6 +359,11 @@ class SosReport(StatesGroup):
     # GameSubmit.proof) — категория/город несёт state.get_data() (sos_category/sos_city).
     details = State()   # текст и/или фото, можно пропустить
     location = State()  # геопозиция, можно пропустить
+    # Ревью 24.09 (находка 3): делегат жмёт «🆘 SOS» повторно, пока прошлый ЕЩЁ свежий
+    # (`sos_reopen_window_minutes`) — следующее ЛЮБОЕ сообщение (не обязательно реплай) уходит
+    # дополнением к прежней заявке (`sos_followup_report_id` в state.get_data()), тот же хвост,
+    # что у реплай-варианта (`handlers/sos.py::_relay_report_followup`).
+    followup = State()
 
 
 class SosChatBind(StatesGroup):

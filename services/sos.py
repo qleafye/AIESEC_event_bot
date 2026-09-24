@@ -202,17 +202,48 @@ def _parse_stamp(raw: str | None) -> datetime | None:
         return None
 
 
-async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> bool:
+# Ревью 24.09 (находка 2): три исхода вместо голого bool — «личка устарела»/«личка молчит,
+# D-9» команды `/sos_id` в группе должны различаться от «бота ещё нет в чате», иначе
+# `handlers/admin_sos.py::asos_bind_step` не может объяснить менеджеру, что сделать дальше
+# (CLAUDE.md: «ошибка объясняет, что делать»).
+BIND_OK = "ok"
+BIND_EXPIRED = "expired"
+BIND_NOT_MEMBER = "not_member"
+
+
+async def _bot_is_chat_member(bot, chat_id: int) -> bool:
+    """`getChatMember(chat_id, bot.id)` (CLAUDE.md tech stack: getChatMember, no new library) —
+    пересланное сообщение доказывает только, что бот КОГДА-ТО состоял в чате (пересылка того
+    старого сообщения не тратит статус членства), а не что он там СЕЙЧАС — бота могли выгнать
+    между добавлением и пересылкой подтверждения."""
+    try:
+        member = await bot.get_chat_member(chat_id, bot.id)
+        return getattr(member, "status", None) in ("member", "administrator", "creator")
+    except Exception as e:
+        logger.info(
+            "sos._bot_is_chat_member: get_chat_member(%s) failed: %s: %s",
+            chat_id, type(e).__name__, e,
+        )
+        return False
+
+
+async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> str:
     """Общий хвост обеих веток подтверждения (пересылка в личке / команда `/sos_id` в
     группе) — резолвит и потребляет заявку, привязывает чат к ГОРОДУ ИЗ ЗАЯВКИ (не аргумент —
     единственный источник правды, что просили привязать, это сама заявка, поставленная
     `asos_bind_start` ДО отправки бота в группу), шлёт подтверждение личным сообщением
-    (никогда не пишет в саму группу, тот же приём, что `chat_tracking`/D-1). Не находит
-    подходящей заявки (просрочена/не было) -> False, вызывающий решает, что сказать (личка
-    получает явный ответ; команда в группе — молчит, D-9)."""
+    (никогда не пишет в саму группу, тот же приём, что `chat_tracking`/D-1).
+
+    Возвращает `BIND_OK` / `BIND_EXPIRED` (заявка просрочена/не было — вызывающий решает, что
+    сказать: личка получает явный ответ, команда в группе молчит, D-9) / `BIND_NOT_MEMBER`
+    (ревью 24.09, находка 2: бота сейчас нет в целевом чате — заявка НЕ потребляется, менеджер
+    может добавить бота и переслать сообщение ещё раз без похода в «🔗 Привязать чат SOS»
+    заново)."""
     pending = await get_pending_bind(admin_id)
     if pending is None:
-        return False
+        return BIND_EXPIRED
+    if not await _bot_is_chat_member(bot, chat_id):
+        return BIND_NOT_MEMBER
     await clear_pending_bind(admin_id)
     await bind_sos_chat(admin_id, chat_id, title, pending.get("city"))
     try:
@@ -222,7 +253,7 @@ async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> bo
         )
     except Exception as e:
         logger.info("sos.complete_chat_bind: не удалось подтвердить admin_id=%s: %s", admin_id, e)
-    return True
+    return BIND_OK
 
 
 # ── Карточка SOS (пункт 3 плана) — маркеры "🆔"+"🆘" для реплай-детекции, та же идиома, что
@@ -275,6 +306,13 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
         lines.append(f"📍 https://maps.google.com/?q={lat},{lon}")
     lines.append(f"🕓 {format_stamp(report.get('created_at'), stored_utc=False)}")
 
+    # Ревью 24.09 (находка 3): «старое» открытое SOS того же делегата разрешено (окно
+    # `sos_reopen_window_minutes` истекло) — карточка НОВОГО SOS честно ссылается на прежний,
+    # не привязанный (тот остаётся открытым и не подхватывается автоматически).
+    prior_id = report.get("prior_open_report_id")
+    if prior_id:
+        lines.append(f"⚠️ У делегата есть открытый SOS #{prior_id}")
+
     # Пункт 3 плана: карточка обновляется «Взял: … в HH:MM» после «🙋 Беру», «✅ Решено …» после
     # решения — тот же приём, что `handlers/admin_sos.py::_row_text` (журнал экрана менеджера),
     # здесь для карточки, которую видит весь чат оргов.
@@ -299,36 +337,174 @@ def build_card_kb(report_id: int):
     ]])
 
 
-async def post_card(bot, report_id: int) -> bool:
+# ── Ревью 24.09 (находка 1): `post_card` раньше возвращал голый `bool` («ушло в чат?»), который
+# `handlers/sos.py::_finalize_sos` даже не читал — делегат слышал «Оргкомитет получил» и тогда,
+# когда карточка не дошла НИКУДА (чат упал, фоллбэк-веер разошёлся нулю получателей, например
+# все держатели `moderate_reg` заблокировали бота). `PostCardResult` несёт РЕАЛЬНОЕ число
+# доставок по каждому каналу — вызывающий код сам решает, что сказать делегату
+# (`delivered_total == 0` -> честный текст + контакт + повторная попытка).
+class PostCardResult:
+    __slots__ = ("chat_delivered", "dm_delivered")
+
+    def __init__(self, chat_delivered: bool = False, dm_delivered: int = 0):
+        self.chat_delivered = chat_delivered
+        self.dm_delivered = dm_delivered
+
+    @property
+    def delivered_total(self) -> int:
+        return (1 if self.chat_delivered else 0) + self.dm_delivered
+
+    def __repr__(self) -> str:  # отладка/тесты
+        return f"PostCardResult(chat_delivered={self.chat_delivered}, dm_delivered={self.dm_delivered})"
+
+
+async def post_card(bot, report_id: int) -> PostCardResult:
     """Публикует карточку (пункт 3 плана): в привязанный чат SOS города, либо (чат не привязан
     ИЛИ отправка упала) — фоллбэк-веером в личку держателям `moderate_reg` города (та же капа,
     что экран менеджера), с ТЕМИ ЖЕ кнопками «Беру»/«Решено» — атомарный захват
     (`database.db.claim_sos_report`) работает одинаково для обоих путей, первый клик выигрывает
     независимо от числа разошедшихся копий. `card_message_id` сохраняется ТОЛЬКО для чата
     (тред «ответ реплаем» — пункт 3 плана); у веера личных копий общего треда физически нет —
-    известное ограничение, задокументировано в SUMMARY. Возвращает `True`, если карточка ушла
-    в чат (для решения о повторном авто-фоллбэке звонящим кодом не нужно, но полезно логам)."""
+    известное ограничение, задокументировано в SUMMARY. Возвращает `PostCardResult` — реальное
+    число доставок, не голый факт «дошло ли в чат» (ревью 24.09, находка 1).
+
+    Чат мигрировал в супергруппу (`TelegramMigrateToChat`) — перепривязывает `sos_chat_id`
+    города на новый `migrate_to_chat_id` и повторяет ОДНУ попытку в новый chat_id, прежде чем
+    уйти в фоллбэк (находка 2, «здоровье чата»). Любая другая ошибка отправки в чат — чат
+    помечается нездоровым (`_mark_chat_unhealthy`, троттлинг алерта менеджерам — раз в час)."""
     from database.db import get_user, set_sos_card
 
     report = await get_sos_report(report_id)
     if report is None:
-        return False
+        return PostCardResult()
     user = await get_user(report["telegram_id"])
     text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
     kb = build_card_kb(report_id)
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
+        from aiogram.exceptions import TelegramMigrateToChat
+
+        chat_id = chat["chat_id"]
         try:
-            msg = await bot.send_message(chat["chat_id"], text, parse_mode="HTML", reply_markup=kb)
-            await set_sos_card(report_id, chat["chat_id"], msg.message_id)
-            return True
+            msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
+            await set_sos_card(report_id, chat_id, msg.message_id)
+            _mark_chat_healthy(chat_id)
+            return PostCardResult(chat_delivered=True)
+        except TelegramMigrateToChat as e:
+            new_chat_id = e.migrate_to_chat_id
+            logger.warning(
+                "sos.post_card: чат id=%s мигрировал в супергруппу id=%s, перепривязываю",
+                chat_id, new_chat_id,
+            )
+            await bind_sos_chat(None, new_chat_id, chat.get("title") or "", report.get("city"))
+            try:
+                msg = await bot.send_message(new_chat_id, text, parse_mode="HTML", reply_markup=kb)
+                await set_sos_card(report_id, new_chat_id, msg.message_id)
+                _mark_chat_healthy(new_chat_id)
+                return PostCardResult(chat_delivered=True)
+            except Exception as e2:
+                logger.error(
+                    "sos.post_card: повтор в новый чат id=%s (после миграции) тоже упал: %s",
+                    new_chat_id, e2,
+                )
+                await _mark_chat_unhealthy(new_chat_id, report.get("city"))
         except Exception as e:
             logger.error(
                 "sos.post_card: не удалось отправить в чат id=%s, ухожу в фоллбэк: %s",
-                chat["chat_id"], e,
+                chat_id, e,
             )
-    await _fallback_fanout(bot, report, text, kb)
-    return False
+            await _mark_chat_unhealthy(chat_id, report.get("city"))
+    dm_count = await _fallback_fanout(bot, report, text, kb)
+    return PostCardResult(dm_delivered=dm_count)
+
+
+async def record_delivery_outcome(report_id: int, result: PostCardResult) -> None:
+    """Хвост `post_card` (изначальная попытка ИЛИ `delivery_retry_job`) — штампует/снимает
+    `sos_reports.delivery_failed_at` по факту, доставлено ли хоть кому-то (находка 1)."""
+    from database.db import set_sos_delivery_failed
+
+    await set_sos_delivery_failed(report_id, result.delivered_total == 0)
+
+
+# ── Повторная попытка доставки (пункт 1 плана, находка 1) — ОДНА попытка через минуту, джоба
+# перечитывает статус ПЕРЕД повтором (та же идиома, что escalation_job ниже): решённая/уже
+# доставленная заявка не получает лишний повтор.
+
+def _delivery_retry_job_id(report_id: int) -> str:
+    return f"sos_delivery_retry_{report_id}"
+
+
+def schedule_delivery_retry(report_id: int, delay_minutes: int = 1) -> None:
+    try:
+        from services.scheduler import _now_moscow_naive, get_scheduler
+
+        run_at = _now_moscow_naive() + timedelta(minutes=max(1, delay_minutes))
+        get_scheduler().add_job(
+            delivery_retry_job, "date", run_date=run_at, args=[report_id],
+            id=_delivery_retry_job_id(report_id), replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("sos.schedule_delivery_retry(%s) failed: %s: %s", report_id, type(e).__name__, e)
+
+
+async def delivery_retry_job(report_id: int) -> None:
+    try:
+        report = await get_sos_report(report_id)
+        if report is None or report.get("resolved_at") or not report.get("delivery_failed_at"):
+            return  # решён, не найден или уже доставлен другим путём — повтор не нужен
+        import services.scheduler as scheduler_module
+
+        bot = scheduler_module.get_bot()
+        result = await post_card(bot, report_id)
+        await record_delivery_outcome(report_id, result)
+        if result.delivered_total == 0:
+            logger.error(
+                "sos.delivery_retry_job(%s): повторная попытка тоже не доставлена никому",
+                report_id,
+            )
+    except Exception as e:
+        logger.error("sos.delivery_retry_job(%s) failed: %s: %s", report_id, type(e).__name__, e)
+
+
+# ── Здоровье привязанного чата (пункт 2 плана, находка 2) — процессный (не в БД) словарь,
+# та же форма, что `handlers/admin_caps.py::_blocked_notified_at` (троттлинг «раз в час», после
+# рестарта алерт может повториться — это приемлемо, не критичный журнал). Красная строка на
+# экране менеджера (`handlers/admin_sos.py::render_sos_screen`) читает `chat_is_unhealthy`
+# напрямую — тот же процесс шлёт алерт и рендерит экран.
+_unhealthy_chats: set[int] = set()
+_chat_alert_sent_at: dict[int, float] = {}
+_CHAT_ALERT_COOLDOWN_SECONDS = 60 * 60
+
+
+def chat_is_unhealthy(chat_id: int) -> bool:
+    return chat_id in _unhealthy_chats
+
+
+def _mark_chat_healthy(chat_id: int) -> None:
+    _unhealthy_chats.discard(chat_id)
+
+
+async def _mark_chat_unhealthy(chat_id: int, city: str | None) -> None:
+    import time
+
+    _unhealthy_chats.add(chat_id)
+    now = time.monotonic()
+    last = _chat_alert_sent_at.get(chat_id, 0.0)
+    if now - last < _CHAT_ALERT_COOLDOWN_SECONDS:
+        return  # алерт этого чата уже уходил в пределах часа — тихо, без повтора
+    _chat_alert_sent_at[chat_id] = now
+    try:
+        import services.scheduler as scheduler_module
+        from handlers.admin_caps import notify_by_capability
+
+        bot = scheduler_module.get_bot()
+        await notify_by_capability(
+            bot, "settings",
+            "⚠️ Чат SOS недоступен — SOS идут в личку. Перепривяжите чат.",
+            city=city,
+        )
+    except Exception as e:
+        logger.error("sos._mark_chat_unhealthy: алерт менеджерам не отправлен: %s: %s", type(e).__name__, e)
 
 
 async def _fallback_fanout(bot, report: dict, text: str, kb) -> int:
@@ -423,3 +599,89 @@ async def _deliver_escalation(bot, report: dict) -> None:
         + render_card_text(report, user)
     )
     await notify_by_capability(bot, "moderate_reg", alert_text, parse_mode="HTML", city=report.get("city"))
+
+
+# ── Ревью 24.09 (находка 3, часть А): напоминание взявшему «🙋 Беру», кто не отметил «✅
+# Решено» — тот же самопланирующийся приём, что цикл chat_tracking-джоб: каждый тик, если
+# статус всё ещё «взят» (не решён), шлёт напоминание И СРАЗУ ставит себя заново на тот же
+# интервал (D-25 идиома «репитер», не одноразовая date-джоба, как эскалация выше). Тик,
+# заставший статус «решён»/строку исчезнувшей, просто НЕ перепланирует себя — джоба гаснет
+# сама, отдельной отмены на "Решено" не нужно (но `cancel_claimed_reminder` всё равно вызывается
+# явно в `admin_sos.sos_resolve` — снимает джобу МГНОВЕННО, не дожидаясь следующего тика).
+DEFAULT_CLAIMED_REMIND_MINUTES = 20
+
+
+def _claimed_remind_job_id(report_id: int) -> str:
+    return f"sos_claimed_remind_{report_id}"
+
+
+def schedule_claimed_reminder(report_id: int, minutes: int) -> None:
+    try:
+        from services.scheduler import _now_moscow_naive, get_scheduler
+
+        run_at = _now_moscow_naive() + timedelta(minutes=max(1, minutes))
+        get_scheduler().add_job(
+            claimed_reminder_job, "date", run_date=run_at, args=[report_id, minutes],
+            id=_claimed_remind_job_id(report_id), replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("sos.schedule_claimed_reminder(%s) failed: %s: %s", report_id, type(e).__name__, e)
+
+
+def cancel_claimed_reminder(report_id: int) -> None:
+    try:
+        from services.scheduler import get_scheduler
+
+        get_scheduler().remove_job(_claimed_remind_job_id(report_id))
+    except Exception:
+        pass  # не стояла или уже сработала — оба случая ОК (форма cancel_escalation)
+
+
+async def claimed_reminder_job(report_id: int, minutes: int) -> None:
+    """Перечитывает статус ПЕРЕД отправкой (та же идиома, что `escalation_job`) — решённая
+    заявка тихо гасит цепочку репитера, не перепланируя себя дальше."""
+    try:
+        report = await get_sos_report(report_id)
+        if report is None or report_status(report) != STATUS_CLAIMED:
+            return
+        claimant_id = report.get("claimed_by")
+        if claimant_id:
+            import services.scheduler as scheduler_module
+
+            bot = scheduler_module.get_bot()
+            text = (
+                f"⏰ SOS #{report_id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — "
+                "если уже разобрался(лась), не забудь нажать её под карточкой."
+            )
+            try:
+                await bot.send_message(claimant_id, text)
+            except Exception as e:
+                logger.info(
+                    "sos.claimed_reminder_job: не удалось написать claimant id=%s: %s",
+                    claimant_id, e,
+                )
+        schedule_claimed_reminder(report_id, minutes)  # репитер — тот же интервал заново
+    except Exception as e:
+        logger.error("sos.claimed_reminder_job(%s) failed: %s: %s", report_id, type(e).__name__, e)
+
+
+# ── Ревью 24.09 (находка 3, часть Б): «свежий» открытый SOS того же делегата — вместо
+# повторной блокировки (старое поведение `sos_already_open_text` на КАЖДОМ повторном тапе)
+# предлагает дополнить существующую заявку; «старый» открытый — новый SOS разрешён, с
+# явной ссылкой в карточке на прежний (`prior_open_report_id`, см. `database.db.
+# create_sos_report`/`render_card_text`).
+DEFAULT_REOPEN_WINDOW_MINUTES = 10
+
+
+def report_age_minutes(report: dict) -> float | None:
+    stamp = _parse_stamp(report.get("created_at"))
+    if stamp is None:
+        return None
+    return (msk_now() - stamp).total_seconds() / 60
+
+
+def claim_status_label(report: dict) -> str:
+    if report.get("claimed_by") is not None:
+        who = report.get("claimed_by_name") or "коллега"
+        return f"взял(а) {who}"
+    return "ещё не взяли"

@@ -79,15 +79,56 @@ async def _cancel(message: types.Message, state: FSMContext) -> None:
     )
 
 
+# ── Ревью 24.09 (находка 3): «свежий» открытый SOS того же делегата (младше
+# `sos_reopen_window_minutes`) больше НЕ блокирует наглухо — предлагает дополнить существующую
+# заявку (следующее сообщение уйдёт в её тред, см. `SosReport.followup` ниже). «Старый» —
+# новый SOS разрешён (прежний остаётся открытым, в карточке нового — честная ссылка на него,
+# `services.sos.render_card_text`/`database.db.create_sos_report(prior_open_report_id=...)`).
+
+async def _reopen_window_minutes(city: str | None) -> float:
+    raw = await get_setting_typed_for_city("sos_reopen_window_minutes", city)
+    try:
+        return float(raw) if raw else sos_service.DEFAULT_REOPEN_WINDOW_MINUTES
+    except (TypeError, ValueError):
+        return sos_service.DEFAULT_REOPEN_WINDOW_MINUTES
+
+
+async def _is_recent_open_report(report: dict, city: str | None) -> bool:
+    age = sos_service.report_age_minutes(report)
+    if age is None:
+        return False  # штамп не распарсился -> не блокируем повторно, ведём себя как «старый»
+    return age < await _reopen_window_minutes(city)
+
+
+async def _recent_followup_text(report: dict) -> str:
+    # Плейсхолдер {claim_status} подставляется ДО перевода (шаблон с плейсхолдером — тот же
+    # известный неполный перевод, что `recall_generic_prompt_text`, handlers/registration.py:836)
+    # — .format здесь, не reg_i18n.tr_text поверх готового текста.
+    raw = await get_setting_typed("sos_recent_followup_text")
+    return raw.format(claim_status=sos_service.claim_status_label(report))
+
+
+async def _offer_followup(message: types.Message, state: FSMContext, report: dict) -> None:
+    await state.set_state(SosReport.followup)
+    await state.update_data(sos_followup_report_id=report["id"])
+    await reg_i18n.say(message, await _recent_followup_text(report))
+
+
 # 🆘 SOS — кнопка главного меню
 @router.message(F.text.in_(MENU_TEXTS["menu_sos"]))
 async def sos_start(message: types.Message, state: FSMContext):
     if not await ensure_registered(message):
         return
-    if await get_open_sos_report(message.from_user.id) is not None:
-        await reg_i18n.say(message, await get_setting_typed("sos_already_open_text"))
-        return
+    open_report = await get_open_sos_report(message.from_user.id)
+    prior_open_id = None
+    if open_report is not None:
+        city_for_window = await _resolve_city(message.from_user.id)
+        if await _is_recent_open_report(open_report, city_for_window):
+            await _offer_followup(message, state, open_report)
+            return
+        prior_open_id = open_report["id"]
     logger.info(f"User {message.from_user.id} opened SOS")
+    await state.update_data(sos_prior_open_id=prior_open_id)
     await reg_i18n.say(
         message, await get_setting_typed("sos_category_prompt_text"),
         reply_markup=_category_kb(),
@@ -100,19 +141,23 @@ async def sos_pick_category(callback: types.CallbackQuery, state: FSMContext):
     if category not in sos_service.CATEGORY_ORDER:
         await callback.answer()
         return
-    # Повторный гейт анти-спама — см. докстринг модуля (гонка «кнопка -> категория»).
-    if await get_open_sos_report(callback.from_user.id) is not None:
-        await callback.answer()
-        lang, tr_map = await reg_i18n.ctx_for(callback)
-        text = reg_i18n.tr_text(await get_setting_typed("sos_already_open_text"), lang, tr_map)
-        try:
-            await callback.message.edit_text(text)
-        except Exception:
-            pass
-        return
-
     city = await _resolve_city(callback.from_user.id)
-    await state.update_data(sos_category=category, sos_city=city)
+    # Повторный гейт анти-спама — см. докстринг модуля (гонка «кнопка -> категория»).
+    open_report = await get_open_sos_report(callback.from_user.id)
+    prior_open_id = None
+    if open_report is not None:
+        if await _is_recent_open_report(open_report, city):
+            await callback.answer()
+            await state.set_state(SosReport.followup)
+            await state.update_data(sos_followup_report_id=open_report["id"])
+            try:
+                await callback.message.edit_text(await _recent_followup_text(open_report))
+            except Exception:
+                pass
+            return
+        prior_open_id = open_report["id"]
+
+    await state.update_data(sos_category=category, sos_city=city, sos_prior_open_id=prior_open_id)
     await state.set_state(SosReport.details)
     await callback.answer()
     try:
@@ -193,13 +238,20 @@ async def _finalize_sos(message: types.Message, state: FSMContext, *,
         message.from_user.id, city, category,
         data.get("sos_details_text"), data.get("sos_details_photo"),
         latitude, longitude,
+        prior_open_report_id=data.get("sos_prior_open_id"),
     )
     logger.info(f"User {message.from_user.id} created SOS #{report_id} (category={category})")
 
+    # Ревью 24.09 (находка 1): раньше результат `post_card` игнорировался целиком — делегат
+    # слышал «Оргкомитет получил» даже когда карточка не дошла НИКУДА (чат упал, фоллбэк-веер
+    # разошёлся нулю получателей). `PostCardResult.delivered_total` — реальное число доставок;
+    # `record_delivery_outcome` штампует/снимает `sos_reports.delivery_failed_at` по факту.
     try:
-        await sos_service.post_card(message.bot, report_id)
+        result = await sos_service.post_card(message.bot, report_id)
     except Exception as e:
         logger.error(f"sos._finalize_sos: post_card({report_id}) failed: {e}")
+        result = sos_service.PostCardResult()
+    await sos_service.record_delivery_outcome(report_id, result)
 
     try:
         minutes_raw = await get_setting_typed_for_city("sos_escalation_minutes", city)
@@ -208,10 +260,27 @@ async def _finalize_sos(message: types.Message, state: FSMContext, *,
         minutes = sos_service.DEFAULT_ESCALATION_MINUTES
     sos_service.schedule_escalation(report_id, minutes)
 
+    if result.delivered_total > 0:
+        await reg_i18n.say(
+            message, await get_setting_typed("sos_sent_text"),
+            reply_markup=await get_main_menu_kb(message.from_user.id),
+        )
+        return
+
+    # Ни в чат, ни фоллбэком в личку — делегат не должен уйти с пустым «получили». Одна
+    # повторная попытка доставки через минуту (джоба перечитывает статус).
+    logger.error(f"sos._finalize_sos: SOS #{report_id} не доставлен НИКОМУ, ставлю повтор")
+    sos_service.schedule_delivery_retry(report_id)
     await reg_i18n.say(
-        message, await get_setting_typed("sos_sent_text"),
+        message, await get_setting_typed("sos_delivery_failed_text"),
         reply_markup=await get_main_menu_kb(message.from_user.id),
     )
+    # Контакт (телефон и т.п.) — сырое значение, НЕ переводится (тот же приём, что
+    # contact_person/contact_vk/contact_tg в handlers/user_actions.py::show_contacts),
+    # отдельным сообщением, чтобы не портить сопоставление корпуса перевода выше.
+    contact = await get_setting_typed_for_city("sos_fallback_contact_text", city)
+    if contact:
+        await message.answer(contact)
 
 
 # ── Ответ делегата на «Ответ по SOS» — снова в тред карточки (пункт 3 плана) ────────────────
@@ -228,19 +297,10 @@ def _is_sos_followup(message: types.Message) -> bool:
     return "🆘" in replied.text and "SOS #" in replied.text
 
 
-@router.message(_is_sos_followup)
-async def sos_delegate_followup(message: types.Message):
-    import re
-
-    from database.db import get_sos_report
-
-    match = re.search(r"SOS #([0-9]+)", message.reply_to_message.text)
-    if not match:
-        return
-    report = await get_sos_report(int(match.group(1)))
-    if report is None or report.get("telegram_id") != message.from_user.id:
-        return  # чужая карточка/устаревшая ссылка — тихо, ничего не пересылаем не по адресу
-
+async def _relay_report_followup(message: types.Message, report: dict) -> None:
+    """Хвост обеих веток дополнения открытого SOS: реплай на карточку (`sos_delegate_followup`
+    ниже) И повторное «🆘 SOS» на СВЕЖУЮ заявку (`SosReport.followup`, ревью 24.09 находка 3) —
+    один и тот же приём доставки, разный триггер."""
     if report.get("chat_id") and report.get("card_message_id"):
         try:
             await message.copy_to(
@@ -249,7 +309,7 @@ async def sos_delegate_followup(message: types.Message):
             return
         except Exception as e:
             logger.warning(
-                f"sos_delegate_followup: не удалось отправить в чат id={report['chat_id']}: {e}",
+                f"_relay_report_followup: не удалось отправить в чат id={report['chat_id']}: {e}",
             )
     # Фоллбэк без треда (чат не привязан или доставка в него упала) — известное ограничение
     # (services/sos.py::post_card docstring): личный веер держателям moderate_reg города, без
@@ -267,4 +327,35 @@ async def sos_delegate_followup(message: types.Message):
             await message.bot.send_message(uid, prefix)
             await message.copy_to(uid)
         except Exception as e:
-            logger.info(f"sos_delegate_followup: не удалось написать id={uid}: {e}")
+            logger.info(f"_relay_report_followup: не удалось написать id={uid}: {e}")
+
+
+@router.message(_is_sos_followup)
+async def sos_delegate_followup(message: types.Message):
+    import re
+
+    from database.db import get_sos_report
+
+    match = re.search(r"SOS #([0-9]+)", message.reply_to_message.text)
+    if not match:
+        return
+    report = await get_sos_report(int(match.group(1)))
+    if report is None or report.get("telegram_id") != message.from_user.id:
+        return  # чужая карточка/устаревшая ссылка — тихо, ничего не пересылаем не по адресу
+    await _relay_report_followup(message, report)
+
+
+# Ревью 24.09 (находка 3): «свежий» открытый SOS — повторное «🆘 SOS» ставит это состояние
+# (`_offer_followup` выше), следующее ЛЮБОЕ сообщение делегата (не обязательно реплай) уходит
+# дополнением к прежней заявке, ОДИН раз — состояние снимается сразу после.
+@router.message(SosReport.followup)
+async def sos_followup_step(message: types.Message, state: FSMContext):
+    from database.db import get_sos_report
+
+    data = await state.get_data()
+    await state.clear()
+    report_id = data.get("sos_followup_report_id")
+    report = await get_sos_report(report_id) if report_id else None
+    if report is None:
+        return
+    await _relay_report_followup(message, report)

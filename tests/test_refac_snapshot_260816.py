@@ -1228,6 +1228,7 @@ user_actions|message|sos_location_skip|state:SosReport:*
 user_actions|message|sos_location_step|state:SosReport:*
 user_actions|message|sos_location_invalid|state:SosReport:*
 user_actions|message|sos_delegate_followup|
+user_actions|message|sos_followup_step|state:SosReport:*
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1614,7 +1615,12 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin.py). Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
     # прежним 709-строчным снимком: две чистые вставки (3+5 строк), 0 удалений, 0 реордеров
     # (709 -> 717).
-    assert len(GOLDEN_SNAPSHOT) == 717
+    # Ревью 24.09 (находка 3, SOS): +1 user_actions.message (sos_followup_step, state:
+    # SosReport:*) — «свежий» открытый SOS предлагает дополнить, следующее сообщение делегата
+    # уходит в тред тем же хвостом, что sos_delegate_followup (handlers/sos.py). Встал сразу
+    # после sos_delegate_followup и ПЕРЕД reg_handoff_idle_fallback (тот же файл, следующая
+    # функция по исходнику). Чистая вставка, 0 удалений, 0 реордеров (717 -> 718).
+    assert len(GOLDEN_SNAPSHOT) == 718
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
