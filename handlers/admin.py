@@ -969,3 +969,15 @@ from handlers import admin_city_move  # noqa: E402
 # (handlers/admin_checkin_floor.py) — registers checkin_floor_open/checkin_floor_refresh in the
 # very tail of admin.router (golden snapshot: a clean append, right after admin_forum_ready).
 from handlers import admin_checkin_floor  # noqa: E402
+
+
+
+# Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): shared-router seam import for
+# «🔗 Пригласить волонтёров» (handlers/admin_volunteer_invite.py) — registers
+# volinvite_entry/volinvite_city_pick/volinvite_cfg_screen/volinvite_toggle_go/
+# volinvite_new_start/volinv_link_expiry_pick/volunteer_invite_wizard_cancel/
+# volinv_link_date_step/volinv_rights_expiry_pick/volinv_rights_date_step/
+# volinv_limit_pick_and_create/volinv_revoke_confirm/volinv_revoke_go/volinv_revoke_no/
+# volinv_users_list/volinv_remove_user in the very tail of admin.router (golden snapshot: a
+# clean append, right after admin_program_view).
+from handlers import admin_volunteer_invite  # noqa: E402
