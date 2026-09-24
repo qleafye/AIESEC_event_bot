@@ -39,6 +39,14 @@ DEFAULT_CEILING = 850
 # documented reason. Ceiling per file = current line count + ~5% slack, rounded. To raise one:
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
+    "admin_program.py": (
+        856,
+        "D-29 (24.09, «одна кнопка программы у делегата»): +6 строк — строка статуса + кнопка "
+        "цикла «Таблица/Фото» на экране «🗓 Программа форума» (`render_city_program_screen`); "
+        "сам рендер и хендлер цикла живут в новом шве `handlers/admin_program_view.py` (кнопка "
+        "нужна и хабу «🎪 Форум: функции», второй копии не заводим) — здесь только вызов; "
+        "850 -> 856, потолок был уже на границе, поднят до фактического размера."
+    ),
     "registration.py": (
         2650,
         "Квик 260923-p37 (CITY-REG-CLOSE): +43 строки — общий гейт закрытия города по дате "
@@ -435,7 +443,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        934,
+        942,
+        "D-29 (24.09, «одна кнопка программы у делегата»): +8 строк — шов-импорт `from handlers "
+        "import admin_program_view` (циклический тумблер таблица/фото Mini App) в самый хвост "
+        "файла, после admin_forum_functions (934 -> 942). "
         "D-36 (24.09, аудит форумных тумблеров): +7 строк — шов-импорт `from handlers import "
         "admin_forum_functions` («🎪 Форум: функции» + недостающий экран шпаргалки волонтёра) "
         "в самый хвост файла, после admin_sos (927 -> 934). "
@@ -465,7 +476,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
-        2068,
+        2072,
+        "D-29 (24.09, per_city фото с фолбэком на общее): show_program резолвит фото программы "
+        "через services.program.resolve_program_photo(_delegate_city(...)) вместо голого "
+        "get_setting — своё городское фото ИЛИ общее, тот же приоритет, что читает Mini App; "
+        "2068 -> 2072. "
         "D-29 (владелец 24.09, «одна кнопка программы»): show_program вобрал запасной вид "
         "через handlers.program.send_program_schedule_text (фото -> текст сессий -> "
         "empty-state) + шов-комментарий про объединение — 2055 -> 2068, потолок с небольшим "

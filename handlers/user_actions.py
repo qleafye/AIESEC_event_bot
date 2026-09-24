@@ -1147,7 +1147,11 @@ async def show_program(message: types.Message):
 
     logger.info(f"User {message.from_user.id} requested Program")
 
-    program_file_id = await get_setting("program_photo_file_id")
+    # D-29 (per_city фото с фолбэком на общее): само фото может отличаться по городу
+    # (регион/Москва — разная готовность программы), подпись остаётся общей (Pitfall 1,
+    # 09.2-RESEARCH — per_city вариант подписи отложен).
+    from services.program import resolve_program_photo
+    program_file_id = await resolve_program_photo(await _delegate_city(message.from_user.id))
     program_caption = await get_setting("program_caption")
     program_caption = html.escape(program_caption) if program_caption else program_caption
 
