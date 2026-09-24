@@ -931,6 +931,19 @@ ADMIN_CAPS: dict[str, str] = {
     "checkinqr_time:*": "moderate_reg",
     "state:CheckinQrTimeEdit:*": "moderate_reg",
 
+    # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — единый статус-экран (все
+    # тумблеры в одном месте) + недостающий экран «Шпаргалка волонтёра накануне» (D-33).
+    # Капа «moderate_reg» — тот же довод, что у checkinqr_cfg выше (массовая рассылка + правка
+    # расписания, не рутинное сканирование волонтёра); отдельные строки хаба ссылаются на
+    # экраны с ДРУГИМИ капами (admin_checkin/checkin, admin_menu_buttons/settings и т.д.) — та
+    # же развилка «вход широкий, действие узкое», что у «⚙️ Настройки QR» на admin_checkin.
+    "admin_forum_functions": "moderate_reg",
+    "forumfn_city:*": "moderate_reg",
+    "checkinvol_cfg:*": "moderate_reg",
+    "checkinvol_toggle:*": "moderate_reg",
+    "checkinvol_time:*": "moderate_reg",
+    "state:CheckinVolGuideTimeEdit:*": "moderate_reg",
+
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
     # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
     # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).

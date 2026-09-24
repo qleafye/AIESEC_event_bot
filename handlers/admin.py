@@ -925,3 +925,10 @@ from handlers import admin_checkin  # noqa: E402
 # asos_bind_step/sos_claim/sos_resolve/admin_reply_to_sos in the very tail of admin.router
 # (golden snapshot: a clean append).
 from handlers import admin_sos  # noqa: E402
+
+# D-36 (24.09, аудит форумных тумблеров): shared-router seam import for «🎪 Форум: функции»
+# (handlers/admin_forum_functions.py) — registers admin_forum_functions_entry/
+# admin_forum_functions_city_pick/checkinvol_cfg_screen/checkinvol_toggle_go/
+# checkinvol_time_start/cancel_checkinvol_time_edit/checkinvol_time_step in the very tail of
+# admin.router (golden snapshot: a clean append, right after admin_sos).
+from handlers import admin_forum_functions  # noqa: E402

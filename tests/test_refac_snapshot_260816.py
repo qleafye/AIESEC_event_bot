@@ -579,6 +579,22 @@ def _build_snapshot_lines():
 # объединённая кнопка живёт под старым ключом `menu_program`). Пересчитано RUNNING
 # `_build_snapshot_lines()` и сверено diff'ом с прежним 727-строчным снимком: одно чистое
 # удаление, 0 вставок, 0 реордеров (727 -> 726).
+# Drift note (D-36, 24.09, «Форум: функции» + недостающий экран шпаргалки волонтёра): +8
+# handlers.admin.router (handlers/admin_forum_functions.py, импортирован ХВОСТОМ admin.py
+# сразу после admin_sos) — 3 message (`cancel_checkinvol_time_edit` регистрируется ДВАЖДЫ,
+# `Command("cancel")` и `F.text == "Отмена"`, тот же приём, что у соседних cancel_* в файле,
+# плюс `checkinvol_time_step`), встали в хвост message-блока admin.router, СРАЗУ ПОСЛЕ
+# `admin_reply_to_sos` (последний message-хендлер, физически зарегистрированный к этому
+# моменту исполнения). 5 callback_query (`admin_forum_functions_entry`/
+# `admin_forum_functions_city_pick`/`checkinvol_cfg_screen`/`checkinvol_toggle_go`/
+# `checkinvol_time_start`) встали СРАЗУ ПОСЛЕ `asos_settings_edit_start` и ПЕРЕД
+# `prog_fbday_open` — `handlers/session_feedback.py` (владелец prog_fb*) импортируется ПОЗЖЕ,
+# лениво через хвост `handlers/program.py`/`handlers/user_actions.py`, а не из admin.py
+# напрямую, поэтому его хендлеры физически регистрируются на УЖЕ существующем `admin.router`
+# позже моих — не реордер, естественный порядок двух независимых цепочек импорта. Пересчитано
+# RUNNING `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против
+# прежнего 726-строчного снимка: ровно две чистые вставки (3 + 5 строк), 0 удалений, 0
+# реордеров (726 -> 734).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -706,6 +722,9 @@ admin|message|checkinqr_time_step|state:CheckinQrTimeEdit:*
 admin|message|asos_bind_cancel|state:SosChatBind:*
 admin|message|asos_bind_step|state:SosChatBind:*
 admin|message|admin_reply_to_sos|
+admin|message|cancel_checkinvol_time_edit|state:CheckinVolGuideTimeEdit:*,state:CheckinVolGuideTimeEdit:*
+admin|message|cancel_checkinvol_time_edit|state:CheckinVolGuideTimeEdit:*,state:CheckinVolGuideTimeEdit:*
+admin|message|checkinvol_time_step|state:CheckinVolGuideTimeEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1155,6 +1174,11 @@ admin|callback_query|asos_noop|asos_noop
 admin|callback_query|asos_set_delay|asos_set_delay:*
 admin|callback_query|asos_delay_custom_start|asos_delay_custom:*
 admin|callback_query|asos_settings_edit_start|asos_settings_edit:*
+admin|callback_query|admin_forum_functions_entry|admin_forum_functions
+admin|callback_query|admin_forum_functions_city_pick|forumfn_city:*
+admin|callback_query|checkinvol_cfg_screen|checkinvol_cfg:*
+admin|callback_query|checkinvol_toggle_go|checkinvol_toggle:*
+admin|callback_query|checkinvol_time_start|checkinvol_time:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1690,7 +1714,7 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 733-строчным снимком: 2 чистых
     # удаления блоков (9+1), 1 чистая вставка (3), 0 реордеров вне удалённого/вставленного
     # диапазона (733 -> 727).
-    assert len(GOLDEN_SNAPSHOT) == 726
+    assert len(GOLDEN_SNAPSHOT) == 734
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -327,6 +327,14 @@ class CheckinQrTimeEdit(StatesGroup):
     waiting_value = State()
 
 
+class CheckinVolGuideTimeEdit(StatesGroup):
+    # D-36 (24.09, аудит форумных тумблеров): ввод «ЧЧ:ММ» для шпаргалки волонтёра накануне
+    # форума (handlers/admin_forum_functions.py, checkin_volunteer_guide_broadcast_time) — тот
+    # же приём, что CheckinQrTimeEdit выше, но один временной слот, не два (город — в
+    # state.get_data()).
+    waiting_value = State()
+
+
 class ProgramSessionField(StatesGroup):
     # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
     # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за
