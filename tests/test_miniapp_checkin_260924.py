@@ -299,10 +299,11 @@ def test_points_bound_manager_gets_entry_and_todays_sessions_live_first(tmp_path
     assert body["cities"] is None
     points = body["points"]
     assert points[0]["point"] == "entry"
-    assert points[1]["point"] == f"session:{now_id}"
-    assert points[1]["live"] is True
-    assert points[2]["point"] == f"session:{later}"
-    assert points[2]["live"] is False
+    assert points[1]["point"] == "training"  # бэклог №7: «🧪 Тренировка» сразу за входом (D-28)
+    assert points[2]["point"] == f"session:{now_id}"
+    assert points[2]["live"] is True
+    assert points[3]["point"] == f"session:{later}"
+    assert points[3]["live"] is False
 
 
 def test_points_unbound_manager_needs_city_picker_without_query(tmp_path):
@@ -317,6 +318,9 @@ def test_points_unbound_manager_needs_city_picker_without_query(tmp_path):
     assert "spb" in codes
     assert body["points"] == [{
         "point": "entry", "label": "🚪 Вход", "live": None, "count": 0, "capacity": None,
+    }, {
+        "point": "training", "label": "🧪 Тренировка", "live": None, "count": None,
+        "capacity": None, "note": "Тренировка: отметка не записана.",
     }]
 
 
@@ -330,7 +334,7 @@ def test_points_unbound_manager_resolves_with_city_query(tmp_path, monkeypatch):
     body = resp.json()
     assert body["city"] == "spb"
     assert body["cities"] is None
-    assert [p["point"] for p in body["points"]] == ["entry", f"session:{sid}"]
+    assert [p["point"] for p in body["points"]] == ["entry", "training", f"session:{sid}"]
 
 
 def test_points_module_off_uses_default_city_without_picker(tmp_path, monkeypatch):
@@ -343,7 +347,7 @@ def test_points_module_off_uses_default_city_without_picker(tmp_path, monkeypatc
     body = resp.json()
     assert body["city"] == default_code
     assert body["cities"] is None
-    assert [p["point"] for p in body["points"]] == ["entry", f"session:{sid}"]
+    assert [p["point"] for p in body["points"]] == ["entry", "training", f"session:{sid}"]
 
 
 def test_points_carries_count_and_capacity(tmp_path, monkeypatch):
