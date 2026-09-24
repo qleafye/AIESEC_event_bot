@@ -7,10 +7,11 @@
 КАЖДОЙ неважной рассылки (спам), теперь оно естественным образом не повторяется чаще самой
 рассылки. Отдельным сообщением предложение осталось ТОЛЬКО у альбома (`send_media_group` не
 принимает `reply_markup`) — и только раз в сутки на получателя (`users.mute_offer_shown_date`).
-И только в день форума города получателя (`services.scheduler.offer_mute_today_if_forum_day`)
-— иначе кнопка лишняя (D-XX). Заглушка — колонка `users.mute_broadcasts_until` (MSK-дата),
-проверяется при КАЖДОЙ доставке (`database.db.get_muted_today_ids`), а не единожды на
-постановке. Важные рассылки игнорируют заглушку полностью (D-XX: важное приходит всегда).
+D-30 (24.09): кнопка доступна ВЕСЬ СЕЗОН, не только в день форума — старый гейт
+`offer_mute_today_if_forum_day` убран целиком (единственное условие теперь — рассылка
+неважная). Заглушка — колонка `users.mute_broadcasts_until` (MSK-дата), проверяется при
+КАЖДОЙ доставке (`database.db.get_muted_today_ids`), а не единожды на постановке. Важные
+рассылки игнорируют заглушку полностью (важное приходит всегда).
 
 pytest-asyncio недоступен — каждый async вызов через `asyncio.run()`, БД — `tmp_path`
 (конвенция `tests/_dbtpl.py::fast_init_db`).
@@ -210,48 +211,12 @@ def test_get_muted_today_ids_only_matches_exact_date(tmp_path):
     asyncio.run(go())
 
 
-# ── Гейт кнопки: только в день форума города получателя ────────────────────────────────────
-
-def test_offer_mute_today_gate_true_on_forum_day(tmp_path, monkeypatch):
-    async def go():
-        fast_init_db()
-        await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
-        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
-
-        assert await sched.offer_mute_today_if_forum_day(DELEGATE_ID) is True
-
-    asyncio.run(go())
-
-
-def test_offer_mute_today_gate_false_other_day(tmp_path, monkeypatch):
-    async def go():
-        fast_init_db()
-        await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "03.10.2026")
-        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
-
-        assert await sched.offer_mute_today_if_forum_day(DELEGATE_ID) is False
-
-    asyncio.run(go())
-
-
-def test_offer_mute_today_gate_false_no_forum_date(tmp_path, monkeypatch):
-    async def go():
-        fast_init_db()
-        await _add_delegate(DELEGATE_ID)
-        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
-
-        assert await sched.offer_mute_today_if_forum_day(DELEGATE_ID) is False
-
-    asyncio.run(go())
-
+# ── D-30 (24.09): кнопка доступна ВЕСЬ СЕЗОН — старый гейт «только в день форума» убран ────
 
 def test_send_mute_offer_if_eligible_important_never_offers(tmp_path, monkeypatch):
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
         monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
 
         class _B:
@@ -265,11 +230,12 @@ def test_send_mute_offer_if_eligible_important_never_offers(tmp_path, monkeypatc
 
 # ── recipient_markup: кнопка «🔕» ВСТРОЕНА в клавиатуру рассылки (не отдельным сообщением) ─
 
-def test_recipient_markup_adds_mute_row_on_forum_day(tmp_path, monkeypatch):
+def test_recipient_markup_adds_mute_row_any_day(tmp_path, monkeypatch):
+    """D-30: кнопка добавляется для неважной рассылки в ЛЮБОЙ день сезона, не только в день
+    форума — `forum_date` намеренно НЕ выставляется в этом тесте."""
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
         monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
 
         markup = await sched.recipient_markup(DELEGATE_ID, important=False)
@@ -279,17 +245,16 @@ def test_recipient_markup_adds_mute_row_on_forum_day(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
-def test_recipient_markup_none_when_important_or_not_forum_day(tmp_path, monkeypatch):
+def test_recipient_markup_none_only_when_important(tmp_path, monkeypatch):
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
         monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
 
-        # Не день форума -- нет повода.
-        assert await sched.recipient_markup(DELEGATE_ID, important=False) is None
-        # Важная -- «🔕» не предлагается никогда, даже в день форума.
-        await db.set_setting("forum_date", "24.09.2026")
+        # Важная -- «🔕» не предлагается никогда.
         assert await sched.recipient_markup(DELEGATE_ID, important=True) is None
+        # Неважная -- предлагается, даже без forum_date вовсе (D-30).
+        assert await sched.recipient_markup(DELEGATE_ID, important=False) is not None
 
     asyncio.run(go())
 
@@ -300,7 +265,6 @@ def test_recipient_markup_keeps_managers_own_rows_and_appends_mute_last(tmp_path
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
         monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
 
         own = InlineKeyboardMarkup(inline_keyboard=[[
@@ -320,7 +284,6 @@ def test_send_mute_offer_if_eligible_shows_once_then_skips_same_day(tmp_path, mo
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
         monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
 
         class _B:
@@ -347,7 +310,6 @@ def test_send_mute_offer_if_eligible_shows_again_next_day(tmp_path, monkeypatch)
     async def go():
         fast_init_db()
         await _add_delegate(DELEGATE_ID)
-        await db.set_setting("forum_date", "24.09.2026")
 
         class _B:
             async def send_message(self, *a, **k):
