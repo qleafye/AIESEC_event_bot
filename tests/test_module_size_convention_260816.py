@@ -48,7 +48,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "850 -> 856, потолок был уже на границе, поднят до фактического размера."
     ),
     "registration.py": (
-        2650,
+        2753,
+        "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +103 строки — "
+        "`_extract_volunteer_invite_code`/`_handle_volunteer_invite` (deep-link `vol_<код>` "
+        "перехватывается В САМОМ НАЧАЛЕ `cmd_start`, до любого другого ветвления — выдача роли "
+        "волонтёра, не анкета делегата; проверка тумблера `volunteer_invite_enabled` ДО "
+        "`claim_volunteer_invite`, чтобы выключенный тумблер не сжигал слот старой ссылки) + "
+        "два новых импорта; 2650 -> 2753. "
         "Квик 260923-p37 (CITY-REG-CLOSE): +43 строки — общий гейт закрытия города по дате "
         "врезан в `_city_fork_then_continue` (keyword-параметр `city_gate`, вызов "
         "`reg_engine.city_gate`/`handlers.reg_city_gate.send_city_closed` на closed/"
@@ -448,11 +454,17 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "заводит (1184 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_roles.py": (
-        877,
+        1097,
         "роли + settings-guide (13-04). "
         "Форум-ночь B3 (идея №22): +17 строк — roles_assign шлёт шпаргалку волонтёра ЛИЧНЫМ "
         "сообщением тому, кто только что впервые получил право checkin (has_capability, "
-        "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
+        "тумблер текста checkin_volunteer_guide_text); 860 -> 877. "
+        "Идея №6 бэклога чек-ина (права со сроком действия): +220 строк — экран «⏳ Срок "
+        "действия роли» (rexp:*/rexp_go:*/rexp_custom:*, state:RolesExpiryEdit:*), кнопка "
+        "«⏳ Срок» на city-picker сразу после выдачи роли, строка срока в render_roles_text, "
+        "кнопка «🔗 Пригласить волонтёров» (вход в handlers/admin_volunteer_invite.py); тот же "
+        "экран-владелец, новых модулей не заводит; 877 -> 1097, потолок поднят до фактического "
+        "размера.",
     ),
     "admin.py": (
         971,
@@ -468,6 +480,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "карточке /find (рядом с «🔄 Перевыпустить QR», без переупорядочивания) + шов-импорт "
         "`from handlers import admin_city_move` в самый хвост файла, после admin_program_view "
         "(942 -> 955). "
+        "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +10 строк — шов-импорт "
+        "`from handlers import admin_volunteer_invite` в самый хвост файла, после "
+        "admin_program_view (942 -> 952). "
         "D-29 (24.09, «одна кнопка программы у делегата»): +8 строк — шов-импорт `from handlers "
         "import admin_program_view` (циклический тумблер таблица/фото Mini App) в самый хвост "
         "файла, после admin_forum_functions (934 -> 942). "
@@ -615,7 +630,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1202,
+        1234,
         "Слияние с main 3d0b70f: сложились перевод в город (фаза 33) и швы/капы «Сейчас на площадке»/«Учебные QR» (1202). "
         "Бэклог чек-ина №7: +4 строки — ключ «🧪 Учебные QR» (checkin_training_sheet, любое "
         "право панели; пару checkin/moderate_reg проверяет хендлер); 1189 -> 1193. "
@@ -634,6 +649,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "город» (citymv_start:*/citymv_pick:*/citymv_apply:*/citymv_cancel:*, капа "
         "«moderate_reg» — тот же довод, что у соседнего «🔄 Перевыпустить QR» выше); "
         "1165 -> 1174. "
+        "Идеи №5/№6 бэклога чек-ина (приглашение волонтёров ссылкой + права со сроком "
+        "действия): +36 строк — capability-записи роли «volunteer» + экрана «⏳ Срок действия "
+        "роли» (rexp:*/rexp_go:*/rexp_custom:*/state:RolesExpiryEdit:*, капа «settings» — тот "
+        "же экран «👥 Роли и доступы») + экрана «🔗 Пригласить волонтёров» "
+        "(volinvite_*/volinv_*/state:VolunteerInviteWizard:*, капа «moderate_reg» — тот же "
+        "довод, что у остального хаба «🎪 Форум: функции»); 1198 -> 1234. "
         "Идеи №16/№23 бэклога чек-ина: +17 строк — capability-записи двух новых тумблер+время "
         "экранов (forumdayreport_cfg:*/forumdayreport_toggle:*/forumdayreport_time:*/"
         "state:ForumDayReportTimeEdit:*/forumdayreport_now:*/forumdayreport_csv:*, "
@@ -764,6 +785,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "первый случай для uid даёт один WARNING и алерт остальным `config.ADMIN_IDS`, повтор в "
         "течение 24 ч молчит (`logger.debug`); кулдаун — процессный словарь `_blocked_notified_at`, "
         "не в БД; потолок поднят до фактического размера.",
+    ),
+    "admin_forum_functions.py": (
+        856,
+        "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +6 строк — одна аддитивная "
+        "строка хаба «🔗 Приглашение волонтёров ссылкой» (статус + кнопка на "
+        "handlers/admin_volunteer_invite.py, тот же приём, что соседние строки хаба); "
+        "850 -> 856, новая именная запись (раньше модуль укладывался в DEFAULT_CEILING).",
     ),
     "admin_checkin.py": (
         1013,
