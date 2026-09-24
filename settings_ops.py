@@ -604,6 +604,7 @@ TOGGLE_SECTION: dict[str, str] = {
     # Квик 260923 (форум-чекин, D-01..D-04): master-тумблер выпуска QR — строка ("toggle", …)
     # раздела «📋 Заявки» в `admin_sections.SECTIONS`, сразу после toggle_apps_queue_sort_by_score.
     "checkin_qr_enabled": "apps",
+    "checkin_qr_broadcast_enabled": "apps",  # рассылка QR перед форумом
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
