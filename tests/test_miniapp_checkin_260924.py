@@ -16,7 +16,7 @@ import cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from services import timeutil as timeutil_mod
-from services.checkin import build_payload
+from services.checkin import ENTRY_POINT, build_payload
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -442,3 +442,88 @@ def test_scan_session_point_wrong_real_day_is_denied(tmp_path, monkeypatch):
     assert "04.10" in body["reason_text"]
     assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 0
     assert _run(bot_db.count_checkins_by_point("entry")) == 0
+
+
+# ── ревью (D-15/D-18): волонтёр с привязкой к городу не отмечает на сессии ДРУГОГО города ────
+
+def test_scan_session_point_other_city_denied_for_bound_manager(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()  # BOUND_MANAGER_ID привязан к spb
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950050
+    _run(_insert_user(uid, full_name="Орлов Олег", city="msk"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    payload = _qr(uid, city="Москва")
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(BOUND_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "wrong_city_point"
+    assert body["reason_text"] == "Сессия другого города — выберите точку заново"
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 0
+    assert _run(bot_db.count_checkins_by_point("entry")) == 0
+
+
+def test_manual_session_point_other_city_denied_for_bound_manager(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950051
+    _run(_insert_user(uid, city="msk"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    resp = client.post(
+        f"{BASE}/manual", json={"telegram_id": uid, "point": f"session:{sid}"}, headers=_hdr(BOUND_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "wrong_city_point"
+    assert body["reason_text"] == "Сессия другого города — выберите точку заново"
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 0
+
+
+def test_scan_session_point_own_city_allowed_for_bound_manager(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950052
+    _run(_insert_user(uid, full_name="Волкова Вера", city="spb"))
+    sid = _run(bot_db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))
+    payload = _qr(uid, city="СПб")
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(BOUND_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "new"
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 1
+
+
+def test_scan_entry_point_not_scoped_for_bound_manager(tmp_path):
+    """D-15: «Вход» НЕ ограничивается городом волонтёра — стойки входа не разложены по городам,
+    любой волонтёр отмечает вход ЛЮБОГО делегата (в отличие от точек-сессий выше)."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()  # привязан к spb
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950053
+    _run(_insert_user(uid, full_name="Морозов Марк", city="msk"))  # ДРУГОЙ город, не spb
+    payload = _qr(uid, city="Москва")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "new"
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 1
+
+
+def test_scan_session_point_unbound_manager_not_scoped(tmp_path, monkeypatch):
+    """Волонтёр БЕЗ привязки к городу (`GAME_MANAGER_ID`) не ограничен точкой-сессией любого
+    города — та же трёхветочная логика, что `_bound_city` использует везде в модуле."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950054
+    _run(_insert_user(uid, full_name="Смирнов Семён", city="msk"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))
+    payload = _qr(uid, city="Москва")
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
+    )
+    assert resp.json()["status"] == "new"
