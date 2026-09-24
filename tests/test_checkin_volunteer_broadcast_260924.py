@@ -7,7 +7,7 @@ jobstore, `asyncio.run`, шаблонная БД `tests/_dbtpl.fast_init_db`).""
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import config
 from database import db
@@ -29,6 +29,8 @@ def _ready(tmp_path, name="checkin_volunteer_broadcast.db"):
     config.DB_PATH = str(tmp_path / name)
     fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
+    # Шпаргалка идёт только там, где включён «🎟 Вход по QR» (мастер чек-ина).
+    _run(db.set_setting("checkin_qr_enabled", "on"))
 
 
 async def _grant_checkin(tid, city=None):
@@ -301,5 +303,82 @@ def test_reconcile_module_off_uses_single_pass(tmp_path, monkeypatch):
         touched = await vb.reconcile()
         assert touched == [None]
         assert s.get_job(vb.job_id(None)) is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Гейт чек-ина и прошедшей даты: шпаргалка не уходит там, где «🎟 Вход по QR» выключен,
+# и не догоняется после начала форума
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _guide_setup(tmp_path):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+
+
+def test_schedule_skipped_when_checkin_master_off(tmp_path, monkeypatch):
+    """forum_date задана (её читают правила автоотказа), тумблер шпаргалки по умолчанию вкл,
+    текст непустой — но чек-ин не используется: джобы нет."""
+    _guide_setup(tmp_path)
+    _run(_set_setting("checkin_qr_enabled", "off"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "disabled"}
+        assert s.get_job(vb.job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_run_job_skips_when_checkin_master_turned_off(tmp_path, monkeypatch):
+    _guide_setup(tmp_path)
+    _run(_grant_checkin(VOLUNTEER_ID))
+    _run(_set_setting("checkin_qr_enabled", "off"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 2, 17, 0))
+    bot = _with_bot(monkeypatch)
+
+    result = _run(vb._run_job(None))
+    assert result["sent"] == 0
+    assert bot.messages == []
+
+
+def test_schedule_past_forum_date_cancels(tmp_path, monkeypatch):
+    _guide_setup(tmp_path)
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        await vb.schedule_city_job(None)
+        assert s.get_job(vb.job_id(None)) is not None
+        monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 4, 10, 0))
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "past"}
+        assert s.get_job(vb.job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_forum_today_does_not_catch_up(tmp_path, monkeypatch):
+    _guide_setup(tmp_path)
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "too_late"}
+        assert s.get_job(vb.job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_late_enable_day_before_catches_up(tmp_path, monkeypatch):
+    _guide_setup(tmp_path)
+    now = datetime(2026, 10, 2, 20, 0)
+    monkeypatch.setattr(vb, "msk_now", lambda: now)
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result["run_at"] == now + timedelta(minutes=1)
 
     _run_scheduled(tmp_path, monkeypatch, body)

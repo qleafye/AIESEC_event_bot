@@ -69,6 +69,12 @@ def guide_run_at(forum_date_ddmmyyyy: str | None, hhmm: str) -> datetime | None:
 
 
 async def broadcast_enabled_for(city: str | None) -> bool:
+    """Гейт — мастер «🎟 Вход по QR» (`checkin_qr_enabled`, тот же, что у рассылки QR) плюс
+    per_city тумблер шпаргалки. Без мастера шпаргалка уходила бы везде, где задана
+    `forum_date` (она нужна и правилам автоотказа по возрасту) — «завтра форум» суперадминам
+    и держателям checkin там, где чек-ин вообще не используется."""
+    if await get_setting_typed("checkin_qr_enabled") != "on":
+        return False
     from cities import get_setting_typed_for_city
     return await get_setting_typed_for_city(
         "checkin_volunteer_guide_broadcast_enabled", city,
@@ -109,10 +115,17 @@ async def schedule_city_job(city: str | None) -> dict:
         return {"scheduled": False, "reason": "bad_date"}
 
     now = msk_now()
+    forum_day = run_at.date() + timedelta(days=1)
+    if forum_day < now.date():
+        cancel_city_job(city)
+        return {"scheduled": False, "reason": "past"}
     if run_at <= now:
-        # Правка настроек мимо джобы (менеджер выставил дату форума в прошлом, отредактировал
-        # время после того, как оно уже прошло) — та же сделка, что у checkin_broadcast:
-        # «сейчас + минута», а не молчаливая потеря рассылки.
+        # Догон «сейчас + минута» — только если форум завтра или позже (менеджер поздно
+        # включил). Форум уже сегодня — «завтра форум» слать поздно, джобу снимаем. То же
+        # правило, что у вечерней рассылки QR (services.checkin_broadcast.schedule_city_jobs).
+        if forum_day <= now.date():
+            cancel_city_job(city)
+            return {"scheduled": False, "reason": "too_late"}
         run_at = now + timedelta(minutes=1)
 
     sched.add_job(
