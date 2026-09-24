@@ -170,6 +170,9 @@ EXPECTED_PER_CITY_KEYS = {
     # checkin_qr_broadcast_text выше (регионы и Москва живут в разных фазах форума одновременно,
     # settings_schema.py:5708).
     "checkin_not_arrived_text",
+    # Форум-ночь п.7 («❗ Важное»): кнопка меню — та же ось per_city, что остальные menu_*
+    # выше (menu_checkin_qr/menu_schedule).
+    "menu_important",
 }
 
 

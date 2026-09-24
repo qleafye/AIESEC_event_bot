@@ -447,7 +447,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
-        1970,
+        1996,
+        "Форум-ночь п.7 («❗ Важное» делегатская лента): +26 строк — show_important_today "
+        "(menu_important), встал сразу после импорта program и перед reg_handoff_idle_fallback; "
+        "1970 -> 1996, потолок с ровно фактическим размером. "
         "Форум-ночь п.7 («🔕 Не присылать сегодня»): +35 строк — ответ делегата на предложение "
         "«🔕» (mute_broadcasts_today/unmute_broadcasts_today, bc_mute_today/bc_unmute_today), "
         "хвост файла, сразу после checkin_not_arrived_show_qr; 1935 -> 1970, потолок с ровно "
