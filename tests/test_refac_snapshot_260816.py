@@ -665,6 +665,9 @@ admin|message|checkin_test_file_invalid|state:CheckinTestUpload:*
 admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
 admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
 admin|message|checkinqr_time_step|state:CheckinQrTimeEdit:*
+admin|message|asos_bind_cancel|state:SosChatBind:*
+admin|message|asos_bind_step|state:SosChatBind:*
+admin|message|admin_reply_to_sos|
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1104,6 +1107,11 @@ admin|callback_query|checkinqr_send_cancel|checkinqr_send_no
 admin|callback_query|checkinqr_cfg_screen|checkinqr_cfg:*
 admin|callback_query|checkinqr_toggle_go|checkinqr_toggle:*
 admin|callback_query|checkinqr_time_start|checkinqr_time:*
+admin|callback_query|admin_sos|admin_sos
+admin|callback_query|asos_page|asos:*
+admin|callback_query|asos_bind_start|asos_bind
+admin|callback_query|sos_claim|sos_claim:*
+admin|callback_query|sos_resolve|sos_resolve:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1211,6 +1219,15 @@ user_actions|message|open_miniapp_button|
 user_actions|message|show_my_checkin_qr|
 user_actions|message|show_program_schedule|
 user_actions|message|show_important_today|
+user_actions|message|sos_start|
+user_actions|message|sos_details_cancel|state:SosReport:*
+user_actions|message|sos_details_skip|state:SosReport:*
+user_actions|message|sos_details_step|state:SosReport:*
+user_actions|message|sos_location_cancel|state:SosReport:*
+user_actions|message|sos_location_skip|state:SosReport:*
+user_actions|message|sos_location_step|state:SosReport:*
+user_actions|message|sos_location_invalid|state:SosReport:*
+user_actions|message|sos_delegate_followup|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1230,6 +1247,7 @@ user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
 user_actions|callback_query|pds_day_open|pds_day:*
 user_actions|callback_query|pds_days_back|pds_days
+user_actions|callback_query|sos_pick_category|sos_cat:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -1579,7 +1597,24 @@ def test_snapshot_total_handler_count_is_292():
     # reg_handoff_idle_fallback (тот же приём, что у соседей выше). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 698-строчным снимком: ровно одна
     # вставка из 1 строки, 0 удалений, 0 реордеров (698 -> 699).
-    assert len(GOLDEN_SNAPSHOT) == 699
+    # Форум-ночь п.8 (идея №19, SOS): +9 user_actions.message (sos_start/sos_details_cancel/
+    # sos_details_skip/sos_details_step/sos_location_cancel/sos_location_skip/
+    # sos_location_step/sos_location_invalid/sos_delegate_followup, шов handlers/sos.py) —
+    # встали сразу после show_important_today и ПЕРЕД reg_handoff_idle_fallback (тот же приём,
+    # что у program/menu_important выше) + 1 user_actions.callback_query (sos_pick_category,
+    # sos_cat:*) — встал сразу после pds_days_back и ПЕРЕД show_wave_rating. Пересчитано
+    # RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 699-строчным снимком: две
+    # чистые вставки (9+1 строк), 0 удалений, 0 реордеров (699 -> 709).
+    # Форум-ночь п.8 (SOS), менеджерская сторона (handlers/admin_sos.py): +3 admin.message
+    # (asos_bind_cancel/asos_bind_step/admin_reply_to_sos) — встали в хвост message-блока
+    # admin.router, сразу после checkinqr_time_step и ПЕРЕД началом admin.callback_query
+    # (show_admin_stats) + 5 admin.callback_query (admin_sos/asos_page/asos_bind_start/
+    # sos_claim/sos_resolve) — встали в хвост callback_query-блока admin.router, сразу после
+    # checkinqr_time_start и ПЕРЕД началом payment.router (шов импортируется самым хвостом
+    # handlers/admin.py). Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
+    # прежним 709-строчным снимком: две чистые вставки (3+5 строк), 0 удалений, 0 реордеров
+    # (709 -> 717).
+    assert len(GOLDEN_SNAPSHOT) == 717
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -919,3 +919,9 @@ from handlers import admin_purge  # noqa: E402
 # checkin_import_file_step/checkin_import_file_invalid/cancel_checkin_import/
 # checkin_point_pick in the very tail of admin.router (golden snapshot: a clean append).
 from handlers import admin_checkin  # noqa: E402
+
+# Форум-ночь п.8 (идея №19, SOS): shared-router seam import for «🆘 SOS»
+# (handlers/admin_sos.py) — registers admin_sos/asos_page/asos_bind_start/asos_bind_cancel/
+# asos_bind_step/sos_claim/sos_resolve/admin_reply_to_sos in the very tail of admin.router
+# (golden snapshot: a clean append).
+from handlers import admin_sos  # noqa: E402

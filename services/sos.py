@@ -202,12 +202,14 @@ def _parse_stamp(raw: str | None) -> datetime | None:
         return None
 
 
-async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str, city: str | None) -> bool:
+async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> bool:
     """Общий хвост обеих веток подтверждения (пересылка в личке / команда `/sos_id` в
-    группе) — резолвит и потребляет заявку, привязывает чат, шлёт подтверждение личным
-    сообщением (никогда не пишет в саму группу, тот же приём, что `chat_tracking`/D-1). Не
-    находит подходящей заявки (просрочена/не было) -> False, вызывающий решает, что сказать
-    (личка получает явный ответ; команда в группе — молчит, D-9)."""
+    группе) — резолвит и потребляет заявку, привязывает чат к ГОРОДУ ИЗ ЗАЯВКИ (не аргумент —
+    единственный источник правды, что просили привязать, это сама заявка, поставленная
+    `asos_bind_start` ДО отправки бота в группу), шлёт подтверждение личным сообщением
+    (никогда не пишет в саму группу, тот же приём, что `chat_tracking`/D-1). Не находит
+    подходящей заявки (просрочена/не было) -> False, вызывающий решает, что сказать (личка
+    получает явный ответ; команда в группе — молчит, D-9)."""
     pending = await get_pending_bind(admin_id)
     if pending is None:
         return False
@@ -263,6 +265,55 @@ def build_card_kb(report_id: int):
         InlineKeyboardButton(text="🙋 Беру", callback_data=f"sos_claim:{report_id}"),
         InlineKeyboardButton(text="✅ Решено", callback_data=f"sos_resolve:{report_id}"),
     ]])
+
+
+async def post_card(bot, report_id: int) -> bool:
+    """Публикует карточку (пункт 3 плана): в привязанный чат SOS города, либо (чат не привязан
+    ИЛИ отправка упала) — фоллбэк-веером в личку держателям `moderate_reg` города (та же капа,
+    что экран менеджера), с ТЕМИ ЖЕ кнопками «Беру»/«Решено» — атомарный захват
+    (`database.db.claim_sos_report`) работает одинаково для обоих путей, первый клик выигрывает
+    независимо от числа разошедшихся копий. `card_message_id` сохраняется ТОЛЬКО для чата
+    (тред «ответ реплаем» — пункт 3 плана); у веера личных копий общего треда физически нет —
+    известное ограничение, задокументировано в SUMMARY. Возвращает `True`, если карточка ушла
+    в чат (для решения о повторном авто-фоллбэке звонящим кодом не нужно, но полезно логам)."""
+    from database.db import get_user, set_sos_card
+
+    report = await get_sos_report(report_id)
+    if report is None:
+        return False
+    user = await get_user(report["telegram_id"])
+    text = render_card_text(report, user)
+    kb = build_card_kb(report_id)
+    chat = await sos_chat_for_city(report.get("city"))
+    if chat is not None:
+        try:
+            msg = await bot.send_message(chat["chat_id"], text, parse_mode="HTML", reply_markup=kb)
+            await set_sos_card(report_id, chat["chat_id"], msg.message_id)
+            return True
+        except Exception as e:
+            logger.error(
+                "sos.post_card: не удалось отправить в чат id=%s, ухожу в фоллбэк: %s",
+                chat["chat_id"], e,
+            )
+    await _fallback_fanout(bot, report, text, kb)
+    return False
+
+
+async def _fallback_fanout(bot, report: dict, text: str, kb) -> int:
+    from config import config
+    from handlers.admin_caps import capability_holders
+
+    recipients = await capability_holders("moderate_reg", city=report.get("city"))
+    if not recipients:
+        recipients = list(config.ADMIN_IDS)
+    sent = 0
+    for uid in recipients:
+        try:
+            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
+            sent += 1
+        except Exception as e:
+            logger.info("sos._fallback_fanout: не удалось написать id=%s: %s", uid, e)
+    return sent
 
 
 # ── Эскалация (пункт 4 плана) — APScheduler date-джоба, персистентная (SQLAlchemyJobStore,
