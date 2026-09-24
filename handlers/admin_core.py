@@ -76,6 +76,12 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +
     # загрузка выгрузки офлайн-сканера (handlers/admin_checkin.py).
     ("✅ Отметки на форуме", "admin_checkin"),
+    # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» (handlers/admin_sos.py) — эта строка была
+    # заведена в `admin_sections.SECTIONS` (раздел «apps»), но забыта здесь: без записи в
+    # ЭТОМ списке `build_section_keyboard` не находит подпись для "admin_sos" и молча
+    # выбрасывает строку (лог-warning «строка без подписи»), хотя капа `moderate_reg` у
+    # строки в SECTIONS верная — сирота была видна только в логе, не в панели.
+    ("🆘 SOS", "admin_sos"),
     # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — единый статус-экран всех
     # форумных тумблеров (handlers/admin_forum_functions.py).
     ("🎪 Форум: функции", "admin_forum_functions"),
