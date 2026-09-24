@@ -115,6 +115,7 @@ _DENIAL_LABELS = {
     # Форум-ночь B1 (идея №10): QR перевыпущен (database.db.checkin_token_replacements) —
     # компактная версия DENIAL_REASON_TEXT["token_replaced"] для строки отчёта загрузки.
     "token_replaced": "QR заменён",
+    "unknown_pass_kind": "неизвестный тип пропуска",
 }
 
 
@@ -542,7 +543,7 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     for rec in records:
         parsed = parse_qr_payload(rec["qr"])
         token = parsed["token"]
-        user, denial_code = await resolve_scanned_user(token)
+        user, denial_code = await resolve_scanned_user(token, point=point, source="csv")
         if denial_code is not None:
             flagged.append((_DENIAL_LABELS.get(denial_code, denial_code), parsed))
             continue
