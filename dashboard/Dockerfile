@@ -26,6 +26,8 @@ COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
 COPY --chown=appuser:appuser tg_media.py /app/tg_media.py
 # Статистика прихода (бэклог чек-ина п.10): общие с ботом запросы блока «Приход», чистая stdlib.
 COPY --chown=appuser:appuser arrival_stats.py /app/arrival_stats.py
+# Корневой санитайзер секретов (25.09): чистая stdlib, маскирует токен бота в логах.
+COPY --chown=appuser:appuser secret_redact.py /app/secret_redact.py
 # Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —
 # раскладка каталогов в образе совпадает с репозиторием, поэтому `dashboard.main.PATTERN_DIR`
 # (`BASE_DIR.parent / "miniapp" / "static" / "pattern"`) резолвится одинаково и локально, и

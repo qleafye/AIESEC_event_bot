@@ -34,6 +34,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import web_theme
+from secret_redact import install_log_redaction, register_secret
 from dashboard import queries
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
@@ -763,6 +764,10 @@ def create_app(cfg: Optional[DashboardConfig] = None) -> FastAPI:
     маршрутов (список путей и т.п.) — сам возврат этой функции больше не FastAPI-инстанс.
     """
     cfg = cfg or load_config()
+    # dashboard.notify logs httpx errors whose text carries the Bot API URL with the token;
+    # the dashboard has no logging setup of its own, so hook root/uvicorn/lastResort here.
+    register_secret(cfg.bot_token)
+    install_log_redaction()
     inner = _build_asgi_app(cfg)
     wrapped = ProxyHeadersMiddleware(inner, trusted_hosts=cfg.trusted_proxies)
     wrapped.fastapi_app = inner
