@@ -361,8 +361,9 @@ def test_schedule_past_forum_date_cancels(tmp_path, monkeypatch):
 
 
 def test_schedule_forum_today_does_not_catch_up(tmp_path, monkeypatch):
+    """День форума, утренний слот (08:00) уже прошёл — «завтра форум» не шлём."""
     _guide_setup(tmp_path)
-    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 3, 12, 0))
 
     async def body(s):
         result = await vb.schedule_city_job(None)
@@ -408,5 +409,46 @@ def test_run_job_wrong_day_skips_without_marking_sent(tmp_path, monkeypatch):
         await _set_setting("forum_date", "03.10.2026")
         result = await vb._run_job(None)
         assert result["sent"] >= 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_eve_2159_catches_up(tmp_path, monkeypatch):
+    _guide_setup(tmp_path)
+    now = datetime(2026, 10, 2, 21, 59)
+    monkeypatch.setattr(vb, "msk_now", lambda: now)
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result["run_at"] == now + timedelta(minutes=1)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_eve_2201_moves_to_forum_morning(tmp_path, monkeypatch):
+    """После 22:00 кануна шпаргалка не уходит ночью — ставится на утро форума, в время
+    утреннего повтора QR, и на срабатывании (день форума) уходит."""
+    import services.checkin_broadcast as cb
+
+    _guide_setup(tmp_path)
+    _run(_set_setting("checkin_qr_morning_repeat_time", "08:00"))
+    _run(_grant_checkin(VOLUNTEER_ID))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 10, 2, 22, 1))
+    bot = _with_bot(monkeypatch)
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result["run_at"] == datetime(2026, 10, 3, 8, 0)
+        job = s.get_job(vb.job_id(None))
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0)
+
+        morning = lambda: datetime(2026, 10, 3, 8, 0)
+        monkeypatch.setattr(vb, "msk_now", morning)
+        monkeypatch.setattr(cb, "msk_now", morning)
+        sent = await vb._run_job(None)
+        assert sent["sent"] >= 1
+        assert VOLUNTEER_ID in {cid for cid, _t in bot.messages}
+        again = await vb._run_job(None)  # отметка по дню форума — без дублей
+        assert again["sent"] == 0
 
     _run_scheduled(tmp_path, monkeypatch, body)

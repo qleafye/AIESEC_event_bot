@@ -120,13 +120,24 @@ async def schedule_city_job(city: str | None) -> dict:
         cancel_city_job(city)
         return {"scheduled": False, "reason": "past"}
     if run_at <= now:
-        # Догон «сейчас + минута» — только если форум завтра или позже (менеджер поздно
-        # включил). Форум уже сегодня — «завтра форум» слать поздно, джобу снимаем. То же
-        # правило, что у вечерней рассылки QR (services.checkin_broadcast.schedule_city_jobs).
-        if forum_day <= now.date():
-            cancel_city_job(city)
-            return {"scheduled": False, "reason": "too_late"}
-        run_at = now + timedelta(minutes=1)
+        # Догон «сейчас + минута» — только накануне и до EVENING_CATCHUP_CUTOFF (22:00), то же
+        # правило, что у вечерней рассылки QR. Позже — утром дня форума, в время утреннего
+        # повтора QR; время прошло и там — снимаем. Повтор тем, кто уже получил, отсекает
+        # checkin_volunteer_guide_sends (по дню форума).
+        from services.checkin_broadcast import (
+            EVENING_CATCHUP_CUTOFF, _MORNING_CATCHUP, _times_for, morning_run_at,
+        )
+        if forum_day > now.date() and now.time() < EVENING_CATCHUP_CUTOFF:
+            run_at = now + timedelta(minutes=1)
+        else:
+            _evening, morning_hhmm = await _times_for(city)
+            run_at = morning_run_at(date_str, morning_hhmm)
+            if run_at <= now:
+                pending = sched.get_job(jid) is not None
+                if not (pending and now - run_at <= _MORNING_CATCHUP):
+                    cancel_city_job(city)
+                    return {"scheduled": False, "reason": "too_late"}
+                run_at = now + timedelta(minutes=1)
 
     sched.add_job(
         _run_job, "date", run_date=run_at, args=[city], id=jid, replace_existing=True,
@@ -163,9 +174,10 @@ async def _run_job(city: str | None) -> dict:
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
     # Дата форума могла смениться из Mini App (там нет планировщика) — «завтра форум» не в
     # канун форума не шлём и отметку «отправлено» под чужой день не пишем; переставляем джобу.
+    # Утро самого дня форума — законный слот (догон после 22:00 кануна переносится туда).
     from services.checkin_broadcast import is_forum_day_offset
-    if not await is_forum_day_offset(city, 1):
-        logger.info(f"checkin_volunteer_broadcast: job for city={city!r} skipped — не канун форума")
+    if not (await is_forum_day_offset(city, 1) or await is_forum_day_offset(city, 0)):
+        logger.info(f"checkin_volunteer_broadcast: job for city={city!r} skipped — не канун/день форума")
         try:
             await schedule_city_job(city)
         except Exception as e:
