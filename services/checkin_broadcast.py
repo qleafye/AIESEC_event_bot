@@ -389,7 +389,7 @@ async def pending_broadcast_count(city: str | None) -> int:
 # тихих часов, находка ревью 260924 п.3 — владелец 24.09 явно отменил это поведение для QR:
 # делегату он нужен независимо от часа, площадка/сеть на форуме не ждут утра) и «🔕 Не
 # присылать сегодня» тоже НЕ фильтрует получателей — `send_broadcast`/`send_morning_repeat`
-# ниже НИКОГДА не проверяют ни `services.quiet_hours`, ни `database.db.get_muted_today_ids`,
+# ниже НИКОГДА не проверяют ни `services.quiet_hours`, ни список заглушивших «🔕» из `database.db`,
 # в отличие от обычных рассылок (`services/scheduler.py::send_scheduled_broadcast`,
 # `handlers/admin_broadcasts.py::bc_go`) — это НЕ упущение, а осознанное отличие служебного
 # сообщения от рассылки.
