@@ -241,10 +241,14 @@ async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKey
         code = c["code"]
         label = await city_label(code)
         lines.append(await _qr_status_line(label, code))
-        buttons.append([
-            InlineKeyboardButton(text=f"📤 {label}", callback_data=f"checkinqr_send:{_encode_city(code)}"),
-            InlineKeyboardButton(text=f"⚙️ {label}", callback_data=f"checkinqr_cfg:{_encode_city(code)}"),
-        ])
+        # Подписи словами + город, по кнопке в ряд — две иконки с названием города в одной
+        # строке менеджер не расшифрует.
+        buttons.append([InlineKeyboardButton(
+            text=f"📤 Разослать QR сейчас — {label}", callback_data=f"checkinqr_send:{_encode_city(code)}",
+        )])
+        buttons.append([InlineKeyboardButton(
+            text=f"⚙️ Настройки QR — {label}", callback_data=f"checkinqr_cfg:{_encode_city(code)}",
+        )])
     return "\n".join(lines), buttons
 
 
@@ -289,7 +293,7 @@ async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyb
         label = await city_label(code)
         lines.append(await _not_arrived_status_line(label, code))
         buttons.append([InlineKeyboardButton(
-            text=f"📨 {label}", callback_data=f"cna_send:{_encode_city(code)}",
+            text=f"📨 Написать не пришедшим — {label}", callback_data=f"cna_send:{_encode_city(code)}",
         )])
     return "\n".join(lines), buttons
 
