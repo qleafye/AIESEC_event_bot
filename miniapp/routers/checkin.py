@@ -70,7 +70,12 @@ async def _forward_first_entry(result: dict) -> dict:
     не отдаётся."""
     event = result.pop("first_entry", None)
     if event is not None:
-        await enqueue("checkin_first_entry", event)
+        # Fail-soft: отметка к этому моменту УЖЕ записана — сбой очереди не должен давать
+        # сканеру 500 и повторный скан; теряется только уведомление слушателям.
+        try:
+            await enqueue("checkin_first_entry", event)
+        except Exception:  # noqa: BLE001
+            logger.exception("checkin: не удалось поставить checkin_first_entry в outbox")
     return result
 
 def _staff_name(p: Principal) -> str | None:
