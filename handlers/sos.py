@@ -23,6 +23,7 @@ D-31 (24.09, `.planning/FORUM-CHECKIN.md`, «SOS без категорий»): �
 делегат попадает в тот же режим «дописываю SOS», привязанный к СУЩЕСТВУЮЩЕЙ заявке
 (`sos_start`). «Старый» открытый SOS (окно истекло) новую заявку уже разрешает — с честной
 ссылкой в карточке на прежний (`services.sos.render_card_text`)."""
+import asyncio
 import logging
 from datetime import datetime
 
@@ -140,11 +141,32 @@ async def _expire_collecting(message: types.Message, state: FSMContext) -> None:
     )
 
 
+# Двойной тап «🆘 SOS»: aiogram обрабатывает апдейты параллельно, и между
+# `get_open_sos_report` и `create_sos_report` второй тап успевал создать вторую карточку.
+# Лок на пользователя сериализует оба тапа — второй дожидается первого и уходит в ветку
+# «сигнал уже у оргкомитета» с тем же текстом. Счётчик держателей — чтобы убрать лок из
+# словаря только когда его никто не ждёт.
+_sos_start_locks: dict[int, list] = {}  # user_id -> [asyncio.Lock, держателей]
+
+
 # 🆘 SOS — кнопка главного меню
 @router.message(F.text.in_(MENU_TEXTS["menu_sos"]))
 async def sos_start(message: types.Message, state: FSMContext):
     if not await ensure_registered(message):
         return
+    uid = message.from_user.id
+    entry = _sos_start_locks.setdefault(uid, [asyncio.Lock(), 0])
+    entry[1] += 1
+    try:
+        async with entry[0]:
+            await _sos_start_locked(message, state)
+    finally:
+        entry[1] -= 1
+        if entry[1] == 0 and _sos_start_locks.get(uid) is entry:
+            del _sos_start_locks[uid]
+
+
+async def _sos_start_locked(message: types.Message, state: FSMContext):
     city = await _resolve_city(message.from_user.id)
     open_report = await get_open_sos_report(message.from_user.id)
     prior_open_id = None
