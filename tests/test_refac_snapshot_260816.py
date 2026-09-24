@@ -670,6 +670,9 @@ admin|message|rcpt_reject_reason|state:ReceiptReview:*
 admin|message|cmd_settings_guide|cmd:settings_guide
 admin|message|roles_add_cancel|state:StaffAdd:*
 admin|message|roles_add_person|state:StaffAdd:*
+admin|message|roles_expiry_custom_cancel|state:RolesExpiryEdit:*,state:RolesExpiryEdit:*
+admin|message|roles_expiry_custom_cancel|state:RolesExpiryEdit:*,state:RolesExpiryEdit:*
+admin|message|roles_expiry_custom_step|state:RolesExpiryEdit:*
 admin|message|cancel_game_task_create|state:GameTaskCreate:*,state:GameTaskCreate:*
 admin|message|cancel_game_task_create|state:GameTaskCreate:*,state:GameTaskCreate:*
 admin|message|game_task_title_step|state:GameTaskCreate:*
@@ -728,6 +731,25 @@ admin|message|admin_reply_to_sos|
 admin|message|cancel_checkinvol_time_edit|state:CheckinVolGuideTimeEdit:*,state:CheckinVolGuideTimeEdit:*
 admin|message|cancel_checkinvol_time_edit|state:CheckinVolGuideTimeEdit:*,state:CheckinVolGuideTimeEdit:*
 admin|message|checkinvol_time_step|state:CheckinVolGuideTimeEdit:*
+admin|message|cancel_forumdaymenu_time_edit|state:ForumDayMenuTimeEdit:*,state:ForumDayMenuTimeEdit:*
+admin|message|cancel_forumdaymenu_time_edit|state:ForumDayMenuTimeEdit:*,state:ForumDayMenuTimeEdit:*
+admin|message|forumdaymenu_time_step|state:ForumDayMenuTimeEdit:*
+admin|message|cancel_forumdayreport_time_edit|state:ForumDayReportTimeEdit:*,state:ForumDayReportTimeEdit:*
+admin|message|cancel_forumdayreport_time_edit|state:ForumDayReportTimeEdit:*,state:ForumDayReportTimeEdit:*
+admin|message|forumdayreport_time_step|state:ForumDayReportTimeEdit:*
+admin|message|cancel_forumnoshowpoll_time_edit|state:ForumNoshowPollTimeEdit:*,state:ForumNoshowPollTimeEdit:*
+admin|message|cancel_forumnoshowpoll_time_edit|state:ForumNoshowPollTimeEdit:*,state:ForumNoshowPollTimeEdit:*
+admin|message|forumnoshowpoll_time_step|state:ForumNoshowPollTimeEdit:*
+admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
+admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
+admin|message|volinv_link_date_step|state:VolunteerInviteWizard:*
+admin|message|volinv_rights_date_step|state:VolunteerInviteWizard:*
+admin|message|lost_found_cmd|cmd:found
+admin|message|lost_found_cancel_wizard|state:LostFoundNew:*,state:LostFoundNew:*
+admin|message|lost_found_cancel_wizard|state:LostFoundNew:*,state:LostFoundNew:*
+admin|message|lost_found_photo_step|state:LostFoundNew:*
+admin|message|lost_found_photo_invalid|state:LostFoundNew:*
+admin|message|lost_found_where_step|state:LostFoundNew:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1063,6 +1085,9 @@ admin|callback_query|roles_city_pick|roles_city_pick:*
 admin|callback_query|roles_add_start|roles_add
 admin|callback_query|roles_assign|roles_addrole:*
 admin|callback_query|roles_remove|roles_del:*
+admin|callback_query|roles_expiry_start|rexp:*
+admin|callback_query|roles_expiry_go|rexp_go:*
+admin|callback_query|roles_expiry_custom_start|rexp_custom:*
 admin|callback_query|show_game_tasks|admin_game_tasks
 admin|callback_query|show_game_archive|admin_game_archive
 admin|callback_query|game_task_archive_go|gtarchive_go:*
@@ -1190,6 +1215,19 @@ admin|callback_query|admin_forum_functions_city_pick|forumfn_city:*
 admin|callback_query|checkinvol_cfg_screen|checkinvol_cfg:*
 admin|callback_query|checkinvol_toggle_go|checkinvol_toggle:*
 admin|callback_query|checkinvol_time_start|checkinvol_time:*
+admin|callback_query|forumdaymenu_cfg_screen|forumdaymenu_cfg:*
+admin|callback_query|forumdaymenu_toggle_go|forumdaymenu_toggle:*
+admin|callback_query|forumdaymenu_time_start|forumdaymenu_time:*
+admin|callback_query|forumwelcome_cfg_screen|forumwelcome_cfg:*
+admin|callback_query|forumwelcome_toggle_go|forumwelcome_toggle:*
+admin|callback_query|forumdayreport_cfg_screen|forumdayreport_cfg:*
+admin|callback_query|forumdayreport_toggle_go|forumdayreport_toggle:*
+admin|callback_query|forumdayreport_time_start|forumdayreport_time:*
+admin|callback_query|forumdayreport_now_go|forumdayreport_now:*
+admin|callback_query|forumdayreport_csv_go|forumdayreport_csv:*
+admin|callback_query|forumnoshowpoll_cfg_screen|forumnoshowpoll_cfg:*
+admin|callback_query|forumnoshowpoll_toggle_go|forumnoshowpoll_toggle:*
+admin|callback_query|forumnoshowpoll_time_start|forumnoshowpoll_time:*
 admin|callback_query|prog_view_toggle_go|prog_view_toggle:*
 admin|callback_query|checkin_stats_open|checkin_stats
 admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
@@ -1202,6 +1240,26 @@ admin|callback_query|citymove_apply|citymv_apply:*
 admin|callback_query|citymove_cancel|citymv_cancel:*
 admin|callback_query|checkin_floor_open|checkin_floor
 admin|callback_query|checkin_floor_refresh|checkin_floor_refresh
+admin|callback_query|volinvite_entry|volinvite_entry
+admin|callback_query|volinvite_city_pick|volinvite_city_pick:*
+admin|callback_query|volinvite_cfg_screen|volinvite_cfg:*
+admin|callback_query|volinvite_toggle_go|volinvite_toggle:*
+admin|callback_query|volinvite_new_start|volinvite_new:*
+admin|callback_query|volinv_link_expiry_pick|volinv_le:*
+admin|callback_query|volinv_rights_expiry_pick|volinv_re:*
+admin|callback_query|volinv_limit_pick_and_create|volinv_lim:*
+admin|callback_query|volinv_revoke_confirm|volinv_revoke:*
+admin|callback_query|volinv_revoke_go|volinv_revoke_go:*
+admin|callback_query|volinv_revoke_no|volinv_revoke_no:*
+admin|callback_query|volinv_users_list|volinv_users:*
+admin|callback_query|volinv_remove_user|volinv_removeuser:*
+admin|callback_query|lost_found_new_entry|lost_found_new
+admin|callback_query|lostfound_city_pick|lostfound_city_pick:*
+admin|callback_query|lost_found_cancel_preview|lostfound_cancel
+admin|callback_query|lost_found_publish|lostfound_publish
+admin|callback_query|lostfound_return|lostfound_return:*
+admin|callback_query|lostfound_cfg_screen|lostfound_cfg:*
+admin|callback_query|lostfound_toggle_go|lostfound_toggle:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1321,6 +1379,7 @@ user_actions|message|sos_collecting_location|state:SosReport:*
 user_actions|message|sos_collecting_step|state:SosReport:*
 user_actions|message|sos_delegate_followup|
 user_actions|message|sfb_comment_step|
+user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1342,6 +1401,7 @@ user_actions|callback_query|pds_day_open|pds_day:*
 user_actions|callback_query|pds_days_back|pds_days
 user_actions|callback_query|sfb_rate|
 user_actions|callback_query|sfb_offer_comment|
+user_actions|callback_query|fnsp_answer|fnsp:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -1767,7 +1827,9 @@ def test_snapshot_total_handler_count_is_292():
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (750 -> 754).
     # Слияние с main 3d0b70f: citymv_* (4) встают перед checkin_floor_* — порядок швов в хвосте
     # handlers/admin.py (admin_city_move, затем admin_checkin_floor); 753 + 4 = 757.
-    assert len(GOLDEN_SNAPSHOT) == 757
+    # Трек «форум: делегат» после переноса на main 01d67ae (forum-1030 + перевод в город): хендлеры форума делегата, срока ролей, приглашений волонтёров, бюро находок.
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 7 чистых вставок, 0 удалений, 0 реордеров (757 -> 817).
+    assert len(GOLDEN_SNAPSHOT) == 817
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
