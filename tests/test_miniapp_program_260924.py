@@ -239,3 +239,29 @@ def test_program_flag_matches_chat_menu_button(client, toggle, photo, expected):
     in_chat = any(b.text.startswith("📅 Программа") for row in kb.keyboard for b in row)
     assert in_chat is expected
     assert _me_sections(client)["program"] is expected
+
+
+# ── сбой чтения города — 503 retry, а не программа чужого/общего города ─────────────────────
+
+def test_program_city_read_failure_503_retry_not_foreign_program(client, monkeypatch):
+    import miniapp.routers.program as program_router
+
+    _set("event_city_enabled", "on")
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+
+    async def _boom(_tid):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(program_router, "get_user", _boom)
+    resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["reason"] == "retry"
+    assert body["text"] == program_router._RETRY_TEXT
+    assert "photo_url" not in body
+
+
+def test_program_retry_text_has_manual_english():
+    from miniapp.routers.program import _RETRY_TEXT
+    from services.i18n_miniapp_manual import MANUAL_EN
+    assert MANUAL_EN[_RETRY_TEXT].startswith("Couldn't load the schedule")
