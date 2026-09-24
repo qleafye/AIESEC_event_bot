@@ -11,6 +11,7 @@
 только хендлеры и рендер экрана."""
 import html as html_module
 import re
+from secret_redact import redact_secrets
 
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
@@ -399,7 +400,7 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
             await bot.send_message(user_id, header, parse_mode="HTML")
             await message.copy_to(user_id)
     except Exception as e:
-        await message.reply(f"❌ Не удалось отправить ответ пользователю: {e}")
+        await message.reply(f"❌ Не удалось отправить ответ пользователю: {redact_secrets(e)}")
         return
 
     sos_service.cancel_escalation(report_id)

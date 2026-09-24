@@ -67,6 +67,7 @@ At-least-once, с ретраями (T-19-56): исключение -> `mark_mini
 может нести ПД, например имя делегата).
 """
 import logging
+from secret_redact import redact_secrets
 
 from database.db import (
     list_unprocessed_miniapp_outbox,
@@ -255,7 +256,7 @@ async def drain(bot) -> int:
         except Exception as e:
             # T-19-57: только id и kind в логе, никогда payload (может нести ПД).
             logger.error(f"miniapp_outbox: row {row_id} (kind={kind}) failed: {e}")
-            await mark_miniapp_outbox_failed(row_id, str(e))
+            await mark_miniapp_outbox_failed(row_id, redact_secrets(e))
             attempts_now = (row.get("attempts") or 0) + 1
             if attempts_now >= MAX_ATTEMPTS:
                 logger.error(

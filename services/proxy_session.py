@@ -50,6 +50,7 @@ from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
 from config import config
+from secret_redact import redact_secrets
 from services.background import spawn
 from services.timeutil import msk_now
 
@@ -135,6 +136,9 @@ async def _alert_admins_proxy_storm(
         # like the stale-index dedup path).
         if cause != "unknown":
             text += f"\nПричина: {cause}"
+        # Причина = str(исключения) aiogram/aiohttp: в ней URL Bot API с токеном в пути
+        # (инцидент 25.09 — токен ушёл в личку админам). Чистим весь текст, не только cause.
+        text = redact_secrets(text)
         for admin_id in config.ADMIN_IDS:
             if admin_id in _blocked_admins:
                 continue
@@ -205,7 +209,7 @@ def _describe_error(error) -> str:
     string goes into a Telegram message."""
     if error is None:
         return "unknown"
-    text = _scrub_credentials(f"{type(error).__name__}: {error}")
+    text = redact_secrets(_scrub_credentials(f"{type(error).__name__}: {error}"))
     if len(text) > 200:
         text = text[:200] + "…"
     return text
