@@ -445,7 +445,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        947,
+        952,
+        "Бэклог чек-ина №25: +5 строк — шов-импорт `from handlers import admin_forum_ready` "
+        "(«🚦 Готовность к форуму») в самый хвост файла (947 -> 952). "
         "Бэклог чек-ина п.10: +5 строк — шов-импорт `from handlers import admin_checkin_stats` "
         "(«📊 Статистика прихода») в самый хвост файла (942 -> 947). "
         "D-29 (24.09, «одна кнопка программы у делегата»): +8 строк — шов-импорт `from handlers "
@@ -590,7 +592,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1172,
+        1176,
+        "Бэклог чек-ина №25: +4 строки — капы экрана «🚦 Готовность к форуму» (forum_ready:*/"
+        "forum_ready_re:*, moderate_reg — как у хаба); 1172 -> 1176. "
         "Бэклог чек-ина п.10: +7 строк — капы экрана «📊 Статистика прихода» (checkin_stats/"
         "checkin_stats_refresh/checkin_stats_csv, moderate_reg); 1165 -> 1172. "
         "D-36 (24.09, аудит форумных тумблеров): +13 строк — capability-записи «🎪 Форум: "

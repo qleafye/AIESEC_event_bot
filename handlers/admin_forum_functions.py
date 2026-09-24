@@ -91,6 +91,9 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     label = await city_label(code) if await cities_module_on() else None
     lines = ["🎪 <b>Форум: функции</b>" + (f" — {html.escape(label)}" if label else ""), ""]
     buttons: list[list[InlineKeyboardButton]] = []
+    # Бэклог №25: светофор «всё ли готово сейчас» — handlers/admin_forum_ready.py.
+    if visible(f"forum_ready:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(text="🚦 Готовность к форуму", callback_data=f"forum_ready:{_encode_city(code)}")])
 
     # 1. Выпуск личного QR — мастер-тумблер, НЕ per_city (services/checkin.py::build_checkin_qr
     # читает его глобально); правится строкой «toggle_checkin_qr_enabled» раздела «📋 Заявки».
