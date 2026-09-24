@@ -90,11 +90,12 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 # ── Задача 2: покрытие MENU_TEXTS ────────────────────────────────────────────────────────────
 
 def test_menu_texts_covers_all_thirteen_keys():
-    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) -- имя теста
-    # историческое (осталось от 13 ключей до этих правок), assert ниже проверяет актуальное число.
+    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) + форум-ночь
+    # п.7 (+1 ключ menu_important) -- имя теста историческое (осталось от 13 ключей до этих
+    # правок), assert ниже проверяет актуальное число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 15
+    assert len(MENU_TEXTS) == 16
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -131,6 +132,9 @@ _USER_ACTIONS_POINTS = [
     # Форум-ночь п.4 (расписание форума в боте): маршрутизация не зависит от того, есть ли уже
     # сессии в программе -- тот же приём, что у menu_miniapp/menu_checkin_qr выше.
     ("menu_schedule", "show_program_schedule"),
+    # Форум-ночь п.7 («❗ Важное»): маршрутизация не зависит от того, были ли сегодня важные
+    # рассылки -- тот же приём, что у menu_miniapp/menu_checkin_qr/menu_schedule выше.
+    ("menu_important", "show_important_today"),
 ]
 
 
@@ -212,7 +216,12 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # менеджер явно не включит модуль (ни один тест этого файла его не включает). Форум-ночь п.4:
 # menu_schedule гейтится has_program_sessions_for_city -- в пустой тестовой БД сессий нет ни
 # у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот же паритет.
-_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule")
+# Форум-ночь п.7: menu_important гейтится has_important_today -- в пустой тестовой БД
+# важных рассылок не было ни у одного делегата, кнопки не будет ни на одной клавиатуре.
+_GATED_KEYS = (
+    "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+    "menu_important",
+)
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 
 

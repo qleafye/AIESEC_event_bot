@@ -231,9 +231,14 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     # menu_schedule («🗓 Программа», квик — сессии по городу) рисуется только при непустой
     # программе города делегата — тот же приём, что у menu_faq/menu_checkin_qr; на свежей
     # БД сессий нет, отсутствие кнопки — ожидаемое поведение.
+    # menu_important («❗ Важное», форум-ночь п.7) рисуется только когда сегодня БЫЛА важная
+    # рассылка этому делегату — на свежей БД рассылок не было, кнопки не будет.
     expected_order = [
         label for key, label in MENU_BUTTONS
-        if key not in ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule")
+        if key not in (
+            "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+            "menu_important",
+        )
     ]
     assert texts == expected_order
 

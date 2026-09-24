@@ -463,6 +463,11 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:program.parallel_label", "параллельно"))
     items.append(("lit:program.back_to_days", "← Дни"))
 
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): экран делегата «❗ Важное» (handlers/user_actions.py::
+    # show_important_today) — тот же приём, что литералы program выше.
+    items.append(("lit:user_actions.important_today_empty", "Сегодня важных рассылок не было."))
+    items.append(("lit:user_actions.important_today_header", "❗ Важные рассылки за сегодня:"))
+
     items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
     items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))

@@ -219,15 +219,20 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     # (двойной гейт, тот же приём, что у menu_miniapp) — master-тумблер в дефолте выключен.
     # menu_schedule («🗓 Программа») рисуется только при непустой программе города делегата
     # — тот же приём, что у menu_faq/menu_checkin_qr; на свежей БД сессий нет.
+    # menu_important («❗ Важное», форум-ночь п.7) рисуется только когда сегодня БЫЛА важная
+    # рассылка этому делегату — на свежей БД рассылок не было.
     expected_texts = [
         label for key, label in MENU_BUTTONS
-        if key not in ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule")
+        if key not in (
+            "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+            "menu_important",
+        )
     ]
     assert after_texts == expected_texts, (
         "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
         "— Mini App выключен, FAQ пуст, кроме «🌐 Язык / Language» — default off, кроме "
-        "«🎟 Мой QR» — checkin_qr_enabled default off, и кроме «🗓 Программа» — программа "
-        "города пуста"
+        "«🎟 Мой QR» — checkin_qr_enabled default off, кроме «🗓 Программа» — программа "
+        "города пуста, и кроме «❗ Важное» — важных рассылок сегодня не было"
     )
 
 

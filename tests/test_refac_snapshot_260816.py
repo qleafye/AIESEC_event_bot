@@ -1210,6 +1210,7 @@ user_actions|message|process_question|state:Question:*
 user_actions|message|open_miniapp_button|
 user_actions|message|show_my_checkin_qr|
 user_actions|message|show_program_schedule|
+user_actions|message|show_important_today|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1573,7 +1574,12 @@ def test_snapshot_total_handler_count_is_292():
     # файла, сразу после checkin_not_arrived_show_qr. Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 696-строчным снимком: ровно одна
     # вставка из 2 строк, 0 удалений, 0 реордеров (696 -> 698).
-    assert len(GOLDEN_SNAPSHOT) == 698
+    # Форум-ночь п.7 («❗ Важное» делегатская лента): +1 user_actions.message
+    # (show_important_today, menu_important) — встал сразу после show_program_schedule и ПЕРЕД
+    # reg_handoff_idle_fallback (тот же приём, что у соседей выше). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 698-строчным снимком: ровно одна
+    # вставка из 1 строки, 0 удалений, 0 реордеров (698 -> 699).
+    assert len(GOLDEN_SNAPSHOT) == 699
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

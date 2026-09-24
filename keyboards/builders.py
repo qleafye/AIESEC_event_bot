@@ -2,7 +2,8 @@ import logging
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_user, has_faq_for_city, has_program_sessions_for_city
+from database.db import get_user, has_faq_for_city, has_program_sessions_for_city, has_important_today
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
@@ -70,6 +71,10 @@ MENU_BUTTONS = [
     # что и у menu_miniapp выше (двойной гейт: своя видимость menu_checkin_qr + модуль
     # checkin_qr_enabled, см. get_main_menu_kb ниже).
     ("menu_checkin_qr", "🎟 Мой QR"),
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): список важных рассылок делегату за сегодня. Гейт
+    # ниже (has_important_today) прячет кнопку, пока сегодня для этого делегата не было ни
+    # одной важной рассылки — тот же приём, что у menu_faq/menu_checkin_qr.
+    ("menu_important", "❗ Важное"),
 ]
 
 # Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
@@ -213,6 +218,17 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: has_program_sessions_for_city resolve failed for {telegram_id}: {e}")
         schedule_on = False
 
+    # Форум-ночь п.7 («❗ Важное»): кнопка только пока сегодня БЫЛА хоть одна важная рассылка
+    # этому делегату (database.db.has_important_today) — тот же приём, что у schedule_on выше.
+    # Нет telegram_id (легаси-вызов без аргумента) -> нечего проверять, кнопки не будет.
+    important_on = False
+    if telegram_id is not None:
+        try:
+            important_on = await has_important_today(telegram_id, msk_now().strftime("%Y-%m-%d"))
+        except Exception as e:
+            logger.error(f"get_main_menu_kb: has_important_today resolve failed for {telegram_id}: {e}")
+            important_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -244,6 +260,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Квик 260923 (форум-чекин, D-03): вторая половина гейта — сама кнопка value=="on"
             # недостаточна, пока менеджер не включил модуль checkin_qr_enabled.
             if key == "menu_checkin_qr" and not checkin_qr_on:
+                continue
+            # Форум-ночь п.7: вторая половина гейта — сама кнопка value=="on" недостаточна,
+            # пока сегодня не было ни одной важной рассылки этому делегату.
+            if key == "menu_important" and not important_on:
                 continue
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
