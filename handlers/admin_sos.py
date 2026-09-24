@@ -16,7 +16,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import ALL_CITIES, admin_selected_city, cities_module_on, city_label
+from cities import ALL_CITIES, admin_selected_city, cities_module_on
 from database.db import (
     claim_sos_report,
     count_sos_by_status,
