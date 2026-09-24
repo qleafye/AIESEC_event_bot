@@ -585,6 +585,18 @@ async def checkinqr_cfg_screen(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def _safe_reschedule(code: str | None) -> None:
+    """`schedule_city_jobs` требует запущенный планировщик (`services.scheduler.get_scheduler`
+    бросает `RuntimeError`, если бот стартовал без него) — в проде это невозможно (main.py
+    поднимает планировщик раньше, чем начинают приходить апдейты), но правка настройки не
+    имеет права уронить сохранение ИЗ-ЗА этого; тот же fail-soft приём, что у
+    `handlers.admin_settings._reschedule_checkin_qr_if_forum_date`."""
+    try:
+        await schedule_city_jobs(code)
+    except Exception as e:
+        logger.error(f"checkin_broadcast reschedule({code!r}) failed: {e}")
+
+
 @router.callback_query(F.data.startswith("checkinqr_toggle:"))
 async def checkinqr_toggle_go(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
@@ -596,7 +608,7 @@ async def checkinqr_toggle_go(callback: types.CallbackQuery):
         await set_setting_by_admin(callback.from_user.id, composed, new_val)
     else:
         await set_setting_by_admin(callback.from_user.id, key, new_val)
-    await schedule_city_jobs(code)
+    await _safe_reschedule(code)
     text, kb = await _qr_cfg_text_kb(code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
@@ -643,7 +655,7 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
         await set_setting_by_admin(message.from_user.id, composed, value)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
-    await schedule_city_jobs(code)
+    await _safe_reschedule(code)
 
     text, kb = await _qr_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())

@@ -502,7 +502,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1082,
+        1100,
+        "Форум-ночь п.3 (D-03, идея №2): +12 строк — capability-записи рассылки QR перед "
+        "форумом и её настроек (checkinqr_send:*/checkinqr_send_go:*/checkinqr_send_no/"
+        "checkinqr_cfg:*/checkinqr_toggle:*/checkinqr_time:*/state:CheckinQrTimeEdit:*, "
+        "«moderate_reg» — та же капа, что у перевыпуска QR выше: массовая рассылка и правка "
+        "расписания не входят в право «checkin» волонтёра); 1082 -> 1094, потолок с небольшим "
+        "запасом. "
         "Форум-ночь B4 (идея №8): +6 строк — capability-записи пробной выгрузки "
         "(checkin_test_start/checkin_test_qr/state:CheckinTestUpload:*, капа «checkin»); "
         "1076 -> 1082. "
