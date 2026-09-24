@@ -172,7 +172,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2734,
+        2770,
+        "Решение владельца 24.09 (D-33): +32 строки — "
+        "`_reschedule_checkin_volunteer_guide_if_relevant` (хук того же вида, реагирует на "
+        "forum_date + свои три ключа шпаргалки волонтёра, два вызова в общем сохранении "
+        "значения); 2734 -> 2766. "
         "Ревью 24.09 (аудит ключей после 8c0d8af): +27 строк — "
         "`_reconcile_session_feedback_if_relevant` (хук после `_reschedule_checkin_qr_if_"
         "forum_date`, тот же приём: свободный ввод задержки «⭐ Отзывы о сессиях» — "

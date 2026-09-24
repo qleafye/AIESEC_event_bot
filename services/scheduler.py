@@ -336,6 +336,10 @@ async def init_scheduler(bot):
     # init_scheduler держим единообразным).
     from services.checkin_broadcast import reconcile_broadcasts as _reconcile_checkin_qr
     await _reconcile_checkin_qr()
+    # D-33 (решение владельца 24.09): то же самое для шпаргалки волонтёра накануне форума —
+    # своя джоба на город (checkin_volunteer_guide:{city}), тот же приём, что QR-рассылка выше.
+    from services.checkin_volunteer_broadcast import reconcile as _reconcile_volunteer_guide
+    await _reconcile_volunteer_guide()
     # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — (пере)ставить джобы
     # отзыва всех сессий программы (пересозданный jobs.sqlite/простой дольше misfire_grace),
     # тот же приём, что реконсиляции выше.

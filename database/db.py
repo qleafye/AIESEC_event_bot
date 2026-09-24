@@ -1551,6 +1551,25 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_checkin_not_arrived_day ON checkin_not_arrived(day)"
         )
 
+        # D-33 (решение владельца 24.09): шпаргалка волонтёра чек-ина (checkin_volunteer_guide_
+        # text) за день до форума ГОРОДА — идемпотентность ПО ДНЮ форума, не по человеку раз и
+        # навсегда (`UNIQUE(telegram_id, day)`, тот же приём, что `checkin_not_arrived` выше) —
+        # волонтёр нескольких форумов города в разные даты получает напоминание перед КАЖДЫМ.
+        # `day` — YYYY-MM-DD дня САМОГО форума (не дня отправки, в отличие от checkin_not_
+        # arrived.day — тут ровно один день-до-форума на город, дублей не бывает и без привязки
+        # к дате отправки). `city` — снимок города джобы на момент отправки (для отчёта, не для
+        # переадресации — тот же приём, что checkin_qr_sends.event_city).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_volunteer_guide_sends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                city TEXT,
+                sent_at TEXT NOT NULL,
+                UNIQUE(telegram_id, day)
+            )
+        ''')
+
         # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
         # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
         # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
@@ -8937,6 +8956,37 @@ async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
     total = int(row[0] or 0) if row else 0
     confirmed = int(row[1] or 0) if row and row[1] is not None else 0
     return total, confirmed
+
+
+# ── D-33 (решение владельца 24.09): шпаргалка волонтёра чек-ина за день до форума ────────────
+
+async def checkin_volunteer_guide_mark_sent(
+    telegram_id: int, day: str, city: str | None, sent_at: str,
+) -> bool:
+    """Идемпотентная отметка «шпаргалка отправлена на этот `day` (день форума)» — `INSERT OR
+    IGNORE` по `UNIQUE(telegram_id, day)`: повторный вызов (рестарт бота, реконсиляция) для уже
+    отправленной пары (человек, день форума) ничего не меняет, возвращает `False`. `True` —
+    строка вставлена именно этим вызовом (услуга оказана впервые)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkin_volunteer_guide_sends (telegram_id, day, city, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, day, city, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_volunteer_guide_sent_ids(day: str) -> set[int]:
+    """Кому УЖЕ отправлена шпаргалка на этот `day` (день форума) — вызывающий
+    (`services.checkin_volunteer_broadcast.send_guide`) вычитает этот набор из держателей
+    capability `checkin`, идемпотентность рассылки."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM checkin_volunteer_guide_sends WHERE day = ?", (day,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
 
 
 # ── Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» + ответы делегата ─────────────────────
