@@ -210,6 +210,81 @@ def test_point_for_session_format():
     assert program.point_for_session(42) == "session:42"
 
 
+# ── session_point_label / checkin_session_points (форум-ночь п.5, D-18) ─────────────────────
+
+def test_session_point_label_with_hall_and_truncated_title():
+    session = {
+        "start_time": "10:00", "end_time": "11:00", "hall_name": "Большой зал",
+        "title": "Очень длинное название сессии, которое точно длиннее лимита в сорок символов",
+    }
+    label = program.session_point_label(session, limit=20)
+    assert label.startswith("10:00–11:00 · Большой зал · ")
+    assert label.endswith("…")
+    assert len(label.split(" · ")[-1]) == 20
+
+
+def test_session_point_label_without_hall():
+    session = {"start_time": "10:00", "end_time": "11:00", "hall_name": None, "title": "Открытие"}
+    assert program.session_point_label(session) == "10:00–11:00 · Открытие"
+
+
+def test_checkin_session_points_empty_when_no_sessions_today(tmp_path):
+    _use_tmp_db(tmp_path)
+    points = asyncio.run(program.checkin_session_points("msk", datetime(2026, 10, 30, 10, 0)))
+    assert points == []
+
+
+def test_checkin_session_points_live_first_then_by_start_time(tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.create_program_session("msk", "2026-10-30", "09:00", "10:00", "Утро"))
+    id_now = asyncio.run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Идёт сейчас"))
+    asyncio.run(db.create_program_session("msk", "2026-10-30", "11:00", "12:00", "Позже"))
+    points = asyncio.run(program.checkin_session_points("msk", datetime(2026, 10, 30, 10, 30)))
+    assert [p["point"] for p in points] == [
+        f"session:{id_now}", f"session:{id_now - 1}", f"session:{id_now + 1}",
+    ]
+    assert points[0]["live"] is True
+    assert points[1]["live"] is False
+    assert points[2]["live"] is False
+
+
+def test_checkin_session_points_carries_capacity(tmp_path):
+    _use_tmp_db(tmp_path)
+    hall_id = asyncio.run(db.create_program_hall("msk", "Большой зал", capacity=120))
+    sid = asyncio.run(db.create_program_session(
+        "msk", "2026-10-30", "10:00", "11:00", "Открытие", hall_id=hall_id,
+    ))
+    points = asyncio.run(program.checkin_session_points("msk", datetime(2026, 10, 30, 10, 30)))
+    assert points == [{
+        "point": f"session:{sid}", "label": "10:00–11:00 · Большой зал · Открытие",
+        "live": True, "capacity": 120,
+    }]
+
+
+# ── scanned_outside_session_window (форум-ночь п.5) ──────────────────────────────────────────
+
+def test_scanned_outside_session_window_none_scanned_at_is_false():
+    session = {"day": "2026-10-30", "start_time": "10:00", "end_time": "11:00"}
+    assert program.scanned_outside_session_window(session, None) is False
+
+
+def test_scanned_outside_session_window_inside_slack_is_false():
+    session = {"day": "2026-10-30", "start_time": "10:00", "end_time": "11:00"}
+    assert program.scanned_outside_session_window(session, "2026-10-30 09:45:00") is False
+    assert program.scanned_outside_session_window(session, "2026-10-30 11:25:00") is False
+
+
+def test_scanned_outside_session_window_outside_slack_is_true():
+    session = {"day": "2026-10-30", "start_time": "10:00", "end_time": "11:00"}
+    assert program.scanned_outside_session_window(session, "2026-10-30 09:00:00") is True
+    assert program.scanned_outside_session_window(session, "2026-10-30 12:00:00") is True
+
+
+def test_scanned_outside_session_window_other_day_is_false():
+    session = {"day": "2026-10-30", "start_time": "10:00", "end_time": "11:00"}
+    assert program.scanned_outside_session_window(session, "2026-10-31 10:30:00") is False
+
+
 # ── copy_program_day ──────────────────────────────────────────────────────────────────────────
 
 def test_copy_program_day_creates_halls_and_sessions(tmp_path):

@@ -1434,17 +1434,19 @@ async def init_db():
             "ON users(checkin_token) WHERE checkin_token IS NOT NULL"
         )
 
-        # Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-20): таблица отметок «пришёл» — вход и (в
-        # будущем) сессии программы на одной схеме. `point` = "entry" для входа
-        # (services.checkin.ENTRY_POINT), id/слаг сессии — для будущих слотов (сессий сегодня
-        # ещё нет). `UNIQUE(telegram_id, point)` + `INSERT OR IGNORE` (record_checkin ниже)
-        # хранит ПЕРВЫЙ скан на точку — верно для входа (D-10: «повторы отбрасываются»). D-20
-        # («на сессии засчитывается ПОСЛЕДНИЙ скан слота») ломает этот идемпотентный INSERT —
-        # когда появятся сессии, `record_checkin` для их `point` обязан переключиться на UPSERT
-        # (`ON CONFLICT DO UPDATE SET scanned_at=...`), вход продолжает жить на INSERT OR IGNORE.
-        # `source` — miniapp (сканер внутри Mini App, будущая фаза) | csv (загрузка выгрузки
-        # офлайн-сканера) | manual (по фамилии/от руки, D-11/D-12). `approx_time` — 1, если
-        # время скана не удалось прочитать из файла и подставлено время загрузки (D-10).
+        # Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-20): таблица отметок «пришёл» — вход и сессии
+        # программы на одной схеме. `point` = "entry" для входа (services.checkin.ENTRY_POINT),
+        # `"session:{id}"` (services.program.point_for_session) — для сессий. `UNIQUE(telegram_id,
+        # point)` + `INSERT OR IGNORE` (record_checkin ниже) хранит ПЕРВЫЙ скан на точку — верно
+        # для входа (D-10: «повторы отбрасываются»). D-20 («на сессии засчитывается ПОСЛЕДНИЙ
+        # скан слота») этому идемпотентному INSERT не подчиняется — сессии идут через ОТДЕЛЬНУЮ
+        # функцию `record_session_checkin` (delete-then-insert внутри слота параллельных сессий,
+        # `services.program.parallel_group`), вход продолжает жить на INSERT OR IGNORE как был.
+        # `source` — miniapp (сканер Mini App) | csv (загрузка выгрузки офлайн-сканера) | manual
+        # (по фамилии/от руки, D-11/D-12) | auto_session (услуга `services.checkin.record_arrival`
+        # сама подтверждает вход, когда делегата отметили на сессии, а на входе он ещё не был).
+        # `approx_time` — 1, если время скана не удалось прочитать из файла и подставлено время
+        # загрузки (D-10).
         await db.execute('''
             CREATE TABLE IF NOT EXISTS checkins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8001,6 +8003,85 @@ async def record_checkin(
     if existing is None:
         return "new", stamp  # не должно случаться (rowcount==0 без строки в базе), но не роняем вызывающего
     return "duplicate", existing["scanned_at"]
+
+
+async def record_session_checkin(
+    telegram_id: int,
+    session_id: int,
+    slot_session_ids: list[int],
+    *,
+    source: str,
+    scanned_at: str | None = None,
+    approx: bool = False,
+    by_staff_id: int | None = None,
+) -> tuple[str, str, int | None]:
+    """Отметка на СЕССИИ (форум-ночь п.5, FORUM-CHECKIN.md D-18..D-20) — в отличие от
+    `record_checkin` выше (первый скан побеждает, точка «Вход»), здесь «последний скан СЛОТА
+    засчитывается» (D-20): делегат, ушедший с одной параллельной сессии на другую в ТОМ ЖЕ
+    временном слоте, обязан считаться на НОВОЙ, а не на старой. `slot_session_ids` — id ДРУГИХ
+    сессий слота (без самой `session_id`, слот строит `services.program.parallel_group`) — эта
+    функция ничего не знает о времени/пересечении сессий, только про то, какие point-строки
+    (`session:{id}`) — слот-соседи текущей.
+
+    Возвращает `(status, scanned_at, previous_session_id)`:
+      - `"duplicate"` — уже была отметка НА ЭТОЙ ЖЕ сессии — время первой отметки не трогаем
+        (тот же принцип D-10, что у входа), `previous_session_id` всегда `None`.
+      - `"moved"` — была отметка на ДРУГОЙ сессии этого же слота — та строка удаляется (делегат
+        физически не может быть на двух параллельных сессиях одновременно), новая сохраняется,
+        `previous_session_id` — id старой (вызывающий достаёт её название для строки «перенесено
+        с …»).
+      - `"new"` — в слоте не было ни одной отметки этого делегата вовсе.
+
+    `aiosqlite.IntegrityError` на финальном INSERT (тот же приём, что у `reissue_checkin_token`
+    выше) — редкая гонка двух волонтёров, отмечающих ОДНОГО делегата на РАЗНЫЕ сессии слота
+    практически одновременно: проигравший перечитывает уже вставленную конкурентом строку и
+    отвечает `"duplicate"` за НЕЁ, а не падает и не дублирует запись."""
+    stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    point = f"session:{session_id}"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, point),
+        ) as cursor:
+            existing_here = await cursor.fetchone()
+        if existing_here is not None:
+            return "duplicate", existing_here["scanned_at"], None
+
+        previous_session_id: int | None = None
+        if slot_session_ids:
+            other_points = [f"session:{sid}" for sid in slot_session_ids]
+            placeholders = ",".join("?" for _ in other_points)
+            async with db.execute(
+                f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                [telegram_id, *other_points],
+            ) as cursor:
+                other_rows = await cursor.fetchall()
+            if other_rows:
+                previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
+                await db.execute(
+                    f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                    [telegram_id, *other_points],
+                )
+        try:
+            await db.execute(
+                "INSERT INTO checkins "
+                "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+            )
+            await db.commit()
+        except aiosqlite.IntegrityError:
+            async with db.execute(
+                "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+                (telegram_id, point),
+            ) as cursor:
+                raced = await cursor.fetchone()
+            return "duplicate", (raced["scanned_at"] if raced else stamp), None
+
+    status = "moved" if previous_session_id is not None else "new"
+    return status, stamp, previous_session_id
 
 
 async def count_checkins_by_point(point: str, *, city_scope=None) -> int:
