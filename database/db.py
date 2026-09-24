@@ -1592,6 +1592,30 @@ async def init_db():
             "ON program_sessions(city, day, start_time)"
         )
 
+        # Форум-ночь п.9 (идея №15 бэклога чек-ина, D-24): «⭐ Отзыв о сессии одним тапом» —
+        # ОДНА строка на (делегат, сессия): `prompted_at` ставится ПЕРВОЙ (до самой отправки,
+        # `INSERT OR IGNORE`) — идемпотентность рассылки живёт на этом же UNIQUE, не на
+        # отдельном флаге. `rating`/`comment` пусты, пока делегат не ответил; повторный тап по
+        # другой оценке — обычный UPDATE той же строки (одна оценка на сессию, правило плана).
+        # `telegram_id` — не FK на users (тот же стиль, что `checkins`/`sos_reports`) —
+        # чек-ин/отзыв переживают отсутствие строки users в редких гонках порядка миграций.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS session_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                session_id INTEGER NOT NULL,
+                rating INTEGER,
+                comment TEXT,
+                prompted_at TEXT NOT NULL,
+                rated_at TEXT,
+                commented_at TEXT,
+                UNIQUE(telegram_id, session_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_feedback_session ON session_feedback(session_id)"
+        )
+
         # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — карточка в чат оргов + захват/решение/
         # эскалация. Метки времени — московские (`services.timeutil.msk_now()`, конвенция
         # квика 260912-mcj для нового кода, delegate_questions/reg_answer_history остаются
@@ -8216,6 +8240,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
     # отдельно (строка целиком уходит вместе с делегатом, как и у соседей этой таблицы).
     ("sos_reports", "telegram_id", "sos"),
+    # Форум-ночь п.9 (идея №15, D-24): session_feedback.telegram_id — личная оценка/комментарий
+    # делегата к сессии, тот же личный след, что checkins/sos_reports выше.
+    ("session_feedback", "telegram_id", "session_feedback"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -9192,5 +9219,159 @@ async def sessions_overlapping_hall(
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_all_program_sessions() -> list[dict]:
+    """Все сессии всех городов/дней — только для `services.session_feedback.reconcile_all()`
+    (перевзвод джоб отзыва на старте бота, тот же приём, что `reconcile_wave_jobs`); экраны
+    менеджера/делегата продолжают читать `list_program_sessions_for_city_day` (скоуп город+день)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM program_sessions") as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» ────────────────────────
+
+async def is_marked_for_session(telegram_id: int, session_id: int) -> bool:
+    """Итоговая отметка слота (D-20: «последний скан слота засчитывается» — `checkins.point`
+    хранит РОВНО одну строку на слот благодаря `record_session_checkin`) — единственная
+    проверка допуска к оценке: не отмеченный на этой сессии делегат не может её оценить, ни
+    получить приглашение (D-24). Точка отметки собрана строкой `f"session:{id}"` НАПРЯМУЮ, не
+    через `services.program.point_for_session` — тот модуль импортирует ИЗ `database.db`,
+    обратный импорт замкнул бы цикл (тот же довод, что у `record_session_checkin` выше)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM checkins WHERE telegram_id = ? AND point = ? LIMIT 1",
+            (telegram_id, f"session:{session_id}"),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row is not None
+
+
+async def list_marked_telegram_ids_for_session(session_id: int) -> list[int]:
+    """Круг получателей приглашения оценить сессию — те же строки, что видит `is_marked_for_
+    session` по одному, но списком (джоба рассылки, `services.session_feedback.deliver_
+    feedback_prompts`)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM checkins WHERE point = ?", (f"session:{session_id}",),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [r[0] for r in rows]
+
+
+async def create_session_feedback_prompt(telegram_id: int, session_id: int, prompted_at: str) -> bool:
+    """`INSERT OR IGNORE` — идемпотентность самой РАССЫЛКИ (не только оценки): джоба, тикнувшая
+    дважды (перепланирование при правке сессии + старый таймер не снялся, гонка reconcile на
+    рестарте), не шлёт делегату второе приглашение — `True` только у ПЕРВОЙ вставки, вызывающий
+    шлёт сообщение только тогда."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO session_feedback "
+            "(telegram_id, session_id, prompted_at) VALUES (?, ?, ?)",
+            (telegram_id, session_id, prompted_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def set_session_feedback_rating(telegram_id: int, session_id: int, rating: int, rated_at: str) -> bool:
+    """Повторный тап меняет оценку (правило плана: «одна оценка на делегата на сессию») —
+    обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе (делегат каким-то
+    образом дотянулся до чужого/устаревшего callback_data без приглашения) -> `False`,
+    вызывающий отвечает алертом, не пишет вслепую."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE session_feedback SET rating = ?, rated_at = ? "
+            "WHERE telegram_id = ? AND session_id = ?",
+            (rating, rated_at, telegram_id, session_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def set_session_feedback_comment(telegram_id: int, session_id: int, comment: str, commented_at: str) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE session_feedback SET comment = ?, commented_at = ? "
+            "WHERE telegram_id = ? AND session_id = ?",
+            (comment, commented_at, telegram_id, session_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def get_session_feedback(telegram_id: int, session_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM session_feedback WHERE telegram_id = ? AND session_id = ?",
+            (telegram_id, session_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def session_feedback_stats(session_id: int) -> dict:
+    """`{"avg": float|None, "rating_count": int, "comment_count": int}` для карточки сессии
+    (`handlers.admin_program.render_session_card`) — `avg is None`, если оценок ещё нет
+    («Пока нет оценок», не «0.0»)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT AVG(rating), COUNT(rating), "
+            "SUM(CASE WHEN comment IS NOT NULL AND comment != '' THEN 1 ELSE 0 END) "
+            "FROM session_feedback WHERE session_id = ?",
+            (session_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    avg, rating_count, comment_count = row if row else (None, 0, 0)
+    return {
+        "avg": float(avg) if avg is not None else None,
+        "rating_count": int(rating_count or 0),
+        "comment_count": int(comment_count or 0),
+    }
+
+
+async def session_feedback_stats_bulk(session_ids: list[int]) -> dict[int, dict]:
+    """Та же статистика, что `session_feedback_stats`, для НЕСКОЛЬКИХ сессий одним запросом —
+    экран «📊 Оценки сессий» дня (`handlers.session_feedback`) не бьёт БД по сессии в цикле.
+    Сессия без единой строки `session_feedback` — просто отсутствует в результате, вызывающий
+    подставляет нулевую статистику сам (тот же приём, что `program.sessions_for_city_day`
+    подставляет `hall_name=None` для сессий без зала)."""
+    if not session_ids:
+        return {}
+    placeholders = ",".join("?" for _ in session_ids)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT session_id, AVG(rating), COUNT(rating), "
+            f"SUM(CASE WHEN comment IS NOT NULL AND comment != '' THEN 1 ELSE 0 END) "
+            f"FROM session_feedback WHERE session_id IN ({placeholders}) GROUP BY session_id",
+            session_ids,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {
+        r[0]: {
+            "avg": float(r[1]) if r[1] is not None else None,
+            "rating_count": int(r[2] or 0),
+            "comment_count": int(r[3] or 0),
+        }
+        for r in rows
+    }
+
+
+async def list_session_feedback_comments(session_id: int, *, limit: int = 10, offset: int = 0) -> list[dict]:
+    """Комментарии сессии, новые сверху — постранично (экран «💬 Комментарии»)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, rating, comment, commented_at FROM session_feedback "
+            "WHERE session_id = ? AND comment IS NOT NULL AND comment != '' "
+            "ORDER BY commented_at DESC LIMIT ? OFFSET ?",
+            (session_id, limit, offset),
+        ) as cursor:
             rows = await cursor.fetchall()
     return [dict(r) for r in rows]

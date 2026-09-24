@@ -1685,6 +1685,12 @@ async def show_important_today(message: types.Message):
 # раньше него). Сам хендлер/логика — в шве handlers/sos.py.
 from handlers import sos as sos_handlers  # noqa: E402,F401
 
+# Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — импорт СРАЗУ ПОСЛЕ
+# sos_handlers и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos
+# выше). Этот же импорт регистрирует и менеджерскую часть шва (handlers.admin.router) — модуль
+# декорирует оба общих роутера, см. докстринг handlers/session_feedback.py.
+from handlers import session_feedback  # noqa: E402,F401
+
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в

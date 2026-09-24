@@ -502,6 +502,15 @@ _CODE_LITERALS_EN = {
     "взял(а) {who}": "picked up by {who}",
     "ещё не взяли": "not picked up yet",
     "коллега": "a colleague",
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — четыре реестровых
+    # дефолта экрана оценки (group "event", `session_feedback_prompt_text`/
+    # `session_feedback_thanks_text`/`session_feedback_comment_hint_text`/
+    # `session_feedback_comment_saved_text`).
+    "Как тебе «{title}»?": "How was «{title}»?",
+    "Спасибо! Хочешь добавить пару слов?": "Thanks! Want to add a few words?",
+    "✍️ Напиши комментарий следующим сообщением.": "✍️ Write your comment as your next message.",
+    "Спасибо, записал!": "Thanks, got it!",
+    "Эта оценка тебе недоступна.": "This rating isn't available to you.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
