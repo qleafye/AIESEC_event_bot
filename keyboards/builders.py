@@ -106,6 +106,14 @@ CONFERENCE_MENU_LABELS: dict[str, str] = {
 for _key, _text in CONFERENCE_MENU_LABELS.items():
     MENU_TEXTS[_key] = MENU_TEXTS[_key] | {_text, MENU_EN.get(_text, _text)}
 MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 Оплата", "💳 Оплата")})
+# D-29 объединил «🗓 Программа» (menu_schedule) с «📅 Программа форума». У делегатов с
+# закэшированной старой клавиатурой кнопка осталась и молчала — её подписи (RU+EN, как были
+# до объединения) ведут в тот же show_program. В меню кнопку не возвращаем.
+LEGACY_MENU_TEXTS: dict[str, frozenset[str]] = {
+    "menu_program": frozenset({"🗓 Программа", "🗓 Schedule"}),
+}
+for _key, _texts in LEGACY_MENU_TEXTS.items():
+    MENU_TEXTS[_key] = MENU_TEXTS[_key] | _texts
 
 # quick-260916: inline (not reply-keyboard) caption sent alongside the delegate's welcome-back
 # message to an admin — single source shared with handlers/registration.py so the literal is
