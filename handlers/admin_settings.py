@@ -223,6 +223,17 @@ _APPS_FIELD_ORDER = [
     # App) — тот же приём, что у checkin_qr_caption_text выше (редактор экрана достаётся
     # бесплатно попаданием в этот список).
     "checked_in_status_text",
+    # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — вопрос, пять подписей
+    # кнопок, подсказка после «Другое» и ответ-подтверждение — тот же приём, что у соседних
+    # форумных текстов выше (редактор экрана достаётся бесплатно попаданием в этот список);
+    # сам тумблер `forum_noshow_poll_enabled` (type "enum") — НЕ здесь, живёт на своём экране
+    # `handlers/admin_forum_functions.py::forumnoshowpoll_cfg_screen` (тот же приём, что
+    # forum_day_menu_enabled/forum_welcome_enabled).
+    "forum_noshow_poll_question_text",
+    "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
+    "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
+    "forum_noshow_poll_option_other_text",
+    "forum_noshow_poll_other_prompt_text", "forum_noshow_poll_thanks_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -2416,6 +2427,55 @@ async def _reschedule_checkin_volunteer_guide_if_relevant(key: str) -> None:
         logger.error(f"_reschedule_checkin_volunteer_guide_if_relevant({key!r}): {e}")
 
 
+_DAY_REPORT_RESCHEDULE_KEYS = {
+    "forum_date", "forum_day_report_enabled", "forum_day_report_time",
+}
+
+
+async def _reschedule_forum_day_report_if_relevant(key: str) -> None:
+    """Идея №16 бэклога чек-ина: тот же приём и тот же повод (правка `forum_date`), что
+    `_reschedule_checkin_volunteer_guide_if_relevant` выше — плюс свои два ключа (тумблер/
+    время), от которых зависит постановка джобы `services.forum_day_report`. Композитный
+    per_city ключ переставляет ТОЛЬКО этот город, голый (глобальный ключ без override) —
+    полный `reconcile()` по всем городам."""
+    base = _base_setting_key(key)
+    if base not in _DAY_REPORT_RESCHEDULE_KEYS:
+        return
+    try:
+        from services.forum_day_report import reconcile, schedule_city_job
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_job(city)
+        else:
+            await reconcile()
+    except Exception as e:
+        logger.error(f"_reschedule_forum_day_report_if_relevant({key!r}): {e}")
+
+
+_NOSHOW_POLL_RESCHEDULE_KEYS = {
+    "forum_date", "forum_noshow_poll_enabled", "forum_noshow_poll_time",
+}
+
+
+async def _reschedule_forum_noshow_poll_if_relevant(key: str) -> None:
+    """Идея №23 бэклога чек-ина: тот же приём, что `_reschedule_forum_day_report_if_relevant`
+    выше, для джобы `services.forum_noshow_poll`."""
+    base = _base_setting_key(key)
+    if base not in _NOSHOW_POLL_RESCHEDULE_KEYS:
+        return
+    try:
+        from services.forum_noshow_poll import reconcile, schedule_city_job
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_job(city)
+        else:
+            await reconcile()
+    except Exception as e:
+        logger.error(f"_reschedule_forum_noshow_poll_if_relevant({key!r}): {e}")
+
+
 async def _reconcile_session_feedback_if_relevant(key: str) -> None:
     """Ревью 24.09 (аудит ключей после 8c0d8af): свободный ввод задержки («✏️ Другое» на
     экране «⭐ Отзывы о сессиях», `handlers/session_feedback.py::prog_fbdelay_custom_start`)
@@ -2589,11 +2649,15 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await delete_setting_by_admin(message.from_user.id, key)
         await _reschedule_checkin_qr_if_forum_date(key)
         await _reschedule_checkin_volunteer_guide_if_relevant(key)
+        await _reschedule_forum_day_report_if_relevant(key)
+        await _reschedule_forum_noshow_poll_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
         await _reschedule_checkin_qr_if_forum_date(key)
         await _reschedule_checkin_volunteer_guide_if_relevant(key)
+        await _reschedule_forum_day_report_if_relevant(key)
+        await _reschedule_forum_noshow_poll_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
