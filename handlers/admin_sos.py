@@ -324,7 +324,7 @@ async def sos_claim(callback: types.CallbackQuery, bot: Bot):
 
 
 @router.callback_query(F.data.startswith("sos_resolve:"))
-async def sos_resolve(callback: types.CallbackQuery, bot: Bot):
+async def sos_resolve(callback: types.CallbackQuery, bot: Bot, fsm_storage=None):
     try:
         report_id = int(callback.data.split(":", 1)[1])
     except (IndexError, ValueError):
@@ -346,6 +346,8 @@ async def sos_resolve(callback: types.CallbackQuery, bot: Bot):
     sos_service.cancel_claimed_reminder(report_id)
     await callback.answer("Отмечено решённым.")
     await _refresh_card(bot, report_id)
+    # `fsm_storage` — хранилище диспетчера, aiogram кладёт его в данные хендлера.
+    await sos_service.close_delegate_collecting(bot, fsm_storage, report)
 
 
 # ── Пункт 3 плана: ответ орга РЕПЛАЕМ на карточку (мимо тихих часов — «это срочное») ────────
@@ -442,6 +444,7 @@ _SOS_TEXT_FIELDS = {
     "followup": ("sos_recent_followup_text", "🆘 Уже есть открытый — дополнить"),
     "contact": ("sos_fallback_contact_text", "📞 Экстренный контакт (если не доставлено)"),
     "done": ("sos_done_text", "🆘 Дописывание завершено («Готово»)"),
+    "resolved": ("sos_resolved_notify_text", "✅ Делегату: вопрос решён"),
     "expired": ("sos_collecting_expired_text", "🆘 Сессия дозаписи истекла"),
     "remind": ("sos_claimed_remind_text", "⏰ Напоминание взявшему"),
     "stale": ("sos_claimed_escalation_text", "⏰ Взяли, но не решили — менеджерам"),

@@ -6,9 +6,9 @@ D-31 (24.09, `.planning/FORUM-CHECKIN.md`, «SOS без категорий»): �
 целиком, в экстренной ситуации важна скорость, не классификация. Делегат сразу попадает в режим
 «дописываю SOS» (`SosReport.collecting`): ЛЮБОЕ его сообщение (текст, фото, геопозиция) уходит
 В ТРЕД карточки И дописывает саму карточку (первый текст/фото снимает пометку «подробности ещё
-не прислали»). Режим живёт до «Готово», решения заявки оргом (не отслеживается активно —
-известное ограничение, см. докстринг `sos_collecting_step`), таймаута
-(`sos_collecting_timeout_minutes`) или следующего `/start`.
+не прислали»). Режим живёт до «Готово», «✅ Решено» у орга (`handlers/admin_sos.py::
+sos_resolve` -> `services.sos.close_delegate_collecting` сбрасывает FSM делегата по этой
+заявке), таймаута (`sos_collecting_timeout_minutes`) или следующего `/start`.
 
 Форма шва — та же, что у соседних делегатских экранов (FAQ/программа/чек-ин): своего
 `Router()` нет, `from handlers.user_actions import router`; импортирован ХВОСТОМ
@@ -252,8 +252,8 @@ async def _create_and_notify(message: types.Message, state: FSMContext, city: st
 
 # ── Режим «дописываю SOS» (D-31) — ЛЮБОЕ сообщение делегата уходит в тред карточки И дописывает
 # саму карточку первым текстом/фото; «Готово» закрывает режим, таймаут закрывает его молча (без
-# явного действия делегата). «Решено» со стороны орга режим НЕ закрывает активно — известное
-# ограничение (см. докстринг `sos_collecting_step`).
+# явного действия делегата). «Решено» со стороны орга закрывает режим из админского хендлера
+# (`services.sos.close_delegate_collecting`).
 
 @router.message(SosReport.collecting, F.text.in_(DONE_WORDS))
 async def sos_collecting_done(message: types.Message, state: FSMContext):
@@ -282,12 +282,9 @@ async def sos_collecting_location(message: types.Message, state: FSMContext):
 
 @router.message(SosReport.collecting)
 async def sos_collecting_step(message: types.Message, state: FSMContext):
-    """Известное ограничение (D-31): «Решено» со стороны орга (`handlers/admin_sos.py::
-    sos_resolve`) не закрывает этот делегатский FSM активно — у админского хендлера нет
-    адресного доступа к FSM-хранилищу делегата (другой `StorageKey`). На практике не критично:
-    следующее сообщение делегата в этом состоянии просто уйдёт в тред уже решённой заявки
-    (`relay_delegate_message` фейл-софт по неизвестной/устаревшей карточке), лишний, но
-    безвредный проброс; режим сам закроется по «Готово»/таймауту/`/start`."""
+    """Сообщение делегата в режиме «дописываю SOS» — в карточку и в её тред. «✅ Решено» у орга
+    сбрасывает это состояние снаружи (`services.sos.close_delegate_collecting`, адресный
+    `StorageKey` делегата), так что после решения сюда уже не попадаем."""
     data = await state.get_data()
     report_id = data.get("sos_collecting_report_id")
     city = data.get("sos_collecting_city")

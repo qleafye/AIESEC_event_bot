@@ -1530,3 +1530,66 @@ def test_escalation_marks_chat_unhealthy_on_send_failure(tmp_path, monkeypatch):
     finally:
         sos_service._unhealthy_chats.discard(ESCALATION_CHAT_ID)
         sos_service._chat_alert_sent_at.pop(ESCALATION_CHAT_ID, None)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# «✅ Решено» у орга закрывает режим «дописываю SOS» у делегата
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _delegate_ctx(storage, bot):
+    return FSMContext(storage=storage, key=StorageKey(bot_id=bot.id, chat_id=DELEGATE_ID, user_id=DELEGATE_ID))
+
+
+def _resolve_with_storage(rid, bot, storage):
+    cb = FakeCallback(f"sos_resolve:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_resolve(cb, bot, fsm_storage=storage))
+    return cb
+
+
+def test_sos_resolve_clears_delegate_collecting_for_this_report(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+    bot, storage = FakeBot(), MemoryStorage()
+    ctx = _delegate_ctx(storage, bot)
+    _run(sos_handlers._enter_collecting(ctx, rid, None))
+
+    _resolve_with_storage(rid, bot, storage)
+    assert _run(ctx.get_state()) is None
+    assert _run(ctx.get_data()) == {}
+    to_delegate = [s for s in bot.sent if s[0] == DELEGATE_ID]
+    assert to_delegate and "Оргкомитет отметил вопрос решённым" in to_delegate[-1][1]
+    assert to_delegate[-1][2].get("reply_markup") is not None  # вернули главное меню
+
+
+def test_sos_resolve_keeps_collecting_for_other_report(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    old = _run(db.create_sos_report(DELEGATE_ID, None))
+    new = _run(db.create_sos_report(DELEGATE_ID, None))
+    bot, storage = FakeBot(), MemoryStorage()
+    ctx = _delegate_ctx(storage, bot)
+    _run(sos_handlers._enter_collecting(ctx, new, None))
+
+    _resolve_with_storage(old, bot, storage)
+    assert _run(ctx.get_state()) == SosReport.collecting.state
+    assert _run(ctx.get_data())["sos_collecting_report_id"] == new
+    to_delegate = [s for s in bot.sent if s[0] == DELEGATE_ID]
+    assert to_delegate and to_delegate[-1][2].get("reply_markup") is None
+
+
+def test_sos_resolve_notifies_delegate_in_english(tmp_path, monkeypatch):
+    from services import i18n as i18n_service
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+    ru = "Оргкомитет отметил вопрос решённым. Снова нужна помощь — жми «🆘 SOS»."
+
+    async def _ctx(_tid):
+        return "en", {i18n_service.src_hash(ru): FORM_DEFAULT_EN[ru]}
+
+    monkeypatch.setattr(i18n_service, "context", _ctx)
+    bot = FakeBot()
+    _resolve_with_storage(rid, bot, None)
+    assert [s[1] for s in bot.sent if s[0] == DELEGATE_ID][-1] == FORM_DEFAULT_EN[ru]
