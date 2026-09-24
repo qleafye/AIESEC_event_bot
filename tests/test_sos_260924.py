@@ -621,6 +621,36 @@ def test_fallback_dm_copies_all_refreshed_on_claim(tmp_path):
     assert edited == {(ADMIN_ID, copies[ADMIN_ID]), (MANAGER_ID, copies[MANAGER_ID])}
 
 
+def test_refresh_card_retries_copy_once_after_retry_after(tmp_path, monkeypatch):
+    from aiogram.exceptions import TelegramRetryAfter
+
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+    _run(db.add_sos_card_copy(rid, ADMIN_ID, 11))
+    _run(db.add_sos_card_copy(rid, MANAGER_ID, 12))
+    slept = []
+
+    async def fake_sleep(sec):
+        slept.append(sec)
+
+    monkeypatch.setattr(sos_service.asyncio, "sleep", fake_sleep)
+    bot = FakeBot()
+    orig_edit = bot.edit_message_text
+    failures = {ADMIN_ID: 1}
+
+    async def flaky_edit(text, chat_id=None, message_id=None, **kwargs):
+        if failures.get(chat_id):
+            failures[chat_id] -= 1
+            raise TelegramRetryAfter(method=None, message="flood", retry_after=3)
+        await orig_edit(text, chat_id=chat_id, message_id=message_id, **kwargs)
+
+    bot.edit_message_text = flaky_edit
+    _run(sos_service.refresh_card(bot, rid))
+    assert slept == [3]
+    assert {(c, m) for c, m, _t, _k in bot.edited} == {(ADMIN_ID, 11), (MANAGER_ID, 12)}
+
+
 def test_purge_user_removes_sos_card_copies(tmp_path):
     _ready(tmp_path)
     _run(_add_delegate(DELEGATE_ID))

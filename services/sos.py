@@ -31,6 +31,7 @@ composite-ключ `per_city_key(SOS_CHAT_ID_KEY, code)`, читается на�
 чат одного города не должен протечь другому)."""
 from __future__ import annotations
 
+import asyncio
 import html as html_module
 import logging
 from datetime import datetime, timedelta
@@ -485,14 +486,25 @@ async def refresh_card(bot, report_id: int) -> None:
         None if report_status(report) == STATUS_RESOLVED
         else build_card_kb(report_id)
     )
+    from aiogram.exceptions import TelegramRetryAfter
+
     for chat_id, message_id in targets:
-        try:
-            await bot.edit_message_text(
-                text, chat_id=chat_id, message_id=message_id,
-                parse_mode="HTML", reply_markup=kb,
-            )
-        except Exception:
-            pass  # у одного админа копию удалили/заблокировали бота — остальным перерисуем
+        # Флуд-лимит на веере копий — пауза и один повтор, иначе копия так и останется
+        # «открытой» у этого админа. Прочие ошибки (копию удалили, бота заблокировали) —
+        # fail-soft, остальным перерисуем.
+        for attempt in range(2):
+            try:
+                await bot.edit_message_text(
+                    text, chat_id=chat_id, message_id=message_id,
+                    parse_mode="HTML", reply_markup=kb,
+                )
+            except TelegramRetryAfter as e:
+                if attempt == 0:
+                    await asyncio.sleep(e.retry_after)
+                    continue
+            except Exception:
+                pass
+            break
 
 
 # ── D-31: режим «дописываю SOS» — всё, что делегат шлёт после мгновенной карточки, уходит В
