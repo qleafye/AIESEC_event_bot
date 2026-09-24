@@ -391,8 +391,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "заводит (1184 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_roles.py": (
-        860,
-        "роли + settings-guide (13-04)",
+        877,
+        "роли + settings-guide (13-04). "
+        "Форум-ночь B3 (идея №22): +17 строк — roles_assign шлёт шпаргалку волонтёра ЛИЧНЫМ "
+        "сообщением тому, кто только что впервые получил право checkin (has_capability, "
+        "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
         925,
