@@ -119,9 +119,10 @@ export async function render(root, params, ctx) {
     if (stats.cities) {
       const rows = stats.cities.map((c) => h("div", { text: `${c.label}: пришли ${c.arrived} из ${c.approved}` }));
       rows.push(h("div", { class: "checkin-stats-total", text: `Итого: ${stats.arrived} из ${stats.approved}` }));
+      if (stats.today) rows.unshift(h("div", { text: "Сегодня:" }));
       statsBox.replaceChildren(...rows);
     } else {
-      statsBox.replaceChildren(h("span", { text: `Пришли: ${stats.arrived} из ${stats.approved} одобренных` }));
+      statsBox.replaceChildren(h("span", { text: `${stats.today ? "Сегодня пришли" : "Пришли"}: ${stats.arrived} из ${stats.approved} одобренных` }));
     }
   }
 
