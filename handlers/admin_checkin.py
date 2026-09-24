@@ -358,8 +358,10 @@ async def cna_send_confirm(callback: types.CallbackQuery):
         InlineKeyboardButton(text="✅ Да, отправить", callback_data=f"cna_send_go:{_encode_city(code)}"),
         InlineKeyboardButton(text="Отмена", callback_data="cna_send_no"),
     ]])
+    where = f" города {html.escape(await city_label(code))}" if code and await cities_module_on() else ""
     await callback.message.answer(
-        f"Уйдёт {n} делегатам, не отмеченным на входе. Если отметки ещё загружаются файлами "
+        f"Уйдёт {n} делегатам{where} (не пришли сегодня — не отмечены на входе). "
+        "Если отметки ещё загружаются файлами "
         "(CSV-режим) — часть пришедших получит сообщение по ошибке. Отправить?",
         reply_markup=kb,
     )
