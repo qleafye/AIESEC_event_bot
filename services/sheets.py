@@ -480,6 +480,23 @@ _STATUS_COLORS = [
 ]
 
 
+# Форум-ночь B2 (идея №17): точка прихода — та же колонка-точечное-обновление, что «Статус»,
+# схема — хвост SHEET_COLUMNS/PARTY_SHEET_COLUMNS/SHORT_SHEET_SYSTEM_HEADERS (handlers/
+# reg_schema.py, handlers/registration.py): новая колонка ВСЕГДА в конце, не в середине —
+# старт бота переписывает шапку листа, колонка посреди схемы сдвигает уже записанные строки.
+ARRIVED_HEADER = "Пришёл"
+
+
+def _arrived_col_index(sheet) -> int:
+    """0-based индекс колонки «Пришёл» по фактической шапке (row 1). -1 если её нет (например,
+    лист собран до того, как в схему добавили эту колонку — менеджер ещё не нажимал «♻️
+    Пересобрать таблицу»)."""
+    try:
+        return [h.strip() for h in sheet.row_values(1)].index(ARRIVED_HEADER)
+    except ValueError:
+        return -1
+
+
 def _status_col_index(sheet) -> int:
     """0-based индекс колонки «Статус» по фактической шапке (row 1). -1 если её нет."""
     try:
@@ -592,9 +609,13 @@ async def _resolve_status_tab(telegram_id: int) -> str | None:
     return f"{base}{await tab_suffix(_status_sheet_kind(user.get('participant_type')))}"
 
 
-def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
+def _update_cell_in_row_range(sheet, target: str, col0: int, value: str) -> bool:
     """Shared row scan for a single (sheet, telegram_id) pair — find col1==target and write
-    label into the «Статус» column. False if the status column or the row isn't on this sheet.
+    `value` into column `col0` (0-based). False if `col0` is invalid (-1, column not on this
+    sheet — например, лист собран ДО того, как в схему добавили эту колонку) or the row isn't
+    on this sheet. Forum-night B2: split out of the old `_update_status_in_row_range` so the
+    «Пришёл» writer (`_update_arrived_in_row_range` below) reuses the exact same row-scan/RAW-
+    write mechanics instead of a copy-pasted twin — only the target column differs.
 
     Инцидент 13.09: при нескольких строках с одним telegram_id (дубли, не разгребённые
     «Убрать дубли») пишем в ПОСЛЕДНЮЮ совпавшую строку, а не в первую — последняя подача
@@ -604,8 +625,7 @@ def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
     gspread's `update_cell` hardcodes USER_ENTERED with no way to override it (находка
     08-sheets-dashboard) — использован `update()` на единственную ячейку вместо него, чтобы
     и этот пишущий вызов нёс явный RAW, как весь остальной модуль."""
-    status_col = _status_col_index(sheet)  # 0-based
-    if status_col < 0:
+    if col0 < 0:
         return False
     col1 = sheet.col_values(1)
     last_idx = None
@@ -614,9 +634,13 @@ def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
             last_idx = row_idx
     if last_idx is None:
         return False
-    a1 = gspread.utils.rowcol_to_a1(last_idx, status_col + 1)  # 1-based col
-    sheet.update(values=[[label]], range_name=a1, value_input_option=_RAW)
+    a1 = gspread.utils.rowcol_to_a1(last_idx, col0 + 1)  # 1-based col
+    sheet.update(values=[[value]], range_name=a1, value_input_option=_RAW)
     return True
+
+
+def _update_status_in_row_range(sheet, target: str, label: str) -> bool:
+    return _update_cell_in_row_range(sheet, target, _status_col_index(sheet), label)
 
 
 def _update_status_in_sheet_sync(telegram_id: int, label: str, tab_name: str | None) -> bool:
@@ -645,6 +669,52 @@ def _update_status_in_sheet_sync(telegram_id: int, label: str, tab_name: str | N
         "or the main sheet"
     )
     return False
+
+
+def _update_arrived_in_row_range(sheet, target: str, stamp: str) -> bool:
+    return _update_cell_in_row_range(sheet, target, _arrived_col_index(sheet), stamp)
+
+
+def _update_arrived_in_sheet_sync(telegram_id: int, stamp: str, tab_name: str | None) -> bool:
+    """Write the arrival timestamp into the «Пришёл» column — форум-ночь B2 (идея №17), same
+    tab-then-main-sheet fallback as `_update_status_in_sheet_sync` (mirrors it byte-for-byte
+    apart from the target column)."""
+    target = str(telegram_id)
+    if tab_name:
+        try:
+            named_sheet = _get_named_sheet(tab_name)
+            if _update_arrived_in_row_range(named_sheet, target, stamp):
+                return True
+        except Exception as e:
+            logger.warning(
+                f"_update_arrived_in_sheet_sync: tab {tab_name!r} lookup failed for "
+                f"telegram_id={telegram_id}, falling back to main sheet: {e}"
+            )
+
+    if _update_arrived_in_row_range(_get_sheet(), target, stamp):
+        return True
+
+    logger.warning(
+        f"update_arrived_in_sheet: telegram_id={telegram_id} not found on tab {tab_name!r} "
+        "or the main sheet"
+    )
+    return False
+
+
+async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
+    """Fail-soft автосинк времени прихода в таблицу (форум-ночь B2, идея №17). True если ячейка
+    обновлена. Tab resolution reuses `_resolve_status_tab` — same city-routing rule, no second
+    async resolver needed (its name doesn't need to change: it resolves WHICH TAB a delegate's
+    row lives on, which is not specific to the «Статус» column)."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return False
+    try:
+        tab_name = await _resolve_status_tab(telegram_id)
+        return await asyncio.to_thread(_update_arrived_in_sheet_sync, telegram_id, stamp, tab_name)
+    except Exception as e:
+        _reset_sheet_cache()
+        logger.warning(f"update_arrived_in_sheet({telegram_id}) failed: {e}")
+        return False
 
 
 def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:

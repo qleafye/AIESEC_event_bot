@@ -63,7 +63,9 @@ def test_sheet_header_matches_row_width():
     row = reg._build_sheet_row({"telegram_id": 1, "registration_date": "x", "full_name": "A"})
     assert len(reg.SHEET_HEADERS) == len(row)
     assert reg.SHEET_HEADERS[0] == "ID Telegram"
-    assert reg.SHEET_HEADERS[-1] == "Дата план. оплаты"
+    # Форум-ночь B2 (идея №17): «Пришёл» дописана В КОНЕЦ схемы (услуга точечного чек-ина),
+    # поэтому теперь она — новый хвост, а не «Дата план. оплаты».
+    assert reg.SHEET_HEADERS[-1] == "Пришёл"
 
 
 def test_sheet_columns_form_order_and_new_columns():

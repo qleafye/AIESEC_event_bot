@@ -45,6 +45,7 @@ from services.checkin import (
     current_event_tag,
     decode_scan_export,
     find_checkin_records,
+    mark_arrived_in_sheet,
     parse_qr_payload,
     resolve_scanned_user,
 )
@@ -211,11 +212,12 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
             flagged.append((_DENIAL_LABELS.get(denial_code, denial_code), parsed))
             continue
         approx = rec["scanned_at"] is None
-        status, _ts = await record_checkin(
+        status, ts = await record_checkin(
             user["telegram_id"], point, source="csv",
             scanned_at=rec["scanned_at"], approx=approx,
             by_staff_id=callback.from_user.id,
         )
+        await mark_arrived_in_sheet(user["telegram_id"], status, ts)
         if status == "new":
             new_n += 1
         else:

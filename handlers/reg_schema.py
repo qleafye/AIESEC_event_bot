@@ -297,6 +297,12 @@ SHEET_COLUMNS = [
     ("Дата приезда", "reg_q_arrival_date", lambda d: d.get("arrival_date") or "-"),
     ("Дата рождения", "reg_q_birth_date", lambda d: d.get("birth_date") or "-"),
     ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
+    # Форум-ночь B2 (идея №17): точка прихода — В КОНЦЕ схемы, не посреди (см. предупреждение
+    # в докстринге модуля выше: старт бота переписывает шапку листа, колонка посреди сдвигает
+    # уже записанные строки). Значение при первичной сборке строки (finalize) всегда «-» —
+    # писать реальное время сюда умеет только services.sheets.update_arrived_in_sheet, точечным
+    # обновлением ПОСЛЕ отметки на форуме (services.checkin.mark_arrived_in_sheet).
+    ("Пришёл", None, lambda d: "-"),
 ]
 
 # Full static header list (all columns) — kept for reference/tests. Live sync uses the
