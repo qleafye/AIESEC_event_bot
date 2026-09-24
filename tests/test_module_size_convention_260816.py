@@ -490,7 +490,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1076,
+        1082,
+        "Форум-ночь B4 (идея №8): +6 строк — capability-записи пробной выгрузки "
+        "(checkin_test_start/checkin_test_qr/state:CheckinTestUpload:*, капа «checkin»); "
+        "1076 -> 1082. "
         "Форум-ночь B1 (идея №10): +7 строк — capability-записи перевыпуска QR "
         "(checkin_reissue:*/checkin_reissue_yes:*/checkin_reissue_no, «moderate_reg» — "
         "управление делегатским аккаунтом, не капа «checkin»); 1069 -> 1076. "

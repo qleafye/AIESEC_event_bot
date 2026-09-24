@@ -34,13 +34,14 @@ from database.db import (
 )
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope
-from handlers.states import CheckinImport
+from handlers.states import CheckinImport, CheckinTestUpload
 from keyboards.builders import get_cancel_kb
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
     ENTRY_POINT_LABEL,
     build_checkin_qr,
+    build_test_qr,
     checkin_denial,
     current_event_tag,
     decode_scan_export,
@@ -133,6 +134,9 @@ async def show_admin_checkin(callback: types.CallbackQuery):
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Загрузить файл сканера", callback_data="checkin_upload_start")],
+        # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
+        # формат/читаемость приложения волонтёра.
+        [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
     ])
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -317,3 +321,93 @@ async def checkin_reissue_go(callback: types.CallbackQuery):
 async def checkin_reissue_cancel(callback: types.CallbackQuery):
     await callback.message.edit_text("Отменено. QR не менялся.")
     await callback.answer()
+
+
+# ── Форум-ночь B4 (идея №8): пробная выгрузка приложения-сканера ────────────────────────────
+# Волонтёр проверяет СВОЁ приложение-сканер заранее (не в последнюю ночь перед форумом): сканит
+# любой настоящий QR ЭТОГО события (свой «🎟 Мой QR», делегата, или фиктивный «🧪 Показать
+# тестовый QR» ниже — если сам не делегат) и присылает выгрузку сюда. Бот НИЧЕГО не отмечает
+# (никакого record_checkin) — только парсит той же логикой (find_checkin_records), что реальная
+# загрузка, и отвечает, читается ли формат и время скана.
+
+_TEST_UPLOAD_PROMPT = (
+    "🧪 Отсканируйте любой настоящий QR ЭТОГО форума вашим приложением-сканером — свой «🎟 Мой "
+    "QR» (если вы делегат) или тестовый код ниже — и пришлите сюда выгрузку файлом.\n\n"
+    "Ничего не отмечу — только проверю, подходит ли формат."
+)
+
+
+@router.callback_query(F.data == "checkin_test_start")
+async def checkin_test_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_data({})
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧪 Показать тестовый QR", callback_data="checkin_test_qr")],
+    ])
+    await callback.message.answer(_TEST_UPLOAD_PROMPT, reply_markup=kb)
+    await callback.message.answer("Пришлите файл выгрузки или отмените:", reply_markup=get_cancel_kb())
+    await state.set_state(CheckinTestUpload.waiting_file)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "checkin_test_qr")
+async def checkin_test_qr(callback: types.CallbackQuery):
+    png, caption = await build_test_qr()
+    await callback.bot.send_photo(
+        callback.from_user.id, BufferedInputFile(png, filename="test_qr.png"), caption=caption,
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(CheckinTestUpload), Command("cancel"))
+@router.message(StateFilter(CheckinTestUpload), F.text == "Отмена")
+async def cancel_checkin_test_upload(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(CheckinTestUpload.waiting_file, F.document)
+async def checkin_test_file_step(message: types.Message, state: FSMContext, bot: Bot):
+    if (message.document.file_size or 0) > _IMPORT_MAX_BYTES:
+        await message.answer("Файл больше 20 МБ — столько я принять не могу.")
+        return
+
+    buf = await bot.download(message.document.file_id)
+    buf.seek(0)
+    text = decode_scan_export(buf.read())
+
+    tag = await current_event_tag()
+    records = find_checkin_records(text, tag)
+    await state.set_state(None)
+
+    from handlers.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
+    back_kb = await op_return_keyboard(message.from_user.id, "admin_checkin")
+
+    if not records:
+        await message.answer(
+            "Не нашёл ни одного QR ЭТОГО форума в выгрузке — проверьте, что сканировали код "
+            "именно этого события этим же приложением.",
+            reply_markup=back_kb,
+        )
+        return
+
+    total = len(records)
+    readable_n = sum(1 for r in records if r["scanned_at"] is not None)
+    if readable_n == total:
+        time_line = "время скана читается"
+    elif readable_n == 0:
+        time_line = (
+            "время скана НЕ читается — при настоящей загрузке бот подставит время самой "
+            "загрузки файла вместо времени скана"
+        )
+    else:
+        time_line = f"время скана читается у {readable_n} из {total}"
+
+    await message.answer(
+        f"✅ Приложение подходит: нашёл {total} QR форума, {time_line}.",
+        reply_markup=back_kb,
+    )
+
+
+@router.message(CheckinTestUpload.waiting_file)
+async def checkin_test_file_invalid(message: types.Message):
+    await message.answer("Пришли файл выгрузки документом (не фото и не архив).")
