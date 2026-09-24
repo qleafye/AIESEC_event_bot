@@ -145,3 +145,9 @@ def test_runbook_has_app_health_and_login_curl_checks():
     text = _runbook_text()
     assert "curl -sI https://yl26.<домен>/app/health" in text
     assert "curl -sI https://yl26.<домен>/login" in text
+
+
+def test_compose_miniapp_mounts_resources_like_bot():
+    """D-29: диск-фоллбэк фото программы — Mini App читает тот же каталог, что бот."""
+    assert "./resources:/app/resources:ro" in _miniapp()["volumes"]
+    assert "./resources:/app/resources:ro" in _compose()["services"]["bot"]["volumes"]

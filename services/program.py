@@ -367,19 +367,54 @@ async def resolve_program_view(city: str | None) -> str:
     return "table" if await has_program_sessions_for_city(resolved_city) else "photo"
 
 
-async def has_program_content(city: str | None) -> bool:
-    """Гейт видимости кнопки/плитки «Программа» — ОДНА проверка вместо двух независимых
-    (`keyboards.builders.get_main_menu_kb` раньше проверяла ТОЛЬКО глобальное фото, не
-    городское; Mini App заводится этой же задачей и не должен получить свою, третью версию
-    того же факта)."""
+# Диск-фоллбэк фото программы — тот же файл, что чат шлёт `FSInputFile` в
+# `handlers/user_actions.py::show_program`, когда в настройках фото нет. Mini App отдаёт его
+# своей публичной ручкой `GET /app/api/program/photo-default` (без file_id).
+PROGRAM_DEFAULT_PHOTO_PATH = "resources/program.jpg"
+
+
+def default_program_photo_path() -> str | None:
+    """Путь к диск-фоллбэку, если файл есть, иначе `None`."""
     import os
 
-    if await resolve_program_photo(city):
-        return True
-    if os.path.isfile("resources/program.jpg"):
-        return True
-    resolved_city = city or default_city_code()
-    return await has_program_sessions_for_city(resolved_city)
+    return PROGRAM_DEFAULT_PHOTO_PATH if os.path.isfile(PROGRAM_DEFAULT_PHOTO_PATH) else None
+
+
+async def resolve_program_photo_source(city: str | None) -> dict | None:
+    """Откуда брать фото программы — порядок чата: своё/общее фото из настроек
+    (`{"file_id": …}`), затем файл на диске (`{"path": …}`), иначе `None`."""
+    file_id = await resolve_program_photo(city)
+    if file_id:
+        return {"file_id": file_id}
+    path = default_program_photo_path()
+    if path:
+        return {"path": path}
+    return None
+
+
+async def resolve_program_content(city: str | None) -> tuple[str | None, dict | None]:
+    """ЕДИНСТВЕННЫЙ резолвер «что показать делегату»: `("photo", источник)`, `("table", None)`
+    или `(None, None)` — показать нечего. Видимость кнопки/плитки (`has_program_content`) и
+    содержимое ручки Mini App читают именно его, поэтому «кнопка есть, а внутри пусто» не
+    бывает. Выбор менеджера (`resolve_program_view`) — предпочтение: если выбранного вида нет
+    (выбрано фото, а заведены только сессии, или наоборот), показываем то, что есть, — как чат,
+    который тоже переходит от фото к тексту сессий."""
+    preferred = await resolve_program_view(city)
+    photo = await resolve_program_photo_source(city)
+    has_sessions = await has_program_sessions_for_city(city or default_city_code())
+    for view in (preferred, "table" if preferred == "photo" else "photo"):
+        if view == "photo" and photo:
+            return "photo", photo
+        if view == "table" and has_sessions:
+            return "table", None
+    return None, None
+
+
+async def has_program_content(city: str | None) -> bool:
+    """Гейт видимости кнопки/плитки «Программа» — есть ли что показать по
+    `resolve_program_content` (фото из настроек, файл на диске или сессии)."""
+    view, _source = await resolve_program_content(city)
+    return view is not None
 
 
 async def program_menu_visible(city: str | None) -> bool:
