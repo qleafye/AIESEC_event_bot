@@ -8299,6 +8299,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived.telegram_id — кому и когда ушёл
     # шаблон «не пришёл» + его ответ, тот же личный след, группа общая "checkin".
     ("checkin_not_arrived", "telegram_id", "checkin"),
+    # D-33 (шпаргалка волонтёра накануне форума): checkin_volunteer_guide_sends.telegram_id —
+    # кому и когда ушла шпаргалка, тот же журнал отправки человеку, что checkin_qr_sends выше,
+    # группа общая "checkin". day/city — снимок дня/города рассылки, не трогаем отдельно.
+    ("checkin_volunteer_guide_sends", "telegram_id", "checkin"),
     # Форум-ночь п.8 (идея №19, SOS): sos_reports.telegram_id — личная заявка SOS делегата
     # (категория/текст/фото/геопозиция), тот же личный след, что chat_activity/checkins выше.
     # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
