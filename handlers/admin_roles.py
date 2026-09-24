@@ -38,10 +38,12 @@ from handlers.admin_caps import (
     ALL_CAPABILITIES,
     CAP_LABELS,
     ROLES,
+    capability_holders,
     has_capability,
     role_caps_key,
     role_enabled_key,
 )
+from services.checkin_volunteer_broadcast import greet_new_holder, greet_new_holders
 
 logger = logging.getLogger(__name__)
 from cities import (
@@ -481,7 +483,7 @@ async def show_roles(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("roles_toggle:"))
-async def toggle_role_enabled(callback: types.CallbackQuery):
+async def toggle_role_enabled(callback: types.CallbackQuery, bot: Bot | None = None):
     role = callback.data.split(":", 1)[1]
     if role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
@@ -491,7 +493,9 @@ async def toggle_role_enabled(callback: types.CallbackQuery):
     key = role_enabled_key(role)
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
+    before = set(await capability_holders("checkin"))
     await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await greet_new_holders(bot, before)  # включённая роль могла нести checkin
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{ROLES[role]['label']}: {label}", show_alert=True)
 
@@ -578,7 +582,7 @@ async def show_role_caps(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("roles_cap:"))
-async def toggle_role_cap(callback: types.CallbackQuery):
+async def toggle_role_cap(callback: types.CallbackQuery, bot: Bot | None = None):
     parts = callback.data.split(":")
     if len(parts) != 3:
         await callback.answer("Неизвестная кнопка", show_alert=True)
@@ -598,9 +602,11 @@ async def toggle_role_cap(callback: types.CallbackQuery):
         caps = [c for c in ALL_CAPABILITIES if c == cap or c in caps]
         toast = f"{CAP_LABELS.get(cap, cap)}: разрешено"
 
+    before = set(await capability_holders("checkin"))
     await set_setting_by_admin(
         callback.from_user.id, role_caps_key(role), "\n".join(caps) if caps else _CAPS_EMPTY_SENTINEL,
     )
+    await greet_new_holders(bot, before)  # право checkin выдали существующей роли
     await callback.answer(toast)
     await _show_role_caps(callback, role)
 
@@ -833,17 +839,11 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
     await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
 
     # Форум-ночь B3 (идея №22): человеку, только что впервые получившему право «checkin»
-    # (сама роль его несёт СЕЙЧАС, а не просто существует в ALL_CAPABILITIES), — личным
-    # сообщением шпаргалка волонтёра. `created` — только на НОВОЕ назначение (повторное
-    # нажатие «Уже был в этой роли» не должно слать шпаргалку заново).
+    # (сама роль его несёт СЕЙЧАС), — шпаргалка волонтёра; в канун/день форума — с отметкой
+    # «отправлено» (services/checkin_volunteer_broadcast.py::greet_new_holder). `created` —
+    # только на НОВОЕ назначение (повторное «Уже был в этой роли» шпаргалку не шлёт).
     if created and await has_capability(tid, "checkin"):
-        try:
-            guide_text = await get_setting_typed("checkin_volunteer_guide_text")
-            await bot.send_message(tid, guide_text)
-        except Exception:
-            logger.warning(
-                "roles_assign: не удалось отправить шпаргалку волонтёра tid=%s", tid, exc_info=True,
-            )
+        await greet_new_holder(bot, tid)
 
     # WR-02: same superadmin-only gate as roles_city_start/roles_city_pick -- a non-superadmin
     # settings holder lands straight on the roster instead of a picker that would refuse them.
