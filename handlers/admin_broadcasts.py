@@ -74,9 +74,12 @@ from services.scheduler import (
     schedule_broadcast_job,
     cancel_broadcast_job,
     # Форум-ночь п.7 («❗ Важное» + «🔕 Не присылать сегодня»): общий хвост доставки, тот же,
-    # что у services.scheduler::send_scheduled_broadcast — одна точка правды для маркера
-    # важности и предложения «🔕», не вторая копия.
-    send_important_marker,
+    # что у services.scheduler::send_scheduled_broadcast — одна точка правды для пометки
+    # важности (встроена в содержимое) и клавиатуры получателя, не вторая копия.
+    important_prefix,
+    apply_important_prefix,
+    recipient_markup,
+    # Только альбом — media_group не принимает reply_markup, см. докстринг там же.
     send_mute_offer_if_eligible,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
@@ -280,13 +283,21 @@ _ALBUM_MEDIA_CLASSES = {
 }
 
 
-def _media_from_album_dicts(album: list[dict]) -> list:
+def _media_from_album_dicts(album: list[dict], important_prefix_text: str | None = None) -> list:
+    """Форум-ночь п.7 (переделка): `bot.send_media_group` не принимает `reply_markup` — единственное
+    место встроить пометку важности альбома — подпись ПЕРВОГО элемента (`important_prefix_text`,
+    `None`/пусто — рассылка не важная, ни один элемент не трогается)."""
     media = []
+    first = True
     for item in album:
         cls = _ALBUM_MEDIA_CLASSES.get(item.get("type"))
         if cls is None:
             continue
-        media.append(cls(media=item["file_id"], caption=item.get("caption"), parse_mode="HTML"))
+        caption = item.get("caption")
+        if first and important_prefix_text:
+            caption = f"{important_prefix_text}\n\n{caption}" if caption else important_prefix_text
+        media.append(cls(media=item["file_id"], caption=caption, parse_mode="HTML"))
+        first = False
     return media
 
 
@@ -437,9 +448,21 @@ async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: 
     await state.update_data(
         bc_users=users_ids,
         bc_album=album_dicts,
-        bc_preview=f"[альбом x {len(album_dicts)}]",
+        bc_preview=_album_preview_text(album_dicts),
     )
     await _send_confirm_prompt(bot, admin_id, state, len(users_ids), users_ids)
+
+
+def _album_preview_text(album_dicts: list[dict]) -> str:
+    """Ревью 470ce5e..3703ba4 (находка 🟡): раньше `full_text` альбома был заглушкой
+    `«[альбом x N]»` — в экране делегата «❗ Важное» (handlers/user_actions.py::
+    show_important_today) он видел эту заглушку вместо реального текста. Склейка подписей
+    элементов (html, порядок как в альбоме) — если хоть одна есть; иначе честное «Альбом из N
+    фото/видео» вместо технического литерала со «x»."""
+    captions = [c for c in (item.get("caption") for item in album_dicts) if c]
+    if captions:
+        return "\n\n".join(captions)
+    return f"Альбом из {len(album_dicts)} фото/видео"
 
 @router.message(Broadcast.message)
 async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot):
@@ -469,11 +492,28 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         return
 
     preview = message.html_text if (message.text or message.caption) else "[фото]"
+    # Форум-ночь п.7 (переделка): «текст» и «медиа» уходят РАЗНЫМИ методами Bot API
+    # (bc_go::send_one ниже) — `bot.copy_message` умеет подменить CAPTION медиа-сообщения
+    # (нужно для пометки важности), но не .text чисто текстового, поэтому чисто текстовая
+    # рассылка идёт `bot.send_message` с готовым текстом, а не копией. `bc_kind` — какой метод
+    # использовать, `bc_content_html` — то, что реально пойдёт в текст/подпись (без пометки —
+    # она приклеивается в bc_go по факту тумблера «❗»). `bc_reply_markup` — собственная
+    # клавиатура менеджера (например, пересланный пост с кнопками-ссылками), если Telegram её
+    # прислал вместе с сообщением — `recipient_markup` добавит строку «🔕» ПОСЛЕДНЕЙ поверх неё,
+    # не заменяя (MemoryStorage хранит объект в памяти как есть, без сериализации).
+    bc_kind = "text" if message.text else "media"
+    content_html = message.html_text if (bc_kind == "text" or message.caption) else None
     await state.update_data(
         bc_chat_id=message.chat.id,
         bc_message_id=message.message_id,
         bc_users=users_ids,
         bc_preview=preview,
+        bc_kind=bc_kind,
+        bc_content_html=content_html,
+        # getattr, не message.reply_markup напрямую: тестовые FakeMessage-дублёры соседних
+        # тестов (COMM-04/BC-01..06 и т.д.) этот атрибут не заводят вовсе — реальный
+        # aiogram.types.Message его несёт всегда (None у обычного сообщения делегата).
+        bc_reply_markup=getattr(message, "reply_markup", None),
     )
     await message.send_copy(message.chat.id)
     await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids), users_ids)
@@ -499,6 +539,13 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     bc_chat_id = data.get("bc_chat_id")
     bc_message_id = data.get("bc_message_id")
     bc_album = data.get("bc_album")
+    # "media" — не "text" — дефолт НАРОЧНО: старое поведение (до этой переделки) было
+    # универсальным copy_message для ЛЮБОГО типа сообщения; "media"-ветка ближе всего к нему
+    # (copy_message остаётся основным механизмом доставки), "text" требует явного bc_kind из
+    # process_broadcast.
+    bc_kind = data.get("bc_kind", "media")
+    bc_content_html = data.get("bc_content_html")
+    bc_base_markup = data.get("bc_reply_markup")
     important = bool(data.get("bc_important"))
     admin_id = callback.from_user.id
 
@@ -519,27 +566,44 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         bid, admin_id, total, important, mute_skipped, preview[:80],
     )
 
+    # Форум-ночь п.7 (переделка): пометка важности — ОДИН раз, до цикла получателей (не зависит
+    # от получателя, в отличие от клавиатуры ниже, которая зависит от гейта дня форума ГОРОДА
+    # получателя и строится внутри send_one). 1 API-вызов на получателя для text/media, до 2 —
+    # только для альбома в день, когда предложение «🔕» ещё не показывалось (send_media_group не
+    # принимает reply_markup, см. докстринг services/scheduler.py).
+    important_prefix_text = await important_prefix() if important else ""
+
     if bc_album:
         async def send_one(chat_id):
-            if important:
-                await send_important_marker(bot, chat_id)
-            media = _media_from_album_dicts(bc_album)
+            media = _media_from_album_dicts(bc_album, important_prefix_text if important else None)
             results = await bot.send_media_group(chat_id, media)
             message_ids = [m.message_id for m in results]
             extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
             if extra_mid is not None:
                 message_ids.append(extra_mid)
+                # Единственный случай двух API-вызовов на получателя — вторая пауза здесь же,
+                # не в базовой asyncio.sleep(0.05) run_broadcast (та рассчитана на 1 вызов и
+                # осталась байт-в-байт прежней для куда более частого одного вызова).
+                await asyncio.sleep(0.05)
             return message_ids
+    elif bc_kind == "text":
+        async def send_one(chat_id):
+            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            text = apply_important_prefix(bc_content_html, important, important_prefix_text)
+            result = await bot.send_message(chat_id, text, reply_markup=markup)
+            return [result.message_id]
     else:
         async def send_one(chat_id):
-            if important:
-                await send_important_marker(bot, chat_id)
-            result = await bot.copy_message(chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id)
-            message_ids = [result.message_id]
-            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
-            if extra_mid is not None:
-                message_ids.append(extra_mid)
-            return message_ids
+            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            # `caption=None`, когда рассылка НЕ важная — Telegram сохраняет исходную подпись
+            # копируемого сообщения байт-в-байт (никакого риска расхождения форматирования на
+            # самой частой, неважной ветке); подмена нужна ТОЛЬКО чтобы вписать пометку важности.
+            caption = apply_important_prefix(bc_content_html, important, important_prefix_text) if important else None
+            result = await bot.copy_message(
+                chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id,
+                caption=caption, reply_markup=markup,
+            )
+            return [result.message_id]
 
     stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
