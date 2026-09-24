@@ -384,12 +384,15 @@ def test_scan_session_point_wrong_city_is_denied(tmp_path):
     assert _run(bot_db.count_checkins_by_point("entry")) == 0
 
 
-def test_scan_session_point_new_auto_marks_entry(tmp_path):
+def test_scan_session_point_new_auto_marks_entry(tmp_path, monkeypatch):
     client = client_with(tmp_path)
     _grant_checkin_to_game_manager()
     uid = 950041
     _run(_insert_user(uid, full_name="Сидоров Сидор", city="msk"))
     sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    # ревью (D-18): /scan никогда не передаёт scanned_at -- эффективный день сессии сверяется с
+    # РЕАЛЬНЫМ "сегодня" (services.checkin.record_arrival), сессия обязана идти сегодня.
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))
     payload = _qr(uid, city="Москва")
     resp = client.post(
         f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
@@ -401,13 +404,16 @@ def test_scan_session_point_new_auto_marks_entry(tmp_path):
     assert _run(bot_db.count_checkins_by_point("entry")) == 1
 
 
-def test_manual_session_point_moved_between_parallel_sessions(tmp_path):
+def test_manual_session_point_moved_between_parallel_sessions(tmp_path, monkeypatch):
     client = client_with(tmp_path)
     _grant_checkin_to_game_manager()
     uid = 950042
     _run(_insert_user(uid, city="msk"))
     sid1 = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Зал А"))
     sid2 = _run(bot_db.create_program_session("msk", "2026-10-03", "10:30", "11:30", "Зал Б"))
+    # ревью (D-18): /manual тоже никогда не передаёт scanned_at -- см. комментарий в
+    # test_scan_session_point_new_auto_marks_entry.
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))
     r1 = client.post(f"{BASE}/manual", json={"telegram_id": uid, "point": f"session:{sid1}"}, headers=_hdr(GAME_MANAGER_ID))
     assert r1.json()["status"] == "new"
     r2 = client.post(f"{BASE}/manual", json={"telegram_id": uid, "point": f"session:{sid2}"}, headers=_hdr(GAME_MANAGER_ID))
@@ -416,3 +422,23 @@ def test_manual_session_point_moved_between_parallel_sessions(tmp_path):
     assert body2["previous_title"] == "Зал А"
     assert _run(bot_db.count_checkins_by_point(f"session:{sid1}")) == 0
     assert _run(bot_db.count_checkins_by_point(f"session:{sid2}")) == 1
+
+
+def test_scan_session_point_wrong_real_day_is_denied(tmp_path, monkeypatch):
+    """Ревью (D-18): сканер со вчерашним/устаревшим списком точек не должен отмечать делегата
+    на сессии, которая физически идёт в ДРУГОЙ день -- отказ словами, ничего не отмечается."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950043
+    _run(_insert_user(uid, full_name="Кузнецов Кузьма", city="msk"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-04", "10:00", "11:00", "Открытие"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))  # "сегодня" -- НЕ день сессии
+    payload = _qr(uid, city="Москва")
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "wrong_day"
+    assert "04.10" in body["reason_text"]
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 0
+    assert _run(bot_db.count_checkins_by_point("entry")) == 0

@@ -286,9 +286,24 @@ async def record_arrival(
     площадке, даже если отдельного скана на входе не случилось.
 
     Возвращает `{"status": ..., "scanned_at": ...}` плюс `"reason_text"` при `wrong_city` и
-    `"previous_title"` при `moved`. `mark_arrived_in_sheet` вызывается ВНУТРИ (на настоящем
-    новом входе, прямом или авто-от-сессии) — вызывающему (`handlers/admin_checkin.py`,
-    `miniapp/routers/checkin.py`) звать его отдельно для этих трёх источников больше не нужно."""
+    `wrong_day`, `"previous_title"` при `moved`, `"day_mismatch": True` при несовпадении дня
+    у CSV (см. ниже). `mark_arrived_in_sheet` вызывается ВНУТРИ (на настоящем новом входе,
+    прямом или авто-от-сессии) — вызывающему (`handlers/admin_checkin.py`,
+    `miniapp/routers/checkin.py`) звать его отдельно для этих трёх источников больше не нужно.
+
+    Ревью (D-18, день сессии): раньше отметка на сессии верила присланному `point` вслепую —
+    волонтёр со вчерашним/устаревшим списком точек в сканере мог отметить делегата на сессии,
+    которая физически идёт в ДРУГОЙ день. `эффективный день` этого вызова — день `scanned_at`,
+    если он передан, иначе день `msk_now()` (реальное «сейчас») — ОДНА формула на оба случая:
+    у живого скана/ручного поиска (`source="miniapp"|"manual"`, `scanned_at` не передаётся
+    ВООБЩЕ, см. `miniapp/routers/checkin.py`) эффективный день = сегодня; у загрузки CSV —
+    день самого скана из файла, если он там есть, иначе день ЗАГРУЗКИ файла (тоже `msk_now()`
+    на момент разбора) — «файл могут загрузить на следующий день», сверять с сегодня в этом
+    случае неверно (нашёл ревью). Несовпадение живого источника — ОТКАЗ (`"wrong_day"`, сканер
+    волонтёра прислал устаревшую точку, отметку ставить некуда). Несовпадение у CSV — НЕ отказ
+    (выгрузка уже случилась, делегат физически отметился на площадке) — `record_session_checkin`
+    всё равно вызывается, `day_mismatch=True` уходит в результат, `handlers/admin_checkin.py`
+    показывает это отдельной строкой отчёта, а не режет отметки."""
     if not (point or "").startswith("session:"):
         status, ts = await record_checkin(
             user["telegram_id"], point or ENTRY_POINT, source=source,
@@ -316,6 +331,21 @@ async def record_arrival(
             "reason_text": f"Делегат с форума в {delegate_label}, эта сессия — {session_label}",
         }
 
+    from services.timeutil import msk_now  # ленивый импорт — см. докстринг record_arrival
+
+    effective_day = scanned_at[:10] if scanned_at else msk_now().strftime("%Y-%m-%d")
+    day_mismatch = effective_day != session["day"]
+    if day_mismatch and source != "csv":
+        day_part = session["day"][8:10]
+        month_part = session["day"][5:7]
+        return {
+            "status": "wrong_day",
+            "reason_text": (
+                f"Эта сессия не сегодня ({day_part}.{month_part}) — "
+                "обновите список точек в сканере"
+            ),
+        }
+
     from services.program import parallel_group  # ленивый импорт — избегаем цикла на верхнем уровне
 
     day_sessions = await list_program_sessions_for_city_day(session["city"], session["day"])
@@ -327,6 +357,8 @@ async def record_arrival(
         scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
     )
     result: dict = {"status": status, "scanned_at": ts}
+    if day_mismatch:  # только source == "csv" мог дойти досюда с day_mismatch=True
+        result["day_mismatch"] = True
     if status == "moved" and previous_id is not None:
         prev = await get_program_session(previous_id)
         result["previous_title"] = prev["title"] if prev else None
