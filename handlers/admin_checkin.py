@@ -67,7 +67,9 @@ from services.checkin import (
     resolve_scanned_user,
 )
 from services.checkin_broadcast import (
+    _times_for,
     broadcast_enabled_for,
+    morning_run_at,
     pending_broadcast_count,
     schedule_city_jobs,
     send_broadcast,
@@ -200,10 +202,23 @@ async def _qr_status_line(label: str | None, code: str | None) -> str:
     got, confirmed = await checkin_qr_send_counts(city_scope=city_scope(code))
     prefix = f"{label}: " if label else ""
     line = f"{prefix}QR получили {got} · подтвердили {confirmed}"
-    reason_text = _QR_NOT_SCHEDULED_LABELS.get(await _qr_not_scheduled_reason(code) or "")
+    reason = await _qr_not_scheduled_reason(code)
+    reason_text = _QR_NOT_SCHEDULED_LABELS.get(reason or "")
     if reason_text:
         line += f" · {reason_text}"
+    elif reason is None and await _morning_repeat_passed_today(code):
+        line += " · утренний повтор сегодня уже прошёл"
     return line
+
+
+async def _morning_repeat_passed_today(code: str | None) -> bool:
+    """День форума, а время утреннего повтора (тот же `morning_run_at`, что у джобы) уже
+    позади — например, QR включили днём: менеджер должен знать, что повтора сегодня не будет."""
+    date_str = await forum_date_for(code)
+    _evening, morning = await _times_for(code)
+    morn_at = morning_run_at(date_str, morning)
+    now = msk_now()
+    return morn_at is not None and morn_at.date() == now.date() and morn_at <= now
 
 
 async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
