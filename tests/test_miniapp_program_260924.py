@@ -79,17 +79,24 @@ def test_program_pending_delegate_403_delegate_gate(client):
     assert resp.json()["reason"] == "delegate_gate"
 
 
-def test_program_explicit_photo_view_without_photo_shows_empty_text(client):
-    """Менеджер выбрал «фото», а загружены только сессии — пустое состояние текстом реестра,
-    а не пустой экран."""
+def test_program_explicit_photo_view_without_photo_falls_back_to_table(client):
+    """Менеджер выбрал «фото», а загружены только сессии — показываем таблицу (как чат
+    переходит от фото к тексту сессий), а не пустой экран под видимой плиткой."""
     _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
     _set("program_miniapp_view", "photo")
     resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 200
     body = resp.json()
+    assert body["view"] == "table"
+    assert body["days"] and body["empty_text"] is None
+
+
+def test_program_explicit_table_view_without_sessions_falls_back_to_photo(client):
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    _set("program_miniapp_view", "table")
+    body = client.get("/app/api/program", headers=_hdr(DELEGATE_ID)).json()
     assert body["view"] == "photo"
-    assert body["photo_url"] is None
-    assert body["empty_text"]
+    assert body["photo_url"] == "/app/api/file/GLOBAL_FILE_ID"
 
 
 def test_program_texts_reuse_chat_literals(client):
@@ -265,3 +272,68 @@ def test_program_retry_text_has_manual_english():
     from miniapp.routers.program import _RETRY_TEXT
     from services.i18n_miniapp_manual import MANUAL_EN
     assert MANUAL_EN[_RETRY_TEXT].startswith("Couldn't load the schedule")
+
+
+# ── паритет «видимость ⇔ есть что показать»: меню чата, /me, содержимое ручки ────────────────
+
+@pytest.fixture
+def disk_photo(tmp_path, monkeypatch):
+    """Подмена диск-фоллбэка `resources/program.jpg` — по умолчанию файла нет."""
+    import services.program as program_service
+
+    missing = tmp_path / "no_program.jpg"
+    monkeypatch.setattr(program_service, "PROGRAM_DEFAULT_PHOTO_PATH", str(missing))
+
+    def _put():
+        path = tmp_path / "program.jpg"
+        path.write_bytes(b"fake-jpeg-bytes")
+        monkeypatch.setattr(program_service, "PROGRAM_DEFAULT_PHOTO_PATH", str(path))
+        return path
+
+    return _put
+
+
+@pytest.mark.parametrize("source,expected_view,expected_photo", [
+    ("db_photo", "photo", "/app/api/file/GLOBAL_FILE_ID"),
+    ("disk_only", "photo", "/app/api/program/photo-default"),
+    ("sessions_only", "table", None),
+    ("nothing", None, None),
+])
+def test_visibility_iff_something_to_show(client, disk_photo, source, expected_view, expected_photo):
+    from keyboards.builders import get_main_menu_kb
+
+    if source == "db_photo":
+        _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    elif source == "disk_only":
+        disk_photo()
+    elif source == "sessions_only":
+        _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
+
+    visible = expected_view is not None
+    kb = _run(get_main_menu_kb(DELEGATE_ID))
+    in_chat = any(b.text.startswith("📅 Программа") for row in kb.keyboard for b in row)
+    assert in_chat is visible
+    assert _me_sections(client)["program"] is visible
+
+    resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
+    if not visible:
+        assert resp.status_code == 403
+        return
+    body = resp.json()
+    assert body["view"] == expected_view
+    assert body["photo_url"] == expected_photo
+    assert body["empty_text"] is None
+    if expected_view == "table":
+        assert body["days"]
+
+
+def test_default_photo_route_serves_disk_file_without_auth(client, disk_photo):
+    path = disk_photo()
+    resp = client.get("/app/api/program/photo-default")
+    assert resp.status_code == 200
+    assert resp.content == path.read_bytes()
+    assert resp.headers["content-type"].startswith("image/jpeg")
+
+
+def test_default_photo_route_404_without_disk_file(client, disk_photo):
+    assert client.get("/app/api/program/photo-default").status_code == 404

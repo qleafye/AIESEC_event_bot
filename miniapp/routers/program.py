@@ -18,15 +18,16 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 
 from cities import cities_module_on, normalize_city
 from database.db import get_user
 from services import i18n
 from services.program import (
     build_delegate_program,
+    default_program_photo_path,
     program_menu_visible,
-    resolve_program_photo,
-    resolve_program_view,
+    resolve_program_content,
 )
 
 from miniapp.deps import Principal, delegate_gate
@@ -103,23 +104,21 @@ async def program_screen(p: Principal = Depends(delegate_gate)) -> dict:
         raise await _retry_error(p.telegram_id)
     if not visible:
         raise HTTPException(403, {"reason": "section_off", "section": "program"})
-    view = await resolve_program_view(city)
+    view, photo = await resolve_program_content(city)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
     texts = _texts(lang, tr_map)
 
     if view == "photo":
-        file_id = await resolve_program_photo(city)
-        return {
-            "view": "photo",
-            "lang": lang,
-            "texts": texts,
-            "photo_url": f"/app/api/file/{file_id}" if file_id else None,
-            "days": [],
-            "empty_text": None if file_id else await i18n.tr_setting("program_empty_text", lang, tr_map),
-        }
+        # Фото из настроек — через прокси getFile (как лого); файл на диске — своей публичной
+        # ручкой ниже. Адреса Telegram и токена бота фронт не видит ни в одном случае.
+        photo_url = (
+            f"/app/api/file/{photo['file_id']}" if photo.get("file_id") else DEFAULT_PHOTO_URL
+        )
+        return {"view": "photo", "lang": lang, "texts": texts, "photo_url": photo_url,
+                "days": [], "empty_text": None}
 
-    days = await build_delegate_program(city)
+    days = await build_delegate_program(city) if view == "table" else []
     return {
         "view": "table",
         "lang": lang,
@@ -128,3 +127,17 @@ async def program_screen(p: Principal = Depends(delegate_gate)) -> dict:
         "days": days,
         "empty_text": None if days else await i18n.tr_setting("program_empty_text", lang, tr_map),
     }
+
+
+DEFAULT_PHOTO_URL = "/app/api/program/photo-default"
+
+
+@router.get(DEFAULT_PHOTO_URL)
+async def program_default_photo() -> FileResponse:
+    """Диск-фоллбэк `resources/program.jpg` — тот же файл, что чат шлёт, когда фото в
+    настройках нет. Публично, без принципала (тег <img> не шлёт initData): это оформление
+    события, как лого, и file_id здесь нет вовсе. Нет файла — 404."""
+    path = default_program_photo_path()
+    if not path:
+        raise HTTPException(404, {"reason": "not_found"})
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=300"})
