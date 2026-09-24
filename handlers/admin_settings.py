@@ -104,7 +104,7 @@ _EVENT_FIELD_ORDER = [
     "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
     "poll_intro_text",
-    "event_name", "event_season", "event_type",
+    "event_name", "event_name_genitive", "event_season", "event_type",
 ]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])

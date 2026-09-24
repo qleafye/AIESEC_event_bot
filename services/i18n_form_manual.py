@@ -446,7 +446,8 @@ _ENGINE_DYNAMIC_EN = {
         "Briefly describe your experience with projects/activities and, if any, work experience. "
         "For example: organized school events, was a mentor at university, etc."
     ),
-    # expectations — дефолт вопроса, КОГДА event_name не задан (get_setting fallback «мероприятия»).
+    # expectations — дефолт вопроса, КОГДА ни event_name_genitive, ни event_name не заданы
+    # (get_setting fallback «мероприятия»).
     "Что ты ожидаешь от мероприятия? Что хотел(а) бы узнать или получить?": "What do you expect from the event? What would you like to learn or get out of it?",
     # payment_plan_date — дефолт вопроса, КОГДА payment_deadline не задан (dl_note пустой).
     "Когда планируешь оплатить взнос? Введи дату (ДД.ММ.ГГГГ):": "When are you planning to pay the fee? Enter the date (DD.MM.YYYY):",
