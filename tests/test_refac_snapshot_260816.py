@@ -1195,6 +1195,10 @@ admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
 admin|callback_query|checkin_stats_csv|checkin_stats_csv
 admin|callback_query|forum_ready_open|forum_ready:*
 admin|callback_query|forum_ready_refresh|forum_ready_re:*
+admin|callback_query|citymove_start|citymv_start:*
+admin|callback_query|citymove_pick_city|citymv_pick:*
+admin|callback_query|citymove_apply|citymv_apply:*
+admin|callback_query|citymove_cancel|citymv_cancel:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1750,7 +1754,9 @@ def test_snapshot_total_handler_count_is_292():
     # venue_revoke_confirm/venue_revoke_go, сразу после checkinqr_time_start и ПЕРЕД admin_sos).
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые вставки, 0 удалений,
     # 0 реордеров (вставки независимы от п.10/№25; при слиянии 740 -> 750).
-    assert len(GOLDEN_SNAPSHOT) == 750
+    # Фаза 33 (перевод делегата в другой город): admin.callback_query citymv_* из handlers/admin_city_move.py — шов импортирован из хвоста handlers/admin.py после admin_forum_ready.
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (750 -> 754).
+    assert len(GOLDEN_SNAPSHOT) == 754
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
