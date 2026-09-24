@@ -234,6 +234,11 @@ _APPS_FIELD_ORDER = [
     "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
     "forum_noshow_poll_option_other_text",
     "forum_noshow_poll_other_prompt_text", "forum_noshow_poll_thanks_text",
+    # Идея №20 бэклога чек-ина: текст поста бюро находок — редактор экрана достаётся
+    # бесплатно попаданием в этот список (тот же приём, что у соседних форумных текстов
+    # выше); сам тумблер `lost_found_enabled` (type "enum") — НЕ здесь, живёт на своём
+    # экране `handlers/admin_lost_found.py::lostfound_cfg_screen`.
+    "lost_found_post_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",

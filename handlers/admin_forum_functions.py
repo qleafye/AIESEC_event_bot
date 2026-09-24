@@ -155,6 +155,16 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🔗 Пригласить волонтёров", callback_data=f"volinvite_cfg:{_encode_city(code)}",
         )])
 
+    # Идея №20 бэклога чек-ина: бюро находок — per_city, свой экран
+    # (handlers/admin_lost_found.py). Строка добавлена аддитивно (RULES.md), номер шага
+    # соседей выше не переставляется.
+    lostfound_on = await get_setting_typed_for_city("lost_found_enabled", code) == "on"
+    lines.append(f"🧳 Бюро находок: {_status(lostfound_on)}")
+    if visible(f"lostfound_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="🧳 Настройки бюро находок", callback_data=f"lostfound_cfg:{_encode_city(code)}",
+        )])
+
     # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
     # `services.program.program_menu_visible` (тумблер menu_program города И есть фото или
     # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.

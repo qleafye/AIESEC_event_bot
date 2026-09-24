@@ -981,3 +981,11 @@ from handlers import admin_checkin_floor  # noqa: E402
 # volinv_users_list/volinv_remove_user in the very tail of admin.router (golden snapshot: a
 # clean append, right after admin_program_view).
 from handlers import admin_volunteer_invite  # noqa: E402
+
+# Идея №20 бэклога чек-ина (бюро находок): shared-router seam import for «🧳 Нашли вещь»
+# (handlers/admin_lost_found.py) — registers lost_found_new_entry/lostfound_city_pick/
+# lost_found_cmd/lost_found_cancel_wizard/lost_found_photo_step/lost_found_photo_invalid/
+# lost_found_where_step/lost_found_cancel_preview/lost_found_publish/lostfound_return/
+# lostfound_cfg_screen/lostfound_toggle_go in the very tail of admin.router (golden
+# snapshot: a clean append, right after admin_volunteer_invite).
+from handlers import admin_lost_found  # noqa: E402
