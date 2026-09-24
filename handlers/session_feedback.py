@@ -25,17 +25,22 @@
 остальные экраны делегатского чата); литерал алерта «Эта оценка тебе недоступна.»
 зарегистрирован в `services/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем)."""
+import html as html_module
 import logging
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_program_session
 from handlers import reg_i18n
 from handlers.admin import router
-from handlers.states import SessionFeedbackComment
+from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
+from handlers.states import EditSetting, SessionFeedbackComment
 from handlers.user_actions import router as delegate_router
+from settings_audit import set_setting_by_admin
+from settings_schema import get_setting_typed
 from services import session_feedback as sf
 
 logger = logging.getLogger(__name__)
@@ -184,5 +189,173 @@ async def prog_fbc_open(callback: types.CallbackQuery):
         await callback.answer("Сессия больше недоступна.", show_alert=True)
         return
     text, kb = screen
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09 (аудит ключей после 8c0d8af): «⭐ Отзывы о сессиях» — тумблер/задержка/четыре
+# текста жили ТОЛЬКО в Mini App (на проде выключен, CLAUDE.md — правится в самом боте). Право —
+# то же, что у «🗓 Программа форума» (`_city_allowed` — TOCTOU-перепроверка города экрана,
+# переиспользуем оттуда, не заводим второй копии). Тумблер и задержка — per_city (когда модуль
+# городов включён); четыре текста — глобальные (та же группа «сосед», что и три текста SOS
+# выше, D-24: одна формулировка на все города, экран лишь показывает, откуда её править).
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+_FEEDBACK_DELAY_PRESETS = (5, 10, 15, 30)
+
+# (setting_key, подпись кнопки) — правка через ОБЩИЙ EditSetting.waiting_for_value.
+_FEEDBACK_TEXT_FIELDS = {
+    "prompt": ("session_feedback_prompt_text", "❓ Вопрос под оценкой"),
+    "thanks": ("session_feedback_thanks_text", "🙏 Спасибо после оценки"),
+    "hint": ("session_feedback_comment_hint_text", "✍️ Приглашение к комментарию"),
+    "saved": ("session_feedback_comment_saved_text", "✅ Комментарий сохранён"),
+}
+
+
+async def render_feedback_settings_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
+    label = await city_label(code)
+    per_city_ctx = await cities_module_on()
+    enabled = await sf.is_enabled_for_city(code)
+    delay_raw = await get_setting_typed_for_city("session_feedback_delay_minutes", code)
+    try:
+        delay = int(delay_raw) if delay_raw else sf.DEFAULT_DELAY_MINUTES
+    except (TypeError, ValueError):
+        delay = sf.DEFAULT_DELAY_MINUTES
+
+    lines = [f"⭐ <b>Отзывы о сессиях</b> — {html_module.escape(label)}", ""]
+    lines.append("Через сколько минут после конца сессии делегатам, отмеченным на ней, уходит просьба оценить её.")
+    lines.append("")
+    lines.append(f"Присылать отзыв: {'✅ Вкл' if enabled else '❌ Выкл'}")
+    lines.append(f"Задержка: {delay} мин")
+    if not per_city_ctx:
+        lines.append("")
+        lines.append("<i>Модуль городов выключен — тумблер и задержка общие для события.</i>")
+    lines.append("")
+    lines.append("<i>Тексты ниже общие для всех городов.</i>")
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    toggle_label = "✅ Вкл → ❌ Выкл" if enabled else "❌ Выкл → ✅ Вкл"
+    buttons.append([InlineKeyboardButton(text=f"Присылать отзыв: {toggle_label}", callback_data=f"prog_fbtoggle:{code}")])
+
+    delay_row = [
+        InlineKeyboardButton(
+            text=f"{'• ' if delay == n else ''}{n} мин", callback_data=f"prog_fbdelay:{code}:{n}",
+        )
+        for n in _FEEDBACK_DELAY_PRESETS
+    ]
+    buttons.append(delay_row)
+    other_mark = "• " if delay not in _FEEDBACK_DELAY_PRESETS else ""
+    buttons.append([InlineKeyboardButton(text=f"{other_mark}✏️ Другое", callback_data=f"prog_fbdelay_custom:{code}")])
+
+    for field_key, (_setting_key, field_label) in _FEEDBACK_TEXT_FIELDS.items():
+        buttons.append([InlineKeyboardButton(text=f"✏️ {field_label}", callback_data=f"prog_fbtext:{field_key}")])
+
+    buttons.append([InlineKeyboardButton(text="← К программе", callback_data=f"prog_city:{code}")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("prog_fbset:"))
+async def prog_fbset_open(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await render_feedback_settings_screen(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+async def _feedback_settings_key(base_key: str, code: str) -> tuple[str | None, bool]:
+    """`(ключ_для_записи, per_city_ctx)` — модуль городов выключен -> голый глобальный ключ
+    (T-093-02: переопределение физически не может подействовать, пока модуль выключен —
+    `cities.get_setting_typed_for_city` сам схлопывает чтение к глобальному значению, писать
+    в композитный ключ в этом состоянии значило бы молча терять правку)."""
+    if not await cities_module_on():
+        return base_key, False
+    return per_city_key(base_key, code), True
+
+
+@router.callback_query(F.data.startswith("prog_fbtoggle:"))
+async def prog_fbtoggle(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key, per_city_ctx = await _feedback_settings_key("session_feedback_enabled", code)
+    if key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    new_val = "off" if await sf.is_enabled_for_city(code) else "on"
+    await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
+    text, kb = await render_feedback_settings_screen(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Сохранено.")
+
+
+@router.callback_query(F.data.startswith("prog_fbdelay:"))
+async def prog_fbdelay(callback: types.CallbackQuery):
+    _, code, value_s = callback.data.split(":", 2)
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    try:
+        value = int(value_s)
+    except ValueError:
+        await callback.answer("Некорректное значение", show_alert=True)
+        return
+    key, per_city_ctx = await _feedback_settings_key("session_feedback_delay_minutes", code)
+    if key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await set_setting_by_admin(callback.from_user.id, key, str(value))
+    await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
+    text, kb = await render_feedback_settings_screen(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Сохранено.")
+
+
+@router.callback_query(F.data.startswith("prog_fbdelay_custom:"))
+async def prog_fbdelay_custom_start(callback: types.CallbackQuery, state: FSMContext):
+    code = callback.data.split(":", 1)[1]
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key, _per_city_ctx = await _feedback_settings_key("session_feedback_delay_minutes", code)
+    if key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.set_data({"setting_key": key})
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
+    await callback.answer()
+    await callback.message.answer(
+        "Через сколько минут после конца сессии присылать отзыв? Пришлите число, например "
+        "<code>20</code>.",
+        parse_mode="HTML", reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data.startswith("prog_fbtext:"))
+async def prog_fbtext_edit(callback: types.CallbackQuery, state: FSMContext):
+    field = callback.data.split(":", 1)[1]
+    entry = _FEEDBACK_TEXT_FIELDS.get(field)
+    if entry is None:
+        await callback.answer("Неизвестный текст", show_alert=True)
+        return
+    key, label = entry
+    current = await get_setting_typed(key)
+    text = f"✏️ <b>{label}</b>\n\n"
+    if current:
+        text += f"Сейчас: <b>{html_module.escape(str(current))}</b>\n\n"
+    else:
+        text += "Сейчас: <i>стандартный</i>\n\n"
+    text += "Пришли новый текст одним сообщением — общий для всех городов."
+    text += "\n\n<i>«-» — вернуть стандартный текст.</i>"
+
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.set_data({"setting_key": key})
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()

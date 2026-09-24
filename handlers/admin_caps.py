@@ -381,6 +381,14 @@ ADMIN_CAPS: dict[str, str] = {
     "asos_bind": "settings",
     "asos_bind_cancel": "settings",
     "state:SosChatBind:*": "settings",
+    # Ревью 24.09 (находка 1/3, аудит ключей после 8c0d8af): «⚙️ Тексты и тайминги» —
+    # конфигурирование контента/таймингов SOS, та же капа, что привязка чата выше, не
+    # `moderate_reg` (это не действие над конкретным обращением).
+    "asos_settings": "settings",
+    "asos_noop": "settings",
+    "asos_set_delay:*": "settings",
+    "asos_delay_custom:*": "settings",
+    "asos_settings_edit:*": "settings",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",

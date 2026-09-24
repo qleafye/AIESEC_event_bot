@@ -73,6 +73,18 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 вставший в хвост блока простых `_toggle_module_setting` тумблеров, сразу после
 `toggle_quiet_hours`. Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
 прежним 523-строчным снапшотом.
+
+Дрифт-нота (2026-09-24, ревью «аудит ключей после 8c0d8af»): +10 хендлеров, чистая вставка
+(723 -> 733), пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним
+723-строчным снапшотом. Экран «⚙️ Тексты и тайминги» SOS — пять хендлеров
+(`asos_settings_open`/`asos_noop`/`asos_set_delay`/`asos_delay_custom_start`/
+`asos_settings_edit_start`, `handlers/admin_sos.py`) вставлены сразу после `sos_resolve`
+(конец файла admin_sos.py, но раньше `handlers/session_feedback.py` в цепочке импортов —
+message-хендлер `admin_reply_to_sos` в поток callback_query не попадает вовсе, поэтому
+текстовое «в хвосте файла» и «место в снапшоте» не совпадают). Экран «⭐ Отзывы о сессиях»
+— пять хендлеров (`prog_fbset_open`/`prog_fbtoggle`/`prog_fbdelay`/`prog_fbdelay_custom_start`/
+`prog_fbtext_edit`, `handlers/session_feedback.py`) вставлены сразу после `prog_fbc_open`
+(тот же файл, простое добавление в хвост).
 """
 import asyncio
 import time
@@ -1131,8 +1143,18 @@ admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
 admin|callback_query|sos_claim|sos_claim:*
 admin|callback_query|sos_resolve|sos_resolve:*
+admin|callback_query|asos_settings_open|asos_settings
+admin|callback_query|asos_noop|asos_noop
+admin|callback_query|asos_set_delay|asos_set_delay:*
+admin|callback_query|asos_delay_custom_start|asos_delay_custom:*
+admin|callback_query|asos_settings_edit_start|asos_settings_edit:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
+admin|callback_query|prog_fbset_open|prog_fbset:*
+admin|callback_query|prog_fbtoggle|prog_fbtoggle:*
+admin|callback_query|prog_fbdelay|prog_fbdelay:*
+admin|callback_query|prog_fbdelay_custom_start|prog_fbdelay_custom:*
+admin|callback_query|prog_fbtext_edit|prog_fbtext:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1650,7 +1672,14 @@ def test_snapshot_total_handler_count_is_292():
     # user_actions.callback_query (sfb_rate/sfb_offer_comment, сразу после sos_pick_category и
     # ПЕРЕД show_wave_rating) — см. Drift note над GOLDEN_SNAPSHOT. Три чистые вставки, 0
     # удалений, 0 реордеров (718 -> 723).
-    assert len(GOLDEN_SNAPSHOT) == 723
+    # Ревью 24.09 (аудит ключей после 8c0d8af): +10 admin.callback_query — экран «⚙️ Тексты и
+    # тайминги» SOS (asos_settings_open/asos_noop/asos_set_delay/asos_delay_custom_start/
+    # asos_settings_edit_start, handlers/admin_sos.py, сразу после sos_resolve и ПЕРЕД
+    # prog_fbday_open) + экран «⭐ Отзывы о сессиях» (prog_fbset_open/prog_fbtoggle/prog_fbdelay/
+    # prog_fbdelay_custom_start/prog_fbtext_edit, handlers/session_feedback.py, сразу после
+    # prog_fbc_open и ПЕРЕД началом payment.router) — см. Drift note над GOLDEN_SNAPSHOT. Две
+    # чистые вставки, 0 удалений, 0 реордеров (723 -> 733).
+    assert len(GOLDEN_SNAPSHOT) == 733
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
