@@ -30,7 +30,7 @@ from handlers import registration as reg  # noqa: F401 -- тянет reg_lang в
 from handlers import reg_lang  # noqa: F401 -- регистрирует menu_lang_open на registration.router
 from handlers import user_actions as ua_mod
 from i18n_ui_en import MENU_EN
-from keyboards.builders import MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb
+from keyboards.builders import CONFERENCE_MENU_LABELS, MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb
 from tests._dbtpl import fast_init_db
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -103,7 +103,10 @@ def test_menu_texts_each_set_has_ru_and_en_variant():
     for key, texts in MENU_TEXTS.items():
         ru = ru_by_key[key]
         assert ru in texts
-        if key != "menu_lang":  # menu_lang уже двуязычна одной строкой -- множество из 1 элемента
+        if key in CONFERENCE_MENU_LABELS:  # + подпись конференции, RU и EN
+            conf = CONFERENCE_MENU_LABELS[key]
+            assert {ru, MENU_EN[ru], conf, MENU_EN[conf]} == set(texts)
+        elif key != "menu_lang":  # menu_lang уже двуязычна одной строкой -- множество из 1 элемента
             assert MENU_EN[ru] in texts
             assert len(texts) == 2
         else:
@@ -173,6 +176,7 @@ def test_russian_label_still_routes_unchanged(menu_key, handler_name):
 
 def test_menu_en_keys_match_menu_buttons_minus_lang_plus_payment():
     expected = {text for key, text in MENU_BUTTONS if key != "menu_lang"} | {"💳 Оплата"}
+    expected |= set(CONFERENCE_MENU_LABELS.values())
     assert set(MENU_EN.keys()) == expected
 
 
@@ -269,5 +273,38 @@ def test_module_off_keyboard_matches_baseline_even_with_stored_en(tmp_path):
         labels = {btn.text for row in kb.keyboard for btn in row}
         # Модуль выключен -- lang="en" в БД не имеет значения (resolve_lang это гарантирует).
         assert labels == _BASELINE_RU_LABELS
+
+    asyncio.run(go())
+
+
+# ── Конференция (съезд АЙСЕК): две подписи меню — «конференции», не «форума» ─────────────────
+
+async def _set_event_type(value):
+    async with db._connect() as conn:
+        await conn.execute(
+            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)", ("event_type", value),
+        )
+        await conn.commit()
+
+
+def test_conference_menu_uses_conference_labels_and_forum_stays_unchanged(tmp_path):
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        forum_labels = {b.text for row in (await get_main_menu_kb(UID)).keyboard for b in row}
+        assert "ℹ️ Информация о форуме" in forum_labels
+        assert "📅 Программа форума" in forum_labels
+
+        await _set_event_type("forum")
+        assert {b.text for row in (await get_main_menu_kb(UID)).keyboard for b in row} == forum_labels
+
+        await _set_event_type("conference")
+        conf_labels = {b.text for row in (await get_main_menu_kb(UID)).keyboard for b in row}
+        assert "ℹ️ О конференции" in conf_labels
+        assert "📅 Программа конференции" in conf_labels
+        assert not any("форум" in label for label in conf_labels)
+        # обе формы подписи ведут в один и тот же хендлер
+        for key, text in CONFERENCE_MENU_LABELS.items():
+            assert text in MENU_TEXTS[key]
 
     asyncio.run(go())
