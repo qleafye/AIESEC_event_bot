@@ -113,6 +113,9 @@ class Broadcast(StatesGroup):
     # Phase 3: scheduled broadcast (SCHED-01)
     schedule_when = State()
     schedule_message = State()
+    # Форум-ночь п.7: экран подтверждения (тумблер «❗ Важное») перед созданием отложенной
+    # рассылки — "state:Broadcast:*" в handlers/admin_caps.py уже покрывает новое состояние.
+    schedule_confirm = State()
     # Phase 3: filtered broadcast builder (COMM-01/02/03)
     filter_field = State()
     filter_value = State()

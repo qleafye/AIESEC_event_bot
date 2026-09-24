@@ -302,6 +302,11 @@ _SYSTEM_FIELD_ORDER = [
     # тумблер живёт строкой раздела «🔧 Управление», ровно как у пары chat_tracking_enabled/
     # chat_refresh_minutes.
     "daily_digest_time",
+    # Форум-ночь п.7 («❗ Важное»): пометка важной рассылки — редактор экрана достаётся
+    # бесплатно попаданием в этот список (иначе менеджер её в боте не увидит вовсе, правило
+    # файла); сам тумблер «❗ Отметить как важное» — не настройка реестра, а кнопка мастера
+    # рассылки (handlers/admin_broadcasts.py), сюда НЕ входит.
+    "important_broadcast_label",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки

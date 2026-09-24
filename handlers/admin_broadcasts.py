@@ -73,6 +73,11 @@ from services.scheduler import (
     _now_moscow_naive,
     schedule_broadcast_job,
     cancel_broadcast_job,
+    # Форум-ночь п.7 («❗ Важное» + «🔕 Не присылать сегодня»): общий хвост доставки, тот же,
+    # что у services.scheduler::send_scheduled_broadcast — одна точка правды для маркера
+    # важности и предложения «🔕», не вторая копия.
+    send_important_marker,
+    send_mute_offer_if_eligible,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
@@ -328,8 +333,17 @@ async def _send_confirm_prompt(
     предупреждения об аудитории «Всем»; отсутствие аргумента (`None`) сохраняет экран
     байт-в-байт прежним для любого вызова, который его не передаёт. `chat_id` здесь всегда
     личный чат отправителя с ботом — используется и как адрес доставки, и как исключаемый из
-    предупреждения sender_id."""
+    предупреждения sender_id.
+
+    Форум-ночь п.7: строка-тумблер «❗ Отметить как важное» — читает `bc_important` из FSM
+    (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
+    эту же функцию заново)."""
     warning = await _audience_warning(state, users_ids, chat_id)
+    important = bool((await state.get_data()).get("bc_important"))
+    important_btn = InlineKeyboardButton(
+        text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
+        callback_data="bc_important_toggle",
+    )
     from services import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
@@ -345,6 +359,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
+            [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -352,10 +367,28 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
+        [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
     await state.set_state(Broadcast.confirm)
+
+
+@router.callback_query(F.data == "bc_important_toggle", Broadcast.confirm)
+async def bc_important_toggle(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
+    """Форум-ночь п.7: тумблер на экране подтверждения — флаг в FSM, экран перерисовывается
+    той же `_send_confirm_prompt` (новым сообщением: предыдущая карточка подтверждения могла
+    нести отдельную «тихие часы»-ветку текста, редактирование на месте рискует расходиться)."""
+    data = await state.get_data()
+    important = not bool(data.get("bc_important"))
+    await state.update_data(bc_important=important)
+    users_ids = data.get("bc_users", [])
+    await callback.answer("❗ Отмечено как важное" if important else "Пометка снята")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _send_confirm_prompt(bot, callback.message.chat.id, state, len(users_ids), users_ids)
 
 
 async def _collect_album_and_preview(media_group_id: str, users_ids: list, bot: Bot, state: FSMContext, admin_id: int):
@@ -455,28 +488,58 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     перерисовка была под `except Exception: pass` — сбой edit (сообщение удалено, слишком
     старое, сеть) оставлял в чате живую карточку «Отправить/Отмена», на которую уже никто не
     отвечал (`bc_no` больше не ловил её — состояние очищено). Теперь `state.clear()` — ПОСЛЕ
-    отрисовки прогресса, а сбой edit чинится новым сообщением с той же клавиатурой."""
+    отрисовки прогресса, а сбой edit чинится новым сообщением с той же клавиатурой.
+
+    Форум-ночь п.7: `important` (тумблер экрана подтверждения) идёт ВСЕМ из `bc_users` —
+    «🔕» касается только НЕважных рассылок (D-XX), поэтому мут-фильтр применяется ТОЛЬКО когда
+    `important` выключен; `mute_skipped` — отдельная цифра отчёта, не входит в `total`."""
     data = await state.get_data()
     users_ids = data.get("bc_users", [])
     preview = data.get("bc_preview") or ""
     bc_chat_id = data.get("bc_chat_id")
     bc_message_id = data.get("bc_message_id")
     bc_album = data.get("bc_album")
+    important = bool(data.get("bc_important"))
     admin_id = callback.from_user.id
+
+    mute_skipped = 0
+    if not important:
+        from database.db import get_muted_today_ids
+        muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+        before_count = len(users_ids)
+        users_ids = [tid for tid in users_ids if tid not in muted]
+        mute_skipped = before_count - len(users_ids)
     total = len(users_ids)
 
-    bid = await create_broadcast(admin_id, preview[:80], total)
-    logger.info("broadcast %s started by %s: total=%s preview=%r", bid, admin_id, total, preview[:80])
+    bid = await create_broadcast(
+        admin_id, preview[:80], total, important=important, full_text=preview,
+    )
+    logger.info(
+        "broadcast %s started by %s: total=%s important=%s mute_skipped=%s preview=%r",
+        bid, admin_id, total, important, mute_skipped, preview[:80],
+    )
 
     if bc_album:
         async def send_one(chat_id):
+            if important:
+                await send_important_marker(bot, chat_id)
             media = _media_from_album_dicts(bc_album)
             results = await bot.send_media_group(chat_id, media)
-            return [m.message_id for m in results]
+            message_ids = [m.message_id for m in results]
+            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
+            if extra_mid is not None:
+                message_ids.append(extra_mid)
+            return message_ids
     else:
         async def send_one(chat_id):
+            if important:
+                await send_important_marker(bot, chat_id)
             result = await bot.copy_message(chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id)
-            return [result.message_id]
+            message_ids = [result.message_id]
+            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
+            if extra_mid is not None:
+                message_ids.append(extra_mid)
+            return message_ids
 
     stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
@@ -526,7 +589,10 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         except Exception:
             pass
 
-    _spawn(run_broadcast(bid, users_ids, send_one, on_progress=on_progress, on_finish=on_finish))
+    _spawn(run_broadcast(
+        bid, users_ids, send_one, on_progress=on_progress, on_finish=on_finish,
+        mute_skipped=mute_skipped,
+    ))
 
 
 @router.callback_query(F.data == "bc_no", Broadcast.confirm)
@@ -583,13 +649,19 @@ _BROADCAST_STATUS_LABELS = {
 def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     """Один рендер и для итога рассылки (bc_go/bc_revgo on_finish), и для строки списка
     «Последние рассылки» (BC-05). Заголовок несёт статус+счётчики словами, которые уже видел
-    менеджер на экране прогресса — единый рендер не значит новую формулировку."""
+    менеджер на экране прогресса — единый рендер не значит новую формулировку.
+
+    Форум-ночь п.7: строка «🔕 не отправлено (тихий режим): N» — только когда `mute_skipped` > 0
+    (старые строки до миграции читают 0 через `_ensure_column`-дефолт, экран для них не
+    меняется ни байтом)."""
     status = row.get("status")
     delivered = row.get("delivered") or 0
     blocked = row.get("blocked") or 0
     total = row.get("total") or 0
+    mute_skipped = row.get("mute_skipped") or 0
     preview = html_module.escape(re.sub(r"<[^>]+>", "", row.get("text_preview") or ""))
     started_at = row.get("started_at") or "—"
+    important_prefix = "❗ " if row.get("important") else ""
 
     if status == "sending":
         headline = f"📨 Отправляется: {delivered} из {total}…"
@@ -599,9 +671,11 @@ def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         headline = "🗑 Удалена у получателей."
     else:
         headline = f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}"
+    if mute_skipped:
+        headline += f"\n🔕 Не отправлено (выключили уведомления на сегодня): {mute_skipped}"
 
     text = (
-        f"#{row.get('id')} — {started_at}\n"
+        f"{important_prefix}#{row.get('id')} — {started_at}\n"
         f"Автор: {row.get('admin_id')}\n"
         f"{preview}\n"
         f"Статус: {_BROADCAST_STATUS_LABELS.get(status, status or '—')}\n"
@@ -819,6 +893,10 @@ async def broadcast_schedule_quiet_choice(callback: types.CallbackQuery, state: 
 
 @router.message(Broadcast.schedule_message)
 async def broadcast_schedule_message(message: types.Message, state: FSMContext):
+    """Форум-ночь п.7: сообщение больше НЕ создаёт отложенную рассылку сразу — копит текст/
+    фото в FSM и показывает экран подтверждения с тумблером «❗ Отметить как важное» (тот же
+    приём, что BC-01/02 у мгновенной рассылки, `_send_confirm_prompt`/`bc_important_toggle`).
+    Создание строки переехало в `sched_go`."""
     data = await state.get_data()
     when = data.get("schedule_dt")
     if not when:
@@ -835,18 +913,80 @@ async def broadcast_schedule_message(message: types.Message, state: FSMContext):
     else:
         text = None
 
+    await state.update_data(sched_text=text, sched_photo=photo, bc_important=False)
+    await message.send_copy(message.chat.id)
+    await _send_schedule_confirm_prompt(message, state)
+
+
+async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
+    """Экран подтверждения отложенной рассылки — общий хвост для первого показа
+    (`broadcast_schedule_message`) и перерисовки после тумблера (`sched_important_toggle`)."""
+    data = await state.get_data()
+    when = data.get("schedule_dt")
+    important = bool(data.get("bc_important"))
+    important_btn = InlineKeyboardButton(
+        text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
+        callback_data="sched_important_toggle",
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
+        [important_btn],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="sched_no")],
+    ])
+    await target.answer(
+        f"Запланировать эту рассылку на {when.strftime('%d.%m.%Y %H:%M')}?", reply_markup=kb,
+    )
+    await state.set_state(Broadcast.schedule_confirm)
+
+
+@router.callback_query(F.data == "sched_important_toggle", Broadcast.schedule_confirm)
+async def sched_important_toggle(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    important = not bool(data.get("bc_important"))
+    await state.update_data(bc_important=important)
+    await callback.answer("❗ Отмечено как важное" if important else "Пометка снята")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await _send_schedule_confirm_prompt(callback.message, state)
+
+
+@router.callback_query(F.data == "sched_no", Broadcast.schedule_confirm)
+async def sched_no(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer()
+    await callback.message.edit_text("Рассылка отменена.")
+
+
+@router.callback_query(F.data == "sched_go", Broadcast.schedule_confirm)
+async def sched_go(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    when = data.get("schedule_dt")
+    text = data.get("sched_text")
+    photo = data.get("sched_photo")
+    important = bool(data.get("bc_important"))
+    if not when:
+        await callback.answer()
+        await callback.message.edit_text("Сессия истекла, начните заново через /broadcast.")
+        await state.clear()
+        return
+
     filters = data.get("filters")
     filter_spec = json.dumps(filters, ensure_ascii=False) if filters else None
 
-    bid = await create_scheduled_broadcast(text, photo, filter_spec, _fmt_dt(when), message.from_user.id)
+    bid = await create_scheduled_broadcast(
+        text, photo, filter_spec, _fmt_dt(when), callback.from_user.id, important=important,
+    )
     schedule_broadcast_job(bid, when)
+    await state.clear()
+    await callback.answer()
 
     scope = "по фильтру" if filters else "всем пользователям"
-    await message.answer(
+    await callback.message.edit_text(
         f"✅ Рассылка #{bid} запланирована на {when.strftime('%d.%m.%Y %H:%M')} ({scope}).\n"
         "Управление: /scheduled"
     )
-    await state.clear()
 
 
 async def _render_scheduled_list(target) -> bool:

@@ -172,7 +172,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2702,
+        2707,
+        "Форум-ночь п.7 («❗ Важное»): +5 строк — `important_broadcast_label` дописан в "
+        "_SYSTEM_FIELD_ORDER (редактор экрана достаётся бесплатно попаданием в этот список); "
+        "2702 -> 2707, потолок с ровно фактическим размером. "
         "Форум-ночь: +2 строки — `checkin_qr_broadcast_text` и `checkin_volunteer_guide_text` "
         "дописаны в _APPS_FIELD_ORDER (задача 3 ночной приёмки, оба ключа реестра были заведены "
         "этой же ночью, но нигде не правились в самом боте — только в Mini App); 2700 -> 2702, "
@@ -375,7 +378,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "потолок поднят до фактического размера + ~3 строки запаса.",
     ),
     "admin_broadcasts.py": (
-        1505,
+        1723,
+        "Форум-ночь п.7 («❗ Важное» + «🔕 Не присылать сегодня»): +136 строк — тумблер "
+        "«❗ Отметить как важное» на экране подтверждения мгновенной рассылки "
+        "(bc_important_toggle) + строка отчёта mute_skipped в _broadcast_card + тот же тумблер "
+        "и экран подтверждения для отложенной рассылки (schedule_message больше не создаёт "
+        "строку сразу, а копит в FSM и показывает _send_schedule_confirm_prompt/"
+        "sched_important_toggle/sched_go/sched_no — новое состояние Broadcast.schedule_confirm), "
+        "1505 -> 1641; потолок поднят до фактического размера + ~5%. "
         "Phase 31 (31-07, D-28): +42 строки — поле фильтра «Автоотказ по правилу» "
         "(AUTO_REJECT_YES/AUTO_REJECT_NO в _FILTER_FIELD_LABELS/_PICKER_FIELDS, "
         "show_auto_reject в _filter_menu_kb/_render_filter_menu, ветка auto_reject в "

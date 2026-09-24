@@ -640,6 +640,10 @@ async def init_db():
         # `broadcasts` (том же, что у мгновенных рассылок) — эта колонка хранит связь, чтобы
         # resume после рестарта переиспользовал ту же строку журнала, а не плодил вторую.
         await _ensure_column(db, "scheduled_broadcasts", "log_broadcast_id", "INTEGER")
+        # Форум-ночь п.7 (D-XX, «❗ Важное»): отложенная рассылка тоже может быть помечена
+        # важной — читается в services/scheduler.py::send_scheduled_broadcast перед тем, как
+        # завести/переиспользовать строку журнала `broadcasts` (важность копируется туда же).
+        await _ensure_column(db, "scheduled_broadcasts", "important", "INTEGER DEFAULT 0")
 
         # Quick 260910-okb (BC-01..06): журнал НЕМЕДЛЕННЫХ рассылок («отправить сейчас» из
         # handlers/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
@@ -657,6 +661,15 @@ async def init_db():
                 blocked INTEGER
             )
         ''')
+        # Форум-ночь п.7: важность рассылки + её полный текст (для делегатской кнопки
+        # «❗ Важное», database.db.important_messages_today — text_preview выше урезан до 80
+        # символов, для «найти потерянное в потоке» этого мало) + счётчик пропущенных
+        # тихим-режимом получателей (mute_skipped, для отчёта менеджеру). И для мгновенных
+        # (create_broadcast), и для отложенных рассылок (send_scheduled_broadcast переиспользует
+        # эту же строку журнала, см. log_broadcast_id выше) — одна точка правды.
+        await _ensure_column(db, "broadcasts", "important", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "broadcasts", "full_text", "TEXT")
+        await _ensure_column(db, "broadcasts", "mute_skipped", "INTEGER DEFAULT 0")
         # БЕЗ PRIMARY KEY: альбом отдаёт несколько message_id на один chat_id — по одной строке
         # на каждое доставленное сообщение, не одна на получателя.
         await db.execute('''
@@ -667,6 +680,10 @@ async def init_db():
                 sent_at TEXT
             )
         ''')
+        # Форум-ночь п.7 («🔕 Не присылать сегодня»): MSK-дата ('YYYY-MM-DD'), ДО конца которой
+        # (включительно) НЕважные рассылки этому делегату пропускаются при доставке. NULL —
+        # делегат ничего не отключал (или уже нажал «🔔 Присылать всё»).
+        await _ensure_column(db, "users", "mute_broadcasts_until", "TEXT")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -3530,15 +3547,22 @@ async def create_scheduled_broadcast(
     filter_spec: str | None,
     scheduled_at: str,
     created_by: int,
+    *, important: bool = False,
 ) -> int:
-    """Insert a pending scheduled broadcast; return its new id (the job's only arg)."""
+    """Insert a pending scheduled broadcast; return its new id (the job's only arg).
+
+    `important` (форум-ночь п.7, kw-only с дефолтом False — существующие вызовы байт-в-байт
+    прежние): копируется в журнал `broadcasts` при отправке (services/scheduler.py::
+    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *)."""
     created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
-            "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
-            (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at),
+            "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at, "
+            "important) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at,
+             1 if important else 0),
         )
         await db.commit()
         return cursor.lastrowid
@@ -3671,15 +3695,24 @@ async def cleanup_deliveries(broadcast_id: int):
 # `services/broadcast_run.py` is the only caller of the write helpers below — kept here (not
 # there) so the module stays a pure send-loop with no DB-shape knowledge beyond these calls.
 
-async def create_broadcast(admin_id: int, text_preview: str, total: int) -> int:
-    """Insert a 'sending' row for an immediate broadcast; return its new id."""
+async def create_broadcast(
+    admin_id: int, text_preview: str, total: int,
+    *, important: bool = False, full_text: str | None = None,
+) -> int:
+    """Insert a 'sending' row for an immediate broadcast; return its new id.
+
+    Форум-ночь п.7: `important`/`full_text` — тот же ряд, что и у отложенной рассылки
+    (services/scheduler.py::send_scheduled_broadcast заводит/переиспользует ЭТУ ЖЕ строку
+    журнала через log_broadcast_id). kw-only с дефолтами — существующие позиционные вызовы
+    остаются байт-в-байт прежними."""
     started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO broadcasts "
-            "(admin_id, text_preview, started_at, status, total, delivered, blocked) "
-            "VALUES (?, ?, ?, 'sending', ?, 0, 0)",
-            (admin_id, text_preview, started_at, total),
+            "(admin_id, text_preview, started_at, status, total, delivered, blocked, "
+            "important, full_text) "
+            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?)",
+            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text),
         )
         await db.commit()
         return cursor.lastrowid
@@ -3697,13 +3730,18 @@ async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id:
         await db.commit()
 
 
-async def finish_broadcast(broadcast_id: int, status: str, delivered: int, blocked: int):
+async def finish_broadcast(
+    broadcast_id: int, status: str, delivered: int, blocked: int, mute_skipped: int = 0,
+):
+    """`mute_skipped` (форум-ночь п.7, дефолт 0 — существующие вызовы байт-в-байт прежние):
+    сколько получателей пропущено, потому что нажали «🔕 Не присылать сегодня» — отдельная
+    цифра от `blocked` (недоставленных Telegram'ом), для отчёта менеджеру."""
     finished_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ? "
-            "WHERE id = ?",
-            (status, delivered, blocked, finished_at, broadcast_id),
+            "UPDATE broadcasts SET status = ?, delivered = ?, blocked = ?, finished_at = ?, "
+            "mute_skipped = ? WHERE id = ?",
+            (status, delivered, blocked, finished_at, mute_skipped, broadcast_id),
         )
         await db.commit()
 
@@ -3769,6 +3807,58 @@ async def cancel_scheduled_broadcast(broadcast_id: int):
             "UPDATE scheduled_broadcasts SET status = 'cancelled' WHERE id = ?", (broadcast_id,)
         )
         await db.commit()
+
+
+# ── Форум-ночь п.7 («🔕 Не присылать сегодня» + «❗ Важное») ──────────────────
+
+async def get_muted_today_ids(date_str: str) -> set[int]:
+    """Кто отключил НЕважные рассылки на `date_str` (MSK 'YYYY-MM-DD') — один запрос ДО цикла
+    доставки (и мгновенной bc_go, и отложенной send_scheduled_broadcast), а не чтение
+    `get_user` на каждого получателя."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE mute_broadcasts_until = ?", (date_str,)
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def set_broadcast_mute(telegram_id: int, date_str: str | None) -> None:
+    """`date_str` — MSK-дата, ДО конца которой НЕважные рассылки пропускаются; `None` снимает
+    заглушку («🔔 Присылать всё»)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET mute_broadcasts_until = ? WHERE telegram_id = ?",
+            (date_str, telegram_id),
+        )
+        await db.commit()
+
+
+async def important_messages_today(telegram_id: int, date_str: str) -> list[dict]:
+    """(text, sent_at) важных рассылок, ДОСТАВЛЕННЫХ этому делегату сегодня (MSK) — для кнопки
+    «❗ Важное» (handlers/user_actions.py::show_important_today). `GROUP BY b.id` схлопывает
+    альбом (несколько строк broadcast_deliveries на один chat_id) в одну запись."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT b.full_text AS text, MIN(d.sent_at) AS sent_at "
+            "FROM broadcast_deliveries d JOIN broadcasts b ON b.id = d.broadcast_id "
+            "WHERE d.chat_id = ? AND b.important = 1 AND substr(d.sent_at, 1, 10) = ? "
+            "GROUP BY b.id ORDER BY sent_at",
+            (telegram_id, date_str),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def has_important_today(telegram_id: int, date_str: str) -> bool:
+    """Гейт кнопки меню «❗ Важное» (keyboards/builders.py::get_main_menu_kb) — дешёвый EXISTS,
+    без сборки полного списка."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM broadcast_deliveries d JOIN broadcasts b ON b.id = d.broadcast_id "
+            "WHERE d.chat_id = ? AND b.important = 1 AND substr(d.sent_at, 1, 10) = ? LIMIT 1",
+            (telegram_id, date_str),
+        ) as cursor:
+            return await cursor.fetchone() is not None
 
 
 # ── Phase 3: dropout-nudge scan/mark (SCHED-03) ──────────────────────────────

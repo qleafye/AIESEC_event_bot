@@ -466,6 +466,79 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
         return False
 
 
+# ── Форум-ночь п.7: «❗ Важное» + «🔕 Не присылать сегодня» — общий хвост доставки ────────────
+# Общие для мгновенной (handlers/admin_broadcasts.py::bc_go) и отложенной
+# (send_scheduled_broadcast ниже) доставки: маркер важности ПЕРЕД основным содержимым и
+# предложение «🔕» ПОСЛЕ. Отдельные сообщения, а не правка текста/подписи основной рассылки —
+# `bot.copy_message` (которым уходит мгновенная НЕ-альбомная рассылка, BC-01/02) не умеет
+# подменить текст ЧИСТО текстового сообщения (в отличие от caption медиа), а
+# `bot.send_media_group` вообще не принимает `reply_markup` — единого места для правки текста/
+# клавиатуры ВНУТРИ основной отправки для всех трёх форм (текст/фото/альбом) нет. Fail-soft
+# КАЖДЫМ шагом по отдельности: сбой маркера/предложения не должен считаться недоставленной
+# рассылкой — чекпоинт (mark_delivery/scheduled_broadcast_deliveries) завязан только на
+# ОСНОВНОЙ send.
+
+MUTE_TODAY_CALLBACK = "bc_mute_today"
+UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
+
+_MUTE_OFFER_TEXT = "Сегодня многовато рассылок? Можно отключить необязательные до завтра:"
+
+
+def _mute_offer_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔕 Не присылать сегодня", callback_data=MUTE_TODAY_CALLBACK),
+    ]])
+
+
+async def send_important_marker(bot, chat_id: int) -> int | None:
+    """Короткое сообщение-маркер ПЕРЕД важной рассылкой. `None` — сбой отправки (fail-soft,
+    основная рассылка идёт независимо от результата).
+
+    `bot` — явным аргументом, НЕ модульный `_bot`: мгновенная рассылка (handlers/
+    admin_broadcasts.py::bc_go) держит свой Bot через aiogram DI и не проходит через
+    `init_scheduler`, поэтому `_bot` там не обязан быть тем же объектом (в юнит-тестах —
+    вовсе не заполнен). Отложенная рассылка (send_scheduled_broadcast ниже) передаёт свой
+    модульный `_bot` явно — тот же результат, без скрытой зависимости от глобала здесь."""
+    try:
+        label = await get_setting("important_broadcast_label")
+        msg = await bot.send_message(chat_id, (label or "❗ Важно").strip() or "❗ Важно")
+        return msg.message_id
+    except Exception as e:
+        logger.warning(f"send_important_marker({chat_id}) failed: {e}")
+        return None
+
+
+async def offer_mute_today_if_forum_day(chat_id: int) -> bool:
+    """True — сегодня день форума города ЭТОГО делегата (гейт кнопки «🔕», форум-ночь п.7:
+    «предпочтительно — только в дни форума города, иначе кнопка лишняя»)."""
+    try:
+        from database.db import get_user
+        from services.reject_rules import forum_date_for
+        user = await get_user(chat_id)
+        date_str = await forum_date_for((user or {}).get("event_city") if user else None)
+        return bool(date_str) and date_str == _now_moscow_naive().strftime("%d.%m.%Y")
+    except Exception as e:
+        logger.error(f"offer_mute_today_if_forum_day({chat_id}) failed: {e}")
+        return False
+
+
+async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int | None:
+    """ПОСЛЕ успешно доставленной НЕважной рассылки, в день форума города получателя —
+    отдельное сообщение с кнопкой «🔕». Важные рассылки никогда не предлагают отключиться
+    (D-XX: важное приходит всегда) — `important=True` выходит РАНЬШЕ гейта дня форума, без
+    единого лишнего чтения. `bot` — явным аргументом (см. докстринг send_important_marker)."""
+    if important:
+        return None
+    try:
+        if not await offer_mute_today_if_forum_day(chat_id):
+            return None
+        msg = await bot.send_message(chat_id, _MUTE_OFFER_TEXT, reply_markup=_mute_offer_kb())
+        return msg.message_id
+    except Exception as e:
+        logger.warning(f"send_mute_offer_if_eligible({chat_id}) failed: {e}")
+        return None
+
+
 async def send_scheduled_broadcast(broadcast_id: int):
     """Date-job target: read the payload row by id, resolve the audience, send, mark sent.
     Arg is the int id ONLY (picklable) — the Bot comes from the module global."""
@@ -544,6 +617,18 @@ async def send_scheduled_broadcast(broadcast_id: int):
         else:
             target_ids = await get_all_users_ids()
 
+        # Форум-ночь п.7: важная рассылка идёт ВСЕМ независимо от «🔕» (D-XX); неважная —
+        # минус тех, кто отключил сегодня. Считается ДО create_broadcast — total в журнале
+        # отражает реально отправляемую аудиторию, mute_skipped — отдельная цифра отчёта.
+        important = bool(row.get("important"))
+        mute_skipped = 0
+        if not important:
+            from database.db import get_muted_today_ids
+            muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+            before = len(target_ids)
+            target_ids = [tid for tid in target_ids if tid not in muted]
+            mute_skipped = before - len(target_ids)
+
         # Квик 260915-twr (Task B1): один журнал, одна таблица broadcast_deliveries — отложенная
         # рассылка заводит (или переиспользует после рестарта) ту же строку `broadcasts`, что
         # мгновенная. `broadcast_id` в этой функции — id строки `scheduled_broadcasts`
@@ -553,7 +638,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
         log_bid = row.get("log_broadcast_id")
         if not log_bid:
             log_bid = await create_broadcast(
-                row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids)
+                row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids),
+                important=important, full_text=row.get("text"),
             )
             await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
 
@@ -573,6 +659,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
             if chat_id in already:
                 skipped += 1
                 continue
+            if important:
+                await send_important_marker(_bot, chat_id)
             if photo:
                 async def _send(cid, _photo=photo, _text=text):
                     msg = await _bot.send_photo(cid, _photo, caption=_text)
@@ -589,6 +677,9 @@ async def send_scheduled_broadcast(broadcast_id: int):
             if ok and chat_id in sent_message_ids:
                 # fail-soft: отсутствие id (странный ответ API) не должно ронять рассылку
                 await record_broadcast_delivery(log_bid, chat_id, sent_message_ids[chat_id])
+                extra_mid = await send_mute_offer_if_eligible(_bot, chat_id, important)
+                if extra_mid is not None:
+                    await record_broadcast_delivery(log_bid, chat_id, extra_mid)
             if ok:
                 sent += 1
             else:
@@ -598,10 +689,11 @@ async def send_scheduled_broadcast(broadcast_id: int):
         await mark_broadcast_sent(broadcast_id)
         # sent + skipped: skipped — доставленные ПРЕДЫДУЩИМ прогоном после рестарта, для
         # менеджера они доставлены не меньше, чем sent из этого прогона.
-        await finish_broadcast(log_bid, "done", sent + skipped, failed)
+        await finish_broadcast(log_bid, "done", sent + skipped, failed, mute_skipped)
         logger.info(
             f"Scheduled broadcast {broadcast_id} done: sent {sent}, "
-            f"skipped {skipped} (already), failed {failed} of {len(target_ids)}"
+            f"skipped {skipped} (already), failed {failed} of {len(target_ids)}, "
+            f"mute_skipped {mute_skipped}"
         )
         # The checkpoint rows only matter for resume; drop them once the row is 'sent'.
         try:

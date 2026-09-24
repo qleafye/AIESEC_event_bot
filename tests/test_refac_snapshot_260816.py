@@ -878,6 +878,7 @@ admin|callback_query|process_broadcast_local_file|broadcast_local
 admin|callback_query|process_broadcast_unsubscribed|broadcast_unsubscribed
 admin|callback_query|process_broadcast_incomplete|broadcast_incomplete
 admin|callback_query|cancel_broadcast_callback|broadcast_cancel
+admin|callback_query|bc_important_toggle|bc_important_toggle
 admin|callback_query|bc_go|bc_go
 admin|callback_query|bc_no|bc_no
 admin|callback_query|bc_no_after_start|bc_no
@@ -889,6 +890,9 @@ admin|callback_query|admin_broadcast_log|admin_broadcast_log
 admin|callback_query|admin_broadcast_scheduled|admin_broadcast_scheduled
 admin|callback_query|broadcast_schedule_start|broadcast_schedule
 admin|callback_query|broadcast_schedule_quiet_choice|bcast_quiet:*
+admin|callback_query|sched_important_toggle|sched_important_toggle
+admin|callback_query|sched_no|sched_no
+admin|callback_query|sched_go|sched_go
 admin|callback_query|sched_cancel|sched_cancel_*
 admin|callback_query|broadcast_filter_start|broadcast_filter
 admin|callback_query|filter_pick_field|
@@ -1555,7 +1559,14 @@ def test_snapshot_total_handler_count_is_292():
     # хвост файла, сразу после checkin_qr_confirm_receipt). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 687-строчным снимком: ровно пять
     # вставок, 0 удалений, 0 реордеров (687 -> 692).
-    assert len(GOLDEN_SNAPSHOT) == 692
+    # Форум-ночь п.7 («❗ Важное»): +4 admin.callback_query в handlers/admin_broadcasts.py —
+    # bc_important_toggle (встал сразу после cancel_broadcast_callback и ПЕРЕД bc_go, тумблер
+    # экрана подтверждения мгновенной рассылки) + sched_important_toggle/sched_no/sched_go
+    # (встали сразу после broadcast_schedule_quiet_choice и ПЕРЕД sched_cancel — новый экран
+    # подтверждения отложенной рассылки, Broadcast.schedule_confirm). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 692-строчным снимком: ровно две
+    # вставки (1+3 строки), 0 удалений, 0 реордеров (692 -> 696).
+    assert len(GOLDEN_SNAPSHOT) == 696
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
