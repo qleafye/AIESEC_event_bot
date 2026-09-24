@@ -51,7 +51,7 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
-from services import checkin_arrival, i18n
+from services import checkin_arrival, checkin_training, i18n
 from services import venue_log
 from services.person_search import search_people
 from services.program import checkin_session_points
@@ -208,6 +208,36 @@ def _person_fields(user: dict) -> dict:
     }
 
 
+async def _training_preview(
+    p: Principal, bound: str | None, *, parsed: dict | None = None, user: dict | None = None,
+) -> dict:
+    """Бэклог чек-ина №7: настоящий QR (или человек из поиска) в точке «🧪 Тренировка» —
+    та же плашка, что дал бы вход, по реальным данным, но без записи отметки и без строки
+    журнала площадки (ни отметки, ни отказа)."""
+    lang, tr_map = await i18n.context(p.telegram_id)
+    if parsed is not None:
+        tag = parsed.get("tag") or ""
+        if not tag or tag != await current_event_tag():
+            return await checkin_training.as_training_point({
+                "status": "foreign_event", "reason_text": DENIAL_REASON_TEXT["foreign_event"],
+                "full_name": parsed.get("full_name") or None, "city": parsed.get("city") or None,
+            }, lang, tr_map)
+        user, denial_code = await resolve_scanned_user(
+            parsed.get("token"), point=checkin_training.TRAINING_POINT, source="miniapp",
+        )
+    else:
+        denial_code = await checkin_denial(user)
+    if denial_code is not None:
+        return await checkin_training.as_training_point({
+            "status": "not_found" if denial_code == "no_user" else "denied",
+            "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
+            "full_name": (user or {}).get("full_name") or (parsed or {}).get("full_name") or None,
+            "city": (user or {}).get("event_city") or (parsed or {}).get("city") or None,
+        }, lang, tr_map)
+    res = await _entry_city_denial(bound, user) or await checkin_training.preview_entry(user, lang, tr_map)
+    return await checkin_training.as_training_point({**res, **_person_fields(user)}, lang, tr_map)
+
+
 class ScanBody(BaseModel):
     payload: str = ""
     point: str = ENTRY_POINT
@@ -220,13 +250,20 @@ async def checkin_scan(
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     point = body.point or ENTRY_POINT
+    parsed = parse_qr_payload(body.payload)
+    # Бэклог чек-ина №7: учебный QR в любой точке — только учебная плашка, ничего не пишется.
+    training = await checkin_training.resolve_training(parsed.get("token"), point=point, source="miniapp")
+    if training is not None:
+        lang, tr_map = await i18n.context(p.telegram_id)
+        return await checkin_training.training_scan_response(training, parsed, lang, tr_map)
     bound = await _bound_city(request, p)
+    if point == checkin_training.TRAINING_POINT:
+        return await _training_preview(p, bound, parsed=parsed)
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         await _log_denial(p, bound, point_denial["status"], point=point, source="miniapp")
         return point_denial
 
-    parsed = parse_qr_payload(body.payload)
     tag = parsed.get("tag") or ""
     if not tag or tag != await current_event_tag():
         await _log_denial(p, bound, "foreign_event", point=point, source="miniapp")
@@ -277,6 +314,8 @@ async def checkin_manual(
     отметка, источник `manual` отличает её в журнале (будущее B1-31)."""
     point = body.point or ENTRY_POINT
     bound = await _bound_city(request, p)
+    if point == checkin_training.TRAINING_POINT:
+        return await _training_preview(p, bound, user=await get_user(body.telegram_id))
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         await _log_denial(p, bound, point_denial["status"], point=point, source="manual")
@@ -427,6 +466,9 @@ async def checkin_points(
         "count": await count_checkins_by_point(ENTRY_POINT, day=msk_now().strftime("%Y-%m-%d")),
         "capacity": None,
     }]
+    # Бэклог чек-ина №7 (D-28 «Вход всегда первым»): «🧪 Тренировка» — сразу за входом.
+    lang, tr_map = await i18n.context(p.telegram_id)
+    points.append(await checkin_training.training_point_entry(lang, tr_map))
     if resolved is not None:
         for sp in await checkin_session_points(resolved):
             points.append({**sp, "count": await count_checkins_by_point(sp["point"])})
