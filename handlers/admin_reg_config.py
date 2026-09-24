@@ -28,7 +28,7 @@ from database.db import get_setting
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
-from keyboards.builders import MENU_BUTTONS
+from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
 from handlers.reg_schema import (
     REG_LABELS,
     REG_PRESETS,
@@ -389,18 +389,10 @@ async def preset_confirm(callback: types.CallbackQuery):
 
 async def _menu_hidden_note(key: str, city_code: str | None) -> str:
     """Кнопка включена (✅), но делегат её сейчас не видит из-за второго гейта
-    `keyboards.builders.get_main_menu_kb` — пометка с причиной, иначе менеджер ищет баг."""
-    if key == "menu_checkin_qr" and await get_setting_typed("checkin_qr_enabled") != "on":
-        return " <i>(сейчас скрыта: выключен QR для входа на форум — «🎪 Форум: функции»)</i>"
-    if key == "menu_sos":
-        from services.sos import is_sos_active_for_city  # ленивый импорт — как в builders
-        if not await is_sos_active_for_city(city_code):
-            from services.reject_rules import forum_date_for
-            date_str = await forum_date_for(city_code)
-            if date_str is None:
-                return " <i>(сейчас скрыта: не задана дата форума)</i>"
-            return f" <i>(сейчас скрыта: видна только в дни форума, начало {date_str})</i>"
-    return ""
+    `keyboards.builders.get_main_menu_kb` — пометка с причиной из общего реестра
+    `keyboards.builders.MENU_HIDDEN_REASONS`, иначе менеджер ищет баг."""
+    reason = await menu_hidden_reason(key, city_code)
+    return f" <i>(сейчас скрыта: {html_module.escape(reason)})</i>" if reason else ""
 
 
 async def render_menu_text(admin_id: int | None = None) -> str:
