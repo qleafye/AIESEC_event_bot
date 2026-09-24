@@ -462,3 +462,45 @@ def test_volinvite_requires_moderate_reg_not_bare_checkin(tmp_path):
     _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))
     result, event = dispatch_callback("volinvite_cfg:_all", VOLUNTEER_ID)
     assert event.answers  # denial toast, not the screen
+
+
+# ── Код ссылки в callback_data подделывается: менеджер города A не трогает ссылки города B ──
+
+def _msk_invite_and_spb_manager():
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    _run(db.set_staff_city(MANAGER_ID, "spb"))
+    _run(db.create_volunteer_invite("cm", "msk", ADMIN_ID, None, None, None))
+    _run(db.claim_volunteer_invite("cm", VOLUNTEER_ID))
+    _run(db.add_staff(VOLUNTEER_ID, "volunteer", None))
+
+
+def test_other_city_manager_cannot_revoke_list_or_remove(tmp_path):
+    _ready(tmp_path)
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+        _msk_invite_and_spb_manager()
+
+        for data in ("volinv_revoke:cm", "volinv_revoke_go:cm", "volinv_revoke_no:cm", "volinv_users:cm",
+                     f"volinv_removeuser:cm:{VOLUNTEER_ID}"):
+            _result, event = dispatch_callback(data, MANAGER_ID)
+            assert event.answers and "правит суперадмин" in (event.answers[0][0] or ""), data
+            assert not event.message.answers, data
+
+        assert _run(db.get_volunteer_invite("cm"))["revoked"] == 0
+        assert _run(db.get_staff_roles(VOLUNTEER_ID)) != []
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_remove_user_only_among_this_links_users(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    _run(db.create_volunteer_invite("c1", None, ADMIN_ID, None, None, None))
+    _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))  # роль выдана НЕ по этой ссылке
+
+    _result, event = dispatch_callback(f"volinv_removeuser:c1:{VOLUNTEER_ID}", ADMIN_ID)
+    assert event.answers and "не входил" in (event.answers[0][0] or "")
+    assert _run(db.get_staff_roles(VOLUNTEER_ID)) != []
