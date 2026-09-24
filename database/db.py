@@ -10569,13 +10569,15 @@ async def forum_day_report_mark_sent(city: str | None, day: str, sent_at: str) -
 
 async def count_checkins_by_point_and_day(point: str, day: str, *, city_scope=None) -> int:
     """Тот же приём, что `count_checkins_by_point` выше, но дополнительно скопировано днём
-    скана (`substr(scanned_at, 1, 10)` — формат "YYYY-MM-DD HH:MM:SS", первые 10 символов —
-    календарный день) — «пришли сегодня N», а не «пришли за весь форум N»."""
+    отметки (`checkins.day` — «YYYY-MM-DD» по Москве, колонка, не вычисление из `scanned_at`,
+    см. докстринг `_CHECKINS_DDL`/`record_checkin` — тот же признак, которым `miniapp/routers/
+    checkin.py` уже считает «Пришли N из M» на своём экране) — «пришли сегодня N», а не
+    «пришли за весь форум N»."""
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
     if not city_frag:
         async with _connect() as db:
             async with db.execute(
-                "SELECT COUNT(*) FROM checkins WHERE point = ? AND substr(scanned_at, 1, 10) = ?",
+                "SELECT COUNT(*) FROM checkins WHERE point = ? AND day = ?",
                 (point, day),
             ) as cursor:
                 row = await cursor.fetchone()
@@ -10583,7 +10585,7 @@ async def count_checkins_by_point_and_day(point: str, day: str, *, city_scope=No
     async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM checkins c JOIN users u ON u.telegram_id = c.telegram_id "
-            f"WHERE c.point = ? AND substr(c.scanned_at, 1, 10) = ? AND {city_frag}",
+            f"WHERE c.point = ? AND c.day = ? AND {city_frag}",
             [point, day] + city_params,
         ) as cursor:
             row = await cursor.fetchone()
@@ -10592,10 +10594,11 @@ async def count_checkins_by_point_and_day(point: str, day: str, *, city_scope=No
 
 async def checkin_peak_hour_for_city_day(day: str, *, city_scope=None) -> tuple[str, int] | None:
     """`(час "HH", число отметок)` с наибольшим числом отметок на входе (`CHECKIN_ENTRY_POINT`)
-    за `day` в границах `city_scope` — `None`, если отметок в этот день нет вовсе (строка
-    отчёта дня пропускается, а не рисует пустой пик)."""
+    за `day` (колонка `checkins.day`, не вычисление из `scanned_at` — см. докстринг
+    `count_checkins_by_point_and_day`) в границах `city_scope` — `None`, если отметок в этот
+    день нет вовсе (строка отчёта дня пропускается, а не рисует пустой пик)."""
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
-    where = "c.point = ? AND substr(c.scanned_at, 1, 10) = ?"
+    where = "c.point = ? AND c.day = ?"
     params: list = [CHECKIN_ENTRY_POINT, day]
     join = ""
     if city_frag:
@@ -10615,10 +10618,11 @@ async def checkin_peak_hour_for_city_day(day: str, *, city_scope=None) -> tuple[
 
 
 async def list_checkins_for_city_day(day: str, *, city_scope=None) -> list[dict]:
-    """Каждая отметка (вход и сессии) за `day` в границах `city_scope` — источник CSV-выгрузки
+    """Каждая отметка (вход и сессии) за `day` (колонка `checkins.day` — см. докстринг
+    `count_checkins_by_point_and_day`) в границах `city_scope` — источник CSV-выгрузки
     «📥 Выгрузить отметки (CSV)» кнопки отчёта дня."""
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
-    where = "substr(c.scanned_at, 1, 10) = ?"
+    where = "c.day = ?"
     params: list = [day]
     if city_frag:
         where += f" AND {city_frag}"
