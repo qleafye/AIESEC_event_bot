@@ -777,12 +777,6 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
     if result.get("already_running"):
         await callback.message.answer("⏳ Рассылка уже идёт — дождитесь её завершения.")
         return
-    if result.get("deferred_until") is not None:
-        when = result["deferred_until"].strftime("%H:%M")
-        await callback.message.answer(
-            f"🌙 Сейчас тихие часы делегатов — рассылка перенесена на {when}, отправлю сама."
-        )
-        return
     await callback.message.answer(
         f"✅ QR разослан: {result['sent']} доставлено, {result['failed']} не доставлено "
         f"из {result['total']}."
@@ -793,30 +787,6 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
 async def checkinqr_send_cancel(callback: types.CallbackQuery):
     await callback.message.edit_text("Отменено. Ничего не отправлено.")
     await callback.answer()
-
-
-async def _quiet_hours_warning(code: str | None, hhmm: str) -> str:
-    """Находка ревью 260924 (п.3): выбранное время рассылки QR попадает в тихие часы делегатов
-    этого города — предупреждение словами (CLAUDE.md: «ошибка объясняет, что сделать»), не
-    молчаливая отправка в 3 ночи. `""` — тихие часы выключены/не заданы, или время в них не
-    попадает."""
-    from services import quiet_hours
-
-    window = await quiet_hours.window_for_city(code)
-    if window is None:
-        return ""
-    t = quiet_hours.parse_hhmm(hhmm)
-    if t is None:
-        return ""
-    probe = msk_now().replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
-    start, end = window
-    if not quiet_hours.is_quiet(probe, start, end):
-        return ""
-    end_at = quiet_hours.next_window_end(probe, start, end)
-    return (
-        f"⚠️ {hhmm} попадает в тихие часы {start:%H:%M}–{end:%H:%M} — QR придёт в "
-        f"{end_at:%H:%M}."
-    )
 
 
 async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
@@ -830,13 +800,16 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Вечером (накануне форума): {ev_time}")
     lines.append(f"Утром (в день форума, неподтвердившим): {morn_time}")
-    ev_warning = await _quiet_hours_warning(code, ev_time)
-    if ev_warning:
-        lines.append(ev_warning)
-    morn_warning = await _quiet_hours_warning(code, morn_time)
-    if morn_warning:
-        lines.append(morn_warning)
-    if await forum_date_for(code) is None:
+    # D-35 (24.09): QR — служебное сообщение, тихие часы на него не действуют (см.
+    # services/checkin_broadcast.py) — предупреждение про тихие часы на этом экране больше не
+    # нужно, время не может «увести» отправку в другое время.
+    # D-35: автоотправка требует включённого master-тумблера «🎟 QR для чек-ина на форуме»
+    # (checkin_qr_enabled, тот же гейт, что `services.checkin_broadcast.broadcast_enabled_for`)
+    # — если он выключен, ни вечерняя, ни утренняя джоба не ставятся вовсе, даже когда рассылка
+    # включена ЗДЕСЬ (per_city тумблер) — экран объясняет это словами, а не молча ничего не шлёт.
+    if await get_setting_typed("checkin_qr_enabled") != "on":
+        lines.append("\n⚠️ Вход по QR выключен — QR не рассылается.")
+    elif await forum_date_for(code) is None:
         lines.append(
             "\n⚠️ «🗓 Дата начала форума» не задана — рассылка НЕ поставлена, даже если "
             "включена. Задайте её в разделе «🎪 Событие»."
