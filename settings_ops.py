@@ -621,6 +621,16 @@ TOGGLE_SECTION: dict[str, str] = {
     # handlers/admin_forum_functions.py (forumwelcome_cfg:*), тот же приём, что у
     # forum_day_menu_enabled выше.
     "forum_welcome_enabled": "apps",
+    # Идея №16 бэклога чек-ина: отчёт дня форума вечером (services/forum_day_report.py) — тот
+    # же раздел «📋 Заявки», свой экран у бота — handlers/admin_forum_functions.py
+    # (forumdayreport_cfg:*), тот же приём, что у forum_day_menu_enabled/forum_welcome_enabled
+    # выше.
+    "forum_day_report_enabled": "apps",
+    # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» (services/
+    # forum_noshow_poll.py) — тот же раздел «📋 Заявки», свой экран у бота —
+    # handlers/admin_forum_functions.py (forumnoshowpoll_cfg:*), тот же приём, что у соседей
+    # выше.
+    "forum_noshow_poll_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
