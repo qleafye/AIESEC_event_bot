@@ -112,7 +112,7 @@ def test_net_texts_endpoint_returns_registry_texts(tmp_path):
     _grant_checkin_to_game_manager()
     body = client.get(f"{BASE}/net-texts", headers=_hdr(GAME_MANAGER_ID)).json()
     assert body["text"].startswith("Сеть медленная")
-    assert body["help_label"] == "Как"
+    assert body["help_label"] == "Как переключиться"
     assert "Если на площадке нет сети" in body["help_text"]
 
 
