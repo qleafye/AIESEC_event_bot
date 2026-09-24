@@ -440,6 +440,19 @@ _CODE_LITERALS_EN = {
     "Спикер:": "Speaker:",
     "параллельно": "in parallel",
     "← Дни": "← Days",
+    # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — дефолт реестра checkin_not_arrived_text
+    # (`lit:admin_checkin.not_arrived_go`) + подписи трёх кнопок ответа делегата и подтверждение
+    # (`lit:user_actions.checkin_not_arrived_respond`).
+    "Мы тебя не видим на форуме 👀 Всё в порядке?": "We don't see you at the forum 👀 Is everything okay?",
+    "Уже еду": "On my way",
+    "Не смогу прийти": "Can't make it",
+    "Я на месте": "I'm here",
+    "Покажи этот экран волонтёру на входе.": "Show this screen to the volunteer at the entrance.",
+    # Ведущий эмодзи "🎟 " отделяется `split_leading_symbols` ДО перевода (см. докстринг
+    # `handlers/reg_i18n.py::tr_text`) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
+    "Мой QR": "My QR",
+    "Спасибо, передали организаторам!": "Thanks, we let the organizers know!",
+    "Жаль! Спасибо, что предупредил.": "Too bad! Thanks for letting us know.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ

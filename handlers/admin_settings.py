@@ -203,6 +203,9 @@ _APPS_FIELD_ORDER = [
     # выше) — сам master-тумблер checkin_qr_enabled НЕ здесь (type "enum", живёт в
     # settings_toggle_rows/admin_sections.SECTIONS, как остальные тумблеры «📋 Заявки»).
     "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+    # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — тот же приём, что у трёх
+    # ключей чек-ина выше (редактор экрана достаётся бесплатно попаданием в этот список).
+    "checkin_not_arrived_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
