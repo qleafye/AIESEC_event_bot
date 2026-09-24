@@ -564,6 +564,16 @@ ADMIN_CAPS: dict[str, str] = {
     # прав нет, в отличие от журнала строкой выше).
     "admin_reject_reports": "settings",
     "arp_*": "settings",
+    # Форум-ночь п.4 (расписание форума в боте): раздел «🗓 Программа форума» — тот же класс
+    # экрана настроек, что «🚫 Правила автоотказа»/«🧮 Правила балла» выше (конфигурирование
+    # контента события, не действие над конкретной заявкой). Один префиксный ключ на всё
+    # пространство callback'ов шва handlers/admin_program.py (prog_v/prog_day/prog_new/
+    # prog_field/prog_hall*/prog_copy*/prog_d/prog_dgo/... — все начинаются с "prog_").
+    "admin_program": "settings",
+    "prog_*": "settings",
+    "state:ProgramSessionField:*": "settings",
+    "state:ProgramHallName:*": "settings",
+    "state:ProgramDayCustom:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
