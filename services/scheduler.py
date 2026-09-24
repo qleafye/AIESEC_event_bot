@@ -493,6 +493,8 @@ UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
 MUTE_BUTTON_TEXT = "🔕 Не присылать сегодня"
 UNMUTE_BUTTON_TEXT = "🔔 Присылать всё"
 
+# D-34 (24.09): дефолт зеркалит registry-ключ `broadcast_mute_offer_text` (settings_schema.py)
+# — менеджер правит текст в самом боте, здесь только fail-soft на случай пустого реестра.
 _MUTE_OFFER_TEXT = "Сегодня многовато рассылок? Можно отключить необязательные до завтра:"
 
 
@@ -572,7 +574,8 @@ async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int
         from handlers import reg_i18n
         from services import i18n as i18n_service
         lang, tr_map = await i18n_service.context(chat_id)
-        text = reg_i18n.tr_text(_MUTE_OFFER_TEXT, lang, tr_map)
+        base_text = await get_setting_typed("broadcast_mute_offer_text") or _MUTE_OFFER_TEXT
+        text = reg_i18n.tr_text(base_text, lang, tr_map)
         kb = InlineKeyboardMarkup(inline_keyboard=[[await mute_button(chat_id)]])
         msg = await bot.send_message(chat_id, text, reply_markup=kb)
         await mark_mute_offer_shown(chat_id, today)
