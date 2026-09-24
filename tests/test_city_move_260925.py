@@ -951,3 +951,72 @@ def test_checkin_wrong_city_gate_follows_the_move(tmp_path, monkeypatch):
     assert before_msk["status"] == "wrong_city"  # до перевода СПб-делегата в Москву не пускали
     assert after_msk["status"] == "new"  # после перевода — пускают
     assert after_spb["status"] == "wrong_city"  # и больше не пускают на сессию старого города
+
+
+# ── Старая и новая вкладка совпали (у обоих городов нет своих вкладок) — обновить на месте ──
+
+def test_move_same_tab_updates_row_in_place_without_duplicate(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+    updates = []
+
+    async def fake_update_row_by_id(tab_name, telegram_id, row):
+        rows = store.tabs[store._key(tab_name)]
+        for i, r in enumerate(rows):
+            if str(r[0]) == str(telegram_id):
+                rows[i] = list(row)
+                updates.append((tab_name, telegram_id))
+                return True
+        return False
+
+    monkeypatch.setattr(sheets_mod, "update_row_by_id", fake_update_row_by_id)
+
+    async def main_tab_only(city, participant_type):
+        return None
+
+    async def targets_main(new_city, participant_type):
+        return {"target_tab": None, "target_exists": True, "fallback_tab": None,
+                "fallback_exists": True, "write_tab": None}
+
+    import services.city_move as cm
+    import services.reg_finalize as rf
+    monkeypatch.setattr(rf, "_resolve_update_tab", main_tab_only)
+    monkeypatch.setattr(cm, "_resolve_sheet_targets", targets_main)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        store.seed(None, [[DELEGATE_ID, "Тест Тестов"]])
+        return await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+
+    report = _run(scenario())
+
+    assert report["sheet"]["moved"] is True
+    assert report["sheet"]["error"] is None
+    assert updates == [(None, DELEGATE_ID)]
+    assert store.appends == [] and store.deletes == []
+    assert [r[0] for r in store.tabs["__main__"]] == [DELEGATE_ID]  # ровно одна строка
+
+
+def test_sheet_error_text_has_no_internal_codes(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def failing_delete(tab_name, telegram_id):
+        return "error"
+
+    monkeypatch.setattr(sheets_mod, "delete_row_by_id", failing_delete)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        return await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+
+    report = _run(scenario())
+    err = report["sheet"]["error"] or ""
+    assert "таблица недоступна" in err
+    assert "'error'" not in err and "код" not in err
