@@ -2358,3 +2358,16 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .checkin-plaque.tone-error .checkin-plaque-heading { color: var(--danger-text); }
 .checkin-plaque-next { margin-top: var(--sp-4); }
 .checkin-plaque-undo { margin-top: var(--sp-4); width: 100%; }
+/* Идея №11: полоса «сеть медленная» вверху сканера — тон .chip.warn, новых цветов нет. */
+.checkin-net-banner {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warn);
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 14px;
+}
+.checkin-net-banner > .checkin-net-banner-row { display: flex; align-items: center; gap: var(--sp-3); }
+.checkin-net-banner-text { flex: 1; font-weight: 600; }
+.checkin-net-banner-help { margin-top: var(--sp-2); white-space: pre-line; }

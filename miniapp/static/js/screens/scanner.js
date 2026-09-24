@@ -25,6 +25,7 @@
 
 import { flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
+import { createNetHealth, timed } from "../net_health.js";
 
 const ENTRY_POINT = "entry";
 const SEARCH_DEBOUNCE_MS = 300;
@@ -88,8 +89,48 @@ export async function render(root, params, ctx) {
   const pointChips = h("div", { class: "flat-list" }, h("span", { class: "muted", text: "Загрузка…" }));
   const pointCounter = h("div", { class: "muted checkin-point-counter" });
 
+  // Идея №11: полоса «сеть медленная». Тексты — с сервера (/checkin/net-texts, в переводе),
+  // берутся при открытии экрана; если тогда не дошли — дозапрашиваются после первой удачной
+  // отметки. Решение «показать/скрыть» — net_health.js по времени ответа скана/отметки.
+  const netText = h("span", { class: "checkin-net-banner-text", text: "⚠️" });
+  const netHelp = h("div", { class: "checkin-net-banner-help hidden" });
+  const netHelpBtn = h("button", { class: "btn secondary checkin-net-banner-how hidden", type: "button" });
+  netHelpBtn.addEventListener("click", () => netHelp.classList.toggle("hidden"));
+  const netBanner = h("div", { class: "checkin-net-banner hidden", role: "status" },
+    h("div", { class: "checkin-net-banner-row" }, netText, netHelpBtn),
+    netHelp,
+  );
+  const netHealth = createNetHealth();
+  let netTextsLoaded = false;
+
+  async function loadNetTexts() {
+    if (netTextsLoaded) return;
+    try {
+      const t = await api("/checkin/net-texts");
+      netTextsLoaded = true;
+      if (t.text) netText.textContent = `⚠️ ${t.text}`;
+      if (t.help_label && t.help_text) {
+        netHelpBtn.textContent = t.help_label;
+        netHelp.textContent = t.help_text;
+        netHelpBtn.classList.remove("hidden");
+      }
+    } catch (err) {
+      // сеть уже плохая — полоса останется с одним значком, тексты дозапросим позже
+    }
+  }
+
+  function onNetChange(degraded) {
+    netBanner.classList.toggle("hidden", !degraded);
+    if (!degraded) netHelp.classList.add("hidden");
+  }
+
+  function measured(fn) {
+    return timed(netHealth, fn, onNetChange);
+  }
+
   root.append(
     h("h1", { text: "Сканер" }),
+    netBanner,
     statsBox,
     notice,
     cityField,
@@ -262,7 +303,8 @@ export async function render(root, params, ctx) {
     if (scanBusy) return;
     scanBusy = true;
     try {
-      const res = await api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: selectedPoint } });
+      const res = await measured(() => api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: selectedPoint } }));
+      loadNetTexts();
       const isSuccess = SUCCESS_STATUSES.has(res.status);
       if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
       showPlaque(res, { closeButton: !isSuccess });
@@ -310,9 +352,10 @@ export async function render(root, params, ctx) {
       if (btn.hasAttribute("disabled")) return;
       btn.setAttribute("disabled", "");
       try {
-        const res = await api("/checkin/manual", {
+        const res = await measured(() => api("/checkin/manual", {
           method: "POST", body: { telegram_id: person.telegram_id, point: selectedPoint },
-        });
+        }));
+        loadNetTexts();
         showPlaque(res);
         await loadStats();
         await loadPoints(citySelect.value || undefined);
@@ -354,6 +397,7 @@ export async function render(root, params, ctx) {
     searchTimer = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
   });
 
+  await loadNetTexts();
   await loadStats();
   await loadPoints();
 }
