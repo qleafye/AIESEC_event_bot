@@ -350,3 +350,21 @@ class ProgramHallName(StatesGroup):
 class ProgramDayCustom(StatesGroup):
     # «📅 Другой день» — ввод даты текстом («31.10»/«31.10.2026»); город — в state.get_data().
     value = State()
+
+
+class SosReport(StatesGroup):
+    # Форум-ночь п.8 (идея №19, SOS): делегатский визард «🆘 SOS» (handlers/sos.py) — категория
+    # выбирается кнопкой (callback `sos_cat:{code}`, без своего State), дальше два необязательных
+    # шага. Право не нужно (user_actions.router вне CapabilityMiddleware, тот же прецедент, что
+    # GameSubmit.proof) — категория/город несёт state.get_data() (sos_category/sos_city).
+    details = State()   # текст и/или фото, можно пропустить
+    location = State()  # геопозиция, можно пропустить
+
+
+class SosChatBind(StatesGroup):
+    # Экран менеджера «🆘 SOS» (handlers/admin_sos.py), право `settings` ("state:SosChatBind:*"
+    # в handlers/admin_caps.py — та же капа, что у остальной интеграционной привязки чата,
+    # services/chat_tracking.py::is_bot_admin_user). Заявка (кто просил, для какого города)
+    # живёт в `sos_chat_bind_pending` (services/sos.py), не в state.get_data() — вторая ветка
+    # подтверждения (команда `/sos_id` в самой группе) физически не имеет доступа к этому FSM.
+    waiting = State()

@@ -368,6 +368,19 @@ ADMIN_CAPS: dict[str, str] = {
     # Квик 260912 (W5, Задача 4) — «догонялка перевода».
     "admin_i18n_seed": "settings",
     "state:AdminI18nEdit:*": "settings",
+    # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал
+    # вопросов выше (те же люди отвечают делегатам форума). «Беру»/«✅ Решено» под карточкой
+    # в чате оргов — тоже `moderate_reg`: не настройка, действие над конкретным обращением.
+    "admin_sos": "moderate_reg",
+    "asos:*": "moderate_reg",
+    "sos_claim:*": "moderate_reg",
+    "sos_resolve:*": "moderate_reg",
+    "special:sos_reply": "moderate_reg",
+    # Привязка чата SOS — интеграционная настройка, та же капа, что у остальной привязки чата
+    # (services/chat_tracking.py::is_bot_admin_user требует `settings`).
+    "asos_bind": "settings",
+    "asos_bind_cancel": "settings",
+    "state:SosChatBind:*": "settings",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",

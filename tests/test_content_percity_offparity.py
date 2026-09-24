@@ -221,18 +221,21 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
     # — тот же приём, что у menu_faq/menu_checkin_qr; на свежей БД сессий нет.
     # menu_important («❗ Важное», форум-ночь п.7) рисуется только когда сегодня БЫЛА важная
     # рассылка этому делегату — на свежей БД рассылок не было.
+    # menu_sos («🆘 SOS», форум-ночь п.8) рисуется только в дни форума города — на свежей БД
+    # forum_date не задан.
     expected_texts = [
         label for key, label in MENU_BUTTONS
         if key not in (
             "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
-            "menu_important",
+            "menu_important", "menu_sos",
         )
     ]
     assert after_texts == expected_texts, (
         "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
         "— Mini App выключен, FAQ пуст, кроме «🌐 Язык / Language» — default off, кроме "
         "«🎟 Мой QR» — checkin_qr_enabled default off, кроме «🗓 Программа» — программа "
-        "города пуста, и кроме «❗ Важное» — важных рассылок сегодня не было"
+        "города пуста, кроме «❗ Важное» — важных рассылок сегодня не было, и кроме «🆘 SOS» "
+        "— дата начала форума не задана"
     )
 
 
