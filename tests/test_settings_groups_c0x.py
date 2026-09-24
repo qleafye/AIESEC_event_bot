@@ -539,6 +539,14 @@ def test_render_snapshot_apps(tmp_path):
         "forum_welcome_text",
         # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» — новый хвост группы.
         "checked_in_status_text",
+        # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — вопрос, пять
+        # подписей кнопок, подсказка после «Другое», ответ-подтверждение — новый хвост группы
+        # (тумблер forum_noshow_poll_enabled — тумблер раздела, в группу не входит).
+        "forum_noshow_poll_question_text",
+        "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
+        "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
+        "forum_noshow_poll_option_other_text",
+        "forum_noshow_poll_other_prompt_text", "forum_noshow_poll_thanks_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -567,6 +575,12 @@ def test_render_snapshot_apps(tmp_path):
         "👋 Текст приветствия после отметки на входе",
         # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен».
         "✅ «Ты отмечен»: строка статуса",
+        # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл».
+        "❓ Опрос неявившихся: текст вопроса",
+        "❓ Опрос неявившихся: кнопка «Передумал(а)»", "❓ Опрос неявившихся: кнопка «Учёба/работа»",
+        "❓ Опрос неявившихся: кнопка «Далеко ехать»", "❓ Опрос неявившихся: кнопка «Забыл(а)»",
+        "❓ Опрос неявившихся: кнопка «Другое»",
+        "❓ Опрос неявившихся: подсказка после «Другое»", "❓ Опрос неявившихся: ответ после любой кнопки",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -591,6 +605,13 @@ def test_render_snapshot_apps(tmp_path):
         "🎫 Шпаргалка волонтёра чек-ина",
         # Идея №3/№4 бэклога чек-ина: оба новых текста имеют непустой дефолт в реестре.
         "👋 Текст приветствия после отметки на входе", "✅ «Ты отмечен»: строка статуса",
+        # Идея №23 бэклога чек-ина: все восемь ключей опроса неявившихся имеют непустой
+        # дефолт в реестре.
+        "❓ Опрос неявившихся: текст вопроса",
+        "❓ Опрос неявившихся: кнопка «Передумал(а)»", "❓ Опрос неявившихся: кнопка «Учёба/работа»",
+        "❓ Опрос неявившихся: кнопка «Далеко ехать»", "❓ Опрос неявившихся: кнопка «Забыл(а)»",
+        "❓ Опрос неявившихся: кнопка «Другое»",
+        "❓ Опрос неявившихся: подсказка после «Другое»", "❓ Опрос неявившихся: ответ после любой кнопки",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -1010,12 +1031,19 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Mini App; хвост _APPS_FIELD_ORDER удлинился на два ключа.
     # Форум-ночь (идеи №3/№4 бэклога чек-ина): forum_welcome_text и checked_in_status_text —
     # новый хвост _APPS_FIELD_ORDER, ещё два ключа.
-    assert admin_settings._settings_group_keys("apps")[-14:] == [
+    # Идея №23 бэклога чек-ина (опрос неявившихся): вопрос, пять подписей кнопок, подсказка
+    # после «Другое», ответ-подтверждение — новый хвост _APPS_FIELD_ORDER, восемь ключей.
+    assert admin_settings._settings_group_keys("apps")[-22:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
         "checkin_qr_broadcast_text", "checkin_not_arrived_text", "checkin_volunteer_guide_text",
-        "forum_welcome_text", "checked_in_status_text"]
+        "forum_welcome_text", "checked_in_status_text",
+        "forum_noshow_poll_question_text",
+        "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
+        "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
+        "forum_noshow_poll_option_other_text",
+        "forum_noshow_poll_other_prompt_text", "forum_noshow_poll_thanks_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

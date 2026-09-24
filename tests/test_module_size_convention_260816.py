@@ -180,7 +180,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2782,
+        2846,
+        "Идеи №16/№23 бэклога чек-ина: +64 строки — восемь новых ключей в _APPS_FIELD_ORDER "
+        "(опрос неявившихся) + два reschedule-хука (_reschedule_forum_day_report_if_relevant/"
+        "_reschedule_forum_noshow_poll_if_relevant, та же форма, что у "
+        "_reschedule_checkin_volunteer_guide_if_relevant) + их вызовы в обеих ветках "
+        "settings_edit_value; 2782 -> 2846. "
         "Фикс 24.09: +3 строки — сверка рассылок форума после тумблера «🎟 Вход по QR» "
         "обёрнута в try/except (тумблер уже сохранён, сбой — только в лог); 2770 -> 2773. "
         "Форум-ночь (идеи №3/№4 бэклога чек-ина): +5 строк — `forum_welcome_text` и "
@@ -495,7 +500,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
-        2093,
+        2098,
+        "Идея №23 бэклога чек-ина: +5 строк — импорт `from handlers import forum_noshow_poll` "
+        "хвостом файла, сразу после session_feedback (2093 -> 2098). "
         "D-29 (24.09, per_city фото с фолбэком на общее): show_program резолвит фото программы "
         "через services.program.resolve_program_photo(_delegate_city(...)) вместо голого "
         "get_setting — своё городское фото ИЛИ общее, тот же приоритет, что читает Mini App; "
@@ -627,6 +634,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "город» (citymv_start:*/citymv_pick:*/citymv_apply:*/citymv_cancel:*, капа "
         "«moderate_reg» — тот же довод, что у соседнего «🔄 Перевыпустить QR» выше); "
         "1165 -> 1174. "
+        "Идеи №16/№23 бэклога чек-ина: +17 строк — capability-записи двух новых тумблер+время "
+        "экранов (forumdayreport_cfg:*/forumdayreport_toggle:*/forumdayreport_time:*/"
+        "state:ForumDayReportTimeEdit:*/forumdayreport_now:*/forumdayreport_csv:*, "
+        "forumnoshowpoll_cfg:*/forumnoshowpoll_toggle:*/forumnoshowpoll_time:*/"
+        "state:ForumNoshowPollTimeEdit:*), капа «moderate_reg» — тот же довод, что у "
+        "forumwelcome_cfg:* выше; 1181 -> 1198. "
         "Идея №3 бэклога чек-ина (приветствие после отметки входа): +7 строк — "
         "capability-записи нового тумблер-only экрана (forumwelcome_cfg:*/"
         "forumwelcome_toggle:*), капа «moderate_reg» — тот же довод, что у forumdaymenu_cfg:* "
