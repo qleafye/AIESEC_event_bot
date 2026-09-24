@@ -36,7 +36,7 @@ from services.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
     move_user_city,
-    preview_track_change,
+    preview_city_move,
 )
 from tests._dbtpl import fast_init_db
 
@@ -71,6 +71,18 @@ def _db_ready(tmp_path, name="test_city_move_260925.db"):
 
 async def _enable_cities_module():
     await db.set_setting("event_city_enabled", "on")
+
+
+async def _disable_sheet_logs_autosync():
+    """Только для тестов, что патчат `gspread.service_account` напрямую (Part B2 ниже):
+    `record_answer_history` (перевод города пишет её при смене event_city) сама планирует
+    фоновую синхронизацию листа «История правок» (`services/sheet_logs.py::
+    schedule_sheet_logs_sync`, дефолт настройки `sheet_logs_autosync` — "on") — фоновая
+    корутина летит на ТОМ ЖЕ event loop и гоняется за нашим же fake-gspread клиентом,
+    добавляя гонку и add_worksheet_calls, не имеющие отношения к переводу города. У тестов
+    через `_install_fake_sheets` этой гонки нет — там `config.GOOGLE_SHEET_ID` не патчится,
+    автосинхрон сам выходит по первой проверке."""
+    await db.set_setting("sheet_logs_autosync", "off")
 
 
 async def _set_registration_mode(code: str, mode: str):
@@ -120,10 +132,14 @@ class _FakeWorksheet:
         self.deleted.append(row_index)
         del self._rows[row_index - 2]
 
+    def append_row(self, data, value_input_option=None):
+        self._rows.append(list(data))
+
 
 class _FakeSpreadsheet:
     def __init__(self, worksheets: dict):
         self._by_title = dict(worksheets)
+        self.add_worksheet_calls = []
 
     def worksheet(self, title):
         if title not in self._by_title:
@@ -134,7 +150,11 @@ class _FakeSpreadsheet:
         return list(self._by_title.values())
 
     def add_worksheet(self, title, rows, cols):
-        raise AssertionError(f"add_worksheet({title!r}) must never be called by find/delete-by-id")
+        # Тревога сама по себе, а не только исключение: перевод города ловит исключения
+        # внутри своего try/except и превращает их в report["sheet"]["error"], так что тест
+        # обязан проверить именно этот счётчик, а не полагаться на всплытие AssertionError.
+        self.add_worksheet_calls.append(title)
+        raise AssertionError(f"add_worksheet({title!r}) must never be called — city-move contract is no-create")
 
 
 class _FakeClient:
@@ -258,6 +278,20 @@ class _FakeSheetStore:
         self.tabs.setdefault(tab_name, []).append(list(data))
         self.appends.append((tab_name, list(data)))
 
+    async def list_worksheet_titles(self):
+        return [t for t in self.tabs if t != self._key(None)]
+
+    async def append_to_existing_named_sheet(self, tab_name, data):
+        # Контракт "никогда не создаёт" (ревью 🔴): в отличие от append_to_named_sheet выше,
+        # вкладка ДОЛЖНА быть заранее посеяна (store.seed) — иначе "not_found_tab", без
+        # автосоздания ключа в self.tabs.
+        key = self._key(tab_name)
+        if key not in self.tabs:
+            return "not_found_tab"
+        self.tabs[key].append(list(data))
+        self.appends.append((tab_name, list(data)))
+        return "ok"
+
     async def delete_row_by_id(self, tab_name, telegram_id):
         key = self._key(tab_name)
         if key not in self.tabs:
@@ -280,6 +314,8 @@ def _install_fake_sheets(monkeypatch):
     monkeypatch.setattr(sheets_mod, "append_to_sheet", store.append_to_sheet)
     monkeypatch.setattr(sheets_mod, "append_to_named_sheet", store.append_to_named_sheet)
     monkeypatch.setattr(sheets_mod, "delete_row_by_id", store.delete_row_by_id)
+    monkeypatch.setattr(sheets_mod, "list_worksheet_titles", store.list_worksheet_titles)
+    monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", store.append_to_existing_named_sheet)
     return store
 
 
@@ -317,9 +353,10 @@ def test_move_updates_users_event_city_and_records_history(tmp_path, monkeypatch
     assert "event_city" in cols
 
 
-def test_move_track_short_to_full_when_destination_is_full_mode(tmp_path, monkeypatch):
-    """SEED-прецедент, наоборот направление: СПб (short по умолчанию) -> Москва с явным
-    registration_mode=full — трек обязан переехать short -> full."""
+def test_move_track_never_auto_switches_even_when_destination_mode_differs(tmp_path, monkeypatch):
+    """Решение координатора 25.09 (отменяет прежнее авто-переключение): СПб (short) -> Москва
+    с явным registration_mode=full — трек делегата ОСТАЁТСЯ short, ничего не пересчитывается.
+    `preview_city_move` только сигнализирует несовместимость (`track_supported=False`)."""
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)
 
@@ -328,22 +365,21 @@ def test_move_track_short_to_full_when_destination_is_full_mode(tmp_path, monkey
         await _set_registration_mode("msk", "full")
         await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
         old_tab = await _resolve_tabs("spb", "short")
-        new_tab = await _resolve_tabs("msk", "full")
+        new_tab = await _resolve_tabs("msk", "short")  # трек не меняется -> тот же маршрут, что и раньше
         store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
         store.seed(new_tab, [])
 
-        preview_track, preview_changed = await preview_track_change("short", "msk")
+        preview = await preview_city_move("short", "msk")
         report = await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
-        return preview_track, preview_changed, report
+        return preview, report
 
-    preview_track, preview_changed, report = _run(scenario())
+    preview, report = _run(scenario())
 
-    assert preview_track == "full"
-    assert preview_changed is True
-    assert report["track_changed"] is True
-    assert report["after"]["participant_type"] == "full"
+    assert preview["track_supported"] is False
+    assert report["before"]["participant_type"] == "short"
+    assert report["after"]["participant_type"] == "short"  # трек НЕ сменился
     user = _run(db.get_user(DELEGATE_ID))
-    assert user["participant_type"] == "full"
+    assert user["participant_type"] == "short"
 
 
 def test_move_party_track_never_changes(tmp_path, monkeypatch):
@@ -358,10 +394,13 @@ def test_move_party_track_never_changes(tmp_path, monkeypatch):
         new_tab = await _resolve_tabs("msk", "party_overnight")
         store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
         store.seed(new_tab, [])
-        return await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+        preview = await preview_city_move("party_overnight", "msk")
+        report = await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+        return preview, report
 
-    report = _run(scenario())
-    assert report["track_changed"] is False
+    preview, report = _run(scenario())
+    assert preview["track_supported"] is True  # party не зависит от registration_mode
+    assert report["before"]["participant_type"] == "party_overnight"
     assert report["after"]["participant_type"] == "party_overnight"
 
 
@@ -509,18 +548,18 @@ def test_move_appends_new_before_deleting_old(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)
     order = []
-    orig_append = store.append_to_named_sheet
+    orig_append = store.append_to_existing_named_sheet
     orig_delete = store.delete_row_by_id
 
-    async def spy_append(tab_name, data, headers=None):
+    async def spy_append(tab_name, data):
         order.append(("append", tab_name))
-        return await orig_append(tab_name, data, headers)
+        return await orig_append(tab_name, data)
 
     async def spy_delete(tab_name, telegram_id):
         order.append(("delete", tab_name))
         return await orig_delete(tab_name, telegram_id)
 
-    monkeypatch.setattr(sheets_mod, "append_to_named_sheet", spy_append)
+    monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", spy_append)
     monkeypatch.setattr(sheets_mod, "delete_row_by_id", spy_delete)
 
     async def scenario():
@@ -589,6 +628,122 @@ def test_move_same_city_refuses(tmp_path, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part B2: целевая вкладка «не создаётся никогда» — РЕАЛЬНЫЙ gspread-фейк (Part A infra), не
+# _FakeSheetStore: только так `add_worksheet` действительно проверяем (счётчик на
+# _FakeSpreadsheet), а не гадаем, что где-то внутри try/except не проглотило исключение.
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_move_writes_to_target_tab_when_it_already_exists_no_create(tmp_path, monkeypatch):
+    """SEED-прецедент: spb/short/approved -> msk. Трек остаётся short (нет авто short->full,
+    см. test_move_track_never_auto_switches...). Целевая вкладка трека уже есть на листе —
+    пишем в неё, add_worksheet не вызывается НИ РАЗУ за весь перевод."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _disable_sheet_logs_autosync()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short", status="approved")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        fake_ss = _patch_gspread(monkeypatch, {
+            old_tab: _FakeWorksheet(old_tab, [[DELEGATE_ID, "Тест Тестов"]]),
+            new_tab: _FakeWorksheet(new_tab, []),
+        })
+        report = await move_user_city(DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+        return report, fake_ss, old_tab, new_tab
+
+    report, fake_ss, old_tab, new_tab = _run(scenario())
+
+    assert report["ok"] is True
+    assert report["sheet"]["target_tab"] == new_tab
+    assert report["sheet"]["target_exists"] is True
+    assert report["sheet"]["write_tab"] == new_tab
+    assert report["sheet"]["moved"] is True
+    assert report["sheet"]["error"] is None
+    assert fake_ss.add_worksheet_calls == []
+    assert [r[0] for r in fake_ss._by_title[new_tab]._rows] == [DELEGATE_ID]
+    assert fake_ss._by_title[old_tab]._rows == []  # старая строка удалена
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["participant_type"] == "short"  # трек не сменился
+    assert user["event_city"] == "msk"
+
+
+def test_move_falls_back_to_city_main_tab_when_track_tab_missing(tmp_path, monkeypatch):
+    """msk/short -> spb: у СПб есть вкладка короткой формы, но её ЕЩЁ нет на листе — запись
+    падает на главную вкладку города («СПб»), которая есть. add_worksheet не вызывается."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _disable_sheet_logs_autosync()
+        await _seed_user(DELEGATE_ID, city="msk", participant_type="short", status="approved")
+        old_tab = await _resolve_tabs("msk", "short")
+        target_tab = await _resolve_tabs("spb", "short")
+        fallback_tab = await _resolve_tabs("spb", None)
+        assert target_tab != fallback_tab
+        fake_ss = _patch_gspread(monkeypatch, {
+            old_tab: _FakeWorksheet(old_tab, [[DELEGATE_ID, "Тест"]]),
+            fallback_tab: _FakeWorksheet(fallback_tab, []),
+            # target_tab НАРОЧНО отсутствует на листе
+        })
+        report = await move_user_city(DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+        return report, fake_ss, old_tab, target_tab, fallback_tab
+
+    report, fake_ss, old_tab, target_tab, fallback_tab = _run(scenario())
+
+    assert report["ok"] is True
+    assert report["sheet"]["target_tab"] == target_tab
+    assert report["sheet"]["target_exists"] is False
+    assert report["sheet"]["fallback_tab"] == fallback_tab
+    assert report["sheet"]["fallback_exists"] is True
+    assert report["sheet"]["write_tab"] == fallback_tab
+    assert report["sheet"]["moved"] is True
+    assert fake_ss.add_worksheet_calls == []
+    assert [r[0] for r in fake_ss._by_title[fallback_tab]._rows] == [DELEGATE_ID]
+    assert target_tab not in fake_ss._by_title  # вкладка так и не появилась
+    assert fake_ss._by_title[old_tab]._rows == []
+
+
+def test_move_writes_nowhere_when_no_city_tab_exists_report_is_honest(tmp_path, monkeypatch):
+    """msk/short -> spb, но у СПб на листе нет вообще НИ ОДНОЙ вкладки: не пишем и не удаляем
+    ничего в таблице, add_worksheet не вызывается, отчёт честно называет обе отсутствующие
+    вкладки, а БД всё равно переезжает (сбой листа не блокирует перевод в БД)."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _disable_sheet_logs_autosync()
+        await _seed_user(DELEGATE_ID, city="msk", participant_type="short", status="approved")
+        old_tab = await _resolve_tabs("msk", "short")
+        target_tab = await _resolve_tabs("spb", "short")
+        fallback_tab = await _resolve_tabs("spb", None)
+        fake_ss = _patch_gspread(monkeypatch, {
+            old_tab: _FakeWorksheet(old_tab, [[DELEGATE_ID, "Тест"]]),
+            # ни target_tab, ни fallback_tab на листе нет
+        })
+        report = await move_user_city(DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID)
+        return report, fake_ss, old_tab, target_tab, fallback_tab
+
+    report, fake_ss, old_tab, target_tab, fallback_tab = _run(scenario())
+
+    assert report["ok"] is True  # перевод как таковой не отказан — только лист не обновлён
+    assert report["sheet"]["write_tab"] is False
+    assert report["sheet"]["moved"] is False
+    assert "нет вкладки" in report["sheet"]["error"]
+    assert target_tab in report["sheet"]["error"]
+    assert fallback_tab in report["sheet"]["error"]
+    assert fake_ss.add_worksheet_calls == []
+    assert target_tab not in fake_ss._by_title
+    assert fallback_tab not in fake_ss._by_title
+    assert [r[0] for r in fake_ss._by_title[old_tab]._rows] == [DELEGATE_ID]  # лист не тронут
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["event_city"] == "spb"  # БД всё равно переехала
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
 # Part C: handlers/admin_city_move.py — UI flow, права, подделанные callback_data
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -654,8 +809,11 @@ def test_citymove_start_denied_when_old_city_out_of_scope(tmp_path):
     assert cb.answers and cb.answers[0][1] is True  # show_alert
 
 
-def test_citymove_pick_shows_track_change_note(tmp_path):
+def test_citymove_pick_shows_track_unsupported_warning(tmp_path, monkeypatch):
+    """У Москвы registration_mode=full — краткий трек делегата там не заводится, но трек НЕ
+    меняется (см. services/city_move.py): экран только предупреждает словами."""
     _db_ready(tmp_path)
+    _install_fake_sheets(monkeypatch)
 
     async def scenario():
         await _enable_cities_module()
@@ -667,7 +825,8 @@ def test_citymove_pick_shows_track_change_note(tmp_path):
 
     cb = _run(scenario())
     text, kb = cb.message.edits[0]
-    assert "Трек" in text
+    assert "нет анкеты" in text
+    assert "останется с треком" in text
     buttons = _cbs(kb)
     assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}" in buttons
     assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_TO_MODERATION}" in buttons
