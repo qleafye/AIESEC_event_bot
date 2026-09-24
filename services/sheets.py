@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sqlite3
 import threading
+from secret_redact import redact_secrets
 
 import gspread
 from config import config
@@ -83,6 +84,7 @@ async def _send_admin_alert(text: str) -> None:
                 logger.warning("_send_admin_alert: no alert bot set, skipping admin alert")
                 _alert_bot_warned = True
             return
+        text = redact_secrets(text)
         for admin_id in config.ADMIN_IDS:
             try:
                 await _alert_bot.send_message(admin_id, text)
