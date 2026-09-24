@@ -552,6 +552,31 @@ _CODE_LITERALS_EN = {
     "Сеть медленная. Переключитесь на приложение-сканер.":
         "Slow network. Switch to the scanner app.",
     "Как переключиться": "How to switch",
+    # Бэклог чек-ина №7: тренировка сканера и лист учебных QR (волонтёру).
+    "Тренировка: отметка не записана.": "Training: the check-in was not recorded.",
+    "Учебный QR — не пропуск на форум, ничего не записывается.":
+        "Training QR — not a pass to the forum, nothing is recorded.",
+    "Так работает отмена: на настоящем скане отметка снимется. Сейчас отменять нечего.":
+        "This is how undo works: on a real scan the check-in is removed. There is nothing to undo now.",
+    "Зелёная плашка «Отмечен». Пропускайте и сканируйте следующего.":
+        "Green banner «Checked in». Let them in and scan the next one.",
+    "Жёлтая плашка «Уже был в ЧЧ:ММ». Делегат сегодня уже проходил — пропускайте, если QR показывает он сам.":
+        "Yellow banner «Already here at HH:MM». The delegate has already come in today — let them in "
+        "if they are showing their own QR.",
+    "Красная плашка «Заявка ещё на рассмотрении». Не пропускайте — отправьте на стойку проблемных случаев.":
+        "Red banner «Application is still under review». Do not let them in — send them to the "
+        "problem-cases desk.",
+    "Красная плашка «Делегат прошлого сезона». Не пропускайте — отправьте на стойку проблемных случаев.":
+        "Red banner «Delegate of a past season». Do not let them in — send them to the problem-cases desk.",
+    "Красная плашка «QR другого мероприятия». Попросите открыть «Мой QR» в боте этого форума.":
+        "Red banner «QR of another event». Ask them to open «My QR» in this forum's bot.",
+    "Учебные QR: тренировка сканера": "Training QR codes: scanner practice",
+    "Лист учебных QR. Распечатайте его или откройте на другом экране. В сканере выберите точку «Тренировка» и отсканируйте все пять — плашки те же, что на входе, но ничего не записывается. Учебный QR в любой другой точке тоже ничего не отметит. Для проверки приложения-сканера отсканируйте лист им и пришлите выгрузку в «Загрузить файл сканера» — учебные коды бот посчитает отдельно и не отметит.":
+        "A sheet of training QR codes. Print it or open it on another screen. In the scanner choose "
+        "the «Training» point and scan all five — the banners are the same as at the entrance, but "
+        "nothing is recorded. A training QR at any other point won't check anyone in either. To "
+        "test a scanner app, scan the sheet with it and send the export to «Upload scanner file» — "
+        "the bot counts training codes separately and doesn't record them.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
