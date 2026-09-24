@@ -1305,7 +1305,7 @@ def _floor_rows(conn, scope: Scope, city: str | None, day: str, now: datetime) -
     return arrival_stats.build_floor(
         _scalar(conn, *q["approved"]), _scalar(conn, *q["present"]), _scalar(conn, *q["recent"]),
         conn.execute(*q["sessions"]).fetchall(), conn.execute(*q["stands"]).fetchall(),
-        conn.execute(*q["buckets"]).fetchall(),
+        conn.execute(*q["buckets"]).fetchall(), now=now if is_today else None,
     )
 
 
@@ -1358,7 +1358,9 @@ def arrival_floor(conn, scope: Scope, days: list[dict], day: str | None) -> dict
                   "cumulative": cumulative} if buckets else None,
         "cities": city_rows,
         "points": points,
-        "stands": floor["stands"],
+        "stands": [{**st, "gap_text": arrival_stats.gap_text(st["median_gap_sec"])}
+                   for st in floor["stands"]],
+        "idle_minutes": arrival_stats.IDLE_MINUTES,
     }
 
 

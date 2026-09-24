@@ -78,7 +78,7 @@ async def floor_report(city_sc, session_city: str | None, now) -> dict:
             async with db.execute(*queries[name]) as cur:
                 rows[name] = await cur.fetchall()
     return arrival_stats.build_floor(
-        rows["approved"], rows["present"], rows["recent"], rows["sessions"], rows["stands"],
+        rows["approved"], rows["present"], rows["recent"], rows["sessions"], rows["stands"], now=now,
     )
 
 

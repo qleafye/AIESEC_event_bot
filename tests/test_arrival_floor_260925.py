@@ -180,3 +180,52 @@ def test_dashboard_page_renders_floor_block(tmp_path, monkeypatch):
     assert "Сейчас на площадке" in html_text
     assert 'id="arrival-chart"' in html_text and "data-cumulative" in html_text
     assert "Стойки входа" in html_text and "Анна (@anna)" in html_text
+
+
+# ── Бэклог №13: пропускная способность стоек ────────────────────────────────────────────────
+
+def test_stands_median_gap_and_idle_only_when_others_scan():
+    rows = [
+        (10, "А", "2026-10-03 10:00:00"), (10, "А", "2026-10-03 10:00:30"),
+        (10, "А", "2026-10-03 10:01:00"), (10, "А", "2026-10-03 10:20:00"),  # перерыв не портит медиану
+        (11, "Б", "2026-10-03 10:05:00"), (11, "Б", "2026-10-03 10:06:20"),
+        (12, "В", "2026-10-03 10:25:00"),
+    ]
+    now = datetime(2026, 10, 3, 10, 26, 0)
+    stands = {s["name"]: s for s in arrival_stats.build_stands(rows, now)}
+    assert stands["А"]["median_gap_sec"] == 30
+    assert stands["Б"]["median_gap_sec"] == 80
+    assert stands["В"]["median_gap_sec"] is None
+    assert (stands["Б"]["idle"], stands["Б"]["since_last_min"]) == (True, 19)
+    assert stands["А"]["idle"] is False and stands["В"]["idle"] is False
+    assert arrival_stats.gap_text(30) == "раз в 30 с"
+    assert arrival_stats.gap_text(80) == "раз в 1 мин 20 с"
+    assert arrival_stats.gap_text(120) == "раз в 2 мин"
+    # Все стоят — очереди нет, никто не «простаивает»; без now (прошлый день) простоя нет вовсе.
+    late = datetime(2026, 10, 3, 12, 0, 0)
+    assert not any(s["idle"] for s in arrival_stats.build_stands(rows, late))
+    assert not any(s["idle"] for s in arrival_stats.build_stands(rows))
+
+
+def test_bot_floor_shows_pace_and_idle_stand(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _freeze(monkeypatch)
+    _seed()
+    # 500 последний раз сканировал в 10:20 (10 мин назад — ещё не простой); сдвинем «сейчас».
+    later = datetime(2026, 10, 3, 10, 34, 0)
+    monkeypatch.setattr(admin_checkin_floor, "msk_now", lambda: later)
+    import cities
+    _run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+    text, _kb = _run(admin_checkin_floor.render_floor(ADMIN_ID))
+    assert "Анна (@anna) — 2 · раз в 70 мин · ⏸ простаивает 14 мин" in text
+    assert "id 501 — 2 · раз в 4 мин" in text and "id 501 — 2 · раз в 4 мин · ⏸" not in text
+
+
+def test_dashboard_stands_have_pace_and_last_scan(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _freeze(monkeypatch)
+    _seed()
+    fl = _dash("spb")
+    anna = fl["stands"][0]
+    assert (anna["gap_text"], anna["last"][11:16], anna["idle"]) == ("раз в 70 мин", "10:20", False)
+    assert fl["idle_minutes"] == 10
