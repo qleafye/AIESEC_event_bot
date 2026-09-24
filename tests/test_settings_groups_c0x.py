@@ -526,8 +526,14 @@ def test_render_snapshot_apps(tmp_path):
         # Квик 260923 (форум-чекин, D-01..D-04): метка события + подпись/текст «выключен» —
         # новый хвост группы (сам master-тумблер checkin_qr_enabled — тумблер раздела).
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+        # Форум-ночь (ночная приёмка, задача 3): текст самой рассылки QR — был в реестре,
+        # но не в боте (только Mini App); дописан рядом с соседями QR-чек-ина.
+        "checkin_qr_broadcast_text",
         # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — новый хвост группы.
         "checkin_not_arrived_text",
+        # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — тот же пропуск,
+        # что у checkin_qr_broadcast_text выше.
+        "checkin_volunteer_guide_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -546,8 +552,12 @@ def test_render_snapshot_apps(tmp_path):
         "📥 Дайджест заявок: окно тишины (мин)",
         # Квик 260923 (форум-чекин): метка события + подпись/текст «выключен».
         "🎟 Метка события в QR чек-ина", "🎟 Подпись к QR чек-ина", "🎟 QR чек-ина выключен: текст",
+        # Форум-ночь (ночная приёмка, задача 3): текст рассылки QR — дописан в бот.
+        "🎟 Текст рассылки QR перед форумом",
         # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл».
         "🚪 «Не пришёл»: текст рассылки",
+        # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — дописана в бот.
+        "🎫 Шпаргалка волонтёра чек-ина",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -564,8 +574,12 @@ def test_render_snapshot_apps(tmp_path):
         # Квик 260923 (форум-чекин): подпись и текст «выключен» имеют непустой дефолт в
         # реестре (checkin_event_tag — default None, остаётся «не задано»).
         "🎟 Подпись к QR чек-ина", "🎟 QR чек-ина выключен: текст",
+        # Форум-ночь (ночная приёмка, задача 3): текст рассылки QR имеет непустой дефолт.
+        "🎟 Текст рассылки QR перед форумом",
         # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» имеет непустой дефолт.
         "🚪 «Не пришёл»: текст рассылки",
+        # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра имеет непустой дефолт.
+        "🎫 Шпаргалка волонтёра чек-ина",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -979,11 +993,14 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Квик 260923 (форум-чекин): метка события + подпись/текст «выключен» — новый хвост
     # _APPS_FIELD_ORDER.
     # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived_text — новый хвост _APPS_FIELD_ORDER.
-    assert admin_settings._settings_group_keys("apps")[-10:] == [
+    # Форум-ночь (ночная приёмка, задача 3): checkin_qr_broadcast_text и
+    # checkin_volunteer_guide_text дописаны в бот — были в реестре, но правились только в
+    # Mini App; хвост _APPS_FIELD_ORDER удлинился на два ключа.
+    assert admin_settings._settings_group_keys("apps")[-12:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
-        "checkin_not_arrived_text"]
+        "checkin_qr_broadcast_text", "checkin_not_arrived_text", "checkin_volunteer_guide_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

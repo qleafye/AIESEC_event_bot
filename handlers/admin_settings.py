@@ -203,9 +203,17 @@ _APPS_FIELD_ORDER = [
     # выше) — сам master-тумблер checkin_qr_enabled НЕ здесь (type "enum", живёт в
     # settings_toggle_rows/admin_sections.SECTIONS, как остальные тумблеры «📋 Заявки»).
     "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+    # Форум-ночь: текст самой рассылки QR накануне форума (+ утренний повтор) — был заведён
+    # в реестре (D-25), но забыт здесь: время рассылки правилось в «✅ Отметки на форуме»
+    # (handlers/admin_checkin.py), а сам текст в боте было не найти вовсе (только Mini App).
+    "checkin_qr_broadcast_text",
     # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — тот же приём, что у трёх
     # ключей чек-ина выше (редактор экрана достаётся бесплатно попаданием в этот список).
     "checkin_not_arrived_text",
+    # Форум-ночь B3 (идея №22): шпаргалка волонтёра чек-ина — уходила личным сообщением
+    # (handlers/admin_roles.py::roles_assign), но в боте её было негде поправить (только
+    # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
+    "checkin_volunteer_guide_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
