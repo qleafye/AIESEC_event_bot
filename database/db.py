@@ -1620,6 +1620,37 @@ async def init_db():
             )
         ''')
 
+        # Идея №31 бэклога чек-ина (журнал площадки): кто что сделал в день форума. Живые
+        # отметки (сканер Mini App / поиск по фамилии) журналятся ПО ОДНОЙ — строку `checkins`
+        # потом может удалить снятие или перенос D-20, а журнал остаётся; CSV — ОДНОЙ строкой
+        # на загрузку (счётчики в `details`), построчно его отметки и так лежат в `checkins`
+        # с `by_staff_id`/`source="csv"`. Плюс не-отметочные действия: снятие отметки,
+        # отмена скана волонтёром, перевыпуск QR, пропуск «разово».
+        # `telegram_id` — делегат (NULL у загрузки CSV); `staff_id`/`staff_name` — кто
+        # (имя — снимок на момент действия: волонтёр может не быть делегатом и не иметь
+        # строки в `users`). `city` — нормализованный код города делегата (у CSV — город
+        # точки), фильтр экрана «📓 Журнал площадки». `details` — JSON (точка, время скана,
+        # прошлая сессия слота для отката переноса). `undone_at` — у строки отметки, которую
+        # волонтёр отменил в окне «↩️ Отменить».
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS venue_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                action TEXT NOT NULL,
+                staff_id INTEGER,
+                staff_name TEXT,
+                telegram_id INTEGER,
+                city TEXT,
+                point TEXT,
+                source TEXT,
+                details TEXT,
+                undone_at TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_venue_log_staff ON venue_log(staff_id, id)"
+        )
+
         # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
         # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
         # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
@@ -8400,6 +8431,12 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # кому и когда ушла шпаргалка, тот же журнал отправки человеку, что checkin_qr_sends выше,
     # группа общая "checkin". day/city — снимок дня/города рассылки, не трогаем отдельно.
     ("checkin_volunteer_guide_sends", "telegram_id", "checkin"),
+    # Идея №31 (журнал площадки): venue_log.telegram_id — строки «что сделали С ЭТИМ
+    # делегатом» (отметки, снятия, перевыпуск QR). Личный след, уходит вместе с человеком —
+    # тот же довод, что у checkins выше (удаляют тестовые аккаунты; журнал удалённого
+    # тестера — мусор в разборе дня). staff_id в той же строке — авторская колонка, не
+    # трогаем: действия САМОГО удаляемого как волонтёра (строки, где он staff_id) остаются.
+    ("venue_log", "telegram_id", "checkin"),
     # Форум-ночь п.8 (идея №19, SOS): sos_reports.telegram_id — личная заявка SOS делегата
     # (категория/текст/фото/геопозиция), тот же личный след, что chat_activity/checkins выше.
     # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
@@ -8844,6 +8881,7 @@ async def record_session_checkin(
     scanned_at: str | None = None,
     approx: bool = False,
     by_staff_id: int | None = None,
+    previous_out: dict | None = None,
 ) -> tuple[str, str, int | None]:
     """Отметка на СЕССИИ (форум-ночь п.5, FORUM-CHECKIN.md D-18..D-20) — в отличие от
     `record_checkin` выше (первый скан побеждает, точка «Вход»), здесь «последний скан СЛОТА
@@ -8901,12 +8939,17 @@ async def record_session_checkin(
                 other_points = [f"session:{sid}" for sid in slot_session_ids]
                 placeholders = ",".join("?" for _ in other_points)
                 async with db.execute(
-                    f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                    f"SELECT point, scanned_at, source, approx_time, by_staff_id, created_at "
+                    f"FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
                     [telegram_id, *other_points],
                 ) as cursor:
                     other_rows = await cursor.fetchall()
                 if other_rows:
                     previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
+                    if previous_out is not None:
+                        # Идея №32: снимок удаляемой строки — отмена ошибочного переноса
+                        # волонтёром (`undo_venue_checkin`) возвращает её на место.
+                        previous_out.update(dict(other_rows[0]))
                     await db.execute(
                         f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
                         [telegram_id, *other_points],
@@ -8933,6 +8976,239 @@ async def record_session_checkin(
 
     status = "moved" if previous_session_id is not None else "new"
     return status, stamp, previous_session_id
+
+
+# ── Идеи №31/№32 бэклога чек-ина: журнал площадки и снятие ошибочной отметки ─────────────────
+#
+# Снятие = УДАЛЕНИЕ строки `checkins` + строка журнала `venue_log`, не флаг `revoked`: все
+# потребители отметки (счётчики «Пришли N из M», фильтры рассылок «пришёл/не пришёл»,
+# `checkin_not_arrived`, отзывы о сессии D-24, статистика по залам) читают `checkins` в момент
+# работы — удалённая строка исчезает из всех разом, флаг пришлось бы добавить в каждый запрос.
+# История «было — сняли» живёт в журнале.
+
+def _venue_log_row(row) -> dict:
+    item = dict(row)
+    try:
+        item["details"] = json.loads(item.get("details") or "{}")
+    except (TypeError, ValueError):
+        item["details"] = {}
+    return item
+
+
+async def _venue_log_insert(db, entry: dict) -> int:
+    cursor = await db.execute(
+        "INSERT INTO venue_log (created_at, action, staff_id, staff_name, telegram_id, city, "
+        "point, source, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            entry.get("created_at") or msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+            entry["action"],
+            entry.get("staff_id"),
+            entry.get("staff_name"),
+            entry.get("telegram_id"),
+            entry.get("city"),
+            entry.get("point"),
+            entry.get("source"),
+            json.dumps(entry.get("details") or {}, ensure_ascii=False),
+        ),
+    )
+    return cursor.lastrowid
+
+
+async def venue_log_add(entry: dict) -> int:
+    """Одна строка журнала площадки. `entry` — поля таблицы `venue_log` (`action` обязателен,
+    `details` — dict, `created_at` по умолчанию — сейчас по Москве). Возвращает id строки."""
+    async with _connect() as db:
+        log_id = await _venue_log_insert(db, entry)
+        await db.commit()
+    return log_id
+
+
+async def venue_log_get(log_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM venue_log WHERE id = ?", (log_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _venue_log_row(row) if row else None
+
+
+async def undo_venue_checkin(
+    log_id: int, staff_id: int, *, not_before: str, undo_entry: dict,
+) -> tuple[str, dict | None]:
+    """Отмена волонтёром СВОЕЙ ПОСЛЕДНЕЙ живой отметки (идея №32) — одной транзакцией
+    (`BEGIN IMMEDIATE`, тот же приём, что `record_session_checkin`: проверка «последняя ли» и
+    удаление не должны разъехаться с параллельным сканом того же волонтёра).
+
+    Проверки — на сервере, фронту не верим: строка журнала `log_id` — отметка (`action =
+    'checkin'`) ЭТОГО `staff_id`, ещё не отменена, создана не раньше `not_before` (окно
+    отмены считает вызывающий) и это самая свежая отметка волонтёра. Удаляется ровно то, что
+    поставил этот скан: строка точки, авто-вход (`details.auto_entry_at`, если вход появился
+    этим же сканом) и возвращается строка прошлой сессии слота (`details.previous`, если скан
+    был переносом D-20).
+
+    Возвращает `(код, событие)`: `"ok"` | `"not_found"` | `"not_yours"` | `"expired"` |
+    `"not_last"` | `"gone"` (строки отметки уже нет — её перенёс/снял кто-то другой)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute("SELECT * FROM venue_log WHERE id = ?", (log_id,)) as cursor:
+                row = await cursor.fetchone()
+            if row is None or row["action"] != "checkin":
+                await db.rollback()
+                return "not_found", None
+            event = _venue_log_row(row)
+            if event["staff_id"] != staff_id:
+                await db.rollback()
+                return "not_yours", event
+            if event.get("undone_at") or (event["created_at"] or "") < not_before:
+                await db.rollback()
+                return "expired", event
+            async with db.execute(
+                "SELECT MAX(id) FROM venue_log WHERE action = 'checkin' AND staff_id = ?",
+                (staff_id,),
+            ) as cursor:
+                latest = (await cursor.fetchone())[0]
+            if latest != log_id:
+                await db.rollback()
+                return "not_last", event
+
+            details = event["details"]
+            tid = event["telegram_id"]
+            cur = await db.execute(
+                "DELETE FROM checkins WHERE telegram_id = ? AND point = ? AND scanned_at = ?",
+                (tid, event["point"], details.get("scanned_at")),
+            )
+            if not cur.rowcount:
+                await db.rollback()
+                return "gone", event
+            if details.get("auto_entry_at"):
+                await db.execute(
+                    "DELETE FROM checkins WHERE telegram_id = ? AND point = ? AND source = "
+                    "'auto_session' AND scanned_at = ?",
+                    (tid, CHECKIN_ENTRY_POINT, details["auto_entry_at"]),
+                )
+            prev = details.get("previous")
+            if prev:
+                await db.execute(
+                    "INSERT OR IGNORE INTO checkins (telegram_id, point, scanned_at, source, "
+                    "approx_time, by_staff_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (tid, prev["point"], prev["scanned_at"], prev["source"],
+                     prev.get("approx_time") or 0, prev.get("by_staff_id"), prev["created_at"]),
+                )
+            stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+            await db.execute("UPDATE venue_log SET undone_at = ? WHERE id = ?", (stamp, log_id))
+            await _venue_log_insert(db, {
+                **undo_entry, "created_at": stamp, "telegram_id": tid, "city": event["city"],
+                "point": event["point"], "source": event["source"],
+                "details": {
+                    "undone_log_id": log_id, "scanned_at": details.get("scanned_at"),
+                    "point_label": details.get("point_label"),
+                    "previous_label": details.get("previous_label") if prev else None,
+                },
+            })
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return "ok", event
+
+
+async def get_checkin(checkin_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM checkins WHERE id = ?", (checkin_id,)) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_checkins_for_user(telegram_id: int) -> list[dict]:
+    """Все отметки делегата: вход первым, дальше сессии по времени скана."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM checkins WHERE telegram_id = ? "
+            "ORDER BY CASE WHEN point = ? THEN 0 ELSE 1 END, scanned_at",
+            (telegram_id, CHECKIN_ENTRY_POINT),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def revoke_checkin(checkin_id: int, log_entry: dict) -> dict | None:
+    """Менеджер снимает ОДНУ отметку (идея №32): удаление строки + строка журнала одной
+    транзакцией. Остальные отметки делегата не трогаются (снятие входа не снимает сессии).
+    `None` — строки уже нет (сняли параллельно / перенос D-20)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute("SELECT * FROM checkins WHERE id = ?", (checkin_id,)) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                return None
+            removed = dict(row)
+            await db.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
+            details = {
+                "scanned_at": removed["scanned_at"],
+                "was_source": removed["source"],
+                "was_by_staff_id": removed["by_staff_id"],
+                **(log_entry.get("details") or {}),
+            }
+            await _venue_log_insert(db, {
+                **log_entry, "telegram_id": removed["telegram_id"], "point": removed["point"],
+                "details": details,
+            })
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return removed
+
+
+async def venue_log_page(*, city_scope=None, staff_id: int | None = None, offset: int = 0,
+                         limit: int = 10) -> tuple[list[dict], int]:
+    """Журнал площадки, новые сверху: `(строки страницы, всего)`. `city_scope` — дескриптор
+    `cities.city_scope(...)` по колонке `venue_log.city`; `staff_id` — фильтр по волонтёру."""
+    clauses: list[str] = []
+    params: list = []
+    city_sql, city_params = _city_clause(city_scope, "city")
+    if city_sql:
+        clauses.append(city_sql)
+        params.extend(city_params)
+    if staff_id is not None:
+        clauses.append("staff_id = ?")
+        params.append(staff_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT COUNT(*) FROM venue_log {where}", params) as cursor:
+            total = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT * FROM venue_log {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_venue_log_row(r) for r in rows], total
+
+
+async def venue_log_staff(*, city_scope=None) -> list[dict]:
+    """Кто что-то делал на площадке (для кнопок фильтра): `staff_id`, последнее известное имя,
+    число действий — самые активные первыми."""
+    city_sql, params = _city_clause(city_scope, "city")
+    where = f"AND {city_sql}" if city_sql else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT staff_id, COUNT(*) AS n, "
+            "(SELECT v2.staff_name FROM venue_log v2 WHERE v2.staff_id = venue_log.staff_id "
+            " AND v2.staff_name IS NOT NULL ORDER BY v2.id DESC LIMIT 1) AS staff_name "
+            f"FROM venue_log WHERE staff_id IS NOT NULL {where} "
+            "GROUP BY staff_id ORDER BY n DESC, staff_id",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
 
 
 async def count_checkins_by_point(point: str, *, city_scope=None) -> int:

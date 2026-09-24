@@ -287,6 +287,13 @@ def register_first_entry_listener(fn) -> None:
     не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
     мешает ни отметке, ни остальным слушателям.
 
+    Снятие отметки (идея №32: «↩️ Отменить» волонтёра или снятие менеджером,
+    `services/venue_log.py`) слушателей НЕ откатывает и никого не зовёт — что слушатель уже
+    сделал (приветствие ушло), то сделано. Строка входа при снятии удаляется, поэтому
+    повторная отметка того же делегата снова будет `"new"` и позовёт слушателей ЕЩЁ РАЗ.
+    Слушатель обязан быть идемпотентным сам (например, помнить в своей таблице, кому уже
+    отправил), а не полагаться на «первая отметка бывает один раз».
+
     CSV-импорт тоже зовёт слушателей (для каждой новой отметки) с `source="csv"` — выгрузку
     могут загрузить и после форума, поэтому слать ли что-то делегату, решает сам слушатель по
     `source`/`day`.
@@ -348,6 +355,7 @@ async def record_arrival(
     scanned_at: str | None = None,
     approx: bool = False,
     by_staff_id: int | None = None,
+    staff_name: str | None = None,
     bot=None,
 ) -> dict:
     """Единая точка «делегат — точка X — отметка» для ВСЕХ трёх источников (загрузка CSV,
@@ -383,7 +391,12 @@ async def record_arrival(
 
     Первая отметка входа (прямая или `auto_session`) дополнительно зовёт слушателей
     `register_first_entry_listener` (если передан `bot`) и кладёт событие в
-    `result["first_entry"]` — Mini App без Bot переносит его в outbox сам."""
+    `result["first_entry"]` — Mini App без Bot переносит его в outbox сам.
+
+    Идея №31/№32 (журнал площадки): живая отметка (`source` не "csv") со статусом new/moved
+    пишет строку `venue_log` (`services.venue_log.log_live_checkin`, fail-soft), её id —
+    `result["log_id"]`, ключ кнопки «↩️ Отменить» на плашке сканера. `staff_name` — снимок
+    имени волонтёра для журнала."""
     if not (point or "").startswith("session:"):
         status, ts = await record_checkin(
             user["telegram_id"], point or ENTRY_POINT, source=source,
@@ -391,6 +404,11 @@ async def record_arrival(
         )
         await mark_arrived_in_sheet(user["telegram_id"], status, ts)
         result = {"status": status, "scanned_at": ts}
+        if status == "new" and source != "csv":
+            result["log_id"] = await _venue_log().log_live_checkin(
+                user, point or ENTRY_POINT, status=status, scanned_at=ts, source=source,
+                by_staff_id=by_staff_id, staff_name=staff_name,
+            )
         if status == "new" and (point or ENTRY_POINT) == ENTRY_POINT:
             await _after_first_entry(result, bot, _first_entry_event(user, ts, source, by_staff_id, approx))
         return result
@@ -435,9 +453,11 @@ async def record_arrival(
     slot = parallel_group(session, day_sessions)
     slot_other_ids = [s["id"] for s in slot if s["id"] != session_id]
 
+    previous_row: dict = {}
     status, ts, previous_id = await record_session_checkin(
         user["telegram_id"], session_id, slot_other_ids, source=source,
         scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
+        previous_out=previous_row,
     )
     result: dict = {"status": status, "scanned_at": ts}
     if day_mismatch:  # только source == "csv" мог дойти досюда с day_mismatch=True
@@ -450,11 +470,25 @@ async def record_arrival(
             user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
         )
         await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
+        if source != "csv":
+            result["log_id"] = await _venue_log().log_live_checkin(
+                user, point, status=status, scanned_at=ts, source=source,
+                by_staff_id=by_staff_id, staff_name=staff_name,
+                previous=previous_row or None,
+                auto_entry_at=entry_ts if entry_status == "new" else None,
+            )
         if entry_status == "new":
             await _after_first_entry(result, bot, _first_entry_event(
                 user, entry_ts, "auto_session", by_staff_id, False, session_id=session_id,
             ))
     return result
+
+
+def _venue_log():
+    """Ленивый импорт журнала площадки (`services.venue_log` сам ничего не импортирует отсюда,
+    но держим верх модуля без новых зависимостей — тот же приём, что `cities`/`program`)."""
+    from services import venue_log
+    return venue_log
 
 
 # ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
