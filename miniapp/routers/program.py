@@ -15,6 +15,8 @@ Mini App: `GET /app/api/program`.
 публичное оформление события, не персональные данные, тот же класс, что лого/обложка."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from cities import cities_module_on, normalize_city
@@ -30,19 +32,33 @@ from services.program import (
 from miniapp.deps import Principal, delegate_gate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _delegate_city(p: Principal) -> str | None:
-    """Тот же fail-soft приём, что `miniapp.routers.faq._delegate_city` — город из
-    `users.event_city` делегата (не привязка сотрудника, `Principal.city` у делегата всегда
-    `None`); ошибка чтения не роняет экран, только сужает до общего (module-off) вида."""
-    try:
-        if not await cities_module_on():
-            return None
-        user = await get_user(p.telegram_id)
-        return normalize_city(user.get("event_city") if user else None)
-    except Exception:
+    """Город из `users.event_city` делегата (не привязка сотрудника, `Principal.city` у
+    делегата всегда `None`); `None` — модуль городов выключен. Ошибка чтения НЕ глотается:
+    в отличие от FAQ, «общий» вид здесь — расписание чужого города, лучше честная ошибка
+    с повтором, чем не та программа (ручка отвечает 503 `retry`)."""
+    if not await cities_module_on():
         return None
+    user = await get_user(p.telegram_id)
+    return normalize_city(user.get("event_city") if user else None)
+
+
+_RETRY_TEXT = "Не удалось загрузить программу. Обновите экран через минуту."
+
+
+async def _retry_error(telegram_id: int) -> HTTPException:
+    """503 `retry` с человеческим текстом (`ui.js::errorText` читает `payload.text`).
+    Язык — best effort: БД только что отказала, её же сбой здесь не должен ронять ответ."""
+    text = _RETRY_TEXT
+    try:
+        lang, tr_map = await i18n.context(telegram_id)
+        text = i18n.tr(_RETRY_TEXT, lang if lang in ("ru", "en") else "ru", tr_map)
+    except Exception:
+        pass
+    return HTTPException(503, {"reason": "retry", "text": text})
 
 
 async def program_section_visible(p: Principal) -> bool:
@@ -54,6 +70,7 @@ async def program_section_visible(p: Principal) -> bool:
     try:
         return await program_menu_visible(await _delegate_city(p))
     except Exception:
+        logger.error("program_section_visible: сбой чтения, раздел скрыт", exc_info=True)
         return False
 
 
@@ -78,9 +95,14 @@ async def program_screen(p: Principal = Depends(delegate_gate)) -> dict:
     # Гейт — тот же, что у кнопки в чате: делегат одобрен (delegate_gate выше) И кнопка
     # программы ему видна (тумблер + есть что показать). Иначе 403 — как у выключенного
     # раздела (`require_section`), ядро app.js рисует свой экран «нет доступа».
-    if not await program_section_visible(p):
+    try:
+        city = await _delegate_city(p)
+        visible = await program_menu_visible(city)
+    except Exception:
+        logger.error("program_screen: сбой чтения города/гейта", exc_info=True)
+        raise await _retry_error(p.telegram_id)
+    if not visible:
         raise HTTPException(403, {"reason": "section_off", "section": "program"})
-    city = await _delegate_city(p)
     view = await resolve_program_view(city)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"

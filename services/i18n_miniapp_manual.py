@@ -202,6 +202,10 @@ _MISC = {
     # D-29: подпись вычисляемого раздела «📅 Программа» (miniapp/routers/page.py::
     # COMPUTED_SECTION_LABELS) — не в реестре, машинная очередь её не видит.
     "📅 Программа": "📅 Schedule",
+    # miniapp/routers/program.py::_RETRY_TEXT — сбой чтения города делегата (503 retry).
+    "Не удалось загрузить программу. Обновите экран через минуту.": (
+        "Couldn't load the schedule. Refresh the screen in a minute."
+    ),
 }
 
 # ── Первые экраны анкеты (согласия/город/трек/образование), обзор перед отправкой ──────────
