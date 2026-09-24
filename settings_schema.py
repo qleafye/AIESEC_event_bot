@@ -511,6 +511,23 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): что показывать делегату по кнопке
+    # «📅 Программа» в Mini App — таблица сессий бота или то же фото, что в чате. per_city
+    # (у городов разная готовность программы к моменту запуска приложения), но НЕ photo/file —
+    # это выбор ВИДА экрана, а не сам медиа-файл (`tests/test_settings_percity_resolver.py::
+    # test_no_per_city_key_is_photo_or_file_type` запрещает per_city на photo/file типах, само
+    # фото читается сырым composite-ключом в `services/program.py`, D-10, мимо этого резолвера).
+    # `default` здесь — статичный запасной вариант ТОЛЬКО для реестра/веб-редактора настроек;
+    # реальный резолвер (`services.program.resolve_program_view`) отличает «не задано вовсе» от
+    # «задано» по сырому значению и достраивает дефолт по наличию сессий (таблица, если они
+    # заведены, иначе фото) — статичный "table" здесь этого решения не переопределяет.
+    "program_miniapp_view": {
+        "type": "enum", "group": "event", "label": "🗓 Программа в приложении",
+        "options": ["table", "photo"],
+        "option_labels": {"table": "🗓 Таблица сессий", "photo": "🖼 Фото"},
+        "prompt": None, "default": "table",
+        "per_city": True,
+    },
     "speakers": {
         "type": "photo", "group": "event", "label": "🗣 Спикеры",
         "prompt": (
