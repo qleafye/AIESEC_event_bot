@@ -161,6 +161,16 @@ async def _run_job(city: str | None) -> dict:
             "город/рассылка выключены к моменту срабатывания"
         )
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
+    # Дата форума могла смениться из Mini App (там нет планировщика) — «завтра форум» не в
+    # канун форума не шлём и отметку «отправлено» под чужой день не пишем; переставляем джобу.
+    from services.checkin_broadcast import is_forum_day_offset
+    if not await is_forum_day_offset(city, 1):
+        logger.info(f"checkin_volunteer_broadcast: job for city={city!r} skipped — не канун форума")
+        try:
+            await schedule_city_job(city)
+        except Exception as e:
+            logger.error(f"checkin_volunteer_broadcast: reschedule ({city!r}) failed: {e}")
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
     return await send_guide(city)
 
 

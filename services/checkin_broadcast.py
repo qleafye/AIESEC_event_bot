@@ -222,27 +222,56 @@ async def _city_still_valid(city: str | None) -> bool:
     return await broadcast_enabled_for(city)
 
 
+async def is_forum_day_offset(city: str | None, days_before: int) -> bool:
+    """Сегодня — день форума города минус `days_before` (1 — накануне, 0 — сам день)?
+    Дату перечитываем на срабатывании: Mini App — отдельный процесс без планировщика, его
+    правка `forum_date` не переставляет джобы, и старая джоба сработала бы не в тот день."""
+    date_str = await forum_date_for(city)
+    try:
+        day = datetime.strptime((date_str or "").strip(), "%d.%m.%Y").date()
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return msk_now().date() == day - timedelta(days=days_before)
+
+
+async def _wrong_day(city: str | None, days_before: int, what: str) -> bool:
+    """Не тот день — пропуск без отметки «отправлено» и перестановка по свежим настройкам."""
+    if await is_forum_day_offset(city, days_before):
+        return False
+    logger.info(f"checkin_broadcast: {what} job for city={city!r} skipped — не тот день форума")
+    try:
+        await schedule_city_jobs(city)
+    except Exception as e:
+        logger.error(f"checkin_broadcast: reschedule after wrong day ({city!r}) failed: {e}")
+    return True
+
+
 async def _run_evening_job(city: str | None) -> dict:
     """Персистентный jobstore-таргет вечерней рассылки (`schedule_city_jobs` регистрирует
     ИМЕННО эту функцию, не `send_broadcast` напрямую) — барьер `_city_still_valid` ПЕРЕД
-    вызовом, см. её докстринг."""
+    вызовом, см. её докстринг, и проверка, что сегодня канун форума."""
     if not await _city_still_valid(city):
         logger.info(
             f"checkin_broadcast: evening job for city={city!r} skipped — "
             "город/рассылка выключены к моменту срабатывания"
         )
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
+    if await _wrong_day(city, 1, "evening"):
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
     return await send_broadcast(city)
 
 
 async def _run_morning_job(city: str | None) -> dict:
-    """То же самое для утреннего повтора — см. `_run_evening_job`/`_city_still_valid`."""
+    """То же самое для утреннего повтора — см. `_run_evening_job`/`_city_still_valid`;
+    уходит только в сам день форума."""
     if not await _city_still_valid(city):
         logger.info(
             f"checkin_broadcast: morning job for city={city!r} skipped — "
             "город/рассылка выключены к моменту срабатывания"
         )
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
+    if await _wrong_day(city, 0, "morning"):
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
     return await send_morning_repeat(city)
 
 
