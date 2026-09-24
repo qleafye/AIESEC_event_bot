@@ -255,6 +255,8 @@ EXPECTED_ROUTES = {
     "#/setup": "screens/setup.js",
     # Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме.
     "#/scanner": "screens/scanner.js",
+    # D-29: делегатский экран «📅 Программа».
+    "#/program": "screens/program.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -286,7 +288,8 @@ def test_route_table_matches_phase_plan_exactly():
     # Квик 260915-skg (P5): +1 маршрут "#/settings/{code}/{key}" (21 -> 22) — результат поиска
     # настроек открывает саму настройку, не начало раздела.
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
-    assert len(routes) == 23
+    # D-29: +1 маршрут "#/program" (23 -> 24).
+    assert len(routes) == 24
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -420,6 +423,8 @@ EXPECTED_NAV = [
     {"hash": "#/form", "section": "form", "delegate": True},
     # Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form.
     {"hash": "#/faq", "section": "faq", "delegate": True},
+    # D-29: «📅 Программа» — вычисляемый раздел (me.sections.program), рядом с FAQ.
+    {"hash": "#/program", "section": "program", "delegate": True},
     {"hash": "#/applications", "section": "applications", "cap": "moderate_reg", "group": "apps"},
     {"hash": "#/questions", "section": "questions", "cap": "moderate_reg", "group": "apps"},
     # Quick 260906-nxp: менеджерское ведение FAQ — рядом с #/questions (менеджерские разделы
