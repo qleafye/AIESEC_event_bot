@@ -469,8 +469,15 @@ async def refresh_card(bot, report_id: int) -> None:
     удалена/устареть, это не должно ронять сам вызов (дозапись делегата/захват/решение)."""
     from database.db import get_user
 
+    from database.db import list_sos_card_copies
+
     report = await get_sos_report(report_id)
-    if report is None or not report.get("chat_id") or not report.get("card_message_id"):
+    if report is None:
+        return
+    targets = await list_sos_card_copies(report_id)  # копии фоллбэка в личке админов
+    if report.get("chat_id") and report.get("card_message_id"):
+        targets.append((report["chat_id"], report["card_message_id"]))
+    if not targets:
         return
     user = await get_user(report["telegram_id"])
     text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
@@ -478,13 +485,14 @@ async def refresh_card(bot, report_id: int) -> None:
         None if report_status(report) == STATUS_RESOLVED
         else build_card_kb(report_id)
     )
-    try:
-        await bot.edit_message_text(
-            text, chat_id=report["chat_id"], message_id=report["card_message_id"],
-            parse_mode="HTML", reply_markup=kb,
-        )
-    except Exception:
-        pass
+    for chat_id, message_id in targets:
+        try:
+            await bot.edit_message_text(
+                text, chat_id=chat_id, message_id=message_id,
+                parse_mode="HTML", reply_markup=kb,
+            )
+        except Exception:
+            pass  # у одного админа копию удалили/заблокировали бота — остальным перерисуем
 
 
 # ── D-31: режим «дописываю SOS» — всё, что делегат шлёт после мгновенной карточки, уходит В
@@ -608,6 +616,7 @@ async def _mark_chat_unhealthy(chat_id: int, city: str | None) -> None:
 
 async def _fallback_fanout(bot, report: dict, text: str, kb) -> int:
     from config import config
+    from database.db import add_sos_card_copy
     from handlers.admin_caps import capability_holders
 
     recipients = await capability_holders("moderate_reg", city=report.get("city"))
@@ -616,10 +625,16 @@ async def _fallback_fanout(bot, report: dict, text: str, kb) -> int:
     sent = 0
     for uid in recipients:
         try:
-            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
+            msg = await bot.send_message(uid, text, parse_mode="HTML", reply_markup=kb)
             sent += 1
         except Exception as e:
             logger.info("sos._fallback_fanout: не удалось написать id=%s: %s", uid, e)
+            continue
+        # Запоминаем копию, чтобы «Беру»/«Решено» перерисовали её у всех (refresh_card).
+        try:
+            await add_sos_card_copy(report["id"], uid, msg.message_id)
+        except Exception as e:
+            logger.error("sos._fallback_fanout: копия карточки id=%s не сохранена: %s", uid, e)
     return sent
 
 
