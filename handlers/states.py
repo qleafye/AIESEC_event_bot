@@ -322,3 +322,28 @@ class CheckinQrTimeEdit(StatesGroup):
     # checkin_qr_morning_repeat_time) и для какого города живёт в state.get_data(), тот же
     # приём, что AdminI18nEdit/CoinsManual (одно состояние, цель правки в данных, не в State).
     waiting_value = State()
+
+
+class ProgramSessionField(StatesGroup):
+    # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
+    # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за
+    # шагом, и точечная правка карточки существующей сессии заходит в нужное состояние
+    # напрямую. Режим (создание/правка), город/день/id сессии/какое поле правится — целиком в
+    # state.get_data() (тот же приём, что AdminI18nEdit/CoinsManual/RejectRuleEdit), выбор зала
+    # и подтверждение конфликта — отдельные callback'и без ожидания текста, своего State не
+    # заводят (решение, что и у CheckinImport про точку — см. её докстринг).
+    time = State()
+    title = State()
+    speaker = State()
+    description = State()
+
+
+class ProgramHallName(StatesGroup):
+    # Имя зала — и создание (на лету во время мастера сессии, и отдельно с экрана «Залы»), и
+    # переименование существующего; контекст (город/id зала/куда вернуться) — в state.get_data().
+    value = State()
+
+
+class ProgramDayCustom(StatesGroup):
+    # «📅 Другой день» — ввод даты текстом («31.10»/«31.10.2026»); город — в state.get_data().
+    value = State()

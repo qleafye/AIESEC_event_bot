@@ -46,6 +46,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("group", "event"),
         ("screen", "admin_menu_buttons", "🔘 Кнопки меню"),
         ("toggle", "settings_toggle_bonus"),
+        # Форум-ночь п.4 (расписание форума в боте): контент события, та же капа `settings`,
+        # что остальные строки этого раздела.
+        ("op", "admin_program"),
     ]),
     ("form", "📝 Анкета", [
         ("screen", "admin_event_preset", "🎛 Тип события (пресет)"),
@@ -586,3 +589,7 @@ from handlers import admin_reject_rules  # noqa: E402,F401
 # Квик 260923 (AUTOREJ-REPORT, D-I): шов «📊 Отчётность автоотказа» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_rules, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_reject_reports  # noqa: E402,F401
+
+# Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
+# admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_program  # noqa: E402,F401

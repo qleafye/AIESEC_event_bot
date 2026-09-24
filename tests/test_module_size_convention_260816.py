@@ -507,7 +507,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1100,
+        1104,
+        "Форум-ночь п.4 (расписание форума в боте): +4 строки — capability-записи раздела "
+        "«🗓 Программа форума» (admin_program/prog_*/state:ProgramSessionField:*/"
+        "state:ProgramHallName:*/state:ProgramDayCustom:*, капа «settings» — та же, что у "
+        "«🚫 Правила автоотказа»/«🧮 Правила балла»); 1100 -> 1104, потолок до фактического "
+        "размера. "
         "Форум-ночь п.3 (D-03, идея №2): +12 строк — capability-записи рассылки QR перед "
         "форумом и её настроек (checkinqr_send:*/checkinqr_send_go:*/checkinqr_send_no/"
         "checkinqr_cfg:*/checkinqr_toggle:*/checkinqr_time:*/state:CheckinQrTimeEdit:*, "
