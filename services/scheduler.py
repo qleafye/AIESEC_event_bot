@@ -340,6 +340,11 @@ async def init_scheduler(bot):
     # своя джоба на город (checkin_volunteer_guide:{city}), тот же приём, что QR-рассылка выше.
     from services.checkin_volunteer_broadcast import reconcile as _reconcile_volunteer_guide
     await _reconcile_volunteer_guide()
+    # Mini App правит forum_date/«🎟 Вход по QR»/время рассылок из своего процесса, где
+    # планировщика нет, — поэтому бот сам сверяет обе форумные рассылки раз в 10 минут
+    # (идемпотентно: догоны и повторы отсекает schedule_city_jobs/schedule_city_job).
+    from services.checkin_broadcast import reconcile_forum_jobs as _reconcile_forum_jobs
+    _add_interval_job(_reconcile_forum_jobs, "checkin_forum_reconcile", timedelta(minutes=10))
     # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — (пере)ставить джобы
     # отзыва всех сессий программы (пересозданный jobs.sqlite/простой дольше misfire_grace),
     # тот же приём, что реконсиляции выше.

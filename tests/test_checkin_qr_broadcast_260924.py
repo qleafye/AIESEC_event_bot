@@ -285,6 +285,8 @@ def test_evening_job_sends_normally_when_city_still_enabled(tmp_path, monkeypatc
     рассылка по-прежнему включены."""
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
+    _run(_set_setting("forum_date", "03.10.2026"))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0, 0))
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
 
@@ -762,3 +764,87 @@ def test_schedule_city_jobs_morning_catchup_only_for_pending_job(tmp_path, monke
         assert s.get_job(cb.morning_job_id(None)) is None
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Правка из Mini App (там нет планировщика): джоба на срабатывании проверяет день форума
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_evening_job_wrong_day_skips_and_reschedules(tmp_path, monkeypatch):
+    """Джоба стояла на 02.10 18:00, а Mini App перенёс форум на 10.10 — в 02.10 QR не уходит,
+    отметки «отправлено» нет, джоба переставлена на новый канун."""
+    _forum_setup(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0, 0))
+
+    async def body(s):
+        await _set_setting("forum_date", "10.10.2026")
+        result = await cb._run_evening_job(None)
+        assert result.get("skipped") == "wrong_day"
+        assert bot.photos == []
+        assert await db.checkin_qr_sent_ids() == set()
+        ev = s.get_job(cb.evening_job_id(None))
+        assert ev.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 9, 18, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_morning_job_only_on_forum_day(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0, 0))
+
+    async def body(s):
+        await _set_setting("forum_date", "10.10.2026")
+        result = await cb._run_morning_job(None)
+        assert result.get("skipped") == "wrong_day"
+        assert bot.photos == []
+
+        await _set_setting("forum_date", "03.10.2026")
+        result = await cb._run_morning_job(None)
+        assert result["sent"] == 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reconcile_forum_jobs_picks_up_miniapp_edit(tmp_path, monkeypatch):
+    """Периодическая сверка: Mini App включил «🎟 Вход по QR» — следующий проход ставит
+    джобы; повторный проход ничего не дублирует."""
+    _forum_setup(tmp_path)
+    _run(_set_setting("checkin_qr_enabled", "off"))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 9, 24, 12, 0, 0))
+
+    async def body(s):
+        await cb.reconcile_forum_jobs()
+        assert s.get_job(cb.evening_job_id(None)) is None
+        await _set_setting("checkin_qr_enabled", "on")  # правка из Mini App
+        await cb.reconcile_forum_jobs()
+        await cb.reconcile_forum_jobs()
+        ids = [j.id for j in s.get_jobs()]
+        assert ids.count(cb.evening_job_id(None)) == 1
+        assert ids.count(cb.morning_job_id(None)) == 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_init_scheduler_registers_forum_reconcile_interval(tmp_path, monkeypatch):
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    config.DB_PATH = str(tmp_path / "forum_reconcile_sched.db")
+    monkeypatch.setattr(sched, "_JOBSTORE_URL", f"sqlite:///{tmp_path / 'jobs_init.sqlite'}")
+    monkeypatch.setattr(sched, "_scheduler", None)
+
+    async def go():
+        fast_init_db()
+        s = await sched.init_scheduler(bot=object())
+        try:
+            job = s.get_job("checkin_forum_reconcile")
+            assert job is not None
+            assert isinstance(job.trigger, IntervalTrigger)
+            assert job.func is cb.reconcile_forum_jobs
+        finally:
+            s.shutdown(wait=False)
+
+    asyncio.run(go())
