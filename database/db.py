@@ -1752,6 +1752,20 @@ async def init_db():
             )
         ''')
 
+        # Копии карточки SOS, разошедшиеся фоллбэком в личку (чат SOS не привязан/упал): без
+        # них «Беру»/«Решено» писали в БД, но карточку не перерисовывали ни у кого — остальные
+        # админы не видели, что заявка взята, и брали её второй раз. `chat_id` — личка
+        # админа, не делегата -> USER_PURGE_EXCLUDED; копии заявок удаляемого делегата
+        # стирает purge_user подзапросом по report_id (как game_submission_parts).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_card_copies (
+                report_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                PRIMARY KEY (report_id, chat_id)
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -5396,6 +5410,26 @@ async def set_sos_card(report_id: int, chat_id: int, message_id: int) -> None:
         await db.commit()
 
 
+async def add_sos_card_copy(report_id: int, chat_id: int, message_id: int) -> None:
+    """Копия карточки в личке админа (фоллбэк без чата). Повторная рассылка тому же
+    админу (ретрай доставки) заменяет message_id — перерисовывать нужно последнюю копию."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO sos_card_copies (report_id, chat_id, message_id) "
+            "VALUES (?, ?, ?)",
+            (report_id, chat_id, message_id),
+        )
+        await db.commit()
+
+
+async def list_sos_card_copies(report_id: int) -> list[tuple[int, int]]:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT chat_id, message_id FROM sos_card_copies WHERE report_id = ?", (report_id,),
+        ) as cursor:
+            return [(int(r[0]), int(r[1])) for r in await cursor.fetchall()]
+
+
 async def claim_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
     """Атомарный захват «🙋 Беру» — True только у ТОГО вызова, что перевернул строку
     (rowcount==1); конкурентный второй тап того же момента получает False (та же идиома, что
@@ -8376,6 +8410,7 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "translations",
     "translation_queue",
     "miniapp_outbox",
+    "sos_card_copies",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
@@ -8442,6 +8477,13 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
             (telegram_id,),
         )
         result["game"] += cursor.rowcount
+        # Копии карточек SOS этого делегата в личках админов — до sos_reports, иначе
+        # подзапрос вернёт пусто (тот же приём, что game_submission_parts выше).
+        await db.execute(
+            "DELETE FROM sos_card_copies WHERE report_id IN "
+            "(SELECT id FROM sos_reports WHERE telegram_id = ?)",
+            (telegram_id,),
+        )
         for table, column, group in USER_PURGE_TABLES:
             _assert_identifier(table)
             _assert_identifier(column)
