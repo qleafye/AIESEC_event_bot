@@ -60,11 +60,30 @@ def test_first_entry_calls_listener_once_duplicate_does_not(tmp_path):
     assert kwargs["source"] == "csv"
     assert kwargs["by_staff_id"] == 77
     assert kwargs["scanned_at"] == "2026-10-30 09:15:00"
+    assert kwargs["first_of_day"] is True and kwargs["first_of_forum"] is True
 
-    r2 = _run(record_arrival(user, ENTRY_POINT, source="miniapp", bot=BOT))
+    r2 = _run(record_arrival(user, ENTRY_POINT, source="csv", scanned_at="2026-10-30 12:00:00", bot=BOT))
     assert r2["status"] == "duplicate"
     assert "first_entry" not in r2
     assert len(calls) == 1
+
+
+def test_second_day_entry_fires_with_first_of_forum_false(tmp_path):
+    """Вход каждый день: первый вход второго дня зовёт слушателей ещё раз — с
+    `first_of_forum=False`, чтобы приветствие «один раз за форум» не ушло повторно. CSV первого
+    дня, загруженный ПОСЛЕ живого скана второго, — тоже не первый за форум."""
+    user = _setup(tmp_path)
+    calls = []
+
+    async def listener(bot, user_id, city, day, **kwargs):
+        calls.append((day, kwargs["first_of_day"], kwargs["first_of_forum"]))
+
+    register_first_entry_listener(listener)
+    _run(record_arrival(user, ENTRY_POINT, source="csv", scanned_at="2026-10-31 09:00:00", bot=BOT))
+    r = _run(record_arrival(user, ENTRY_POINT, source="csv", scanned_at="2026-10-30 09:00:00", bot=BOT))
+    assert r["status"] == "new"
+    _run(record_arrival(user, ENTRY_POINT, source="csv", scanned_at="2026-10-31 18:00:00", bot=BOT))
+    assert calls == [("2026-10-31", True, True), ("2026-10-30", True, False)]
 
 
 def test_failing_listener_does_not_break_checkin_or_other_listeners(tmp_path):
