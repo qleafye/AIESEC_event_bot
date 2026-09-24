@@ -635,6 +635,9 @@ TOGGLE_SECTION: dict[str, str] = {
     # экран у бота — handlers/admin_volunteer_invite.py (volinvite_cfg:*), тот же приём, что у
     # соседей выше (forum_day_menu_enabled и т.д.).
     "volunteer_invite_enabled": "apps",
+    # Идея №20 бэклога чек-ина: бюро находок — тот же раздел «📋 Заявки», свой экран у бота —
+    # handlers/admin_lost_found.py (lostfound_cfg:*), тот же приём, что у соседей выше.
+    "lost_found_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
