@@ -666,6 +666,63 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "lost_found_post_text": [
         "текст поста находки", "сообщение в чат делегатов о находке",
     ],
+    "forum_welcome_enabled": [
+        "приветствие после скана вкл", "добро пожаловать на форум",
+    ],
+    "forum_welcome_text": [
+        "текст добро пожаловать", "сообщение после чек-ина",
+    ],
+    "checked_in_status_text": [
+        "отметка чек-ина над qr", "статус пришёл на форум",
+    ],
+    "forum_day_report_enabled": [
+        "итоги дня форума", "вечерняя сводка оргам",
+    ],
+    "forum_day_report_time": [
+        "время итогов дня", "во сколько слать сводку оргам",
+    ],
+    "forum_noshow_poll_enabled": [
+        "почему не пришли опрос вкл", "опрос прогульщиков",
+    ],
+    "forum_noshow_poll_time": [
+        "время опроса не пришедших", "во сколько спросить почему не пришёл",
+    ],
+    "forum_noshow_poll_question_text": [
+        "вопрос не пришедшим", "что помешало прийти",
+    ],
+    "forum_noshow_poll_option_changed_mind_text": [
+        "вариант передумал", "ответ передумал не пришёл",
+    ],
+    "forum_noshow_poll_option_study_work_text": [
+        "вариант учёба работа", "ответ занят по учёбе",
+    ],
+    "forum_noshow_poll_option_far_text": [
+        "вариант далеко", "ответ далеко ехать не пришёл",
+    ],
+    "forum_noshow_poll_option_forgot_text": [
+        "вариант забыл", "ответ забыл про форум",
+    ],
+    "forum_noshow_poll_option_other_text": [
+        "вариант другое", "свой ответ почему не пришёл",
+    ],
+    "forum_noshow_poll_other_prompt_text": [
+        "напиши своими словами", "просьба дописать причину",
+    ],
+    "forum_noshow_poll_thanks_text": [
+        "спасибо за ответ не пришедшему", "благодарность после опроса",
+    ],
+    "volunteer_invite_enabled": [
+        "ссылка для волонтёров вкл", "пригласить волонтёра",
+    ],
+    "volunteer_invite_welcome_text": [
+        "добро пожаловать волонтёр", "текст после перехода по ссылке волонтёра",
+    ],
+    "volunteer_invite_link_expired_text": [
+        "ссылка волонтёра устарела", "приглашение отозвано текст",
+    ],
+    "volunteer_invite_already_has_access_text": [
+        "волонтёр уже с доступом", "повторный переход по приглашению",
+    ],
 }
 
 
