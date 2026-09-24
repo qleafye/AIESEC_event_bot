@@ -603,3 +603,22 @@ def test_prog_fbday_open_missing_city_shows_empty_state(tmp_path):
     cb = FakeCallback("prog_fbday:msk:2026-10-31", user_id=MANAGER_ID)
     _run(sf_handlers.prog_fbday_open(cb))
     assert "Сессий пока нет" in cb.message.text
+
+
+def test_session_card_hides_comments_button_when_none(tmp_path):
+    """Карточка сессии: «💬 Комментарии» — только когда есть хоть один комментарий."""
+    from handlers import admin_program
+
+    def _cbs(kb):
+        return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+    _ready(tmp_path)
+    sid = _run(_make_session())
+    _run(_add_delegate(DELEGATE_ID))
+    _run(_mark_prompt_and_set(DELEGATE_ID, sid, rating=5))  # оценка без комментария
+    _text, kb = _run(admin_program.render_session_card(sid))
+    assert f"prog_fbc:{sid}:0" not in _cbs(kb)
+
+    _run(_mark_prompt_and_set(DELEGATE_ID + 1, sid, rating=4, comment="Круто"))
+    _text, kb = _run(admin_program.render_session_card(sid))
+    assert f"prog_fbc:{sid}:0" in _cbs(kb)
