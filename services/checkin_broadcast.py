@@ -62,6 +62,8 @@ _MORNING_PREFIX = "checkin_qr_morning:"
 
 _DEFAULT_EVENING_TIME = "18:00"
 _DEFAULT_MORNING_TIME = "08:00"
+# Насколько утренний повтор может опоздать и всё ещё уйти (рестарт бота ровно в его время).
+_MORNING_CATCHUP = timedelta(minutes=2)
 
 
 # ── Pure helpers (unit-test surface, без БД и без aiogram-вызовов) ───────────────────────────
@@ -151,23 +153,45 @@ async def schedule_city_jobs(city: str | None) -> dict:
         # то же самое, что «дата не задана», рассылку не ставим.
         cancel_city_jobs(city)
         return {"scheduled": False, "reason": "bad_date"}
-    # Правка настроек мимо джобы (менеджер выставил дату форума в прошлом, отредактировал
-    # время после того, как оно уже прошло) — та же сделка, что у wave_start/reg_digest: «сейчас
-    # + минута», а не молчаливая потеря рассылки.
-    if ev_at <= now:
-        ev_at = now + timedelta(minutes=1)
-    if morn_at <= now:
-        morn_at = now + timedelta(minutes=1)
+    # Догон «сейчас + минута» — только пока форум не начался. Раньше прошедшее время
+    # переносилось безусловно, и после даты форума КАЖДЫЙ рестарт бота (reconcile на старте)
+    # слал QR неподтвердившим — мимо тихих часов, хоть в три ночи.
+    forum_day, today = morn_at.date(), now.date()
+    if forum_day < today:
+        cancel_city_jobs(city)
+        return {"scheduled": False, "reason": "past"}
 
-    sched.add_job(
-        _run_evening_job, "date", run_date=ev_at, args=[city],
-        id=ev_id, replace_existing=True,
-    )
-    sched.add_job(
-        _run_morning_job, "date", run_date=morn_at, args=[city],
-        id=morn_id, replace_existing=True,
-    )
-    return {"scheduled": True, "evening_at": ev_at, "morning_at": morn_at}
+    # Вечер накануне: прошёл, а форум завтра или позже (менеджер поздно включил) — догоняем;
+    # форум уже сегодня — вечернюю не ставим, её работу сделает утренний повтор.
+    if ev_at <= now:
+        ev_at = now + timedelta(minutes=1) if forum_day > today else None
+    # Утренний повтор: только в день форума и только пока его время впереди. Догон — лишь для
+    # ещё не сработавшей джобы, опоздавшей не больше чем на `_MORNING_CATCHUP` (рестарт в
+    # 08:01); без проверки «джоба ещё в хранилище» реконсиляция сразу после срабатывания
+    # отправила бы повтор второй раз.
+    if morn_at <= now:
+        pending = sched.get_job(morn_id) is not None
+        if pending and now - morn_at <= _MORNING_CATCHUP:
+            morn_at = now + timedelta(minutes=1)
+        else:
+            morn_at = None
+
+    for jid, target, run_at in (
+        (ev_id, _run_evening_job, ev_at), (morn_id, _run_morning_job, morn_at),
+    ):
+        if run_at is None:
+            try:
+                sched.remove_job(jid)
+            except Exception:
+                pass
+        else:
+            sched.add_job(
+                target, "date", run_date=run_at, args=[city], id=jid, replace_existing=True,
+            )
+    return {
+        "scheduled": ev_at is not None or morn_at is not None,
+        "evening_at": ev_at, "morning_at": morn_at,
+    }
 
 
 def cancel_city_jobs(city: str | None) -> None:
