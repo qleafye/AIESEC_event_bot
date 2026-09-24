@@ -490,6 +490,8 @@ _CODE_LITERALS_EN = {
         "happened, send a photo or your location — it'll all go to them.",
     "Принято. Если понадобится снова — жми «🆘 SOS».":
         "Got it. If you need it again — tap «🆘 SOS».",
+    "Оргкомитет отметил вопрос решённым. Снова нужна помощь — жми «🆘 SOS».":
+        "The organizers marked your issue as resolved. Need help again — tap «🆘 SOS».",
     "Сессия SOS закрыта по времени. Если всё ещё нужна помощь — нажми «🆘 SOS» снова.":
         "The SOS session closed due to inactivity. If you still need help — tap «🆘 SOS» again.",
     # Подпись кнопки геопозиции (`lit:sos.location_button`) — идёт через tr_kb (кнопки reply-
