@@ -1238,6 +1238,8 @@ user_actions|callback_query|ambassador_join|ambjoin
 user_actions|callback_query|checkin_qr_confirm_receipt|checkinqr_confirm
 user_actions|callback_query|checkin_not_arrived_respond|cna:*
 user_actions|callback_query|checkin_not_arrived_show_qr|cna_qr
+user_actions|callback_query|mute_broadcasts_today|bc_mute_today
+user_actions|callback_query|unmute_broadcasts_today|bc_unmute_today
 """.strip("\n").splitlines()
 
 
@@ -1566,7 +1568,12 @@ def test_snapshot_total_handler_count_is_292():
     # подтверждения отложенной рассылки, Broadcast.schedule_confirm). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 692-строчным снимком: ровно две
     # вставки (1+3 строки), 0 удалений, 0 реордеров (692 -> 696).
-    assert len(GOLDEN_SNAPSHOT) == 696
+    # Форум-ночь п.7 («🔕 Не присылать сегодня»): +2 user_actions.callback_query
+    # (mute_broadcasts_today/unmute_broadcasts_today, bc_mute_today/bc_unmute_today) — хвост
+    # файла, сразу после checkin_not_arrived_show_qr. Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 696-строчным снимком: ровно одна
+    # вставка из 2 строк, 0 удалений, 0 реордеров (696 -> 698).
+    assert len(GOLDEN_SNAPSHOT) == 698
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

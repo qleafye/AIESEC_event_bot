@@ -1925,3 +1925,46 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
     photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
     await callback.message.answer_photo(photo, caption=caption)
     await callback.answer()
+
+
+# ── Форум-ночь п.7 («🔕 Не присылать сегодня»): ответ делегата на предложение «🔕» ───────────
+# Литералы callback_data НАМЕРЕННО не импортированы из services/scheduler.py (тот же приём, что
+# у checkin_qr_confirm_receipt/CONFIRM_CALLBACK выше) — совпадение с services.scheduler.
+# MUTE_TODAY_CALLBACK/UNMUTE_TODAY_CALLBACK проверяет
+# tests/test_broadcast_mute_today_260924.py::test_mute_callback_literals_match_scheduler.
+
+_MUTE_TODAY_CONFIRM_TEXT = (
+    "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."
+)
+_UNMUTE_TODAY_CONFIRM_TEXT = "🔔 Хорошо, снова присылаю все рассылки."
+
+
+def _unmute_today_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔔 Присылать всё", callback_data="bc_unmute_today"),
+    ]])
+
+
+@router.callback_query(F.data == "bc_mute_today")
+async def mute_broadcasts_today(callback: types.CallbackQuery):
+    from database.db import set_broadcast_mute
+    today = msk_now().strftime("%Y-%m-%d")
+    await set_broadcast_mute(callback.from_user.id, today)
+    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            _MUTE_TODAY_CONFIRM_TEXT, reply_markup=_unmute_today_kb(),
+        )
+    except Exception:
+        pass  # сообщение могло устареть/удалиться -- заглушка уже записана в БД, это главное
+
+
+@router.callback_query(F.data == "bc_unmute_today")
+async def unmute_broadcasts_today(callback: types.CallbackQuery):
+    from database.db import set_broadcast_mute
+    await set_broadcast_mute(callback.from_user.id, None)
+    await callback.answer()
+    try:
+        await callback.message.edit_text(_UNMUTE_TODAY_CONFIRM_TEXT)
+    except Exception:
+        pass
