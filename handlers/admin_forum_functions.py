@@ -37,7 +37,7 @@ from cities import (
     per_city_key,
 )
 from handlers.admin import router
-from handlers.admin_caps import _holds, required_capability, resolve_capabilities
+from handlers.admin_caps import _holds, has_capability, required_capability, resolve_capabilities
 from handlers.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,
@@ -48,9 +48,11 @@ from handlers.admin_checkin import (
 from handlers.admin_checkin_training import sheet_allowed
 from handlers.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
+from handlers.states import ForumDayMenuTimeEdit
 from keyboards.builders import get_cancel_kb
 from services import session_feedback as sf
 from services.checkin_volunteer_broadcast import schedule_city_job as schedule_volunteer_guide_job
+from services.forum_day_menu import is_forum_day_menu_active_for_city
 from services.sos import is_sos_active_for_city
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
@@ -178,6 +180,23 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # мастер-тумблера (отключать самообслуживание делегата — не то, что просил владелец).
     # Информационная строка, без кнопки.
     lines.append("🔕 «Не присылать сегодня» у делегата: всегда доступна (весь сезон)")
+
+    # 10. Идея №1 бэклога чек-ина: режим «день форума» главного меню делегата — тумблер +
+    # окно активности (forum_date + sos_active_days, вечер накануне); родной экран заведён
+    # этим же модулем (forumdaymenu_cfg:*). Строка видна только держателю права на СВОЙ
+    # экран (moderate_reg — тот же капа, что и у входа в этот хаб) — тот же приём, что
+    # handlers.admin_sections.visible_rows использует для строк раздела (капа берётся из
+    # ADMIN_CAPS, а не второй самодельной картой).
+    if await has_capability(admin_id, "moderate_reg"):
+        fdm_on = await get_setting_typed_for_city("forum_day_menu_enabled", code) == "on"
+        fdm_line = _status(fdm_on)
+        if fdm_on:
+            fdm_active = await is_forum_day_menu_active_for_city(code)
+            fdm_line += " (сегодня форум — меню форумное)" if fdm_active else " (сейчас обычное меню)"
+        lines.append(f"📱 Меню «день форума»: {fdm_line}")
+        buttons.append([InlineKeyboardButton(
+            text="📱 Настройки меню «день форума»", callback_data=f"forumdaymenu_cfg:{_encode_city(code)}",
+        )])
 
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
@@ -338,5 +357,122 @@ async def checkinvol_time_step(message: types.Message, state: FSMContext):
     await _safe_reschedule_vol(code)
 
     text, kb = await _vol_cfg_text_kb(code)
+    await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Идея №1 бэклога чек-ина: режим «день форума» главного меню делегата ─────────────────────
+# Форма byte-в-byte `_vol_cfg_text_kb`/`checkinvol_toggle_go`/`checkinvol_time_start` выше —
+# тумблер + один временной слот («вечером накануне»), без джобы для переставления (не
+# APScheduler-фича — `services.forum_day_menu` резолвится живьём на каждом рендере меню, тут
+# перепланировать нечего).
+
+async def _forumdaymenu_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("forum_day_menu_enabled", code)
+    t = await get_setting_typed_for_city("forum_day_menu_start_time", code) or "18:00"
+    label = await city_label(code) if code else None
+    on = enabled == "on"
+
+    lines = ["📱 <b>Меню «день форума»</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Режим: {'✅ Вкл' if on else '❌ Выкл'}")
+    lines.append(f"Начало (вечером накануне форума): {t}")
+    if on:
+        active_now = await is_forum_day_menu_active_for_city(code)
+        lines.append("Сейчас: 🎪 форумное меню" if active_now else "Сейчас: обычное меню")
+    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    if not forum_date_set:
+        lines.append("\n⚠️ «🗓 Дата начала форума» не задана — режим не включится, даже если Вкл здесь.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Режим: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"forumdaymenu_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🕕 Начало: {t}",
+            callback_data=f"forumdaymenu_time:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("forumdaymenu_cfg:"))
+async def forumdaymenu_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await _forumdaymenu_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("forumdaymenu_toggle:"))
+async def forumdaymenu_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "forum_day_menu_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current == "on" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    text, kb = await _forumdaymenu_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("forumdaymenu_time:"))
+async def forumdaymenu_time_start(callback: types.CallbackQuery, state: FSMContext):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    await state.update_data(forumdaymenu_time_city=code)
+    await state.set_state(ForumDayMenuTimeEdit.waiting_value)
+    await callback.message.answer(
+        "Во сколько ВЕЧЕРОМ НАКАНУНЕ форума (московское время) включать форумное меню? "
+        "Формат <code>ЧЧ:ММ</code>, например <code>18:00</code>.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(ForumDayMenuTimeEdit), Command("cancel"))
+@router.message(StateFilter(ForumDayMenuTimeEdit), F.text == "Отмена")
+async def cancel_forumdaymenu_time_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(ForumDayMenuTimeEdit.waiting_value)
+async def forumdaymenu_time_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    code = data.get("forumdaymenu_time_city")
+    await state.set_state(None)
+
+    if not await _city_allowed(message.from_user.id, code):
+        await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
+        return
+
+    key = "forum_day_menu_start_time"
+    value, error = validate_setting_value(key, (message.text or "").strip())
+    if error:
+        await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(message.from_user.id, composed, value)
+    else:
+        await set_setting_by_admin(message.from_user.id, key, value)
+
+    text, kb = await _forumdaymenu_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
     await message.answer(text, parse_mode="HTML", reply_markup=kb)

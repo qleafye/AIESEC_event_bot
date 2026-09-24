@@ -335,6 +335,14 @@ class CheckinVolGuideTimeEdit(StatesGroup):
     waiting_value = State()
 
 
+class ForumDayMenuTimeEdit(StatesGroup):
+    # Идея №1 бэклога чек-ина (режим «день форума»): ввод «ЧЧ:ММ» для времени начала режима
+    # вечером накануне форума (handlers/admin_forum_functions.py,
+    # forum_day_menu_start_time) — тот же приём, что CheckinVolGuideTimeEdit выше, один
+    # временной слот, город — в state.get_data().
+    waiting_value = State()
+
+
 class ProgramSessionField(StatesGroup):
     # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
     # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за
