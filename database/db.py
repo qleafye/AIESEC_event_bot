@@ -8035,50 +8035,71 @@ async def record_session_checkin(
     `aiosqlite.IntegrityError` на финальном INSERT (тот же приём, что у `reissue_checkin_token`
     выше) — редкая гонка двух волонтёров, отмечающих ОДНОГО делегата на РАЗНЫЕ сессии слота
     практически одновременно: проигравший перечитывает уже вставленную конкурентом строку и
-    отвечает `"duplicate"` за НЕЁ, а не падает и не дублирует запись."""
+    отвечает `"duplicate"` за НЕЁ, а не падает и не дублирует запись.
+
+    Ревью TOCTOU (критично): read-delete-insert выше — критическая секция, а не последовательность
+    независимых запросов. `UNIQUE(telegram_id, point)` защищает только ОДНУ точку, а не слот
+    целиком — если два волонтёра ОДНОВРЕМЕННО отмечают ОДНОГО делегата на ДВУХ разных сессиях
+    ОДНОГО слота, каждое соединение делает свой SELECT «других отметок слота нет» ДО того, как
+    сосед закоммитил свой DELETE+INSERT: без явной блокировки sqlite3/aiosqlite открывает
+    транзакцию лениво — только перед первым DML (INSERT/UPDATE/DELETE), не перед SELECT, — то
+    есть read идёт в autocommit-режиме без лока, оба видят «слот свободен» и оба доходят до
+    INSERT (по РАЗНЫМ `point`, поэтому constraint не срабатывает) -> в слоте остаются ДВЕ
+    отметки вместо одной (нарушение D-20). `await db.execute("BEGIN IMMEDIATE")` ниже ставится
+    ДО первого SELECT и берёт RESERVED-лок сразу (не отложенно): второе соединение, дошедшее до
+    своего `BEGIN IMMEDIATE` раньше, чем первое закоммитило/откатило, ждёт (busy_timeout —
+    `DB_BUSY_TIMEOUT_MS` у `_connect()` выше, 5с) и видит уже применённый DELETE+INSERT первого
+    ДО своего собственного SELECT."""
     stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
     created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     point = f"session:{session_id}"
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
-            (telegram_id, point),
-        ) as cursor:
-            existing_here = await cursor.fetchone()
-        if existing_here is not None:
-            return "duplicate", existing_here["scanned_at"], None
-
-        previous_session_id: int | None = None
-        if slot_session_ids:
-            other_points = [f"session:{sid}" for sid in slot_session_ids]
-            placeholders = ",".join("?" for _ in other_points)
-            async with db.execute(
-                f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
-                [telegram_id, *other_points],
-            ) as cursor:
-                other_rows = await cursor.fetchall()
-            if other_rows:
-                previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
-                await db.execute(
-                    f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
-                    [telegram_id, *other_points],
-                )
+        await db.execute("BEGIN IMMEDIATE")
         try:
-            await db.execute(
-                "INSERT INTO checkins "
-                "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
-            )
-            await db.commit()
-        except aiosqlite.IntegrityError:
             async with db.execute(
                 "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
                 (telegram_id, point),
             ) as cursor:
-                raced = await cursor.fetchone()
-            return "duplicate", (raced["scanned_at"] if raced else stamp), None
+                existing_here = await cursor.fetchone()
+            if existing_here is not None:
+                await db.rollback()  # ничего не писали -- лок можно снять сразу
+                return "duplicate", existing_here["scanned_at"], None
+
+            previous_session_id: int | None = None
+            if slot_session_ids:
+                other_points = [f"session:{sid}" for sid in slot_session_ids]
+                placeholders = ",".join("?" for _ in other_points)
+                async with db.execute(
+                    f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                    [telegram_id, *other_points],
+                ) as cursor:
+                    other_rows = await cursor.fetchall()
+                if other_rows:
+                    previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
+                    await db.execute(
+                        f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                        [telegram_id, *other_points],
+                    )
+            try:
+                await db.execute(
+                    "INSERT INTO checkins "
+                    "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                await db.rollback()
+                async with db.execute(
+                    "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+                    (telegram_id, point),
+                ) as cursor:
+                    raced = await cursor.fetchone()
+                return "duplicate", (raced["scanned_at"] if raced else stamp), None
+        except Exception:
+            await db.rollback()
+            raise
 
     status = "moved" if previous_session_id is not None else "new"
     return status, stamp, previous_session_id

@@ -221,6 +221,38 @@ def test_record_session_checkin_independent_from_other_delegate(tmp_path):
     assert asyncio.run(db.count_checkins_by_point("session:2")) == 1
 
 
+# Ревью TOCTOU (критично, D-20): два волонтёра одновременно отмечают ОДНОГО делегата на ДВУХ
+# РАЗНЫХ сессиях ОДНОГО слота — `UNIQUE(telegram_id, point)` защищает только одну точку, а не
+# слот целиком, так что без явной критической секции (`BEGIN IMMEDIATE` до первого SELECT,
+# см. докстринг `record_session_checkin`) оба конкурентных read увидели бы «слот свободен» до
+# коммита соседа, и оба INSERT прошли бы -- две отметки слота вместо одной.
+
+def test_record_session_checkin_concurrent_same_delegate_same_slot_exactly_one_row(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    n = 16
+    session_ids = list(range(1, n + 1))
+
+    async def _attempt(sid):
+        others = [s for s in session_ids if s != sid]
+        return await db.record_session_checkin(UID, sid, others, source="miniapp")
+
+    async def _run_all():
+        return await asyncio.gather(*[_attempt(sid) for sid in session_ids])
+
+    results = asyncio.run(_run_all())
+
+    total_rows = sum(
+        asyncio.run(db.count_checkins_by_point(f"session:{sid}")) for sid in session_ids
+    )
+    assert total_rows == 1, (
+        f"слот обязан кончиться РОВНО одной отметкой (D-20), получили {total_rows} строк: {results}"
+    )
+    # ни один из N конкурентных вызовов не должен упасть -- проигравшие видят "duplicate"/
+    # "moved" за уже применённой критической секцией конкурента, а не исключение.
+    assert all(r[0] in ("new", "moved", "duplicate") for r in results)
+
+
 def test_count_approved_current_season_no_season_setting_counts_all_approved(tmp_path):
     _use_tmp_db(tmp_path)
     _seed_user(UID)
