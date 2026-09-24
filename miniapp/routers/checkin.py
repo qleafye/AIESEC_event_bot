@@ -82,6 +82,26 @@ def _staff_name(p: Principal) -> str | None:
     return venue_log.staff_display_name(first_name=p.first_name, username=p.username)
 
 
+# Статусы `record_arrival`, которые означают «не пропущен» (а не отметку/повтор).
+_ARRIVAL_DENIAL_STATUSES = frozenset({"wrong_city", "wrong_day", "invalid_point"})
+
+
+async def _log_denial(
+    p: Principal, bound: str | None, code: str, *, point: str, source: str,
+    user: dict | None = None,
+) -> None:
+    """Отказ -> строка «⛔ не пропустил(а)» в журнале площадки. Из данных делегата — только
+    `telegram_id` (если найден). Город — стойки (`bound`), иначе делегата. Fail-soft: ответ
+    сканеру не зависит от журнала."""
+    try:
+        await venue_log.log_denial(
+            code, staff_id=p.telegram_id, staff_name=_staff_name(p),
+            telegram_id=(user or {}).get("telegram_id"), city=bound, point=point, source=source,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("checkin: не записал отказ %s в журнал площадки", code)
+
+
 async def _with_undo(result: dict, p: Principal) -> dict:
     """Идея №32: живая отметка (new/moved) получила строку журнала — фронт показывает на
     плашке кнопку «↩️ Отменить» на `undo_seconds` секунд. Подпись — из реестра, в переводе
@@ -204,11 +224,13 @@ async def checkin_scan(
     bound = await _bound_city(request, p)
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
+        await _log_denial(p, bound, point_denial["status"], point=point, source="miniapp")
         return point_denial
 
     parsed = parse_qr_payload(body.payload)
     tag = parsed.get("tag") or ""
     if not tag or tag != await current_event_tag():
+        await _log_denial(p, bound, "foreign_event", point=point, source="miniapp")
         return {
             "status": "foreign_event",
             "reason_text": DENIAL_REASON_TEXT["foreign_event"],
@@ -219,6 +241,7 @@ async def checkin_scan(
     token = parsed.get("token")
     user, denial_code = await resolve_scanned_user(token)
     if denial_code is not None:
+        await _log_denial(p, bound, denial_code, point=point, source="miniapp", user=user)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
             "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
@@ -229,11 +252,14 @@ async def checkin_scan(
     if not point.startswith("session:"):
         entry_denial = await _entry_city_denial(bound, user)
         if entry_denial is not None:
+            await _log_denial(p, bound, entry_denial["status"], point=point, source="miniapp", user=user)
             return {**entry_denial, **_person_fields(user)}
 
     result = await _with_undo(await _forward_first_entry(await record_arrival(
         user, point, source="miniapp", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
     )), p)
+    if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
+        await _log_denial(p, bound, result["status"], point=point, source="miniapp", user=user)
     return {**result, **_person_fields(user)}
 
 
@@ -254,11 +280,13 @@ async def checkin_manual(
     bound = await _bound_city(request, p)
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
+        await _log_denial(p, bound, point_denial["status"], point=point, source="manual")
         return point_denial
 
     user = await get_user(body.telegram_id)
     denial_code = await checkin_denial(user)
     if denial_code is not None:
+        await _log_denial(p, bound, denial_code, point=point, source="manual", user=user)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
             "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
@@ -269,11 +297,14 @@ async def checkin_manual(
     if not point.startswith("session:"):
         entry_denial = await _entry_city_denial(bound, user)
         if entry_denial is not None:
+            await _log_denial(p, bound, entry_denial["status"], point=point, source="manual", user=user)
             return {**entry_denial, **_person_fields(user)}
 
     result = await _with_undo(await _forward_first_entry(await record_arrival(
         user, point, source="manual", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
     )), p)
+    if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
+        await _log_denial(p, bound, result["status"], point=point, source="manual", user=user)
     return {**result, **_person_fields(user)}
 
 
