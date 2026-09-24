@@ -75,6 +75,9 @@ MENU_BUTTONS = [
     # ниже (has_important_today) прячет кнопку, пока сегодня для этого делегата не было ни
     # одной важной рассылки — тот же приём, что у menu_faq/menu_checkin_qr.
     ("menu_important", "❗ Важное"),
+    # Форум-ночь п.8 (идея №19, SOS): кнопка видна только в дни форума города — гейт ниже
+    # (services.sos.is_sos_active_for_city), тот же приём, что у menu_schedule/menu_important.
+    ("menu_sos", "🆘 SOS"),
 ]
 
 # Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
@@ -229,6 +232,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             logger.error(f"get_main_menu_kb: has_important_today resolve failed for {telegram_id}: {e}")
             important_on = False
 
+    # Форум-ночь п.8 (идея №19, SOS): кнопка только в дни форума города — тот же приём, что
+    # schedule_on выше (единственное чтение до цикла, fail-soft к False, город без фолбэка на
+    # default_city_code() не бывает — SOS привязывается к конкретному чату конкретного города).
+    sos_on = False
+    try:
+        sos_city = code if code is not None else default_city_code()
+        from services.sos import is_sos_active_for_city
+        sos_on = await is_sos_active_for_city(sos_city)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: is_sos_active_for_city resolve failed for {telegram_id}: {e}")
+        sos_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -264,6 +279,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Форум-ночь п.7: вторая половина гейта — сама кнопка value=="on" недостаточна,
             # пока сегодня не было ни одной важной рассылки этому делегату.
             if key == "menu_important" and not important_on:
+                continue
+            # Форум-ночь п.8 (SOS): вторая половина гейта — сама кнопка value=="on"
+            # недостаточна вне дней форума города.
+            if key == "menu_sos" and not sos_on:
                 continue
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,

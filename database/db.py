@@ -1592,6 +1592,57 @@ async def init_db():
             "ON program_sessions(city, day, start_time)"
         )
 
+        # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — карточка в чат оргов + захват/решение/
+        # эскалация. Метки времени — московские (`services.timeutil.msk_now()`, конвенция
+        # квика 260912-mcj для нового кода, delegate_questions/reg_answer_history остаются
+        # UTC-исключением по docstring `_MSK_MIGRATION_COLUMNS` выше и SOS в него не входит).
+        # `city` — СНИМОК города делегата на момент отправки (тот же приём, что
+        # `checkin_qr_sends.event_city`) — привязка чата SOS резолвится по нему. `chat_id`/
+        # `card_message_id` — где живёт карточка (группа оргов ИЛИ, при фоллбэке без
+        # привязанного чата, NULL — тред делегатского ответа в этом случае недоступен,
+        # см. `services/sos.py`). `claimed_by`/`resolved_by` — атомарные UPDATE ... WHERE
+        # IS NULL, тот же приём, что `claim_question`/T-08-33.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                category TEXT NOT NULL,
+                details_text TEXT,
+                details_photo_file_id TEXT,
+                latitude REAL,
+                longitude REAL,
+                chat_id INTEGER,
+                card_message_id INTEGER,
+                claimed_by INTEGER,
+                claimed_by_name TEXT,
+                claimed_at TEXT,
+                resolved_by INTEGER,
+                resolved_by_name TEXT,
+                resolved_at TEXT,
+                escalated_at TEXT,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sos_reports_city ON sos_reports(city)"
+        )
+
+        # Форум-ночь п.8: заявка «Привязать чат SOS» ждёт пересылки/команды `/sos_id` из
+        # целевой группы — `admin_id` PRIMARY KEY (одна незавершённая заявка на менеджера,
+        # повторный тап кнопки перезаписывает). Не делегатский след -> USER_PURGE_EXCLUDED
+        # (это бронирование действия менеджера, не данные делегата).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_chat_bind_pending (
+                admin_id INTEGER PRIMARY KEY,
+                city TEXT,
+                requested_at TEXT NOT NULL
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -5138,6 +5189,214 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
     }
 
 
+# ── Форум-ночь п.8 (идея №19, SOS): sos_reports аксессоры ───────────────────────────────────
+#
+# Та же форма, что «Phase 8 (ROLE-01, D-13/D-14): delegate_questions accessors» выше — строка
+# создаётся ОДИН раз, атомарный захват (`claim_sos_report`) переворачивает `claimed_by` только
+# из NULL (T-08-33/D-14 идиома), `resolve_sos_report` закрывает случай «✅ Решено» без
+# предварительного «Беру» (COALESCE подставляет резолвера захватчиком одним UPDATE).
+
+async def create_sos_report(
+    telegram_id: int, city: str | None, category: str, details_text: str | None,
+    details_photo_file_id: str | None, latitude: float | None, longitude: float | None,
+) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO sos_reports (telegram_id, city, category, details_text, "
+            "details_photo_file_id, latitude, longitude, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, city, category, details_text, details_photo_file_id, latitude,
+             longitude, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_sos_report(report_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_reports WHERE id = ?", (report_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_open_sos_report(telegram_id: int) -> dict | None:
+    """Анти-спам (пункт 1 плана): «не чаще одного открытого SOS на делегата» — открытый значит
+    ещё не решённый (`resolved_at IS NULL`), взятый в работу тоже считается открытым. Последняя
+    (`ORDER BY id DESC`) — если строк несколько (не должно, но fail-soft на случай гонки)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_reports WHERE telegram_id = ? AND resolved_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def set_sos_card(report_id: int, chat_id: int, message_id: int) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET chat_id = ?, card_message_id = ? WHERE id = ?",
+            (chat_id, message_id, report_id),
+        )
+        await db.commit()
+
+
+async def claim_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
+    """Атомарный захват «🙋 Беру» — True только у ТОГО вызова, что перевернул строку
+    (rowcount==1); конкурентный второй тап того же момента получает False (та же идиома, что
+    `claim_question`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET claimed_by = ?, claimed_by_name = ?, claimed_at = ? "
+            "WHERE id = ? AND claimed_by IS NULL",
+            (admin_id, admin_name, msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def resolve_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
+    """«✅ Решено» — атомарно и независимо от того, был ли уже захват: `COALESCE` подставляет
+    резолвера захватчиком ОДНИМ UPDATE, если строка ещё открыта (`claimed_by IS NULL`) — орг,
+    решивший вопрос без предварительного «Беру», не оставляет карточку без ответственного."""
+    async with _connect() as db:
+        now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor = await db.execute(
+            "UPDATE sos_reports SET resolved_by = ?, resolved_by_name = ?, resolved_at = ?, "
+            "claimed_by = COALESCE(claimed_by, ?), claimed_by_name = COALESCE(claimed_by_name, ?), "
+            "claimed_at = COALESCE(claimed_at, ?) WHERE id = ? AND resolved_at IS NULL",
+            (admin_id, admin_name, now, admin_id, admin_name, now, report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def set_sos_escalated(report_id: int) -> bool:
+    """Штамп эскалации — идемпотентно (`WHERE escalated_at IS NULL`): повторный тик той же
+    джобы (не должен случиться при корректном `replace_existing=True`, но fail-soft) не
+    перезатирает первую метку и не шлёт повтор дважды."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+# Статус строки sos_reports — ТРИ состояния, зеркало идиомы `_QUESTION_STATUS_SQL` выше:
+# открыт (никто не взял) / взят (claimed_by ЕСТЬ, ещё не решён) / решён.
+_SOS_STATUS_SQL = {
+    "open": "s.claimed_by IS NULL AND s.resolved_at IS NULL",
+    "claimed": "s.claimed_by IS NOT NULL AND s.resolved_at IS NULL",
+    "resolved": "s.resolved_at IS NOT NULL",
+}
+_SOS_ORDER_SQL = {
+    "open": "ORDER BY s.created_at ASC, s.id ASC",       # дольше без ответа -> выше
+    "claimed": "ORDER BY s.claimed_at ASC, s.id ASC",     # дольше в работе -> выше
+    "resolved": "ORDER BY s.resolved_at DESC, s.id DESC",  # свежие решённые сверху
+}
+
+
+async def list_sos_reports_page(*, status: str | None = None, city_scope=None,
+                                 today: str | None = None, limit: int = 6,
+                                 offset: int = 0) -> list[dict]:
+    """Страница экрана менеджера «🆘 SOS» (пункт 5 плана). `today` — «ГГГГ-ММ-ДД» (московская
+    дата, `services.timeutil.msk_now()`) — применяется ТОЛЬКО к фильтру "resolved" (пункт 5:
+    «решённые ЗА СЕГОДНЯ»), открытые/взятые видны независимо от даты (они ждут действия сейчас,
+    а не журнала). Неизвестный `status` -> без фильтра статуса вовсе (чип «Все»)."""
+    where = []
+    params: list = []
+    frag = _SOS_STATUS_SQL.get(status)
+    if frag:
+        where.append(frag)
+    if status == "resolved" and today:
+        where.append("date(s.resolved_at) = ?")
+        params.append(today)
+    city_frag, city_params = _city_clause(city_scope, "s.city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    order_sql = _SOS_ORDER_SQL.get(status, "ORDER BY s.created_at DESC, s.id DESC")
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT s.*, u.full_name AS user_full_name, u.username AS user_username "
+            "FROM sos_reports s LEFT JOIN users u ON u.telegram_id = s.telegram_id "
+            f"{where_sql} {order_sql} LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def count_sos_by_status(*, city_scope=None, today: str | None = None) -> dict[str, int]:
+    """Счётчики для шапки экрана: открыто/взято — за всё время (ждут действия ПРЯМО СЕЙЧАС),
+    решено — ТОЛЬКО за `today` (та же граница, что `list_sos_reports_page`)."""
+    city_frag, city_params = _city_clause(city_scope, "s.city")
+    base_where = [city_frag] if city_frag else []
+    resolved_where = base_where + (["date(s.resolved_at) = ?"] if today else [])
+    resolved_params = list(city_params) + ([today] if today else [])
+
+    def _where(fragments: list[str]) -> str:
+        return f"WHERE {' AND '.join(fragments)}" if fragments else ""
+
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s {_where([*base_where, _SOS_STATUS_SQL['open']])}",
+            tuple(city_params),
+        ) as cursor:
+            open_n = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s {_where([*base_where, _SOS_STATUS_SQL['claimed']])}",
+            tuple(city_params),
+        ) as cursor:
+            claimed_n = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT COUNT(*) FROM sos_reports s "
+            f"{_where([*resolved_where, _SOS_STATUS_SQL['resolved']])}",
+            tuple(resolved_params),
+        ) as cursor:
+            resolved_n = (await cursor.fetchone())[0]
+    return {
+        "open": int(open_n or 0),
+        "claimed": int(claimed_n or 0),
+        "resolved": int(resolved_n or 0),
+    }
+
+
+async def set_sos_bind_pending(admin_id: int, city: str | None) -> None:
+    """Заявка «Привязать чат SOS» (пункт 2 плана) — `INSERT OR REPLACE`: повторный тап кнопки
+    тем же менеджером перезаписывает (город мог смениться, старая заявка не должна ожить)."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO sos_chat_bind_pending (admin_id, city, requested_at) "
+            "VALUES (?, ?, ?)",
+            (admin_id, city, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
+
+
+async def get_sos_bind_pending(admin_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sos_chat_bind_pending WHERE admin_id = ?", (admin_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def clear_sos_bind_pending(admin_id: int) -> None:
+    async with _connect() as db:
+        await db.execute("DELETE FROM sos_chat_bind_pending WHERE admin_id = ?", (admin_id,))
+        await db.commit()
+
+
 # ── Квик 260914-rgq (RGQ-01): постраничный список заявок ────────────────────────────────────
 #
 # Та же идиома «фрагменты WHERE словарём + LIMIT/OFFSET в SQL», что у `list_questions_page`/
@@ -7926,6 +8185,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived.telegram_id — кому и когда ушёл
     # шаблон «не пришёл» + его ответ, тот же личный след, группа общая "checkin".
     ("checkin_not_arrived", "telegram_id", "checkin"),
+    # Форум-ночь п.8 (идея №19, SOS): sos_reports.telegram_id — личная заявка SOS делегата
+    # (категория/текст/фото/геопозиция), тот же личный след, что chat_activity/checkins выше.
+    # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
+    # отдельно (строка целиком уходит вместе с делегатом, как и у соседей этой таблицы).
+    ("sos_reports", "telegram_id", "sos"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({

@@ -373,6 +373,9 @@ def test_staff_crud_duplicate_add_is_idempotent(tmp_path):
 _UNKEYED_HANDLERS = {
     "admin_reply_to_question": "special:question_reply",
     "filter_pick_field": "filter_f_*",
+    # Форум-ночь п.8 (идея №19, SOS): реплай-детекция карточки SOS — та же форма, что
+    # is_question_reply/admin_reply_to_question выше (предикат по форме сообщения, не F.data).
+    "admin_reply_to_sos": "special:sos_reply",
 }
 
 

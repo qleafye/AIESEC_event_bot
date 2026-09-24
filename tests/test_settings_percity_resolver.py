@@ -173,6 +173,10 @@ EXPECTED_PER_CITY_KEYS = {
     # Форум-ночь п.7 («❗ Важное»): кнопка меню — та же ось per_city, что остальные menu_*
     # выше (menu_checkin_qr/menu_schedule).
     "menu_important",
+    # Форум-ночь п.8 (идея №19, SOS): кнопка меню — та же ось per_city, что остальные menu_*
+    # (город может отдельно спрятать/показать SOS); окно активности и эскалация — per_city,
+    # т.к. города форума идут в разные дни (тот же довод, что forum_date/checkin_qr_* выше).
+    "menu_sos", "sos_active_days", "sos_escalation_minutes",
 }
 
 
