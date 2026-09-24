@@ -78,6 +78,15 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
     try:
         if await get_setting_typed_for_city("forum_welcome_enabled", city) != "on":
             return
+        # Вход каждый день (24.09): хук зовётся на первый вход КАЖДОГО дня, `first_of_forum`
+        # отличает настоящий первый приход (True) от повторного зова на второй день
+        # двухдневного форума (False) — иначе делегат Москвы получил бы приветствие дважды.
+        # Отсутствие kwarg — обратная совместимость со старым событием из outbox
+        # (`services/miniapp_outbox.py`, событие могло попасть в очередь ДО того, как
+        # `services.checkin` начал класть `first_of_forum` в событие) — трактуем как True,
+        # чтобы не потерять приветствие для уже поставленных в очередь событий.
+        if not kwargs.get("first_of_forum", True):
+            return
         source = kwargs.get("source") or ""
         scanned_at = kwargs.get("scanned_at")
         approx = bool(kwargs.get("approx"))

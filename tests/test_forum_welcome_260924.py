@@ -200,6 +200,55 @@ def test_duplicate_entry_does_not_resend(tmp_path):
     assert len(bot.sent) == 1
 
 
+def test_second_day_of_forum_does_not_resend(tmp_path):
+    """Вход каждый день: первый вход ВТОРОГО дня двухдневного форума зовёт хук ещё раз, но с
+    `first_of_forum=False` — приветствие уходит только на первый день, повторно не шлётся."""
+    _ready(tmp_path)
+    _run(db.set_setting("forum_welcome_enabled", "on"))
+    fw.register()
+    _run(_add_delegate(UID))
+    bot = FakeBot()
+    user = _run(db.get_user(UID))
+    _run(record_arrival(user, ENTRY_POINT, source="miniapp", bot=bot))
+    assert len(bot.sent) == 1
+    # Второй день -- имитируем сменой даты в самой отметке (UNIQUE по дню, "новый" вход).
+    from datetime import timedelta
+
+    from services.timeutil import msk_now
+
+    tomorrow = (msk_now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    _run(record_arrival(user, ENTRY_POINT, source="miniapp", scanned_at=tomorrow, bot=bot))
+    assert len(bot.sent) == 1  # второй день форума -- приветствие не ушло повторно
+
+
+def test_first_day_of_forum_sends(tmp_path):
+    """Первый вход первого дня форума -- `first_of_forum=True` -- приветствие уходит (базовый
+    случай, зафиксирован отдельно от `test_second_day_of_forum_does_not_resend` для ясности
+    контраста)."""
+    _ready(tmp_path)
+    _run(db.set_setting("forum_welcome_enabled", "on"))
+    fw.register()
+    _run(_add_delegate(UID))
+    bot = FakeBot()
+    _run(record_arrival(
+        _run(db.get_user(UID)), ENTRY_POINT, source="miniapp",
+        scanned_at="2026-10-30 09:15:00", bot=bot,
+    ))
+    assert len(bot.sent) == 1
+
+
+def test_missing_first_of_forum_kwarg_defaults_to_send(tmp_path):
+    """Обратная совместимость: если вызывающий не передал `first_of_forum` вообще (старое
+    событие из outbox), слушатель трактует это как True и шлёт приветствие."""
+    _ready(tmp_path)
+    _run(db.set_setting("forum_welcome_enabled", "on"))
+    fw.register()
+    _run(_add_delegate(UID))
+    bot = FakeBot()
+    _run(fw._on_first_entry(bot, UID, "msk", "2026-10-30", source="miniapp", scanned_at="2026-10-30 09:15:00"))
+    assert len(bot.sent) == 1
+
+
 def test_csv_source_fresh_scan_sends(tmp_path):
     _ready(tmp_path)
     _run(db.set_setting("forum_welcome_enabled", "on"))
