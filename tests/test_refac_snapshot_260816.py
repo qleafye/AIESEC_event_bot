@@ -1263,15 +1263,10 @@ user_actions|message|show_my_checkin_qr|
 user_actions|message|show_program_schedule|
 user_actions|message|show_important_today|
 user_actions|message|sos_start|
-user_actions|message|sos_details_cancel|state:SosReport:*
-user_actions|message|sos_details_skip|state:SosReport:*
-user_actions|message|sos_details_step|state:SosReport:*
-user_actions|message|sos_location_cancel|state:SosReport:*
-user_actions|message|sos_location_skip|state:SosReport:*
-user_actions|message|sos_location_step|state:SosReport:*
-user_actions|message|sos_location_invalid|state:SosReport:*
+user_actions|message|sos_collecting_done|state:SosReport:*
+user_actions|message|sos_collecting_location|state:SosReport:*
+user_actions|message|sos_collecting_step|state:SosReport:*
 user_actions|message|sos_delegate_followup|
-user_actions|message|sos_followup_step|state:SosReport:*
 user_actions|message|sfb_comment_step|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
@@ -1292,7 +1287,6 @@ user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
 user_actions|callback_query|pds_day_open|pds_day:*
 user_actions|callback_query|pds_days_back|pds_days
-user_actions|callback_query|sos_pick_category|sos_cat:*
 user_actions|callback_query|sfb_rate|
 user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|show_wave_rating|ambwave
@@ -1679,7 +1673,18 @@ def test_snapshot_total_handler_count_is_292():
     # prog_fbdelay_custom_start/prog_fbtext_edit, handlers/session_feedback.py, сразу после
     # prog_fbc_open и ПЕРЕД началом payment.router) — см. Drift note над GOLDEN_SNAPSHOT. Две
     # чистые вставки, 0 удалений, 0 реордеров (723 -> 733).
-    assert len(GOLDEN_SNAPSHOT) == 733
+    # D-31 (24.09, «SOS без категорий»): категорийный визард делегатской стороны SOS снесён —
+    # -9/+3 user_actions.message (`sos_details_cancel`/`sos_details_skip`/`sos_details_step`/
+    # `sos_location_cancel`/`sos_location_skip`/`sos_location_step`/`sos_location_invalid`/
+    # `sos_followup_step` сняты, вместо них 3 — `sos_collecting_done`/`sos_collecting_location`/
+    # `sos_collecting_step`, единое состояние `SosReport.collecting`, встали на месте старого
+    # блока сразу после `sos_start` и ПЕРЕД `sos_delegate_followup`, который остался на месте
+    # файла, но сдвинулся выше в снимке вместе с блоком) + -1 user_actions.callback_query
+    # (`sos_pick_category`/`sos_cat:*` снят — категорий-кнопок больше нет). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 733-строчным снимком: 2 чистых
+    # удаления блоков (9+1), 1 чистая вставка (3), 0 реордеров вне удалённого/вставленного
+    # диапазона (733 -> 727).
+    assert len(GOLDEN_SNAPSHOT) == 727
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
