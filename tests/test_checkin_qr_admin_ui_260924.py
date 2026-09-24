@@ -534,3 +534,19 @@ def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, mon
         assert s.get_jobs() == []
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_master_toggle_survives_reconcile_failure(tmp_path, monkeypatch):
+    """Сверка упала — тумблер всё равно сохранён, менеджер получил подтверждение."""
+    from handlers import admin_settings
+
+    _db_ready(tmp_path)
+
+    async def boom():
+        raise RuntimeError("scheduler down")
+
+    monkeypatch.setattr(broadcast_svc, "reconcile_forum_jobs", boom)
+    cb = _FakeCallback("toggle_checkin_qr_enabled", ADMIN_ID)
+    asyncio.run(admin_settings.toggle_checkin_qr_enabled(cb))
+    assert asyncio.run(db.get_setting("checkin_qr_enabled")) == "on"
+    assert cb.answers and cb.message.edited
