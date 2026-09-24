@@ -2059,6 +2059,34 @@ async def init_db():
             )
         ''')
 
+        # Трек «региональные форумы → Москва» (04.10): предложение одобренному неявившемуся
+        # делегата регионального форума перенести заявку на московский форум. Та же идемпотентность
+        # ОТПРАВКИ, что у `forum_noshow_poll` выше (`UNIQUE(telegram_id, season)` — одно
+        # предложение на сезон, не на регион: делегат мог сменить регион между отправкой и
+        # ответом, строка остаётся привязана к сезону). `source_city` — снимок `users.event_city`
+        # НА МОМЕНТ отправки (для отчётности, не для маршрутизации самого переноса).
+        # `response` — сентинелы `RNM_MOVED`/`RNM_DECLINED`, `NULL` — ещё не ответил.
+        # `target_city` — куда реально перевели (заполняется только при `response=RNM_MOVED`;
+        # может отличаться от текущей настройки `regional_noshow_target_city`, если её поменяли
+        # между отправкой и ответом — строка хранит ФАКТ, не текущую настройку).
+        # `notified_at` — когда строка попала в агрегированную сводку менеджеру города
+        # назначения (`services/regional_noshow_move.py::_notify_managers_job`), `NULL` — ещё
+        # не попала (или ответ не `RNM_MOVED` — сводка считает только реально переехавших).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS regional_noshow_move (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                source_city TEXT,
+                season TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                response TEXT,
+                responded_at TEXT,
+                target_city TEXT,
+                notified_at TEXT,
+                UNIQUE(telegram_id, season)
+            )
+        ''')
+
         # Идея №20 бэклога чек-ина: бюро находок. `chat_id`/`message_id` — где опубликован
         # пост находки (группа делегатов, `services/chat_tracking.py::chat_for_city`), НЕ
         # личность делегата — тот же класс, что `sos_card_copies.chat_id` выше
@@ -9131,6 +9159,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # удаляемого делегата в лист. Строки листа удаления не переживают, писать некуда — событие
     # уходит вместе с человеком, группа общая "checkin" (соседи checkins/venue_log выше).
     ("sheet_arrival_queue", "telegram_id", "checkin"),
+    # Трек «региональные форумы → Москва»: regional_noshow_move.telegram_id — кому и когда ушло
+    # предложение переноса + сам ответ (перенёсся/отказался), тот же личный след, группа общая
+    # "checkin" (соседи forum_noshow_poll/checkin_not_arrived выше — тот же журнал отправки
+    # делегату + его ответ).
+    ("regional_noshow_move", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -10893,6 +10926,154 @@ async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
         "sent": int(sent_row[0] or 0) if sent_row else 0,
         "answered": answered,
         "by_reason": {r: counts.get(r, 0) for r in FORUM_NOSHOW_REASONS},
+    }
+
+
+# ── Трек «региональные форумы → Москва»: перенос неявившихся ────────────────────────────────
+
+RNM_MOVED = "moved"
+RNM_DECLINED = "declined"
+
+
+async def regional_noshow_move_pending_ids(*, city_scope=None) -> list[int]:
+    """Кандидаты на предложение переноса: approved текущего сезона города `city_scope` БЕЗ
+    отметки входа НИ В ОДИН день форума (тот же фильтр `checkin_entry`=`CHECKIN_NO`, что
+    `forum_noshow_poll_pending_ids` — единая точка правды), МИНУС те, кому предложение уже
+    уходило В ЭТОМ сезоне, МИНУС те, кто в опросе неявившихся `forum_noshow_poll` ЭТОГО сезона
+    выбрал причину «Передумал(а)» (`FORUM_NOSHOW_REASON_CHANGED_MIND`) — предлагать Москву
+    тому, кто прямо сказал «не интересно», не нужно."""
+    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
+    if city_scope is not None:
+        code, exclude = city_scope
+        filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})
+    candidates = await count_and_list_filtered(filters)
+    if not candidates:
+        return []
+    season = (await get_setting("event_season") or "").strip()
+    already = await regional_noshow_move_sent_ids(season)
+    changed_mind = await _forum_noshow_poll_changed_mind_ids(season)
+    return [tid for tid in candidates if tid not in already and tid not in changed_mind]
+
+
+async def _forum_noshow_poll_changed_mind_ids(season: str) -> set[int]:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM forum_noshow_poll WHERE season = ? AND reason = ?",
+            (season, FORUM_NOSHOW_REASON_CHANGED_MIND),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def regional_noshow_move_sent_ids(season: str) -> set[int]:
+    """Кому УЖЕ отправлено предложение в ЭТОМ `season` — вычитается из кандидатов, та же
+    идемпотентность рассылки, что `forum_noshow_poll_sent_ids`."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM regional_noshow_move WHERE season = ?", (season,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def regional_noshow_move_mark_sent(
+    telegram_id: int, source_city: str | None, season: str, sent_at: str,
+) -> bool:
+    """`INSERT OR IGNORE` по `(telegram_id, season)` — та же строка потом принимает ОТВЕТ
+    (`record_regional_noshow_move_response`). `True` — эта строка вставлена именно этим
+    вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO regional_noshow_move (telegram_id, source_city, season, "
+            "sent_at) VALUES (?, ?, ?, ?)",
+            (telegram_id, source_city, season, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def regional_noshow_move_get(telegram_id: int, season: str) -> dict | None:
+    """Текущая строка предложения этого делегата в этом сезоне — `None`, если предложение не
+    уходило вовсе (чужой/устаревший callback_data, вызывающий отвечает тихо)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM regional_noshow_move WHERE telegram_id = ? AND season = ?",
+            (telegram_id, season),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def record_regional_noshow_move_response(
+    telegram_id: int, season: str, response: str, target_city: str | None, responded_at: str,
+) -> bool:
+    """Повторный тап меняет ответ (та же конвенция, что `record_forum_noshow_poll_response`) —
+    обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе -> `False`."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE regional_noshow_move SET response = ?, target_city = ?, responded_at = ? "
+            "WHERE telegram_id = ? AND season = ?",
+            (response, target_city, responded_at, telegram_id, season),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def regional_noshow_move_unnotified_moved() -> list[dict]:
+    """Строки `response=RNM_MOVED`, ещё не попавшие в сводку менеджеру города назначения
+    (`notified_at IS NULL`) — читает ВЕСЬ бот (не по одному городу), группировка по
+    `target_city`/`source_city` — забота вызывающего (`services.regional_noshow_move.
+    _notify_managers_job`)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, telegram_id, source_city, target_city FROM regional_noshow_move "
+            "WHERE response = ? AND notified_at IS NULL",
+            (RNM_MOVED,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def regional_noshow_move_mark_notified(ids: list[int], notified_at: str) -> None:
+    if not ids:
+        return
+    placeholders = ",".join("?" for _ in ids)
+    async with _connect() as db:
+        await db.execute(
+            f"UPDATE regional_noshow_move SET notified_at = ? WHERE id IN ({placeholders})",
+            [notified_at, *ids],
+        )
+        await db.commit()
+
+
+async def regional_noshow_move_summary(season: str, *, city_scope=None) -> dict:
+    """«Предложено N, перенеслись M, отказались K» — строка экрана менеджера
+    (`handlers.admin_forum_functions`). `city_scope` фильтрует по `source_city` (регион, откуда
+    ушло предложение) — тот же смысл, что `forum_noshow_poll_summary`."""
+    city_frag, city_params = _city_clause(city_scope, "source_city")
+    where = "season = ?"
+    params: list = [season]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM regional_noshow_move WHERE {where}", params,
+        ) as cursor:
+            offered_row = await cursor.fetchone()
+        async with db.execute(
+            f"SELECT response, COUNT(*) FROM regional_noshow_move WHERE {where} "
+            f"AND response IS NOT NULL GROUP BY response",
+            params,
+        ) as cursor:
+            response_rows = await cursor.fetchall()
+    counts = {row[0]: row[1] for row in response_rows}
+    return {
+        "offered": int(offered_row[0] or 0) if offered_row else 0,
+        "moved": counts.get(RNM_MOVED, 0),
+        "declined": counts.get(RNM_DECLINED, 0),
     }
 
 
