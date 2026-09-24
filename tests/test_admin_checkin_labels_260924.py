@@ -133,3 +133,47 @@ def test_all_cities_buttons_have_words_and_city_name(tmp_path, monkeypatch):
         assert len(row) == 1  # длинные подписи — по одной кнопке в ряд
         for b in row:
             assert len(b.callback_data.encode("utf-8")) <= 64
+
+
+# ── «🔘 Кнопки меню»: включённая, но скрытая от делегата кнопка помечена причиной ────────────
+
+def _menu_line(text, label):
+    return next(line for line in text.splitlines() if label in line)
+
+
+def test_menu_screen_marks_qr_hidden_while_master_toggle_off(tmp_path):
+    from handlers import admin_reg_config
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("checkin_qr_enabled", "off"))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта: выключен QR для входа на форум" in _menu_line(text, "🎟 Мой QR")
+
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта" not in _menu_line(text, "🎟 Мой QR")
+
+
+def test_menu_screen_marks_sos_hidden_outside_forum_days(tmp_path, monkeypatch):
+    import services.sos as sos_mod
+    from handlers import admin_reg_config
+    _db_ready(tmp_path)
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта: не задана дата форума" in _menu_line(text, "🆘 SOS")
+
+    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    monkeypatch.setattr(sos_mod, "msk_now", lambda: datetime(2026, 9, 24, 12, 0))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "видна только в дни форума, начало 03.10.2026" in _menu_line(text, "🆘 SOS")
+
+    monkeypatch.setattr(sos_mod, "msk_now", lambda: datetime(2026, 10, 3, 12, 0))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта" not in _menu_line(text, "🆘 SOS")
+
+
+def test_menu_screen_no_hidden_note_for_switched_off_button(tmp_path):
+    from handlers import admin_reg_config
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("checkin_qr_enabled", "off"))
+    asyncio.run(db.set_setting("menu_checkin_qr", "off"))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта" not in _menu_line(text, "🎟 Мой QR")
