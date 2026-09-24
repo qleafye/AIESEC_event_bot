@@ -32,6 +32,11 @@ from database.db import (
     list_faq_for_city,
     set_ambassador_flag,  # Phase 32 (32-06, D-32/D-38): выход/возврат амбассадора
     set_ambassador_path,  # Phase 32 (32-06, D-24): путь меняет только порядок показа заданий
+    # Форум-ночь п.6 (D-25, идея №14): ответ делегата на шаблон «Не пришёл».
+    CNA_COMING,
+    CNA_CANT,
+    CNA_HERE,
+    record_checkin_not_arrived_response,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260923-en2 (задача 3): тот же дефолт-текст возвращенца, что /start уже шлёт
@@ -1850,3 +1855,73 @@ async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
     await callback.answer(
         reg_i18n.tr_text("Отлично, увидимся на форуме!", lang, tr_map), show_alert=True,
     )
+
+
+# Форум-ночь п.6 (D-25, идея №14): ответ на шаблон «Не пришёл» (services/checkin_not_arrived.py).
+# `day` едет ВНУТРИ callback_data (`cna:{response}:{day}`), не в FSM — сообщение (и его кнопки)
+# переживает рестарт контейнера (MemoryStorage FSM — нет), делегат может ответить хоть через
+# неделю на СТАРОЕ сообщение, ответ уйдёт в ту же историческую строку `checkin_not_arrived`.
+@router.callback_query(F.data.startswith("cna:"))
+async def checkin_not_arrived_respond(callback: types.CallbackQuery):
+    try:
+        _, response, day = callback.data.split(":", 2)
+    except ValueError:
+        await callback.answer()
+        return
+    if response not in (CNA_COMING, CNA_CANT, CNA_HERE):
+        await callback.answer()
+        return
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    ok = await record_checkin_not_arrived_response(
+        callback.from_user.id, day, response, _msk_now_str(),
+    )
+    if not ok:
+        # Строки нет (сообщение переслано другому человеку/день устарел) — тихо, без падения,
+        # тот же fail-soft принцип, что у остального чек-ина (D-04).
+        await callback.answer()
+        return
+    if response == CNA_HERE:
+        # «Покажи QR волонтёру на входе» — сам QR НЕ отправляется автоматически, делегат жмёт
+        # кнопку сам (тот же QR, что «🎟 Мой QR» главного меню — единая точка showcase_my_checkin_qr не
+        # переиспользуется напрямую, там `types.Message`, здесь `CallbackQuery`; логика допуска
+        # та же `checkin_denial`/`build_checkin_qr`, что и там).
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🎟 Мой QR", callback_data="cna_qr"),
+        ]])
+        await callback.message.answer(
+            reg_i18n.tr_text("Покажи этот экран волонтёру на входе.", lang, tr_map),
+            reply_markup=reg_i18n.tr_kb(kb, lang, tr_map),
+        )
+        await callback.answer()
+        return
+    ack_text = (
+        "Спасибо, передали организаторам!" if response == CNA_COMING
+        else "Жаль! Спасибо, что предупредил."
+    )
+    await callback.answer(reg_i18n.tr_text(ack_text, lang, tr_map), show_alert=True)
+
+
+@router.callback_query(F.data == "cna_qr")
+async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    user = await get_user(callback.from_user.id)
+    denial = await checkin_denial(user)
+    if denial is not None:
+        # Fail-soft (D-04): допуск мог пропасть между ответом «Я на месте» и тапом кнопки
+        # (заявку отменили и т.п.) — не роняем хендлер, отвечаем тем же реестровым текстом
+        # ожидания, что show_my_checkin_qr (не литерал — менеджер мог поправить текст).
+        await callback.answer(
+            reg_i18n.tr_text(await get_setting_typed("checkin_qr_disabled_text"), lang, tr_map),
+            show_alert=True,
+        )
+        return
+    try:
+        png_bytes, caption = await build_checkin_qr(user)
+    except Exception as e:
+        logger.error(f"checkin_not_arrived_show_qr: build_checkin_qr failed for {callback.from_user.id}: {e}")
+        await callback.answer()
+        return
+    caption = reg_i18n.tr_text(caption, lang, tr_map)
+    photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
+    await callback.message.answer_photo(photo, caption=caption)
+    await callback.answer()
