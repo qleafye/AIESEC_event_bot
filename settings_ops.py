@@ -54,13 +54,15 @@ from settings_validation import is_command_like, validate_setting_value
 
 async def apply_event_type_preset(event_type: str):
     """D-05: event type presets module flags; each is still manually overridable after.
-    conference → payment+consent ON; forum → both OFF; custom → no change.
+    conference → payment+consent+вопрос о ЛК ON; forum → payment+consent OFF; custom → no change.
     Phase 28 (28-10, SU-11): fourth branch "skillup" → the whole «🎓 Форум СкиллАп» preset
     (reg_presets.apply_reg_preset), the same bulk-writer the bot's preset button calls —
     web and bot apply identical state (T-28-10-01)."""
     if event_type == "conference":
         await set_setting("payment_enabled", "on")
         await set_setting("consent_enabled", "on")
+        # Делегаты конференции — члены АЙСЕК, их ЛК нужен в заявке.
+        await set_setting("reg_q_lc", "on")
     elif event_type == "forum":
         await set_setting("payment_enabled", "off")
         await set_setting("consent_enabled", "off")
