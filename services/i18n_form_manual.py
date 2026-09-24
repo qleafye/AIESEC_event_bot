@@ -456,6 +456,17 @@ _CODE_LITERALS_EN = {
     "Мой QR": "My QR",
     "Спасибо, передали организаторам!": "Thanks, we let the organizers know!",
     "Жаль! Спасибо, что предупредил.": "Too bad! Thanks for letting us know.",
+    # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4, п.5): «🔕 Не присылать сегодня» —
+    # ключи БЕЗ ведущего эмодзи-префикса (тот же приём, что «Мой QR» выше — `reg_i18n.tr_text`
+    # снимает префикс ДО поиска). Предложение отключиться (альбом) без префикса, переносить
+    # нечего.
+    "Сегодня многовато рассылок? Можно отключить необязательные до завтра:":
+        "Getting a lot of messages today? You can turn off the non-essential ones until tomorrow:",
+    "Не присылать сегодня": "Don't send today",
+    "Присылать всё": "Send everything",
+    "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
+        "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
+    "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
