@@ -668,3 +668,97 @@ def test_send_broadcast_lock_released_after_completion(tmp_path, monkeypatch):
     result2 = _run(cb.send_broadcast(None))
     assert "already_running" not in result2
     assert len(bot.photos) == 1  # уже отправлен, идемпотентность прежняя — не 2
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Догон прошедшего времени — только пока форум не начался (раньше после даты форума каждый
+# рестарт бота слал QR неподтвердившим через минуту)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _forum_setup(tmp_path, forum_date="03.10.2026"):
+    _ready(tmp_path)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _run(_set_setting("forum_date", forum_date))
+    _run(_set_setting("checkin_qr_broadcast_time", "18:00"))
+    _run(_set_setting("checkin_qr_morning_repeat_time", "08:00"))
+
+
+def test_schedule_city_jobs_past_forum_date_leaves_no_jobs(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+
+    async def body(s):
+        await cb.schedule_city_jobs(None)  # поставлены заранее, до форума
+        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 3, 0, 0))
+        result = await cb.schedule_city_jobs(None)
+        assert result == {"scheduled": False, "reason": "past"}
+        assert s.get_job(cb.evening_job_id(None)) is None
+        assert s.get_job(cb.morning_job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_city_jobs_forum_today_morning_ahead_evening_skipped(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0, 0))
+
+    async def body(s):
+        result = await cb.schedule_city_jobs(None)
+        assert result["scheduled"] is True
+        assert result["evening_at"] is None
+        assert s.get_job(cb.evening_job_id(None)) is None
+        morn = s.get_job(cb.morning_job_id(None))
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_city_jobs_evening_passed_forum_tomorrow_catches_up(tmp_path, monkeypatch):
+    """Менеджер включил рассылку в 20:00 накануне — вечерняя уходит через минуту."""
+    _forum_setup(tmp_path)
+    now = datetime(2026, 10, 2, 20, 0, 0)
+    monkeypatch.setattr(cb, "msk_now", lambda: now)
+
+    async def body(s):
+        result = await cb.schedule_city_jobs(None)
+        assert result["evening_at"] == now + timedelta(minutes=1)
+        ev = s.get_job(cb.evening_job_id(None))
+        assert ev.next_run_time.replace(tzinfo=None) == now + timedelta(minutes=1)
+        morn = s.get_job(cb.morning_job_id(None))
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_city_jobs_forum_today_morning_long_passed_no_jobs(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+
+    async def body(s):
+        await cb.schedule_city_jobs(None)
+        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 12, 0, 0))
+        result = await cb.schedule_city_jobs(None)
+        assert result["scheduled"] is False
+        assert s.get_job(cb.evening_job_id(None)) is None
+        assert s.get_job(cb.morning_job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_city_jobs_morning_catchup_only_for_pending_job(tmp_path, monkeypatch):
+    """Рестарт в 08:01 — не сработавшая утренняя джоба догоняется; а если она уже сработала
+    (в хранилище её нет), повторная сверка второй повтор не ставит."""
+    _forum_setup(tmp_path)
+    now = datetime(2026, 10, 3, 8, 1, 0)
+
+    async def body(s):
+        await cb.schedule_city_jobs(None)
+        monkeypatch.setattr(cb, "msk_now", lambda: now)
+        await cb.schedule_city_jobs(None)
+        morn = s.get_job(cb.morning_job_id(None))
+        assert morn.next_run_time.replace(tzinfo=None) == now + timedelta(minutes=1)
+
+        s.remove_job(cb.morning_job_id(None))  # «сработала»
+        result = await cb.schedule_city_jobs(None)
+        assert result["morning_at"] is None
+        assert s.get_job(cb.morning_job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
