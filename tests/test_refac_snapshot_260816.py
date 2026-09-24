@@ -1195,6 +1195,8 @@ admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
 admin|callback_query|checkin_stats_csv|checkin_stats_csv
 admin|callback_query|forum_ready_open|forum_ready:*
 admin|callback_query|forum_ready_refresh|forum_ready_re:*
+admin|callback_query|checkin_floor_open|checkin_floor
+admin|callback_query|checkin_floor_refresh|checkin_floor_refresh
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1750,7 +1752,10 @@ def test_snapshot_total_handler_count_is_292():
     # venue_revoke_confirm/venue_revoke_go, сразу после checkinqr_time_start и ПЕРЕД admin_sos).
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые вставки, 0 удалений,
     # 0 реордеров (вставки независимы от п.10/№25; при слиянии 740 -> 750).
-    assert len(GOLDEN_SNAPSHOT) == 750
+    # Бэклог чек-ина №12 («📍 Сейчас на площадке»): +2 admin.callback_query (checkin_floor_open/
+    # checkin_floor_refresh, handlers/admin_checkin_floor.py) — шов из хвоста handlers/admin.py
+    # сразу после admin_forum_ready; одна чистая вставка перед prog_fbday_open (750 -> 752).
+    assert len(GOLDEN_SNAPSHOT) == 752
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

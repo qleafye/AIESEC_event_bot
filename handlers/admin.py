@@ -950,3 +950,8 @@ from handlers import admin_checkin_stats  # noqa: E402
 # (handlers/admin_forum_ready.py) — registers forum_ready_open/forum_ready_refresh in the very
 # tail of admin.router (golden snapshot: a clean append, right after admin_checkin_stats).
 from handlers import admin_forum_ready  # noqa: E402
+
+# Бэклог чек-ина №12: shared-router seam import for «📍 Сейчас на площадке»
+# (handlers/admin_checkin_floor.py) — registers checkin_floor_open/checkin_floor_refresh in the
+# very tail of admin.router (golden snapshot: a clean append, right after admin_forum_ready).
+from handlers import admin_checkin_floor  # noqa: E402
