@@ -503,16 +503,13 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
     items.append(("lit:reg_schema.default_bonus_caption", "\U0001f381 Бонус за регистрацию!"))
 
-    # Форум-ночь п.8 (идея №19, SOS): делегатский экран «🆘 SOS» (`handlers/sos.py`) — категории
-    # (кнопки inline-клавиатуры, `services/sos.py::CATEGORY_LABELS`) и подпись кнопки запроса
-    # геопозиции идут через `reg_i18n.say(..., reply_markup=...)` -> `tr_kb` (переводит ТОЛЬКО
-    # `.text` кнопок), АСТ-сторож `test_i18n_literal_corpus_guard_260906.py` их не видит (тот
-    # смотрит на прямой текстовый аргумент вызова, не на кнопки внутри markup) — регистрируются
-    # здесь руками, тот же приём, что литералы program/scheduler выше.
-    items.append(("lit:services.sos.category_bad", "🤒 Плохо себя чувствую"))
-    items.append(("lit:services.sos.category_lost", "🧭 Потерялся"))
-    items.append(("lit:services.sos.category_item", "🔑 Потерял вещь"))
-    items.append(("lit:services.sos.category_other", "⚠️ Другое"))
+    # Форум-ночь п.8 (идея №19, SOS): делегатский экран «🆘 SOS» (`handlers/sos.py`) — подпись
+    # кнопки запроса геопозиции идёт через `reg_i18n.say(..., reply_markup=...)` -> `tr_kb`
+    # (переводит ТОЛЬКО `.text` кнопок), АСТ-сторож `test_i18n_literal_corpus_guard_260906.py`
+    # её не видит (тот смотрит на прямой текстовый аргумент вызова, не на кнопки внутри markup)
+    # — регистрируется здесь руками, тот же приём, что литералы program/scheduler выше. D-31
+    # («SOS без категорий»): категорийные литералы (`category_bad`/`_lost`/`_item`/`_other`)
+    # сняты вместе с кнопками — категорийного визарда больше нет.
     items.append(("lit:sos.location_button", "📍 Отправить геопозицию"))
 
     # Часть А (ревью SOS-переводов, `sos_recent_followup_text` уходил сырой русской строкой):

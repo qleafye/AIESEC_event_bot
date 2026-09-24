@@ -475,24 +475,20 @@ _CODE_LITERALS_EN = {
     "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
         "🔕 Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
     "🔔 Хорошо, снова присылаю все рассылки.": "🔔 Okay, sending all messages again.",
-    # Форум-ночь п.8 (идея №19, SOS): реестровые дефолты пяти текстов визарда «🆘 SOS»
-    # (group "event", `sos_category_prompt_text`/`sos_details_prompt_text`/
-    # `sos_location_prompt_text`/`sos_sent_text`/`sos_already_open_text`).
-    "Что случилось?": "What happened?",
-    "Опиши коротко, что случилось — текстом или фото. Можно пропустить.":
-        "Briefly describe what happened — text or a photo. You can skip this.",
-    "Отправь геопозицию, если знаешь, где находишься. Можно пропустить.":
-        "Send your location if you know where you are. You can skip this.",
-    "🆘 Оргкомитет получил, с тобой свяжутся.": "🆘 The organizers got it — they'll reach out to you.",
-    "У тебя уже есть открытый SOS — организаторы уже знают и скоро свяжутся.":
-        "You already have an open SOS — the organizers already know and will reach out soon.",
-    # Категории SOS (`lit:services.sos.category_*`) + подпись кнопки геопозиции
-    # (`lit:sos.location_button`) — идут через tr_kb (кнопки inline/reply-клавиатур), не
-    # видны АСТ-сторожу, см. комментарий у их регистрации в services/i18n_sources.py.
-    "🤒 Плохо себя чувствую": "🤒 I feel unwell",
-    "🧭 Потерялся": "🧭 I'm lost",
-    "🔑 Потерял вещь": "🔑 I lost something",
-    "⚠️ Другое": "⚠️ Other",
+    # D-31 (24.09, «SOS без категорий»): реестровые дефолты режима «дописываю SOS»
+    # (group "event", `sos_sent_text`/`sos_done_text`/`sos_collecting_expired_text`) — вопрос
+    # «что случилось?» и категорийные подсказки сняты вместе с визардом.
+    "🆘 Сигнал отправлен оргкомитету — с тобой свяжутся. Напиши, что случилось, пришли фото "
+    "или геопозицию — всё уйдёт им.":
+        "🆘 The signal has been sent to the organizers — they'll reach out to you. Type what "
+        "happened, send a photo or your location — it'll all go to them.",
+    "Принято. Если понадобится снова — жми «🆘 SOS».":
+        "Got it. If you need it again — tap «🆘 SOS».",
+    "Сессия SOS закрыта по времени. Если всё ещё нужна помощь — нажми «🆘 SOS» снова.":
+        "The SOS session closed due to inactivity. If you still need help — tap «🆘 SOS» again.",
+    # Подпись кнопки геопозиции (`lit:sos.location_button`) — идёт через tr_kb (кнопки reply-
+    # клавиатуры), не видна АСТ-сторожу, см. комментарий у её регистрации в
+    # services/i18n_sources.py.
     "📍 Отправить геопозицию": "📍 Send location",
     # Ревью 24.09 (находки 1/3): дефолты трёх новых реестровых текстов SOS — тот же сосед,
     # что остальные sos_* дефолты выше.
@@ -500,8 +496,8 @@ _CODE_LITERALS_EN = {
     "человеку в форме оргкомитета.":
         "We couldn't reach the organizers with your SOS. Go to the registration desk or "
         "find anyone wearing organizer clothing.",
-    "Мы уже получили твой SOS ({claim_status}). Дополни его — просто напиши сюда.":
-        "We already got your SOS ({claim_status}). Add details — just write here.",
+    "Сигнал уже у оргкомитета ({claim_status}). Напиши, что случилось — дополню.":
+        "The signal is already with the organizers ({claim_status}). Write what happened — I'll add it.",
     # Часть А (ревью SOS-переводов): `{claim_status}` — сам ярус B, ДВЕ формы шаблона
     # (`services.sos.claim_status_parts`), переводится ОТДЕЛЬНО от подстановки имени
     # (`handlers/sos.py::_recent_followup_text`, тот же порядок «шаблон сначала», что
