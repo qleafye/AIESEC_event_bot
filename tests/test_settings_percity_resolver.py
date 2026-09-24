@@ -193,6 +193,18 @@ EXPECTED_PER_CITY_KEYS = {
     # мимо этого резолвера, D-10) в этот список НЕ входит — см. settings_schema.py комментарий
     # у "program_miniapp_view" и `test_no_per_city_key_is_photo_or_file_type` ниже.
     "program_miniapp_view",
+    # Трек «форум: делегат» 24.09: меню «день форума», приветствие, отчёт дня, опрос неявившихся,
+    # бюро находок, приглашение волонтёров — форумные функции включаются по городу.
+    "forum_day_menu_enabled",
+    "forum_day_menu_start_time",
+    "forum_day_report_enabled",
+    "forum_day_report_time",
+    "forum_noshow_poll_enabled",
+    "forum_noshow_poll_time",
+    "forum_welcome_enabled",
+    "forum_welcome_text",
+    "lost_found_enabled",
+    "volunteer_invite_enabled",
 }
 
 
