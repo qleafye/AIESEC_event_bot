@@ -36,7 +36,6 @@ from cities import (
     get_setting_typed_for_city,
     per_city_key,
 )
-from database.db import has_program_sessions_for_city
 from handlers.admin import router
 from handlers.admin_caps import _holds, required_capability, resolve_capabilities
 from handlers.admin_checkin import (
@@ -134,13 +133,17 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🎫 Настройки шпаргалки", callback_data=f"checkinvol_cfg:{_encode_city(code)}",
         )])
 
-    # 6. Программа (кнопка делегата, D-29) — гейт «есть фото (своё городское ИЛИ общее) ИЛИ
-    # хотя бы одна сессия» решает keyboards.builders.get_main_menu_kb на лету для каждого
-    # делегата (services.program.has_program_content, общая точка правды); здесь показываем
-    # только часть гейта, которую видно БЕЗ конкретного делегата — есть ли сессии в программе
-    # города (фото — экран «🎪 Событие»/строка ниже, не тумблер).
-    has_sessions = await has_program_sessions_for_city(code)
-    lines.append(f"🗓 Программа (сессии заведены): {_status(has_sessions)}")
+    # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
+    # `services.program.program_menu_visible` (тумблер menu_program города И есть фото или
+    # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.
+    from services.program import program_menu_visible
+    program_line = "📅 Кнопка «Программа» у делегата: "
+    if await program_menu_visible(code):
+        lines.append(program_line + _status(True))
+    elif await get_setting_typed_for_city("menu_program", code) != "on":
+        lines.append(program_line + _status(False) + " (выключена в «Кнопках меню»)")
+    else:
+        lines.append(program_line + _status(False) + " (нет ни фото, ни сессий)")
     if visible("admin_menu_buttons"):
         buttons.append([InlineKeyboardButton(
             text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data="admin_menu_buttons",
@@ -169,7 +172,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # 9. «🔕 Не присылать сегодня» — D-30: доступна делегату весь сезон намеренно, без
     # мастер-тумблера (отключать самообслуживание делегата — не то, что просил владелец).
     # Информационная строка, без кнопки.
-    lines.append("🔕 «Не присылать сегодня» у делегата: всегда доступна (весь сезон, D-30)")
+    lines.append("🔕 «Не присылать сегодня» у делегата: всегда доступна (весь сезон)")
 
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
