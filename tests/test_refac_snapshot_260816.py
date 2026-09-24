@@ -1083,6 +1083,9 @@ admin|callback_query|poll_schedule_start|poll_schedule
 admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
 admin|callback_query|show_admin_checkin|admin_checkin
+admin|callback_query|cna_send_confirm|cna_send:*
+admin|callback_query|cna_send_go|cna_send_go:*
+admin|callback_query|cna_send_cancel|cna_send_no
 admin|callback_query|checkin_upload_start|checkin_upload_start
 admin|callback_query|checkin_point_city_pick|checkin_point_city:*
 admin|callback_query|checkin_point_pick|checkin_point:*
@@ -1229,6 +1232,8 @@ user_actions|callback_query|ambassador_leave_cancel|ambleave_no
 user_actions|callback_query|ambassador_leave_confirm|ambleave_go
 user_actions|callback_query|ambassador_join|ambjoin
 user_actions|callback_query|checkin_qr_confirm_receipt|checkinqr_confirm
+user_actions|callback_query|checkin_not_arrived_respond|cna:*
+user_actions|callback_query|checkin_not_arrived_show_qr|cna_qr
 """.strip("\n").splitlines()
 
 
@@ -1542,7 +1547,15 @@ def test_snapshot_total_handler_count_is_292():
     # позиция, что у остального хвоста admin_broadcasts.py). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 682-строчным снимком: ровно пять
     # вставок, 0 удалений, 0 реордеров (682 -> 687).
-    assert len(GOLDEN_SNAPSHOT) == 687
+    # Форум-ночь п.6 (D-25, идея №14, шаблон «Не пришёл»): +5 хендлеров — 3
+    # admin.callback_query в handlers/admin_checkin.py (cna_send_confirm/cna_send_go/
+    # cna_send_cancel, встали сразу после show_admin_checkin и ПЕРЕД checkin_upload_start,
+    # та же позиция, что у блока «🚪 Не пришли» на самом экране) + 2 user_actions.callback_query
+    # в handlers/user_actions.py (checkin_not_arrived_respond/checkin_not_arrived_show_qr,
+    # хвост файла, сразу после checkin_qr_confirm_receipt). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 687-строчным снимком: ровно пять
+    # вставок, 0 удалений, 0 реордеров (687 -> 692).
+    assert len(GOLDEN_SNAPSHOT) == 692
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

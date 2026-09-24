@@ -901,6 +901,13 @@ ADMIN_CAPS: dict[str, str] = {
     "checkinqr_time:*": "moderate_reg",
     "state:CheckinQrTimeEdit:*": "moderate_reg",
 
+    # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
+    # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
+    # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).
+    "cna_send:*": "moderate_reg",
+    "cna_send_go:*": "moderate_reg",
+    "cna_send_no": "moderate_reg",
+
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из

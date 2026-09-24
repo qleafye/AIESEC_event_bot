@@ -433,7 +433,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
-        1852,
+        1935,
+        "Форум-ночь п.6 (D-25, идея №14): +75 строк — ответ делегата на шаблон «Не пришёл» "
+        "(checkin_not_arrived_respond/checkin_not_arrived_show_qr, cna:*/cna_qr) дописаны в "
+        "самый хвост файла, СРАЗУ ПОСЛЕ checkin_qr_confirm_receipt (тот же приём, что у "
+        "остального хвоста этого файла — фолбэк-хендлер reg_handoff_idle_fallback стоит "
+        "физически раньше, кнопки/колбэки регистрируются до него); сама идемпотентность/"
+        "тихие часы/отправка живут в services/checkin_not_arrived.py, здесь только два "
+        "хендлера; 1852 -> 1927, потолок с небольшим запасом. "
         "Форум-ночь п.4 (расписание форума в боте): +7 строк — хвостовой импорт "
         "`handlers/program.py` (экран «🗓 Программа»), вставлен СРАЗУ ПОСЛЕ show_my_checkin_qr "
         "и ПЕРЕД reg_handoff_idle_fallback (фолбэк-хендлер без ограничений обязан идти "
@@ -511,7 +518,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1120,
+        1130,
+        "Форум-ночь п.6 (D-25, идея №14, шаблон «Не пришёл»): +7 строк — capability-записи "
+        "cna_send:*/cna_send_go:*/cna_send_no (handlers/admin_checkin.py, капа «moderate_reg» "
+        "— тот же довод, что у checkinqr_send:* выше: массовая отправка, не капа «checkin»); "
+        "1115 -> 1122, потолок с небольшим запасом. "
         "Форум-ночь п.6 (D-25, идея №14): +8 строк — capability-записи мастера «Были/Не были "
         "на сессии …» (cksf_start:*/cksf_city:*/cksf_day:*/cksf_pick:*/cksf_cancel, "
         "handlers/admin_broadcast_session_filter.py, капа «broadcast» — тот же мастер фильтра "
@@ -602,6 +613,15 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "первый случай для uid даёт один WARNING и алерт остальным `config.ADMIN_IDS`, повтор в "
         "течение 24 ч молчит (`logger.debug`); кулдаун — процессный словарь `_blocked_notified_at`, "
         "не в БД; потолок поднят до фактического размера.",
+    ),
+    "admin_checkin.py": (
+        925,
+        "Форум-ночь п.6 (D-25, идея №14): +99 строк — блок «🚪 Не пришли» экрана «✅ Отметки "
+        "на форуме» (_not_arrived_status_line/_not_arrived_section + три хендлера "
+        "cna_send_confirm/cna_send_go/cna_send_cancel, тот же трёхветочный приём города, что "
+        "у _qr_broadcast_section рядом); сама отправка/идемпотентность/тихие часы живут в "
+        "services/checkin_not_arrived.py, здесь только экран и подтверждение; 817 -> 916, "
+        "потолок с небольшим запасом.",
     ),
     "admin_moderation.py": (
         970,

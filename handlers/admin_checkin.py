@@ -67,6 +67,11 @@ from services.checkin_broadcast import (
     schedule_city_jobs,
     send_broadcast,
 )
+from services.checkin_not_arrived import (
+    pending_count as checkin_not_arrived_pending_count,
+    send as checkin_not_arrived_send,
+    summary_text as checkin_not_arrived_summary_text,
+)
 from services.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
@@ -209,25 +214,119 @@ async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKey
     return "\n".join(lines), buttons
 
 
+# ── Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» ─────────────────────────────────────
+
+async def _not_arrived_status_line(label: str | None, code: str | None) -> str:
+    prefix = f"{label}: " if label else ""
+    text = await checkin_not_arrived_summary_text(city_scope=city_scope(code))
+    return f"{prefix}{text}"
+
+
+async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
+    """Блок «🚪 Не пришли» — строка(и) сводки за сегодня + кнопка(и) «📨 Написать не пришедшим».
+    Три ветки — та же развилка, что у `_qr_broadcast_section`/`_counter_line` выше."""
+    own_scope = await _admin_city_scope(admin_id)
+    if own_scope is not None:
+        code = own_scope[0]
+        line = await _not_arrived_status_line(None, code)
+        buttons = [[InlineKeyboardButton(
+            text="📨 Написать не пришедшим", callback_data=f"cna_send:{_encode_city(code)}",
+        )]]
+        return line, buttons
+
+    if not await cities_module_on():
+        line = await _not_arrived_status_line(None, None)
+        buttons = [[InlineKeyboardButton(
+            text="📨 Написать не пришедшим", callback_data=f"cna_send:{_NO_CITY}",
+        )]]
+        return line, buttons
+
+    lines: list[str] = []
+    buttons: list[list[InlineKeyboardButton]] = []
+    for c in await enabled_cities():
+        code = c["code"]
+        label = await city_label(code)
+        lines.append(await _not_arrived_status_line(label, code))
+        buttons.append([InlineKeyboardButton(
+            text=f"📨 {label}", callback_data=f"cna_send:{_encode_city(code)}",
+        )])
+    return "\n".join(lines), buttons
+
+
 @router.callback_query(F.data == "admin_checkin")
 async def show_admin_checkin(callback: types.CallbackQuery):
     qr_line, qr_buttons = await _qr_broadcast_section(callback.from_user.id)
     qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
+    not_arrived_line, not_arrived_buttons = await _not_arrived_section(callback.from_user.id)
+    not_arrived_block = f"\n\n🚪 <b>Не пришли</b> (сегодня)\n{not_arrived_line}"
     text = (
         "✅ <b>Отметки на форуме</b>\n\n"
         f"{await _counter_line(callback.from_user.id)}"
-        f"{qr_block}\n\n"
+        f"{qr_block}"
+        f"{not_arrived_block}\n\n"
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
         "отмечу всех, кого найду."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         *qr_buttons,
+        *not_arrived_buttons,
         [InlineKeyboardButton(text="📤 Загрузить файл сканера", callback_data="checkin_upload_start")],
         # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
         # формат/читаемость приложения волонтёра.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
     ])
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cna_send:"))
+async def cna_send_confirm(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    n = await checkin_not_arrived_pending_count(city_scope=city_scope(code))
+    if n == 0:
+        await callback.answer(
+            "Отправлять некому — все одобренные текущего сезона либо отмечены на входе, "
+            "либо уже получили этот вопрос сегодня.", show_alert=True,
+        )
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, отправить", callback_data=f"cna_send_go:{_encode_city(code)}"),
+        InlineKeyboardButton(text="Отмена", callback_data="cna_send_no"),
+    ]])
+    await callback.message.answer(
+        f"Уйдёт {n} делегатам, не отмеченным на входе. Если отметки ещё загружаются файлами "
+        "(CSV-режим) — часть пришедших получит сообщение по ошибке. Отправить?",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cna_send_go:"))
+async def cna_send_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    # T-12-03 idiom (тот же приём, что checkinqr_send_go выше): отвечаем на callback СРАЗУ,
+    # рассылка может занять время, и убираем клавиатуру ДО вызова — повторный тап уже
+    # физически не по чему нажимать.
+    await callback.answer("Отправляю…")
+    await callback.message.edit_text("⏳ Отправляю «Не пришёл»...", reply_markup=None)
+    result = await checkin_not_arrived_send(city=code, city_scope=city_scope(code))
+    tail = f", в очередь тихих часов {result['queued']}" if result["queued"] else ""
+    await callback.message.answer(
+        f"✅ Отправлено {result['sent']} делегатам{tail}"
+        + (f", не доставлено {result['failed']}" if result["failed"] else "")
+        + f" из {result['total']}."
+    )
+
+
+@router.callback_query(F.data == "cna_send_no")
+async def cna_send_cancel(callback: types.CallbackQuery):
+    await callback.message.edit_text("Отменено. Ничего не отправлено.")
     await callback.answer()
 
 
