@@ -2130,6 +2130,98 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--list .plate-sub { margin-bottom: var(--sp-2); }
 .plate-rank { margin-left: auto; margin-bottom: var(--sp-2); border: 0; cursor: pointer; font: inherit; }
 
+/* D-29: экран «📅 Программа» делегата (screens/program.js) — таблица по дням/слотам и фото.
+   Тоны маркеров — существующие .chip.danger/.chip.accent, новых цветов не заводим. */
+.program-days {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-1);
+}
+.program-day-chip {
+  flex: none;
+  min-height: var(--tap-min);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  cursor: pointer;
+}
+.program-day-list { min-width: 0; }
+.program-day { scroll-margin-top: var(--sp-4); }
+.program-day + .program-day { margin-top: var(--sp-6); }
+.program-day-title { font-size: 18px; margin-bottom: var(--sp-3); }
+.program-slot {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3);
+}
+.program-slot + .program-slot { margin-top: var(--sp-2); }
+.program-slot.is-now { border-color: var(--danger); box-shadow: var(--shadow-card); }
+.program-slot.is-next { border-color: var(--accent); }
+.program-slot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.program-slot-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.program-slot-parallel { font-size: 13px; color: var(--text-muted); }
+.program-marker { margin-left: auto; }
+.program-parallel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-2);
+}
+.program-parallel .program-session {
+  background: var(--surface-alt);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+}
+.program-session-time { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.program-session-title { font-weight: 600; overflow-wrap: anywhere; }
+.program-session-meta { font-size: 13px; color: var(--text-muted); margin-top: var(--sp-1); overflow-wrap: anywhere; }
+.program-photo-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+.program-photo { display: block; width: 100%; height: auto; border-radius: var(--radius-lg); }
+.program-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--text) 80%, transparent);
+}
+.program-zoom-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.program-zoom-img { display: block; width: 200%; max-width: none; height: auto; }
+.program-zoom-close {
+  position: fixed;
+  top: calc(var(--sp-3) + env(safe-area-inset-top, 0px));
+  right: var(--sp-3);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
 /* ── D17 (квик 260904-7e7): `.hidden` — САМЫЙ ПОСЛЕДНИЙ одноклассовый селектор файла,
    задающий `display` ──────────────────────────────────────────────────────────────────────
    Раньше правило жило у строки 357 (сразу после .error-inline), а одноклассовые правила вроде

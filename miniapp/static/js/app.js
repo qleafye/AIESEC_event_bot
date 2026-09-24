@@ -71,6 +71,8 @@ export const ROUTES = [
   ["#/questions", "screens/questions.js"],
   // Quick 260906-8uq (FAQ-05): делегатский экран «❓ Частые вопросы».
   ["#/faq", "screens/faq.js"],
+  // D-29: делегатский экран «📅 Программа» (таблица из программы бота или фото).
+  ["#/program", "screens/program.js"],
   // Quick 260906-nxp: менеджерский экран ведения того же списка (список/правка/порядок/
   // город/удаление) — тот же раздел «faq», второй записи чекбокса не заводится.
   ["#/admin-faq", "screens/admin_faq.js"],
@@ -119,6 +121,9 @@ export const NAV = [
   // Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form (визуальный хаб строится
   // из visibleNav() сам, второй правки экрана хаба не требуется).
   { hash: "#/faq", section: "faq", delegate: true },
+  // D-29: «📅 Программа» — раздел без своего чекбокса, `me.sections.program` вычисляет сервер
+  // тем же гейтом, что кнопку программы в чате (miniapp/routers/program.py).
+  { hash: "#/program", section: "program", delegate: true },
   { hash: "#/applications", section: "applications", cap: "moderate_reg", group: "apps" },
   { hash: "#/questions", section: "questions", cap: "moderate_reg", group: "apps" },
   // Quick 260906-nxp: менеджерское ведение FAQ — сразу после #/questions (менеджерские
@@ -146,6 +151,7 @@ export const NAV_ICONS = {
   "#/profile": "user",
   "#/form": "file-text",
   "#/faq": "help-circle",
+  "#/program": "calendar",
   "#/applications": "shield-check",
   "#/questions": "message-circle",
   "#/admin-faq": "help-circle",
