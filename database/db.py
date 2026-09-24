@@ -3171,6 +3171,21 @@ async def touch_reg_draft_activity(telegram_id: int) -> None:
         await db.commit()
 
 
+# Phase 33 (delegate-card admin actions, перевод города): точечная правка ТОЛЬКО event_city
+# открытого черновика — НЕ через upsert_reg_draft (та функция мержит patch в answers/bumps
+# version/переносит владение surface, это для делегатской правки шага анкеты, не для админской
+# смены города под капотом). Без этого правка reg_finalize.py:296 при финализации открытого
+# черновика вернула бы делегату СТАРЫЙ город (33-SEED.md, «Зависимости города»). Не трогает
+# version/answers/meta/updated_at — city move не запись делегата.
+async def update_reg_draft_city(telegram_id: int, new_city: str | None) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE reg_drafts SET event_city = ? WHERE telegram_id = ?", (new_city, telegram_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 # ── Phase 21 (FORM-SYNC-04, D-12/D-13/D-15): narrow answer edit + history ────────────────────
 # add_user (605+) is an ON CONFLICT DO UPDATE over ~60 columns — using it for an edit would
 # silently overwrite registration_date/referrer_id/source/status/payment_* with whatever the
@@ -3402,6 +3417,20 @@ async def get_reg_started_city(telegram_id: int, max_age_hours: int | None = Non
         async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
+
+
+# Phase 33 (delegate-card admin actions, перевод города): точечная правка `event_city` строки
+# dropout-учёта — БЕЗ окна `max_age_hours` (в отличие от чтения выше, правим ЛЮБУЮ живую
+# строку этого telegram_id, свежую или старую: «Незавершённые» и dropout-напоминание должны
+# сразу показать новый город, а не подождать, пока делегат вернётся). No-op (False), если
+# строки нет вовсе — city move не заводит reg_started, только правит существующую.
+async def update_reg_started_city(telegram_id: int, new_city: str | None) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE reg_started SET event_city = ? WHERE telegram_id = ?", (new_city, telegram_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 # Phase 7 (07-04, SHORT-06): is there a live abandoned short-track registration right now?
@@ -7404,6 +7433,20 @@ async def mark_game_digest_sent(ids: list[int], sent_at: str) -> None:
         await db.commit()
 
 
+# Phase 33 (delegate-card admin actions, перевод города): правит город ТОЛЬКО у ещё
+# НЕОТПРАВЛЕННЫХ строк (`sent_at IS NULL`) этого делегата — уже ушедший дайджест адресован
+# менеджеру старого города по факту события на момент отправки, переписывать историю нельзя.
+# Возвращает число задетых строк (0 — нет живых строк на этого делегата, не ошибка).
+async def update_unsent_game_digest_city(user_id: int, new_city: str | None) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE game_submit_digest_queue SET city = ? WHERE user_id = ? AND sent_at IS NULL",
+            (new_city, user_id),
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
 # ── Квик 260916: очередь дайджеста заявок ───────────────────────────────────────────────────
 
 async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str, *,
@@ -7451,6 +7494,19 @@ async def mark_reg_digest_sent(ids: list[int], sent_at: str) -> None:
             [(sent_at, i) for i in ids],
         )
         await db.commit()
+
+
+# Phase 33 (delegate-card admin actions, перевод города): та же логика, что у
+# update_unsent_game_digest_city выше — правит ТОЛЬКО неотправленные строки этого делегата,
+# уже отправленный дайджест не переписываем (адресован менеджеру старого города по факту).
+async def update_unsent_reg_digest_city(telegram_id: int, new_city: str | None) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE reg_submit_digest_queue SET city = ? WHERE telegram_id = ? AND sent_at IS NULL",
+            (new_city, telegram_id),
+        )
+        await db.commit()
+        return cursor.rowcount
 
 
 # ── Quick 260904-dq1: очередь «🌙 Тихие часы» ──────────────────────────────────────────────
