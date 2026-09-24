@@ -1641,6 +1641,13 @@ async def show_my_checkin_qr(message: types.Message):
     await message.answer_photo(photo, caption=caption)
 
 
+# Форум-ночь п.4 (расписание форума в боте): экран «🗓 Программа» — импорт СРАЗУ ПОСЛЕ
+# show_my_checkin_qr и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у docstring
+# show_my_checkin_qr выше: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений — кнопка меню
+# обязана зарегистрироваться раньше него). Сам хендлер/логика — в шве handlers/program.py.
+from handlers import program  # noqa: E402,F401
+
+
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
 # handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed

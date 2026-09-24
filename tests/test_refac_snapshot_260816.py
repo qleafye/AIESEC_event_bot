@@ -525,6 +525,22 @@ def _build_snapshot_lines():
 # `admin_reject_reports.py`) и ПЕРЕД `sync_sheet`. Re-captured by RUNNING
 # `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
 # 642-строчного снимка: ровно две вставки (9 + 27 строк), 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.4, делегатский экран «🗓 Программа», 678 -> 681 handlers -- PURE
+# APPEND, ДВЕ вставки): новый шов `handlers/program.py`, импортирован из хвоста
+# `handlers/user_actions.py` СРАЗУ ПОСЛЕ `show_my_checkin_qr` и ПЕРЕД `reg_handoff_idle_fallback`
+# (тот — фолбэк-хендлер `StateFilter(None), F.text` без ограничений, обязан оставаться
+# последним message-хендлером user_actions.router). 1 message-хендлер (`show_program_schedule`,
+# `F.text.in_(MENU_TEXTS["menu_schedule"])` — derived key пуст, тот же класс фильтра, что у
+# `show_faq`/`show_my_checkin_qr` рядом) встал СРАЗУ ПОСЛЕ `show_my_checkin_qr` и ПЕРЕД
+# `reg_handoff_idle_fallback`. 2 callback_query-хендлера (`pds_day_open`/`pds_days_back`) встали
+# СРАЗУ ПОСЛЕ `faq_ask` (последний callback_query-хендлер, физически определённый в файле ДО
+# точки импорта) и ПЕРЕД `show_wave_rating` (`ambwave` — первый callback_query-хендлер,
+# физически определённый ПОСЛЕ точки импорта: show_wave_rating/ambpath/ambleave*/ambjoin/
+# checkinqr_confirm все идут дальше по файлу, чем show_my_checkin_qr/reg_handoff_idle_fallback).
+# Re-captured by RUNNING
+# `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
+# 678-строчного снимка: ровно две вставки (1 + 2 строки), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1180,6 +1196,7 @@ user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
 user_actions|message|open_miniapp_button|
 user_actions|message|show_my_checkin_qr|
+user_actions|message|show_program_schedule|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1197,6 +1214,8 @@ user_actions|callback_query|info_place|info_place
 user_actions|callback_query|faq_page|faq_list:*
 user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
+user_actions|callback_query|pds_day_open|pds_day:*
+user_actions|callback_query|pds_days_back|pds_days
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -1501,7 +1520,10 @@ def test_snapshot_total_handler_count_is_292():
     # Форум-ночь п.4 (расписание форума в боте): +36 хендлеров — handlers/admin_program.py +
     # handlers/admin_program_halls.py (9 admin.message + 27 admin.callback_query, см. drift-ноту
     # над GOLDEN_SNAPSHOT) — 642 -> 678.
-    assert len(GOLDEN_SNAPSHOT) == 678
+    # Форум-ночь п.4 (делегатский экран «🗓 Программа»): +3 хендлера — handlers/program.py
+    # (1 user_actions.message + 2 user_actions.callback_query, см. drift-ноту над
+    # GOLDEN_SNAPSHOT) — 678 -> 681.
+    assert len(GOLDEN_SNAPSHOT) == 681
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

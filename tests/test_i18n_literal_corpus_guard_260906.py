@@ -37,6 +37,8 @@ SCANNED_FILES = [
     ROOT / "handlers" / "payment.py",
     ROOT / "handlers" / "reg_lang.py",
     ROOT / "handlers" / "game_submit_counter.py",
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа».
+    ROOT / "handlers" / "program.py",
 ]
 
 # Функция -> индекс позиционного аргумента, несущего видимый делегату текст.

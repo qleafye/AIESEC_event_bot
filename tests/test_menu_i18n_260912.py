@@ -90,11 +90,11 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 # ── Задача 2: покрытие MENU_TEXTS ────────────────────────────────────────────────────────────
 
 def test_menu_texts_covers_all_thirteen_keys():
-    # Квик 260923 (форум-чекин, D-03): +1 ключ (menu_checkin_qr) -- имя теста историческое
-    # (осталось от 13 ключей до этой правки), assert ниже проверяет актуальное число.
+    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) -- имя теста
+    # историческое (осталось от 13 ключей до этих правок), assert ниже проверяет актуальное число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 14
+    assert len(MENU_TEXTS) == 15
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -128,6 +128,9 @@ _USER_ACTIONS_POINTS = [
     # Квик 260923 (форум-чекин, D-03): маршрутизация не зависит от checkin_qr_enabled -- тот
     # же приём, что у menu_miniapp выше (фильтр F.text.in_(...) матчит независимо от БД).
     ("menu_checkin_qr", "show_my_checkin_qr"),
+    # Форум-ночь п.4 (расписание форума в боте): маршрутизация не зависит от того, есть ли уже
+    # сессии в программе -- тот же приём, что у menu_miniapp/menu_checkin_qr выше.
+    ("menu_schedule", "show_program_schedule"),
 ]
 
 
@@ -206,8 +209,10 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # отдельного явного `db.set_setting("menu_lang", "on")`, которого ни один тест этого файла не
 # делает. Квик 260923 (форум-чекин): menu_checkin_qr сам по себе default "on" (обычная
 # конвенция), но второй гейт checkin_qr_enabled -- default "off" -- скрывает кнопку, пока
-# менеджер явно не включит модуль (ни один тест этого файла его не включает).
-_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
+# менеджер явно не включит модуль (ни один тест этого файла его не включает). Форум-ночь п.4:
+# menu_schedule гейтится has_program_sessions_for_city -- в пустой тестовой БД сессий нет ни
+# у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот же паритет.
+_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule")
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 
 
