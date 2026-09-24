@@ -21,6 +21,7 @@ Cloudflare Tunnel общий адрес у всех, кто пришёл чер�
 from __future__ import annotations
 
 from dashboard.queries import Scope
+from dashboard.timeutil import msk_now
 
 # D-06 в handlers/admin_caps.py: ровно семь capability, в этом порядке.
 ALL_CAPABILITIES = [
@@ -41,6 +42,10 @@ _ROLE_DEFAULT_CAPS: dict[str, list[str]] = {
     "game_manager": ["moderate_game"],
     # Quick 260919 (ln7): без этой записи роль есть в боте, а на веб-дашборде молча не пускает.
     "stats_manager": ["stats"],
+    # Идея №5 бэклога чек-ина: без этой записи волонтёр, приглашённый ссылкой, не увидит
+    # Mini App-сканер (miniapp/deps.py резолвит capability ЧЕРЕЗ этот же модуль) — тот же
+    # довод, что у stats_manager строкой выше.
+    "volunteer": ["checkin"],
 }
 
 
@@ -83,8 +88,16 @@ def _parse_caps_list(raw: str | None, default: list[str]) -> list[str]:
 
 
 def _get_staff_roles(conn, telegram_id: int) -> list[str]:
+    """Идея №6 бэклога чек-ина: та же фильтрация по `expires_at`, что
+    `database.db.get_staff_roles` у бота (D-6: «истёкшая роль не даёт НИКАКИХ прав» —
+    и в боте, и здесь, и в Mini App, который резолвит capability через ЭТОТ модуль,
+    `miniapp/deps.py::principal`). NULL = бессрочно; иначе действует ПО этот день включительно
+    — строковое сравнение ISO `YYYY-MM-DD`, тот же приём, что у оригинала."""
+    today = msk_now().date().isoformat()
     rows = conn.execute(
-        "SELECT role FROM staff WHERE telegram_id = ?", (telegram_id,)
+        "SELECT role FROM staff WHERE telegram_id = ? "
+        "AND (expires_at IS NULL OR expires_at >= ?)",
+        (telegram_id, today),
     ).fetchall()
     return [row["role"] for row in rows]
 

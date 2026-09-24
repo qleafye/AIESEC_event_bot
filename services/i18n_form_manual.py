@@ -858,6 +858,12 @@ _REGISTRY_TEXTS_EN = {
     "Другое": "Other",
     "Напиши своими словами, что помешало прийти.": "Tell us in your own words what got in the way.",
     "Спасибо, учтём!": "Thanks, noted!",
+    # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой — приветствие/просрочка ссылки/
+    # уже-есть-доступ (group "reg", volunteer_invite_*).
+    "Добро пожаловать в команду волонтёров! Тебе выдан доступ к сканеру отметок.":
+        "Welcome to the volunteer team! You've been granted access to the check-in scanner.",
+    "Ссылка устарела, попроси у организатора новую.": "This link has expired, ask the organizer for a new one.",
+    "У тебя уже есть доступ к боту как у менеджера.": "You already have manager-level access to the bot.",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,

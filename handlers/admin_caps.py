@@ -75,6 +75,15 @@ ROLES = {
         "label": "📊 Менеджер статистики",
         "default_caps": ["stats"],
     },
+    # Идея №5 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): волонтёр,
+    # приглашённый ссылкой (`handlers/admin_volunteer_invite.py`) или добавленный вручную тем
+    # же общим экраном «👥 Роли и доступы» — держит РОВНО право `checkin`, ничего больше.
+    # Заведена как обычная запись ROLES (не спецказус) — ссылка-приглашение зовёт тот же
+    # `database.db.add_staff(role="volunteer")`, что и ручная выдача.
+    "volunteer": {
+        "label": "🎗 Волонтёр форума",
+        "default_caps": ["checkin"],
+    },
 }
 
 
@@ -1011,6 +1020,33 @@ ADMIN_CAPS: dict[str, str] = {
     # функции», та же капа, что у хаба. Префиксы разные: "forum_ready:*" не покрывает "forum_ready_re:*".
     "forum_ready:*": "moderate_reg",
     "forum_ready_re:*": "moderate_reg",
+
+    # Идея №6 бэклога чек-ина (права со сроком действия): экран «⏳ Срок действия роли»
+    # (handlers/admin_roles.py) — та же капа, что весь остальной экран «👥 Роли и доступы»
+    # (admin_roles выше).
+    "rexp:*": "settings",
+    "rexp_go:*": "settings",
+    "rexp_custom:*": "settings",
+    "state:RolesExpiryEdit:*": "settings",
+
+    # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): «🔗 Пригласить волонтёров»
+    # (handlers/admin_volunteer_invite.py) — та же капа, что весь остальной хаб «🎪 Форум:
+    # функции» (admin_forum_functions выше): массовая выдача доступа третьим лицам, не
+    # рутинное сканирование, которого достаточно праву «checkin».
+    "volinvite_entry": "moderate_reg",
+    "volinvite_city_pick:*": "moderate_reg",
+    "volinvite_cfg:*": "moderate_reg",
+    "volinvite_toggle:*": "moderate_reg",
+    "volinvite_new:*": "moderate_reg",
+    "volinv_le:*": "moderate_reg",
+    "volinv_re:*": "moderate_reg",
+    "volinv_lim:*": "moderate_reg",
+    "volinv_revoke:*": "moderate_reg",
+    "volinv_revoke_go:*": "moderate_reg",
+    "volinv_revoke_no:*": "moderate_reg",
+    "volinv_users:*": "moderate_reg",
+    "volinv_removeuser:*": "moderate_reg",
+    "state:VolunteerInviteWizard:*": "moderate_reg",
 
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
