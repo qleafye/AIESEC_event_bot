@@ -147,7 +147,7 @@ def test_send_marks_and_delivers_with_three_buttons(tmp_path):
     bot = _with_bot()
 
     result = _run(cna.send(city=None, city_scope=None))
-    assert result == {"sent": 1, "queued": 0, "failed": 0, "total": 1}
+    assert result == {"sent": 1, "quiet": 0, "failed": 0, "total": 1}
     assert len(bot.sent) == 1
     chat_id, text, kb = bot.sent[0]
     assert chat_id == 1
@@ -165,13 +165,17 @@ def test_send_is_idempotent_same_day(tmp_path):
     bot = _with_bot()
     _run(cna.send(city=None, city_scope=None))
     result2 = _run(cna.send(city=None, city_scope=None))
-    assert result2 == {"sent": 0, "queued": 0, "failed": 0, "total": 0}
+    assert result2 == {"sent": 0, "quiet": 0, "failed": 0, "total": 0}
     assert len(bot.sent) == 1  # второй прогон никому ничего не отправил
 
 
-def test_send_respects_quiet_hours_and_queues(tmp_path):
+def test_send_skips_quiet_hours_delegates_without_marking(tmp_path):
     """Полное окно тихих часов (00:00-23:59, тот же приём, что test_quiet_hours_kinds_260916.py)
-    — отправка ставится в очередь, а не уходит сразу."""
+    — делегата в тихих часах ПРОПУСКАЕМ, не ставим в очередь `quiet_hours` (отложенная доставка
+    `flush_due` не перепроверяет отметку «Вход» на момент доставки — пришедший ночью получил бы
+    «мы тебя не видим» уже после того, как отметился). Идемпотентность «раз в день» НЕ
+    срабатывает для пропущенных — `checkin_not_arrived_mark_sent` не вызывается, повторный
+    запуск позже (после тихих часов) обязан взять того же делегата снова."""
     _ready(tmp_path)
     _run(_add_user(1))
     _run(db.set_setting("quiet_hours_enabled", "on"))
@@ -180,10 +184,30 @@ def test_send_respects_quiet_hours_and_queues(tmp_path):
     bot = _with_bot()
 
     result = _run(cna.send(city=None, city_scope=None))
-    assert result == {"sent": 0, "queued": 1, "failed": 0, "total": 1}
+    assert result == {"sent": 0, "quiet": 1, "failed": 0, "total": 1}
     assert bot.sent == []  # ничего не ушло немедленно
-    # но идемпотентность уже сработала -- строка "отправлено" есть, повтор не поставит второй раз
-    assert _run(db.checkin_not_arrived_pending_ids()) == []
+
+    # НЕ отмечен отправленным -- повторное нажатие "в процессе" позже возьмёт его снова
+    assert _run(db.checkin_not_arrived_pending_ids()) == [1]
+
+
+def test_send_retry_after_quiet_hours_delivers(tmp_path):
+    """Повторный запуск после того, как тихие часы кончились (тумблер выключен вручную —
+    имитирует «менеджер нажал ещё раз позже»), доставляет тому же делегату — идемпотентность
+    по (делегат, день) это позволяет, т.к. ему ничего не отправлялось в первый раз."""
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(db.set_setting("quiet_hours_enabled", "on"))
+    _run(db.set_setting("quiet_hours_start", "00:00"))
+    _run(db.set_setting("quiet_hours_end", "23:59"))
+    bot = _with_bot()
+    first = _run(cna.send(city=None, city_scope=None))
+    assert first == {"sent": 0, "quiet": 1, "failed": 0, "total": 1}
+
+    _run(db.set_setting("quiet_hours_enabled", "off"))
+    second = _run(cna.send(city=None, city_scope=None))
+    assert second == {"sent": 1, "quiet": 0, "failed": 0, "total": 1}
+    assert len(bot.sent) == 1
 
 
 def test_send_scoped_to_city(tmp_path):
@@ -243,6 +267,24 @@ def test_admin_send_go_executes_and_reports(tmp_path):
     assert cb.message.answers, "no report after send"
     report = cb.message.answers[-1][0]
     assert "Отправлено 1" in report
+
+
+def test_admin_send_go_reports_quiet_hours_separately(tmp_path):
+    """Экран после отправки обязан назвать делегатов, попавших в тихие часы, отдельной строкой
+    — менеджер должен понимать, что часть аудитории не тронута и её нужно дожать позже."""
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(db.set_setting("quiet_hours_enabled", "on"))
+    _run(db.set_setting("quiet_hours_start", "00:00"))
+    _run(db.set_setting("quiet_hours_end", "23:59"))
+    _with_bot()
+    cb = FakeCallback("cna_send_go:_all", ADMIN_ID)
+    _run(ac.cna_send_go(cb))
+    report = cb.message.answers[-1][0]
+    assert "Отправлено 0" in report
+    assert "1 делегатов сейчас в тихих часах" in report
+    assert "повторите позже" in report
 
 
 def test_admin_send_cancel_does_not_send(tmp_path):

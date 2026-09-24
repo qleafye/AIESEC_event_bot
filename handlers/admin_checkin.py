@@ -316,12 +316,18 @@ async def cna_send_go(callback: types.CallbackQuery):
     await callback.answer("Отправляю…")
     await callback.message.edit_text("⏳ Отправляю «Не пришёл»...", reply_markup=None)
     result = await checkin_not_arrived_send(city=code, city_scope=city_scope(code))
-    tail = f", в очередь тихих часов {result['queued']}" if result["queued"] else ""
-    await callback.message.answer(
-        f"✅ Отправлено {result['sent']} делегатам{tail}"
-        + (f", не доставлено {result['failed']}" if result["failed"] else "")
-        + f" из {result['total']}."
+    tail = (
+        f", не доставлено {result['failed']}" if result["failed"] else ""
     )
+    text = (
+        f"✅ Отправлено {result['sent']} делегатам{tail} из {result['total']}."
+    )
+    if result["quiet"]:
+        text += (
+            f"\n🌙 {result['quiet']} делегатов сейчас в тихих часах — им не отправлено, "
+            "повторите позже."
+        )
+    await callback.message.answer(text)
 
 
 @router.callback_query(F.data == "cna_send_no")
