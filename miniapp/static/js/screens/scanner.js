@@ -174,6 +174,8 @@ export async function render(root, params, ctx) {
   function renderPointCounter() {
     const current = pointsData.find((pt) => pt.point === selectedPoint);
     if (!current) { pointCounter.textContent = ""; return; }
+    // Бэклог чек-ина №7: у «🧪 Тренировка» счётчика нет — вместо него пометка с сервера.
+    if (current.count == null) { pointCounter.textContent = current.note || ""; return; }
     const countText = current.capacity ? `${current.count} из ${current.capacity}` : String(current.count);
     pointCounter.textContent = `Отмечено на точке: ${countText}`;
   }
@@ -185,11 +187,12 @@ export async function render(root, params, ctx) {
     }
     const chips = pointsData.map((pt) => {
       const isSel = pt.point === selectedPoint;
-      const countText = pt.capacity ? `${pt.count} из ${pt.capacity}` : String(pt.count);
+      const countText = pt.count == null ? ""
+        : ` · ${pt.capacity ? `${pt.count} из ${pt.capacity}` : String(pt.count)}`;
       const dot = pt.live ? "🔴 " : "";
       return h("button", {
         class: `chip-choice${isSel ? " chosen" : ""}`, type: "button",
-        text: `${dot}${pt.label} · ${countText}`,
+        text: `${dot}${pt.label}${countText}`,
         onClick: () => { selectedPoint = pt.point; renderPointChips(); },
       });
     });
@@ -244,12 +247,20 @@ export async function render(root, params, ctx) {
   // защита: окно, «своя» и «последняя» проверяются на сервере (/checkin/undo).
   let undoTimer = null;
 
-  function undoButton(undo) {
+  function undoButton(undo, res) {
     const btn = h("button", { class: "btn secondary checkin-plaque-undo", type: "button", text: undo.label });
     btn.addEventListener("click", async () => {
       if (btn.hasAttribute("disabled")) return;
       btn.setAttribute("disabled", "");
       if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+      // Тренировка: отметки нет — показываем, как выглядит отмена, без запроса на сервер.
+      if (undo.demo) {
+        showPlaque({
+          status: "undone", reason_text: undo.text, full_name: res.full_name, city: res.city,
+          training_note: res.training_note,
+        }, { closeButton: true });
+        return;
+      }
       let res;
       try {
         res = await api("/checkin/undo", { method: "POST", body: { id: undo.id } });
@@ -288,7 +299,9 @@ export async function render(root, params, ctx) {
       res.city ? h("div", { class: "checkin-plaque-city", text: res.city }) : null,
       res.reason_text && heading !== res.reason_text
         ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
-      res.undo ? undoButton(res.undo) : null,
+      res.hint ? h("div", { class: "checkin-plaque-reason", text: res.hint }) : null,
+      res.training_note ? h("div", { class: "checkin-plaque-city", text: `🧪 ${res.training_note}` }) : null,
+      res.undo ? undoButton(res.undo, res) : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");
