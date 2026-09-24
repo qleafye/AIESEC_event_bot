@@ -80,6 +80,16 @@ MENU_BUTTONS = [
 MENU_TEXTS: dict[str, frozenset[str]] = {
     key: frozenset({text, MENU_EN.get(text, text)}) for key, text in MENU_BUTTONS
 }
+
+# Национальная конференция (съезд АЙСЕК) — не форум: при event_type == "conference" две
+# подписи меню меняются. Входной матчинг принимает обе формы — клавиатура, выданная делегату
+# до смены типа события, продолжает работать.
+CONFERENCE_MENU_LABELS: dict[str, str] = {
+    "menu_info": "ℹ️ О конференции",
+    "menu_program": "📅 Программа конференции",
+}
+for _key, _text in CONFERENCE_MENU_LABELS.items():
+    MENU_TEXTS[_key] = MENU_TEXTS[_key] | {_text, MENU_EN.get(_text, _text)}
 MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 Оплата", "💳 Оплата")})
 
 # quick-260916: inline (not reply-keyboard) caption sent alongside the delegate's welcome-back
@@ -195,8 +205,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: checkin_qr_enabled resolve failed: {e}")
         checkin_qr_on = False
 
+    # Тип события — одно чтение до цикла, fail-soft к форумным подписям.
+    conference = False
+    try:
+        conference = await get_setting_typed("event_type") == "conference"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: event_type resolve failed: {e}")
+        conference = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
+        if conference:
+            text = CONFERENCE_MENU_LABELS.get(key, text)
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
         # branch of `_parse_setting` is `raw if raw else default`, so an unset/empty stored
         # value resolves to "on" exactly like the old `val is None or val == "on"` idiom;

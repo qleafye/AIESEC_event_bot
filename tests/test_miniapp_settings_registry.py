@@ -362,7 +362,7 @@ def test_hints_countdown_present_when_date_empty_and_module_off(tmp_path):
     assert resp.status_code == 200, resp.text
     countdown = resp.json()["countdown"]
     assert countdown is not None
-    assert "Дата отсчёта до форума" in countdown["text"]
+    assert "Дата отсчёта до мероприятия" in countdown["text"]
     assert "делегаты не видят" in countdown["text"]
     assert countdown["hash"] == "#/settings"
 
