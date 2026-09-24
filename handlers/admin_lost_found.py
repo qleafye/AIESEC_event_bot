@@ -98,6 +98,19 @@ async def _render_city_picker() -> tuple[str, InlineKeyboardMarkup]:
     return "🧳 <b>Бюро находок</b>\n\nВыберите город.", InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+async def _chat_for_own_city(code: str | None) -> dict | None:
+    """`services.chat_tracking.chat_for_city` сравнивает `entry["city"] == city` буквально —
+    модуль городов выключен -> привязка всегда лежит под глобальными ключами (`city=None`),
+    а `_resolve_own_city` в этом состоянии всё равно возвращает настоящий код
+    (`default_city_code()`, тот же приём, что `handlers.admin_forum_functions.
+    _resolve_screen_city`). Тот же трёхветочный «module off -> None» гейт, что и в
+    остальных местах этого модуля (per_city_key при сохранении тумблера) — без него привязка
+    глобального чата не находилась бы вовсе (см. `services.sos.sos_chat_for_city`, тот же
+    гейт «not cities_module_on() or city is None» в соседнем форумном модуле)."""
+    chat_city = code if await cities_module_on() else None
+    return await chat_tracking.chat_for_city(chat_city)
+
+
 async def _post_caption(code: str | None, where_text: str) -> str:
     template = await get_setting_typed_for_city("lost_found_post_text", code) or ""
     return template.replace("{where}", html.escape(where_text))
@@ -228,7 +241,7 @@ async def lost_found_publish(callback: types.CallbackQuery, state: FSMContext, b
         await callback.answer("Черновик утерян — начните заново, /found.", show_alert=True)
         return
 
-    entry = await chat_tracking.chat_for_city(code)
+    entry = await _chat_for_own_city(code)
     if entry is None:
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
@@ -321,7 +334,7 @@ async def _lostfound_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardM
     text_set = bool((await get_setting_typed("lost_found_post_text") or "").strip())
     if not text_set:
         lines.append("\n⚠️ Текст поста пуст — публикация не пойдёт, даже если включено здесь.")
-    chat_entry = await chat_tracking.chat_for_city(code)
+    chat_entry = await _chat_for_own_city(code)
     if chat_entry is None:
         lines.append(
             "\n⚠️ Чат делегатов этого города не привязан — добавьте бота администратором в "
