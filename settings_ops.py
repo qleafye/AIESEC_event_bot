@@ -631,6 +631,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # handlers/admin_forum_functions.py (forumnoshowpoll_cfg:*), тот же приём, что у соседей
     # выше.
     "forum_noshow_poll_enabled": "apps",
+    # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой — тот же раздел «📋 Заявки», свой
+    # экран у бота — handlers/admin_volunteer_invite.py (volinvite_cfg:*), тот же приём, что у
+    # соседей выше (forum_day_menu_enabled и т.д.).
+    "volunteer_invite_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
