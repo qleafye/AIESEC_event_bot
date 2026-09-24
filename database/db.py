@@ -410,6 +410,94 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
     await db.execute(f"PRAGMA user_version = {_MSK_MIGRATION_USER_VERSION}")
 
 
+_MENU_SCHEDULE_MIGRATION_USER_VERSION = 2
+_MENU_PROGRAM_KEY = "menu_program"
+_MENU_SCHEDULE_KEY = "menu_schedule"
+
+
+async def _migrate_menu_schedule_into_program(db: aiosqlite.Connection) -> None:
+    """D-29 (коммит 125ed56) слил две кнопки программы в одну `menu_program` и перестал читать
+    `menu_schedule`. Там, где менеджер когда-то выключил старую статичную «📅 Программа форума»
+    (`menu_program`=off), а интерактивная «🗓 Программа» (`menu_schedule`) была включена
+    (дефолт on, строки нет), после слияния кнопка пропала совсем, хотя сессии заведены.
+
+    Одноразово по `PRAGMA user_version` (та же форма, что `_migrate_local_timestamps_to_msk`,
+    то же соединение и та же транзакция): в каждой области — глобально и по каждому городу, где
+    есть городской вариант любого из двух ключей (`{key}__city__{code}`) — если
+    `menu_schedule` там НЕ выключен явно, `menu_program` становится `on`; если выключен явно —
+    `menu_program` остаётся с тем значением, которое делегат этого города видел до миграции.
+    Затем все варианты `menu_schedule` удаляются — их больше никто не читает. Пустую кнопку
+    всё равно прячет гейт «есть фото или сессии» (`services.program.program_menu_visible`).
+    На чистой БД не пишет ни одной строки (значение, равное дефолту/глобальному, не
+    записывается)."""
+    async with db.execute("PRAGMA user_version") as cursor:
+        row = await cursor.fetchone()
+    if (row[0] if row else 0) >= _MENU_SCHEDULE_MIGRATION_USER_VERSION:
+        return
+
+    city_prefix = {k: k + _CITY_OVERRIDE_SEP for k in (_MENU_PROGRAM_KEY, _MENU_SCHEDULE_KEY)}
+    values: dict[str, str] = {}
+    async with db.execute(
+        "SELECT key, value FROM bot_settings WHERE key IN (?, ?) "
+        "OR substr(key, 1, ?) = ? OR substr(key, 1, ?) = ?",
+        (
+            _MENU_PROGRAM_KEY, _MENU_SCHEDULE_KEY,
+            len(city_prefix[_MENU_PROGRAM_KEY]), city_prefix[_MENU_PROGRAM_KEY],
+            len(city_prefix[_MENU_SCHEDULE_KEY]), city_prefix[_MENU_SCHEDULE_KEY],
+        ),
+    ) as cursor:
+        for key, value in await cursor.fetchall():
+            values[key] = value
+
+    def _eff(key: str, code: str | None, default: str) -> str:
+        if code is not None:
+            own = values.get(city_prefix[key] + code)
+            if own:
+                return own
+        return values.get(key) or default
+
+    def _target(code: str | None) -> str:
+        old_program = _eff(_MENU_PROGRAM_KEY, code, "on")
+        return "on" if _eff(_MENU_SCHEDULE_KEY, code, "on") != "off" else old_program
+
+    codes = sorted({
+        key.split(_CITY_OVERRIDE_SEP, 1)[1] for key in values if _CITY_OVERRIDE_SEP in key
+    })
+    new_global = _target(None)
+    city_targets = {code: _target(code) for code in codes}
+
+    async def _put(key: str, value: str) -> None:
+        await db.execute(
+            "INSERT INTO bot_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    changed = 0
+    if (values.get(_MENU_PROGRAM_KEY) or "on") != new_global:
+        await _put(_MENU_PROGRAM_KEY, new_global)
+        changed += 1
+    for code, target in city_targets.items():
+        city_key = city_prefix[_MENU_PROGRAM_KEY] + code
+        if city_key in values:
+            if values[city_key] != target:
+                await _put(city_key, target)
+                changed += 1
+        elif target != new_global:
+            await _put(city_key, target)
+            changed += 1
+
+    cursor = await db.execute(
+        "DELETE FROM bot_settings WHERE key = ? OR substr(key, 1, ?) = ?",
+        (_MENU_SCHEDULE_KEY, len(city_prefix[_MENU_SCHEDULE_KEY]), city_prefix[_MENU_SCHEDULE_KEY]),
+    )
+    logger.info(
+        "_migrate_menu_schedule_into_program: menu_program изменено ключей %s, "
+        "menu_schedule удалено ключей %s", changed, cursor.rowcount,
+    )
+    await db.execute(f"PRAGMA user_version = {_MENU_SCHEDULE_MIGRATION_USER_VERSION}")
+
+
 # Phase 30 (30-02, A2-03): имя файла снапшота на `kind` — таблица закрытая (`kind` — словарь
 # "university"/"city" из `services/lookup.py`), а НЕ строковый шаблон `"<kind>s_ru.json"`: для
 # "city" такой шаблон дал бы "citys_ru.json", а не существующий `cities_ru.json`.
@@ -1857,6 +1945,8 @@ async def init_db():
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
+        # D-29: осиротевший menu_schedule -> menu_program (см. докстринг функции).
+        await _migrate_menu_schedule_into_program(db)
 
         await db.commit()
 
