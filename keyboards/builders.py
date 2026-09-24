@@ -115,6 +115,14 @@ LEGACY_MENU_TEXTS: dict[str, frozenset[str]] = {
 for _key, _texts in LEGACY_MENU_TEXTS.items():
     MENU_TEXTS[_key] = MENU_TEXTS[_key] | _texts
 
+# Идея №1 бэклога чек-ина (режим «день форума», services/forum_day_menu.py): пока для города
+# делегата идёт форум, эти четыре кнопки (если каждая и так прошла СВОЙ обычный гейт — сама
+# константа НИЧЕГО не включает и не выключает) поднимаются наверх меню в этом порядке, всё
+# остальное сдвигается вниз БЕЗ сокрытия (см. get_main_menu_kb).
+FORUM_DAY_MENU_PRIORITY_KEYS: tuple[str, ...] = (
+    "menu_checkin_qr", "menu_program", "menu_important", "menu_sos",
+)
+
 # quick-260916: inline (not reply-keyboard) caption sent alongside the delegate's welcome-back
 # message to an admin — single source shared with handlers/registration.py so the literal is
 # never typed twice; see ADMIN_MISC_BUTTON_TEXTS below for why it matters outside registration.
@@ -276,7 +284,20 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: is_sos_active_for_city resolve failed for {telegram_id}: {e}")
         sos_on = False
 
-    kb = ReplyKeyboardBuilder()
+    # Идея №1 бэклога чек-ина (режим «день форума»): тот же приём, что sos_on выше — одно
+    # чтение до цикла, fail-soft к False (сбой резолва = обычный порядок меню, кнопки важнее
+    # раскладки). Ничего не прячет и не показывает сама по себе — только переставляет ниже
+    # уже собранный список кнопок, прошедших свои обычные гейты.
+    forum_day_on = False
+    try:
+        forum_day_city = code if code is not None else default_city_code()
+        from services.forum_day_menu import is_forum_day_menu_active_for_city
+        forum_day_on = await is_forum_day_menu_active_for_city(forum_day_city)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: is_forum_day_menu_active_for_city resolve failed for {telegram_id}: {e}")
+        forum_day_on = False
+
+    collected: list[tuple[str, str]] = []
     for key, text in MENU_BUTTONS:
         if conference:
             text = CONFERENCE_MENU_LABELS.get(key, text)
@@ -321,7 +342,25 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
             # подписей меню там нет и быть не должно, см. i18n_ui_en.py::MENU_EN).
-            kb.button(text=MENU_EN.get(text, text) if lang == "en" else text)
+            collected.append((key, MENU_EN.get(text, text) if lang == "en" else text))
+
+    # Идея №1 бэклога чек-ина: в режиме «день форума» четыре приоритетные кнопки (та из них,
+    # что вообще прошла свой гейт выше) поднимаются наверх в фиксированном порядке
+    # FORUM_DAY_MENU_PRIORITY_KEYS, остальные остаются в прежнем взаимном порядке следом —
+    # сдвиг вниз, не скрытие. Вне режима (форум не сегодня, тумблер выключен, сбой резолва)
+    # `collected` не трогается — порядок меню байт-в-байт прежний.
+    if forum_day_on:
+        priority_rank = {k: i for i, k in enumerate(FORUM_DAY_MENU_PRIORITY_KEYS)}
+        priority = sorted(
+            (item for item in collected if item[0] in priority_rank),
+            key=lambda item: priority_rank[item[0]],
+        )
+        rest = [item for item in collected if item[0] not in priority_rank]
+        collected = priority + rest
+
+    kb = ReplyKeyboardBuilder()
+    for _key, resolved_text in collected:
+        kb.button(text=resolved_text)
     # Persistent "upload receipt" entry — only while the user still owes one.
     # Lazy import avoids a circular import (payment imports get_main_menu_kb); fail-soft.
     if telegram_id is not None:
