@@ -341,6 +341,21 @@ def test_send_broadcast_marks_sent_and_is_idempotent(tmp_path, monkeypatch):
     assert len(bot.photos) == 2  # не выросло
 
 
+def test_send_broadcast_ignores_mute_today(tmp_path, monkeypatch):
+    """D-35 (24.09): «🔕 Не присылать сегодня» — заглушка ОБЫЧНЫХ рассылок
+    (`database.db.get_muted_today_ids`, `services/scheduler.py`), QR — служебное сообщение,
+    заглушку не проверяет вовсе, замьюченный делегат получает QR как обычно."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    _run(db.set_broadcast_mute(UID, "2026-10-02"))
+    bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0, 0))
+
+    result = _run(cb.send_broadcast(None))
+    assert result["sent"] == 1
+    assert len(bot.photos) == 1
+
+
 def test_send_broadcast_confirm_button_attached():
     from aiogram.types import InlineKeyboardMarkup
     kb = cb._confirm_kb()
@@ -546,44 +561,34 @@ def _set_quiet_hours(start="22:00", end="09:00"):
     _run(_set_setting("quiet_hours_end", end))
 
 
-def test_send_broadcast_defers_whole_city_during_quiet_hours(tmp_path, monkeypatch):
+# D-35 (решение владельца 24.09): QR — служебное сообщение, тихие часы на него НЕ действуют —
+# отменяет находку ревью 260924 (п.3), которая раньше откладывала рассылку города целиком до
+# конца окна тихих часов.
+
+def test_send_broadcast_ignores_quiet_hours_when_inside_window(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
     _set_quiet_hours()
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
 
-    async def body(s):
-        result = await cb.send_broadcast(None)
-        assert result["sent"] == 0
-        assert result["deferred_until"] == datetime(2026, 10, 3, 9, 0, 0)
-        assert bot.photos == []
-        job = s.get_job(cb.evening_job_id(None))
-        assert job is not None
-        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 9, 0, 0)
-        # Ничего не отмечено — следующее срабатывание перечитает пул заново, дублей не будет.
-        assert await db.checkin_qr_sent_ids() == set()
-
-    _run_scheduled(tmp_path, monkeypatch, body)
+    result = _run(cb.send_broadcast(None))
+    assert result["sent"] == 1
+    assert "deferred_until" not in result
+    assert len(bot.photos) == 1
 
 
-def test_send_morning_repeat_defers_whole_city_during_quiet_hours(tmp_path, monkeypatch):
+def test_send_morning_repeat_ignores_quiet_hours_when_inside_window(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
     _set_quiet_hours()
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0, 0))
 
-    async def body(s):
-        result = await cb.send_morning_repeat(None)
-        assert result["sent"] == 0
-        assert result["deferred_until"] == datetime(2026, 10, 3, 9, 0, 0)
-        assert bot.photos == []
-        job = s.get_job(cb.morning_job_id(None))
-        assert job is not None
-        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 9, 0, 0)
-
-    _run_scheduled(tmp_path, monkeypatch, body)
+    result = _run(cb.send_morning_repeat(None))
+    assert result["sent"] == 1
+    assert "deferred_until" not in result
+    assert len(bot.photos) == 1
 
 
 def test_send_broadcast_sends_normally_outside_quiet_hours(tmp_path, monkeypatch):

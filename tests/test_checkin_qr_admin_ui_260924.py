@@ -230,9 +230,9 @@ def test_send_go_rejects_concurrent_tap(tmp_path, monkeypatch):
     assert "уже идёт" in final_text.lower()
 
 
-def test_send_go_reports_deferral_during_quiet_hours(tmp_path, monkeypatch):
-    """Находка ревью 260924 (п.3): тихие часы — рассылка откладывается, менеджер видит понятный
-    ответ, а не молчаливый «0 доставлено»."""
+def test_send_go_ignores_quiet_hours(tmp_path, monkeypatch):
+    """D-35 (24.09): QR — служебное сообщение, тихие часы на него больше НЕ действуют (раньше
+    рассылка откладывалась до конца окна — владелец 24.09 явно это отменил)."""
     _db_ready(tmp_path)
     asyncio.run(_insert_user(UID))
     bot = _with_bot(monkeypatch)
@@ -244,10 +244,10 @@ def test_send_go_reports_deferral_during_quiet_hours(tmp_path, monkeypatch):
     async def body(s):
         cb = _FakeCallback("checkinqr_send_go:_all", ADMIN_ID)
         await admin_checkin.checkinqr_send_go(cb)
-        assert bot.photos == []
+        assert len(bot.photos) == 1
         final_text = cb.message.sent[-1][0]
-        assert "тихие часы" in final_text.lower()
-        assert "09:00" in final_text
+        assert "тихие часы" not in final_text.lower()
+        assert "1 доставлено" in final_text
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -256,8 +256,20 @@ def test_send_go_reports_deferral_during_quiet_hours(tmp_path, monkeypatch):
 # «⚙️ Настройки QR» — экран, тумблер, оба времени
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
+def test_cfg_screen_shows_qr_disabled_warning_by_default(tmp_path):
+    """D-35 (24.09): master-тумблер `checkin_qr_enabled` по умолчанию выключен (дефолт "off") —
+    экран настроек объясняет словами, почему рассылка не уйдёт, даже раньше проверки даты
+    форума."""
+    _db_ready(tmp_path)
+    cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
+    asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
+    text = cb.message.sent[0][0]
+    assert "вход по qr выключен" in text.lower()
+
+
 def test_cfg_screen_shows_forum_date_warning_when_unset(tmp_path):
     _db_ready(tmp_path)
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
     cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
     asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
     text = cb.message.sent[0][0]
@@ -266,34 +278,25 @@ def test_cfg_screen_shows_forum_date_warning_when_unset(tmp_path):
 
 def test_cfg_screen_no_warning_when_forum_date_set(tmp_path):
     _db_ready(tmp_path)
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
     asyncio.run(db.set_setting("forum_date", "03.10.2026"))
     cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
     asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
     text = cb.message.sent[0][0]
     assert "не задана" not in text
+    assert "вход по qr выключен" not in text.lower()
 
 
-def test_cfg_screen_warns_when_evening_time_falls_in_quiet_hours(tmp_path, monkeypatch):
-    """Находка ревью 260924 (п.3): экран настроек предупреждает словами, если настроенное
-    время рассылки попадает в тихие часы делегатов — CLAUDE.md «ошибка объясняет, что сделать»."""
+def test_cfg_screen_no_quiet_hours_warning_at_all(tmp_path):
+    """D-35 (24.09): тихие часы больше НЕ показываются на экране времени — QR служебное
+    сообщение, время не может «увести» отправку."""
     _db_ready(tmp_path)
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
     asyncio.run(db.set_setting("quiet_hours_enabled", "on"))
     asyncio.run(db.set_setting("quiet_hours_start", "22:00"))
     asyncio.run(db.set_setting("quiet_hours_end", "09:00"))
     asyncio.run(db.set_setting("checkin_qr_broadcast_time", "23:00"))
-    cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
-    asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
-    text = cb.message.sent[0][0]
-    assert "тихие часы" in text.lower()
-    assert "23:00" in text and "09:00" in text
-
-
-def test_cfg_screen_no_quiet_hours_warning_when_time_outside_window(tmp_path):
-    _db_ready(tmp_path)
-    asyncio.run(db.set_setting("quiet_hours_enabled", "on"))
-    # Узкое окно, не пересекающееся с дефолтами рассылки (18:00/08:00) — оба времени вне него.
-    asyncio.run(db.set_setting("quiet_hours_start", "03:00"))
-    asyncio.run(db.set_setting("quiet_hours_end", "04:00"))
     cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
     asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
     text = cb.message.sent[0][0]
