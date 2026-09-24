@@ -13,6 +13,7 @@ Mini App (или в любой точке — учебный QR всё равн�
 
 Форма шва — как у соседей: своего `Router()` нет, `from handlers.admin import router`, импорт
 из хвоста `handlers/admin_checkin.py`."""
+import asyncio
 import logging
 
 from aiogram import F, types
@@ -44,7 +45,9 @@ async def checkin_training_sheet(callback: types.CallbackQuery):
     lang, tr_map = await i18n.context(callback.from_user.id)
     caption = await i18n.tr_setting("checkin_training_sheet_caption_text", lang, tr_map) or ""
     try:
-        png = await checkin_training.build_training_sheet(lang, tr_map)
+        # Pillow (шрифты, рендер) блокирует — в потоке, чтобы бот не вставал на секунду.
+        inputs = await checkin_training.training_sheet_inputs(lang, tr_map)
+        png = await asyncio.to_thread(checkin_training.render_training_sheet, inputs)
     except Exception:  # noqa: BLE001 — нет Pillow/шрифта: пять QR отдельными картинками
         logger.warning("checkin_training_sheet: лист A4 не собрался, шлю QR по одному", exc_info=True)
         pngs = await checkin_training.training_qr_pngs(lang, tr_map)
