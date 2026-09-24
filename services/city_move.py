@@ -52,6 +52,14 @@ import services.sheets as sheets_service
 
 logger = logging.getLogger(__name__)
 
+# Коды результата функций листа (services/sheets.py) — словами для отчёта менеджеру.
+_SHEET_RESULT_TEXT = {
+    "not_found_tab": "вкладки нет в таблице",
+    "not_found_row": "строки делегата на вкладке нет",
+    "duplicate": "на вкладке несколько строк делегата",
+    "error": "таблица недоступна",
+}
+
 STATUS_MODE_KEEP = "keep"
 STATUS_MODE_TO_MODERATION = "to_moderation"
 STATUS_MODES = (STATUS_MODE_KEEP, STATUS_MODE_TO_MODERATION)
@@ -254,7 +262,24 @@ async def move_user_city(
             new_city_code = await sheet_city_code(new_city)
             row = await row_fn(full_for_row, new_city_code)
 
-            if write_tab is None:
+            append_ok = False
+            if write_tab == old_tab:
+                # Старая и новая вкладка совпали (напр. у обоих городов нет своих вкладок —
+                # обе строки живут на главной): append дал бы дубль, а delete после него снёс
+                # бы по «ожидалась 1» ничего — обновляем строку на месте. update_row_by_id на
+                # промахе откатывается на главный лист, поэтому зовём его, только убедившись,
+                # что строка на этой вкладке ровно одна.
+                rows_here = await sheets_service.find_rows_by_id(old_tab, telegram_id)
+                if rows_here is not None and len(rows_here) == 1 and await sheets_service.update_row_by_id(
+                    old_tab, telegram_id, row,
+                ):
+                    report["sheet"]["moved"] = True
+                else:
+                    report["sheet"]["error"] = (
+                        f"строка делегата на вкладке «{old_tab or 'главная'}» не найдена или их "
+                        "несколько — лист не обновлён, проверьте таблицу вручную"
+                    )
+            elif write_tab is None:
                 await sheets_service.append_to_sheet(row)
                 append_ok = True
             else:
@@ -262,7 +287,8 @@ async def move_user_city(
                 append_ok = append_result == "ok"
                 if not append_ok:
                     report["sheet"]["error"] = (
-                        f"не удалось дописать строку на вкладку «{write_tab}» ({append_result!r}) "
+                        f"не удалось дописать строку на вкладку «{write_tab}» "
+                        f"({_SHEET_RESULT_TEXT.get(append_result, 'ошибка таблицы')}) "
                         "— старая строка НЕ удалена, проверьте таблицу вручную"
                     )
 
@@ -270,8 +296,9 @@ async def move_user_city(
                 new_rows_after = await sheets_service.find_rows_by_id(write_tab, telegram_id)
                 if new_rows_after is None or len(new_rows_after) != 1:
                     report["sheet"]["error"] = (
-                        f"после добавления найдено {new_rows_after!r} строк(и) "
-                        "(ожидалась ровно 1) — старая строка НЕ удалена, проверьте таблицу вручную"
+                        "после добавления на новой вкладке не ровно одна строка делегата "
+                        f"({'вкладка не читается' if new_rows_after is None else len(new_rows_after)}) "
+                        "— старая строка НЕ удалена, проверьте таблицу вручную"
                     )
                     logger.error(
                         "city_move: unexpected row count on write tab %r for telegram_id=%s: %r",
@@ -287,7 +314,8 @@ async def move_user_city(
                         report["sheet"]["moved"] = True
                     else:
                         report["sheet"]["error"] = (
-                            f"строка добавлена, но старая НЕ удалена (код {delete_result!r}) "
+                            "строка добавлена, но старая НЕ удалена "
+                            f"({_SHEET_RESULT_TEXT.get(delete_result, 'ошибка таблицы')}) "
                             "— проверьте таблицу вручную, дубль безопаснее потери"
                         )
         except Exception as e:
