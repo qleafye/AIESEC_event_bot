@@ -881,7 +881,8 @@ async def _default_prompt_text(
 ) -> str:
     """Вычисляет дефолтный текст вопроса — то же самое, что раньше собирал `_ask_step` перед
     вызовом `_prompt(step_key, default, participant_type)`. university/expectations/
-    payment_plan_date зависят от реестра (режим ВУЗа, event_name, дедлайн оплаты); остальные
+    payment_plan_date зависят от реестра (режим ВУЗа, event_name_genitive/event_name, дедлайн
+    оплаты); остальные
     типизированные (date/select/multi) — от REG_LABELS; всё прочее — статический литерал.
 
     Phase 25 (CITYQ-01): `resume` в режиме `text_only` — единственная новая ветка (литерал из
@@ -898,7 +899,11 @@ async def _default_prompt_text(
             return "Введи название твоего ВУЗа:"
         return "В каком ВУЗе/колледже ты учишься?"
     if step_key == "expectations":
-        event_name = await get_setting("event_name") or "мероприятия"
+        event_name = (
+            await get_setting("event_name_genitive")
+            or await get_setting("event_name")
+            or "мероприятия"
+        )
         return f"Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?"
     if step_key == "payment_plan_date":
         deadline = await get_setting("payment_deadline")
