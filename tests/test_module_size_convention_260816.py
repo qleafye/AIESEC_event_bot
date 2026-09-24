@@ -186,7 +186,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2846,
+        2851,
+        "Идея №20 бэклога чек-ина (бюро находок): +5 строк — `lost_found_post_text` "
+        "дописан в _APPS_FIELD_ORDER (редактор экрана достаётся бесплатно попаданием в этот "
+        "список, тот же приём, что у соседних форумных текстов); 2846 -> 2851. "
         "Идеи №16/№23 бэклога чек-ина: +64 строки — восемь новых ключей в _APPS_FIELD_ORDER "
         "(опрос неявившихся) + два reschedule-хука (_reschedule_forum_day_report_if_relevant/"
         "_reschedule_forum_noshow_poll_if_relevant, та же форма, что у "
@@ -480,6 +483,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "карточке /find (рядом с «🔄 Перевыпустить QR», без переупорядочивания) + шов-импорт "
         "`from handlers import admin_city_move` в самый хвост файла, после admin_program_view "
         "(942 -> 955). "
+        "Идея №20 бэклога чек-ина (бюро находок): +8 строк — шов-импорт `from handlers import "
+        "admin_lost_found` («🧳 Нашли вещь») в самый хвост файла, после "
+        "admin_volunteer_invite (952 -> 960). "
         "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +10 строк — шов-импорт "
         "`from handlers import admin_volunteer_invite` в самый хвост файла, после "
         "admin_program_view (942 -> 952). "
@@ -630,7 +636,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1234,
+        1256,
         "Слияние с main 3d0b70f: сложились перевод в город (фаза 33) и швы/капы «Сейчас на площадке»/«Учебные QR» (1202). "
         "Бэклог чек-ина №7: +4 строки — ключ «🧪 Учебные QR» (checkin_training_sheet, любое "
         "право панели; пару checkin/moderate_reg проверяет хендлер); 1189 -> 1193. "
@@ -649,6 +655,13 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "город» (citymv_start:*/citymv_pick:*/citymv_apply:*/citymv_cancel:*, капа "
         "«moderate_reg» — тот же довод, что у соседнего «🔄 Перевыпустить QR» выше); "
         "1165 -> 1174. "
+        "Идея №20 бэклога чек-ина (бюро находок): +22 строки — capability-записи мастера "
+        "«🧳 Нашли вещь» (lost_found_new/cmd:found/state:LostFoundNew:*/lostfound_city_pick:*/"
+        "lostfound_publish/lostfound_cancel, капа «checkin» — тот же довод, что у admin_checkin) "
+        "+ экрана тумблера (lostfound_cfg:*/lostfound_toggle:*, капа «moderate_reg» — тот же "
+        "довод, что у остального хаба «🎪 Форум: функции») + кнопки «✅ Нашёлся хозяин» в чате "
+        "делегатов (lostfound_return:*, ANY_CAPABILITY — навигационная запись, реальная "
+        "OR-проверка вручную внутри handlers.admin_lost_found.lostfound_return); 1234 -> 1256. "
         "Идеи №5/№6 бэклога чек-ина (приглашение волонтёров ссылкой + права со сроком "
         "действия): +36 строк — capability-записи роли «volunteer» + экрана «⏳ Срок действия "
         "роли» (rexp:*/rexp_go:*/rexp_custom:*/state:RolesExpiryEdit:*, капа «settings» — тот "
@@ -787,7 +800,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "не в БД; потолок поднят до фактического размера.",
     ),
     "admin_forum_functions.py": (
-        856,
+        866,
+        "Идея №20 бэклога чек-ина (бюро находок): +10 строк — одна аддитивная строка хаба "
+        "«🧳 Бюро находок» (статус + кнопка на handlers/admin_lost_found.py, тот же приём, "
+        "что соседняя строка «🔗 Приглашение волонтёров ссылкой»); 856 -> 866. "
         "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +6 строк — одна аддитивная "
         "строка хаба «🔗 Приглашение волонтёров ссылкой» (статус + кнопка на "
         "handlers/admin_volunteer_invite.py, тот же приём, что соседние строки хаба); "

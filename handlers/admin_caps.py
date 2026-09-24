@@ -1065,6 +1065,29 @@ ADMIN_CAPS: dict[str, str] = {
     "citymv_pick:*": "moderate_reg",
     "citymv_apply:*": "moderate_reg",
     "citymv_cancel:*": "moderate_reg",
+
+
+    # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
+    # (handlers/admin_lost_found.py) — капа «checkin», тот же довод, что у admin_checkin выше
+    # (рутинное действие волонтёра на площадке, не настройка и не массовая рассылка).
+    "lost_found_new": "checkin",
+    "cmd:found": "checkin",
+    "state:LostFoundNew:*": "checkin",
+    "lostfound_city_pick:*": "checkin",
+    "lostfound_publish": "checkin",
+    "lostfound_cancel": "checkin",
+    # Экран тумблера «🧳 Бюро находок» — капа «moderate_reg», тот же довод, что у соседних
+    # строк хаба «🎪 Форум: функции» (checkinvol_cfg:*/volinvite_cfg:* выше): включение
+    # функции для города, не рутинное действие волонтёра.
+    "lostfound_cfg:*": "moderate_reg",
+    "lostfound_toggle:*": "moderate_reg",
+    # Кнопка «✅ Нашёлся хозяин» живёт ПОД постом в группе делегатов, её видит и может
+    # нажать любой участник чата (не только штат) — настоящий гейт («checkin» ИЛИ
+    # «moderate_reg», обе аудитории по плану) не выражается ОДНИМ значением этой карты
+    # (D-01/D-15: один ключ -> одна капа), поэтому запись ANY_CAPABILITY — тот же
+    # навигационный приём, что «admin_city_pick:*»/«admin_city_switch*» выше: реальная
+    # проверка (OR двух прав) — вручную внутри `handlers.admin_lost_found.lostfound_return`.
+    "lostfound_return:*": ANY_CAPABILITY,
 }
 
 
