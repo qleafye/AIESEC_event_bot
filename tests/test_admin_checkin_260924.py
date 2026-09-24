@@ -112,6 +112,18 @@ async def _set_season(season: str):
     await set_setting_by_admin(ADMIN_ID, "event_season", season)
 
 
+BOUND_ID = 910102
+
+
+async def _setup_bound_manager(city: str):
+    """D-26 (24.09): волонтёр/менеджер, НАСТОЯЩЕ привязанный к городу (`staff.city`, не просто
+    выбравший фильтр в панели) — тот же приём, что `tests/test_admin_program_260924.py`."""
+    from handlers.admin_caps import role_caps_key
+    await db.set_setting(role_caps_key("reg_manager"), "checkin")
+    await db.add_staff(BOUND_ID, "reg_manager", ADMIN_ID)
+    await db.set_staff_city(BOUND_ID, city)
+
+
 def test_screen_shows_counter_and_upload_button(tmp_path):
     _db_ready(tmp_path)
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
@@ -397,6 +409,79 @@ def test_checkin_point_pick_session_new_wrong_city_and_not_found(tmp_path):
     assert "Другой город форума: 1" in report
     assert asyncio.run(db.count_checkins_by_point(f"session:{sid}")) == 1
     assert asyncio.run(db.count_checkins_by_point("entry")) == 1  # авто-вход от новой сессии
+
+
+def test_checkin_point_pick_entry_other_city_not_marked_for_bound_manager(tmp_path):
+    """D-26 (24.09): волонтёр, привязанный к городу, загружает выгрузку сканера на точке
+    «Вход» — делегаты ЧУЖОГО города НЕ отмечаются, отдельная строка отчёта «Другой город»."""
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(_setup_bound_manager("spb"))
+
+    asyncio.run(_insert_user(1, status="approved", season="YL'26", full_name="Иванов Иван"))
+    asyncio.run(_insert_user(2, status="approved", season="YL'26", full_name="Петров Пётр"))
+
+    async def _set_city(uid, city):
+        async with _connect() as conn:
+            await conn.execute("UPDATE users SET event_city = ? WHERE telegram_id = ?", (city, uid))
+            await conn.commit()
+
+    asyncio.run(_set_city(1, "spb"))  # свой город волонтёра
+    asyncio.run(_set_city(2, "msk"))  # чужой город
+
+    tok1 = asyncio.run(db.get_or_create_checkin_token(1))
+    tok2 = asyncio.run(db.get_or_create_checkin_token(2))
+    qr_own = build_payload("YL26", "Иванов Иван", "СПб", tok1)
+    qr_other = build_payload("YL26", "Петров Пётр", "Москва", tok2)
+
+    state = _new_state(BOUND_ID)
+    asyncio.run(state.update_data(checkin_records=[
+        {"qr": qr_own, "scanned_at": "2026-10-03 10:05:00"},
+        {"qr": qr_other, "scanned_at": "2026-10-03 10:05:00"},
+    ]))
+    cb = _FakeCallback("checkin_point:entry", BOUND_ID)
+    asyncio.run(admin_checkin.checkin_point_pick(cb, state))
+    report = _flat_text(cb.message)[0]
+    assert "Отмечено новых: 1" in report
+    assert "Другой город: 1 (не отмечены)" in report
+    assert asyncio.run(db.count_checkins_by_point("entry")) == 1
+
+
+def test_checkin_point_pick_entry_unbound_admin_not_scoped(tmp_path):
+    """Суперадмин (без привязки) загружает выгрузку на «Вход» — города не ограничивает, как
+    раньше (D-15 нетронут для непривязанных)."""
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+
+    asyncio.run(_insert_user(1, status="approved", season="YL'26", full_name="Иванов Иван"))
+    asyncio.run(_insert_user(2, status="approved", season="YL'26", full_name="Петров Пётр"))
+
+    async def _set_city(uid, city):
+        async with _connect() as conn:
+            await conn.execute("UPDATE users SET event_city = ? WHERE telegram_id = ?", (city, uid))
+            await conn.commit()
+
+    asyncio.run(_set_city(1, "spb"))
+    asyncio.run(_set_city(2, "msk"))
+
+    tok1 = asyncio.run(db.get_or_create_checkin_token(1))
+    tok2 = asyncio.run(db.get_or_create_checkin_token(2))
+    qr1 = build_payload("YL26", "Иванов Иван", "СПб", tok1)
+    qr2 = build_payload("YL26", "Петров Пётр", "Москва", tok2)
+
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.update_data(checkin_records=[
+        {"qr": qr1, "scanned_at": "2026-10-03 10:05:00"},
+        {"qr": qr2, "scanned_at": "2026-10-03 10:05:00"},
+    ]))
+    cb = _FakeCallback("checkin_point:entry", ADMIN_ID)
+    asyncio.run(admin_checkin.checkin_point_pick(cb, state))
+    report = _flat_text(cb.message)[0]
+    assert "Отмечено новых: 2" in report
+    assert "Другой город" not in report
+    assert asyncio.run(db.count_checkins_by_point("entry")) == 2
 
 
 def test_checkin_point_pick_session_moved_and_outside_time_window(tmp_path):
