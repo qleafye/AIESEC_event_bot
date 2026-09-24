@@ -38,6 +38,23 @@ def utc_naive_to_msk(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc).astimezone(MOSCOW_TZ).replace(tzinfo=None)
 
 
+def msk_from_timestamp(ts: float) -> datetime:
+    """Unix-эпоха (секунды) -> naive московский datetime, НЕЗАВИСИМО от часового пояса процесса.
+
+    Голый `datetime.fromtimestamp(ts)` берёт зону процесса: в UTC-контейнере бота метка
+    выходит на 3 часа раньше московской (выгрузка офлайн-сканера, `services/checkin.py`).
+    """
+    return datetime.fromtimestamp(ts, tz=MOSCOW_TZ).replace(tzinfo=None)
+
+
+def aware_to_msk(dt: datetime) -> datetime:
+    """Aware datetime (ISO с `Z`/смещением) -> naive московский datetime. Naive `dt`
+    возвращается как есть — его зона неизвестна, трактовать её молча как UTC нельзя."""
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(MOSCOW_TZ).replace(tzinfo=None)
+
+
 def msk_now() -> datetime:
     """Naive московское «сейчас» — ЕДИНСТВЕННЫЙ источник для всей семьи меток времени,
 

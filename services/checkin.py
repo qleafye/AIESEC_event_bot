@@ -44,6 +44,7 @@ from database.db import (
     record_session_checkin,
 )
 from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
+from services.timeutil import aware_to_msk, msk_from_timestamp
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -526,11 +527,15 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
     if not cell:
         return None
     if _ISO_DT_RE.match(cell):
+        # Полная строка первой: `Z`/`+03:00` — это зона, её нельзя отрезать (`cell[:19]`
+        # превращал «09:15Z» в «09:15 по Москве»). Aware -> МСК naive; naive — как есть
+        # (время телефона сканера на площадке).
+        full = cell[:-1] + "+00:00" if cell[-1:] in ("Z", "z") else cell
         try:
-            return datetime.fromisoformat(cell[:19].replace("T", " ") if "T" not in cell[:19] else cell[:19])
+            return aware_to_msk(datetime.fromisoformat(full))
         except ValueError:
             try:
-                return datetime.fromisoformat(cell.rstrip("Zz")[:19])
+                return datetime.fromisoformat(cell[:19])
             except ValueError:
                 return None
     m = _DMY_DT_RE.match(cell)
@@ -545,7 +550,7 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
             n = int(cell)
             if n > 10 ** 12:  # миллисекунды
                 n //= 1000
-            return datetime.fromtimestamp(n)
+            return msk_from_timestamp(n)
         except (ValueError, OSError, OverflowError):
             return None
     return None
