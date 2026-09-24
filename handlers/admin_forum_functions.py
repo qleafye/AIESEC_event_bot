@@ -45,6 +45,7 @@ from handlers.admin_checkin import (
     _decode_city,
     _encode_city,
 )
+from handlers.admin_checkin_training import sheet_allowed
 from handlers.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
 from keyboards.builders import get_cancel_kb
@@ -115,6 +116,10 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     lines.append("✅ Отметки на форуме (загрузка CSV, «Не пришли»): ручная кнопка, без тумблера")
     if visible("admin_checkin"):
         buttons.append([InlineKeyboardButton(text="✅ Отметки на форуме", callback_data="admin_checkin")])
+    # Бэклог чек-ина №7: лист учебных QR — менеджер с одним moderate_reg готовит волонтёров.
+    lines.append("🧪 Учебные QR для тренировки волонтёров: лист A4, ничего не записывают")
+    if sheet_allowed(caps):
+        buttons.append([InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")])
 
     # 4. Сканер в Mini App — мастер-тумблер miniapp_section_checkin, НЕ per_city, правится на
     # экране «📱 Приложение» (там же общий master miniapp_enabled — сканер без него не откроется

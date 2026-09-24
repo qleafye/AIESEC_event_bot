@@ -61,6 +61,7 @@ def test_moderate_reg_only_manager_sees_only_moderate_reg_buttons(tmp_path):
     assert "checkinqr_cfg:msk" in cbs
     assert "checkinvol_cfg:msk" in cbs
     assert "admin_sos" in cbs
+    assert "checkin_training_sheet" in cbs  # бэклог №7: лист учебных QR — checkin ИЛИ moderate_reg
 
     # Чужие капы (settings/checkin) — кнопки СКРЫТЫ, не просто недоступны.
     assert "toggle_checkin_qr_enabled" not in cbs
@@ -94,6 +95,7 @@ def test_settings_only_manager_sees_settings_and_checkin_denied(tmp_path):
     assert "checkinvol_cfg:msk" not in cbs
     assert "admin_sos" not in cbs
     assert "admin_checkin" not in cbs
+    assert "checkin_training_sheet" not in cbs
 
 
 def test_checkin_only_manager_sees_only_admin_checkin(tmp_path):
@@ -105,6 +107,7 @@ def test_checkin_only_manager_sees_only_admin_checkin(tmp_path):
     cbs = _cbs(kb)
 
     assert "admin_checkin" in cbs
+    assert "checkin_training_sheet" in cbs
     for cb in ("toggle_checkin_qr_enabled", "checkinqr_cfg:msk", "admin_miniapp_settings",
                "checkinvol_cfg:msk", "admin_menu_buttons", "prog_fbset:msk", "admin_sos"):
         assert cb not in cbs
