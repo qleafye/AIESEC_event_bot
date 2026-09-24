@@ -17,23 +17,31 @@ import html as html_module
 import logging
 
 from aiogram import F, types, Bot
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
 from settings_schema import get_setting_typed
 from database.db import (
     add_staff,
     get_setting,
+    get_staff_city,
     get_user,
     list_staff,
     remove_staff,
     set_staff_city,
+    set_staff_expiry,
 )
 from services.person_search import search_people
+from services.staff_expiry import (
+    forum_end_date_iso,
+    format_ddmmyyyy,
+    is_expiry_active,
+    parse_ddmmyyyy,
+)
 from settings_audit import set_setting_by_admin
-from handlers.states import StaffAdd
+from handlers.states import RolesExpiryEdit, StaffAdd
 from handlers.admin_caps import (
     ALL_CAPABILITIES,
     CAP_LABELS,
@@ -44,6 +52,7 @@ from handlers.admin_caps import (
     role_enabled_key,
 )
 from services.checkin_volunteer_broadcast import greet_new_holder, greet_new_holders
+from keyboards.builders import get_cancel_kb
 
 logger = logging.getLogger(__name__)
 from cities import (
@@ -51,6 +60,7 @@ from cities import (
     cities_module_on,
     city_codes,
     city_label,
+    default_city_code,
     is_city_enabled,
 )
 from handlers.admin import router
@@ -291,6 +301,23 @@ SETTINGS_GUIDE_SECTIONS = [
                 "default": "stats",
                 "where": "🔧 Управление → «👥 Роли и доступы» → «✏️ Права роли: 📊 Менеджер статистики»",
             },
+            {
+                "key": "role_volunteer_enabled",
+                "label": "Роль «Волонтёр форума»",
+                "what": "Выключенная роль не даёт прав никому из её носителей, но сами люди "
+                        "остаются в списке.",
+                "values": _GUIDE_ONOFF,
+                "default": "on",
+                "where": "🔧 Управление → «👥 Роли и доступы»",
+            },
+            {
+                "key": "role_caps_volunteer",
+                "label": "Права роли «Волонтёр форума»",
+                "what": "Список прав, по одному на строке (или через «;»): moderate_reg, "
+                        "moderate_receipts, moderate_game, broadcast, settings, stats, checkin.",
+                "default": "checkin",
+                "where": "🔧 Управление → «👥 Роли и доступы» → «✏️ Права роли: 🎗 Волонтёр форума»",
+            },
         ],
     ),
     # Phase 32 (32-13, D-04): амбассадорские волны — компактно, чтобы не поднимать потолок файла.
@@ -390,6 +417,24 @@ async def show_admin_settings_guide(callback: types.CallbackQuery):
 # real handlers; `role_caps_<role>` list editing rides the existing generic settings_edit flow
 # for free (see settings_edit_start's registry-prompt fallback above).
 
+
+def _expiry_line_text(expires_at: str | None) -> str:
+    """Идея №6 бэклога чек-ина: строка в `render_roles_text` — «бессрочно» / «до 04.10» /
+    «⌛ истекла 04.10» (D-6: ничего не удаляем, просто помечаем)."""
+    if not expires_at:
+        return "⏳ бессрочно"
+    human = format_ddmmyyyy(expires_at) or expires_at
+    return f"⏳ до {human}" if is_expiry_active(expires_at) else f"⌛ истекла {human}"
+
+
+def _expiry_button_text(expires_at: str | None) -> str:
+    """Короткая подпись кнопки в `build_roles_keyboard` — тот же формат, что строка списка,
+    без ведущего «⏳»/«⌛» (кнопка уже несёт его сама, см. вызов)."""
+    if not expires_at:
+        return "Бессрочно"
+    human = format_ddmmyyyy(expires_at) or expires_at
+    return f"истекла {human}" if not is_expiry_active(expires_at) else f"до {human}"
+
 async def render_roles_text() -> str:
     lines = ["👥 <b>Роли и доступы</b>", ""]
     for role, meta in ROLES.items():
@@ -421,6 +466,7 @@ async def render_roles_text() -> str:
             city = row.get("city")
             city_text = await city_label(city) if city else "🌍 Все города"
             line += f" · 🏙 {city_text}"
+        line += f" · {_expiry_line_text(row.get('expires_at'))}"
         lines.append(line)
 
     lines.append("")
@@ -465,9 +511,24 @@ async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMa
             row_buttons.append(InlineKeyboardButton(
                 text=f"🏙 {city_text}", callback_data=f"roles_city:{tid}",
             ))
+        # Идея №6 бэклога чек-ина: срок действия — поменять/снять у уже выданной роли, тот же
+        # экран, что открывается сразу после выдачи (см. roles_assign ниже).
+        row_buttons.append(InlineKeyboardButton(
+            text=f"⏳ {_expiry_button_text(row.get('expires_at'))}",
+            callback_data=f"rexp:{tid}:{role}",
+        ))
         buttons.append(row_buttons)
 
     buttons.append([InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="roles_add")])
+    # Идея №5 бэклога чек-ина: вход в приглашение волонтёров ссылкой — тот же экран, что и
+    # строка хаба «🎪 Форум: функции» (handlers/admin_volunteer_invite.py), просто другая
+    # точка входа. Строковый callback_data, не импорт модуля — тот же приём, что ADMIN_CAPS
+    # ссылается на чужие callback'и без импорта их модулей. Капа у самого экрана —
+    # `volinvite_entry: "moderate_reg"` — ШИРЕ, чем «settings» этого экрана целиком, поэтому
+    # кнопка видна только тому, кто её реально пройдёт (CLAUDE.md: не показывать кнопку,
+    # которая заведомо откажет) — тот же приём, что show_city ниже смотрит на viewer_id.
+    if viewer_id is not None and await has_capability(viewer_id, "moderate_reg"):
+        buttons.append([InlineKeyboardButton(text="🔗 Пригласить волонтёров", callback_data="volinvite_entry")])
     # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
     from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
     buttons.append([back_button("admin_roles")])
@@ -853,7 +914,13 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
             "🏙 Из какого города этот менеджер? Он будет видеть заявки, чеки и гейму "
             "только своего города."
         )
-        await callback.message.edit_text(text, reply_markup=await _roles_city_kb(tid))
+        kb = await _roles_city_kb(tid)
+        # Идея №6 бэклога чек-ина: «⏳ Срок» доступен сразу при выдаче — вставлена ПЕРЕД
+        # «❌ Отмена» (последней строкой _roles_city_kb), не в хвост целиком.
+        kb.inline_keyboard.insert(-1, [InlineKeyboardButton(
+            text="⏳ Срок действия роли", callback_data=f"rexp:{tid}:{role}",
+        )])
+        await callback.message.edit_text(text, reply_markup=kb)
         return
 
     text = await render_roles_text()
@@ -875,3 +942,156 @@ async def roles_remove(callback: types.CallbackQuery):
     text = await render_roles_text()
     kb = await build_roles_keyboard(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Идея №6 бэклога чек-ина: «⏳ Срок действия роли» ────────────────────────────────────────
+# Один экран, две точки входа: кнопка «⏳ Срок действия роли» на city-picker сразу после
+# `roles_assign` (свежая выдача) и «⏳ <статус>» на каждой строке `build_roles_keyboard` (правка
+# уже выданной роли) — оба ведут в `rexp:<tid>:<role>`, оба заканчиваются одинаково: редрисовкой
+# ростера. Не цепляется в `roles_city_pick` (та развилка обслуживает ДВА разных сценария —
+# свежую выдачу и самостоятельную перепривязку города с ростера — трогать её означало бы
+# протаскивать через неё лишний параметр «откуда пришли» ради одного из двух путей).
+
+async def _resolve_forum_city_for_expiry(tid: int) -> str | None:
+    """Город, для которого считать «до конца форума» (кнопка `rexp_go:*:forum`): своя
+    привязка человека, если есть; при выключенном модуле городов — единственный дефолтный
+    город; при включённом модуле без привязки — None (нет одного города, кнопка прячется,
+    CLAUDE.md: не предлагать то, что заведомо откажет)."""
+    if not await cities_module_on():
+        return default_city_code()
+    return await get_staff_city(tid)
+
+
+async def _rexp_text_kb(tid: int, role: str) -> tuple[str, InlineKeyboardMarkup]:
+    row = next((r for r in await list_staff() if r["telegram_id"] == tid and r["role"] == role), None)
+    if row is None:
+        return "Эта роль уже снята — обновите экран.", InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="← К ролям", callback_data="admin_roles")]]
+        )
+    role_label = ROLES.get(role, {}).get("label", role)
+    user = await get_user(tid)
+    name = html_module.escape(str((user.get("full_name") or user.get("username")) if user else tid))
+    expires_at = row.get("expires_at")
+
+    forum_city = await _resolve_forum_city_for_expiry(tid)
+    forum_end = await forum_end_date_iso(forum_city) if forum_city else None
+
+    lines = [
+        f"⏳ <b>Срок действия роли</b>",
+        f"{name} — {role_label}",
+        "",
+        f"Сейчас: <b>{_expiry_line_text(expires_at)}</b>",
+    ]
+    buttons = [
+        [InlineKeyboardButton(text="♾ Бессрочно", callback_data=f"rexp_go:{tid}:{role}:none")],
+    ]
+    if forum_end:
+        buttons.append([InlineKeyboardButton(
+            text=f"🏁 До конца форума города ({format_ddmmyyyy(forum_end)})",
+            callback_data=f"rexp_go:{tid}:{role}:forum",
+        )])
+    else:
+        lines.append("\n<i>«До конца форума города» недоступно — не задана дата форума этого города.</i>")
+    buttons.append([InlineKeyboardButton(text="✏️ Ввести дату", callback_data=f"rexp_custom:{tid}:{role}")])
+    buttons.append([InlineKeyboardButton(text="← К ролям", callback_data="admin_roles")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data.startswith("rexp:"))
+async def roles_expiry_start(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3 or not (parts[1].isascii() and parts[1].isdigit()) or parts[2] not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    tid, role = int(parts[1]), parts[2]
+    text, kb = await _rexp_text_kb(tid, role)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+async def _rexp_apply_and_redraw(callback: types.CallbackQuery, tid: int, role: str, expires_at: str | None):
+    ok = await set_staff_expiry(tid, role, expires_at)
+    if not ok:
+        await callback.answer("Этой роли уже нет — обновите экран", show_alert=True)
+    else:
+        await callback.answer(f"Срок: {_expiry_line_text(expires_at)}", show_alert=True)
+    text = await render_roles_text()
+    kb = await build_roles_keyboard(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("rexp_go:"))
+async def roles_expiry_go(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 4 or not (parts[1].isascii() and parts[1].isdigit()) or parts[2] not in ROLES:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid, role, choice = int(parts[1]), parts[2], parts[3]
+    if choice == "none":
+        expires_at = None
+    elif choice == "forum":
+        forum_city = await _resolve_forum_city_for_expiry(tid)
+        expires_at = await forum_end_date_iso(forum_city) if forum_city else None
+        if expires_at is None:
+            await callback.answer("Дата форума этого города не задана", show_alert=True)
+            return
+    else:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    await _rexp_apply_and_redraw(callback, tid, role, expires_at)
+
+
+@router.callback_query(F.data.startswith("rexp_custom:"))
+async def roles_expiry_custom_start(callback: types.CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    if len(parts) != 3 or not (parts[1].isascii() and parts[1].isdigit()) or parts[2] not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    tid, role = int(parts[1]), parts[2]
+    await state.update_data(rexp_tid=tid, rexp_role=role)
+    await state.set_state(RolesExpiryEdit.waiting_date)
+    await callback.message.answer(
+        "До какого дня действует роль? Формат <code>ДД.ММ.ГГГГ</code>, например "
+        "<code>04.10.2026</code> — роль действует ПО этот день включительно.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(RolesExpiryEdit), Command("cancel"))
+@router.message(StateFilter(RolesExpiryEdit), F.text == "Отмена")
+async def roles_expiry_custom_cancel(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(RolesExpiryEdit.waiting_date)
+async def roles_expiry_custom_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    tid, role = data.get("rexp_tid"), data.get("rexp_role")
+    await state.set_state(None)
+    if tid is None or role not in ROLES:
+        await message.answer("Экран устарел — откройте «👥 Роли и доступы» заново.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    expires_at = parse_ddmmyyyy((message.text or "").strip())
+    if expires_at is None:
+        await message.answer(
+            "Не понял дату. Нужен формат <code>ДД.ММ.ГГГГ</code>, например <code>04.10.2026</code> "
+            "— пришлите ещё раз.",
+            parse_mode="HTML",
+            reply_markup=get_cancel_kb(),
+        )
+        await state.update_data(rexp_tid=tid, rexp_role=role)
+        await state.set_state(RolesExpiryEdit.waiting_date)
+        return
+
+    ok = await set_staff_expiry(tid, role, expires_at)
+    await message.answer(
+        f"Срок: {_expiry_line_text(expires_at)}" if ok else "Этой роли уже нет — обновите экран.",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    text = await render_roles_text()
+    kb = await build_roles_keyboard(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)

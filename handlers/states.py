@@ -428,3 +428,20 @@ class VenueRevokeFind(StatesGroup):
     # Идея №32 (снятие отметки менеджером, handlers/admin_venue.py): одно ожидание текста —
     # фамилия/@username делегата; дальше выбор человека и отметки идёт кнопками.
     waiting_query = State()
+
+
+class RolesExpiryEdit(StatesGroup):
+    # Идея №6 бэклога чек-ина (общая механика прав со сроком действия): «✏️ Ввести дату» на
+    # экране «⏳ Срок действия роли» (handlers/admin_roles.py) — ОДНО состояние ожидания
+    # «ДД.ММ.ГГГГ», (tid, role) несёт state.get_data() (rexp_tid/rexp_role). Право `settings`
+    # (state:RolesExpiryEdit:* в handlers/admin_caps.py — тот же экран, что «👥 Роли и доступы»).
+    waiting_date = State()
+
+
+class VolunteerInviteWizard(StatesGroup):
+    # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой) — два места, где мастер ждёт
+    # свободный текст вместо кнопки-пресета: срок ССЫЛКИ (waiting_link_date) и срок ПРАВ
+    # волонтёра (waiting_rights_date). Весь остальной прогресс мастера (город, уже выбранный
+    # срок ссылки, лимит) несёт state.get_data() — тот же приём, что RolesExpiryEdit выше.
+    waiting_link_date = State()
+    waiting_rights_date = State()
