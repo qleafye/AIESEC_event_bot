@@ -125,7 +125,7 @@ def report_text(result: dict, expected: int | None = None) -> str:
     if expected and sent < expected:
         text = f"✅ Ушло {sent} из {expected}."
         reasons = []
-        gone = expected - sent - failed - quiet
+        gone = max(0, expected - sent - failed - quiet)
         if gone > 0:
             reasons.append(f"{gone} за это время отметились на входе или уже получили вопрос")
         if failed:
