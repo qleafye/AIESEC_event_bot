@@ -29,6 +29,7 @@ import csv
 import io
 import logging
 import re
+import secrets
 from datetime import datetime
 
 import segno
@@ -203,6 +204,35 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     qr.save(buf, kind="png", scale=6, border=2)
 
     caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
+    return buf.getvalue(), caption
+
+
+# Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — волонтёр без делегатского QR
+# под рукой (сам не делегат) получает ФИКТИВНЫЙ код с той же меткой события, но заведомо
+# ненастоящим токеном (`TEST` + случайные символы) — не спутать ни с одним реальным
+# `secrets.token_urlsafe`-токеном делегата (те никогда не начинаются с «TEST»), и таким
+# образом сканирование/загрузка выгрузки с этим кодом никогда не «находит» реального
+# человека даже случайно (handlers/admin_checkin.py::checkin_test_file_step ничего не
+# отмечает вообще, но эта же гарантия защищает от путаницы, если волонтёр всё же занесёт
+# такую выгрузку в НАСТОЯЩУЮ загрузку — код останется просто «не найден»).
+_TEST_TOKEN_PREFIX = "TEST"
+
+
+async def build_test_qr() -> tuple[bytes, str]:
+    """`(png_bytes, caption)` тестового QR — не привязан ни к какому делегату, только для
+    проверки, что приложение-сканер волонтёра вообще читает формат кода этого события."""
+    tag = await _event_tag()
+    token = _TEST_TOKEN_PREFIX + secrets.token_urlsafe(6)
+    payload = build_payload(tag, "Тестовый QR", "—", token)
+
+    qr = segno.make(payload)
+    buf = io.BytesIO()
+    qr.save(buf, kind="png", scale=6, border=2)
+
+    caption = (
+        "🧪 Тестовый QR — НЕ пропуск на форум, просто проверка вашего приложения-сканера. "
+        "Отсканируйте его так же, как настоящий QR делегата."
+    )
     return buf.getvalue(), caption
 
 

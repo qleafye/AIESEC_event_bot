@@ -306,3 +306,11 @@ class CheckinImport(StatesGroup):
     # без текстового ввода, второго State не заводим (то же решение, что у CoinsManual/
     # CityForm: подтверждение — callback, читающий state.get_data(), а не отдельный State).
     waiting_file = State()
+
+
+class CheckinTestUpload(StatesGroup):
+    # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — та же форма ожидания файла,
+    # что CheckinImport, но СВОЁ состояние: этот путь НИЧЕГО не отмечает (только парсит и
+    # отвечает читаемостью), путать его с настоящей загрузкой (CheckinImport.waiting_file,
+    # которая ведёт к реальным отметкам) нельзя даже по ошибке одного и того же State.
+    waiting_file = State()

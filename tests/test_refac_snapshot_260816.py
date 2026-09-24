@@ -613,6 +613,10 @@ admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
 admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
 admin|message|checkin_import_file_step|state:CheckinImport:*
 admin|message|checkin_import_file_invalid|state:CheckinImport:*
+admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:CheckinTestUpload:*
+admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:CheckinTestUpload:*
+admin|message|checkin_test_file_step|state:CheckinTestUpload:*
+admin|message|checkin_test_file_invalid|state:CheckinTestUpload:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1004,6 +1008,8 @@ admin|callback_query|checkin_point_pick|checkin_point:*
 admin|callback_query|checkin_reissue_confirm|checkin_reissue:*
 admin|callback_query|checkin_reissue_go|checkin_reissue_yes:*
 admin|callback_query|checkin_reissue_cancel|checkin_reissue_no
+admin|callback_query|checkin_test_start|checkin_test_start
+admin|callback_query|checkin_test_qr|checkin_test_qr
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1403,7 +1409,18 @@ def test_snapshot_total_handler_count_is_292():
     # перед первым хендлером payment.router) — чистая вставка, пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 623-строчным снимком: ровно одна
     # вставка из 3 строк, 0 удалений, 0 реордеров (623 -> 626).
-    assert len(GOLDEN_SNAPSHOT) == 626
+    # Форум-ночь B4 (идея №8): +6 handlers/admin_checkin.py — «🧪 Проверить приложение-сканер»:
+    # +4 admin.message (cancel_checkin_test_upload — два декоратора, Command("cancel")/
+    # F.text=="Отмена", значит два отдельных registration-объекта; checkin_test_file_step;
+    # checkin_test_file_invalid), встали сразу после checkin_import_file_invalid и перед
+    # первым callback_query-хендлером admin.router (show_admin_stats) — та же позиция, что
+    # у самого CheckinImport-блока выше; +2 admin.callback_query (checkin_test_start/
+    # checkin_test_qr), встали в самый хвост callback_query-блока admin.router, сразу после
+    # checkin_reissue_cancel и перед первым хендлером payment.router — чистая вставка,
+    # пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 626-строчным
+    # снимком: ровно две вставки (4 строки в message-блоке, 2 строки в callback_query-блоке),
+    # 0 удалений, 0 реордеров (626 -> 632).
+    assert len(GOLDEN_SNAPSHOT) == 632
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
