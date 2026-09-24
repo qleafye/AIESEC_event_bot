@@ -5,9 +5,13 @@ msk «как есть, одобренной»). Единая точка прав
 (`scripts/move_city_dry_run.py`).
 
 Объём (SEED «Зависимости города»):
-  - `users.event_city` + трек (`participant_type`, short/full — party НЕ трогаем никогда) через
-    `update_user_answers` + `record_answer_history(source="admin")` (`users.city` — родной город
-    делегата из анкеты, НЕ трогаем, инвариант зафиксирован в самом SEED).
+  - `users.event_city` через `update_user_answers` + `record_answer_history(source="admin")`
+    (`users.city` — родной город делегата из анкеты, НЕ трогаем, инвариант зафиксирован в самом
+    SEED). Трек (`participant_type`) НЕ трогаем НИКОГДА, ни для party, ни для short/full —
+    решение координатора 25.09 отменяет прежнее авто-переключение short↔full: прецедент 23.09
+    (Анна Потаенко) был «как есть, одобренной», не «пересчитать трек под новый город». Если у
+    нового города нет анкеты этого трека — это только повод предупредить менеджера на экране
+    подтверждения (`preview_city_move`), не повод её сменить.
   - `reg_drafts.event_city` (открытый edit-черновик иначе вернёт делегату старый город на
     финализации, `services/reg_finalize.py:296`), `reg_started.event_city` (dropout-учёт),
     неотправленные `reg_submit_digest_queue.city` / `game_submit_digest_queue.city`
@@ -15,8 +19,13 @@ msk «как есть, одобренной»). Единая точка прав
   - Строка Google-таблицы: перенос со вкладки старого города на вкладку нового — СНАЧАЛА
     добавление в новую, ПОТОМ удаление из старой (сбой между шагами оставляет данные ДВАЖДЫ,
     что безопаснее потери — см. `memory/standalone-script-sheet-traps.md` и прецедент 23.09).
-    Сбой листа НЕ откатывает уже применённую БД-часть — переезд БД важнее одной отстающей
-    строки таблицы, которую менеджер потом сверит руками (отчёт называет проблему словами).
+    Целевая вкладка = (новый город, СТАРЫЙ трек, `_resolve_sheet_targets`) — вкладка НЕ
+    создаётся НИКОГДА (ревью 🔴: `append_to_named_sheet` создаёт вкладку сама, здесь запрещено
+    — пишем через `services.sheets.append_to_existing_named_sheet`). Нет такой вкладки среди
+    РЕАЛЬНЫХ (`spreadsheet.worksheets()`) — падаем на главную вкладку города; нет и её — не
+    пишем вовсе, отчёт называет проблему словами. Сбой листа НЕ откатывает уже применённую
+    БД-часть — переезд БД важнее одной отстающей строки таблицы, которую менеджер потом сверит
+    руками.
 
 Сообщение делегату НЕ шлётся ни при каком `status_mode` — перевод города осознанно тихое
 админ-действие (SEED прямо исключил уведомление делегата из объёма фазы).
@@ -51,32 +60,93 @@ STATUS_MODES = (STATUS_MODE_KEEP, STATUS_MODE_TO_MODERATION)
 async def _target_track_mode(city_code: str) -> str:
     """'short' | 'full' — трек, «родной» городу `city_code`, тем же ключом, которым
     `reg_engine.resolve_track` решает судьбу НОВОГО делегата этого города
-    (`cities.registration_mode`, per_city, default "short"). SEED (23.09): «трек short есть
-    только у СПб, у Москвы только full» — это и есть источник того утверждения."""
+    (`cities.registration_mode`, per_city, default "short"). Используется ТОЛЬКО для текста
+    предупреждения на экране подтверждения (`_track_supported`) — трек делегата этим не
+    меняется, см. докстринг модуля."""
     mode = await get_setting_typed_for_city("registration_mode", city_code)
     return mode if mode in ("short", "full") else "short"
 
 
-async def _resolve_target_track(participant_type: str | None, new_city: str) -> tuple[str | None, bool]:
-    """`(итоговый participant_type, сменился ли трек)`. Пати-трек НЕ трогаем НИКОГДА — у него
-    свой гейт (`party_enabled`), не связанный с `registration_mode` города
-    (`reg_engine.resolve_track`: «party track is authoritative no matter what registration_mode
-    says»). Полная форма хранится литералом `"full"` (не `NULL`) — так её печатает карточка
-    делегата и так её ожидает `_sheet_dispatch`/`_resolve_update_tab` ниже."""
+async def _track_supported(participant_type: str | None, new_city: str) -> bool:
+    """Допускает ли `registration_mode` города `new_city` ТЕКУЩИЙ трек делегата — party всегда
+    `True` (свой гейт `party_enabled`, не связанный с `registration_mode`,
+    `reg_engine.resolve_track`: «party track is authoritative no matter what registration_mode
+    says»). `False` — повод для предупреждения на экране подтверждения, не для смены трека."""
     if _is_party_track(participant_type):
-        return participant_type, False
+        return True
     current_mode = "short" if _is_short_track(participant_type) else "full"
     target_mode = await _target_track_mode(new_city)
-    if current_mode == target_mode:
-        return participant_type, False
-    return target_mode, True
+    return current_mode == target_mode
 
 
-async def preview_track_change(participant_type: str | None, new_city: str) -> tuple[str | None, bool]:
-    """Публичная обёртка `_resolve_target_track` для UI подтверждения (карточка должна
-    показать «Трек: краткая → полная», ничего не записывая) — та же резолюция, что применит
-    `move_user_city`."""
-    return await _resolve_target_track(participant_type, new_city)
+async def _resolve_sheet_targets(new_city: str, participant_type: str | None) -> dict:
+    """Определяет вкладку(и) для строки делегата в НОВОМ городе строго по списку РЕАЛЬНЫХ
+    вкладок таблицы (`services.sheets.list_worksheet_titles`) — вкладка НЕ создаётся никогда.
+    Вызывается заново на каждом шаге (экран подтверждения и сам перевод дают СВОЙ вызов) —
+    состояние листа между ними могло измениться, повторно использовать чужой результат нельзя.
+
+    `target_tab` — обычный маршрут ТЕКУЩЕГО трека делегата в `new_city` (`_resolve_update_tab`,
+    тот же, что штатный аппендер при подаче анкеты); `None` означает главный лист (всегда
+    считается существующим — список вкладок для этого случая не читается).
+    `fallback_tab` — главная («main»-трек) вкладка ГОРОДА, если она отличается от `target_tab`
+    (иначе `None` — совпадает с ним или сама тоже главный лист); нужна, когда у трека делегата
+    в новом городе своей вкладки ещё нет (напр. краткая анкета там не заводилась).
+    `target_exists`/`fallback_exists` — есть ли вкладка среди РЕАЛЬНЫХ (`None`, если сама
+    вкладка `None`, либо список вкладок не удалось прочитать — Sheets временно недоступен).
+    `write_tab` — куда реально уйдёт запись при ЭТОМ резолве: `target_tab`, `fallback_tab`,
+    `None` (главный лист) или `False` — сигнал «никуда» (обе вкладки отсутствуют). Если список
+    вкладок прочитать не удалось, резолв не гадает — пробует `target_tab` как обычно (сама
+    запись — fail-soft, как и весь остальной модуль)."""
+    from services.reg_finalize import _resolve_update_tab
+
+    target_tab = await _resolve_update_tab(new_city, participant_type)
+    fallback_tab = await _resolve_update_tab(new_city, None)
+    if fallback_tab == target_tab:
+        fallback_tab = None
+
+    if target_tab is None:
+        return {
+            "target_tab": None, "target_exists": None,
+            "fallback_tab": None, "fallback_exists": None,
+            "write_tab": None,
+        }
+
+    titles = await sheets_service.list_worksheet_titles()
+    if titles is None:
+        return {
+            "target_tab": target_tab, "target_exists": None,
+            "fallback_tab": fallback_tab, "fallback_exists": None,
+            "write_tab": target_tab,
+        }
+
+    titles_set = set(titles)
+    target_exists = target_tab in titles_set
+    fallback_exists = (fallback_tab in titles_set) if fallback_tab is not None else None
+
+    if target_exists:
+        write_tab = target_tab
+    elif fallback_tab is not None and fallback_exists:
+        write_tab = fallback_tab
+    else:
+        write_tab = False
+
+    return {
+        "target_tab": target_tab, "target_exists": target_exists,
+        "fallback_tab": fallback_tab, "fallback_exists": fallback_exists,
+        "write_tab": write_tab,
+    }
+
+
+async def preview_city_move(participant_type: str | None, new_city: str) -> dict:
+    """Публичная точка правды для экрана подтверждения (`handlers/admin_city_move.py`) —
+    ничего не пишет, только читает (список вкладок листа — сетевой вызов). Трек делегата НЕ
+    меняется никогда (см. докстринг модуля) — `track_supported` только сигнализирует, допускает
+    ли новый город текущий трек, а `sheet` — тот же резолв, что применит сам перевод
+    (`_resolve_sheet_targets`), чтобы экран не разошёлся с тем, что реально запишется."""
+    return {
+        "track_supported": await _track_supported(participant_type, new_city),
+        "sheet": await _resolve_sheet_targets(new_city, participant_type),
+    }
 
 
 async def move_user_city(
@@ -89,12 +159,14 @@ async def move_user_city(
 ) -> dict:
     """Переводит делегата `telegram_id` в `new_city`. Возвращает отчёт — словарь с ключами:
     `ok` (bool), `error` (человекочитаемая причина отказа или `None`), `dry_run`,
-    `before`/`after` (`event_city`/`participant_type`/`status`), `track_changed`,
-    `status_changed`, `db_changes` (список затронутых таблиц), `sheet` (словарь с `old_tab`/
-    `new_tab`/`moved`/`error`).
+    `before`/`after` (`event_city`/`participant_type`/`status` — `participant_type` в `after`
+    ВСЕГДА равен `before` — трек не меняется, см. докстринг модуля), `status_changed`,
+    `db_changes` (список затронутых таблиц), `sheet` (словарь с `old_tab`/`target_tab`/
+    `target_exists`/`fallback_tab`/`fallback_exists`/`write_tab`/`moved`/`error` —
+    `_resolve_sheet_targets`'а форма).
 
-    `dry_run=True` — читает и резолвит ВСЁ (трек, вкладки, число строк на каждой), но НЕ
-    пишет ни в БД, ни в лист; `ok=True` в dry_run означает «перевод возможен», не «выполнен».
+    `dry_run=True` — читает и резолвит ВСЁ (вкладки, число строк на каждой), но НЕ пишет ни в
+    БД, ни в лист; `ok=True` в dry_run означает «перевод возможен», не «выполнен».
 
     `status_mode`: `"keep"` — статус не трогаем; `"to_moderation"` — штатный возврат на
     модерацию (`database.db.revert_user_to_pending`, тот же примитив, что
@@ -114,8 +186,7 @@ async def move_user_city(
     if old_city == new_city:
         return {"ok": False, "error": "Делегат уже в этом городе", "dry_run": dry_run}
 
-    participant_type = user.get("participant_type")
-    new_participant_type, track_changed = await _resolve_target_track(participant_type, new_city)
+    participant_type = user.get("participant_type")  # трек НЕ меняется, см. докстринг модуля
     current_status = user.get("status")
 
     report: dict = {
@@ -130,13 +201,18 @@ async def move_user_city(
         },
         "after": {
             "event_city": new_city,
-            "participant_type": new_participant_type,
+            "participant_type": participant_type,
             "status": current_status,
         },
-        "track_changed": track_changed,
         "status_changed": False,
         "db_changes": [],
-        "sheet": {"old_tab": None, "new_tab": None, "moved": False, "error": None},
+        "sheet": {
+            "old_tab": None,
+            "target_tab": None, "target_exists": None,
+            "fallback_tab": None, "fallback_exists": None,
+            "write_tab": None,
+            "moved": False, "error": None,
+        },
     }
 
     # Резолв вкладок и рядов — читается ВСЕГДА (в т.ч. в dry_run), чтобы отчёт показывал
@@ -146,62 +222,80 @@ async def move_user_city(
     from services.reg_finalize import _resolve_update_tab
 
     old_tab = await _resolve_update_tab(old_city, participant_type)
-    new_tab = await _resolve_update_tab(new_city, new_participant_type)
-    report["sheet"]["old_tab"] = old_tab
-    report["sheet"]["new_tab"] = new_tab
+    sheet_targets = await _resolve_sheet_targets(new_city, participant_type)
+    report["sheet"].update({
+        "old_tab": old_tab,
+        "target_tab": sheet_targets["target_tab"],
+        "target_exists": sheet_targets["target_exists"],
+        "fallback_tab": sheet_targets["fallback_tab"],
+        "fallback_exists": sheet_targets["fallback_exists"],
+        "write_tab": sheet_targets["write_tab"],
+    })
+    write_tab = sheet_targets["write_tab"]
 
     if dry_run:
-        old_rows = await sheets_service.find_rows_by_id(old_tab, telegram_id)
-        new_rows = await sheets_service.find_rows_by_id(new_tab, telegram_id)
-        report["sheet"]["old_rows_found"] = old_rows
-        report["sheet"]["new_rows_found"] = new_rows
+        report["sheet"]["old_rows_found"] = await sheets_service.find_rows_by_id(old_tab, telegram_id)
+        report["sheet"]["new_rows_found"] = (
+            await sheets_service.find_rows_by_id(write_tab, telegram_id) if write_tab is not False else None
+        )
         return report
 
     # ── 1. Лист: СНАЧАЛА новая вкладка, ПОТОМ старая (см. докстринг модуля) ─────────────────
-    try:
-        row_fn, _append_fn = _sheet_dispatch(new_participant_type)
-        full_for_row = dict(user)
-        full_for_row["event_city"] = new_city
-        full_for_row["participant_type"] = new_participant_type
-        new_city_code = await sheet_city_code(new_city)
-        row = await row_fn(full_for_row, new_city_code)
+    if write_tab is False:
+        missing = " и ".join(
+            f"«{t}»" for t in (sheet_targets["target_tab"], sheet_targets["fallback_tab"]) if t
+        )
+        report["sheet"]["error"] = f"лист не обновлён: нет вкладки {missing}"
+    else:
+        try:
+            row_fn, _ = _sheet_dispatch(participant_type)
+            full_for_row = dict(user)
+            full_for_row["event_city"] = new_city
+            new_city_code = await sheet_city_code(new_city)
+            row = await row_fn(full_for_row, new_city_code)
 
-        if new_tab is None:
-            await sheets_service.append_to_sheet(row)
-        else:
-            await sheets_service.append_to_named_sheet(new_tab, row)
-
-        new_rows_after = await sheets_service.find_rows_by_id(new_tab, telegram_id)
-        if new_rows_after is None or len(new_rows_after) != 1:
-            report["sheet"]["error"] = (
-                f"после добавления в новую вкладку найдено {new_rows_after!r} строк(и) "
-                "(ожидалась ровно 1) — старая строка НЕ удалена, проверьте таблицу вручную"
-            )
-            logger.error(
-                "city_move: unexpected row count on new tab %r for telegram_id=%s: %r",
-                new_tab, telegram_id, new_rows_after,
-            )
-        else:
-            delete_result = await sheets_service.delete_row_by_id(old_tab, telegram_id)
-            if delete_result == "ok":
-                report["sheet"]["moved"] = True
-            elif delete_result == "not_found_row":
-                # Строки на старой вкладке уже не было (повторный запуск/её там не было) —
-                # перенос фактически уже случился, это не ошибка.
-                report["sheet"]["moved"] = True
+            if write_tab is None:
+                await sheets_service.append_to_sheet(row)
+                append_ok = True
             else:
-                report["sheet"]["error"] = (
-                    f"строка добавлена в новую вкладку, но старая НЕ удалена (код {delete_result!r}) "
-                    "— проверьте таблицу вручную, дубль безопаснее потери"
-                )
-    except Exception as e:
-        logger.error("city_move: sheet transfer failed for telegram_id=%s: %s", telegram_id, e)
-        report["sheet"]["error"] = f"не удалось перенести строку в таблице: {e}"
+                append_result = await sheets_service.append_to_existing_named_sheet(write_tab, row)
+                append_ok = append_result == "ok"
+                if not append_ok:
+                    report["sheet"]["error"] = (
+                        f"не удалось дописать строку на вкладку «{write_tab}» ({append_result!r}) "
+                        "— старая строка НЕ удалена, проверьте таблицу вручную"
+                    )
 
-    # ── 2. БД: users (event_city + трек) ────────────────────────────────────────────────────
+            if append_ok:
+                new_rows_after = await sheets_service.find_rows_by_id(write_tab, telegram_id)
+                if new_rows_after is None or len(new_rows_after) != 1:
+                    report["sheet"]["error"] = (
+                        f"после добавления найдено {new_rows_after!r} строк(и) "
+                        "(ожидалась ровно 1) — старая строка НЕ удалена, проверьте таблицу вручную"
+                    )
+                    logger.error(
+                        "city_move: unexpected row count on write tab %r for telegram_id=%s: %r",
+                        write_tab, telegram_id, new_rows_after,
+                    )
+                else:
+                    delete_result = await sheets_service.delete_row_by_id(old_tab, telegram_id)
+                    if delete_result == "ok":
+                        report["sheet"]["moved"] = True
+                    elif delete_result == "not_found_row":
+                        # Строки на старой вкладке уже не было (повторный запуск/её там не
+                        # было) — перенос фактически уже случился, это не ошибка.
+                        report["sheet"]["moved"] = True
+                    else:
+                        report["sheet"]["error"] = (
+                            f"строка добавлена, но старая НЕ удалена (код {delete_result!r}) "
+                            "— проверьте таблицу вручную, дубль безопаснее потери"
+                        )
+        except Exception as e:
+            logger.error("city_move: sheet transfer failed for telegram_id=%s: %s", telegram_id, e)
+            report["sheet"]["error"] = f"не удалось перенести строку в таблице: {e}"
+
+    # ── 2. БД: users (event_city) ────────────────────────────────────────────────────────────
     patch = {"event_city": new_city}
-    if track_changed:
-        patch["participant_type"] = new_participant_type
     written = await update_user_answers(telegram_id, patch, allowed_columns=list(patch.keys()))
     if written:
         changes = [{"column": k, "old": user.get(k), "new": v} for k, v in patch.items()]

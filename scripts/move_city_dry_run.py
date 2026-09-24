@@ -75,7 +75,7 @@ async def main() -> int:
     )
 
     print("\n--- Отчёт ---")
-    for key in ("ok", "error", "dry_run", "before", "after", "track_changed", "status_changed",
+    for key in ("ok", "error", "dry_run", "before", "after", "status_changed",
                 "status_note", "db_changes", "sheet"):
         if key in report:
             print(f"  {key}: {report[key]!r}")

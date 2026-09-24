@@ -22,7 +22,7 @@ from services.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
     move_user_city,
-    preview_track_change,
+    preview_city_move,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ async def citymove_pick_city(callback: types.CallbackQuery):
         return
 
     participant_type = user.get("participant_type")
-    new_track, track_changed = await preview_track_change(participant_type, code)
+    preview = await preview_city_move(participant_type, code)
 
     name = html_module.escape(str(user.get("full_name") or "-"))
     old_label = html_module.escape(await city_label(old_city))
@@ -137,11 +137,23 @@ async def citymove_pick_city(callback: types.CallbackQuery):
         f"{name}",
         f"Город: {old_label} → {new_label}",
     ]
-    if track_changed:
+    if not preview["track_supported"]:
+        track_label = html_module.escape(_track_label(participant_type))
         lines.append(
-            f"Трек: {_track_label(participant_type)} → {_track_label(new_track)} "
-            f"(у «{new_label}» нет трека «{_track_label(participant_type)}»)"
+            f"⚠️ У «{new_label}» нет анкеты «{track_label}» — делегат останется с треком "
+            f"«{track_label}»; если нужен другой трек — верните на модерацию и попросите "
+            "делегата дозаполнить анкету."
         )
+    sheet_preview = preview["sheet"]
+    target_tab = sheet_preview["target_tab"]
+    write_tab = sheet_preview["write_tab"]
+    if target_tab is not None and write_tab != target_tab:
+        target_esc = html_module.escape(target_tab)
+        if write_tab is False:
+            lines.append(f"⚠️ Лист: вкладки «{target_esc}» нет — строка НЕ уйдёт в таблицу, добавьте её вручную.")
+        else:
+            write_esc = html_module.escape(write_tab) if write_tab else "главный лист"
+            lines.append(f"Строка уйдёт на вкладку «{write_esc}» — вкладки «{target_esc}» пока нет в таблице.")
     lines.append(f"Статус сейчас: {status_label}")
     lines.append("")
     lines.append(
@@ -205,8 +217,6 @@ async def citymove_apply(callback: types.CallbackQuery):
     name = html_module.escape(str(user.get("full_name") or "-"))
     new_label = html_module.escape(await city_label(code))
     lines = [f"✅ <b>{name}</b> переведён(а) в {new_label}."]
-    if report.get("track_changed"):
-        lines.append(f"Трек: {_track_label(report['after']['participant_type'])}")
     if report.get("status_changed"):
         lines.append("Статус возвращён на модерацию.")
     note = report.get("status_note")
@@ -214,7 +224,12 @@ async def citymove_apply(callback: types.CallbackQuery):
         lines.append(f"⚠️ {html_module.escape(note)}")
     sheet = report.get("sheet") or {}
     if sheet.get("moved"):
-        lines.append("Строка в таблице перенесена.")
+        write_tab = sheet.get("write_tab")
+        target_tab = sheet.get("target_tab")
+        if target_tab is not None and write_tab != target_tab:
+            lines.append(f"Строка в таблице перенесена (на вкладку «{html_module.escape(str(write_tab))}»).")
+        else:
+            lines.append("Строка в таблице перенесена.")
     if sheet.get("error"):
         lines.append(f"⚠️ Лист: {html_module.escape(str(sheet['error']))}")
     changed = report.get("db_changes") or []
