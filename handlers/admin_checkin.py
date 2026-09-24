@@ -18,6 +18,7 @@ T-12-01 (Tampering): найденный в файле QR-код НЕ довер�
 внутри ФИО отрисовался бы менеджеру как живая разметка)."""
 import html
 import logging
+from datetime import datetime
 
 from aiogram import F, types, Bot
 from aiogram.filters import Command, StateFilter
@@ -66,6 +67,7 @@ from services.checkin import (
     resolve_scanned_user,
 )
 from services.checkin_broadcast import (
+    broadcast_enabled_for,
     pending_broadcast_count,
     schedule_city_jobs,
     send_broadcast,
@@ -166,12 +168,41 @@ async def _counter_line(admin_id: int) -> str:
     return "\n".join(lines)
 
 
+# Почему автоматическая рассылка QR города не стоит — ключи те же, что `reason` у
+# `services.checkin_broadcast.schedule_city_jobs` (маппинг по строке: незнакомый ключ — без
+# подписи, строка счётчика остаётся как есть).
+_QR_NOT_SCHEDULED_LABELS = {
+    "no_date": "дата форума не задана — рассылка не поставлена",
+    "disabled": "автоматическая рассылка выключена (включить — «⚙️ Настройки QR»)",
+    "bad_date": "дата форума записана с ошибкой — рассылка не поставлена, поправьте дату форума",
+    "past": "форум уже прошёл — рассылка не поставлена",
+}
+
+
+async def _qr_not_scheduled_reason(code: str | None) -> str | None:
+    """Та же развилка, что у `schedule_city_jobs`, но без побочных эффектов (экран только
+    читает, джобы не трогает) + «past»: дата форума раньше сегодняшней по Москве."""
+    date_str = await forum_date_for(code)
+    if date_str is None:
+        return "no_date"
+    if not await broadcast_enabled_for(code):
+        return "disabled"
+    try:
+        day = datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
+    except (TypeError, ValueError, AttributeError):
+        return "bad_date"
+    if day < msk_now().date():
+        return "past"
+    return None
+
+
 async def _qr_status_line(label: str | None, code: str | None) -> str:
     got, confirmed = await checkin_qr_send_counts(city_scope=city_scope(code))
     prefix = f"{label}: " if label else ""
     line = f"{prefix}QR получили {got} · подтвердили {confirmed}"
-    if await forum_date_for(code) is None:
-        line += " · дата форума не задана — рассылка не поставлена"
+    reason_text = _QR_NOT_SCHEDULED_LABELS.get(await _qr_not_scheduled_reason(code) or "")
+    if reason_text:
+        line += f" · {reason_text}"
     return line
 
 
