@@ -1,11 +1,16 @@
 """Форум-ночь п.7 (D-XX, «🔕 Не присылать сегодня»): делегат отключает НЕважные рассылки до
 конца сегодняшнего дня (МСК).
 
-Кнопка появляется отдельным сообщением ПОСЛЕ доставленной неважной рассылки, и только в день
-форума города получателя (`services.scheduler.offer_mute_today_if_forum_day`) — иначе кнопка
-лишняя (D-XX). Заглушка — колонка `users.mute_broadcasts_until` (MSK-дата), проверяется при
-КАЖДОЙ доставке (`database.db.get_muted_today_ids`), а не единожды на постановке. Важные
-рассылки игнорируют заглушку полностью (D-XX: важное приходит всегда).
+Переделка (ревью 470ce5e..3703ba4): кнопка «🔕» теперь ВНУТРИ клавиатуры самой рассылки
+(text/фото/видео/документ — `services.scheduler.recipient_markup`, `reply_markup` принимают и
+`send_message`, и `copy_message`), не отдельным сообщением — раньше предложение шло после
+КАЖДОЙ неважной рассылки (спам), теперь оно естественным образом не повторяется чаще самой
+рассылки. Отдельным сообщением предложение осталось ТОЛЬКО у альбома (`send_media_group` не
+принимает `reply_markup`) — и только раз в сутки на получателя (`users.mute_offer_shown_date`).
+И только в день форума города получателя (`services.scheduler.offer_mute_today_if_forum_day`)
+— иначе кнопка лишняя (D-XX). Заглушка — колонка `users.mute_broadcasts_until` (MSK-дата),
+проверяется при КАЖДОЙ доставке (`database.db.get_muted_today_ids`), а не единожды на
+постановке. Важные рассылки игнорируют заглушку полностью (D-XX: важное приходит всегда).
 
 pytest-asyncio недоступен — каждый async вызов через `asyncio.run()`, БД — `tmp_path`
 (конвенция `tests/_dbtpl.py::fast_init_db`).
@@ -78,55 +83,112 @@ class FakeUser:
 
 
 class FakeSentMessage:
-    def __init__(self):
-        self.text = None
-        self.markup = None
+    """Переделка (ревью 470ce5e..3703ba4): кнопка «🔕» чаще всего сидит ВНУТРИ клавиатуры самой
+    рассылки — тап НЕ должен стирать текст (`edit_text` затёр бы содержимое, которое делегат
+    только что получил), только клавиатуру (`edit_reply_markup`). `text`/`.markup` — то, что
+    реально несёт сообщение ДО тапа (симулирует уже доставленную рассылку)."""
+
+    def __init__(self, text=None, reply_markup=None):
+        self.text = text
+        self.reply_markup = reply_markup
+        self.markup = reply_markup  # алиас для читаемости старых ассертов на "markup"
         self.chat = FakeChat(0)
+        self.edit_reply_markup_calls: list = []
 
     async def edit_text(self, text, reply_markup=None):
-        self.text = text
+        raise AssertionError("edit_text не должен вызываться — содержимое рассылки нельзя стирать")
+
+    async def edit_reply_markup(self, reply_markup=None):
+        self.reply_markup = reply_markup
         self.markup = reply_markup
+        self.edit_reply_markup_calls.append(reply_markup)
 
 
 class FakeCallback:
-    def __init__(self, uid):
+    def __init__(self, uid, message=None):
         self.from_user = FakeUser(uid)
-        self.message = FakeSentMessage()
+        self.message = message if message is not None else FakeSentMessage()
         self.answers = []
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
 
 
-def test_mute_broadcasts_today_sets_column_and_confirms(tmp_path, monkeypatch):
+def test_mute_broadcasts_today_sets_column_and_swaps_button_not_text(tmp_path, monkeypatch):
+    """Тап «🔕» на ВСТРОЕННОЙ кнопке: содержимое рассылки (`.text`) остаётся нетронутым, кнопка
+    свапается на «🔔 Присылать всё» на месте, подтверждение уходит алертом (`callback.answer`),
+    не правкой сообщения."""
     _ready(tmp_path)
 
     async def go():
         await _add_delegate(DELEGATE_ID)
         monkeypatch.setattr(ua, "msk_now", lambda: datetime(2026, 9, 24, 15, 0))
-        cb = FakeCallback(DELEGATE_ID)
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        content_markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔕 Не присылать сегодня", callback_data="bc_mute_today"),
+        ]])
+        msg = FakeSentMessage(text="Важная новость дня", reply_markup=content_markup)
+        cb = FakeCallback(DELEGATE_ID, message=msg)
         await ua.mute_broadcasts_today(cb)
 
         user = await db.get_user(DELEGATE_ID)
         assert user["mute_broadcasts_until"] == "2026-09-24"
-        assert "только важное" in cb.message.text
-        assert cb.message.markup.inline_keyboard[0][0].callback_data == "bc_unmute_today"
+        assert msg.text == "Важная новость дня"  # содержимое НЕ тронуто
+        assert msg.reply_markup.inline_keyboard[0][0].callback_data == "bc_unmute_today"
+        text, show_alert = cb.answers[0]
+        assert "только важное" in text
+        assert show_alert is True
 
     asyncio.run(go())
 
 
-def test_unmute_broadcasts_today_clears_column(tmp_path, monkeypatch):
+def test_unmute_broadcasts_today_clears_column_and_swaps_button_back(tmp_path, monkeypatch):
     _ready(tmp_path)
 
     async def go():
         await _add_delegate(DELEGATE_ID)
         await db.set_broadcast_mute(DELEGATE_ID, "2026-09-24")
-        cb = FakeCallback(DELEGATE_ID)
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        content_markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔔 Присылать всё", callback_data="bc_unmute_today"),
+        ]])
+        msg = FakeSentMessage(text="Обычная новость", reply_markup=content_markup)
+        cb = FakeCallback(DELEGATE_ID, message=msg)
         await ua.unmute_broadcasts_today(cb)
 
         user = await db.get_user(DELEGATE_ID)
         assert user["mute_broadcasts_until"] is None
-        assert "все рассылки" in cb.message.text
+        assert msg.text == "Обычная новость"
+        assert msg.reply_markup.inline_keyboard[0][0].callback_data == "bc_mute_today"
+        text, show_alert = cb.answers[0]
+        assert "все рассылки" in text
+        assert show_alert is True
+
+    asyncio.run(go())
+
+
+def test_mute_tap_preserves_managers_own_keyboard_rows(tmp_path, monkeypatch):
+    """Собственная клавиатура менеджера (кнопки-ссылки) рядом с «🔕» — свап трогает ТОЛЬКО
+    строку «🔕», остальные ряды остаются нетронутыми."""
+    _ready(tmp_path)
+
+    async def go():
+        await _add_delegate(DELEGATE_ID)
+        monkeypatch.setattr(ua, "msk_now", lambda: datetime(2026, 9, 24, 15, 0))
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+        content_markup = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔗 Подробнее", url="https://example.com")],
+            [InlineKeyboardButton(text="🔕 Не присылать сегодня", callback_data="bc_mute_today")],
+        ])
+        msg = FakeSentMessage(text="Рассылка со своей кнопкой", reply_markup=content_markup)
+        cb = FakeCallback(DELEGATE_ID, message=msg)
+        await ua.mute_broadcasts_today(cb)
+
+        rows = msg.reply_markup.inline_keyboard
+        assert len(rows) == 2
+        assert rows[0][0].text == "🔗 Подробнее"
+        assert rows[0][0].url == "https://example.com"
+        assert rows[1][0].callback_data == "bc_unmute_today"
 
     asyncio.run(go())
 
@@ -201,6 +263,104 @@ def test_send_mute_offer_if_eligible_important_never_offers(tmp_path, monkeypatc
     asyncio.run(go())
 
 
+# ── recipient_markup: кнопка «🔕» ВСТРОЕНА в клавиатуру рассылки (не отдельным сообщением) ─
+
+def test_recipient_markup_adds_mute_row_on_forum_day(tmp_path, monkeypatch):
+    async def go():
+        fast_init_db()
+        await _add_delegate(DELEGATE_ID)
+        await db.set_setting("forum_date", "24.09.2026")
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
+
+        markup = await sched.recipient_markup(DELEGATE_ID, important=False)
+        assert markup is not None
+        assert markup.inline_keyboard[-1][0].callback_data == sched.MUTE_TODAY_CALLBACK
+
+    asyncio.run(go())
+
+
+def test_recipient_markup_none_when_important_or_not_forum_day(tmp_path, monkeypatch):
+    async def go():
+        fast_init_db()
+        await _add_delegate(DELEGATE_ID)
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
+
+        # Не день форума -- нет повода.
+        assert await sched.recipient_markup(DELEGATE_ID, important=False) is None
+        # Важная -- «🔕» не предлагается никогда, даже в день форума.
+        await db.set_setting("forum_date", "24.09.2026")
+        assert await sched.recipient_markup(DELEGATE_ID, important=True) is None
+
+    asyncio.run(go())
+
+
+def test_recipient_markup_keeps_managers_own_rows_and_appends_mute_last(tmp_path, monkeypatch):
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    async def go():
+        fast_init_db()
+        await _add_delegate(DELEGATE_ID)
+        await db.set_setting("forum_date", "24.09.2026")
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
+
+        own = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔗 Подробнее", url="https://example.com"),
+        ]])
+        markup = await sched.recipient_markup(DELEGATE_ID, important=False, base_markup=own)
+        assert len(markup.inline_keyboard) == 2
+        assert markup.inline_keyboard[0][0].text == "🔗 Подробнее"
+        assert markup.inline_keyboard[-1][0].callback_data == sched.MUTE_TODAY_CALLBACK
+
+    asyncio.run(go())
+
+
+# ── send_mute_offer_if_eligible (альбом): не чаще раза в сутки на получателя ────────────────
+
+def test_send_mute_offer_if_eligible_shows_once_then_skips_same_day(tmp_path, monkeypatch):
+    async def go():
+        fast_init_db()
+        await _add_delegate(DELEGATE_ID)
+        await db.set_setting("forum_date", "24.09.2026")
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
+
+        class _B:
+            def __init__(self):
+                self.calls = 0
+
+            async def send_message(self, *a, **k):
+                self.calls += 1
+                return SimpleNamespace(message_id=42)
+
+        bot = _B()
+        first = await sched.send_mute_offer_if_eligible(bot, DELEGATE_ID, False)
+        assert first == 42
+        assert bot.calls == 1
+
+        second = await sched.send_mute_offer_if_eligible(bot, DELEGATE_ID, False)
+        assert second is None
+        assert bot.calls == 1  # второй раз в тот же день — предложение НЕ отправлено повторно
+
+    asyncio.run(go())
+
+
+def test_send_mute_offer_if_eligible_shows_again_next_day(tmp_path, monkeypatch):
+    async def go():
+        fast_init_db()
+        await _add_delegate(DELEGATE_ID)
+        await db.set_setting("forum_date", "24.09.2026")
+
+        class _B:
+            async def send_message(self, *a, **k):
+                return SimpleNamespace(message_id=1)
+
+        monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 9, 24, 10, 0))
+        await sched.send_mute_offer_if_eligible(_B(), DELEGATE_ID, False)
+        assert await db.get_mute_offer_shown_ids("2026-09-24") == {DELEGATE_ID}
+        assert await db.get_mute_offer_shown_ids("2026-09-25") == set()
+
+    asyncio.run(go())
+
+
 # ── Интеграция: важная рассылка доходит муженным, неважная — нет, отчёт считает N ──────────
 
 class FakeBroadcastBot:
@@ -209,7 +369,7 @@ class FakeBroadcastBot:
         self.send_calls = []
         self._next_id = 8000
 
-    async def copy_message(self, chat_id, from_chat_id, message_id):
+    async def copy_message(self, chat_id, from_chat_id, message_id, caption=None, reply_markup=None):
         self.copy_calls.append(chat_id)
         self._next_id += 1
         return SimpleNamespace(message_id=self._next_id)

@@ -37,7 +37,7 @@ class _Bot:
         self.fail_ids = set(fail_ids)
         self._next_id = 7000
 
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, reply_markup=None):
         if chat_id in self.fail_ids:
             from aiogram.exceptions import TelegramForbiddenError
             raise TelegramForbiddenError(method=None, message="bot was blocked by the user")

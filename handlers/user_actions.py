@@ -1958,6 +1958,13 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
 # у checkin_qr_confirm_receipt/CONFIRM_CALLBACK выше) — совпадение с services.scheduler.
 # MUTE_TODAY_CALLBACK/UNMUTE_TODAY_CALLBACK проверяет
 # tests/test_broadcast_mute_today_260924.py::test_mute_callback_literals_match_scheduler.
+#
+# Переделка (ревью 470ce5e..3703ba4, находка 🔴): кнопка «🔕» теперь чаще всего сидит ВНУТРИ
+# клавиатуры самой рассылки (services.scheduler.recipient_markup), не отдельным сообщением —
+# `callback.message.edit_text(...)` затёр бы содержимое рассылки, которое делегат только что
+# получил. Тап меняет ТОЛЬКО клавиатуру (свап кнопки «🔕» <-> «🔔» на месте, остальные ряды —
+# в т.ч. собственные кнопки-ссылки менеджера — не трогаются), подтверждение — всплывающим
+# алертом `callback.answer(..., show_alert=True)`, а не правкой текста.
 
 _MUTE_TODAY_CONFIRM_TEXT = (
     "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."
@@ -1965,22 +1972,35 @@ _MUTE_TODAY_CONFIRM_TEXT = (
 _UNMUTE_TODAY_CONFIRM_TEXT = "🔔 Хорошо, снова присылаю все рассылки."
 
 
-def _unmute_today_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔔 Присылать всё", callback_data="bc_unmute_today"),
-    ]])
+def _swap_mute_button(
+    markup: InlineKeyboardMarkup | None, old_callback: str, new_button: InlineKeyboardButton,
+) -> InlineKeyboardMarkup:
+    """Заменяет В МЕСТЕ кнопку `old_callback` на `new_button` — прочие ряды (в т.ч. кнопки-ссылки
+    менеджера) остаются нетронутыми. `markup=None` (стандалон-предложение альбома без клавиатуры
+    менеджера — на практике у него как раз ОДНА кнопка «🔕», см. services.scheduler.
+    send_mute_offer_if_eligible) — единственный ряд с новой кнопкой."""
+    if markup is None:
+        return InlineKeyboardMarkup(inline_keyboard=[[new_button]])
+    rows = []
+    for row in markup.inline_keyboard:
+        rows.append([new_button if btn.callback_data == old_callback else btn for btn in row])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data == "bc_mute_today")
 async def mute_broadcasts_today(callback: types.CallbackQuery):
     from database.db import set_broadcast_mute
+    from services import scheduler as sched
     today = msk_now().strftime("%Y-%m-%d")
     await set_broadcast_mute(callback.from_user.id, today)
-    await callback.answer()
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(reg_i18n.tr_text(_MUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
     try:
-        await callback.message.edit_text(
-            _MUTE_TODAY_CONFIRM_TEXT, reply_markup=_unmute_today_kb(),
+        new_button = await sched.unmute_button(callback.from_user.id)
+        new_markup = _swap_mute_button(
+            getattr(callback.message, "reply_markup", None), "bc_mute_today", new_button,
         )
+        await callback.message.edit_reply_markup(reply_markup=new_markup)
     except Exception:
         pass  # сообщение могло устареть/удалиться -- заглушка уже записана в БД, это главное
 
@@ -1988,9 +2008,15 @@ async def mute_broadcasts_today(callback: types.CallbackQuery):
 @router.callback_query(F.data == "bc_unmute_today")
 async def unmute_broadcasts_today(callback: types.CallbackQuery):
     from database.db import set_broadcast_mute
+    from services import scheduler as sched
     await set_broadcast_mute(callback.from_user.id, None)
-    await callback.answer()
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(reg_i18n.tr_text(_UNMUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
     try:
-        await callback.message.edit_text(_UNMUTE_TODAY_CONFIRM_TEXT)
+        new_button = await sched.mute_button(callback.from_user.id)
+        new_markup = _swap_mute_button(
+            getattr(callback.message, "reply_markup", None), "bc_unmute_today", new_button,
+        )
+        await callback.message.edit_reply_markup(reply_markup=new_markup)
     except Exception:
         pass
