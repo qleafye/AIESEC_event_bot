@@ -107,3 +107,34 @@ def test_find_checkin_records_empty_file_no_matches():
 def test_find_checkin_records_no_tag_configured_returns_empty():
     qr = build_payload("YL26", "Иванов Иван", "Казань", "tok9")
     assert find_checkin_records(qr, "") == []
+
+
+# F14: время выгрузки сканера — в МСК независимо от зоны процесса (контейнер живёт в UTC).
+# 1791008700 = 2026-10-03 06:25:00 UTC = 09:25:00 МСК.
+_EPOCH_0925_MSK = 1791008700
+
+
+def test_epoch_seconds_are_moscow_time_regardless_of_process_tz():
+    qr = build_payload("YL26", "Сидоров Сидор", "СПб", "tok6")
+    recs = find_checkin_records(f"ts\tqr\n{_EPOCH_0925_MSK}\t{qr}\n", "YL26")
+    assert recs[0]["scanned_at"] == "2026-10-03 09:25:00"
+
+
+def test_epoch_milliseconds_are_moscow_time():
+    qr = build_payload("YL26", "Сидоров Сидор", "СПб", "tok7")
+    recs = find_checkin_records(f"ts,qr\n{_EPOCH_0925_MSK}123,{qr}\n", "YL26")
+    assert recs[0]["scanned_at"] == "2026-10-03 09:25:00"
+
+
+def test_iso_with_zone_is_converted_to_moscow():
+    for cell in ("2026-10-03T06:25:00Z", "2026-10-03T06:25:00.500Z", "2026-10-03T08:25:00+02:00",
+                 "2026-10-03T09:25:00+03:00"):
+        qr = build_payload("YL26", "Иванов Иван", "Казань", "tok-" + cell[-6:])
+        recs = find_checkin_records(f"ts,qr\n{cell},{qr}\n", "YL26")
+        assert recs[0]["scanned_at"] == "2026-10-03 09:25:00", cell
+
+
+def test_msk_from_timestamp_ignores_process_tz():
+    from datetime import datetime
+    from services.timeutil import msk_from_timestamp
+    assert msk_from_timestamp(_EPOCH_0925_MSK) == datetime(2026, 10, 3, 9, 25, 0)
