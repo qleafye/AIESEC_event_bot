@@ -67,6 +67,7 @@ from services.checkin_broadcast import (
     send_broadcast,
 )
 from services.reject_rules import forum_date_for
+from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -553,6 +554,12 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
     await callback.answer("Рассылка началась…")
     await callback.message.edit_text("⏳ Рассылаю QR...")
     result = await send_broadcast(code)
+    if result.get("deferred_until") is not None:
+        when = result["deferred_until"].strftime("%H:%M")
+        await callback.message.answer(
+            f"🌙 Сейчас тихие часы делегатов — рассылка перенесена на {when}, отправлю сама."
+        )
+        return
     await callback.message.answer(
         f"✅ QR разослан: {result['sent']} доставлено, {result['failed']} не доставлено "
         f"из {result['total']}."
@@ -563,6 +570,30 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
 async def checkinqr_send_cancel(callback: types.CallbackQuery):
     await callback.message.edit_text("Отменено. Ничего не отправлено.")
     await callback.answer()
+
+
+async def _quiet_hours_warning(code: str | None, hhmm: str) -> str:
+    """Находка ревью 260924 (п.3): выбранное время рассылки QR попадает в тихие часы делегатов
+    этого города — предупреждение словами (CLAUDE.md: «ошибка объясняет, что сделать»), не
+    молчаливая отправка в 3 ночи. `""` — тихие часы выключены/не заданы, или время в них не
+    попадает."""
+    from services import quiet_hours
+
+    window = await quiet_hours.window_for_city(code)
+    if window is None:
+        return ""
+    t = quiet_hours.parse_hhmm(hhmm)
+    if t is None:
+        return ""
+    probe = msk_now().replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+    start, end = window
+    if not quiet_hours.is_quiet(probe, start, end):
+        return ""
+    end_at = quiet_hours.next_window_end(probe, start, end)
+    return (
+        f"⚠️ {hhmm} попадает в тихие часы {start:%H:%M}–{end:%H:%M} — QR придёт в "
+        f"{end_at:%H:%M}."
+    )
 
 
 async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
@@ -576,6 +607,12 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Вечером (накануне форума): {ev_time}")
     lines.append(f"Утром (в день форума, неподтвердившим): {morn_time}")
+    ev_warning = await _quiet_hours_warning(code, ev_time)
+    if ev_warning:
+        lines.append(ev_warning)
+    morn_warning = await _quiet_hours_warning(code, morn_time)
+    if morn_warning:
+        lines.append(morn_warning)
     if await forum_date_for(code) is None:
         lines.append(
             "\n⚠️ «🗓 Дата начала форума» не задана — рассылка НЕ поставлена, даже если "
