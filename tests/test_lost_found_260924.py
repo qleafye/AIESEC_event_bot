@@ -63,7 +63,8 @@ class FakeChat:
 
 
 class FakeMessage:
-    def __init__(self, text=None, photo=None, user_id=None, chat_id=None):
+    def __init__(self, text=None, photo=None, user_id=None, chat_id=None, message_id=None):
+        self.message_id = message_id
         self.text = text
         self.photo = photo
         self.html_text = text
@@ -446,12 +447,17 @@ def _seed_item():
     ))
 
 
+def _post(message_id=777):
+    """Пост находки в группе делегатов — кнопка «Нашёлся хозяин» жмётся под ним."""
+    return FakeMessage(chat_id=DELEGATE_CHAT_ID, message_id=message_id)
+
+
 def test_return_button_by_checkin_holder_marks_returned_and_edits_caption(tmp_path):
     _ready(tmp_path)
     _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))
     item_id = _seed_item()
 
-    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", VOLUNTEER_ID)
+    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", VOLUNTEER_ID, message=_post())
 
     item = _run(db.get_lost_found_item(item_id))
     assert item["returned_at"] is not None
@@ -467,7 +473,7 @@ def test_return_button_by_moderate_reg_without_checkin_also_allowed(tmp_path):
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # только moderate_reg
     item_id = _seed_item()
 
-    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", MANAGER_ID)
+    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", MANAGER_ID, message=_post())
 
     item = _run(db.get_lost_found_item(item_id))
     assert item["returned_by"] == MANAGER_ID
@@ -480,7 +486,7 @@ def test_return_button_by_stranger_in_group_is_denied(tmp_path):
     item_id = _seed_item()
 
     from aiogram.dispatcher.event.bases import UNHANDLED
-    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", STRANGER_ID)
+    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", STRANGER_ID, message=_post())
 
     assert result is UNHANDLED
     item = _run(db.get_lost_found_item(item_id))
@@ -493,8 +499,8 @@ def test_return_button_second_tap_is_idempotent(tmp_path):
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     item_id = _seed_item()
 
-    _dispatch_callback(f"lostfound_return:{item_id}", VOLUNTEER_ID)
-    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", MANAGER_ID)
+    _dispatch_callback(f"lostfound_return:{item_id}", VOLUNTEER_ID, message=_post())
+    result, event, _bot = _dispatch_callback(f"lostfound_return:{item_id}", MANAGER_ID, message=_post())
 
     assert event.answers
     assert "уже отмечено" in (event.answers[0][0] or "").lower()
@@ -509,3 +515,61 @@ def test_return_button_unknown_id_shows_alert(tmp_path):
     result, event, _bot = _dispatch_callback("lostfound_return:999999", VOLUNTEER_ID)
     assert event.answers
     assert "не найдена" in (event.answers[0][0] or "").lower()
+
+
+def test_return_button_forged_id_under_other_post_is_rejected(tmp_path):
+    """id в кнопке подделывается: тап под ДРУГИМ постом не закрывает чужую находку."""
+    _ready(tmp_path)
+    _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))
+    item_id = _seed_item()
+
+    result, event, _bot = _dispatch_callback(
+        f"lostfound_return:{item_id}", VOLUNTEER_ID, message=_post(message_id=778),
+    )
+
+    assert event.answers and "неизвестная кнопка" in (event.answers[0][0] or "").lower()
+    assert _run(db.get_lost_found_item(item_id))["returned_at"] is None
+    assert not event.message.edit_caption_calls
+
+
+def test_return_button_other_city_staff_is_rejected(tmp_path):
+    _ready(tmp_path)
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test([
+            {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+            {"code": "spb", "label": "СПб", "tab_base": "", "enabled": 1, "sort_order": 1},
+        ])
+        _run(db.set_setting("event_city_enabled", "on"))
+        _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))
+        _run(db.set_staff_city(VOLUNTEER_ID, "spb"))
+        item_id = _seed_item()  # находка Москвы
+
+        _dispatch_callback(f"lostfound_return:{item_id}", VOLUNTEER_ID, message=_post())
+
+        assert _run(db.get_lost_found_item(item_id))["returned_at"] is None
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_publish_after_toggle_turned_off_during_preview_is_cancelled(tmp_path):
+    _ready(tmp_path)
+    _run(db.add_staff(VOLUNTEER_ID, "volunteer", ADMIN_ID))
+    _enable()
+    _bind_chat(None)
+    state = _fresh_state(VOLUNTEER_ID)
+    bot = FakeBot()
+
+    _dispatch_callback("lost_found_new", VOLUNTEER_ID, state=state, bot=bot)
+    _dispatch_message(
+        None, VOLUNTEER_ID, photo=[FakePhotoSize("ph1")],
+        raw_state="LostFoundNew:waiting_photo", state=state, bot=bot,
+    )
+    _dispatch_message(
+        "где-то", VOLUNTEER_ID, raw_state="LostFoundNew:waiting_where", state=state, bot=bot,
+    )
+    _run(db.set_setting("lost_found_enabled", "off"))
+    result, event, _bot2 = _dispatch_callback("lostfound_publish", VOLUNTEER_ID, state=state, bot=bot)
+
+    assert not bot.sent_photos
+    assert event.answers and "выключено" in (event.answers[0][0] or "")
