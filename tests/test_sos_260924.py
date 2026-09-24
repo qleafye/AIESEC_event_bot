@@ -426,6 +426,36 @@ def test_sos_anti_spam_blocks_second_open_report(tmp_path):
     assert data["sos_collecting_report_id"] == rid
 
 
+def test_sos_double_tap_concurrent_creates_single_card(tmp_path, monkeypatch):
+    """Двойной тап: два апдейта обрабатываются параллельно — карточка одна, второй тап
+    попадает в ветку «сигнал уже у оргкомитета». Медленная вставка расширяет окно гонки
+    (без лока здесь стабильно две карточки)."""
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    orig_create = sos_handlers.create_sos_report
+
+    async def slow_create(*a, **k):
+        await asyncio.sleep(0.05)
+        return await orig_create(*a, **k)
+
+    monkeypatch.setattr(sos_handlers, "create_sos_report", slow_create)
+
+    state = _fresh_state(DELEGATE_ID)
+    bot = FakeBot()
+    m1 = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    m2 = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    m1.bot = m2.bot = bot
+
+    async def both():
+        await asyncio.gather(sos_handlers.sos_start(m1, state), sos_handlers.sos_start(m2, state))
+
+    _run(both())
+    assert len(_run(db.list_sos_reports_page(limit=10))) == 1
+    answers = [a[0] for a in m1.answers + m2.answers]
+    assert any("Сигнал уже у оргкомитета" in a for a in answers)
+    assert sos_handlers._sos_start_locks == {}
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Режим «дописываю SOS» (D-31): текст/фото/геопозиция уходят в тред И дописывают карточку
 # ══════════════════════════════════════════════════════════════════════════════════════════
