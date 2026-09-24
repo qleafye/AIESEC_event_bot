@@ -233,3 +233,36 @@ def test_purge_user_removes_journal_rows_about_delegate(tmp_path):
     _run(db.purge_user(UID))
     _, total = _run(db.venue_log_page())
     assert total == 0
+
+
+def test_undo_when_journal_no_longer_matches_mark_writes_nothing(tmp_path):
+    """Исход — по rowcount DELETE: журнал говорит одно время скана, а строка отметки уже
+    другая (её переставили) — отказ «gone», транзакция откатана, журнал не тронут."""
+    _ready(tmp_path)
+    r = _run(record_arrival(_user(), ENTRY_POINT, source="miniapp", by_staff_id=STAFF))
+
+    async def _desync():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE checkins SET scanned_at = '2000-01-01 00:00:00' WHERE telegram_id = ?", (UID,))
+            await conn.commit()
+    _run(_desync())
+    assert _run(venue_log.undo_last_scan(STAFF, None, r["log_id"])) == "gone"
+    assert _points(UID) == [ENTRY_POINT]
+    assert _run(db.venue_log_get(r["log_id"]))["undone_at"] is None
+    _, total = _run(db.venue_log_page())
+    assert total == 1  # строки «undo» нет
+
+
+def test_undo_with_empty_scanned_at_in_journal_is_refused(tmp_path):
+    _ready(tmp_path)
+    r = _run(record_arrival(_user(), ENTRY_POINT, source="miniapp", by_staff_id=STAFF))
+
+    async def _blank():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE venue_log SET details = '{}' WHERE id = ?", (r["log_id"],))
+            await conn.commit()
+    _run(_blank())
+    assert _run(venue_log.undo_last_scan(STAFF, None, r["log_id"])) == "gone"
+    assert _points(UID) == [ENTRY_POINT]
+    _, total = _run(db.venue_log_page())
+    assert total == 1

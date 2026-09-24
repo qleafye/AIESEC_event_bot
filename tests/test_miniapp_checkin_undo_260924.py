@@ -103,3 +103,32 @@ def test_scan_journal_keeps_volunteer_name(tmp_path):
     assert row["staff_id"] == GAME_MANAGER_ID
     assert row["source"] == "miniapp"
     assert ADMIN_ID != GAME_MANAGER_ID  # суперадмин тут ни при чём — пишем того, кто сканировал
+
+
+def test_undo_db_failure_is_human_refusal_not_500(tmp_path, monkeypatch):
+    from services import venue_log
+
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+
+    async def _boom(*a, **k):
+        raise RuntimeError("database is locked")
+    monkeypatch.setattr(venue_log, "undo_last_scan", _boom)
+    r = client.post(f"{BASE}/undo", json={"id": 1}, headers=_hdr(GAME_MANAGER_ID))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "undo_refused" and body["code"] == "error"
+    assert "менеджера" in body["reason_text"]
+
+
+def test_undo_of_moved_away_mark_says_it_changed(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 951008
+    _run(_insert_user(uid, city="spb"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(uid)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    mark = _run(bot_db.list_checkins_for_user(uid))[0]
+    _run(bot_db.revoke_checkin(mark["id"], {"action": "revoke", "staff_id": 1}))
+    r = client.post(f"{BASE}/undo", json={"id": body["undo"]["id"]}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert r["status"] == "undo_refused" and r["code"] == "gone"
+    assert "уже изменилась" in r["reason_text"]

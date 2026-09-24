@@ -521,6 +521,10 @@ _CODE_LITERALS_EN = {
         "Check-in removed — the delegate is no longer checked in at this point.",
     "Отменить уже нельзя. Если отметка ошибочная — попросите менеджера снять её в боте.":
         "It's too late to undo. If the check-in is wrong, ask a manager to remove it in the bot.",
+    "Отметка уже изменилась — её перенёс или снял кто-то другой. Ничего не отменено.":
+        "The check-in has already changed — someone else moved or removed it. Nothing was undone.",
+    "Не получилось отменить — попросите менеджера снять отметку в боте.":
+        "Couldn't undo — ask a manager to remove the check-in in the bot.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ

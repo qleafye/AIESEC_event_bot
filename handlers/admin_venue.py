@@ -52,15 +52,19 @@ async def venue_entry_rows(admin_id: int) -> list[list[InlineKeyboardButton]]:
     return [[InlineKeyboardButton(text="📓 Журнал площадки", callback_data="admin_venue_log")]]
 
 
-def _parse_ints(data: str, n: int) -> list[int]:
-    parts = data.split(":")[1:]
-    out = []
-    for i in range(n):
-        try:
-            out.append(int(parts[i]))
-        except (IndexError, ValueError):
-            out.append(0)
-    return out
+def _parse_ints(data: str, n: int) -> list[int] | None:
+    """Числа из `prefix:a:b`. `None` — callback битый/от старой версии экрана: хендлер отвечает
+    «экран устарел», а не действует над id 0."""
+    parts = (data or "").split(":")[1:]
+    if len(parts) < n:
+        return None
+    try:
+        return [int(x) for x in parts[:n]]
+    except ValueError:
+        return None
+
+
+_STALE = "Экран устарел — откройте журнал площадки заново."
 
 
 async def render_log_screen(admin_id: int, staff_id: int = 0, offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
@@ -126,7 +130,11 @@ async def venue_log_page_cb(callback: types.CallbackQuery):
     if not await has_capability(callback.from_user.id, _CAP):
         await callback.answer(_NO_ACCESS, show_alert=True)
         return
-    staff_id, offset = _parse_ints(callback.data, 2)
+    parsed = _parse_ints(callback.data, 2)
+    if parsed is None:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    staff_id, offset = parsed
     text, kb = await render_log_screen(callback.from_user.id, staff_id=staff_id, offset=max(0, offset))
     await _edit_or_answer(callback, text, kb)
     await callback.answer()
@@ -231,7 +239,11 @@ async def venue_revoke_user(callback: types.CallbackQuery):
     if not await has_capability(callback.from_user.id, _CAP):
         await callback.answer(_NO_ACCESS, show_alert=True)
         return
-    (tid,) = _parse_ints(callback.data, 1)
+    parsed = _parse_ints(callback.data, 1)
+    if parsed is None:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    (tid,) = parsed
     if await _card_out_of_scope(callback.from_user.id, tid):
         await callback.answer(_OUT_OF_SCOPE, show_alert=True)
         return
@@ -245,7 +257,11 @@ async def venue_revoke_confirm(callback: types.CallbackQuery):
     if not await has_capability(callback.from_user.id, _CAP):
         await callback.answer(_NO_ACCESS, show_alert=True)
         return
-    (cid,) = _parse_ints(callback.data, 1)
+    parsed = _parse_ints(callback.data, 1)
+    if parsed is None:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    (cid,) = parsed
     row = await get_checkin(cid)
     if row is None:
         await callback.answer("Этой отметки уже нет — список обновлён.", show_alert=True)
@@ -286,7 +302,11 @@ async def venue_revoke_go(callback: types.CallbackQuery):
     if not await has_capability(callback.from_user.id, _CAP):
         await callback.answer(_NO_ACCESS, show_alert=True)
         return
-    (cid,) = _parse_ints(callback.data, 1)
+    parsed = _parse_ints(callback.data, 1)
+    if parsed is None:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    (cid,) = parsed
     row = await get_checkin(cid)
     if row is not None and await _card_out_of_scope(callback.from_user.id, row["telegram_id"]):
         await callback.answer(_OUT_OF_SCOPE, show_alert=True)
