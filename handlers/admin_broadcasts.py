@@ -52,6 +52,13 @@ from database.db import (
     AUTO_REJECT_YES,
     AUTO_REJECT_NO,
     get_auto_reject_filter_options,
+    # Форум-ночь п.6 (D-25, идея №14): поле фильтра «Отметка на форуме» — выбор
+    # «пришли»/«не пришли».
+    CHECKIN_YES,
+    CHECKIN_NO,
+    get_checkin_entry_filter_options,
+    # «Сессия программы» — свой мастер (город → день → сессия), не входит в generic-пикер.
+    any_program_sessions_exist,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
     create_broadcast,
     get_broadcast,
@@ -930,6 +937,9 @@ _FILTER_FIELD_LABELS = {
     # Phase 31 (31-02/31-07, D-28): попал ли делегат под срабатывание правила автоотказа —
     # значение хранится в `users.auto_reject_rule_ids`, отдельной колонки `auto_reject` нет.
     "auto_reject": "Автоотказ по правилу",
+    # Форум-ночь п.6 (D-25, идея №14): отметка «Вход» в `checkins` — пришёл ли делегат на
+    # форум (не «одобрен», это отдельное поле «Статус» выше).
+    "checkin_entry": "Отметка на форуме",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -964,6 +974,10 @@ _PICKER_FIELDS = {
     # `event_city`/`season`/`resume`/`delegate_chat` выше). No separate handler needed for
     # the same reason as those fields.
     "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14) — same двойная регистрация rule: also in
+    # `db._FILTER_COLUMNS`/`db._FILTER_VIRTUAL_FIELDS` (see there). No separate handler
+    # needed for the same reason as the fields above.
+    "checkin_entry",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -1031,7 +1045,8 @@ def _filter_summary(filters: list[dict]) -> str:
 
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
-                     show_chat: bool = False, show_auto_reject: bool = False) -> InlineKeyboardMarkup:
+                     show_chat: bool = False, show_auto_reject: bool = False,
+                     show_checkin: bool = False, show_sessions: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1074,6 +1089,18 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # «Резюме»/«Чата делегатов»/«Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
     if show_auto_reject:
         kb.append([InlineKeyboardButton(text="🤖 Автоотказ по правилу", callback_data="filter_f_auto_reject")])
+    # Форум-ночь п.6 (D-25, идея №14): кнопка только когда в `checkins` реально есть и
+    # пришедшие, и (approved текущего сезона) не пришедшие — тот же довод, что у соседей выше.
+    if show_checkin:
+        kb.append([InlineKeyboardButton(text="🚪 Отметка на форуме", callback_data="filter_f_checkin_entry")])
+    # Свой мастер (город → день → сессия, handlers/admin_broadcast_session_filter.py) — не
+    # входит в generic-пикер `_show_value_picker` (значение — конкретная сессия, а не пара
+    # сентинелов). Кнопка только когда менеджер завёл хотя бы одну сессию программы.
+    if show_sessions:
+        kb.append([
+            InlineKeyboardButton(text="🎤 Были на сессии…", callback_data="cksf_start:attended"),
+            InlineKeyboardButton(text="🚫 Не были на сессии…", callback_data="cksf_start:not_attended"),
+        ])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -1107,11 +1134,16 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Phase 31 (31-02/31-07, D-28): порог считается ТЕМ ЖЕ списком, который потом покажет
     # пикер (get_auto_reject_filter_options) — второй карты значений нет.
     auto_reject_options = await get_auto_reject_filter_options()
+    # Форум-ночь п.6 (D-25, идея №14): та же роль порога, что у auto_reject/chat выше.
+    checkin_options = await get_checkin_entry_filter_options()
+    show_sessions = await any_program_sessions_exist()
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
                          show_chat=len(chat_options) > 1,
-                         show_auto_reject=len(auto_reject_options) > 1)
+                         show_auto_reject=len(auto_reject_options) > 1,
+                         show_checkin=len(checkin_options) > 1,
+                         show_sessions=show_sessions)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1219,6 +1251,19 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
         # «бот для людей»).
         labels = {AUTO_REJECT_YES: "Отклонён правилом", AUTO_REJECT_NO: "Не отклонён правилом"}
+    elif field == "checkin_entry":
+        # Форум-ночь п.6 (D-25, идея №14): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
+        # соседей выше: инлайн-кнопки не истекают, вчерашнее меню с кнопкой «Отметка на
+        # форуме» живо и сегодня, когда все делегаты снова по одну сторону.
+        options = await get_checkin_entry_filter_options()
+        if len(options) < 2:
+            await callback.answer(
+                "Все делегаты по одну сторону — фильтровать не по чему.", show_alert=True,
+            )
+            return
+        # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
+        # «бот для людей»).
+        labels = {CHECKIN_YES: "пришли на форум", CHECKIN_NO: "не пришли"}
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1359,6 +1404,13 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # AUTO_REJECT_NO) сентинелы, та же причина, что у «Резюме»/«Чата делегатов» выше.
         labels = data.get("filter_option_labels") or {}
         filters.append({"field": field, "value": value, "label": labels.get(value, value)})
+    elif field == "checkin_entry":
+        # Форум-ночь п.6 (D-25, идея №14): `label` есть ВСЕГДА — оба значения (CHECKIN_YES/
+        # CHECKIN_NO) сентинелы, та же причина, что у соседей выше. `event_season` НЕ кладём
+        # сюда — он резолвится заново на КАЖДЫЙ вызов `count_and_list_filtered`
+        # (`database.db._resolve_checkin_entry_season`), а не замораживается на момент выбора.
+        labels = data.get("filter_option_labels") or {}
+        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
@@ -1411,10 +1463,21 @@ async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "filter_schedule", Broadcast.filter_field)
 async def filter_schedule(callback: types.CallbackQuery, state: FSMContext):
     # filters stay in FSM state; the schedule flow reads them as filter_spec
+    data = await state.get_data()
     await callback.answer()
-    await callback.message.edit_text(
-        "🕓 Введите дату и время рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30):"
-    )
+    text = "🕓 Введите дату и время рассылки в формате ДД.ММ.ГГГГ ЧЧ:ММ (напр. 01.07.2026 14:30):"
+    if data.get("filters"):
+        # Форум-ночь п.6 (D-25): список по фильтру резолвится ЗАНОВО в момент отправки
+        # (`services.scheduler.send_scheduled_broadcast` -> `count_and_list_filtered`), не
+        # замораживается сейчас — за время ожидания состав может измениться (кто-то отметился
+        # на входе, заявку одобрили/отклонили). Менеджер должен знать это ДО того, как нажмёт
+        # «Запланировать», а не догадываться по факту отправки.
+        text = (
+            "⚠️ Список получателей пересчитается заново в момент отправки (если кто-то за это "
+            "время отметится на входе или сменит статус — письмо уйдёт актуальному списку).\n\n"
+            f"{text}"
+        )
+    await callback.message.edit_text(text)
     await state.set_state(Broadcast.schedule_when)
 
 
@@ -1431,3 +1494,8 @@ async def cmd_refresh_allowlist(message: types.Message):
         )
     else:
         await message.answer(f"✅ Allowlist обновлён: {size} username в списке.")
+
+
+# Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …» — свой шов, декорирует
+# тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
+from handlers import admin_broadcast_session_filter  # noqa: E402,F401
