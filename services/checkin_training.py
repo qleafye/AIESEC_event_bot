@@ -26,7 +26,7 @@
 было на входе», учебные сканы там были бы шумом (и попали бы в «кто сколько отметил»).
 
 Тексты волонтёру — реестр (`checkin_training_*`, group "event"), перевод — `services.i18n`.
-Лист A4 (`build_training_sheet`) рисует Pillow шрифтами Mini App (Lato/Raleway, кириллица в
+Лист A4 (`training_sheet_inputs` + `render_training_sheet`) рисует Pillow шрифтами Mini App (Lato/Raleway, кириллица в
 сабсете есть); без Pillow вызывающий шлёт пять QR отдельными картинками (`training_qr_pngs`)."""
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ import logging
 import re
 from datetime import timedelta
 from pathlib import Path
+from typing import TypedDict
 
 import segno
 
@@ -281,20 +282,46 @@ def _wrap(draw, text: str, font, width: int) -> list[str]:
     return lines
 
 
-async def build_training_sheet(lang: str, tr_map: dict) -> bytes:
+class SheetInputs(TypedDict):
+    title: str
+    footer: str
+    hints: dict[str, str]
+    payloads: list[tuple[str, str]]
+
+
+async def training_sheet_inputs(lang: str, tr_map: dict) -> SheetInputs:
+    """Всё, что листу нужно из БД (тексты реестра, метка события), — асинхронно, до рендера."""
+    return SheetInputs(
+        title=_strip_symbols(await i18n.tr_setting("checkin_training_sheet_title_text", lang, tr_map) or ""),
+        footer=_strip_symbols(await i18n.tr_setting("checkin_training_qr_note_text", lang, tr_map) or ""),
+        hints=await training_hints(lang, tr_map),
+        payloads=await training_payloads(),
+    )
+
+
+def sheet_font(name: str, size: int):
+    """Шрифт листа из шрифтов Mini App (woff2, кириллица в сабсете). Проверено в образе бота
+    (python:3.11-slim + колесо Pillow 11.3 manylinux): FreeType колеса собран с brotli и
+    открывает woff2 — getname() == ('Lato', 'Regular'), ширина «Ж» 31 против 15 у
+    load_default. Не открылся — ошибка, а не тихий фолбэк на битмап без кириллицы:
+    хендлер тогда шлёт пять QR картинками."""
+    from PIL import ImageFont
+
+    return ImageFont.truetype(str(_FONTS_DIR / name), size)
+
+
+def render_training_sheet(inputs: SheetInputs) -> bytes:
     """PNG листа A4: заголовок, пять строк «кружок цвета · QR · что увидит волонтёр и что
-    делать», внизу — «ничего не записывается». Бросает ImportError без Pillow."""
-    from PIL import Image, ImageDraw, ImageFont
+    делать», внизу — «ничего не записывается». Синхронный и тяжёлый (Pillow) — звать через
+    `asyncio.to_thread`. Бросает ImportError без Pillow."""
+    from PIL import Image, ImageDraw
 
-    title = _strip_symbols(await i18n.tr_setting("checkin_training_sheet_title_text", lang, tr_map) or "")
-    footer = _strip_symbols(await i18n.tr_setting("checkin_training_qr_note_text", lang, tr_map) or "")
-    hints = await training_hints(lang, tr_map)
-
+    title, footer, hints = inputs["title"], inputs["footer"], inputs["hints"]
     img = Image.new("RGB", _A4, "white")
     draw = ImageDraw.Draw(img)
-    f_title = ImageFont.truetype(str(_FONTS_DIR / "raleway-800.woff2"), 48)
-    f_text = ImageFont.truetype(str(_FONTS_DIR / "lato-400.woff2"), 30)
-    f_small = ImageFont.truetype(str(_FONTS_DIR / "lato-700.woff2"), 26)
+    f_title = sheet_font("raleway-800.woff2", 48)
+    f_text = sheet_font("lato-400.woff2", 30)
+    f_small = sheet_font("lato-700.woff2", 26)
 
     y = _MARGIN
     for line in _wrap(draw, title, f_title, _A4[0] - 2 * _MARGIN):
@@ -304,7 +331,7 @@ async def build_training_sheet(lang: str, tr_map: dict) -> bytes:
     row_h = (_A4[1] - y - _MARGIN - 70) // len(TRAINING_TOKENS)
     text_x = _MARGIN + 60 + _QR_BOX + 40
     text_w = _A4[0] - text_x - _MARGIN
-    for idx, (kind, payload) in enumerate(await training_payloads(), start=1):
+    for idx, (kind, payload) in enumerate(inputs["payloads"], start=1):
         qr = segno.make(payload)
         size = qr.symbol_size(scale=1, border=2)[0]
         qr_img = Image.open(io.BytesIO(_qr_png(payload, scale=max(1, _QR_BOX // size)))).convert("RGB")

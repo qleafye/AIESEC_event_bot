@@ -6,6 +6,7 @@
 же, что дал бы вход. Учебный токен узнаётся через реестр резолверов (`kind="training"`)."""
 from __future__ import annotations
 
+import asyncio
 import io
 
 import pytest
@@ -212,8 +213,38 @@ def test_sheet_is_a4_png(tmp_path):
     from PIL import Image
 
     client_with(tmp_path)
-    png = _run(training.build_training_sheet("ru", {}))
+    png = training.render_training_sheet(_run(training.training_sheet_inputs("ru", {})))
     assert Image.open(io.BytesIO(png)).size == (1240, 1754)
+
+
+@pytest.mark.parametrize("name", ["lato-400.woff2", "lato-700.woff2", "raleway-800.woff2"])
+def test_sheet_font_opens_with_cyrillic_not_bitmap_fallback(name):
+    """Шрифт листа реально открыт FreeType (не битмап load_default без кириллицы)."""
+    pytest.importorskip("PIL")
+    from PIL import ImageFont
+
+    font = training.sheet_font(name, 30)
+    assert font.getname()[0].startswith(("Lato", "Raleway"))
+    assert font.getlength("Ж") != ImageFont.load_default(30).getlength("Ж")
+    assert font.getbbox("Привет")[2] > 60
+
+
+def test_sheet_handler_renders_in_thread(tmp_path, monkeypatch):
+    """Рендер Pillow идёт через asyncio.to_thread — event loop бота не блокируется."""
+    client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    calls = []
+    real = asyncio.to_thread
+
+    async def spy(fn, *a, **k):
+        calls.append(fn)
+        return await real(fn, *a, **k)
+
+    monkeypatch.setattr(admin_checkin_training.asyncio, "to_thread", spy)
+    cb = _FakeCallback("checkin_training_sheet", GAME_MANAGER_ID)
+    cb.bot = _SheetBot()
+    _run(admin_checkin_training.checkin_training_sheet(cb))
+    assert calls == [training.render_training_sheet]
 
 
 class _SheetBot:
