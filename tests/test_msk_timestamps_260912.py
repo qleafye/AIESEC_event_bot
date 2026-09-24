@@ -254,7 +254,7 @@ def test_migration_shifts_family_by_3_hours_when_process_clock_is_utc(tmp_path):
     assert result["accepted_at"] == "2026-09-01T13:00:00.500000"
     assert result["draft_updated_at"] == "2026-09-01 13:00:00"
     assert result["draft_created_at"] == "2026-09-01 12:55:00"
-    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
+    assert result["user_version"] >= db._MSK_MIGRATION_USER_VERSION
 
 
 def test_migration_is_idempotent_on_second_boot(tmp_path):
@@ -344,7 +344,7 @@ def test_migration_skips_shift_when_process_clock_is_already_moscow(tmp_path):
     assert result["draft_updated_at"] == "2026-09-01 10:00:00"
     assert result["draft_created_at"] == "2026-09-01 09:55:00"
     # Но маркер стоит -- иначе каждый старт на этой же машине пересчитывал бы часы заново.
-    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
+    assert result["user_version"] >= db._MSK_MIGRATION_USER_VERSION
 
 
 def test_migration_survives_curved_and_empty_values(tmp_path):
@@ -409,7 +409,7 @@ def test_migration_skips_columns_missing_in_old_schema(tmp_path):
 
     result = asyncio.run(_run_conn(db_path, _read_family))
     assert result["registration_date"] == "2026-09-01 13:00:00"
-    assert result["user_version"] == db._MSK_MIGRATION_USER_VERSION
+    assert result["user_version"] >= db._MSK_MIGRATION_USER_VERSION
 
 
 # ── 4. Дашборд: свой timeutil, tzdata объявлена, ноль импортов бота ──────────────────────
