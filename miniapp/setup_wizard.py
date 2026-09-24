@@ -32,6 +32,7 @@ class WizardStep:
     link: tuple[str, str] | None = None   # (hash, подпись кнопки) для kind == "link"
     event_types: frozenset[str] | None = None  # None = для любого типа
     requires: str | None = None           # ключ-тумблер, который должен быть "on"
+    accept_default: bool = False          # значение по умолчанию тоже считается «задано»
 
 
 # Порядок — из шпаргалки; вставка СкиллАп (13–16) идёт после общих текстов и до таблицы
@@ -83,6 +84,8 @@ STEPS: tuple[WizardStep, ...] = (
             "menu_question", "menu_faq", "menu_referral", "menu_invites",
         ),
         done_rule="any",
+        # Все кнопки по умолчанию включены — это уже рабочее меню, а не пропуск шага.
+        accept_default=True,
     ),
     WizardStep(
         key="reg_prompts",
@@ -104,8 +107,9 @@ STEPS: tuple[WizardStep, ...] = (
         key="conf_lc",
         title="🏢 Конференция: локальный комитет",
         hint=(
-            "Делегаты конференции — члены АЙСЕК. Включите вопрос «Локальный комитет», "
-            "чтобы в заявке и таблице было видно, от какого ЛК приехал человек."
+            "Делегаты конференции — члены АЙСЕК. Вопрос «Локальный комитет» включается "
+            "вместе с типом «Конференция» — по нему в заявке и таблице видно, от какого ЛК "
+            "человек. Выключите, если ЛК не нужен."
         ),
         kind="fields",
         fields=("reg_q_lc",),
@@ -201,10 +205,12 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="theme",
         title="🎨 Оформление приложения",
-        hint="Хотя бы один штрих — тема, лого или акцентный цвет.",
+        hint="По умолчанию стоит тема «АЙСЕК — классика». Можно сменить её, добавить лого или акцентный цвет.",
         kind="fields",
         fields=("miniapp_theme_preset", "miniapp_logo", "miniapp_accent"),
         done_rule="any",
+        # Тема «АЙСЕК — классика» по умолчанию — законный выбор, шаг не висит «не задано».
+        accept_default=True,
     ),
 )
 
