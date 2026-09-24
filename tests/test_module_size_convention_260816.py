@@ -445,11 +445,15 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        952,
+        955,
         "Бэклог чек-ина №25: +5 строк — шов-импорт `from handlers import admin_forum_ready` "
         "(«🚦 Готовность к форуму») в самый хвост файла (947 -> 952). "
         "Бэклог чек-ина п.10: +5 строк — шов-импорт `from handlers import admin_checkin_stats` "
         "(«📊 Статистика прихода») в самый хвост файла (942 -> 947). "
+        "Phase 33 (delegate-card admin actions): +13 строк — кнопка «🏙 Перевести в город» на "
+        "карточке /find (рядом с «🔄 Перевыпустить QR», без переупорядочивания) + шов-импорт "
+        "`from handlers import admin_city_move` в самый хвост файла, после admin_program_view "
+        "(942 -> 955). "
         "D-29 (24.09, «одна кнопка программы у делегата»): +8 строк — шов-импорт `from handlers "
         "import admin_program_view` (циклический тумблер таблица/фото Mini App) в самый хвост "
         "файла, после admin_forum_functions (934 -> 942). "
@@ -601,6 +605,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "Идеи №31/№32 (журнал площадки, снятие отметки): +10 строк — capability-записи "
         "handlers/admin_venue.py (admin_venue_log/vlog:*/vlogst/vrv_*/state:VenueRevokeFind:*, "
         "капа «moderate_reg»); 1165 -> 1175. "
+        "Phase 33 (delegate-card admin actions): +9 строк — capability-записи «🏙 Перевести в "
+        "город» (citymv_start:*/citymv_pick:*/citymv_apply:*/citymv_cancel:*, капа "
+        "«moderate_reg» — тот же довод, что у соседнего «🔄 Перевыпустить QR» выше); "
+        "1165 -> 1174. "
         "D-36 (24.09, аудит форумных тумблеров): +13 строк — capability-записи «🎪 Форум: "
         "функции» + недостающего экрана шпаргалки волонтёра (admin_forum_functions/"
         "forumfn_city:*/checkinvol_cfg:*/checkinvol_toggle:*/checkinvol_time:*/"
