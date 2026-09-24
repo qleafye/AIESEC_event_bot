@@ -548,6 +548,10 @@ _CODE_LITERALS_EN = {
         "The check-in has already changed — someone else moved or removed it. Nothing was undone.",
     "Не получилось отменить — попросите менеджера снять отметку в боте.":
         "Couldn't undo — ask a manager to remove the check-in in the bot.",
+    # Идея №11: полоса «сеть медленная» в сканере Mini App (волонтёру).
+    "Сеть медленная. Переключитесь на приложение-сканер.":
+        "Slow network. Switch to the scanner app.",
+    "Как": "How",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ

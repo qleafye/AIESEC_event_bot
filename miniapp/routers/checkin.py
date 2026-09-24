@@ -338,6 +338,21 @@ async def checkin_undo(
     }
 
 
+@router.get("/app/api/checkin/net-texts")
+async def checkin_net_texts(
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Идея №11: тексты полосы «сеть медленная» — сканер берёт их один раз при открытии
+    экрана (пока сеть жива), в переводе на язык волонтёра. Инструкция — шпаргалка волонтёра."""
+    lang, tr_map = await i18n.context(p.telegram_id)
+    return {
+        "text": await i18n.tr_setting("checkin_slow_net_text", lang, tr_map) or "",
+        "help_label": await i18n.tr_setting("checkin_slow_net_help_button_text", lang, tr_map) or "",
+        "help_text": await i18n.tr_setting("checkin_volunteer_guide_text", lang, tr_map) or "",
+    }
+
+
 # Код отказа отмены -> текст из реестра: «отметка уже изменилась» (её перенёс/снял другой),
 # «не получилось» (сбой), остальное — «отменить уже нельзя».
 _UNDO_REFUSAL_KEYS = {
