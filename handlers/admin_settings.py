@@ -2325,6 +2325,28 @@ def _tab_confirm_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+async def _reschedule_checkin_qr_if_forum_date(key: str) -> None:
+    """Форум-ночь п.3 (D-03): правка «🗓 Дата начала форума» (`forum_date`, глобальная или
+    `forum_date__city__{code}`) обязана переставить джобы рассылки QR НЕМЕДЛЕННО — в отличие
+    от `daily_digest_time`/`chat_refresh_minutes`, для которых честно написано «после
+    перезапуска». `forum_date` — единственный ключ, от которого зависит САМА постановка джобы
+    (нет даты — джобы нет вовсе), поэтому ждать рестарта здесь неприемлемо: менеджер вводит
+    дату форума за день-два до самого события. Fail-soft — сбой планировщика (например, тест
+    без инициализированного `AsyncIOScheduler`) не должен ронять сохранение настройки."""
+    if _base_setting_key(key) != "forum_date":
+        return
+    city = None
+    if PER_CITY_SEP in key:
+        parsed = split_per_city_key(key)
+        if parsed is not None:
+            city = parsed[1]
+    try:
+        from services.checkin_broadcast import schedule_city_jobs
+        await schedule_city_jobs(city)
+    except Exception as e:
+        logger.error(f"_reschedule_checkin_qr_if_forum_date({key!r}): {e}")
+
+
 @router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -2471,8 +2493,10 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     warning = ""
     if value == "-":
         await delete_setting_by_admin(message.from_user.id, key)
+        await _reschedule_checkin_qr_if_forum_date(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
+        await _reschedule_checkin_qr_if_forum_date(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())

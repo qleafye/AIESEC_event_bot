@@ -868,6 +868,18 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_test_qr": "checkin",
     "state:CheckinTestUpload:*": "checkin",
 
+    # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом + её настройки — та же капа
+    # «moderate_reg», что у перевыпуска QR выше (D-01, идея №10): массовая отправка сообщений
+    # ВСЕМ делегатам города и правка расписания рассылки — не рутинное сканирование на входе,
+    # которое разрешено волонтёру правом «checkin».
+    "checkinqr_send:*": "moderate_reg",
+    "checkinqr_send_go:*": "moderate_reg",
+    "checkinqr_send_no": "moderate_reg",
+    "checkinqr_cfg:*": "moderate_reg",
+    "checkinqr_toggle:*": "moderate_reg",
+    "checkinqr_time:*": "moderate_reg",
+    "state:CheckinQrTimeEdit:*": "moderate_reg",
+
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из

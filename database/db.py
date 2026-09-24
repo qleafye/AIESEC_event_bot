@@ -1479,6 +1479,25 @@ async def init_db():
             )
         ''')
 
+        # Форум-ночь п.3 (D-03, идея №2): кому и когда отправлен QR перед форумом + подтверждение
+        # «✅ Сохранил, открывается». `telegram_id` PRIMARY KEY — один QR-делегат = одна строка
+        # (в отличие от `checkins`, где `point` даёт несколько строк на человека — здесь точек
+        # нет, только «отправлено/подтверждено»). `event_city` — СНИМОК города на момент отправки
+        # (не JOIN на users.event_city): счётчик «QR получили N» города обязан оставаться верным,
+        # даже если делегат сменит город анкеты уже после рассылки. `sent_at` — время ПЕРВОЙ
+        # отправки (вечерняя рассылка/ручная кнопка «Разослать QR сейчас» — INSERT OR IGNORE,
+        # см. services.checkin_broadcast.send_broadcast — не двигается утренним повтором,
+        # чтобы «получили N» считало людей, а не отправки). `confirmed_at` NULL, пока делегат не
+        # нажал кнопку подтверждения (services.checkin_broadcast.confirm_receipt).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_qr_sends (
+                telegram_id INTEGER PRIMARY KEY,
+                event_city TEXT,
+                sent_at TEXT NOT NULL,
+                confirmed_at TEXT
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -7521,6 +7540,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь B1 (идея №10): checkin_token_replacements.telegram_id — тот же личный след,
     # что checkins выше (кто когда-то держал такой токен), группа общая "checkin".
     ("checkin_token_replacements", "telegram_id", "checkin"),
+    # Форум-ночь п.3 (D-03, идея №2): checkin_qr_sends.telegram_id — кому и когда отправлен
+    # персональный QR + его подтверждение, тот же личный след, группа общая "checkin".
+    ("checkin_qr_sends", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -7987,3 +8009,108 @@ async def count_approved_current_season(*, city_scope=None) -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0] or 0) if row else 0
+
+
+# ── Форум-ночь п.3 (D-03, идея №2): рассылка QR накануне форума + утренний повтор ────────────
+
+async def list_approved_users(*, city_scope=None) -> list[dict]:
+    """Кандидатный пул для `services.checkin_broadcast`: строки `users` со `status='approved'`
+    в границах `city_scope`, БЕЗ фильтра по сезону — сезон (и статус ещё раз) перепроверяет
+    `services.checkin.checkin_denial` на КАЖДОЙ строке вызывающим кодом (задание просило
+    «через checkin_denial», не отдельную копию его правила SQL-условием), единственный источник
+    правды о допуске остаётся один. `city_scope=None` — без ограничения по городу (модуль
+    городов выключен)."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "status = 'approved'"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT * FROM users WHERE {where}", params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def checkin_qr_mark_sent(telegram_id: int, event_city: str | None, sent_at: str) -> bool:
+    """Идемпотентная отметка «QR отправлен» — `INSERT OR IGNORE` по `telegram_id` (PRIMARY
+    KEY): повторный вызов для уже отправленного делегата ничего не меняет и возвращает
+    `False` (звонящий код — `services.checkin_broadcast.send_broadcast` — строит выборку
+    получателей ИЗ `checkin_qr_sent_ids`, поэтому второй вызов на того же человека не должен
+    случаться в норме; это последний рубеж на гонку двух одновременных отправок одного города).
+    `True` — эта строка вставлена именно этим вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkin_qr_sends (telegram_id, event_city, sent_at) "
+            "VALUES (?, ?, ?)",
+            (telegram_id, event_city, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_qr_sent_ids(*, city_scope=None) -> set[int]:
+    """Кому УЖЕ отправлен QR (любой источник — вечерняя джоба/ручная кнопка), в границах
+    `city_scope` — по СНИМКУ `checkin_qr_sends.event_city` (город на момент отправки), не по
+    текущему `users.event_city`. Вызывающий (`send_broadcast`) вычитает этот набор из
+    кандидатного пула — идемпотентность рассылки: повторный запуск/рестарт не шлёт дважды."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = f" WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends{where}", city_params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def checkin_qr_unconfirmed_ids(*, city_scope=None) -> set[int]:
+    """Кому отправлен QR, но подтверждения «✅ Сохранил» ещё нет — аудитория утреннего
+    повтора (`services.checkin_broadcast.send_morning_repeat`), в границах `city_scope`."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "confirmed_at IS NULL"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends WHERE {where}", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def checkin_qr_confirm(telegram_id: int, confirmed_at: str) -> bool:
+    """Подтверждение «✅ Сохранил, открывается» — идемпотентно: `UPDATE ... WHERE confirmed_at
+    IS NULL` пишет метку только на ПЕРВОЕ нажатие (возвращает `True`); повторный тап той же
+    кнопки (двойной клик, форвард сообщения) находит `confirmed_at` уже не NULL, ничего не
+    меняет, возвращает `False` — вызывающий хендлер отвечает тем же дружелюбным текстом в обоих
+    случаях, разница видна только в возвращаемом флаге (для теста), не в ответе делегату.
+    `False` тоже, если строки нет вовсе (делегат не получал QR через эту рассылку — например,
+    сам открыл «🎟 Мой QR» до первой отправки)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE checkin_qr_sends SET confirmed_at = ? "
+            "WHERE telegram_id = ? AND confirmed_at IS NULL",
+            (confirmed_at, telegram_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
+    """`(получили, подтвердили)` — строка «✅ Отметки на форуме» (handlers/admin_checkin.py)."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = f" WHERE {city_frag}" if city_frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN confirmed_at IS NOT NULL THEN 1 ELSE 0 END) "
+            f"FROM checkin_qr_sends{where}",
+            city_params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    total = int(row[0] or 0) if row else 0
+    confirmed = int(row[1] or 0) if row and row[1] is not None else 0
+    return total, confirmed
