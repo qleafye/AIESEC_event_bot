@@ -923,3 +923,44 @@ def claim_status_label(report: dict) -> str:
     `claim_status_parts`, чтобы формула статуса считалась в одном месте."""
     template, who = claim_status_parts(report)
     return template.format(who=who) if who else template
+
+
+# ── «✅ Решено» у орга закрывает режим «дописываю SOS» у делегата ────────────────────────────
+
+async def close_delegate_collecting(bot, storage, report: dict) -> None:
+    """Орг отметил заявку решённой: если делегат всё ещё в режиме «дописываю SOS» ПО ЭТОЙ
+    заявке — режим закрываем (иначе его следующее сообщение ушло бы в тред решённой заявки), и
+    пишем ему `sos_resolved_notify_text`. `storage` — FSM-хранилище диспетчера (aiogram кладёт
+    его в данные хендлера как `fsm_storage`); ключ делегата — личка, chat_id == user_id.
+    Режим по ДРУГОЙ заявке (делегат уже открыл новый SOS) не трогаем. Fail-soft: сбой не
+    мешает самой отметке «Решено»."""
+    tid = report.get("telegram_id")
+    if not tid:
+        return
+    cleared = False
+    try:
+        if storage is not None:
+            from aiogram.fsm.context import FSMContext
+            from aiogram.fsm.storage.base import StorageKey
+            from handlers.states import SosReport
+
+            ctx = FSMContext(storage=storage, key=StorageKey(bot_id=bot.id, chat_id=tid, user_id=tid))
+            if (await ctx.get_state() == SosReport.collecting.state
+                    and (await ctx.get_data()).get("sos_collecting_report_id") == report["id"]):
+                await ctx.clear()
+                cleared = True
+    except Exception as e:
+        logger.error("sos.close_delegate_collecting(%s): FSM делегата не сброшен: %s", report.get("id"), e)
+    try:
+        from handlers import reg_i18n
+        from services import i18n as i18n_service
+
+        lang, tr_map = await i18n_service.context(tid)
+        text = reg_i18n.tr_text(await get_setting_typed("sos_resolved_notify_text"), lang, tr_map)
+        kb = None
+        if cleared:  # вернуть главное меню вместо клавиатуры «Готово»
+            from keyboards.builders import get_main_menu_kb
+            kb = reg_i18n.tr_kb(await get_main_menu_kb(tid), lang, tr_map)
+        await bot.send_message(tid, text, reply_markup=kb)
+    except Exception as e:
+        logger.info("sos.close_delegate_collecting: делегату %s не написать: %s", tid, e)
