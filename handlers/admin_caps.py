@@ -918,6 +918,10 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_test_start": "checkin",
     "checkin_test_qr": "checkin",
     "state:CheckinTestUpload:*": "checkin",
+    # Бэклог чек-ина №7: «🧪 Учебные QR» — право «checkin» ИЛИ «moderate_reg». Карта знает одно
+    # право на ключ, поэтому здесь «любое право панели», а пару проверяет сам хендлер
+    # (handlers/admin_checkin_training.py). Лист ничего не пишет и прав не даёт.
+    "checkin_training_sheet": ANY_CAPABILITY,
 
     # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом + её настройки — та же капа
     # «moderate_reg», что у перевыпуска QR выше (D-01, идея №10): массовая отправка сообщений

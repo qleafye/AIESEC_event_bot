@@ -1174,6 +1174,7 @@ admin|callback_query|venue_revoke_find|vrv_find
 admin|callback_query|venue_revoke_user|vrv_u:*
 admin|callback_query|venue_revoke_confirm|vrv_p:*
 admin|callback_query|venue_revoke_go|vrv_go:*
+admin|callback_query|checkin_training_sheet|checkin_training_sheet
 admin|callback_query|admin_sos|admin_sos
 admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
@@ -1755,7 +1756,10 @@ def test_snapshot_total_handler_count_is_292():
     # Бэклог чек-ина №12 («📍 Сейчас на площадке»): +2 admin.callback_query (checkin_floor_open/
     # checkin_floor_refresh, handlers/admin_checkin_floor.py) — шов из хвоста handlers/admin.py
     # сразу после admin_forum_ready; одна чистая вставка перед prog_fbday_open (750 -> 752).
-    assert len(GOLDEN_SNAPSHOT) == 752
+    # Бэклог чек-ина №7 («🧪 Учебные QR»): +1 admin.callback_query checkin_training_sheet
+    # (handlers/admin_checkin_training.py) — шов из хвоста handlers/admin_checkin.py сразу
+    # после venue_revoke_go и ПЕРЕД admin_sos; одна чистая вставка (752 -> 753).
+    assert len(GOLDEN_SNAPSHOT) == 753
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

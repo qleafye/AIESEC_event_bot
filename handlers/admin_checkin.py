@@ -332,6 +332,7 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
         # формат/читаемость приложения волонтёра.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
+        [InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")],
         *await _venue_entry_rows(callback.from_user.id),
     ])
     # Бэклог п.10: сводка прихода — менеджерская (moderate_reg), волонтёру кнопку не рисуем.
@@ -425,7 +426,12 @@ async def checkin_import_file_step(message: types.Message, state: FSMContext, bo
     text = decode_scan_export(buf.read())
 
     tag = await current_event_tag()
-    records = find_checkin_records(text, tag)
+    training_n = _training.count_training_codes(text)  # бэклог №7: учебные коды не отмечаем
+    records = _training.drop_training_records(find_checkin_records(text, tag))
+    if not records and training_n:
+        await state.set_state(None)
+        await message.answer(_training.training_only_text(training_n), reply_markup=ReplyKeyboardRemove())
+        return
     if not records:
         await message.answer(
             "В файле не нашёл ни одного QR форума — проверьте, что выгружали историю сканов "
@@ -434,7 +440,7 @@ async def checkin_import_file_step(message: types.Message, state: FSMContext, bo
         )
         return  # остаёмся в waiting_file -- можно сразу прислать другой файл
 
-    await state.update_data(checkin_records=records)
+    await state.update_data(checkin_records=records, checkin_training_n=training_n)
     await message.answer(f"Нашёл кодов: {len(records)}.", reply_markup=ReplyKeyboardRemove())
     city = await _resolve_checkin_screen_city(message.from_user.id)
     if city is None:
@@ -584,6 +590,8 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         f"не найдено: {not_found_n} · не одобрены: {not_approved_n} · "
         f"QR заменён: {replaced_n}",
     ]
+    if data.get("checkin_training_n"):
+        lines.append(_training.training_report_line(data["checkin_training_n"]))
     if wrong_city_n:
         lines.append(f"Другой город форума: {wrong_city_n}")
     if other_city_n:
@@ -993,3 +1001,5 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
 # отметки менеджером — экраны в отдельном шве handlers/admin_venue.py, регистрируются здесь хвостом.
 from services import venue_log as _venue_log  # noqa: E402
 from handlers.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
+from services import checkin_training as _training  # noqa: E402
+from handlers import admin_checkin_training  # noqa: E402,F401  (бэклог №7: «🧪 Учебные QR»)
