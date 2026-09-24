@@ -607,6 +607,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # раздела «📋 Заявки» в `admin_sections.SECTIONS`, сразу после toggle_apps_queue_sort_by_score.
     "checkin_qr_enabled": "apps",
     "checkin_qr_broadcast_enabled": "apps",  # рассылка QR перед форумом
+    # D-33 (решение владельца 24.09): шпаргалка волонтёра накануне форума — тот же раздел
+    # «📋 Заявки», что сосед checkin_qr_broadcast_enabled выше (обе — рассылки-напоминания
+    # накануне форума).
+    "checkin_volunteer_guide_broadcast_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

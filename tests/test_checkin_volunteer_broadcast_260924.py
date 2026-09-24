@@ -1,0 +1,305 @@
+"""D-33 (решение владельца 24.09, `.planning/FORUM-CHECKIN.md`): шпаргалка волонтёра чек-ина
+за день до форума ВСЕМ держателям capability `checkin` города
+(`services/checkin_volunteer_broadcast.py`).
+
+Стиль — `tests/test_checkin_qr_broadcast_260924.py` (реальный AsyncIOScheduler на временном
+jobstore, `asyncio.run`, шаблонная БД `tests/_dbtpl.fast_init_db`)."""
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+
+from config import config
+from database import db
+from handlers.admin_caps import role_caps_key, role_enabled_key
+import services.scheduler as sched
+import services.checkin_volunteer_broadcast as vb
+from tests._dbtpl import fast_init_db
+
+SUPERADMIN_ID = 260924301
+VOLUNTEER_ID = 260924302
+VOLUNTEER2_ID = 260924303
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+def _ready(tmp_path, name="checkin_volunteer_broadcast.db"):
+    config.DB_PATH = str(tmp_path / name)
+    fast_init_db()
+    config.ADMIN_IDS = [SUPERADMIN_ID]
+
+
+async def _grant_checkin(tid, city=None):
+    await db.set_setting(role_enabled_key("reg_manager"), "on")
+    await db.set_setting(role_caps_key("reg_manager"), "checkin")
+    await db.add_staff(tid, "reg_manager", SUPERADMIN_ID)
+    if city:
+        await db.set_staff_city(tid, city)
+
+
+async def _set_setting(key, value):
+    await db.set_setting(key, value)
+
+
+class FakeBot:
+    def __init__(self):
+        self.messages = []  # [(chat_id, text)]
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.messages.append((chat_id, text))
+        return type("Msg", (), {"message_id": 1})()
+
+
+def _with_bot(monkeypatch):
+    bot = FakeBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    return bot
+
+
+def _build_scheduler(tmp_path):
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+
+    return AsyncIOScheduler(
+        jobstores={"default": SQLAlchemyJobStore(url=f"sqlite:///{tmp_path / 'jobs.sqlite'}")},
+        timezone=sched.MOSCOW_TZ,
+    )
+
+
+def _run_scheduled(tmp_path, monkeypatch, body):
+    s = _build_scheduler(tmp_path)
+    monkeypatch.setattr(sched, "_scheduler", s)
+
+    async def go():
+        s.start(paused=True)
+        try:
+            return await body(s)
+        finally:
+            s.shutdown(wait=False)
+
+    return asyncio.run(go())
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Чистый хелпер: день накануне форума, заданное время
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_guide_run_at_is_day_before_at_given_time():
+    dt = vb.guide_run_at("03.10.2026", "17:00")
+    assert dt == datetime(2026, 10, 2, 17, 0)
+
+
+def test_guide_run_at_none_without_forum_date():
+    assert vb.guide_run_at(None, "17:00") is None
+
+
+def test_guide_run_at_none_on_unparseable_date():
+    assert vb.guide_run_at("не дата", "17:00") is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# schedule_city_job: гейты (дата форума / тумблер / пустой текст)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_schedule_skipped_without_forum_date(tmp_path, monkeypatch):
+    _ready(tmp_path)
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "no_date"}
+        assert s.get_job(vb.job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_skipped_when_disabled(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_broadcast_enabled", "off"))
+    _run(_set_setting("checkin_volunteer_guide_text", "Шпаргалка"))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "disabled"}
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_skipped_when_text_empty(tmp_path, monkeypatch):
+    """Пустой текст шпаргалки (менеджер стёр дефолт) гасит джобу — отправлять пустое сообщение
+    персоналу нет смысла."""
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", ""))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "empty_text"}
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_creates_job_with_forum_date_and_text(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result["scheduled"] is True
+        assert result["run_at"] == datetime(2026, 10, 2, 17, 0)
+        job = s.get_job(vb.job_id(None))
+        assert job is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_respects_custom_time(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    _run(_set_setting("checkin_volunteer_guide_broadcast_time", "12:30"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        result = await vb.schedule_city_job(None)
+        assert result["run_at"] == datetime(2026, 10, 2, 12, 30)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_clears_job_when_forum_date_removed(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        await vb.schedule_city_job(None)
+        assert s.get_job(vb.job_id(None)) is not None
+        await db.delete_setting("forum_date")
+        result = await vb.schedule_city_job(None)
+        assert result == {"scheduled": False, "reason": "no_date"}
+        assert s.get_job(vb.job_id(None)) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# send_guide: аудитория, идемпотентность по дню форума
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_send_guide_sends_to_capability_holders(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Как отмечать делегатов"))
+    _run(_grant_checkin(VOLUNTEER_ID))
+    bot = _with_bot(monkeypatch)
+
+    # capability_holders включает и волонтёра, и суперадмина (тот держит ЛЮБУЮ capability
+    # бутстрапом, D-12) — тест смотрит на присутствие волонтёра в получателях, не на
+    # исключительность (сравнение с суперадмином — забота capability_holders, не эта задача).
+    result = _run(vb.send_guide(None))
+    assert result["sent"] == 2
+    recipient_ids = {cid for cid, _text in bot.messages}
+    assert VOLUNTEER_ID in recipient_ids
+    assert all(text == "🎫 Как отмечать делегатов" for _cid, text in bot.messages)
+
+
+def test_send_guide_idempotent_same_forum_day(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    _run(_grant_checkin(VOLUNTEER_ID))
+    bot = _with_bot(monkeypatch)
+
+    result1 = _run(vb.send_guide(None))
+    assert result1["sent"] == 2  # волонтёр + суперадмин (см. комментарий выше)
+    first_count = len(bot.messages)
+    result2 = _run(vb.send_guide(None))
+    assert result2["sent"] == 0
+    assert len(bot.messages) == first_count  # не задублировалось
+
+
+def test_send_guide_resends_on_different_forum_day(tmp_path, monkeypatch):
+    """D-33: идемпотентность ПО ДНЮ форума, не по человеку раз и навсегда — тот же волонтёр
+    на форуме СЛЕДУЮЩЕЙ даты получает напоминание заново."""
+    _ready(tmp_path)
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    _run(_grant_checkin(VOLUNTEER_ID))
+    bot = _with_bot(monkeypatch)
+
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(vb.send_guide(None))
+    first_count = len(bot.messages)
+    _run(_set_setting("forum_date", "31.10.2026"))
+    result = _run(vb.send_guide(None))
+    assert result["sent"] == first_count
+    assert len(bot.messages) == first_count * 2
+    assert bot.messages.count((VOLUNTEER_ID, "🎫 Шпаргалка")) == 2
+
+
+def test_send_guide_empty_text_skips(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", ""))
+    _run(_grant_checkin(VOLUNTEER_ID))
+    bot = _with_bot(monkeypatch)
+
+    result = _run(vb.send_guide(None))
+    assert result == {"sent": 0, "failed": 0, "total": 0, "skipped": "empty_text"}
+    assert bot.messages == []
+
+
+def test_send_guide_scoped_to_city(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_set_setting("forum_date__city__spb", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    _run(_grant_checkin(VOLUNTEER_ID, city="spb"))
+    _run(_grant_checkin(VOLUNTEER2_ID, city="tyumen"))
+    bot = _with_bot(monkeypatch)
+
+    # Суперадмин привязки не держит (D-12: всегда в holders) -- + spb-волонтёр = 2; tyumen-
+    # волонтёр в scope "spb" не адресуется.
+    result = _run(vb.send_guide("spb"))
+    assert result["sent"] == 2
+    recipient_ids = {cid for cid, _text in bot.messages}
+    assert VOLUNTEER_ID in recipient_ids
+    assert VOLUNTEER2_ID not in recipient_ids
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# reconcile: по каждому включённому городу (или один общий проход, модуль выключен)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_reconcile_schedules_each_enabled_city(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_set_setting("forum_date__city__spb", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        touched = await vb.reconcile()
+        assert "spb" in touched
+        assert s.get_job(vb.job_id("spb")) is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reconcile_module_off_uses_single_pass(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 1, 10, 0))
+
+    async def body(s):
+        touched = await vb.reconcile()
+        assert touched == [None]
+        assert s.get_job(vb.job_id(None)) is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
