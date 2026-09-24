@@ -113,6 +113,9 @@ class Broadcast(StatesGroup):
     # Phase 3: scheduled broadcast (SCHED-01)
     schedule_when = State()
     schedule_message = State()
+    # Форум-ночь п.7: экран подтверждения (тумблер «❗ Важное») перед созданием отложенной
+    # рассылки — "state:Broadcast:*" в handlers/admin_caps.py уже покрывает новое состояние.
+    schedule_confirm = State()
     # Phase 3: filtered broadcast builder (COMM-01/02/03)
     filter_field = State()
     filter_value = State()
@@ -298,3 +301,83 @@ class AdminI18nEdit(StatesGroup):
     # (src_hash/src_text/origin_key) и куда вернуться после сохранения) целиком живёт в
     # state.get_data() (i18n_hash/i18n_src_text/i18n_origin_key/i18n_return), как у CoinsManual.
     text = State()
+
+
+class CheckinImport(StatesGroup):
+    # Phase 12 (FORUM-CHECKIN.md, D-09/D-10): загрузка выгрузки офлайн-приложения-сканера
+    # (handlers/admin_checkin.py) — один шаг ожидания файла; выбор точки («🚪 Вход») — кнопка
+    # без текстового ввода, второго State не заводим (то же решение, что у CoinsManual/
+    # CityForm: подтверждение — callback, читающий state.get_data(), а не отдельный State).
+    waiting_file = State()
+
+
+class CheckinTestUpload(StatesGroup):
+    # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — та же форма ожидания файла,
+    # что CheckinImport, но СВОЁ состояние: этот путь НИЧЕГО не отмечает (только парсит и
+    # отвечает читаемостью), путать его с настоящей загрузкой (CheckinImport.waiting_file,
+    # которая ведёт к реальным отметкам) нельзя даже по ошибке одного и того же State.
+    waiting_file = State()
+
+
+class CheckinQrTimeEdit(StatesGroup):
+    # Форум-ночь п.3 (D-03, идея №2): ввод «ЧЧ:ММ» для вечерней рассылки/утреннего повтора QR
+    # (handlers/admin_checkin.py) — какое именно время правим (checkin_qr_broadcast_time /
+    # checkin_qr_morning_repeat_time) и для какого города живёт в state.get_data(), тот же
+    # приём, что AdminI18nEdit/CoinsManual (одно состояние, цель правки в данных, не в State).
+    waiting_value = State()
+
+
+class ProgramSessionField(StatesGroup):
+    # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
+    # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за
+    # шагом, и точечная правка карточки существующей сессии заходит в нужное состояние
+    # напрямую. Режим (создание/правка), город/день/id сессии/какое поле правится — целиком в
+    # state.get_data() (тот же приём, что AdminI18nEdit/CoinsManual/RejectRuleEdit), выбор зала
+    # и подтверждение конфликта — отдельные callback'и без ожидания текста, своего State не
+    # заводят (решение, что и у CheckinImport про точку — см. её докстринг).
+    time = State()
+    title = State()
+    speaker = State()
+    description = State()
+
+
+class ProgramHallName(StatesGroup):
+    # Имя зала — и создание (на лету во время мастера сессии, и отдельно с экрана «Залы»), и
+    # переименование существующего; контекст (город/id зала/куда вернуться) — в state.get_data().
+    value = State()
+
+
+class ProgramDayCustom(StatesGroup):
+    # «📅 Другой день» — ввод даты текстом («31.10»/«31.10.2026»); город — в state.get_data().
+    value = State()
+
+
+class SosReport(StatesGroup):
+    # Форум-ночь п.8 (идея №19, SOS): делегатский визард «🆘 SOS» (handlers/sos.py) — категория
+    # выбирается кнопкой (callback `sos_cat:{code}`, без своего State), дальше два необязательных
+    # шага. Право не нужно (user_actions.router вне CapabilityMiddleware, тот же прецедент, что
+    # GameSubmit.proof) — категория/город несёт state.get_data() (sos_category/sos_city).
+    details = State()   # текст и/или фото, можно пропустить
+    location = State()  # геопозиция, можно пропустить
+    # Ревью 24.09 (находка 3): делегат жмёт «🆘 SOS» повторно, пока прошлый ЕЩЁ свежий
+    # (`sos_reopen_window_minutes`) — следующее ЛЮБОЕ сообщение (не обязательно реплай) уходит
+    # дополнением к прежней заявке (`sos_followup_report_id` в state.get_data()), тот же хвост,
+    # что у реплай-варианта (`handlers/sos.py::_relay_report_followup`).
+    followup = State()
+
+
+class SosChatBind(StatesGroup):
+    # Экран менеджера «🆘 SOS» (handlers/admin_sos.py), право `settings` ("state:SosChatBind:*"
+    # в handlers/admin_caps.py — та же капа, что у остальной интеграционной привязки чата,
+    # services/chat_tracking.py::is_bot_admin_user). Заявка (кто просил, для какого города)
+    # живёт в `sos_chat_bind_pending` (services/sos.py), не в state.get_data() — вторая ветка
+    # подтверждения (команда `/sos_id` в самой группе) физически не имеет доступа к этому FSM.
+    waiting = State()
+
+
+class SessionFeedbackComment(StatesGroup):
+    # Форум-ночь п.9 (идея №15, D-24): «✍️ Написать» под приглашением оценить сессию
+    # (handlers/session_feedback.py) — ОДНО состояние ожидания текста, session_id несёт
+    # state.get_data() (sfb_session_id). Право не нужно (delegate-side, вне
+    # CapabilityMiddleware — тот же прецедент, что SosReport выше).
+    waiting = State()

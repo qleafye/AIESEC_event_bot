@@ -82,6 +82,18 @@ class FakeCallback:
         self.answered_alerts.append(show_alert)
 
 
+class FakeBot:
+    """Форум-ночь B3: roles_assign теперь принимает `bot` (шпаргалка волонтёра чек-ина) —
+    ни одна роль в этом файле не несёт checkin, send_message ни разу не вызывается, но
+    параметр обязателен по сигнатуре."""
+
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        self.sent.append((chat_id, text))
+
+
 # ── Task 1: staff.city + get_staff_city/set_staff_city ─────────────────────────────────────
 
 def test_get_staff_city_unknown_person_is_none(tmp_path):
@@ -264,7 +276,7 @@ def test_roles_keyboard_has_city_edit_button_per_person_when_module_on(tmp_path)
 def test_roles_assign_module_off_redraws_roles_immediately(tmp_path):
     _admin_ready(tmp_path)
     cb = FakeCallback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_roles.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb, FakeBot()))
     assert cb.message.edit_calls == 1
     assert "Роли и доступы" in cb.message.text
     assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == ["reg_manager"]
@@ -274,7 +286,7 @@ def test_roles_assign_module_on_shows_city_step(tmp_path):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     cb = FakeCallback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
-    asyncio.run(admin_roles.roles_assign(cb))
+    asyncio.run(admin_roles.roles_assign(cb, FakeBot()))
     assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == ["reg_manager"]
     assert cb.message.edit_calls == 1
     cds = _kb_callback_data(cb.message.markup)

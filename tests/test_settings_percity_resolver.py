@@ -155,9 +155,35 @@ EXPECTED_PER_CITY_KEYS = {
     # Квик 260923 (форум-чекин, D-03): кнопка меню — та же ось per_city, что остальные menu_*
     # выше (город может отдельно спрятать/показать любую кнопку меню).
     "menu_checkin_qr",
+    # Форум-ночь п.4 (расписание форума в боте): кнопка «🗓 Программа» — та же ось per_city,
+    # что остальные menu_* (город может отдельно спрятать/показать её).
+    "menu_schedule",
     # Квик 260923-p37 (CITY-REG-CLOSE, D-01/D-05): дата закрытия регистрации на город и её
     # тексты — per_city по решению владельца, дата ставится ДЛЯ КОНКРЕТНОГО города.
     "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text",
+    # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом — per_city, т.к. форумы
+    # городов идут в разные дни (03.10 регионы, 30.10 Москва) — общее время/тумблер разослали
+    # бы QR не тому городу не в тот день (IDEAS-CHECKIN-BACKLOG-260924.md, п. A1).
+    "checkin_qr_broadcast_enabled", "checkin_qr_broadcast_time",
+    "checkin_qr_morning_repeat_time", "checkin_qr_broadcast_text",
+    # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — per_city, тот же довод, что у
+    # checkin_qr_broadcast_text выше (регионы и Москва живут в разных фазах форума одновременно,
+    # settings_schema.py:5708).
+    "checkin_not_arrived_text",
+    # Форум-ночь п.7 («❗ Важное»): кнопка меню — та же ось per_city, что остальные menu_*
+    # выше (menu_checkin_qr/menu_schedule).
+    "menu_important",
+    # Форум-ночь п.8 (идея №19, SOS): кнопка меню — та же ось per_city, что остальные menu_*
+    # (город может отдельно спрятать/показать SOS); окно активности и эскалация — per_city,
+    # т.к. города форума идут в разные дни (тот же довод, что forum_date/checkin_qr_* выше).
+    "menu_sos", "sos_active_days", "sos_escalation_minutes",
+    # Ревью 24.09 (находки 1/3): экстренный контакт при полном провале доставки + оба новых
+    # временных окна — тот же довод, что sos_active_days/sos_escalation_minutes выше.
+    "sos_fallback_contact_text", "sos_reopen_window_minutes", "sos_claimed_remind_minutes",
+    # Форум-ночь п.9 (идея №15, D-24): тумблер и задержка «⭐ Отзыв о сессии одним тапом» —
+    # тот же довод, что sos_active_days/sos_escalation_minutes выше (форумы городов идут в
+    # разные дни).
+    "session_feedback_enabled", "session_feedback_delay_minutes",
 }
 
 

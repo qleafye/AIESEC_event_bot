@@ -32,6 +32,11 @@ from database.db import (
     list_faq_for_city,
     set_ambassador_flag,  # Phase 32 (32-06, D-32/D-38): выход/возврат амбассадора
     set_ambassador_path,  # Phase 32 (32-06, D-24): путь меняет только порядок показа заданий
+    # Форум-ночь п.6 (D-25, идея №14): ответ делегата на шаблон «Не пришёл».
+    CNA_COMING,
+    CNA_CANT,
+    CNA_HERE,
+    record_checkin_not_arrived_response,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260923-en2 (задача 3): тот же дефолт-текст возвращенца, что /start уже шлёт
@@ -76,6 +81,7 @@ from services.game_digest import notify_submission as notify_game_submission  # 
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
+from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -1642,6 +1648,52 @@ async def show_my_checkin_qr(message: types.Message):
     await message.answer_photo(photo, caption=caption)
 
 
+# Форум-ночь п.4 (расписание форума в боте): экран «🗓 Программа» — импорт СРАЗУ ПОСЛЕ
+# show_my_checkin_qr и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у docstring
+# show_my_checkin_qr выше: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений — кнопка меню
+# обязана зарегистрироваться раньше него). Сам хендлер/логика — в шве handlers/program.py.
+from handlers import program  # noqa: E402,F401
+
+
+# Форум-ночь п.7 (D-XX, «❗ Важное»): список важных рассылок за сегодня — та же форма записи,
+# что и у соседних menu_* хендлеров выше (ensure_registered гейтит, как show_my_checkin_qr).
+# Встал СРАЗУ ПОСЛЕ импорта program (см. блок выше) и ПЕРЕД reg_handoff_idle_fallback — тот же
+# довод: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений, кнопка меню обязана
+# зарегистрироваться раньше него.
+@router.message(F.text.in_(MENU_TEXTS["menu_important"]))
+async def show_important_today(message: types.Message):
+    if not await ensure_registered(message):
+        return
+    from database.db import important_messages_today
+
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    today = msk_now().strftime("%Y-%m-%d")
+    rows = await important_messages_today(message.from_user.id, today)
+    if not rows:
+        await message.answer(reg_i18n.tr_text("Сегодня важных рассылок не было.", lang, tr_map))
+        return
+    lines = []
+    for row in rows:
+        stamp = (row.get("sent_at") or "")[11:16]  # 'YYYY-MM-DD HH:MM:SS' -> 'HH:MM'
+        text = row.get("text") or "[рассылка без текста]"
+        lines.append(f"🕐 {stamp}\n{text}")
+    header = reg_i18n.tr_text("❗ Важные рассылки за сегодня:", lang, tr_map)
+    await message.answer(header + "\n\n" + "\n\n".join(lines))
+
+
+# Форум-ночь п.8 (идея №19, SOS): экран «🆘 SOS» — импорт СРАЗУ ПОСЛЕ show_important_today и
+# ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импорта program выше: фолбэк-хендлер
+# ниже ловит ЛЮБОЙ текст без активного FSM-состояния — кнопка меню обязана зарегистрироваться
+# раньше него). Сам хендлер/логика — в шве handlers/sos.py.
+from handlers import sos as sos_handlers  # noqa: E402,F401
+
+# Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — импорт СРАЗУ ПОСЛЕ
+# sos_handlers и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos
+# выше). Этот же импорт регистрирует и менеджерскую часть шва (handlers.admin.router) — модуль
+# декорирует оба общих роутера, см. докстринг handlers/session_feedback.py.
+from handlers import session_feedback  # noqa: E402,F401
+
+
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
 # handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
@@ -1827,3 +1879,159 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
+
+
+# Форум-ночь п.3 (D-03, идея №2): кнопка «✅ Сохранил, открывается» на рассылке QR накануне
+# форума (services/checkin_broadcast.py::send_broadcast/send_morning_repeat). Идемпотентно —
+# `confirm_receipt` пишет метку только на ПЕРВОЕ нажатие (двойной тап/форвард отвечают тем же
+# дружелюбным текстом, разница видна только вызывающему коду, не делегату). Литерал ниже
+# ОБЯЗАН побайтово совпадать с `services.checkin_broadcast.CONFIRM_CALLBACK` (не импортирован
+# сюда напрямую — golden-снимок `tests/test_refac_snapshot_260816.py` разбирает декоратор как
+# исходный текст, а не как выполненный код, и не видит значение переменной); совпадение
+# проверяет `tests/test_checkin_qr_broadcast_260924.py::test_confirm_button_literal_matches_callback`.
+@router.callback_query(F.data == "checkinqr_confirm")
+async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
+    await confirm_receipt(callback.from_user.id)
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(
+        reg_i18n.tr_text("Отлично, увидимся на форуме!", lang, tr_map), show_alert=True,
+    )
+
+
+# Форум-ночь п.6 (D-25, идея №14): ответ на шаблон «Не пришёл» (services/checkin_not_arrived.py).
+# `day` едет ВНУТРИ callback_data (`cna:{response}:{day}`), не в FSM — сообщение (и его кнопки)
+# переживает рестарт контейнера (MemoryStorage FSM — нет), делегат может ответить хоть через
+# неделю на СТАРОЕ сообщение, ответ уйдёт в ту же историческую строку `checkin_not_arrived`.
+@router.callback_query(F.data.startswith("cna:"))
+async def checkin_not_arrived_respond(callback: types.CallbackQuery):
+    try:
+        _, response, day = callback.data.split(":", 2)
+    except ValueError:
+        await callback.answer()
+        return
+    if response not in (CNA_COMING, CNA_CANT, CNA_HERE):
+        await callback.answer()
+        return
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    ok = await record_checkin_not_arrived_response(
+        callback.from_user.id, day, response, _msk_now_str(),
+    )
+    if not ok:
+        # Строки нет (сообщение переслано другому человеку/день устарел) — тихо, без падения,
+        # тот же fail-soft принцип, что у остального чек-ина (D-04).
+        await callback.answer()
+        return
+    if response == CNA_HERE:
+        # «Покажи QR волонтёру на входе» — сам QR НЕ отправляется автоматически, делегат жмёт
+        # кнопку сам (тот же QR, что «🎟 Мой QR» главного меню — единая точка showcase_my_checkin_qr не
+        # переиспользуется напрямую, там `types.Message`, здесь `CallbackQuery`; логика допуска
+        # та же `checkin_denial`/`build_checkin_qr`, что и там).
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🎟 Мой QR", callback_data="cna_qr"),
+        ]])
+        await callback.message.answer(
+            reg_i18n.tr_text("Покажи этот экран волонтёру на входе.", lang, tr_map),
+            reply_markup=reg_i18n.tr_kb(kb, lang, tr_map),
+        )
+        await callback.answer()
+        return
+    ack_text = (
+        "Спасибо, передали организаторам!" if response == CNA_COMING
+        else "Жаль! Спасибо, что предупредил."
+    )
+    await callback.answer(reg_i18n.tr_text(ack_text, lang, tr_map), show_alert=True)
+
+
+@router.callback_query(F.data == "cna_qr")
+async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    user = await get_user(callback.from_user.id)
+    denial = await checkin_denial(user)
+    if denial is not None:
+        # Fail-soft (D-04): допуск мог пропасть между ответом «Я на месте» и тапом кнопки
+        # (заявку отменили и т.п.) — не роняем хендлер, отвечаем тем же реестровым текстом
+        # ожидания, что show_my_checkin_qr (не литерал — менеджер мог поправить текст).
+        await callback.answer(
+            reg_i18n.tr_text(await get_setting_typed("checkin_qr_disabled_text"), lang, tr_map),
+            show_alert=True,
+        )
+        return
+    try:
+        png_bytes, caption = await build_checkin_qr(user)
+    except Exception as e:
+        logger.error(f"checkin_not_arrived_show_qr: build_checkin_qr failed for {callback.from_user.id}: {e}")
+        await callback.answer()
+        return
+    caption = reg_i18n.tr_text(caption, lang, tr_map)
+    photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
+    await callback.message.answer_photo(photo, caption=caption)
+    await callback.answer()
+
+
+# ── Форум-ночь п.7 («🔕 Не присылать сегодня»): ответ делегата на предложение «🔕» ───────────
+# Литералы callback_data НАМЕРЕННО не импортированы из services/scheduler.py (тот же приём, что
+# у checkin_qr_confirm_receipt/CONFIRM_CALLBACK выше) — совпадение с services.scheduler.
+# MUTE_TODAY_CALLBACK/UNMUTE_TODAY_CALLBACK проверяет
+# tests/test_broadcast_mute_today_260924.py::test_mute_callback_literals_match_scheduler.
+#
+# Переделка (ревью 470ce5e..3703ba4, находка 🔴): кнопка «🔕» теперь чаще всего сидит ВНУТРИ
+# клавиатуры самой рассылки (services.scheduler.recipient_markup), не отдельным сообщением —
+# `callback.message.edit_text(...)` затёр бы содержимое рассылки, которое делегат только что
+# получил. Тап меняет ТОЛЬКО клавиатуру (свап кнопки «🔕» <-> «🔔» на месте, остальные ряды —
+# в т.ч. собственные кнопки-ссылки менеджера — не трогаются), подтверждение — всплывающим
+# алертом `callback.answer(..., show_alert=True)`, а не правкой текста.
+
+_MUTE_TODAY_CONFIRM_TEXT = (
+    "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."
+)
+_UNMUTE_TODAY_CONFIRM_TEXT = "🔔 Хорошо, снова присылаю все рассылки."
+
+
+def _swap_mute_button(
+    markup: InlineKeyboardMarkup | None, old_callback: str, new_button: InlineKeyboardButton,
+) -> InlineKeyboardMarkup:
+    """Заменяет В МЕСТЕ кнопку `old_callback` на `new_button` — прочие ряды (в т.ч. кнопки-ссылки
+    менеджера) остаются нетронутыми. `markup=None` (стандалон-предложение альбома без клавиатуры
+    менеджера — на практике у него как раз ОДНА кнопка «🔕», см. services.scheduler.
+    send_mute_offer_if_eligible) — единственный ряд с новой кнопкой."""
+    if markup is None:
+        return InlineKeyboardMarkup(inline_keyboard=[[new_button]])
+    rows = []
+    for row in markup.inline_keyboard:
+        rows.append([new_button if btn.callback_data == old_callback else btn for btn in row])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "bc_mute_today")
+async def mute_broadcasts_today(callback: types.CallbackQuery):
+    from database.db import set_broadcast_mute
+    from services import scheduler as sched
+    today = msk_now().strftime("%Y-%m-%d")
+    await set_broadcast_mute(callback.from_user.id, today)
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(reg_i18n.tr_text(_MUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
+    try:
+        new_button = await sched.unmute_button(callback.from_user.id)
+        new_markup = _swap_mute_button(
+            getattr(callback.message, "reply_markup", None), "bc_mute_today", new_button,
+        )
+        await callback.message.edit_reply_markup(reply_markup=new_markup)
+    except Exception:
+        pass  # сообщение могло устареть/удалиться -- заглушка уже записана в БД, это главное
+
+
+@router.callback_query(F.data == "bc_unmute_today")
+async def unmute_broadcasts_today(callback: types.CallbackQuery):
+    from database.db import set_broadcast_mute
+    from services import scheduler as sched
+    await set_broadcast_mute(callback.from_user.id, None)
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(reg_i18n.tr_text(_UNMUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
+    try:
+        new_button = await sched.mute_button(callback.from_user.id)
+        new_markup = _swap_mute_button(
+            getattr(callback.message, "reply_markup", None), "bc_unmute_today", new_button,
+        )
+        await callback.message.edit_reply_markup(reply_markup=new_markup)
+    except Exception:
+        pass

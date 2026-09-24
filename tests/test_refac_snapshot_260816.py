@@ -73,6 +73,18 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 вставший в хвост блока простых `_toggle_module_setting` тумблеров, сразу после
 `toggle_quiet_hours`. Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
 прежним 523-строчным снапшотом.
+
+Дрифт-нота (2026-09-24, ревью «аудит ключей после 8c0d8af»): +10 хендлеров, чистая вставка
+(723 -> 733), пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним
+723-строчным снапшотом. Экран «⚙️ Тексты и тайминги» SOS — пять хендлеров
+(`asos_settings_open`/`asos_noop`/`asos_set_delay`/`asos_delay_custom_start`/
+`asos_settings_edit_start`, `handlers/admin_sos.py`) вставлены сразу после `sos_resolve`
+(конец файла admin_sos.py, но раньше `handlers/session_feedback.py` в цепочке импортов —
+message-хендлер `admin_reply_to_sos` в поток callback_query не попадает вовсе, поэтому
+текстовое «в хвосте файла» и «место в снапшоте» не совпадают). Экран «⭐ Отзывы о сессиях»
+— пять хендлеров (`prog_fbset_open`/`prog_fbtoggle`/`prog_fbdelay`/`prog_fbdelay_custom_start`/
+`prog_fbtext_edit`, `handlers/session_feedback.py`) вставлены сразу после `prog_fbc_open`
+(тот же файл, простое добавление в хвост).
 """
 import asyncio
 import time
@@ -505,6 +517,61 @@ def _build_snapshot_lines():
 # 2 новых callback_query-хендлера (`admin_reject_reports`/`arp_sync`). Re-captured by RUNNING
 # `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
 # 611-строчного снимка: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.4, расписание форума в боте, 642 -> 678 handlers -- PURE APPEND, ДВЕ
+# вставки): новые швы `handlers/admin_program.py` (импортирован из хвоста
+# `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_reports`) и `handlers/
+# admin_program_halls.py` (импортирован хвостом самого `admin_program.py`, потолок размера
+# модуля). 9 message-хендлеров (`prog_daynew_cancel`/`prog_daynew_step`/`prog_field_cancel`/
+# `prog_time_step`/`prog_title_step`/`prog_speaker_step`/`prog_description_step`/
+# `prog_hallname_cancel`/`prog_hallname_step`) встали СРАЗУ ПОСЛЕ `arc_num_step` (последний
+# message-хендлер `admin_reject_cond.py`) и ПЕРЕД `cancel_city_form` — точка вставки
+# определяется цепочкой импортов, не позицией файла на диске (тот же приём, что у предыдущих
+# drift-нот). 27 callback_query-хендлеров (`admin_program_entry`/`prog_city_open`/
+# `prog_daynew_start`/`prog_day_open`/`prog_new_start`/`prog_ftyes`/`prog_ftno`/`prog_wcancel`/
+# `prog_hallscreen_open`/`prog_hp_pick`/`prog_wconfirm_yes`/`prog_wconfirm_no`/`prog_fhyes`/
+# `prog_hpnew_start`/`prog_v_open`/`prog_field_start`/`prog_delete_confirm`/`prog_delete_go`/
+# `prog_halls_open`/`prog_hallcreate_start`/`prog_hallrename_start`/`prog_halldel_confirm`/
+# `prog_halldel_go`/`prog_copy_pick_source`/`prog_copy_pick_day`/`prog_copy_confirm`/
+# `prog_copy_go`) встали СРАЗУ ПОСЛЕ `arp_sync` (последний callback_query-хендлер
+# `admin_reject_reports.py`) и ПЕРЕД `sync_sheet`. Re-captured by RUNNING
+# `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
+# 642-строчного снимка: ровно две вставки (9 + 27 строк), 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.4, делегатский экран «🗓 Программа», 678 -> 681 handlers -- PURE
+# APPEND, ДВЕ вставки): новый шов `handlers/program.py`, импортирован из хвоста
+# `handlers/user_actions.py` СРАЗУ ПОСЛЕ `show_my_checkin_qr` и ПЕРЕД `reg_handoff_idle_fallback`
+# (тот — фолбэк-хендлер `StateFilter(None), F.text` без ограничений, обязан оставаться
+# последним message-хендлером user_actions.router). 1 message-хендлер (`show_program_schedule`,
+# `F.text.in_(MENU_TEXTS["menu_schedule"])` — derived key пуст, тот же класс фильтра, что у
+# `show_faq`/`show_my_checkin_qr` рядом) встал СРАЗУ ПОСЛЕ `show_my_checkin_qr` и ПЕРЕД
+# `reg_handoff_idle_fallback`. 2 callback_query-хендлера (`pds_day_open`/`pds_days_back`) встали
+# СРАЗУ ПОСЛЕ `faq_ask` (последний callback_query-хендлер, физически определённый в файле ДО
+# точки импорта) и ПЕРЕД `show_wave_rating` (`ambwave` — первый callback_query-хендлер,
+# физически определённый ПОСЛЕ точки импорта: show_wave_rating/ambpath/ambleave*/ambjoin/
+# checkinqr_confirm все идут дальше по файлу, чем show_my_checkin_qr/reg_handoff_idle_fallback).
+# Re-captured by RUNNING
+# `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
+# 678-строчного снимка: ровно две вставки (1 + 2 строки), 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.9, идея №15/D-24, «⭐ Отзыв о сессии одним тапом», 718 -> 723
+# handlers -- PURE APPEND, ТРИ вставки): новый шов `handlers/session_feedback.py`,
+# декорирующий ОБА общих роутера (докстринг модуля объясняет псевдоним `delegate_router` для
+# `user_actions.router` — capability-скан ищет буквальный текст `"@router."`, второй роутер не
+# может называться так же). Импортирован из хвоста `handlers/user_actions.py` СРАЗУ ПОСЛЕ
+# `sos_handlers` и ПЕРЕД `reg_handoff_idle_fallback`; первый импорт `handlers.admin.router`
+# внутри него триггерит ПОЛНУЮ загрузку `handlers/admin.py` (ещё не был импортирован к этому
+# моменту исполнения `user_actions.py`) — поэтому 2 admin-хендлера (`prog_fbday_open`/
+# `prog_fbc_open`) встали в САМЫЙ КОНЕЦ admin.router (после `sos_resolve`, последнего
+# зарегистрированного к тому моменту), а не рядом с `admin_program`. 1 message-хендлер
+# (`sfb_comment_step`, `state:SessionFeedbackComment:*` — но derived key пуст, StatesGroup ещё
+# не отражён в фильтре построчно тем же классом, что `sos_followup_step` рядом) встал СРАЗУ
+# ПОСЛЕ `sos_followup_step` и ПЕРЕД `reg_handoff_idle_fallback`. 2 callback_query-хендлера
+# (`sfb_rate`/`sfb_offer_comment`) встали СРАЗУ ПОСЛЕ `sos_pick_category` (последний
+# callback_query-хендлер, физически определённый в sos.py ДО точки импорта session_feedback) и
+# ПЕРЕД `show_wave_rating`. Re-captured by RUNNING `_build_snapshot_lines()` против HEAD и
+# diffed (difflib.SequenceMatcher) против прежнего 718-строчного снимка: ровно три вставки
+# (2 + 1 + 2 строки), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -533,6 +600,15 @@ admin|message|arr_name_step|state:RejectRuleEdit:*
 admin|message|arr_text_step|state:RejectRuleEdit:*
 admin|message|arc_num_cancel|state:RejectCond:*
 admin|message|arc_num_step|state:RejectCond:*
+admin|message|prog_daynew_cancel|state:ProgramDayCustom:*
+admin|message|prog_daynew_step|state:ProgramDayCustom:*
+admin|message|prog_field_cancel|state:ProgramSessionField:*
+admin|message|prog_time_step|state:ProgramSessionField:*
+admin|message|prog_title_step|state:ProgramSessionField:*
+admin|message|prog_speaker_step|state:ProgramSessionField:*
+admin|message|prog_description_step|state:ProgramSessionField:*
+admin|message|prog_hallname_cancel|state:ProgramHallName:*
+admin|message|prog_hallname_step|state:ProgramHallName:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -609,6 +685,20 @@ admin|message|poll_question_step|state:PollCreate:*
 admin|message|poll_options_step|state:PollCreate:*
 admin|message|poll_schedule_when|state:PollCreate:*
 admin|message|cmd_delete_user|cmd:delete_user
+admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
+admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
+admin|message|checkin_import_file_step|state:CheckinImport:*
+admin|message|checkin_import_file_invalid|state:CheckinImport:*
+admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:CheckinTestUpload:*
+admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:CheckinTestUpload:*
+admin|message|checkin_test_file_step|state:CheckinTestUpload:*
+admin|message|checkin_test_file_invalid|state:CheckinTestUpload:*
+admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
+admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
+admin|message|checkinqr_time_step|state:CheckinQrTimeEdit:*
+admin|message|asos_bind_cancel|state:SosChatBind:*
+admin|message|asos_bind_step|state:SosChatBind:*
+admin|message|admin_reply_to_sos|
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -768,6 +858,33 @@ admin|callback_query|arj_back_go|arj_backgo:*
 admin|callback_query|arj_csv_export|arj_csv
 admin|callback_query|admin_reject_reports|admin_reject_reports
 admin|callback_query|arp_sync|arp_sync
+admin|callback_query|admin_program_entry|admin_program
+admin|callback_query|prog_city_open|prog_city:*
+admin|callback_query|prog_daynew_start|prog_daynew:*
+admin|callback_query|prog_day_open|prog_day:*
+admin|callback_query|prog_new_start|prog_new:*
+admin|callback_query|prog_ftyes|prog_ftyes:*
+admin|callback_query|prog_ftno|prog_ftno:*
+admin|callback_query|prog_wcancel|prog_wcancel
+admin|callback_query|prog_hallscreen_open|prog_hallscreen:*
+admin|callback_query|prog_hp_pick|prog_hp:*
+admin|callback_query|prog_wconfirm_yes|prog_wconfirm_yes
+admin|callback_query|prog_wconfirm_no|prog_wconfirm_no
+admin|callback_query|prog_fhyes|prog_fhyes:*
+admin|callback_query|prog_hpnew_start|prog_hpnew:*
+admin|callback_query|prog_v_open|prog_v:*
+admin|callback_query|prog_field_start|prog_field:*
+admin|callback_query|prog_delete_confirm|prog_d:*
+admin|callback_query|prog_delete_go|prog_dgo:*
+admin|callback_query|prog_halls_open|prog_halls:*
+admin|callback_query|prog_hallcreate_start|prog_hallcreate:*
+admin|callback_query|prog_hallrename_start|prog_hallrename:*
+admin|callback_query|prog_halldel_confirm|prog_halldel:*
+admin|callback_query|prog_halldel_go|prog_halldelgo:*
+admin|callback_query|prog_copy_pick_source|prog_copy:*
+admin|callback_query|prog_copy_pick_day|prog_copysrc:*
+admin|callback_query|prog_copy_confirm|prog_copyday:*
+admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -795,6 +912,7 @@ admin|callback_query|process_broadcast_local_file|broadcast_local
 admin|callback_query|process_broadcast_unsubscribed|broadcast_unsubscribed
 admin|callback_query|process_broadcast_incomplete|broadcast_incomplete
 admin|callback_query|cancel_broadcast_callback|broadcast_cancel
+admin|callback_query|bc_important_toggle|bc_important_toggle
 admin|callback_query|bc_go|bc_go
 admin|callback_query|bc_no|bc_no
 admin|callback_query|bc_no_after_start|bc_no
@@ -806,6 +924,9 @@ admin|callback_query|admin_broadcast_log|admin_broadcast_log
 admin|callback_query|admin_broadcast_scheduled|admin_broadcast_scheduled
 admin|callback_query|broadcast_schedule_start|broadcast_schedule
 admin|callback_query|broadcast_schedule_quiet_choice|bcast_quiet:*
+admin|callback_query|sched_important_toggle|sched_important_toggle
+admin|callback_query|sched_no|sched_no
+admin|callback_query|sched_go|sched_go
 admin|callback_query|sched_cancel|sched_cancel_*
 admin|callback_query|broadcast_filter_start|broadcast_filter
 admin|callback_query|filter_pick_field|
@@ -817,6 +938,11 @@ admin|callback_query|filter_back|filter_back
 admin|callback_query|filter_count|filter_count
 admin|callback_query|filter_send_now|filter_send_now
 admin|callback_query|filter_schedule|filter_schedule
+admin|callback_query|cksf_start|cksf_start:*
+admin|callback_query|cksf_city_pick|cksf_city:*
+admin|callback_query|cksf_day_pick|cksf_day:*
+admin|callback_query|cksf_session_pick|cksf_pick:*
+admin|callback_query|cksf_cancel|cksf_cancel
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -994,6 +1120,41 @@ admin|callback_query|poll_send_now|poll_send_now
 admin|callback_query|poll_schedule_start|poll_schedule
 admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
+admin|callback_query|show_admin_checkin|admin_checkin
+admin|callback_query|cna_send_confirm|cna_send:*
+admin|callback_query|cna_send_go|cna_send_go:*
+admin|callback_query|cna_send_cancel|cna_send_no
+admin|callback_query|checkin_upload_start|checkin_upload_start
+admin|callback_query|checkin_point_city_pick|checkin_point_city:*
+admin|callback_query|checkin_point_pick|checkin_point:*
+admin|callback_query|checkin_reissue_confirm|checkin_reissue:*
+admin|callback_query|checkin_reissue_go|checkin_reissue_yes:*
+admin|callback_query|checkin_reissue_cancel|checkin_reissue_no
+admin|callback_query|checkin_test_start|checkin_test_start
+admin|callback_query|checkin_test_qr|checkin_test_qr
+admin|callback_query|checkinqr_send_confirm|checkinqr_send:*
+admin|callback_query|checkinqr_send_go|checkinqr_send_go:*
+admin|callback_query|checkinqr_send_cancel|checkinqr_send_no
+admin|callback_query|checkinqr_cfg_screen|checkinqr_cfg:*
+admin|callback_query|checkinqr_toggle_go|checkinqr_toggle:*
+admin|callback_query|checkinqr_time_start|checkinqr_time:*
+admin|callback_query|admin_sos|admin_sos
+admin|callback_query|asos_page|asos:*
+admin|callback_query|asos_bind_start|asos_bind
+admin|callback_query|sos_claim|sos_claim:*
+admin|callback_query|sos_resolve|sos_resolve:*
+admin|callback_query|asos_settings_open|asos_settings
+admin|callback_query|asos_noop|asos_noop
+admin|callback_query|asos_set_delay|asos_set_delay:*
+admin|callback_query|asos_delay_custom_start|asos_delay_custom:*
+admin|callback_query|asos_settings_edit_start|asos_settings_edit:*
+admin|callback_query|prog_fbday_open|prog_fbday:*
+admin|callback_query|prog_fbc_open|prog_fbc:*
+admin|callback_query|prog_fbset_open|prog_fbset:*
+admin|callback_query|prog_fbtoggle|prog_fbtoggle:*
+admin|callback_query|prog_fbdelay|prog_fbdelay:*
+admin|callback_query|prog_fbdelay_custom_start|prog_fbdelay_custom:*
+admin|callback_query|prog_fbtext_edit|prog_fbtext:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1099,6 +1260,19 @@ user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
 user_actions|message|open_miniapp_button|
 user_actions|message|show_my_checkin_qr|
+user_actions|message|show_program_schedule|
+user_actions|message|show_important_today|
+user_actions|message|sos_start|
+user_actions|message|sos_details_cancel|state:SosReport:*
+user_actions|message|sos_details_skip|state:SosReport:*
+user_actions|message|sos_details_step|state:SosReport:*
+user_actions|message|sos_location_cancel|state:SosReport:*
+user_actions|message|sos_location_skip|state:SosReport:*
+user_actions|message|sos_location_step|state:SosReport:*
+user_actions|message|sos_location_invalid|state:SosReport:*
+user_actions|message|sos_delegate_followup|
+user_actions|message|sos_followup_step|state:SosReport:*
+user_actions|message|sfb_comment_step|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1116,12 +1290,22 @@ user_actions|callback_query|info_place|info_place
 user_actions|callback_query|faq_page|faq_list:*
 user_actions|callback_query|faq_open_answer|faq_q:*
 user_actions|callback_query|faq_ask|faq_ask
+user_actions|callback_query|pds_day_open|pds_day:*
+user_actions|callback_query|pds_days_back|pds_days
+user_actions|callback_query|sos_pick_category|sos_cat:*
+user_actions|callback_query|sfb_rate|
+user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
 user_actions|callback_query|ambassador_leave_cancel|ambleave_no
 user_actions|callback_query|ambassador_leave_confirm|ambleave_go
 user_actions|callback_query|ambassador_join|ambjoin
+user_actions|callback_query|checkin_qr_confirm_receipt|checkinqr_confirm
+user_actions|callback_query|checkin_not_arrived_respond|cna:*
+user_actions|callback_query|checkin_not_arrived_show_qr|cna_qr
+user_actions|callback_query|mute_broadcasts_today|bc_mute_today
+user_actions|callback_query|unmute_broadcasts_today|bc_unmute_today
 """.strip("\n").splitlines()
 
 
@@ -1374,7 +1558,128 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_wave_rating_show_names — чистая вставка, пересчитано `_build_snapshot_lines()` и
     # сверено diff'ом с прежним 615-строчным снимком: ровно одна вставка из 1 строки, 0
     # удалений, 0 реордеров (615 -> 616).
-    assert len(GOLDEN_SNAPSHOT) == 616
+    # Phase 12 (FORUM-CHECKIN.md, раздел «✅ Отметки на форуме»): +7 handlers/admin_checkin.py —
+    # шов импортируется из ХВОСТА handlers/admin.py (после admin_purge), поэтому все его
+    # хендлеры встают в самый хвост СВОЕГО observer-блока: +4 admin.message
+    # (cancel_checkin_import — два декоратора, Command("cancel")/F.text=="Отмена", значит два
+    # отдельных registration-объекта на одну функцию; checkin_import_file_step;
+    # checkin_import_file_invalid), встали сразу после cmd_delete_user и перед первым
+    # callback_query-хендлером admin.router (show_admin_stats); +3 admin.callback_query
+    # (show_admin_checkin/checkin_upload_start/checkin_point_pick), встали в самый хвост
+    # callback_query-блока admin.router, сразу после delete_user_cancel и перед первым
+    # хендлером payment.router (616 -> 623). Пересчитано RUNNING `_build_snapshot_lines()` и
+    # сверено diff'ом (difflib.SequenceMatcher) с прежним 616-строчным снимком: ровно две
+    # вставки (4 строки в message-блоке, 3 строки в callback_query-блоке), 0 удалений, 0
+    # реордеров.
+    # Форум-ночь B1 (идея №10): +3 admin.callback_query (checkin_reissue_confirm/
+    # checkin_reissue_go/checkin_reissue_cancel, handlers/admin_checkin.py) — тот же шов,
+    # встают в самый хвост callback_query-блока admin.router (сразу после checkin_point_pick,
+    # перед первым хендлером payment.router) — чистая вставка, пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 623-строчным снимком: ровно одна
+    # вставка из 3 строк, 0 удалений, 0 реордеров (623 -> 626).
+    # Форум-ночь B4 (идея №8): +6 handlers/admin_checkin.py — «🧪 Проверить приложение-сканер»:
+    # +4 admin.message (cancel_checkin_test_upload — два декоратора, Command("cancel")/
+    # F.text=="Отмена", значит два отдельных registration-объекта; checkin_test_file_step;
+    # checkin_test_file_invalid), встали сразу после checkin_import_file_invalid и перед
+    # первым callback_query-хендлером admin.router (show_admin_stats) — та же позиция, что
+    # у самого CheckinImport-блока выше; +2 admin.callback_query (checkin_test_start/
+    # checkin_test_qr), встали в самый хвост callback_query-блока admin.router, сразу после
+    # checkin_reissue_cancel и перед первым хендлером payment.router — чистая вставка,
+    # пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 626-строчным
+    # снимком: ровно две вставки (4 строки в message-блоке, 2 строки в callback_query-блоке),
+    # 0 удалений, 0 реордеров (626 -> 632).
+    # Форум-ночь п.3 (D-03, идея №2): +10 хендлеров — handlers/admin_checkin.py получил
+    # рассылку QR (checkinqr_send_confirm/checkinqr_send_go/checkinqr_send_cancel/
+    # checkinqr_cfg_screen/checkinqr_toggle_go/checkinqr_time_start — 6 admin.callback_query,
+    # встали в самый хвост callback_query-блока admin.router, сразу после checkin_test_qr и
+    # перед первым хендлером payment.router; cancel_checkinqr_time_edit — два декоратора,
+    # Command("cancel")/F.text=="Отмена" — и checkinqr_time_step — 3 admin.message, встали
+    # сразу после checkin_test_file_invalid и перед первым callback_query-хендлером
+    # admin.router, show_admin_stats), плюс handlers/user_actions.py получил
+    # checkin_qr_confirm_receipt (1 user_actions.callback_query, самый хвост файла, сразу
+    # после ambassador_join) — пересчитано RUNNING `_build_snapshot_lines()` и сверено
+    # diff'ом (difflib.SequenceMatcher) с прежним 632-строчным снимком: ровно три вставки
+    # (3+6+1 строк), 0 удалений, 0 реордеров (632 -> 642).
+    # Форум-ночь п.4 (расписание форума в боте): +36 хендлеров — handlers/admin_program.py +
+    # handlers/admin_program_halls.py (9 admin.message + 27 admin.callback_query, см. drift-ноту
+    # над GOLDEN_SNAPSHOT) — 642 -> 678.
+    # Форум-ночь п.4 (делегатский экран «🗓 Программа»): +3 хендлера — handlers/program.py
+    # (1 user_actions.message + 2 user_actions.callback_query, см. drift-ноту над
+    # GOLDEN_SNAPSHOT) — 678 -> 681.
+    # Форум-ночь п.5 (D-18, точки-сессии в загрузке CSV): +1 хендлер — handlers/admin_checkin.py
+    # получил checkin_point_city_pick (admin.callback_query, checkin_point_city:*) — встал сразу
+    # после checkin_upload_start и ПЕРЕД checkin_point_pick (город выбирается ДО точки, тот же
+    # порядок, что в самом файле). Пересчитано RUNNING `_build_snapshot_lines()` и сверено
+    # diff'ом с прежним 681-строчным снимком: ровно одна вставка, 0 удалений, 0 реордеров
+    # (681 -> 682).
+    # Форум-ночь п.6 (D-25, идея №14): +5 хендлеров — handlers/admin_broadcast_session_filter.py
+    # (мастер «Были/Не были на сессии …»: cksf_start/cksf_city_pick/cksf_day_pick/
+    # cksf_session_pick/cksf_cancel, все admin.callback_query) — шов импортируется из хвоста
+    # admin_broadcasts.py, встал сразу после filter_schedule и ПЕРЕД admin_event_preset (та же
+    # позиция, что у остального хвоста admin_broadcasts.py). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 682-строчным снимком: ровно пять
+    # вставок, 0 удалений, 0 реордеров (682 -> 687).
+    # Форум-ночь п.6 (D-25, идея №14, шаблон «Не пришёл»): +5 хендлеров — 3
+    # admin.callback_query в handlers/admin_checkin.py (cna_send_confirm/cna_send_go/
+    # cna_send_cancel, встали сразу после show_admin_checkin и ПЕРЕД checkin_upload_start,
+    # та же позиция, что у блока «🚪 Не пришли» на самом экране) + 2 user_actions.callback_query
+    # в handlers/user_actions.py (checkin_not_arrived_respond/checkin_not_arrived_show_qr,
+    # хвост файла, сразу после checkin_qr_confirm_receipt). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 687-строчным снимком: ровно пять
+    # вставок, 0 удалений, 0 реордеров (687 -> 692).
+    # Форум-ночь п.7 («❗ Важное»): +4 admin.callback_query в handlers/admin_broadcasts.py —
+    # bc_important_toggle (встал сразу после cancel_broadcast_callback и ПЕРЕД bc_go, тумблер
+    # экрана подтверждения мгновенной рассылки) + sched_important_toggle/sched_no/sched_go
+    # (встали сразу после broadcast_schedule_quiet_choice и ПЕРЕД sched_cancel — новый экран
+    # подтверждения отложенной рассылки, Broadcast.schedule_confirm). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 692-строчным снимком: ровно две
+    # вставки (1+3 строки), 0 удалений, 0 реордеров (692 -> 696).
+    # Форум-ночь п.7 («🔕 Не присылать сегодня»): +2 user_actions.callback_query
+    # (mute_broadcasts_today/unmute_broadcasts_today, bc_mute_today/bc_unmute_today) — хвост
+    # файла, сразу после checkin_not_arrived_show_qr. Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 696-строчным снимком: ровно одна
+    # вставка из 2 строк, 0 удалений, 0 реордеров (696 -> 698).
+    # Форум-ночь п.7 («❗ Важное» делегатская лента): +1 user_actions.message
+    # (show_important_today, menu_important) — встал сразу после show_program_schedule и ПЕРЕД
+    # reg_handoff_idle_fallback (тот же приём, что у соседей выше). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 698-строчным снимком: ровно одна
+    # вставка из 1 строки, 0 удалений, 0 реордеров (698 -> 699).
+    # Форум-ночь п.8 (идея №19, SOS): +9 user_actions.message (sos_start/sos_details_cancel/
+    # sos_details_skip/sos_details_step/sos_location_cancel/sos_location_skip/
+    # sos_location_step/sos_location_invalid/sos_delegate_followup, шов handlers/sos.py) —
+    # встали сразу после show_important_today и ПЕРЕД reg_handoff_idle_fallback (тот же приём,
+    # что у program/menu_important выше) + 1 user_actions.callback_query (sos_pick_category,
+    # sos_cat:*) — встал сразу после pds_days_back и ПЕРЕД show_wave_rating. Пересчитано
+    # RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 699-строчным снимком: две
+    # чистые вставки (9+1 строк), 0 удалений, 0 реордеров (699 -> 709).
+    # Форум-ночь п.8 (SOS), менеджерская сторона (handlers/admin_sos.py): +3 admin.message
+    # (asos_bind_cancel/asos_bind_step/admin_reply_to_sos) — встали в хвост message-блока
+    # admin.router, сразу после checkinqr_time_step и ПЕРЕД началом admin.callback_query
+    # (show_admin_stats) + 5 admin.callback_query (admin_sos/asos_page/asos_bind_start/
+    # sos_claim/sos_resolve) — встали в хвост callback_query-блока admin.router, сразу после
+    # checkinqr_time_start и ПЕРЕД началом payment.router (шов импортируется самым хвостом
+    # handlers/admin.py). Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
+    # прежним 709-строчным снимком: две чистые вставки (3+5 строк), 0 удалений, 0 реордеров
+    # (709 -> 717).
+    # Ревью 24.09 (находка 3, SOS): +1 user_actions.message (sos_followup_step, state:
+    # SosReport:*) — «свежий» открытый SOS предлагает дополнить, следующее сообщение делегата
+    # уходит в тред тем же хвостом, что sos_delegate_followup (handlers/sos.py). Встал сразу
+    # после sos_delegate_followup и ПЕРЕД reg_handoff_idle_fallback (тот же файл, следующая
+    # функция по исходнику). Чистая вставка, 0 удалений, 0 реордеров (717 -> 718).
+    # Форум-ночь п.9 (идея №15/D-24, «⭐ Отзыв о сессии одним тапом»): +5 — 2 admin.callback_query
+    # (prog_fbday_open/prog_fbc_open, в конец admin.router), 1 user_actions.message
+    # (sfb_comment_step, сразу после sos_followup_step и ПЕРЕД reg_handoff_idle_fallback), 2
+    # user_actions.callback_query (sfb_rate/sfb_offer_comment, сразу после sos_pick_category и
+    # ПЕРЕД show_wave_rating) — см. Drift note над GOLDEN_SNAPSHOT. Три чистые вставки, 0
+    # удалений, 0 реордеров (718 -> 723).
+    # Ревью 24.09 (аудит ключей после 8c0d8af): +10 admin.callback_query — экран «⚙️ Тексты и
+    # тайминги» SOS (asos_settings_open/asos_noop/asos_set_delay/asos_delay_custom_start/
+    # asos_settings_edit_start, handlers/admin_sos.py, сразу после sos_resolve и ПЕРЕД
+    # prog_fbday_open) + экран «⭐ Отзывы о сессиях» (prog_fbset_open/prog_fbtoggle/prog_fbdelay/
+    # prog_fbdelay_custom_start/prog_fbtext_edit, handlers/session_feedback.py, сразу после
+    # prog_fbc_open и ПЕРЕД началом payment.router) — см. Drift note над GOLDEN_SNAPSHOT. Две
+    # чистые вставки, 0 удалений, 0 реордеров (723 -> 733).
+    assert len(GOLDEN_SNAPSHOT) == 733
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -37,6 +37,10 @@ SCANNED_FILES = [
     ROOT / "handlers" / "payment.py",
     ROOT / "handlers" / "reg_lang.py",
     ROOT / "handlers" / "game_submit_counter.py",
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа».
+    ROOT / "handlers" / "program.py",
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — делегатская сторона.
+    ROOT / "handlers" / "session_feedback.py",
 ]
 
 # Функция -> индекс позиционного аргумента, несущего видимый делегату текст.

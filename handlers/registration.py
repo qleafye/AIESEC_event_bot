@@ -1384,6 +1384,7 @@ PARTY_SHEET_COLUMNS = [
     ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
     ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
     ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
+    ("Пришёл", None, lambda d: "-"),  # Форум-ночь B2 (идея №17) — см. SHEET_COLUMNS
 ]
 
 
@@ -1455,7 +1456,7 @@ async def append_to_party_sheet(data: list, city_code: str | None = None):
 # columns the short form can collect — nothing more. This is also the only way to keep the
 # "configurable track" promise: a manager turns on a 7th `reg_q_*__short` question and the
 # column appears on its own, no code change required.
-SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО"]
+SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл"]
 # «Детали» (referrer) is intentionally excluded — the promo form never collects it.
 
 

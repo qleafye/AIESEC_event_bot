@@ -330,6 +330,17 @@ async def init_scheduler(bot):
     # напоминание о дедлайне, конец волны) — вызывается ПОСЛЕДНЕЙ из реконсиляций namespace'а
     # (после опросов), тот же порядок, что у остальных «дослать пропущенное на старте» шагов.
     await reconcile_wave_jobs()
+    # Форум-ночь п.3 (D-03, идея №2): (пере)ставить джобы рассылки QR перед форумом на каждый
+    # город — ленивый импорт, тот же приём, что у соседей выше (services.checkin_broadcast сама
+    # не импортирует этот модуль на верхнем уровне, но порядок ленивых импортов внутри
+    # init_scheduler держим единообразным).
+    from services.checkin_broadcast import reconcile_broadcasts as _reconcile_checkin_qr
+    await _reconcile_checkin_qr()
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — (пере)ставить джобы
+    # отзыва всех сессий программы (пересозданный jobs.sqlite/простой дольше misfire_grace),
+    # тот же приём, что реконсиляции выше.
+    from services.session_feedback import reconcile_all as _reconcile_session_feedback
+    await _reconcile_session_feedback()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
@@ -460,6 +471,125 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
         return False
 
 
+# ── Форум-ночь п.7: «❗ Важное» + «🔕 Не присылать сегодня» — общий хвост доставки ────────────
+# Ревью 470ce5e..3703ba4 (находки): пометка важности и предложение «🔕» больше НЕ уходят
+# отдельными сообщениями — `bot.copy_message` умеет подменить CAPTION медиа-сообщения (в
+# отличие от .text чисто текстового — тот идёт через `bot.send_message` с готовым текстом), а
+# `reply_markup` копированием/отправкой поддерживают И send_message, И copy_message — единое
+# место правки нашлось. Осталось ровно одно исключение: `bot.send_media_group` не принимает
+# `reply_markup` вовсе, поэтому альбом несёт пометку важности ВНУТРИ подписи первого элемента
+# (см. `handlers/admin_broadcasts.py::_media_from_album_dicts`), а предложение «🔕» для альбома
+# по-прежнему отдельное сообщение — но не чаще раза в сутки на получателя (см.
+# `send_mute_offer_if_eligible` ниже), а не после КАЖДОЙ неважной альбомной рассылки.
+#
+# Итог: 1 API-вызов на получателя для text/фото/видео/документа, до 2 — только для альбома в
+# редкий день, когда предложение ещё не показывалось.
+
+MUTE_TODAY_CALLBACK = "bc_mute_today"
+UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
+
+# Публичные — используются и здесь, и в handlers/user_actions.py (свап кнопки на тапе), одна
+# точка правды на подпись обеих кнопок.
+MUTE_BUTTON_TEXT = "🔕 Не присылать сегодня"
+UNMUTE_BUTTON_TEXT = "🔔 Присылать всё"
+
+_MUTE_OFFER_TEXT = "Сегодня многовато рассылок? Можно отключить необязательные до завтра:"
+
+
+async def important_prefix() -> str:
+    """Пометка важности (реестр `important_broadcast_label`) — теперь ПЕРВАЯ строка самого
+    сообщения/подписи, не отдельное сообщение (см. докстринг раздела выше)."""
+    label = await get_setting("important_broadcast_label")
+    return (label or "❗ Важно").strip() or "❗ Важно"
+
+
+def apply_important_prefix(content: str | None, important: bool, prefix: str) -> str | None:
+    """Склеивает пометку важности С содержимым. `important=False` -> `content` без изменений
+    (байт-в-байт для обычных рассылок — ни одной лишней пустой строки). `content` пусто (медиа
+    без подписи) -> пометка сама по себе, не пустая строка с двумя переводами строки."""
+    if not important:
+        return content
+    if content:
+        return f"{prefix}\n\n{content}"
+    return prefix
+
+
+async def _translated_button(text: str, callback_data: str, chat_id: int) -> InlineKeyboardButton:
+    from handlers import reg_i18n
+    from services import i18n as i18n_service
+    lang, tr_map = await i18n_service.context(chat_id)
+    return InlineKeyboardButton(text=reg_i18n.tr_text(text, lang, tr_map), callback_data=callback_data)
+
+
+async def mute_button(chat_id: int) -> InlineKeyboardButton:
+    return await _translated_button(MUTE_BUTTON_TEXT, MUTE_TODAY_CALLBACK, chat_id)
+
+
+async def unmute_button(chat_id: int) -> InlineKeyboardButton:
+    return await _translated_button(UNMUTE_BUTTON_TEXT, UNMUTE_TODAY_CALLBACK, chat_id)
+
+
+async def offer_mute_today_if_forum_day(chat_id: int) -> bool:
+    """True — сегодня день форума города ЭТОГО делегата (гейт кнопки «🔕», форум-ночь п.7:
+    «предпочтительно — только в дни форума города, иначе кнопка лишняя»)."""
+    try:
+        from database.db import get_user
+        from services.reject_rules import forum_date_for
+        user = await get_user(chat_id)
+        date_str = await forum_date_for((user or {}).get("event_city") if user else None)
+        return bool(date_str) and date_str == _now_moscow_naive().strftime("%d.%m.%Y")
+    except Exception as e:
+        logger.error(f"offer_mute_today_if_forum_day({chat_id}) failed: {e}")
+        return False
+
+
+async def recipient_markup(
+    chat_id: int, important: bool, base_markup: InlineKeyboardMarkup | None = None,
+) -> InlineKeyboardMarkup | None:
+    """Клавиатура ПОЛУЧАТЕЛЯ рассылки: собственная клавиатура менеджера (`base_markup`, если
+    есть — например, пересланный пост с кнопками-ссылками) + строка «🔕» ПОСЛЕДНЕЙ, когда
+    рассылка неважная и сегодня день форума города получателя. Кнопка ВНУТРИ клавиатуры самой
+    рассылки, не отдельным сообщением — правит находку ревью «предложение шлётся после каждой
+    рассылки» (было — спам ×2 на каждую неважную рассылку). `None`, если добавить нечего (нет
+    ни своей клавиатуры, ни повода предложить «🔕»)."""
+    rows = [list(row) for row in (base_markup.inline_keyboard if base_markup else [])]
+    if not important and await offer_mute_today_if_forum_day(chat_id):
+        rows.append([await mute_button(chat_id)])
+    if not rows:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int | None:
+    """ТОЛЬКО для альбома — `bot.send_media_group` не принимает `reply_markup`, поэтому
+    предложение «🔕» для альбомной рассылки остаётся ОТДЕЛЬНЫМ сообщением (в отличие от
+    text/фото/видео/документа — там кнопка теперь внутри `recipient_markup`). Не чаще раза в
+    сутки (MSK) на получателя (`users.mute_offer_shown_date`) — иначе предложение спамило бы
+    после КАЖДОЙ неважной альбомной рассылки за день (находка ревью). Важные рассылки никогда
+    не предлагают отключиться (D-XX: важное приходит всегда)."""
+    if important:
+        return None
+    try:
+        if not await offer_mute_today_if_forum_day(chat_id):
+            return None
+        from database.db import get_mute_offer_shown_ids, mark_mute_offer_shown
+        today = _now_moscow_naive().strftime("%Y-%m-%d")
+        already_shown = await get_mute_offer_shown_ids(today)
+        if chat_id in already_shown:
+            return None
+        from handlers import reg_i18n
+        from services import i18n as i18n_service
+        lang, tr_map = await i18n_service.context(chat_id)
+        text = reg_i18n.tr_text(_MUTE_OFFER_TEXT, lang, tr_map)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[await mute_button(chat_id)]])
+        msg = await bot.send_message(chat_id, text, reply_markup=kb)
+        await mark_mute_offer_shown(chat_id, today)
+        return msg.message_id
+    except Exception as e:
+        logger.warning(f"send_mute_offer_if_eligible({chat_id}) failed: {e}")
+        return None
+
+
 async def send_scheduled_broadcast(broadcast_id: int):
     """Date-job target: read the payload row by id, resolve the audience, send, mark sent.
     Arg is the int id ONLY (picklable) — the Bot comes from the module global."""
@@ -538,6 +668,18 @@ async def send_scheduled_broadcast(broadcast_id: int):
         else:
             target_ids = await get_all_users_ids()
 
+        # Форум-ночь п.7: важная рассылка идёт ВСЕМ независимо от «🔕» (D-XX); неважная —
+        # минус тех, кто отключил сегодня. Считается ДО create_broadcast — total в журнале
+        # отражает реально отправляемую аудиторию, mute_skipped — отдельная цифра отчёта.
+        important = bool(row.get("important"))
+        mute_skipped = 0
+        if not important:
+            from database.db import get_muted_today_ids
+            muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+            before = len(target_ids)
+            target_ids = [tid for tid in target_ids if tid not in muted]
+            mute_skipped = before - len(target_ids)
+
         # Квик 260915-twr (Task B1): один журнал, одна таблица broadcast_deliveries — отложенная
         # рассылка заводит (или переиспользует после рестарта) ту же строку `broadcasts`, что
         # мгновенная. `broadcast_id` в этой функции — id строки `scheduled_broadcasts`
@@ -547,12 +689,17 @@ async def send_scheduled_broadcast(broadcast_id: int):
         log_bid = row.get("log_broadcast_id")
         if not log_bid:
             log_bid = await create_broadcast(
-                row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids)
+                row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids),
+                important=important, full_text=row.get("text"),
             )
             await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
 
-        text = row.get("text")
         photo = row.get("photo_file_id")
+        # Форум-ночь п.7 (переделка): пометка важности склеена С содержимым ОДИН раз, ДО цикла
+        # получателей — сам текст/подпись не зависит от получателя (в отличие от reply_markup
+        # ниже, та зависит от гейта дня форума ГОРОДА получателя, поэтому строится в цикле).
+        prefix = await important_prefix() if important else ""
+        content = apply_important_prefix(row.get("text"), important, prefix)
         # Checkpoint log from a previous (crashed) run: ok AND failed chats are skipped — a
         # failed one is a blocked/deactivated chat, re-hammering it on every resume is pointless.
         already = await list_delivered_chat_ids(broadcast_id)
@@ -567,15 +714,21 @@ async def send_scheduled_broadcast(broadcast_id: int):
             if chat_id in already:
                 skipped += 1
                 continue
+            # Ревью 470ce5e..3703ba4: раньше здесь уходило до 3 сообщений на получателя (маркер
+            # важности + содержимое + предложение «🔕») на одну паузу 0.05с, рассчитанную на
+            # один вызов. Теперь пометка — внутри `content`, кнопка «🔕» — внутри `markup`:
+            # ровно 1 API-вызов на получателя (scheduled-путь не поддерживает альбом, второго
+            # вызова здесь не бывает вовсе).
+            markup = await recipient_markup(chat_id, important)
             if photo:
-                async def _send(cid, _photo=photo, _text=text):
-                    msg = await _bot.send_photo(cid, _photo, caption=_text)
+                async def _send(cid, _photo=photo, _caption=content, _markup=markup):
+                    msg = await _bot.send_photo(cid, _photo, caption=_caption, reply_markup=_markup)
                     sent_message_ids[cid] = msg.message_id
                     return msg
                 ok = await _safe_send(_send, chat_id)
             else:
-                async def _send(cid, _text=text):
-                    msg = await _bot.send_message(cid, _text)
+                async def _send(cid, _text=content, _markup=markup):
+                    msg = await _bot.send_message(cid, _text, reply_markup=_markup)
                     sent_message_ids[cid] = msg.message_id
                     return msg
                 ok = await _safe_send(_send, chat_id)
@@ -592,10 +745,11 @@ async def send_scheduled_broadcast(broadcast_id: int):
         await mark_broadcast_sent(broadcast_id)
         # sent + skipped: skipped — доставленные ПРЕДЫДУЩИМ прогоном после рестарта, для
         # менеджера они доставлены не меньше, чем sent из этого прогона.
-        await finish_broadcast(log_bid, "done", sent + skipped, failed)
+        await finish_broadcast(log_bid, "done", sent + skipped, failed, mute_skipped)
         logger.info(
             f"Scheduled broadcast {broadcast_id} done: sent {sent}, "
-            f"skipped {skipped} (already), failed {failed} of {len(target_ids)}"
+            f"skipped {skipped} (already), failed {failed} of {len(target_ids)}, "
+            f"mute_skipped {mute_skipped}"
         )
         # The checkpoint rows only matter for resume; drop them once the row is 'sent'.
         try:

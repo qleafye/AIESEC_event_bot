@@ -427,6 +427,90 @@ _CODE_LITERALS_EN = {
     "Твоя заявка одобрена! Добро пожаловать 🎉": "Your application is approved! Welcome 🎉",
     "Заявка принята ✅ Всё получили — ждём тебя!": "Application accepted ✅ We got everything — see you there!",
     "🎁 Бонус за регистрацию!": "🎁 Registration bonus!",
+    # Форум-ночь: подтверждение получения чек-ина по QR (`lit:user_actions.checkin_qr_confirm_receipt`).
+    "Отлично, увидимся на форуме!": "Great, see you at the forum!",
+    # Форум-ночь п.7 («❗ Важное»): экран делегата «❗ Важное» (`lit:user_actions.important_today_*`).
+    "Сегодня важных рассылок не было.": "No important messages today.",
+    "❗ Важные рассылки за сегодня:": "❗ Important messages today:",
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа» (`lit:program.*`).
+    "Программа": "Program",
+    "Выберите день:": "Choose a day:",
+    "Сессий в этот день пока нет.": "No sessions for this day yet.",
+    "Программа пока пуста.": "The program is empty for now.",
+    "Идёт сейчас": "Happening now",
+    "Следующая": "Next up",
+    "Зал:": "Hall:",
+    "Спикер:": "Speaker:",
+    "параллельно": "in parallel",
+    "← Дни": "← Days",
+    # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — дефолт реестра checkin_not_arrived_text
+    # (`lit:admin_checkin.not_arrived_go`) + подписи трёх кнопок ответа делегата и подтверждение
+    # (`lit:user_actions.checkin_not_arrived_respond`).
+    "Мы тебя не видим на форуме 👀 Всё в порядке?": "We don't see you at the forum 👀 Is everything okay?",
+    "Уже еду": "On my way",
+    "Не смогу прийти": "Can't make it",
+    "Я на месте": "I'm here",
+    "Покажи этот экран волонтёру на входе.": "Show this screen to the volunteer at the entrance.",
+    # Ведущий эмодзи "🎟 " отделяется `split_leading_symbols` ДО перевода (см. докстринг
+    # `handlers/reg_i18n.py::tr_text`) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
+    "Мой QR": "My QR",
+    "Спасибо, передали организаторам!": "Thanks, we let the organizers know!",
+    "Жаль! Спасибо, что предупредил.": "Too bad! Thanks for letting us know.",
+    # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4, п.5): «🔕 Не присылать сегодня» —
+    # ключи БЕЗ ведущего эмодзи-префикса (тот же приём, что «Мой QR» выше — `reg_i18n.tr_text`
+    # снимает префикс ДО поиска). Предложение отключиться (альбом) без префикса, переносить
+    # нечего.
+    "Сегодня многовато рассылок? Можно отключить необязательные до завтра:":
+        "Getting a lot of messages today? You can turn off the non-essential ones until tomorrow:",
+    "Не присылать сегодня": "Don't send today",
+    "Присылать всё": "Send everything",
+    "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
+        "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
+    "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
+    # Форум-ночь п.8 (идея №19, SOS): реестровые дефолты пяти текстов визарда «🆘 SOS»
+    # (group "event", `sos_category_prompt_text`/`sos_details_prompt_text`/
+    # `sos_location_prompt_text`/`sos_sent_text`/`sos_already_open_text`).
+    "Что случилось?": "What happened?",
+    "Опиши коротко, что случилось — текстом или фото. Можно пропустить.":
+        "Briefly describe what happened — text or a photo. You can skip this.",
+    "Отправь геопозицию, если знаешь, где находишься. Можно пропустить.":
+        "Send your location if you know where you are. You can skip this.",
+    "🆘 Оргкомитет получил, с тобой свяжутся.": "🆘 The organizers got it — they'll reach out to you.",
+    "У тебя уже есть открытый SOS — организаторы уже знают и скоро свяжутся.":
+        "You already have an open SOS — the organizers already know and will reach out soon.",
+    # Категории SOS (`lit:services.sos.category_*`) + подпись кнопки геопозиции
+    # (`lit:sos.location_button`) — идут через tr_kb (кнопки inline/reply-клавиатур), не
+    # видны АСТ-сторожу, см. комментарий у их регистрации в services/i18n_sources.py.
+    "🤒 Плохо себя чувствую": "🤒 I feel unwell",
+    "🧭 Потерялся": "🧭 I'm lost",
+    "🔑 Потерял вещь": "🔑 I lost something",
+    "⚠️ Другое": "⚠️ Other",
+    "📍 Отправить геопозицию": "📍 Send location",
+    # Ревью 24.09 (находки 1/3): дефолты трёх новых реестровых текстов SOS — тот же сосед,
+    # что остальные sos_* дефолты выше.
+    "Не получилось передать SOS оргкомитету. Подойди к стойке регистрации или к любому "
+    "человеку в форме оргкомитета.":
+        "We couldn't reach the organizers with your SOS. Go to the registration desk or "
+        "find anyone wearing organizer clothing.",
+    "Мы уже получили твой SOS ({claim_status}). Дополни его — просто напиши сюда.":
+        "We already got your SOS ({claim_status}). Add details — just write here.",
+    # Часть А (ревью SOS-переводов): `{claim_status}` — сам ярус B, ДВЕ формы шаблона
+    # (`services.sos.claim_status_parts`), переводится ОТДЕЛЬНО от подстановки имени
+    # (`handlers/sos.py::_recent_followup_text`, тот же порядок «шаблон сначала», что
+    # `reg_i18n.tr_fmt` везде в чате). «коллега» — переводимый фолбэк имени, когда у держателя
+    # заявки нет отображаемого имени в БД.
+    "взял(а) {who}": "picked up by {who}",
+    "ещё не взяли": "not picked up yet",
+    "коллега": "a colleague",
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — четыре реестровых
+    # дефолта экрана оценки (group "event", `session_feedback_prompt_text`/
+    # `session_feedback_thanks_text`/`session_feedback_comment_hint_text`/
+    # `session_feedback_comment_saved_text`).
+    "Как тебе «{title}»?": "How was «{title}»?",
+    "Спасибо! Хочешь добавить пару слов?": "Thanks! Want to add a few words?",
+    "✍️ Напиши комментарий следующим сообщением.": "✍️ Write your comment as your next message.",
+    "Спасибо, записал!": "Thanks, got it!",
+    "Эта оценка тебе недоступна.": "This rating isn't available to you.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
@@ -669,6 +753,12 @@ _REGISTRY_TEXTS_EN = {
         "but a photo from the chat opens even without the internet."
     ),
     "QR для чек-ина пока не выдаётся — загляни сюда позже.": "The check-in QR isn't issued yet — check back here later.",
+    # Форум-ночь п.3 (D-03, идея №2): текст рассылки QR накануне форума (и утреннего повтора
+    # неподтвердившим) — group "reg", checkin_qr_broadcast_text.
+    "Завтра форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.": (
+        "The forum is tomorrow! Here's your QR code for entry. Open it now and take a "
+        "screenshot — the venue may have no network."
+    ),
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,

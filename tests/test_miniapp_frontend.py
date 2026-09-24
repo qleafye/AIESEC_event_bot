@@ -253,6 +253,8 @@ EXPECTED_ROUTES = {
     "#/status": "screens/status.js",
     # Квик 260915-4mu: мастер первой настройки события в приложении.
     "#/setup": "screens/setup.js",
+    # Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме.
+    "#/scanner": "screens/scanner.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -283,7 +285,8 @@ def test_route_table_matches_phase_plan_exactly():
     # Квик 260915-4mu: +1 маршрут "#/setup" (20 -> 21).
     # Квик 260915-skg (P5): +1 маршрут "#/settings/{code}/{key}" (21 -> 22) — результат поиска
     # настроек открывает саму настройку, не начало раздела.
-    assert len(routes) == 22
+    # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
+    assert len(routes) == 23
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -427,6 +430,9 @@ EXPECTED_NAV = [
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
     {"hash": "#/stats", "section": "stats", "cap": "stats", "group": "data"},
     {"hash": "#/settings", "section": "settings", "cap": "settings", "group": "manage"},
+    # Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме — первая плитка группы
+    # «🎪 Событие».
+    {"hash": "#/scanner", "section": "checkin", "cap": "checkin", "group": "event"},
 ]
 
 
