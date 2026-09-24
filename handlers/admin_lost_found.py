@@ -240,6 +240,10 @@ async def lost_found_publish(callback: types.CallbackQuery, state: FSMContext, b
     if not photo or not where_text:
         await callback.answer("Черновик утерян — начните заново, /found.", show_alert=True)
         return
+    # Тумблер могли выключить, пока волонтёр смотрел предпросмотр, — проверяем в момент публикации.
+    if await get_setting_typed_for_city("lost_found_enabled", code) != "on":
+        await callback.answer("Бюро находок выключено — публикация отменена.", show_alert=True)
+        return
 
     entry = await _chat_for_own_city(code)
     if entry is None:
@@ -305,6 +309,14 @@ async def lostfound_return(callback: types.CallbackQuery):
     item = await get_lost_found_item(item_id)
     if item is None:
         await callback.answer("Запись не найдена", show_alert=True)
+        return
+    # id в кнопке подделывается: отмечаем только находку ЭТОГО поста и только своего города.
+    msg = callback.message
+    if msg is None or (item["chat_id"], item["message_id"]) != (msg.chat.id, msg.message_id):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    if not await _city_allowed(callback.from_user.id, item["city"]):
+        await callback.answer(DENIAL_TEXT, show_alert=True)
         return
     if item["returned_at"]:
         await callback.answer("Уже отмечено как возвращено", show_alert=True)
