@@ -129,6 +129,23 @@ def test_build_merge_top_and_csv_pure():
     assert any(r[:5] == ["СПб", "03.10 (сб)", "10:00–11:00", "Зал", "'=Опасное"] for r in rows)
 
 
+def test_csv_city_label_and_every_text_cell_are_formula_safe():
+    """Ревью 25.09 (M3): подпись города вводит менеджер — во всех трёх таблицах CSV она, как и
+    зал/название, не должна стать формулой Excel."""
+    rep = arrival_stats.build_report(
+        3, (1, 0),
+        [("2026-10-03", 1, 1)],
+        [(1, "spb", "2026-10-03", "10:00", "11:00", "Лекция", "\tЗал", 10, 1, 0)],
+    )
+    raw = arrival_stats.csv_bytes([("=HYPERLINK(1)", rep)], {"spb": "@СПб"}, None)
+    rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";"))
+    cells = [c for r in rows for c in r]
+    assert "'=HYPERLINK(1)" in cells and "=HYPERLINK(1)" not in cells
+    assert "'@СПб" in cells and "'\tЗал" in cells
+    assert not any(c[:1] in ("=", "+", "@", "\t", "\r") for c in cells)
+    assert ["'=HYPERLINK(1)", "3", "1", "2", "33", "0"] in rows
+
+
 def test_bot_report_counts_current_season_approved_by_day_and_session(tmp_path):
     _ready(tmp_path)
     s1 = _seed_spb_forum()
