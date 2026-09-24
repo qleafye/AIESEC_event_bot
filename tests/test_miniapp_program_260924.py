@@ -337,3 +337,23 @@ def test_default_photo_route_serves_disk_file_without_auth(client, disk_photo):
 
 def test_default_photo_route_404_without_disk_file(client, disk_photo):
     assert client.get("/app/api/program/photo-default").status_code == 404
+
+
+def test_program_marks_session_running_now_by_msk(client, monkeypatch):
+    """«🔴 Идёт сейчас»: API помечает слот `now`, если по МСК сессия идёт; фронт рисует метку
+    по `slot.now` текстом `texts.now` (tests/test_miniapp_program_js_260924.py)."""
+    from datetime import datetime
+    from services import timeutil
+    monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 30, 10, 30))
+    _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
+    _run(bot_db.create_program_session("msk", "2026-10-30", "12:00", "13:00", "Обед"))
+    body = client.get("/app/api/program", headers=_hdr(DELEGATE_ID)).json()
+    slots = body["days"][0]["slots"]
+    assert [s["now"] for s in slots] == [True, False]
+    assert not any(s["next"] for s in slots)  # что-то идёт — «следующая» не нужна
+    assert body["texts"]["now"] == "🔴 Идёт сейчас"
+
+    monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 30, 11, 30))
+    slots = client.get("/app/api/program", headers=_hdr(DELEGATE_ID)).json()["days"][0]["slots"]
+    assert [s["now"] for s in slots] == [False, False]
+    assert [s["next"] for s in slots] == [False, True]
