@@ -1681,7 +1681,7 @@ async def show_my_checkin_qr(message: types.Message):
         if template:
             status_line = reg_i18n.tr_fmt(
                 template, lang, tr_map,
-                time=(status["scanned_at"] or "")[11:16] or "—",
+                time=status["time_label"],
                 sessions=status["sessions_count"],
             )
             caption = f"{status_line}\n\n{caption}"

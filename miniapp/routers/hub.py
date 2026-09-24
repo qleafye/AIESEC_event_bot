@@ -116,11 +116,10 @@ async def _checkin_status_fact(telegram_id: int, lang: str, tr_map: dict[str, st
     template = await i18n.tr_setting("checked_in_status_text", lang, tr_map)
     if not template:
         return None
-    scanned_at = status.get("scanned_at") or ""
-    time_part = scanned_at[11:16] or "—"
+    time_label = status.get("time_label") or "—"
     # `.replace`, не `.format` — та же защита от посторонних `{}` в тексте менеджера, что у
     # `reg_i18n.tr_fmt` (T-073-03-05); подстановка ПОСЛЕ перевода — `template` уже переведён.
-    return template.replace("{time}", time_part).replace("{sessions}", str(status.get("sessions_count", 0)))
+    return template.replace("{time}", time_label).replace("{sessions}", str(status.get("sessions_count", 0)))
 
 
 def _days_until(raw: str | None) -> int | None:

@@ -10394,16 +10394,28 @@ async def list_marked_telegram_ids_for_session(session_id: int) -> list[int]:
 # граница, что уже держат `is_marked_for_session`/`count_checkins_by_point` выше.
 
 async def get_checkin_status(telegram_id: int) -> dict | None:
-    """`{"scanned_at": "YYYY-MM-DD HH:MM:SS", "sessions_count": N}` — время отметки на входе
+    """`{"scanned_at": "YYYY-MM-DD HH:MM:SS", "day": "YYYY-MM-DD", "is_today": bool,
+    "time_label": "ЧЧ:ММ" | "ДД.ММ в ЧЧ:ММ", "sessions_count": N}` — время отметки на входе
     (`CHECKIN_ENTRY_POINT`) и число ОТДЕЛЬНЫХ сессий, на которых делегат отмечен (`point LIKE
     'session:%'`, по одной строке на слот — D-20, `record_session_checkin` уже держит эту
     гарантию). `None`, если входа ещё не было — обе поверхности трактуют `None` как «не
-    показывать строку вовсе», а не как нулевые факты."""
+    показывать строку вовсе», а не как нулевые факты.
+
+    Вход каждый день: у делегата может быть НЕСКОЛЬКО строк входа (по одной на день форума) —
+    берём СЕГОДНЯШНИЙ вход, если он есть, иначе последний по дню (`ORDER BY (day = сегодня)
+    DESC, day DESC`, одним запросом, без отдельного «сначала проверить сегодня» похода в БД).
+    `time_label` — готовая подпись для `{time}` обеих поверхностей (`handlers/user_actions.py::
+    show_my_checkin_qr`, `miniapp/routers/hub.py::_checkin_status_fact`, единая функция чтения,
+    второй копии форматирования не заводим): просто «ЧЧ:ММ» для сегодняшнего входа, «ДД.ММ в
+    ЧЧ:ММ» для входа другого дня — без даты делегат мог бы принять вчерашний вход за
+    сегодняшний."""
+    today = msk_now().strftime("%Y-%m-%d")
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
-            (telegram_id, CHECKIN_ENTRY_POINT),
+            "SELECT scanned_at, day FROM checkins WHERE telegram_id = ? AND point = ? "
+            "ORDER BY (day = ?) DESC, day DESC LIMIT 1",
+            (telegram_id, CHECKIN_ENTRY_POINT, today),
         ) as cursor:
             entry = await cursor.fetchone()
         if entry is None:
@@ -10413,7 +10425,18 @@ async def get_checkin_status(telegram_id: int) -> dict | None:
             (telegram_id,),
         ) as cursor:
             row = await cursor.fetchone()
-    return {"scanned_at": entry["scanned_at"], "sessions_count": row[0]}
+    scanned_at = entry["scanned_at"] or ""
+    day = entry["day"] or ""
+    is_today = day == today
+    time_part = scanned_at[11:16] or "—"
+    if is_today or len(day) != 10:
+        time_label = time_part
+    else:
+        time_label = f"{day[8:10]}.{day[5:7]} в {time_part}"
+    return {
+        "scanned_at": scanned_at, "day": day, "is_today": is_today,
+        "time_label": time_label, "sessions_count": row[0],
+    }
 
 
 async def create_session_feedback_prompt(telegram_id: int, session_id: int, prompted_at: str) -> bool:
