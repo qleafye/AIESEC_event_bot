@@ -550,6 +550,10 @@ def test_render_snapshot_apps(tmp_path):
         # Идея №20 бэклога чек-ина: текст поста бюро находок — новый хвост группы (тумблер
         # lost_found_enabled — тумблер раздела, в группу не входит).
         "lost_found_post_text",
+        # Трек «региональные форумы → Москва»: текст предложения переноса — новый хвост
+        # группы (тумблер regional_noshow_offer_enabled и кнопочные ключи target_city/
+        # move_status — в группу не входят, живут на своём экране).
+        "regional_noshow_offer_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -586,6 +590,8 @@ def test_render_snapshot_apps(tmp_path):
         "❓ Опрос неявившихся: подсказка после «Другое»", "❓ Опрос неявившихся: ответ после любой кнопки",
         # Идея №20 бэклога чек-ина: текст поста бюро находок.
         "🧳 Бюро находок: текст поста",
+        # Трек «региональные форумы → Москва»: текст предложения переноса.
+        "🚌 Перенос в Москву: текст предложения",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -619,6 +625,9 @@ def test_render_snapshot_apps(tmp_path):
         "❓ Опрос неявившихся: подсказка после «Другое»", "❓ Опрос неявившихся: ответ после любой кнопки",
         # Идея №20 бэклога чек-ина: текст поста бюро находок имеет непустой дефолт в реестре.
         "🧳 Бюро находок: текст поста",
+        # Трек «региональные форумы → Москва»: текст предложения переноса имеет непустой
+        # дефолт в реестре.
+        "🚌 Перенос в Москву: текст предложения",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -1042,7 +1051,7 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # после «Другое», ответ-подтверждение — новый хвост _APPS_FIELD_ORDER, восемь ключей.
     # Идея №20 бэклога чек-ина (бюро находок): lost_found_post_text — новый хвост
     # _APPS_FIELD_ORDER, ещё один ключ.
-    assert admin_settings._settings_group_keys("apps")[-23:] == [
+    assert admin_settings._settings_group_keys("apps")[-24:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
@@ -1053,7 +1062,9 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
         "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
         "forum_noshow_poll_option_other_text",
         "forum_noshow_poll_other_prompt_text", "forum_noshow_poll_thanks_text",
-        "lost_found_post_text"]
+        "lost_found_post_text",
+        # Трек «региональные форумы → Москва»: текст предложения переноса — новый хвост.
+        "regional_noshow_offer_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

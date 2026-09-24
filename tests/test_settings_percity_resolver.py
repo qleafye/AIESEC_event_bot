@@ -205,6 +205,14 @@ EXPECTED_PER_CITY_KEYS = {
     "forum_welcome_text",
     "lost_found_enabled",
     "volunteer_invite_enabled",
+    # Трек «региональные форумы → Москва» (25.09): предложение переноса — per_city, тот же
+    # довод, что у forum_noshow_poll_enabled/_time выше (окно предложения настраивается на
+    # каждом регионе отдельно, регионы 03.10 и Москва 30-31.10 в разных фазах).
+    "regional_noshow_offer_enabled",
+    "regional_noshow_offer_time",
+    "regional_noshow_target_city",
+    "regional_noshow_move_status",
+    "regional_noshow_offer_text",
 }
 
 

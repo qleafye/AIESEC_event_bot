@@ -239,6 +239,12 @@ _APPS_FIELD_ORDER = [
     # выше); сам тумблер `lost_found_enabled` (type "enum") — НЕ здесь, живёт на своём
     # экране `handlers/admin_lost_found.py::lostfound_cfg_screen`.
     "lost_found_post_text",
+    # Трек «региональные форумы → Москва»: текст предложения переноса — новый хвост группы
+    # (тот же приём, что у соседних форумных текстов выше); сам тумблер
+    # `regional_noshow_offer_enabled` и кнопочные ключи `regional_noshow_target_city`/
+    # `regional_noshow_move_status` — НЕ здесь, живут на своём экране `handlers/
+    # admin_forum_functions.py::_regional_noshow_cfg_text_kb`.
+    "regional_noshow_offer_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -2481,6 +2487,34 @@ async def _reschedule_forum_noshow_poll_if_relevant(key: str) -> None:
         logger.error(f"_reschedule_forum_noshow_poll_if_relevant({key!r}): {e}")
 
 
+# Трек «региональные форумы → Москва»: та же джоба зависит и от СВОИХ двух ключей, и от
+# `forum_noshow_poll_enabled`/`_time` (предложение уходит не раньше чем через 3 часа после
+# опроса неявившихся, если тот включён — `services.regional_noshow_move._run_at_for`), и от
+# общего `forum_date` (дата начала форума города).
+_REGIONAL_NOSHOW_MOVE_RESCHEDULE_KEYS = {
+    "forum_date", "regional_noshow_offer_enabled", "regional_noshow_offer_time",
+    "forum_noshow_poll_enabled", "forum_noshow_poll_time",
+}
+
+
+async def _reschedule_regional_noshow_move_if_relevant(key: str) -> None:
+    """Тот же приём, что `_reschedule_forum_noshow_poll_if_relevant` выше, для джобы
+    `services.regional_noshow_move`."""
+    base = _base_setting_key(key)
+    if base not in _REGIONAL_NOSHOW_MOVE_RESCHEDULE_KEYS:
+        return
+    try:
+        from services.regional_noshow_move import reconcile, schedule_city_job
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_job(city)
+        else:
+            await reconcile()
+    except Exception as e:
+        logger.error(f"_reschedule_regional_noshow_move_if_relevant({key!r}): {e}")
+
+
 async def _reconcile_session_feedback_if_relevant(key: str) -> None:
     """Ревью 24.09 (аудит ключей после 8c0d8af): свободный ввод задержки («✏️ Другое» на
     экране «⭐ Отзывы о сессиях», `handlers/session_feedback.py::prog_fbdelay_custom_start`)
@@ -2656,6 +2690,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await _reschedule_checkin_volunteer_guide_if_relevant(key)
         await _reschedule_forum_day_report_if_relevant(key)
         await _reschedule_forum_noshow_poll_if_relevant(key)
+        await _reschedule_regional_noshow_move_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
@@ -2663,6 +2698,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await _reschedule_checkin_volunteer_guide_if_relevant(key)
         await _reschedule_forum_day_report_if_relevant(key)
         await _reschedule_forum_noshow_poll_if_relevant(key)
+        await _reschedule_regional_noshow_move_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":

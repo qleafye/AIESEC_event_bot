@@ -638,6 +638,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # Идея №20 бэклога чек-ина: бюро находок — тот же раздел «📋 Заявки», свой экран у бота —
     # handlers/admin_lost_found.py (lostfound_cfg:*), тот же приём, что у соседей выше.
     "lost_found_enabled": "apps",
+    # Трек «региональные форумы → Москва»: перенос неявившихся — тот же раздел «📋 Заявки»,
+    # свой экран у бота — handlers/admin_forum_functions.py (rgnm_cfg:*), тот же приём, что у
+    # соседей выше (forum_noshow_poll_enabled и т.д.).
+    "regional_noshow_offer_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
@@ -1053,6 +1057,9 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "claim_status": "взял(а) Мария",
     # Форум-ночь п.9: название сессии в session_feedback_prompt_text («Как тебе «{title}»?»).
     "title": "Как продать идею АЙСЕК за 5 минут",
+    # Трек «региональные форумы → Москва»: даты форума города назначения в
+    # regional_noshow_offer_text («Приезжай на Юлид в Москве {dates}»).
+    "dates": "30.10.2026–31.10.2026",
 }
 
 
