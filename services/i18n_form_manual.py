@@ -427,6 +427,19 @@ _CODE_LITERALS_EN = {
     "Твоя заявка одобрена! Добро пожаловать 🎉": "Your application is approved! Welcome 🎉",
     "Заявка принята ✅ Всё получили — ждём тебя!": "Application accepted ✅ We got everything — see you there!",
     "🎁 Бонус за регистрацию!": "🎁 Registration bonus!",
+    # Форум-ночь: подтверждение получения чек-ина по QR (`lit:user_actions.checkin_qr_confirm_receipt`).
+    "Отлично, увидимся на форуме!": "Great, see you at the forum!",
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа» (`lit:program.*`).
+    "Программа": "Program",
+    "Выберите день:": "Choose a day:",
+    "Сессий в этот день пока нет.": "No sessions for this day yet.",
+    "Программа пока пуста.": "The program is empty for now.",
+    "Идёт сейчас": "Happening now",
+    "Следующая": "Next up",
+    "Зал:": "Hall:",
+    "Спикер:": "Speaker:",
+    "параллельно": "in parallel",
+    "← Дни": "← Days",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
