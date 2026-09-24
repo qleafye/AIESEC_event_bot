@@ -177,3 +177,30 @@ def test_menu_screen_no_hidden_note_for_switched_off_button(tmp_path):
     asyncio.run(db.set_setting("menu_checkin_qr", "off"))
     text = asyncio.run(admin_reg_config.render_menu_text())
     assert "сейчас скрыта" not in _menu_line(text, "🎟 Мой QR")
+
+
+# ── День форума: утренний повтор QR уже прошёл ───────────────────────────────────────────────
+
+def _fix_now(monkeypatch, when):
+    monkeypatch.setattr(admin_checkin, "msk_now", lambda: when)
+
+
+def test_qr_line_says_morning_repeat_passed_on_forum_day(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("checkin_qr_morning_repeat_time", "08:00"))
+    _fix_now(monkeypatch, datetime(2026, 10, 3, 12, 0))
+    text, _kb = _screen()
+    assert "утренний повтор сегодня уже прошёл" in text
+
+
+def test_qr_line_silent_before_morning_repeat(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("checkin_qr_morning_repeat_time", "08:00"))
+    _fix_now(monkeypatch, datetime(2026, 10, 3, 7, 30))
+    text, _kb = _screen()
+    assert "утренний повтор" not in text
+    _fix_now(monkeypatch, datetime(2026, 10, 2, 12, 0))  # накануне — повтор ещё впереди
+    text, _kb = _screen()
+    assert "утренний повтор" not in text
