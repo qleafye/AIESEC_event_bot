@@ -541,6 +541,25 @@ def _build_snapshot_lines():
 # Re-captured by RUNNING
 # `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
 # 678-строчного снимка: ровно две вставки (1 + 2 строки), 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.9, идея №15/D-24, «⭐ Отзыв о сессии одним тапом», 718 -> 723
+# handlers -- PURE APPEND, ТРИ вставки): новый шов `handlers/session_feedback.py`,
+# декорирующий ОБА общих роутера (докстринг модуля объясняет псевдоним `delegate_router` для
+# `user_actions.router` — capability-скан ищет буквальный текст `"@router."`, второй роутер не
+# может называться так же). Импортирован из хвоста `handlers/user_actions.py` СРАЗУ ПОСЛЕ
+# `sos_handlers` и ПЕРЕД `reg_handoff_idle_fallback`; первый импорт `handlers.admin.router`
+# внутри него триггерит ПОЛНУЮ загрузку `handlers/admin.py` (ещё не был импортирован к этому
+# моменту исполнения `user_actions.py`) — поэтому 2 admin-хендлера (`prog_fbday_open`/
+# `prog_fbc_open`) встали в САМЫЙ КОНЕЦ admin.router (после `sos_resolve`, последнего
+# зарегистрированного к тому моменту), а не рядом с `admin_program`. 1 message-хендлер
+# (`sfb_comment_step`, `state:SessionFeedbackComment:*` — но derived key пуст, StatesGroup ещё
+# не отражён в фильтре построчно тем же классом, что `sos_followup_step` рядом) встал СРАЗУ
+# ПОСЛЕ `sos_followup_step` и ПЕРЕД `reg_handoff_idle_fallback`. 2 callback_query-хендлера
+# (`sfb_rate`/`sfb_offer_comment`) встали СРАЗУ ПОСЛЕ `sos_pick_category` (последний
+# callback_query-хендлер, физически определённый в sos.py ДО точки импорта session_feedback) и
+# ПЕРЕД `show_wave_rating`. Re-captured by RUNNING `_build_snapshot_lines()` против HEAD и
+# diffed (difflib.SequenceMatcher) против прежнего 718-строчного снимка: ровно три вставки
+# (2 + 1 + 2 строки), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1112,6 +1131,8 @@ admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
 admin|callback_query|sos_claim|sos_claim:*
 admin|callback_query|sos_resolve|sos_resolve:*
+admin|callback_query|prog_fbday_open|prog_fbday:*
+admin|callback_query|prog_fbc_open|prog_fbc:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1229,6 +1250,7 @@ user_actions|message|sos_location_step|state:SosReport:*
 user_actions|message|sos_location_invalid|state:SosReport:*
 user_actions|message|sos_delegate_followup|
 user_actions|message|sos_followup_step|state:SosReport:*
+user_actions|message|sfb_comment_step|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1249,6 +1271,8 @@ user_actions|callback_query|faq_ask|faq_ask
 user_actions|callback_query|pds_day_open|pds_day:*
 user_actions|callback_query|pds_days_back|pds_days
 user_actions|callback_query|sos_pick_category|sos_cat:*
+user_actions|callback_query|sfb_rate|
+user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -1620,7 +1644,13 @@ def test_snapshot_total_handler_count_is_292():
     # уходит в тред тем же хвостом, что sos_delegate_followup (handlers/sos.py). Встал сразу
     # после sos_delegate_followup и ПЕРЕД reg_handoff_idle_fallback (тот же файл, следующая
     # функция по исходнику). Чистая вставка, 0 удалений, 0 реордеров (717 -> 718).
-    assert len(GOLDEN_SNAPSHOT) == 718
+    # Форум-ночь п.9 (идея №15/D-24, «⭐ Отзыв о сессии одним тапом»): +5 — 2 admin.callback_query
+    # (prog_fbday_open/prog_fbc_open, в конец admin.router), 1 user_actions.message
+    # (sfb_comment_step, сразу после sos_followup_step и ПЕРЕД reg_handoff_idle_fallback), 2
+    # user_actions.callback_query (sfb_rate/sfb_offer_comment, сразу после sos_pick_category и
+    # ПЕРЕД show_wave_rating) — см. Drift note над GOLDEN_SNAPSHOT. Три чистые вставки, 0
+    # удалений, 0 реордеров (718 -> 723).
+    assert len(GOLDEN_SNAPSHOT) == 723
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

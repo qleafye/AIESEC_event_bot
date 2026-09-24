@@ -180,6 +180,10 @@ EXPECTED_PER_CITY_KEYS = {
     # Ревью 24.09 (находки 1/3): экстренный контакт при полном провале доставки + оба новых
     # временных окна — тот же довод, что sos_active_days/sos_escalation_minutes выше.
     "sos_fallback_contact_text", "sos_reopen_window_minutes", "sos_claimed_remind_minutes",
+    # Форум-ночь п.9 (идея №15, D-24): тумблер и задержка «⭐ Отзыв о сессии одним тапом» —
+    # тот же довод, что sos_active_days/sos_escalation_minutes выше (форумы городов идут в
+    # разные дни).
+    "session_feedback_enabled", "session_feedback_delay_minutes",
 }
 
 
