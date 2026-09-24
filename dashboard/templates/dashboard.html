@@ -268,19 +268,21 @@
         <h3 class="cut-title">Стойки входа</h3>
         <div class="table-wrap">
         <table class="responsive">
-          <thead><tr><th>Волонтёр</th><th class="num">Отметил(а)</th></tr></thead>
+          <thead><tr><th>Волонтёр</th><th class="num">Отметил(а)</th><th>Темп</th><th>Последний скан</th></tr></thead>
           <tbody>
             {% for st in fl.stands %}
             <tr>
               <td data-label="Волонтёр">{{ st.name }}</td>
               <td class="num" data-label="Отметил(а)">{{ st.count | thousands }}</td>
+              <td data-label="Темп">{{ st.gap_text }}</td>
+              <td data-label="Последний скан">{{ st.last[11:16] }}{% if st.idle %} · ⏸ простаивает {{ st.since_last_min }} мин{% endif %}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
         </div>
         {% endif %}
-        <p class="empty-note">🔴 — сессия идёт сейчас. Стойки — отметки сканером и поиском по фамилии; файл офлайн-сканера в них не входит.</p>
+        <p class="empty-note">🔴 — сессия идёт сейчас. Стойки — отметки сканером и поиском по фамилии; файл офлайн-сканера в них не входит. Темп — обычный интервал между сканами; ⏸ — стойка не сканирует дольше {{ fl.idle_minutes }} мин, хотя другие за это время сканировали.</p>
       </div>
     </section>
     {% endif %}

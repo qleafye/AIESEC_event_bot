@@ -238,6 +238,9 @@ def _sheet_safe(value: str) -> str:
 # в стойки не идут: у первого время скана бывает примерным, второй — не работа стойки входа.
 RECENT_MINUTES = 15
 BUCKET_MINUTES = 15
+# Пропускная способность стоек (бэклог №13): стойка «простаивает», если не сканировала дольше
+# IDLE_MINUTES, а другие стойки за эти же минуты сканировали (очередь есть, эта стоит).
+IDLE_MINUTES = 10
 LIVE_SOURCES = ("miniapp", "manual")
 
 # Имя волонтёра — как в журнале площадки: снимок имени из Telegram в `venue_log`, иначе ФИО
@@ -300,24 +303,63 @@ def floor_queries(
     }
 
 
-def build_stands(stand_rows) -> list[dict]:
+def _parse_stamp(stamp: str):
+    import datetime as _dt
+
+    try:
+        return _dt.datetime.strptime(str(stamp)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def build_stands(stand_rows, now=None) -> list[dict]:
     """Строки `stands` (id волонтёра, имя, время скана — по возрастанию) -> стойки по убыванию
-    числа сканов за день."""
+    числа сканов за день. Для каждой (бэклог №13): медиана интервала между соседними сканами
+    в секундах (медиана, не среднее: перерыв стойки не портит её темп), минуты с последнего
+    скана и признак «простаивает» — только если передан `now` (сегодняшний день)."""
+    import statistics
+
     by_staff: dict = {}
     for r in stand_rows or []:
         acc = by_staff.setdefault(r[0], {"staff_id": r[0], "name": r[1] or f"id {r[0]}", "times": []})
         acc["times"].append(r[2])
-    stands = [
-        {"staff_id": s["staff_id"], "name": s["name"], "count": len(s["times"]),
-         "first": s["times"][0], "last": s["times"][-1]}
-        for s in by_staff.values()
-    ]
+    stands = []
+    for s in by_staff.values():
+        moments = [m for m in (_parse_stamp(t) for t in s["times"]) if m is not None]
+        gaps = [(b - a).total_seconds() for a, b in zip(moments, moments[1:])]
+        stands.append({
+            "staff_id": s["staff_id"], "name": s["name"], "count": len(s["times"]),
+            "first": s["times"][0], "last": s["times"][-1],
+            "median_gap_sec": round(statistics.median(gaps)) if gaps else None,
+            "since_last_min": None, "idle": False, "_last": moments[-1] if moments else None,
+        })
+    if now is not None:
+        window = IDLE_MINUTES * 60
+        busy = [st for st in stands if st["_last"] is not None and (now - st["_last"]).total_seconds() <= window]
+        for st in stands:
+            if st["_last"] is None:
+                continue
+            st["since_last_min"] = max(int((now - st["_last"]).total_seconds() // 60), 0)
+            st["idle"] = st not in busy and bool(busy)
+    for st in stands:
+        st.pop("_last")
     stands.sort(key=lambda s: (-s["count"], s["name"]))
     return stands
 
 
-def build_floor(approved, present, recent, session_rows, stand_rows, bucket_rows=None) -> dict:
-    """Сырые строки `floor_queries` -> отчёт «Сейчас на площадке» за день."""
+def gap_text(seconds: int | None) -> str:
+    """Медиана интервала словами: «раз в 25 с», «раз в 1 мин 20 с»."""
+    if seconds is None:
+        return "—"
+    minutes, sec = divmod(int(seconds), 60)
+    if not minutes:
+        return f"раз в {sec} с"
+    return f"раз в {minutes} мин {sec} с" if sec else f"раз в {minutes} мин"
+
+
+def build_floor(approved, present, recent, session_rows, stand_rows, bucket_rows=None, now=None) -> dict:
+    """Сырые строки `floor_queries` -> отчёт «Сейчас на площадке» за день. `now` передаётся
+    только для сегодняшнего дня: по нему считается простой стоек."""
     approved = int(approved or 0)
     present = int(present or 0)
     sessions = []
@@ -336,7 +378,7 @@ def build_floor(approved, present, recent, session_rows, stand_rows, bucket_rows
         "recent": int(recent or 0),
         "sessions": sessions,
         "live_sessions": [s for s in sessions if s["live"]],
-        "stands": build_stands(stand_rows),
+        "stands": build_stands(stand_rows, now),
         "buckets": [(r[0], int(r[1] or 0)) for r in bucket_rows or [] if r[0]],
     }
 

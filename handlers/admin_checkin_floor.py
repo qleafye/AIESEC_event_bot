@@ -69,7 +69,13 @@ def _session_line(s: dict, city_prefix: str | None) -> str:
 
 
 def _stand_line(pos: int, st: dict) -> str:
-    return f"{pos}. {html.escape(st['name'])} — {st['count']}"
+    """Стойка: сканов за день, темп (медиана интервала), простой (бэклог №13)."""
+    line = f"{pos}. {html.escape(st['name'])} — {st['count']}"
+    if st["median_gap_sec"] is not None:
+        line += f" · {arrival_stats.gap_text(st['median_gap_sec'])}"
+    if st["idle"]:
+        line += f" · ⏸ простаивает {st['since_last_min']} мин"
+    return line
 
 
 async def render_floor(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
@@ -107,6 +113,14 @@ async def render_floor(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
         lines.append(title)
         for pos, st in enumerate(top, 1):
             lines.append(_stand_line(pos, st))
+        # Простаивающая стойка вне топа тоже должна быть видна — ради неё экран и открывают.
+        for pos, st in enumerate(stands[len(top):], len(top) + 1):
+            if st["idle"]:
+                lines.append(_stand_line(pos, st))
+        lines.append(
+            f"<i>«Раз в …» — обычный интервал между сканами; ⏸ — стойка не сканирует дольше "
+            f"{arrival_stats.IDLE_MINUTES} мин, хотя другие за это время сканировали.</i>"
+        )
     else:
         lines.append("Сегодня сканером и поиском по фамилии ещё никого не отметили.")
     lines.append("")
