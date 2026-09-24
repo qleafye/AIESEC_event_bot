@@ -131,16 +131,24 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🎫 Настройки шпаргалки", callback_data=f"checkinvol_cfg:{_encode_city(code)}",
         )])
 
-    # 6. Программа (кнопка делегата, D-29) — гейт «есть фото ИЛИ хотя бы одна сессия» решает
-    # keyboards.builders.get_main_menu_kb на лету для каждого делегата; здесь показываем только
-    # часть гейта, которую видно БЕЗ конкретного делегата — есть ли сессии в программе города
-    # (фото — глобальная настройка экрана «🎪 Событие», не форумный тумблер).
+    # 6. Программа (кнопка делегата, D-29) — гейт «есть фото (своё городское ИЛИ общее) ИЛИ
+    # хотя бы одна сессия» решает keyboards.builders.get_main_menu_kb на лету для каждого
+    # делегата (services.program.has_program_content, общая точка правды); здесь показываем
+    # только часть гейта, которую видно БЕЗ конкретного делегата — есть ли сессии в программе
+    # города (фото — экран «🎪 Событие»/строка ниже, не тумблер).
     has_sessions = await has_program_sessions_for_city(code)
     lines.append(f"🗓 Программа (сессии заведены): {_status(has_sessions)}")
     if visible("admin_menu_buttons"):
         buttons.append([InlineKeyboardButton(
             text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data="admin_menu_buttons",
         )])
+    # D-29: что делегат видит по этой кнопке в Mini App — таблица сессий бота или фото. Общий
+    # рендер с экраном «🗓 Программа форума» — handlers/admin_program_view.py.
+    from handlers.admin_program_view import program_view_row
+    view_status, view_button = await program_view_row(code, "hub")
+    lines.append(view_status)
+    if visible(view_button.callback_data):
+        buttons.append([view_button])
 
     # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/session_feedback.py).
     fb_on = await sf.is_enabled_for_city(code)

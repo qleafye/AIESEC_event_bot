@@ -1179,6 +1179,7 @@ admin|callback_query|admin_forum_functions_city_pick|forumfn_city:*
 admin|callback_query|checkinvol_cfg_screen|checkinvol_cfg:*
 admin|callback_query|checkinvol_toggle_go|checkinvol_toggle:*
 admin|callback_query|checkinvol_time_start|checkinvol_time:*
+admin|callback_query|prog_view_toggle_go|prog_view_toggle:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1714,7 +1715,13 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 733-строчным снимком: 2 чистых
     # удаления блоков (9+1), 1 чистая вставка (3), 0 реордеров вне удалённого/вставленного
     # диапазона (733 -> 727).
-    assert len(GOLDEN_SNAPSHOT) == 734
+    # D-29 (24.09, «одна кнопка программы у делегата»): +1 admin.callback_query
+    # (prog_view_toggle_go|prog_view_toggle:*, handlers/admin_program_view.py) — шов
+    # импортируется из хвоста handlers/admin.py, СРАЗУ ПОСЛЕ admin_forum_functions; встал
+    # сразу после checkinvol_time_start и ПЕРЕД prog_fbday_open. Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним
+    # 734-строчным снимком: ровно одна чистая вставка, 0 удалений, 0 реордеров (734 -> 735).
+    assert len(GOLDEN_SNAPSHOT) == 735
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

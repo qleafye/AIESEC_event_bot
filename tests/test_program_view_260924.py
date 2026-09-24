@@ -150,3 +150,47 @@ def test_build_delegate_program_marks_nearest_future_slot_as_next_when_nothing_n
 def test_build_delegate_program_empty_city_returns_no_days(tmp_path):
     _use_tmp_db(tmp_path)
     assert _run(program.build_delegate_program("msk")) == []
+
+
+# ── Интеграция: чат-кнопка «📅 Программа форума» берёт фото ГОРОДА делегата (D-29 «Е») ──────
+
+class _FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _PhotoTrackingMessage:
+    """Тот же класс сообщения, что в `tests/test_delegate_texts_registry_260819.py`, плюс
+    ЗАПОМИНАНИЕ переданного `photo` — та база не различает file_id по нему (пишет только
+    подпись), а этому тесту нужно доказать, что ушёл именно городской file_id, а не общий."""
+
+    def __init__(self, text=None, user_id=None):
+        self.text = text
+        self.from_user = _FakeUser(user_id)
+        self.photos_sent = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        pass
+
+    async def answer_photo(self, photo, caption=None, parse_mode=None, reply_markup=None):
+        self.photos_sent.append(photo)
+
+
+def test_show_program_chat_button_uses_delegate_city_photo(tmp_path):
+    from handlers import user_actions as ua_mod
+
+    _use_tmp_db(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("program_photo_file_id", "GLOBAL_FILE_ID"))
+    from cities import per_city_key
+    _run(db.set_setting(per_city_key("program_photo_file_id", "msk"), "MSK_FILE_ID"))
+
+    delegate_id = 941924301
+    _run(db.add_user({
+        "telegram_id": delegate_id, "full_name": "Делегат МСК", "registration_date": "2026-08-01",
+        "event_city": "msk",
+    }))
+
+    message = _PhotoTrackingMessage(text="📅 Программа форума", user_id=delegate_id)
+    _run(ua_mod.show_program(message))
+    assert message.photos_sent == ["MSK_FILE_ID"]
