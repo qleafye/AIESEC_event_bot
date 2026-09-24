@@ -552,8 +552,16 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
     # и правим то же сообщение, вместо того чтобы держать колбэк «в загрузке» до конца отправки
     # (Telegram считает такой колбэк протухшим и показывает тапнувшему ошибку).
     await callback.answer("Рассылка началась…")
-    await callback.message.edit_text("⏳ Рассылаю QR...")
+    # Находка ревью 260924 (п.4): клавиатура «✅ Да, отправить»/«Отмена» убирается ДО запуска
+    # (reply_markup=None ЯВНО — без него editMessageText сохраняет прежнюю разметку) —
+    # повторный тап уже физически не по чему нажимать; send_broadcast вдобавок сама блокируется
+    # per-city локом (двойной барьер: и на кнопке, и на сервисе — второй ловит гонку, которую
+    # первый не успел бы, например форвард того же update).
+    await callback.message.edit_text("⏳ Рассылаю QR...", reply_markup=None)
     result = await send_broadcast(code)
+    if result.get("already_running"):
+        await callback.message.answer("⏳ Рассылка уже идёт — дождитесь её завершения.")
+        return
     if result.get("deferred_until") is not None:
         when = result["deferred_until"].strftime("%H:%M")
         await callback.message.answer(

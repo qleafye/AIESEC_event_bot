@@ -369,6 +369,26 @@ async def _send_one(telegram_id: int, png: bytes, caption: str) -> bool:
     return await _sched._safe_send(_factory, telegram_id)
 
 
+# Находка ревью 260924 (п.4): «📤 Разослать QR сейчас» отвечает на callback СРАЗУ (T-12-03,
+# рассылка может занять минуты), поэтому кнопки подтверждения физически успевают остаться
+# нажимаемыми на экране менеджера, пока идёт долгая отправка — второй тап (двойной клик,
+# задумчивость) запускал бы параллельный `send_broadcast` того же города с дублями рассылки.
+# Барьер здесь — второй, за хендлером (handlers/admin_checkin.py убирает клавиатуру ДО вызова,
+# см. `checkinqr_send_go`): `asyncio.Lock` НА ГОРОД, не глобальный (разные города рассылаются
+# независимо друг от друга). Простой `dict` (не `defaultdict`) — создаётся лениво, единственный
+# читатель/писатель — этот же однопоточный event loop, гонки на СОЗДАНИЕ лока нет (между
+# `.get`/`setdefault` нет await).
+_city_locks: dict[str | None, asyncio.Lock] = {}
+
+
+def _get_city_lock(city: str | None) -> asyncio.Lock:
+    lock = _city_locks.get(city)
+    if lock is None:
+        lock = asyncio.Lock()
+        _city_locks[city] = lock
+    return lock
+
+
 async def send_broadcast(city: str | None) -> dict:
     """Date-джоба вечерней рассылки И ручная кнопка «📤 Разослать QR сейчас»
     (handlers/admin_checkin.py) — ОДНА и та же функция, идемпотентная по построению:
@@ -378,47 +398,57 @@ async def send_broadcast(city: str | None) -> dict:
     Тихие часы делегатов (находка ревью 260924, `_city_defer_until`) — если СЕЙЧАС внутри окна
     города, ничего не отправляется и не отмечается: своя же джоба переставляется на конец окна,
     `checkin_qr_sends` не трогается ни для кого (следующее срабатывание перечитает аудиторию
-    с нуля, дублей нет)."""
-    deferred_at = await _city_defer_until(city)
-    if deferred_at is not None:
-        _defer_job(city, evening_job_id(city), _run_evening_job, deferred_at)
-        logger.info(f"checkin_broadcast.send_broadcast({city!r}): тихие часы — отложено на {deferred_at}")
-        return {"sent": 0, "failed": 0, "total": 0, "deferred_until": deferred_at}
+    с нуля, дублей нет).
 
-    import cities as _cities
+    Двойной тап «Разослать сейчас» (находка ревью 260924, п.4) — `lock.locked()` уже True, пока
+    рассылка этого же города в процессе -> второй вызов НЕМЕДЛЕННО возвращает
+    `already_running`, не встаёт в очередь на лок и не трогает БД вовсе."""
+    lock = _get_city_lock(city)
+    if lock.locked():
+        logger.info(f"checkin_broadcast.send_broadcast({city!r}): уже идёт — повторный вызов отклонён")
+        return {"sent": 0, "failed": 0, "total": 0, "already_running": True}
 
-    scope = _cities.city_scope(city)
-    eligible = await eligible_recipients(city)
-    already = await checkin_qr_sent_ids(city_scope=scope)
-    targets = [u for u in eligible if u["telegram_id"] not in already]
+    async with lock:
+        deferred_at = await _city_defer_until(city)
+        if deferred_at is not None:
+            _defer_job(city, evening_job_id(city), _run_evening_job, deferred_at)
+            logger.info(f"checkin_broadcast.send_broadcast({city!r}): тихие часы — отложено на {deferred_at}")
+            return {"sent": 0, "failed": 0, "total": 0, "deferred_until": deferred_at}
 
-    from cities import get_setting_typed_for_city
-    base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
+        import cities as _cities
 
-    sent = failed = 0
-    for user in targets:
-        tid = user["telegram_id"]
-        try:
-            png, _default_caption = await build_checkin_qr(user)
-            caption = await _translated_caption(tid, base_text)
-        except Exception as e:
-            logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
-            failed += 1
-            continue
-        ok = await _send_one(tid, png, caption)
-        if ok:
-            await checkin_qr_mark_sent(
-                tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            sent += 1
-        else:
-            failed += 1
-        await asyncio.sleep(0.05)
-    logger.info(
-        f"checkin_broadcast.send_broadcast({city!r}): sent {sent}, failed {failed} "
-        f"of {len(targets)} (пул {len(eligible)}, уже было {len(already)})"
-    )
-    return {"sent": sent, "failed": failed, "total": len(targets)}
+        scope = _cities.city_scope(city)
+        eligible = await eligible_recipients(city)
+        already = await checkin_qr_sent_ids(city_scope=scope)
+        targets = [u for u in eligible if u["telegram_id"] not in already]
+
+        from cities import get_setting_typed_for_city
+        base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
+
+        sent = failed = 0
+        for user in targets:
+            tid = user["telegram_id"]
+            try:
+                png, _default_caption = await build_checkin_qr(user)
+                caption = await _translated_caption(tid, base_text)
+            except Exception as e:
+                logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
+                failed += 1
+                continue
+            ok = await _send_one(tid, png, caption)
+            if ok:
+                await checkin_qr_mark_sent(
+                    tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+                )
+                sent += 1
+            else:
+                failed += 1
+            await asyncio.sleep(0.05)
+        logger.info(
+            f"checkin_broadcast.send_broadcast({city!r}): sent {sent}, failed {failed} "
+            f"of {len(targets)} (пул {len(eligible)}, уже было {len(already)})"
+        )
+        return {"sent": sent, "failed": failed, "total": len(targets)}
 
 
 async def send_morning_repeat(city: str | None) -> dict:

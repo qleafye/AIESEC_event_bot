@@ -610,3 +610,56 @@ def test_send_broadcast_ignores_quiet_hours_when_disabled(tmp_path, monkeypatch)
     result = _run(cb.send_broadcast(None))
     assert result["sent"] == 1
     assert len(bot.photos) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Находка ревью 260924 (п.4): двойной тап «Разослать сейчас» не запускает параллельную
+# рассылку того же города — второй вызов, пока первый ещё держит per-city лок, отклоняется
+# немедленно
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_send_broadcast_rejects_concurrent_call_for_same_city(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+
+    async def body():
+        lock = cb._get_city_lock(None)
+        async with lock:  # имитирует «рассылка этого города уже идёт»
+            return await cb.send_broadcast(None)
+
+    result = _run(body())
+    assert result == {"sent": 0, "failed": 0, "total": 0, "already_running": True}
+    assert bot.photos == []  # второй вызов не тронул ни БД, ни бота
+
+
+def test_send_broadcast_different_cities_do_not_block_each_other(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _seed_user(UID, event_city="spb", status="approved")
+    bot = _with_bot(monkeypatch)
+
+    async def body():
+        lock = cb._get_city_lock("tyumen")  # чужой город держит СВОЙ лок
+        async with lock:
+            return await cb.send_broadcast("spb")
+
+    result = _run(body())
+    assert result["sent"] == 1
+    assert len(bot.photos) == 1
+
+
+def test_send_broadcast_lock_released_after_completion(tmp_path, monkeypatch):
+    """Регрессия: лок обязан отпускаться после обычного завершения — иначе следующая ЗАКОННАЯ
+    рассылка того же города (рестарт джобы, второй тап уже ПОСЛЕ первого) отвечала бы
+    «already_running» навсегда."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+
+    result1 = _run(cb.send_broadcast(None))
+    assert result1["sent"] == 1
+    assert not cb._get_city_lock(None).locked()
+
+    result2 = _run(cb.send_broadcast(None))
+    assert "already_running" not in result2
+    assert len(bot.photos) == 1  # уже отправлен, идемпотентность прежняя — не 2
