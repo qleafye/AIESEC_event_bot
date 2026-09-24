@@ -35,7 +35,12 @@ def _ready(tmp_path, name="mute_isolation.db"):
 
 # ── Слой 1: структурная граница ─────────────────────────────────────────────────────────
 
-_ALLOWED_OWNERS = {"database/db.py", "handlers/admin_broadcasts.py", "services/scheduler.py"}
+# services/forum_noshow_poll.py — опрос неявившихся «почему не пришёл»: массовая рассылка-опрос
+# после форума, не служебное сообщение, поэтому «🔕» уважает (как рассылки из мастера).
+_ALLOWED_OWNERS = {
+    "database/db.py", "handlers/admin_broadcasts.py", "services/scheduler.py",
+    "services/forum_noshow_poll.py",
+}
 _NEEDLES = ("mute_broadcasts_until", "get_muted_today_ids")
 
 
