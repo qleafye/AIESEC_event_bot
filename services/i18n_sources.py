@@ -449,6 +449,14 @@ def code_literals() -> list[tuple[str, str]]:
     # (fail-soft тихо промолчал бы, guard-тест — нет). Добавлено сюда же, а не отдельным коммитом.
     items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, увидимся на форуме!"))
 
+    # Форум-ночь п.6 (D-25, идея №14): ответ «Я на месте» на шаблон «Не пришёл»
+    # (handlers/user_actions.py::checkin_not_arrived_respond) — показывает QR-экран тем же
+    # приёмом, что и остальные литералы этого блока.
+    items.append((
+        "lit:user_actions.checkin_not_arrived_here_qr",
+        "Покажи этот экран волонтёру на входе.",
+    ))
+
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа»
     # (handlers/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
     # модуль, i18n_sources.py его не импортирует, строки продублированы буквально).
