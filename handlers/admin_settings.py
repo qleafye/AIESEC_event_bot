@@ -1497,9 +1497,12 @@ async def toggle_checkin_qr_enabled(callback: types.CallbackQuery):
         callback, "checkin_qr_enabled", SETTINGS_SCHEMA["checkin_qr_enabled"]["label"],
     )
     # От мастера зависят джобы рассылки QR и шпаргалки волонтёру — без сверки включение ничего
-    # не планировало до рестарта. Сверка fail-soft сама.
-    from services.checkin_broadcast import reconcile_forum_jobs
-    await reconcile_forum_jobs()
+    # не планировало до рестарта. Тумблер уже сохранён и подтверждён — сбой сверки только в лог.
+    try:
+        from services.checkin_broadcast import reconcile_forum_jobs
+        await reconcile_forum_jobs()
+    except Exception:
+        logger.exception("toggle_checkin_qr_enabled: перепланирование рассылок форума упало")
 
 
 # Phase 32 (32-02, D-29): «🏅 Показывать имена в рейтинге волны» — enum on/off, дефолт "on".
