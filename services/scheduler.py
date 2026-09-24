@@ -467,45 +467,61 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
 
 
 # ── Форум-ночь п.7: «❗ Важное» + «🔕 Не присылать сегодня» — общий хвост доставки ────────────
-# Общие для мгновенной (handlers/admin_broadcasts.py::bc_go) и отложенной
-# (send_scheduled_broadcast ниже) доставки: маркер важности ПЕРЕД основным содержимым и
-# предложение «🔕» ПОСЛЕ. Отдельные сообщения, а не правка текста/подписи основной рассылки —
-# `bot.copy_message` (которым уходит мгновенная НЕ-альбомная рассылка, BC-01/02) не умеет
-# подменить текст ЧИСТО текстового сообщения (в отличие от caption медиа), а
-# `bot.send_media_group` вообще не принимает `reply_markup` — единого места для правки текста/
-# клавиатуры ВНУТРИ основной отправки для всех трёх форм (текст/фото/альбом) нет. Fail-soft
-# КАЖДЫМ шагом по отдельности: сбой маркера/предложения не должен считаться недоставленной
-# рассылкой — чекпоинт (mark_delivery/scheduled_broadcast_deliveries) завязан только на
-# ОСНОВНОЙ send.
+# Ревью 470ce5e..3703ba4 (находки): пометка важности и предложение «🔕» больше НЕ уходят
+# отдельными сообщениями — `bot.copy_message` умеет подменить CAPTION медиа-сообщения (в
+# отличие от .text чисто текстового — тот идёт через `bot.send_message` с готовым текстом), а
+# `reply_markup` копированием/отправкой поддерживают И send_message, И copy_message — единое
+# место правки нашлось. Осталось ровно одно исключение: `bot.send_media_group` не принимает
+# `reply_markup` вовсе, поэтому альбом несёт пометку важности ВНУТРИ подписи первого элемента
+# (см. `handlers/admin_broadcasts.py::_media_from_album_dicts`), а предложение «🔕» для альбома
+# по-прежнему отдельное сообщение — но не чаще раза в сутки на получателя (см.
+# `send_mute_offer_if_eligible` ниже), а не после КАЖДОЙ неважной альбомной рассылки.
+#
+# Итог: 1 API-вызов на получателя для text/фото/видео/документа, до 2 — только для альбома в
+# редкий день, когда предложение ещё не показывалось.
 
 MUTE_TODAY_CALLBACK = "bc_mute_today"
 UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
 
+# Публичные — используются и здесь, и в handlers/user_actions.py (свап кнопки на тапе), одна
+# точка правды на подпись обеих кнопок.
+MUTE_BUTTON_TEXT = "🔕 Не присылать сегодня"
+UNMUTE_BUTTON_TEXT = "🔔 Присылать всё"
+
 _MUTE_OFFER_TEXT = "Сегодня многовато рассылок? Можно отключить необязательные до завтра:"
 
 
-def _mute_offer_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔕 Не присылать сегодня", callback_data=MUTE_TODAY_CALLBACK),
-    ]])
+async def important_prefix() -> str:
+    """Пометка важности (реестр `important_broadcast_label`) — теперь ПЕРВАЯ строка самого
+    сообщения/подписи, не отдельное сообщение (см. докстринг раздела выше)."""
+    label = await get_setting("important_broadcast_label")
+    return (label or "❗ Важно").strip() or "❗ Важно"
 
 
-async def send_important_marker(bot, chat_id: int) -> int | None:
-    """Короткое сообщение-маркер ПЕРЕД важной рассылкой. `None` — сбой отправки (fail-soft,
-    основная рассылка идёт независимо от результата).
+def apply_important_prefix(content: str | None, important: bool, prefix: str) -> str | None:
+    """Склеивает пометку важности С содержимым. `important=False` -> `content` без изменений
+    (байт-в-байт для обычных рассылок — ни одной лишней пустой строки). `content` пусто (медиа
+    без подписи) -> пометка сама по себе, не пустая строка с двумя переводами строки."""
+    if not important:
+        return content
+    if content:
+        return f"{prefix}\n\n{content}"
+    return prefix
 
-    `bot` — явным аргументом, НЕ модульный `_bot`: мгновенная рассылка (handlers/
-    admin_broadcasts.py::bc_go) держит свой Bot через aiogram DI и не проходит через
-    `init_scheduler`, поэтому `_bot` там не обязан быть тем же объектом (в юнит-тестах —
-    вовсе не заполнен). Отложенная рассылка (send_scheduled_broadcast ниже) передаёт свой
-    модульный `_bot` явно — тот же результат, без скрытой зависимости от глобала здесь."""
-    try:
-        label = await get_setting("important_broadcast_label")
-        msg = await bot.send_message(chat_id, (label or "❗ Важно").strip() or "❗ Важно")
-        return msg.message_id
-    except Exception as e:
-        logger.warning(f"send_important_marker({chat_id}) failed: {e}")
-        return None
+
+async def _translated_button(text: str, callback_data: str, chat_id: int) -> InlineKeyboardButton:
+    from handlers import reg_i18n
+    from services import i18n as i18n_service
+    lang, tr_map = await i18n_service.context(chat_id)
+    return InlineKeyboardButton(text=reg_i18n.tr_text(text, lang, tr_map), callback_data=callback_data)
+
+
+async def mute_button(chat_id: int) -> InlineKeyboardButton:
+    return await _translated_button(MUTE_BUTTON_TEXT, MUTE_TODAY_CALLBACK, chat_id)
+
+
+async def unmute_button(chat_id: int) -> InlineKeyboardButton:
+    return await _translated_button(UNMUTE_BUTTON_TEXT, UNMUTE_TODAY_CALLBACK, chat_id)
 
 
 async def offer_mute_today_if_forum_day(chat_id: int) -> bool:
@@ -522,17 +538,47 @@ async def offer_mute_today_if_forum_day(chat_id: int) -> bool:
         return False
 
 
+async def recipient_markup(
+    chat_id: int, important: bool, base_markup: InlineKeyboardMarkup | None = None,
+) -> InlineKeyboardMarkup | None:
+    """Клавиатура ПОЛУЧАТЕЛЯ рассылки: собственная клавиатура менеджера (`base_markup`, если
+    есть — например, пересланный пост с кнопками-ссылками) + строка «🔕» ПОСЛЕДНЕЙ, когда
+    рассылка неважная и сегодня день форума города получателя. Кнопка ВНУТРИ клавиатуры самой
+    рассылки, не отдельным сообщением — правит находку ревью «предложение шлётся после каждой
+    рассылки» (было — спам ×2 на каждую неважную рассылку). `None`, если добавить нечего (нет
+    ни своей клавиатуры, ни повода предложить «🔕»)."""
+    rows = [list(row) for row in (base_markup.inline_keyboard if base_markup else [])]
+    if not important and await offer_mute_today_if_forum_day(chat_id):
+        rows.append([await mute_button(chat_id)])
+    if not rows:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int | None:
-    """ПОСЛЕ успешно доставленной НЕважной рассылки, в день форума города получателя —
-    отдельное сообщение с кнопкой «🔕». Важные рассылки никогда не предлагают отключиться
-    (D-XX: важное приходит всегда) — `important=True` выходит РАНЬШЕ гейта дня форума, без
-    единого лишнего чтения. `bot` — явным аргументом (см. докстринг send_important_marker)."""
+    """ТОЛЬКО для альбома — `bot.send_media_group` не принимает `reply_markup`, поэтому
+    предложение «🔕» для альбомной рассылки остаётся ОТДЕЛЬНЫМ сообщением (в отличие от
+    text/фото/видео/документа — там кнопка теперь внутри `recipient_markup`). Не чаще раза в
+    сутки (MSK) на получателя (`users.mute_offer_shown_date`) — иначе предложение спамило бы
+    после КАЖДОЙ неважной альбомной рассылки за день (находка ревью). Важные рассылки никогда
+    не предлагают отключиться (D-XX: важное приходит всегда)."""
     if important:
         return None
     try:
         if not await offer_mute_today_if_forum_day(chat_id):
             return None
-        msg = await bot.send_message(chat_id, _MUTE_OFFER_TEXT, reply_markup=_mute_offer_kb())
+        from database.db import get_mute_offer_shown_ids, mark_mute_offer_shown
+        today = _now_moscow_naive().strftime("%Y-%m-%d")
+        already_shown = await get_mute_offer_shown_ids(today)
+        if chat_id in already_shown:
+            return None
+        from handlers import reg_i18n
+        from services import i18n as i18n_service
+        lang, tr_map = await i18n_service.context(chat_id)
+        text = reg_i18n.tr_text(_MUTE_OFFER_TEXT, lang, tr_map)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[await mute_button(chat_id)]])
+        msg = await bot.send_message(chat_id, text, reply_markup=kb)
+        await mark_mute_offer_shown(chat_id, today)
         return msg.message_id
     except Exception as e:
         logger.warning(f"send_mute_offer_if_eligible({chat_id}) failed: {e}")
@@ -643,8 +689,12 @@ async def send_scheduled_broadcast(broadcast_id: int):
             )
             await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
 
-        text = row.get("text")
         photo = row.get("photo_file_id")
+        # Форум-ночь п.7 (переделка): пометка важности склеена С содержимым ОДИН раз, ДО цикла
+        # получателей — сам текст/подпись не зависит от получателя (в отличие от reply_markup
+        # ниже, та зависит от гейта дня форума ГОРОДА получателя, поэтому строится в цикле).
+        prefix = await important_prefix() if important else ""
+        content = apply_important_prefix(row.get("text"), important, prefix)
         # Checkpoint log from a previous (crashed) run: ok AND failed chats are skipped — a
         # failed one is a blocked/deactivated chat, re-hammering it on every resume is pointless.
         already = await list_delivered_chat_ids(broadcast_id)
@@ -659,17 +709,21 @@ async def send_scheduled_broadcast(broadcast_id: int):
             if chat_id in already:
                 skipped += 1
                 continue
-            if important:
-                await send_important_marker(_bot, chat_id)
+            # Ревью 470ce5e..3703ba4: раньше здесь уходило до 3 сообщений на получателя (маркер
+            # важности + содержимое + предложение «🔕») на одну паузу 0.05с, рассчитанную на
+            # один вызов. Теперь пометка — внутри `content`, кнопка «🔕» — внутри `markup`:
+            # ровно 1 API-вызов на получателя (scheduled-путь не поддерживает альбом, второго
+            # вызова здесь не бывает вовсе).
+            markup = await recipient_markup(chat_id, important)
             if photo:
-                async def _send(cid, _photo=photo, _text=text):
-                    msg = await _bot.send_photo(cid, _photo, caption=_text)
+                async def _send(cid, _photo=photo, _caption=content, _markup=markup):
+                    msg = await _bot.send_photo(cid, _photo, caption=_caption, reply_markup=_markup)
                     sent_message_ids[cid] = msg.message_id
                     return msg
                 ok = await _safe_send(_send, chat_id)
             else:
-                async def _send(cid, _text=text):
-                    msg = await _bot.send_message(cid, _text)
+                async def _send(cid, _text=content, _markup=markup):
+                    msg = await _bot.send_message(cid, _text, reply_markup=_markup)
                     sent_message_ids[cid] = msg.message_id
                     return msg
                 ok = await _safe_send(_send, chat_id)
@@ -677,9 +731,6 @@ async def send_scheduled_broadcast(broadcast_id: int):
             if ok and chat_id in sent_message_ids:
                 # fail-soft: отсутствие id (странный ответ API) не должно ронять рассылку
                 await record_broadcast_delivery(log_bid, chat_id, sent_message_ids[chat_id])
-                extra_mid = await send_mute_offer_if_eligible(_bot, chat_id, important)
-                if extra_mid is not None:
-                    await record_broadcast_delivery(log_bid, chat_id, extra_mid)
             if ok:
                 sent += 1
             else:
