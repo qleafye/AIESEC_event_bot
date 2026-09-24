@@ -393,6 +393,9 @@ ADMIN_CAPS: dict[str, str] = {
     # отзыв у получателей — та же capability, что и весь остальной раздел «Рассылки».
     "bc_go": "broadcast",
     "bc_no": "broadcast",
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности на превью немедленной рассылки —
+    # та же capability, что bc_go/bc_no рядом.
+    "bc_important_toggle": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
     "bc_revno": "broadcast",
@@ -433,6 +436,12 @@ ADMIN_CAPS: dict[str, str] = {
     "cksf_pick:*": "broadcast",
     "cksf_cancel": "broadcast",
     "sched_cancel_*": "broadcast",
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
+    # отложенной рассылки (handlers/admin_broadcasts.py::sched_*) — та же capability, что и
+    # весь мастер планирования (sched_cancel_* выше).
+    "sched_important_toggle": "broadcast",
+    "sched_go": "broadcast",
+    "sched_no": "broadcast",
     "state:Broadcast:*": "broadcast",
     # «📊 Опросы» (handlers/admin_polls.py + admin_poll_wizard.py) — то же право, что и
     # рассылки: опрос уходит той же аудитории тем же каналом. Без нового capability.
