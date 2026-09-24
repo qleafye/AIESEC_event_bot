@@ -195,6 +195,58 @@ def test_checkin_session_attended_and_not_attended(tmp_path):
     assert not_attended == [2]
 
 
+def test_checkin_session_not_attended_requires_approved_current_season(tmp_path):
+    """Тот же баг, что чинили у `checkin_entry`=`CHECKIN_NO`: «🚫 Не были на сессии X» без
+    гарда `status='approved' AND (season IS NULL OR season = event_season)` ловит
+    pending/rejected и делегатов прошлого сезона (482 импортированных 26/1) — никто из них
+    отметиться на сессии физически не мог, но раньше "не были" совпадало с любым из них."""
+    _ready(tmp_path)
+    _run(db.set_setting("event_season", "YL26"))
+    sid = _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Sess"))
+    _run(_add_user(1, status="approved", city="msk", season="YL26"))  # не был, текущий сезон
+    _run(_add_user(2, status="pending", city="msk", season="YL26"))  # не одобрен
+    _run(_add_user(3, status="rejected", city="msk", season="YL26"))  # отклонён
+    _run(_add_user(4, status="approved", city="msk", season="YL25"))  # прошлый сезон
+    _run(_add_user(5, status="approved", city="msk", season=None))  # легаси без сезона -> current
+    ids = set(_run(db.count_and_list_filtered(
+        [{"field": "checkin_session", "value": db.SESSION_NOT_ATTENDED, "session_id": sid}]
+    )))
+    assert ids == {1, 5}, ids
+
+
+def test_checkin_session_attended_also_guarded_by_status_and_season(tmp_path):
+    """Требование ночи: гард применён и к «🎤 Были на сессии» — отмеченный неодобренный/чужого
+    сезона делегат аномален (checkins физически не мог появиться без QR), но фильтр обязан
+    оставаться согласованным с «не были», а не полагаться на то, что аномалии не бывает."""
+    _ready(tmp_path)
+    _run(db.set_setting("event_season", "YL26"))
+    sid = _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Sess"))
+    _run(_add_user(1, status="approved", city="msk", season="YL26"))
+    _run(_add_user(2, status="pending", city="msk", season="YL26"))
+    _run(_add_user(3, status="approved", city="msk", season="YL25"))
+    _run(db.record_checkin(1, f"session:{sid}", source="miniapp"))
+    _run(db.record_checkin(2, f"session:{sid}", source="miniapp"))  # аномалия: pending с отметкой
+    _run(db.record_checkin(3, f"session:{sid}", source="miniapp"))  # аномалия: чужой сезон
+    ids = set(_run(db.count_and_list_filtered(
+        [{"field": "checkin_session", "value": db.SESSION_ATTENDED, "session_id": sid}]
+    )))
+    assert ids == {1}, ids
+
+
+def test_checkin_session_recomputes_event_season_on_every_call(tmp_path):
+    """Тот же приём D-25, что у `checkin_entry`: сезон резолвится ЗАНОВО на каждый вызов
+    `count_and_list_filtered`, не замораживается на момент выбора сессии в мастере."""
+    _ready(tmp_path)
+    _run(db.set_setting("event_season", "YL26"))
+    sid = _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Sess"))
+    _run(_add_user(1, status="approved", city="msk", season="YL26"))
+    _run(_add_user(2, status="approved", city="msk", season="YL27"))
+    spec = [{"field": "checkin_session", "value": db.SESSION_NOT_ATTENDED, "session_id": sid}]
+    assert _run(db.count_and_list_filtered(spec)) == [1]
+    _run(db.set_setting("event_season", "YL27"))
+    assert _run(db.count_and_list_filtered(spec)) == [2]
+
+
 def test_checkin_session_deleted_session_fails_closed_not_everyone(tmp_path):
     """WR-01: `session_id`, удалённый между планированием и отправкой, НЕ должен молча
     превратить «не были на сессии» во «всех» (NOT EXISTS на никогда не существовавшую точку

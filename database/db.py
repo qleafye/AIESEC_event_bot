@@ -3934,6 +3934,19 @@ SESSION_ATTENDED = "attended"
 SESSION_NOT_ATTENDED = "not_attended"
 
 
+def _approved_current_season_frag(event_season: str | None) -> tuple[str, list]:
+    """Общий гард «approved + текущий сезон» — `status = 'approved' AND (season IS NULL OR
+    season = ?)`. Переиспользуется в `checkin_entry`=`CHECKIN_NO` и в обеих ветках
+    `checkin_session` (баг форум-ночи: у «🚫 Не были на сессии X» этого гарда не было вовсе, в
+    отличие от соседней `checkin_entry`=`CHECKIN_NO` — в аудиторию попадали pending/rejected и
+    approved-делегаты прошлого сезона, 482 импортированных 26/1 без QR). `event_season=None`
+    (настройка не задана) — тот же fail-soft приём, что у `count_approved_current_season`:
+    сезон не фильтруется, ограничение остаётся только по `status`."""
+    season_frag = "(season IS NULL OR season = ?)" if event_season else "1=1"
+    params = [event_season] if event_season else []
+    return f"status = 'approved' AND {season_frag}", params
+
+
 def _resume_has_fragment() -> str:
     """SQL fragment: «резюме есть» — любая из `RESUME_COLUMNS` непуста (`-` тоже пусто).
     Единственное место, где это условие собрано — и `_build_filter_clause`, и
@@ -4115,11 +4128,9 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 clauses.append(exists_frag)
                 params.append(CHECKIN_ENTRY_POINT)
             elif value == CHECKIN_NO:
-                season = f.get("event_season")
-                season_frag = "(season IS NULL OR season = ?)" if season else "1=1"
-                clauses.append(f"(status = 'approved' AND {season_frag} AND NOT {exists_frag})")
-                if season:
-                    params.append(season)
+                guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
+                clauses.append(f"({guard_frag} AND NOT {exists_frag})")
+                params.extend(guard_params)
                 params.append(CHECKIN_ENTRY_POINT)
             else:
                 # WR-01, тот же довод, что у resume/event_city/season выше: неизвестное значение
@@ -4133,6 +4144,13 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             # отправкой: без этой проверки «не были» на несуществующей сессии совпало бы С КАЖДЫМ
             # (NOT EXISTS на point, которого никогда не было ни у кого) — тот же WR-01 fail-closed
             # довод, что у неизвестного event_city.
+            # Гард «approved + текущий сезон» (`_approved_current_season_frag`, `event_season` —
+            # снимок настройки, наполняет `_resolve_checkin_session_validity` НИЖЕ, тот же приём,
+            # что `_resolve_checkin_entry_season`) — БЕЗ него «не были на сессии» ловил бы ещё и
+            # pending/rejected/прошлый сезон, в точности та дыра, что у `checkin_entry` уже
+            # закрыта. На «были на сессии» гард тоже стоит: отмеченный неодобренный/чужого
+            # сезона — аномалия данных, но рассылка о программе форума должна оставаться
+            # согласованной с «Отметка на форуме», не только «не были».
             value = f.get("value")
             session_id = f.get("session_id")
             if f.get("_invalid") or value not in (SESSION_ATTENDED, SESSION_NOT_ATTENDED) \
@@ -4143,7 +4161,10 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                     "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
                     "AND c.point = ?)"
                 )
-                clauses.append(exists_frag if value == SESSION_ATTENDED else f"NOT {exists_frag}")
+                presence_frag = exists_frag if value == SESSION_ATTENDED else f"NOT {exists_frag}"
+                guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
+                clauses.append(f"({guard_frag} AND {presence_frag})")
+                params.extend(guard_params)
                 params.append(f"session:{session_id}")
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
@@ -4348,9 +4369,14 @@ async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:
     """WR-01-style fail-closed: помечает `checkin_session`-записи с уже удалённым
     `session_id` (`_invalid=True`) — без этой проверки удалённая между планированием и
     отправкой сессия молча превратила бы «не были на сессии X» во «все» (см. докстринг ветки
-    `checkin_session` в `_build_filter_clause`)."""
+    `checkin_session` в `_build_filter_clause`). Заодно кладёт `event_season` СНИМКОМ настройки
+    на МОМЕНТ вызова — тот же приём, что `_resolve_checkin_entry_season` выше, переиспользован
+    здесь (не отдельная функция), потому что уже итерирует ровно те же записи `checkin_session`,
+    которым нужен гард `status = 'approved' AND (season IS NULL OR season = ?)`
+    (`_approved_current_season_frag`, обе ветки `attended`/`not_attended`)."""
     if not any(isinstance(f, dict) and f.get("field") == "checkin_session" for f in filters):
         return filters
+    event_season = (await get_setting("event_season") or "").strip() or None
     cache: dict[int, bool] = {}
     result: list[dict] = []
     for f in filters:
@@ -4361,6 +4387,7 @@ async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:
                 if sid not in cache:
                     cache[sid] = (await get_program_session(sid)) is not None
                 valid = cache[sid]
+            f = {**f, "event_season": event_season}
             result.append(f if valid else {**f, "_invalid": True})
         else:
             result.append(f)
