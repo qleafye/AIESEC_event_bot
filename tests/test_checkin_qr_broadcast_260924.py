@@ -378,6 +378,34 @@ def test_confirm_button_literal_matches_callback():
     assert found
 
 
+def test_send_broadcast_translates_caption_for_english_delegate(tmp_path, monkeypatch):
+    """Задача 3 (D-03): текст рассылки уходит через тот же перевод, что «🎟 Мой QR»
+    (`handlers.reg_i18n.tr_text`) — делегат с языком «en» получает английскую подпись
+    (`services.i18n_form_manual.FORM_DEFAULT_EN`), а не русский дефолт как есть."""
+    from services.i18n_form_manual import FORM_DEFAULT_EN, seed
+
+    _ready(tmp_path)
+    _run(_set_setting("delegate_lang_enabled", "on"))
+    _run(seed())
+    _seed_user(UID, status="approved")
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET lang = 'en' WHERE telegram_id = ?", (UID,))
+    conn.commit()
+    conn.close()
+    bot = _with_bot(monkeypatch)
+
+    _run(cb.send_broadcast(None))
+
+    assert len(bot.photos) == 1
+    default_ru = (
+        "Завтра форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — "
+        "на площадке может не быть сети."
+    )
+    _tid, caption, _kb = bot.photos[0]
+    assert caption == FORM_DEFAULT_EN[default_ru]
+    assert caption != default_ru
+
+
 def test_checkin_qr_mark_sent_is_idempotent(tmp_path):
     _ready(tmp_path)
     _seed_user(UID, status="approved")
