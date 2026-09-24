@@ -18,6 +18,8 @@ sqlite3 read-only). Прецедент — `tg_media.py`/`web_theme.py`: тол�
   такие отметки считаем как обычные и отдельно говорим, сколько их.
 - Сессии — `program_sessions` города + число отметок `session:{id}` и заполненность зала
   (`program_halls.capacity`), если вместимость задана.
+Все счётчики людей — COUNT(DISTINCT telegram_id): сегодня дублей не даёт UNIQUE(telegram_id,
+point), но число не должно зависеть от того, что эту уникальность когда-нибудь ослабят.
 Время в таблице отметок московское (конвенция `services.timeutil.msk_now`).
 """
 from __future__ import annotations
@@ -49,7 +51,8 @@ def arrival_queries(users_where: str, users_params: list, session_city: str | No
     return {
         "approved": (f"SELECT COUNT(*) FROM users WHERE {users_where}", list(users_params)),
         "arrived": (
-            "SELECT COUNT(*), COALESCE(SUM(approx_time), 0) FROM checkins "
+            "SELECT COUNT(DISTINCT telegram_id), "
+            "COUNT(DISTINCT CASE WHEN approx_time = 1 THEN telegram_id END) FROM checkins "
             f"WHERE point = ? AND telegram_id IN ({sub})",
             [ENTRY_POINT, *users_params],
         ),
@@ -61,7 +64,8 @@ def arrival_queries(users_where: str, users_params: list, session_city: str | No
         ),
         "sessions": (
             "SELECT s.id, s.city, s.day, s.start_time, s.end_time, s.title, h.name, h.capacity, "
-            "COUNT(c.id), COALESCE(SUM(c.approx_time), 0) "
+            "COUNT(DISTINCT c.telegram_id), "
+            "COUNT(DISTINCT CASE WHEN c.approx_time = 1 THEN c.telegram_id END) "
             "FROM program_sessions s "
             "LEFT JOIN program_halls h ON h.id = s.hall_id "
             f"LEFT JOIN checkins c ON c.point = '{SESSION_POINT_PREFIX}' || s.id "
