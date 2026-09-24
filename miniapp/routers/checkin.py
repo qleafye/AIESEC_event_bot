@@ -37,6 +37,7 @@ from services.checkin import (
     ENTRY_POINT,
     checkin_denial,
     current_event_tag,
+    mark_arrived_in_sheet,
     parse_qr_payload,
     resolve_scanned_user,
 )
@@ -105,6 +106,7 @@ async def checkin_scan(
     status, scanned_at = await record_checkin(
         user["telegram_id"], body.point or ENTRY_POINT, source="miniapp", by_staff_id=p.telegram_id,
     )
+    await mark_arrived_in_sheet(user["telegram_id"], status, scanned_at)
     return {"status": status, "scanned_at": scanned_at, **_person_fields(user)}
 
 
@@ -133,6 +135,7 @@ async def checkin_manual(
     status, scanned_at = await record_checkin(
         user["telegram_id"], body.point or ENTRY_POINT, source="manual", by_staff_id=p.telegram_id,
     )
+    await mark_arrived_in_sheet(user["telegram_id"], status, scanned_at)
     return {"status": status, "scanned_at": scanned_at, **_person_fields(user)}
 
 
