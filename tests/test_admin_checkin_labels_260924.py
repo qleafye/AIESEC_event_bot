@@ -130,7 +130,10 @@ def test_all_cities_buttons_have_words_and_city_name(tmp_path, monkeypatch):
     assert by_cb[f"checkinqr_cfg:{msk}"] == "⚙️ Настройки QR — Москва"
     assert by_cb[f"cna_send:{msk}"] == "📨 Написать не пришедшим — Москва"
     for row in kb.inline_keyboard:
-        assert len(row) == 1  # длинные подписи — по одной кнопке в ряд
+        # Длинные подписи с городом («… — Москва») — по одной кнопке в ряд; короткие общие
+        # («📊 Статистика прихода» + «📍 Сейчас на площадке») могут стоять парой.
+        if any(" — " in b.text for b in row):
+            assert len(row) == 1
         for b in row:
             assert len(b.callback_data.encode("utf-8")) <= 64
 
