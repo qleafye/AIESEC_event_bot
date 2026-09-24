@@ -187,7 +187,15 @@ def csv_bytes(
     `total` — строка «Итого» в таблице итогов (режим «Все города»)."""
     labels = city_labels or {}
     out = io.StringIO()
-    w = csv.writer(out, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    raw = csv.writer(out, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+    class _SafeWriter:
+        # Любая строковая ячейка (подпись города, зал, название — вводит менеджер) — через
+        # `_sheet_safe`, чтобы Excel не принял её за формулу; числа идут как есть.
+        def writerow(self, row):
+            raw.writerow([_sheet_safe(v) if isinstance(v, str) else v for v in row])
+
+    w = _SafeWriter()
     w.writerow(["Итоги"])
     w.writerow(["Город", "Одобрено", "Пришли", "Не пришли", "Явка, %", "Из них время примерное"])
     for label, rep in reports:
@@ -209,14 +217,15 @@ def csv_bytes(
     for _label, rep in reports:
         for s in rep["sessions"]:
             w.writerow([labels.get(s["city"], s["city"]), s["day_label"],
-                        f"{s['start']}–{s['end']}", _sheet_safe(s["hall"]), _sheet_safe(s["title"]),
+                        f"{s['start']}–{s['end']}", s["hall"], s["title"],
                         s["count"], "" if s["capacity"] is None else s["capacity"],
                         "" if s["fill_pct"] is None else s["fill_pct"], s["approx"]])
     return ("\ufeff" + out.getvalue()).encode("utf-8")
 
 
 def _sheet_safe(value: str) -> str:
-    """Название сессии вводит менеджер — ведущие `= + - @` Excel принял бы за формулу."""
-    if value and value[0] in "=+-@":
+    """Строки вводит менеджер (подпись города, зал, название) — ведущие `= + - @` и
+    табуляцию/перевод строки Excel принял бы за формулу (CSV injection)."""
+    if value and value[0] in "=+-@\t\r":
         return "'" + value
     return value
