@@ -950,6 +950,16 @@ ADMIN_CAPS: dict[str, str] = {
     "cna_send:*": "moderate_reg",
     "cna_send_go:*": "moderate_reg",
     "cna_send_no": "moderate_reg",
+    # Идеи №31/№32: «📓 Журнал площадки» и снятие отметки менеджером (handlers/admin_venue.py) —
+    # «moderate_reg», тот же довод, что у перевыпуска QR: правка чужих отметок, не сканирование.
+    "admin_venue_log": "moderate_reg",
+    "vlog:*": "moderate_reg",
+    "vlogst": "moderate_reg",
+    "vrv_find": "moderate_reg",
+    "vrv_u:*": "moderate_reg",
+    "vrv_p:*": "moderate_reg",
+    "vrv_go:*": "moderate_reg",
+    "state:VenueRevokeFind:*": "moderate_reg",
 
     # Бэклог чек-ина п.10: «📊 Статистика прихода» (handlers/admin_checkin_stats.py) — сводка по
     # всему городу для менеджера, не волонтёрская `checkin`; та же капа, что у соседних
