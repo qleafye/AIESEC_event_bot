@@ -36,6 +36,7 @@ from cities import (
     get_setting_typed_for_city,
 )
 from database.db import (
+    count_checkins_by_point,
     create_program_hall,
     create_program_session,
     delete_program_session,
@@ -57,6 +58,7 @@ from services.program import (
     hall_conflict_warning,
     parse_day_input,
     parse_time_range,
+    point_for_session,
     sessions_for_city_day,
     suggested_days,
 )
@@ -679,9 +681,15 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
     if session is None:
         return None
     hall_name = None
+    hall_capacity = None
     if session.get("hall_id") is not None:
         hall = await get_program_hall(session["hall_id"])
-        hall_name = hall["name"] if hall else None
+        if hall:
+            hall_name = hall["name"]
+            hall_capacity = hall.get("capacity")
+
+    arrived = await count_checkins_by_point(point_for_session(session["id"]))
+    arrived_line = f"Отмечено: {arrived} из {hall_capacity}" if hall_capacity else f"Отмечено: {arrived}"
 
     lines = [
         f"🗓 <b>{html_module.escape(session['title'])}</b>", "",
@@ -689,6 +697,7 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         f"⏰ {format_time_range(session['start_time'], session['end_time'])}",
         f"🏛 Зал: {html_module.escape(hall_name) if hall_name else 'не указан'}",
         f"🎤 Спикер: {html_module.escape(session['speaker']) if session.get('speaker') else 'не указан'}",
+        f"✅ {arrived_line}",
     ]
     if session.get("description"):
         lines.append("")

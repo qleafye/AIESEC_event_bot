@@ -25,23 +25,31 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, city_scope, enabled_cities, normalize_city
+from cities import (
+    cities_module_on,
+    city_label,
+    city_scope,
+    default_city_code,
+    enabled_cities,
+    normalize_city,
+)
 from database.db import (
     count_approved_current_season,
     count_checkins_by_point,
     get_user,
-    record_checkin,
 )
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
+    ENTRY_POINT_LABEL,
     checkin_denial,
     current_event_tag,
-    mark_arrived_in_sheet,
     parse_qr_payload,
+    record_arrival,
     resolve_scanned_user,
 )
 from services.person_search import search_people
+from services.program import checkin_session_points
 
 from miniapp.deps import Principal, require_cap, require_section
 
@@ -60,6 +68,18 @@ async def _bound_city(request: Request, p: Principal) -> str | None:
     if not await cities_module_on() or not p.city:
         return None
     return normalize_city(p.city)
+
+
+async def _resolve_scanner_city(bound: str | None) -> str | None:
+    """Форум-ночь п.5 (D-18): тот же трёхветочный приём, что
+    `handlers/admin_checkin.py::_resolve_checkin_screen_city` — привязанный город менеджера
+    сразу его, модуль выключен -> единственный дефолтный город, иначе (суперадмин/непривязанный
+    менеджер) -> `None`, экрану сканера нужен явный выбор города (`GET /points?city=`)."""
+    if bound is not None:
+        return bound
+    if not await cities_module_on():
+        return default_city_code()
+    return None
 
 
 def _person_fields(user: dict) -> dict:
@@ -103,11 +123,10 @@ async def checkin_scan(
             "city": (user or {}).get("event_city") or parsed.get("city") or None,
         }
 
-    status, scanned_at = await record_checkin(
-        user["telegram_id"], body.point or ENTRY_POINT, source="miniapp", by_staff_id=p.telegram_id,
+    result = await record_arrival(
+        user, body.point or ENTRY_POINT, source="miniapp", by_staff_id=p.telegram_id,
     )
-    await mark_arrived_in_sheet(user["telegram_id"], status, scanned_at)
-    return {"status": status, "scanned_at": scanned_at, **_person_fields(user)}
+    return {**result, **_person_fields(user)}
 
 
 class ManualBody(BaseModel):
@@ -132,11 +151,10 @@ async def checkin_manual(
             "full_name": (user or {}).get("full_name") if user else None,
             "city": (user or {}).get("event_city") if user else None,
         }
-    status, scanned_at = await record_checkin(
-        user["telegram_id"], body.point or ENTRY_POINT, source="manual", by_staff_id=p.telegram_id,
+    result = await record_arrival(
+        user, body.point or ENTRY_POINT, source="manual", by_staff_id=p.telegram_id,
     )
-    await mark_arrived_in_sheet(user["telegram_id"], status, scanned_at)
-    return {"status": status, "scanned_at": scanned_at, **_person_fields(user)}
+    return {**result, **_person_fields(user)}
 
 
 @router.get("/app/api/checkin/search")
@@ -174,6 +192,37 @@ async def checkin_search(
     # `search_people` (алфавит по имени) сохраняется — сортировка Python стабильна.
     items.sort(key=lambda it: 0 if it["eligible"] else 1)
     return {"items": items}
+
+
+@router.get("/app/api/checkin/points")
+async def checkin_points(
+    request: Request, city: str | None = None,
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Форум-ночь п.5 (D-18/D-20): точки отметки для сканера — «Вход» + сессии СЕГОДНЯ города
+    волонтёра, «идут сейчас» — первыми. Городской скоуп — тот же трёхветочный приём, что
+    `/stats` выше: привязанный менеджер получает свой город сразу (без выбора), суперадмин/
+    непривязанный менеджер — список городов на выбор (`?city=`, отдаётся в `cities`), модуль
+    выключен — единственный (дефолтный) город без выбора вовсе."""
+    bound = await _bound_city(request, p)
+    resolved = await _resolve_scanner_city(bound)
+    cities_payload = None
+    if resolved is None:
+        enabled = await enabled_cities()
+        if city and any(c["code"] == city for c in enabled):
+            resolved = city
+        else:
+            cities_payload = [{"code": c["code"], "label": await city_label(c["code"])} for c in enabled]
+
+    points = [{
+        "point": ENTRY_POINT, "label": ENTRY_POINT_LABEL, "live": None,
+        "count": await count_checkins_by_point(ENTRY_POINT), "capacity": None,
+    }]
+    if resolved is not None:
+        for sp in await checkin_session_points(resolved):
+            points.append({**sp, "count": await count_checkins_by_point(sp["point"])})
+    return {"city": resolved, "cities": cities_payload, "points": points}
 
 
 @router.get("/app/api/checkin/stats")

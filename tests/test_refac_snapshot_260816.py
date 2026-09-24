@@ -1079,6 +1079,7 @@ admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
 admin|callback_query|show_admin_checkin|admin_checkin
 admin|callback_query|checkin_upload_start|checkin_upload_start
+admin|callback_query|checkin_point_city_pick|checkin_point_city:*
 admin|callback_query|checkin_point_pick|checkin_point:*
 admin|callback_query|checkin_reissue_confirm|checkin_reissue:*
 admin|callback_query|checkin_reissue_go|checkin_reissue_yes:*
@@ -1523,7 +1524,13 @@ def test_snapshot_total_handler_count_is_292():
     # Форум-ночь п.4 (делегатский экран «🗓 Программа»): +3 хендлера — handlers/program.py
     # (1 user_actions.message + 2 user_actions.callback_query, см. drift-ноту над
     # GOLDEN_SNAPSHOT) — 678 -> 681.
-    assert len(GOLDEN_SNAPSHOT) == 681
+    # Форум-ночь п.5 (D-18, точки-сессии в загрузке CSV): +1 хендлер — handlers/admin_checkin.py
+    # получил checkin_point_city_pick (admin.callback_query, checkin_point_city:*) — встал сразу
+    # после checkin_upload_start и ПЕРЕД checkin_point_pick (город выбирается ДО точки, тот же
+    # порядок, что в самом файле). Пересчитано RUNNING `_build_snapshot_lines()` и сверено
+    # diff'ом с прежним 681-строчным снимком: ровно одна вставка, 0 удалений, 0 реордеров
+    # (681 -> 682).
+    assert len(GOLDEN_SNAPSHOT) == 682
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

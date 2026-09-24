@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from handlers import admin_checkin
 from handlers.states import CheckinTestUpload
+from services import checkin as checkin_mod
 from services.checkin import build_payload, current_event_tag
 from tests._dbtpl import fast_init_db
 
@@ -177,7 +178,8 @@ def test_upload_no_matching_codes_gives_friendly_error(tmp_path):
 
 def test_upload_never_calls_record_checkin(tmp_path, monkeypatch):
     """Гвоздь задачи: пробная выгрузка НИЧЕГО не отмечает, даже если код в файле совпадает
-    с настоящим делегатским токеном."""
+    с настоящим делегатским токеном. Форум-ночь п.5: `record_checkin`/`record_arrival` теперь
+    единая точка отметки для входа И сессий — сторожим обе."""
     _db_ready(tmp_path)
     state = _new_state(ADMIN_ID)
     asyncio.run(state.set_state(CheckinTestUpload.waiting_file))
@@ -186,7 +188,12 @@ def test_upload_never_calls_record_checkin(tmp_path, monkeypatch):
     async def _fake_record_checkin(*a, **k):
         called.append((a, k))
         return "new", "2026-10-03 09:15:00"
-    monkeypatch.setattr(admin_checkin, "record_checkin", _fake_record_checkin)
+
+    async def _fake_record_arrival(*a, **k):
+        called.append((a, k))
+        return {"status": "new", "scanned_at": "2026-10-03 09:15:00"}
+    monkeypatch.setattr(checkin_mod, "record_checkin", _fake_record_checkin)
+    monkeypatch.setattr(checkin_mod, "record_arrival", _fake_record_arrival)
 
     tag = asyncio.run(current_event_tag())
     qr = build_payload(tag, "Тестовый QR", "—", "TESTreal000")
