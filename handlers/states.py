@@ -343,6 +343,30 @@ class ForumDayMenuTimeEdit(StatesGroup):
     waiting_value = State()
 
 
+class ForumDayReportTimeEdit(StatesGroup):
+    # Идея №16 бэклога чек-ина (отчёт дня форума вечером): ввод «ЧЧ:ММ» для времени ежедневной
+    # отправки (handlers/admin_forum_functions.py, forum_day_report_time) — тот же приём, что
+    # CheckinVolGuideTimeEdit/ForumDayMenuTimeEdit выше, один временной слот, город — в
+    # state.get_data().
+    waiting_value = State()
+
+
+class ForumNoshowPollTimeEdit(StatesGroup):
+    # Идея №23 бэклога чек-ина (опрос неявившихся): ввод «ЧЧ:ММ» для времени отправки на
+    # следующий день после форума (handlers/admin_forum_functions.py, forum_noshow_poll_time) —
+    # тот же приём, что ForumDayReportTimeEdit выше.
+    waiting_value = State()
+
+
+class ForumNoshowPollOther(StatesGroup):
+    # Идея №23 бэклога чек-ина: делегат нажал «Другое» на опросе неявившихся — ждём свободный
+    # текст следующим сообщением (handlers/forum_noshow_poll.py). Право не нужно (delegate-side,
+    # вне CapabilityMiddleware — тот же прецедент, что SosReport/SessionFeedbackComment выше).
+    # Отмена — следующий /start (cmd_start чистит FSM, см. докстринг SosReport выше), своего
+    # Command("cancel")/«Отмена»-хендлера не заводим (тот же приём, что SessionFeedbackComment).
+    waiting = State()
+
+
 class ProgramSessionField(StatesGroup):
     # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
     # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за

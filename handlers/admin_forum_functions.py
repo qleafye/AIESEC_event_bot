@@ -49,10 +49,15 @@ from handlers.admin_checkin_training import sheet_allowed
 from handlers.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
 from handlers.states import ForumDayMenuTimeEdit
+from handlers.states import ForumDayReportTimeEdit, ForumNoshowPollTimeEdit
 from keyboards.builders import get_cancel_kb
 from services import session_feedback as sf
 from services.checkin_volunteer_broadcast import schedule_city_job as schedule_volunteer_guide_job
 from services.forum_day_menu import is_forum_day_menu_active_for_city
+from services import forum_day_report as fdr
+from services import forum_noshow_poll as fnsp
+from services.forum_day_report import schedule_city_job as schedule_day_report_job
+from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
 from services.sos import is_sos_active_for_city
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
@@ -206,6 +211,22 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         lines.append(f"👋 Приветствие после отметки на входе: {_status(welcome_on)}")
         buttons.append([InlineKeyboardButton(
             text="👋 Настройки приветствия после отметки", callback_data=f"forumwelcome_cfg:{_encode_city(code)}",
+        )])
+
+        # Идея №16 бэклога чек-ина: отчёт дня форума вечером — тумблер + время, свой экран
+        # этого же модуля (forumdayreport_cfg:*).
+        report_on = await get_setting_typed_for_city("forum_day_report_enabled", code) == "on"
+        lines.append(f"📊 Отчёт дня форума вечером: {_status(report_on)}")
+        buttons.append([InlineKeyboardButton(
+            text="📊 Настройки отчёта дня форума", callback_data=f"forumdayreport_cfg:{_encode_city(code)}",
+        )])
+
+        # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — тумблер + время,
+        # свой экран этого же модуля (forumnoshowpoll_cfg:*).
+        poll_on = await get_setting_typed_for_city("forum_noshow_poll_enabled", code) == "on"
+        lines.append(f"❓ Опрос неявившихся «почему не пришёл»: {_status(poll_on)}")
+        buttons.append([InlineKeyboardButton(
+            text="❓ Настройки опроса неявившихся", callback_data=f"forumnoshowpoll_cfg:{_encode_city(code)}",
         )])
 
     if not await cities_module_on():
@@ -545,3 +566,292 @@ async def forumwelcome_toggle_go(callback: types.CallbackQuery):
     text, kb = await _welcome_cfg_text_kb(code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+# ── Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером ──────────────────────────────────
+# Форма — тот же приём, что «Шпаргалка волонтёра» выше (тумблер + время), плюс две ручные
+# кнопки: «Отчёт дня сейчас» (не трогает идемпотентность автоматической джобы) и «Выгрузить
+# отметки (CSV)».
+
+async def _safe_reschedule_day_report(code: str | None) -> None:
+    import logging
+    try:
+        await schedule_day_report_job(code)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"forum_day_report reschedule({code!r}) failed: {e}")
+
+
+async def _day_report_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("forum_day_report_enabled", code)
+    t = await get_setting_typed_for_city("forum_day_report_time", code) or "21:00"
+    label = await city_label(code) if code else None
+    on = enabled == "on"
+
+    lines = ["📊 <b>Отчёт дня форума</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
+    lines.append(f"Время (каждый день форума): {t}")
+    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    if not forum_date_set:
+        lines.append("\n⚠️ «🗓 Дата начала форума» не задана — отчёт не поставится, даже если Вкл здесь.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"forumdayreport_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🕕 Время: {t}",
+            callback_data=f"forumdayreport_time:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="📊 Отчёт дня сейчас", callback_data=f"forumdayreport_now:{_encode_city(code)}")],
+        [InlineKeyboardButton(text="📥 Выгрузить отметки (CSV)", callback_data=f"forumdayreport_csv:{_encode_city(code)}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("forumdayreport_cfg:"))
+async def forumdayreport_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await _day_report_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("forumdayreport_toggle:"))
+async def forumdayreport_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "forum_day_report_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current == "on" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await _safe_reschedule_day_report(code)
+    text, kb = await _day_report_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("forumdayreport_time:"))
+async def forumdayreport_time_start(callback: types.CallbackQuery, state: FSMContext):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    await state.update_data(forumdayreport_time_city=code)
+    await state.set_state(ForumDayReportTimeEdit.waiting_value)
+    await callback.message.answer(
+        "Во сколько КАЖДЫЙ день форума слать отчёт дня (московское время)? Формат "
+        "<code>ЧЧ:ММ</code>, например <code>21:00</code>.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(ForumDayReportTimeEdit), Command("cancel"))
+@router.message(StateFilter(ForumDayReportTimeEdit), F.text == "Отмена")
+async def cancel_forumdayreport_time_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(ForumDayReportTimeEdit.waiting_value)
+async def forumdayreport_time_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    code = data.get("forumdayreport_time_city")
+    await state.set_state(None)
+
+    if not await _city_allowed(message.from_user.id, code):
+        await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
+        return
+
+    key = "forum_day_report_time"
+    value, error = validate_setting_value(key, (message.text or "").strip())
+    if error:
+        await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(message.from_user.id, composed, value)
+    else:
+        await set_setting_by_admin(message.from_user.id, key, value)
+    await _safe_reschedule_day_report(code)
+
+    text, kb = await _day_report_cfg_text_kb(code)
+    await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("forumdayreport_now:"))
+async def forumdayreport_now_go(callback: types.CallbackQuery):
+    """Ручной запуск «📊 Отчёт дня сейчас» — считает и шлёт отчёт СЕГОДНЯШНЕГО дня, НЕ трогая
+    идемпотентность автоматической вечерней джобы (`mark_sent=False`, докстринг
+    `services/forum_day_report.py`)."""
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    from services.timeutil import msk_now
+    today = msk_now().strftime("%Y-%m-%d")
+    await callback.answer("Считаю отчёт…")
+    try:
+        result = await fdr.send_report(code, today, mark_sent=False)
+    except Exception as e:
+        await callback.message.answer(f"⚠️ Не удалось собрать отчёт: {e}")
+        return
+    await callback.message.answer(
+        f"Отправлено: чат {'✅' if result['chat_delivered'] else '—'}, "
+        f"лично {result['dm_delivered']} держателям."
+    )
+
+
+@router.callback_query(F.data.startswith("forumdayreport_csv:"))
+async def forumdayreport_csv_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    from aiogram.types import BufferedInputFile
+    from services.timeutil import msk_now
+
+    today = msk_now().strftime("%Y-%m-%d")
+    await callback.answer()
+    csv_bytes = await fdr.checkins_csv_for_city_day(code, today)
+    document = BufferedInputFile(csv_bytes, filename=f"checkins_{code or 'all'}_{today}.csv")
+    await callback.message.answer_document(document, caption=f"Отметки за {today}")
+
+
+# ── Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» ──────────────────────────
+
+async def _safe_reschedule_noshow_poll(code: str | None) -> None:
+    import logging
+    try:
+        await schedule_noshow_poll_job(code)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"forum_noshow_poll reschedule({code!r}) failed: {e}")
+
+
+async def _noshow_poll_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("forum_noshow_poll_enabled", code)
+    t = await get_setting_typed_for_city("forum_noshow_poll_time", code) or "12:00"
+    label = await city_label(code) if code else None
+    on = enabled == "on"
+
+    lines = ["❓ <b>Опрос неявившихся «почему не пришёл»</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
+    lines.append(f"Время (день после форума): {t}")
+    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    if not forum_date_set:
+        lines.append("\n⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.")
+
+    from cities import cities_module_on as _cmo, city_scope as _cscope
+    scope = _cscope(code) if code and await _cmo() else None
+    summary = await fnsp.summary_text(city_scope=scope)
+    lines.append(f"\n{summary}")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"forumnoshowpoll_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🕕 Время: {t}",
+            callback_data=f"forumnoshowpoll_time:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("forumnoshowpoll_cfg:"))
+async def forumnoshowpoll_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await _noshow_poll_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("forumnoshowpoll_toggle:"))
+async def forumnoshowpoll_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "forum_noshow_poll_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current == "on" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await _safe_reschedule_noshow_poll(code)
+    text, kb = await _noshow_poll_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("forumnoshowpoll_time:"))
+async def forumnoshowpoll_time_start(callback: types.CallbackQuery, state: FSMContext):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    await state.update_data(forumnoshowpoll_time_city=code)
+    await state.set_state(ForumNoshowPollTimeEdit.waiting_value)
+    await callback.message.answer(
+        "Во сколько НА СЛЕДУЮЩИЙ ДЕНЬ после последнего дня форума слать опрос (московское "
+        "время)? Формат <code>ЧЧ:ММ</code>, например <code>12:00</code>.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(ForumNoshowPollTimeEdit), Command("cancel"))
+@router.message(StateFilter(ForumNoshowPollTimeEdit), F.text == "Отмена")
+async def cancel_forumnoshowpoll_time_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(ForumNoshowPollTimeEdit.waiting_value)
+async def forumnoshowpoll_time_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    code = data.get("forumnoshowpoll_time_city")
+    await state.set_state(None)
+
+    if not await _city_allowed(message.from_user.id, code):
+        await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
+        return
+
+    key = "forum_noshow_poll_time"
+    value, error = validate_setting_value(key, (message.text or "").strip())
+    if error:
+        await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(message.from_user.id, composed, value)
+    else:
+        await set_setting_by_admin(message.from_user.id, key, value)
+    await _safe_reschedule_noshow_poll(code)
+
+    text, kb = await _noshow_poll_cfg_text_kb(code)
+    await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)

@@ -964,6 +964,23 @@ ADMIN_CAPS: dict[str, str] = {
     "forumwelcome_cfg:*": "moderate_reg",
     "forumwelcome_toggle:*": "moderate_reg",
 
+    # Идея №16 бэклога чек-ина (отчёт дня форума вечером): та же капа «moderate_reg», что и у
+    # остального хаба «🎪 Форум: функции» выше — массовая отправка отчёта в чат оргов + личка
+    # держателям moderate_reg, не рутинное сканирование волонтёра.
+    "forumdayreport_cfg:*": "moderate_reg",
+    "forumdayreport_toggle:*": "moderate_reg",
+    "forumdayreport_time:*": "moderate_reg",
+    "state:ForumDayReportTimeEdit:*": "moderate_reg",
+    "forumdayreport_now:*": "moderate_reg",
+    "forumdayreport_csv:*": "moderate_reg",
+
+    # Идея №23 бэклога чек-ина (опрос неявившихся «почему не пришёл»): та же капа
+    # «moderate_reg», что и у остального хаба выше — массовая рассылка опроса делегатам города.
+    "forumnoshowpoll_cfg:*": "moderate_reg",
+    "forumnoshowpoll_toggle:*": "moderate_reg",
+    "forumnoshowpoll_time:*": "moderate_reg",
+    "state:ForumNoshowPollTimeEdit:*": "moderate_reg",
+
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
     # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
     # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).
