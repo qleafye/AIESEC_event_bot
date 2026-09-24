@@ -362,3 +362,56 @@ def test_bound_manager_allowed_config_for_own_city(tmp_path):
     cb = _FakeCallback("checkinqr_cfg:spb", MANAGER_ID)
     asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
     assert cb.message.sent  # экран показан — свой город
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# «Джоба переставляется при смене даты форума» — правка forum_date НЕМЕДЛЕННО (не после
+# рестарта); handlers/admin_settings.py::_reschedule_checkin_qr_if_forum_date
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_reschedule_hook_composite_key_touches_only_that_city(tmp_path, monkeypatch):
+    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+
+    async def body(s):
+        await _reschedule_checkin_qr_if_forum_date("forum_date__city__spb")
+        assert s.get_job("checkin_qr_evening:spb") is not None
+        assert s.get_job("checkin_qr_evening:tyumen") is None  # чужой город не тронут
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
+    """Голый `forum_date` — глобальный фолбэк (CONTEXT A): и spb (свой override), и tyumen
+    (полагается на общий фолбэк) обязаны пересчитаться одним вызовом."""
+    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
+    asyncio.run(db.set_setting("forum_date", "10.10.2026"))  # общий фолбэк — держит tyumen/msk
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2026"))  # свой override
+
+    async def body(s):
+        await _reschedule_checkin_qr_if_forum_date("forum_date")
+        assert s.get_job("checkin_qr_evening:spb") is not None
+        assert s.get_job("checkin_qr_evening:tyumen") is not None
+        assert s.get_job("checkin_qr_evening:msk") is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
+    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+
+    _db_ready(tmp_path)
+
+    async def body(s):
+        await _reschedule_checkin_qr_if_forum_date("event_date")  # соседний ключ, не forum_date
+        assert s.get_jobs() == []  # ничего не поставлено
+
+    _run_scheduled(tmp_path, monkeypatch, body)
