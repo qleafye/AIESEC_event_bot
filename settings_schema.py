@@ -5910,6 +5910,12 @@ SETTINGS_SCHEMA = {
             "московское."
         ),
         "default": "17:00",
+        # D-36 (24.09, аудит форумных тумблеров): "format": "time" был пропущен при заведении
+        # ключа (D-33) — без него не было живого экрана ввода вовсе, дыра оставалась
+        # незаметной; пункт добавляет реальный ввод (handlers/admin_forum_functions.py),
+        # поэтому Rule 1 — без этого HH:ММ не проверялся бы (тот же формат, что у соседних
+        # checkin_qr_broadcast_time/checkin_qr_morning_repeat_time выше).
+        "format": "time",
         "per_city": True,
     },
 

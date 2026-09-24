@@ -307,9 +307,12 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     # квик 260914-rgq: «📇 Список заявок» встал сразу после "admin_applications", той же капой.
     # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — та же капа `moderate_reg`, встал сразу после
     # "admin_checkin" (та НЕ входит в этот список — гейтится капой `checkin`, не `moderate_reg`).
+    # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — та же капа `moderate_reg`,
+    # встал сразу после "admin_sos" (последний форумный экран раздела).
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
     assert [sec.row_callback(r) for r in rows] == [
         "admin_applications", "admin_app_list", "admin_questions", "admin_faq", "admin_sos",
+        "admin_forum_functions",
     ]
     assert not [r for r in rows if r[0] in ("toggle", "group")]
 

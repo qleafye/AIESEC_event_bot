@@ -435,7 +435,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        927,
+        934,
+        "D-36 (24.09, аудит форумных тумблеров): +7 строк — шов-импорт `from handlers import "
+        "admin_forum_functions` («🎪 Форум: функции» + недостающий экран шпаргалки волонтёра) "
+        "в самый хвост файла, после admin_sos (927 -> 934). "
         "Форум-ночь п.8 (идея №19, SOS): +2 строки — шов-импорт `from handlers import "
         "admin_sos` (экран/карточка/привязка чата SOS) в самый хвост файла, после "
         "admin_checkin (925 -> 927). "
@@ -568,7 +571,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1152,
+        1165,
+        "D-36 (24.09, аудит форумных тумблеров): +13 строк — capability-записи «🎪 Форум: "
+        "функции» + недостающего экрана шпаргалки волонтёра (admin_forum_functions/"
+        "forumfn_city:*/checkinvol_cfg:*/checkinvol_toggle:*/checkinvol_time:*/"
+        "state:CheckinVolGuideTimeEdit:*, капа «moderate_reg» — тот же довод, что у "
+        "checkinqr_cfg:* выше); 1152 -> 1165. "
         "Ревью 24.09 (аудит ключей после 8c0d8af): +8 строк — capability-записи экрана "
         "«⚙️ Тексты и тайминги» SOS (asos_settings/asos_noop/asos_set_delay:*/"
         "asos_delay_custom:*/asos_settings_edit:*, капа «settings» — конфигурирование "
