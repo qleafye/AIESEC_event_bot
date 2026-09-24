@@ -4062,6 +4062,18 @@ async def has_important_today(telegram_id: int, date_str: str) -> bool:
             return await cursor.fetchone() is not None
 
 
+async def has_any_important_today(date_str: str) -> bool:
+    """Была ли сегодня хоть одна доставленная важная рассылка кому-либо — для пометки
+    «сейчас скрыта» у «❗ Важное» на экране «🔘 Кнопки меню» (keyboards/builders.py)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM broadcast_deliveries d JOIN broadcasts b ON b.id = d.broadcast_id "
+            "WHERE b.important = 1 AND substr(d.sent_at, 1, 10) = ? LIMIT 1",
+            (date_str,),
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+
 # ── Phase 3: dropout-nudge scan/mark (SCHED-03) ──────────────────────────────
 
 async def get_nudge_candidates(cutoff: str) -> list[int]:
