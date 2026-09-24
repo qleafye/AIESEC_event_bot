@@ -30,7 +30,9 @@ from handlers import registration as reg  # noqa: F401 -- тянет reg_lang в
 from handlers import reg_lang  # noqa: F401 -- регистрирует menu_lang_open на registration.router
 from handlers import user_actions as ua_mod
 from i18n_ui_en import MENU_EN
-from keyboards.builders import CONFERENCE_MENU_LABELS, MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb
+from keyboards.builders import (
+    CONFERENCE_MENU_LABELS, LEGACY_MENU_TEXTS, MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb,
+)
 from tests._dbtpl import fast_init_db
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -109,6 +111,7 @@ def test_menu_texts_each_set_has_ru_and_en_variant():
     ru_by_key = dict(MENU_BUTTONS)
     ru_by_key["menu_payment"] = "💳 Оплата"
     for key, texts in MENU_TEXTS.items():
+        texts = texts - LEGACY_MENU_TEXTS.get(key, frozenset())  # подписи снятых кнопок
         ru = ru_by_key[key]
         assert ru in texts
         if key in CONFERENCE_MENU_LABELS:  # + подпись конференции, RU и EN
@@ -169,6 +172,19 @@ def test_reg_lang_menu_filter_matches_both_labels():
     results = asyncio.run(go())
     for text, matched in results.items():
         assert matched == "menu_lang_open", f"{text!r} -> {matched!r}"
+
+
+def test_legacy_schedule_button_routes_to_unified_program():
+    """D-29 слил «🗓 Программа» в «📅 Программа форума»; у делегатов с закэшированной старой
+    клавиатурой её подписи (RU+EN) должны вести в тот же show_program, а не молчать."""
+    async def go():
+        return {
+            text: await _first_match(ua_mod.router.message, _FakeMessage(text))
+            for text in ("🗓 Программа", "🗓 Schedule")
+        }
+
+    for text, matched in asyncio.run(go()).items():
+        assert matched == "show_program", f"{text!r} -> {matched!r}"
 
 
 # ── Задача 2: русский вход не меняется -- ровно тот же хендлер срабатывает на русский текст ──
