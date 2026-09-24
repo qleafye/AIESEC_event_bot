@@ -11,12 +11,14 @@ never changes. Imported LAST, at the very bottom of `handlers/registration.py` (
 so they land in the TAIL of the golden order+filter snapshot
 (`tests/test_refac_snapshot_260816.py`), never reordering anything already there.
 """
+import logging
+
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import reg_engine
-from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface
+from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface, upsert_reg_draft
 from settings_schema import get_setting_typed
 from services.reg_handoff import SURFACE_BOT
 from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
@@ -31,8 +33,10 @@ from handlers.registration import (
 # отправке.
 from handlers import reg_i18n
 
+logger = logging.getLogger(__name__)
 
-async def offer_resume(message: types.Message, draft: dict) -> None:
+
+async def offer_resume(message: types.Message, draft: dict, referrer_id: int | None = None) -> None:
     """Phase 21 (21-09, D-18): единственный экран для ОБОИХ сценариев — свежий kind='new'
     (двойной /start посреди анкеты) и kind='edit' (?start=edit fallback / черновик правки,
     начатый в приложении). Кнопки — из реестра (`reg_resume_continue_label`/
@@ -41,7 +45,20 @@ async def offer_resume(message: types.Message, draft: dict) -> None:
 
     UAT-фикс 27-05 (LANG-02): подстановка идёт ПОСЛЕ перевода шаблона (`reg_i18n.tr_fmt`), не
     ДО — иначе `src_hash` подставленной строки не совпадает с хешем исходного шаблона в
-    `tr_map`, и переведённая в БД кнопка всё равно уходит делегату по-русски."""
+    `tr_map`, и переведённая в БД кнопка всё равно уходит делегату по-русски.
+
+    `referrer_id` — реф-ссылка, открытая поверх незаконченного черновика. Обе кнопки экрана
+    сбрасывают FSM, поэтому реферер переживает экран только в meta черновика: оттуда его
+    забирают `resume_from_draft` («Продолжить») и `reg_resume_restart_yes` («Заново»)."""
+    if referrer_id:
+        try:
+            await upsert_reg_draft(
+                message.from_user.id, kind=draft.get("kind") or "new",
+                meta_patch={"referrer_id": referrer_id}, source="bot",
+            )
+            draft.setdefault("meta", {})["referrer_id"] = referrer_id
+        except Exception as e:
+            logger.error(f"offer_resume: referrer_id persist failed for {message.from_user.id}: {e}")
     answers = draft.get("answers") or {}
     probe = {
         "participant_type": draft.get("participant_type"),
@@ -96,6 +113,8 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
         fsm_patch["participant_type"] = draft["participant_type"]
     if draft.get("event_city"):
         fsm_patch["event_city"] = draft["event_city"]
+    if (draft.get("meta") or {}).get("referrer_id"):
+        fsm_patch["referrer_id"] = draft["meta"]["referrer_id"]
     fsm_patch["_draft_kind"] = draft.get("kind") or "new"
     fsm_patch["_draft_version"] = draft.get("version", 0)
     if draft.get("kind") == "edit":
@@ -220,4 +239,6 @@ async def reg_resume_restart_yes(callback: types.CallbackQuery, state: FSMContex
         )
         return
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
-    await _start_registration_flow(tap_message, state)
+    # «Заново» стирает ответы, но не то, кто пригласил: реферер лежит в meta удалённого черновика.
+    referrer_id = ((draft or {}).get("meta") or {}).get("referrer_id")
+    await _start_registration_flow(tap_message, state, referrer_id=referrer_id)

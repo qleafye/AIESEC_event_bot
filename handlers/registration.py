@@ -2042,7 +2042,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             _resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
         if resume_arg in ("continue", "edit") or _draft_is_fresh(_draft_probe, _resume_ttl_hours):
             from handlers.reg_resume import offer_resume
-            await offer_resume(message, _draft_probe)
+            await offer_resume(message, _draft_probe, referrer_id=referrer_id)
             return
 
     start_text = await get_setting("start_text") or DEFAULT_START_TEXT
