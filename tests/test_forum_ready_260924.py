@@ -157,3 +157,43 @@ def test_hub_has_ready_button(tmp_path):
     _ready(tmp_path)
     _text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
     assert _cbs(kb)[0] == "forum_ready:msk"
+
+
+def test_one_failing_row_turns_gray_and_screen_still_renders(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "")
+
+    async def _boom(code):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(afr, "_row_program", _boom)
+    text, kb = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+    assert "⚪ Программа: не удалось проверить" in text
+    assert "🔴 Дата форума не задана" in text
+    assert "🟡 Чат делегатов не привязан" in text
+    assert text.count("\n🔴 ") + text.count("\n🟡 ") + text.count("\n🟢 ") + text.count("\n⚪ ") == 7
+    assert "forum_ready_re:msk" in _cbs(kb)
+
+
+def test_qr_send_counts_failure_is_contained(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    _run(db.set_setting("checkin_qr_enabled", "on"))
+
+    async def _boom(**k):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(afr, "checkin_qr_send_counts", _boom)
+    text, _kb = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+    assert "⚪ Вход по QR: не удалось проверить" in text
+    assert "Дата форума" in text
+
+
+def test_count_program_sessions_none_counts_all_cities(tmp_path):
+    from services.checkin_arrival import count_program_sessions
+    _ready(tmp_path)
+    _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "А"))
+    _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Б"))
+    assert _run(count_program_sessions("spb")) == 1
+    assert _run(count_program_sessions(None)) == 2

@@ -11,6 +11,7 @@
 в callback_data оттуда. Форма шва — как у соседей: `from handlers.admin import router`, импорт
 из хвоста `handlers/admin.py`. Право — `moderate_reg`, как у самого хаба."""
 import html
+import inspect
 import logging
 import time
 
@@ -159,6 +160,19 @@ async def _row_delegate_chat(code: str | None) -> dict:
     return _row(GREEN, f"Чат делегатов «{html.escape(chat['title'] or 'чат')}»")
 
 
+async def _safe_row(title: str, fn, *args) -> dict:
+    """Сбой одной проверки (база, Telegram, планировщик) не должен ронять весь экран накануне
+    форума — строка становится серой с просьбой перепроверить, остальные рисуются как есть."""
+    try:
+        result = fn(*args)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+    except Exception:
+        logger.exception("forum_ready: проверка «%s» упала", title)
+        return _row(GRAY, f"{title}: не удалось проверить — нажмите «🔄 Проверить снова»")
+
+
 async def render_ready(admin_id: int, code: str | None, bot) -> tuple[str, InlineKeyboardMarkup]:
     caps = await resolve_capabilities(admin_id)
 
@@ -167,13 +181,13 @@ async def render_ready(admin_id: int, code: str | None, bot) -> tuple[str, Inlin
         return cap is not None and _holds(caps, cap)
 
     rows = [
-        await _row_forum_date(code),
-        await _row_qr(code),
-        await _row_volunteers(code),
-        await _row_program(code),
-        await _row_sos(code, bot),
-        _row_sheet(),
-        await _row_delegate_chat(code),
+        await _safe_row("Дата форума", _row_forum_date, code),
+        await _safe_row("Вход по QR", _row_qr, code),
+        await _safe_row("Право отметки на входе", _row_volunteers, code),
+        await _safe_row("Программа", _row_program, code),
+        await _safe_row("Чат SOS", _row_sos, code, bot),
+        await _safe_row("Таблица", _row_sheet),
+        await _safe_row("Чат делегатов", _row_delegate_chat, code),
     ]
     label = await city_label(code) if code and await cities_module_on() else None
     lines = ["🚦 <b>Готовность к форуму</b>" + (f" — {html.escape(label)}" if label else "")]
