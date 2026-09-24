@@ -136,20 +136,24 @@ async def hall_conflict_warning(
 
 
 async def sessions_for_city_day(city: str, day: str) -> list[dict]:
-    """Сессии дня с подмешанным `hall_name` (`None` — зал не выбран или уже удалён) —
-    вызывающему (админский/делегатский экран) не нужно самому джойнить `program_halls`."""
+    """Сессии дня с подмешанным `hall_name`/`hall_capacity` (`None` — зал не выбран или уже
+    удалён, либо вместимость не задана) — вызывающему (админский/делегатский экран, счётчик
+    отметок форум-ночи п.5) не нужно самому джойнить `program_halls`."""
     rows = await list_program_sessions_for_city_day(city, day)
     halls_cache: dict[int, dict | None] = {}
     result = []
     for row in rows:
         hall_id = row.get("hall_id")
         hall_name = None
+        hall_capacity = None
         if hall_id is not None:
             if hall_id not in halls_cache:
                 halls_cache[hall_id] = await get_program_hall(hall_id)
             hall = halls_cache[hall_id]
-            hall_name = hall["name"] if hall else None
-        result.append({**row, "hall_name": hall_name})
+            if hall:
+                hall_name = hall["name"]
+                hall_capacity = hall.get("capacity")
+        result.append({**row, "hall_name": hall_name, "hall_capacity": hall_capacity})
     return result
 
 
@@ -197,9 +201,73 @@ def parallel_group(session: dict, day_sessions: list[dict]) -> list[dict]:
 
 
 def point_for_session(session_id: int) -> str:
-    """Точка отметки будущего чек-ина на сессиях (FORUM-CHECKIN.md D-18) — API готово заранее,
-    саму отметку этот план не делает."""
+    """Точка отметки чек-ина на сессиях (FORUM-CHECKIN.md D-18) — та же строка, что хранит
+    `checkins.point` (`database.db.record_session_checkin`)."""
     return f"session:{session_id}"
+
+
+def session_point_label(session: dict, *, limit: int = 40) -> str:
+    """Подпись кнопки точки отметки сессии: время + (· зал) + название, обрезанное до `limit`
+    символов — единая точка форматирования и для сканера Mini App
+    (`miniapp/routers/checkin.py`), и для точек в загрузке CSV
+    (`handlers/admin_checkin.py`), чтобы подпись не разошлась в двух местах."""
+    hall_part = f" · {session['hall_name']}" if session.get("hall_name") else ""
+    time_part = format_time_range(session["start_time"], session["end_time"])
+    title = (session.get("title") or "").strip()
+    if len(title) > limit:
+        title = title[: max(0, limit - 1)].rstrip() + "…"
+    return f"{time_part}{hall_part} · {title}"
+
+
+async def checkin_session_points(city: str, at: datetime | None = None) -> list[dict]:
+    """Точки отметки на сессиях СЕГОДНЯ (D-18) для сканера/загрузки CSV: «идёт сейчас» —
+    первыми, дальше по времени начала. Каждая точка — `{"point", "label", "live", "capacity"}`
+    (счётчик уже отмеченных — забота вызывающего: `database.db.count_checkins_by_point`, этот
+    модуль отметок не знает вовсе, только программу). Пустой список — на сегодня в городе нет
+    ни одной сессии (или программы вообще нет) — вызывающий тогда предлагает только «Вход»."""
+    if at is None:
+        from services.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
+        at = msk_now()
+    day = at.strftime("%Y-%m-%d")
+    hhmm = at.strftime("%H:%M")
+    sessions = await sessions_for_city_day(city, day)
+    now_ids = {s["id"] for s in sessions if s["start_time"] <= hhmm < s["end_time"]}
+    ordered = sorted(sessions, key=lambda s: (s["id"] not in now_ids, s["start_time"], s["id"]))
+    return [
+        {
+            "point": point_for_session(s["id"]),
+            "label": session_point_label(s),
+            "live": s["id"] in now_ids,
+            "capacity": s.get("hall_capacity"),
+        }
+        for s in ordered
+    ]
+
+
+def scanned_outside_session_window(session: dict, scanned_at: str | None, *, slack_minutes: int = 30) -> bool:
+    """Форум-ночь п.5 (D-18..D-20): время скана из CSV-выгрузки лежит вне интервала сессии
+    `[start - slack, end + slack]` того же дня — предупреждение в отчёте («вне времени сессии»,
+    `handlers/admin_checkin.py`), НЕ запрет (отметка всё равно ставится — волонтёр мог
+    отсканировать чуть раньше входа в зал или чуть позже начала). Пустой/нечитаемый `scanned_at`,
+    или другой день — `False` (нечего сравнивать; D-10 уже отдельно помечает approx-время)."""
+    if not scanned_at:
+        return False
+    try:
+        dt = datetime.strptime(scanned_at[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+    if dt.strftime("%Y-%m-%d") != session["day"]:
+        return False
+    try:
+        start = datetime.strptime(
+            f"{session['day']} {session['start_time']}", "%Y-%m-%d %H:%M",
+        ) - timedelta(minutes=slack_minutes)
+        end = datetime.strptime(
+            f"{session['day']} {session['end_time']}", "%Y-%m-%d %H:%M",
+        ) + timedelta(minutes=slack_minutes)
+    except ValueError:
+        return False
+    return not (start <= dt <= end)
 
 
 async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:

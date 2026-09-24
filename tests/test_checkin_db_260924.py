@@ -168,6 +168,59 @@ def test_count_approved_current_season_filters_status_and_season(tmp_path):
     assert n == 2
 
 
+# ── record_session_checkin: D-20 «последний скан слота засчитывается» ──────────────────────
+
+def test_record_session_checkin_new_no_slot_neighbours(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    status, ts, prev = asyncio.run(db.record_session_checkin(UID, 1, [], source="miniapp"))
+    assert status == "new"
+    assert prev is None
+    assert asyncio.run(db.count_checkins_by_point("session:1")) == 1
+
+
+def test_record_session_checkin_duplicate_same_session_keeps_first_time(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _status1, ts1, _ = asyncio.run(
+        db.record_session_checkin(UID, 1, [], source="miniapp", scanned_at="2026-10-03 10:00:00")
+    )
+    status2, ts2, prev2 = asyncio.run(
+        db.record_session_checkin(UID, 1, [], source="miniapp", scanned_at="2026-10-03 10:05:00")
+    )
+    assert status2 == "duplicate"
+    assert ts2 == ts1 == "2026-10-03 10:00:00"
+    assert prev2 is None
+
+
+def test_record_session_checkin_moved_deletes_other_slot_session(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    asyncio.run(db.record_session_checkin(UID, 1, [2], source="miniapp", scanned_at="2026-10-03 10:00:00"))
+    status, ts, prev = asyncio.run(
+        db.record_session_checkin(UID, 2, [1], source="miniapp", scanned_at="2026-10-03 10:10:00")
+    )
+    assert status == "moved"
+    assert prev == 1
+    assert ts == "2026-10-03 10:10:00"
+    # старая отметка физически удалена -- делегат не может быть отмечен на двух параллельных
+    # сессиях слота одновременно (D-20).
+    assert asyncio.run(db.count_checkins_by_point("session:1")) == 0
+    assert asyncio.run(db.count_checkins_by_point("session:2")) == 1
+
+
+def test_record_session_checkin_independent_from_other_delegate(tmp_path):
+    _use_tmp_db(tmp_path)
+    _seed_user(UID)
+    _seed_user(UID + 1)
+    asyncio.run(db.record_session_checkin(UID, 1, [2], source="miniapp"))
+    status, _ts, prev = asyncio.run(db.record_session_checkin(UID + 1, 2, [1], source="miniapp"))
+    assert status == "new"  # чужая отметка на слот-соседе не мешает
+    assert prev is None
+    assert asyncio.run(db.count_checkins_by_point("session:1")) == 1
+    assert asyncio.run(db.count_checkins_by_point("session:2")) == 1
+
+
 def test_count_approved_current_season_no_season_setting_counts_all_approved(tmp_path):
     _use_tmp_db(tmp_path)
     _seed_user(UID)
