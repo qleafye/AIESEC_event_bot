@@ -1183,6 +1183,8 @@ admin|callback_query|prog_view_toggle_go|prog_view_toggle:*
 admin|callback_query|checkin_stats_open|checkin_stats
 admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
 admin|callback_query|checkin_stats_csv|checkin_stats_csv
+admin|callback_query|forum_ready_open|forum_ready:*
+admin|callback_query|forum_ready_refresh|forum_ready_re:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1728,7 +1730,10 @@ def test_snapshot_total_handler_count_is_292():
     # (checkin_stats_open/checkin_stats_refresh/checkin_stats_csv, handlers/admin_checkin_stats.py)
     # — шов импортируется из хвоста handlers/admin.py, СРАЗУ ПОСЛЕ admin_program_view; встали
     # сразу после prog_view_toggle_go и ПЕРЕД prog_fbday_open. Одна чистая вставка (735 -> 738).
-    assert len(GOLDEN_SNAPSHOT) == 738
+    # Бэклог чек-ина №25 («🚦 Готовность к форуму»): +2 admin.callback_query (forum_ready_open/
+    # forum_ready_refresh, handlers/admin_forum_ready.py) — шов из хвоста handlers/admin.py сразу
+    # после admin_checkin_stats; одна чистая вставка перед prog_fbday_open (738 -> 740).
+    assert len(GOLDEN_SNAPSHOT) == 740
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

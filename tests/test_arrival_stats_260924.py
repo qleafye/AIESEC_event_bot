@@ -182,8 +182,8 @@ def test_checkin_screen_button_only_for_moderate_reg(tmp_path):
     _ready(tmp_path)
     from handlers.admin_caps import role_caps_key
     volunteer = 924101
-    _run(db.add_staff(volunteer, "volunteer", ADMIN_ID))
-    _run(db.set_setting(role_caps_key("volunteer"), "checkin"))
+    _run(db.add_staff(volunteer, "stats_manager", ADMIN_ID))
+    _run(db.set_setting(role_caps_key("stats_manager"), "checkin"))
     cb = _Cb("admin_checkin", volunteer)
     _run(admin_checkin.show_admin_checkin(cb))
     assert "checkin_stats" not in _cbs(cb.message.sent[0][1])

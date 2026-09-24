@@ -957,6 +957,10 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_stats": "moderate_reg",
     "checkin_stats_refresh": "moderate_reg",
     "checkin_stats_csv": "moderate_reg",
+    # Бэклог №25: «🚦 Готовность к форуму» (handlers/admin_forum_ready.py) — кнопка хаба «🎪 Форум:
+    # функции», та же капа, что у хаба. Префиксы разные: "forum_ready:*" не покрывает "forum_ready_re:*".
+    "forum_ready:*": "moderate_reg",
+    "forum_ready_re:*": "moderate_reg",
 
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
