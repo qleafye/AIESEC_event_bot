@@ -172,7 +172,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2700,
+        2702,
+        "Форум-ночь: +2 строки — `checkin_qr_broadcast_text` и `checkin_volunteer_guide_text` "
+        "дописаны в _APPS_FIELD_ORDER (задача 3 ночной приёмки, оба ключа реестра были заведены "
+        "этой же ночью, но нигде не правились в самом боте — только в Mini App); 2700 -> 2702, "
+        "потолок с ровно фактическим размером. "
         "Форум-ночь п.3 (D-03, идея №2), правка: голый `forum_date` (глобальный фолбэк, "
         "CONTEXT A) теперь зовёт `services.checkin_broadcast.reconcile_broadcasts()` (каждый "
         "город сам пересчитывает через `forum_date_for`), а не постановку одной "
