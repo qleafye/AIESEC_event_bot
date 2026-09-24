@@ -314,3 +314,11 @@ class CheckinTestUpload(StatesGroup):
     # отвечает читаемостью), путать его с настоящей загрузкой (CheckinImport.waiting_file,
     # которая ведёт к реальным отметкам) нельзя даже по ошибке одного и того же State.
     waiting_file = State()
+
+
+class CheckinQrTimeEdit(StatesGroup):
+    # Форум-ночь п.3 (D-03, идея №2): ввод «ЧЧ:ММ» для вечерней рассылки/утреннего повтора QR
+    # (handlers/admin_checkin.py) — какое именно время правим (checkin_qr_broadcast_time /
+    # checkin_qr_morning_repeat_time) и для какого города живёт в state.get_data(), тот же
+    # приём, что AdminI18nEdit/CoinsManual (одно состояние, цель правки в данных, не в State).
+    waiting_value = State()

@@ -158,6 +158,11 @@ EXPECTED_PER_CITY_KEYS = {
     # Квик 260923-p37 (CITY-REG-CLOSE, D-01/D-05): дата закрытия регистрации на город и её
     # тексты — per_city по решению владельца, дата ставится ДЛЯ КОНКРЕТНОГО города.
     "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text",
+    # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом — per_city, т.к. форумы
+    # городов идут в разные дни (03.10 регионы, 30.10 Москва) — общее время/тумблер разослали
+    # бы QR не тому городу не в тот день (IDEAS-CHECKIN-BACKLOG-260924.md, п. A1).
+    "checkin_qr_broadcast_enabled", "checkin_qr_broadcast_time",
+    "checkin_qr_morning_repeat_time", "checkin_qr_broadcast_text",
 }
 
 

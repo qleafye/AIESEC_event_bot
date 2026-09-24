@@ -617,6 +617,9 @@ admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:Checkin
 admin|message|cancel_checkin_test_upload|state:CheckinTestUpload:*,state:CheckinTestUpload:*
 admin|message|checkin_test_file_step|state:CheckinTestUpload:*
 admin|message|checkin_test_file_invalid|state:CheckinTestUpload:*
+admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
+admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
+admin|message|checkinqr_time_step|state:CheckinQrTimeEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1010,6 +1013,12 @@ admin|callback_query|checkin_reissue_go|checkin_reissue_yes:*
 admin|callback_query|checkin_reissue_cancel|checkin_reissue_no
 admin|callback_query|checkin_test_start|checkin_test_start
 admin|callback_query|checkin_test_qr|checkin_test_qr
+admin|callback_query|checkinqr_send_confirm|checkinqr_send:*
+admin|callback_query|checkinqr_send_go|checkinqr_send_go:*
+admin|callback_query|checkinqr_send_cancel|checkinqr_send_no
+admin|callback_query|checkinqr_cfg_screen|checkinqr_cfg:*
+admin|callback_query|checkinqr_toggle_go|checkinqr_toggle:*
+admin|callback_query|checkinqr_time_start|checkinqr_time:*
 payment|message|process_receipt_document|state:Registration:*
 payment|message|process_receipt_photo|state:Registration:*
 payment|message|process_receipt_invalid|state:Registration:*
@@ -1138,6 +1147,7 @@ user_actions|callback_query|ambassador_leave_start|ambleave
 user_actions|callback_query|ambassador_leave_cancel|ambleave_no
 user_actions|callback_query|ambassador_leave_confirm|ambleave_go
 user_actions|callback_query|ambassador_join|ambjoin
+user_actions|callback_query|checkin_qr_confirm_receipt|checkinqr_confirm
 """.strip("\n").splitlines()
 
 
@@ -1420,7 +1430,19 @@ def test_snapshot_total_handler_count_is_292():
     # пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 626-строчным
     # снимком: ровно две вставки (4 строки в message-блоке, 2 строки в callback_query-блоке),
     # 0 удалений, 0 реордеров (626 -> 632).
-    assert len(GOLDEN_SNAPSHOT) == 632
+    # Форум-ночь п.3 (D-03, идея №2): +10 хендлеров — handlers/admin_checkin.py получил
+    # рассылку QR (checkinqr_send_confirm/checkinqr_send_go/checkinqr_send_cancel/
+    # checkinqr_cfg_screen/checkinqr_toggle_go/checkinqr_time_start — 6 admin.callback_query,
+    # встали в самый хвост callback_query-блока admin.router, сразу после checkin_test_qr и
+    # перед первым хендлером payment.router; cancel_checkinqr_time_edit — два декоратора,
+    # Command("cancel")/F.text=="Отмена" — и checkinqr_time_step — 3 admin.message, встали
+    # сразу после checkin_test_file_invalid и перед первым callback_query-хендлером
+    # admin.router, show_admin_stats), плюс handlers/user_actions.py получил
+    # checkin_qr_confirm_receipt (1 user_actions.callback_query, самый хвост файла, сразу
+    # после ambassador_join) — пересчитано RUNNING `_build_snapshot_lines()` и сверено
+    # diff'ом (difflib.SequenceMatcher) с прежним 632-строчным снимком: ровно три вставки
+    # (3+6+1 строк), 0 удалений, 0 реордеров (632 -> 642).
+    assert len(GOLDEN_SNAPSHOT) == 642
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

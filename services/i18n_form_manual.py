@@ -668,6 +668,12 @@ _REGISTRY_TEXTS_EN = {
         "but a photo from the chat opens even without the internet."
     ),
     "QR для чек-ина пока не выдаётся — загляни сюда позже.": "The check-in QR isn't issued yet — check back here later.",
+    # Форум-ночь п.3 (D-03, идея №2): текст рассылки QR накануне форума (и утреннего повтора
+    # неподтвердившим) — group "reg", checkin_qr_broadcast_text.
+    "Завтра форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.": (
+        "The forum is tomorrow! Here's your QR code for entry. Open it now and take a "
+        "screenshot — the venue may have no network."
+    ),
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
