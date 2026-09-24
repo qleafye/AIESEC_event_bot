@@ -289,3 +289,11 @@ def test_hub_js_wires_setup_tile():
     text = _js_without_comments(HUB_JS)
     assert "#/setup" in text
     assert "show_tile" in text
+
+
+def test_visible_steps_conference_includes_lc_step_only_for_conference():
+    conf_keys = [s.key for s in visible_steps("conference", {})]
+    assert "conf_lc" in conf_keys
+    assert conf_keys.index("conf_lc") < conf_keys.index("countdown")
+    for other in ("forum", "skillup", "custom", None):
+        assert "conf_lc" not in {s.key for s in visible_steps(other, {})}, other
