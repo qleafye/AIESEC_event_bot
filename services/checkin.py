@@ -35,10 +35,12 @@ from datetime import datetime
 import segno
 
 from database.db import (
+    first_entry_scanned_at,
     get_checkin_token_replacement,
     get_or_create_checkin_token,
     get_program_session,
     get_user_by_checkin_token,
+    has_entry_on_other_day,
     list_program_sessions_for_city_day,
     record_checkin,
     record_session_checkin,
@@ -255,10 +257,16 @@ async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) 
 
     Только на `'new'` (первая отметка) — `'duplicate'` уже писала то же самое время скана при
     первой отметке, второй вызов Sheets API на тот же результат был бы просто тратой квоты.
+    Вход каждый день: «Пришёл» — время ПЕРВОГО входа за форум. Новый вход второго дня ячейку
+    не трогает (раньше уже есть вход); пишем, только если этот вход — самый ранний из имеющихся
+    (обычный первый скан или CSV первого дня, загруженный после живых сканов второго).
     Сам вызов уже fail-soft (update_arrived_in_sheet ловит исключения и возвращает False) —
     отметка в БД к этому моменту уже сохранена вызывающим, лист может упасть без последствий
     для самого чек-ина (D-17)."""
     if status != "new":
+        return
+    first = await first_entry_scanned_at(telegram_id)
+    if first is not None and first < scanned_at:
         return
     from services.sheets import update_arrived_in_sheet
     await update_arrived_in_sheet(telegram_id, scanned_at)
@@ -270,7 +278,7 @@ _first_entry_listeners: list = []
 
 
 def register_first_entry_listener(fn) -> None:
-    """Подписать async-слушателя на ПЕРВУЮ отметку входа делегата (для будущего «приветствия
+    """Подписать async-слушателя на ПЕРВЫЙ ЗА ДЕНЬ вход делегата (для будущего «приветствия
     после первого скана» и т.п.). Сигнатура слушателя:
 
         async def listener(bot, user_id: int, city: str | None, day: str, **kwargs) -> None
@@ -280,18 +288,22 @@ def register_first_entry_listener(fn) -> None:
     `source` ("miniapp" — скан QR, "manual" — поиск по ФИО, "auto_session" — вход поставлен
     сканом на сессии, "csv" — загрузка выгрузки сканера), `by_staff_id` (кто отметил, может быть
     None), `scanned_at` («YYYY-MM-DD HH:MM:SS» по Москве), `approx` (время скана примерное),
-    `session_id` (только у "auto_session"). Слушатель обязан принимать `**kwargs` — поля могут
-    добавляться.
+    `session_id` (только у "auto_session"), `first_of_day` (всегда True — зов бывает только на
+    первый вход дня), `first_of_forum` (True — это первый вход делегата за весь форум: входа в
+    другие дни нет). Приветствие «один раз за форум» обязано смотреть на `first_of_forum`, а не
+    полагаться на сам факт зова: на двухдневном форуме второй день зовёт слушателей ещё раз с
+    `first_of_forum=False`. Слушатель обязан принимать `**kwargs` — поля могут добавляться.
 
-    «Первая» = `database.db.record_checkin` реально вставил строку входа (`"new"`, rowcount от
-    INSERT OR IGNORE по UNIQUE(telegram_id, point)); повторный скан (`"duplicate"`) слушателей
-    не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
+    «Первый за день» = `database.db.record_checkin` реально вставил строку входа (`"new"`,
+    rowcount от INSERT OR IGNORE по UNIQUE(telegram_id, point, day)); повторный скан в тот же
+    день (`"duplicate"`) слушателей не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
     мешает ни отметке, ни остальным слушателям.
 
     Снятие отметки (идея №32: «↩️ Отменить» волонтёра или снятие менеджером,
     `services/venue_log.py`) слушателей НЕ откатывает и никого не зовёт — что слушатель уже
     сделал (приветствие ушло), то сделано. Строка входа при снятии удаляется, поэтому
-    повторная отметка того же делегата снова будет `"new"` и позовёт слушателей ЕЩЁ РАЗ.
+    повторная отметка того же делегата снова будет `"new"` и позовёт слушателей ЕЩЁ РАЗ
+    (`first_of_forum` снова True, если других дней нет).
     Слушатель обязан быть идемпотентным сам (например, помнить в своей таблице, кому уже
     отправил), а не полагаться на «первая отметка бывает один раз».
 
@@ -339,8 +351,11 @@ def _first_entry_event(user: dict, ts: str, source: str, by_staff_id, approx: bo
 
 
 async def _after_first_entry(result: dict, bot, event: dict) -> None:
-    """Событие первой отметки входа: кладёт его в `result["first_entry"]` (Mini App переносит
-    в outbox) и, если есть `bot` (процесс бота), сразу зовёт слушателей."""
+    """Событие первого за день входа: кладёт его в `result["first_entry"]` (Mini App переносит
+    в outbox) и, если есть `bot` (процесс бота), сразу зовёт слушателей. `first_of_forum` —
+    входа в другие дни форума нет (см. `register_first_entry_listener`)."""
+    event["first_of_day"] = True
+    event["first_of_forum"] = not await has_entry_on_other_day(event["user_id"], event["day"])
     result["first_entry"] = event
     if bot is not None:
         await fire_first_entry(bot, **event)
@@ -467,8 +482,11 @@ async def record_arrival(
         prev = await get_program_session(previous_id)
         result["previous_title"] = prev["title"] if prev else None
     if status in ("new", "moved"):
+        # Вход каждый день: авто-вход ставится на день и время САМОГО скана сессии (у CSV —
+        # время из файла, а не день загрузки).
         entry_status, entry_ts = await record_checkin(
             user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
+            scanned_at=ts, approx=approx,
         )
         await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
         if source != "csv":

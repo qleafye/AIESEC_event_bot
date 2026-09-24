@@ -51,7 +51,9 @@ def _seed_marked(tmp_path, *, session=False):
     _ready(tmp_path)
     _run(_insert_user(DELEGATE_ID, full_name="Иванов Иван"))
     user = _run(db.get_user(DELEGATE_ID))
-    _run(record_arrival(user, ENTRY_POINT, source="miniapp", by_staff_id=VOLUNTEER_ID, staff_name="Анна (@anna)"))
+    # Вход в день сессии: снятие входа предупреждает только о сессиях ЭТОГО дня.
+    _run(record_arrival(user, ENTRY_POINT, source="miniapp", by_staff_id=VOLUNTEER_ID, staff_name="Анна (@anna)",
+                        scanned_at=f"{DAY} 09:00:00" if session else None))
     if session:
         sid = _run(db.create_program_session("msk", DAY, "10:00", "11:00", "Открытие"))
         _run(record_arrival(user, f"session:{sid}", source="miniapp", by_staff_id=VOLUNTEER_ID,
@@ -207,7 +209,8 @@ def test_csv_upload_is_one_log_line(tmp_path):
     from services.checkin import build_payload, current_event_tag
     qr = build_payload(_run(current_event_tag()), "Иванов Иван", "Москва", token)
     state = _FakeState()
-    state.data = {"checkin_records": [{"qr": qr, "scanned_at": "2026-10-30 09:10:00"}, {"qr": qr, "scanned_at": None}]}
+    # Второй скан — тот же день (вход каждый день: скан без времени лёг бы на день загрузки).
+    state.data = {"checkin_records": [{"qr": qr, "scanned_at": "2026-10-30 09:10:00"}, {"qr": qr, "scanned_at": "2026-10-30 11:00:00"}]}
     _run(admin_checkin.checkin_point_pick(_FakeCallback(f"checkin_point:{ENTRY_POINT}", ADMIN_ID), state))
     rows, total = _run(db.venue_log_page())
     assert total == 1
