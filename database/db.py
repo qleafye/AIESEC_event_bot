@@ -40,6 +40,56 @@ async def _ensure_column(db: aiosqlite.Connection, table_name: str, column_name:
     if not await _column_exists(db, table_name, column_name):
         await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
+_SOS_CATEGORY_NOT_NULL = re.compile(r"\bcategory\s+TEXT\s+NOT\s+NULL\b", re.IGNORECASE)
+
+
+async def _relax_sos_reports_category(db: aiosqlite.Connection) -> None:
+    """D-31 снял NOT NULL с `sos_reports.category` только в `CREATE TABLE IF NOT EXISTS` — на
+    базах, где таблица уже была (стенд, SkillUp, REC26), `create_sos_report` без категории
+    падал на NOT NULL, и SOS молча не работал. SQLite не умеет снять ограничение ALTER'ом —
+    таблица пересоздаётся по своему же DDL из sqlite_master (с колонками, добавленными
+    `_ensure_column`), без NOT NULL у category, в одной транзакции. Счётчик AUTOINCREMENT
+    сохраняется, индексы init_db создаёт заново сразу после. Идемпотентно: у пересозданной
+    таблицы category уже NULL-able, повторный вызов ничего не делает. Внешних ключей и
+    триггеров на sos_reports нет."""
+    async with db.execute("PRAGMA table_info(sos_reports)") as cursor:
+        cols = await cursor.fetchall()
+    if not any(c[1] == "category" and c[3] for c in cols):
+        return
+    async with db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sos_reports'"
+    ) as cursor:
+        (ddl,) = await cursor.fetchone()
+    new_ddl = _SOS_CATEGORY_NOT_NULL.sub("category TEXT", ddl, count=1)
+    new_ddl = re.sub(r"\bsos_reports\b", "sos_reports_new", new_ddl, count=1)
+    await db.commit()  # закрыть неявную транзакцию init_db — пересоздание идёт своей
+    await db.execute("BEGIN")
+    try:
+        async with db.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'sos_reports'"
+        ) as cursor:
+            seq_row = await cursor.fetchone()
+        await db.execute(new_ddl)
+        await db.execute("INSERT INTO sos_reports_new SELECT * FROM sos_reports")
+        await db.execute("DROP TABLE sos_reports")
+        await db.execute("ALTER TABLE sos_reports_new RENAME TO sos_reports")
+        if seq_row is not None:
+            cursor = await db.execute(
+                "UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'sos_reports'",
+                (seq_row[0],),
+            )
+            if not cursor.rowcount:  # таблица была пуста — строки счётчика ещё нет
+                await db.execute(
+                    "INSERT INTO sqlite_sequence (name, seq) VALUES ('sos_reports', ?)",
+                    (seq_row[0],),
+                )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    logger.info("init_db: sos_reports пересоздана — category больше не NOT NULL")
+
+
 _USER_CONSENTS_DDL = '''
     CREATE TABLE IF NOT EXISTS user_consents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1682,6 +1732,7 @@ async def init_db():
         # таблица уже создана более ранней версией этой же ветки (cf0da0b) на стенде.
         await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
         await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
+        await _relax_sos_reports_category(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
