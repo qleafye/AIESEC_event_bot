@@ -1,8 +1,9 @@
 import logging
+import os
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_user, has_faq_for_city, has_program_sessions_for_city, has_important_today
+from database.db import get_setting, get_user, has_faq_for_city, has_program_sessions_for_city, has_important_today
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
@@ -39,12 +40,13 @@ MENU_BUTTONS = [
     ("menu_referral", "🔗 Моя реферальная ссылка"),
     ("menu_invites", "👥 Мои приглашённые"),
     ("menu_info", "ℹ️ Информация о форуме"),
+    # D-29 (владелец 24.09): одна кнопка вместо двух — было menu_program (статичное фото) +
+    # menu_schedule (интерактивная программа сессий, handlers/program.py). Ключ/подпись
+    # оставлены старые (уже настроены у менеджеров), интерактивная программа стала запасным
+    # видом ВНУТРИ handlers/user_actions.py::show_program, когда фото не загружено. Гейт ниже
+    # (program_on = фото ЕСТЬ или у города есть хоть одна сессия) — тот же приём, что раньше
+    # был только у menu_schedule (`has_program_sessions_for_city`).
     ("menu_program", "📅 Программа форума"),
-    # Форум-ночь п.4 (расписание форума в боте): интерактивная программа сессий/залов
-    # (handlers/program.py) — отдельная кнопка от статичного фото menu_program выше.
-    # Дополнительный гейт ниже (`has_program_sessions_for_city`) прячет кнопку, пока у города
-    # делегата ещё нет ни одной сессии, — тот же приём, что у menu_miniapp/menu_faq.
-    ("menu_schedule", "🗓 Программа"),
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
@@ -226,11 +228,21 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: event_type resolve failed: {e}")
         conference = False
 
-    # Форум-ночь п.4 (расписание форума в боте): кнопка «🗓 Программа» рисуется только пока у
-    # города делегата есть хотя бы одна сессия. `code` — `None`, когда модуль городов выключен
-    # (см. выше), но у расписания «нет города» не бывает — там всегда конкретный код
+    # D-29 (объединённая кнопка «📅 Программа форума»): кнопка видна, пока есть ЧТО показать —
+    # фото (глобальная настройка, «если загружено») ИЛИ у города делегата есть хотя бы одна
+    # сессия программы (запасной текстовый вид). `code` — `None`, когда модуль городов выключен
+    # (см. выше), но у сессий «нет города» не бывает — там всегда конкретный код
     # (`cities.default_city_code()`, тот же однocity-фоллбэк, что использует админский экран
     # `handlers/admin_program.py._resolve_city_for_screen`).
+    program_photo_on = False
+    try:
+        program_photo_on = bool(await get_setting("program_photo_file_id")) or os.path.isfile(
+            "resources/program.jpg"
+        )
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: program_photo_file_id resolve failed: {e}")
+        program_photo_on = False
+
     schedule_on = False
     try:
         schedule_city = code if code is not None else default_city_code()
@@ -284,9 +296,9 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # пункт (has_faq_for_city).
             if key == "menu_faq" and not faq_on:
                 continue
-            # Форум-ночь п.4: вторая половина гейта — сама кнопка value=="on" (уже проверено
-            # выше) недостаточна, пока в программе города нет ни одной сессии.
-            if key == "menu_schedule" and not schedule_on:
+            # D-29: вторая половина гейта — сама кнопка value=="on" (уже проверено выше)
+            # недостаточна, пока нет ни фото программы, ни хотя бы одной сессии в ней.
+            if key == "menu_program" and not (program_photo_on or schedule_on):
                 continue
             # Phase 27 (27-04): вторая половина гейта — сама кнопка value=="on" (проверено
             # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.

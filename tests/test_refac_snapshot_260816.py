@@ -572,6 +572,13 @@ def _build_snapshot_lines():
 # ПЕРЕД `show_wave_rating`. Re-captured by RUNNING `_build_snapshot_lines()` против HEAD и
 # diffed (difflib.SequenceMatcher) против прежнего 718-строчного снимка: ровно три вставки
 # (2 + 1 + 2 строки), 0 удалений, 0 реордеров.
+# Drift note (D-29, 24.09, «одна кнопка программы»): -1 user_actions.message
+# (`show_program_schedule`, `F.text.in_(MENU_TEXTS["menu_schedule"])`) — своей кнопки меню
+# больше нет, `handlers/program.py::send_program_schedule_text` стал обычной функцией,
+# вызываемой напрямую из `show_program` (та же строка снимка, что и раньше, не переехала —
+# объединённая кнопка живёт под старым ключом `menu_program`). Пересчитано RUNNING
+# `_build_snapshot_lines()` и сверено diff'ом с прежним 727-строчным снимком: одно чистое
+# удаление, 0 вставок, 0 реордеров (727 -> 726).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1260,7 +1267,6 @@ user_actions|message|cancel_question|state:Question:*
 user_actions|message|process_question|state:Question:*
 user_actions|message|open_miniapp_button|
 user_actions|message|show_my_checkin_qr|
-user_actions|message|show_program_schedule|
 user_actions|message|show_important_today|
 user_actions|message|sos_start|
 user_actions|message|sos_collecting_done|state:SosReport:*
@@ -1684,7 +1690,7 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 733-строчным снимком: 2 чистых
     # удаления блоков (9+1), 1 чистая вставка (3), 0 реордеров вне удалённого/вставленного
     # диапазона (733 -> 727).
-    assert len(GOLDEN_SNAPSHOT) == 727
+    assert len(GOLDEN_SNAPSHOT) == 726
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

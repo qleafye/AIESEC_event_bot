@@ -1,15 +1,18 @@
-"""Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20/D-24) — делегатский
-экран «🗓 Программа»: день (если их несколько — выбор), сессии по времени, параллельные
-сгруппированы, в день форума помечены «🔴 Идёт сейчас»/«⏭ Следующая».
+"""Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20/D-24) — интерактивная
+программа: день (если их несколько — выбор), сессии по времени, параллельные сгруппированы, в
+день форума помечены «🔴 Идёт сейчас»/«⏭ Следующая».
 
-Кнопка меню видна только когда у города делегата есть хотя бы одна сессия
-(`database.db.has_program_sessions_for_city`, `keyboards/builders.py::get_main_menu_kb`) —
-данные ведёт менеджер в `handlers/admin_program.py`, здесь только чтение.
+D-29 (владелец, 24.09): своей кнопки меню больше нет — это ЗАПАСНОЙ вид объединённой кнопки
+«📅 Программа форума» (`handlers/user_actions.py::show_program`), когда фото не загружено,
+но в боте заведена хотя бы одна сессия (`send_program_schedule_text` вызывается оттуда
+напрямую, `F.text`-фильтра на модуль больше нет). Данные ведёт менеджер в
+`handlers/admin_program.py`, здесь только чтение.
 
 Форма шва — та же, что у соседних делегатских экранов (FAQ/чек-ин): своего `Router()` нет,
-`from handlers.user_actions import router`; импортирован ХВОСТОМ `handlers/user_actions.py`.
-Тексты — через `reg_i18n.tr_text` (тот же перевод, что остальные экраны делегатского чата),
-литералы зарегистрированы в `services/i18n_sources.py::code_literals()` (сторож
+`from handlers.user_actions import router`; импортирован ХВОСТОМ `handlers/user_actions.py`
+(нужен для callback-хендлеров дня ниже, message-хендлера теперь нет). Тексты — через
+`reg_i18n.tr_text` (тот же перевод, что остальные экраны делегатского чата), литералы
+зарегистрированы в `services/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем)."""
 import html
 
@@ -19,8 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from cities import default_city_code
 from database.db import list_program_days_for_city
 from handlers import reg_i18n
-from handlers.user_actions import _delegate_city, ensure_registered, router
-from keyboards.builders import MENU_TEXTS
+from handlers.user_actions import _delegate_city, router
 from services.program import day_label, format_time_range, group_parallel, sessions_for_city_day
 from services.timeutil import msk_now
 
@@ -119,25 +121,24 @@ async def _send_day_screen(message_or_callback, code: str, day: str, days: list[
         await message_or_callback.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_schedule"]))
-async def show_program_schedule(message: types.Message):
-    if not await ensure_registered(message):
-        return
-
+async def send_program_schedule_text(message: types.Message) -> bool:
+    """Текстовый вид программы — запасной для объединённой кнопки «📅 Программа форума»
+    (`handlers.user_actions.show_program`, D-29), когда фото не загружено. Возвращает `False`,
+    если у города делегата тоже нет ни одной сессии — тогда вызывающий покажет
+    `program_empty_text` вместо этого экрана; `ensure_registered` уже проверен вызывающим."""
     code = await _resolve_delegate_city(message.from_user.id)
     days = await list_program_days_for_city(code)
     if not days:
-        lang, tr_map = await reg_i18n.ctx_for(message)
-        await message.answer(reg_i18n.tr_text("Программа пока пуста.", lang, tr_map))
-        return
+        return False
 
     if len(days) == 1:
         await _send_day_screen(message, code, days[0], days, edit=False)
-        return
+        return True
 
     lang, tr_map = await reg_i18n.ctx_for(message)
     header = f"🗓 <b>{reg_i18n.tr_text('Программа', lang, tr_map)}</b>\n\n{reg_i18n.tr_text('Выберите день:', lang, tr_map)}"
     await message.answer(header, parse_mode="HTML", reply_markup=_day_picker_kb(days))
+    return True
 
 
 @router.callback_query(F.data.startswith("pds_day:"))
