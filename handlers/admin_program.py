@@ -177,6 +177,8 @@ async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, Inl
 
     buttons.append([InlineKeyboardButton(text="📅 Другой день", callback_data=f"prog_daynew:{code}")])
     buttons.append([InlineKeyboardButton(text="🏛 Залы", callback_data=f"prog_halls:{code}")])
+    # Ревью 24.09: экран настроек отзыва — handlers/session_feedback.py (потолок этого файла).
+    buttons.append([InlineKeyboardButton(text="⭐ Отзывы о сессиях", callback_data=f"prog_fbset:{code}")])
 
     other_cities = [c for c in city_codes() if c != code and await _city_allowed(admin_id, c)]
     if other_cities:

@@ -144,6 +144,26 @@ async def reconcile_all() -> None:
         logger.error("session_feedback.reconcile_all failed: %s: %s", type(e).__name__, e)
 
 
+async def reconcile_city(code: str) -> None:
+    """Перестановка джоб отзыва ВСЕХ сессий ОДНОГО города — вызывается после смены тумблера
+    `session_feedback_enabled` или задержки `session_feedback_delay_minutes` на экране
+    «⭐ Отзывы о сессиях» (`handlers/session_feedback.py`). Тумблер сам по себе джобу не трогает
+    (`deliver_feedback_prompts` перечитывает его на тике, докстринг выше), а вот задержка —
+    да: у уже стоящей джобы `run_at` посчитан со СТАРЫМ значением, отдельного диффа не считает
+    (`schedule_for_session` и так пересчитывает от нуля дешевле дифа), поэтому реконсиляция
+    вызывается на ОБА события — цена одинаковая, а не звать её на тумблер значило бы держать
+    в голове, что «эта перестановка на самом деле не нужна», пока это не перестанет быть правдой.
+    Fail-soft, тот же приём, что `reconcile_all`."""
+    try:
+        from database.db import list_all_program_sessions
+
+        for session in await list_all_program_sessions():
+            if session.get("city") == code:
+                await schedule_for_session(int(session["id"]))
+    except Exception as e:
+        logger.error("session_feedback.reconcile_city(%s) failed: %s: %s", code, type(e).__name__, e)
+
+
 def rating_keyboard(session_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⭐" * n, callback_data=f"sfb:r:{session_id}:{n}")

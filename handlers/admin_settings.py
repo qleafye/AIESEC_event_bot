@@ -2370,6 +2370,31 @@ async def _reschedule_checkin_qr_if_forum_date(key: str) -> None:
         logger.error(f"_reschedule_checkin_qr_if_forum_date({key!r}): {e}")
 
 
+async def _reconcile_session_feedback_if_relevant(key: str) -> None:
+    """Ревью 24.09 (аудит ключей после 8c0d8af): свободный ввод задержки («✏️ Другое» на
+    экране «⭐ Отзывы о сессиях», `handlers/session_feedback.py::prog_fbdelay_custom_start`)
+    идёт через ЭТОТ общий хендлер (переиспользуем валидацию int/сброс «-», не пишем свой
+    ввод) — а перестановка уже стоящих джоб отзыва живёт в `services/session_feedback.py` и
+    больше нигде о сохранении настройки не узнаёт. Тот же приём, что
+    `_reschedule_checkin_qr_if_forum_date` выше: хук молча no-op'ает на любом другом ключе.
+
+    Тумблер `session_feedback_enabled` сюда не заходит — у пресетов и тумблера своя прямая
+    кнопка (`prog_fbtoggle`/`prog_fbdelay`), они зовут `reconcile_city`/`reconcile_all`
+    напрямую и в общий `EditSetting.waiting_for_value` не попадают вовсе."""
+    if _base_setting_key(key) != "session_feedback_delay_minutes":
+        return
+    try:
+        from services import session_feedback as sf
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            if parsed is not None:
+                await sf.reconcile_city(parsed[1])
+        else:
+            await sf.reconcile_all()
+    except Exception as e:
+        logger.error(f"_reconcile_session_feedback_if_relevant({key!r}): {e}")
+
+
 @router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -2517,9 +2542,11 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if value == "-":
         await delete_setting_by_admin(message.from_user.id, key)
         await _reschedule_checkin_qr_if_forum_date(key)
+        await _reconcile_session_feedback_if_relevant(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
         await _reschedule_checkin_qr_if_forum_date(key)
+        await _reconcile_session_feedback_if_relevant(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())

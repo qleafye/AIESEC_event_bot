@@ -16,7 +16,14 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import ALL_CITIES, admin_selected_city, cities_module_on, get_setting_typed_for_city
+from cities import (
+    ALL_CITIES,
+    admin_selected_city,
+    cities_module_on,
+    city_label,
+    get_setting_typed_for_city,
+    per_city_key,
+)
 from database.db import (
     claim_sos_report,
     count_sos_by_status,
@@ -28,8 +35,10 @@ from database.db import (
 from handlers.admin import router
 from handlers.admin_caps import has_capability, required_capability
 from handlers.admin_core import _admin_city_view
-from handlers.states import SosChatBind
+from handlers.states import EditSetting, SosChatBind
 from keyboards.builders import get_cancel_kb
+from settings_audit import set_setting_by_admin
+from settings_schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
 from services.timeutil import msk_now
@@ -134,6 +143,10 @@ async def render_sos_screen(admin_id: int, status: str | None = None, offset: in
     # не отвязывается автоматически, поэтому подпись отличается словом «Перепривязать»).
     bind_text = "🔗 Перепривязать чат SOS" if chat is not None else "🔗 Привязать чат SOS"
     buttons.append([InlineKeyboardButton(text=bind_text, callback_data="asos_bind")])
+    # Ревью 24.09 (находка 1/3, аудит ключей после 8c0d8af): тексты/тайминги SOS жили ТОЛЬКО
+    # в Mini App (на проде выключен) — менеджер их менять не мог вовсе. Отдельный подэкран,
+    # не список кнопок здесь, — список заявок и так длинный (пагинация PAGE=6).
+    buttons.append([InlineKeyboardButton(text="⚙️ Тексты и тайминги", callback_data="asos_settings")])
 
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:
@@ -406,3 +419,216 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
     sos_service.cancel_escalation(report_id)
     await message.reply("✅ Ответ отправлен пользователю.")
     await _refresh_card(bot, report_id)
+
+
+# ── Ревью 24.09 (находка 1/3, аудит ключей после 8c0d8af): «⚙️ Тексты и тайминги» ───────────
+#
+# Пять ключей реестра жили ТОЛЬКО в Mini App (на проде выключен, CLAUDE.md — правится в самом
+# боте): два глобальных текста (`sos_delivery_failed_text`, `sos_recent_followup_text`), один
+# per_city текст (`sos_fallback_contact_text`, может быть пустым — «-» его чистит, тот же
+# сентинел, что у всех text-ключей) и два per_city тайминга (`sos_reopen_window_minutes`,
+# `sos_claimed_remind_minutes`) — оба перечитываются заново в момент события (следующий тап
+# «Беру»/следующий повторный SOS), джобу переставлять не нужно, в отличие от `services.
+# session_feedback` (там задержка уже зашита в run_date уже стоящей джобы).
+#
+# Правка текстов идёт через ОБЩИЙ `EditSetting.waiting_for_value` (handlers/admin_settings.py::
+# settings_edit_value) — валидация/HTML/сброс «-» там уже есть, здесь только вход в FSM.
+# Возврат после сохранения — известное ограничение `settings_return_screen` (нет карты
+# «ключ -> подэкран», docstring `handlers/admin_sections.py`): менеджер приземляется в корне
+# разделов, как и у `admin_reg_percity.py::reg_prompt_edit` (глобальная ветка) — тот же
+# принятый компромисс, не новый.
+
+_SOS_DELAY_PRESETS = (5, 10, 15, 30)
+
+_SOS_TEXT_FIELDS = {
+    "failed": ("sos_delivery_failed_text", "🆘 Не получилось передать"),
+    "followup": ("sos_recent_followup_text", "🆘 Дополнить свежий SOS"),
+    "contact": ("sos_fallback_contact_text", "📞 Экстренный контакт (если не доставлено)"),
+}
+
+
+async def _sos_settings_city_scope(admin_id: int) -> tuple[bool, str | None]:
+    """`(per_city_ctx, code)` — `code` резолвится ТОЛЬКО когда правка per_city ключа
+    однозначна (конкретный город привязки/шапки) И право на него перепроверено ЗАНОВО
+    (`settings_ops.per_city_visible_codes` — та же TOCTOU-перепроверка, что
+    `admin_reg_percity.py::toggle_reg_question`: привязка менеджера к городу могла
+    измениться между рендером экрана и тапом кнопки). `per_city_ctx=True, code=None` —
+    модуль городов включён, но выбраны «Все города»/город не закреплён/право отозвано — per_city
+    ключи не правятся отсюда (тот же отказ, что `asos_bind_start` уже даёт для привязки чата)."""
+    if not await cities_module_on():
+        return False, None
+    code = await admin_selected_city(admin_id)
+    if code in (None, ALL_CITIES):
+        return True, None
+    import settings_ops
+    if code not in await settings_ops.per_city_visible_codes(admin_id):
+        return True, None
+    return True, code
+
+
+async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    per_city_ctx, code = await _sos_settings_city_scope(admin_id)
+
+    lines = ["⚙️ <b>SOS — тексты и тайминги</b>", ""]
+    if per_city_ctx and code:
+        lines.append(f"Тайминги и контакт — для города «{html_module.escape(await city_label(code))}».")
+    elif per_city_ctx:
+        lines.append(
+            "Выберите конкретный город вверху раздела «🔧 Управление», чтобы менять тайминги "
+            "и экстренный контакт — тексты ниже можно менять и без этого."
+        )
+    else:
+        lines.append("Тайминги и контакт — общие (модуль городов выключен).")
+    lines.append("")
+
+    reopen_raw = await get_setting_typed_for_city("sos_reopen_window_minutes", code if per_city_ctx else None)
+    try:
+        reopen = int(reopen_raw) if reopen_raw else sos_service.DEFAULT_REOPEN_WINDOW_MINUTES
+    except (TypeError, ValueError):
+        reopen = sos_service.DEFAULT_REOPEN_WINDOW_MINUTES
+    claimed_raw = await get_setting_typed_for_city("sos_claimed_remind_minutes", code if per_city_ctx else None)
+    try:
+        claimed = int(claimed_raw) if claimed_raw else sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
+    except (TypeError, ValueError):
+        claimed = sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
+    contact = await get_setting_typed_for_city("sos_fallback_contact_text", code if per_city_ctx else None)
+
+    lines.append(f"⏱ Окно повторного открытия: {reopen} мин")
+    lines.append(f"⏱ Напоминание взявшему: {claimed} мин")
+    lines.append(f"📞 Экстренный контакт: {html_module.escape(contact) if contact else 'не задан'}")
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    can_edit_percity = (not per_city_ctx) or bool(code)
+    row = []
+    for n in _SOS_DELAY_PRESETS:
+        mark = "• " if reopen == n else ""
+        row.append(InlineKeyboardButton(text=f"{mark}{n}", callback_data=f"asos_set_delay:reopen:{n}"))
+    buttons.append([InlineKeyboardButton(text="⏱ Окно повторного открытия:", callback_data="asos_noop")])
+    buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="✏️ Другое", callback_data="asos_delay_custom:reopen")])
+
+    row2 = []
+    for n in _SOS_DELAY_PRESETS:
+        mark = "• " if claimed == n else ""
+        row2.append(InlineKeyboardButton(text=f"{mark}{n}", callback_data=f"asos_set_delay:claimed:{n}"))
+    buttons.append([InlineKeyboardButton(text="⏱ Напоминание взявшему:", callback_data="asos_noop")])
+    buttons.append(row2)
+    buttons.append([InlineKeyboardButton(text="✏️ Другое", callback_data="asos_delay_custom:claimed")])
+
+    if not can_edit_percity:
+        lines.append("")
+        lines.append("<i>Тайминги выше меняются после выбора конкретного города.</i>")
+
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 📞 Экстренный контакт", callback_data="asos_settings_edit:contact")])
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Не получилось передать", callback_data="asos_settings_edit:failed")])
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Дополнить свежий SOS", callback_data="asos_settings_edit:followup")])
+    buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_sos")])
+
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.callback_query(F.data == "asos_settings")
+async def asos_settings_open(callback: types.CallbackQuery):
+    text, kb = await render_sos_settings_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "asos_noop")
+async def asos_noop(callback: types.CallbackQuery):
+    # Строка-подпись группы пресетов — не кликабельна по смыслу.
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("asos_set_delay:"))
+async def asos_set_delay(callback: types.CallbackQuery):
+    _, field, value_s = callback.data.split(":", 2)
+    if field not in ("reopen", "claimed"):
+        await callback.answer("Неизвестная настройка", show_alert=True)
+        return
+    try:
+        value = int(value_s)
+    except ValueError:
+        await callback.answer("Некорректное значение", show_alert=True)
+        return
+    base_key = "sos_reopen_window_minutes" if field == "reopen" else "sos_claimed_remind_minutes"
+    per_city_ctx, code = await _sos_settings_city_scope(callback.from_user.id)
+    if per_city_ctx and not code:
+        await callback.answer(
+            "Выберите конкретный город вверху раздела «🔧 Управление».", show_alert=True,
+        )
+        return
+    key = per_city_key(base_key, code) if per_city_ctx else base_key
+    if per_city_ctx and key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await set_setting_by_admin(callback.from_user.id, key, str(value))
+    text, kb = await render_sos_settings_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Сохранено.")
+
+
+@router.callback_query(F.data.startswith("asos_delay_custom:"))
+async def asos_delay_custom_start(callback: types.CallbackQuery, state: FSMContext):
+    field = callback.data.split(":", 1)[1]
+    if field not in ("reopen", "claimed"):
+        await callback.answer("Неизвестная настройка", show_alert=True)
+        return
+    base_key = "sos_reopen_window_minutes" if field == "reopen" else "sos_claimed_remind_minutes"
+    per_city_ctx, code = await _sos_settings_city_scope(callback.from_user.id)
+    if per_city_ctx and not code:
+        await callback.answer(
+            "Выберите конкретный город вверху раздела «🔧 Управление».", show_alert=True,
+        )
+        return
+    key = per_city_key(base_key, code) if per_city_ctx else base_key
+    if per_city_ctx and key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.set_data({"setting_key": key})
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
+    await callback.message.answer(
+        "Через сколько минут? Пришлите число, например <code>20</code>.", parse_mode="HTML", reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data.startswith("asos_settings_edit:"))
+async def asos_settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
+    field = callback.data.split(":", 1)[1]
+    entry = _SOS_TEXT_FIELDS.get(field)
+    if entry is None:
+        await callback.answer("Неизвестный текст", show_alert=True)
+        return
+    base_key, label = entry
+    is_percity = field == "contact"
+    per_city_ctx, code = (await _sos_settings_city_scope(callback.from_user.id)) if is_percity else (False, None)
+    if is_percity and per_city_ctx and not code:
+        await callback.answer(
+            "Выберите конкретный город вверху раздела «🔧 Управление».", show_alert=True,
+        )
+        return
+    key = per_city_key(base_key, code) if (is_percity and per_city_ctx) else base_key
+    if is_percity and per_city_ctx and key is None:
+        await callback.answer("Неизвестный город", show_alert=True)
+        return
+
+    current = await get_setting_typed_for_city(base_key, code if (is_percity and per_city_ctx) else None) \
+        if is_percity else await get_setting_typed(base_key)
+    text = f"✏️ <b>{label}</b>\n\n"
+    if current:
+        text += f"Сейчас: <b>{html_module.escape(str(current))}</b>\n\n"
+    else:
+        text += "Сейчас: <i>не задано</i>\n\n" if is_percity else "Сейчас: <i>стандартный</i>\n\n"
+    text += "Пришли новый текст одним сообщением."
+    if is_percity:
+        text += "\n\n<i>«-» — очистить (без контакта).</i>"
+    else:
+        text += "\n\n<i>«-» — вернуть стандартный текст.</i>"
+
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.set_data({"setting_key": key})
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
