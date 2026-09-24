@@ -501,9 +501,29 @@ async def checkin_test_file_invalid(message: types.Message):
 
 # ── Форум-ночь п.3 (D-03, идея №2): ручной запуск рассылки QR + настройки города ────────────
 
+async def _city_allowed(admin_id: int, code: str | None) -> bool:
+    """WR-03-подобная проверка (тот же довод, что `handlers.admin_settings._cycle_enum_setting`
+    для per-city ключей): менеджер, закреплённый за ОДНИМ городом (`staff.city`), не имеет
+    права рассылать QR/трогать настройки ЧУЖОГО города, даже если соберёт `callback_data`
+    вручную (кнопки в его собственном UI никогда не предлагают чужой город, но сам
+    `callback_data` — не секрет). `code=None` (модуль городов выключен, или экран уже нацелен
+    на единственную область без города) — разрешено всегда, других городов тогда не
+    существует."""
+    if code is None:
+        return True
+    import settings_ops
+    return code in await settings_ops.per_city_visible_codes(admin_id)
+
+
+_CITY_FORBIDDEN_ALERT = "Этот город правит суперадмин."
+
+
 @router.callback_query(F.data.startswith("checkinqr_send:"))
 async def checkinqr_send_confirm(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
     n = await pending_broadcast_count(code)
     if n == 0:
         await callback.answer(
@@ -524,6 +544,9 @@ async def checkinqr_send_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("checkinqr_send_go:"))
 async def checkinqr_send_go(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
     # T-12-03 (Rule 1): рассылка может занять минуты (сотни фото) — отвечаем на callback СРАЗУ
     # и правим то же сообщение, вместо того чтобы держать колбэк «в загрузке» до конца отправки
     # (Telegram считает такой колбэк протухшим и показывает тапнувшему ошибку).
@@ -580,6 +603,9 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
 @router.callback_query(F.data.startswith("checkinqr_cfg:"))
 async def checkinqr_cfg_screen(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
     text, kb = await _qr_cfg_text_kb(code)
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -600,6 +626,9 @@ async def _safe_reschedule(code: str | None) -> None:
 @router.callback_query(F.data.startswith("checkinqr_toggle:"))
 async def checkinqr_toggle_go(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
     key = "checkin_qr_broadcast_enabled"
     current = await get_setting_typed_for_city(key, code)
     new_val = "off" if current != "off" else "on"
@@ -618,6 +647,9 @@ async def checkinqr_toggle_go(callback: types.CallbackQuery):
 async def checkinqr_time_start(callback: types.CallbackQuery, state: FSMContext):
     _, which, raw_city = callback.data.split(":", 2)
     code = _decode_city(raw_city)
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
     key = "checkin_qr_broadcast_time" if which == "evening" else "checkin_qr_morning_repeat_time"
     await state.update_data(checkinqr_time_key=key, checkinqr_time_city=code)
     await state.set_state(CheckinQrTimeEdit.waiting_value)
@@ -644,6 +676,13 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
     key = data.get("checkinqr_time_key")
     code = data.get("checkinqr_time_city")
     await state.set_state(None)
+
+    # Защитная перепроверка (T-092-01/WR-03 idiom): право на город могло измениться между
+    # входом в FSM (checkinqr_time_start) и вводом значения — TOCTOU-гейт, тот же приём, что
+    # handlers.admin_settings.settings_edit_value применяет к composite-ключам.
+    if not await _city_allowed(message.from_user.id, code):
+        await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
+        return
 
     value, error = validate_setting_value(key, (message.text or "").strip())
     if error:
