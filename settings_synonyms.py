@@ -58,6 +58,13 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "sos_recent_followup_text": ["sos дополнить заявку", "sos свежий повторный"],
     "sos_reopen_window_minutes": ["sos окно повторного открытия", "sos через сколько новый"],
     "sos_claimed_remind_minutes": ["sos напоминание взявшему", "sos не решил вовремя"],
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом».
+    "session_feedback_enabled": ["отзыв о сессии тумблер", "оценка сессии включить"],
+    "session_feedback_delay_minutes": ["отзыв о сессии задержка", "через сколько после сессии"],
+    "session_feedback_prompt_text": ["отзыв о сессии вопрос", "как тебе сессия текст"],
+    "session_feedback_thanks_text": ["отзыв о сессии спасибо", "после оценки текст"],
+    "session_feedback_comment_hint_text": ["отзыв о сессии приглашение к комментарию", "напиши пару слов текст"],
+    "session_feedback_comment_saved_text": ["отзыв о сессии комментарий сохранён", "спасибо записал текст"],
     "faq_intro_text": ["частые вопросы вступление", "faq вступление"],
     "faq_empty_text": ["частые вопросы пусто", "faq пока пусто"],
     "faq_ask_button_text": ["не нашёл ответ кнопка", "спросить менеджера кнопка"],

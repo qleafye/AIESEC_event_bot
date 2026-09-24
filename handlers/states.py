@@ -373,3 +373,11 @@ class SosChatBind(StatesGroup):
     # живёт в `sos_chat_bind_pending` (services/sos.py), не в state.get_data() — вторая ветка
     # подтверждения (команда `/sos_id` в самой группе) физически не имеет доступа к этому FSM.
     waiting = State()
+
+
+class SessionFeedbackComment(StatesGroup):
+    # Форум-ночь п.9 (идея №15, D-24): «✍️ Написать» под приглашением оценить сессию
+    # (handlers/session_feedback.py) — ОДНО состояние ожидания текста, session_id несёт
+    # state.get_data() (sfb_session_id). Право не нужно (delegate-side, вне
+    # CapabilityMiddleware — тот же прецедент, что SosReport выше).
+    waiting = State()

@@ -62,6 +62,10 @@ from services.program import (
     sessions_for_city_day,
     suggested_days,
 )
+# Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — джоба переставляется после
+# ЛЮБОГО создания/правки сессии, снимается после удаления; статистика — в карточке сессии.
+# Планирование/агрегаты живут в services/session_feedback.py, здесь только точки вызова.
+from services import session_feedback
 
 _CITY_FORBIDDEN_ALERT = "Этот город правит другой менеджер."
 _CANCEL_WORDS = {"Отмена", "/cancel"}
@@ -245,6 +249,11 @@ async def render_day_screen(code: str, day: str) -> tuple[str, InlineKeyboardMar
     else:
         lines.append("Сессий пока нет.")
     buttons.append([InlineKeyboardButton(text="➕ Сессия", callback_data=f"prog_new:{code}:{day}")])
+    if sessions:
+        # Форум-ночь п.9 (идея №15, D-24): «📊 Оценки сессий» — только когда в дне уже есть
+        # сессии, что оценивать (пустой день -> кнопка не нужна, тот же приём, что «➕ Сессия»
+        # выше показывается всегда, а не наоборот — но здесь показывать нечего вовсе).
+        buttons.append([InlineKeyboardButton(text="📊 Оценки сессий", callback_data=f"prog_fbday:{code}:{day}")])
     buttons.append([InlineKeyboardButton(text="← К программе", callback_data=f"prog_city:{code}")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -564,6 +573,7 @@ async def prog_description_step(message: types.Message, state: FSMContext):
             data["pw_city"], data["pw_day"], data["pw_start"], data["pw_end"], data["pw_title"],
             speaker=data.get("pw_speaker"), hall_id=data.get("pw_hall_id"), description=value,
         )
+        await session_feedback.schedule_for_session(session_id)  # Форум-ночь п.9
         await state.clear()
         await message.answer("✅ Сессия добавлена в программу.", reply_markup=ReplyKeyboardRemove())
         screen = await render_session_card(session_id)
@@ -690,6 +700,9 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
 
     arrived = await count_checkins_by_point(point_for_session(session["id"]))
     arrived_line = f"Отмечено: {arrived} из {hall_capacity}" if hall_capacity else f"Отмечено: {arrived}"
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ 4.6 (38 оценок) · 12 комментариев» — статистика
+    # оценок сессии, сразу после строки посещаемости, тот же экран.
+    fb_stats = await session_feedback.session_feedback_stats(session["id"])
 
     lines = [
         f"🗓 <b>{html_module.escape(session['title'])}</b>", "",
@@ -698,6 +711,7 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         f"🏛 Зал: {html_module.escape(hall_name) if hall_name else 'не указан'}",
         f"🎤 Спикер: {html_module.escape(session['speaker']) if session.get('speaker') else 'не указан'}",
         f"✅ {arrived_line}",
+        session_feedback.stats_line(fb_stats),
     ]
     if session.get("description"):
         lines.append("")
@@ -710,6 +724,10 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         [InlineKeyboardButton(text="🏛 Зал", callback_data=f"prog_hallscreen:f{sid}")],
         [InlineKeyboardButton(text="🎤 Спикер", callback_data=f"prog_field:{sid}:speaker")],
         [InlineKeyboardButton(text="📝 Описание", callback_data=f"prog_field:{sid}:description")],
+    ]
+    if fb_stats.get("comment_count"):
+        buttons.append([InlineKeyboardButton(text="💬 Комментарии", callback_data=f"prog_fbc:{sid}:0")])
+    buttons += [
         [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"prog_d:{sid}")],
         [InlineKeyboardButton(text="← К дню", callback_data=f"prog_day:{session['city']}:{session['day']}")],
     ]
@@ -717,6 +735,11 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
 
 
 async def _send_card(message: types.Message, session_id: int, *, intro: str | None = None) -> None:
+    # Форум-ночь п.9: ОБА пути карточки после правки (эта функция и `_edit_to_card` ниже) —
+    # единственные вызывающие места после `update_program_session`/`create_program_session`
+    # (см. докстринг `services.session_feedback.schedule_for_session`) — переставляет джобу
+    # отзыва на новый момент, идемпотентно.
+    await session_feedback.schedule_for_session(session_id)
     screen = await render_session_card(session_id)
     if screen is None:
         await message.answer("Сессия больше недоступна.", reply_markup=ReplyKeyboardRemove())
@@ -728,6 +751,7 @@ async def _send_card(message: types.Message, session_id: int, *, intro: str | No
 
 
 async def _edit_to_card(callback: types.CallbackQuery, session_id: int) -> None:
+    await session_feedback.schedule_for_session(session_id)
     screen = await render_session_card(session_id)
     if screen is None:
         await callback.message.edit_text("Сессия больше недоступна.")
@@ -811,6 +835,7 @@ async def prog_delete_go(callback: types.CallbackQuery):
         return
     city, day = session["city"], session["day"]
     await delete_program_session(session_id)
+    session_feedback.cancel_for_session(session_id)  # Форум-ночь п.9 — не отправлять отзыв удалённой сессии
     text, kb = await render_day_screen(city, day)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сессия удалена.")
