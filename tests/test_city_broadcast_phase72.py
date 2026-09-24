@@ -19,6 +19,7 @@ tests/test_city_export_stats_phase72.py / tests/test_city_scope_phase72.py.
 """
 import asyncio
 import json
+from types import SimpleNamespace
 
 from config import config
 from database import db
@@ -493,9 +494,12 @@ def test_stale_exclude_leaks_other_cities_until_it_is_refreshed(tmp_path):
 class _FakeSendBot:
     def __init__(self):
         self.sent = []
+        self._next_id = 9000
 
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, reply_markup=None):
         self.sent.append(chat_id)
+        self._next_id += 1
+        return SimpleNamespace(message_id=self._next_id)
 
 
 def _run_scheduled_broadcast(tmp_path, spec_obj):
