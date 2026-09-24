@@ -424,6 +424,14 @@ ADMIN_CAPS: dict[str, str] = {
     "filter_optpage:*": "broadcast",
     "filter_schedule": "broadcast",
     "filter_send_now": "broadcast",
+    # Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …»
+    # (handlers/admin_broadcast_session_filter.py) — тот же мастер фильтра рассылки, та же
+    # капа, что filter_f_*/filter_opt:* выше.
+    "cksf_start:*": "broadcast",
+    "cksf_city:*": "broadcast",
+    "cksf_day:*": "broadcast",
+    "cksf_pick:*": "broadcast",
+    "cksf_cancel": "broadcast",
     "sched_cancel_*": "broadcast",
     "state:Broadcast:*": "broadcast",
     # «📊 Опросы» (handlers/admin_polls.py + admin_poll_wizard.py) — то же право, что и

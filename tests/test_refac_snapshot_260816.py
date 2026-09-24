@@ -900,6 +900,11 @@ admin|callback_query|filter_back|filter_back
 admin|callback_query|filter_count|filter_count
 admin|callback_query|filter_send_now|filter_send_now
 admin|callback_query|filter_schedule|filter_schedule
+admin|callback_query|cksf_start|cksf_start:*
+admin|callback_query|cksf_city_pick|cksf_city:*
+admin|callback_query|cksf_day_pick|cksf_day:*
+admin|callback_query|cksf_session_pick|cksf_pick:*
+admin|callback_query|cksf_cancel|cksf_cancel
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -1530,7 +1535,14 @@ def test_snapshot_total_handler_count_is_292():
     # порядок, что в самом файле). Пересчитано RUNNING `_build_snapshot_lines()` и сверено
     # diff'ом с прежним 681-строчным снимком: ровно одна вставка, 0 удалений, 0 реордеров
     # (681 -> 682).
-    assert len(GOLDEN_SNAPSHOT) == 682
+    # Форум-ночь п.6 (D-25, идея №14): +5 хендлеров — handlers/admin_broadcast_session_filter.py
+    # (мастер «Были/Не были на сессии …»: cksf_start/cksf_city_pick/cksf_day_pick/
+    # cksf_session_pick/cksf_cancel, все admin.callback_query) — шов импортируется из хвоста
+    # admin_broadcasts.py, встал сразу после filter_schedule и ПЕРЕД admin_event_preset (та же
+    # позиция, что у остального хвоста admin_broadcasts.py). Пересчитано RUNNING
+    # `_build_snapshot_lines()` и сверено diff'ом с прежним 682-строчным снимком: ровно пять
+    # вставок, 0 удалений, 0 реордеров (682 -> 687).
+    assert len(GOLDEN_SNAPSHOT) == 687
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
