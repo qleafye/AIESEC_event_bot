@@ -1500,6 +1500,34 @@ async def init_db():
             )
         ''')
 
+        # Форум-ночь п.6 (D-25, идея №14): «Не пришёл» — готовый шаблон рассылки с кнопками
+        # ответа делегата («Уже еду»/«Не смогу прийти»/«Я на месте»). Одна строка = один
+        # (делегат, день) — `UNIQUE(telegram_id, day)` даёт ДВОЙНУЮ службу без второй таблицы:
+        # (1) идемпотентность самой ОТПРАВКИ (повторный тап «Написать не пришедшим» в тот же
+        # день — INSERT OR IGNORE, тем, у кого уже есть строка за сегодня, второе сообщение не
+        # уходит), и (2) хранилище ОТВЕТА (UPDATE той же строки, когда делегат жмёт кнопку).
+        # `day` — календарный день ОТПРАВКИ (МСК), не день форума — двухдневная Москва
+        # (30–31.10) может слать этот шаблон оба дня, каждый день независимо идемпотентен.
+        # `event_city` — СНИМОК города на момент отправки, тот же приём, что `checkin_qr_sends`
+        # выше (счётчик сводки не должен уехать, если делегат сменит город анкеты позже).
+        # `response`/`responded_at` — NULL, пока делегат не ответил; значения — `database.db.
+        # CNA_COMING`/`CNA_CANT`/`CNA_HERE`.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_not_arrived (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                event_city TEXT,
+                sent_at TEXT NOT NULL,
+                response TEXT,
+                responded_at TEXT,
+                UNIQUE(telegram_id, day)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_checkin_not_arrived_day ON checkin_not_arrived(day)"
+        )
+
         # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
         # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
         # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
@@ -3817,6 +3845,18 @@ _FILTER_COLUMNS = {
     # (не `users.auto_reject`, такой колонки нет) собственной веткой `_build_filter_clause`;
     # см. `_FILTER_VIRTUAL_FIELDS` ниже.
     "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14): «Отметка на форуме» (пришли/не пришли) как поле
+    # фильтра рассылки. Та же двойная регистрация (здесь и в
+    # `handlers.admin_broadcasts._PICKER_FIELDS`), тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ —
+    # условие собирается по таблице `checkins` собственной веткой `_build_filter_clause`; см.
+    # `_FILTER_VIRTUAL_FIELDS` ниже.
+    "checkin_entry",
+    # «Сессия программы» (были/не были на конкретной сессии) — та же двойная регистрация,
+    # тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ — условие тоже собирается по `checkins`, но
+    # значение сессии едет ВНУТРИ записи фильтра (`session_id`), а не выбирается из
+    # `get_distinct_filter_values` — у него собственный UI-мастер (город → день → сессия),
+    # не входит в `_PICKER_FIELDS`.
+    "checkin_session",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -3828,7 +3868,11 @@ _FILTER_COLUMNS = {
 # `elif field in _FILTER_COLUMNS and field not in _FILTER_VIRTUAL_FIELDS`, виртуальное поле
 # уходит в уже существующий `return []` (мина обезврежена ДО того, как её кто-то заденет —
 # сегодня `get_distinct_filter_values("resume")` никто не зовёт, но так не будет всегда).
-_FILTER_VIRTUAL_FIELDS = {"resume", "delegate_chat", "auto_reject"}
+_FILTER_VIRTUAL_FIELDS = {
+    "resume", "delegate_chat", "auto_reject",
+    # Форум-ночь п.6 (D-25, идея №14) — те же виртуальные поля, что резюме/чат/автоотказ выше.
+    "checkin_entry", "checkin_session",
+}
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
 # Это НЕ значение из БД (`users.season` для таких строк — NULL/пустая строка), а сентинел,
@@ -3873,6 +3917,21 @@ AUTO_REJECT_NO = "no"
 # не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
 CHAT_IN = "in"
 CHAT_OUT = "out"
+
+# Форум-ночь п.6 (D-25, идея №14): поле фильтра рассылки «Отметка на форуме» — «пришли» / «не
+# пришли». Литерал ниже ОБЯЗАН побайтово совпадать с `services.checkin.ENTRY_POINT`
+# (`checkins.point` для входа) — не импортирован напрямую (services.checkin импортирует ЭТОТ
+# модуль, обратный импорт был бы циклом), совпадение проверяет
+# tests/test_checkin_broadcast_filter_260924.py::test_entry_point_literal_matches_service.
+CHECKIN_ENTRY_POINT = "entry"
+CHECKIN_YES = "yes"
+CHECKIN_NO = "no"
+
+# Поле фильтра рассылки «Сессия программы» — «были» / «не были» на КОНКРЕТНОЙ сессии (внутри
+# записи фильтра едет `session_id`, тот же приём, что `chats`/`exclude` у delegate_chat/
+# event_city выше — `database/db.py` не может импортировать `services.program`).
+SESSION_ATTENDED = "attended"
+SESSION_NOT_ATTENDED = "not_attended"
 
 
 def _resume_has_fragment() -> str:
@@ -4036,6 +4095,56 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 continue
             clauses.append("(" + " OR ".join(block_parts) + ")")
             params.extend(block_params)
+        elif field == "checkin_entry":
+            # Форум-ночь п.6 (D-25, идея №14): «✅ Пришли на форум» / «❌ Не пришли». «Пришли» —
+            # просто EXISTS отметки входа (только одобренные текущего сезона вообще МОГЛИ её
+            # получить, D-02 — второй раз это условие здесь не проверяем). «Не пришли» — этого
+            # НЕДОСТАТОЧНО инвертировать: NOT EXISTS сам по себе поймал бы ещё и отклонённых, и
+            # ожидающих, и approved-делегатов ПРОШЛОГО сезона (482 импортированных 26/1 — им QR
+            # вообще не выдаётся, D-02, и «мы тебя не видим на форуме» им писать нельзя). Поэтому
+            # «Не пришли» = approved ТЕКУЩЕГО сезона (сезон — снимок `event_season` на МОМЕНТ
+            # вызова, кладёт `_resolve_checkin_entry_season` в `count_and_list_filtered` НИЖЕ,
+            # тот же приём, что `exclude` у `event_city`/`chats` у `delegate_chat` — пересчитан
+            # заново на КАЖДЫЙ вызов, включая отложенную отправку) AND NOT EXISTS.
+            value = f.get("value")
+            exists_frag = (
+                "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                "AND c.point = ?)"
+            )
+            if value == CHECKIN_YES:
+                clauses.append(exists_frag)
+                params.append(CHECKIN_ENTRY_POINT)
+            elif value == CHECKIN_NO:
+                season = f.get("event_season")
+                season_frag = "(season IS NULL OR season = ?)" if season else "1=1"
+                clauses.append(f"(status = 'approved' AND {season_frag} AND NOT {exists_frag})")
+                if season:
+                    params.append(season)
+                params.append(CHECKIN_ENTRY_POINT)
+            else:
+                # WR-01, тот же довод, что у resume/event_city/season выше: неизвестное значение
+                # — fail closed, не «всем».
+                clauses.append("0")
+        elif field == "checkin_session":
+            # «Были на сессии …» / «Не были на сессии …» — `session_id` едет ВНУТРИ записи
+            # фильтра (см. докстринг `SESSION_ATTENDED`/`SESSION_NOT_ATTENDED` выше).
+            # `_invalid` (проставляет `_resolve_checkin_session_validity` в
+            # `count_and_list_filtered` НИЖЕ) — сессия могла быть удалена между планированием и
+            # отправкой: без этой проверки «не были» на несуществующей сессии совпало бы С КАЖДЫМ
+            # (NOT EXISTS на point, которого никогда не было ни у кого) — тот же WR-01 fail-closed
+            # довод, что у неизвестного event_city.
+            value = f.get("value")
+            session_id = f.get("session_id")
+            if f.get("_invalid") or value not in (SESSION_ATTENDED, SESSION_NOT_ATTENDED) \
+                    or not isinstance(session_id, int):
+                clauses.append("0")
+            else:
+                exists_frag = (
+                    "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                    "AND c.point = ?)"
+                )
+                clauses.append(exists_frag if value == SESSION_ATTENDED else f"NOT {exists_frag}")
+                params.append(f"session:{session_id}")
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
@@ -4176,8 +4285,92 @@ async def get_chat_filter_options(chats: list[dict]) -> list[str]:
     return options
 
 
+async def get_checkin_entry_filter_options() -> list[str]:
+    """Порог показа кнопки «Отметка на форуме» — та же роль, что у `get_chat_filter_options`
+    выше: показываем сторону, только если по ней реально кто-то есть, иначе фильтровать не по
+    чему (до дня форума `checkins` пуста — кнопка «Пришли» не появится вовсе)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM checkins WHERE point = ?)", (CHECKIN_ENTRY_POINT,),
+        ) as cursor:
+            has_yes = (await cursor.fetchone())[0]
+    event_season = (await get_setting("event_season") or "").strip() or None
+    season_frag = "(season IS NULL OR season = ?)" if event_season else "1=1"
+    params = [event_season] if event_season else []
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT EXISTS(SELECT 1 FROM users WHERE status = 'approved' AND {season_frag} "
+            "AND NOT EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+            "AND c.point = ?))",
+            [*params, CHECKIN_ENTRY_POINT],
+        ) as cursor:
+            has_no = (await cursor.fetchone())[0]
+    options: list[str] = []
+    if has_yes:
+        options.append(CHECKIN_YES)
+    if has_no:
+        options.append(CHECKIN_NO)
+    return options
+
+
+async def any_program_sessions_exist() -> bool:
+    """Порог показа кнопок «Были на сессии …» / «Не были на сессии …» — прежде чем менеджер
+    завёл хотя бы одну сессию программы (`handlers/admin_program.py`), фильтровать по сессиям
+    не по чему."""
+    async with _connect() as db:
+        async with db.execute("SELECT EXISTS(SELECT 1 FROM program_sessions)") as cursor:
+            row = await cursor.fetchone()
+    return bool(row and row[0])
+
+
+async def _resolve_checkin_entry_season(filters: list[dict]) -> list[dict]:
+    """Наполняет `event_season` СНИМКОМ настройки на МОМЕНТ вызова для каждой записи
+    `checkin_entry`=`CHECKIN_NO` («Не пришли») — тот же приём, что `cities.
+    refresh_city_filter_spec` для `event_city.exclude`: пересчитывается заново на КАЖДЫЙ вызов
+    (превью и отложенная отправка), а не замораживается на момент, когда менеджер нажал кнопку
+    в мастере. Единая точка — здесь (внутри `count_and_list_filtered`), а не в каждом
+    вызывающем месте, чтобы будущий третий вызывающий не забыл про пересчёт."""
+    if not any(
+        isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO
+        for f in filters
+    ):
+        return filters
+    event_season = (await get_setting("event_season") or "").strip() or None
+    return [
+        {**f, "event_season": event_season}
+        if isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO
+        else f
+        for f in filters
+    ]
+
+
+async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:
+    """WR-01-style fail-closed: помечает `checkin_session`-записи с уже удалённым
+    `session_id` (`_invalid=True`) — без этой проверки удалённая между планированием и
+    отправкой сессия молча превратила бы «не были на сессии X» во «все» (см. докстринг ветки
+    `checkin_session` в `_build_filter_clause`)."""
+    if not any(isinstance(f, dict) and f.get("field") == "checkin_session" for f in filters):
+        return filters
+    cache: dict[int, bool] = {}
+    result: list[dict] = []
+    for f in filters:
+        if isinstance(f, dict) and f.get("field") == "checkin_session":
+            sid = f.get("session_id")
+            valid = False
+            if isinstance(sid, int):
+                if sid not in cache:
+                    cache[sid] = (await get_program_session(sid)) is not None
+                valid = cache[sid]
+            result.append(f if valid else {**f, "_invalid": True})
+        else:
+            result.append(f)
+    return result
+
+
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
     """Materialize the matched telegram_id list; the count preview is len(...)."""
+    filters = await _resolve_checkin_entry_season(filters)
+    filters = await _resolve_checkin_session_validity(filters)
     where, params = _build_filter_clause(filters)
     # ME-04: if the caller supplied filter(s) but every one was dropped (non-whitelisted field
     # / malformed spec), `where` degenerates to empty and the query would fan out to ALL users.
@@ -7586,6 +7779,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь п.3 (D-03, идея №2): checkin_qr_sends.telegram_id — кому и когда отправлен
     # персональный QR + его подтверждение, тот же личный след, группа общая "checkin".
     ("checkin_qr_sends", "telegram_id", "checkin"),
+    # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived.telegram_id — кому и когда ушёл
+    # шаблон «не пришёл» + его ответ, тот же личный след, группа общая "checkin".
+    ("checkin_not_arrived", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -8280,6 +8476,100 @@ async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
     total = int(row[0] or 0) if row else 0
     confirmed = int(row[1] or 0) if row and row[1] is not None else 0
     return total, confirmed
+
+
+# ── Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» + ответы делегата ─────────────────────
+
+# Значения `checkin_not_arrived.response` — сентинелы (не булево), та же причина строки, что у
+# CHAT_IN/CHAT_OUT выше: переживают JSON/строковый круговорот там, где он есть, и человеку
+# нигде не показываются как код (только как подпись кнопки).
+CNA_COMING = "coming"
+CNA_CANT = "cant"
+CNA_HERE = "here"
+
+
+async def checkin_not_arrived_pending_ids(*, city_scope=None) -> list[int]:
+    """Кандидаты на сегодняшний шаблон «Не пришёл»: approved текущего сезона без отметки
+    «Вход» (то же условие, что ветка `checkin_entry`=`CHECKIN_NO` в `_build_filter_clause`,
+    второй копии условия не заводится), МИНУС те, кому шаблон уже уходил СЕГОДНЯ (МСК) — сама
+    идемпотентность «повторный тап в тот же день не шлёт дважды»."""
+    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
+    if city_scope is not None:
+        code, exclude = city_scope
+        filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})
+    candidates = await count_and_list_filtered(filters)
+    if not candidates:
+        return []
+    day = msk_now().strftime("%Y-%m-%d")
+    placeholders = ",".join("?" for _ in candidates)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_not_arrived WHERE day = ? "
+            f"AND telegram_id IN ({placeholders})",
+            (day, *candidates),
+        ) as cursor:
+            already = {row[0] for row in await cursor.fetchall()}
+    return [tid for tid in candidates if tid not in already]
+
+
+async def checkin_not_arrived_mark_sent(telegram_id: int, event_city: str | None, sent_at: str) -> bool:
+    """`INSERT OR IGNORE` по `(telegram_id, day)` — идемпотентная отправка на СЕГОДНЯ (`day` —
+    календарный день `sent_at`, МСК). `True` — эта строка вставлена именно этим вызовом."""
+    day = sent_at[:10]
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO checkin_not_arrived (telegram_id, day, event_city, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, day, event_city, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def record_checkin_not_arrived_response(telegram_id: int, day: str, response: str, responded_at: str) -> bool:
+    """Пишет ответ делегата в строку `(telegram_id, day)` — `day` приходит из `callback_data`
+    (см. докстринг `handlers/user_actions.py`), не из FSM (переживает рестарт контейнера).
+    Повторный тап любой из трёх кнопок на то же сообщение перезаписывает ответ (делегат мог
+    ошибиться и поправиться) — не идемпотентно в смысле «первый побеждает», идемпотентно в
+    смысле «строка всегда одна на (делегат, день)» (`UNIQUE`). `False` — строки ещё нет (не
+    должно случаться: кнопка приходит только в уже отправленном сообщении), не роняем
+    вызывающего."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE checkin_not_arrived SET response = ?, responded_at = ? "
+            "WHERE telegram_id = ? AND day = ?",
+            (response, responded_at, telegram_id, day),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def checkin_not_arrived_summary(*, city_scope=None, day: str | None = None) -> dict:
+    """Сводка менеджеру «Едут N · Не смогут M · Уже на месте K» (+ «без ответа») за `day`
+    (по умолчанию — сегодня, МСК). `city_scope` — по СНИМКУ `event_city` (город на момент
+    отправки), тот же приём, что `checkin_qr_sent_ids`."""
+    day = day or msk_now().strftime("%Y-%m-%d")
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "day = ?"
+    params: list = [day]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT response, COUNT(*) FROM checkin_not_arrived WHERE {where} GROUP BY response",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    counts = {row[0]: row[1] for row in rows}
+    no_response = counts.get(None, 0)
+    return {
+        "coming": counts.get(CNA_COMING, 0),
+        "cant": counts.get(CNA_CANT, 0),
+        "here": counts.get(CNA_HERE, 0),
+        "no_response": no_response,
+        "total": sum(counts.values()),
+    }
 
 
 # ── Форум-ночь п.4: расписание форума в боте (program_halls/program_sessions) ─────────────────
