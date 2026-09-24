@@ -601,6 +601,35 @@ def test_post_card_falls_back_to_moderate_reg_dm_without_bound_chat(tmp_path):
     assert row["chat_id"] is None  # известное ограничение фоллбэка — треда нет
 
 
+def test_fallback_dm_copies_all_refreshed_on_claim(tmp_path):
+    """Чат SOS не привязан — карточка ушла в личку двум админам. «Беру» одного из них обязан
+    перерисовать ОБЕ копии, иначе второй не видит, что заявка взята, и берёт её сам."""
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+
+    bot = FakeBot()
+    result = _run(sos_service.post_card(bot, rid))
+    assert result.dm_delivered == 2
+    copies = dict(_run(db.list_sos_card_copies(rid)))
+    assert set(copies) == {ADMIN_ID, MANAGER_ID}
+
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_claim(cb, bot))
+    edited = {(chat_id, message_id) for chat_id, message_id, _t, _kw in bot.edited}
+    assert edited == {(ADMIN_ID, copies[ADMIN_ID]), (MANAGER_ID, copies[MANAGER_ID])}
+
+
+def test_purge_user_removes_sos_card_copies(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+    _run(db.add_sos_card_copy(rid, ADMIN_ID, 77))
+    _run(db.purge_user(DELEGATE_ID))
+    assert _run(db.list_sos_card_copies(rid)) == []
+
+
 def test_render_sos_screen_shows_warning_without_bound_chat(tmp_path):
     _ready(tmp_path)
     text, _kb = _run(admin_sos.render_sos_screen(ADMIN_ID))
