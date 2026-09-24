@@ -130,7 +130,7 @@ def test_screen_shows_counter_and_upload_button(tmp_path):
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     texts = _flat_text(cb.message)
-    assert any("Пришли: 0 из 0 одобренных" in t for t in texts)
+    assert any("Пришли за форум: 0 из 0 одобренных" in t for t in texts)
     kb = cb.message.sent[0][1]
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert "checkin_upload_start" in cbs
@@ -239,7 +239,7 @@ def test_counter_reflects_current_season_and_arrivals(tmp_path):
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     texts = _flat_text(cb.message)
-    assert any("Пришли: 1 из 2 одобренных" in t for t in texts)
+    assert any("Сегодня пришли: 1 из 2 одобренных" in t for t in texts)
 
 
 # ── A2 (FORUM-CHECKIN.md): счётчик по городам, 03.10 регионы + Москва набирает параллельно ──
@@ -275,6 +275,7 @@ def test_counter_all_cities_breaks_down_per_city_with_total(tmp_path):
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     text = _flat_text(cb.message)[0]
+    assert "\nСегодня:\n" in text
     assert "СПб: пришли 1 из 2" in text
     assert "Москва: пришли 0 из 1" in text
     assert "Тюмень" not in text  # нет одобренных -- строку не показываем
@@ -294,7 +295,7 @@ def test_counter_scoped_manager_sees_only_own_city(tmp_path):
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     text = _flat_text(cb.message)[0]
-    assert "Пришли: 1 из 1 одобренных" in text  # только СПб, Москва не примешивается
+    assert "Сегодня пришли: 1 из 1 одобренных" in text  # только СПб, Москва не примешивается
     assert "Итого" not in text
     assert "Москва" not in text
 
@@ -311,7 +312,7 @@ def test_counter_module_off_stays_unscoped_byte_for_byte(tmp_path):
     cb = _FakeCallback("admin_checkin", ADMIN_ID)
     asyncio.run(admin_checkin.show_admin_checkin(cb))
     text = _flat_text(cb.message)[0]
-    assert "Пришли: 1 из 2 одобренных" in text
+    assert "Сегодня пришли: 1 из 2 одобренных" in text
 
 
 # ── форум-ночь п.5 (D-18..D-20): точки-сессии в загрузке CSV ────────────────────────────────

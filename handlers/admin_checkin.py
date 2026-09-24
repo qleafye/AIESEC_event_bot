@@ -82,6 +82,7 @@ from services.checkin_not_arrived import (
 from services.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
+from services import checkin_arrival
 
 logger = logging.getLogger(__name__)
 
@@ -117,46 +118,40 @@ _DENIAL_LABELS = {
 }
 
 
-async def _one_city_line(label: str, city_sc) -> tuple[str, int, int] | None:
+async def _one_city_line(label: str, city_sc, day: str | None = None) -> tuple[str, int, int] | None:
     """Строка «<Город>: пришли N из M» + сырые числа для итога. `None`, если в городе нет ни
     одного одобренного текущего сезона (задача A2 просила показывать только города, где есть
     одобренные -- пустой регион 30.10 не должен маячить строкой «0 из 0» рядом с 03.10)."""
-    approved = await count_approved_current_season(city_scope=city_sc)
+    arrived, approved = await checkin_arrival.arrived_counts(city_sc, day)
     if approved == 0:
         return None
-    arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=city_sc)
     return f"{label}: пришли {arrived} из {approved}", arrived, approved
 
 
 async def _counter_line(admin_id: int) -> str:
-    """«Пришли: N из M одобренных» (задача A2, FORUM-CHECKIN.md) — считает по точке «Вход».
+    """«Пришли N из M одобренных» (задача A2, FORUM-CHECKIN.md) — тот же запрос, что статистика
+    прихода (`services.checkin_arrival.arrived_counts`: одобренные текущего сезона со входом).
+    Вход каждый день: в день форума (сегодня уже был хоть один вход) — «Сегодня пришли» по
+    входу сегодняшнего дня, иначе — «Пришли за форум» (хоть один вход).
 
     03.10 форумы СПб и Тюмени идут ОДНОВРЕМЕННО с ещё открытым набором в Москве -- один общий
     счётчик на всё событие путает «пришедших в регионе» с «ещё набирающимися в Москве».
-    Три ветки:
-    1. Менеджер закреплён за одним городом (`_admin_city_scope` -- тот же резолвер, что у
-       очереди заявок) -- показываем ТОЛЬКО его город, без построчного списка остальных.
-    2. Модуль городов выключен -- старое нескопированное поведение байт-в-байт (city_scope=None
-       и на счётчике, и на знаменателе).
-    3. Менеджер видит «Все города» -- построчно по каждому включённому городу, где есть хотя бы
-       один одобренный текущего сезона, плюс «Итого» под списком."""
+    Три ветки: менеджер закреплён за городом (`_admin_city_scope`) -- только его город; модуль
+    городов выключен -- без городского фильтра; «Все города» -- построчно по включённым
+    городам с хотя бы одним одобренным текущего сезона, плюс «Итого»."""
+    day = await checkin_arrival.counter_day()
+    head = "Сегодня пришли" if day else "Пришли за форум"
     own_scope = await _admin_city_scope(admin_id)
-    if own_scope is not None:
-        approved = await count_approved_current_season(city_scope=own_scope)
-        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=own_scope)
-        return f"Пришли: {arrived} из {approved} одобренных"
-
-    if not await cities_module_on():
-        approved = await count_approved_current_season()
-        arrived = await count_checkins_by_point(ENTRY_POINT)
-        return f"Пришли: {arrived} из {approved} одобренных"
+    if own_scope is not None or not await cities_module_on():
+        arrived, approved = await checkin_arrival.arrived_counts(own_scope, day)
+        return f"{head}: {arrived} из {approved} одобренных"
 
     lines: list[str] = []
     total_arrived = 0
     total_approved = 0
     for c in await enabled_cities():
         code = c["code"]
-        result = await _one_city_line(await city_label(code), city_scope(code))
+        result = await _one_city_line(await city_label(code), city_scope(code), day)
         if result is None:
             continue
         line, arrived, approved = result
@@ -165,7 +160,8 @@ async def _counter_line(admin_id: int) -> str:
         total_approved += approved
 
     if not lines:
-        return "Пришли: 0 из 0 одобренных"
+        return f"{head}: 0 из 0 одобренных"
+    lines.insert(0, "Сегодня:" if day else "За форум:")
     lines.append(f"Итого: {total_arrived} из {total_approved}")
     return "\n".join(lines)
 

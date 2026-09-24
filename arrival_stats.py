@@ -8,18 +8,18 @@ sqlite3 read-only). Прецедент — `tg_media.py`/`web_theme.py`: тол�
 драйвером — числа в боте и на дашборде считаются одними и теми же запросами.
 
 Что считаем (таблица `checkins`, `database/db.py::init_db`):
-- «Пришли» — одобренные текущего сезона с отметкой на точке «Вход» (`point = 'entry'`). Вход
-  хранит ПЕРВЫЙ скан (UNIQUE(telegram_id, point)), поэтому второй день многодневного форума у
-  уже пришедшего делегата на входе не пишется — «по дням» считаем людей с ЛЮБОЙ отметкой
-  (вход или сессия) в этот день, отдельно — сколько из них пришли впервые.
+- «Пришли» — одобренные текущего сезона хотя бы с одним входом (`point = 'entry'`) за форум.
+  Вход пишется КАЖДЫЙ день (UNIQUE(telegram_id, point, day), первый скан дня), поэтому «по
+  дням» — люди со входом ЭТОГО дня, отдельно — сколько из них пришли впервые за форум (их
+  самый ранний вход — в этот день). День берём как `substr(scanned_at, 1, 10)` — это и есть
+  `checkins.day`, но так запросы работают и на базе, которую бот ещё не мигрировал.
 - Отметку ставят сканер Mini App, поиск, CSV-выгрузка офлайн-сканера и `auto_session` (скан на
   сессии без входа сам ставит вход) — источник на счёт не влияет.
 - `approx_time = 1` — время скана не прочиталось из CSV и подставлено время загрузки файла;
   такие отметки считаем как обычные и отдельно говорим, сколько их.
 - Сессии — `program_sessions` города + число отметок `session:{id}` и заполненность зала
   (`program_halls.capacity`), если вместимость задана.
-Все счётчики людей — COUNT(DISTINCT telegram_id): сегодня дублей не даёт UNIQUE(telegram_id,
-point), но число не должно зависеть от того, что эту уникальность когда-нибудь ослабят.
+Все счётчики людей — COUNT(DISTINCT telegram_id): у входа строка на каждый день форума.
 Время в таблице отметок московское (конвенция `services.timeutil.msk_now`).
 """
 from __future__ import annotations
@@ -57,10 +57,12 @@ def arrival_queries(users_where: str, users_params: list, session_city: str | No
             [ENTRY_POINT, *users_params],
         ),
         "days": (
-            "SELECT substr(scanned_at, 1, 10) AS day, COUNT(DISTINCT telegram_id), "
-            "COUNT(DISTINCT CASE WHEN point = ? THEN telegram_id END) FROM checkins "
-            f"WHERE telegram_id IN ({sub}) GROUP BY day ORDER BY day",
-            [ENTRY_POINT, *users_params],
+            "SELECT substr(c.scanned_at, 1, 10) AS day, COUNT(DISTINCT c.telegram_id), "
+            "COUNT(DISTINCT CASE WHEN c.scanned_at = (SELECT MIN(c2.scanned_at) FROM checkins c2 "
+            "WHERE c2.telegram_id = c.telegram_id AND c2.point = ?) THEN c.telegram_id END) "
+            f"FROM checkins c WHERE c.point = ? AND c.telegram_id IN ({sub}) "
+            "GROUP BY day ORDER BY day",
+            [ENTRY_POINT, ENTRY_POINT, *users_params],
         ),
         "sessions": (
             "SELECT s.id, s.city, s.day, s.start_time, s.end_time, s.title, h.name, h.capacity, "
@@ -74,6 +76,18 @@ def arrival_queries(users_where: str, users_params: list, session_city: str | No
             [session_city] if session_city else [],
         ),
     }
+
+
+def arrived_query(users_where: str, users_params: list, day: str | None = None) -> tuple[str, list]:
+    """Сколько одобренных (фрагмент `approved_users_where`) пришли: `day=None` — хоть один вход
+    за форум (то же число, что «arrived» отчёта), «YYYY-MM-DD» — вход этого дня. Счётчик экрана
+    «✅ Отметки на форуме» и сканера — тот же запрос, что статистика прихода."""
+    day_sql = " AND substr(scanned_at, 1, 10) = ?" if day else ""
+    return (
+        "SELECT COUNT(DISTINCT telegram_id) FROM checkins "
+        f"WHERE point = ?{day_sql} AND telegram_id IN (SELECT telegram_id FROM users WHERE {users_where})",
+        [ENTRY_POINT, *([day] if day else []), *users_params],
+    )
 
 
 def day_short(day_iso: str) -> str:
@@ -184,7 +198,7 @@ def csv_bytes(
                     "" if total["pct"] is None else total["pct"], total["approx"]])
     w.writerow([])
     w.writerow(["По дням"])
-    w.writerow(["Город", "День", "На площадке (вход или сессия)", "Впервые на входе"])
+    w.writerow(["Город", "День", "Пришли (вход в этот день)", "Впервые на форуме"])
     for label, rep in reports:
         for d in rep["days"]:
             w.writerow([label, d["label"], d["present"], d["first_entry"]])

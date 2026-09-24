@@ -143,13 +143,13 @@
         <h3 class="cut-title">По дням</h3>
         <div class="table-wrap">
         <table class="responsive">
-          <thead><tr><th>День</th><th class="num">На площадке</th><th class="num">Впервые на входе</th></tr></thead>
+          <thead><tr><th>День</th><th class="num">Пришли</th><th class="num">Впервые на форуме</th></tr></thead>
           <tbody>
             {% for d in arrival.days %}
             <tr>
               <td data-label="День">{{ d.label }}</td>
-              <td class="num" data-label="На площадке">{{ d.present | thousands }}</td>
-              <td class="num" data-label="Впервые на входе">{{ d.first_entry | thousands }}</td>
+              <td class="num" data-label="Пришли">{{ d.present | thousands }}</td>
+              <td class="num" data-label="Впервые на форуме">{{ d.first_entry | thousands }}</td>
             </tr>
             {% endfor %}
           </tbody>
