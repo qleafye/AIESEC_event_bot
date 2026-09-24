@@ -502,7 +502,7 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         result = await record_arrival(
             user, point, source="csv",
             scanned_at=rec["scanned_at"], approx=approx,
-            by_staff_id=callback.from_user.id,
+            by_staff_id=callback.from_user.id, bot=callback.bot,
         )
         if result["status"] == "wrong_city":
             flagged.append((result.get("reason_text", "другой город форума"), parsed))

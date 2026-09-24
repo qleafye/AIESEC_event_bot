@@ -16,6 +16,7 @@
     reg_fsm_reset        {telegram_id, reason}
     application_decided        {telegram_id, status, reason}
     application_mass_approved  {ids}
+    checkin_first_entry        {user_id, city, day, source, by_staff_id, scanned_at, approx, session_id?}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
 код (`services/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
@@ -43,6 +44,10 @@ Phase 21 (21-08, FORM-SYNC-02/04/07, D-05/D-06): `reg_finalized`/`reg_edited` �
 в очередь не попадают (T-21-08), бот перечитывает текущее состояние из `users` сам.
 `reg_resume_upload` — резюме, загруженное в Mini App (D-05): бот кладёт файл в Nextcloud и
 шлёт копию в чат, `miniapp` сама с Telegram Bot API/Nextcloud не говорит (D-01).
+
+`checkin_first_entry` (24.09) — первая отметка входа делегата со сканера/поиска Mini App
+(`miniapp/routers/checkin.py`); бот зовёт `services.checkin.fire_first_entry(bot, **payload)`
+— слушателей `register_first_entry_listener`, которые есть только в процессе бота.
 
 Fail-soft: таблицу создаёт `database.db.init_db` (схемой владеет ТОЛЬКО бот, здесь
 миграций нет и быть не может). Если бот ещё старой версии и таблицы нет — `enqueue`
@@ -73,6 +78,7 @@ OUTBOX_KINDS = frozenset({
     "reg_fsm_reset",
     "application_decided",
     "application_mass_approved",
+    "checkin_first_entry",
 })
 
 

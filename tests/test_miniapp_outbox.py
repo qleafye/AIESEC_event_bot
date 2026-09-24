@@ -147,5 +147,5 @@ def test_kinds_match_module_docstring():
     assert documented == set(outbox.OUTBOX_KINDS) == {
         "submission_created", "submission_reviewed", "task_changed", "coins_manual",
         "reg_finalized", "reg_edited", "reg_resume_upload", "reg_fsm_reset",
-        "application_decided", "application_mass_approved",
+        "application_decided", "application_mass_approved", "checkin_first_entry",
     }
