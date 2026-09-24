@@ -16,7 +16,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import ALL_CITIES, admin_selected_city, cities_module_on
+from cities import ALL_CITIES, admin_selected_city, cities_module_on, get_setting_typed_for_city
 from database.db import (
     claim_sos_report,
     count_sos_by_status,
@@ -60,6 +60,11 @@ async def _row_text(row: dict) -> str:
         lines.append(f"✍️ взял(а) {html_module.escape(str(row.get('claimed_by_name') or '—'))}")
     elif status == "resolved":
         lines.append(f"✅ {html_module.escape(str(row.get('resolved_by_name') or '—'))}")
+    # Ревью 24.09 (находка 1): карточка не дошла НИКУДА (ни в чат, ни фоллбэком в личку) —
+    # у неё физически нет ни `chat_id`, ни личных копий с общим треадом, поэтому единственное
+    # место, где менеджер вообще узнаёт об этом SOS, — этот список.
+    if row.get("delivery_failed_at"):
+        lines.append("🔴 не доставлен оргкомитету — повтор запланирован")
     return "\n".join(lines)
 
 
@@ -92,6 +97,11 @@ async def render_sos_screen(admin_id: int, status: str | None = None, offset: in
     chat = await sos_service.sos_chat_for_city(bind_city)
     if chat is not None:
         lines.append(f"💬 Чат SOS: «{html_module.escape(chat['title'] or str(chat['chat_id']))}»")
+        # Ревью 24.09 (находка 2): последняя отправка карточки в этот чат упала (кик,
+        # неизвестная ошибка — не миграция, та перепривязывает автоматически) — красная
+        # строка, тот же процесс держит `services.sos.chat_is_unhealthy` и шлёт алерт.
+        if sos_service.chat_is_unhealthy(chat["chat_id"]):
+            lines.append("🔴 Чат SOS не отвечает — SOS идут в личку. Перепривяжите чат.")
     else:
         lines.append("⚠️ Чат SOS не привязан — SOS идут в личку менеджерам.")
 
@@ -217,15 +227,24 @@ async def asos_bind_step(message: types.Message, state: FSMContext, bot: Bot):
             "отправьте команду /sos_id прямо в этом чате."
         )
         return
-    await state.clear()
-    ok = await sos_service.complete_chat_bind(
+    result = await sos_service.complete_chat_bind(
         bot, message.from_user.id, chat.id, chat.title or chat.full_name or "",
     )
+    # Ревью 24.09 (находка 2): бота ещё нет в целевом чате — заявка НЕ потреблена
+    # (`complete_chat_bind`), состояние `SosChatBind.waiting` НЕ снимается: менеджер добавляет
+    # бота в группу и пересылает то же сообщение ещё раз, без похода в «🔗 Привязать чат SOS».
+    if result == sos_service.BIND_NOT_MEMBER:
+        await message.answer(
+            "Сначала добавьте бота в эту группу, потом перешлите сообщение ещё раз."
+        )
+        return
+    await state.clear()
     await message.answer(
-        "Готово." if ok else "Заявка устарела — откройте «🔗 Привязать чат SOS» заново.",
+        "Готово." if result == sos_service.BIND_OK
+        else "Заявка устарела — откройте «🔗 Привязать чат SOS» заново.",
         reply_markup=ReplyKeyboardRemove(),
     )
-    if ok:
+    if result == sos_service.BIND_OK:
         text, kb = await render_sos_screen(message.from_user.id)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -241,13 +260,34 @@ async def _refresh_card(bot: Bot, report_id: int) -> None:
     user = await get_user(report["telegram_id"])
     city_label = await sos_service.resolve_city_label(report.get("city"))
     text = sos_service.render_card_text(report, user, city_label=city_label)
+    # Ревью 24.09 (находка 4): «✅ Решено» убирает кнопки под карточкой — сам текст «Решено:
+    # … в HH:MM» остаётся (уже несёт `render_card_text` по статусу выше).
+    kb = (
+        None if sos_service.report_status(report) == sos_service.STATUS_RESOLVED
+        else sos_service.build_card_kb(report_id)
+    )
     try:
         await bot.edit_message_text(
             text, chat_id=report["chat_id"], message_id=report["card_message_id"],
-            parse_mode="HTML", reply_markup=sos_service.build_card_kb(report_id),
+            parse_mode="HTML", reply_markup=kb,
         )
     except Exception:
         pass
+
+
+def _card_origin_ok(callback: types.CallbackQuery, report: dict) -> bool:
+    """Ревью 24.09 (находка 5): любой участник ПРИВЯЗАННОГО чата SOS может нажать «Беру»/
+    «Решено» (это чат оргов — так и задумано, пункт 3 плана), но карточку могли переслать в
+    ДРУГУЮ группу (другой чат оргов, случайный чат, чат другого города) — там кнопки не должны
+    срабатывать вовсе, иначе первый нажавший в чужой группе перехватывает чужой SOS.
+
+    Личка (фоллбэк-веер, `report["chat_id"] is None`) — уже под капой `moderate_reg`
+    (`ADMIN_CAPS["sos_claim:*"]`/`"sos_resolve:*"` на `handlers.admin.router`), эта проверка её
+    не сужает: `chat_type == "private"` всегда проходит."""
+    chat_type = getattr(callback.message.chat, "type", None) or "private"
+    if chat_type in ("group", "supergroup") and callback.message.chat.id != report.get("chat_id"):
+        return False
+    return True
 
 
 @router.callback_query(F.data.startswith("sos_claim:"))
@@ -257,6 +297,13 @@ async def sos_claim(callback: types.CallbackQuery, bot: Bot):
     except (IndexError, ValueError):
         await callback.answer("Некорректная карточка", show_alert=True)
         return
+    report = await get_sos_report(report_id)
+    if report is None:
+        await callback.answer("Некорректная карточка", show_alert=True)
+        return
+    if not _card_origin_ok(callback, report):
+        await callback.answer("Эта карточка не из чата SOS", show_alert=True)
+        return
     admin_name = callback.from_user.full_name or callback.from_user.username or "Орг"
     claimed = await claim_sos_report(report_id, callback.from_user.id, admin_name)
     if not claimed:
@@ -265,6 +312,13 @@ async def sos_claim(callback: types.CallbackQuery, bot: Bot):
         await callback.answer(f"Уже взял(а) {winner}.", show_alert=True)
         return
     sos_service.cancel_escalation(report_id)
+    # Ревью 24.09 (находка 3): напоминание взявшему, если за N минут не отметил «✅ Решено».
+    try:
+        minutes_raw = await get_setting_typed_for_city("sos_claimed_remind_minutes", report.get("city"))
+        minutes = int(minutes_raw) if minutes_raw else sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
+    except (TypeError, ValueError):
+        minutes = sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
+    sos_service.schedule_claimed_reminder(report_id, minutes)
     await callback.answer("Взято.")
     await _refresh_card(bot, report_id)
 
@@ -276,12 +330,20 @@ async def sos_resolve(callback: types.CallbackQuery, bot: Bot):
     except (IndexError, ValueError):
         await callback.answer("Некорректная карточка", show_alert=True)
         return
+    report = await get_sos_report(report_id)
+    if report is None:
+        await callback.answer("Некорректная карточка", show_alert=True)
+        return
+    if not _card_origin_ok(callback, report):
+        await callback.answer("Эта карточка не из чата SOS", show_alert=True)
+        return
     admin_name = callback.from_user.full_name or callback.from_user.username or "Орг"
     resolved = await resolve_sos_report(report_id, callback.from_user.id, admin_name)
     if not resolved:
         await callback.answer("Уже решено.", show_alert=True)
         return
     sos_service.cancel_escalation(report_id)
+    sos_service.cancel_claimed_reminder(report_id)
     await callback.answer("Отмечено решённым.")
     await _refresh_card(bot, report_id)
 

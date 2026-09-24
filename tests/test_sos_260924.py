@@ -61,15 +61,16 @@ class FakeUser:
 
 
 class FakeChat:
-    def __init__(self, cid, title=None, full_name=None):
+    def __init__(self, cid, title=None, full_name=None, type=None):
         self.id = cid
         self.title = title
         self.full_name = full_name
+        self.type = type
 
 
 class FakeMessage:
     def __init__(self, text=None, user_id=None, chat_id=None, reply_to_message=None,
-                 photo=None, caption=None, location=None, forward_origin=None):
+                 photo=None, caption=None, location=None, forward_origin=None, chat_type=None):
         self.text = text
         self.html_text = text
         self.caption = caption
@@ -78,7 +79,7 @@ class FakeMessage:
         self.forward_origin = forward_origin
         self.markup = None
         self.from_user = FakeUser(user_id) if user_id is not None else None
-        self.chat = FakeChat(chat_id if chat_id is not None else user_id)
+        self.chat = FakeChat(chat_id if chat_id is not None else user_id, type=chat_type)
         self.reply_to_message = reply_to_message
         self.answers = []
         self.copies = []
@@ -113,13 +114,31 @@ class FakeCallback:
         self.answers.append((text, show_alert))
 
 
+class _FakeChatMember:
+    def __init__(self, status):
+        self.status = status
+
+
 class FakeBot:
     def __init__(self):
+        self.id = 999999999
         self.sent = []          # (chat_id, text, kwargs)
         self.edited = []        # (chat_id, message_id, text, kwargs)
         self.next_message_id = 5000
+        # chat_id -> статус getChatMember(chat_id, bot.id); отсутствие ключа = "member"
+        # (ревью 24.09, находка 2 — членство бота проверяется перед привязкой чата).
+        self.chat_member_status = {}
+        # chat_id -> очередь исключений, которые send_message бросит по одному на вызов
+        # (ревью 24.09, находки 1/2 — симуляция провала доставки/миграции чата).
+        self.send_failures: dict = {}
+
+    async def get_chat_member(self, chat_id, user_id):
+        return _FakeChatMember(self.chat_member_status.get(chat_id, "member"))
 
     async def send_message(self, chat_id, text, **kwargs):
+        queue = self.send_failures.get(chat_id)
+        if queue:
+            raise queue.pop(0)
         self.next_message_id += 1
         self.sent.append((chat_id, text, kwargs))
 
@@ -337,6 +356,10 @@ def test_sos_full_flow_creates_report_and_confirms(tmp_path):
     assert _run(state.get_state()) == SosReport.location.state
 
     loc_msg = FakeMessage(user_id=DELEGATE_ID)
+    # Ревью 24.09 (находка 1): делегат теперь слышит правду о доставке — нужен рабочий бот,
+    # иначе фоллбэк-веер не может отправить НИКОМУ и ответ станет «не получилось передать»
+    # (см. test_finalize_sos_total_failure_gives_honest_text_and_schedules_retry рядом).
+    loc_msg.bot = FakeBot()
     _run(sos_handlers.sos_location_skip(loc_msg, state))
 
     assert _run(state.get_state()) is None
@@ -347,6 +370,11 @@ def test_sos_full_flow_creates_report_and_confirms(tmp_path):
 
 
 def test_sos_anti_spam_blocks_second_open_report(tmp_path):
+    """Ревью 24.09 (находка 3): «свежий» открытый SOS (младше `sos_reopen_window_minutes`)
+    больше НЕ отбивает наглухо старым `sos_already_open_text` — предлагает дополнить
+    существующую заявку (см. `test_sos_start_recent_open_report_offers_followup_not_block`
+    рядом с остальными тестами находки 3); сам факт «вторая строка не создаётся» — всё ещё
+    инвариант этого теста."""
     _ready(tmp_path)
     _run(_add_delegate(DELEGATE_ID))
     _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
@@ -354,7 +382,7 @@ def test_sos_anti_spam_blocks_second_open_report(tmp_path):
     state = _fresh_state(DELEGATE_ID)
     msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
     _run(sos_handlers.sos_start(msg, state))
-    assert any("уже есть открытый SOS" in a[0] for a in msg.answers)
+    assert any("Мы уже получили твой SOS" in a[0] for a in msg.answers)
     # Второй строки в БД не появилось.
     assert len(_run(db.list_sos_reports_page(limit=10))) == 1
 
@@ -405,8 +433,9 @@ def test_post_card_to_bound_chat_stores_card_message(tmp_path):
     rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
 
     bot = FakeBot()
-    posted_to_chat = _run(sos_service.post_card(bot, rid))
-    assert posted_to_chat is True
+    result = _run(sos_service.post_card(bot, rid))
+    assert result.chat_delivered is True
+    assert result.delivered_total == 1
     assert bot.sent[0][0] == CHAT_ID
     row = _run(db.get_sos_report(rid))
     assert row["chat_id"] == CHAT_ID
@@ -420,8 +449,9 @@ def test_post_card_falls_back_to_moderate_reg_dm_without_bound_chat(tmp_path):
     rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
 
     bot = FakeBot()
-    posted_to_chat = _run(sos_service.post_card(bot, rid))
-    assert posted_to_chat is False
+    result = _run(sos_service.post_card(bot, rid))
+    assert result.chat_delivered is False
+    assert result.dm_delivered == 2
     recipients = {chat_id for chat_id, _t, _kw in bot.sent}
     assert ADMIN_ID in recipients  # bootstrap admin holds moderate_reg
     assert MANAGER_ID in recipients
@@ -732,3 +762,435 @@ def test_asos_bind_capability_is_settings_not_moderate_reg(tmp_path):
     assert cap == "settings"
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # holds moderate_reg, NOT settings
     assert _run(has_capability(MANAGER_ID, cap)) is False
+
+
+def _patch_scheduler_bot(monkeypatch, bot):
+    """Тот же приём, что `test_escalation_job_fires_when_still_open` — джобы читают бота через
+    `services.scheduler.get_bot()`, планировщик в тестах не инициализирован вовсе."""
+    class _SchedMod:
+        @staticmethod
+        def get_bot():
+            return bot
+
+    monkeypatch.setattr("services.scheduler.get_bot", _SchedMod.get_bot, raising=False)
+    import services.scheduler as scheduler_module
+    monkeypatch.setattr(scheduler_module, "get_bot", _SchedMod.get_bot)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09, находка 1 — доставка честная: результат post_card, фоллбэк-текст делегату,
+# повторная попытка через минуту
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_finalize_sos_total_failure_gives_honest_text_and_schedules_retry(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    # Ни привязанного чата, ни держателей moderate_reg (кроме забаненного ниже) — фоллбэк-веер
+    # уходит нулю получателей: bootstrap ADMIN_ID тоже должен провалиться, иначе доставка
+    # состоится через него.
+    monkeypatch.setattr(
+        "handlers.admin_caps.capability_holders",
+        lambda cap, city=None: _async_result([]),
+    )
+    scheduled = []
+    monkeypatch.setattr(
+        sos_service, "schedule_delivery_retry", lambda report_id, delay_minutes=1: scheduled.append(report_id),
+    )
+
+    bot = FakeBot()
+    bot.send_failures[ADMIN_ID] = [Exception("blocked")]  # единственный фоллбэк-получатель тоже недоступен
+
+    state = _fresh_state(DELEGATE_ID)
+    _run(state.update_data(sos_category="bad", sos_city=None, sos_details_text=None,
+                            sos_details_photo=None, sos_prior_open_id=None))
+    _run(state.set_state(SosReport.location))
+    loc_msg = FakeMessage(user_id=DELEGATE_ID)
+    loc_msg.bot = bot
+
+    _run(sos_handlers.sos_location_skip(loc_msg, state))
+
+    assert any("Не получилось передать SOS" in a[0] for a in loc_msg.answers)
+    row = _run(db.get_open_sos_report(DELEGATE_ID))
+    assert row["delivery_failed_at"] is not None
+    assert scheduled  # sos_service.schedule_delivery_retry(report_id) вызван
+
+
+def _async_result(value):
+    async def _inner(*a, **kw):
+        return value
+    return _inner()
+
+
+def test_delivery_retry_job_success_clears_failed_flag(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.set_sos_delivery_failed(rid, True))
+
+    bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, bot)
+    _run(sos_service.delivery_retry_job(rid))
+
+    row = _run(db.get_sos_report(rid))
+    assert row["delivery_failed_at"] is None  # ADMIN_ID/MANAGER_ID доступны -> доставлено
+
+
+def test_delivery_retry_job_noop_when_already_resolved(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.set_sos_delivery_failed(rid, True))
+    _run(db.resolve_sos_report(rid, ADMIN_ID, "Админ"))
+
+    bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, bot)
+    _run(sos_service.delivery_retry_job(rid))
+    assert bot.sent == []  # решённая заявка не получает повторной попытки
+
+
+def test_row_text_shows_not_delivered_marker(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.set_sos_delivery_failed(rid, True))
+    row = _run(db.list_sos_reports_page(limit=10))[0]
+    text = _run(admin_sos._row_text(row))
+    assert "не доставлен" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09, находка 2 — членство бота при привязке + здоровье привязанного чата
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_asos_bind_step_bot_not_member_keeps_pending_and_instructs(tmp_path):
+    _ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    _run(sos_service.set_pending_bind(ADMIN_ID, None))
+    _run(state.set_state(SosChatBind.waiting))
+
+    class _Origin:
+        chat = FakeChat(CHAT_ID, title="Чат оргов Москвы")
+
+    bot = FakeBot()
+    bot.chat_member_status[CHAT_ID] = "left"  # бота ещё нет в чате
+
+    msg = FakeMessage(user_id=ADMIN_ID, forward_origin=_Origin())
+    _run(admin_sos.asos_bind_step(msg, state, bot))
+
+    assert any("Сначала добавьте бота" in a[0] for a in msg.answers)
+    assert _run(state.get_state()) == SosChatBind.waiting.state  # заявка ещё активна
+    assert _run(sos_service.get_pending_bind(ADMIN_ID)) is not None  # не потреблена
+    assert _run(sos_service.sos_chat_for_city(None)) is None  # не привязано
+
+
+def test_asos_bind_step_retries_after_bot_added_to_chat(tmp_path):
+    _ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    _run(sos_service.set_pending_bind(ADMIN_ID, None))
+    _run(state.set_state(SosChatBind.waiting))
+
+    class _Origin:
+        chat = FakeChat(CHAT_ID, title="Чат оргов Москвы")
+
+    bot = FakeBot()
+    bot.chat_member_status[CHAT_ID] = "left"
+    msg1 = FakeMessage(user_id=ADMIN_ID, forward_origin=_Origin())
+    _run(admin_sos.asos_bind_step(msg1, state, bot))
+    assert _run(state.get_state()) == SosChatBind.waiting.state
+
+    bot.chat_member_status[CHAT_ID] = "member"  # менеджер добавил бота в группу
+    msg2 = FakeMessage(user_id=ADMIN_ID, forward_origin=_Origin())
+    _run(admin_sos.asos_bind_step(msg2, state, bot))
+
+    assert _run(state.get_state()) is None
+    assert any("Готово" in a[0] for a in msg2.answers)
+    assert _run(sos_service.sos_chat_for_city(None)) == {"chat_id": CHAT_ID, "title": "Чат оргов Москвы"}
+
+
+def test_post_card_migrates_chat_and_delivers_to_new_id(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    from aiogram.exceptions import TelegramMigrateToChat
+
+    NEW_CHAT_ID = -1009022222
+    bot = FakeBot()
+    bot.send_failures[CHAT_ID] = [
+        TelegramMigrateToChat(method=None, message="migrated", migrate_to_chat_id=NEW_CHAT_ID),
+    ]
+
+    result = _run(sos_service.post_card(bot, rid))
+    assert result.chat_delivered is True
+    assert bot.sent[0][0] == NEW_CHAT_ID
+    row = _run(db.get_sos_report(rid))
+    assert row["chat_id"] == NEW_CHAT_ID
+    chat = _run(sos_service.sos_chat_for_city(None))
+    assert chat["chat_id"] == NEW_CHAT_ID  # перепривязка сохранена
+
+
+def test_post_card_marks_chat_unhealthy_and_alerts_once_per_hour(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid1 = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    rid2 = _run(db.create_sos_report(DELEGATE_ID, None, "lost", None, None, None, None))
+
+    alert_bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, alert_bot)
+
+    bot = FakeBot()
+    bot.send_failures[CHAT_ID] = [Exception("kicked"), Exception("kicked again")]
+
+    _run(sos_service.post_card(bot, rid1))
+    assert sos_service.chat_is_unhealthy(CHAT_ID) is True
+    first_alerts = [s for s in alert_bot.sent if "Чат SOS недоступен" in s[1]]
+    assert len(first_alerts) == 1  # первый провал -> один алерт
+
+    _run(sos_service.post_card(bot, rid2))
+    second_alerts = [s for s in alert_bot.sent if "Чат SOS недоступен" in s[1]]
+    assert len(second_alerts) == 1  # второй провал в пределах часа -> без повтора (троттлинг)
+
+
+def test_render_sos_screen_shows_red_line_when_chat_unhealthy(tmp_path):
+    _ready(tmp_path)
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    sos_service._unhealthy_chats.add(CHAT_ID)
+    try:
+        text, _kb = _run(admin_sos.render_sos_screen(ADMIN_ID))
+        assert "🔴 Чат SOS не отвечает" in text
+    finally:
+        sos_service._unhealthy_chats.discard(CHAT_ID)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09, находка 3 — напоминание взявшему + окно повторного открытия SOS делегатом
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_sos_claim_schedules_claimed_reminder(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    scheduled = []
+    monkeypatch.setattr(
+        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: scheduled.append((report_id, minutes)),
+    )
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_claim(cb, FakeBot()))
+    assert scheduled == [(rid, sos_service.DEFAULT_CLAIMED_REMIND_MINUTES)]
+
+
+def test_sos_resolve_cancels_claimed_reminder(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.claim_sos_report(rid, ADMIN_ID, "Админ"))
+    cancelled = []
+    monkeypatch.setattr(sos_service, "cancel_claimed_reminder", lambda report_id: cancelled.append(report_id))
+    cb = FakeCallback(f"sos_resolve:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_resolve(cb, FakeBot()))
+    assert cancelled == [rid]
+
+
+def test_claimed_reminder_job_reschedules_while_still_claimed(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.claim_sos_report(rid, ADMIN_ID, "Админ Первый"))
+    bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, bot)
+    rescheduled = []
+    monkeypatch.setattr(
+        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: rescheduled.append((report_id, minutes)),
+    )
+
+    _run(sos_service.claimed_reminder_job(rid, 20))
+
+    assert any(s[0] == ADMIN_ID for s in bot.sent)  # напоминание ушло взявшему
+    assert rescheduled == [(rid, 20)]  # репитер поставил себя заново
+
+
+def test_claimed_reminder_job_noop_after_resolved(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.resolve_sos_report(rid, ADMIN_ID, "Админ"))
+    bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, bot)
+    rescheduled = []
+    monkeypatch.setattr(
+        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: rescheduled.append(report_id),
+    )
+    _run(sos_service.claimed_reminder_job(rid, 20))
+    assert bot.sent == []
+    assert rescheduled == []
+
+
+def test_sos_start_recent_open_report_offers_followup_not_block(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    state = _fresh_state(DELEGATE_ID)
+    msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_start(msg, state))
+
+    assert any("Мы уже получили твой SOS" in a[0] and "ещё не взяли" in a[0] for a in msg.answers)
+    assert _run(state.get_state()) == SosReport.followup.state
+    data = _run(state.get_data())
+    assert data["sos_followup_report_id"] == rid
+    # Второй строки НЕ появилось — заявка не задублирована.
+    assert len(_run(db.list_sos_reports_page(limit=10))) == 1
+
+
+def test_sos_start_recent_followup_relays_next_message_into_thread(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    bot = FakeBot()
+    _run(sos_service.post_card(bot, rid))
+    row = _run(db.get_sos_report(rid))
+
+    state = _fresh_state(DELEGATE_ID)
+    start_msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_start(start_msg, state))
+    assert _run(state.get_state()) == SosReport.followup.state
+
+    followup_msg = FakeMessage(text="Ещё болит голова", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_followup_step(followup_msg, state))
+
+    assert followup_msg.copies == [(row["chat_id"], row["card_message_id"])]
+    assert _run(state.get_state()) is None
+
+
+def test_sos_start_old_open_report_allows_new_sos_and_links_prior(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(db.set_setting("sos_reopen_window_minutes", "10"))
+    old_rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    stale = (msk_now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+
+    async def _age_it():
+        async with db.aiosqlite.connect(config.DB_PATH) as conn:
+            await conn.execute("UPDATE sos_reports SET created_at = ? WHERE id = ?", (stale, old_rid))
+            await conn.commit()
+
+    _run(_age_it())
+
+    state = _fresh_state(DELEGATE_ID)
+    msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_start(msg, state))
+
+    assert any("Что случилось?" in a[0] for a in msg.answers)  # обычный визард, не followup
+    data = _run(state.get_data())
+    assert data["sos_prior_open_id"] == old_rid
+
+    cb = FakeCallback("sos_cat:lost", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_pick_category(cb, state))
+    details_msg = FakeMessage(text="Пропустить", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_details_skip(details_msg, state))
+    loc_msg = FakeMessage(user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_location_skip(loc_msg, state))
+
+    new_report = _run(db.get_open_sos_report(DELEGATE_ID))
+    # Обе заявки теперь открыты — берём новую (наибольший id).
+    assert new_report["id"] != old_rid
+    assert new_report["prior_open_report_id"] == old_rid
+    text = sos_service.render_card_text(new_report, None)
+    assert f"У делегата есть открытый SOS #{old_rid}" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09, находка 4 — «✅ Решено» убирает кнопки под карточкой
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_sos_resolve_removes_buttons_keeps_resolved_text(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    bot = FakeBot()
+    _run(sos_service.post_card(bot, rid))
+
+    cb = FakeCallback(f"sos_resolve:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_resolve(cb, bot))
+
+    chat_id, message_id, text, kwargs = bot.edited[-1]
+    assert kwargs.get("reply_markup") is None
+    assert "✅ Решено:" in text
+
+
+def test_sos_claim_keeps_buttons_on_card(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    bot = FakeBot()
+    _run(sos_service.post_card(bot, rid))
+
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)
+    _run(admin_sos.sos_claim(cb, bot))
+
+    chat_id, message_id, text, kwargs = bot.edited[-1]
+    assert kwargs.get("reply_markup") is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью 24.09, находка 5 — кнопки карточки работают только в её собственном чате
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+OTHER_GROUP_ID = -1009099999
+
+
+def test_sos_claim_from_wrong_group_rejected(tmp_path):
+    _ready(tmp_path)
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(sos_service.post_card(FakeBot(), rid))  # карточка живёт в CHAT_ID
+
+    wrong_msg = FakeMessage(chat_id=OTHER_GROUP_ID, chat_type="group")
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID, message=wrong_msg)
+    _run(admin_sos.sos_claim(cb, FakeBot()))
+
+    assert cb.answers[0] == ("Эта карточка не из чата SOS", True)
+    row = _run(db.get_sos_report(rid))
+    assert row["claimed_by"] is None
+
+
+def test_sos_claim_from_bound_chat_allowed_by_any_member(tmp_path):
+    _ready(tmp_path)
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(sos_service.post_card(FakeBot(), rid))
+
+    right_msg = FakeMessage(chat_id=CHAT_ID, chat_type="group")
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=MANAGER_ID, message=right_msg)
+    _run(admin_sos.sos_claim(cb, FakeBot()))
+
+    assert cb.answers[0][0] == "Взято."
+    row = _run(db.get_sos_report(rid))
+    assert row["claimed_by"] == MANAGER_ID
+
+
+def test_sos_resolve_from_wrong_group_rejected(tmp_path):
+    _ready(tmp_path)
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(sos_service.post_card(FakeBot(), rid))
+
+    wrong_msg = FakeMessage(chat_id=OTHER_GROUP_ID, chat_type="group")
+    cb = FakeCallback(f"sos_resolve:{rid}", user_id=ADMIN_ID, message=wrong_msg)
+    _run(admin_sos.sos_resolve(cb, FakeBot()))
+
+    assert cb.answers[0] == ("Эта карточка не из чата SOS", True)
+    row = _run(db.get_sos_report(rid))
+    assert row["resolved_at"] is None
+
+
+def test_sos_claim_fallback_dm_still_works_from_private_chat(tmp_path):
+    """Личка (фоллбэк-веер, `chat_id` не сохраняется) — `chat_type` по умолчанию "private",
+    происхождение не проверяется предметно (уже под капой `moderate_reg`)."""
+    _ready(tmp_path)
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)  # message chat_id=user_id, private
+    _run(admin_sos.sos_claim(cb, FakeBot()))
+    assert cb.answers[0][0] == "Взято."
