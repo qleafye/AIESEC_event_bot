@@ -358,6 +358,13 @@ class ForumNoshowPollTimeEdit(StatesGroup):
     waiting_value = State()
 
 
+class RegionalNoshowMoveTimeEdit(StatesGroup):
+    # Трек «региональные форумы → Москва»: ввод «ЧЧ:ММ» для времени отправки предложения
+    # переноса на следующий день после форума (handlers/admin_forum_functions.py,
+    # regional_noshow_offer_time) — тот же приём, что ForumNoshowPollTimeEdit выше.
+    waiting_value = State()
+
+
 class ForumNoshowPollOther(StatesGroup):
     # Идея №23 бэклога чек-ина: делегат нажал «Другое» на опросе неявившихся — ждём свободный
     # текст следующим сообщением (handlers/forum_noshow_poll.py). Право не нужно (delegate-side,

@@ -229,6 +229,14 @@ async def _reconcile_forum_report_and_poll_job() -> None:
         await _reconcile_noshow_poll()
     except Exception as e:
         logger.error(f"_reconcile_forum_report_and_poll_job: forum_noshow_poll failed: {e}")
+    try:
+        # Трек «региональные форумы → Москва»: та же сверка, зависит от тех же forum_date/
+        # тумблеров (плюс собственных двух) — регистрирует и свою one-shot джобу на город, и
+        # интервальную джобу сводки менеджеру (`services.regional_noshow_move.reconcile`).
+        from services.regional_noshow_move import reconcile as _reconcile_regional_noshow_move
+        await _reconcile_regional_noshow_move()
+    except Exception as e:
+        logger.error(f"_reconcile_forum_report_and_poll_job: regional_noshow_move failed: {e}")
 
 
 async def init_scheduler(bot):
