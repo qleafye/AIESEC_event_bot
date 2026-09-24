@@ -102,3 +102,34 @@ def test_qr_line_silent_when_broadcast_scheduled(tmp_path, monkeypatch):
 def test_every_schedule_reason_has_human_label():
     for reason in ("no_date", "disabled", "bad_date", "past"):
         assert admin_checkin._QR_NOT_SCHEDULED_LABELS[reason]
+
+
+# ── Кнопки городов подписаны словами ─────────────────────────────────────────────────────────
+
+async def _insert_approved(telegram_id, city):
+    async with _connect() as conn:
+        await conn.execute(
+            "INSERT INTO users (telegram_id, full_name, status, event_city) VALUES (?, ?, ?, ?)",
+            (telegram_id, f"Тест {telegram_id}", "approved", city),
+        )
+        await conn.commit()
+
+
+def test_all_cities_buttons_have_words_and_city_name(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _fix_today(monkeypatch)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__msk", "Москва"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+    asyncio.run(_insert_approved(1, "msk"))
+
+    _text, kb = _screen()
+    by_cb = {b.callback_data: b.text for row in kb.inline_keyboard for b in row}
+    msk = admin_checkin._encode_city("msk")
+    assert by_cb[f"checkinqr_send:{msk}"] == "📤 Разослать QR сейчас — Москва"
+    assert by_cb[f"checkinqr_cfg:{msk}"] == "⚙️ Настройки QR — Москва"
+    assert by_cb[f"cna_send:{msk}"] == "📨 Написать не пришедшим — Москва"
+    for row in kb.inline_keyboard:
+        assert len(row) == 1  # длинные подписи — по одной кнопке в ряд
+        for b in row:
+            assert len(b.callback_data.encode("utf-8")) <= 64
