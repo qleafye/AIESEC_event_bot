@@ -12,7 +12,37 @@ from __future__ import annotations
 import logging
 import re
 
+import pytest
+
 from miniapp.logging_config import LOG_FORMAT, configure_logging
+
+_MARKER = "_miniapp_logging_configured"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_root_logger():
+    """Каждый тест начинает с НЕнастроенного root (без маркера идемпотентности) и после себя
+    возвращает root как был: хендлеры, уровень, маркер. Без этого первый тест оставлял маркер
+    «уже настроено» при восстановленном уровне WARNING — и запуск файла отдельно ронял
+    проверку уровня INFO в последнем тесте (в общем прогоне маркер ставил кто-то раньше)."""
+    root = logging.getLogger()
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
+    had_marker = hasattr(root, _MARKER)
+    if had_marker:
+        delattr(root, _MARKER)
+    try:
+        yield
+    finally:
+        for h in root.handlers:
+            if h not in saved_handlers:
+                root.removeHandler(h)
+        root.handlers = saved_handlers
+        root.setLevel(saved_level)
+        if had_marker:
+            setattr(root, _MARKER, True)
+        elif hasattr(root, _MARKER):
+            delattr(root, _MARKER)
 
 
 def test_configure_logging_writes_bot_style_format_to_stdout(capsys):
@@ -21,24 +51,13 @@ def test_configure_logging_writes_bot_style_format_to_stdout(capsys):
     logging.lastResort, не в stderr, куда попадают тексты httpx/uvicorn 'default'). Хендлер
     конфигурируется заново прямо в тесте (сохранить/очистить/восстановить root), чтобы
     гарантированно поймать РЕАЛЬНЫЙ stdout текущего теста, а не сток, захваченный при первом
-    вызове configure_logging() где-то раньше в процессе воркера."""
-    root = logging.getLogger()
-    saved_handlers = list(root.handlers)
-    saved_level = root.level
-    had_marker = hasattr(root, "_miniapp_logging_configured")
-    root.handlers = []
-    if had_marker:
-        delattr(root, "_miniapp_logging_configured")
-    try:
-        configure_logging()
-        probe = logging.getLogger("miniapp.selftest_260919")
-        probe.warning("проверка формата")
-        captured = capsys.readouterr()
-    finally:
-        root.handlers = saved_handlers
-        root.setLevel(saved_level)
-        if had_marker:
-            setattr(root, "_miniapp_logging_configured", True)
+    вызове configure_logging() где-то раньше в процессе воркера; root восстанавливает
+    автофикстура."""
+    logging.getLogger().handlers = []  # вернёт автофикстура _isolated_root_logger
+    configure_logging()
+    probe = logging.getLogger("miniapp.selftest_260919")
+    probe.warning("проверка формата")
+    captured = capsys.readouterr()
 
     line = next((l for l in captured.out.splitlines() if "проверка формата" in l), None)
     assert line, f"строка не дошла до stdout: {captured.out!r}"
