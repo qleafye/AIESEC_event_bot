@@ -338,6 +338,11 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     dup_n = 0
     moved_n = 0
     outside_n = 0
+    # ревью (D-18, день сессии): CSV -- НЕ отказ (`record_arrival` уже отметил, несмотря на
+    # несовпадение дня сессии с днём скана/загрузки), только предупреждение в отчёте — живой
+    # скан/ручная отметка получают за то же несовпадение отказ `wrong_day` (см. docstring
+    # `services.checkin.record_arrival`), сюда он никогда не долетает как `result["status"]`.
+    day_mismatch_n = 0
     # (reason, row) -- reason — человеческая причина из _DENIAL_LABELS/динамический текст
     # `wrong_city`, а не жёстко закодированные категории: денайл-правило
     # (services.checkin.checkin_denial/record_arrival) само решает допуск, отчёт только
@@ -360,6 +365,8 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         if result["status"] == "wrong_city":
             flagged.append((result.get("reason_text", "другой город форума"), parsed))
             continue
+        if result.get("day_mismatch"):
+            day_mismatch_n += 1
         if session is not None and rec["scanned_at"] and scanned_outside_session_window(session, rec["scanned_at"]):
             outside_n += 1
         if result["status"] == "new":
@@ -387,6 +394,8 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         lines.append(f"Перенесено с другой сессии слота: {moved_n}")
     if outside_n:
         lines.append(f"⚠️ Время скана вне интервала сессии: {outside_n} (всё равно отмечено)")
+    if day_mismatch_n:
+        lines.append(f"⚠️ Сессия не в день загрузки — проверьте: {day_mismatch_n} (всё равно отмечено)")
     shown = flagged[:_REPORT_ROW_LIMIT]
     if shown:
         lines.append("")
