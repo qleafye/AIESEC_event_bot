@@ -2,9 +2,9 @@ import logging
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_user, has_faq_for_city
+from database.db import get_user, has_faq_for_city, has_program_sessions_for_city
 from settings_schema import get_setting_typed
-from cities import get_setting_typed_for_city, cities_module_on, normalize_city
+from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
@@ -39,6 +39,11 @@ MENU_BUTTONS = [
     ("menu_invites", "👥 Мои приглашённые"),
     ("menu_info", "ℹ️ Информация о форуме"),
     ("menu_program", "📅 Программа форума"),
+    # Форум-ночь п.4 (расписание форума в боте): интерактивная программа сессий/залов
+    # (handlers/program.py) — отдельная кнопка от статичного фото menu_program выше.
+    # Дополнительный гейт ниже (`has_program_sessions_for_city`) прячет кнопку, пока у города
+    # делегата ещё нет ни одной сессии, — тот же приём, что у menu_miniapp/menu_faq.
+    ("menu_schedule", "🗓 Программа"),
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
@@ -195,6 +200,19 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: checkin_qr_enabled resolve failed: {e}")
         checkin_qr_on = False
 
+    # Форум-ночь п.4 (расписание форума в боте): кнопка «🗓 Программа» рисуется только пока у
+    # города делегата есть хотя бы одна сессия. `code` — `None`, когда модуль городов выключен
+    # (см. выше), но у расписания «нет города» не бывает — там всегда конкретный код
+    # (`cities.default_city_code()`, тот же однocity-фоллбэк, что использует админский экран
+    # `handlers/admin_program.py._resolve_city_for_screen`).
+    schedule_on = False
+    try:
+        schedule_city = code if code is not None else default_city_code()
+        schedule_on = await has_program_sessions_for_city(schedule_city)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: has_program_sessions_for_city resolve failed for {telegram_id}: {e}")
+        schedule_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
@@ -214,6 +232,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # своего города) — кнопки нет; появляется сама, как только менеджер завёл первый
             # пункт (has_faq_for_city).
             if key == "menu_faq" and not faq_on:
+                continue
+            # Форум-ночь п.4: вторая половина гейта — сама кнопка value=="on" (уже проверено
+            # выше) недостаточна, пока в программе города нет ни одной сессии.
+            if key == "menu_schedule" and not schedule_on:
                 continue
             # Phase 27 (27-04): вторая половина гейта — сама кнопка value=="on" (проверено
             # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.

@@ -443,6 +443,26 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:payment.tariff_unavailable", "Вариант больше не доступен."))
     items.append(("lit:payment.tariff_bad_value", "Некорректный вариант."))
 
+    # Находка при доработке форум-ночи (не эта задача, но тот же сторож): подтверждение «✅
+    # Сохранил, открывается» рассылки QR (services/checkin_broadcast.py) звало reg_i18n.tr_text
+    # с этим литералом без записи ни в один ярус — делегат с lang="en" видел бы русский текст
+    # (fail-soft тихо промолчал бы, guard-тест — нет). Добавлено сюда же, а не отдельным коммитом.
+    items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, увидимся на форуме!"))
+
+    # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа»
+    # (handlers/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
+    # модуль, i18n_sources.py его не импортирует, строки продублированы буквально).
+    items.append(("lit:program.header", "Программа"))
+    items.append(("lit:program.pick_day", "Выберите день:"))
+    items.append(("lit:program.day_empty", "Сессий в этот день пока нет."))
+    items.append(("lit:program.all_empty", "Программа пока пуста."))
+    items.append(("lit:program.now_marker", "Идёт сейчас"))
+    items.append(("lit:program.next_marker", "Следующая"))
+    items.append(("lit:program.hall_label", "Зал:"))
+    items.append(("lit:program.speaker_label", "Спикер:"))
+    items.append(("lit:program.parallel_label", "параллельно"))
+    items.append(("lit:program.back_to_days", "← Дни"))
+
     items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
     items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
