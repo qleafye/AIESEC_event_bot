@@ -20,6 +20,7 @@ tests/test_module_size_convention_260816.py): «🔄 Синхронизация�
 """
 import html as html_module
 import logging
+from secret_redact import redact_secrets
 from dataclasses import dataclass, field
 
 from aiogram import F, types
@@ -274,7 +275,7 @@ async def sync_sheet(callback: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Sheet sync failed: {e}")
         await callback.message.edit_text(
-            f"❌ Ошибка синхронизации:\n<code>{html_module.escape(str(e))}</code>",
+            f"❌ Ошибка синхронизации:\n<code>{html_module.escape(redact_secrets(e))}</code>",
             parse_mode="HTML",
             reply_markup=await op_return_keyboard(callback.from_user.id, callback.data),
         )
@@ -381,7 +382,7 @@ async def rebuild_sheet(callback: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Sheet rebuild failed: {e}")
         await callback.message.edit_text(
-            f"❌ Ошибка пересборки:\n<code>{html_module.escape(str(e))}</code>",
+            f"❌ Ошибка пересборки:\n<code>{html_module.escape(redact_secrets(e))}</code>",
             parse_mode="HTML",
             reply_markup=await op_return_keyboard(callback.from_user.id, "admin_rebuild_sheet"),
         )

@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import logging
+from secret_redact import redact_secrets
 from datetime import datetime, time, timedelta
 
 from settings_schema import get_setting_typed
@@ -323,7 +324,7 @@ async def flush_due(now: datetime) -> int:
                 await mark_delayed_notification_sent(row_id, now_str, error=f"unknown kind: {kind}")
         except Exception as e:
             logger.error(f"quiet_hours: row id={row_id} kind={kind!r} user_id={user_id} failed: {e}")
-            await mark_delayed_notification_sent(row_id, now_str, error=str(e))
+            await mark_delayed_notification_sent(row_id, now_str, error=redact_secrets(e))
         count += 1
     return count
 
