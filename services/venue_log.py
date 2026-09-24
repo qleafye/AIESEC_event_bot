@@ -3,13 +3,17 @@
 
 Что журналится (таблица `venue_log`, `database/db.py`):
 - `checkin` — живая отметка волонтёра (сканер Mini App, поиск по фамилии) со статусом
-  `new`/`moved`. Повторный скан (`duplicate`) и отказы не пишутся — они ничего не меняют.
+  `new`/`moved`. Повторный скан (`duplicate`) не пишется — он ничего не меняет.
   Пишет `services.checkin.record_arrival`, одна строка на скан; id строки уходит во фронт
   сканера как ключ кнопки «↩️ Отменить».
 - `csv_upload` — загрузка выгрузки офлайн-сканера, ОДНОЙ строкой со счётчиками: отметки из
   файла построчно и так лежат в `checkins` (`by_staff_id`, `source="csv"`), сотни строк
   журнала на один файл утопили бы остальное.
 - `undo` — волонтёр отменил свой скан в окне отмены; `revoke` — менеджер снял отметку.
+- `denied` — волонтёр НЕ пропустил: скан/поиск получил отказ (неизвестный/чужой/заменённый
+  QR, заявка не одобрена, прошлый сезон, чужой город, сессия не сегодня). Код причины — в
+  `details.reason`, подпись — `DENIAL_LABELS`. Из ПД делегата — только `telegram_id`, если
+  делегат найден; ФИО из самого QR в журнал не пишется. Пишет `miniapp/routers/checkin.py`.
 - `reissue_qr` — перевыпуск QR; `pass_once` — пропуск «разово» (кнопки пока нет —
   ждёт ответа DXP на Q-01, тип заведён заранее, чтобы журнал не пришлось менять).
 
@@ -44,6 +48,7 @@ ACTION_REVOKE = "revoke"
 ACTION_REISSUE_QR = "reissue_qr"
 ACTION_PASS_ONCE = "pass_once"
 ACTION_CSV_UPLOAD = "csv_upload"
+ACTION_DENIED = "denied"
 
 ACTION_LABELS = {
     ACTION_CHECKIN: "✅ отметил(а)",
@@ -52,6 +57,22 @@ ACTION_LABELS = {
     ACTION_REISSUE_QR: "🔄 перевыпустил(а) QR",
     ACTION_PASS_ONCE: "🎫 пропустил(а) разово",
     ACTION_CSV_UPLOAD: "📤 загрузил(а) файл сканера",
+    ACTION_DENIED: "⛔ не пропустил(а)",
+}
+
+# Код причины отказа -> короткая подпись для строки журнала. Коды — те же, что отдают
+# `services.checkin.checkin_denial`/`resolve_scanned_user`, `record_arrival` и городские
+# проверки сканера (`miniapp/routers/checkin.py`). Неизвестный код показывается как есть.
+DENIAL_LABELS = {
+    "no_user": "QR не найден",
+    "token_replaced": "старый QR (перевыпущен)",
+    "foreign_event": "QR другого мероприятия",
+    "not_approved": "заявка не одобрена",
+    "past_season": "делегат прошлого сезона",
+    "wrong_city": "делегат другого города",
+    "wrong_city_point": "сессия другого города",
+    "wrong_day": "сессия не сегодня",
+    "invalid_point": "точка не найдена",
 }
 
 SOURCE_LABELS = {
@@ -179,6 +200,18 @@ async def log_action(action: str, *, staff_id: int | None, staff_name: str | Non
         return None
 
 
+async def log_denial(reason: str, *, staff_id: int | None, staff_name: str | None,
+                     telegram_id: int | None = None, city: str | None = None,
+                     point: str | None = None, source: str | None = None) -> int | None:
+    """Отказ скана/поиска (решение владельца: журналить «не пропущен»). `city` — город
+    стойки (привязка волонтёра), иначе город делегата — чтобы отказ увидел менеджер того
+    города, где он случился. Fail-soft, как вся запись журнала."""
+    return await log_action(
+        ACTION_DENIED, staff_id=staff_id, staff_name=staff_name, telegram_id=telegram_id,
+        city=city, point=point, source=source, details={"reason": reason},
+    )
+
+
 async def _clear_arrived_in_sheet(telegram_id: int) -> None:
     """Снят вход -> пустая ячейка «Пришёл» (тот же точечный апдейт, что при отметке)."""
     try:
@@ -248,6 +281,12 @@ async def describe(row: dict) -> str:
         )
     elif label:
         parts.append(f" — {label}")
+    if row.get("action") == ACTION_DENIED:
+        reason = details.get("reason")
+        parts.append(f": {DENIAL_LABELS.get(reason, reason or '?')}")
+        src = SOURCE_LABELS.get(row.get("source") or "")
+        if src:
+            parts.append(f" ({src})")
     if row.get("action") == ACTION_CHECKIN:
         src = SOURCE_LABELS.get(row.get("source") or "")
         if src:
