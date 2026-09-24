@@ -41,14 +41,19 @@ FILTER_LABELS = {
 _FILTER_ORDER = ("all", "open", "claimed", "resolved")
 
 
-def _row_text(row: dict) -> str:
+async def _row_text(row: dict) -> str:
     status = sos_service.report_status(row)
     who = row.get("user_full_name") or row.get("user_username") or "—"
     category = sos_service.CATEGORY_LABELS.get(row.get("category"), str(row.get("category")))
+    # CLAUDE.md: «Кодовые значения ... человеку не показываем» — код города резолвится в
+    # подпись (тот же приём, что services/sos.py::render_card_text/resolve_city_label);
+    # экран уже отфильтрован ПО городу (`_admin_city_view`), но при выбранном «Все города»
+    # строки смешивают разные города — код в списке был бы нарушением.
+    city_label = await sos_service.resolve_city_label(row.get("city"))
     lines = [
         f"#{row['id']} · {sos_service.STATUS_LABELS[status]} · {category}",
         f"🆔 <code>{row['telegram_id']}</code> {html_module.escape(str(who))}"
-        + (f" · {html_module.escape(str(row['city']))}" if row.get("city") else ""),
+        + (f" · {html_module.escape(str(city_label))}" if city_label else ""),
         f"🕓 {format_stamp(row.get('created_at'), stored_utc=False)}",
     ]
     if status == "claimed":
@@ -102,7 +107,7 @@ async def render_sos_screen(admin_id: int, status: str | None = None, offset: in
     else:
         for row in rows:
             lines.append("")
-            lines.append(_row_text(row))
+            lines.append(await _row_text(row))
 
     text = "\n".join(lines)
 
@@ -230,7 +235,8 @@ async def _refresh_card(bot: Bot, report_id: int) -> None:
     if report is None or not report.get("chat_id") or not report.get("card_message_id"):
         return
     user = await get_user(report["telegram_id"])
-    text = sos_service.render_card_text(report, user)
+    city_label = await sos_service.resolve_city_label(report.get("city"))
+    text = sos_service.render_card_text(report, user, city_label=city_label)
     try:
         await bot.edit_message_text(
             text, chat_id=report["chat_id"], message_id=report["card_message_id"],

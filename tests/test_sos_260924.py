@@ -15,6 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
+import cities
 from config import config
 from database import db
 from handlers import admin_sos, sos as sos_handlers
@@ -485,6 +486,40 @@ def test_sos_resolve_callback_refreshes_card(tmp_path):
     _run(admin_sos.sos_resolve(cb, bot))
     assert cb.answers[0][0] == "Отмечено решённым."
     assert bot.edited  # карточка перерисована
+    assert "✅ Решено:" in bot.edited[-1][2]
+
+
+def test_post_card_shows_human_city_label_not_raw_code(tmp_path):
+    """CLAUDE.md: «Кодовые значения ... человеку не показываем» — карточка обязана показать
+    подпись города («Москва»), не код («msk»). `cities.CITIES` — модульный глобал, сохраняем и
+    откатываем (та же дисциплина, что tests/test_chat_binding_260914.py::_cities_on) — иначе
+    привязка «msk» протекает в остальные тесты этого процесса."""
+    _ready(tmp_path)
+    saved = list(cities.CITIES)
+    try:
+        _run(db.insert_city("msk", "Москва", None, 0, 1))
+        _run(cities.reload_cities())
+        _run(db.set_setting("event_city_enabled", "on"))
+        _run(_add_delegate(DELEGATE_ID, event_city="msk"))
+        rid = _run(db.create_sos_report(DELEGATE_ID, "msk", "bad", None, None, None, None))
+
+        bot = FakeBot()
+        _run(sos_service.post_card(bot, rid))
+        text = bot.sent[0][1]
+        assert "Москва" in text
+        assert "msk" not in text.lower()
+    finally:
+        cities.set_cities_for_test(saved)
+
+
+def test_card_text_shows_claimed_by_and_time_after_claim(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+    _run(db.claim_sos_report(rid, ADMIN_ID, "Админ Первый"))
+    report = _run(db.get_sos_report(rid))
+    text = sos_service.render_card_text(report, None)
+    assert "✍️ Взял(а): Админ Первый в" in text
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

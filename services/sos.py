@@ -228,21 +228,40 @@ async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> bo
 # ── Карточка SOS (пункт 3 плана) — маркеры "🆔"+"🆘" для реплай-детекции, та же идиома, что
 # "🆔"+"❓" у карточки вопроса (handlers/admin.py::is_question_reply).
 
-def render_card_text(report: dict, user: dict | None) -> str:
+async def resolve_city_label(city_code: str | None) -> str | None:
+    """`cities.city_label(code)` -> человеческая подпись («Москва»), не код — CLAUDE.md:
+    «Кодовые значения ... человеку не показываем». `None`/неизвестный код -> `None` (карточка
+    покажет «—», см. `render_card_text`), fail-soft — сбой резолва не должен ронять карточку."""
+    if not city_code:
+        return None
+    try:
+        from cities import city_label
+
+        return await city_label(city_code)
+    except Exception as e:
+        logger.warning("sos.resolve_city_label(%r) failed: %s", city_code, e)
+        return None
+
+
+def render_card_text(report: dict, user: dict | None, *, city_label: str | None = None) -> str:
+    """`city_label` — уже РЕЗОЛВЕННАЯ человеческая подпись города (CLAUDE.md: «Кодовые значения
+    ... человеку не показываем»), не код. Функция остаётся синхронной/чистой (`cities.city_label`
+    — async, резолвится ОДИН раз в вызывающем коде — `post_card`/`admin_sos._refresh_card`,
+    оба уже в async-контексте) — сырой код `report["city"]` сюда не подставляется никогда."""
     user = user or {}
     full_name = html_module.escape(str(user.get("full_name") or "—"))
     username = user.get("username")
     username_line = html_module.escape(str(username)) if username and username != "-" else "—"
     university = html_module.escape(str(user.get("university") or "—"))
     phone = html_module.escape(str(user.get("phone") or "—"))
-    city = report.get("city")
+    city_text = html_module.escape(str(city_label)) if city_label else "—"
     category_label = CATEGORY_LABELS.get(report.get("category"), str(report.get("category")))
 
     lines = [
         f"🆘 <b>SOS #{report['id']}</b> · {category_label}",
         f"🆔 <code>{report['telegram_id']}</code> {full_name}",
         f"👤 {username_line}",
-        f"🏙 {html_module.escape(str(city)) if city else '—'}",
+        f"🏙 {city_text}",
         f"🎓 {university}",
         f"📞 {phone}",
     ]
@@ -255,6 +274,19 @@ def render_card_text(report: dict, user: dict | None) -> str:
     if lat is not None and lon is not None:
         lines.append(f"📍 https://maps.google.com/?q={lat},{lon}")
     lines.append(f"🕓 {format_stamp(report.get('created_at'), stored_utc=False)}")
+
+    # Пункт 3 плана: карточка обновляется «Взял: … в HH:MM» после «🙋 Беру», «✅ Решено …» после
+    # решения — тот же приём, что `handlers/admin_sos.py::_row_text` (журнал экрана менеджера),
+    # здесь для карточки, которую видит весь чат оргов.
+    status = report_status(report)
+    if status == STATUS_CLAIMED:
+        who = html_module.escape(str(report.get("claimed_by_name") or "—"))
+        when = format_stamp(report.get("claimed_at"), stored_utc=False)
+        lines.append(f"✍️ Взял(а): {who} в {when[-5:] if when else '—'}")
+    elif status == STATUS_RESOLVED:
+        who = html_module.escape(str(report.get("resolved_by_name") or "—"))
+        when = format_stamp(report.get("resolved_at"), stored_utc=False)
+        lines.append(f"✅ Решено: {who} в {when[-5:] if when else '—'}")
     return "\n".join(lines)
 
 
@@ -282,7 +314,7 @@ async def post_card(bot, report_id: int) -> bool:
     if report is None:
         return False
     user = await get_user(report["telegram_id"])
-    text = render_card_text(report, user)
+    text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
     kb = build_card_kb(report_id)
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
