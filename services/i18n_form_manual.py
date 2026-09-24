@@ -494,6 +494,14 @@ _CODE_LITERALS_EN = {
         "find anyone wearing organizer clothing.",
     "Мы уже получили твой SOS ({claim_status}). Дополни его — просто напиши сюда.":
         "We already got your SOS ({claim_status}). Add details — just write here.",
+    # Часть А (ревью SOS-переводов): `{claim_status}` — сам ярус B, ДВЕ формы шаблона
+    # (`services.sos.claim_status_parts`), переводится ОТДЕЛЬНО от подстановки имени
+    # (`handlers/sos.py::_recent_followup_text`, тот же порядок «шаблон сначала», что
+    # `reg_i18n.tr_fmt` везде в чате). «коллега» — переводимый фолбэк имени, когда у держателя
+    # заявки нет отображаемого имени в БД.
+    "взял(а) {who}": "picked up by {who}",
+    "ещё не взяли": "not picked up yet",
+    "коллега": "a colleague",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
