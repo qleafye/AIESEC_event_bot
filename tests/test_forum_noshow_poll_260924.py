@@ -118,6 +118,28 @@ def test_pending_ids_excludes_already_checked_in(tmp_path):
     assert _run(db.forum_noshow_poll_pending_ids()) == []
 
 
+def test_pending_ids_excludes_entry_on_any_day_not_just_today(tmp_path):
+    """Вход каждый день: отметка входа в ЛЮБОЙ день форума (не обязательно сегодня) исключает
+    делегата из опроса — «неявившийся» = нет входа НИ В ОДИН день, в отличие от отчёта дня,
+    который смотрит на конкретный день."""
+    _ready(tmp_path)
+    _run(_add_delegate(1))
+    _run(db.record_checkin(1, db.CHECKIN_ENTRY_POINT, source="csv", scanned_at="2026-10-30 09:00:00"))
+    assert _run(db.forum_noshow_poll_pending_ids()) == []
+
+
+def test_pending_ids_multiple_entry_rows_do_not_duplicate_or_break_exclusion(tmp_path):
+    """Несколько строк входа на одного делегата (двухдневный форум) не дают дублей в выдаче и
+    не ломают NOT EXISTS — делегат с двумя отметками исключён РОВНО один раз, а не как две
+    разные строки."""
+    _ready(tmp_path)
+    _run(_add_delegate(1))
+    _run(_add_delegate(2))
+    _run(db.record_checkin(1, db.CHECKIN_ENTRY_POINT, source="csv", scanned_at="2026-10-30 09:00:00"))
+    _run(db.record_checkin(1, db.CHECKIN_ENTRY_POINT, source="csv", scanned_at="2026-10-31 09:00:00"))
+    assert _run(db.forum_noshow_poll_pending_ids()) == [2]
+
+
 def test_pending_ids_excludes_not_approved(tmp_path):
     _ready(tmp_path)
     _run(_add_delegate(1, status="pending"))

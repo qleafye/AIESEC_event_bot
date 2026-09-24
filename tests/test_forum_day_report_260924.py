@@ -127,6 +127,18 @@ def test_count_checkins_by_point_and_day_scoped_by_city(tmp_path):
     assert _run(db.count_checkins_by_point_and_day(db.CHECKIN_ENTRY_POINT, "2026-10-30", city_scope=scope_msk)) == 1
 
 
+def test_count_checkins_by_point_and_day_counts_second_day_entry_separately(tmp_path):
+    """Вход каждый день: делегат с отметками на ОБА дня форума считается в отчёте КАЖДОГО дня
+    отдельно (по колонке `checkins.day`, не по вычислению из `scanned_at`) — тот же признак,
+    которым `miniapp/routers/checkin.py` уже считает «Пришли N из M» на своём экране."""
+    _ready(tmp_path)
+    _run(_add_delegate(1))
+    _run(db.record_checkin(1, db.CHECKIN_ENTRY_POINT, source="csv", scanned_at="2026-10-30 10:00:00"))
+    _run(db.record_checkin(1, db.CHECKIN_ENTRY_POINT, source="csv", scanned_at="2026-10-31 09:00:00"))
+    assert _run(db.count_checkins_by_point_and_day(db.CHECKIN_ENTRY_POINT, "2026-10-30")) == 1
+    assert _run(db.count_checkins_by_point_and_day(db.CHECKIN_ENTRY_POINT, "2026-10-31")) == 1
+
+
 def test_peak_hour_returns_busiest_hour(tmp_path):
     _ready(tmp_path)
     _run(_add_delegate(1))
