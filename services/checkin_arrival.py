@@ -42,9 +42,14 @@ async def arrival_report(city_sc, session_city: str | None) -> dict:
     return arrival_stats.build_report(approved, arrived_row, day_rows, session_rows)
 
 
-async def count_program_sessions(city: str) -> int:
-    """Сколько сессий в программе города — строка «Программа» экрана «🚦 Готовность к форуму»."""
+async def count_program_sessions(city: str | None) -> int:
+    """Сколько сессий в программе города — строка «Программа» экрана «🚦 Готовность к форуму».
+    `city=None` — все города явно (без фильтра), а не `city = NULL`, который молча дал бы 0."""
+    if city is None:
+        sql, params = "SELECT COUNT(*) FROM program_sessions", ()
+    else:
+        sql, params = "SELECT COUNT(*) FROM program_sessions WHERE city = ?", (city,)
     async with _connect() as db:
-        async with db.execute("SELECT COUNT(*) FROM program_sessions WHERE city = ?", (city,)) as cur:
+        async with db.execute(sql, params) as cur:
             row = await cur.fetchone()
     return int(row[0] or 0) if row else 0
