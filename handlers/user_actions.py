@@ -37,6 +37,9 @@ from database.db import (
     CNA_CANT,
     CNA_HERE,
     record_checkin_not_arrived_response,
+    # Идея №4 бэклога чек-ина: «✅ Ты отмечен» — единая функция чтения, общая с хабом Mini App
+    # (miniapp/routers/hub.py, координация владельца 24.09).
+    get_checkin_status,
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260923-en2 (задача 3): тот же дефолт-текст возвращенца, что /start уже шлёт
@@ -1664,6 +1667,24 @@ async def show_my_checkin_qr(message: types.Message):
         await message.answer(text)
         return
     caption = reg_i18n.tr_text(caption, lang, tr_map)
+    # Идея №4 бэклога чек-ина (координация владельца 24.09): строка «✅ Ты отмечен» — ТОЛЬКО
+    # пока сюда дошли (checkin_qr_enabled уже проверен выше, `enabled` истинен) и только когда
+    # отметка входа реально есть (`get_checkin_status` -- единая функция чтения, общая с хабом
+    # Mini App). Fail-soft: сбой чтения статуса не должен рвать показ самого QR.
+    try:
+        status = await get_checkin_status(message.from_user.id)
+    except Exception as e:
+        logger.error(f"show_my_checkin_qr: get_checkin_status failed for {message.from_user.id}: {e}")
+        status = None
+    if status is not None:
+        template = await get_setting_typed("checked_in_status_text")
+        if template:
+            status_line = reg_i18n.tr_fmt(
+                template, lang, tr_map,
+                time=(status["scanned_at"] or "")[11:16] or "—",
+                sessions=status["sessions_count"],
+            )
+            caption = f"{status_line}\n\n{caption}"
     photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
     await message.answer_photo(photo, caption=caption)
 

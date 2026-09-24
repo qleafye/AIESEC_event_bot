@@ -290,6 +290,13 @@ async def main():
     # Init DB
     await init_db()
 
+    # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа делегата —
+    # регистрация слушателя `services.checkin.register_first_entry_listener`. Слушатели живут
+    # только в процессе бота (докстринг `services/forum_welcome.py`) — регистрация здесь, до
+    # старта поллинга. Синхронный вызов (список в памяти, без сети/БД) — try/except не нужен.
+    from services.forum_welcome import register as register_forum_welcome
+    register_forum_welcome()
+
     # Phase 14 (CITY-07): one-time .env -> `cities` table seed, then load the in-memory cache
     # from the DB. MUST run before active_sheet_headers()/_maybe_ensure_city_sheet_headers()
     # below -- that function already reads cities.enabled_cities(), so the cache must be

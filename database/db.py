@@ -10082,6 +10082,34 @@ async def list_marked_telegram_ids_for_session(session_id: int) -> list[int]:
     return [r[0] for r in rows]
 
 
+# Форум-ночь (идея №4 бэклога чек-ина, координация «одна функция чтения»): «✅ Ты отмечен» — обе
+# поверхности (кнопка «🎟 Мой QR» бота, `handlers/user_actions.py`; хаб Mini App,
+# `miniapp/routers/hub.py`) читают ОДНУ функцию, а не заводят по своей копии SQL — та же
+# граница, что уже держат `is_marked_for_session`/`count_checkins_by_point` выше.
+
+async def get_checkin_status(telegram_id: int) -> dict | None:
+    """`{"scanned_at": "YYYY-MM-DD HH:MM:SS", "sessions_count": N}` — время отметки на входе
+    (`CHECKIN_ENTRY_POINT`) и число ОТДЕЛЬНЫХ сессий, на которых делегат отмечен (`point LIKE
+    'session:%'`, по одной строке на слот — D-20, `record_session_checkin` уже держит эту
+    гарантию). `None`, если входа ещё не было — обе поверхности трактуют `None` как «не
+    показывать строку вовсе», а не как нулевые факты."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, CHECKIN_ENTRY_POINT),
+        ) as cursor:
+            entry = await cursor.fetchone()
+        if entry is None:
+            return None
+        async with db.execute(
+            "SELECT COUNT(*) FROM checkins WHERE telegram_id = ? AND point LIKE 'session:%'",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return {"scanned_at": entry["scanned_at"], "sessions_count": row[0]}
+
+
 async def create_session_feedback_prompt(telegram_id: int, session_id: int, prompted_at: str) -> bool:
     """`INSERT OR IGNORE` — идемпотентность самой РАССЫЛКИ (не только оценки): джоба, тикнувшая
     дважды (перепланирование при правке сессии + старый таймер не снялся, гонка reconcile на

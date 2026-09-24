@@ -832,6 +832,20 @@ _REGISTRY_TEXTS_EN = {
         "The forum is tomorrow! Here's your QR code for entry. Open it now and take a "
         "screenshot — the venue may have no network."
     ),
+    # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа — group
+    # "reg", forum_welcome_text. Плейсхолдер `{time}` переживает перевод сентинелами глоссария
+    # (services/i18n_glossary.py) — тот же приём, что у остальных плейсхолдеров этого словаря.
+    "Ты отмечен на входе в {time} ✅ Добро пожаловать на Юлид!": (
+        "You're checked in at {time} ✅ Welcome to YouLead!"
+    ),
+    # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
+    # App) — group "reg", checked_in_status_text. Ключ БЕЗ ведущего «✅ » — `handlers.reg_i18n.
+    # tr_text`/`split_leading_symbols` отделяет ведущий эмодзи-префикс ДО перевода и
+    # приклеивает его назад нетронутым (докстринг `services/i18n_glossary.py::
+    # split_leading_symbols`); словарь с эмодзи внутри ключа НИКОГДА не совпал бы по хешу с
+    # уже отделённым остатком (тот же класс бага, что ревью нашло у `{claim_status}`, только
+    # для символьного, не прогресс-префикса).
+    "Отмечен на входе в {time} · сессий: {sessions}": "Checked in at {time} · sessions: {sessions}",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,

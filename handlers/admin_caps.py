@@ -957,6 +957,13 @@ ADMIN_CAPS: dict[str, str] = {
     "forumdaymenu_time:*": "moderate_reg",
     "state:ForumDayMenuTimeEdit:*": "moderate_reg",
 
+    # Идея №3 бэклога чек-ина (приветствие после первой отметки входа): та же капа
+    # «moderate_reg», что и у остального хаба «🎪 Форум: функции» выше — тумблер-only экран
+    # (сам текст `forum_welcome_text` правится generic-редактором «settings», см. докстринг
+    # `handlers/admin_forum_functions.py` над `_welcome_cfg_text_kb`).
+    "forumwelcome_cfg:*": "moderate_reg",
+    "forumwelcome_toggle:*": "moderate_reg",
+
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
     # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
     # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).

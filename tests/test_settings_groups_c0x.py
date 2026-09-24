@@ -534,6 +534,11 @@ def test_render_snapshot_apps(tmp_path):
         # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — тот же пропуск,
         # что у checkin_qr_broadcast_text выше.
         "checkin_volunteer_guide_text",
+        # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа — новый хвост
+        # группы (тумблер forum_welcome_enabled — тумблер раздела, в группу не входит).
+        "forum_welcome_text",
+        # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» — новый хвост группы.
+        "checked_in_status_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -558,6 +563,10 @@ def test_render_snapshot_apps(tmp_path):
         "🚪 «Не пришёл»: текст рассылки",
         # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — дописана в бот.
         "🎫 Шпаргалка волонтёра чек-ина",
+        # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа.
+        "👋 Текст приветствия после отметки на входе",
+        # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен».
+        "✅ «Ты отмечен»: строка статуса",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -580,6 +589,8 @@ def test_render_snapshot_apps(tmp_path):
         "🚪 «Не пришёл»: текст рассылки",
         # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра имеет непустой дефолт.
         "🎫 Шпаргалка волонтёра чек-ина",
+        # Идея №3/№4 бэклога чек-ина: оба новых текста имеют непустой дефолт в реестре.
+        "👋 Текст приветствия после отметки на входе", "✅ «Ты отмечен»: строка статуса",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -997,11 +1008,14 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Форум-ночь (ночная приёмка, задача 3): checkin_qr_broadcast_text и
     # checkin_volunteer_guide_text дописаны в бот — были в реестре, но правились только в
     # Mini App; хвост _APPS_FIELD_ORDER удлинился на два ключа.
-    assert admin_settings._settings_group_keys("apps")[-12:] == [
+    # Форум-ночь (идеи №3/№4 бэклога чек-ина): forum_welcome_text и checked_in_status_text —
+    # новый хвост _APPS_FIELD_ORDER, ещё два ключа.
+    assert admin_settings._settings_group_keys("apps")[-14:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
-        "checkin_qr_broadcast_text", "checkin_not_arrived_text", "checkin_volunteer_guide_text"]
+        "checkin_qr_broadcast_text", "checkin_not_arrived_text", "checkin_volunteer_guide_text",
+        "forum_welcome_text", "checked_in_status_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text
