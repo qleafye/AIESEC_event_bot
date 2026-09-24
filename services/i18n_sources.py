@@ -468,6 +468,24 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:user_actions.important_today_empty", "Сегодня важных рассылок не было."))
     items.append(("lit:user_actions.important_today_header", "❗ Важные рассылки за сегодня:"))
 
+    # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4, п.5): тексты «🔕 Не присылать сегодня»
+    # (services/scheduler.py + handlers/user_actions.py) идут через `reg_i18n.tr_text`, та
+    # снимает ведущий эмодзи-префикс ДО поиска в `tr_map` (см. докстринг `reg_i18n.py::tr_text`
+    # и пример «🎟 Мой QR» выше по файлу) — ключи здесь БЕЗ эмодзи-префикса, ровно то, что реально
+    # ищет `tr()`. Предложение отключиться (альбом, не чаще раза в день) — без эмодзи-префикса,
+    # переносить нечего.
+    items.append((
+        "lit:scheduler.mute_offer_text",
+        "Сегодня многовато рассылок? Можно отключить необязательные до завтра:",
+    ))
+    items.append(("lit:scheduler.mute_button", "Не присылать сегодня"))
+    items.append(("lit:scheduler.unmute_button", "Присылать всё"))
+    items.append((
+        "lit:user_actions.mute_today_confirm",
+        "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».",
+    ))
+    items.append(("lit:user_actions.unmute_today_confirm", "Хорошо, снова присылаю все рассылки."))
+
     items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
     items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
