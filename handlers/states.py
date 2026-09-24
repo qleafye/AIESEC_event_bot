@@ -353,17 +353,18 @@ class ProgramDayCustom(StatesGroup):
 
 
 class SosReport(StatesGroup):
-    # Форум-ночь п.8 (идея №19, SOS): делегатский визард «🆘 SOS» (handlers/sos.py) — категория
-    # выбирается кнопкой (callback `sos_cat:{code}`, без своего State), дальше два необязательных
-    # шага. Право не нужно (user_actions.router вне CapabilityMiddleware, тот же прецедент, что
-    # GameSubmit.proof) — категория/город несёт state.get_data() (sos_category/sos_city).
-    details = State()   # текст и/или фото, можно пропустить
-    location = State()  # геопозиция, можно пропустить
-    # Ревью 24.09 (находка 3): делегат жмёт «🆘 SOS» повторно, пока прошлый ЕЩЁ свежий
-    # (`sos_reopen_window_minutes`) — следующее ЛЮБОЕ сообщение (не обязательно реплай) уходит
-    # дополнением к прежней заявке (`sos_followup_report_id` в state.get_data()), тот же хвост,
-    # что у реплай-варианта (`handlers/sos.py::_relay_report_followup`).
-    followup = State()
+    # D-31 (24.09, «SOS без категорий»): «🆘 SOS» создаёт заявку и публикует карточку МГНОВЕННО
+    # (handlers/sos.py::sos_start), без вопроса «что случилось» — категорийный визард (details/
+    # location/followup как отдельные шаги) снесён целиком. Единственное состояние —
+    # `collecting` («дописываю SOS»): ЛЮБОЕ сообщение делегата (текст/фото/геопозиция) уходит в
+    # тред карточки И дописывает саму карточку первым текстом/фото
+    # (`database.db.add_sos_details`/`set_sos_location`). Живёт до «Готово»
+    # (`i18n_ui_en.DONE_WORDS`), решения заявки оргом, таймаута
+    # (`sos_collecting_timeout_minutes`, проверяется на каждом входящем сообщении) или /start.
+    # Право не нужно (user_actions.router вне CapabilityMiddleware, тот же прецедент, что
+    # GameSubmit.proof) — id заявки/город/момент входа несёт state.get_data()
+    # (sos_collecting_report_id/sos_collecting_city/sos_collecting_started).
+    collecting = State()
 
 
 class SosChatBind(StatesGroup):

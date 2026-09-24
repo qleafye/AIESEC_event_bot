@@ -28,7 +28,6 @@ from database.db import (
     claim_sos_report,
     count_sos_by_status,
     get_sos_report,
-    get_user,
     list_sos_reports_page,
     resolve_sos_report,
 )
@@ -53,18 +52,22 @@ _FILTER_ORDER = ("all", "open", "claimed", "resolved")
 async def _row_text(row: dict) -> str:
     status = sos_service.report_status(row)
     who = row.get("user_full_name") or row.get("user_username") or "—"
-    category = sos_service.CATEGORY_LABELS.get(row.get("category"), str(row.get("category")))
     # CLAUDE.md: «Кодовые значения ... человеку не показываем» — код города резолвится в
     # подпись (тот же приём, что services/sos.py::render_card_text/resolve_city_label);
     # экран уже отфильтрован ПО городу (`_admin_city_view`), но при выбранном «Все города»
     # строки смешивают разные города — код в списке был бы нарушением.
     city_label = await sos_service.resolve_city_label(row.get("city"))
     lines = [
-        f"#{row['id']} · {sos_service.STATUS_LABELS[status]} · {category}",
+        f"#{row['id']} · {sos_service.STATUS_LABELS[status]}",
         f"🆔 <code>{row['telegram_id']}</code> {html_module.escape(str(who))}"
         + (f" · {html_module.escape(str(city_label))}" if city_label else ""),
         f"🕓 {format_stamp(row.get('created_at'), stored_utc=False)}",
     ]
+    # D-31: карточка (и этот список) публикуется/держится МГНОВЕННО, без вопроса «что
+    # случилось» — пока делегат ничего не дописал, менеджер должен видеть это в списке тем же
+    # приёмом, что и сама карточка (`services.sos.render_card_text`).
+    if not row.get("details_text") and not row.get("details_photo_file_id"):
+        lines.append("🆘 подробности ещё не прислали")
     if status == "claimed":
         lines.append(f"✍️ взял(а) {html_module.escape(str(row.get('claimed_by_name') or '—'))}")
     elif status == "resolved":
@@ -265,27 +268,10 @@ async def asos_bind_step(message: types.Message, state: FSMContext, bot: Bot):
 # ── Пункт 3 плана: «🙋 Беру» / «✅ Решено» под карточкой ─────────────────────────────────────
 
 async def _refresh_card(bot: Bot, report_id: int) -> None:
-    """Перерисовывает карточку в чате (если она там есть) после захвата/решения — fail-soft:
-    карточка могла быть удалена/устареть, это не должно ронять сам захват/ответ."""
-    report = await get_sos_report(report_id)
-    if report is None or not report.get("chat_id") or not report.get("card_message_id"):
-        return
-    user = await get_user(report["telegram_id"])
-    city_label = await sos_service.resolve_city_label(report.get("city"))
-    text = sos_service.render_card_text(report, user, city_label=city_label)
-    # Ревью 24.09 (находка 4): «✅ Решено» убирает кнопки под карточкой — сам текст «Решено:
-    # … в HH:MM» остаётся (уже несёт `render_card_text` по статусу выше).
-    kb = (
-        None if sos_service.report_status(report) == sos_service.STATUS_RESOLVED
-        else sos_service.build_card_kb(report_id)
-    )
-    try:
-        await bot.edit_message_text(
-            text, chat_id=report["chat_id"], message_id=report["card_message_id"],
-            parse_mode="HTML", reply_markup=kb,
-        )
-    except Exception:
-        pass
+    """Тонкая обёртка над `services.sos.refresh_card` (домен карточки целиком в этом модуле,
+    см. докстринг файла) — оставлена под старым именем ради минимального диффа у вызывающих
+    ниже (`sos_claim`/`sos_resolve`/`admin_reply_to_sos`)."""
+    await sos_service.refresh_card(bot, report_id)
 
 
 def _card_origin_ok(callback: types.CallbackQuery, report: dict) -> bool:
@@ -440,10 +426,22 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
 
 _SOS_DELAY_PRESETS = (5, 10, 15, 30)
 
+# D-31: третий тайминг — «сколько ждать дозапись» (режим «дописываю SOS», handlers/sos.py::
+# SosReport.collecting) — тот же реестровый ключ `sos_collecting_timeout_minutes`, тот же
+# пресет/«Другое» приём, что у reopen/claimed выше, поэтому вынесен в общий словарь field ->
+# base_key вместо if/else-цепочки на два значения.
+_SOS_DELAY_FIELDS = {
+    "reopen": "sos_reopen_window_minutes",
+    "claimed": "sos_claimed_remind_minutes",
+    "collecting": "sos_collecting_timeout_minutes",
+}
+
 _SOS_TEXT_FIELDS = {
     "failed": ("sos_delivery_failed_text", "🆘 Не получилось передать"),
-    "followup": ("sos_recent_followup_text", "🆘 Дополнить свежий SOS"),
+    "followup": ("sos_recent_followup_text", "🆘 Уже есть открытый — дополнить"),
     "contact": ("sos_fallback_contact_text", "📞 Экстренный контакт (если не доставлено)"),
+    "done": ("sos_done_text", "🆘 Дописывание завершено («Готово»)"),
+    "expired": ("sos_collecting_expired_text", "🆘 Сессия дозаписи истекла"),
 }
 
 
@@ -491,29 +489,35 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
         claimed = int(claimed_raw) if claimed_raw else sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
     except (TypeError, ValueError):
         claimed = sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
+    collecting_raw = await get_setting_typed_for_city(
+        "sos_collecting_timeout_minutes", code if per_city_ctx else None,
+    )
+    try:
+        collecting = int(collecting_raw) if collecting_raw else sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES
+    except (TypeError, ValueError):
+        collecting = sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES
     contact = await get_setting_typed_for_city("sos_fallback_contact_text", code if per_city_ctx else None)
 
     lines.append(f"⏱ Окно повторного открытия: {reopen} мин")
     lines.append(f"⏱ Напоминание взявшему: {claimed} мин")
+    lines.append(f"⏱ Сколько ждать дозапись: {collecting} мин")
     lines.append(f"📞 Экстренный контакт: {html_module.escape(contact) if contact else 'не задан'}")
 
     buttons: list[list[InlineKeyboardButton]] = []
     can_edit_percity = (not per_city_ctx) or bool(code)
-    row = []
-    for n in _SOS_DELAY_PRESETS:
-        mark = "• " if reopen == n else ""
-        row.append(InlineKeyboardButton(text=f"{mark}{n}", callback_data=f"asos_set_delay:reopen:{n}"))
-    buttons.append([InlineKeyboardButton(text="⏱ Окно повторного открытия:", callback_data="asos_noop")])
-    buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="✏️ Другое", callback_data="asos_delay_custom:reopen")])
 
-    row2 = []
-    for n in _SOS_DELAY_PRESETS:
-        mark = "• " if claimed == n else ""
-        row2.append(InlineKeyboardButton(text=f"{mark}{n}", callback_data=f"asos_set_delay:claimed:{n}"))
-    buttons.append([InlineKeyboardButton(text="⏱ Напоминание взявшему:", callback_data="asos_noop")])
-    buttons.append(row2)
-    buttons.append([InlineKeyboardButton(text="✏️ Другое", callback_data="asos_delay_custom:claimed")])
+    def _delay_row(field: str, current: int, label: str) -> None:
+        row = []
+        for n in _SOS_DELAY_PRESETS:
+            mark = "• " if current == n else ""
+            row.append(InlineKeyboardButton(text=f"{mark}{n}", callback_data=f"asos_set_delay:{field}:{n}"))
+        buttons.append([InlineKeyboardButton(text=label, callback_data="asos_noop")])
+        buttons.append(row)
+        buttons.append([InlineKeyboardButton(text="✏️ Другое", callback_data=f"asos_delay_custom:{field}")])
+
+    _delay_row("reopen", reopen, "⏱ Окно повторного открытия:")
+    _delay_row("claimed", claimed, "⏱ Напоминание взявшему:")
+    _delay_row("collecting", collecting, "⏱ Сколько ждать дозапись:")
 
     if not can_edit_percity:
         lines.append("")
@@ -521,7 +525,9 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
 
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 📞 Экстренный контакт", callback_data="asos_settings_edit:contact")])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Не получилось передать", callback_data="asos_settings_edit:failed")])
-    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Дополнить свежий SOS", callback_data="asos_settings_edit:followup")])
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Уже есть открытый — дополнить", callback_data="asos_settings_edit:followup")])
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Дописывание завершено", callback_data="asos_settings_edit:done")])
+    buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Сессия дозаписи истекла", callback_data="asos_settings_edit:expired")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_sos")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -543,7 +549,8 @@ async def asos_noop(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("asos_set_delay:"))
 async def asos_set_delay(callback: types.CallbackQuery):
     _, field, value_s = callback.data.split(":", 2)
-    if field not in ("reopen", "claimed"):
+    base_key = _SOS_DELAY_FIELDS.get(field)
+    if base_key is None:
         await callback.answer("Неизвестная настройка", show_alert=True)
         return
     try:
@@ -551,7 +558,6 @@ async def asos_set_delay(callback: types.CallbackQuery):
     except ValueError:
         await callback.answer("Некорректное значение", show_alert=True)
         return
-    base_key = "sos_reopen_window_minutes" if field == "reopen" else "sos_claimed_remind_minutes"
     per_city_ctx, code = await _sos_settings_city_scope(callback.from_user.id)
     if per_city_ctx and not code:
         await callback.answer(
@@ -571,10 +577,10 @@ async def asos_set_delay(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("asos_delay_custom:"))
 async def asos_delay_custom_start(callback: types.CallbackQuery, state: FSMContext):
     field = callback.data.split(":", 1)[1]
-    if field not in ("reopen", "claimed"):
+    base_key = _SOS_DELAY_FIELDS.get(field)
+    if base_key is None:
         await callback.answer("Неизвестная настройка", show_alert=True)
         return
-    base_key = "sos_reopen_window_minutes" if field == "reopen" else "sos_claimed_remind_minutes"
     per_city_ctx, code = await _sos_settings_city_scope(callback.from_user.id)
     if per_city_ctx and not code:
         await callback.answer(
