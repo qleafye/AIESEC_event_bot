@@ -229,3 +229,153 @@ def _sheet_safe(value: str) -> str:
     if value and value[0] in "=+-@\t\r":
         return "'" + value
     return value
+
+
+# ── «Сейчас на площадке» (бэклог чек-ина №12): живой приход за ДЕНЬ форума ─────────────────
+# Всё по одному дню (вход каждый день — D-37 в `.planning/FORUM-CHECKIN.md`), время МСК.
+# Стойка = волонтёр (`checkins.by_staff_id`): считаем только живые отметки входа — сканер и
+# поиск по фамилии. Файл офлайн-сканера (`csv`) и авто-вход со сканом сессии (`auto_session`)
+# в стойки не идут: у первого время скана бывает примерным, второй — не работа стойки входа.
+RECENT_MINUTES = 15
+BUCKET_MINUTES = 15
+LIVE_SOURCES = ("miniapp", "manual")
+
+# Имя волонтёра — как в журнале площадки: снимок имени из Telegram в `venue_log`, иначе ФИО
+# или @username из `users` (если волонтёр сам делегат), иначе «id N» — в `build_floor`.
+_STAFF_NAME_SQL = (
+    "COALESCE("
+    "(SELECT v.staff_name FROM venue_log v WHERE v.staff_id = c.by_staff_id "
+    "AND v.staff_name IS NOT NULL AND v.staff_name != '' ORDER BY v.id DESC LIMIT 1), "
+    "(SELECT NULLIF(u.full_name, '') FROM users u WHERE u.telegram_id = c.by_staff_id), "
+    "(SELECT '@' || ltrim(u.username, '@') FROM users u WHERE u.telegram_id = c.by_staff_id "
+    "AND u.username IS NOT NULL AND u.username != ''))"
+)
+
+
+def floor_queries(
+    users_where: str, users_params: list, day: str, since: str, now_hm: str,
+    session_city: str | None,
+) -> dict:
+    """`{имя: (sql, params)}` экрана «Сейчас на площадке». `day` — «YYYY-MM-DD», `since` —
+    «YYYY-MM-DD HH:MM:SS» (начало окна «за последние 15 мин»), `now_hm` — «HH:MM» (какие сессии
+    идут сейчас). `session_city=None` — сессии всех городов."""
+    sub = f"SELECT telegram_id FROM users WHERE {users_where}"
+    city_sql = " AND s.city = ?" if session_city else ""
+    city_params = [session_city] if session_city else []
+    day_sql = "substr(c.scanned_at, 1, 10) = ?"
+    live = ", ".join("?" for _ in LIVE_SOURCES)
+    return {
+        "approved": (f"SELECT COUNT(*) FROM users WHERE {users_where}", list(users_params)),
+        "present": arrived_query(users_where, users_params, day),
+        "recent": (
+            f"SELECT COUNT(DISTINCT c.telegram_id) FROM checkins c WHERE c.point = ? AND {day_sql} "
+            f"AND c.scanned_at >= ? AND c.telegram_id IN ({sub})",
+            [ENTRY_POINT, day, since, *users_params],
+        ),
+        # Сессии этого дня: и все (срез по точкам на дашборде), и «идут сейчас» (флаг live).
+        "sessions": (
+            "SELECT s.id, s.city, s.start_time, s.end_time, s.title, h.name, h.capacity, "
+            "COUNT(DISTINCT c.telegram_id), "
+            "CASE WHEN s.start_time <= ? AND ? < s.end_time THEN 1 ELSE 0 END "
+            "FROM program_sessions s LEFT JOIN program_halls h ON h.id = s.hall_id "
+            f"LEFT JOIN checkins c ON c.point = '{SESSION_POINT_PREFIX}' || s.id "
+            f"WHERE s.day = ?{city_sql} GROUP BY s.id ORDER BY s.start_time, s.id",
+            [now_hm, now_hm, day, *city_params],
+        ),
+        "stands": (
+            f"SELECT c.by_staff_id, {_STAFF_NAME_SQL}, c.scanned_at FROM checkins c "
+            f"WHERE c.point = ? AND {day_sql} AND c.source IN ({live}) "
+            f"AND c.by_staff_id IS NOT NULL AND c.telegram_id IN ({sub}) "
+            "ORDER BY c.by_staff_id, c.scanned_at",
+            [ENTRY_POINT, day, *LIVE_SOURCES, *users_params],
+        ),
+        "buckets": (
+            "SELECT substr(c.scanned_at, 12, 3) || "
+            f"printf('%02d', (CAST(substr(c.scanned_at, 15, 2) AS INTEGER) / {BUCKET_MINUTES}) "
+            f"* {BUCKET_MINUTES}) AS slot, COUNT(DISTINCT c.telegram_id) FROM checkins c "
+            f"WHERE c.point = ? AND {day_sql} AND c.telegram_id IN ({sub}) "
+            "GROUP BY slot ORDER BY slot",
+            [ENTRY_POINT, day, *users_params],
+        ),
+    }
+
+
+def build_stands(stand_rows) -> list[dict]:
+    """Строки `stands` (id волонтёра, имя, время скана — по возрастанию) -> стойки по убыванию
+    числа сканов за день."""
+    by_staff: dict = {}
+    for r in stand_rows or []:
+        acc = by_staff.setdefault(r[0], {"staff_id": r[0], "name": r[1] or f"id {r[0]}", "times": []})
+        acc["times"].append(r[2])
+    stands = [
+        {"staff_id": s["staff_id"], "name": s["name"], "count": len(s["times"]),
+         "first": s["times"][0], "last": s["times"][-1]}
+        for s in by_staff.values()
+    ]
+    stands.sort(key=lambda s: (-s["count"], s["name"]))
+    return stands
+
+
+def build_floor(approved, present, recent, session_rows, stand_rows, bucket_rows=None) -> dict:
+    """Сырые строки `floor_queries` -> отчёт «Сейчас на площадке» за день."""
+    approved = int(approved or 0)
+    present = int(present or 0)
+    sessions = []
+    for r in session_rows or []:
+        count = int(r[7] or 0)
+        capacity = int(r[6]) if r[6] else None
+        sessions.append({
+            "id": r[0], "city": r[1], "start": r[2], "end": r[3], "title": r[4] or "",
+            "hall": r[5] or "", "capacity": capacity, "count": count,
+            "fill_pct": _pct(count, capacity), "live": bool(r[8]),
+        })
+    return {
+        "approved": approved,
+        "present": present,
+        "pct": _pct(present, approved),
+        "recent": int(recent or 0),
+        "sessions": sessions,
+        "live_sessions": [s for s in sessions if s["live"]],
+        "stands": build_stands(stand_rows),
+        "buckets": [(r[0], int(r[1] or 0)) for r in bucket_rows or [] if r[0]],
+    }
+
+
+def merge_floors(floors: list[dict]) -> dict:
+    """«Все города» в боте: сумма городских отчётов (делегат — в одном городе). Стойки здесь не
+    складываются — вызывающий считает их одним запросом без городского фильтра."""
+    approved = sum(f["approved"] for f in floors)
+    present = sum(f["present"] for f in floors)
+    sessions = sorted((s for f in floors for s in f["sessions"]), key=lambda s: (s["start"], s["id"]))
+    return {
+        "approved": approved, "present": present, "pct": _pct(present, approved),
+        "recent": sum(f["recent"] for f in floors),
+        "sessions": sessions, "live_sessions": [s for s in sessions if s["live"]],
+        "stands": [], "buckets": [],
+    }
+
+
+def fill_buckets(sparse: list[tuple[str, int]], until_hm: str | None = None) -> list[tuple[str, int]]:
+    """Плотная ось 15-минуток: от первой до последней (или до `until_hm`, если позже) — пустые
+    интервалы нулями, иначе столбцы «перепрыгивают» тихие четверти часа (как
+    `dashboard.queries._fill_missing_days` для дней)."""
+    counts: dict[int, int] = {}
+    for slot, cnt in sparse:
+        try:
+            hh, mm = (int(x) for x in slot.split(":"))
+        except (ValueError, AttributeError):
+            continue
+        counts[hh * 60 + mm] = counts.get(hh * 60 + mm, 0) + cnt
+    if not counts:
+        return []
+    first, last = min(counts), max(counts)
+    if until_hm:
+        try:
+            hh, mm = (int(x) for x in until_hm.split(":"))
+            last = max(last, (hh * 60 + mm) // BUCKET_MINUTES * BUCKET_MINUTES)
+        except ValueError:
+            pass
+    return [
+        (f"{m // 60:02d}:{m % 60:02d}", counts.get(m, 0))
+        for m in range(first, last + 1, BUCKET_MINUTES)
+    ]

@@ -57,6 +57,31 @@ async def arrived_counts(city_sc, day: str | None = None) -> tuple[int, int]:
     return int(arrived or 0), int(approved or 0)
 
 
+async def floor_report(city_sc, session_city: str | None, now) -> dict:
+    """«Сейчас на площадке» (бэклог №12) за день `now` (МСК, naive datetime): пришли сегодня из
+    одобренных, прирост за последние 15 минут, сессии дня (идущие сейчас помечены), стойки."""
+    from datetime import timedelta
+
+    parts, params = await _users_scope_parts(city_sc)
+    where, where_params = arrival_stats.approved_users_where(parts, params)
+    queries = arrival_stats.floor_queries(
+        where, where_params, now.strftime("%Y-%m-%d"),
+        (now - timedelta(minutes=arrival_stats.RECENT_MINUTES)).strftime("%Y-%m-%d %H:%M:%S"),
+        now.strftime("%H:%M"), session_city,
+    )
+    rows: dict = {}
+    async with _connect() as db:
+        for name in ("approved", "present", "recent"):
+            async with db.execute(*queries[name]) as cur:
+                rows[name] = (await cur.fetchone())[0]
+        for name in ("sessions", "stands"):
+            async with db.execute(*queries[name]) as cur:
+                rows[name] = await cur.fetchall()
+    return arrival_stats.build_floor(
+        rows["approved"], rows["present"], rows["recent"], rows["sessions"], rows["stands"],
+    )
+
+
 async def counter_day() -> str | None:
     """День, за который показывать счётчик «Пришли»: сегодня (МСК), если сегодня уже был хоть
     один вход (идёт день форума), иначе `None` — «за форум»."""
