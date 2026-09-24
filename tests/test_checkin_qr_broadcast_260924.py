@@ -848,3 +848,33 @@ def test_init_scheduler_registers_forum_reconcile_interval(tmp_path, monkeypatch
             s.shutdown(wait=False)
 
     asyncio.run(go())
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Потолок догона накануне — 22:00 МСК
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_schedule_city_jobs_eve_2159_catches_up(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+    now = datetime(2026, 10, 2, 21, 59, 0)
+    monkeypatch.setattr(cb, "msk_now", lambda: now)
+
+    async def body(s):
+        result = await cb.schedule_city_jobs(None)
+        assert result["evening_at"] == now + timedelta(minutes=1)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_schedule_city_jobs_eve_2201_no_evening_morning_stays(tmp_path, monkeypatch):
+    _forum_setup(tmp_path)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 22, 1, 0))
+
+    async def body(s):
+        result = await cb.schedule_city_jobs(None)
+        assert result["evening_at"] is None
+        assert s.get_job(cb.evening_job_id(None)) is None
+        morn = s.get_job(cb.morning_job_id(None))
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)

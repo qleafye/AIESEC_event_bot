@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -64,6 +64,11 @@ _DEFAULT_EVENING_TIME = "18:00"
 _DEFAULT_MORNING_TIME = "08:00"
 # Насколько утренний повтор может опоздать и всё ещё уйти (рестарт бота ровно в его время).
 _MORNING_CATCHUP = timedelta(minutes=2)
+# Потолок догона накануне форума: позже 22:00 МСК «через минуту» не шлём ни QR, ни шпаргалку
+# волонтёру — ночное служебное сообщение (тихие часы на него не действуют) будит людей. QR
+# подберёт утренний повтор неподтвердившим, шпаргалка уйдёт утром дня форума в то же время.
+# Не настройка: это граница приличия, а не параметр мероприятия.
+EVENING_CATCHUP_CUTOFF = time(22, 0)
 
 
 # ── Pure helpers (unit-test surface, без БД и без aiogram-вызовов) ───────────────────────────
@@ -161,10 +166,12 @@ async def schedule_city_jobs(city: str | None) -> dict:
         cancel_city_jobs(city)
         return {"scheduled": False, "reason": "past"}
 
-    # Вечер накануне: прошёл, а форум завтра или позже (менеджер поздно включил) — догоняем;
-    # форум уже сегодня — вечернюю не ставим, её работу сделает утренний повтор.
+    # Вечер накануне: прошёл, а форум завтра или позже (менеджер поздно включил) — догоняем,
+    # но не позже EVENING_CATCHUP_CUTOFF; форум уже сегодня или на часах за 22:00 — вечернюю
+    # не ставим, её работу сделает утренний повтор.
     if ev_at <= now:
-        ev_at = now + timedelta(minutes=1) if forum_day > today else None
+        late = now.time() >= EVENING_CATCHUP_CUTOFF
+        ev_at = now + timedelta(minutes=1) if forum_day > today and not late else None
     # Утренний повтор: только в день форума и только пока его время впереди. Догон — лишь для
     # ещё не сработавшей джобы, опоздавшей не больше чем на `_MORNING_CATCHUP` (рестарт в
     # 08:01); без проверки «джоба ещё в хранилище» реконсиляция сразу после срабатывания
