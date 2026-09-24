@@ -502,6 +502,15 @@ _CODE_LITERALS_EN = {
     "человеку в форме оргкомитета.":
         "We couldn't reach the organizers with your SOS. Go to the registration desk or "
         "find anyone wearing organizer clothing.",
+    # Стенд 25.09: напоминание взявшему SOS и сигнал менеджерам после трёх напоминаний.
+    "⏰ SOS #{id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — если уже "
+    "разобрался(лась), не забудь нажать её под карточкой.":
+        "⏰ SOS #{id} has been with you for {minutes} min without «✅ Resolved» — if it's "
+        "already handled, don't forget to tap it under the card.",
+    "⏰ SOS #{id} в работе у {who} уже {minutes} мин. без отметки «✅ Решено» — "
+    "три напоминания остались без ответа.":
+        "⏰ SOS #{id} has been with {who} for {minutes} min without «✅ Resolved» — "
+        "three reminders went unanswered.",
     "Сигнал уже у оргкомитета ({claim_status}). Напиши, что случилось — дополню.":
         "The signal is already with the organizers ({claim_status}). Write what happened — I'll add it.",
     # Часть А (ревью SOS-переводов): `{claim_status}` — сам ярус B, ДВЕ формы шаблона

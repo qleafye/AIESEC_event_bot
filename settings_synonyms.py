@@ -60,6 +60,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "sos_recent_followup_text": ["sos дополнить заявку", "sos свежий повторный"],
     "sos_reopen_window_minutes": ["sos окно повторного открытия", "sos через сколько новый"],
     "sos_claimed_remind_minutes": ["sos напоминание взявшему", "sos не решил вовремя"],
+    "sos_claimed_remind_text": ["sos текст напоминания взявшему", "sos не отметил решено"],
+    "sos_claimed_escalation_text": ["sos взяли но не решили", "sos сигнал менеджерам после напоминаний"],
     "sos_collecting_timeout_minutes": ["sos сколько ждать дозапись", "sos таймаут дозаписи"],
     # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом».
     "session_feedback_enabled": ["отзыв о сессии тумблер", "оценка сессии включить"],

@@ -1909,6 +1909,10 @@ async def init_db():
         await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
         await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
         await _relax_sos_reports_category(db)
+        # Сколько напоминаний «у тебя в работе без ✅ Решено» уже ушло взявшему (потолок —
+        # services.sos.CLAIMED_REMIND_DELAYS_MINUTES) — в БД, а не в аргументах джобы: рестарт
+        # бота не должен начинать лесенку напоминаний заново.
+        await _ensure_column(db, "sos_reports", "claimed_remind_count", "INTEGER NOT NULL DEFAULT 0")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -5732,6 +5736,21 @@ async def set_sos_escalated(report_id: int) -> bool:
         cursor = await db.execute(
             "UPDATE sos_reports SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL",
             (msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def advance_sos_claimed_remind(report_id: int, claimant_id: int, expected_count: int) -> bool:
+    """Сдвиг счётчика напоминаний взявшему `expected_count -> expected_count + 1` — True только
+    у того вызова, что сдвинул (compare-and-set): заявка всё ещё у ТОГО ЖЕ взявшего и не
+    решена. Счётчик сдвигается ДО отправки — повторный тик той же ступени (рестарт посреди
+    джобы) ничего не шлёт второй раз."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET claimed_remind_count = ? WHERE id = ? AND claimed_by = ? "
+            "AND resolved_at IS NULL AND COALESCE(claimed_remind_count, 0) = ?",
+            (expected_count + 1, report_id, claimant_id, expected_count),
         )
         await db.commit()
         return cursor.rowcount == 1
