@@ -1734,6 +1734,11 @@ from handlers import sos as sos_handlers  # noqa: E402,F401
 # декорирует оба общих роутера, см. докстринг handlers/session_feedback.py.
 from handlers import session_feedback  # noqa: E402,F401
 
+# Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — импорт СРАЗУ ПОСЛЕ
+# session_feedback и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos/
+# session_feedback выше). Сам хендлер/логика — в шве handlers/forum_noshow_poll.py.
+from handlers import forum_noshow_poll  # noqa: E402,F401
+
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
