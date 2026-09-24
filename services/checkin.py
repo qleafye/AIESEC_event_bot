@@ -263,6 +263,81 @@ async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) 
     await update_arrived_in_sheet(telegram_id, scanned_at)
 
 
+# ── Точка расширения «после ПЕРВОЙ отметки входа делегата» (24.09) ──────────────────────────
+
+_first_entry_listeners: list = []
+
+
+def register_first_entry_listener(fn) -> None:
+    """Подписать async-слушателя на ПЕРВУЮ отметку входа делегата (для будущего «приветствия
+    после первого скана» и т.п.). Сигнатура слушателя:
+
+        async def listener(bot, user_id: int, city: str | None, day: str, **kwargs) -> None
+
+    `city` — код города форума делегата (`cities.normalize_city(users.event_city)`), `day` —
+    «YYYY-MM-DD» дня отметки (для CSV — день скана из файла). В `kwargs` сейчас приходят:
+    `source` ("miniapp" — скан QR, "manual" — поиск по ФИО, "auto_session" — вход поставлен
+    сканом на сессии, "csv" — загрузка выгрузки сканера), `by_staff_id` (кто отметил, может быть
+    None), `scanned_at` («YYYY-MM-DD HH:MM:SS» по Москве), `approx` (время скана примерное),
+    `session_id` (только у "auto_session"). Слушатель обязан принимать `**kwargs` — поля могут
+    добавляться.
+
+    «Первая» = `database.db.record_checkin` реально вставил строку входа (`"new"`, rowcount от
+    INSERT OR IGNORE по UNIQUE(telegram_id, point)); повторный скан (`"duplicate"`) слушателей
+    не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
+    мешает ни отметке, ни остальным слушателям.
+
+    CSV-импорт тоже зовёт слушателей (для каждой новой отметки) с `source="csv"` — выгрузку
+    могут загрузить и после форума, поэтому слать ли что-то делегату, решает сам слушатель по
+    `source`/`day`.
+
+    Слушатели живут в ПРОЦЕССЕ БОТА. Mini App (сканер/поиск) — отдельный процесс без Bot: там
+    `record_arrival` вызывается без `bot`, событие уходит в `miniapp_outbox`
+    (`checkin_first_entry`), и бот зовёт слушателей при разборе очереди
+    (`services/miniapp_outbox.py`) — с задержкой в один тик джобы. Регистрировать слушателя
+    нужно в процессе бота (например, при импорте модуля фичи из `main.py`)."""
+    if fn not in _first_entry_listeners:
+        _first_entry_listeners.append(fn)
+
+
+def clear_first_entry_listeners() -> None:
+    """Снять всех слушателей (для тестов)."""
+    _first_entry_listeners.clear()
+
+
+async def fire_first_entry(bot, user_id: int, city: str | None, day: str, **kwargs) -> None:
+    """Позвать всех слушателей первой отметки входа по очереди, fail-soft (см.
+    `register_first_entry_listener`). Сам никогда не бросает."""
+    for fn in list(_first_entry_listeners):
+        try:
+            await fn(bot, user_id, city, day, **kwargs)
+        except Exception:
+            logger.exception("first entry listener %r failed for %s", fn, user_id)
+
+
+def _first_entry_event(user: dict, ts: str, source: str, by_staff_id, approx: bool, **extra) -> dict:
+    import cities as _cities  # ленивый импорт — тот же приём, что в record_arrival
+
+    return {
+        "user_id": user["telegram_id"],
+        "city": _cities.normalize_city(user.get("event_city")),
+        "day": (ts or "")[:10],
+        "source": source,
+        "by_staff_id": by_staff_id,
+        "scanned_at": ts,
+        "approx": approx,
+        **extra,
+    }
+
+
+async def _after_first_entry(result: dict, bot, event: dict) -> None:
+    """Событие первой отметки входа: кладёт его в `result["first_entry"]` (Mini App переносит
+    в outbox) и, если есть `bot` (процесс бота), сразу зовёт слушателей."""
+    result["first_entry"] = event
+    if bot is not None:
+        await fire_first_entry(bot, **event)
+
+
 # ── Форум-ночь п.5 (D-18..D-20): единая точка отметки на ЛЮБОЙ точке (вход и сессии) ─────────
 
 async def record_arrival(
@@ -273,6 +348,7 @@ async def record_arrival(
     scanned_at: str | None = None,
     approx: bool = False,
     by_staff_id: int | None = None,
+    bot=None,
 ) -> dict:
     """Единая точка «делегат — точка X — отметка» для ВСЕХ трёх источников (загрузка CSV,
     сканер Mini App, ручной поиск) — решает, какая функция БД нужна: `point == ENTRY_POINT`
@@ -303,14 +379,21 @@ async def record_arrival(
     волонтёра прислал устаревшую точку, отметку ставить некуда). Несовпадение у CSV — НЕ отказ
     (выгрузка уже случилась, делегат физически отметился на площадке) — `record_session_checkin`
     всё равно вызывается, `day_mismatch=True` уходит в результат, `handlers/admin_checkin.py`
-    показывает это отдельной строкой отчёта, а не режет отметки."""
+    показывает это отдельной строкой отчёта, а не режет отметки.
+
+    Первая отметка входа (прямая или `auto_session`) дополнительно зовёт слушателей
+    `register_first_entry_listener` (если передан `bot`) и кладёт событие в
+    `result["first_entry"]` — Mini App без Bot переносит его в outbox сам."""
     if not (point or "").startswith("session:"):
         status, ts = await record_checkin(
             user["telegram_id"], point or ENTRY_POINT, source=source,
             scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
         )
         await mark_arrived_in_sheet(user["telegram_id"], status, ts)
-        return {"status": status, "scanned_at": ts}
+        result = {"status": status, "scanned_at": ts}
+        if status == "new" and (point or ENTRY_POINT) == ENTRY_POINT:
+            await _after_first_entry(result, bot, _first_entry_event(user, ts, source, by_staff_id, approx))
+        return result
 
     try:
         session_id = int(point.split(":", 1)[1])
@@ -367,6 +450,10 @@ async def record_arrival(
             user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
         )
         await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
+        if entry_status == "new":
+            await _after_first_entry(result, bot, _first_entry_event(
+                user, entry_ts, "auto_session", by_staff_id, False, session_id=session_id,
+            ))
     return result
 
 

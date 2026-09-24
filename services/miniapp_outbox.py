@@ -50,6 +50,9 @@ Telegram или пересобирать таблицу самому — еди�
 - `application_mass_approved` -> `services.application_effects.mass_approve_effects(bot,
   ids)` (D-07) — welcome-рассылка + один batch-sync листа для «Принять всех N»; у массового
   одобрения нет отмены, это событие ставится сразу в `miniapp/routers/applications.py`.
+- `checkin_first_entry` -> `services.checkin.fire_first_entry(bot, **payload)` (24.09) —
+  слушатели первой отметки входа делегата, отмеченного сканером/поиском Mini App. Слушатели
+  fail-soft сами, строка из очереди выходит обработанной даже при их сбое (не ретраим).
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -228,6 +231,11 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         return
     if kind == "application_mass_approved":
         await mass_approve_effects(bot, payload.get("ids") or [])
+        return
+    if kind == "checkin_first_entry":
+        from services.checkin import fire_first_entry  # ленивый: checkin тянет segno/sheets
+
+        await fire_first_entry(bot, **payload)
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 

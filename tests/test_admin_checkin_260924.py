@@ -82,6 +82,7 @@ class _FakeCallback:
         self.from_user = _FakeUser(user_id)
         self.message = _FakeCallbackMessage()
         self.answers = []
+        self.bot = None  # CallbackQuery.bot — хендлер загрузки CSV отдаёт его слушателям первой отметки
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))

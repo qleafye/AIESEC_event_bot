@@ -54,8 +54,19 @@ from services.person_search import search_people
 from services.program import checkin_session_points
 
 from miniapp.deps import Principal, require_cap, require_section
+from miniapp.outbox import enqueue
 
 router = APIRouter()
+
+
+async def _forward_first_entry(result: dict) -> dict:
+    """Первая отметка входа: слушатели `services.checkin.register_first_entry_listener` живут в
+    процессе бота — событие уходит туда через outbox (`checkin_first_entry`), наружу во фронт
+    не отдаётся."""
+    event = result.pop("first_entry", None)
+    if event is not None:
+        await enqueue("checkin_first_entry", event)
+    return result
 
 _SEARCH_LIMIT = 20
 _SECTION = "checkin"
@@ -191,9 +202,9 @@ async def checkin_scan(
         if entry_denial is not None:
             return {**entry_denial, **_person_fields(user)}
 
-    result = await record_arrival(
+    result = await _forward_first_entry(await record_arrival(
         user, point, source="miniapp", by_staff_id=p.telegram_id,
-    )
+    ))
     return {**result, **_person_fields(user)}
 
 
@@ -231,9 +242,9 @@ async def checkin_manual(
         if entry_denial is not None:
             return {**entry_denial, **_person_fields(user)}
 
-    result = await record_arrival(
+    result = await _forward_first_entry(await record_arrival(
         user, point, source="manual", by_staff_id=p.telegram_id,
-    )
+    ))
     return {**result, **_person_fields(user)}
 
 
