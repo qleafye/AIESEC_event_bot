@@ -482,6 +482,12 @@ _CODE_LITERALS_EN = {
     "или геопозицию — всё уйдёт им.":
         "🆘 The signal has been sent to the organizers — they'll reach out to you. Type what "
         "happened, send a photo or your location — it'll all go to them.",
+    # Он же без «🆘 » — `sos_sent_text` уходит через `reg_i18n.say` -> `tr_text`, который
+    # снимает ведущий эмодзи до поиска.
+    "Сигнал отправлен оргкомитету — с тобой свяжутся. Напиши, что случилось, пришли фото "
+    "или геопозицию — всё уйдёт им.":
+        "The signal has been sent to the organizers — they'll reach out to you. Type what "
+        "happened, send a photo or your location — it'll all go to them.",
     "Принято. Если понадобится снова — жми «🆘 SOS».":
         "Got it. If you need it again — tap «🆘 SOS».",
     "Сессия SOS закрыта по времени. Если всё ещё нужна помощь — нажми «🆘 SOS» снова.":
@@ -763,6 +769,13 @@ _REGISTRY_TEXTS_EN = {
     # checkin_qr_disabled_text).
     "🎟 Твой QR для отметки на форуме.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
         "🎟 Your QR code for check-in at the forum.\n\n"
+        "Save it in advance (for example, take a screenshot) — the venue may have no network, "
+        "but a photo from the chat opens even without the internet."
+    ),
+    # Та же подпись БЕЗ «🎟 » — её ищет `reg_i18n.tr_text` после снятия ведущего эмодзи
+    # (бот шлёт подпись QR через него); ключ выше нужен сторожу корпуса и `tr()` целиком.
+    "Твой QR для отметки на форуме.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
+        "Your QR code for check-in at the forum.\n\n"
         "Save it in advance (for example, take a screenshot) — the venue may have no network, "
         "but a photo from the chat opens even without the internet."
     ),
