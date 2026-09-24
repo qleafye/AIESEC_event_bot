@@ -387,6 +387,14 @@ async def preset_confirm(callback: types.CallbackQuery):
 # The has-override helper below is kept (still needed by the merged keyboard's «↩️ Все как
 # везде» row).
 
+# Режим «Все города»: пометки «сейчас скрыта» считаются по общим значениям (SOS — по общей
+# дате форума), у отдельного города может быть иначе.
+_ALL_CITIES_HIDDEN_HINT = (
+    "<i>В режиме «Все города» пометки «сейчас скрыта» (например, SOS по дате форума) считаются "
+    "по общим настройкам. Чтобы проверить конкретный город, выберите его в шапке.</i>"
+)
+
+
 async def _menu_hidden_note(key: str, city_code: str | None) -> str:
     """Кнопка включена (✅), но делегат её сейчас не видит из-за второго гейта
     `keyboards.builders.get_main_menu_kb` — пометка с причиной из общего реестра
@@ -423,6 +431,8 @@ async def render_menu_text(admin_id: int | None = None) -> str:
         status = "✅" if is_on else "❌"
         hidden = await _menu_hidden_note(key, None) if is_on else ""
         lines.append(f"{status} {text}{hidden}")
+    if header_code == ALL_CITIES:
+        lines += ["", _ALL_CITIES_HIDDEN_HINT]
     return "\n".join(lines)
 
 
