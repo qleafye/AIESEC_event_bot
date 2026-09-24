@@ -160,11 +160,11 @@ async def schedule_city_jobs(city: str | None) -> dict:
         morn_at = now + timedelta(minutes=1)
 
     sched.add_job(
-        send_broadcast, "date", run_date=ev_at, args=[city],
+        _run_evening_job, "date", run_date=ev_at, args=[city],
         id=ev_id, replace_existing=True,
     )
     sched.add_job(
-        send_morning_repeat, "date", run_date=morn_at, args=[city],
+        _run_morning_job, "date", run_date=morn_at, args=[city],
         id=morn_id, replace_existing=True,
     )
     return {"scheduled": True, "evening_at": ev_at, "morning_at": morn_at}
@@ -179,20 +179,90 @@ def cancel_city_jobs(city: str | None) -> None:
             pass  # уже сработала или не была поставлена — оба случая нормальные
 
 
+async def _city_still_valid(city: str | None) -> bool:
+    """Находка ревью 260924: город/тумблер могли выключить МЕЖДУ постановкой джобы и её
+    срабатыванием (`reconcile_broadcasts` снимает джобы уже выключенных городов только НА
+    МОМЕНТ своего обхода — старт бота или правка `forum_date`, — а не непрерывно). Тот же
+    приём, что «джоба перед отправкой перечитывает payment_status» (CLAUDE.md, платёжные
+    напоминания): персистентная джоба (`_run_evening_job`/`_run_morning_job`) перепроверяет
+    состояние САМА в момент срабатывания, а не доверяет тому, что было верно на постановке.
+    `send_broadcast`/`send_morning_repeat` НАПРЯМУЮ (ручная кнопка «📤 Разослать QR сейчас»,
+    юнит-тесты) этот барьер не проходят — менеджер, явно нажавший кнопку в своём городе, не
+    должен упереться в гонку, которой физически нет."""
+    if city is not None:
+        from cities import cities_module_on, enabled_cities
+        if await cities_module_on():
+            codes = {c["code"] for c in await enabled_cities()}
+            if city not in codes:
+                return False
+    return await broadcast_enabled_for(city)
+
+
+async def _run_evening_job(city: str | None) -> dict:
+    """Персистентный jobstore-таргет вечерней рассылки (`schedule_city_jobs` регистрирует
+    ИМЕННО эту функцию, не `send_broadcast` напрямую) — барьер `_city_still_valid` ПЕРЕД
+    вызовом, см. её докстринг."""
+    if not await _city_still_valid(city):
+        logger.info(
+            f"checkin_broadcast: evening job for city={city!r} skipped — "
+            "город/рассылка выключены к моменту срабатывания"
+        )
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
+    return await send_broadcast(city)
+
+
+async def _run_morning_job(city: str | None) -> dict:
+    """То же самое для утреннего повтора — см. `_run_evening_job`/`_city_still_valid`."""
+    if not await _city_still_valid(city):
+        logger.info(
+            f"checkin_broadcast: morning job for city={city!r} skipped — "
+            "город/рассылка выключены к моменту срабатывания"
+        )
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
+    return await send_morning_repeat(city)
+
+
+def _cancel_stale_city_jobs(enabled_codes: set[str]) -> None:
+    """Находка ревью 260924: `reconcile_broadcasts` обходит только `enabled_cities()` — у
+    города, выключенного ПОСЛЕ того, как его джобы были поставлены, обе джобы
+    (`checkin_qr_evening:{code}`/`checkin_qr_morning:{code}`) остаются висеть в персистентном
+    jobstore и сработают как ни в чём не бывало (`_run_evening_job`/`_run_morning_job` их,
+    конечно, перехватят через `_city_still_valid` — но джоба-призрак в списке при живом боте не
+    место). Перебор `scheduler.get_jobs()` по префиксу id, а не по списку кодов — кода
+    выключенного города у нас уже нет, только сам факт, что он не входит в `enabled_codes`.
+    `checkin_qr_evening:all`/`checkin_qr_morning:all` (сентинел «модуль городов выключен») не
+    трогаем — эта пара живёт вне понятия «включённый город»."""
+    sched = _sched.get_scheduler()
+    for job in sched.get_jobs():
+        for prefix in (_EVENING_PREFIX, _MORNING_PREFIX):
+            if not job.id.startswith(prefix):
+                continue
+            code = job.id[len(prefix):]
+            if code != "all" and code not in enabled_codes:
+                try:
+                    sched.remove_job(job.id)
+                except Exception:
+                    pass
+            break
+
+
 async def reconcile_broadcasts() -> list[str | None]:
     """На боте: (пере)ставить джобы КАЖДОГО включённого города (или один общий проход
     `city=None`, если модуль городов выключен) — fail-soft НА ГОРОД, не блокирует старт бота
     целиком. Тот же приём, что `services.scheduler.reconcile_scheduled_broadcasts`/
     `reconcile_wave_jobs`: персистентный jobstore сам переживает обычный рестарт, этот проход
     нужен для случая «дата форума/настройка поменялась, пока бот не работал» и для первой
-    постановки джобы города, которую ещё никто не трогал."""
+    постановки джобы города, которую ещё никто не трогал. Плюс (находка ревью 260924)
+    `_cancel_stale_city_jobs` — снимает джобы городов, выключенных с прошлого обхода."""
     from cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
         if await cities_module_on():
-            codes = [c["code"] for c in await enabled_cities()]
+            enabled_codes = {c["code"] for c in await enabled_cities()}
+            codes = list(enabled_codes)
         else:
+            enabled_codes = None
             codes = [None]
         for code in codes:
             try:
@@ -200,6 +270,11 @@ async def reconcile_broadcasts() -> list[str | None]:
                 touched.append(code)
             except Exception as e:
                 logger.error(f"checkin_broadcast.reconcile_broadcasts({code!r}) failed: {e}")
+        if enabled_codes is not None:
+            try:
+                _cancel_stale_city_jobs(enabled_codes)
+            except Exception as e:
+                logger.error(f"checkin_broadcast.reconcile_broadcasts: stale sweep failed: {e}")
     except Exception as e:
         logger.error(f"checkin_broadcast.reconcile_broadcasts failed: {e}")
     return touched
