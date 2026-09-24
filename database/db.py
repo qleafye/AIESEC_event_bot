@@ -9677,6 +9677,18 @@ async def checkin_volunteer_guide_mark_sent(
         return bool(cursor.rowcount)
 
 
+async def checkin_volunteer_guide_unmark(telegram_id: int, day: str) -> None:
+    """Снять отметку «шпаргалка отправлена на `day`» — вызывающий застолбил отправку
+    (`checkin_volunteer_guide_mark_sent` ДО отправки), а сообщение не дошло: без снятия повтор
+    (джоба, повторная выдача права) считал бы, что человек её уже получил."""
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM checkin_volunteer_guide_sends WHERE telegram_id = ? AND day = ?",
+            (telegram_id, day),
+        )
+        await db.commit()
+
+
 async def checkin_volunteer_guide_sent_ids(day: str) -> set[int]:
     """Кому УЖЕ отправлена шпаргалка на этот `day` (день форума) — вызывающий
     (`services.checkin_volunteer_broadcast.send_guide`) вычитает этот набор из держателей

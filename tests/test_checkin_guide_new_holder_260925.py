@@ -154,3 +154,59 @@ def test_forum_passed_is_skipped(tmp_path, monkeypatch):
     _run(db.add_staff(VOL1, ROLE, SUPERADMIN_ID))
     assert _run(vb.guide_for_new_holder(VOL1)) == "skipped"
     assert _sent_ids() == set()
+
+
+class _SlowBot(_Bot):
+    """Отправка уступает цикл — два прохода гарантированно пересекаются во времени."""
+
+    async def send_message(self, chat_id, text, **kwargs):
+        await asyncio.sleep(0.01)
+        self.sent.append((chat_id, text))
+
+
+def test_two_concurrent_grants_send_once(tmp_path, monkeypatch):
+    """Два админа выдали право одновременно: отметка ставится ДО отправки, второй проход
+    видит её и не шлёт."""
+    _ready(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 30))
+    bot = _SlowBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+
+    async def go():
+        return await asyncio.gather(
+            vb.guide_for_new_holder(VOL1), vb.guide_for_new_holder(VOL1),
+        )
+
+    results = _run(go())
+    assert sorted(results) == ["already", "sent"]
+    assert bot.sent == [(VOL1, "🎫 Шпаргалка")]
+    assert VOL1 in _sent_ids()
+
+
+def test_job_and_grant_concurrently_send_once(tmp_path, monkeypatch):
+    _ready(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 30))
+    _run(db.set_setting(role_caps_key(ROLE), "checkin"))
+    _run(db.add_staff(VOL1, ROLE, SUPERADMIN_ID))
+    bot = _SlowBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+
+    async def go():
+        await asyncio.gather(vb.send_guide(None), vb.guide_for_new_holder(VOL1))
+
+    _run(go())
+    assert [cid for cid, _ in bot.sent].count(VOL1) == 1
+
+
+def test_failed_send_releases_mark(tmp_path, monkeypatch):
+    _ready(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 30))
+
+    class _FailBot(_Bot):
+        async def send_message(self, chat_id, text, **kwargs):
+            raise RuntimeError("сеть упала")
+
+    monkeypatch.setattr(sched, "_bot", _FailBot())
+    assert _run(vb.guide_for_new_holder(VOL1)) == "skipped"
+    assert VOL1 not in _sent_ids()  # метка снята — повтор возможен
+    ok_bot = _Bot()
+    monkeypatch.setattr(sched, "_bot", ok_bot)
+    assert _run(vb.guide_for_new_holder(VOL1)) == "sent"
+    assert ok_bot.sent == [(VOL1, "🎫 Шпаргалка")]
