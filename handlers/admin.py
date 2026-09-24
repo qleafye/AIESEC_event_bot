@@ -461,9 +461,16 @@ async def cmd_find_user(message: types.Message):
         )
         # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
         # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-            text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
-        )]])
+        # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
+        # подтверждение живут в handlers/admin_city_move.py (citymv_*), здесь тоже только кнопка.
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
+            )],
+            [InlineKeyboardButton(
+                text="🏙 Перевести в город", callback_data=f"citymv_start:{user['telegram_id']}",
+            )],
+        ])
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
@@ -950,3 +957,10 @@ from handlers import admin_checkin_stats  # noqa: E402
 # (handlers/admin_forum_ready.py) — registers forum_ready_open/forum_ready_refresh in the very
 # tail of admin.router (golden snapshot: a clean append, right after admin_checkin_stats).
 from handlers import admin_forum_ready  # noqa: E402
+
+
+# Phase 33 (delegate-card admin actions): shared-router seam import for «🏙 Перевести в город»
+# (handlers/admin_city_move.py) — registers citymove_start/citymove_pick_city/citymove_apply/
+# citymove_cancel in the very tail of admin.router (golden snapshot: a clean append, right
+# after admin_program_view). Not a forum toggle — no hub row, see that module's docstring.
+from handlers import admin_city_move  # noqa: E402
