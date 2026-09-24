@@ -325,6 +325,34 @@ def test_send_morning_repeat_empty_when_all_confirmed(tmp_path, monkeypatch):
     assert result["total"] == 0
 
 
+def test_send_morning_repeat_includes_newly_approved_and_never_sent(tmp_path, monkeypatch):
+    """Находка ревью 260924: делегат, одобренный ПОСЛЕ вечерней рассылки (или у кого вечерняя
+    отправка сорвалась — тот же случай, «строки checkin_qr_sends никогда не было»), не должен
+    навсегда пропускать утренний повтор — старая версия смотрела только на
+    `checkin_qr_unconfirmed_ids` (строка есть, не подтверждена), эта версия обязана взять его
+    из полного `eligible_recipients`."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    _seed_user(UID + 1, status="pending")  # ещё не одобрен на момент вечерней рассылки
+    bot = _with_bot(monkeypatch)
+
+    _run(cb.send_broadcast(None))
+    assert len(bot.photos) == 1  # только UID получил QR вечером
+    _run(cb.confirm_receipt(UID))  # UID подтвердил — не должен получить повтор
+
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status = 'approved' WHERE telegram_id = ?", (UID + 1,))
+    conn.commit()
+    conn.close()
+
+    result = _run(cb.send_morning_repeat(None))
+    assert result["sent"] == 1
+    assert bot.photos[-1][0] == UID + 1
+
+    sent_ids = _run(db.checkin_qr_sent_ids())
+    assert sent_ids == {UID, UID + 1}  # утренний повтор сам завёл строку новичку
+
+
 def test_send_morning_repeat_skips_delegate_who_lost_admission(tmp_path, monkeypatch):
     """Делегата отозвали (approved -> rejected) между вечером и утром — повтор его пропускает,
     но не трогает его уже существующую строку checkin_qr_sends."""

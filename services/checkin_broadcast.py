@@ -18,9 +18,13 @@ per_city `forum_date`, Phase 31/D-30) — второй копии чтения �
 вторая копия сезонного условия SQL-строкой). Идемпотентность вечерней рассылки И ручной кнопки
 «📤 Разослать QR сейчас» (handlers/admin_checkin.py) — `database.db.checkin_qr_sent_ids` (кому
 УЖЕ отправлен QR когда-либо) вычитается из пула ДО отправки, обе точки входа зовут ОДНУ и ту же
-`send_broadcast`. Утренний повтор шлёт ТОЛЬКО `checkin_qr_unconfirmed_ids` (кому отправлен, но
-«✅ Сохранил» не нажат) — отдельная функция `send_morning_repeat`, не трогает
-`checkin_qr_sends.sent_at` (счётчик «QR получили N» считает людей, а не отправки).
+`send_broadcast`. Утренний повтор (`send_morning_repeat`, находка ревью 260924) шлёт ВСЕМ
+допущенным города, кто ещё НЕ подтвердил «✅ Сохранил» (`eligible_recipients` минус
+`checkin_qr_confirmed_ids`) — а не только тем, у кого уже есть строка `checkin_qr_sends`: делегат,
+одобренный ПОСЛЕ вечерней рассылки, или чья вечерняя отправка сорвалась (сеть/бота заблокировал),
+иначе терял бы QR навсегда. Для таких делегатов повтор САМ заводит первую строку
+`checkin_qr_sends` (`checkin_qr_mark_sent`, идемпотентно) — это их первая отправка, счётчик
+«QR получили N» обязан их учитывать.
 
 Троттлинг отправки переиспользует `services.scheduler._safe_send` (тот же 429-safe single-retry
 приём, что у рассылок/опросов/волн этого же файла) — не отдельный цикл ретраев.
@@ -35,10 +39,9 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from database.db import (
     checkin_qr_confirm,
+    checkin_qr_confirmed_ids,
     checkin_qr_mark_sent,
     checkin_qr_sent_ids,
-    checkin_qr_unconfirmed_ids,
-    get_user,
     list_approved_users,
 )
 from services import scheduler as _sched
@@ -300,24 +303,28 @@ async def send_broadcast(city: str | None) -> dict:
 
 
 async def send_morning_repeat(city: str | None) -> dict:
-    """Date-джоба утреннего повтора (идея №2) — ТОЛЬКО тем, кто получил QR вечером, но не
-    подтвердил («✅ Сохранил» не нажат). Не создаёт новых строк `checkin_qr_sends` (это
-    ответственность `send_broadcast`) — только повторно шлёт то же фото уже отправленным."""
+    """Date-джоба утреннего повтора (идея №2) — ВСЕМ допущенным делегатам города, кто ещё НЕ
+    подтвердил «✅ Сохранил» (находка ревью 260924): `eligible_recipients` — тот же живой пул,
+    что у вечерней рассылки (перечитан на срабатывании, не снимок вечера) — минус
+    `checkin_qr_confirmed_ids`. Это НАМЕРЕННО шире, чем «кому отправлен вечером» — делегат,
+    одобренный ПОСЛЕ вечерней рассылки, или чья вечерняя отправка сорвалась (никогда не
+    получил строку `checkin_qr_sends`), получает QR СЕЙЧАС, а не теряет его навсегда.
+    `checkin_qr_mark_sent` внутри цикла — идемпотентная (`INSERT OR IGNORE`): для уже
+    отправленных вечером не создаёт вторую строку и не двигает `sent_at`, а для НИКОГДА не
+    отправленных заводит первую (счётчик «QR получили N» обязан их учитывать)."""
     import cities as _cities
 
     scope = _cities.city_scope(city)
-    unconfirmed_ids = await checkin_qr_unconfirmed_ids(city_scope=scope)
+    eligible = await eligible_recipients(city)
+    confirmed = await checkin_qr_confirmed_ids(city_scope=scope)
+    targets = [u for u in eligible if u["telegram_id"] not in confirmed]
 
     from cities import get_setting_typed_for_city
     base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
 
     sent = failed = 0
-    for tid in unconfirmed_ids:
-        user = await get_user(tid)
-        # Делегат исчез или потерял допуск между вечером и утром (отозвали одобрение) — не
-        # шлём повтор, но и не трогаем его строку checkin_qr_sends (он ЕЁ уже получал).
-        if user is None or await checkin_denial(user) is not None:
-            continue
+    for user in targets:
+        tid = user["telegram_id"]
         try:
             png, _default_caption = await build_checkin_qr(user)
             caption = await _translated_caption(tid, base_text)
@@ -327,15 +334,18 @@ async def send_morning_repeat(city: str | None) -> dict:
             continue
         ok = await _send_one(tid, png, caption)
         if ok:
+            await checkin_qr_mark_sent(
+                tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+            )
             sent += 1
         else:
             failed += 1
         await asyncio.sleep(0.05)
     logger.info(
         f"checkin_broadcast.send_morning_repeat({city!r}): sent {sent}, failed {failed} "
-        f"of {len(unconfirmed_ids)}"
+        f"of {len(targets)} (пул {len(eligible)}, уже подтвердили {len(confirmed)})"
     )
-    return {"sent": sent, "failed": failed, "total": len(unconfirmed_ids)}
+    return {"sent": sent, "failed": failed, "total": len(targets)}
 
 
 # ── Подтверждение «✅ Сохранил, открывается» ─────────────────────────────────────────────────
