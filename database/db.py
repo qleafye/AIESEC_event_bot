@@ -684,6 +684,12 @@ async def init_db():
         # (включительно) НЕважные рассылки этому делегату пропускаются при доставке. NULL —
         # делегат ничего не отключал (или уже нажал «🔔 Присылать всё»).
         await _ensure_column(db, "users", "mute_broadcasts_until", "TEXT")
+        # Форум-ночь п.7 ревью (находка 🟡): предложение «🔕» альбома — единственная форма
+        # доставки, которая ВСЁ ЕЩЁ уходит отдельным сообщением (media_group не принимает
+        # reply_markup, см. докстринг services/scheduler.py::send_mute_offer_if_eligible) — MSK-
+        # дата последнего показа этого предложения ЭТОМУ делегату не даёт слать его повторно
+        # после каждой неважной альбомной рассылки за один день (было — спам).
+        await _ensure_column(db, "users", "mute_offer_shown_date", "TEXT")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -3828,6 +3834,27 @@ async def set_broadcast_mute(telegram_id: int, date_str: str | None) -> None:
     async with _connect() as db:
         await db.execute(
             "UPDATE users SET mute_broadcasts_until = ? WHERE telegram_id = ?",
+            (date_str, telegram_id),
+        )
+        await db.commit()
+
+
+async def get_mute_offer_shown_ids(date_str: str) -> set[int]:
+    """Кому УЖЕ показывали предложение «🔕» альбома сегодня (MSK 'YYYY-MM-DD') — один запрос
+    перед прогоном, тот же приём, что `get_muted_today_ids`. Только для альбомной ветки
+    (`services.scheduler.send_mute_offer_if_eligible`) — text/фото/документ несут кнопку «🔕»
+    ВНУТРИ самой рассылки и повторного показа не считают."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM users WHERE mute_offer_shown_date = ?", (date_str,)
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
+
+
+async def mark_mute_offer_shown(telegram_id: int, date_str: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET mute_offer_shown_date = ? WHERE telegram_id = ?",
             (date_str, telegram_id),
         )
         await db.commit()
