@@ -948,6 +948,15 @@ ADMIN_CAPS: dict[str, str] = {
     "checkinvol_time:*": "moderate_reg",
     "state:CheckinVolGuideTimeEdit:*": "moderate_reg",
 
+    # Идея №1 бэклога чек-ина (режим «день форума» главного меню делегата): та же капа
+    # «moderate_reg», что и у остального хаба «🎪 Форум: функции» выше — своего родного экрана
+    # раньше не было вовсе (ключи `forum_day_menu_enabled`/`forum_day_menu_start_time` жили
+    # только в реестре), заведён этим же квиком.
+    "forumdaymenu_cfg:*": "moderate_reg",
+    "forumdaymenu_toggle:*": "moderate_reg",
+    "forumdaymenu_time:*": "moderate_reg",
+    "state:ForumDayMenuTimeEdit:*": "moderate_reg",
+
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
     # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
     # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).
