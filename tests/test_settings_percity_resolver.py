@@ -177,6 +177,9 @@ EXPECTED_PER_CITY_KEYS = {
     # (город может отдельно спрятать/показать SOS); окно активности и эскалация — per_city,
     # т.к. города форума идут в разные дни (тот же довод, что forum_date/checkin_qr_* выше).
     "menu_sos", "sos_active_days", "sos_escalation_minutes",
+    # Ревью 24.09 (находки 1/3): экстренный контакт при полном провале доставки + оба новых
+    # временных окна — тот же довод, что sos_active_days/sos_escalation_minutes выше.
+    "sos_fallback_contact_text", "sos_reopen_window_minutes", "sos_claimed_remind_minutes",
 }
 
 
