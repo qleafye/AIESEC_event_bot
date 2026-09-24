@@ -25,13 +25,19 @@ from services import checkin_training, i18n
 logger = logging.getLogger(__name__)
 
 _ALLOWED_CAPS = ("checkin", "moderate_reg")
+
+
+def sheet_allowed(caps: set) -> bool:
+    """Право на лист: `checkin` ИЛИ `moderate_reg`. Этим же фильтром хаб «🎪 Форум: функции»
+    решает, рисовать ли кнопку (карта прав видит здесь «любое право панели»)."""
+    return any(cap in caps for cap in _ALLOWED_CAPS)
 _NO_RIGHTS = "Лист учебных QR доступен волонтёрам чек-ина и менеджерам заявок."
 
 
 @router.callback_query(F.data == "checkin_training_sheet")
 async def checkin_training_sheet(callback: types.CallbackQuery):
     caps = await resolve_capabilities(callback.from_user.id)
-    if not any(cap in caps for cap in _ALLOWED_CAPS):
+    if not sheet_allowed(caps):
         await callback.answer(_NO_RIGHTS, show_alert=True)
         return
     await callback.answer()

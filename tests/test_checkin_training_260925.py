@@ -250,3 +250,22 @@ def test_sheet_callback_key_is_mapped():
     from handlers.admin_caps import ANY_CAPABILITY, required_capability
 
     assert required_capability(callback_data="checkin_training_sheet") == ANY_CAPABILITY
+
+
+def _staff_with(caps: str):
+    from handlers.admin_caps import role_caps_key
+
+    _run(bot_db.set_setting(role_caps_key("stats_manager"), caps))
+    _run(bot_db.add_staff(951099, "stats_manager", 1))
+
+
+@pytest.mark.parametrize("caps,allowed", [
+    ("moderate_reg", True), ("checkin", True), ("stats", False),
+])
+def test_sheet_rights_checkin_or_moderate_reg(tmp_path, caps, allowed):
+    client_with(tmp_path)
+    _staff_with(caps)
+    cb = _FakeCallback("checkin_training_sheet", 951099)
+    cb.bot = _SheetBot()
+    _run(admin_checkin_training.checkin_training_sheet(cb))
+    assert bool(cb.bot.documents or cb.bot.media) is allowed
