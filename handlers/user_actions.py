@@ -76,6 +76,7 @@ from services.game_digest import notify_submission as notify_game_submission  # 
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
+from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -1825,3 +1826,20 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
+
+
+# Форум-ночь п.3 (D-03, идея №2): кнопка «✅ Сохранил, открывается» на рассылке QR накануне
+# форума (services/checkin_broadcast.py::send_broadcast/send_morning_repeat). Идемпотентно —
+# `confirm_receipt` пишет метку только на ПЕРВОЕ нажатие (двойной тап/форвард отвечают тем же
+# дружелюбным текстом, разница видна только вызывающему коду, не делегату). Литерал ниже
+# ОБЯЗАН побайтово совпадать с `services.checkin_broadcast.CONFIRM_CALLBACK` (не импортирован
+# сюда напрямую — golden-снимок `tests/test_refac_snapshot_260816.py` разбирает декоратор как
+# исходный текст, а не как выполненный код, и не видит значение переменной); совпадение
+# проверяет `tests/test_checkin_qr_broadcast_260924.py::test_confirm_button_literal_matches_callback`.
+@router.callback_query(F.data == "checkinqr_confirm")
+async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
+    await confirm_receipt(callback.from_user.id)
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    await callback.answer(
+        reg_i18n.tr_text("Отлично, увидимся на форуме!", lang, tr_map), show_alert=True,
+    )

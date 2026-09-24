@@ -24,8 +24,16 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import cities_module_on, city_label, city_scope, enabled_cities
+from cities import (
+    cities_module_on,
+    city_label,
+    city_scope,
+    enabled_cities,
+    get_setting_typed_for_city,
+    per_city_key,
+)
 from database.db import (
+    checkin_qr_send_counts,
     count_approved_current_season,
     count_checkins_by_point,
     get_user,
@@ -34,8 +42,11 @@ from database.db import (
 )
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope
-from handlers.states import CheckinImport, CheckinTestUpload
+from handlers.states import CheckinImport, CheckinQrTimeEdit, CheckinTestUpload
 from keyboards.builders import get_cancel_kb
+from settings_audit import set_setting_by_admin
+from settings_schema import get_setting_typed
+from settings_validation import validate_setting_value
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
@@ -50,8 +61,28 @@ from services.checkin import (
     parse_qr_payload,
     resolve_scanned_user,
 )
+from services.checkin_broadcast import (
+    pending_broadcast_count,
+    schedule_city_jobs,
+    send_broadcast,
+)
+from services.reject_rules import forum_date_for
 
 logger = logging.getLogger(__name__)
+
+# Форум-ночь п.3 (D-03, идея №2): сентинел «нет конкретного города» в callback_data (модуль
+# городов выключен, или экран уже нацелен на единственную область без города) — city_codes()
+# закрытое множество коротких кодов, но None в callback_data не положишь, поэтому отдельная
+# строка-плейсхолдер, не пересекающаяся ни с одним настоящим кодом.
+_NO_CITY = "_all"
+
+
+def _encode_city(code: str | None) -> str:
+    return code or _NO_CITY
+
+
+def _decode_city(raw: str) -> str | None:
+    return None if raw == _NO_CITY else raw
 
 # T-12-02 (DoS): тот же потолок, что у «📥 Импорт прошлого события» (admin_cities.py) — гейт
 # ДО bot.download, не после.
@@ -124,15 +155,70 @@ async def _counter_line(admin_id: int) -> str:
     return "\n".join(lines)
 
 
+async def _qr_status_line(label: str | None, code: str | None) -> str:
+    got, confirmed = await checkin_qr_send_counts(city_scope=city_scope(code))
+    prefix = f"{label}: " if label else ""
+    line = f"{prefix}QR получили {got} · подтвердили {confirmed}"
+    if await forum_date_for(code) is None:
+        line += " · дата форума не задана — рассылка не поставлена"
+    return line
+
+
+async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
+    """Форум-ночь п.3 (D-03, идея №2): блок «🎟 Рассылка QR» экрана «✅ Отметки на форуме» —
+    строка(и) «QR получили N · подтвердили M» + кнопки «📤 Разослать сейчас»/«⚙️ Настройки QR».
+    Мастер-тумблер `checkin_qr_enabled` выключен -> блока нет вовсе (пустая строка, без кнопок)
+    — тот же приём, что «показываем только то, что реально работает».
+
+    Три ветки — байт-в-байт та же развилка, что у `_counter_line` выше (закреплённый город /
+    модуль выключен / «Все города» построчно по каждому включённому)."""
+    if await get_setting_typed("checkin_qr_enabled") != "on":
+        return "", []
+
+    own_scope = await _admin_city_scope(admin_id)
+    if own_scope is not None:
+        code = own_scope[0]
+        line = await _qr_status_line(None, code)
+        buttons = [
+            [InlineKeyboardButton(text="📤 Разослать QR сейчас", callback_data=f"checkinqr_send:{_encode_city(code)}")],
+            [InlineKeyboardButton(text="⚙️ Настройки QR", callback_data=f"checkinqr_cfg:{_encode_city(code)}")],
+        ]
+        return line, buttons
+
+    if not await cities_module_on():
+        line = await _qr_status_line(None, None)
+        buttons = [
+            [InlineKeyboardButton(text="📤 Разослать QR сейчас", callback_data=f"checkinqr_send:{_NO_CITY}")],
+            [InlineKeyboardButton(text="⚙️ Настройки QR", callback_data=f"checkinqr_cfg:{_NO_CITY}")],
+        ]
+        return line, buttons
+
+    lines: list[str] = []
+    buttons: list[list[InlineKeyboardButton]] = []
+    for c in await enabled_cities():
+        code = c["code"]
+        label = await city_label(code)
+        lines.append(await _qr_status_line(label, code))
+        buttons.append([
+            InlineKeyboardButton(text=f"📤 {label}", callback_data=f"checkinqr_send:{_encode_city(code)}"),
+            InlineKeyboardButton(text=f"⚙️ {label}", callback_data=f"checkinqr_cfg:{_encode_city(code)}"),
+        ])
+    return "\n".join(lines), buttons
+
+
 @router.callback_query(F.data == "admin_checkin")
 async def show_admin_checkin(callback: types.CallbackQuery):
+    qr_line, qr_buttons = await _qr_broadcast_section(callback.from_user.id)
+    qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
     text = (
         "✅ <b>Отметки на форуме</b>\n\n"
-        f"{await _counter_line(callback.from_user.id)}\n\n"
+        f"{await _counter_line(callback.from_user.id)}"
+        f"{qr_block}\n\n"
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
         "отмечу всех, кого найду."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
+        *qr_buttons,
         [InlineKeyboardButton(text="📤 Загрузить файл сканера", callback_data="checkin_upload_start")],
         # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
         # формат/читаемость приложения волонтёра.
@@ -411,3 +497,154 @@ async def checkin_test_file_step(message: types.Message, state: FSMContext, bot:
 @router.message(CheckinTestUpload.waiting_file)
 async def checkin_test_file_invalid(message: types.Message):
     await message.answer("Пришли файл выгрузки документом (не фото и не архив).")
+
+
+# ── Форум-ночь п.3 (D-03, идея №2): ручной запуск рассылки QR + настройки города ────────────
+
+@router.callback_query(F.data.startswith("checkinqr_send:"))
+async def checkinqr_send_confirm(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    n = await pending_broadcast_count(code)
+    if n == 0:
+        await callback.answer(
+            "Отправлять некому — все одобренные уже получили QR (или дата форума не задана).",
+            show_alert=True,
+        )
+        return
+    label = await city_label(code) if code else None
+    who = f"делегатам города {label}" if label else "делегатам"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, отправить", callback_data=f"checkinqr_send_go:{_encode_city(code)}"),
+        InlineKeyboardButton(text="Отмена", callback_data="checkinqr_send_no"),
+    ]])
+    await callback.message.answer(f"Уйдёт {n} {who}. Отправить?", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("checkinqr_send_go:"))
+async def checkinqr_send_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    # T-12-03 (Rule 1): рассылка может занять минуты (сотни фото) — отвечаем на callback СРАЗУ
+    # и правим то же сообщение, вместо того чтобы держать колбэк «в загрузке» до конца отправки
+    # (Telegram считает такой колбэк протухшим и показывает тапнувшему ошибку).
+    await callback.answer("Рассылка началась…")
+    await callback.message.edit_text("⏳ Рассылаю QR...")
+    result = await send_broadcast(code)
+    await callback.message.answer(
+        f"✅ QR разослан: {result['sent']} доставлено, {result['failed']} не доставлено "
+        f"из {result['total']}."
+    )
+
+
+@router.callback_query(F.data == "checkinqr_send_no")
+async def checkinqr_send_cancel(callback: types.CallbackQuery):
+    await callback.message.edit_text("Отменено. Ничего не отправлено.")
+    await callback.answer()
+
+
+async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("checkin_qr_broadcast_enabled", code)
+    ev_time = await get_setting_typed_for_city("checkin_qr_broadcast_time", code) or "18:00"
+    morn_time = await get_setting_typed_for_city("checkin_qr_morning_repeat_time", code) or "08:00"
+    label = await city_label(code) if code else None
+    on = enabled != "off"
+
+    lines = ["⚙️ <b>Настройки QR</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
+    lines.append(f"Вечером (накануне форума): {ev_time}")
+    lines.append(f"Утром (в день форума, неподтвердившим): {morn_time}")
+    if await forum_date_for(code) is None:
+        lines.append(
+            "\n⚠️ «🗓 Дата начала форума» не задана — рассылка НЕ поставлена, даже если "
+            "включена. Задайте её в разделе «🎪 Событие»."
+        )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"checkinqr_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🕕 Вечером: {ev_time}",
+            callback_data=f"checkinqr_time:evening:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🌅 Утром: {morn_time}",
+            callback_data=f"checkinqr_time:morning:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_checkin")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("checkinqr_cfg:"))
+async def checkinqr_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    text, kb = await _qr_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("checkinqr_toggle:"))
+async def checkinqr_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    key = "checkin_qr_broadcast_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current != "off" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await schedule_city_jobs(code)
+    text, kb = await _qr_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("checkinqr_time:"))
+async def checkinqr_time_start(callback: types.CallbackQuery, state: FSMContext):
+    _, which, raw_city = callback.data.split(":", 2)
+    code = _decode_city(raw_city)
+    key = "checkin_qr_broadcast_time" if which == "evening" else "checkin_qr_morning_repeat_time"
+    await state.update_data(checkinqr_time_key=key, checkinqr_time_city=code)
+    await state.set_state(CheckinQrTimeEdit.waiting_value)
+    example = "18:00" if which == "evening" else "08:00"
+    await callback.message.answer(
+        f"Во сколько (московское время)? Формат <code>ЧЧ:ММ</code>, например "
+        f"<code>{example}</code>.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(CheckinQrTimeEdit), Command("cancel"))
+@router.message(StateFilter(CheckinQrTimeEdit), F.text == "Отмена")
+async def cancel_checkinqr_time_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(CheckinQrTimeEdit.waiting_value)
+async def checkinqr_time_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    key = data.get("checkinqr_time_key")
+    code = data.get("checkinqr_time_city")
+    await state.set_state(None)
+
+    value, error = validate_setting_value(key, (message.text or "").strip())
+    if error:
+        await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(message.from_user.id, composed, value)
+    else:
+        await set_setting_by_admin(message.from_user.id, key, value)
+    await schedule_city_jobs(code)
+
+    text, kb = await _qr_cfg_text_kb(code)
+    await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)

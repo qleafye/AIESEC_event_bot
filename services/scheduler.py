@@ -330,6 +330,12 @@ async def init_scheduler(bot):
     # напоминание о дедлайне, конец волны) — вызывается ПОСЛЕДНЕЙ из реконсиляций namespace'а
     # (после опросов), тот же порядок, что у остальных «дослать пропущенное на старте» шагов.
     await reconcile_wave_jobs()
+    # Форум-ночь п.3 (D-03, идея №2): (пере)ставить джобы рассылки QR перед форумом на каждый
+    # город — ленивый импорт, тот же приём, что у соседей выше (services.checkin_broadcast сама
+    # не импортирует этот модуль на верхнем уровне, но порядок ленивых импортов внутри
+    # init_scheduler держим единообразным).
+    from services.checkin_broadcast import reconcile_broadcasts as _reconcile_checkin_qr
+    await _reconcile_checkin_qr()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
