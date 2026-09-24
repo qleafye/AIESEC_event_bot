@@ -429,6 +429,9 @@ _CODE_LITERALS_EN = {
     "🎁 Бонус за регистрацию!": "🎁 Registration bonus!",
     # Форум-ночь: подтверждение получения чек-ина по QR (`lit:user_actions.checkin_qr_confirm_receipt`).
     "Отлично, увидимся на форуме!": "Great, see you at the forum!",
+    # Форум-ночь п.7 («❗ Важное»): экран делегата «❗ Важное» (`lit:user_actions.important_today_*`).
+    "Сегодня важных рассылок не было.": "No important messages today.",
+    "❗ Важные рассылки за сегодня:": "❗ Important messages today:",
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа» (`lit:program.*`).
     "Программа": "Program",
     "Выберите день:": "Choose a day:",

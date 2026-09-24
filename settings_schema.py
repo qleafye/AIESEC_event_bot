@@ -5635,6 +5635,15 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): кнопка со списком важных рассылок за сегодня.
+    # Рисуется только пока сегодня были важные рассылки ЭТОМУ делегату (database.db.
+    # has_important_today) — тот же приём, что у menu_faq/has_faq_for_city (см.
+    # keyboards/builders.py::get_main_menu_kb).
+    "menu_important": {
+        "type": "enum", "group": "menu", "label": "❗ Важное",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
     # Форум-ночь B3 (идея №22): шпаргалка волонтёра — уходит ЛИЧНЫМ сообщением человеку, кому
     # только что выдали право `checkin` (handlers/admin_roles.py::roles_assign). group "apps" —
     # менеджер её только редактирует, делегату (i18n-корпус) она никогда не показывается, тот же

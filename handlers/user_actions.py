@@ -1653,6 +1653,32 @@ async def show_my_checkin_qr(message: types.Message):
 from handlers import program  # noqa: E402,F401
 
 
+# Форум-ночь п.7 (D-XX, «❗ Важное»): список важных рассылок за сегодня — та же форма записи,
+# что и у соседних menu_* хендлеров выше (ensure_registered гейтит, как show_my_checkin_qr).
+# Встал СРАЗУ ПОСЛЕ импорта program (см. блок выше) и ПЕРЕД reg_handoff_idle_fallback — тот же
+# довод: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений, кнопка меню обязана
+# зарегистрироваться раньше него.
+@router.message(F.text.in_(MENU_TEXTS["menu_important"]))
+async def show_important_today(message: types.Message):
+    if not await ensure_registered(message):
+        return
+    from database.db import important_messages_today
+
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    today = msk_now().strftime("%Y-%m-%d")
+    rows = await important_messages_today(message.from_user.id, today)
+    if not rows:
+        await message.answer(reg_i18n.tr_text("Сегодня важных рассылок не было.", lang, tr_map))
+        return
+    lines = []
+    for row in rows:
+        stamp = (row.get("sent_at") or "")[11:16]  # 'YYYY-MM-DD HH:MM:SS' -> 'HH:MM'
+        text = row.get("text") or "[рассылка без текста]"
+        lines.append(f"🕐 {stamp}\n{text}")
+    header = reg_i18n.tr_text("❗ Важные рассылки за сегодня:", lang, tr_map)
+    await message.answer(header + "\n\n" + "\n\n".join(lines))
+
+
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
 # handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
