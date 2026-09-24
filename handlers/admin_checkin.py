@@ -31,13 +31,16 @@ from cities import (
     default_city_code,
     enabled_cities,
     get_setting_typed_for_city,
+    normalize_city,
     per_city_key,
 )
+from config import config
 from database.db import (
     checkin_qr_send_counts,
     count_approved_current_season,
     count_checkins_by_point,
     get_program_session,
+    get_staff_city,
     get_user,
     reissue_checkin_token,
 )
@@ -410,6 +413,21 @@ async def _resolve_checkin_screen_city(admin_id: int) -> str | None:
     return None
 
 
+async def _volunteer_bound_city(admin_id: int) -> str | None:
+    """D-26 (24.09): настоящая ПРИВЯЗКА волонтёра к городу (`database.db.get_staff_city`), а
+    НЕ выбор фильтра в панели (`_resolve_checkin_screen_city`/`_admin_city_scope` отдают город и
+    непривязанному менеджеру при выключенном модуле — дефолтный, это не то же самое). Суперадмин
+    (`config.ADMIN_IDS`) не привязан никогда, модуль городов выключен -> тоже без привязки. Тот
+    же приём, что `miniapp/routers/checkin.py::_bound_city` — бот и Mini App одинаково решают,
+    кого ограничивать, на входе и в отчёте загрузки CSV."""
+    if admin_id in config.ADMIN_IDS:
+        return None
+    if not await cities_module_on():
+        return None
+    bound = await get_staff_city(admin_id)
+    return normalize_city(bound) if bound else None
+
+
 async def _point_picker_kb(city: str) -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text=ENTRY_POINT_LABEL, callback_data=f"checkin_point:{ENTRY_POINT}")],
@@ -446,6 +464,15 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     # интервал времени (D-18..D-20) достаточно достать один раз, а не на каждую строку.
     session = await get_program_session(int(point.split(":", 1)[1])) if point.startswith("session:") else None
 
+    # D-26 (24.09): волонтёр/менеджер, ПРИВЯЗАННЫЙ к городу, загружает выгрузку сканера только
+    # своей стойки — делегаты чужого города НЕ отмечаются вовсе (не вызываем record_arrival),
+    # отдельная строка отчёта ниже. Только для точки «Вход» — сессии уже ограничены своим
+    # городом на уровне выбора точки (`_point_picker_kb` строит список из `_resolve_checkin_screen_city`,
+    # которая для привязанного волонтёра отдаёт ЕГО город) и второй проверкой внутри
+    # `record_arrival` (сессия чужого города и так `wrong_city`).
+    bound_city = await _volunteer_bound_city(callback.from_user.id) if point == ENTRY_POINT else None
+    other_city_n = 0
+
     new_n = 0
     dup_n = 0
     moved_n = 0
@@ -467,6 +494,9 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         user, denial_code = await resolve_scanned_user(token)
         if denial_code is not None:
             flagged.append((_DENIAL_LABELS.get(denial_code, denial_code), parsed))
+            continue
+        if bound_city is not None and normalize_city(user.get("event_city")) != bound_city:
+            other_city_n += 1
             continue
         approx = rec["scanned_at"] is None
         result = await record_arrival(
@@ -502,6 +532,8 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     ]
     if wrong_city_n:
         lines.append(f"Другой город форума: {wrong_city_n}")
+    if other_city_n:
+        lines.append(f"Другой город: {other_city_n} (не отмечены)")
     if moved_n:
         lines.append(f"Перенесено с другой сессии слота: {moved_n}")
     if outside_n:
