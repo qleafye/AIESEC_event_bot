@@ -9060,7 +9060,8 @@ async def undo_venue_checkin(
             if event["staff_id"] != staff_id:
                 await db.rollback()
                 return "not_yours", event
-            if event.get("undone_at") or (event["created_at"] or "") < not_before:
+            created_at = event.get("created_at")
+            if event.get("undone_at") or created_at is None or created_at < not_before:
                 await db.rollback()
                 return "expired", event
             async with db.execute(
@@ -9074,9 +9075,14 @@ async def undo_venue_checkin(
 
             details = event["details"]
             tid = event["telegram_id"]
+            # Исход решает rowcount самого DELETE, а не данные журнала: строку отметки мог
+            # перенести (D-20) или снять кто-то другой — тогда ничего не пишем и откатываем.
+            if not details.get("scanned_at") or tid is None:
+                await db.rollback()
+                return "gone", event
             cur = await db.execute(
                 "DELETE FROM checkins WHERE telegram_id = ? AND point = ? AND scanned_at = ?",
-                (tid, event["point"], details.get("scanned_at")),
+                (tid, event["point"], details["scanned_at"]),
             )
             if not cur.rowcount:
                 await db.rollback()
@@ -9148,7 +9154,10 @@ async def revoke_checkin(checkin_id: int, log_entry: dict) -> dict | None:
                 await db.rollback()
                 return None
             removed = dict(row)
-            await db.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
+            cur = await db.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
+            if not cur.rowcount:  # строку удалили между SELECT и DELETE — журнал не пишем
+                await db.rollback()
+                return None
             details = {
                 "scanned_at": removed["scanned_at"],
                 "was_source": removed["source"],
