@@ -8082,6 +8082,29 @@ async def checkin_qr_unconfirmed_ids(*, city_scope=None) -> set[int]:
     return {int(r[0]) for r in rows}
 
 
+async def checkin_qr_confirmed_ids(*, city_scope=None) -> set[int]:
+    """Кто уже подтвердил «✅ Сохранил» — единственное, что исключает делегата из аудитории
+    утреннего повтора (`services.checkin_broadcast.send_morning_repeat`, находка ревью
+    260924: повтор обязан звать ВСЕХ допущенных города, кто ещё не подтвердил, а не только
+    тех, у кого уже есть строка `checkin_qr_sends` — иначе одобренный ПОСЛЕ вечерней рассылки
+    или потерянный из-за сбоя отправки делегат не получает QR никогда). В отличие от
+    `checkin_qr_unconfirmed_ids` (строка есть, `confirmed_at IS NULL`) эта выборка НЕ требует
+    существования строки вовсе — вызывающий вычитает результат из полного пула
+    `eligible_recipients`, а не пересекает с уже отправленными."""
+    city_frag, city_params = _city_clause(city_scope, "event_city")
+    where = "confirmed_at IS NOT NULL"
+    params: list = []
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM checkin_qr_sends WHERE {where}", params
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
 async def checkin_qr_confirm(telegram_id: int, confirmed_at: str) -> bool:
     """Подтверждение «✅ Сохранил, открывается» — идемпотентно: `UPDATE ... WHERE confirmed_at
     IS NULL` пишет метку только на ПЕРВОЕ нажатие (возвращает `True`); повторный тап той же
