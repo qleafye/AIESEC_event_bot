@@ -16,6 +16,10 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _sheet_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below; квик 260919: _csv_safe -> _sheet_safe (08-sheets-dashboard) — Sheets-строки больше не нейтрализуются, gspread пишет явным RAW
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
+# Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): свой маленький импорт, не в общий
+# список выше — тот уже стоит на потолке читаемости одной строки, а этот шов самодостаточен
+# (используется ровно в одном месте, _handle_volunteer_invite ниже).
+from database.db import add_staff, claim_volunteer_invite, get_volunteer_invite
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
 from handlers.states import Registration
 from keyboards.builders import (
@@ -59,6 +63,8 @@ from reg_options import (
     PARTY_TRACK_OPTIONS,  # gap closure фазы 21: подписи развилки формата — один список с вебом
 )
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+# Идея №5 бэклога чек-ина: resolve_capabilities для _handle_volunteer_invite ниже.
+from handlers.admin_caps import resolve_capabilities
 # Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
 # plumbing extracted to handlers/reg_schema.py (router-free) so handlers/admin.py no longer
 # reaches into this handler module. Re-imported here since registration.py's own step-flow,
@@ -1033,6 +1039,93 @@ def _extract_resume_arg(command_args: str | None) -> str | None:
     return v if v in ("continue", "edit") else None
 
 
+# Идея №5 бэклога чек-ина: `vol_<код>` -- deep-link токен приглашения волонтёров
+# (handlers/admin_volunteer_invite.py). Префикс "vol_" не пересекается ни с одним из
+# остальных форматов выше (_extract_referrer_id требует чистые ASCII-цифры,
+# _extract_source_tag смотрит "src_", _extract_party_track/_extract_event_city/
+# _extract_resume_arg -- фиксированные литералы/"city_"-префикс) -- extractor мутуально
+# исключителен с ними по построению, тот же приём, что и у остальных.
+def _extract_volunteer_invite_code(command_args: str | None) -> str | None:
+    if not command_args:
+        return None
+    arg = command_args.strip()
+    return arg[4:] if arg.startswith("vol_") and len(arg) > 4 else None
+
+
+async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) -> bool:
+    """Идея №5 бэклога чек-ина: приём перехода по `?start=vol_<код>`. Возвращает True, если
+    cmd_start обязан ОСТАНОВИТЬСЯ здесь (успешный переход -- выдача роли, а не анкета
+    делегата); False -- деад-линк/повтор, /start продолжает обычный путь (план: «Мёртвая/
+    исчерпанная ссылка… и /start продолжает обычный путь»)."""
+    user_id = message.from_user.id
+    _dead_text = "volunteer_invite_link_expired_text"
+
+    invite = await get_volunteer_invite(code)
+    if invite is None:
+        await reg_i18n.say(message, await get_setting_typed(_dead_text))
+        return False
+    # Тумблер `volunteer_invite_enabled` (per_city, дефолт off): «выключен -> кнопки нет и
+    # СТАРЫЕ ссылки не срабатывают» -- проверка ДО claim_volunteer_invite, чтобы выключенный
+    # тумблер никогда не сжигал слот уже созданной ссылки (не "исчерпана", а как будто
+    # никогда не работала).
+    if await get_setting_typed_for_city("volunteer_invite_enabled", invite.get("city")) != "on":
+        await reg_i18n.say(message, await get_setting_typed(_dead_text))
+        return False
+
+    outcome = await claim_volunteer_invite(code, user_id)
+    if outcome in ("not_found", "revoked", "link_expired", "exhausted"):
+        await reg_i18n.say(message, await get_setting_typed(_dead_text))
+        return False
+    if outcome == "already_used":
+        # Двойной переход по одной и той же ссылке -- слот не жжётся (claim_volunteer_invite),
+        # роль уже выдана в прошлый раз. Тихо продолжаем обычный /start, ничего не пишем
+        # второй раз -- лишнее сообщение на каждый повторный тап только шумит.
+        return False
+
+    # outcome == "ok": слот занят, право нужно выдать. `resolve_capabilities` ДО add_staff --
+    # «уже есть доступ» должен смотреть на состояние ПЕРЕД этим самым грантом.
+    had_any_capability = bool(await resolve_capabilities(user_id))
+    invite = await get_volunteer_invite(code)
+    rights_expires_at = (invite or {}).get("rights_expires_at")
+    await add_staff(user_id, "volunteer", None, expires_at=rights_expires_at)  # ROLES["volunteer"] = только checkin
+
+    if had_any_capability:
+        text = await get_setting_typed("volunteer_invite_already_has_access_text")
+    else:
+        text = await get_setting_typed("volunteer_invite_welcome_text")
+    await reg_i18n.say(message, text)
+
+    # Форум-ночь B3 (идея №22): та же шпаргалка волонтёра, что roles_assign шлёт при ручной
+    # выдаче права checkin -- переиспользуем, не дублируем текст.
+    try:
+        guide_text = await get_setting_typed("checkin_volunteer_guide_text")
+        await bot.send_message(user_id, guide_text)
+    except Exception:
+        logger.warning(
+            "_handle_volunteer_invite: не удалось отправить шпаргалку волонтёра user_id=%s",
+            user_id, exc_info=True,
+        )
+
+    # Менеджеру-создателю ссылки -- «@user (Имя) зашёл по ссылке волонтёров <город>, N из M».
+    if invite and invite.get("created_by"):
+        try:
+            name = message.from_user.full_name or message.from_user.username or str(user_id)
+            uname = f" (@{message.from_user.username})" if message.from_user.username else ""
+            city_text = invite.get("city") or "без города"
+            limit_text = "без лимита" if invite.get("max_uses") is None else str(invite.get("max_uses"))
+            await bot.send_message(
+                invite["created_by"],
+                f"👤 {name}{uname} зашёл по ссылке волонтёров «{city_text}», "
+                f"{invite.get('used', 1)} из {limit_text}.",
+            )
+        except Exception:
+            logger.warning(
+                "_handle_volunteer_invite: не удалось уведомить создателя ссылки %s",
+                invite.get("created_by"), exc_info=True,
+            )
+    return True
+
+
 def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
     """Phase 21 (21-09, D-20): TTL applies ONLY to kind='new' drafts (a delegate mid a fresh
     registration) — a kind='edit' draft (правка одобренной анкеты) is offered regardless of
@@ -1919,6 +2012,17 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # is safe and does not duplicate any work; the other extractors below still parse the same
     # already-computed `args`.
     args = command.args if command else None
+
+    # Идея №5 бэклога чек-ина: `?start=vol_<код>` -- полностью отдельный от анкеты делегата
+    # путь (выдача роли, не регистрация), интерцептится ПЕРЕД любым другим ветвлением cmd_start
+    # (вопросом о языке, funnel-логом, предотбором) -- ни один из них не должен сработать для
+    # человека, который вообще не собирается подавать анкету. Мёртвая/повторная ссылка ->
+    # _handle_volunteer_invite возвращает False, /start продолжает обычный путь ниже (план:
+    # «и /start продолжает обычный путь»).
+    vol_code = _extract_volunteer_invite_code(args)
+    if vol_code is not None and await _handle_volunteer_invite(message, bot, vol_code):
+        return
+
     dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
     # Квик 260905-qqg: поднято сюда, чтобы запись `start` уже несла метку кампании; функция
     # чистая — ни await, ни БД, поднять её раньше безопасно.
