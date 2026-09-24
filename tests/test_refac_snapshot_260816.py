@@ -505,6 +505,26 @@ def _build_snapshot_lines():
 # 2 новых callback_query-хендлера (`admin_reject_reports`/`arp_sync`). Re-captured by RUNNING
 # `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
 # 611-строчного снимка: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
+#
+# Drift note (форум-ночь п.4, расписание форума в боте, 642 -> 678 handlers -- PURE APPEND, ДВЕ
+# вставки): новые швы `handlers/admin_program.py` (импортирован из хвоста
+# `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_reports`) и `handlers/
+# admin_program_halls.py` (импортирован хвостом самого `admin_program.py`, потолок размера
+# модуля). 9 message-хендлеров (`prog_daynew_cancel`/`prog_daynew_step`/`prog_field_cancel`/
+# `prog_time_step`/`prog_title_step`/`prog_speaker_step`/`prog_description_step`/
+# `prog_hallname_cancel`/`prog_hallname_step`) встали СРАЗУ ПОСЛЕ `arc_num_step` (последний
+# message-хендлер `admin_reject_cond.py`) и ПЕРЕД `cancel_city_form` — точка вставки
+# определяется цепочкой импортов, не позицией файла на диске (тот же приём, что у предыдущих
+# drift-нот). 27 callback_query-хендлеров (`admin_program_entry`/`prog_city_open`/
+# `prog_daynew_start`/`prog_day_open`/`prog_new_start`/`prog_ftyes`/`prog_ftno`/`prog_wcancel`/
+# `prog_hallscreen_open`/`prog_hp_pick`/`prog_wconfirm_yes`/`prog_wconfirm_no`/`prog_fhyes`/
+# `prog_hpnew_start`/`prog_v_open`/`prog_field_start`/`prog_delete_confirm`/`prog_delete_go`/
+# `prog_halls_open`/`prog_hallcreate_start`/`prog_hallrename_start`/`prog_halldel_confirm`/
+# `prog_halldel_go`/`prog_copy_pick_source`/`prog_copy_pick_day`/`prog_copy_confirm`/
+# `prog_copy_go`) встали СРАЗУ ПОСЛЕ `arp_sync` (последний callback_query-хендлер
+# `admin_reject_reports.py`) и ПЕРЕД `sync_sheet`. Re-captured by RUNNING
+# `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против прежнего
+# 642-строчного снимка: ровно две вставки (9 + 27 строк), 0 удалений, 0 реордеров.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -533,6 +553,15 @@ admin|message|arr_name_step|state:RejectRuleEdit:*
 admin|message|arr_text_step|state:RejectRuleEdit:*
 admin|message|arc_num_cancel|state:RejectCond:*
 admin|message|arc_num_step|state:RejectCond:*
+admin|message|prog_daynew_cancel|state:ProgramDayCustom:*
+admin|message|prog_daynew_step|state:ProgramDayCustom:*
+admin|message|prog_field_cancel|state:ProgramSessionField:*
+admin|message|prog_time_step|state:ProgramSessionField:*
+admin|message|prog_title_step|state:ProgramSessionField:*
+admin|message|prog_speaker_step|state:ProgramSessionField:*
+admin|message|prog_description_step|state:ProgramSessionField:*
+admin|message|prog_hallname_cancel|state:ProgramHallName:*
+admin|message|prog_hallname_step|state:ProgramHallName:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -779,6 +808,33 @@ admin|callback_query|arj_back_go|arj_backgo:*
 admin|callback_query|arj_csv_export|arj_csv
 admin|callback_query|admin_reject_reports|admin_reject_reports
 admin|callback_query|arp_sync|arp_sync
+admin|callback_query|admin_program_entry|admin_program
+admin|callback_query|prog_city_open|prog_city:*
+admin|callback_query|prog_daynew_start|prog_daynew:*
+admin|callback_query|prog_day_open|prog_day:*
+admin|callback_query|prog_new_start|prog_new:*
+admin|callback_query|prog_ftyes|prog_ftyes:*
+admin|callback_query|prog_ftno|prog_ftno:*
+admin|callback_query|prog_wcancel|prog_wcancel
+admin|callback_query|prog_hallscreen_open|prog_hallscreen:*
+admin|callback_query|prog_hp_pick|prog_hp:*
+admin|callback_query|prog_wconfirm_yes|prog_wconfirm_yes
+admin|callback_query|prog_wconfirm_no|prog_wconfirm_no
+admin|callback_query|prog_fhyes|prog_fhyes:*
+admin|callback_query|prog_hpnew_start|prog_hpnew:*
+admin|callback_query|prog_v_open|prog_v:*
+admin|callback_query|prog_field_start|prog_field:*
+admin|callback_query|prog_delete_confirm|prog_d:*
+admin|callback_query|prog_delete_go|prog_dgo:*
+admin|callback_query|prog_halls_open|prog_halls:*
+admin|callback_query|prog_hallcreate_start|prog_hallcreate:*
+admin|callback_query|prog_hallrename_start|prog_hallrename:*
+admin|callback_query|prog_halldel_confirm|prog_halldel:*
+admin|callback_query|prog_halldel_go|prog_halldelgo:*
+admin|callback_query|prog_copy_pick_source|prog_copy:*
+admin|callback_query|prog_copy_pick_day|prog_copysrc:*
+admin|callback_query|prog_copy_confirm|prog_copyday:*
+admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1442,7 +1498,10 @@ def test_snapshot_total_handler_count_is_292():
     # после ambassador_join) — пересчитано RUNNING `_build_snapshot_lines()` и сверено
     # diff'ом (difflib.SequenceMatcher) с прежним 632-строчным снимком: ровно три вставки
     # (3+6+1 строк), 0 удалений, 0 реордеров (632 -> 642).
-    assert len(GOLDEN_SNAPSHOT) == 642
+    # Форум-ночь п.4 (расписание форума в боте): +36 хендлеров — handlers/admin_program.py +
+    # handlers/admin_program_halls.py (9 admin.message + 27 admin.callback_query, см. drift-ноту
+    # над GOLDEN_SNAPSHOT) — 642 -> 678.
+    assert len(GOLDEN_SNAPSHOT) == 678
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
