@@ -862,6 +862,12 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_reissue_yes:*": "moderate_reg",
     "checkin_reissue_no": "moderate_reg",
 
+    # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — та же капа «checkin», что у
+    # раздела-владельца (ничего не отмечает, только парсит выгрузку и отвечает читаемостью).
+    "checkin_test_start": "checkin",
+    "checkin_test_qr": "checkin",
+    "state:CheckinTestUpload:*": "checkin",
+
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из
