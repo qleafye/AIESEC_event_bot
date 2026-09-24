@@ -239,3 +239,16 @@ def test_menu_screen_marks_other_gated_buttons(tmp_path):
     asyncio.run(db.set_setting("delegate_lang_enabled", "on"))
     text = asyncio.run(admin_reg_config.render_menu_text())
     assert "сейчас скрыта" not in _menu_line(text, "🌐 Язык")
+
+
+def test_menu_screen_all_cities_explains_common_values(tmp_path):
+    from handlers import admin_reg_config
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+    text = asyncio.run(admin_reg_config.render_menu_text(ADMIN_ID))
+    assert "Все города" in text and "выберите его в шапке" in text
+
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", "msk"))
+    text = asyncio.run(admin_reg_config.render_menu_text(ADMIN_ID))
+    assert "выберите его в шапке" not in text

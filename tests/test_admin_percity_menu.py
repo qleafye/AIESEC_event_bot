@@ -178,7 +178,8 @@ def test_all_cities_header_renders_global_screen_no_marks_no_reset(tmp_path):
 
     text_all = asyncio.run(admin_reg_config.render_menu_text(ADMIN_ID))
     text_off = asyncio.run(admin_reg_config.render_menu_text())
-    assert text_all == text_off
+    # UI-фиксы 24.09: «Все города» = тот же экран + одна строка-подсказка про общие значения.
+    assert text_all == text_off + "\n\n" + admin_reg_config._ALL_CITIES_HIDDEN_HINT
     assert "своё" not in text_all and "как везде" not in text_all
 
     kb_all = asyncio.run(admin_reg_config.build_menu_keyboard(ADMIN_ID))
