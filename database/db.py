@@ -1621,9 +1621,19 @@ async def init_db():
                 resolved_by_name TEXT,
                 resolved_at TEXT,
                 escalated_at TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                delivery_failed_at TEXT,
+                prior_open_report_id INTEGER
             )
         ''')
+        # Ревью 24.09 (находки 1/3): `delivery_failed_at` — карточка не дошла НИКУДА (ни в чат,
+        # ни фоллбэком в личку), `services/sos.py::record_delivery_outcome`; `prior_open_report_id`
+        # — снимок «у делегата уже был открытый SOS #N», когда окно повторного открытия
+        # (`sos_reopen_window_minutes`) истекло и делегат открыл новый, не дожидаясь ответа на
+        # старый (см. `handlers/sos.py::sos_pick_category`). `_ensure_column` — на случай, если
+        # таблица уже создана более ранней версией этой же ветки (cf0da0b) на стенде.
+        await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
+        await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -5199,13 +5209,15 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
 async def create_sos_report(
     telegram_id: int, city: str | None, category: str, details_text: str | None,
     details_photo_file_id: str | None, latitude: float | None, longitude: float | None,
+    prior_open_report_id: int | None = None,
 ) -> int:
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO sos_reports (telegram_id, city, category, details_text, "
-            "details_photo_file_id, latitude, longitude, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "details_photo_file_id, latitude, longitude, created_at, prior_open_report_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (telegram_id, city, category, details_text, details_photo_file_id, latitude,
-             longitude, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+             longitude, msk_now().strftime("%Y-%m-%d %H:%M:%S"), prior_open_report_id),
         )
         await db.commit()
         return cursor.lastrowid
@@ -5273,6 +5285,20 @@ async def resolve_sos_report(report_id: int, admin_id: int, admin_name: str) -> 
         )
         await db.commit()
         return cursor.rowcount == 1
+
+
+async def set_sos_delivery_failed(report_id: int, failed: bool) -> None:
+    """Находка 1 ревью 24.09: `services.sos.record_delivery_outcome` зовёт это ПОСЛЕ каждой
+    попытки доставки карточки (изначальной и повторной, `delivery_retry_job`) —
+    `failed=True` штампует момент, `failed=False` (доставка удалась) снимает пометку.
+    Идемпотентно в обе стороны — повторный вызов с тем же `failed` просто перезаписывает
+    метку тем же смыслом."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET delivery_failed_at = ? WHERE id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S") if failed else None, report_id),
+        )
+        await db.commit()
 
 
 async def set_sos_escalated(report_id: int) -> bool:

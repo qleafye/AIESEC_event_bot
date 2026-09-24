@@ -486,6 +486,14 @@ _CODE_LITERALS_EN = {
     "🔑 Потерял вещь": "🔑 I lost something",
     "⚠️ Другое": "⚠️ Other",
     "📍 Отправить геопозицию": "📍 Send location",
+    # Ревью 24.09 (находки 1/3): дефолты трёх новых реестровых текстов SOS — тот же сосед,
+    # что остальные sos_* дефолты выше.
+    "Не получилось передать SOS оргкомитету. Подойди к стойке регистрации или к любому "
+    "человеку в форме оргкомитета.":
+        "We couldn't reach the organizers with your SOS. Go to the registration desk or "
+        "find anyone wearing organizer clothing.",
+    "Мы уже получили твой SOS ({claim_status}). Дополни его — просто напиши сюда.":
+        "We already got your SOS ({claim_status}). Add details — just write here.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
