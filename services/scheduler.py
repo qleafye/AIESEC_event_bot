@@ -212,6 +212,25 @@ def _add_interval_job(func, job_id: str, interval: timedelta, *,
     )
 
 
+# Идеи №16/№23 бэклога чек-ина (отчёт дня форума / опрос неявившихся): периодическая сверка
+# (`_add_interval_job` ниже) требует МОДУЛЬНУЮ функцию, не локальное замыкание — job store
+# (SQLAlchemyJobStore) ссылается на джобу по `module:qualname`, а не пиклит замыкание целиком
+# (тот же довод, что у остальных целей интервальных джоб этого файла, все — функции верхнего
+# уровня). Mini App правит forum_date/тумблеры обеих функций из своего процесса, где
+# планировщика нет — тот же довод, что у `checkin_forum_reconcile` выше.
+async def _reconcile_forum_report_and_poll_job() -> None:
+    try:
+        from services.forum_day_report import reconcile as _reconcile_day_report
+        await _reconcile_day_report()
+    except Exception as e:
+        logger.error(f"_reconcile_forum_report_and_poll_job: forum_day_report failed: {e}")
+    try:
+        from services.forum_noshow_poll import reconcile as _reconcile_noshow_poll
+        await _reconcile_noshow_poll()
+    except Exception as e:
+        logger.error(f"_reconcile_forum_report_and_poll_job: forum_noshow_poll failed: {e}")
+
+
 async def init_scheduler(bot):
     """Build the AsyncIOScheduler with a persistent jobstore, register the interval
     jobs, and start it. Date jobs (scheduled broadcasts) auto-restore from the jobstore
@@ -350,6 +369,21 @@ async def init_scheduler(bot):
     # тот же приём, что реконсиляции выше.
     from services.session_feedback import reconcile_all as _reconcile_session_feedback
     await _reconcile_session_feedback()
+    # Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером — (пере)ставить self-rescheduling
+    # джобу каждого города на старте, тот же приём, что у соседей выше.
+    from services.forum_day_report import reconcile as _reconcile_day_report
+    await _reconcile_day_report()
+    # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — та же реконсиляция.
+    from services.forum_noshow_poll import reconcile as _reconcile_noshow_poll
+    await _reconcile_noshow_poll()
+    # Mini App правит forum_date/тумблеры этих двух функций из своего процесса, где
+    # планировщика нет (тот же довод, что у `checkin_forum_reconcile` выше) — периодическая
+    # сверка раз в 10 минут через МОДУЛЬНУЮ функцию `_reconcile_forum_report_and_poll_job`
+    # (см. её докстринг), идемпотентная (schedule_city_job сама решает, ставить ли и на какой
+    # момент).
+    _add_interval_job(
+        _reconcile_forum_report_and_poll_job, "forum_report_poll_reconcile", timedelta(minutes=10),
+    )
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
