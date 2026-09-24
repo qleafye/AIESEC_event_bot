@@ -338,7 +338,12 @@ def test_bc_go_not_important_media_caption_passthrough_none(tmp_path, monkeypatc
         await admin_broadcasts.bc_go(cb, state, bot)
         await spawned[0]
 
-        assert bot.copy_kwargs == [{"caption": None, "reply_markup": None}]
+        # D-30: «🔕 Не присылать сегодня» доступна весь сезон — кнопка висит на любой
+        # неважной рассылке; подпись при этом по-прежнему не трогаем (caption=None).
+        assert len(bot.copy_kwargs) == 1
+        assert bot.copy_kwargs[0]["caption"] is None
+        markup = bot.copy_kwargs[0]["reply_markup"]
+        assert [b.callback_data for row in markup.inline_keyboard for b in row] == ["bc_mute_today"]
 
     asyncio.run(go())
 
