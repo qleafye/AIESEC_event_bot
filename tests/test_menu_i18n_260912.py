@@ -90,13 +90,13 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 # ── Задача 2: покрытие MENU_TEXTS ────────────────────────────────────────────────────────────
 
 def test_menu_texts_covers_all_thirteen_keys():
-    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) + форум-ночь
-    # п.7 (+1 ключ menu_important) + форум-ночь п.8 (+1 ключ menu_sos) -- имя теста
-    # историческое (осталось от 13 ключей до этих правок), assert ниже проверяет актуальное
-    # число.
+    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule, СЛИТ обратно в
+    # menu_program по D-29 24.09) + форум-ночь п.7 (+1 ключ menu_important) + форум-ночь п.8
+    # (+1 ключ menu_sos) -- имя теста историческое (осталось от 13 ключей до этих правок),
+    # assert ниже проверяет актуальное число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 17
+    assert len(MENU_TEXTS) == 16
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -140,11 +140,8 @@ _USER_ACTIONS_POINTS = [
     # Квик 260923 (форум-чекин, D-03): маршрутизация не зависит от checkin_qr_enabled -- тот
     # же приём, что у menu_miniapp выше (фильтр F.text.in_(...) матчит независимо от БД).
     ("menu_checkin_qr", "show_my_checkin_qr"),
-    # Форум-ночь п.4 (расписание форума в боте): маршрутизация не зависит от того, есть ли уже
-    # сессии в программе -- тот же приём, что у menu_miniapp/menu_checkin_qr выше.
-    ("menu_schedule", "show_program_schedule"),
     # Форум-ночь п.7 («❗ Важное»): маршрутизация не зависит от того, были ли сегодня важные
-    # рассылки -- тот же приём, что у menu_miniapp/menu_checkin_qr/menu_schedule выше.
+    # рассылки -- тот же приём, что у menu_miniapp/menu_checkin_qr выше.
     ("menu_important", "show_important_today"),
 ]
 
@@ -225,16 +222,17 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # отдельного явного `db.set_setting("menu_lang", "on")`, которого ни один тест этого файла не
 # делает. Квик 260923 (форум-чекин): menu_checkin_qr сам по себе default "on" (обычная
 # конвенция), но второй гейт checkin_qr_enabled -- default "off" -- скрывает кнопку, пока
-# менеджер явно не включит модуль (ни один тест этого файла его не включает). Форум-ночь п.4:
-# menu_schedule гейтится has_program_sessions_for_city -- в пустой тестовой БД сессий нет ни
-# у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот же паритет.
+# менеджер явно не включит модуль (ни один тест этого файла его не включает). D-29 (24.09):
+# menu_program гейтится "фото ЕСТЬ ИЛИ has_program_sessions_for_city" -- в пустой тестовой БД
+# ни фото, ни сессий нет ни у одного города, кнопки не будет ни на одной клавиатуре этого
+# файла, тот же паритет.
 # Форум-ночь п.7: menu_important гейтится has_important_today -- в пустой тестовой БД
 # важных рассылок не было ни у одного делегата, кнопки не будет ни на одной клавиатуре.
 # Форум-ночь п.8: menu_sos гейтится is_sos_active_for_city -- в пустой тестовой БД нет
 # forum_date ни у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот
 # же паритет.
 _GATED_KEYS = (
-    "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+    "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_program",
     "menu_important", "menu_sos",
 )
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
@@ -316,6 +314,9 @@ def test_conference_menu_uses_conference_labels_and_forum_stays_unchanged(tmp_pa
     _use_tmp_db(tmp_path)
 
     async def go():
+        # D-29: menu_program теперь гейтится (фото ИЛИ сессии) -- эта проверка про подписи
+        # конференции/форума, не про гейт, поэтому сеем фото, чтобы кнопка была видна.
+        await db.set_setting("program_photo_file_id", "dummy_file_id")
         forum_labels = {b.text for row in (await get_main_menu_kb(UID)).keyboard for b in row}
         assert "ℹ️ Информация о форуме" in forum_labels
         assert "📅 Программа форума" in forum_labels

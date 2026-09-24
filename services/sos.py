@@ -82,7 +82,7 @@ async def is_sos_active_for_city(city: str | None) -> bool:
     """`forum_date` (пункт settings_schema.py, «Дата начала форума») + `sos_active_days`
     (per_city, дефолт 2 — большинство форумов идут 1-2 дня, см. память «Forum plan deck»:
     «Москва 30-31.10») дают окно `[forum_date, forum_date + days - 1]`. Форум-дата не задана
-    ИЛИ не парсится -> False (fail-soft = кнопки нет, тот же баланс, что у menu_schedule/
+    ИЛИ не парсится -> False (fail-soft = кнопки нет, тот же баланс, что у menu_program/
     menu_important: лучше спрятать кнопку, чем показать нерабочую)."""
     from services.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
     # что уже документирован в services/checkin_broadcast.py, reject_rules.py тяжелее этого
