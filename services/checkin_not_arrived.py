@@ -65,7 +65,18 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     """Отправляет шаблон СЕЙЧАС всем кандидатам города (пусто — все города, модуль выключен).
     `city` — СНИМОК для `checkin_not_arrived_text`/`event_city` строки (per_city резолвер),
     `city_scope` — дескриптор `cities.city_scope(city)`, тот же приём, что у остальных
-    checkin-функций (вызывающий готовит оба, `db.py` не может импортировать `cities`)."""
+    checkin-функций (вызывающий готовит оба, `db.py` не может импортировать `cities`).
+
+    Тихие часы делегата — НЕ ставим в очередь (в отличие от остальной семьи
+    `send_or_queue_*`): шаблон спрашивает «мы тебя не видим ПРЯМО СЕЙЧАС», и если положить его
+    в очередь `quiet_hours`, `flush_due` доставит его утром БЕЗ повторной проверки отметки —
+    пришедший ночью/рано утром делегат получит «мы тебя не видим» уже после того, как отметился
+    (`flush_due` не умеет перечитывать условие на момент доставки для `KIND_TEXT`, только для
+    `KIND_APPLICATION_DECISION`). Поэтому такого делегата ПРОПУСКАЕМ целиком — и, ВАЖНО, НЕ
+    зовём `checkin_not_arrived_mark_sent`: раз ему не отправили, идемпотентность «раз в день»
+    не блокирует повторный тап «Написать не пришедшим» позже (после тихих часов) — придёт как в
+    первый раз. Менеджеру считаем отдельно (`quiet`), экран подтверждения показывает «N сейчас в
+    тихих часах — не отправлено, повторите позже»."""
     from cities import get_setting_typed_for_city
     from services import quiet_hours
 
@@ -73,10 +84,13 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     base_text = await get_setting_typed_for_city("checkin_not_arrived_text", city)
     now = msk_now()
     day = now.strftime("%Y-%m-%d")
-    sent = queued = failed = 0
+    sent = quiet = failed = 0
     for tid in ids:
         user = await get_user(tid)
         if user is None:
+            continue
+        if await quiet_hours.defer_until(now, tid) is not None:
+            quiet += 1
             continue
         # Идемпотентность СНАЧАЛА, не после отправки: двойной тап «Написать не пришедшим»,
         # пока первый вызов ещё отправляет, не должен взять того же человека второй раз.
@@ -87,26 +101,19 @@ async def send(*, city: str | None, city_scope=None) -> dict:
             continue
         text = await _translated(tid, base_text)
         kb = _response_kb(day)
-
-        async def _sender(cid=tid, txt=text, markup=kb):
-            await _sched._bot.send_message(cid, txt, reply_markup=markup)
-
         try:
-            delivered = await quiet_hours.send_or_queue_text(now, tid, text, sender=_sender, reply_markup=kb)
+            await _sched._bot.send_message(tid, text, reply_markup=kb)
         except Exception as e:
             logger.error(f"checkin_not_arrived.send: доставка {tid} упала: {e}")
             failed += 1
             continue
-        if delivered:
-            sent += 1
-        else:
-            queued += 1
+        sent += 1
         await asyncio.sleep(0.05)
     logger.info(
-        f"checkin_not_arrived.send({city!r}): sent {sent}, queued {queued}, failed {failed} "
+        f"checkin_not_arrived.send({city!r}): sent {sent}, quiet {quiet}, failed {failed} "
         f"of {len(ids)}"
     )
-    return {"sent": sent, "queued": queued, "failed": failed, "total": len(ids)}
+    return {"sent": sent, "quiet": quiet, "failed": failed, "total": len(ids)}
 
 
 async def summary_text(*, city_scope=None) -> str:
