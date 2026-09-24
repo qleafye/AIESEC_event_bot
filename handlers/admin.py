@@ -945,3 +945,8 @@ from handlers import admin_program_view  # noqa: E402
 # (handlers/admin_checkin_stats.py) — registers checkin_stats_open/checkin_stats_refresh/
 # checkin_stats_csv in the very tail of admin.router (golden snapshot: a clean append).
 from handlers import admin_checkin_stats  # noqa: E402
+
+# Бэклог чек-ина №25: shared-router seam import for «🚦 Готовность к форуму»
+# (handlers/admin_forum_ready.py) — registers forum_ready_open/forum_ready_refresh in the very
+# tail of admin.router (golden snapshot: a clean append, right after admin_checkin_stats).
+from handlers import admin_forum_ready  # noqa: E402

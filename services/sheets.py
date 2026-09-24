@@ -36,6 +36,20 @@ REFUSED_UNPINNED_TAB = -2
 _alert_bot = None
 _alert_bot_warned = False
 
+# «🚦 Готовность к форуму» (бэклог №25): когда таблица последний раз приняла запись и когда
+# последний раз отказала — time.time(), в памяти процесса (после рестарта «записей ещё не было»).
+_write_state: dict = {"ok": None, "fail": None}
+
+
+def _note_write(ok: bool) -> None:
+    import time
+    _write_state["ok" if ok else "fail"] = time.time()
+
+
+def last_write_state() -> dict:
+    """`{"ok": ts|None, "fail": ts|None}` — последняя удачная и неудачная запись в таблицу."""
+    return dict(_write_state)
+
 
 def set_alert_bot(bot):
     global _alert_bot
@@ -370,6 +384,7 @@ async def append_to_sheet(data: list):
             # WR-06: log only the id, not the full row — data carries PII (phone/email/name)
             # and the file handler retains 5×10MB rotated logs on disk.
             logger.info(f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} to Google Sheet")
+            _note_write(True)
             return
         except Exception as e:
             _reset_sheet_cache()  # drop possibly-stale client/handle before retrying
@@ -378,6 +393,7 @@ async def append_to_sheet(data: list):
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to append to Google Sheet after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
+    _note_write(False)
     await _alert_admins_sheet_failure(f"основная вкладка, telegram_id={(data[0] if data else '?')!r}")
 
 
@@ -710,9 +726,12 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
         return False
     try:
         tab_name = await _resolve_status_tab(telegram_id)
-        return await asyncio.to_thread(_update_arrived_in_sheet_sync, telegram_id, stamp, tab_name)
+        ok = await asyncio.to_thread(_update_arrived_in_sheet_sync, telegram_id, stamp, tab_name)
+        _note_write(True)
+        return ok
     except Exception as e:
         _reset_sheet_cache()
+        _note_write(False)
         logger.warning(f"update_arrived_in_sheet({telegram_id}) failed: {e}")
         return False
 
@@ -888,9 +907,12 @@ async def update_status_in_sheet(telegram_id: int, label: str) -> bool:
         return False
     try:
         tab_name = await _resolve_status_tab(telegram_id)
-        return await asyncio.to_thread(_update_status_in_sheet_sync, telegram_id, label, tab_name)
+        ok = await asyncio.to_thread(_update_status_in_sheet_sync, telegram_id, label, tab_name)
+        _note_write(True)
+        return ok
     except Exception as e:
         _reset_sheet_cache()
+        _note_write(False)
         logger.warning(f"update_status_in_sheet({telegram_id}) failed: {e}")
         return False
 
@@ -1017,6 +1039,7 @@ async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | 
         try:
             await asyncio.to_thread(_append_to_named_sheet_sync, tab_name, data)
             logger.info(f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} to tab {tab_name!r}")
+            _note_write(True)
             return
         except Exception as e:
             _reset_named_sheet_cache(tab_name)
@@ -1025,6 +1048,7 @@ async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | 
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to append to tab {tab_name!r} after {MAX_RETRIES} attempts for telegram_id={(data[0] if data else '?')!r}")
+    _note_write(False)
     await _alert_admins_sheet_failure(f"вкладка {tab_name!r}, telegram_id={(data[0] if data else '?')!r}")
 
 
