@@ -2033,6 +2033,28 @@ async def init_db():
             )
         ''')
 
+        # Идея №20 бэклога чек-ина: бюро находок. `chat_id`/`message_id` — где опубликован
+        # пост находки (группа делегатов, `services/chat_tracking.py::chat_for_city`), НЕ
+        # личность делегата — тот же класс, что `sos_card_copies.chat_id` выше
+        # (USER_PURGE_EXCLUDED, не USER_PURGE_TABLES). `posted_by`/`returned_by` — id
+        # волонтёра/менеджера (сотрудник, не делегатский след). `returned_at IS NULL` —
+        # находка ещё не забрали; идемпотентность кнопки «✅ Нашёлся хозяин»
+        # (`mark_lost_found_returned` — UPDATE только по этому условию).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS lost_found (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT,
+                photo_file_id TEXT NOT NULL,
+                where_text TEXT NOT NULL,
+                posted_by INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                returned_at TEXT,
+                returned_by INTEGER
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -9022,6 +9044,10 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "translation_queue",
     "miniapp_outbox",
     "sos_card_copies",
+    # Идея №20 бэклога чек-ина: lost_found.chat_id — та же группа делегатов, не личный чат
+    # делегата (тот же класс, что sos_card_copies.chat_id выше); posted_by/returned_by — id
+    # сотрудника (волонтёра/менеджера), не удаляемого делегата.
+    "lost_found",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
@@ -10738,3 +10764,46 @@ async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
         "answered": answered,
         "by_reason": {r: counts.get(r, 0) for r in FORUM_NOSHOW_REASONS},
     }
+
+
+# ── Идея №20 бэклога чек-ина: бюро находок ────────────────────────────────────────────────
+
+async def create_lost_found_item(
+    city: str | None, photo_file_id: str, where_text: str, posted_by: int,
+    chat_id: int, message_id: int,
+) -> int:
+    """`created_at` — снимок `msk_now()` внутри функции (тот же приём, что
+    `create_volunteer_invite`), вызывающему передавать его не нужно."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO lost_found (city, photo_file_id, where_text, posted_by, chat_id, "
+            "message_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                city, photo_file_id, where_text, posted_by, chat_id, message_id,
+                msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_lost_found_item(item_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM lost_found WHERE id = ?", (item_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def mark_lost_found_returned(item_id: int, returned_by: int) -> bool:
+    """`UPDATE ... WHERE returned_at IS NULL` — идемпотентность кнопки «✅ Нашёлся хозяин»:
+    `True` только когда ИМЕННО этот вызов впервые закрыл находку, `False` — записи нет или
+    её уже закрыли раньше (повторный тап/гонка двух одновременных тапов)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE lost_found SET returned_at = ?, returned_by = ? "
+            "WHERE id = ? AND returned_at IS NULL",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), returned_by, item_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)

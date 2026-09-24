@@ -445,3 +445,13 @@ class VolunteerInviteWizard(StatesGroup):
     # срок ссылки, лимит) несёт state.get_data() — тот же приём, что RolesExpiryEdit выше.
     waiting_link_date = State()
     waiting_rights_date = State()
+
+
+class LostFoundNew(StatesGroup):
+    # Идея №20 бэклога чек-ина (бюро находок) — три шага мастера «🧳 Нашли вещь»
+    # (handlers/admin_lost_found.py): фото → «где нашли/куда подойти» → предпросмотр
+    # («📢 Опубликовать»/«✖️ Отмена»). Город и черновик (photo/where) несут
+    # state.get_data() — тот же приём, что RolesExpiryEdit/VolunteerInviteWizard выше.
+    waiting_photo = State()
+    waiting_where = State()
+    preview = State()
