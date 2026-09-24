@@ -932,3 +932,11 @@ from handlers import admin_sos  # noqa: E402
 # checkinvol_time_start/cancel_checkinvol_time_edit/checkinvol_time_step in the very tail of
 # admin.router (golden snapshot: a clean append, right after admin_sos).
 from handlers import admin_forum_functions  # noqa: E402
+
+# D-29 (24.09, «одна кнопка программы у делегата»): shared-router seam import for the
+# table/photo view cycle button (handlers/admin_program_view.py) — registers
+# prog_view_toggle_go in the very tail of admin.router (golden snapshot: a clean append,
+# right after admin_forum_functions). Not in admin_program.py itself (that module is at its
+# own size ceiling) and not in admin_forum_functions.py (the button is shared by BOTH
+# screens, one render function, not duplicated).
+from handlers import admin_program_view  # noqa: E402

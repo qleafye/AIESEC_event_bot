@@ -3,7 +3,7 @@ import os
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_setting, get_user, has_faq_for_city, has_program_sessions_for_city, has_important_today
+from database.db import get_user, has_faq_for_city, has_important_today
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
@@ -229,27 +229,21 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         conference = False
 
     # D-29 (объединённая кнопка «📅 Программа форума»): кнопка видна, пока есть ЧТО показать —
-    # фото (глобальная настройка, «если загружено») ИЛИ у города делегата есть хотя бы одна
-    # сессия программы (запасной текстовый вид). `code` — `None`, когда модуль городов выключен
-    # (см. выше), но у сессий «нет города» не бывает — там всегда конкретный код
-    # (`cities.default_city_code()`, тот же однocity-фоллбэк, что использует админский экран
-    # `handlers/admin_program.py._resolve_city_for_screen`).
+    # фото (СВОЙ per_city файл ИЛИ общий, «если загружено») ИЛИ у города делегата есть хотя бы
+    # одна сессия программы (запасной текстовый вид). `code` — `None`, когда модуль городов
+    # выключен (см. выше), но у сессий/фото «нет города» не бывает — `has_program_content`
+    # сама резолвит `default_city_code()` (тот же однocity-фоллбэк, что использует админский
+    # экран `handlers/admin_program.py._resolve_city_for_screen`). Одна проверка вместо двух
+    # независимых — см. `services.program.has_program_content` docstring.
     program_photo_on = False
     try:
-        program_photo_on = bool(await get_setting("program_photo_file_id")) or os.path.isfile(
-            "resources/program.jpg"
-        )
+        from services.program import has_program_content
+        program_photo_on = await has_program_content(code)
     except Exception as e:
-        logger.error(f"get_main_menu_kb: program_photo_file_id resolve failed: {e}")
+        logger.error(f"get_main_menu_kb: has_program_content resolve failed: {e}")
         program_photo_on = False
 
-    schedule_on = False
-    try:
-        schedule_city = code if code is not None else default_city_code()
-        schedule_on = await has_program_sessions_for_city(schedule_city)
-    except Exception as e:
-        logger.error(f"get_main_menu_kb: has_program_sessions_for_city resolve failed for {telegram_id}: {e}")
-        schedule_on = False
+    schedule_on = program_photo_on
 
     # Форум-ночь п.7 («❗ Важное»): кнопка только пока сегодня БЫЛА хоть одна важная рассылка
     # этому делегату (database.db.has_important_today) — тот же приём, что у schedule_on выше.
