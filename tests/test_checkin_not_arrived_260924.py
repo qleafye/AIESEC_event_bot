@@ -396,3 +396,66 @@ def test_admin_confirm_names_city_and_today(tmp_path):
     text = cb.message.answers[-1][0]
     assert f"Уйдёт 2 делегатам города {_run(city_label('spb'))}" in text
     assert "не пришли сегодня" in text
+
+
+# ── Итог после отправки: ушло меньше, чем обещал экран подтверждения ─────────────────────────
+
+def test_confirm_button_carries_count(tmp_path):
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(_add_user(2))
+    cb = FakeCallback("cna_send:_all", ADMIN_ID)
+    _run(ac.cna_send_confirm(cb))
+    kb = cb.message.answers[-1][2]
+    assert "cna_send_go:_all:2" in [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_send_go_reports_fewer_than_confirmed(tmp_path):
+    """На подтверждении было 3, за это время один отметился на входе — «Ушло 2 из 3»."""
+    from handlers import admin_checkin as ac
+    from handlers.admin_caps import required_capability
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(_add_user(2))
+    _with_bot()
+    cb = FakeCallback("cna_send_go:_all:3", ADMIN_ID)
+    assert required_capability(callback_data=cb.data) == "moderate_reg"
+    _run(ac.cna_send_go(cb))
+    report = cb.message.answers[-1][0]
+    assert "Ушло 2 из 3" in report
+    assert "1 за это время отметились на входе" in report
+    assert "ошибка доставки" not in report
+
+
+def test_send_go_reports_delivery_failure_separately(tmp_path):
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(_add_user(2))
+    bot = _with_bot()
+
+    async def flaky(chat_id, text, reply_markup=None):
+        if chat_id == 2:
+            raise RuntimeError("chat not found")
+        bot.sent.append((chat_id, text, reply_markup))
+
+    bot.send_message = flaky
+    cb = FakeCallback("cna_send_go:_all:2", ADMIN_ID)
+    _run(ac.cna_send_go(cb))
+    report = cb.message.answers[-1][0]
+    assert "Ушло 1 из 2" in report
+    assert "1 не получили сообщение (ошибка доставки)" in report
+    assert "отметились" not in report
+
+
+def test_send_go_all_sent_keeps_plain_report(tmp_path):
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _with_bot()
+    cb = FakeCallback("cna_send_go:_all:1", ADMIN_ID)
+    _run(ac.cna_send_go(cb))
+    report = cb.message.answers[-1][0]
+    assert "Отправлено 1 делегатам из 1" in report
+    assert "Ушло" not in report
