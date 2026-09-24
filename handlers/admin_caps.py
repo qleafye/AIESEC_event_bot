@@ -368,6 +368,27 @@ ADMIN_CAPS: dict[str, str] = {
     # Квик 260912 (W5, Задача 4) — «догонялка перевода».
     "admin_i18n_seed": "settings",
     "state:AdminI18nEdit:*": "settings",
+    # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал
+    # вопросов выше (те же люди отвечают делегатам форума). «Беру»/«✅ Решено» под карточкой
+    # в чате оргов — тоже `moderate_reg`: не настройка, действие над конкретным обращением.
+    "admin_sos": "moderate_reg",
+    "asos:*": "moderate_reg",
+    "sos_claim:*": "moderate_reg",
+    "sos_resolve:*": "moderate_reg",
+    "special:sos_reply": "moderate_reg",
+    # Привязка чата SOS — интеграционная настройка, та же капа, что у остальной привязки чата
+    # (services/chat_tracking.py::is_bot_admin_user требует `settings`).
+    "asos_bind": "settings",
+    "asos_bind_cancel": "settings",
+    "state:SosChatBind:*": "settings",
+    # Ревью 24.09 (находка 1/3, аудит ключей после 8c0d8af): «⚙️ Тексты и тайминги» —
+    # конфигурирование контента/таймингов SOS, та же капа, что привязка чата выше, не
+    # `moderate_reg` (это не действие над конкретным обращением).
+    "asos_settings": "settings",
+    "asos_noop": "settings",
+    "asos_set_delay:*": "settings",
+    "asos_delay_custom:*": "settings",
+    "asos_settings_edit:*": "settings",
     "cmd:create_link": "moderate_reg",
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",
@@ -393,6 +414,9 @@ ADMIN_CAPS: dict[str, str] = {
     # отзыв у получателей — та же capability, что и весь остальной раздел «Рассылки».
     "bc_go": "broadcast",
     "bc_no": "broadcast",
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности на превью немедленной рассылки —
+    # та же capability, что bc_go/bc_no рядом.
+    "bc_important_toggle": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
     "bc_revno": "broadcast",
@@ -424,7 +448,21 @@ ADMIN_CAPS: dict[str, str] = {
     "filter_optpage:*": "broadcast",
     "filter_schedule": "broadcast",
     "filter_send_now": "broadcast",
+    # Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …»
+    # (handlers/admin_broadcast_session_filter.py) — тот же мастер фильтра рассылки, та же
+    # капа, что filter_f_*/filter_opt:* выше.
+    "cksf_start:*": "broadcast",
+    "cksf_city:*": "broadcast",
+    "cksf_day:*": "broadcast",
+    "cksf_pick:*": "broadcast",
+    "cksf_cancel": "broadcast",
     "sched_cancel_*": "broadcast",
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
+    # отложенной рассылки (handlers/admin_broadcasts.py::sched_*) — та же capability, что и
+    # весь мастер планирования (sched_cancel_* выше).
+    "sched_important_toggle": "broadcast",
+    "sched_go": "broadcast",
+    "sched_no": "broadcast",
     "state:Broadcast:*": "broadcast",
     # «📊 Опросы» (handlers/admin_polls.py + admin_poll_wizard.py) — то же право, что и
     # рассылки: опрос уходит той же аудитории тем же каналом. Без нового capability.
@@ -564,6 +602,16 @@ ADMIN_CAPS: dict[str, str] = {
     # прав нет, в отличие от журнала строкой выше).
     "admin_reject_reports": "settings",
     "arp_*": "settings",
+    # Форум-ночь п.4 (расписание форума в боте): раздел «🗓 Программа форума» — тот же класс
+    # экрана настроек, что «🚫 Правила автоотказа»/«🧮 Правила балла» выше (конфигурирование
+    # контента события, не действие над конкретной заявкой). Один префиксный ключ на всё
+    # пространство callback'ов шва handlers/admin_program.py (prog_v/prog_day/prog_new/
+    # prog_field/prog_hall*/prog_copy*/prog_d/prog_dgo/... — все начинаются с "prog_").
+    "admin_program": "settings",
+    "prog_*": "settings",
+    "state:ProgramSessionField:*": "settings",
+    "state:ProgramHallName:*": "settings",
+    "state:ProgramDayCustom:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
@@ -847,8 +895,48 @@ ADMIN_CAPS: dict[str, str] = {
     "state:WaveCreate:*": "moderate_game",
     "state:WaveEdit:*": "moderate_game",
 
-    # checkin: no keys yet -- Phase 12. Capability already exists in
-    # ALL_CAPABILITIES/ROLES so a future phase adds handlers, not registry plumbing.
+    # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
+    # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
+    # `checkin` — до этого она существовала в ALL_CAPABILITIES/ROLES без единой строки меню.
+    "admin_checkin": "checkin",
+    "checkin_upload_start": "checkin",
+    "checkin_point:*": "checkin",
+    # Форум-ночь п.5 (D-18): выбор города для точек-сессий загрузки CSV (менеджер без
+    # закреплённого города/модуль включён) — та же капа «checkin», что у самого экрана.
+    "checkin_point_city:*": "checkin",
+    "state:CheckinImport:*": "checkin",
+
+    # Форум-ночь B1 (идея №10): перевыпуск QR — кнопка на карточке «/find» (cmd_find_user, та
+    # же капа «moderate_reg», что и у самой команды). Управление делегатским аккаунтом, не
+    # рутинное сканирование на входе -- поэтому «moderate_reg», не «checkin».
+    "checkin_reissue:*": "moderate_reg",
+    "checkin_reissue_yes:*": "moderate_reg",
+    "checkin_reissue_no": "moderate_reg",
+
+    # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — та же капа «checkin», что у
+    # раздела-владельца (ничего не отмечает, только парсит выгрузку и отвечает читаемостью).
+    "checkin_test_start": "checkin",
+    "checkin_test_qr": "checkin",
+    "state:CheckinTestUpload:*": "checkin",
+
+    # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом + её настройки — та же капа
+    # «moderate_reg», что у перевыпуска QR выше (D-01, идея №10): массовая отправка сообщений
+    # ВСЕМ делегатам города и правка расписания рассылки — не рутинное сканирование на входе,
+    # которое разрешено волонтёру правом «checkin».
+    "checkinqr_send:*": "moderate_reg",
+    "checkinqr_send_go:*": "moderate_reg",
+    "checkinqr_send_no": "moderate_reg",
+    "checkinqr_cfg:*": "moderate_reg",
+    "checkinqr_toggle:*": "moderate_reg",
+    "checkinqr_time:*": "moderate_reg",
+    "state:CheckinQrTimeEdit:*": "moderate_reg",
+
+    # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
+    # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
+    # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).
+    "cna_send:*": "moderate_reg",
+    "cna_send_go:*": "moderate_reg",
+    "cna_send_no": "moderate_reg",
 
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ

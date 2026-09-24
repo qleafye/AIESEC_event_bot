@@ -459,7 +459,12 @@ async def cmd_find_user(message: types.Message):
             f"Email: {html_module.escape(str(user['email'] or ''))}\n"
             f"Регистрация: {user['registration_date']}"
         )
-        await message.answer(text, parse_mode="HTML")
+        # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
+        # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
+        )]])
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 
@@ -908,3 +913,15 @@ from handlers import admin_polls  # noqa: E402
 # after the gamification+polls tail (golden snapshot: a clean append, no reorder of anything
 # above). Command is intentionally invisible everywhere else — see handlers/admin_purge.py.
 from handlers import admin_purge  # noqa: E402
+
+# Phase 12 (FORUM-CHECKIN.md): shared-router seam import for «✅ Отметки на форуме»
+# (handlers/admin_checkin.py) — registers show_admin_checkin/checkin_upload_start/
+# checkin_import_file_step/checkin_import_file_invalid/cancel_checkin_import/
+# checkin_point_pick in the very tail of admin.router (golden snapshot: a clean append).
+from handlers import admin_checkin  # noqa: E402
+
+# Форум-ночь п.8 (идея №19, SOS): shared-router seam import for «🆘 SOS»
+# (handlers/admin_sos.py) — registers admin_sos/asos_page/asos_bind_start/asos_bind_cancel/
+# asos_bind_step/sos_claim/sos_resolve/admin_reply_to_sos in the very tail of admin.router
+# (golden snapshot: a clean append).
+from handlers import admin_sos  # noqa: E402

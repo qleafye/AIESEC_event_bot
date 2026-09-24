@@ -90,14 +90,22 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 # ── Задача 2: покрытие MENU_TEXTS ────────────────────────────────────────────────────────────
 
 def test_menu_texts_covers_all_thirteen_keys():
-    # Квик 260923 (форум-чекин, D-03): +1 ключ (menu_checkin_qr) -- имя теста историческое
-    # (осталось от 13 ключей до этой правки), assert ниже проверяет актуальное число.
+    # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) + форум-ночь
+    # п.7 (+1 ключ menu_important) + форум-ночь п.8 (+1 ключ menu_sos) -- имя теста
+    # историческое (осталось от 13 ключей до этих правок), assert ниже проверяет актуальное
+    # число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 14
+    assert len(MENU_TEXTS) == 17
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
+    # menu_sos ("🆘 SOS") -- отдельный случай от menu_lang: MENU_EN ЕСТЬ (структурная проверка
+    # test_menu_en_keys_match_menu_buttons_minus_lang_plus_payment этого требует), но перевод
+    # тождественный -- "SOS" пишется одинаково в русском и английском, поэтому множество тоже
+    # схлопывается до 1 элемента, просто по другой причине (не "перевода не существует", а
+    # "перевод совпадает с оригиналом").
+    _SINGLE_VARIANT_KEYS = {"menu_lang", "menu_sos"}
     ru_by_key = dict(MENU_BUTTONS)
     ru_by_key["menu_payment"] = "💳 Оплата"
     for key, texts in MENU_TEXTS.items():
@@ -106,11 +114,12 @@ def test_menu_texts_each_set_has_ru_and_en_variant():
         if key in CONFERENCE_MENU_LABELS:  # + подпись конференции, RU и EN
             conf = CONFERENCE_MENU_LABELS[key]
             assert {ru, MENU_EN[ru], conf, MENU_EN[conf]} == set(texts)
-        elif key != "menu_lang":  # menu_lang уже двуязычна одной строкой -- множество из 1 элемента
-            assert MENU_EN[ru] in texts
-            assert len(texts) == 2
-        else:
+            continue
+        if key == "menu_lang":  # уже двуязычна одной строкой -- MENU_EN записи нет вовсе
             assert len(texts) == 1
+            continue
+        assert MENU_EN[ru] in texts
+        assert len(texts) == (1 if key in _SINGLE_VARIANT_KEYS else 2)
 
 
 # ── Задача 2: 12 точек user_actions.router матчат обе подписи ───────────────────────────────
@@ -131,6 +140,12 @@ _USER_ACTIONS_POINTS = [
     # Квик 260923 (форум-чекин, D-03): маршрутизация не зависит от checkin_qr_enabled -- тот
     # же приём, что у menu_miniapp выше (фильтр F.text.in_(...) матчит независимо от БД).
     ("menu_checkin_qr", "show_my_checkin_qr"),
+    # Форум-ночь п.4 (расписание форума в боте): маршрутизация не зависит от того, есть ли уже
+    # сессии в программе -- тот же приём, что у menu_miniapp/menu_checkin_qr выше.
+    ("menu_schedule", "show_program_schedule"),
+    # Форум-ночь п.7 («❗ Важное»): маршрутизация не зависит от того, были ли сегодня важные
+    # рассылки -- тот же приём, что у menu_miniapp/menu_checkin_qr/menu_schedule выше.
+    ("menu_important", "show_important_today"),
 ]
 
 
@@ -210,8 +225,18 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # отдельного явного `db.set_setting("menu_lang", "on")`, которого ни один тест этого файла не
 # делает. Квик 260923 (форум-чекин): menu_checkin_qr сам по себе default "on" (обычная
 # конвенция), но второй гейт checkin_qr_enabled -- default "off" -- скрывает кнопку, пока
-# менеджер явно не включит модуль (ни один тест этого файла его не включает).
-_GATED_KEYS = ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
+# менеджер явно не включит модуль (ни один тест этого файла его не включает). Форум-ночь п.4:
+# menu_schedule гейтится has_program_sessions_for_city -- в пустой тестовой БД сессий нет ни
+# у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот же паритет.
+# Форум-ночь п.7: menu_important гейтится has_important_today -- в пустой тестовой БД
+# важных рассылок не было ни у одного делегата, кнопки не будет ни на одной клавиатуре.
+# Форум-ночь п.8: menu_sos гейтится is_sos_active_for_city -- в пустой тестовой БД нет
+# forum_date ни у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот
+# же паритет.
+_GATED_KEYS = (
+    "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+    "menu_important", "menu_sos",
+)
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 
 

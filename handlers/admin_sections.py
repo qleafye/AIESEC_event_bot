@@ -46,6 +46,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("group", "event"),
         ("screen", "admin_menu_buttons", "🔘 Кнопки меню"),
         ("toggle", "settings_toggle_bonus"),
+        # Форум-ночь п.4 (расписание форума в боте): контент события, та же капа `settings`,
+        # что остальные строки этого раздела.
+        ("op", "admin_program"),
     ]),
     ("form", "📝 Анкета", [
         ("screen", "admin_event_preset", "🎛 Тип события (пресет)"),
@@ -103,6 +106,14 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_questions"),
         # Quick 260906-8uq (FAQ-01..06): раздел ведения FAQ, сразу после журнала вопросов.
         ("op", "admin_faq"),
+        # Phase 12 (FORUM-CHECKIN.md): «✅ Отметки на форуме» — единственная строка, видимая
+        # волонтёру, у которого из всех прав есть только `checkin` (D-16): раздел «apps» не
+        # опустеет для него, даже если ни один другой ряд ниже ему не виден.
+        ("op", "admin_checkin"),
+        # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — та же капа `moderate_reg`, что журнал
+        # вопросов/FAQ выше (те же люди отвечают делегатам форума), сразу после чек-ина —
+        # оба экрана про «форум идёт прямо сейчас».
+        ("op", "admin_sos"),
         ("screen", "modcard_open", "🧾 Поля карточки заявки"),
         # Phase 28 (28-08, SU-08): чекбокс-пикеры скоринговых множеств — рядом с «🧾 Поля
         # карточки заявки» (тот же класс экрана: динамический набор, кнопки вместо кодов).
@@ -582,3 +593,7 @@ from handlers import admin_reject_rules  # noqa: E402,F401
 # Квик 260923 (AUTOREJ-REPORT, D-I): шов «📊 Отчётность автоотказа» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_rules, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_reject_reports  # noqa: E402,F401
+
+# Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
+# admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers import admin_program  # noqa: E402,F401

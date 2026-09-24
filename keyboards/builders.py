@@ -2,9 +2,10 @@ import logging
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
-from database.db import get_user, has_faq_for_city
+from database.db import get_user, has_faq_for_city, has_program_sessions_for_city, has_important_today
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
-from cities import get_setting_typed_for_city, cities_module_on, normalize_city
+from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
@@ -39,6 +40,11 @@ MENU_BUTTONS = [
     ("menu_invites", "👥 Мои приглашённые"),
     ("menu_info", "ℹ️ Информация о форуме"),
     ("menu_program", "📅 Программа форума"),
+    # Форум-ночь п.4 (расписание форума в боте): интерактивная программа сессий/залов
+    # (handlers/program.py) — отдельная кнопка от статичного фото menu_program выше.
+    # Дополнительный гейт ниже (`has_program_sessions_for_city`) прячет кнопку, пока у города
+    # делегата ещё нет ни одной сессии, — тот же приём, что у menu_miniapp/menu_faq.
+    ("menu_schedule", "🗓 Программа"),
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
@@ -65,6 +71,13 @@ MENU_BUTTONS = [
     # что и у menu_miniapp выше (двойной гейт: своя видимость menu_checkin_qr + модуль
     # checkin_qr_enabled, см. get_main_menu_kb ниже).
     ("menu_checkin_qr", "🎟 Мой QR"),
+    # Форум-ночь п.7 (D-XX, «❗ Важное»): список важных рассылок делегату за сегодня. Гейт
+    # ниже (has_important_today) прячет кнопку, пока сегодня для этого делегата не было ни
+    # одной важной рассылки — тот же приём, что у menu_faq/menu_checkin_qr.
+    ("menu_important", "❗ Важное"),
+    # Форум-ночь п.8 (идея №19, SOS): кнопка видна только в дни форума города — гейт ниже
+    # (services.sos.is_sos_active_for_city), тот же приём, что у menu_schedule/menu_important.
+    ("menu_sos", "🆘 SOS"),
 ]
 
 # Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
@@ -213,6 +226,42 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: event_type resolve failed: {e}")
         conference = False
 
+    # Форум-ночь п.4 (расписание форума в боте): кнопка «🗓 Программа» рисуется только пока у
+    # города делегата есть хотя бы одна сессия. `code` — `None`, когда модуль городов выключен
+    # (см. выше), но у расписания «нет города» не бывает — там всегда конкретный код
+    # (`cities.default_city_code()`, тот же однocity-фоллбэк, что использует админский экран
+    # `handlers/admin_program.py._resolve_city_for_screen`).
+    schedule_on = False
+    try:
+        schedule_city = code if code is not None else default_city_code()
+        schedule_on = await has_program_sessions_for_city(schedule_city)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: has_program_sessions_for_city resolve failed for {telegram_id}: {e}")
+        schedule_on = False
+
+    # Форум-ночь п.7 («❗ Важное»): кнопка только пока сегодня БЫЛА хоть одна важная рассылка
+    # этому делегату (database.db.has_important_today) — тот же приём, что у schedule_on выше.
+    # Нет telegram_id (легаси-вызов без аргумента) -> нечего проверять, кнопки не будет.
+    important_on = False
+    if telegram_id is not None:
+        try:
+            important_on = await has_important_today(telegram_id, msk_now().strftime("%Y-%m-%d"))
+        except Exception as e:
+            logger.error(f"get_main_menu_kb: has_important_today resolve failed for {telegram_id}: {e}")
+            important_on = False
+
+    # Форум-ночь п.8 (идея №19, SOS): кнопка только в дни форума города — тот же приём, что
+    # schedule_on выше (единственное чтение до цикла, fail-soft к False, город без фолбэка на
+    # default_city_code() не бывает — SOS привязывается к конкретному чату конкретного города).
+    sos_on = False
+    try:
+        sos_city = code if code is not None else default_city_code()
+        from services.sos import is_sos_active_for_city
+        sos_on = await is_sos_active_for_city(sos_city)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: is_sos_active_for_city resolve failed for {telegram_id}: {e}")
+        sos_on = False
+
     kb = ReplyKeyboardBuilder()
     for key, text in MENU_BUTTONS:
         if conference:
@@ -235,6 +284,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # пункт (has_faq_for_city).
             if key == "menu_faq" and not faq_on:
                 continue
+            # Форум-ночь п.4: вторая половина гейта — сама кнопка value=="on" (уже проверено
+            # выше) недостаточна, пока в программе города нет ни одной сессии.
+            if key == "menu_schedule" and not schedule_on:
+                continue
             # Phase 27 (27-04): вторая половина гейта — сама кнопка value=="on" (проверено
             # выше общей веткой `if val == "on"`) недостаточна, пока не включён модуль.
             if key == "menu_lang" and not lang_module_on:
@@ -242,6 +295,14 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Квик 260923 (форум-чекин, D-03): вторая половина гейта — сама кнопка value=="on"
             # недостаточна, пока менеджер не включил модуль checkin_qr_enabled.
             if key == "menu_checkin_qr" and not checkin_qr_on:
+                continue
+            # Форум-ночь п.7: вторая половина гейта — сама кнопка value=="on" недостаточна,
+            # пока сегодня не было ни одной важной рассылки этому делегату.
+            if key == "menu_important" and not important_on:
+                continue
+            # Форум-ночь п.8 (SOS): вторая половина гейта — сама кнопка value=="on"
+            # недостаточна вне дней форума города.
+            if key == "menu_sos" and not sos_on:
                 continue
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,

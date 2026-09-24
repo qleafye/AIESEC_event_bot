@@ -130,11 +130,22 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     _db_ready(tmp_path)
     result = asyncio.run(i18n_sources.corpus())
     assert result, "корпус не должен схлопнуться до нуля"
-    # Research оценивает ~265 уникальных строк; 150-600 — коридор «не схлопнулось до нуля и
+    # Research оценивает ~265 уникальных строк; 150-620 — коридор «не схлопнулось до нуля и
     # не разъехалось на весь реестр». Верхняя граница поднята с 400 квик-фиксом 260913: Phase 30
     # добавила ~90 ключей анкеты 2.0, корпус вырос до 467 — нижнюю границу (реальный признак
-    # схлопывания) не трогаем.
-    assert 150 <= len(result) <= 600, len(result)
+    # схлопывания) не трогаем. Форум-ночь п.4 (расписание форума в боте): +10 литералов
+    # handlers/program.py (заголовок/пусто/«идёт сейчас»/«следующая»/«зал»/«спикер»/
+    # «параллельно»/«назад к дням») — 600 -> 610 с небольшим запасом (620). Форум-ночь п.8
+    # (идея №19, SOS): +5 реестровых дефолтов group "event" (sos_category_prompt_text/
+    # sos_details_prompt_text/sos_location_prompt_text/sos_sent_text/sos_already_open_text)
+    # + 5 code_literals (четыре категории + подпись кнопки геопозиции) — 614 -> 624. Ревью 24.09
+    # (находка 3) + форум-ночь п.9 (⭐ отзыв о сессии): +1 реестровый дефолт
+    # sos_recent_followup_text + 4 реестровых дефолта group "event" (session_feedback_prompt_text/
+    # _thanks_text/_comment_hint_text/_comment_saved_text) + 3 code_literals шаблонов
+    # claim_status (services.sos.claim_status_claimed/_open/_fallback_name) + 1 code_literal
+    # session_feedback.unavailable_alert — 624 -> 634, потолок поднят до фактического размера
+    # с небольшим запасом (650).
+    assert 150 <= len(result) <= 650, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"

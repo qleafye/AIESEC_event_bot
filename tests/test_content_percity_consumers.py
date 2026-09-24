@@ -228,9 +228,19 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
     # menu_checkin_qr (квик 260923, форум-чекин) рисуется только при checkin_qr_enabled=on
     # (двойной гейт, тот же приём, что у menu_miniapp) — master-тумблер в дефолте выключен,
     # отсутствие кнопки — ожидаемое поведение.
+    # menu_schedule («🗓 Программа», квик — сессии по городу) рисуется только при непустой
+    # программе города делегата — тот же приём, что у menu_faq/menu_checkin_qr; на свежей
+    # БД сессий нет, отсутствие кнопки — ожидаемое поведение.
+    # menu_important («❗ Важное», форум-ночь п.7) рисуется только когда сегодня БЫЛА важная
+    # рассылка этому делегату — на свежей БД рассылок не было, кнопки не будет.
+    # menu_sos («🆘 SOS», форум-ночь п.8) рисуется только в дни форума города
+    # (services.sos.is_sos_active_for_city) — на свежей БД forum_date не задан, кнопки не будет.
     expected_order = [
         label for key, label in MENU_BUTTONS
-        if key not in ("menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr")
+        if key not in (
+            "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
+            "menu_important", "menu_sos",
+        )
     ]
     assert texts == expected_order
 

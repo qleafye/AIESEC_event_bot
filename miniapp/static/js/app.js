@@ -82,6 +82,8 @@ export const ROUTES = [
   // (проверяет сервер на каждом запросе), не строка NAV: плитка хаба строится вне NAV,
   // как dashboardTile (hub.js::renderManagerHub).
   ["#/setup", "screens/setup.js"],
+  // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме.
+  ["#/scanner", "screens/scanner.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -130,6 +132,9 @@ export const NAV = [
   { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
   { hash: "#/stats", section: "stats", cap: "stats", group: "data" },
   { hash: "#/settings", section: "settings", cap: "settings", group: "manage" },
+  // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме — первый пункт группы
+  // «🎪 Событие» (SECTION_GROUPS выше её уже несла, плиток в ней раньше не было).
+  { hash: "#/scanner", section: "checkin", cap: "checkin", group: "event" },
 ];
 
 // Иконки навигации (D-13) по маршруту — общий словарь для таб-бара (раскладка A) и плиток
@@ -149,6 +154,10 @@ export const NAV_ICONS = {
   "#/admin-coins": "wallet",
   "#/stats": "bar-chart-2",
   "#/settings": "settings",
+  // Phase 12 (FORUM-CHECKIN.md, D-08): переиспользуем существующую "camera" (Phase 23.1) —
+  // сканер QR визуально ближе всего к камере из уже запертого инвентаря
+  // (tests/test_web_assets_260823.py::EXPECTED_ICON_NAMES), новой геометрии не заводим.
+  "#/scanner": "camera",
 };
 
 const compiled = ROUTES.map(([pattern, module]) => {

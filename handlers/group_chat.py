@@ -20,7 +20,9 @@ Telegram (aiogram собирает `allowed_updates` из зарегистрир
 
 D-9 — железное правило всего модуля: текст сообщения из группы НИГДЕ не читается и не
 логируется. Каждый хендлер ниже работает только с id/статусами/типами вложений, никогда с
-`message.text`/`message.caption`.
+`message.text`/`message.caption`. Форум-ночь п.8 (SOS) — ОДНО узкое, явное исключение:
+`on_sos_id_command` матчит фиксированную команду `/sos_id` (не содержимое) и не читает
+`message.text` за пределами этого совпадения — см. комментарий у самого хендлера.
 
 Правка 15.09 (владелец, «привязка через личку админа»): бот БОЛЬШЕ НИКОГДА не пишет В ГРУППУ —
 ни подтверждение привязки, ни вопрос о городе, ни `/chat_stats` (команда снесена целиком).
@@ -37,6 +39,7 @@ D-9 — железное правило всего модуля: текст со
 import logging
 
 from aiogram import F, Router, types, Bot
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import city_codes, city_label, cities_module_on, enabled_cities
@@ -201,6 +204,27 @@ async def on_left_chat_member(message: types.Message):
         return
     await upsert_chat_member(message.chat.id, user.id, "left", source="message")
     await log_chat_event(message.chat.id, user.id, "leave")
+
+
+# Форум-ночь п.8 (идея №19, SOS): `/sos_id` — узкое, ЯВНОЕ исключение из D-9 («текст сообщения
+# из группы нигде не читается») для ЭТОГО модуля. D-9 запрещает читать СОДЕРЖИМОЕ (что человек
+# написал), а не адресную команду того же класса, что my_chat_member/chat_member апдейты выше —
+# `Command("sos_id")` матчит фиксированный префикс, не текст. Бот по-прежнему НИКОГДА не пишет
+# В ГРУППУ (правка 15.09) — ответ (подтверждение привязки) идёт личным сообщением отправителю
+# команды, ровно как у остальной привязки чата (`services.chat_tracking`/`services.sos`), и
+# только если для него есть незакрытая заявка `sos_chat_bind_pending` (иначе — тишина, тот же
+# D-9-приём, что у `on_bot_membership_changed`: без явной заявки — ни ответа, ни намёка).
+# Отдельной перепроверки капы `settings` здесь нет — сама заявка уже АВТОРИЗАЦИЯ: она могла
+# появиться только через `handlers/admin_sos.py::asos_bind_start`, который сам сидит под
+# `ADMIN_CAPS["asos_bind"] = "settings"` (CapabilityMiddleware на `admin.router`); человек без
+# этого права не мог поставить заявку, на которую отвечает эта команда.
+@router.message(Command("sos_id"))
+async def on_sos_id_command(message: types.Message, bot: Bot):
+    from services import sos as sos_service
+
+    await sos_service.complete_chat_bind(
+        bot, message.from_user.id, message.chat.id, message.chat.title or "",
+    )
 
 
 @router.message()

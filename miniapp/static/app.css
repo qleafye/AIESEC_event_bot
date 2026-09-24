@@ -2240,3 +2240,28 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    на off отдельным правилом выше по файлу), здесь только размер строки и отступ между ними. */
 .skeleton--row { height: 56px; border-radius: var(--radius-sm); }
 .skeleton-list > .skeleton--row + .skeleton--row { margin-top: var(--sp-2); }
+
+/* Phase 12 (FORUM-CHECKIN.md, D-08): экран «Сканер» — счётчик прихода и крупная плашка
+   результата скана/поиска. Тон плашки переиспользует ту же тройку токенов, что .chip.success/
+   .chip.danger/.chip.warn (dataviz-контракт 19.1-05) — новых цветов не заводим. */
+.checkin-stats { font-size: 14px; color: var(--text-muted); }
+.checkin-stats-total { font-weight: 600; color: var(--text); margin-top: var(--sp-1); }
+.checkin-plaque {
+  margin-top: var(--sp-4);
+  padding: var(--sp-6) var(--sp-4);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.checkin-plaque-dot { font-size: 40px; line-height: 1; margin-bottom: var(--sp-2); }
+.checkin-plaque-heading { font-size: 22px; font-weight: 700; }
+.checkin-plaque-name { font-size: 18px; margin-top: var(--sp-2); }
+.checkin-plaque-city { font-size: 14px; color: var(--text-muted); }
+.checkin-plaque-reason { font-size: 14px; margin-top: var(--sp-2); }
+.checkin-plaque.tone-success { border-color: var(--success); background: var(--surface-alt); }
+.checkin-plaque.tone-success .checkin-plaque-heading { color: var(--success-text); }
+.checkin-plaque.tone-warn { border-color: var(--warn); }
+.checkin-plaque.tone-error { border-color: var(--danger); background: var(--surface-alt); }
+.checkin-plaque.tone-error .checkin-plaque-heading { color: var(--danger-text); }
+.checkin-plaque-next { margin-top: var(--sp-4); }

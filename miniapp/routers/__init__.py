@@ -253,6 +253,22 @@
                                        413 {"reason":"too_large","text"} — больше 10 МБ
                                        404 {"reason":"no_draft"} — черновика ещё нет
                                        ставит outbox reg_resume_upload {telegram_id,file_id,filename}
+  Менеджер (Phase 12, FORUM-CHECKIN.md, D-08/D-12/D-13, `require_cap("checkin")` + section
+  checkin; городской скоуп на /stats — как у прочих менеджерских ручек Mini App, `Principal.city`,
+  НЕ бот-овский `admin_selected_city`; /scan и /manual город делегата против привязки НЕ сверяют,
+  см. докстринг `miniapp/routers/checkin.py`):
+  POST /app/api/checkin/scan {payload, point?} -> {status: new|duplicate|denied|not_found|
+                                       foreign_event, reason_text|null, full_name|null, city|null,
+                                       university?, username?, scanned_at?}
+                                       point по умолчанию — «Вход» (services.checkin.ENTRY_POINT)
+  POST /app/api/checkin/manual {telegram_id, point?} -> тот же контракт, что /scan (без QR —
+                                       после поиска по фамилии, D-11/D-12)
+  GET  /app/api/checkin/search?q=  -> {items[{telegram_id,full_name,city,university,username,
+                                       eligible,reason_text|null}]} — одобренные текущего сезона
+                                       (eligible) первыми; q короче 2 не отфильтровывается — тот
+                                       же сервис, что и остальной поиск по фамилии в проекте
+  GET  /app/api/checkin/stats      -> {arrived, approved, cities: null|[{code,label,arrived,
+                                       approved}]} — задача A2, та же разбивка, что у бота
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -273,6 +289,7 @@ from __future__ import annotations
 from miniapp.routers import (
     admin_tasks,
     applications,
+    checkin,
     coins,
     coins_admin,
     faq,
@@ -306,6 +323,7 @@ ALL_ROUTERS = [
     applications.router,
     questions.router,
     faq.router,
+    checkin.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]

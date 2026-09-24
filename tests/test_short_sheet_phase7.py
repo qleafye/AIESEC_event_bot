@@ -36,8 +36,11 @@ def test_short_sheet_headers_width_follows_short_gate_only(tmp_path):
         return await reg.short_sheet_headers()
 
     headers = asyncio.run(go())
+    # Форум-ночь B2 (идея №17): «Пришёл» — хвост SHEET_COLUMNS, идёт последней даже после
+    # активных __short-вопросов (порядок = порядок итерации SHEET_COLUMNS).
     assert headers == [
         "ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Телефон", "Город",
+        "Пришёл",
     ]
 
 
@@ -51,7 +54,7 @@ def test_short_sheet_headers_zero_keys_is_system_only(tmp_path):
         return await reg.short_sheet_headers()
 
     headers = asyncio.run(go())
-    assert headers == ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО"]
+    assert headers == ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл"]
 
 
 # ── Group 3: Sheets rows stay RAW, no formula-injection prefix (квик 260919) ────────────────

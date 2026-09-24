@@ -203,6 +203,17 @@ _APPS_FIELD_ORDER = [
     # выше) — сам master-тумблер checkin_qr_enabled НЕ здесь (type "enum", живёт в
     # settings_toggle_rows/admin_sections.SECTIONS, как остальные тумблеры «📋 Заявки»).
     "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+    # Форум-ночь: текст самой рассылки QR накануне форума (+ утренний повтор) — был заведён
+    # в реестре (D-25), но забыт здесь: время рассылки правилось в «✅ Отметки на форуме»
+    # (handlers/admin_checkin.py), а сам текст в боте было не найти вовсе (только Mini App).
+    "checkin_qr_broadcast_text",
+    # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — тот же приём, что у трёх
+    # ключей чек-ина выше (редактор экрана достаётся бесплатно попаданием в этот список).
+    "checkin_not_arrived_text",
+    # Форум-ночь B3 (идея №22): шпаргалка волонтёра чек-ина — уходила личным сообщением
+    # (handlers/admin_roles.py::roles_assign), но в боте её было негде поправить (только
+    # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
+    "checkin_volunteer_guide_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -291,6 +302,11 @@ _SYSTEM_FIELD_ORDER = [
     # тумблер живёт строкой раздела «🔧 Управление», ровно как у пары chat_tracking_enabled/
     # chat_refresh_minutes.
     "daily_digest_time",
+    # Форум-ночь п.7 («❗ Важное»): пометка важной рассылки — редактор экрана достаётся
+    # бесплатно попаданием в этот список (иначе менеджер её в боте не увидит вовсе, правило
+    # файла); сам тумблер «❗ Отметить как важное» — не настройка реестра, а кнопка мастера
+    # рассылки (handlers/admin_broadcasts.py), сюда НЕ входит.
+    "important_broadcast_label",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
@@ -2325,6 +2341,60 @@ def _tab_confirm_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+async def _reschedule_checkin_qr_if_forum_date(key: str) -> None:
+    """Форум-ночь п.3 (D-03): правка «🗓 Дата начала форума» (`forum_date`, глобальная или
+    `forum_date__city__{code}`) обязана переставить джобы рассылки QR НЕМЕДЛЕННО — в отличие
+    от `daily_digest_time`/`chat_refresh_minutes`, для которых честно написано «после
+    перезапуска». `forum_date` — единственный ключ, от которого зависит САМА постановка джобы
+    (нет даты — джобы нет вовсе), поэтому ждать рестарта здесь неприемлемо: менеджер вводит
+    дату форума за день-два до самого события.
+
+    Композитный ключ (`forum_date__city__{code}`) переставляет ТОЛЬКО этот город. Голый
+    `forum_date` — это ГЛОБАЛЬНЫЙ фолбэк (CONTEXT A: правка ключа без городского
+    переопределения) — при включённом модуле городов на него могут опираться СРАЗУ несколько
+    городов без своего override, поэтому здесь нужен полный `reconcile_broadcasts()` (каждый
+    город сам решит через `forum_date_for`, какое значение у него в силе), а не постановка
+    одной несуществующей «безгородской» джобы. Fail-soft — сбой планировщика (например, тест
+    без инициализированного `AsyncIOScheduler`) не должен ронять сохранение настройки."""
+    if _base_setting_key(key) != "forum_date":
+        return
+    try:
+        from services.checkin_broadcast import reconcile_broadcasts, schedule_city_jobs
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_jobs(city)
+        else:
+            await reconcile_broadcasts()
+    except Exception as e:
+        logger.error(f"_reschedule_checkin_qr_if_forum_date({key!r}): {e}")
+
+
+async def _reconcile_session_feedback_if_relevant(key: str) -> None:
+    """Ревью 24.09 (аудит ключей после 8c0d8af): свободный ввод задержки («✏️ Другое» на
+    экране «⭐ Отзывы о сессиях», `handlers/session_feedback.py::prog_fbdelay_custom_start`)
+    идёт через ЭТОТ общий хендлер (переиспользуем валидацию int/сброс «-», не пишем свой
+    ввод) — а перестановка уже стоящих джоб отзыва живёт в `services/session_feedback.py` и
+    больше нигде о сохранении настройки не узнаёт. Тот же приём, что
+    `_reschedule_checkin_qr_if_forum_date` выше: хук молча no-op'ает на любом другом ключе.
+
+    Тумблер `session_feedback_enabled` сюда не заходит — у пресетов и тумблера своя прямая
+    кнопка (`prog_fbtoggle`/`prog_fbdelay`), они зовут `reconcile_city`/`reconcile_all`
+    напрямую и в общий `EditSetting.waiting_for_value` не попадают вовсе."""
+    if _base_setting_key(key) != "session_feedback_delay_minutes":
+        return
+    try:
+        from services import session_feedback as sf
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            if parsed is not None:
+                await sf.reconcile_city(parsed[1])
+        else:
+            await sf.reconcile_all()
+    except Exception as e:
+        logger.error(f"_reconcile_session_feedback_if_relevant({key!r}): {e}")
+
+
 @router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -2471,8 +2541,12 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     warning = ""
     if value == "-":
         await delete_setting_by_admin(message.from_user.id, key)
+        await _reschedule_checkin_qr_if_forum_date(key)
+        await _reconcile_session_feedback_if_relevant(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
+        await _reschedule_checkin_qr_if_forum_date(key)
+        await _reconcile_session_feedback_if_relevant(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
             await _apply_event_type_preset(value.strip().lower())
