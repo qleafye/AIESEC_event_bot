@@ -6,6 +6,7 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
+from secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
 from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback
 from services.reminders import pending_reminder_loop
@@ -53,6 +54,11 @@ def _configure_logging():
     # Tame chatty third-party loggers so the file isn't drowned in framework noise.
     for noisy in ("aiogram.event", "apscheduler", "urllib3", "gspread", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # Текст исключений aiogram/aiohttp несёт URL Bot API с токеном в пути — ни в файл,
+    # ни в docker logs он попадать не должен (secret_redact.py).
+    register_secret(config.BOT_TOKEN)
+    install_log_redaction()
 
 
 # WR-02 / audit systemic fix: strong-ref fire-and-forget helper now lives in

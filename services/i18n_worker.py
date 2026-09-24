@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from secret_redact import redact_secrets
 
 from database.db import (
     bump_translation_attempt,
@@ -111,7 +112,7 @@ async def drain(limit_batches: int = 1) -> int:
         except Exception as exc:  # noqa: BLE001 — сбой драйвера: строки остаются в очереди
             logger.error("i18n_worker.drain: сбой драйвера перевода (%s)", exc)
             for p in prepared:
-                await bump_translation_attempt(p["row"]["id"], str(exc))
+                await bump_translation_attempt(p["row"]["id"], redact_secrets(exc))
             continue
 
         if len(translated) != len(prepared):

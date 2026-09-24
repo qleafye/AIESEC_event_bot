@@ -13,6 +13,7 @@ import asyncio
 import csv
 import html as html_module
 import io
+from secret_redact import redact_secrets
 import json
 import logging
 import os
@@ -204,7 +205,7 @@ async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSM
         await state.set_state(Broadcast.message)
 
     except Exception as e:
-        await callback.message.edit_text(f"Ошибка при чтении файла: {e}")
+        await callback.message.edit_text(f"Ошибка при чтении файла: {redact_secrets(e)}")
         await state.clear()
 
 async def _start_segment_broadcast(callback: types.CallbackQuery, state: FSMContext, user_ids: list, prompt: str):
