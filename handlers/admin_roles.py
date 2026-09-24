@@ -14,8 +14,9 @@ module imports them from HERE, not from the aggregator, since admin_roles is alw
 first (see handlers/admin.py's bottom seam-import order).
 """
 import html as html_module
+import logging
 
-from aiogram import F, types
+from aiogram import F, types, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -37,9 +38,12 @@ from handlers.admin_caps import (
     ALL_CAPABILITIES,
     CAP_LABELS,
     ROLES,
+    has_capability,
     role_caps_key,
     role_enabled_key,
 )
+
+logger = logging.getLogger(__name__)
 from cities import (
     CITIES,
     cities_module_on,
@@ -819,7 +823,7 @@ async def roles_add_person(message: types.Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("roles_addrole:"))
-async def roles_assign(callback: types.CallbackQuery):
+async def roles_assign(callback: types.CallbackQuery, bot: Bot):
     tid, role = _parse_staff_role_callback(callback.data)
     if tid is None or role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
@@ -827,6 +831,19 @@ async def roles_assign(callback: types.CallbackQuery):
 
     created = await add_staff(tid, role, callback.from_user.id)
     await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
+
+    # Форум-ночь B3 (идея №22): человеку, только что впервые получившему право «checkin»
+    # (сама роль его несёт СЕЙЧАС, а не просто существует в ALL_CAPABILITIES), — личным
+    # сообщением шпаргалка волонтёра. `created` — только на НОВОЕ назначение (повторное
+    # нажатие «Уже был в этой роли» не должно слать шпаргалку заново).
+    if created and await has_capability(tid, "checkin"):
+        try:
+            guide_text = await get_setting_typed("checkin_volunteer_guide_text")
+            await bot.send_message(tid, guide_text)
+        except Exception:
+            logger.warning(
+                "roles_assign: не удалось отправить шпаргалку волонтёра tid=%s", tid, exc_info=True,
+            )
 
     # WR-02: same superadmin-only gate as roles_city_start/roles_city_pick -- a non-superadmin
     # settings holder lands straight on the roster instead of a picker that would refuse them.
