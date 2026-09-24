@@ -1498,6 +1498,47 @@ async def init_db():
             )
         ''')
 
+        # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
+        # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
+        # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
+        # строк лексикографически совпадает со сравнением значения, лишний парсинг на каждый
+        # запрос не нужен (пересечение слотов/сортировка по времени — обычный `ORDER BY`/`<`).
+        # `services.program.point_for_session` уже готовит `f"session:{id}"` для будущей
+        # отметки на сессиях (FORUM-CHECKIN.md D-18..D-20) — не эта задача, только совместимое
+        # API. Удаление зала НЕ каскадит сессии (`delete_program_hall`) — они остаются без
+        # зала (`hall_id -> NULL`), а не пропадают из программы.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS program_halls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                name TEXT NOT NULL,
+                capacity INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_program_halls_city ON program_halls(city, sort_order)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS program_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                day TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                title TEXT NOT NULL,
+                speaker TEXT,
+                hall_id INTEGER REFERENCES program_halls(id),
+                description TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_program_sessions_city_day "
+            "ON program_sessions(city, day, start_time)"
+        )
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -8137,3 +8178,193 @@ async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
     total = int(row[0] or 0) if row else 0
     confirmed = int(row[1] or 0) if row and row[1] is not None else 0
     return total, confirmed
+
+
+# ── Форум-ночь п.4: расписание форума в боте (program_halls/program_sessions) ─────────────────
+# Бизнес-правила (разбор времени, предупреждение о занятости зала, слоты параллельных сессий,
+# копирование между городами) — в аiogram-free `services/program.py`; здесь только сырой CRUD,
+# тем же приёмом, что `services/reject_rules.py` поверх `reject_rules`/`auto_reject_log`.
+
+async def create_program_hall(city: str, name: str, capacity: int | None = None) -> int:
+    """Новый зал города — `sort_order` авто (следующий после максимального уже существующего
+    в этом городе): менеджер не вводит число сортировки руками (CLAUDE.md — кодовые значения
+    людям не показываем и вводить не просим)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM program_halls WHERE city = ?", (city,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        next_sort = int(row[0]) + 1 if row and row[0] is not None else 0
+        cursor = await db.execute(
+            "INSERT INTO program_halls (city, name, capacity, sort_order) VALUES (?, ?, ?, ?)",
+            (city, name, capacity, next_sort),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def list_program_halls(city: str) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_halls WHERE city = ? ORDER BY sort_order, id", (city,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_program_hall(hall_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_halls WHERE id = ?", (hall_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def rename_program_hall(hall_id: int, name: str) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE program_halls SET name = ? WHERE id = ?", (name, hall_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def count_program_sessions_for_hall(hall_id: int) -> int:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM program_sessions WHERE hall_id = ?", (hall_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+async def delete_program_hall(hall_id: int) -> bool:
+    """Удаление зала НЕ удаляет его сессии — они остаются в программе, только теряют
+    привязку (`hall_id -> NULL`); подтверждение на экране (handlers/admin_program.py) называет
+    их число ДО удаления, тем же приёмом, что `arr_delete_confirm`/`afaq_delete_confirm`."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE program_sessions SET hall_id = NULL, updated_at = ? WHERE hall_id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), hall_id),
+        )
+        cursor = await db.execute("DELETE FROM program_halls WHERE id = ?", (hall_id,))
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def create_program_session(
+    city: str, day: str, start_time: str, end_time: str, title: str, *,
+    speaker: str | None = None, hall_id: int | None = None, description: str | None = None,
+) -> int:
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO program_sessions "
+            "(city, day, start_time, end_time, title, speaker, hall_id, description, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (city, day, start_time, end_time, title, speaker, hall_id, description, stamp, stamp),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_program_session(session_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_sessions WHERE id = ?", (session_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+# Поля, которые `update_program_session` умеет частично патчить — тот же приём, что явный allow-
+# list колонок у любой другой PATCH-функции в этом файле (не SET из произвольных kwargs).
+_PROGRAM_SESSION_PATCH_FIELDS = (
+    "day", "start_time", "end_time", "title", "speaker", "hall_id", "description",
+)
+
+
+async def update_program_session(session_id: int, **fields) -> bool:
+    """Частичный PATCH — только ключи из `_PROGRAM_SESSION_PATCH_FIELDS`, `updated_at`
+    обновляется вместе с ними. Без единого известного поля UPDATE не выполняется вовсе,
+    возвращает `False` (как `rename_program_hall` без реального изменения)."""
+    keys = [k for k in fields if k in _PROGRAM_SESSION_PATCH_FIELDS]
+    if not keys:
+        return False
+    sets = [f"{key} = ?" for key in keys]
+    values = [fields[key] for key in keys]
+    sets.append("updated_at = ?")
+    values.append(msk_now().strftime("%Y-%m-%d %H:%M:%S"))
+    values.append(session_id)
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"UPDATE program_sessions SET {', '.join(sets)} WHERE id = ?", values,
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def delete_program_session(session_id: int) -> bool:
+    async with _connect() as db:
+        cursor = await db.execute("DELETE FROM program_sessions WHERE id = ?", (session_id,))
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def list_program_sessions_for_city_day(city: str, day: str) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_sessions WHERE city = ? AND day = ? "
+            "ORDER BY start_time, end_time, id",
+            (city, day),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def list_program_days_for_city(city: str) -> list[str]:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT DISTINCT day FROM program_sessions WHERE city = ? ORDER BY day", (city,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [r[0] for r in rows]
+
+
+async def has_program_sessions_for_city(city: str) -> bool:
+    """Гейт кнопки делегата «🗓 Программа» (keyboards/builders.py::get_main_menu_kb) — дешёвый
+    `EXISTS`, а не подсчёт/выборка."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM program_sessions WHERE city = ? LIMIT 1", (city,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row is not None
+
+
+async def sessions_overlapping_hall(
+    city: str, day: str, hall_id: int, start_time: str, end_time: str, *,
+    exclude_id: int | None = None,
+) -> list[dict]:
+    """Сессии ДРУГОГО занятия ТОГО ЖЕ зала в ТОТ ЖЕ день, чей интервал `[start_time, end_time)`
+    пересекается с переданным — предупреждение словами (CLAUDE.md), не запрет: вызывающий
+    (`services.program.hall_conflict_warning`) показывает текст и спрашивает подтверждение,
+    сохранить разрешено в любом случае."""
+    params: list = [city, day, hall_id, end_time, start_time]
+    sql = (
+        "SELECT * FROM program_sessions WHERE city = ? AND day = ? AND hall_id = ? "
+        "AND start_time < ? AND ? < end_time"
+    )
+    if exclude_id is not None:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
