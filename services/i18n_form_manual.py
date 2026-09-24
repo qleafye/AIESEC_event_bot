@@ -846,6 +846,18 @@ _REGISTRY_TEXTS_EN = {
     # уже отделённым остатком (тот же класс бага, что ревью нашло у `{claim_status}`, только
     # для символьного, не прогресс-префикса).
     "Отмечен на входе в {time} · сессий: {sessions}": "Checked in at {time} · sessions: {sessions}",
+    # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — вопрос, пять подписей
+    # кнопок ответа, подсказка после «Другое», ответ-подтверждение (group "reg",
+    # forum_noshow_poll_*).
+    "Мы не видели тебя на форуме. Расскажешь, что помешало прийти?":
+        "We didn't see you at the forum. Would you tell us what got in the way?",
+    "Передумал(а)": "Changed my mind",
+    "Не смог(ла) по учёбе/работе": "Couldn't make it because of school/work",
+    "Далеко ехать": "Too far to travel",
+    "Забыл(а)": "Forgot",
+    "Другое": "Other",
+    "Напиши своими словами, что помешало прийти.": "Tell us in your own words what got in the way.",
+    "Спасибо, учтём!": "Thanks, noted!",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
