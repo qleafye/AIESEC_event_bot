@@ -238,7 +238,7 @@ async def checkin_scan(
         }
 
     token = parsed.get("token")
-    user, denial_code = await resolve_scanned_user(token)
+    user, denial_code = await resolve_scanned_user(token, point=point, source="miniapp")
     if denial_code is not None:
         await _log_denial(p, bound, denial_code, point=point, source="miniapp", user=user)
         return {

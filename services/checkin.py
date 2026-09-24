@@ -31,6 +31,7 @@ import logging
 import re
 import secrets
 from datetime import datetime
+from typing import TypedDict
 
 import segno
 
@@ -135,6 +136,9 @@ DENIAL_REASON_TEXT = {
     # checkin_reissue_yes) — этот код УЖЕ не откроет вход, даже если делегат ещё не успел
     # открыть новый (database.db.get_checkin_token_replacement).
     "token_replaced": "QR заменён — попросите делегата открыть новый в «🎟 Мой QR»",
+    # 25.09: токен узнал внешний резолвер (`register_token_resolver`), но отметку для такого
+    # вида пропуска записывать пока некому (гостевые QR — будущая фича).
+    "unknown_pass_kind": "Неизвестный тип пропуска — отправьте на стойку проблемных случаев",
 }
 
 
@@ -169,21 +173,131 @@ async def checkin_denial(user: dict | None) -> str | None:
     return None
 
 
-async def resolve_scanned_user(token: str | None) -> tuple[dict | None, str | None]:
-    """Единая точка «токен из QR -> (делегат, код отказа)» — оборачивает
-    `get_user_by_checkin_token` + `checkin_denial` для ОБОИХ вызывающих
-    (`miniapp/routers/checkin.py`, `handlers/admin_checkin.py`), плюс форум-ночь B1 (идея №10,
-    перевыпуск QR): если токен НЕ находится в `users` (значит его больше нет — либо чужой QR,
-    либо СВОЙ, но уже перевыпущенный), сверяемся с `checkin_token_replacements` ПЕРЕД тем, как
-    сдаться на общем «не найден» — старый (замененный) QR получает свою причину
-    `'token_replaced'`, а не общий `'no_user'`, чтобы волонтёр понял: делегат СУЩЕСТВУЕТ,
-    просто открыл старый скриншот вместо нового «🎟 Мой QR»."""
-    user = await get_user_by_checkin_token(token) if token else None
-    if user is None and token:
-        replacement = await get_checkin_token_replacement(token)
-        if replacement is not None:
-            return None, "token_replaced"
-    return user, await checkin_denial(user)
+# ── Точка расширения «токен QR -> человек» (25.09, под будущие гостевые пропуска) ────────────
+
+# Код отказа «резолвер узнал токен, но записывать отметку для такого вида пропуска некому»
+# (см. `resolve_scanned_user`). Подписи — `DENIAL_REASON_TEXT` выше,
+# `services.venue_log.DENIAL_LABELS`, `handlers.admin_checkin._DENIAL_LABELS`.
+UNKNOWN_PASS_KIND = "unknown_pass_kind"
+
+
+class Resolved(TypedDict, total=False):
+    """Что резолвер отдаёт про человека за токеном (см. `register_token_resolver`).
+
+    - `kind` — вид пропуска: "delegate" (строка `users`) или иной ("guest" и т.п.);
+    - `id` — идентификатор человека в источнике резолвера (у делегата — `telegram_id`);
+    - `telegram_id` — Telegram ID, если он есть (у гостя может быть None);
+    - `city` — город форума в том виде, как хранит источник (у делегата — сырой
+      `users.event_city`; нормализует вызывающий через `cities.normalize_city`);
+    - `full_name` — отображаемое имя для плашки сканера/журнала;
+    - `denial` — статус допуска: None = пропускать, иначе код причины отказа (ключ
+      `DENIAL_REASON_TEXT`/`venue_log.DENIAL_LABELS`);
+    - `user` — строка `users` (только у "delegate": её ждут `record_arrival` и сканер);
+      резолвер иного вида кладёт сюда свою запись или None.
+    """
+
+    kind: str
+    id: object
+    telegram_id: int | None
+    city: str | None
+    full_name: str | None
+    denial: str | None
+    user: dict | None
+
+
+async def _users_token_resolver(token: str, **ctx) -> Resolved | None:
+    """Встроенный резолвер делегатов: `get_user_by_checkin_token` + `checkin_denial`, плюс
+    форум-ночь B1 (идея №10, перевыпуск QR): если токена нет в `users` (чужой QR или СВОЙ, но
+    уже перевыпущенный), сверяемся с `checkin_token_replacements` — старый QR получает свою
+    причину `'token_replaced'`, а не общий `'no_user'`, чтобы волонтёр понял: делегат
+    СУЩЕСТВУЕТ, просто открыл старый скриншот вместо нового «🎟 Мой QR». Ни то ни другое —
+    None («не мой токен», очередь следующих резолверов)."""
+    user = await get_user_by_checkin_token(token)
+    if user is None:
+        if await get_checkin_token_replacement(token) is not None:
+            return Resolved(kind="delegate", id=None, telegram_id=None, city=None,
+                            full_name=None, denial="token_replaced", user=None)
+        return None
+    return Resolved(
+        kind="delegate", id=user.get("telegram_id"), telegram_id=user.get("telegram_id"),
+        city=user.get("event_city"), full_name=user.get("full_name"),
+        denial=await checkin_denial(user), user=user,
+    )
+
+
+_token_resolvers: list = [_users_token_resolver]
+
+
+def register_token_resolver(fn) -> None:
+    """Подписать резолвер «токен из QR -> человек» (для будущих гостевых QR и т.п.). Сигнатура:
+
+        async def resolver(token: str, **ctx) -> Resolved | dict | None
+
+    Вернуть описание человека (поля — `Resolved`: минимум `kind`, `id`/`telegram_id`, `city`,
+    `full_name`, `denial`) или None = «не мой токен». Резолверы опрашиваются по порядку
+    регистрации, первый не-None побеждает; встроенный резолвер делегатов
+    (`_users_token_resolver`) всегда ПЕРВЫЙ — чужой резолвер не может перехватить токен
+    делегата. В `ctx` сейчас приходят `point` и `source` ("miniapp" — скан, "csv" — загрузка
+    выгрузки); резолвер обязан принимать `**ctx` — поля могут добавляться. Повторная
+    регистрация той же функции — no-op.
+
+    Fail-soft: исключение ВНЕШНЕГО резолвера логируется и считается None (переход к
+    следующему). Встроенный резолвер делегатов не глушится: сбой БД там — сбой скана, а не
+    «QR не найден» (так было до реестра).
+
+    Процессы: реестр — модульный, встроенный резолвер есть в любом процессе, импортировавшем
+    `services.checkin` (бот — `handlers/admin_checkin.py`, Mini App — `miniapp/routers/checkin.py`).
+    Внешний резолвер регистрировать в ОБОИХ процессах: скан QR идёт в Mini App
+    (`/app/api/checkin/scan`), загрузка CSV — в боте. Удобно звать `register_token_resolver` на
+    уровне модуля фичи и импортировать этот модуль из `main.py` и `miniapp/app.py`.
+
+    Запись отметки для kind != "delegate" пока НЕ реализована: `resolve_scanned_user` отдаёт
+    такому токену отказ `UNKNOWN_PASS_KIND` («неизвестный тип пропуска», пишется в журнал
+    площадки). Будущий код гостей подключает свою отметку ТАМ — в `resolve_scanned_user`
+    (ветка `kind != "delegate"`) и у её вызывающих (`miniapp/routers/checkin.py::checkin_scan`,
+    `handlers/admin_checkin.py` — разбор CSV), которые сейчас передают дальше в
+    `record_arrival` только строку `users`."""
+    if fn not in _token_resolvers:
+        _token_resolvers.append(fn)
+
+
+def clear_token_resolvers() -> None:
+    """Снять все внешние резолверы (для тестов); встроенный резолвер делегатов остаётся."""
+    _token_resolvers[:] = [_users_token_resolver]
+
+
+async def resolve_token(token: str | None, **ctx) -> Resolved | None:
+    """Опросить резолверы по порядку, первый не-None побеждает (см. `register_token_resolver`).
+    Пустой токен — None без опроса."""
+    if not token:
+        return None
+    for fn in list(_token_resolvers):
+        if fn is _users_token_resolver:
+            resolved = await fn(token, **ctx)
+        else:
+            try:
+                resolved = await fn(token, **ctx)
+            except Exception:
+                logger.exception("token resolver %r failed", fn)
+                continue
+        if resolved is not None:
+            return resolved
+    return None
+
+
+async def resolve_scanned_user(token: str | None, **ctx) -> tuple[dict | None, str | None]:
+    """Единая точка «токен из QR -> (делегат, код отказа)» для ОБОИХ вызывающих
+    (`miniapp/routers/checkin.py`, `handlers/admin_checkin.py`) поверх реестра резолверов
+    `resolve_token`. Делегат — `(строка users, checkin_denial(...))`, перевыпущенный QR —
+    `(None, 'token_replaced')`, никто не узнал — `(None, 'no_user')`. Токен узнал резолвер
+    иного вида (`kind != "delegate"`), а записи отметки для него пока нет —
+    `(None, UNKNOWN_PASS_KIND)`: здесь подключит свою ветку будущий код гостей."""
+    resolved = await resolve_token(token, **ctx)
+    if resolved is None:
+        return None, await checkin_denial(None)
+    if resolved.get("kind") != "delegate":
+        return None, UNKNOWN_PASS_KIND
+    return resolved.get("user"), resolved.get("denial")
 
 
 async def build_checkin_payload(user: dict) -> str | None:
