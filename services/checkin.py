@@ -34,7 +34,15 @@ from datetime import datetime
 
 import segno
 
-from database.db import get_checkin_token_replacement, get_or_create_checkin_token, get_user_by_checkin_token
+from database.db import (
+    get_checkin_token_replacement,
+    get_or_create_checkin_token,
+    get_program_session,
+    get_user_by_checkin_token,
+    list_program_sessions_for_city_day,
+    record_checkin,
+    record_session_checkin,
+)
 from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
 from settings_schema import get_setting_typed
 
@@ -253,6 +261,81 @@ async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) 
         return
     from services.sheets import update_arrived_in_sheet
     await update_arrived_in_sheet(telegram_id, scanned_at)
+
+
+# ── Форум-ночь п.5 (D-18..D-20): единая точка отметки на ЛЮБОЙ точке (вход и сессии) ─────────
+
+async def record_arrival(
+    user: dict,
+    point: str,
+    *,
+    source: str,
+    scanned_at: str | None = None,
+    approx: bool = False,
+    by_staff_id: int | None = None,
+) -> dict:
+    """Единая точка «делегат — точка X — отметка» для ВСЕХ трёх источников (загрузка CSV,
+    сканер Mini App, ручной поиск) — решает, какая функция БД нужна: `point == ENTRY_POINT`
+    (или вообще не `session:...`) — старый путь один-в-один
+    (`database.db.record_checkin`, идемпотентно, первый скан побеждает, D-10); `point` вида
+    `"session:{id}"` (D-18) — делегат ОБЯЗАН быть из ТОГО ЖЕ города, что сессия (иначе
+    `status="wrong_city"`, отказ словами — у входа такой проверки нет и не будет), иначе D-20
+    («последний скан слота засчитывается», слот строит `services.program.parallel_group`) через
+    `database.db.record_session_checkin`. Отметка на сессии САМА ставит вход
+    (`source="auto_session"`), если его ещё не было, — делегат физически подтверждён на
+    площадке, даже если отдельного скана на входе не случилось.
+
+    Возвращает `{"status": ..., "scanned_at": ...}` плюс `"reason_text"` при `wrong_city` и
+    `"previous_title"` при `moved`. `mark_arrived_in_sheet` вызывается ВНУТРИ (на настоящем
+    новом входе, прямом или авто-от-сессии) — вызывающему (`handlers/admin_checkin.py`,
+    `miniapp/routers/checkin.py`) звать его отдельно для этих трёх источников больше не нужно."""
+    if not (point or "").startswith("session:"):
+        status, ts = await record_checkin(
+            user["telegram_id"], point or ENTRY_POINT, source=source,
+            scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
+        )
+        await mark_arrived_in_sheet(user["telegram_id"], status, ts)
+        return {"status": status, "scanned_at": ts}
+
+    try:
+        session_id = int(point.split(":", 1)[1])
+    except (ValueError, IndexError):
+        return {"status": "invalid_point"}
+    session = await get_program_session(session_id)
+    if session is None:
+        return {"status": "invalid_point"}
+
+    import cities as _cities  # ленивый импорт — тот же приём, что services/program.py делает для msk_now
+
+    delegate_city = _cities.normalize_city(user.get("event_city"))
+    if session["city"] != delegate_city:
+        delegate_label = await _cities.city_label(delegate_city)
+        session_label = await _cities.city_label(session["city"])
+        return {
+            "status": "wrong_city",
+            "reason_text": f"Делегат с форума в {delegate_label}, эта сессия — {session_label}",
+        }
+
+    from services.program import parallel_group  # ленивый импорт — избегаем цикла на верхнем уровне
+
+    day_sessions = await list_program_sessions_for_city_day(session["city"], session["day"])
+    slot = parallel_group(session, day_sessions)
+    slot_other_ids = [s["id"] for s in slot if s["id"] != session_id]
+
+    status, ts, previous_id = await record_session_checkin(
+        user["telegram_id"], session_id, slot_other_ids, source=source,
+        scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
+    )
+    result: dict = {"status": status, "scanned_at": ts}
+    if status == "moved" and previous_id is not None:
+        prev = await get_program_session(previous_id)
+        result["previous_title"] = prev["title"] if prev else None
+    if status in ("new", "moved"):
+        entry_status, entry_ts = await record_checkin(
+            user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
+        )
+        await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
+    return result
 
 
 # ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
