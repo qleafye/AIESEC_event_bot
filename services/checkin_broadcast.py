@@ -307,6 +307,39 @@ async def pending_broadcast_count(city: str | None) -> int:
     return sum(1 for u in eligible if u["telegram_id"] not in already)
 
 
+# ── Тихие часы делегатов (находка ревью 260924, п.3) ─────────────────────────────────────────
+
+async def _city_defer_until(city: str | None) -> datetime | None:
+    """`None` — слать сейчас. Иначе — момент конца окна тихих часов, до которого рассылку
+    города нужно отложить целиком.
+
+    Остальные сообщения делегату идут через `services.quiet_hours.send_or_queue_*` (очередь
+    отложенных уведомлений), но её `KIND_MEDIA` хранит только `file_id` уже загруженного в
+    Telegram файла и не несёт клавиатуру — QR каждый раз генерируется заново (`BufferedInputFile`,
+    свежие байты, не файл, который можно положить в очередь по идентификатору), а кнопка
+    «✅ Сохранил» на фото обязательна. Открывать очередь под фото+клавиатуру — переделка,
+    непропорциональная находке; вместо неё рассылка ГОРОДА откладывается ЦЕЛИКОМ (аудитория и
+    так одна на весь город, не по одному получателю) — `send_broadcast`/`send_morning_repeat`
+    сами переставляют СВОЮ же джобу на конец окна и не трогают `checkin_qr_sends` ни для кого,
+    пока окно не закончится (следующее срабатывание перечитает аудиторию заново, дублей нет)."""
+    from services import quiet_hours
+
+    window = await quiet_hours.window_for_city(city)
+    if window is None:
+        return None
+    start, end = window
+    now = msk_now()
+    if not quiet_hours.is_quiet(now, start, end):
+        return None
+    return quiet_hours.next_window_end(now, start, end)
+
+
+def _defer_job(city: str | None, job_id: str, func, run_at: datetime) -> None:
+    _sched.get_scheduler().add_job(
+        func, "date", run_date=run_at, args=[city], id=job_id, replace_existing=True,
+    )
+
+
 # ── Отправка ──────────────────────────────────────────────────────────────────────────────
 
 def _confirm_kb() -> InlineKeyboardMarkup:
@@ -340,7 +373,18 @@ async def send_broadcast(city: str | None) -> dict:
     """Date-джоба вечерней рассылки И ручная кнопка «📤 Разослать QR сейчас»
     (handlers/admin_checkin.py) — ОДНА и та же функция, идемпотентная по построению:
     `checkin_qr_sent_ids` вычитается из пула ДО отправки, повторный вызов (рестарт бота,
-    двойной тап кнопки) не находит уже отправленных заново."""
+    двойной тап кнопки) не находит уже отправленных заново.
+
+    Тихие часы делегатов (находка ревью 260924, `_city_defer_until`) — если СЕЙЧАС внутри окна
+    города, ничего не отправляется и не отмечается: своя же джоба переставляется на конец окна,
+    `checkin_qr_sends` не трогается ни для кого (следующее срабатывание перечитает аудиторию
+    с нуля, дублей нет)."""
+    deferred_at = await _city_defer_until(city)
+    if deferred_at is not None:
+        _defer_job(city, evening_job_id(city), _run_evening_job, deferred_at)
+        logger.info(f"checkin_broadcast.send_broadcast({city!r}): тихие часы — отложено на {deferred_at}")
+        return {"sent": 0, "failed": 0, "total": 0, "deferred_until": deferred_at}
+
     import cities as _cities
 
     scope = _cities.city_scope(city)
@@ -386,7 +430,16 @@ async def send_morning_repeat(city: str | None) -> dict:
     получил строку `checkin_qr_sends`), получает QR СЕЙЧАС, а не теряет его навсегда.
     `checkin_qr_mark_sent` внутри цикла — идемпотентная (`INSERT OR IGNORE`): для уже
     отправленных вечером не создаёт вторую строку и не двигает `sent_at`, а для НИКОГДА не
-    отправленных заводит первую (счётчик «QR получили N» обязан их учитывать)."""
+    отправленных заводит первую (счётчик «QR получили N» обязан их учитывать).
+
+    Тихие часы делегатов — та же логика, что у `send_broadcast` (см. `_city_defer_until`):
+    окно города откладывает свою же джобу целиком, не отправляя и не отмечая никого."""
+    deferred_at = await _city_defer_until(city)
+    if deferred_at is not None:
+        _defer_job(city, morning_job_id(city), _run_morning_job, deferred_at)
+        logger.info(f"checkin_broadcast.send_morning_repeat({city!r}): тихие часы — отложено на {deferred_at}")
+        return {"sent": 0, "failed": 0, "total": 0, "deferred_until": deferred_at}
+
     import cities as _cities
 
     scope = _cities.city_scope(city)
