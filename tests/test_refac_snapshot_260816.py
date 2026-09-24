@@ -719,6 +719,9 @@ admin|message|checkin_test_file_invalid|state:CheckinTestUpload:*
 admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
 admin|message|cancel_checkinqr_time_edit|state:CheckinQrTimeEdit:*,state:CheckinQrTimeEdit:*
 admin|message|checkinqr_time_step|state:CheckinQrTimeEdit:*
+admin|message|venue_revoke_find_cancel|state:VenueRevokeFind:*,state:VenueRevokeFind:*
+admin|message|venue_revoke_find_cancel|state:VenueRevokeFind:*,state:VenueRevokeFind:*
+admin|message|venue_revoke_find_step|state:VenueRevokeFind:*
 admin|message|asos_bind_cancel|state:SosChatBind:*
 admin|message|asos_bind_step|state:SosChatBind:*
 admin|message|admin_reply_to_sos|
@@ -1164,6 +1167,13 @@ admin|callback_query|checkinqr_send_cancel|checkinqr_send_no
 admin|callback_query|checkinqr_cfg_screen|checkinqr_cfg:*
 admin|callback_query|checkinqr_toggle_go|checkinqr_toggle:*
 admin|callback_query|checkinqr_time_start|checkinqr_time:*
+admin|callback_query|venue_log_open|admin_venue_log
+admin|callback_query|venue_log_page_cb|vlog:*
+admin|callback_query|venue_log_staff_pick|vlogst
+admin|callback_query|venue_revoke_find|vrv_find
+admin|callback_query|venue_revoke_user|vrv_u:*
+admin|callback_query|venue_revoke_confirm|vrv_p:*
+admin|callback_query|venue_revoke_go|vrv_go:*
 admin|callback_query|admin_sos|admin_sos
 admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
@@ -1733,7 +1743,14 @@ def test_snapshot_total_handler_count_is_292():
     # Бэклог чек-ина №25 («🚦 Готовность к форуму»): +2 admin.callback_query (forum_ready_open/
     # forum_ready_refresh, handlers/admin_forum_ready.py) — шов из хвоста handlers/admin.py сразу
     # после admin_checkin_stats; одна чистая вставка перед prog_fbday_open (738 -> 740).
-    assert len(GOLDEN_SNAPSHOT) == 740
+    # Идеи №31/№32 (журнал площадки, снятие отметки): шов handlers/admin_venue.py импортируется
+    # из хвоста handlers/admin_checkin.py — +3 admin.message (venue_revoke_find_cancel x2/
+    # venue_revoke_find_step, сразу после checkinqr_time_step) и +7 admin.callback_query
+    # (venue_log_open/venue_log_page_cb/venue_log_staff_pick/venue_revoke_find/venue_revoke_user/
+    # venue_revoke_confirm/venue_revoke_go, сразу после checkinqr_time_start и ПЕРЕД admin_sos).
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые вставки, 0 удалений,
+    # 0 реордеров (вставки независимы от п.10/№25; при слиянии 740 -> 750).
+    assert len(GOLDEN_SNAPSHOT) == 750
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

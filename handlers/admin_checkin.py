@@ -334,6 +334,7 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
         # формат/читаемость приложения волонтёра.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
+        *await _venue_entry_rows(callback.from_user.id),
     ])
     # Бэклог п.10: сводка прихода — менеджерская (moderate_reg), волонтёру кнопку не рисуем.
     from handlers.admin_caps import _holds, resolve_capabilities
@@ -576,6 +577,11 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     replaced_n = sum(1 for reason, _row in flagged if reason == _DENIAL_LABELS["token_replaced"])
     wrong_city_n = sum(1 for reason, _row in flagged if reason not in _DENIAL_LABELS.values())
     not_approved_n = len(flagged) - not_found_n - replaced_n - wrong_city_n
+    await _venue_log.log_by(  # идея №31: загрузка файла — одна строка журнала площадки
+        callback.from_user, _venue_log.ACTION_CSV_UPLOAD, source="csv", point=point,
+        city=(session or {}).get("city") or bound_city or await _resolve_checkin_screen_city(callback.from_user.id),
+        details={"new": new_n, "duplicate": dup_n, "moved": moved_n, "not_found": not_found_n, "not_approved": not_approved_n},
+    )
 
     lines = [
         "✅ <b>Отметки загружены</b>",
@@ -646,6 +652,7 @@ async def checkin_reissue_go(callback: types.CallbackQuery):
         await callback.answer()
         return
 
+    await _venue_log.log_by(callback.from_user, _venue_log.ACTION_REISSUE_QR, telegram_id=tid)
     user = await get_user(tid)
     denial_code = await checkin_denial(user)
     if denial_code is not None:
@@ -986,3 +993,9 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
     text, kb = await _qr_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# Идеи №31/№32: журнал площадки (строки выше пишут в него перевыпуск QR и загрузку CSV) и снятие
+# отметки менеджером — экраны в отдельном шве handlers/admin_venue.py, регистрируются здесь хвостом.
+from services import venue_log as _venue_log  # noqa: E402
+from handlers.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
