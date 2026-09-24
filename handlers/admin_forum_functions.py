@@ -145,6 +145,16 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🎫 Настройки шпаргалки", callback_data=f"checkinvol_cfg:{_encode_city(code)}",
         )])
 
+    # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой — per_city, свой экран
+    # (handlers/admin_volunteer_invite.py). Строка добавлена аддитивно (RULES.md), номер шага
+    # соседей выше не переставляется.
+    volinv_on = await get_setting_typed_for_city("volunteer_invite_enabled", code) == "on"
+    lines.append(f"🔗 Приглашение волонтёров ссылкой: {_status(volinv_on)}")
+    if visible(f"volinvite_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="🔗 Пригласить волонтёров", callback_data=f"volinvite_cfg:{_encode_city(code)}",
+        )])
+
     # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
     # `services.program.program_menu_visible` (тумблер menu_program города И есть фото или
     # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.
