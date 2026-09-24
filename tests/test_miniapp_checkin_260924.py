@@ -235,7 +235,7 @@ def test_stats_bound_manager_sees_only_own_city(tmp_path):
 
     resp = client.get(f"{BASE}/stats", headers=_hdr(BOUND_MANAGER_ID))
     body = resp.json()
-    assert body == {"arrived": 1, "approved": 1, "cities": None}
+    assert body == {"arrived": 1, "approved": 1, "cities": None, "today": True}
 
 
 def test_stats_unbound_admin_sees_breakdown_by_city(tmp_path):
@@ -266,7 +266,7 @@ def test_stats_cities_module_off_is_unscoped(tmp_path):
     # + DELEGATE_ID approved из `_standard_seed()` -> 3 одобренных всего.
     resp = client.get(f"{BASE}/stats", headers=_hdr(GAME_MANAGER_ID))
     body = resp.json()
-    assert body == {"arrived": 0, "approved": 3, "cities": None}
+    assert body == {"arrived": 0, "approved": 3, "cities": None, "today": False}
 
 
 # ── раздел выключен чекбоксом ────────────────────────────────────────────────────────────

@@ -83,7 +83,8 @@ def _cbs(kb):
 
 def _seed_spb_forum():
     """СПб: 4 одобренных (1 — прошлого сезона не в счёт, 1 pending не в счёт), двое пришли в
-    первый день (один — CSV без времени), один пришёл только на сессию во второй день."""
+    первый день (один — CSV без времени), один пришёл только на сессию во второй день, первый
+    вошёл и во второй день (вход каждый день)."""
     _run(db.set_setting("event_city_enabled", "on"))
     for tid in (1, 2, 3, 4):
         _run(_user(tid))
@@ -97,6 +98,7 @@ def _seed_spb_forum():
     _run(db.record_checkin(2, "entry", source="csv", scanned_at="2026-10-03 12:00:00", approx=True))
     _run(db.record_checkin(1, f"session:{s1}", source="miniapp", scanned_at="2026-10-03 10:05:00"))
     _run(db.record_checkin(3, "entry", source="auto_session", scanned_at="2026-10-04 10:02:00"))
+    _run(db.record_checkin(1, "entry", source="miniapp", scanned_at="2026-10-04 09:40:00"))
     _run(db.record_checkin(1, f"session:{s1 + 1}", source="miniapp", scanned_at="2026-10-04 10:03:00"))
     return s1
 
@@ -138,7 +140,7 @@ def test_bot_report_counts_current_season_approved_by_day_and_session(tmp_path):
     assert "Не пришли: 1" in text
     assert "У 1 отметок время примерное" in text
     assert "03.10 (сб): 2 · впервые 2" in text
-    assert "04.10 (вс): 2 · впервые 1" in text  # пришедший вчера отметился на сессии
+    assert "04.10 (вс): 2 · впервые 1" in text  # пришедший вчера снова вошёл во второй день
     assert "Открытие — 1 из 10 (10%)" in text
     assert _cbs(kb) == ["checkin_stats_refresh", "checkin_stats_csv", "admin_checkin"]
 

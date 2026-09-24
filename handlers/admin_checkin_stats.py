@@ -96,7 +96,7 @@ async def render_stats(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
 
     if total["days"]:
         lines.append("")
-        lines.append("<b>По дням</b> (на площадке — вход или сессия · впервые на входе):")
+        lines.append("<b>По дням</b> (пришли — вход в этот день · впервые на форуме):")
         for d in total["days"]:
             lines.append(f"{d['label']}: {d['present']} · впервые {d['first_entry']}")
 

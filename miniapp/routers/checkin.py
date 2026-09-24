@@ -37,7 +37,6 @@ from cities import (
     normalize_city,
 )
 from database.db import (
-    count_approved_current_season,
     count_checkins_by_point,
     get_program_session,
     get_user,
@@ -52,7 +51,7 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
-from services import i18n
+from services import checkin_arrival, i18n
 from services import venue_log
 from services.person_search import search_people
 from services.program import checkin_session_points
@@ -405,9 +404,13 @@ async def checkin_points(
         else:
             cities_payload = [{"code": c["code"], "label": await city_label(c["code"])} for c in enabled]
 
+    from services.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
+
     points = [{
         "point": ENTRY_POINT, "label": ENTRY_POINT_LABEL, "live": None,
-        "count": await count_checkins_by_point(ENTRY_POINT), "capacity": None,
+        # Вход каждый день: у точки «Вход» — сколько вошли СЕГОДНЯ.
+        "count": await count_checkins_by_point(ENTRY_POINT, day=msk_now().strftime("%Y-%m-%d")),
+        "capacity": None,
     }]
     if resolved is not None:
         for sp in await checkin_session_points(resolved):
@@ -426,33 +429,30 @@ async def checkin_stats(
     видит только свой (`cities: null`), модуль городов выключен — общий счётчик байт-в-байт
     как раньше, иначе — построчно по городам с хотя бы одним одобренным + Итого."""
     bound = await _bound_city(request, p)
-    if bound is not None:
-        scope = city_scope(bound)
-        approved = await count_approved_current_season(city_scope=scope)
-        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=scope)
-        return {"arrived": arrived, "approved": approved, "cities": None}
-
-    if not await cities_module_on():
-        approved = await count_approved_current_season()
-        arrived = await count_checkins_by_point(ENTRY_POINT)
-        return {"arrived": arrived, "approved": approved, "cities": None}
+    # Тот же счётчик, что у бота (`services.checkin_arrival`): одобренные текущего сезона со
+    # входом; в день форума — вход сегодня (`today: true`), иначе — хоть один вход за форум.
+    day = await checkin_arrival.counter_day()
+    if bound is not None or not await cities_module_on():
+        arrived, approved = await checkin_arrival.arrived_counts(
+            city_scope(bound) if bound is not None else None, day,
+        )
+        return {"arrived": arrived, "approved": approved, "cities": None, "today": bool(day)}
 
     cities_out = []
     total_arrived = 0
     total_approved = 0
     for c in await enabled_cities():
         code = c["code"]
-        scope = city_scope(code)
-        approved = await count_approved_current_season(city_scope=scope)
+        arrived, approved = await checkin_arrival.arrived_counts(city_scope(code), day)
         if approved == 0:
             continue
-        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=scope)
         cities_out.append({
             "code": code, "label": await city_label(code), "arrived": arrived, "approved": approved,
         })
         total_arrived += arrived
         total_approved += approved
-    return {"arrived": total_arrived, "approved": total_approved, "cities": cities_out}
+    return {"arrived": total_arrived, "approved": total_approved, "cities": cities_out,
+            "today": bool(day)}
 
 
 __all__ = ["router"]
