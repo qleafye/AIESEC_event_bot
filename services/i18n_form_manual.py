@@ -551,7 +551,7 @@ _CODE_LITERALS_EN = {
     # Идея №11: полоса «сеть медленная» в сканере Mini App (волонтёру).
     "Сеть медленная. Переключитесь на приложение-сканер.":
         "Slow network. Switch to the scanner app.",
-    "Как": "How",
+    "Как переключиться": "How to switch",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
