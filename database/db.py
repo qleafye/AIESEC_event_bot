@@ -726,6 +726,52 @@ async def init_db():
         # staff rows, and a single-table SELECT/UPDATE stays simpler than a join.
         await _ensure_column(db, "staff", "city", "TEXT")
 
+        # Идея №6 бэклога чек-ина (общая механика, не только форум): «до какой даты действует
+        # эта роль». ISO «YYYY-MM-DD» (сравнимо строкой с `services.staff_expiry.today_iso()`),
+        # NULL у ВСЕХ существующих строк -- «бессрочно», байт-в-байт прежнее поведение для
+        # каждой роли, выданной до этого квика. Действует ПО этот день включительно -- истекает
+        # с НАЧАЛА следующего. Колонка per-role (композитный PRIMARY KEY staff уже per-role, в
+        # отличие от city, который per-person и хранится дублем на каждой строке человека) --
+        # разные роли одного человека могут иметь разный срок.
+        await _ensure_column(db, "staff", "expires_at", "TEXT")
+
+        # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой. Одна ссылка -- одна строка;
+        # `code` -- secrets.token_urlsafe, непубличный секрет (не подбирается перебором),
+        # PRIMARY KEY естественно уникален. `city`/`created_by` -- атрибуция; `link_expires_at`/
+        # `rights_expires_at` -- ISO даты (см. staff.expires_at выше), NULL = без срока
+        # (`rights_expires_at` NULL встречается редко -- по умолчанию «до конца форума», но
+        # менеджер может явно снять срок); `max_uses` NULL = без лимита; `used` -- атомарный
+        # счётчик занятых слотов (см. `claim_volunteer_invite`), НЕ дублирует
+        # `COUNT(*) FROM volunteer_invite_uses` -- инкремент и есть механизм гонки-защиты, сама
+        # таблица `volunteer_invite_uses` -- только человекочитаемый список «кто вошёл»;
+        # `revoked` -- отзыв ссылки (0/1), уже выданные права НЕ снимает (см. докстринг
+        # `revoke_volunteer_invite`).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS volunteer_invites (
+                code TEXT PRIMARY KEY,
+                city TEXT,
+                created_by INTEGER,
+                created_at TEXT NOT NULL,
+                link_expires_at TEXT,
+                rights_expires_at TEXT,
+                max_uses INTEGER,
+                used INTEGER NOT NULL DEFAULT 0,
+                revoked INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+        # Кто именно вошёл по каждой ссылке -- список для экрана менеджера («👥 N вошли») и
+        # источник для персонального «➖ Снять». Композитный PRIMARY KEY -- тот же приём
+        # идемпотентности, что `staff (telegram_id, role)`: повторный INSERT OR IGNORE того же
+        # человека по той же ссылке (двойной переход по одной ссылке) не плодит вторую строку.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS volunteer_invite_uses (
+                invite_code TEXT NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                used_at TEXT NOT NULL,
+                PRIMARY KEY (invite_code, telegram_id)
+            )
+        ''')
+
         # Phase 14 (CITY-07): city registry moves from `.env` into the DB -- this table is
         # the source of truth from now on. `cities.seed_cities_if_empty()` fills it once from
         # the old .env city list on first boot (empty-table check); after that `.env` is never
@@ -5368,14 +5414,24 @@ async def set_payment_due(telegram_id: int, payment_due: str) -> None:
 
 # ── Phase 8 (ROLE-02, D-11): staff roster accessors ─────────────────────────────────────
 
-async def add_staff(telegram_id: int, role: str, added_by: int | None) -> bool:
+async def add_staff(
+    telegram_id: int, role: str, added_by: int | None, expires_at: str | None = None,
+) -> bool:
     """Grant `role` to `telegram_id`. INSERT OR IGNORE against the composite PRIMARY KEY
-    (telegram_id, role) makes re-adding an already-held role a no-op, not a duplicate row.
-    Returns True iff this call actually inserted a new row."""
+    (telegram_id, role) makes re-adding an already-held role a no-op, not a duplicate row --
+    an already-held role's `expires_at` is NOT touched by a no-op call (Идея №5: «если у
+    человека уже есть роль шире -- не понижать» -- a repeat grant, including via the volunteer
+    invite link, never shortens/extends an existing grant). Returns True iff this call
+    actually inserted a new row.
+
+    `expires_at` (Идея №6, `_ensure_column` above) -- ISO «YYYY-MM-DD» date or None
+    (бессрочно). Optional kwarg, every pre-existing call site keeps granting an unlimited
+    role, byte-identical to before this column existed."""
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at) VALUES (?, ?, ?, ?)",
-            (telegram_id, role, added_by, datetime.utcnow().isoformat()),
+            "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, role, added_by, datetime.utcnow().isoformat(), expires_at),
         )
         await db.commit()
         return cursor.rowcount == 1
@@ -5392,11 +5448,33 @@ async def remove_staff(telegram_id: int, role: str) -> bool:
         return cursor.rowcount == 1
 
 
+async def set_staff_expiry(telegram_id: int, role: str, expires_at: str | None) -> bool:
+    """Идея №6: поменять (или снять, `expires_at=None`) срок у уже выданной роли -- ОДНОЙ
+    (telegram_id, role) строки, не всех ролей человека (в отличие от `set_staff_city`, срок у
+    разных ролей одного человека может отличаться -- см. докстринг миграции колонки). Returns
+    True iff a matching row existed."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE staff SET expires_at = ? WHERE telegram_id = ? AND role = ?",
+            (expires_at, telegram_id, role),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def get_staff_roles(telegram_id: int) -> list[str]:
-    """All roles held by one person (empty list if they hold none)."""
+    """All CURRENTLY ACTIVE roles held by one person (empty list if they hold none). Идея №6
+    (D-6): «истёкшая роль не даёт НИКАКИХ прав» -- filtered here, the ONE place
+    `handlers.admin_caps.resolve_capabilities` reads roles from, so the expiry check applies
+    to every capability decision downstream without touching admin_caps.py itself. A row is
+    active when `expires_at` is NULL (бессрочно) or still >= today (действует ПО этот день
+    включительно) -- string comparison is safe because both sides are ISO `YYYY-MM-DD`."""
+    today = msk_now().date().isoformat()
     async with _connect() as db:
         async with db.execute(
-            "SELECT role FROM staff WHERE telegram_id = ?", (telegram_id,)
+            "SELECT role FROM staff WHERE telegram_id = ? "
+            "AND (expires_at IS NULL OR expires_at >= ?)",
+            (telegram_id, today),
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
@@ -5405,11 +5483,15 @@ async def get_staff_roles(telegram_id: int) -> list[str]:
 async def list_staff() -> list[dict]:
     """Full roster, oldest grant first -- feeds the "Роли и доступы" admin screen (08-02).
     `city` (Phase 09.1, C) is NULL for every pre-existing row -- "all cities", byte-identical
-    to today's behavior for anyone who never gets a binding."""
+    to today's behavior for anyone who never gets a binding. Идея №6: includes EXPIRED rows
+    too (unlike `get_staff_roles`, which is a capability-resolution primitive) -- D-6 «ничего
+    не удаляем», the roster screen renders «⌛ истекла 04.10» for a past `expires_at`, not a
+    hole where the person used to be."""
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT telegram_id, role, added_by, added_at, city FROM staff ORDER BY added_at"
+            "SELECT telegram_id, role, added_by, added_at, city, expires_at "
+            "FROM staff ORDER BY added_at"
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
@@ -5445,13 +5527,158 @@ async def set_staff_city(telegram_id: int, city: str | None) -> bool:
 
 async def get_staff_ids_by_role(role: str) -> list[int]:
     """Every telegram_id currently holding exactly this role -- feeds notification fan-out
-    (D-13, wired in a later phase-8 plan)."""
+    (D-13, wired in a later phase-8 plan). Идея №6: expired rows excluded -- an expired
+    volunteer must not keep receiving `checkin`-gated fan-out (e.g. a post-forum broadcast to
+    capability_holders) even though the DB row is kept for history."""
+    today = msk_now().date().isoformat()
     async with _connect() as db:
         async with db.execute(
-            "SELECT telegram_id FROM staff WHERE role = ?", (role,)
+            "SELECT telegram_id FROM staff WHERE role = ? "
+            "AND (expires_at IS NULL OR expires_at >= ?)",
+            (role, today),
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+
+# ── Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой ────────────────────────────────
+
+async def create_volunteer_invite(
+    code: str, city: str | None, created_by: int | None,
+    link_expires_at: str | None, rights_expires_at: str | None, max_uses: int | None,
+) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO volunteer_invites "
+            "(code, city, created_by, created_at, link_expires_at, rights_expires_at, "
+            "max_uses, used, revoked) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
+            (
+                code, city, created_by, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+                link_expires_at, rights_expires_at, max_uses,
+            ),
+        )
+        await db.commit()
+
+
+async def get_volunteer_invite(code: str) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM volunteer_invites WHERE code = ?", (code,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def list_volunteer_invites(
+    city: str | None = None, created_by: int | None = None,
+) -> list[dict]:
+    """`city`/`created_by` -- optional AND-filters (both None = every invite ever created).
+    Newest first -- the manager screen cares about recent links, not archaeology."""
+    query = "SELECT * FROM volunteer_invites"
+    conds: list[str] = []
+    params: list = []
+    if city is not None:
+        conds.append("city = ?")
+        params.append(city)
+    if created_by is not None:
+        conds.append("created_by = ?")
+        params.append(created_by)
+    if conds:
+        query += " WHERE " + " AND ".join(conds)
+    query += " ORDER BY created_at DESC"
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def revoke_volunteer_invite(code: str) -> bool:
+    """Ссылка перестаёт открывать новые слоты (`claim_volunteer_invite` -> "revoked"); уже
+    выданные роли волонтёрам, которые успели пройти, НЕ снимает -- снимать их по одному менеджер
+    может отдельной кнопкой у каждого имени в списке вошедших (`remove_staff`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE volunteer_invites SET revoked = 1 WHERE code = ? AND revoked = 0",
+            (code,),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def list_volunteer_invite_uses(code: str) -> list[dict]:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT invite_code, telegram_id, used_at FROM volunteer_invite_uses "
+            "WHERE invite_code = ? ORDER BY used_at",
+            (code,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def claim_volunteer_invite(code: str, telegram_id: int) -> str:
+    """Атомарная попытка занять один слот приглашения. Возвращает машинный код исхода:
+    "not_found" | "revoked" | "link_expired" | "already_used" | "exhausted" | "ok".
+
+    Обе гонки закрыты ОДНИМ атомарным UPDATE (не read-then-write из Python):
+    - "гонка двух переходов на последний слот" -- `used < max_uses` в WHERE самого UPDATE.
+      SQLite сериализует запись по файлу (WAL: один писатель разом) -- вторая параллельная
+      попытка блокируется до commit первой и затем перечитывает УЖЕ увеличенный `used` в
+      своём собственном WHERE, а не устаревшее значение, увиденное более ранним `SELECT`.
+    - "двойной переход не жжёт второй слот" -- `NOT EXISTS (... volunteer_invite_uses ...)` в
+      том же WHERE. INSERT в `volunteer_invite_uses` происходит В ТОЙ ЖЕ транзакции (до
+      `commit()`), поэтому вторая попытка того же telegram_id видит уже вставленную строку и
+      её UPDATE не совпадает ни с одной строкой (rowcount=0) -- не тот же псевдо-race, что
+      описан выше для чужих слотов, а его же механизм, примененный к дублю самого себя."""
+    today = msk_now().date().isoformat()
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT revoked, link_expires_at FROM volunteer_invites WHERE code = ?", (code,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return "not_found"
+        if row["revoked"]:
+            return "revoked"
+        link_expires_at = row["link_expires_at"]
+        if link_expires_at and link_expires_at < today:
+            return "link_expired"
+
+        upd = await db.execute(
+            """
+            UPDATE volunteer_invites
+            SET used = used + 1
+            WHERE code = ?
+              AND revoked = 0
+              AND (link_expires_at IS NULL OR link_expires_at >= ?)
+              AND (max_uses IS NULL OR used < max_uses)
+              AND NOT EXISTS (
+                  SELECT 1 FROM volunteer_invite_uses u
+                  WHERE u.invite_code = volunteer_invites.code AND u.telegram_id = ?
+              )
+            """,
+            (code, today, telegram_id),
+        )
+        if upd.rowcount == 0:
+            await db.commit()
+            async with db.execute(
+                "SELECT 1 FROM volunteer_invite_uses WHERE invite_code = ? AND telegram_id = ?",
+                (code, telegram_id),
+            ) as cursor2:
+                already = await cursor2.fetchone()
+            return "already_used" if already else "exhausted"
+
+        await db.execute(
+            "INSERT OR IGNORE INTO volunteer_invite_uses (invite_code, telegram_id, used_at) "
+            "VALUES (?, ?, ?)",
+            (code, telegram_id, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
+        return "ok"
 
 
 # ── Phase 8 (ROLE-01, D-13/D-14): delegate_questions accessors ─────────────────────────────
@@ -8773,6 +9000,13 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # "checkin" (соседи checkin_not_arrived/checkin_qr_sends выше — тот же журнал отправки
     # делегату + его ответ).
     ("forum_noshow_poll", "telegram_id", "checkin"),
+    # Идея №5 бэклога чек-ина: volunteer_invite_uses.telegram_id — кто вошёл по ссылке
+    # приглашения волонтёров, личный след (тот же класс, что checkins/sos_reports выше).
+    # invite_code не трогаем — сама ссылка (volunteer_invites) остаётся, её счётчик
+    # использования не откатывается удалением одного вошедшего (см. докстринг
+    # `revoke_volunteer_invite`/`claim_volunteer_invite` — used не пересчитывается по
+    # содержимому uses-таблицы, только инкрементируется атомарно).
+    ("volunteer_invite_uses", "telegram_id", "invites"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
