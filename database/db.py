@@ -4744,6 +4744,47 @@ async def get_checkin_entry_days() -> list[str]:
             return [row[0] for row in await cursor.fetchall() if row[0]]
 
 
+async def get_checkin_entry_picker_options() -> list[str]:
+    """Варианты фильтра «Отметка на форуме» с НЕПУСТОЙ аудиторией: «пришли / не пришли» за
+    форум (`yes`/`no`), сегодня (`yes@today`/`no@today`) и за каждый прошлый день со входами
+    (`yes@YYYY-MM-DD`). Сторона без людей не показывается. Пустой список — входов ещё не было
+    ни одного (до форума фильтровать не по чему) — кнопка поля скрыта.
+
+    Порог не «обе стороны у одного варианта»: на второй день двухдневки все одобренные могли
+    прийти в первый, а сегодня ещё никто — у каждого варианта одна сторона пустая, но «не
+    пришли сегодня» (= все) — главный сценарий дня, кнопка обязана быть."""
+    days = await get_checkin_entry_days()
+    if not days:
+        return []
+    today = msk_now().strftime("%Y-%m-%d")
+    event_season = (await get_setting("event_season") or "").strip() or None
+    guard_frag, guard_params = _approved_current_season_frag(event_season)
+    variants = [(None, None), (CHECKIN_DAY_TODAY, today)] + [(d, d) for d in days if d != today]
+    options: list[str] = []
+    async with _connect() as db:
+        for key, day in variants:
+            day_sql = " AND c.day = ?" if day else ""
+            day_params = [day] if day else []
+            async with db.execute(
+                f"SELECT EXISTS(SELECT 1 FROM checkins c WHERE c.point = ?{day_sql})",
+                [CHECKIN_ENTRY_POINT, *day_params],
+            ) as cursor:
+                has_yes = (await cursor.fetchone())[0]
+            async with db.execute(
+                f"SELECT EXISTS(SELECT 1 FROM users WHERE {guard_frag} AND NOT EXISTS "
+                "(SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                f"AND c.point = ?{day_sql}))",
+                [*guard_params, CHECKIN_ENTRY_POINT, *day_params],
+            ) as cursor:
+                has_no = (await cursor.fetchone())[0]
+            suffix = f"@{key}" if key else ""
+            if has_yes:
+                options.append(f"{CHECKIN_YES}{suffix}")
+            if has_no:
+                options.append(f"{CHECKIN_NO}{suffix}")
+    return options
+
+
 async def any_program_sessions_exist() -> bool:
     """Порог показа кнопок «Были на сессии …» / «Не были на сессии …» — прежде чем менеджер
     завёл хотя бы одну сессию программы (`handlers/admin_program.py`), фильтровать по сессиям

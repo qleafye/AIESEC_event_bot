@@ -230,3 +230,65 @@ def test_arrived_counts_use_approved_current_season(tmp_path, monkeypatch):
     assert _run(checkin_arrival.counter_day()) == "2026-10-31"
     monkeypatch.setattr(timeutil_mod, "msk_now", lambda: datetime(2026, 11, 2, 12, 0))
     assert _run(checkin_arrival.counter_day()) is None
+
+
+# ── фильтр рассылки: видимость кнопки и разбор дня в хендлере ──────────────────────────────
+
+def test_second_day_everyone_came_yesterday_button_visible(tmp_path, monkeypatch):
+    """Москва, день 2: все одобренные пришли в день 1, сегодня ещё никто. У каждого варианта
+    одна сторона пустая, но кнопка «Отметка на форуме» видна, «не пришли сегодня» = все."""
+    from handlers import admin_broadcasts
+    from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state
+
+    _ready(tmp_path)
+    config.ADMIN_IDS = [1]
+    for tid in (1, 2):
+        _run(_user(tid))
+        _run(db.record_checkin(tid, "entry", source="miniapp", scanned_at="2026-10-30 09:00:00"))
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 31, 8, 30))
+
+    msg = FakeMessage()
+    _run(admin_broadcasts._render_filter_menu(msg, [], edit=False))
+    flat = [b.callback_data for row in msg.answers[-1][2].inline_keyboard for b in row]
+    assert "filter_f_checkin_entry" in flat
+
+    cb = FakeCallback("filter_f_checkin_entry", 1)
+    state = _fresh_state(1)
+    _run(state.update_data(filters=[], filter_pending_field="checkin_entry"))
+    _run(admin_broadcasts._show_value_picker(cb, state, "checkin_entry", "Выберите значение:"))
+    data = _run(state.get_data())
+    no_today = f"{db.CHECKIN_NO}@{db.CHECKIN_DAY_TODAY}"
+    # Только варианты с людьми: «не пришли ни разу» и «пришли сегодня» пусты — их нет.
+    assert data["filter_options"] == [db.CHECKIN_YES, no_today, f"{db.CHECKIN_YES}@2026-10-30"]
+    assert data["filter_option_labels"][no_today] == "не пришли сегодня"
+
+    idx = data["filter_options"].index(no_today)
+    _run(admin_broadcasts.filter_pick_value(FakeCallback(f"filter_opt:{idx}", 1), state))
+    filters = _run(state.get_data())["filters"]
+    assert filters == [{"field": "checkin_entry", "value": db.CHECKIN_NO,
+                        "label": "не пришли сегодня", "day": db.CHECKIN_DAY_TODAY}]
+    assert sorted(_run(db.count_and_list_filtered(filters))) == [1, 2]
+
+
+def test_filter_pick_value_parses_concrete_day(tmp_path):
+    from handlers import admin_broadcasts
+    from tests.test_roles_phase8 import FakeCallback, _fresh_state
+
+    _ready(tmp_path)
+    config.ADMIN_IDS = [1]
+    state = _fresh_state(1)
+    opt = f"{db.CHECKIN_YES}@2026-10-30"
+    _run(state.update_data(
+        filter_pending_field="checkin_entry", filters=[], filter_options=[db.CHECKIN_NO, opt],
+        filter_option_labels={db.CHECKIN_NO: "не пришли ни разу", opt: "пришли 30.10"},
+    ))
+    _run(admin_broadcasts.filter_pick_value(FakeCallback("filter_opt:1", 1), state))
+    assert _run(state.get_data())["filters"] == [
+        {"field": "checkin_entry", "value": db.CHECKIN_YES, "label": "пришли 30.10", "day": "2026-10-30"},
+    ]
+
+
+def test_no_entries_yet_hides_button(tmp_path):
+    _ready(tmp_path)
+    _run(_user(1))
+    assert _run(db.get_checkin_entry_picker_options()) == []

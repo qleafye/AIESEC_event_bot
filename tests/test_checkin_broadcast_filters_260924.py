@@ -368,7 +368,8 @@ def test_checkin_entry_picker_shows_human_labels_not_codes(tmp_path):
     data = _run(state.get_data())
     labels = data.get("filter_option_labels") or {}
     assert labels.get(db.CHECKIN_YES) == "пришли на форум"
-    assert labels.get(db.CHECKIN_NO) == "не пришли"
+    assert labels.get(db.CHECKIN_NO) == "не пришли ни разу"
+    assert labels.get(f"{db.CHECKIN_NO}@{db.CHECKIN_DAY_TODAY}") == "не пришли сегодня"
 
 
 def test_checkin_entry_picker_alerts_when_all_on_one_side(tmp_path):
