@@ -379,3 +379,20 @@ def test_cna_qr_denies_not_approved_delegate(tmp_path):
     _run(ua.checkin_not_arrived_show_qr(cb))
     assert not cb.message.answers  # фото не ушло
     assert cb.answers and cb.answers[0][1] is True  # show_alert с текстом ожидания
+
+
+def test_admin_confirm_names_city_and_today(tmp_path):
+    """Подтверждение массовой отправки называет число, город и «сегодня» — менеджер видит, кому
+    уйдёт, до нажатия."""
+    from cities import city_label
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_add_user(1, city="spb"))
+    _run(_add_user(2, city="spb"))
+    _run(_add_user(3, city="msk"))
+    cb = FakeCallback("cna_send:spb", ADMIN_ID)
+    _run(ac.cna_send_confirm(cb))
+    text = cb.message.answers[-1][0]
+    assert f"Уйдёт 2 делегатам города {_run(city_label('spb'))}" in text
+    assert "не пришли сегодня" in text
