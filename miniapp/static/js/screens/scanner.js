@@ -42,6 +42,8 @@ const STATUS_TONE = {
   foreign_event: "error",
   wrong_city: "error",
   invalid_point: "error",
+  undone: "warn",
+  undo_refused: "error",
 };
 const STATUS_HEADING = {
   new: "Отмечен",
@@ -117,9 +119,10 @@ export async function render(root, params, ctx) {
     if (stats.cities) {
       const rows = stats.cities.map((c) => h("div", { text: `${c.label}: пришли ${c.arrived} из ${c.approved}` }));
       rows.push(h("div", { class: "checkin-stats-total", text: `Итого: ${stats.arrived} из ${stats.approved}` }));
+      if (stats.today) rows.unshift(h("div", { text: "Сегодня:" }));
       statsBox.replaceChildren(...rows);
     } else {
-      statsBox.replaceChildren(h("span", { text: `Пришли: ${stats.arrived} из ${stats.approved} одобренных` }));
+      statsBox.replaceChildren(h("span", { text: `${stats.today ? "Сегодня пришли" : "Пришли"}: ${stats.arrived} из ${stats.approved} одобренных` }));
     }
   }
 
@@ -195,11 +198,39 @@ export async function render(root, params, ctx) {
   // форума/сетевая ошибка): родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup()
   // до этого показа), плашка получает крупную кнопку «Сканировать дальше», заново открывающую
   // попап.
+  // Идея №32: «↩️ Отменить» — только у своей только что поставленной отметки (сервер отдаёт
+  // `res.undo` лишь для new/moved), кнопка живёт `undo.seconds` секунд. Таймер — удобство, не
+  // защита: окно, «своя» и «последняя» проверяются на сервере (/checkin/undo).
+  let undoTimer = null;
+
+  function undoButton(undo) {
+    const btn = h("button", { class: "btn secondary checkin-plaque-undo", type: "button", text: undo.label });
+    btn.addEventListener("click", async () => {
+      if (btn.hasAttribute("disabled")) return;
+      btn.setAttribute("disabled", "");
+      if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+      let res;
+      try {
+        res = await api("/checkin/undo", { method: "POST", body: { id: undo.id } });
+      } catch (err) {
+        res = { status: "error", reason_text: isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отменить.") };
+      }
+      showPlaque(res, { closeButton: true });
+      await loadStats();
+      await loadPoints(citySelect.value || undefined);
+    });
+    undoTimer = setTimeout(() => { btn.remove(); undoTimer = null; }, (undo.seconds || 10) * 1000);
+    return btn;
+  }
+
   function showPlaque(res, { closeButton = false } = {}) {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
     const tone = STATUS_TONE[res.status] || "error";
     plaque.className = `checkin-plaque tone-${tone}`;
     const dot = tone === "success" ? "🟢" : tone === "warn" ? "🟡" : "🔴";
-    const heading = res.status === "duplicate"
+    const heading = res.status === "undone" || res.status === "undo_refused"
+      ? res.reason_text
+      : res.status === "duplicate"
       ? `Уже был в ${timeOnly(res.scanned_at)}`
       : res.status === "moved"
       ? `Перенесено${res.previous_title ? ` с «${res.previous_title}»` : ""}`
@@ -214,7 +245,9 @@ export async function render(root, params, ctx) {
       h("div", { class: "checkin-plaque-heading", text: heading }),
       res.full_name ? h("div", { class: "checkin-plaque-name", text: res.full_name }) : null,
       res.city ? h("div", { class: "checkin-plaque-city", text: res.city }) : null,
-      res.reason_text ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
+      res.reason_text && heading !== res.reason_text
+        ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
+      res.undo ? undoButton(res.undo) : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");

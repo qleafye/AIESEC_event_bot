@@ -119,6 +119,78 @@
   </section>
   {% endif %}
 
+  {# ═══ Приход на форум (бэклог чек-ина п.10): появляется с первой отметкой. Те же запросы, что
+     у экрана бота «📊 Статистика прихода» (arrival_stats.py). ═══ #}
+  {% if 'arrival' in section_ids %}
+  <section class="page-section" id="arrival" aria-labelledby="arrival-title">
+    <h2 class="section-title" id="arrival-title">Приход</h2>
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ arrival.approved | thousands }}</div><div class="lbl">Одобрено</div></div>
+          <div class="kpi">
+            <div class="num">{{ arrival.arrived | thousands }}</div>
+            <div class="lbl">Пришли</div>
+            {% if arrival.approx %}<div class="delta">у {{ arrival.approx | thousands }} время примерное</div>{% endif %}
+          </div>
+          <div class="kpi"><div class="num">{{ arrival.not_arrived | thousands }}</div><div class="lbl">Не пришли</div></div>
+          <div class="kpi">
+            <div class="num text">{% if arrival.pct is not none %}{{ arrival.pct }}%{% else %}—{% endif %}</div>
+            <div class="lbl">Явка</div>
+          </div>
+        </div>
+        {% if arrival.days %}
+        <h3 class="cut-title">По дням</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>День</th><th class="num">Пришли</th><th class="num">Впервые на форуме</th></tr></thead>
+          <tbody>
+            {% for d in arrival.days %}
+            <tr>
+              <td data-label="День">{{ d.label }}</td>
+              <td class="num" data-label="Пришли">{{ d.present | thousands }}</td>
+              <td class="num" data-label="Впервые на форуме">{{ d.first_entry | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        {% if arrival.sessions %}
+        <details class="chart-table">
+          <summary>Сессии программы ({{ arrival.sessions | length }})</summary>
+          <div class="table-wrap">
+          <table class="responsive">
+            <thead>
+              <tr>
+                {% if not scope.city %}<th>Город</th>{% endif %}
+                <th>День</th><th>Время</th><th>Зал</th><th>Сессия</th>
+                <th class="num">Отметились</th><th class="num">Заполненность</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in arrival.sessions %}
+              <tr>
+                {% if not scope.city %}<td data-label="Город">{{ s.city_label }}</td>{% endif %}
+                <td data-label="День">{{ s.day_label }}</td>
+                <td data-label="Время">{{ s.start }}–{{ s.end }}</td>
+                <td data-label="Зал">{{ s.hall or "—" }}</td>
+                <td data-label="Сессия">{{ s.title }}</td>
+                <td class="num" data-label="Отметились">{{ s.count | thousands }}</td>
+                <td class="num" data-label="Заполненность">{% if s.fill_pct is not none %}{{ s.fill_pct }}% из {{ s.capacity | thousands }}{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </details>
+        {% endif %}
+        <p class="empty-note">Если регион отмечает офлайн-сканером, числа растут после загрузки файла в боте. Время — московское.</p>
+      </div>
+    </section>
+  </section>
+  {% endif %}
+
   {# ═══ Раздел 2: Поток заявок ═══ #}
   {% if 'flow' in section_ids %}
   <section class="page-section" id="flow" aria-labelledby="flow-title">

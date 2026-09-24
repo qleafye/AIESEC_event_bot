@@ -482,6 +482,12 @@ _CODE_LITERALS_EN = {
     "или геопозицию — всё уйдёт им.":
         "🆘 The signal has been sent to the organizers — they'll reach out to you. Type what "
         "happened, send a photo or your location — it'll all go to them.",
+    # Он же без «🆘 » — `sos_sent_text` уходит через `reg_i18n.say` -> `tr_text`, который
+    # снимает ведущий эмодзи до поиска.
+    "Сигнал отправлен оргкомитету — с тобой свяжутся. Напиши, что случилось, пришли фото "
+    "или геопозицию — всё уйдёт им.":
+        "The signal has been sent to the organizers — they'll reach out to you. Type what "
+        "happened, send a photo or your location — it'll all go to them.",
     "Принято. Если понадобится снова — жми «🆘 SOS».":
         "Got it. If you need it again — tap «🆘 SOS».",
     "Сессия SOS закрыта по времени. Если всё ещё нужна помощь — нажми «🆘 SOS» снова.":
@@ -496,6 +502,21 @@ _CODE_LITERALS_EN = {
     "человеку в форме оргкомитета.":
         "We couldn't reach the organizers with your SOS. Go to the registration desk or "
         "find anyone wearing organizer clothing.",
+    # Стенд 25.09: напоминание взявшему SOS и сигнал менеджерам после трёх напоминаний.
+    "⏰ SOS #{id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — если уже "
+    "разобрался(лась), не забудь нажать её под карточкой.":
+        "⏰ SOS #{id} has been with you for {minutes} min without «✅ Resolved» — if it's "
+        "already handled, don't forget to tap it under the card.",
+    # Он же без «⏰ » — `sos_claimed_remind_text` уходит через `reg_i18n.tr_fmt` -> `tr_text`,
+    # который снимает ведущий эмодзи до поиска (та же пара, что у `sos_sent_text` выше).
+    "SOS #{id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — если уже "
+    "разобрался(лась), не забудь нажать её под карточкой.":
+        "SOS #{id} has been with you for {minutes} min without «✅ Resolved» — if it's "
+        "already handled, don't forget to tap it under the card.",
+    "⏰ SOS #{id} в работе у {who} уже {minutes} мин. без отметки «✅ Решено» — "
+    "три напоминания остались без ответа.":
+        "⏰ SOS #{id} has been with {who} for {minutes} min without «✅ Resolved» — "
+        "three reminders went unanswered.",
     "Сигнал уже у оргкомитета ({claim_status}). Напиши, что случилось — дополню.":
         "The signal is already with the organizers ({claim_status}). Write what happened — I'll add it.",
     # Часть А (ревью SOS-переводов): `{claim_status}` — сам ярус B, ДВЕ формы шаблона
@@ -515,6 +536,16 @@ _CODE_LITERALS_EN = {
     "✍️ Напиши комментарий следующим сообщением.": "✍️ Write your comment as your next message.",
     "Спасибо, записал!": "Thanks, got it!",
     "Эта оценка тебе недоступна.": "This rating isn't available to you.",
+    # Идея №32: «↩️ Отменить» на плашке сканера Mini App (волонтёру).
+    "↩️ Отменить": "↩️ Undo",
+    "Отметка снята — делегат снова не отмечен на этой точке.":
+        "Check-in removed — the delegate is no longer checked in at this point.",
+    "Отменить уже нельзя. Если отметка ошибочная — попросите менеджера снять её в боте.":
+        "It's too late to undo. If the check-in is wrong, ask a manager to remove it in the bot.",
+    "Отметка уже изменилась — её перенёс или снял кто-то другой. Ничего не отменено.":
+        "The check-in has already changed — someone else moved or removed it. Nothing was undone.",
+    "Не получилось отменить — попросите менеджера снять отметку в боте.":
+        "Couldn't undo — ask a manager to remove the check-in in the bot.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
@@ -753,6 +784,13 @@ _REGISTRY_TEXTS_EN = {
     # checkin_qr_disabled_text).
     "🎟 Твой QR для отметки на форуме.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
         "🎟 Your QR code for check-in at the forum.\n\n"
+        "Save it in advance (for example, take a screenshot) — the venue may have no network, "
+        "but a photo from the chat opens even without the internet."
+    ),
+    # Та же подпись БЕЗ «🎟 » — её ищет `reg_i18n.tr_text` после снятия ведущего эмодзи
+    # (бот шлёт подпись QR через него); ключ выше нужен сторожу корпуса и `tr()` целиком.
+    "Твой QR для отметки на форуме.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
+        "Your QR code for check-in at the forum.\n\n"
         "Save it in advance (for example, take a screenshot) — the venue may have no network, "
         "but a photo from the chat opens even without the internet."
     ),

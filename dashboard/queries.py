@@ -20,6 +20,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import arrival_stats
 from dashboard.timeutil import msk_now
 
 
@@ -1255,6 +1256,37 @@ def _avg_question_answer_minutes(conn, parts: list[str], params: tuple) -> float
     )
     value = _scalar(conn, sql, params)
     return round(value, 1) if value is not None else None
+
+
+def arrival_block(conn, scope: Scope) -> dict | None:
+    """Блок «Приход» (бэклог чек-ина п.10): одобрено / пришли / не пришли, по дням, по
+    сессиям. SQL и сборка отчёта — общий корневой `arrival_stats.py`, те же запросы исполняет
+    бот (экран «📊 Статистика прихода»); здесь только городской/сезонный фрагмент дашборда.
+
+    `None`, пока на форуме нет ни одной отметки (как `questions_block`: гейт по данным, без
+    тумблера) — до дня форума раздела на странице нет вовсе. Таблицы `checkins` может не быть
+    в старой базе — тоже `None`."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'checkins'"
+    ).fetchone()
+    if has_table is None or not _scalar(conn, "SELECT EXISTS(SELECT 1 FROM checkins)"):
+        return None
+    city_frag, city_params = _city_sql(conn, scope.city)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    where, params = arrival_stats.approved_users_where(
+        [city_frag, season_frag], [*city_params, *season_params],
+    )
+    queries = arrival_stats.arrival_queries(where, params, scope.city)
+    report = arrival_stats.build_report(
+        _scalar(conn, *queries["approved"]),
+        conn.execute(*queries["arrived"]).fetchone(),
+        conn.execute(*queries["days"]).fetchall(),
+        conn.execute(*queries["sessions"]).fetchall(),
+    )
+    labels = {row["code"]: row["label"] for row in conn.execute("SELECT code, label FROM cities").fetchall()}
+    for s in report["sessions"]:
+        s["city_label"] = labels.get(s["city"], s["city"])
+    return report
 
 
 def questions_block(conn, scope: Scope) -> dict | None:

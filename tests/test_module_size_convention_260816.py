@@ -445,7 +445,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        942,
+        952,
+        "Бэклог чек-ина №25: +5 строк — шов-импорт `from handlers import admin_forum_ready` "
+        "(«🚦 Готовность к форуму») в самый хвост файла (947 -> 952). "
+        "Бэклог чек-ина п.10: +5 строк — шов-импорт `from handlers import admin_checkin_stats` "
+        "(«📊 Статистика прихода») в самый хвост файла (942 -> 947). "
         "D-29 (24.09, «одна кнопка программы у делегата»): +8 строк — шов-импорт `from handlers "
         "import admin_program_view` (циклический тумблер таблица/фото Mini App) в самый хвост "
         "файла, после admin_forum_functions (934 -> 942). "
@@ -588,7 +592,15 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1165,
+        1186,
+        "Слияние треков 03.10: №25/п.10 (+11) и №31/№32 (+10) — 1165 -> 1186. "
+        "Бэклог чек-ина №25: +4 строки — капы экрана «🚦 Готовность к форуму» (forum_ready:*/"
+        "forum_ready_re:*, moderate_reg — как у хаба); 1172 -> 1176. "
+        "Бэклог чек-ина п.10: +7 строк — капы экрана «📊 Статистика прихода» (checkin_stats/"
+        "checkin_stats_refresh/checkin_stats_csv, moderate_reg); 1165 -> 1172. "
+        "Идеи №31/№32 (журнал площадки, снятие отметки): +10 строк — capability-записи "
+        "handlers/admin_venue.py (admin_venue_log/vlog:*/vlogst/vrv_*/state:VenueRevokeFind:*, "
+        "капа «moderate_reg»); 1165 -> 1175. "
         "D-36 (24.09, аудит форумных тумблеров): +13 строк — capability-записи «🎪 Форум: "
         "функции» + недостающего экрана шпаргалки волонтёра (admin_forum_functions/"
         "forumfn_city:*/checkinvol_cfg:*/checkinvol_toggle:*/checkinvol_time:*/"
@@ -707,7 +719,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "не в БД; потолок поднят до фактического размера.",
     ),
     "admin_checkin.py": (
-        990,
+        1001,
+        "Слияние треков 03.10: кнопки «📊 Статистика прихода» и «📓 Журнал площадки» + журнал "
+        "перевыпуска QR/загрузки CSV (новые экраны — в своих модулях); 990 -> 1001. "
         "Форум-ночь п.6 (D-25, идея №14): +99 строк — блок «🚪 Не пришли» экрана «✅ Отметки "
         "на форуме» (_not_arrived_status_line/_not_arrived_section + три хендлера "
         "cna_send_confirm/cna_send_go/cna_send_cancel, тот же трёхветочный приём города, что "

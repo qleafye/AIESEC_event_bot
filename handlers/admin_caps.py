@@ -950,6 +950,27 @@ ADMIN_CAPS: dict[str, str] = {
     "cna_send:*": "moderate_reg",
     "cna_send_go:*": "moderate_reg",
     "cna_send_no": "moderate_reg",
+    # Идеи №31/№32: «📓 Журнал площадки» и снятие отметки менеджером (handlers/admin_venue.py) —
+    # «moderate_reg», тот же довод, что у перевыпуска QR: правка чужих отметок, не сканирование.
+    "admin_venue_log": "moderate_reg",
+    "vlog:*": "moderate_reg",
+    "vlogst": "moderate_reg",
+    "vrv_find": "moderate_reg",
+    "vrv_u:*": "moderate_reg",
+    "vrv_p:*": "moderate_reg",
+    "vrv_go:*": "moderate_reg",
+    "state:VenueRevokeFind:*": "moderate_reg",
+
+    # Бэклог чек-ина п.10: «📊 Статистика прихода» (handlers/admin_checkin_stats.py) — сводка по
+    # всему городу для менеджера, не волонтёрская `checkin`; та же капа, что у соседних
+    # менеджерских экранов чек-ина выше.
+    "checkin_stats": "moderate_reg",
+    "checkin_stats_refresh": "moderate_reg",
+    "checkin_stats_csv": "moderate_reg",
+    # Бэклог №25: «🚦 Готовность к форуму» (handlers/admin_forum_ready.py) — кнопка хаба «🎪 Форум:
+    # функции», та же капа, что у хаба. Префиксы разные: "forum_ready:*" не покрывает "forum_ready_re:*".
+    "forum_ready:*": "moderate_reg",
+    "forum_ready_re:*": "moderate_reg",
 
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
