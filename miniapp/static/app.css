@@ -2357,3 +2357,4 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .checkin-plaque.tone-error { border-color: var(--danger); background: var(--surface-alt); }
 .checkin-plaque.tone-error .checkin-plaque-heading { color: var(--danger-text); }
 .checkin-plaque-next { margin-top: var(--sp-4); }
+.checkin-plaque-undo { margin-top: var(--sp-4); width: 100%; }

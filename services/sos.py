@@ -34,10 +34,10 @@ from __future__ import annotations
 import asyncio
 import html as html_module
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from cities import cities_module_on, get_setting_typed_for_city, per_city_key
-from database.db import get_sos_report, set_sos_escalated
+from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
 from services.timeutil import msk_now
 from settings_audit import set_setting_by_admin
@@ -85,17 +85,28 @@ async def is_sos_active_for_city(city: str | None) -> bool:
     «Москва 30-31.10») дают окно `[forum_date, forum_date + days - 1]`. Форум-дата не задана
     ИЛИ не парсится -> False (fail-soft = кнопки нет, тот же баланс, что у menu_program/
     menu_important: лучше спрятать кнопку, чем показать нерабочую)."""
+    window = await sos_active_window(city)
+    if window is None:
+        return False
+    start, end = window
+    return start <= msk_now().date() <= end
+
+
+async def sos_active_window(city: str | None) -> tuple[date, date] | None:
+    """Окно дней форума города `[первый, последний]` (включительно) для
+    `is_sos_active_for_city` и напоминаний взявшему SOS; `None` — дата форума не задана или
+    не парсится."""
     from services.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
     # что уже документирован в services/checkin_broadcast.py, reject_rules.py тяжелее этого
     # модуля не нужно тянуть на уровне импорта ради одной функции.
 
     raw = await forum_date_for(city)
     if not raw:
-        return False
+        return None
     try:
         start = datetime.strptime(raw.strip(), "%d.%m.%Y").date()
     except ValueError:
-        return False
+        return None
     raw_days = await get_setting_typed_for_city("sos_active_days", city)
     try:
         days = int(raw_days)
@@ -103,8 +114,7 @@ async def is_sos_active_for_city(city: str | None) -> bool:
         days = DEFAULT_ACTIVE_DAYS
     if days < 1:
         days = 1
-    today = msk_now().date()
-    return start <= today <= start + timedelta(days=days - 1)
+    return start, start + timedelta(days=days - 1)
 
 
 # ── Привязка чата SOS — форма services/chat_tracking.py (bound_chats/bind_chat) ──────────
@@ -701,56 +711,83 @@ async def escalation_job(report_id: int) -> None:
 
 
 async def _deliver_escalation(bot, report: dict) -> None:
-    """Ревью 24.09 (находка 2, добавка): текст эскалации в привязанный чат идёт через тот же
+    """Эскалация невзятого SOS — тексты «никто не взял за N мин»."""
+    minutes = await get_setting_typed_for_city("sos_escalation_minutes", report.get("city")) \
+        or DEFAULT_ESCALATION_MINUTES
+    await _send_escalation(
+        bot, report,
+        f"⏰ Никто не взял SOS #{report['id']} за {minutes} мин.",
+        alert_head=f"⏰ <b>SOS #{report['id']} без ответа {minutes} мин.</b>",
+    )
+
+
+async def _send_escalation(bot, report: dict, group_text: str, *, alert_head: str) -> None:
+    """Общий путь эскалации: `group_text` (простой текст) — в привязанный чат SOS реплаем на
+    карточку; `alert_head` (HTML) + карточка заявки — лично менеджерам с капой `moderate_reg`
+    города.
+
+    Ревью 24.09 (находка 2, добавка): текст в привязанный чат идёт через тот же
     `_send_to_bound_chat`, что и карточка (`post_card`) — миграция чата в супергруппу больше не
     роняет эскалацию молча (перепривязка + один повтор в новый chat_id), а провал отправки
-    метит чат нездоровым (алерт держателям settings, троттлинг раз в час) — раньше эскалация
-    просто логировала provал `logger.warning` и не трогала здоровье чата вовсе."""
+    метит чат нездоровым (алерт держателям settings, троттлинг раз в час)."""
     from database.db import get_user
     from handlers.admin_caps import notify_by_capability
 
-    minutes = await get_setting_typed_for_city("sos_escalation_minutes", report.get("city")) \
-        or DEFAULT_ESCALATION_MINUTES
-    text_group = f"⏰ Никто не взял SOS #{report['id']} за {minutes} мин."
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
         await _send_to_bound_chat(
-            bot, report.get("city"), chat, text_group,
+            bot, report.get("city"), chat, group_text,
             reply_to_message_id=report.get("card_message_id") or None,
         )
     user = await get_user(report["telegram_id"])
-    alert_text = (
-        f"⏰ <b>SOS #{report['id']} без ответа {minutes} мин.</b>\n\n"
-        + render_card_text(report, user)
-    )
+    alert_text = f"{alert_head}\n\n" + render_card_text(report, user)
     await notify_by_capability(bot, "moderate_reg", alert_text, parse_mode="HTML", city=report.get("city"))
 
 
-# ── Ревью 24.09 (находка 3, часть А): напоминание взявшему «🙋 Беру», кто не отметил «✅
-# Решено» — тот же самопланирующийся приём, что цикл chat_tracking-джоб: каждый тик, если
-# статус всё ещё «взят» (не решён), шлёт напоминание И СРАЗУ ставит себя заново на тот же
-# интервал (D-25 идиома «репитер», не одноразовая date-джоба, как эскалация выше). Тик,
-# заставший статус «решён»/строку исчезнувшей, просто НЕ перепланирует себя — джоба гаснет
-# сама, отдельной отмены на "Решено" не нужно (но `cancel_claimed_reminder` всё равно вызывается
-# явно в `admin_sos.sos_resolve` — снимает джобу МГНОВЕННО, не дожидаясь следующего тика).
+# ── Напоминание взявшему «🙋 Беру», кто не отметил «✅ Решено» (ревью 24.09, находка 3,
+# часть А; лесенка — стенд 25.09). Раньше джоба перепланировала себя на тот же интервал
+# бесконечно — на стенде за ночь 16 напоминаний по одной заявке. Теперь:
+# - три напоминания с растущими паузами (`CLAIMED_REMIND_DELAYS_MINUTES`; первую паузу менеджер
+#   может сменить настройкой `sos_claimed_remind_minutes`), после третьего — одно сообщение
+#   менеджерам тем же путём, что эскалация невзятого SOS (`_send_escalation`), и больше ничего;
+# - счётчик ушедших напоминаний — в БД (`sos_reports.claimed_remind_count`, compare-and-set
+#   `advance_sos_claimed_remind`), id джобы фиксированный: рестарт лесенку не сбрасывает и
+#   ступень дважды не шлёт;
+# - ступень, попавшая в тихие часы города, переносится на конец окна (не теряется);
+# - после последнего дня форума города (`sos_active_window`) — ни отправки, ни новой джобы;
+# - джоба перечитывает заявку: решена или уже у другого взявшего — молча гаснет.
 DEFAULT_CLAIMED_REMIND_MINUTES = 20
+CLAIMED_REMIND_DELAYS_MINUTES = (DEFAULT_CLAIMED_REMIND_MINUTES, 60, 180)
+CLAIMED_REMIND_MAX = len(CLAIMED_REMIND_DELAYS_MINUTES)
 
 
 def _claimed_remind_job_id(report_id: int) -> str:
     return f"sos_claimed_remind_{report_id}"
 
 
-def schedule_claimed_reminder(report_id: int, minutes: int) -> None:
+def _schedule_claimed_reminder_at(report_id: int, claimant_id: int | None, run_at: datetime) -> None:
     try:
-        from services.scheduler import _now_moscow_naive, get_scheduler
+        from services.scheduler import get_scheduler
 
-        run_at = _now_moscow_naive() + timedelta(minutes=max(1, minutes))
         get_scheduler().add_job(
-            claimed_reminder_job, "date", run_date=run_at, args=[report_id, minutes],
+            claimed_reminder_job, "date", run_date=run_at, args=[report_id],
+            kwargs={"claimant_id": claimant_id},
             id=_claimed_remind_job_id(report_id), replace_existing=True,
         )
     except Exception as e:
+        logger.warning("sos._schedule_claimed_reminder_at(%s) failed: %s: %s", report_id, type(e).__name__, e)
+
+
+def schedule_claimed_reminder(report_id: int, minutes: int, claimant_id: int | None = None) -> None:
+    """Первая ступень — через `minutes` (настройка `sos_claimed_remind_minutes`) после «Беру»."""
+    try:
+        from services.scheduler import _now_moscow_naive
+
+        run_at = _now_moscow_naive() + timedelta(minutes=max(1, minutes))
+    except Exception as e:
         logger.warning("sos.schedule_claimed_reminder(%s) failed: %s: %s", report_id, type(e).__name__, e)
+        return
+    _schedule_claimed_reminder_at(report_id, claimant_id, run_at)
 
 
 def cancel_claimed_reminder(report_id: int) -> None:
@@ -762,30 +799,90 @@ def cancel_claimed_reminder(report_id: int) -> None:
         pass  # не стояла или уже сработала — оба случая ОК (форма cancel_escalation)
 
 
-async def claimed_reminder_job(report_id: int, minutes: int) -> None:
-    """Перечитывает статус ПЕРЕД отправкой (та же идиома, что `escalation_job`) — решённая
-    заявка тихо гасит цепочку репитера, не перепланируя себя дальше."""
+def _minutes_in_work(report: dict, now: datetime) -> int:
+    claimed_at = _parse_stamp(report.get("claimed_at"))
+    if claimed_at is None:
+        return 0
+    return max(0, int((now - claimed_at).total_seconds() // 60))
+
+
+def _fill(template: str, **subs) -> str:
+    text = template
+    for key, value in subs.items():
+        text = text.replace("{" + key + "}", str(value))
+    return text
+
+
+async def _translated_for(telegram_id: int, template: str, **subs) -> str:
+    """Шаблон реестра -> язык получателя (шаблон переводится ДО подстановки, как везде в чате —
+    `handlers.reg_i18n.tr_fmt`). Сбой перевода -> русский шаблон с подстановкой."""
     try:
+        from handlers import reg_i18n
+        from services import i18n as i18n_service
+
+        lang, tr_map = await i18n_service.context(telegram_id)
+        return reg_i18n.tr_fmt(template, lang, tr_map, **subs)
+    except Exception as e:
+        logger.info("sos._translated_for(%s): перевод не удался: %s", telegram_id, e)
+        return _fill(template, **subs)
+
+
+async def claimed_reminder_job(report_id: int, _legacy_minutes: int | None = None, *,
+                               claimant_id: int | None = None) -> None:
+    """Одна ступень лесенки напоминаний. `_legacy_minutes` — второй позиционный аргумент
+    джоб, поставленных до лесенки (они лежат в персистентном хранилище APScheduler) — не
+    используется: пауза следующей ступени берётся из `CLAIMED_REMIND_DELAYS_MINUTES`."""
+    try:
+        from services import quiet_hours
+        from services.scheduler import _now_moscow_naive
+
         report = await get_sos_report(report_id)
         if report is None or report_status(report) != STATUS_CLAIMED:
             return
-        claimant_id = report.get("claimed_by")
-        if claimant_id:
-            import services.scheduler as scheduler_module
+        holder = report.get("claimed_by")
+        if claimant_id is not None and holder != claimant_id:
+            return  # заявка уже у другого — лесенка прежнего взявшего гаснет
+        count = int(report.get("claimed_remind_count") or 0)
+        if count >= CLAIMED_REMIND_MAX:
+            return
+        city = report.get("city")
+        now = _now_moscow_naive()
+        window = await sos_active_window(city)
+        if window is None or now.date() > window[1]:
+            return  # форум города закончился (или дата не задана) — не шлём и не ставим
 
-            bot = scheduler_module.get_bot()
-            text = (
-                f"⏰ SOS #{report_id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — "
-                "если уже разобрался(лась), не забудь нажать её под карточкой."
-            )
-            try:
-                await bot.send_message(claimant_id, text)
-            except Exception as e:
-                logger.info(
-                    "sos.claimed_reminder_job: не удалось написать claimant id=%s: %s",
-                    claimant_id, e,
-                )
-        schedule_claimed_reminder(report_id, minutes)  # репитер — тот же интервал заново
+        quiet = await quiet_hours.window_for_city(city)
+        if quiet is not None and quiet_hours.is_quiet(now, *quiet):
+            wake = quiet_hours.next_window_end(now, *quiet)
+            if wake.date() <= window[1]:
+                _schedule_claimed_reminder_at(report_id, holder, wake)
+            return
+
+        if not await advance_sos_claimed_remind(report_id, holder, count):
+            return
+        count += 1
+        minutes = _minutes_in_work(report, now)
+
+        import services.scheduler as scheduler_module
+
+        bot = scheduler_module.get_bot()
+        template = await get_setting_typed("sos_claimed_remind_text")
+        text = await _translated_for(holder, template, id=report_id, minutes=minutes)
+        try:
+            await bot.send_message(holder, text)
+        except Exception as e:
+            logger.info("sos.claimed_reminder_job: не удалось написать claimant id=%s: %s", holder, e)
+
+        if count < CLAIMED_REMIND_MAX:
+            run_at = now + timedelta(minutes=CLAIMED_REMIND_DELAYS_MINUTES[count])
+            if run_at.date() <= window[1]:
+                _schedule_claimed_reminder_at(report_id, holder, run_at)
+            return
+
+        who = report.get("claimed_by_name") or "коллега"
+        esc_template = await get_setting_typed("sos_claimed_escalation_text")
+        esc_text = _fill(esc_template, id=report_id, who=who, minutes=minutes)
+        await _send_escalation(bot, report, esc_text, alert_head=html_module.escape(esc_text))
     except Exception as e:
         logger.error("sos.claimed_reminder_job(%s) failed: %s: %s", report_id, type(e).__name__, e)
 

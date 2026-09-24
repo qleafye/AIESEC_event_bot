@@ -35,15 +35,18 @@ from datetime import datetime
 import segno
 
 from database.db import (
+    first_entry_scanned_at,
     get_checkin_token_replacement,
     get_or_create_checkin_token,
     get_program_session,
     get_user_by_checkin_token,
+    has_entry_on_other_day,
     list_program_sessions_for_city_day,
     record_checkin,
     record_session_checkin,
 )
 from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
+from services.timeutil import aware_to_msk, msk_from_timestamp
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -254,10 +257,16 @@ async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) 
 
     Только на `'new'` (первая отметка) — `'duplicate'` уже писала то же самое время скана при
     первой отметке, второй вызов Sheets API на тот же результат был бы просто тратой квоты.
+    Вход каждый день: «Пришёл» — время ПЕРВОГО входа за форум. Новый вход второго дня ячейку
+    не трогает (раньше уже есть вход); пишем, только если этот вход — самый ранний из имеющихся
+    (обычный первый скан или CSV первого дня, загруженный после живых сканов второго).
     Сам вызов уже fail-soft (update_arrived_in_sheet ловит исключения и возвращает False) —
     отметка в БД к этому моменту уже сохранена вызывающим, лист может упасть без последствий
     для самого чек-ина (D-17)."""
     if status != "new":
+        return
+    first = await first_entry_scanned_at(telegram_id)
+    if first is not None and first < scanned_at:
         return
     from services.sheets import update_arrived_in_sheet
     await update_arrived_in_sheet(telegram_id, scanned_at)
@@ -269,7 +278,7 @@ _first_entry_listeners: list = []
 
 
 def register_first_entry_listener(fn) -> None:
-    """Подписать async-слушателя на ПЕРВУЮ отметку входа делегата (для будущего «приветствия
+    """Подписать async-слушателя на ПЕРВЫЙ ЗА ДЕНЬ вход делегата (для будущего «приветствия
     после первого скана» и т.п.). Сигнатура слушателя:
 
         async def listener(bot, user_id: int, city: str | None, day: str, **kwargs) -> None
@@ -279,13 +288,24 @@ def register_first_entry_listener(fn) -> None:
     `source` ("miniapp" — скан QR, "manual" — поиск по ФИО, "auto_session" — вход поставлен
     сканом на сессии, "csv" — загрузка выгрузки сканера), `by_staff_id` (кто отметил, может быть
     None), `scanned_at` («YYYY-MM-DD HH:MM:SS» по Москве), `approx` (время скана примерное),
-    `session_id` (только у "auto_session"). Слушатель обязан принимать `**kwargs` — поля могут
-    добавляться.
+    `session_id` (только у "auto_session"), `first_of_day` (всегда True — зов бывает только на
+    первый вход дня), `first_of_forum` (True — это первый вход делегата за весь форум: входа в
+    другие дни нет). Приветствие «один раз за форум» обязано смотреть на `first_of_forum`, а не
+    полагаться на сам факт зова: на двухдневном форуме второй день зовёт слушателей ещё раз с
+    `first_of_forum=False`. Слушатель обязан принимать `**kwargs` — поля могут добавляться.
 
-    «Первая» = `database.db.record_checkin` реально вставил строку входа (`"new"`, rowcount от
-    INSERT OR IGNORE по UNIQUE(telegram_id, point)); повторный скан (`"duplicate"`) слушателей
-    не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
+    «Первый за день» = `database.db.record_checkin` реально вставил строку входа (`"new"`,
+    rowcount от INSERT OR IGNORE по UNIQUE(telegram_id, point, day)); повторный скан в тот же
+    день (`"duplicate"`) слушателей не зовёт. Зов — ПОСЛЕ коммита отметки, fail-soft: исключение слушателя логируется и не
     мешает ни отметке, ни остальным слушателям.
+
+    Снятие отметки (идея №32: «↩️ Отменить» волонтёра или снятие менеджером,
+    `services/venue_log.py`) слушателей НЕ откатывает и никого не зовёт — что слушатель уже
+    сделал (приветствие ушло), то сделано. Строка входа при снятии удаляется, поэтому
+    повторная отметка того же делегата снова будет `"new"` и позовёт слушателей ЕЩЁ РАЗ
+    (`first_of_forum` снова True, если других дней нет).
+    Слушатель обязан быть идемпотентным сам (например, помнить в своей таблице, кому уже
+    отправил), а не полагаться на «первая отметка бывает один раз».
 
     CSV-импорт тоже зовёт слушателей (для каждой новой отметки) с `source="csv"` — выгрузку
     могут загрузить и после форума, поэтому слать ли что-то делегату, решает сам слушатель по
@@ -331,8 +351,11 @@ def _first_entry_event(user: dict, ts: str, source: str, by_staff_id, approx: bo
 
 
 async def _after_first_entry(result: dict, bot, event: dict) -> None:
-    """Событие первой отметки входа: кладёт его в `result["first_entry"]` (Mini App переносит
-    в outbox) и, если есть `bot` (процесс бота), сразу зовёт слушателей."""
+    """Событие первого за день входа: кладёт его в `result["first_entry"]` (Mini App переносит
+    в outbox) и, если есть `bot` (процесс бота), сразу зовёт слушателей. `first_of_forum` —
+    входа в другие дни форума нет (см. `register_first_entry_listener`)."""
+    event["first_of_day"] = True
+    event["first_of_forum"] = not await has_entry_on_other_day(event["user_id"], event["day"])
     result["first_entry"] = event
     if bot is not None:
         await fire_first_entry(bot, **event)
@@ -348,6 +371,7 @@ async def record_arrival(
     scanned_at: str | None = None,
     approx: bool = False,
     by_staff_id: int | None = None,
+    staff_name: str | None = None,
     bot=None,
 ) -> dict:
     """Единая точка «делегат — точка X — отметка» для ВСЕХ трёх источников (загрузка CSV,
@@ -383,7 +407,12 @@ async def record_arrival(
 
     Первая отметка входа (прямая или `auto_session`) дополнительно зовёт слушателей
     `register_first_entry_listener` (если передан `bot`) и кладёт событие в
-    `result["first_entry"]` — Mini App без Bot переносит его в outbox сам."""
+    `result["first_entry"]` — Mini App без Bot переносит его в outbox сам.
+
+    Идея №31/№32 (журнал площадки): живая отметка (`source` не "csv") со статусом new/moved
+    пишет строку `venue_log` (`services.venue_log.log_live_checkin`, fail-soft), её id —
+    `result["log_id"]`, ключ кнопки «↩️ Отменить» на плашке сканера. `staff_name` — снимок
+    имени волонтёра для журнала."""
     if not (point or "").startswith("session:"):
         status, ts = await record_checkin(
             user["telegram_id"], point or ENTRY_POINT, source=source,
@@ -391,6 +420,11 @@ async def record_arrival(
         )
         await mark_arrived_in_sheet(user["telegram_id"], status, ts)
         result = {"status": status, "scanned_at": ts}
+        if status == "new" and source != "csv":
+            result["log_id"] = await _venue_log().log_live_checkin(
+                user, point or ENTRY_POINT, status=status, scanned_at=ts, source=source,
+                by_staff_id=by_staff_id, staff_name=staff_name,
+            )
         if status == "new" and (point or ENTRY_POINT) == ENTRY_POINT:
             await _after_first_entry(result, bot, _first_entry_event(user, ts, source, by_staff_id, approx))
         return result
@@ -435,9 +469,11 @@ async def record_arrival(
     slot = parallel_group(session, day_sessions)
     slot_other_ids = [s["id"] for s in slot if s["id"] != session_id]
 
+    previous_row: dict = {}
     status, ts, previous_id = await record_session_checkin(
         user["telegram_id"], session_id, slot_other_ids, source=source,
         scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
+        previous_out=previous_row,
     )
     result: dict = {"status": status, "scanned_at": ts}
     if day_mismatch:  # только source == "csv" мог дойти досюда с day_mismatch=True
@@ -446,15 +482,32 @@ async def record_arrival(
         prev = await get_program_session(previous_id)
         result["previous_title"] = prev["title"] if prev else None
     if status in ("new", "moved"):
+        # Вход каждый день: авто-вход ставится на день и время САМОГО скана сессии (у CSV —
+        # время из файла, а не день загрузки).
         entry_status, entry_ts = await record_checkin(
             user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
+            scanned_at=ts, approx=approx,
         )
         await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
+        if source != "csv":
+            result["log_id"] = await _venue_log().log_live_checkin(
+                user, point, status=status, scanned_at=ts, source=source,
+                by_staff_id=by_staff_id, staff_name=staff_name,
+                previous=previous_row or None,
+                auto_entry_at=entry_ts if entry_status == "new" else None,
+            )
         if entry_status == "new":
             await _after_first_entry(result, bot, _first_entry_event(
                 user, entry_ts, "auto_session", by_staff_id, False, session_id=session_id,
             ))
     return result
+
+
+def _venue_log():
+    """Ленивый импорт журнала площадки (`services.venue_log` сам ничего не импортирует отсюда,
+    но держим верх модуля без новых зависимостей — тот же приём, что `cities`/`program`)."""
+    from services import venue_log
+    return venue_log
 
 
 # ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
@@ -492,11 +545,15 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
     if not cell:
         return None
     if _ISO_DT_RE.match(cell):
+        # Полная строка первой: `Z`/`+03:00` — это зона, её нельзя отрезать (`cell[:19]`
+        # превращал «09:15Z» в «09:15 по Москве»). Aware -> МСК naive; naive — как есть
+        # (время телефона сканера на площадке).
+        full = cell[:-1] + "+00:00" if cell[-1:] in ("Z", "z") else cell
         try:
-            return datetime.fromisoformat(cell[:19].replace("T", " ") if "T" not in cell[:19] else cell[:19])
+            return aware_to_msk(datetime.fromisoformat(full))
         except ValueError:
             try:
-                return datetime.fromisoformat(cell.rstrip("Zz")[:19])
+                return datetime.fromisoformat(cell[:19])
             except ValueError:
                 return None
     m = _DMY_DT_RE.match(cell)
@@ -511,7 +568,7 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
             n = int(cell)
             if n > 10 ** 12:  # миллисекунды
                 n //= 1000
-            return datetime.fromtimestamp(n)
+            return msk_from_timestamp(n)
         except (ValueError, OSError, OverflowError):
             return None
     return None

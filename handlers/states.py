@@ -390,3 +390,9 @@ class SessionFeedbackComment(StatesGroup):
     # state.get_data() (sfb_session_id). Право не нужно (delegate-side, вне
     # CapabilityMiddleware — тот же прецедент, что SosReport выше).
     waiting = State()
+
+
+class VenueRevokeFind(StatesGroup):
+    # Идея №32 (снятие отметки менеджером, handlers/admin_venue.py): одно ожидание текста —
+    # фамилия/@username делегата; дальше выбор человека и отметки идёт кнопками.
+    waiting_query = State()

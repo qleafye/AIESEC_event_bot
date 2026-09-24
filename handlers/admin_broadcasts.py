@@ -57,7 +57,8 @@ from database.db import (
     # «пришли»/«не пришли».
     CHECKIN_YES,
     CHECKIN_NO,
-    get_checkin_entry_filter_options,
+    CHECKIN_DAY_TODAY,
+    get_checkin_entry_picker_options,
     # «Сессия программы» — свой мастер (город → день → сессия), не входит в generic-пикер.
     any_program_sessions_exist,
     # Quick 260910-okb (BC-01..06): журнал немедленных рассылок + отзыв у получателей.
@@ -1340,14 +1341,15 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # пикер (get_auto_reject_filter_options) — второй карты значений нет.
     auto_reject_options = await get_auto_reject_filter_options()
     # Форум-ночь п.6 (D-25, идея №14): та же роль порога, что у auto_reject/chat выше.
-    checkin_options = await get_checkin_entry_filter_options()
+    # Вход каждый день: порог — хоть один вариант (за форум / сегодня / день) с людьми.
+    checkin_options = await get_checkin_entry_picker_options()
     show_sessions = await any_program_sessions_exist()
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
                          show_chat=len(chat_options) > 1,
                          show_auto_reject=len(auto_reject_options) > 1,
-                         show_checkin=len(checkin_options) > 1,
+                         show_checkin=bool(checkin_options),
                          show_sessions=show_sessions)
     if edit:
         await target.edit_text(text, reply_markup=kb)
@@ -1460,15 +1462,25 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Форум-ночь п.6 (D-25, идея №14): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
         # соседей выше: инлайн-кнопки не истекают, вчерашнее меню с кнопкой «Отметка на
         # форуме» живо и сегодня, когда все делегаты снова по одну сторону.
-        options = await get_checkin_entry_filter_options()
-        if len(options) < 2:
+        # Вход каждый день: варианты за форум, сегодня и каждый день со входами — только те, где
+        # есть люди. «сегодня» пересчитывается на момент отправки (отложенная рассылка на утро
+        # второго дня берёт второй день). День едет в значении через «@», в запись фильтра —
+        # отдельным ключом `day`.
+        options = await get_checkin_entry_picker_options()
+        if not options:
             await callback.answer(
-                "Все делегаты по одну сторону — фильтровать не по чему.", show_alert=True,
+                "Отметок входа ещё не было — фильтровать не по чему.", show_alert=True,
             )
             return
-        # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
-        # «бот для людей»).
-        labels = {CHECKIN_YES: "пришли на форум", CHECKIN_NO: "не пришли"}
+        # Человеку — только слова, коды (yes/no/@день) не показываем (правило «бот для людей»).
+        labels = {}
+        for opt in options:
+            base, _, day = opt.partition("@")
+            if not day:
+                labels[opt] = "пришли на форум" if base == CHECKIN_YES else "не пришли ни разу"
+                continue
+            when = "сегодня" if day == CHECKIN_DAY_TODAY else f"{day[8:10]}.{day[5:7]}"
+            labels[opt] = f"{'пришли' if base == CHECKIN_YES else 'не пришли'} {when}"
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1615,7 +1627,11 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # сюда — он резолвится заново на КАЖДЫЙ вызов `count_and_list_filtered`
         # (`database.db._resolve_checkin_entry_season`), а не замораживается на момент выбора.
         labels = data.get("filter_option_labels") or {}
-        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
+        base, _, day = str(value).partition("@")
+        entry = {"field": field, "value": base, "label": labels.get(value, value)}
+        if day:
+            entry["day"] = day
+        filters.append(entry)
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(

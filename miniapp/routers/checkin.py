@@ -23,6 +23,8 @@ QR не нашего события (`services.checkin.current_event_tag()` не
 событиями не исключено при достаточном числе форумов на одном боте)."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
@@ -35,7 +37,6 @@ from cities import (
     normalize_city,
 )
 from database.db import (
-    count_approved_current_season,
     count_checkins_by_point,
     get_program_session,
     get_user,
@@ -50,6 +51,8 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
+from services import checkin_arrival, i18n
+from services import venue_log
 from services.person_search import search_people
 from services.program import checkin_session_points
 
@@ -57,6 +60,7 @@ from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _forward_first_entry(result: dict) -> dict:
@@ -65,8 +69,52 @@ async def _forward_first_entry(result: dict) -> dict:
     не отдаётся."""
     event = result.pop("first_entry", None)
     if event is not None:
-        await enqueue("checkin_first_entry", event)
+        # Fail-soft: отметка к этому моменту УЖЕ записана — сбой очереди не должен давать
+        # сканеру 500 и повторный скан; теряется только уведомление слушателям.
+        try:
+            await enqueue("checkin_first_entry", event)
+        except Exception:  # noqa: BLE001
+            logger.exception("checkin: не удалось поставить checkin_first_entry в outbox")
     return result
+
+def _staff_name(p: Principal) -> str | None:
+    return venue_log.staff_display_name(first_name=p.first_name, username=p.username)
+
+
+# Статусы `record_arrival`, которые означают «не пропущен» (а не отметку/повтор).
+_ARRIVAL_DENIAL_STATUSES = frozenset({"wrong_city", "wrong_day", "invalid_point"})
+
+
+async def _log_denial(
+    p: Principal, bound: str | None, code: str, *, point: str, source: str,
+    user: dict | None = None,
+) -> None:
+    """Отказ -> строка «⛔ не пропустил(а)» в журнале площадки. Из данных делегата — только
+    `telegram_id` (если найден). Город — стойки (`bound`), иначе делегата. Fail-soft: ответ
+    сканеру не зависит от журнала."""
+    try:
+        await venue_log.log_denial(
+            code, staff_id=p.telegram_id, staff_name=_staff_name(p),
+            telegram_id=(user or {}).get("telegram_id"), city=bound, point=point, source=source,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("checkin: не записал отказ %s в журнал площадки", code)
+
+
+async def _with_undo(result: dict, p: Principal) -> dict:
+    """Идея №32: живая отметка (new/moved) получила строку журнала — фронт показывает на
+    плашке кнопку «↩️ Отменить» на `undo_seconds` секунд. Подпись — из реестра, в переводе
+    на язык волонтёра. Внутренний id журнала наружу уходит только как ключ отмены."""
+    log_id = result.pop("log_id", None)
+    if log_id:
+        lang, tr_map = await i18n.context(p.telegram_id)
+        result["undo"] = {
+            "id": log_id,
+            "seconds": venue_log.UNDO_WINDOW_SECONDS,
+            "label": await i18n.tr_setting("checkin_undo_button_text", lang, tr_map) or "↩️",
+        }
+    return result
+
 
 _SEARCH_LIMIT = 20
 _SECTION = "checkin"
@@ -175,11 +223,13 @@ async def checkin_scan(
     bound = await _bound_city(request, p)
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
+        await _log_denial(p, bound, point_denial["status"], point=point, source="miniapp")
         return point_denial
 
     parsed = parse_qr_payload(body.payload)
     tag = parsed.get("tag") or ""
     if not tag or tag != await current_event_tag():
+        await _log_denial(p, bound, "foreign_event", point=point, source="miniapp")
         return {
             "status": "foreign_event",
             "reason_text": DENIAL_REASON_TEXT["foreign_event"],
@@ -190,6 +240,7 @@ async def checkin_scan(
     token = parsed.get("token")
     user, denial_code = await resolve_scanned_user(token)
     if denial_code is not None:
+        await _log_denial(p, bound, denial_code, point=point, source="miniapp", user=user)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
             "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
@@ -200,11 +251,14 @@ async def checkin_scan(
     if not point.startswith("session:"):
         entry_denial = await _entry_city_denial(bound, user)
         if entry_denial is not None:
+            await _log_denial(p, bound, entry_denial["status"], point=point, source="miniapp", user=user)
             return {**entry_denial, **_person_fields(user)}
 
-    result = await _forward_first_entry(await record_arrival(
-        user, point, source="miniapp", by_staff_id=p.telegram_id,
-    ))
+    result = await _with_undo(await _forward_first_entry(await record_arrival(
+        user, point, source="miniapp", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
+    )), p)
+    if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
+        await _log_denial(p, bound, result["status"], point=point, source="miniapp", user=user)
     return {**result, **_person_fields(user)}
 
 
@@ -225,11 +279,13 @@ async def checkin_manual(
     bound = await _bound_city(request, p)
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
+        await _log_denial(p, bound, point_denial["status"], point=point, source="manual")
         return point_denial
 
     user = await get_user(body.telegram_id)
     denial_code = await checkin_denial(user)
     if denial_code is not None:
+        await _log_denial(p, bound, denial_code, point=point, source="manual", user=user)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
             "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
@@ -240,12 +296,54 @@ async def checkin_manual(
     if not point.startswith("session:"):
         entry_denial = await _entry_city_denial(bound, user)
         if entry_denial is not None:
+            await _log_denial(p, bound, entry_denial["status"], point=point, source="manual", user=user)
             return {**entry_denial, **_person_fields(user)}
 
-    result = await _forward_first_entry(await record_arrival(
-        user, point, source="manual", by_staff_id=p.telegram_id,
-    ))
+    result = await _with_undo(await _forward_first_entry(await record_arrival(
+        user, point, source="manual", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
+    )), p)
+    if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
+        await _log_denial(p, bound, result["status"], point=point, source="manual", user=user)
     return {**result, **_person_fields(user)}
+
+
+class UndoBody(BaseModel):
+    id: int
+
+
+@router.post("/app/api/checkin/undo")
+async def checkin_undo(
+    body: UndoBody,
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Идея №32: волонтёр отменяет СВОЮ ПОСЛЕДНЮЮ отметку в окне отмены. Все проверки
+    (чья, последняя ли, не истекло ли окно) — на сервере, `services.venue_log.undo_last_scan`;
+    фронт только прячет кнопку по таймеру. Любой отказ — один человеческий текст из реестра:
+    дальше снимает менеджер в боте."""
+    lang, tr_map = await i18n.context(p.telegram_id)
+    try:
+        code = await venue_log.undo_last_scan(p.telegram_id, _staff_name(p), body.id)
+    except Exception:  # noqa: BLE001 — сбой БД: волонтёру человеческий отказ, не 500
+        logger.exception("checkin_undo: сбой отмены log_id=%s staff=%s", body.id, p.telegram_id)
+        code = "error"
+    if code == "ok":
+        text = await i18n.tr_setting("checkin_undo_done_text", lang, tr_map)
+        return {"status": "undone", "reason_text": text or "Отметка снята."}
+    key = _UNDO_REFUSAL_KEYS.get(code, "checkin_undo_refused_text")
+    text = await i18n.tr_setting(key, lang, tr_map)
+    return {
+        "status": "undo_refused", "code": code,
+        "reason_text": text or "Отменить не получилось — попросите менеджера снять отметку.",
+    }
+
+
+# Код отказа отмены -> текст из реестра: «отметка уже изменилась» (её перенёс/снял другой),
+# «не получилось» (сбой), остальное — «отменить уже нельзя».
+_UNDO_REFUSAL_KEYS = {
+    "gone": "checkin_undo_changed_text",
+    "error": "checkin_undo_failed_text",
+}
 
 
 @router.get("/app/api/checkin/search")
@@ -306,9 +404,13 @@ async def checkin_points(
         else:
             cities_payload = [{"code": c["code"], "label": await city_label(c["code"])} for c in enabled]
 
+    from services.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
+
     points = [{
         "point": ENTRY_POINT, "label": ENTRY_POINT_LABEL, "live": None,
-        "count": await count_checkins_by_point(ENTRY_POINT), "capacity": None,
+        # Вход каждый день: у точки «Вход» — сколько вошли СЕГОДНЯ.
+        "count": await count_checkins_by_point(ENTRY_POINT, day=msk_now().strftime("%Y-%m-%d")),
+        "capacity": None,
     }]
     if resolved is not None:
         for sp in await checkin_session_points(resolved):
@@ -327,33 +429,30 @@ async def checkin_stats(
     видит только свой (`cities: null`), модуль городов выключен — общий счётчик байт-в-байт
     как раньше, иначе — построчно по городам с хотя бы одним одобренным + Итого."""
     bound = await _bound_city(request, p)
-    if bound is not None:
-        scope = city_scope(bound)
-        approved = await count_approved_current_season(city_scope=scope)
-        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=scope)
-        return {"arrived": arrived, "approved": approved, "cities": None}
-
-    if not await cities_module_on():
-        approved = await count_approved_current_season()
-        arrived = await count_checkins_by_point(ENTRY_POINT)
-        return {"arrived": arrived, "approved": approved, "cities": None}
+    # Тот же счётчик, что у бота (`services.checkin_arrival`): одобренные текущего сезона со
+    # входом; в день форума — вход сегодня (`today: true`), иначе — хоть один вход за форум.
+    day = await checkin_arrival.counter_day()
+    if bound is not None or not await cities_module_on():
+        arrived, approved = await checkin_arrival.arrived_counts(
+            city_scope(bound) if bound is not None else None, day,
+        )
+        return {"arrived": arrived, "approved": approved, "cities": None, "today": bool(day)}
 
     cities_out = []
     total_arrived = 0
     total_approved = 0
     for c in await enabled_cities():
         code = c["code"]
-        scope = city_scope(code)
-        approved = await count_approved_current_season(city_scope=scope)
+        arrived, approved = await checkin_arrival.arrived_counts(city_scope(code), day)
         if approved == 0:
             continue
-        arrived = await count_checkins_by_point(ENTRY_POINT, city_scope=scope)
         cities_out.append({
             "code": code, "label": await city_label(code), "arrived": arrived, "approved": approved,
         })
         total_arrived += arrived
         total_approved += approved
-    return {"arrived": total_arrived, "approved": total_approved, "cities": cities_out}
+    return {"arrived": total_arrived, "approved": total_approved, "cities": cities_out,
+            "today": bool(day)}
 
 
 __all__ = ["router"]
