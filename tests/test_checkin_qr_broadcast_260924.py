@@ -204,6 +204,96 @@ def test_schedule_city_jobs_removed_when_forum_date_cleared(tmp_path, monkeypatc
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
+# Находка ревью 260924 (п.2): reconcile снимает джобы выключенных городов + джоба
+# перепроверяет город/тумблер САМА в момент срабатывания
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_reconcile_cancels_jobs_of_city_disabled_after_scheduling(tmp_path, monkeypatch):
+    """Город был включён и его джобы поставлены; между тем обходом и следующим стартом бота
+    город выключили (`city_enabled__spb=off`) — `enabled_cities()` его больше не отдаёт,
+    поэтому обычный цикл `reconcile_broadcasts` (постановка КАЖДОГО включённого) сам его не
+    заденет; снять осиротевшие джобы обязана отдельная перебором-зачистка."""
+    _ready(tmp_path)
+    _run(_set_setting("event_city_enabled", "on"))
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _run(_set_setting("forum_date__city__spb", "03.10.2026"))
+
+    async def body(s):
+        await cb.schedule_city_jobs("spb")
+        assert s.get_job(cb.evening_job_id("spb")) is not None
+        assert s.get_job(cb.morning_job_id("spb")) is not None
+
+        await _set_setting("city_enabled__spb", "off")
+        touched = await cb.reconcile_broadcasts()
+        assert "spb" not in touched
+        assert s.get_job(cb.evening_job_id("spb")) is None
+        assert s.get_job(cb.morning_job_id("spb")) is None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_reconcile_leaves_all_city_sentinel_jobs_alone(tmp_path, monkeypatch):
+    """`checkin_qr_evening:all`/`checkin_qr_morning:all` (сентинел «без города») не должны
+    попасть под зачистку выключенных кодов — сам сентинел не код города."""
+    _ready(tmp_path)
+    _run(_set_setting("event_city_enabled", "off"))
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _run(_set_setting("forum_date", "03.10.2026"))
+
+    async def body(s):
+        await cb.schedule_city_jobs(None)
+        assert s.get_job(cb.evening_job_id(None)) is not None
+        await cb.reconcile_broadcasts()
+        assert s.get_job(cb.evening_job_id(None)) is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_evening_job_skips_send_when_city_disabled_at_fire_time(tmp_path, monkeypatch):
+    """Барьер джобы: город выключили ПОСЛЕ постановки джобы, но ДО её срабатывания (гонка,
+    которую reconcile между обходами не видит) — `_run_evening_job` сама перечитывает
+    `enabled_cities()` и не шлёт ничего."""
+    _ready(tmp_path)
+    _run(_set_setting("event_city_enabled", "on"))
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _seed_user(UID, event_city="spb", status="approved")
+    bot = _with_bot(monkeypatch)
+
+    _run(_set_setting("city_enabled__spb", "off"))
+    result = _run(cb._run_evening_job("spb"))
+    assert result["sent"] == 0
+    assert result.get("skipped") == "disabled"
+    assert bot.photos == []
+
+
+def test_morning_job_skips_send_when_broadcast_disabled_at_fire_time(tmp_path, monkeypatch):
+    """Тот же барьер для утреннего повтора, но по per_city рассылке (не по самому городу)."""
+    _ready(tmp_path)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+
+    _run(_set_setting("checkin_qr_broadcast_enabled", "off"))
+    result = _run(cb._run_morning_job(None))
+    assert result["sent"] == 0
+    assert result.get("skipped") == "disabled"
+    assert bot.photos == []
+
+
+def test_evening_job_sends_normally_when_city_still_enabled(tmp_path, monkeypatch):
+    """Регрессия: барьер не должен блокировать нормальное срабатывание, когда город и
+    рассылка по-прежнему включены."""
+    _ready(tmp_path)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+
+    result = _run(cb._run_evening_job(None))
+    assert result["sent"] == 1
+    assert len(bot.photos) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
 # Task 3: аудитория — только одобренные текущего сезона (через checkin_denial)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
