@@ -533,3 +533,80 @@ def test_checkin_qr_mark_sent_is_idempotent(tmp_path):
     assert second is False
     got, _confirmed = _run(db.checkin_qr_send_counts())
     assert got == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Находка ревью 260924 (п.3): рассылка QR уважает тихие часы делегатов — целиком откладывает
+# СВОЮ ЖЕ джобу до конца окна, ничего не отправляет и не отмечает, пока окно не закончится
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _set_quiet_hours(start="22:00", end="09:00"):
+    _run(_set_setting("quiet_hours_enabled", "on"))
+    _run(_set_setting("quiet_hours_start", start))
+    _run(_set_setting("quiet_hours_end", end))
+
+
+def test_send_broadcast_defers_whole_city_during_quiet_hours(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    _set_quiet_hours()
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
+
+    async def body(s):
+        result = await cb.send_broadcast(None)
+        assert result["sent"] == 0
+        assert result["deferred_until"] == datetime(2026, 10, 3, 9, 0, 0)
+        assert bot.photos == []
+        job = s.get_job(cb.evening_job_id(None))
+        assert job is not None
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 9, 0, 0)
+        # Ничего не отмечено — следующее срабатывание перечитает пул заново, дублей не будет.
+        assert await db.checkin_qr_sent_ids() == set()
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_send_morning_repeat_defers_whole_city_during_quiet_hours(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    _set_quiet_hours()
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0, 0))
+
+    async def body(s):
+        result = await cb.send_morning_repeat(None)
+        assert result["sent"] == 0
+        assert result["deferred_until"] == datetime(2026, 10, 3, 9, 0, 0)
+        assert bot.photos == []
+        job = s.get_job(cb.morning_job_id(None))
+        assert job is not None
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 9, 0, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_send_broadcast_sends_normally_outside_quiet_hours(tmp_path, monkeypatch):
+    """Регрессия: тихие часы включены, но текущее время вне окна — рассылка идёт как обычно."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    _set_quiet_hours()
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0, 0))
+
+    result = _run(cb.send_broadcast(None))
+    assert result["sent"] == 1
+    assert len(bot.photos) == 1
+
+
+def test_send_broadcast_ignores_quiet_hours_when_disabled(tmp_path, monkeypatch):
+    """Дефолт (тихие часы выключены) — поведение прежнее байт-в-байт, ни одного лишнего чтения
+    настроек тихих часов (инвариант 3 докстринга services.quiet_hours)."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
+
+    result = _run(cb.send_broadcast(None))
+    assert result["sent"] == 1
+    assert len(bot.photos) == 1
