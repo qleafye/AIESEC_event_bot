@@ -213,3 +213,16 @@ def test_csv_upload_is_one_log_line(tmp_path):
     assert total == 1
     assert rows[0]["action"] == "csv_upload"
     assert rows[0]["details"]["new"] == 1 and rows[0]["details"]["duplicate"] == 1
+
+
+def test_broken_callback_says_screen_is_stale(tmp_path):
+    _ready(tmp_path)
+    for handler, data in (
+        (admin_venue.venue_revoke_user, "vrv_u:abc"),
+        (admin_venue.venue_revoke_confirm, "vrv_p:"),
+        (admin_venue.venue_revoke_go, "vrv_go"),
+        (admin_venue.venue_log_page_cb, "vlog:1"),
+    ):
+        cb = _FakeCallback(data, ADMIN_ID)
+        _run(handler(cb))
+        assert cb.answers[-1] == ("Экран устарел — откройте журнал площадки заново.", True), data

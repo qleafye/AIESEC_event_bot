@@ -23,6 +23,8 @@ QR не нашего события (`services.checkin.current_event_tag()` не
 событиями не исключено при достаточном числе форумов на одном боте)."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
@@ -59,6 +61,7 @@ from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _forward_first_entry(result: dict) -> dict:
@@ -283,13 +286,29 @@ async def checkin_undo(
     (чья, последняя ли, не истекло ли окно) — на сервере, `services.venue_log.undo_last_scan`;
     фронт только прячет кнопку по таймеру. Любой отказ — один человеческий текст из реестра:
     дальше снимает менеджер в боте."""
-    code = await venue_log.undo_last_scan(p.telegram_id, _staff_name(p), body.id)
     lang, tr_map = await i18n.context(p.telegram_id)
+    try:
+        code = await venue_log.undo_last_scan(p.telegram_id, _staff_name(p), body.id)
+    except Exception:  # noqa: BLE001 — сбой БД: волонтёру человеческий отказ, не 500
+        logger.exception("checkin_undo: сбой отмены log_id=%s staff=%s", body.id, p.telegram_id)
+        code = "error"
     if code == "ok":
         text = await i18n.tr_setting("checkin_undo_done_text", lang, tr_map)
-        return {"status": "undone", "reason_text": text}
-    text = await i18n.tr_setting("checkin_undo_refused_text", lang, tr_map)
-    return {"status": "undo_refused", "code": code, "reason_text": text}
+        return {"status": "undone", "reason_text": text or "Отметка снята."}
+    key = _UNDO_REFUSAL_KEYS.get(code, "checkin_undo_refused_text")
+    text = await i18n.tr_setting(key, lang, tr_map)
+    return {
+        "status": "undo_refused", "code": code,
+        "reason_text": text or "Отменить не получилось — попросите менеджера снять отметку.",
+    }
+
+
+# Код отказа отмены -> текст из реестра: «отметка уже изменилась» (её перенёс/снял другой),
+# «не получилось» (сбой), остальное — «отменить уже нельзя».
+_UNDO_REFUSAL_KEYS = {
+    "gone": "checkin_undo_changed_text",
+    "error": "checkin_undo_failed_text",
+}
 
 
 @router.get("/app/api/checkin/search")
