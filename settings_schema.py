@@ -5891,6 +5891,28 @@ SETTINGS_SCHEMA = {
             "В «🎫 Сканер» есть поиск по фамилии — найди делегата в списке и нажми «Отметить»."
         ),
     },
+    # D-33 (решение владельца 24.09): та же шпаргалка (checkin_volunteer_guide_text выше) ЕЩЁ
+    # раз — теперь за день до форума, ВСЕМ держателям capability `checkin` этого города (не
+    # только тому, кому только что выдали право). per_city — тот же довод, что у
+    # checkin_qr_broadcast_enabled ниже: регионы (СПб/Тюмень) и Москва идут в разные даты.
+    # Дефолт "on" — фича включена по умолчанию (D-36 не требует fail-safe OFF здесь: пустой
+    # `checkin_volunteer_guide_text` сам по себе гейтует отправку, см.
+    # `services/checkin_volunteer_broadcast.py::schedule_city_job`).
+    "checkin_volunteer_guide_broadcast_enabled": {
+        "type": "enum", "group": "toggles", "label": "🎫 Прислать шпаргалку накануне форума",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
+    "checkin_volunteer_guide_broadcast_time": {
+        "type": "text", "group": "system", "label": "🎫 Шпаргалка накануне форума: во сколько",
+        "prompt": (
+            "Во сколько НАКАНУНЕ форума слать шпаргалку волонтёра держателям права «✅ Чек-ин» "
+            "этого города. Формат <code>ЧЧ:ММ</code>, например <code>17:00</code>. Время "
+            "московское."
+        ),
+        "default": "17:00",
+        "per_city": True,
+    },
 
     # ── Форум-ночь п.3 (D-03, идея №2): рассылка QR накануне форума + утренний повтор ────────
     # неподтвердившим. per_city (IDEAS-CHECKIN-BACKLOG-260924.md, п. A1) — 03.10 у СПб/Тюмени

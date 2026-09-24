@@ -2370,6 +2370,36 @@ async def _reschedule_checkin_qr_if_forum_date(key: str) -> None:
         logger.error(f"_reschedule_checkin_qr_if_forum_date({key!r}): {e}")
 
 
+_VOLUNTEER_GUIDE_RESCHEDULE_KEYS = {
+    "forum_date",
+    "checkin_volunteer_guide_broadcast_enabled",
+    "checkin_volunteer_guide_broadcast_time",
+    "checkin_volunteer_guide_text",
+}
+
+
+async def _reschedule_checkin_volunteer_guide_if_relevant(key: str) -> None:
+    """D-33 (решение владельца 24.09): тот же приём и тот же ПОВОД (правка `forum_date`), что
+    `_reschedule_checkin_qr_if_forum_date` выше — плюс СВОИ три ключа (тумблер/время/сам текст
+    шпаргалки), от которых зависит постановка джобы `services.checkin_volunteer_broadcast`
+    (пустой текст гасит джобу вовсе, см. `schedule_city_job`). Композитный per_city ключ
+    переставляет ТОЛЬКО этот город, голый (глобальный `checkin_volunteer_guide_text`/
+    `forum_date` без override) — полный `reconcile()` по всем городам."""
+    base = _base_setting_key(key)
+    if base not in _VOLUNTEER_GUIDE_RESCHEDULE_KEYS:
+        return
+    try:
+        from services.checkin_volunteer_broadcast import reconcile, schedule_city_job
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_job(city)
+        else:
+            await reconcile()
+    except Exception as e:
+        logger.error(f"_reschedule_checkin_volunteer_guide_if_relevant({key!r}): {e}")
+
+
 async def _reconcile_session_feedback_if_relevant(key: str) -> None:
     """Ревью 24.09 (аудит ключей после 8c0d8af): свободный ввод задержки («✏️ Другое» на
     экране «⭐ Отзывы о сессиях», `handlers/session_feedback.py::prog_fbdelay_custom_start`)
@@ -2542,10 +2572,12 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if value == "-":
         await delete_setting_by_admin(message.from_user.id, key)
         await _reschedule_checkin_qr_if_forum_date(key)
+        await _reschedule_checkin_volunteer_guide_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
         await _reschedule_checkin_qr_if_forum_date(key)
+        await _reschedule_checkin_volunteer_guide_if_relevant(key)
         await _reconcile_session_feedback_if_relevant(key)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":

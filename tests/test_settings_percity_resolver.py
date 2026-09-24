@@ -166,6 +166,9 @@ EXPECTED_PER_CITY_KEYS = {
     # бы QR не тому городу не в тот день (IDEAS-CHECKIN-BACKLOG-260924.md, п. A1).
     "checkin_qr_broadcast_enabled", "checkin_qr_broadcast_time",
     "checkin_qr_morning_repeat_time", "checkin_qr_broadcast_text",
+    # D-33 (решение владельца 24.09): шпаргалка волонтёра накануне форума — per_city, тот же
+    # довод, что у checkin_qr_broadcast_* выше (регионы/Москва в разные даты).
+    "checkin_volunteer_guide_broadcast_enabled", "checkin_volunteer_guide_broadcast_time",
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — per_city, тот же довод, что у
     # checkin_qr_broadcast_text выше (регионы и Москва живут в разных фазах форума одновременно,
     # settings_schema.py:5708).
