@@ -1289,6 +1289,79 @@ def arrival_block(conn, scope: Scope) -> dict | None:
     return report
 
 
+def _floor_rows(conn, scope: Scope, city: str | None, day: str, now: datetime) -> dict:
+    """Один городской (или без города) отчёт `arrival_stats.build_floor` за день `day`."""
+    city_frag, city_params = _city_sql(conn, city)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    where, params = arrival_stats.approved_users_where(
+        [city_frag, season_frag], [*city_params, *season_params],
+    )
+    is_today = day == now.strftime("%Y-%m-%d")
+    # «Идут сейчас» и «за 15 мин» имеют смысл только для сегодняшнего дня; для прошлого дня —
+    # окно после конца суток (ноль) и время, в которое ничего не идёт.
+    since = (now - timedelta(minutes=arrival_stats.RECENT_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")         if is_today else f"{day} 99"
+    now_hm = now.strftime("%H:%M") if is_today else "99:99"
+    q = arrival_stats.floor_queries(where, params, day, since, now_hm, city)
+    return arrival_stats.build_floor(
+        _scalar(conn, *q["approved"]), _scalar(conn, *q["present"]), _scalar(conn, *q["recent"]),
+        conn.execute(*q["sessions"]).fetchall(), conn.execute(*q["stands"]).fetchall(),
+        conn.execute(*q["buckets"]).fetchall(),
+    )
+
+
+def arrival_floor(conn, scope: Scope, days: list[dict], day: str | None) -> dict | None:
+    """«Сейчас на площадке» на дашборде (бэклог чек-ина №12) за выбранный день: вход по
+    15 минут (плотная ось), одобрено, срез по городам и по точкам (вход / сессии дня),
+    стойки. `days` — дни с входами из отчёта `arrival_block`; `day` — выбор из ссылки
+    (`?arrival_day=`), по умолчанию сегодня, если сегодня уже входили, иначе последний день."""
+    if not days:
+        return None
+    now = msk_now()
+    known = [d["day"] for d in days]
+    today = now.strftime("%Y-%m-%d")
+    if day not in known:
+        day = today if today in known else known[-1]
+    floor = _floor_rows(conn, scope, scope.city, day, now)
+    buckets = arrival_stats.fill_buckets(
+        floor["buckets"], now.strftime("%H:%M") if day == today else None,
+    )
+    running = 0
+    cumulative = []
+    for _slot, cnt in buckets:
+        running += cnt
+        cumulative.append(running)
+    labels = {row["code"]: row["label"] for row in conn.execute("SELECT code, label FROM cities").fetchall()}
+    city_rows = []
+    if scope.city is None:
+        for c in city_options(conn):
+            rep = _floor_rows(conn, scope, c["code"], day, now)
+            if rep["approved"] or rep["present"]:
+                city_rows.append({"label": c["label"], "present": rep["present"],
+                                  "approved": rep["approved"], "pct": rep["pct"]})
+    points = [{"label": "🚪 Вход", "count": floor["present"], "capacity": None, "fill_pct": None,
+               "live": False}]
+    for s in floor["sessions"]:
+        hall = f" · {s['hall']}" if s["hall"] else ""
+        city = f"{labels.get(s['city'], s['city'])} · " if scope.city is None else ""
+        points.append({"label": f"{city}{s['start']}–{s['end']}{hall} · {s['title']}",
+                       "count": s["count"], "capacity": s["capacity"], "fill_pct": s["fill_pct"],
+                       "live": s["live"]})
+    return {
+        "day": day,
+        "day_label": arrival_stats.day_short(day),
+        "is_today": day == today,
+        "days": [{"day": d["day"], "label": d["label"]} for d in days],
+        "approved": floor["approved"], "present": floor["present"], "pct": floor["pct"],
+        "recent": floor["recent"],
+        # NB: ключ НЕ "values" — та же ловушка Jinja2/bound-метода, что у daily_chart.
+        "chart": {"labels": [slot for slot, _ in buckets], "counts": [cnt for _, cnt in buckets],
+                  "cumulative": cumulative} if buckets else None,
+        "cities": city_rows,
+        "points": points,
+        "stands": floor["stands"],
+    }
+
+
 def questions_block(conn, scope: Scope) -> dict | None:
     """`None`, если в скоупе страницы (город + сезон) нет ни одного вопроса делегата.
 

@@ -267,7 +267,9 @@ def _city_label(conn, code: "str | None") -> "str | None":
     return row["label"] if row is not None else code
 
 
-def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict) -> dict:
+def build_page_context(
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, arrival_day: str | None = None,
+) -> dict:
     """Собирает ВЕСЬ контекст страницы одним вызовом — шаблон сам не зовёт БД (D-16: на лету
     на каждый запрос, без кэша). Каждый блок гасится своим тумблером `dashboard_block_*`
     (D-19: выключен — блока нет вовсе, а не пустая карточка) — сама заглушка «пока нет
@@ -365,6 +367,8 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
     # Бэклог чек-ина п.10: «Приход» — без тумблера, гейт по данным внутри arrival_block (до
     # первой отметки на форуме раздела нет).
     arrival = queries.arrival_block(conn, scope)
+    # Бэклог №12: «Сейчас на площадке» — за выбранный день (`?arrival_day=`) внутри «Прихода».
+    arrival_floor = queries.arrival_floor(conn, scope, arrival["days"], arrival_day) if arrival else None
 
     daily_chart = None
     if daily_rows is not None and daily_rows:
@@ -437,6 +441,7 @@ def build_page_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
         "arrival": arrival,
+        "arrival_floor": arrival_floor,
     }
     ctx["page_sections"] = _page_sections(ctx)
     ctx["section_ids"] = {s["id"] for s in ctx["page_sections"]}
@@ -667,6 +672,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        arrival_day: Optional[str] = None,
     ):
         # Phase 26.1-02 (SD-08): на хосте супердашборда Telegram-вход не работает и не должен
         # (домен за ботом не закреплён) — показывать заведомо нерабочий /login хуже, чем
@@ -705,7 +711,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_page_context(conn, cfg, scope, viewer)
+            context = build_page_context(conn, cfg, scope, viewer, arrival_day=arrival_day)
 
         return templates.TemplateResponse(request, "dashboard.html", context)
 

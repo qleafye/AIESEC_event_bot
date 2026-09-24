@@ -967,6 +967,9 @@ ADMIN_CAPS: dict[str, str] = {
     "checkin_stats": "moderate_reg",
     "checkin_stats_refresh": "moderate_reg",
     "checkin_stats_csv": "moderate_reg",
+    # Бэклог №12: «📍 Сейчас на площадке» (handlers/admin_checkin_floor.py) — та же капа.
+    "checkin_floor": "moderate_reg",
+    "checkin_floor_refresh": "moderate_reg",
     # Бэклог №25: «🚦 Готовность к форуму» (handlers/admin_forum_ready.py) — кнопка хаба «🎪 Форум:
     # функции», та же капа, что у хаба. Префиксы разные: "forum_ready:*" не покрывает "forum_ready_re:*".
     "forum_ready:*": "moderate_reg",
