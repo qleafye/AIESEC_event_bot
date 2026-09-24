@@ -4,24 +4,40 @@
 копирование программы одного дня между городами.
 
 aiogram-free (тот же инвариант, что `services/reject_rules.py`/`services/checkin.py`) —
-импортирует только `database.db` и стандартную библиотеку; `services.timeutil.msk_now`
-подтягивается лениво внутри функции (не на уровне модуля), чтобы не завести цикл с модулями,
-которые сами читают время форума на импорте.
+импортирует только `database.db`/`cities`/стандартную библиотеку (тот же набор, что уже тянет
+`services/reject_rules.py` — прецедент, что этот класс модулей вправе импортировать `cities`,
+не только `database.db`); `services.timeutil.msk_now` подтягивается лениво внутри функции (не
+на уровне модуля), чтобы не завести цикл с модулями, которые сами читают время форума на
+импорте.
 
 `point_for_session` — единственное, что этот план готовит для БУДУЩЕЙ отметки на сессиях
 (D-18: обязательная отметка, D-20: «последний скан слота засчитывается» — тот же слот, что
 строит `group_parallel` ниже). Саму отметку эта задача не делает.
-"""
+
+D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): `resolve_program_photo`/`resolve_program_view`/
+`has_program_content`/`build_delegate_program` — общая точка правды для ТРЁХ поверхностей
+(чат-кнопка `handlers/user_actions.py::show_program`, гейт кнопки меню
+`keyboards/builders.py::get_main_menu_kb`, Mini App `miniapp/routers/program.py`), чтобы «что
+показываем» не разъехалось между ними. Фото программы — per_city СОСТАВНОЙ ключ через
+`cities.per_city_key`, НЕ через реестровый `per_city: True`/`get_setting_for_city`
+(`tests/test_settings_percity_resolver.py::test_no_per_city_key_is_photo_or_file_type`
+запрещает per_city-флаг на photo/file записях реестра, D-10: медиа-ключи вне обычного
+резолвера) — читается сырым `get_setting` в обход реестра, byte-в-byte идиома, что у
+`checkinvol_toggle_go`/`_vol_cfg_text_kb` (per_city_key + прямое чтение/запись)."""
 from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
 
+from cities import cities_module_on, default_city_code, per_city_key
 from database.db import (
     create_program_hall,
     create_program_session,
     get_program_hall,
     get_program_session,
+    get_setting,
+    has_program_sessions_for_city,
+    list_program_days_for_city,
     list_program_halls,
     list_program_sessions_for_city_day,
     sessions_overlapping_hall,
@@ -310,3 +326,114 @@ async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
         )
         sessions_created += 1
     return {"halls_created": halls_created, "sessions_created": sessions_created}
+
+
+# ── D-29 (одна кнопка программы у делегата: фото ИЛИ таблица, по выбору админа) ─────────────
+
+PROGRAM_PHOTO_KEY = "program_photo_file_id"
+PROGRAM_VIEW_KEY = "program_miniapp_view"
+
+
+async def resolve_program_photo(city: str | None) -> str | None:
+    """`file_id` фото программы для города — своё (per_city составной ключ) ИЛИ общее
+    (D-29: чат и Mini App читают один и тот же приоритет). `city=None` (модуль городов
+    выключен/город делегата ещё не известен) сразу отдаёт общее значение — тот же контракт
+    module-off collapse, что у `cities.get_setting_for_city`."""
+    if city and await cities_module_on():
+        composed = per_city_key(PROGRAM_PHOTO_KEY, city)
+        if composed:
+            own = await get_setting(composed)
+            if own:
+                return own
+    return await get_setting(PROGRAM_PHOTO_KEY)
+
+
+async def resolve_program_view(city: str | None) -> str:
+    """`"table"`/`"photo"` — per_city override -> общее -> дефолт по наличию сессий (D-29:
+    таблица, если в программе города есть хоть одна сессия, иначе фото). Ключ читается СЫРЫМ
+    (`get_setting`, не типизированным резолвером реестра) — иначе «не задано вовсе» неотличимо
+    от «явно задано значение по умолчанию», а дефолт здесь зависит от данных, не от статичного
+    `SETTINGS_SCHEMA[...]['default']`."""
+    raw = None
+    if city and await cities_module_on():
+        composed = per_city_key(PROGRAM_VIEW_KEY, city)
+        if composed:
+            raw = await get_setting(composed)
+    if raw not in ("table", "photo"):
+        raw = await get_setting(PROGRAM_VIEW_KEY)
+    if raw in ("table", "photo"):
+        return raw
+    resolved_city = city or default_city_code()
+    return "table" if await has_program_sessions_for_city(resolved_city) else "photo"
+
+
+async def has_program_content(city: str | None) -> bool:
+    """Гейт видимости кнопки/плитки «Программа» — ОДНА проверка вместо двух независимых
+    (`keyboards.builders.get_main_menu_kb` раньше проверяла ТОЛЬКО глобальное фото, не
+    городское; Mini App заводится этой же задачей и не должен получить свою, третью версию
+    того же факта)."""
+    import os
+
+    if await resolve_program_photo(city):
+        return True
+    if os.path.isfile("resources/program.jpg"):
+        return True
+    resolved_city = city or default_city_code()
+    return await has_program_sessions_for_city(resolved_city)
+
+
+async def build_delegate_program(city: str | None, at: datetime | None = None) -> list[dict]:
+    """Табличный вид программы (D-29 Mini App «красивая таблица»): по дню — слоты
+    (`group_parallel`, транзитивное пересечение времени), в каждом слоте — сессии с полем
+    `"now"` (сейчас идёт хотя бы одна сессия слота). Используется и API Mini App
+    (`miniapp/routers/program.py`), и любым будущим текстовым видом в чате — вторая копия
+    группировки/сортировки не заводится нигде.
+
+    `city=None` резолвится в `default_city_code()` (та же однocity-фоллбэк идиома, что у
+    `keyboards.builders.get_main_menu_kb`/`handlers.admin_program._resolve_city_for_screen`) —
+    у сессий программы «нет города» не бывает, только конкретный код."""
+    if at is None:
+        from services.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
+        at = msk_now()
+
+    resolved_city = city or default_city_code()
+    today = at.strftime("%Y-%m-%d")
+    now_hhmm = at.strftime("%H:%M")
+
+    days = []
+    for day in await list_program_days_for_city(resolved_city):
+        sessions = await sessions_for_city_day(resolved_city, day)
+        slots = []
+        for group in group_parallel(sessions):
+            is_now = day == today and any(s["start_time"] <= now_hhmm < s["end_time"] for s in group)
+            slots.append({
+                "start_time": group[0]["start_time"],
+                "end_time": max(s["end_time"] for s in group),
+                "now": is_now,
+                "next": False,
+                "sessions": [
+                    {
+                        "id": s["id"],
+                        "title": s["title"],
+                        "speaker": s.get("speaker"),
+                        "hall_name": s.get("hall_name"),
+                        "start_time": s["start_time"],
+                        "end_time": s["end_time"],
+                    }
+                    for s in group
+                ],
+            })
+        days.append({"day": day, "label": day_label(day), "slots": slots})
+
+    # D-29 «идёт сейчас / следующая»: ровно один слот во всей программе помечен «next» —
+    # ближайший будущий слот сегодня или в один из следующих дней, и только пока ни один слот
+    # не «now» (сейчас идёт хоть что-то — «следующая» не нужна, слот и так виден как текущий).
+    if not any(slot["now"] for day_entry in days for slot in day_entry["slots"]):
+        for day_entry in days:
+            if day_entry["day"] < today:
+                continue
+            for slot in day_entry["slots"]:
+                if day_entry["day"] > today or slot["start_time"] > now_hhmm:
+                    slot["next"] = True
+                    return days
+    return days

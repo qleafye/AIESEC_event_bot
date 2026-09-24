@@ -187,6 +187,12 @@ EXPECTED_PER_CITY_KEYS = {
     # тот же довод, что sos_active_days/sos_escalation_minutes выше (форумы городов идут в
     # разные дни).
     "session_feedback_enabled", "session_feedback_delay_minutes",
+    # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): «таблица/фото» в Mini App — per_city,
+    # готовность программы города к моменту запуска приложения может отличаться (Москва —
+    # таблица сессий заведена заранее, регион — пока только фото). Само фото (composite-ключ,
+    # мимо этого резолвера, D-10) в этот список НЕ входит — см. settings_schema.py комментарий
+    # у "program_miniapp_view" и `test_no_per_city_key_is_photo_or_file_type` ниже.
+    "program_miniapp_view",
 }
 
 
