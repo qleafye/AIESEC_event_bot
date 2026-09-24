@@ -382,3 +382,31 @@ def test_schedule_late_enable_day_before_catches_up(tmp_path, monkeypatch):
         assert result["run_at"] == now + timedelta(minutes=1)
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_run_job_wrong_day_skips_without_marking_sent(tmp_path, monkeypatch):
+    """Дата форума сменилась из Mini App: джоба старого кануна не шлёт «завтра форум» и не
+    пишет отметку под новый день (иначе настоящий канун её бы пропустил)."""
+    import services.checkin_broadcast as cb
+
+    _guide_setup(tmp_path)
+    _run(_grant_checkin(VOLUNTEER_ID))
+    now = lambda: datetime(2026, 10, 2, 17, 0)
+    monkeypatch.setattr(vb, "msk_now", now)
+    monkeypatch.setattr(cb, "msk_now", now)
+    bot = _with_bot(monkeypatch)
+
+    async def body(s):
+        await _set_setting("forum_date", "10.10.2026")
+        result = await vb._run_job(None)
+        assert result.get("skipped") == "wrong_day"
+        assert bot.messages == []
+        assert await db.checkin_volunteer_guide_sent_ids("2026-10-10") == set()
+        job = s.get_job(vb.job_id(None))
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 9, 17, 0)
+
+        await _set_setting("forum_date", "03.10.2026")
+        result = await vb._run_job(None)
+        assert result["sent"] >= 1
+
+    _run_scheduled(tmp_path, monkeypatch, body)
