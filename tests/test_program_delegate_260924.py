@@ -1,5 +1,9 @@
-"""Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20) — делегатский экран
-«🗓 Программа» (handlers/program.py) + гейт кнопки меню (keyboards/builders.py::get_main_menu_kb).
+"""Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20) — интерактивная
+программа сессий (handlers/program.py) + гейт кнопки меню (keyboards/builders.py::get_main_menu_kb).
+
+D-29: своей кнопки «🗓 Программа» больше нет — программа сессий это запасной вид объединённой
+кнопки «📅 Программа форума» (`handlers/user_actions.py::show_program`), когда фото не
+загружено. Экран делегата проверяется через show_program с отсутствующим фото.
 
 pytest-asyncio недоступна — async через `asyncio.run()`, Fake-объекты — форма
 `tests/test_faq_260906.py::_FakeMessage/_FakeCallback`. БД — tmp_path, шаблон через
@@ -13,6 +17,7 @@ from datetime import datetime
 from config import config
 from database import db
 from handlers import program as program_handlers
+from handlers import user_actions
 from keyboards.builders import MENU_TEXTS, get_main_menu_kb
 from tests._dbtpl import fast_init_db
 
@@ -79,6 +84,18 @@ class _FakeCallback:
         self.answers.append((text, show_alert))
 
 
+PROGRAM_LABEL = "📅 Программа форума"
+
+
+def _show_program(message, monkeypatch):
+    """Объединённая кнопка без загруженного фото — ведёт в программу сессий."""
+    def _no_photo(*a, **k):
+        raise FileNotFoundError("resources/program.jpg")
+
+    monkeypatch.setattr(user_actions, "FSInputFile", _no_photo)
+    _run(user_actions.show_program(message))
+
+
 def _flat_cb(kb):
     return [btn.callback_data for row in kb.inline_keyboard for btn in row]
 
@@ -90,7 +107,7 @@ def test_menu_hides_schedule_button_when_no_sessions(tmp_path):
     _seed_delegate()
     kb = _run(get_main_menu_kb(DELEGATE_ID))
     labels = [btn.text for row in kb.keyboard for btn in row]
-    assert "🗓 Программа" not in labels
+    assert PROGRAM_LABEL not in labels
 
 
 def test_menu_shows_schedule_button_when_sessions_exist(tmp_path):
@@ -99,7 +116,7 @@ def test_menu_shows_schedule_button_when_sessions_exist(tmp_path):
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
     kb = _run(get_main_menu_kb(DELEGATE_ID))
     labels = [btn.text for row in kb.keyboard for btn in row]
-    assert "🗓 Программа" in labels
+    assert PROGRAM_LABEL in labels
 
 
 def test_menu_gate_is_per_city(tmp_path):
@@ -111,17 +128,17 @@ def test_menu_gate_is_per_city(tmp_path):
     _seed_delegate(city="spb")
     kb = _run(get_main_menu_kb(DELEGATE_ID))
     labels = [btn.text for row in kb.keyboard for btn in row]
-    assert "🗓 Программа" not in labels
+    assert PROGRAM_LABEL not in labels
 
 
 # ── Экран делегата: один день / несколько дней ──────────────────────────────────────────────
 
-def test_show_program_schedule_single_day_renders_directly(tmp_path):
+def test_show_program_schedule_single_day_renders_directly(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_delegate()
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:30", "Открытие форума"))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     assert len(message.answers_sent) == 1
     text = message.answers_sent[0]
     assert "Открытие форума" in text
@@ -129,13 +146,13 @@ def test_show_program_schedule_single_day_renders_directly(tmp_path):
     assert "30.10.2026" in text
 
 
-def test_show_program_schedule_multiple_days_shows_picker(tmp_path):
+def test_show_program_schedule_multiple_days_shows_picker(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_delegate()
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "День 1"))
     _run(db.create_program_session("msk", "2026-10-31", "10:00", "11:00", "День 2"))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     kb = message.answer_markups[0]
     assert "Выберите день" in text
@@ -143,22 +160,22 @@ def test_show_program_schedule_multiple_days_shows_picker(tmp_path):
     assert cbs == ["pds_day:2026-10-30", "pds_day:2026-10-31"]
 
 
-def test_show_program_schedule_not_registered_blocks(tmp_path):
+def test_show_program_schedule_not_registered_blocks(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
-    message = _FakeMessage(text="🗓 Программа", user_id=999999)
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL, user_id=999999)
+    _show_program(message, monkeypatch)
     assert "зарегистрироваться" in message.answers_sent[0]
 
 
-def test_show_program_schedule_isolated_by_city(tmp_path):
+def test_show_program_schedule_isolated_by_city(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие СПб"))
     _seed_delegate(city="msk")
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие Мск"))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     assert "Открытие Мск" in text
     assert "Открытие СПб" not in text
@@ -194,26 +211,26 @@ def test_pds_days_back_returns_to_picker(tmp_path):
 
 # ── Параллельные сессии сгруппированы ────────────────────────────────────────────────────────
 
-def test_parallel_sessions_grouped_in_day_text(tmp_path):
+def test_parallel_sessions_grouped_in_day_text(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_delegate()
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Сессия А"))
     _run(db.create_program_session("msk", "2026-10-30", "10:30", "11:30", "Сессия Б"))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     assert "Сессия А" in text
     assert "Сессия Б" in text
     assert "параллельно" in text.lower()
 
 
-def test_non_overlapping_sessions_not_grouped(tmp_path):
+def test_non_overlapping_sessions_not_grouped(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed_delegate()
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Сессия А"))
     _run(db.create_program_session("msk", "2026-10-30", "12:00", "13:00", "Сессия Б"))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     assert "параллельно" not in text.lower()
 
@@ -227,8 +244,8 @@ def test_now_and_next_markers_on_forum_day(tmp_path, monkeypatch):
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Идёт"))
     _run(db.create_program_session("msk", "2026-10-30", "11:00", "12:00", "Следующая сессия"))
     monkeypatch.setattr(program_handlers, "msk_now", lambda: datetime(2026, 10, 30, 10, 30))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     assert "Уже прошла" in text
     assert "🔴" in text and "Идёт сейчас" in text
@@ -247,8 +264,8 @@ def test_no_markers_on_non_forum_day(tmp_path, monkeypatch):
     _seed_delegate()
     _run(db.create_program_session("msk", "2026-10-31", "10:00", "11:00", "Сессия"))
     monkeypatch.setattr(program_handlers, "msk_now", lambda: datetime(2026, 10, 30, 10, 30))
-    message = _FakeMessage(text="🗓 Программа")
-    _run(program_handlers.show_program_schedule(message))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
     text = message.answers_sent[0]
     assert "Идёт сейчас" not in text
     assert "Следующая" not in text
