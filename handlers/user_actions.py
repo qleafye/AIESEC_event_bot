@@ -1893,9 +1893,9 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
 async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
     await confirm_receipt(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    await callback.answer(
-        reg_i18n.tr_text("Отлично, увидимся на форуме!", lang, tr_map), show_alert=True,
-    )
+    # D-34 (24.09): дефолт зеркалит registry-ключ `checkin_qr_confirm_receipt_text`.
+    text = await get_setting_typed("checkin_qr_confirm_receipt_text") or "Отлично, увидимся на форуме!"
+    await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
 
 
 # Форум-ночь п.6 (D-25, идея №14): ответ на шаблон «Не пришёл» (services/checkin_not_arrived.py).
@@ -1929,16 +1929,26 @@ async def checkin_not_arrived_respond(callback: types.CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🎟 Мой QR", callback_data="cna_qr"),
         ]])
+        # D-34 (24.09): дефолт зеркалит registry-ключ `checkin_not_arrived_show_qr_hint_text`.
+        hint_text = await get_setting_typed("checkin_not_arrived_show_qr_hint_text") or (
+            "Покажи этот экран волонтёру на входе."
+        )
         await callback.message.answer(
-            reg_i18n.tr_text("Покажи этот экран волонтёру на входе.", lang, tr_map),
+            reg_i18n.tr_text(hint_text, lang, tr_map),
             reply_markup=reg_i18n.tr_kb(kb, lang, tr_map),
         )
         await callback.answer()
         return
-    ack_text = (
-        "Спасибо, передали организаторам!" if response == CNA_COMING
-        else "Жаль! Спасибо, что предупредил."
-    )
+    # D-34 (24.09): дефолты зеркалят registry-ключи `checkin_not_arrived_coming_ack_text`/
+    # `checkin_not_arrived_cant_ack_text`.
+    if response == CNA_COMING:
+        ack_text = await get_setting_typed("checkin_not_arrived_coming_ack_text") or (
+            "Спасибо, передали организаторам!"
+        )
+    else:
+        ack_text = await get_setting_typed("checkin_not_arrived_cant_ack_text") or (
+            "Жаль! Спасибо, что предупредил."
+        )
     await callback.answer(reg_i18n.tr_text(ack_text, lang, tr_map), show_alert=True)
 
 
@@ -1981,6 +1991,9 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
 # в т.ч. собственные кнопки-ссылки менеджера — не трогаются), подтверждение — всплывающим
 # алертом `callback.answer(..., show_alert=True)`, а не правкой текста.
 
+# D-34 (24.09): дефолты зеркалят registry-ключи `broadcast_mute_confirm_text`/
+# `broadcast_unmute_confirm_text` (settings_schema.py) — менеджер правит текст в самом боте,
+# здесь только fail-soft на случай пустого реестра.
 _MUTE_TODAY_CONFIRM_TEXT = (
     "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."
 )
@@ -2009,7 +2022,8 @@ async def mute_broadcasts_today(callback: types.CallbackQuery):
     today = msk_now().strftime("%Y-%m-%d")
     await set_broadcast_mute(callback.from_user.id, today)
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    await callback.answer(reg_i18n.tr_text(_MUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
+    text = await get_setting_typed("broadcast_mute_confirm_text") or _MUTE_TODAY_CONFIRM_TEXT
+    await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
     try:
         new_button = await sched.unmute_button(callback.from_user.id)
         new_markup = _swap_mute_button(
@@ -2026,7 +2040,8 @@ async def unmute_broadcasts_today(callback: types.CallbackQuery):
     from services import scheduler as sched
     await set_broadcast_mute(callback.from_user.id, None)
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    await callback.answer(reg_i18n.tr_text(_UNMUTE_TODAY_CONFIRM_TEXT, lang, tr_map), show_alert=True)
+    text = await get_setting_typed("broadcast_unmute_confirm_text") or _UNMUTE_TODAY_CONFIRM_TEXT
+    await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
     try:
         new_button = await sched.mute_button(callback.from_user.id)
         new_markup = _swap_mute_button(
