@@ -144,8 +144,10 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     # _thanks_text/_comment_hint_text/_comment_saved_text) + 3 code_literals шаблонов
     # claim_status (services.sos.claim_status_claimed/_open/_fallback_name) + 1 code_literal
     # session_feedback.unavailable_alert — 624 -> 634, потолок поднят до фактического размера
-    # с небольшим запасом (650).
-    assert 150 <= len(result) <= 650, len(result)
+    # с небольшим запасом (650). 25.09: тексты делегату/волонтёру лесенки SOS, «Решено»,
+    # индикатора связи сканера и тренировочного режима (реестровые дефолты с переводом) —
+    # 634 -> 652, потолок 680.
+    assert 150 <= len(result) <= 680, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"
