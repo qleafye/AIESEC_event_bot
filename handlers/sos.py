@@ -100,18 +100,31 @@ async def _is_recent_open_report(report: dict, city: str | None) -> bool:
     return age < await _reopen_window_minutes(city)
 
 
-async def _recent_followup_text(report: dict) -> str:
-    # Плейсхолдер {claim_status} подставляется ДО перевода (шаблон с плейсхолдером — тот же
-    # известный неполный перевод, что `recall_generic_prompt_text`, handlers/registration.py:836)
-    # — .format здесь, не reg_i18n.tr_text поверх готового текста.
+async def _recent_followup_text(report: dict, lang: str, tr_map: dict) -> str:
+    """Часть А (ревью, найдено при проверке SOS-переводов): плейсхолдер `{claim_status}`
+    подставлялся ДО перевода шаблона (`.format` поверх сырого текста реестра) — хеш уже
+    подставленной строки никогда не совпадал с хешем шаблона в словаре перевода, и
+    англоязычный делегат получал русский текст целиком, даже когда перевод шаблона был готов
+    (тот же класс неполного перевода, что `recall_generic_prompt_text`,
+    `handlers/registration.py:836`). Теперь — тот же порядок, что `reg_i18n.tr_fmt` везде в
+    чате: шаблон переводится СНАЧАЛА, подстановка `{claim_status}` — ПОСЛЕ.
+    `sos_service.claim_status_parts` отдаёт (шаблон, имя) отдельно — шаблон уходит через
+    словарь (тир B), имя (собственное) переводится отдельно ТОЛЬКО ради переводимого фолбэка
+    «коллега» (реальное имя просто не найдётся в словаре и останется как есть)."""
     raw = await get_setting_typed("sos_recent_followup_text")
-    return raw.format(claim_status=sos_service.claim_status_label(report))
+    template, who = sos_service.claim_status_parts(report)
+    if who is not None:
+        claim_status = reg_i18n.tr_fmt(template, lang, tr_map, who=reg_i18n.tr_text(who, lang, tr_map))
+    else:
+        claim_status = reg_i18n.tr_text(template, lang, tr_map)
+    return reg_i18n.tr_fmt(raw, lang, tr_map, claim_status=claim_status)
 
 
 async def _offer_followup(message: types.Message, state: FSMContext, report: dict) -> None:
     await state.set_state(SosReport.followup)
     await state.update_data(sos_followup_report_id=report["id"])
-    await reg_i18n.say(message, await _recent_followup_text(report))
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    await reg_i18n.say(message, await _recent_followup_text(report, lang, tr_map))
 
 
 # 🆘 SOS — кнопка главного меню
@@ -150,8 +163,9 @@ async def sos_pick_category(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             await state.set_state(SosReport.followup)
             await state.update_data(sos_followup_report_id=open_report["id"])
+            lang, tr_map = await reg_i18n.ctx_for(callback)
             try:
-                await callback.message.edit_text(await _recent_followup_text(open_report))
+                await callback.message.edit_text(await _recent_followup_text(open_report, lang, tr_map))
             except Exception:
                 pass
             return
@@ -278,9 +292,22 @@ async def _finalize_sos(message: types.Message, state: FSMContext, *,
     # Контакт (телефон и т.п.) — сырое значение, НЕ переводится (тот же приём, что
     # contact_person/contact_vk/contact_tg в handlers/user_actions.py::show_contacts),
     # отдельным сообщением, чтобы не портить сопоставление корпуса перевода выше.
+    #
+    # Часть А (ревью SOS-переводов): бот шлёт с дефолтным `parse_mode=HTML` (main.py), а это
+    # поле — свободный ввод менеджера — случайный «<3»/непарный «<»/«&» в тексте уронил бы
+    # отправку с необработанным исключением (делегат в экстренной ситуации остался бы без
+    # контакта вовсе). Тот же WR-04-фоллбэк, что `handlers/user_actions.py::show_contacts`:
+    # провал с разметкой -> один повтор без неё, а не пустая рука в самый неподходящий момент.
     contact = await get_setting_typed_for_city("sos_fallback_contact_text", city)
     if contact:
-        await message.answer(contact)
+        try:
+            await message.answer(contact)
+        except Exception as e:
+            logger.error(f"sos._finalize_sos: экстренный контакт не ушёл с HTML, повтор без разметки: {e}")
+            try:
+                await message.answer(contact, parse_mode=None)
+            except Exception as e2:
+                logger.error(f"sos._finalize_sos: экстренный контакт не ушёл даже без разметки: {e2}")
 
 
 # ── Ответ делегата на «Ответ по SOS» — снова в тред карточки (пункт 3 плана) ────────────────

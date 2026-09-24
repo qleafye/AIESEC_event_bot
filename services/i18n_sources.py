@@ -515,6 +515,13 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:services.sos.category_other", "⚠️ Другое"))
     items.append(("lit:sos.location_button", "📍 Отправить геопозицию"))
 
+    # Часть А (ревью SOS-переводов, `sos_recent_followup_text` уходил сырой русской строкой):
+    # шаблоны `services.sos.claim_status_parts` + переводимый фолбэк имени «коллега» —
+    # литералы кода, не реестра, регистрируются здесь тем же приёмом, что категории SOS выше.
+    items.append(("lit:services.sos.claim_status_claimed", "взял(а) {who}"))
+    items.append(("lit:services.sos.claim_status_open", "ещё не взяли"))
+    items.append(("lit:services.sos.claim_status_fallback_name", "коллега"))
+
     return items
 
 

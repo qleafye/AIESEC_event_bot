@@ -358,6 +358,53 @@ class PostCardResult:
         return f"PostCardResult(chat_delivered={self.chat_delivered}, dm_delivered={self.dm_delivered})"
 
 
+async def _send_to_bound_chat(bot, city: str | None, chat: dict, text: str, **kwargs):
+    """Общая отправка в привязанный чат SOS — ОБЩИЙ контур «здоровье чата» для `post_card`
+    (карточка) И `_deliver_escalation` (текст эскалации, ревью 24.09 находка 2 просила ровно
+    это: те же обработки на эскалации, что уже были только у карточки). Чат мигрировал в
+    супергруппу (`TelegramMigrateToChat`) — перепривязывает `sos_chat_id` города на новый
+    `migrate_to_chat_id` и повторяет ОДНУ попытку в новый chat_id. Любая другая ошибка (в т.ч.
+    повтор после миграции) — чат помечается нездоровым (`_mark_chat_unhealthy`, троттлинг
+    алерта менеджерам раз в час).
+
+    Возвращает `(msg, chat_id_доставки)` при успехе (исходный ИЛИ новый после миграции chat_id
+    — вызывающему нужен фактический id, не только объект сообщения, см. `post_card::
+    set_sos_card`) либо `(None, None)`, если доставка не удалась НИ В ОДИН chat_id — вызывающий
+    сам решает, что делать дальше (фоллбэк-веер личкой у `post_card`, просто лог у эскалации)."""
+    from aiogram.exceptions import TelegramMigrateToChat
+
+    chat_id = chat["chat_id"]
+    try:
+        msg = await bot.send_message(chat_id, text, **kwargs)
+        _mark_chat_healthy(chat_id)
+        return msg, chat_id
+    except TelegramMigrateToChat as e:
+        new_chat_id = e.migrate_to_chat_id
+        logger.warning(
+            "sos._send_to_bound_chat: чат id=%s мигрировал в супергруппу id=%s, перепривязываю",
+            chat_id, new_chat_id,
+        )
+        await bind_sos_chat(None, new_chat_id, chat.get("title") or "", city)
+        try:
+            msg = await bot.send_message(new_chat_id, text, **kwargs)
+            _mark_chat_healthy(new_chat_id)
+            return msg, new_chat_id
+        except Exception as e2:
+            logger.error(
+                "sos._send_to_bound_chat: повтор в новый чат id=%s (после миграции) тоже упал: %s",
+                new_chat_id, e2,
+            )
+            await _mark_chat_unhealthy(new_chat_id, city)
+            return None, None
+    except Exception as e:
+        logger.error(
+            "sos._send_to_bound_chat: не удалось отправить в чат id=%s: %s",
+            chat_id, e,
+        )
+        await _mark_chat_unhealthy(chat_id, city)
+        return None, None
+
+
 async def post_card(bot, report_id: int) -> PostCardResult:
     """Публикует карточку (пункт 3 плана): в привязанный чат SOS города, либо (чат не привязан
     ИЛИ отправка упала) — фоллбэк-веером в личку держателям `moderate_reg` города (та же капа,
@@ -368,10 +415,8 @@ async def post_card(bot, report_id: int) -> PostCardResult:
     известное ограничение, задокументировано в SUMMARY. Возвращает `PostCardResult` — реальное
     число доставок, не голый факт «дошло ли в чат» (ревью 24.09, находка 1).
 
-    Чат мигрировал в супергруппу (`TelegramMigrateToChat`) — перепривязывает `sos_chat_id`
-    города на новый `migrate_to_chat_id` и повторяет ОДНУ попытку в новый chat_id, прежде чем
-    уйти в фоллбэк (находка 2, «здоровье чата»). Любая другая ошибка отправки в чат — чат
-    помечается нездоровым (`_mark_chat_unhealthy`, троттлинг алерта менеджерам — раз в час)."""
+    Здоровье чата (миграция в супергруппу/провал отправки) — общий хелпер `_send_to_bound_chat`
+    (тот же контур, что и у `_deliver_escalation`)."""
     from database.db import get_user, set_sos_card
 
     report = await get_sos_report(report_id)
@@ -382,38 +427,12 @@ async def post_card(bot, report_id: int) -> PostCardResult:
     kb = build_card_kb(report_id)
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
-        from aiogram.exceptions import TelegramMigrateToChat
-
-        chat_id = chat["chat_id"]
-        try:
-            msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
-            await set_sos_card(report_id, chat_id, msg.message_id)
-            _mark_chat_healthy(chat_id)
+        msg, chat_id_used = await _send_to_bound_chat(
+            bot, report.get("city"), chat, text, parse_mode="HTML", reply_markup=kb,
+        )
+        if msg is not None:
+            await set_sos_card(report_id, chat_id_used, msg.message_id)
             return PostCardResult(chat_delivered=True)
-        except TelegramMigrateToChat as e:
-            new_chat_id = e.migrate_to_chat_id
-            logger.warning(
-                "sos.post_card: чат id=%s мигрировал в супергруппу id=%s, перепривязываю",
-                chat_id, new_chat_id,
-            )
-            await bind_sos_chat(None, new_chat_id, chat.get("title") or "", report.get("city"))
-            try:
-                msg = await bot.send_message(new_chat_id, text, parse_mode="HTML", reply_markup=kb)
-                await set_sos_card(report_id, new_chat_id, msg.message_id)
-                _mark_chat_healthy(new_chat_id)
-                return PostCardResult(chat_delivered=True)
-            except Exception as e2:
-                logger.error(
-                    "sos.post_card: повтор в новый чат id=%s (после миграции) тоже упал: %s",
-                    new_chat_id, e2,
-                )
-                await _mark_chat_unhealthy(new_chat_id, report.get("city"))
-        except Exception as e:
-            logger.error(
-                "sos.post_card: не удалось отправить в чат id=%s, ухожу в фоллбэк: %s",
-                chat_id, e,
-            )
-            await _mark_chat_unhealthy(chat_id, report.get("city"))
     dm_count = await _fallback_fanout(bot, report, text, kb)
     return PostCardResult(dm_delivered=dm_count)
 
@@ -575,6 +594,11 @@ async def escalation_job(report_id: int) -> None:
 
 
 async def _deliver_escalation(bot, report: dict) -> None:
+    """Ревью 24.09 (находка 2, добавка): текст эскалации в привязанный чат идёт через тот же
+    `_send_to_bound_chat`, что и карточка (`post_card`) — миграция чата в супергруппу больше не
+    роняет эскалацию молча (перепривязка + один повтор в новый chat_id), а провал отправки
+    метит чат нездоровым (алерт держателям settings, троттлинг раз в час) — раньше эскалация
+    просто логировала provал `logger.warning` и не трогала здоровье чата вовсе."""
     from database.db import get_user
     from handlers.admin_caps import notify_by_capability
 
@@ -583,16 +607,10 @@ async def _deliver_escalation(bot, report: dict) -> None:
     text_group = f"⏰ Никто не взял SOS #{report['id']} за {minutes} мин."
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
-        try:
-            await bot.send_message(
-                chat["chat_id"], text_group,
-                reply_to_message_id=report.get("card_message_id") or None,
-            )
-        except Exception as e:
-            logger.warning(
-                "sos._deliver_escalation: не удалось написать в чат id=%s: %s",
-                chat["chat_id"], e,
-            )
+        await _send_to_bound_chat(
+            bot, report.get("city"), chat, text_group,
+            reply_to_message_id=report.get("card_message_id") or None,
+        )
     user = await get_user(report["telegram_id"])
     alert_text = (
         f"⏰ <b>SOS #{report['id']} без ответа {minutes} мин.</b>\n\n"
@@ -680,8 +698,24 @@ def report_age_minutes(report: dict) -> float | None:
     return (msk_now() - stamp).total_seconds() / 60
 
 
-def claim_status_label(report: dict) -> str:
+def claim_status_parts(report: dict) -> tuple[str, str | None]:
+    """`(шаблон, имя)` для перевода делегату (Часть А ревью 24.09: `sos_recent_followup_text`
+    уходил сырой русской строкой, потому что `{claim_status}` собирался ЗДЕСЬ, ДО перевода
+    шаблона) — шаблон переводится словарём (`services/i18n_form_manual.py::FORM_DEFAULT_EN`,
+    ярус B), имя — собственное, НЕ участвует в переводе шаблона, подставляется ПОСЛЕ
+    (`handlers/reg_i18n.py::tr_fmt`, тот же порядок «шаблон сначала», что везде в чате).
+    `who is None` -> шаблон без плейсхолдера («ещё не взяли»); иначе — имя держателя ИЛИ
+    переводимый фолбэк «коллега» (нет отображаемого имени у самого держателя в БД) — фолбэк
+    тоже переводится вызывающим (`reg_i18n.tr_text` на `who`, дословное имя просто не найдётся
+    в словаре и уйдёт как есть)."""
     if report.get("claimed_by") is not None:
         who = report.get("claimed_by_name") or "коллега"
-        return f"взял(а) {who}"
-    return "ещё не взяли"
+        return "взял(а) {who}", who
+    return "ещё не взяли", None
+
+
+def claim_status_label(report: dict) -> str:
+    """RU-версия (менеджерские экраны, где перевод не нужен) — тонкая обёртка над
+    `claim_status_parts`, чтобы формула статуса считалась в одном месте."""
+    template, who = claim_status_parts(report)
+    return template.format(who=who) if who else template

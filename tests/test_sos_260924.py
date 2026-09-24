@@ -1194,3 +1194,182 @@ def test_sos_claim_fallback_dm_still_works_from_private_chat(tmp_path):
     cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)  # message chat_id=user_id, private
     _run(admin_sos.sos_claim(cb, FakeBot()))
     assert cb.answers[0][0] == "Взято."
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Часть А (ревью SOS-переводов): sos_delivery_failed_text/sos_recent_followup_text/
+# sos_fallback_contact_text уходили делегату сырой русской строкой (`sos_recent_followup_text`
+# — из-за подстановки {claim_status} ДО перевода шаблона, тот же класс бага, что LANG-02 уже
+# закрыла везде в чате). Ниже — lang="en" тесты по всем трём + честный HTML-фоллбэк контакта +
+# «здоровье чата» на эскалации (тот же контур, что уже был у карточки).
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from services.i18n_form_manual import FORM_DEFAULT_EN, seed  # noqa: E402
+
+
+async def _make_english_delegate(tid: int, **kwargs):
+    await _add_delegate(tid, **kwargs)
+    await db.set_setting("delegate_lang_enabled", "on")
+    await seed("en")
+    await db.set_user_lang(tid, "en")
+
+
+def test_finalize_sos_total_failure_translates_for_english_delegate(tmp_path, monkeypatch):
+    """`sos_delivery_failed_text` уже шло через `reg_i18n.say` до этой правки — тест закрепляет
+    поведение (регрессия), а не чинит его."""
+    _ready(tmp_path)
+    _run(_make_english_delegate(DELEGATE_ID))
+    monkeypatch.setattr(
+        "handlers.admin_caps.capability_holders",
+        lambda cap, city=None: _async_result([]),
+    )
+    monkeypatch.setattr(sos_service, "schedule_delivery_retry", lambda report_id, delay_minutes=1: None)
+
+    bot = FakeBot()
+    bot.send_failures[ADMIN_ID] = [Exception("blocked")]
+
+    state = _fresh_state(DELEGATE_ID)
+    _run(state.update_data(sos_category="bad", sos_city=None, sos_details_text=None,
+                            sos_details_photo=None, sos_prior_open_id=None))
+    _run(state.set_state(SosReport.location))
+    loc_msg = FakeMessage(user_id=DELEGATE_ID)
+    loc_msg.bot = bot
+
+    _run(sos_handlers.sos_location_skip(loc_msg, state))
+
+    default_ru = (
+        "Не получилось передать SOS оргкомитету. Подойди к стойке регистрации или к любому "
+        "человеку в форме оргкомитета."
+    )
+    assert any(a[0] == FORM_DEFAULT_EN[default_ru] for a in loc_msg.answers)
+    assert not any(a[0] == default_ru for a in loc_msg.answers)  # русский НЕ ушёл вперемешку
+
+
+def test_finalize_sos_emergency_contact_falls_back_without_html_on_parse_error(tmp_path, monkeypatch):
+    """Контакт — свободный ввод менеджера, не переводится (правило), но обязан дойти даже если
+    в нём затесался невалидный для HTML-разметки символ (`<3` и т.п.) — один повтор без
+    `parse_mode`, тот же WR-04-приём, что `handlers/user_actions.py::show_contacts`."""
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    contact_text = "Экстренный телефон: +7 999 <3 000-00-00"
+    _run(db.set_setting("sos_fallback_contact_text", contact_text))
+    monkeypatch.setattr(
+        "handlers.admin_caps.capability_holders",
+        lambda cap, city=None: _async_result([]),
+    )
+    monkeypatch.setattr(sos_service, "schedule_delivery_retry", lambda report_id, delay_minutes=1: None)
+
+    bot = FakeBot()
+    bot.send_failures[ADMIN_ID] = [Exception("blocked")]
+
+    state = _fresh_state(DELEGATE_ID)
+    _run(state.update_data(sos_category="bad", sos_city=None, sos_details_text=None,
+                            sos_details_photo=None, sos_prior_open_id=None))
+    _run(state.set_state(SosReport.location))
+    loc_msg = FakeMessage(user_id=DELEGATE_ID)
+    loc_msg.bot = bot
+
+    calls = {"n": 0}
+    real_answer = loc_msg.answer
+
+    async def flaky_answer(text, parse_mode=None, reply_markup=None):
+        if text == contact_text:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise Exception("can't parse entities: unsupported start tag \"3\"")
+        return await real_answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
+
+    loc_msg.answer = flaky_answer
+
+    _run(sos_handlers.sos_location_skip(loc_msg, state))
+
+    assert calls["n"] == 2  # первая попытка упала, повтор без разметки дошёл
+    assert any(a[0] == contact_text for a in loc_msg.answers)  # делегат всё равно получил контакт
+
+
+def test_recent_followup_text_translates_open_and_claimed_for_english_delegate(tmp_path):
+    _ready(tmp_path)
+    _run(_make_english_delegate(DELEGATE_ID))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    state = _fresh_state(DELEGATE_ID)
+    msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_start(msg, state))
+
+    assert any("We already got your SOS" in a[0] and "not picked up yet" in a[0] for a in msg.answers)
+    assert not any("Мы уже получили твой SOS" in a[0] for a in msg.answers)
+
+    _run(db.claim_sos_report(rid, ADMIN_ID, "Иван"))
+    state2 = _fresh_state(DELEGATE_ID)
+    msg2 = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
+    _run(sos_handlers.sos_start(msg2, state2))
+    assert any("picked up by Иван" in a[0] for a in msg2.answers)
+
+
+def test_recent_followup_text_translates_via_category_callback_edit(tmp_path):
+    """Вторая ветка антиспам-гейта (гонка «кнопка -> категория», `sos_pick_category`) правила
+    `edit_text` напрямую, МИМО `reg_i18n.say` — до фикса перевод не срабатывал вовсе, даже
+    отдельно от бага с порядком подстановки."""
+    _ready(tmp_path)
+    _run(_make_english_delegate(DELEGATE_ID))
+    _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    cb = FakeCallback("sos_cat:lost", user_id=DELEGATE_ID)
+    state = _fresh_state(DELEGATE_ID)
+    _run(sos_handlers.sos_pick_category(cb, state))
+
+    assert "We already got your SOS" in cb.message.text
+    assert "not picked up yet" in cb.message.text
+    assert "Мы уже получили твой SOS" not in cb.message.text
+
+
+def test_escalation_migrates_chat_before_alerting(tmp_path, monkeypatch):
+    """Ревью 24.09 (находка 2, добавка): эскалация теперь проходит тот же контур «здоровье
+    чата», что карточка — миграция в супергруппу перепривязывает `sos_chat_id` и повторяет ОДНУ
+    попытку в новый chat_id вместо простого `logger.warning`."""
+    _ready(tmp_path)
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    ESCALATION_CHAT_ID = -1009024001
+    _run(sos_service.bind_sos_chat(ADMIN_ID, ESCALATION_CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    from aiogram.exceptions import TelegramMigrateToChat
+
+    new_chat_id = -1009024002
+    bot = FakeBot()
+    bot.send_failures[ESCALATION_CHAT_ID] = [
+        TelegramMigrateToChat(method=None, message="migrated", migrate_to_chat_id=new_chat_id),
+    ]
+    _patch_scheduler_bot(monkeypatch, bot)
+
+    _run(sos_service.escalation_job(rid))
+
+    row = _run(db.get_sos_report(rid))
+    assert row["escalated_at"] is not None
+    assert any(s[0] == new_chat_id and "Никто не взял" in s[1] for s in bot.sent)  # текст ушёл в НОВЫЙ chat_id
+    chat = _run(sos_service.sos_chat_for_city(None))
+    assert chat["chat_id"] == new_chat_id  # перепривязка сохранена
+    assert sos_service.chat_is_unhealthy(new_chat_id) is False
+
+
+def test_escalation_marks_chat_unhealthy_on_send_failure(tmp_path, monkeypatch):
+    """Провал отправки текста эскалации в привязанный чат (не миграция — обычная ошибка) метит
+    чат нездоровым и алертит держателей `settings`, тот же приём, что у карточки."""
+    _ready(tmp_path)
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    ESCALATION_CHAT_ID = -1009024011
+    _run(sos_service.bind_sos_chat(ADMIN_ID, ESCALATION_CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None, "bad", None, None, None, None))
+
+    bot = FakeBot()
+    bot.send_failures[ESCALATION_CHAT_ID] = [Exception("kicked")]
+    _patch_scheduler_bot(monkeypatch, bot)
+    sos_service._chat_alert_sent_at.pop(ESCALATION_CHAT_ID, None)  # изоляция от др. тестов/чатов
+
+    try:
+        _run(sos_service.escalation_job(rid))
+        assert sos_service.chat_is_unhealthy(ESCALATION_CHAT_ID) is True
+        assert any("Чат SOS недоступен" in s[1] for s in bot.sent)
+    finally:
+        sos_service._unhealthy_chats.discard(ESCALATION_CHAT_ID)
+        sos_service._chat_alert_sent_at.pop(ESCALATION_CHAT_ID, None)
