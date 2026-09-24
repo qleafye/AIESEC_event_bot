@@ -228,6 +228,21 @@ def test_every_callback_lives_in_exactly_one_section():
             seen[cb] = token
 
 
+def test_every_op_row_has_a_label_and_every_label_has_a_section():
+    """Пакет C, п.1 (общий сторож вместо точечного): строка `("op", cb)` в `SECTIONS` берёт
+    подпись из `_ADMIN_MENU_ROWS`. Нет подписи — `build_section_keyboard` молча выбрасывает
+    кнопку («🆘 SOS» так прожила ночь невидимой). Обратное тоже ловим: подпись в
+    `_ADMIN_MENU_ROWS` без строки ни в одном разделе — операция недостижима из панели."""
+    from handlers.admin_core import _ADMIN_MENU_ROWS
+
+    labelled = {cb for _text, cb in _ADMIN_MENU_ROWS}
+    ops = {row[1] for _t, _l, rows in sec.SECTIONS for row in rows if row[0] == "op"}
+    assert not ops - labelled, f"op-строки без подписи в _ADMIN_MENU_ROWS: {sorted(ops - labelled)}"
+    in_sections = {sec.row_callback(row) for _t, _l, rows in sec.SECTIONS for row in rows}
+    orphans = labelled - in_sections - {"admin_settings"}  # admin_settings = сам корень панели
+    assert not orphans, f"подписи без раздела (недостижимы из панели): {sorted(orphans)}"
+
+
 def test_sections_are_the_eight_delegate_flow_steps():
     assert [t for t, _, _ in sec.SECTIONS] == [
         "event", "form", "apps", "pay", "comms", "game", "data", "manage"]
@@ -315,6 +330,29 @@ def test_apps_section_for_moderate_reg_has_operations_only():
         "admin_forum_functions",
     ]
     assert not [r for r in rows if r[0] in ("toggle", "group")]
+
+
+def test_admin_sos_row_is_not_an_orphan(tmp_path, caplog):
+    """Пакет C, п.1: «🆘 SOS» была объявлена строкой раздела «apps» (`SECTIONS`, капа
+    `moderate_reg` — см. тест выше), но забыта в `_ADMIN_MENU_ROWS` — карте «callback_data ->
+    подпись», которую читает `build_section_keyboard`. Без записи там строка находит капу
+    (`visible_rows` пропускает её), но подпись не находится, и `build_section_keyboard` тихо
+    выбрасывает строку с warning'ом в лог (docstring `build_section_keyboard`, «строка-сирота
+    ... должна быть НЕВИДИМОЙ») — держатель `moderate_reg` открывал раздел «📋 Заявки» и не
+    видел кнопку SOS вовсе, хотя право у него было."""
+    _roles_ready(tmp_path)
+    asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    _only_caps("reg_manager", "moderate_reg")
+
+    import logging
+    caplog.set_level(logging.WARNING, logger="handlers.admin_sections")
+    kb = asyncio.run(sec.build_section_keyboard("apps", MANAGER_ID))
+
+    assert "admin_sos" in _flat_callback_data(kb)
+    assert not any("admin_sos" in rec.message for rec in caplog.records), (
+        "build_section_keyboard залогировал сироту admin_sos — подпись в _ADMIN_MENU_ROWS "
+        "снова потерялась"
+    )
 
 
 def test_quiet_hours_entry_row_is_declared_once_right_after_its_toggle():
