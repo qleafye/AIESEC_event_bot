@@ -438,9 +438,13 @@ def test_render_sos_screen_shows_warning_without_bound_chat(tmp_path):
 def test_render_sos_screen_shows_chat_title_when_bound(tmp_path):
     _ready(tmp_path)
     _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
-    text, _kb = _run(admin_sos.render_sos_screen(ADMIN_ID))
+    text, kb = _run(admin_sos.render_sos_screen(ADMIN_ID))
     assert "Чат оргов" in text
     assert "не привязан" not in text
+    # Кнопка привязки остаётся доступной и на привязанном чате (перепривязка без похода в БД,
+    # если бот добавили не в тот чат) — подпись меняется на «Перепривязать».
+    all_buttons = [b.text for row in kb.inline_keyboard for b in row]
+    assert "🔗 Перепривязать чат SOS" in all_buttons
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

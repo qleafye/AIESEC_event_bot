@@ -118,8 +118,12 @@ async def render_sos_screen(admin_id: int, status: str | None = None, offset: in
         )
         for opt in _FILTER_ORDER
     ]]
-    if chat is None:
-        buttons.append([InlineKeyboardButton(text="🔗 Привязать чат SOS", callback_data="asos_bind")])
+    # Кнопка видна ВСЕГДА, не только когда чат не привязан — иначе менеджер, привязавший
+    # чат по ошибке, не смог бы перепривязать его без прямого лазания в БД (бот для людей:
+    # разрушительного шага здесь нет — привязка просто перезаписывается, старый чат при этом
+    # не отвязывается автоматически, поэтому подпись отличается словом «Перепривязать»).
+    bind_text = "🔗 Перепривязать чат SOS" if chat is not None else "🔗 Привязать чат SOS"
+    buttons.append([InlineKeyboardButton(text=bind_text, callback_data="asos_bind")])
 
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:
