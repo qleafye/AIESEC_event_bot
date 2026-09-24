@@ -467,6 +467,14 @@ _CODE_LITERALS_EN = {
     "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
         "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
     "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
+    # D-34 (24.09, решение владельца): реестровые ключи `broadcast_mute_confirm_text`/
+    # `broadcast_unmute_confirm_text` (settings_schema.py) хранят ПОЛНЫЙ текст С эмодзи-
+    # префиксом (в отличие от пары строк выше, которые ловит именно `reg_i18n.tr_text` после
+    # снятия префикса) — сторож `tests/test_i18n_form_manual_coverage_260917.py` сверяет
+    # корпус реестровых дефолтов байт-в-байт, без снятия префикса.
+    "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
+        "🔕 Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
+    "🔔 Хорошо, снова присылаю все рассылки.": "🔔 Okay, sending all messages again.",
     # Форум-ночь п.8 (идея №19, SOS): реестровые дефолты пяти текстов визарда «🆘 SOS»
     # (group "event", `sos_category_prompt_text`/`sos_details_prompt_text`/
     # `sos_location_prompt_text`/`sos_sent_text`/`sos_already_open_text`).
