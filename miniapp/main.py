@@ -58,6 +58,7 @@ from miniapp.config import (
 )
 from miniapp.deps import read_setting
 from miniapp.logging_config import configure_logging
+from secret_redact import register_secret
 from miniapp.routers import ALL_ROUTERS
 from miniapp.routers.page import STATIC_PREFIX
 from miniapp.routers.page import render_disabled_page
@@ -239,6 +240,7 @@ def create_app(cfg: Optional[DashboardConfig] = None) -> FastAPI:
     Идемпотентна — повторные вызовы (второй `create_app` в том же процессе) не плодят хендлеры."""
     configure_logging()
     cfg = cfg or load_miniapp_config()
+    register_secret(cfg.bot_token)
     inner = _build_asgi_app(cfg)
     wrapped = ProxyHeadersMiddleware(inner, trusted_hosts=cfg.trusted_proxies)
     wrapped.fastapi_app = inner

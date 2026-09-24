@@ -27,6 +27,8 @@ from __future__ import annotations
 import logging
 import sys
 
+from secret_redact import install_log_redaction
+
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Библиотеки, которые на INFO говорят больше, чем нужно (или опасное) — тот же приём, что
@@ -54,6 +56,9 @@ def configure_logging(level: int = logging.INFO) -> None:
     # что-то ещё (тест, библиотека) могло поднять httpx обратно на INFO/DEBUG между вызовами.
     for name in _QUIET_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
+    # Second line of defence behind T-19-19: any exception text that still reaches a log
+    # (form.py logs `%s` of arbitrary errors) is scrubbed of the bot token -- secret_redact.py.
+    install_log_redaction()
 
 
 __all__ = ["LOG_FORMAT", "configure_logging"]
