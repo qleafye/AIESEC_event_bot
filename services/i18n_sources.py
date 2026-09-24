@@ -522,6 +522,11 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:services.sos.claim_status_open", "ещё не взяли"))
     items.append(("lit:services.sos.claim_status_fallback_name", "коллега"))
 
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — алерт «недоступна»
+    # (`handlers/session_feedback.py::sfb_rate`/`sfb_offer_comment`), делегат без отметки на
+    # сессии или с чужим/устаревшим callback_data.
+    items.append(("lit:session_feedback.unavailable_alert", "Эта оценка тебе недоступна."))
+
     return items
 
 

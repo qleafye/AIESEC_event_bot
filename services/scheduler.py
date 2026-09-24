@@ -336,6 +336,11 @@ async def init_scheduler(bot):
     # init_scheduler держим единообразным).
     from services.checkin_broadcast import reconcile_broadcasts as _reconcile_checkin_qr
     await _reconcile_checkin_qr()
+    # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — (пере)ставить джобы
+    # отзыва всех сессий программы (пересозданный jobs.sqlite/простой дольше misfire_grace),
+    # тот же приём, что реконсиляции выше.
+    from services.session_feedback import reconcile_all as _reconcile_session_feedback
+    await _reconcile_session_feedback()
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(
