@@ -90,6 +90,72 @@ async def _relax_sos_reports_category(db: aiosqlite.Connection) -> None:
     logger.info("init_db: sos_reports пересоздана — category больше не NOT NULL")
 
 
+# Вход каждый день (двухдневный форум в Москве): отметка уникальна по (делегат, точка, ДЕНЬ).
+# `day` — «YYYY-MM-DD» по Москве, всегда `scanned_at[:10]` (пишут record_checkin/
+# record_session_checkin/undo_venue_checkin). Сессии этим не меняются: сессия сама идёт в один
+# день, её строки по-прежнему одна на (делегат, сессия).
+_CHECKINS_DDL = '''
+    CREATE TABLE IF NOT EXISTS checkins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER NOT NULL,
+        point TEXT NOT NULL,
+        scanned_at TEXT NOT NULL,
+        source TEXT NOT NULL,
+        approx_time INTEGER NOT NULL DEFAULT 0,
+        by_staff_id INTEGER,
+        created_at TEXT NOT NULL,
+        day TEXT NOT NULL,
+        UNIQUE(telegram_id, point, day)
+    )
+'''
+
+
+async def _migrate_checkins_per_day(db: aiosqlite.Connection) -> None:
+    """Старая `checkins` с UNIQUE(telegram_id, point) -> новая с колонкой `day` и
+    UNIQUE(telegram_id, point, day). Констрейнт ALTER'ом не снять — таблица пересоздаётся тем же
+    приёмом, что `_relax_sos_reports_category`: одна транзакция, `day` старых строк =
+    date(scanned_at), счётчик AUTOINCREMENT сохраняется, индексы init_db создаёт заново сразу
+    после. Идемпотентно: колонка `day` уже есть — выходим."""
+    if await _column_exists(db, "checkins", "day"):
+        return
+    async with db.execute("PRAGMA table_info(checkins)") as cursor:
+        old_cols = [row[1] for row in await cursor.fetchall()]
+    new_ddl = _CHECKINS_DDL.replace("IF NOT EXISTS checkins", "checkins_new", 1)
+    await db.commit()  # закрыть неявную транзакцию init_db — пересоздание идёт своей
+    await db.execute("BEGIN")
+    try:
+        async with db.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'checkins'"
+        ) as cursor:
+            seq_row = await cursor.fetchone()
+        await db.execute(new_ddl)
+        async with db.execute("PRAGMA table_info(checkins_new)") as cursor:
+            new_cols = {row[1] for row in await cursor.fetchall()}
+        common = [c for c in old_cols if c in new_cols]
+        col_list = ", ".join(common)
+        await db.execute(
+            f"INSERT INTO checkins_new ({col_list}, day) "
+            f"SELECT {col_list}, substr(scanned_at, 1, 10) FROM checkins"
+        )
+        await db.execute("DROP TABLE checkins")
+        await db.execute("ALTER TABLE checkins_new RENAME TO checkins")
+        if seq_row is not None:
+            cursor = await db.execute(
+                "UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'checkins'",
+                (seq_row[0],),
+            )
+            if not cursor.rowcount:  # таблица была пуста — строки счётчика ещё нет
+                await db.execute(
+                    "INSERT INTO sqlite_sequence (name, seq) VALUES ('checkins', ?)",
+                    (seq_row[0],),
+                )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    logger.info("init_db: checkins пересоздана — отметка уникальна по (делегат, точка, день)")
+
+
 _USER_CONSENTS_DDL = '''
     CREATE TABLE IF NOT EXISTS user_consents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,6 +408,94 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
         f"{shifted_iso_rows} по {len(_MSK_MIGRATION_ISO_COLUMNS)} колонкам"
     )
     await db.execute(f"PRAGMA user_version = {_MSK_MIGRATION_USER_VERSION}")
+
+
+_MENU_SCHEDULE_MIGRATION_USER_VERSION = 2
+_MENU_PROGRAM_KEY = "menu_program"
+_MENU_SCHEDULE_KEY = "menu_schedule"
+
+
+async def _migrate_menu_schedule_into_program(db: aiosqlite.Connection) -> None:
+    """D-29 (коммит 125ed56) слил две кнопки программы в одну `menu_program` и перестал читать
+    `menu_schedule`. Там, где менеджер когда-то выключил старую статичную «📅 Программа форума»
+    (`menu_program`=off), а интерактивная «🗓 Программа» (`menu_schedule`) была включена
+    (дефолт on, строки нет), после слияния кнопка пропала совсем, хотя сессии заведены.
+
+    Одноразово по `PRAGMA user_version` (та же форма, что `_migrate_local_timestamps_to_msk`,
+    то же соединение и та же транзакция): в каждой области — глобально и по каждому городу, где
+    есть городской вариант любого из двух ключей (`{key}__city__{code}`) — если
+    `menu_schedule` там НЕ выключен явно, `menu_program` становится `on`; если выключен явно —
+    `menu_program` остаётся с тем значением, которое делегат этого города видел до миграции.
+    Затем все варианты `menu_schedule` удаляются — их больше никто не читает. Пустую кнопку
+    всё равно прячет гейт «есть фото или сессии» (`services.program.program_menu_visible`).
+    На чистой БД не пишет ни одной строки (значение, равное дефолту/глобальному, не
+    записывается)."""
+    async with db.execute("PRAGMA user_version") as cursor:
+        row = await cursor.fetchone()
+    if (row[0] if row else 0) >= _MENU_SCHEDULE_MIGRATION_USER_VERSION:
+        return
+
+    city_prefix = {k: k + _CITY_OVERRIDE_SEP for k in (_MENU_PROGRAM_KEY, _MENU_SCHEDULE_KEY)}
+    values: dict[str, str] = {}
+    async with db.execute(
+        "SELECT key, value FROM bot_settings WHERE key IN (?, ?) "
+        "OR substr(key, 1, ?) = ? OR substr(key, 1, ?) = ?",
+        (
+            _MENU_PROGRAM_KEY, _MENU_SCHEDULE_KEY,
+            len(city_prefix[_MENU_PROGRAM_KEY]), city_prefix[_MENU_PROGRAM_KEY],
+            len(city_prefix[_MENU_SCHEDULE_KEY]), city_prefix[_MENU_SCHEDULE_KEY],
+        ),
+    ) as cursor:
+        for key, value in await cursor.fetchall():
+            values[key] = value
+
+    def _eff(key: str, code: str | None, default: str) -> str:
+        if code is not None:
+            own = values.get(city_prefix[key] + code)
+            if own:
+                return own
+        return values.get(key) or default
+
+    def _target(code: str | None) -> str:
+        old_program = _eff(_MENU_PROGRAM_KEY, code, "on")
+        return "on" if _eff(_MENU_SCHEDULE_KEY, code, "on") != "off" else old_program
+
+    codes = sorted({
+        key.split(_CITY_OVERRIDE_SEP, 1)[1] for key in values if _CITY_OVERRIDE_SEP in key
+    })
+    new_global = _target(None)
+    city_targets = {code: _target(code) for code in codes}
+
+    async def _put(key: str, value: str) -> None:
+        await db.execute(
+            "INSERT INTO bot_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    changed = 0
+    if (values.get(_MENU_PROGRAM_KEY) or "on") != new_global:
+        await _put(_MENU_PROGRAM_KEY, new_global)
+        changed += 1
+    for code, target in city_targets.items():
+        city_key = city_prefix[_MENU_PROGRAM_KEY] + code
+        if city_key in values:
+            if values[city_key] != target:
+                await _put(city_key, target)
+                changed += 1
+        elif target != new_global:
+            await _put(city_key, target)
+            changed += 1
+
+    cursor = await db.execute(
+        "DELETE FROM bot_settings WHERE key = ? OR substr(key, 1, ?) = ?",
+        (_MENU_SCHEDULE_KEY, len(city_prefix[_MENU_SCHEDULE_KEY]), city_prefix[_MENU_SCHEDULE_KEY]),
+    )
+    logger.info(
+        "_migrate_menu_schedule_into_program: menu_program изменено ключей %s, "
+        "menu_schedule удалено ключей %s", changed, cursor.rowcount,
+    )
+    await db.execute(f"PRAGMA user_version = {_MENU_SCHEDULE_MIGRATION_USER_VERSION}")
 
 
 # Phase 30 (30-02, A2-03): имя файла снапшота на `kind` — таблица закрытая (`kind` — словарь
@@ -1520,19 +1674,10 @@ async def init_db():
         # сама подтверждает вход, когда делегата отметили на сессии, а на входе он ещё не был).
         # `approx_time` — 1, если время скана не удалось прочитать из файла и подставлено время
         # загрузки (D-10).
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS checkins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
-                point TEXT NOT NULL,
-                scanned_at TEXT NOT NULL,
-                source TEXT NOT NULL,
-                approx_time INTEGER NOT NULL DEFAULT 0,
-                by_staff_id INTEGER,
-                created_at TEXT NOT NULL,
-                UNIQUE(telegram_id, point)
-            )
-        ''')
+        # Вход каждый день: уникальность теперь (telegram_id, point, day) — `_CHECKINS_DDL` и
+        # `_migrate_checkins_per_day` выше; старые базы пересоздаются здесь же.
+        await db.execute(_CHECKINS_DDL)
+        await _migrate_checkins_per_day(db)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_checkins_point ON checkins(point)"
         )
@@ -1619,6 +1764,37 @@ async def init_db():
                 UNIQUE(telegram_id, day)
             )
         ''')
+
+        # Идея №31 бэклога чек-ина (журнал площадки): кто что сделал в день форума. Живые
+        # отметки (сканер Mini App / поиск по фамилии) журналятся ПО ОДНОЙ — строку `checkins`
+        # потом может удалить снятие или перенос D-20, а журнал остаётся; CSV — ОДНОЙ строкой
+        # на загрузку (счётчики в `details`), построчно его отметки и так лежат в `checkins`
+        # с `by_staff_id`/`source="csv"`. Плюс не-отметочные действия: снятие отметки,
+        # отмена скана волонтёром, перевыпуск QR, пропуск «разово».
+        # `telegram_id` — делегат (NULL у загрузки CSV); `staff_id`/`staff_name` — кто
+        # (имя — снимок на момент действия: волонтёр может не быть делегатом и не иметь
+        # строки в `users`). `city` — нормализованный код города делегата (у CSV — город
+        # точки), фильтр экрана «📓 Журнал площадки». `details` — JSON (точка, время скана,
+        # прошлая сессия слота для отката переноса). `undone_at` — у строки отметки, которую
+        # волонтёр отменил в окне «↩️ Отменить».
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS venue_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                action TEXT NOT NULL,
+                staff_id INTEGER,
+                staff_name TEXT,
+                telegram_id INTEGER,
+                city TEXT,
+                point TEXT,
+                source TEXT,
+                details TEXT,
+                undone_at TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_venue_log_staff ON venue_log(staff_id, id)"
+        )
 
         # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
         # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
@@ -1733,6 +1909,10 @@ async def init_db():
         await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
         await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
         await _relax_sos_reports_category(db)
+        # Сколько напоминаний «у тебя в работе без ✅ Решено» уже ушло взявшему (потолок —
+        # services.sos.CLAIMED_REMIND_DELAYS_MINUTES) — в БД, а не в аргументах джобы: рестарт
+        # бота не должен начинать лесенку напоминаний заново.
+        await _ensure_column(db, "sos_reports", "claimed_remind_count", "INTEGER NOT NULL DEFAULT 0")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -1769,6 +1949,8 @@ async def init_db():
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
+        # D-29: осиротевший menu_schedule -> menu_program (см. докстринг функции).
+        await _migrate_menu_schedule_into_program(db)
 
         await db.commit()
 
@@ -4229,6 +4411,10 @@ CHAT_OUT = "out"
 CHECKIN_ENTRY_POINT = "entry"
 CHECKIN_YES = "yes"
 CHECKIN_NO = "no"
+# Вход каждый день: запись фильтра `checkin_entry` может нести `day` — «YYYY-MM-DD» (конкретный
+# день форума) или этот сентинел «сегодня», который пересчитывается по Москве на КАЖДЫЙ вызов
+# (превью и отложенная отправка). Без `day` — «хоть один день форума» / «ни разу».
+CHECKIN_DAY_TODAY = "today"
 
 # Поле фильтра рассылки «Сессия программы» — «были» / «не были» на КОНКРЕТНОЙ сессии (внутри
 # записи фильтра едет `session_id`, тот же приём, что `chats`/`exclude` у delegate_chat/
@@ -4423,18 +4609,22 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             # тот же приём, что `exclude` у `event_city`/`chats` у `delegate_chat` — пересчитан
             # заново на КАЖДЫЙ вызов, включая отложенную отправку) AND NOT EXISTS.
             value = f.get("value")
+            day = f.get("day")
+            if day == CHECKIN_DAY_TODAY:
+                day = msk_now().strftime("%Y-%m-%d")
             exists_frag = (
                 "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
-                "AND c.point = ?)"
+                "AND c.point = ?" + (" AND c.day = ?)" if day else ")")
             )
+            exists_params = [CHECKIN_ENTRY_POINT] + ([day] if day else [])
             if value == CHECKIN_YES:
                 clauses.append(exists_frag)
-                params.append(CHECKIN_ENTRY_POINT)
+                params.extend(exists_params)
             elif value == CHECKIN_NO:
                 guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
                 clauses.append(f"({guard_frag} AND NOT {exists_frag})")
                 params.extend(guard_params)
-                params.append(CHECKIN_ENTRY_POINT)
+                params.extend(exists_params)
             else:
                 # WR-01, тот же довод, что у resume/event_city/season выше: неизвестное значение
                 # — fail closed, не «всем».
@@ -4634,6 +4824,58 @@ async def get_checkin_entry_filter_options() -> list[str]:
         options.append(CHECKIN_YES)
     if has_no:
         options.append(CHECKIN_NO)
+    return options
+
+
+async def get_checkin_entry_days() -> list[str]:
+    """Дни форума («YYYY-MM-DD»), в которые был хоть один вход — для выбора дня в фильтре
+    рассылки «Отметка на форуме»."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT DISTINCT day FROM checkins WHERE point = ? ORDER BY day",
+            (CHECKIN_ENTRY_POINT,),
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall() if row[0]]
+
+
+async def get_checkin_entry_picker_options() -> list[str]:
+    """Варианты фильтра «Отметка на форуме» с НЕПУСТОЙ аудиторией: «пришли / не пришли» за
+    форум (`yes`/`no`), сегодня (`yes@today`/`no@today`) и за каждый прошлый день со входами
+    (`yes@YYYY-MM-DD`). Сторона без людей не показывается. Пустой список — входов ещё не было
+    ни одного (до форума фильтровать не по чему) — кнопка поля скрыта.
+
+    Порог не «обе стороны у одного варианта»: на второй день двухдневки все одобренные могли
+    прийти в первый, а сегодня ещё никто — у каждого варианта одна сторона пустая, но «не
+    пришли сегодня» (= все) — главный сценарий дня, кнопка обязана быть."""
+    days = await get_checkin_entry_days()
+    if not days:
+        return []
+    today = msk_now().strftime("%Y-%m-%d")
+    event_season = (await get_setting("event_season") or "").strip() or None
+    guard_frag, guard_params = _approved_current_season_frag(event_season)
+    variants = [(None, None), (CHECKIN_DAY_TODAY, today)] + [(d, d) for d in days if d != today]
+    options: list[str] = []
+    async with _connect() as db:
+        for key, day in variants:
+            day_sql = " AND c.day = ?" if day else ""
+            day_params = [day] if day else []
+            async with db.execute(
+                f"SELECT EXISTS(SELECT 1 FROM checkins c WHERE c.point = ?{day_sql})",
+                [CHECKIN_ENTRY_POINT, *day_params],
+            ) as cursor:
+                has_yes = (await cursor.fetchone())[0]
+            async with db.execute(
+                f"SELECT EXISTS(SELECT 1 FROM users WHERE {guard_frag} AND NOT EXISTS "
+                "(SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                f"AND c.point = ?{day_sql}))",
+                [*guard_params, CHECKIN_ENTRY_POINT, *day_params],
+            ) as cursor:
+                has_no = (await cursor.fetchone())[0]
+            suffix = f"@{key}" if key else ""
+            if has_yes:
+                options.append(f"{CHECKIN_YES}{suffix}")
+            if has_no:
+                options.append(f"{CHECKIN_NO}{suffix}")
     return options
 
 
@@ -5494,6 +5736,21 @@ async def set_sos_escalated(report_id: int) -> bool:
         cursor = await db.execute(
             "UPDATE sos_reports SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL",
             (msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def advance_sos_claimed_remind(report_id: int, claimant_id: int, expected_count: int) -> bool:
+    """Сдвиг счётчика напоминаний взявшему `expected_count -> expected_count + 1` — True только
+    у того вызова, что сдвинул (compare-and-set): заявка всё ещё у ТОГО ЖЕ взявшего и не
+    решена. Счётчик сдвигается ДО отправки — повторный тик той же ступени (рестарт посреди
+    джобы) ничего не шлёт второй раз."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET claimed_remind_count = ? WHERE id = ? AND claimed_by = ? "
+            "AND resolved_at IS NULL AND COALESCE(claimed_remind_count, 0) = ?",
+            (expected_count + 1, report_id, claimant_id, expected_count),
         )
         await db.commit()
         return cursor.rowcount == 1
@@ -8400,6 +8657,12 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # кому и когда ушла шпаргалка, тот же журнал отправки человеку, что checkin_qr_sends выше,
     # группа общая "checkin". day/city — снимок дня/города рассылки, не трогаем отдельно.
     ("checkin_volunteer_guide_sends", "telegram_id", "checkin"),
+    # Идея №31 (журнал площадки): venue_log.telegram_id — строки «что сделали С ЭТИМ
+    # делегатом» (отметки, снятия, перевыпуск QR). Личный след, уходит вместе с человеком —
+    # тот же довод, что у checkins выше (удаляют тестовые аккаунты; журнал удалённого
+    # тестера — мусор в разборе дня). staff_id в той же строке — авторская колонка, не
+    # трогаем: действия САМОГО удаляемого как волонтёра (строки, где он staff_id) остаются.
+    ("venue_log", "telegram_id", "checkin"),
     # Форум-ночь п.8 (идея №19, SOS): sos_reports.telegram_id — личная заявка SOS делегата
     # (категория/текст/фото/геопозиция), тот же личный след, что chat_activity/checkins выше.
     # claimed_by/resolved_by в той же строке — id менеджера, авторские колонки, не трогаем
@@ -8797,7 +9060,8 @@ async def record_checkin(
     approx: bool = False,
     by_staff_id: int | None = None,
 ) -> tuple[str, str]:
-    """Идемпотентно по (telegram_id, point) — хранит ПЕРВЫЙ скан на точку (D-10; про D-20
+    """Идемпотентно по (telegram_id, point, день скана по Москве) — хранит ПЕРВЫЙ скан на точку
+    ЗА ДЕНЬ (вход каждый день двухдневного форума; D-10; про D-20
     «последний скан слота» для будущих сессий — см. докстринг таблицы `checkins` в `init_db`).
     Возвращает ("new", время_этой_отметки) при первой отметке, ("duplicate",
     время_ПЕРВОЙ_отметки) — если отметка уже была (для строки «уже был в ЧЧ:ММ»).
@@ -8814,20 +9078,21 @@ async def record_checkin(
     (telegram_id, point)` и обязаны перечитать ПЕРВУЮ отметку для строки «уже был в ЧЧ:ММ»."""
     stamp = scanned_at or msk_now().strftime("%Y-%m-%d %H:%M:%S")
     created = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    day = stamp[:10]
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "INSERT OR IGNORE INTO checkins "
-            "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+            "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at, day) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created, day),
         )
         await db.commit()
         if cursor.rowcount:
             return "new", stamp
         async with db.execute(
-            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ?",
-            (telegram_id, point),
+            "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = ? AND day = ?",
+            (telegram_id, point, day),
         ) as cur2:
             existing = await cur2.fetchone()
     if existing is None:
@@ -8844,6 +9109,7 @@ async def record_session_checkin(
     scanned_at: str | None = None,
     approx: bool = False,
     by_staff_id: int | None = None,
+    previous_out: dict | None = None,
 ) -> tuple[str, str, int | None]:
     """Отметка на СЕССИИ (форум-ночь п.5, FORUM-CHECKIN.md D-18..D-20) — в отличие от
     `record_checkin` выше (первый скан побеждает, точка «Вход»), здесь «последний скан СЛОТА
@@ -8901,12 +9167,17 @@ async def record_session_checkin(
                 other_points = [f"session:{sid}" for sid in slot_session_ids]
                 placeholders = ",".join("?" for _ in other_points)
                 async with db.execute(
-                    f"SELECT point FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
+                    f"SELECT point, scanned_at, source, approx_time, by_staff_id, created_at "
+                    f"FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
                     [telegram_id, *other_points],
                 ) as cursor:
                     other_rows = await cursor.fetchall()
                 if other_rows:
                     previous_session_id = int(other_rows[0]["point"].split(":", 1)[1])
+                    if previous_out is not None:
+                        # Идея №32: снимок удаляемой строки — отмена ошибочного переноса
+                        # волонтёром (`undo_venue_checkin`) возвращает её на место.
+                        previous_out.update(dict(other_rows[0]))
                     await db.execute(
                         f"DELETE FROM checkins WHERE telegram_id = ? AND point IN ({placeholders})",
                         [telegram_id, *other_points],
@@ -8914,9 +9185,10 @@ async def record_session_checkin(
             try:
                 await db.execute(
                     "INSERT INTO checkins "
-                    "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created),
+                    "(telegram_id, point, scanned_at, source, approx_time, by_staff_id, created_at, day) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (telegram_id, point, stamp, source, 1 if approx else 0, by_staff_id, created,
+                     stamp[:10]),
                 )
                 await db.commit()
             except aiosqlite.IntegrityError:
@@ -8935,27 +9207,301 @@ async def record_session_checkin(
     return status, stamp, previous_session_id
 
 
-async def count_checkins_by_point(point: str, *, city_scope=None) -> int:
+# ── Идеи №31/№32 бэклога чек-ина: журнал площадки и снятие ошибочной отметки ─────────────────
+#
+# Снятие = УДАЛЕНИЕ строки `checkins` + строка журнала `venue_log`, не флаг `revoked`: все
+# потребители отметки (счётчики «Пришли N из M», фильтры рассылок «пришёл/не пришёл»,
+# `checkin_not_arrived`, отзывы о сессии D-24, статистика по залам) читают `checkins` в момент
+# работы — удалённая строка исчезает из всех разом, флаг пришлось бы добавить в каждый запрос.
+# История «было — сняли» живёт в журнале.
+
+def _venue_log_row(row) -> dict:
+    item = dict(row)
+    try:
+        item["details"] = json.loads(item.get("details") or "{}")
+    except (TypeError, ValueError):
+        item["details"] = {}
+    return item
+
+
+async def _venue_log_insert(db, entry: dict) -> int:
+    cursor = await db.execute(
+        "INSERT INTO venue_log (created_at, action, staff_id, staff_name, telegram_id, city, "
+        "point, source, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            entry.get("created_at") or msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+            entry["action"],
+            entry.get("staff_id"),
+            entry.get("staff_name"),
+            entry.get("telegram_id"),
+            entry.get("city"),
+            entry.get("point"),
+            entry.get("source"),
+            json.dumps(entry.get("details") or {}, ensure_ascii=False),
+        ),
+    )
+    return cursor.lastrowid
+
+
+async def venue_log_add(entry: dict) -> int:
+    """Одна строка журнала площадки. `entry` — поля таблицы `venue_log` (`action` обязателен,
+    `details` — dict, `created_at` по умолчанию — сейчас по Москве). Возвращает id строки."""
+    async with _connect() as db:
+        log_id = await _venue_log_insert(db, entry)
+        await db.commit()
+    return log_id
+
+
+async def venue_log_get(log_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM venue_log WHERE id = ?", (log_id,)) as cursor:
+            row = await cursor.fetchone()
+    return _venue_log_row(row) if row else None
+
+
+async def undo_venue_checkin(
+    log_id: int, staff_id: int, *, not_before: str, undo_entry: dict,
+) -> tuple[str, dict | None]:
+    """Отмена волонтёром СВОЕЙ ПОСЛЕДНЕЙ живой отметки (идея №32) — одной транзакцией
+    (`BEGIN IMMEDIATE`, тот же приём, что `record_session_checkin`: проверка «последняя ли» и
+    удаление не должны разъехаться с параллельным сканом того же волонтёра).
+
+    Проверки — на сервере, фронту не верим: строка журнала `log_id` — отметка (`action =
+    'checkin'`) ЭТОГО `staff_id`, ещё не отменена, создана не раньше `not_before` (окно
+    отмены считает вызывающий) и это самая свежая отметка волонтёра. Удаляется ровно то, что
+    поставил этот скан: строка точки, авто-вход (`details.auto_entry_at`, если вход появился
+    этим же сканом) и возвращается строка прошлой сессии слота (`details.previous`, если скан
+    был переносом D-20).
+
+    Возвращает `(код, событие)`: `"ok"` | `"not_found"` | `"not_yours"` | `"expired"` |
+    `"not_last"` | `"gone"` (строки отметки уже нет — её перенёс/снял кто-то другой)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute("SELECT * FROM venue_log WHERE id = ?", (log_id,)) as cursor:
+                row = await cursor.fetchone()
+            if row is None or row["action"] != "checkin":
+                await db.rollback()
+                return "not_found", None
+            event = _venue_log_row(row)
+            if event["staff_id"] != staff_id:
+                await db.rollback()
+                return "not_yours", event
+            created_at = event.get("created_at")
+            if event.get("undone_at") or created_at is None or created_at < not_before:
+                await db.rollback()
+                return "expired", event
+            async with db.execute(
+                "SELECT MAX(id) FROM venue_log WHERE action = 'checkin' AND staff_id = ?",
+                (staff_id,),
+            ) as cursor:
+                latest = (await cursor.fetchone())[0]
+            if latest != log_id:
+                await db.rollback()
+                return "not_last", event
+
+            details = event["details"]
+            tid = event["telegram_id"]
+            # Исход решает rowcount самого DELETE, а не данные журнала: строку отметки мог
+            # перенести (D-20) или снять кто-то другой — тогда ничего не пишем и откатываем.
+            if not details.get("scanned_at") or tid is None:
+                await db.rollback()
+                return "gone", event
+            cur = await db.execute(
+                "DELETE FROM checkins WHERE telegram_id = ? AND point = ? AND scanned_at = ?",
+                (tid, event["point"], details["scanned_at"]),
+            )
+            if not cur.rowcount:
+                await db.rollback()
+                return "gone", event
+            if details.get("auto_entry_at"):
+                await db.execute(
+                    "DELETE FROM checkins WHERE telegram_id = ? AND point = ? AND source = "
+                    "'auto_session' AND scanned_at = ?",
+                    (tid, CHECKIN_ENTRY_POINT, details["auto_entry_at"]),
+                )
+            prev = details.get("previous")
+            if prev:
+                await db.execute(
+                    "INSERT OR IGNORE INTO checkins (telegram_id, point, scanned_at, source, "
+                    "approx_time, by_staff_id, created_at, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (tid, prev["point"], prev["scanned_at"], prev["source"],
+                     prev.get("approx_time") or 0, prev.get("by_staff_id"), prev["created_at"],
+                     prev["scanned_at"][:10]),
+                )
+            stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+            await db.execute("UPDATE venue_log SET undone_at = ? WHERE id = ?", (stamp, log_id))
+            await _venue_log_insert(db, {
+                **undo_entry, "created_at": stamp, "telegram_id": tid, "city": event["city"],
+                "point": event["point"], "source": event["source"],
+                "details": {
+                    "undone_log_id": log_id, "scanned_at": details.get("scanned_at"),
+                    "point_label": details.get("point_label"),
+                    "previous_label": details.get("previous_label") if prev else None,
+                },
+            })
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return "ok", event
+
+
+async def first_entry_scanned_at(telegram_id: int) -> str | None:
+    """Время ПЕРВОГО входа делегата за форум (самый ранний из входов по дням) или `None` —
+    колонка «Пришёл» таблицы и признак «первый вход за форум»."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT MIN(scanned_at) FROM checkins WHERE telegram_id = ? AND point = ?",
+            (telegram_id, CHECKIN_ENTRY_POINT),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row[0] if row and row[0] else None
+
+
+async def has_entry_on_other_day(telegram_id: int, day: str) -> bool:
+    """Был ли у делегата вход в ДРУГОЙ день форума, кроме `day` — `False` значит, что вход дня
+    `day` — первый (и единственный) вход за форум."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM checkins WHERE telegram_id = ? AND point = ? AND day != ?)",
+            (telegram_id, CHECKIN_ENTRY_POINT, day),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return bool(row and row[0])
+
+
+async def get_checkin(checkin_id: int) -> dict | None:
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM checkins WHERE id = ?", (checkin_id,)) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_checkins_for_user(telegram_id: int) -> list[dict]:
+    """Все отметки делегата: вход первым, дальше сессии по времени скана."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM checkins WHERE telegram_id = ? "
+            "ORDER BY CASE WHEN point = ? THEN 0 ELSE 1 END, scanned_at",
+            (telegram_id, CHECKIN_ENTRY_POINT),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def revoke_checkin(checkin_id: int, log_entry: dict) -> dict | None:
+    """Менеджер снимает ОДНУ отметку (идея №32): удаление строки + строка журнала одной
+    транзакцией. Остальные отметки делегата не трогаются (снятие входа не снимает сессии).
+    `None` — строки уже нет (сняли параллельно / перенос D-20)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute("SELECT * FROM checkins WHERE id = ?", (checkin_id,)) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await db.rollback()
+                return None
+            removed = dict(row)
+            cur = await db.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
+            if not cur.rowcount:  # строку удалили между SELECT и DELETE — журнал не пишем
+                await db.rollback()
+                return None
+            details = {
+                "scanned_at": removed["scanned_at"],
+                "was_source": removed["source"],
+                "was_by_staff_id": removed["by_staff_id"],
+                **(log_entry.get("details") or {}),
+            }
+            await _venue_log_insert(db, {
+                **log_entry, "telegram_id": removed["telegram_id"], "point": removed["point"],
+                "details": details,
+            })
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return removed
+
+
+async def venue_log_page(*, city_scope=None, staff_id: int | None = None, offset: int = 0,
+                         limit: int = 10) -> tuple[list[dict], int]:
+    """Журнал площадки, новые сверху: `(строки страницы, всего)`. `city_scope` — дескриптор
+    `cities.city_scope(...)` по колонке `venue_log.city`; `staff_id` — фильтр по волонтёру."""
+    clauses: list[str] = []
+    params: list = []
+    city_sql, city_params = _city_clause(city_scope, "city")
+    if city_sql:
+        clauses.append(city_sql)
+        params.extend(city_params)
+    if staff_id is not None:
+        clauses.append("staff_id = ?")
+        params.append(staff_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"SELECT COUNT(*) FROM venue_log {where}", params) as cursor:
+            total = (await cursor.fetchone())[0]
+        async with db.execute(
+            f"SELECT * FROM venue_log {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [_venue_log_row(r) for r in rows], total
+
+
+async def venue_log_staff(*, city_scope=None) -> list[dict]:
+    """Кто что-то делал на площадке (для кнопок фильтра): `staff_id`, последнее известное имя,
+    число действий — самые активные первыми."""
+    city_sql, params = _city_clause(city_scope, "city")
+    where = f"AND {city_sql}" if city_sql else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT staff_id, COUNT(*) AS n, "
+            "(SELECT v2.staff_name FROM venue_log v2 WHERE v2.staff_id = venue_log.staff_id "
+            " AND v2.staff_name IS NOT NULL ORDER BY v2.id DESC LIMIT 1) AS staff_name "
+            f"FROM venue_log WHERE staff_id IS NOT NULL {where} "
+            "GROUP BY staff_id ORDER BY n DESC, staff_id",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def count_checkins_by_point(point: str, *, city_scope=None, day: str | None = None) -> int:
     """T-12-04 (A2, FORUM-CHECKIN.md): `city_scope` — тот же дескриптор `cities.city_scope(...)`
     и та же `_city_clause`, что у `count_approved_current_season` ниже, — оба числа строки
     «Пришли: N из M» ОБЯЗАНЫ резолвиться одним городским правилом, иначе счётчик молча
     разъедется по разным городам. 03.10 форумы СПб и Тюмени идут одновременно с ещё открытым
     набором в Москве — общий (нескопированный) счётчик путает пришедших одного города с
     одобренными другого; `city_scope=None` (дефолт) — старое нескопированное поведение,
-    байт-в-байт (модуль городов выключен или менеджер смотрит «Все города»)."""
+    байт-в-байт (модуль городов выключен или менеджер смотрит «Все города»).
+
+    Вход каждый день: у входа строка на (делегат, день) — считаем ЛЮДЕЙ (DISTINCT), `day`
+    («YYYY-MM-DD») — только отметки этого дня форума, `None` — хоть один день."""
+    day_frag = " AND c.day = ?" if day else ""
+    day_params = [day] if day else []
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
     if not city_frag:
         async with _connect() as db:
             async with db.execute(
-                "SELECT COUNT(*) FROM checkins WHERE point = ?", (point,)
+                f"SELECT COUNT(DISTINCT c.telegram_id) FROM checkins c WHERE c.point = ?{day_frag}",
+                [point] + day_params,
             ) as cursor:
                 row = await cursor.fetchone()
                 return int(row[0] or 0) if row else 0
     async with _connect() as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM checkins c JOIN users u ON u.telegram_id = c.telegram_id "
-            f"WHERE c.point = ? AND {city_frag}",
-            [point] + city_params,
+            "SELECT COUNT(DISTINCT c.telegram_id) FROM checkins c "
+            "JOIN users u ON u.telegram_id = c.telegram_id "
+            f"WHERE c.point = ?{day_frag} AND {city_frag}",
+            [point] + day_params + city_params,
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0] or 0) if row else 0
@@ -9155,10 +9701,10 @@ CNA_HERE = "here"
 
 async def checkin_not_arrived_pending_ids(*, city_scope=None) -> list[int]:
     """Кандидаты на сегодняшний шаблон «Не пришёл»: approved текущего сезона без отметки
-    «Вход» (то же условие, что ветка `checkin_entry`=`CHECKIN_NO` в `_build_filter_clause`,
+    «Вход» СЕГОДНЯ (вход каждый день: пришедший вчера, но не сегодня — тоже кандидат; то же условие, что ветка `checkin_entry`=`CHECKIN_NO` в `_build_filter_clause`,
     второй копии условия не заводится), МИНУС те, кому шаблон уже уходил СЕГОДНЯ (МСК) — сама
     идемпотентность «повторный тап в тот же день не шлёт дважды»."""
-    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
+    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO, "day": CHECKIN_DAY_TODAY}]
     if city_scope is not None:
         code, exclude = city_scope
         filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})

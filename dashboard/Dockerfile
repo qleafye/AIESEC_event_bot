@@ -24,6 +24,8 @@ COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
 # Корневой резолвер типов медиа (08.09): чистая stdlib, общий с ботом — без него образ падает
 # на старте `ModuleNotFoundError: tg_media` (прод 10.09). Сторож: tests/test_dashboard_docker.py.
 COPY --chown=appuser:appuser tg_media.py /app/tg_media.py
+# Статистика прихода (бэклог чек-ина п.10): общие с ботом запросы блока «Приход», чистая stdlib.
+COPY --chown=appuser:appuser arrival_stats.py /app/arrival_stats.py
 # Корневой санитайзер секретов (25.09): чистая stdlib, маскирует токен бота в логах.
 COPY --chown=appuser:appuser secret_redact.py /app/secret_redact.py
 # Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —

@@ -318,7 +318,7 @@ async def sos_claim(callback: types.CallbackQuery, bot: Bot):
         minutes = int(minutes_raw) if minutes_raw else sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
     except (TypeError, ValueError):
         minutes = sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
-    sos_service.schedule_claimed_reminder(report_id, minutes)
+    sos_service.schedule_claimed_reminder(report_id, minutes, callback.from_user.id)
     await callback.answer("Взято.")
     await _refresh_card(bot, report_id)
 
@@ -443,6 +443,8 @@ _SOS_TEXT_FIELDS = {
     "contact": ("sos_fallback_contact_text", "📞 Экстренный контакт (если не доставлено)"),
     "done": ("sos_done_text", "🆘 Дописывание завершено («Готово»)"),
     "expired": ("sos_collecting_expired_text", "🆘 Сессия дозаписи истекла"),
+    "remind": ("sos_claimed_remind_text", "⏰ Напоминание взявшему"),
+    "stale": ("sos_claimed_escalation_text", "⏰ Взяли, но не решили — менеджерам"),
 }
 
 
@@ -500,7 +502,11 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
     contact = await get_setting_typed_for_city("sos_fallback_contact_text", code if per_city_ctx else None)
 
     lines.append(f"⏱ Окно повторного открытия: {reopen} мин")
-    lines.append(f"⏱ Напоминание взявшему: {claimed} мин")
+    lines.append(
+        f"⏱ Напоминание взявшему: через {claimed} мин, потом через "
+        + " и ".join(str(m) for m in sos_service.CLAIMED_REMIND_DELAYS_MINUTES[1:])
+        + " мин, после третьего — сообщение менеджерам"
+    )
     lines.append(f"⏱ Сколько ждать дозапись: {collecting} мин")
     lines.append(f"📞 Экстренный контакт: {html_module.escape(contact) if contact else 'не задан'}")
 
