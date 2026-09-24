@@ -1008,6 +1008,11 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "pending": "5",
     # Квик 260923-p37 (CITY-REG-CLOSE): название закрытого города в city_reg_closed_text.
     "city": "Санкт-Петербург",
+    # Ревью 24.09 (находка 3): «кто уже взял SOS» в sos_recent_followup_text
+    # (services.sos.claim_status_label) — либо «взял(а) Имя», либо «ещё не взяли».
+    "claim_status": "взял(а) Мария",
+    # Форум-ночь п.9: название сессии в session_feedback_prompt_text («Как тебе «{title}»?»).
+    "title": "Как продать идею АЙСЕК за 5 минут",
 }
 
 
