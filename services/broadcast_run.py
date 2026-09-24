@@ -69,12 +69,19 @@ def _retry_delay(retry_after: int) -> int:
     return retry_after + 1
 
 
-async def run_broadcast(broadcast_id, chat_ids, send_one, on_progress=None, on_finish=None):
+async def run_broadcast(
+    broadcast_id, chat_ids, send_one, on_progress=None, on_finish=None, mute_skipped: int = 0,
+):
     """`send_one(chat_id)` — корутина, возвращающая СПИСОК message_id доставленных сообщений
     (одно для текста/фото, несколько для альбома). Каждый message_id пишется отдельной строкой
     в broadcast_deliveries. Один 429-ретрай на попытку; прочие исключения — blocked, цикл не
     падает. `is_stopped` проверяется в начале КАЖДОЙ итерации — стоп прерывает прогон на
-    ближайшем шаге, адресно по broadcast_id."""
+    ближайшем шаге, адресно по broadcast_id.
+
+    `mute_skipped` (форум-ночь п.7, дефолт 0): сколько получателей УЖЕ отфильтровано вызывающим
+    (`handlers/admin_broadcasts.py::bc_go`) до этого вызова, потому что нажали «🔕 Не присылать
+    сегодня» — только прокидывается в `finish_broadcast` для отчёта, `chat_ids`/`total` сюда их
+    не включают."""
     total = len(chat_ids)
     delivered = 0
     blocked = 0
@@ -133,7 +140,7 @@ async def run_broadcast(broadcast_id, chat_ids, send_one, on_progress=None, on_f
                 pass
 
     status = "stopped" if stopped else "done"
-    await finish_broadcast(broadcast_id, status, delivered, blocked)
+    await finish_broadcast(broadcast_id, status, delivered, blocked, mute_skipped)
     clear_stop(broadcast_id)
     logger.info(
         "broadcast %s finished: status=%s delivered=%s blocked=%s",
