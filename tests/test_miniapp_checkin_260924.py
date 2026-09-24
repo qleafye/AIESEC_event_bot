@@ -572,3 +572,23 @@ def test_scan_session_point_unbound_manager_not_scoped(tmp_path, monkeypatch):
         f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
     )
     assert resp.json()["status"] == "new"
+
+
+# ── F15: сбой outbox после записанной отметки — не 500 ───────────────────────────────────
+
+def test_scan_outbox_failure_still_returns_success(tmp_path, monkeypatch):
+    from miniapp.routers import checkin as checkin_router
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("outbox down")
+
+    monkeypatch.setattr(checkin_router, "enqueue", _boom)
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950090
+    _run(_insert_user(uid, full_name="Орлов Олег"))
+    resp = client.post(f"{BASE}/scan", json={"payload": _qr(uid)}, headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "new"
+    assert "first_entry" not in resp.json()
+    assert _run(bot_db.count_checkins_by_point("entry")) == 1
