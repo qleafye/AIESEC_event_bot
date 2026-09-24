@@ -1,30 +1,32 @@
-// Экран «Сканер» (Phase 12, FORUM-CHECKIN.md, D-08/D-11/D-12/D-13, идея №9): отметка на
-// форуме. Основной путь — Telegram.WebApp.showScanQrPopup. Колбэк qrTextReceived САМ по себе
-// синхронный (Telegram зовёт его сразу после чтения QR, до любого ответа сервера) — решение
-// «закрыть/оставить попап» по факту (🟢 new / 🟡 duplicate / 🔴 отказ) известно только ПОСЛЕ
-// асинхронного /checkin/scan. Поэтому колбэк всегда возвращает false (попап не закрывается
-// сам), а закрытие для не-🟢-исходов делает submitScan() явным вызовом
-// `tg.closeScanQrPopup()`, когда ответ уже пришёл (квик A3): 🟢 new — попап остаётся открытым,
-// вибрация success, следующий скан продолжает отмечать без повторного тапа «Сканировать»
-// (D-08); 🟡 duplicate и 🔴 любой отказ/не найден/чужое мероприятие/ошибка сети — попап
-// закрывается, плашка с причиной получает кнопку «Сканировать дальше» (повторно открывает
-// попап). Запасной путь на этом же экране — поиск по фамилии (D-11/D-12: телефон делегата
-// сел, а сеть есть), кнопка «Отметить» шлёт ту же отметку через /checkin/manual (свой попап
-// не открывает — закрывать нечего). Счётчик прихода вверху — /checkin/stats (задача A2:
-// построчно по городам, когда сервер отдаёт `cities`, иначе один общий счётчик).
+// Экран «Сканер» (Phase 12/форум-ночь п.5, FORUM-CHECKIN.md, D-08/D-11/D-12/D-13/D-18..D-20,
+// идея №9): отметка на форуме. Основной путь — Telegram.WebApp.showScanQrPopup. Колбэк
+// qrTextReceived САМ по себе синхронный (Telegram зовёт его сразу после чтения QR, до любого
+// ответа сервера) — решение «закрыть/оставить попап» по факту (🟢 new/moved / 🟡 duplicate /
+// 🔴 отказ) известно только ПОСЛЕ асинхронного /checkin/scan. Поэтому колбэк всегда возвращает
+// false (попап не закрывается сам), а закрытие для не-🟢-исходов делает submitScan() явным
+// вызовом `tg.closeScanQrPopup()`, когда ответ уже пришёл (квик A3): 🟢 new/moved — попап
+// остаётся открытым, вибрация success, следующий скан продолжает отмечать без повторного тапа
+// «Сканировать» (D-08); 🟡 duplicate и 🔴 любой отказ/не найден/чужое мероприятие/другой город
+// форума/ошибка сети — попап закрывается, плашка с причиной получает кнопку «Сканировать
+// дальше» (повторно открывает попап). Запасной путь на этом же экране — поиск по фамилии
+// (D-11/D-12: телефон делегата сел, а сеть есть), кнопка «Отметить» шлёт ту же отметку через
+// /checkin/manual (свой попап не открывает — закрывать нечего). Счётчик прихода вверху —
+// /checkin/stats (задача A2: построчно по городам, когда сервер отдаёт `cities`, иначе один
+// общий счётчик).
+//
+// Точки (D-18): «Вход» + сессии СЕГОДНЯ (/checkin/points) — «идёт сейчас» первыми, каждая с
+// собственным счётчиком отмеченных (+ вместимость зала, если задана). Менеджер без
+// закреплённого города видит селектор города (сервер отдаёт `cities`) — точки сессий грузятся
+// заново при выборе.
 //
 // Защита от повторного скана: камера в непрерывном режиме присылает ОДИН И ТОТ ЖЕ текст QR
 // много раз за секунды, пока волонтёр не отвёл камеру — `RESCAN_GUARD_MS` глушит повторы
 // того же текста, а не блокирует скан вовсе (другой делегат сканируется сразу).
-//
-// Точка — пока всегда «Вход» (ENTRY_POINT/ENTRY_POINT_LABEL в services/checkin.py); когда
-// появятся точки сессий (D-18), сюда добавится пикер — сегодня выбирать не из чего.
 
 import { flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 
-const POINT = "entry";
-const POINT_LABEL = "🚪 Вход";
+const ENTRY_POINT = "entry";
 const SEARCH_DEBOUNCE_MS = 300;
 const RESCAN_GUARD_MS = 3000;
 
@@ -33,18 +35,27 @@ const NO_SCANNER_TEXT = "Обновите Telegram — сканер QR недо�
 
 const STATUS_TONE = {
   new: "success",
+  moved: "success",
   duplicate: "warn",
   denied: "error",
   not_found: "error",
   foreign_event: "error",
+  wrong_city: "error",
+  invalid_point: "error",
 };
 const STATUS_HEADING = {
   new: "Отмечен",
   denied: "Не пропущен",
   not_found: "Не пропущен",
   foreign_event: "Не пропущен",
+  wrong_city: "Не пропущен",
+  invalid_point: "Не пропущен",
 };
 const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };
+// D-18..D-20: и «new», и «moved» — успешная отметка (попап остаётся открытым, продолжаем
+// сканировать) — «moved» просто означает, что делегат перешёл с одной параллельной сессии
+// слота на другую, это не отказ и не дубль.
+const SUCCESS_STATUSES = new Set(["new", "moved"]);
 
 // Сеть не ответила (fetch упал до HTTP-статуса) — ApiError всегда несёт число в `.status`,
 // «сырой» TypeError браузера — нет; тот же приём различения, что нужен только этому экрану
@@ -70,14 +81,20 @@ export async function render(root, params, ctx) {
   const searchInput = h("input", { class: "input", type: "text", placeholder: "Фамилия делегата" });
   const searchResults = h("div", { class: "flat-list" });
   const fallbackNote = h("p", { class: "muted hidden", text: NO_SCANNER_TEXT });
+  const citySelect = h("select", { class: "input hidden" });
+  const cityField = h("div", { class: "field hidden" }, h("label", { text: "Город" }), citySelect);
+  const pointChips = h("div", { class: "flat-list" }, h("span", { class: "muted", text: "Загрузка…" }));
+  const pointCounter = h("div", { class: "muted checkin-point-counter" });
 
   root.append(
     h("h1", { text: "Сканер" }),
     statsBox,
     notice,
+    cityField,
     h("div", { class: "field" },
       h("label", { text: "Точка" }),
-      h("div", { class: "chip accent", text: POINT_LABEL }),
+      pointChips,
+      pointCounter,
     ),
     h("div", { class: "task-actions" }, scanBtn),
     fallbackNote,
@@ -106,6 +123,67 @@ export async function render(root, params, ctx) {
     }
   }
 
+  // ── точки отметки (D-18): «Вход» + сессии СЕГОДНЯ, «идёт сейчас» первыми ────────────────
+  let selectedPoint = ENTRY_POINT;
+  let pointsData = [];
+
+  function renderPointCounter() {
+    const current = pointsData.find((pt) => pt.point === selectedPoint);
+    if (!current) { pointCounter.textContent = ""; return; }
+    const countText = current.capacity ? `${current.count} из ${current.capacity}` : String(current.count);
+    pointCounter.textContent = `Отмечено на точке: ${countText}`;
+  }
+
+  function renderPointChips() {
+    if (pointsData.length === 0) {
+      pointChips.replaceChildren(h("span", { class: "muted", text: "Точки недоступны." }));
+      return;
+    }
+    const chips = pointsData.map((pt) => {
+      const isSel = pt.point === selectedPoint;
+      const countText = pt.capacity ? `${pt.count} из ${pt.capacity}` : String(pt.count);
+      const dot = pt.live ? "🔴 " : "";
+      return h("button", {
+        class: `chip-choice${isSel ? " chosen" : ""}`, type: "button",
+        text: `${dot}${pt.label} · ${countText}`,
+        onClick: () => { selectedPoint = pt.point; renderPointChips(); },
+      });
+    });
+    pointChips.replaceChildren(...chips);
+    renderPointCounter();
+  }
+
+  async function loadPoints(cityCode) {
+    let data;
+    try {
+      data = await api(cityCode
+        ? `/checkin/points?city=${encodeURIComponent(cityCode)}`
+        : "/checkin/points");
+    } catch (err) {
+      pointChips.replaceChildren(h("span", {
+        class: "muted", text: isNetworkError(err) ? NETWORK_TEXT : "Точки недоступны.",
+      }));
+      return;
+    }
+    if (data.cities) {
+      cityField.classList.remove("hidden");
+      citySelect.replaceChildren(
+        h("option", { value: "", text: "Выберите город" }),
+        ...data.cities.map((c) => h("option", { value: c.code, text: c.label })),
+      );
+      if (data.city) citySelect.value = data.city;
+    } else {
+      cityField.classList.add("hidden");
+    }
+    pointsData = data.points || [];
+    if (!pointsData.some((pt) => pt.point === selectedPoint)) selectedPoint = ENTRY_POINT;
+    renderPointChips();
+  }
+
+  citySelect.addEventListener("change", () => {
+    if (citySelect.value) loadPoints(citySelect.value);
+  });
+
   const SCAN_POPUP_TEXT = "Зелёная вибрация — отмечен. Иначе окно закроется";
 
   function startScan() {
@@ -113,15 +191,18 @@ export async function render(root, params, ctx) {
     tg.showScanQrPopup({ text: SCAN_POPUP_TEXT }, onQrText);
   }
 
-  // closeButton=true — не-🟢 исход (duplicate/denied/not_found/foreign_event/сетевая ошибка):
-  // родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup() до этого показа), плашка
-  // получает крупную кнопку «Сканировать дальше», заново открывающую попап.
+  // closeButton=true — не-🟢 исход (duplicate/denied/not_found/foreign_event/другой город
+  // форума/сетевая ошибка): родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup()
+  // до этого показа), плашка получает крупную кнопку «Сканировать дальше», заново открывающую
+  // попап.
   function showPlaque(res, { closeButton = false } = {}) {
     const tone = STATUS_TONE[res.status] || "error";
     plaque.className = `checkin-plaque tone-${tone}`;
     const dot = tone === "success" ? "🟢" : tone === "warn" ? "🟡" : "🔴";
     const heading = res.status === "duplicate"
       ? `Уже был в ${timeOnly(res.scanned_at)}`
+      : res.status === "moved"
+      ? `Перенесено${res.previous_title ? ` с «${res.previous_title}»` : ""}`
       : (STATUS_HEADING[res.status] || "Не пропущен");
     const nextBtn = h("button", { class: "btn checkin-plaque-next", type: "button", text: "📷 Сканировать дальше" });
     nextBtn.addEventListener("click", () => {
@@ -148,11 +229,12 @@ export async function render(root, params, ctx) {
     if (scanBusy) return;
     scanBusy = true;
     try {
-      const res = await api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: POINT } });
-      const isNew = res.status === "new";
-      if (!isNew) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
-      showPlaque(res, { closeButton: !isNew });
+      const res = await api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: selectedPoint } });
+      const isSuccess = SUCCESS_STATUSES.has(res.status);
+      if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
+      showPlaque(res, { closeButton: !isSuccess });
       await loadStats();
+      await loadPoints(citySelect.value || undefined);
     } catch (err) {
       closeScanPopup(); // сетевая/любая другая ошибка — тоже 🔴, попап закрывается
       const text = isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз.");
@@ -196,10 +278,11 @@ export async function render(root, params, ctx) {
       btn.setAttribute("disabled", "");
       try {
         const res = await api("/checkin/manual", {
-          method: "POST", body: { telegram_id: person.telegram_id, point: POINT },
+          method: "POST", body: { telegram_id: person.telegram_id, point: selectedPoint },
         });
         showPlaque(res);
         await loadStats();
+        await loadPoints(citySelect.value || undefined);
       } catch (err) {
         say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
       } finally {
@@ -239,4 +322,5 @@ export async function render(root, params, ctx) {
   });
 
   await loadStats();
+  await loadPoints();
 }

@@ -8,11 +8,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
 import aiosqlite
 
+import cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
+from services import timeutil as timeutil_mod
 from services.checkin import build_payload
 
 from tests.test_miniapp_routes import (
@@ -275,3 +278,141 @@ def test_section_off_gates_with_403(tmp_path):
     resp = client.get(f"{BASE}/stats", headers=_hdr(GAME_MANAGER_ID))
     assert resp.status_code == 403
     assert resp.json()["reason"] == "section_off"
+
+
+# ── /points (форум-ночь п.5, D-18): «Вход» + сессии сегодня, «идёт сейчас» первыми ──────────
+
+def _freeze_now(monkeypatch, dt: datetime):
+    monkeypatch.setattr(timeutil_mod, "msk_now", lambda: dt)
+
+
+def test_points_bound_manager_gets_entry_and_todays_sessions_live_first(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    later = _run(bot_db.create_program_session("spb", "2026-10-03", "11:00", "12:00", "Позже"))
+    now_id = _run(bot_db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Идёт сейчас"))
+    resp = client.get(f"{BASE}/points", headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body["city"] == "spb"
+    assert body["cities"] is None
+    points = body["points"]
+    assert points[0]["point"] == "entry"
+    assert points[1]["point"] == f"session:{now_id}"
+    assert points[1]["live"] is True
+    assert points[2]["point"] == f"session:{later}"
+    assert points[2]["live"] is False
+
+
+def test_points_unbound_manager_needs_city_picker_without_query(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    resp = client.get(f"{BASE}/points", headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["city"] is None
+    assert body["cities"] is not None
+    codes = {c["code"] for c in body["cities"]}
+    assert "spb" in codes
+    assert body["points"] == [{
+        "point": "entry", "label": "🚪 Вход", "live": None, "count": 0, "capacity": None,
+    }]
+
+
+def test_points_unbound_manager_resolves_with_city_query(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    sid = _run(bot_db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+    resp = client.get(f"{BASE}/points", params={"city": "spb"}, headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["city"] == "spb"
+    assert body["cities"] is None
+    assert [p["point"] for p in body["points"]] == ["entry", f"session:{sid}"]
+
+
+def test_points_module_off_uses_default_city_without_picker(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    default_code = cities_mod.default_city_code()
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    sid = _run(bot_db.create_program_session(default_code, "2026-10-03", "10:00", "11:00", "Открытие"))
+    resp = client.get(f"{BASE}/points", headers=_hdr(GAME_MANAGER_ID))
+    body = resp.json()
+    assert body["city"] == default_code
+    assert body["cities"] is None
+    assert [p["point"] for p in body["points"]] == ["entry", f"session:{sid}"]
+
+
+def test_points_carries_count_and_capacity(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    default_code = cities_mod.default_city_code()
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    hall_id = _run(bot_db.create_program_hall(default_code, "Большой зал", capacity=120))
+    sid = _run(bot_db.create_program_session(
+        default_code, "2026-10-03", "10:00", "11:00", "Открытие", hall_id=hall_id,
+    ))
+    _run(_insert_user(950030, city=default_code))
+    _run(bot_db.record_session_checkin(950030, sid, [], source="miniapp"))
+    resp = client.get(f"{BASE}/points", headers=_hdr(GAME_MANAGER_ID))
+    session_point = next(p for p in resp.json()["points"] if p["point"] == f"session:{sid}")
+    assert session_point == {
+        "point": f"session:{sid}", "label": "10:00–11:00 · Большой зал · Открытие",
+        "live": True, "capacity": 120, "count": 1,
+    }
+
+
+# ── /scan, /manual на точках сессий (D-18..D-20) ─────────────────────────────────────────────
+
+def test_scan_session_point_wrong_city_is_denied(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950040
+    _run(_insert_user(uid, city="spb"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    payload = _qr(uid)
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "wrong_city"
+    assert body["reason_text"]
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 0
+    assert _run(bot_db.count_checkins_by_point("entry")) == 0
+
+
+def test_scan_session_point_new_auto_marks_entry(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950041
+    _run(_insert_user(uid, full_name="Сидоров Сидор", city="msk"))
+    sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
+    payload = _qr(uid, city="Москва")
+    resp = client.post(
+        f"{BASE}/scan", json={"payload": payload, "point": f"session:{sid}"}, headers=_hdr(GAME_MANAGER_ID),
+    )
+    body = resp.json()
+    assert body["status"] == "new"
+    assert body["full_name"] == "Сидоров Сидор"
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 1
+    assert _run(bot_db.count_checkins_by_point("entry")) == 1
+
+
+def test_manual_session_point_moved_between_parallel_sessions(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950042
+    _run(_insert_user(uid, city="msk"))
+    sid1 = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Зал А"))
+    sid2 = _run(bot_db.create_program_session("msk", "2026-10-03", "10:30", "11:30", "Зал Б"))
+    r1 = client.post(f"{BASE}/manual", json={"telegram_id": uid, "point": f"session:{sid1}"}, headers=_hdr(GAME_MANAGER_ID))
+    assert r1.json()["status"] == "new"
+    r2 = client.post(f"{BASE}/manual", json={"telegram_id": uid, "point": f"session:{sid2}"}, headers=_hdr(GAME_MANAGER_ID))
+    body2 = r2.json()
+    assert body2["status"] == "moved"
+    assert body2["previous_title"] == "Зал А"
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid1}")) == 0
+    assert _run(bot_db.count_checkins_by_point(f"session:{sid2}")) == 1
