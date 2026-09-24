@@ -1252,3 +1252,157 @@ async def rename_worksheet(old: str, new: str) -> str:
         _reset_named_sheet_cache(old)
         _reset_named_sheet_cache(new)
     return result
+
+
+# --- Phase 33 (delegate-card admin actions, перевод города между вкладками) -----------------
+# `_get_named_sheet` AUTO-CREATES a tab it can't find (D-11, needed for registration writes) --
+# a city-move DELETE must never spin up an empty tab from a typo'd/renamed name instead (памятка
+# `standalone-script-sheet-traps`: находка 21.09, разовый скрипт завёл пустую вкладку на проде
+# именно так). These helpers resolve strictly against the REAL worksheet list (`sh.worksheets()`,
+# same source `list_worksheet_titles()` already reads above) and REFUSE instead of creating.
+# `tab_name is None` means "the main sheet" (`_get_sheet()`'s own resolution — position is never
+# guessed there either, see that function's docstring), mirroring every other tab_name-or-main
+# helper in this module (`_resolve_status_tab` callers, `_update_row_by_id_sync`).
+
+def _open_named_or_main_sync(tab_name: str | None):
+    """Resolve a worksheet by name WITHOUT ever creating one on a miss. Returns `None` when
+    `tab_name` is given but no such worksheet exists among the REAL tabs — never
+    `gspread.WorksheetNotFound` (callers get a plain, checkable sentinel, same posture as
+    `_tab_row_count_sync`'s `(False, 0)`)."""
+    if tab_name is None:
+        return _get_sheet()
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    try:
+        return sh.worksheet(tab_name)
+    except gspread.WorksheetNotFound:
+        return None
+
+
+def _find_rows_by_id_sync(tab_name: str | None, telegram_id: int) -> list[int] | None:
+    """1-based row indices (header excluded) on `tab_name` (or the main sheet) matching
+    `telegram_id` in column 1. `None` if a NAMED tab doesn't exist — callers must not conflate
+    that with `[]` (an existing tab with zero matching rows)."""
+    sheet = _open_named_or_main_sync(tab_name)
+    if sheet is None:
+        return None
+    target = str(telegram_id)
+    col1 = sheet.col_values(1)
+    return [i for i, v in enumerate(col1[1:], start=2) if (v or "").strip() == target]
+
+
+async def find_rows_by_id(tab_name: str | None, telegram_id: int) -> list[int] | None:
+    """Fail-soft read-only probe (same contract as `tab_row_count`): `None` on a missing named
+    tab, unconfigured Sheets, or an API error; otherwise the list of matching row indices
+    (possibly empty)."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return None
+    try:
+        return await asyncio.to_thread(_find_rows_by_id_sync, tab_name, telegram_id)
+    except Exception as e:
+        logger.warning(f"find_rows_by_id({tab_name!r}, {telegram_id}) failed: {e}")
+        return None
+
+
+def _delete_row_by_id_sync(tab_name: str | None, telegram_id: int) -> str:
+    """Deletes the row matching `telegram_id` in column 1 of `tab_name` (or the main sheet).
+    Returns a string code, never raises: "ok" | "not_found_tab" (named tab doesn't exist — NEVER
+    auto-created) | "not_found_row" (tab exists, no matching row) | "duplicate" (more than one
+    match — refuses; a city-move caller must not guess which row to drop, same posture as
+    `dedupe_sheet_by_id`'s own dedupe-first requirement)."""
+    sheet = _open_named_or_main_sync(tab_name)
+    if sheet is None:
+        return "not_found_tab"
+    target = str(telegram_id)
+    col1 = sheet.col_values(1)
+    matches = [i for i, v in enumerate(col1[1:], start=2) if (v or "").strip() == target]
+    if not matches:
+        return "not_found_row"
+    if len(matches) > 1:
+        return "duplicate"
+    sheet.delete_rows(matches[0])
+    return "ok"
+
+
+async def delete_row_by_id(tab_name: str | None, telegram_id: int) -> str:
+    """Fail-soft wrapper. "ok"/"not_found_tab"/"not_found_row"/"duplicate" from the sync worker,
+    or "error" for unconfigured Sheets / an unexpected exception. Resets the relevant tab cache
+    on "ok" only — nothing else in this module can have cached a handle whose row count just
+    shifted."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return "error"
+    try:
+        result = await asyncio.to_thread(_delete_row_by_id_sync, tab_name, telegram_id)
+    except Exception as e:
+        logger.error(f"delete_row_by_id({tab_name!r}, {telegram_id}) failed: {e}")
+        return "error"
+    if result == "ok":
+        if tab_name is None:
+            _reset_sheet_cache()
+        else:
+            _reset_named_sheet_cache(tab_name)
+    return result
+
+
+# --- Phase 33 review (R1): append that NEVER creates a tab ----------------------------------
+# `append_to_named_sheet` above calls `_get_named_sheet`, which auto-creates the tab on a miss
+# (D-11, needed at registration time — a delegate's first row must always land somewhere). A
+# city-move APPEND must refuse instead, same posture as `delete_row_by_id`'s "not_found_tab":
+# a city-move caller already has a fallback tab to try (the city's main tab) and, failing that,
+# reports the problem in words rather than spinning up an empty tab on the live spreadsheet
+# (памятка standalone-script-sheet-traps: находка 21.09, разовый скрипт завёл пустую вкладку
+# именно так).
+
+def _append_to_existing_tab_sync(tab_name: str | None, data: list) -> str:
+    """Resolves `tab_name` strictly against the real worksheet list (`_open_named_or_main_sync`,
+    same no-create posture as `_delete_row_by_id_sync`) and appends `data` if found. Returns
+    "ok" or "not_found_tab", never raises (network/auth errors propagate to the async
+    wrapper's `except`, same split as every other sync worker in this module)."""
+    sheet = _open_named_or_main_sync(tab_name)
+    if sheet is None:
+        return "not_found_tab"
+    sheet.append_row(data, value_input_option=_RAW)
+    return "ok"
+
+
+async def append_to_existing_named_sheet(tab_name: str, data: list) -> str:
+    """City-move's append primitive: unlike `append_to_named_sheet`, a missing tab is refused,
+    never created. `tab_name=None` resolves to the main sheet (`_open_named_or_main_sync`'s own
+    rule) — always considered present, no worksheet-list check needed.
+
+    Same retry/backoff posture as the sibling appenders (MAX_RETRIES/RETRY_DELAYS), except a
+    "not_found_tab" result returns immediately on the first attempt — retrying a tab that does
+    not exist burns the whole backoff window for a result that cannot change mid-loop. Returns
+    "ok" | "not_found_tab" | "error" (unconfigured Sheets, or every retry raised)."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        logger.warning(f"Google Sheet ID or Credentials not set. Skipping existing-tab append (tab={tab_name!r}).")
+        return "error"
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            result = await asyncio.to_thread(_append_to_existing_tab_sync, tab_name, data)
+            if result == "not_found_tab":
+                return result
+            logger.info(
+                f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} "
+                f"to existing tab {tab_name!r}"
+            )
+            return result
+        except Exception as e:
+            if tab_name is None:
+                _reset_sheet_cache()
+            else:
+                _reset_named_sheet_cache(tab_name)
+            delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
+            logger.warning(
+                f"append_to_existing_named_sheet({tab_name!r}) attempt {attempt + 1}/{MAX_RETRIES} "
+                f"failed: {e}. Retrying in {delay}s..."
+            )
+            await asyncio.sleep(delay)
+
+    logger.error(
+        f"Failed to append to existing tab {tab_name!r} after {MAX_RETRIES} attempts "
+        f"for telegram_id={(data[0] if data else '?')!r}"
+    )
+    await _alert_admins_sheet_failure(f"вкладка {tab_name!r} (без автосоздания), telegram_id={(data[0] if data else '?')!r}")
+    return "error"
