@@ -199,6 +199,9 @@ _MISC = {
         "Complete tasks — stories, photos, meeting delegates from other cities.; "
         "Collect coins — trade them in at the CC-shop during the forum."
     ),
+    # D-29: подпись вычисляемого раздела «📅 Программа» (miniapp/routers/page.py::
+    # COMPUTED_SECTION_LABELS) — не в реестре, машинная очередь её не видит.
+    "📅 Программа": "📅 Schedule",
 }
 
 # ── Первые экраны анкеты (согласия/город/трек/образование), обзор перед отправкой ──────────

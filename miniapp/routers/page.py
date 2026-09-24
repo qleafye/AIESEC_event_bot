@@ -41,6 +41,7 @@ from miniapp.deps import (
     SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
 )
 from miniapp.file_tokens import mint_file_token
+from miniapp.routers.program import program_section_visible
 
 router = APIRouter()
 
@@ -182,9 +183,17 @@ def deep_link(bot_username: str | None) -> str:
     return f"https://t.me/{bot_username}?start=app" if bot_username else ""
 
 
+# D-29: вычисляемые разделы — без чекбокса `miniapp_section_*` (видимость решает сервер в
+# `/app/api/me`, см. `program_section_visible`), поэтому подпись вкладки живёт здесь, а не в
+# реестре. В `SECTIONS` их нет: там только разделы со своим тумблером (`require_section`).
+COMPUTED_SECTION_LABELS = {"program": "📅 Программа"}
+
+
 def section_labels() -> dict[str, str]:
     """Подписи вкладок навигации — из label чекбоксов реестра (0 хардкода в JS)."""
-    return {s: SETTINGS_SCHEMA[f"miniapp_section_{s}"]["label"] for s in SECTIONS}
+    labels = {s: SETTINGS_SCHEMA[f"miniapp_section_{s}"]["label"] for s in SECTIONS}
+    labels.update(COMPUTED_SECTION_LABELS)
+    return labels
 
 
 # Кэш-бастинг статики (находка живой приёмки 19-10): вебвью Telegram хранит JS-модули по URL
@@ -339,6 +348,10 @@ async def me(request: Request, p: Principal = Depends(principal)) -> dict:
         form_v2_texts_raw = {
             name: read_setting(conn, FORM_V2_TEXT_KEYS[name]) or "" for name in _FORM_V2_DELEGATE_KEYS
         }
+    # D-29: раздел «📅 Программа» — вычисляемый флаг, без своего тумблера: виден, когда делегату
+    # в чате видна кнопка программы (тот же гейт, что `GET /app/api/program`). Не делегату
+    # (сотрудник без заявки, cookie) не считаем вовсе — visibleNav() его всё равно не покажет.
+    sections["program"] = is_delegate and await program_section_visible(p)
     resolved = web_theme.resolve_theme(theme_settings)
     # Переводы — ПОСЛЕ закрытия `with read_conn`: `i18n.tr()` не ходит в БД (чистая функция над
     # уже загруженной `tr_map`), второй раз соединение открывать незачем.

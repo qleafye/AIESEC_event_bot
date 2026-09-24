@@ -51,16 +51,53 @@ def test_program_unregistered_user_403_delegate_gate(client):
     assert resp.json()["reason"] == "delegate_gate"
 
 
-# ── дефолт (нет ни фото, ни сессий) — вид "photo", пустое состояние ─────────────────────────
+# ── гейт: тот же, что у кнопки программы в чате ────────────────────────────────────────────
 
-def test_program_defaults_to_photo_view_with_empty_state(client):
+PENDING_ID = 900924502
+
+
+def test_program_no_content_403_section_off(client):
+    """Нет ни фото, ни сессий — кнопки в чате нет, раздела в Mini App нет, ручка закрыта."""
+    resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "program"}
+
+
+def test_program_menu_toggle_off_403_even_with_photo(client):
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    _set("menu_program", "off")
+    resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "section_off"
+
+
+def test_program_pending_delegate_403_delegate_gate(client):
+    _seed(users=[(PENDING_ID, "pending")])
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    resp = client.get("/app/api/program", headers=_hdr(PENDING_ID))
+    assert resp.status_code == 403
+    assert resp.json()["reason"] == "delegate_gate"
+
+
+def test_program_explicit_photo_view_without_photo_shows_empty_text(client):
+    """Менеджер выбрал «фото», а загружены только сессии — пустое состояние текстом реестра,
+    а не пустой экран."""
+    _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
+    _set("program_miniapp_view", "photo")
     resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 200
     body = resp.json()
     assert body["view"] == "photo"
     assert body["photo_url"] is None
-    assert body["days"] == []
-    assert body["empty_text"]  # текст из реестра, не пустая строка
+    assert body["empty_text"]
+
+
+def test_program_texts_reuse_chat_literals(client):
+    _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
+    body = client.get("/app/api/program", headers=_hdr(DELEGATE_ID)).json()
+    assert body["lang"] == "ru"
+    assert body["texts"]["now"] == "🔴 Идёт сейчас"
+    assert body["texts"]["hall"] == "Зал:"
 
 
 # ── вид "photo" с загруженным фото ──────────────────────────────────────────────────────────
@@ -72,6 +109,17 @@ def test_program_photo_view_returns_file_proxy_url(client):
     assert body["view"] == "photo"
     assert body["photo_url"] == "/app/api/file/GLOBAL_FILE_ID"
     assert body["empty_text"] is None
+
+
+def test_program_photo_url_is_proxy_never_telegram_url(client):
+    """Фронт получает только ссылку на прокси приложения (как у лого): ни адреса
+    api.telegram.org, ни токена бота в ответе нет — байты качает сервер (T-19-19)."""
+    from tests.test_miniapp_routes import TOKEN
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    raw = client.get("/app/api/program", headers=_hdr(DELEGATE_ID)).text
+    assert "api.telegram.org" not in raw
+    assert TOKEN not in raw
+    assert "/file/bot" not in raw
 
 
 def test_program_photo_is_public_asset_no_auth_needed(client):
@@ -127,3 +175,67 @@ def test_program_per_city_view_overrides_global(client):
     _set(per_city_key("program_miniapp_view", "msk"), "table")
     resp = client.get("/app/api/program", headers=_hdr(DELEGATE_ID))
     assert resp.json()["view"] == "table"
+
+
+# ── /app/api/me: вычисляемый раздел «program» ─────────────────────────────────────────────
+
+def _me_sections(client, tid=DELEGATE_ID):
+    resp = client.get("/app/api/me", headers=_hdr(tid))
+    assert resp.status_code == 200
+    return resp.json()["sections"]
+
+
+def test_me_program_section_hidden_without_content(client):
+    assert _me_sections(client)["program"] is False
+
+
+def test_me_program_section_visible_with_photo(client):
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    assert _me_sections(client)["program"] is True
+
+
+def test_me_program_section_visible_with_sessions_only(client):
+    _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
+    assert _me_sections(client)["program"] is True
+
+
+def test_me_program_section_hidden_when_menu_button_off(client):
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    _set("menu_program", "off")
+    assert _me_sections(client)["program"] is False
+
+
+def test_me_program_section_follows_per_city_menu_toggle(client):
+    from cities import per_city_key
+    _set("event_city_enabled", "on")
+    _set_user_city(DELEGATE_ID, "msk")
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    _set(per_city_key("menu_program", "msk"), "off")
+    assert _me_sections(client)["program"] is False
+
+
+def test_me_program_section_hidden_for_pending_delegate(client):
+    _seed(users=[(PENDING_ID, "pending")])
+    _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    assert _me_sections(client, PENDING_ID)["program"] is False
+
+
+def test_me_program_section_label_present(client):
+    body = client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()
+    assert body["section_labels"]["program"] == "📅 Программа"
+
+
+@pytest.mark.parametrize("toggle,photo,expected", [
+    ("on", True, True), ("on", False, False), ("off", True, False), ("off", False, False),
+])
+def test_program_flag_matches_chat_menu_button(client, toggle, photo, expected):
+    """Паритет с чатом: раздел Mini App виден ровно тогда, когда в меню бота есть кнопка
+    «📅 Программа форума» (keyboards.builders.get_main_menu_kb)."""
+    from keyboards.builders import get_main_menu_kb
+    _set("menu_program", toggle)
+    if photo:
+        _set("program_photo_file_id", "GLOBAL_FILE_ID")
+    kb = _run(get_main_menu_kb(DELEGATE_ID))
+    in_chat = any(b.text.startswith("📅 Программа") for row in kb.keyboard for b in row)
+    assert in_chat is expected
+    assert _me_sections(client)["program"] is expected

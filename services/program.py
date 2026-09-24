@@ -382,6 +382,18 @@ async def has_program_content(city: str | None) -> bool:
     return await has_program_sessions_for_city(resolved_city)
 
 
+async def program_menu_visible(city: str | None) -> bool:
+    """Видна ли делегату кнопка программы — тумблер `menu_program` (per_city) И есть что
+    показать (`has_program_content`). Ровно та пара проверок, что делает
+    `keyboards.builders.get_main_menu_kb` для `menu_program`; Mini App (раздел «📅 Программа»
+    в `/app/api/me` и гейт `GET /app/api/program`) читает её отсюда, а не собирает заново."""
+    from cities import get_setting_typed_for_city
+
+    if await get_setting_typed_for_city("menu_program", city) != "on":
+        return False
+    return await has_program_content(city)
+
+
 async def build_delegate_program(city: str | None, at: datetime | None = None) -> list[dict]:
     """Табличный вид программы (D-29 Mini App «красивая таблица»): по дню — слоты
     (`group_parallel`, транзитивное пересечение времени), в каждом слоте — сессии с полем

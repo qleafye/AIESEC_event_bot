@@ -307,8 +307,11 @@ def test_me_delegate_via_initdata(tmp_path):
         "faq",
         # Phase 12 (FORUM-CHECKIN.md, D-08): раздел «🎫 Сканер» — отметка на форуме.
         "checkin",
+        # D-29: вычисляемый раздел «📅 Программа» — без чекбокса; программы в сиде нет -> False.
+        "program",
     }
-    assert all(body["sections"].values())
+    assert all(v for k, v in body["sections"].items() if k != "program")
+    assert body["sections"]["program"] is False
     assert body["accent"] == "#037EF3"
     assert body["event_name"] == "форума YouLead"
     assert body["logo_file_id"] is None
