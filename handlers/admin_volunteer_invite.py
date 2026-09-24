@@ -399,12 +399,23 @@ async def volinv_limit_pick_and_create(callback: types.CallbackQuery, state: FSM
 
 # ── Отзыв ссылки + список вошедших ───────────────────────────────────────────────────────
 
-@router.callback_query(F.data.startswith("volinv_revoke:"))
-async def volinv_revoke_confirm(callback: types.CallbackQuery):
-    code_token = callback.data.split(":", 1)[1]
+async def _invite_in_scope(callback: types.CallbackQuery, code_token: str) -> dict | None:
+    """Ссылка по коду из callback_data + проверка, что её город в зоне нажавшего. Код в кнопке
+    подделывается так же легко, как код города, — менеджер города A не должен отзывать ссылки
+    города B и снимать их волонтёров."""
     inv = await get_volunteer_invite(code_token)
     if inv is None:
         await callback.answer("Ссылка уже не существует", show_alert=True)
+        return None
+    if not await _city_allowed(callback.from_user.id, inv["city"]):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return None
+    return inv
+
+@router.callback_query(F.data.startswith("volinv_revoke:"))
+async def volinv_revoke_confirm(callback: types.CallbackQuery):
+    code_token = callback.data.split(":", 1)[1]
+    if await _invite_in_scope(callback, code_token) is None:
         return
     text = (
         f"⛔ Отозвать ссылку <code>{html.escape(code_token)}</code>?\n\n"
@@ -421,7 +432,9 @@ async def volinv_revoke_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("volinv_revoke_go:"))
 async def volinv_revoke_go(callback: types.CallbackQuery):
     code_token = callback.data.split(":", 1)[1]
-    inv = await get_volunteer_invite(code_token)
+    inv = await _invite_in_scope(callback, code_token)
+    if inv is None:
+        return
     await revoke_volunteer_invite(code_token)
     await callback.answer("Ссылка отозвана", show_alert=True)
     text, kb = await _render_cfg(callback.from_user.id, inv["city"] if inv else None)
@@ -431,8 +444,10 @@ async def volinv_revoke_go(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("volinv_revoke_no:"))
 async def volinv_revoke_no(callback: types.CallbackQuery):
     code_token = callback.data.split(":", 1)[1]
-    inv = await get_volunteer_invite(code_token)
-    text, kb = await _render_cfg(callback.from_user.id, inv["city"] if inv else None)
+    inv = await _invite_in_scope(callback, code_token)
+    if inv is None:
+        return
+    text, kb = await _render_cfg(callback.from_user.id, inv["city"])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
@@ -462,6 +477,8 @@ async def _users_text_kb(code_token: str) -> tuple[str, InlineKeyboardMarkup]:
 @router.callback_query(F.data.startswith("volinv_users:"))
 async def volinv_users_list(callback: types.CallbackQuery):
     code_token = callback.data.split(":", 1)[1]
+    if await _invite_in_scope(callback, code_token) is None:
+        return
     text, kb = await _users_text_kb(code_token)
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -474,6 +491,13 @@ async def volinv_remove_user(callback: types.CallbackQuery):
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
     code_token, tid = parts[1], int(parts[2])
+    if await _invite_in_scope(callback, code_token) is None:
+        return
+    # Снимаем только того, кто действительно вошёл по ЭТОЙ ссылке: иначе подставленный в кнопку
+    # telegram_id снимал бы роль волонтёра с кого угодно.
+    if tid not in {u["telegram_id"] for u in await list_volunteer_invite_uses(code_token)}:
+        await callback.answer("Этот человек не входил по этой ссылке", show_alert=True)
+        return
     await remove_staff(tid, VOLUNTEER_ROLE)
     await callback.answer("Снят", show_alert=True)
     text, kb = await _users_text_kb(code_token)
