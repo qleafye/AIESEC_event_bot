@@ -12,9 +12,10 @@
 aiogram-зависимом `handlers/admin_core.py`, сюда его импортировать нельзя). `/stats` строит ту
 же разбивку по городам, что бот (`handlers/admin_checkin.py::_counter_line`) — те же
 `count_checkins_by_point(city_scope=…)`/`count_approved_current_season(city_scope=…)`
-(задача A2). Скан/ручная отметка (`/scan`/`/manual`) НЕ проверяют город делегата против
-привязки менеджера — стойки не разложены по алфавиту/городу (D-15), волонтёр «Входа» отмечает
-любого делегата с валидным QR, кто бы к нему ни подошёл.
+(задача A2). Скан/ручная отметка (`/scan`/`/manual`) с D-26 (24.09) ПРОВЕРЯЮТ город делегата
+против привязки менеджера И на входе, не только на сессиях — уточняет D-15: стойки физически не
+разложены по городам, но волонтёр за стойкой всё равно городской; делегат другого города
+получает отказ словами (`_entry_city_denial`), а не тихую отметку.
 
 QR не нашего события (`services.checkin.current_event_tag()` не совпал с меткой в самом QR) —
 отдельный код `foreign_event`, ПРОВЕРЯЕТСЯ ПЕРВЫМ, до поиска делегата по токену: токен внутри
@@ -83,20 +84,19 @@ async def _resolve_scanner_city(bound: str | None) -> str | None:
     return None
 
 
-async def _point_city_denial(request: Request, p: Principal, point: str) -> dict | None:
-    """Ревью (D-15/D-18): волонтёр, привязанный к городу (`Principal.city`, тот же скоуп, что
-    `_bound_city` выше), не должен отмечать на СЕССИИ ДРУГОГО города — устаревший/ручной список
-    точек в его сканере (`GET /points` отдаёт точки только своего города, но `point` в теле
-    запроса ничем не проверен) иначе позволил бы это буквально одним POST-запросом. Только
-    точки-СЕССИИ (`point` вида `"session:{id}"`) — «Вход» НЕ ограничиваем НИКОГДА (D-15: стойки
-    входа не разложены по городам, любой волонтёр отмечает вход любого делегата).
+async def _point_city_denial(bound: str | None, point: str) -> dict | None:
+    """Ревью (D-15/D-18), уточнено D-26 (24.09): волонтёр, привязанный к городу (`bound`,
+    результат `_bound_city`), не должен отмечать на СЕССИИ ДРУГОГО города — устаревший/ручной
+    список точек в его сканере (`GET /points` отдаёт точки только своего города, но `point` в
+    теле запроса ничем не проверен) иначе позволил бы это буквально одним POST-запросом. Только
+    точки-СЕССИИ (`point` вида `"session:{id}"`) — «Вход» здесь не трогаем, для него отдельная
+    проверка `_entry_city_denial` (сверяет ГОРОД ДЕЛЕГАТА, а не точки, D-26).
 
-    Суперадмин и волонтёр без привязки к городу (`_bound_city` вернула `None`) не ограничены —
-    та же трёхветочная логика, что везде в этом модуле. `None`, если точка допустима (или это не
+    Суперадмин и волонтёр без привязки к городу (`bound is None`) не ограничены — та же
+    трёхветочная логика, что везде в этом модуле. `None`, если точка допустима (или это не
     точка-сессия вовсе, или сессия не найдена — `record_arrival` сам вернёт `invalid_point`)."""
     if not (point or "").startswith("session:"):
         return None
-    bound = await _bound_city(request, p)
     if bound is None:
         return None
     try:
@@ -112,6 +112,31 @@ async def _point_city_denial(request: Request, p: Principal, point: str) -> dict
             "reason_text": "Сессия другого города — выберите точку заново",
         }
     return None
+
+
+async def _entry_city_denial(bound: str | None, user: dict) -> dict | None:
+    """D-26 (решение владельца 24.09): волонтёр, привязанный к городу, работает ТОЛЬКО со своим
+    городом — И НА ВХОДЕ (уточняет D-15/D-08: раньше вход не был ограничен вовсе, стойки входа
+    физически не разложены по городам, но волонтёр за стойкой всё равно городской). Делегат
+    ДРУГОГО города получает отказ словами вместо тихой отметки — волонтёр отправляет его к своей
+    стойке/организаторам, а не отмечает по ошибке в чужом городе.
+
+    Суперадмин и волонтёр без привязки (`bound is None`) не ограничены — без изменений.
+    Переиспользует статус `wrong_city` (тот же тон/заголовок на экране, что у отказа сессии
+    другого города в `record_arrival` — фронт уже умеет его показывать, см. `scanner.js`)."""
+    if bound is None:
+        return None
+    delegate_city = normalize_city(user.get("event_city"))
+    if delegate_city == bound:
+        return None
+    delegate_label = await city_label(delegate_city) if delegate_city else "—"
+    return {
+        "status": "wrong_city",
+        "reason_text": (
+            f"Делегат с форума в {delegate_label} — отправьте на стойку своего города/к "
+            "организаторам"
+        ),
+    }
 
 
 def _person_fields(user: dict) -> dict:
@@ -135,7 +160,9 @@ async def checkin_scan(
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
-    point_denial = await _point_city_denial(request, p, body.point or ENTRY_POINT)
+    point = body.point or ENTRY_POINT
+    bound = await _bound_city(request, p)
+    point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         return point_denial
 
@@ -159,8 +186,13 @@ async def checkin_scan(
             "city": (user or {}).get("event_city") or parsed.get("city") or None,
         }
 
+    if not point.startswith("session:"):
+        entry_denial = await _entry_city_denial(bound, user)
+        if entry_denial is not None:
+            return {**entry_denial, **_person_fields(user)}
+
     result = await record_arrival(
-        user, body.point or ENTRY_POINT, source="miniapp", by_staff_id=p.telegram_id,
+        user, point, source="miniapp", by_staff_id=p.telegram_id,
     )
     return {**result, **_person_fields(user)}
 
@@ -178,7 +210,9 @@ async def checkin_manual(
 ) -> dict:
     """D-11/D-12: делегат найден поиском (телефон сел/нет QR под рукой), не сканом — та же
     отметка, источник `manual` отличает её в журнале (будущее B1-31)."""
-    point_denial = await _point_city_denial(request, p, body.point or ENTRY_POINT)
+    point = body.point or ENTRY_POINT
+    bound = await _bound_city(request, p)
+    point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         return point_denial
 
@@ -191,8 +225,14 @@ async def checkin_manual(
             "full_name": (user or {}).get("full_name") if user else None,
             "city": (user or {}).get("event_city") if user else None,
         }
+
+    if not point.startswith("session:"):
+        entry_denial = await _entry_city_denial(bound, user)
+        if entry_denial is not None:
+            return {**entry_denial, **_person_fields(user)}
+
     result = await record_arrival(
-        user, body.point or ENTRY_POINT, source="manual", by_staff_id=p.telegram_id,
+        user, point, source="manual", by_staff_id=p.telegram_id,
     )
     return {**result, **_person_fields(user)}
 

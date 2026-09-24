@@ -497,9 +497,9 @@ def test_scan_session_point_own_city_allowed_for_bound_manager(tmp_path, monkeyp
     assert _run(bot_db.count_checkins_by_point(f"session:{sid}")) == 1
 
 
-def test_scan_entry_point_not_scoped_for_bound_manager(tmp_path):
-    """D-15: «Вход» НЕ ограничивается городом волонтёра — стойки входа не разложены по городам,
-    любой волонтёр отмечает вход ЛЮБОГО делегата (в отличие от точек-сессий выше)."""
+def test_scan_entry_point_other_city_denied_for_bound_manager(tmp_path):
+    """D-26 (24.09, уточняет D-15): волонтёр, привязанный к городу, работает только со своим
+    городом И НА ВХОДЕ — делегат другого города получает отказ словами, отметка не ставится."""
     client = client_with(tmp_path)
     _grant_checkin_to_bound_manager()  # привязан к spb
     _run(bot_db.set_setting("event_city_enabled", "on"))
@@ -507,6 +507,51 @@ def test_scan_entry_point_not_scoped_for_bound_manager(tmp_path):
     _run(_insert_user(uid, full_name="Морозов Марк", city="msk"))  # ДРУГОЙ город, не spb
     payload = _qr(uid, city="Москва")
     resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "wrong_city"
+    assert body["reason_text"]
+    assert body["full_name"] == "Морозов Марк"
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 0
+
+
+def test_manual_entry_point_other_city_denied_for_bound_manager(tmp_path):
+    """D-26: то же самое для ручной отметки (поиск по фамилии без QR)."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()  # привязан к spb
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950058
+    _run(_insert_user(uid, full_name="Волков Всеволод", city="msk"))
+    resp = client.post(f"{BASE}/manual", json={"telegram_id": uid}, headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "wrong_city"
+    assert body["reason_text"]
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 0
+
+
+def test_scan_entry_point_own_city_allowed_for_bound_manager(tmp_path):
+    """D-26: делегат СВОЕГО города волонтёра отмечается на входе как обычно."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_bound_manager()  # привязан к spb
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950059
+    _run(_insert_user(uid, full_name="Соколова Софья", city="spb"))
+    payload = _qr(uid, city="СПб")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(BOUND_MANAGER_ID))
+    body = resp.json()
+    assert body["status"] == "new"
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 1
+
+
+def test_scan_entry_point_unbound_manager_not_scoped(tmp_path):
+    """Волонтёр БЕЗ привязки к городу (`GAME_MANAGER_ID`) на входе не ограничен — та же
+    трёхветочная логика, что и у точек-сессий."""
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    uid = 950054
+    _run(_insert_user(uid, full_name="Морозов Марк", city="msk"))
+    payload = _qr(uid, city="Москва")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(GAME_MANAGER_ID))
     body = resp.json()
     assert body["status"] == "new"
     assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 1
