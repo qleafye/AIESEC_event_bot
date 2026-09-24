@@ -57,6 +57,8 @@ from database.db import (
     # «пришли»/«не пришли».
     CHECKIN_YES,
     CHECKIN_NO,
+    CHECKIN_DAY_TODAY,
+    get_checkin_entry_days,
     get_checkin_entry_filter_options,
     # «Сессия программы» — свой мастер (город → день → сессия), не входит в generic-пикер.
     any_program_sessions_exist,
@@ -1469,6 +1471,14 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
         # «бот для людей»).
         labels = {CHECKIN_YES: "пришли на форум", CHECKIN_NO: "не пришли"}
+        # Вход каждый день: тот же выбор за конкретный день форума. «сегодня» пересчитывается
+        # на момент отправки (отложенная рассылка на утро второго дня берёт второй день).
+        # День едет в значении через «@», в запись фильтра — отдельным ключом `day`.
+        for day in [CHECKIN_DAY_TODAY, *await get_checkin_entry_days()]:
+            when = "сегодня" if day == CHECKIN_DAY_TODAY else f"{day[8:10]}.{day[5:7]}"
+            options += [f"{CHECKIN_YES}@{day}", f"{CHECKIN_NO}@{day}"]
+            labels[f"{CHECKIN_YES}@{day}"] = f"пришли {when}"
+            labels[f"{CHECKIN_NO}@{day}"] = f"не пришли {when}"
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
@@ -1615,7 +1625,11 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # сюда — он резолвится заново на КАЖДЫЙ вызов `count_and_list_filtered`
         # (`database.db._resolve_checkin_entry_season`), а не замораживается на момент выбора.
         labels = data.get("filter_option_labels") or {}
-        filters.append({"field": field, "value": value, "label": labels.get(value, value)})
+        base, _, day = str(value).partition("@")
+        entry = {"field": field, "value": base, "label": labels.get(value, value)}
+        if day:
+            entry["day"] = day
+        filters.append(entry)
     else:
         filters.append({"field": field, "value": value})
     await state.update_data(
