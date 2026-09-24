@@ -194,6 +194,42 @@ def test_send_go_sends_photos_and_reports_counts(tmp_path, monkeypatch):
     assert "2 доставлено" in final_text
 
 
+def test_send_go_clears_keyboard_before_sending(tmp_path, monkeypatch):
+    """Находка ревью 260924 (п.4): клавиатура подтверждения убирается ДО запуска рассылки —
+    повторный тап на неё физически невозможен."""
+    _db_ready(tmp_path)
+    asyncio.run(_insert_user(UID))
+    _with_bot(monkeypatch)
+
+    cb = _FakeCallback("checkinqr_send_go:_all", ADMIN_ID)
+    asyncio.run(admin_checkin.checkinqr_send_go(cb))
+
+    assert cb.message.edited
+    edited_text, edited_markup = cb.message.edited[0]
+    assert "рассылаю" in edited_text.lower()
+    assert edited_markup is None
+
+
+def test_send_go_rejects_concurrent_tap(tmp_path, monkeypatch):
+    """Второй тап, пока первая рассылка того же города ещё держит лок, отвечает понятным
+    текстом — не запускает вторую параллельную отправку."""
+    _db_ready(tmp_path)
+    asyncio.run(_insert_user(UID))
+    bot = _with_bot(monkeypatch)
+
+    async def body():
+        lock = broadcast_svc._get_city_lock(None)
+        async with lock:
+            cb = _FakeCallback("checkinqr_send_go:_all", ADMIN_ID)
+            await admin_checkin.checkinqr_send_go(cb)
+            return cb
+
+    cb = asyncio.run(body())
+    assert bot.photos == []
+    final_text = cb.message.sent[-1][0]
+    assert "уже идёт" in final_text.lower()
+
+
 def test_send_go_reports_deferral_during_quiet_hours(tmp_path, monkeypatch):
     """Находка ревью 260924 (п.3): тихие часы — рассылка откладывается, менеджер видит понятный
     ответ, а не молчаливый «0 доставлено»."""
