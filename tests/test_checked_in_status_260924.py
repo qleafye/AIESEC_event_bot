@@ -61,7 +61,41 @@ def test_get_checkin_status_returns_entry_time_and_zero_sessions(tmp_path):
     _seed_user()
     _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-30 09:15:00"))
     status = _run(db.get_checkin_status(UID))
-    assert status == {"scanned_at": "2026-10-30 09:15:00", "sessions_count": 0}
+    assert status["scanned_at"] == "2026-10-30 09:15:00"
+    assert status["day"] == "2026-10-30"
+    assert status["sessions_count"] == 0
+
+
+def test_get_checkin_status_prefers_today_over_other_days(tmp_path, monkeypatch):
+    """Вход каждый день: несколько строк входа на делегата -- сегодняшняя отметка побеждает
+    вчерашнюю/завтрашнюю, `is_today` истинен, `time_label` без даты."""
+    from datetime import datetime
+
+    _use_tmp_db(tmp_path)
+    _seed_user()
+    monkeypatch.setattr("database.db.msk_now", lambda: datetime(2026, 10, 31, 12, 0, 0))
+    _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-30 09:15:00"))
+    _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-31 08:05:00"))
+    status = _run(db.get_checkin_status(UID))
+    assert status["day"] == "2026-10-31"
+    assert status["is_today"] is True
+    assert status["time_label"] == "08:05"
+
+
+def test_get_checkin_status_falls_back_to_latest_day_when_no_entry_today(tmp_path, monkeypatch):
+    """Нет отметки СЕГОДНЯ -- показываем последнюю по дню, с датой в подписи (не спутать со
+    «вход сегодня»)."""
+    from datetime import datetime
+
+    _use_tmp_db(tmp_path)
+    _seed_user()
+    monkeypatch.setattr("database.db.msk_now", lambda: datetime(2026, 11, 5, 12, 0, 0))
+    _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-30 09:15:00"))
+    _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-31 08:05:00"))
+    status = _run(db.get_checkin_status(UID))
+    assert status["day"] == "2026-10-31"  # последний день из двух, не первый
+    assert status["is_today"] is False
+    assert status["time_label"] == "31.10 в 08:05"
 
 
 def test_get_checkin_status_counts_sessions(tmp_path):
@@ -195,7 +229,8 @@ def test_qr_caption_translates_status_line_for_english_delegate(tmp_path):
     _run(ua_mod.show_my_checkin_qr(message))
     _photo, caption = message.photos[0]
     default_ru = "Отмечен на входе в {time} · сессий: {sessions}"
-    expected_line = FORM_DEFAULT_EN[default_ru].replace("{time}", "09:15").replace("{sessions}", "0")
+    # 2026-10-30 -- не сегодня на момент прогона теста, time_label несёт дату (D-04, задача 4).
+    expected_line = FORM_DEFAULT_EN[default_ru].replace("{time}", "30.10 в 09:15").replace("{sessions}", "0")
     assert expected_line in caption
 
 
