@@ -2331,18 +2331,25 @@ async def _reschedule_checkin_qr_if_forum_date(key: str) -> None:
     от `daily_digest_time`/`chat_refresh_minutes`, для которых честно написано «после
     перезапуска». `forum_date` — единственный ключ, от которого зависит САМА постановка джобы
     (нет даты — джобы нет вовсе), поэтому ждать рестарта здесь неприемлемо: менеджер вводит
-    дату форума за день-два до самого события. Fail-soft — сбой планировщика (например, тест
+    дату форума за день-два до самого события.
+
+    Композитный ключ (`forum_date__city__{code}`) переставляет ТОЛЬКО этот город. Голый
+    `forum_date` — это ГЛОБАЛЬНЫЙ фолбэк (CONTEXT A: правка ключа без городского
+    переопределения) — при включённом модуле городов на него могут опираться СРАЗУ несколько
+    городов без своего override, поэтому здесь нужен полный `reconcile_broadcasts()` (каждый
+    город сам решит через `forum_date_for`, какое значение у него в силе), а не постановка
+    одной несуществующей «безгородской» джобы. Fail-soft — сбой планировщика (например, тест
     без инициализированного `AsyncIOScheduler`) не должен ронять сохранение настройки."""
     if _base_setting_key(key) != "forum_date":
         return
-    city = None
-    if PER_CITY_SEP in key:
-        parsed = split_per_city_key(key)
-        if parsed is not None:
-            city = parsed[1]
     try:
-        from services.checkin_broadcast import schedule_city_jobs
-        await schedule_city_jobs(city)
+        from services.checkin_broadcast import reconcile_broadcasts, schedule_city_jobs
+        if PER_CITY_SEP in key:
+            parsed = split_per_city_key(key)
+            city = parsed[1] if parsed is not None else None
+            await schedule_city_jobs(city)
+        else:
+            await reconcile_broadcasts()
     except Exception as e:
         logger.error(f"_reschedule_checkin_qr_if_forum_date({key!r}): {e}")
 
