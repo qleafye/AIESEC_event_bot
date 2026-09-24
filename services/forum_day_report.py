@@ -29,6 +29,7 @@ forum_day_menu._forum_window_dates`/`services.sos.is_sos_active_for_city` (ду�
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from datetime import date, datetime, time, timedelta
 
@@ -237,6 +238,9 @@ async def reconcile() -> list[str | None]:
 
 # ── Сборка текста отчёта — только строки, по которым реально есть данные ─────────────────────
 
+_TG_LIMIT = 4096
+
+
 def _hour_label(hh: str) -> str:
     return f"{hh}:00–{hh}:59"
 
@@ -252,7 +256,7 @@ async def build_report_text(city: str | None, day: str) -> str:
     scope = _cities.city_scope(city)
     label = await city_label(city) if (city and await cities_module_on()) else None
 
-    lines = ["📊 <b>Отчёт дня форума</b>" + (f" — {label}" if label else "") + f" ({day})"]
+    lines = ["📊 <b>Отчёт дня форума</b>" + (f" — {html.escape(label)}" if label else "") + f" ({day})"]
 
     arrived = await count_checkins_by_point_and_day(CHECKIN_ENTRY_POINT, day, city_scope=scope)
     approved = await count_approved_current_season(city_scope=scope)
@@ -277,11 +281,11 @@ async def build_report_text(city: str | None, day: str) -> str:
         bottom = list(reversed(by_attendance[-3:])) if len(by_attendance) > 3 else []
         lines.append("🏆 Топ-3 сессии по посещаемости:")
         for r in top:
-            lines.append(f"  • {r['title']} — {r['marked_count']}")
+            lines.append(f"  • {html.escape(r['title'] or '')} — {r['marked_count']}")
         if bottom:
             lines.append("📉 Анти-топ-3 сессии по посещаемости:")
             for r in bottom:
-                lines.append(f"  • {r['title']} — {r['marked_count']}")
+                lines.append(f"  • {html.escape(r['title'] or '')} — {r['marked_count']}")
 
     rated = [r for r in rows if r.get("stats", {}).get("rating_count", 0) > 0]
     if rated:
@@ -290,11 +294,11 @@ async def build_report_text(city: str | None, day: str) -> str:
         bottom = list(reversed(by_rating[-3:])) if len(by_rating) > 3 else []
         lines.append("⭐ Топ-3 сессии по оценке:")
         for r in top:
-            lines.append(f"  • {r['title']} — {r['stats']['avg']:.1f}")
+            lines.append(f"  • {html.escape(r['title'] or '')} — {r['stats']['avg']:.1f}")
         if bottom:
             lines.append("💔 Анти-топ-3 сессии по оценке:")
             for r in bottom:
-                lines.append(f"  • {r['title']} — {r['stats']['avg']:.1f}")
+                lines.append(f"  • {html.escape(r['title'] or '')} — {r['stats']['avg']:.1f}")
 
     cna = await checkin_not_arrived_summary(city_scope=scope, day=day)
     if cna["total"] > 0:
@@ -314,7 +318,13 @@ async def build_report_text(city: str | None, day: str) -> str:
     # (record_checkin у точки "entry" — INSERT OR IGNORE, повтор просто отбрасывается без
     # следа), поэтому строки отчёта по ним нет — данных для неё в принципе не существует.
 
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    # Лимит Telegram — 4096 символов: строк немного (топ-3/анти-3), но названия сессий
+    # произвольной длины — режем по границе строки, чтобы не порвать HTML-тег.
+    if len(text) > _TG_LIMIT:
+        cut = text.rfind("\n", 0, _TG_LIMIT - 2)
+        text = text[: cut if cut > 0 else _TG_LIMIT - 2] + "\n…"
+    return text
 
 
 async def send_report(city: str | None, day: str, *, mark_sent: bool) -> dict:
