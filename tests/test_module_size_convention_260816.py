@@ -544,7 +544,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1130,
+        1131,
+        "Ночная починка 24.09 (переделка «❗ Важное»/«🔕», cfdde41/6f4ea8b/3876ea6): +9 строк — "
+        "capability-записи bc_important_toggle (капа «broadcast» — тот же тумблер важности, что "
+        "у sched_important_toggle рядом) и sched_important_toggle/sched_go/sched_no "
+        "(handlers/admin_broadcasts.py, капа «broadcast» — тот же мастер планирования отложенной "
+        "рассылки, что sched_cancel_* выше); 1122 -> 1131, потолок до фактического размера. "
         "Форум-ночь п.6 (D-25, идея №14, шаблон «Не пришёл»): +7 строк — capability-записи "
         "cna_send:*/cna_send_go:*/cna_send_no (handlers/admin_checkin.py, капа «moderate_reg» "
         "— тот же довод, что у checkinqr_send:* выше: массовая отправка, не капа «checkin»); "
