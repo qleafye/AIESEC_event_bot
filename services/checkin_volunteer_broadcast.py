@@ -36,7 +36,10 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from database.db import checkin_volunteer_guide_mark_sent, checkin_volunteer_guide_sent_ids
+from database.db import (
+    checkin_volunteer_guide_mark_sent, checkin_volunteer_guide_sent_ids,
+    checkin_volunteer_guide_unmark,
+)
 from services import scheduler as _sched
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
@@ -229,6 +232,28 @@ async def reconcile() -> list[str | None]:
     return touched
 
 
+async def _claim_and_send(tid: int, day: str, city: str | None, text: str) -> bool | None:
+    """Отметка ДО отправки: `INSERT OR IGNORE` по `UNIQUE(telegram_id, day)` застолбляет
+    отправку атомарно — два админа, одновременно выдавшие право, или джоба плюс выдача права
+    не шлют второй раз, и сбой записи отметки после отправки не даёт дубля. `None` — уже
+    отправлено или отправляется другим проходом; `False` — не доставлено, отметка снята, чтобы
+    повтор был возможен; `True` — отправлено."""
+    claimed = await checkin_volunteer_guide_mark_sent(
+        tid, day, city, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    if not claimed:
+        return None
+    try:
+        ok = await _sched._safe_send(lambda cid: _sched._bot.send_message(cid, text), tid)
+    except BaseException:
+        await checkin_volunteer_guide_unmark(tid, day)
+        raise
+    if not ok:
+        await checkin_volunteer_guide_unmark(tid, day)
+        return False
+    return True
+
+
 async def send_guide(city: str | None) -> dict:
     """Date-джоба И (в будущем, если понадобится) ручной запуск — отправляет
     `checkin_volunteer_guide_text` всем держателям capability `checkin` города, кто ещё не
@@ -254,11 +279,10 @@ async def send_guide(city: str | None) -> dict:
 
     sent = failed = 0
     for tid in targets:
-        ok = await _sched._safe_send(lambda cid: _sched._bot.send_message(cid, text), tid)
+        ok = await _claim_and_send(tid, day, city, text)
+        if ok is None:
+            continue  # отправку уже застолбил параллельный проход (выдача права, другая джоба)
         if ok:
-            await checkin_volunteer_guide_mark_sent(
-                tid, day, city, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
-            )
             sent += 1
         else:
             failed += 1
@@ -316,11 +340,10 @@ async def _guide_for_holder_in_city(tid: int, city: str | None, now: datetime) -
         result = await schedule_city_job(city)
         if result.get("scheduled"):
             return "morning"
-    ok = await _sched._safe_send(lambda cid: _sched._bot.send_message(cid, text), tid)
-    if not ok:
-        return "skipped"
-    await checkin_volunteer_guide_mark_sent(tid, day, city, now.strftime("%Y-%m-%d %H:%M:%S"))
-    return "sent"
+    ok = await _claim_and_send(tid, day, city, text)
+    if ok is None:
+        return "already"
+    return "sent" if ok else "skipped"
 
 
 async def guide_for_new_holder(tid: int) -> str:
