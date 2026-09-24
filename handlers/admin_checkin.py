@@ -224,7 +224,11 @@ async def _not_arrived_status_line(label: str | None, code: str | None) -> str:
 
 async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
     """Блок «🚪 Не пришли» — строка(и) сводки за сегодня + кнопка(и) «📨 Написать не пришедшим».
-    Три ветки — та же развилка, что у `_qr_broadcast_section`/`_counter_line` выше."""
+    Три ветки — та же развилка, что у `_qr_broadcast_section`/`_counter_line` выше.
+
+    «Все города»: строку (и кнопку) города показываем, только если в нём есть хоть один
+    одобренный текущего сезона — тот же довод и приём, что у `_one_city_line` в `_counter_line`
+    (пустой регион не должен маячить нулями рядом с городом, где форум уже идёт)."""
     own_scope = await _admin_city_scope(admin_id)
     if own_scope is not None:
         code = own_scope[0]
@@ -245,6 +249,9 @@ async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyb
     buttons: list[list[InlineKeyboardButton]] = []
     for c in await enabled_cities():
         code = c["code"]
+        city_sc = city_scope(code)
+        if await count_approved_current_season(city_scope=city_sc) == 0:
+            continue
         label = await city_label(code)
         lines.append(await _not_arrived_status_line(label, code))
         buttons.append([InlineKeyboardButton(
