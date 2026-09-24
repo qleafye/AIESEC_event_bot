@@ -507,6 +507,12 @@ _CODE_LITERALS_EN = {
     "разобрался(лась), не забудь нажать её под карточкой.":
         "⏰ SOS #{id} has been with you for {minutes} min without «✅ Resolved» — if it's "
         "already handled, don't forget to tap it under the card.",
+    # Он же без «⏰ » — `sos_claimed_remind_text` уходит через `reg_i18n.tr_fmt` -> `tr_text`,
+    # который снимает ведущий эмодзи до поиска (та же пара, что у `sos_sent_text` выше).
+    "SOS #{id} у тебя в работе {minutes} мин. без отметки «✅ Решено» — если уже "
+    "разобрался(лась), не забудь нажать её под карточкой.":
+        "SOS #{id} has been with you for {minutes} min without «✅ Resolved» — if it's "
+        "already handled, don't forget to tap it under the card.",
     "⏰ SOS #{id} в работе у {who} уже {minutes} мин. без отметки «✅ Решено» — "
     "три напоминания остались без ответа.":
         "⏰ SOS #{id} has been with {who} for {minutes} min without «✅ Resolved» — "

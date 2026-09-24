@@ -24,6 +24,10 @@ _FORUM_EMOJI_KEYS = {
     "checkin_qr_caption_text": "chat",
     "sos_sent_text": "chat",
     "checkin_undo_button_text": "miniapp",
+    # F19: напоминание взявшему SOS — через перевод адресату (services/sos.py::_translated_for).
+    "sos_claimed_remind_text": "chat",
+    # F19: сигнал менеджерам «взяли, но не решили» — служебный, оргкомитету, не переводится.
+    "sos_claimed_escalation_text": None,
     # Инструкция волонтёру (group "apps") — служебный текст, не переводится.
     "checkin_volunteer_guide_text": None,
 }
