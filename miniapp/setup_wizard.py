@@ -54,7 +54,7 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="event_info",
         title="🎪 Информация о событии",
-        hint="Дата, время и площадка — то, что делегат видит в разделе «Информация о форуме».",
+        hint="Дата, время и площадка — то, что делегат видит в разделе с информацией о мероприятии.",
         kind="fields",
         fields=("event_name", "event_date", "event_time", "event_place_name", "event_place_address"),
     ),
@@ -98,9 +98,22 @@ STEPS: tuple[WizardStep, ...] = (
         kind="fields",
         fields=("reg_complete_text", "approve_text", "reject_text"),
     ),
+    # Конференция (национальный съезд АЙСЕК): делегаты — члены организации, поэтому вместо
+    # вуза важнее, от какого ЛК человек. Вопрос уже есть в анкете, по умолчанию выключен.
+    WizardStep(
+        key="conf_lc",
+        title="🏢 Конференция: локальный комитет",
+        hint=(
+            "Делегаты конференции — члены АЙСЕК. Включите вопрос «Локальный комитет», "
+            "чтобы в заявке и таблице было видно, от какого ЛК приехал человек."
+        ),
+        kind="fields",
+        fields=("reg_q_lc",),
+        event_types=frozenset({"conference"}),
+    ),
     WizardStep(
         key="countdown",
-        title="⏳ Дата отсчёта до форума",
+        title="⏳ Дата отсчёта до мероприятия",
         hint="От неё считается таймер обратного отсчёта на хабе делегата.",
         kind="fields",
         fields=("miniapp_hub_countdown_date",),
