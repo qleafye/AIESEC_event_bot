@@ -987,6 +987,15 @@ ADMIN_CAPS: dict[str, str] = {
     "cmd:delete_user": "settings",
     "delu_go:*": "settings",
     "delu_no": "settings",
+
+    # Phase 33 (delegate-card admin actions): «🏙 Перевести в город» — кнопка на карточке
+    # «/find» (handlers/admin_city_move.py), та же капа «moderate_reg», что у самой команды
+    # (`cmd:find` выше) и у соседнего «🔄 Перевыпустить QR» (checkin_reissue:*): управление
+    # делегатским аккаунтом, не рутинное сканирование на входе.
+    "citymv_start:*": "moderate_reg",
+    "citymv_pick:*": "moderate_reg",
+    "citymv_apply:*": "moderate_reg",
+    "citymv_cancel:*": "moderate_reg",
 }
 
 
