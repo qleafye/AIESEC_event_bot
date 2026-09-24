@@ -1946,6 +1946,47 @@ async def init_db():
             )
         ''')
 
+        # Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером — идемпотентность
+        # АВТОМАТИЧЕСКОЙ отправки по (город, день форума), `UNIQUE(city, day)`. `city` хранит
+        # сентинел `"_all"` вместо NULL при выключенном модуле городов (SQLite не считает два
+        # NULL равными в UNIQUE — с настоящим NULL повторный тик джобы без городов вставлял бы
+        # вторую строку и ломал идемпотентность; тот же приём сентинела нужен и ниже у
+        # `forum_noshow_poll`). Ручная кнопка «📊 Отчёт дня сейчас» эту таблицу НЕ трогает
+        # (handlers/admin_forum_functions.py — ручной запуск не помечает автоматическую
+        # отправку «сделанной», см. docstring services/forum_day_report.py).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS forum_day_report_sends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                city TEXT NOT NULL,
+                day TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                UNIQUE(city, day)
+            )
+        ''')
+
+        # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл». Одна строка —
+        # одновременно идемпотентность ОТПРАВКИ (`UNIQUE(telegram_id, season)`, тот же приём,
+        # что checkin_not_arrived, но ключ — сезон, не день: опрос уходит РОВНО один раз за
+        # сезон+город, не каждый день заново) И хранилище ОТВЕТА (UPDATE той же строки).
+        # `season` — снимок `event_season` на момент отправки (пустая строка, не NULL, если
+        # настройка ещё не задана — та же причина, что у сентинела `city` выше: NULL не
+        # держит уникальность). `city` — снимок `users.event_city` на момент отправки (тот же
+        # приём, что `checkin_qr_sends.event_city`) — только для отчётности, не для
+        # переадресации.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS forum_noshow_poll (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                season TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                reason TEXT,
+                comment TEXT,
+                answered_at TEXT,
+                UNIQUE(telegram_id, season)
+            )
+        ''')
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -8727,6 +8768,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь п.9 (идея №15, D-24): session_feedback.telegram_id — личная оценка/комментарий
     # делегата к сессии, тот же личный след, что checkins/sos_reports выше.
     ("session_feedback", "telegram_id", "session_feedback"),
+    # Идея №23 бэклога чек-ина: forum_noshow_poll.telegram_id — кому и когда ушёл опрос
+    # «почему не пришёл» + сам ответ (причина/комментарий), тот же личный след, группа общая
+    # "checkin" (соседи checkin_not_arrived/checkin_qr_sends выше — тот же журнал отправки
+    # делегату + его ответ).
+    ("forum_noshow_poll", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -10221,3 +10267,240 @@ async def list_session_feedback_comments(session_id: int, *, limit: int = 10, of
         ) as cursor:
             rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером ──────────────────────────────────
+# Домен (сборка текста, планирование джобы) — `services/forum_day_report.py`; здесь только
+# сырой CRUD/агрегаты, тем же приёмом, что `services/session_feedback.py` поверх
+# `session_feedback_stats*` выше.
+
+def _forum_day_report_city_key(city: str | None) -> str:
+    """`city or "_all"` — сентинел вместо NULL (см. докстринг CREATE TABLE
+    `forum_day_report_sends`), используется И на запись, И на чтение — обе стороны обязаны
+    читать/писать один и тот же ключ, иначе идемпотентность разъедется по городам."""
+    return city or "_all"
+
+
+async def forum_day_report_sent_days(city: str | None) -> set[str]:
+    """Дни форума этого города, за которые АВТОМАТИЧЕСКИЙ отчёт уже уходил — вызывающий
+    (`services.forum_day_report.schedule_city_job`) вычитает их из окна дней форума, чтобы
+    выбрать следующий ещё не отправленный день. Ручная кнопка «Отчёт дня сейчас» эту таблицу
+    не читает и не пишет (см. докстринг таблицы)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT day FROM forum_day_report_sends WHERE city = ?",
+            (_forum_day_report_city_key(city),),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {r[0] for r in rows}
+
+
+async def forum_day_report_mark_sent(city: str | None, day: str, sent_at: str) -> bool:
+    """`INSERT OR IGNORE` по `(city, day)` — идемпотентная отметка АВТОМАТИЧЕСКОЙ отправки.
+    `True` — эта строка вставлена именно этим вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO forum_day_report_sends (city, day, sent_at) VALUES (?, ?, ?)",
+            (_forum_day_report_city_key(city), day, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def count_checkins_by_point_and_day(point: str, day: str, *, city_scope=None) -> int:
+    """Тот же приём, что `count_checkins_by_point` выше, но дополнительно скопировано днём
+    скана (`substr(scanned_at, 1, 10)` — формат "YYYY-MM-DD HH:MM:SS", первые 10 символов —
+    календарный день) — «пришли сегодня N», а не «пришли за весь форум N»."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if not city_frag:
+        async with _connect() as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM checkins WHERE point = ? AND substr(scanned_at, 1, 10) = ?",
+                (point, day),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return int(row[0] or 0) if row else 0
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM checkins c JOIN users u ON u.telegram_id = c.telegram_id "
+            f"WHERE c.point = ? AND substr(c.scanned_at, 1, 10) = ? AND {city_frag}",
+            [point, day] + city_params,
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+async def checkin_peak_hour_for_city_day(day: str, *, city_scope=None) -> tuple[str, int] | None:
+    """`(час "HH", число отметок)` с наибольшим числом отметок на входе (`CHECKIN_ENTRY_POINT`)
+    за `day` в границах `city_scope` — `None`, если отметок в этот день нет вовсе (строка
+    отчёта дня пропускается, а не рисует пустой пик)."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    where = "c.point = ? AND substr(c.scanned_at, 1, 10) = ?"
+    params: list = [CHECKIN_ENTRY_POINT, day]
+    join = ""
+    if city_frag:
+        join = "JOIN users u ON u.telegram_id = c.telegram_id "
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT substr(c.scanned_at, 12, 2) AS hh, COUNT(*) AS n FROM checkins c {join}"
+            f"WHERE {where} GROUP BY hh ORDER BY n DESC, hh ASC LIMIT 1",
+            params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row is None or not row[0]:
+        return None
+    return str(row[0]), int(row[1] or 0)
+
+
+async def list_checkins_for_city_day(day: str, *, city_scope=None) -> list[dict]:
+    """Каждая отметка (вход и сессии) за `day` в границах `city_scope` — источник CSV-выгрузки
+    «📥 Выгрузить отметки (CSV)» кнопки отчёта дня."""
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    where = "substr(c.scanned_at, 1, 10) = ?"
+    params: list = [day]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT c.telegram_id, u.full_name, u.username, c.point, c.scanned_at, c.source, "
+            "c.approx_time, c.by_staff_id FROM checkins c "
+            f"JOIN users u ON u.telegram_id = c.telegram_id WHERE {where} "
+            "ORDER BY c.scanned_at",
+            params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def sos_day_stats(day: str, *, city_scope=None) -> dict:
+    """`{"total": N, "resolved": M, "avg_claim_minutes": float|None}` — сколько SOS создано за
+    `day`, сколько решено, среднее время до «🙋 Беру» (только среди тех, кого вообще взяли).
+    `avg_claim_minutes is None` — либо SOS в этот день не было, либо ни один не был взят."""
+    city_frag, city_params = _city_clause(city_scope, "city")
+    where = "substr(created_at, 1, 10) = ?"
+    params: list = [day]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*), SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END), "
+            f"AVG(CASE WHEN claimed_at IS NOT NULL "
+            f"THEN (julianday(claimed_at) - julianday(created_at)) * 24 * 60 END) "
+            f"FROM sos_reports WHERE {where}",
+            params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    total = int(row[0] or 0) if row else 0
+    resolved = int(row[1] or 0) if row and row[1] is not None else 0
+    avg_claim = float(row[2]) if row and row[2] is not None else None
+    return {"total": total, "resolved": resolved, "avg_claim_minutes": avg_claim}
+
+
+# ── Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» ───────────────────────────
+
+FORUM_NOSHOW_REASON_CHANGED_MIND = "changed_mind"
+FORUM_NOSHOW_REASON_STUDY_WORK = "study_work"
+FORUM_NOSHOW_REASON_FAR = "far"
+FORUM_NOSHOW_REASON_FORGOT = "forgot"
+FORUM_NOSHOW_REASON_OTHER = "other"
+FORUM_NOSHOW_REASONS: tuple[str, ...] = (
+    FORUM_NOSHOW_REASON_CHANGED_MIND, FORUM_NOSHOW_REASON_STUDY_WORK,
+    FORUM_NOSHOW_REASON_FAR, FORUM_NOSHOW_REASON_FORGOT, FORUM_NOSHOW_REASON_OTHER,
+)
+
+
+async def forum_noshow_poll_pending_ids(*, city_scope=None) -> list[int]:
+    """Кандидаты на опрос: approved текущего сезона (тот же `checkin_entry`=`CHECKIN_NO`
+    фильтр, что `checkin_not_arrived_pending_ids` — единая точка правды, второй копии условия
+    не заводится) БЕЗ отметки входа НИ В ОДИН день форума, МИНУС те, кому опрос уже уходил В
+    ЭТОМ сезоне (`forum_noshow_poll_sent_ids`)."""
+    filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
+    if city_scope is not None:
+        code, exclude = city_scope
+        filters.append({"field": "event_city", "value": code, "exclude": list(exclude)})
+    candidates = await count_and_list_filtered(filters)
+    if not candidates:
+        return []
+    season = (await get_setting("event_season") or "").strip()
+    already = await forum_noshow_poll_sent_ids(season)
+    return [tid for tid in candidates if tid not in already]
+
+
+async def forum_noshow_poll_sent_ids(season: str) -> set[int]:
+    """Кому УЖЕ отправлен опрос в ЭТОМ `season` (снимок сезона на момент отправки) —
+    вызывающий (`services.forum_noshow_poll.send_poll`) вычитает этот набор из кандидатов,
+    идемпотентность рассылки: повторный тик/перезапуск не шлёт дважды за один сезон."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM forum_noshow_poll WHERE season = ?", (season,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def forum_noshow_poll_mark_sent(
+    telegram_id: int, city: str | None, season: str, sent_at: str,
+) -> bool:
+    """`INSERT OR IGNORE` по `(telegram_id, season)` — та же строка потом принимает ОТВЕТ
+    (`record_forum_noshow_poll_response`). `True` — эта строка вставлена именно этим вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO forum_noshow_poll (telegram_id, city, season, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, city, season, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def record_forum_noshow_poll_response(
+    telegram_id: int, season: str, reason: str, comment: str | None, answered_at: str,
+) -> bool:
+    """Повторный тап другой кнопки меняет ответ (правило плана: «повторный тап меняет
+    ответ») — обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе
+    (делегат дотянулся до чужого/устаревшего callback_data) -> `False`, вызывающий отвечает
+    тихо, не пишет вслепую."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE forum_noshow_poll SET reason = ?, comment = ?, answered_at = ? "
+            "WHERE telegram_id = ? AND season = ?",
+            (reason, comment, answered_at, telegram_id, season),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
+    """«Ответили N из M: передумал 12, учёба 7…» — строка экрана менеджера
+    (`handlers.admin_forum_functions`). `sent` — M (всем, кому опрос уходил), `answered` — N
+    (кто нажал хоть одну кнопку), `by_reason` — счётчик по каждой причине (все пять ключей
+    всегда присутствуют, даже нулевые — вызывающему не приходится гадать, какие бывают)."""
+    city_frag, city_params = _city_clause(city_scope, "city")
+    where = "season = ?"
+    params: list = [season]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM forum_noshow_poll WHERE {where}", params,
+        ) as cursor:
+            sent_row = await cursor.fetchone()
+        async with db.execute(
+            f"SELECT reason, COUNT(*) FROM forum_noshow_poll WHERE {where} "
+            f"AND reason IS NOT NULL GROUP BY reason",
+            params,
+        ) as cursor:
+            reason_rows = await cursor.fetchall()
+    counts = {row[0]: row[1] for row in reason_rows}
+    answered = sum(counts.values())
+    return {
+        "sent": int(sent_row[0] or 0) if sent_row else 0,
+        "answered": answered,
+        "by_reason": {r: counts.get(r, 0) for r in FORUM_NOSHOW_REASONS},
+    }
