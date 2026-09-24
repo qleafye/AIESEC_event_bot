@@ -138,9 +138,14 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     # «параллельно»/«назад к дням») — 600 -> 610 с небольшим запасом (620). Форум-ночь п.8
     # (идея №19, SOS): +5 реестровых дефолтов group "event" (sos_category_prompt_text/
     # sos_details_prompt_text/sos_location_prompt_text/sos_sent_text/sos_already_open_text)
-    # + 5 code_literals (четыре категории + подпись кнопки геопозиции) — 614 -> 624, потолок
-    # поднят до фактического размера с небольшим запасом (630).
-    assert 150 <= len(result) <= 630, len(result)
+    # + 5 code_literals (четыре категории + подпись кнопки геопозиции) — 614 -> 624. Ревью 24.09
+    # (находка 3) + форум-ночь п.9 (⭐ отзыв о сессии): +1 реестровый дефолт
+    # sos_recent_followup_text + 4 реестровых дефолта group "event" (session_feedback_prompt_text/
+    # _thanks_text/_comment_hint_text/_comment_saved_text) + 3 code_literals шаблонов
+    # claim_status (services.sos.claim_status_claimed/_open/_fallback_name) + 1 code_literal
+    # session_feedback.unavailable_alert — 624 -> 634, потолок поднят до фактического размера
+    # с небольшим запасом (650).
+    assert 150 <= len(result) <= 650, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"
