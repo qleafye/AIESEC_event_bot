@@ -91,24 +91,31 @@ async def _first_match(observer, event, **kwargs) -> str | None:
 
 def test_menu_texts_covers_all_thirteen_keys():
     # Квик 260923 (форум-чекин, D-03) + форум-ночь п.4 (+1 ключ menu_schedule) + форум-ночь
-    # п.7 (+1 ключ menu_important) -- имя теста историческое (осталось от 13 ключей до этих
-    # правок), assert ниже проверяет актуальное число.
+    # п.7 (+1 ключ menu_important) + форум-ночь п.8 (+1 ключ menu_sos) -- имя теста
+    # историческое (осталось от 13 ключей до этих правок), assert ниже проверяет актуальное
+    # число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 16
+    assert len(MENU_TEXTS) == 17
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
+    # menu_sos ("🆘 SOS") -- отдельный случай от menu_lang: MENU_EN ЕСТЬ (структурная проверка
+    # test_menu_en_keys_match_menu_buttons_minus_lang_plus_payment этого требует), но перевод
+    # тождественный -- "SOS" пишется одинаково в русском и английском, поэтому множество тоже
+    # схлопывается до 1 элемента, просто по другой причине (не "перевода не существует", а
+    # "перевод совпадает с оригиналом").
+    _SINGLE_VARIANT_KEYS = {"menu_lang", "menu_sos"}
     ru_by_key = dict(MENU_BUTTONS)
     ru_by_key["menu_payment"] = "💳 Оплата"
     for key, texts in MENU_TEXTS.items():
         ru = ru_by_key[key]
         assert ru in texts
-        if key != "menu_lang":  # menu_lang уже двуязычна одной строкой -- множество из 1 элемента
-            assert MENU_EN[ru] in texts
-            assert len(texts) == 2
-        else:
+        if key == "menu_lang":  # уже двуязычна одной строкой -- MENU_EN записи нет вовсе
             assert len(texts) == 1
+            continue
+        assert MENU_EN[ru] in texts
+        assert len(texts) == (1 if key in _SINGLE_VARIANT_KEYS else 2)
 
 
 # ── Задача 2: 12 точек user_actions.router матчат обе подписи ───────────────────────────────
@@ -218,9 +225,12 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот же паритет.
 # Форум-ночь п.7: menu_important гейтится has_important_today -- в пустой тестовой БД
 # важных рассылок не было ни у одного делегата, кнопки не будет ни на одной клавиатуре.
+# Форум-ночь п.8: menu_sos гейтится is_sos_active_for_city -- в пустой тестовой БД нет
+# forum_date ни у одного города, кнопки не будет ни на одной клавиатуре этого файла, тот
+# же паритет.
 _GATED_KEYS = (
     "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_schedule",
-    "menu_important",
+    "menu_important", "menu_sos",
 )
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 
