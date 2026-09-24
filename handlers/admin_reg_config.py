@@ -387,6 +387,22 @@ async def preset_confirm(callback: types.CallbackQuery):
 # The has-override helper below is kept (still needed by the merged keyboard's «↩️ Все как
 # везде» row).
 
+async def _menu_hidden_note(key: str, city_code: str | None) -> str:
+    """Кнопка включена (✅), но делегат её сейчас не видит из-за второго гейта
+    `keyboards.builders.get_main_menu_kb` — пометка с причиной, иначе менеджер ищет баг."""
+    if key == "menu_checkin_qr" and await get_setting_typed("checkin_qr_enabled") != "on":
+        return " <i>(сейчас скрыта: выключен QR для входа на форум — «🎪 Форум: функции»)</i>"
+    if key == "menu_sos":
+        from services.sos import is_sos_active_for_city  # ленивый импорт — как в builders
+        if not await is_sos_active_for_city(city_code):
+            from services.reject_rules import forum_date_for
+            date_str = await forum_date_for(city_code)
+            if date_str is None:
+                return " <i>(сейчас скрыта: не задана дата форума)</i>"
+            return f" <i>(сейчас скрыта: видна только в дни форума, начало {date_str})</i>"
+    return ""
+
+
 async def render_menu_text(admin_id: int | None = None) -> str:
     """Header = real city -> title names the city, every row shows the city's EFFECTIVE
     value (`get_setting_typed_for_city`) plus a «(своё)»/«(как везде)» mark. Header = None
@@ -405,14 +421,16 @@ async def render_menu_text(admin_id: int | None = None) -> str:
             own = bool(override_key and await get_setting(override_key))
             status = "✅" if is_on else "❌"
             mark = " <i>(своё)</i>" if own else " <i>(как везде)</i>"
-            lines.append(f"{status} {text}{mark}")
+            hidden = await _menu_hidden_note(key, header_code) if is_on else ""
+            lines.append(f"{status} {text}{mark}{hidden}")
         return "\n".join(lines)
 
     lines = ["🔘 <b>Кнопки главного меню</b>", ""]
     for key, text in MENU_BUTTONS:
         is_on = await get_setting_typed(key) == "on"
         status = "✅" if is_on else "❌"
-        lines.append(f"{status} {text}")
+        hidden = await _menu_hidden_note(key, None) if is_on else ""
+        lines.append(f"{status} {text}{hidden}")
     return "\n".join(lines)
 
 
