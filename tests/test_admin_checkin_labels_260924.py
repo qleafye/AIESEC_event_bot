@@ -204,3 +204,38 @@ def test_qr_line_silent_before_morning_repeat(tmp_path, monkeypatch):
     _fix_now(monkeypatch, datetime(2026, 10, 2, 12, 0))  # накануне — повтор ещё впереди
     text, _kb = _screen()
     assert "утренний повтор" not in text
+
+
+# ── Общий реестр причин «сейчас скрыта» для всех кнопок меню со вторым гейтом ────────────────
+
+def test_every_menu_gate_has_hidden_reason():
+    """Сторож: каждая кнопка, которую `get_main_menu_kb` прячет по условию помимо своего
+    тумблера (`if key == "menu_x" and not ...: continue`), обязана иметь запись в
+    `MENU_HIDDEN_REASONS` — иначе экран «🔘 Кнопки меню» покажет ✅ у кнопки, которой делегат
+    не видит, и не скажет почему."""
+    import inspect
+    import re
+    from keyboards import builders
+    src = inspect.getsource(builders.get_main_menu_kb)
+    gated = set(re.findall(r'if key == "(menu_\w+)" and not', src))
+    assert gated, "не нашёл ни одного гейта — сторож сломан"
+    missing = gated - set(builders.MENU_HIDDEN_REASONS)
+    assert not missing, f"кнопки меню без причины «сейчас скрыта»: {sorted(missing)}"
+
+
+def test_menu_screen_marks_other_gated_buttons(tmp_path):
+    from handlers import admin_reg_config
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("miniapp_enabled", "off"))
+    asyncio.run(db.set_setting("delegate_lang_enabled", "off"))
+    for key in ("menu_miniapp", "menu_lang", "menu_faq", "menu_important"):
+        asyncio.run(db.set_setting(key, "on"))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта: выключено приложение" in _menu_line(text, "📱 Приложение")
+    assert "сейчас скрыта: выключен английский язык анкеты" in _menu_line(text, "🌐 Язык")
+    assert "сейчас скрыта: нет ни одного включённого вопроса" in _menu_line(text, "❓ Частые вопросы")
+    assert "сегодня их не было" in _menu_line(text, "❗ Важное")
+
+    asyncio.run(db.set_setting("delegate_lang_enabled", "on"))
+    text = asyncio.run(admin_reg_config.render_menu_text())
+    assert "сейчас скрыта" not in _menu_line(text, "🌐 Язык")

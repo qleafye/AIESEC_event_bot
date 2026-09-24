@@ -335,6 +335,91 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
+# --- Почему включённая кнопка меню сейчас не видна делегату ---
+#
+# Один реестр на ВСЕ кнопки со вторым гейтом в `get_main_menu_kb` выше (`if key == ... and
+# not ...: continue`): экран «🔘 Кнопки меню» (handlers/admin_reg_config.py) пишет рядом с
+# включённой кнопкой «сейчас скрыта: <причина>». Функция получает город (None — общие
+# значения) и возвращает причину словами или None (кнопка видна). Новый гейт без записи здесь
+# роняет tests/test_admin_checkin_labels_260924.py::test_every_menu_gate_has_hidden_reason.
+
+async def _hidden_miniapp(code: str | None) -> str | None:
+    if await get_setting_typed("miniapp_enabled") != "on":
+        return "выключено приложение (Mini App)"
+    if not config.DASHBOARD_PUBLIC_URL:
+        return "у приложения не задан адрес — нужен разработчик"
+    return None
+
+
+async def _hidden_faq(code: str | None) -> str | None:
+    if await has_faq_for_city(code):
+        return None
+    return "нет ни одного включённого вопроса в «❓ Частые вопросы»"
+
+
+async def _hidden_program(code: str | None) -> str | None:
+    if await get_setting("program_photo_file_id") or os.path.isfile("resources/program.jpg"):
+        return None
+    if await has_program_sessions_for_city(code if code is not None else default_city_code()):
+        return None
+    return "не загружено фото программы и нет ни одной сессии"
+
+
+async def _hidden_lang(code: str | None) -> str | None:
+    if await get_setting_typed("delegate_lang_enabled") == "on":
+        return None
+    return "выключен английский язык анкеты — «📝 Анкета» → «🌐 Английский язык анкеты»"
+
+
+async def _hidden_checkin_qr(code: str | None) -> str | None:
+    if await get_setting_typed("checkin_qr_enabled") == "on":
+        return None
+    return "выключен QR для входа на форум — «🎪 Форум: функции»"
+
+
+async def _hidden_important(code: str | None) -> str | None:
+    from database.db import has_any_important_today
+    if await has_any_important_today(msk_now().strftime("%Y-%m-%d")):
+        return None
+    return "видна делегату только в день, когда ему пришла важная рассылка; сегодня их не было"
+
+
+async def _hidden_sos(code: str | None) -> str | None:
+    from services.sos import is_sos_active_for_city
+    from services.reject_rules import forum_date_for
+    sos_city = code if code is not None else default_city_code()
+    if await is_sos_active_for_city(sos_city):
+        return None
+    date_str = await forum_date_for(sos_city)
+    if date_str is None:
+        return "не задана дата форума"
+    return f"видна только в дни форума, начало {date_str}"
+
+
+MENU_HIDDEN_REASONS = {
+    "menu_miniapp": _hidden_miniapp,
+    "menu_faq": _hidden_faq,
+    "menu_program": _hidden_program,
+    "menu_lang": _hidden_lang,
+    "menu_checkin_qr": _hidden_checkin_qr,
+    "menu_important": _hidden_important,
+    "menu_sos": _hidden_sos,
+}
+
+
+async def menu_hidden_reason(key: str, code: str | None) -> str | None:
+    """Причина, по которой включённая кнопка `key` сейчас не видна делегату (None — видна
+    или у кнопки нет второго гейта). Fail-soft: сбой чтения — без пометки, экран цел."""
+    fn = MENU_HIDDEN_REASONS.get(key)
+    if fn is None:
+        return None
+    try:
+        return await fn(code)
+    except Exception as e:
+        logger.error(f"menu_hidden_reason: {key} resolve failed: {e}")
+        return None
+
+
 # --- Registration Keyboards ---
 
 def get_yes_no_kb() -> ReplyKeyboardMarkup:
