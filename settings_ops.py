@@ -616,6 +616,11 @@ TOGGLE_SECTION: dict[str, str] = {
     # свой экран у бота — handlers/admin_forum_functions.py (forumdaymenu_cfg:*), не строка
     # раздела admin_sections.SECTIONS (тот же приём, что у checkin_qr_broadcast_enabled).
     "forum_day_menu_enabled": "apps",
+    # Идея №3 бэклога чек-ина: приветствие после первой отметки входа делегата (services/
+    # forum_welcome.py) — тот же раздел «📋 Заявки», свой экран у бота —
+    # handlers/admin_forum_functions.py (forumwelcome_cfg:*), тот же приём, что у
+    # forum_day_menu_enabled выше.
+    "forum_welcome_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки

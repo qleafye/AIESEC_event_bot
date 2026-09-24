@@ -180,9 +180,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2773,
+        2782,
         "Фикс 24.09: +3 строки — сверка рассылок форума после тумблера «🎟 Вход по QR» "
         "обёрнута в try/except (тумблер уже сохранён, сбой — только в лог); 2770 -> 2773. "
+        "Форум-ночь (идеи №3/№4 бэклога чек-ина): +5 строк — `forum_welcome_text` и "
+        "`checked_in_status_text` дописаны в _APPS_FIELD_ORDER (редактор экрана достаётся "
+        "бесплатно попаданием в этот список, тот же приём, что у соседей "
+        "checkin_qr_broadcast_text/checkin_volunteer_guide_text); 2773 -> 2782, потолок с "
+        "ровно фактическим размером. "
         "Решение владельца 24.09 (D-33): +32 строки — "
         "`_reschedule_checkin_volunteer_guide_if_relevant` (хук того же вида, реагирует на "
         "forum_date + свои три ключа шпаргалки волонтёра, два вызова в общем сохранении "
@@ -490,11 +495,14 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(910 -> 916, укладывается в прежний запас, потолок не трогаю).",
     ),
     "user_actions.py": (
-        2072,
+        2093,
         "D-29 (24.09, per_city фото с фолбэком на общее): show_program резолвит фото программы "
         "через services.program.resolve_program_photo(_delegate_city(...)) вместо голого "
         "get_setting — своё городское фото ИЛИ общее, тот же приоритет, что читает Mini App; "
         "2068 -> 2072. "
+        "Идея №4 бэклога чек-ина: +21 строка — строка «✅ Ты отмечен» в show_my_checkin_qr "
+        "(над подписью QR, `database.db.get_checkin_status` + `checked_in_status_text`, "
+        "fail-soft на чтение статуса); 2072 -> 2093, потолок с ровно фактическим размером. "
         "D-29 (владелец 24.09, «одна кнопка программы»): show_program вобрал запасной вид "
         "через handlers.program.send_program_schedule_text (фото -> текст сессий -> "
         "empty-state) + шов-комментарий про объединение — 2055 -> 2068, потолок с небольшим "
@@ -619,6 +627,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "город» (citymv_start:*/citymv_pick:*/citymv_apply:*/citymv_cancel:*, капа "
         "«moderate_reg» — тот же довод, что у соседнего «🔄 Перевыпустить QR» выше); "
         "1165 -> 1174. "
+        "Идея №3 бэклога чек-ина (приветствие после отметки входа): +7 строк — "
+        "capability-записи нового тумблер-only экрана (forumwelcome_cfg:*/"
+        "forumwelcome_toggle:*), капа «moderate_reg» — тот же довод, что у forumdaymenu_cfg:* "
+        "выше (тот же хаб «🎪 Форум: функции»); 1174 -> 1181. "
         "Идея №1 бэклога чек-ина (режим «день форума»): +9 строк — capability-записи нового "
         "экрана меню (forumdaymenu_cfg:*/forumdaymenu_toggle:*/forumdaymenu_time:*/"
         "state:ForumDayMenuTimeEdit:*), капа «moderate_reg» — тот же довод, что у "

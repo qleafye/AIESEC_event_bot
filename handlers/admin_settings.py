@@ -214,6 +214,15 @@ _APPS_FIELD_ORDER = [
     # (handlers/admin_roles.py::roles_assign), но в боте её было негде поправить (только
     # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
     "checkin_volunteer_guide_text",
+    # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа делегата (тумблер
+    # `forum_welcome_enabled` — свой экран `handlers/admin_forum_functions.py::
+    # forumwelcome_cfg_screen`, сам текст — редактор достаётся бесплатно попаданием в этот
+    # список, тот же приём, что у checkin_qr_broadcast_text выше).
+    "forum_welcome_text",
+    # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
+    # App) — тот же приём, что у checkin_qr_caption_text выше (редактор экрана достаётся
+    # бесплатно попаданием в этот список).
+    "checked_in_status_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",

@@ -308,12 +308,16 @@ async function renderDelegateHub(root, ctx) {
     const hub = hubR.value;
     plateEyebrow.textContent = hub.balance_eyebrow || "";
     plateUnit.textContent = hub.balance_unit || "";
-    if (hub.tasks_fact || hub.days_fact) {
+    // Идея №4 бэклога чек-ина: «✅ Ты отмечен» — та же плита фактов, что tasks_fact/days_fact,
+    // третьей строкой (сервер уже решил видимость: `checkin_qr_enabled` + отметка есть,
+    // `miniapp/routers/hub.py::_checkin_status_fact`).
+    if (hub.tasks_fact || hub.days_fact || hub.checkin_status_fact) {
       factsSlot.append(
         h("hr", { class: "plate-rule" }),
         h("div", { class: "plate-facts" },
           hub.tasks_fact ? h("span", { text: hub.tasks_fact }) : null,
           hub.days_fact ? h("span", { text: hub.days_fact }) : null,
+          hub.checkin_status_fact ? h("span", { text: hub.checkin_status_fact }) : null,
         ),
       );
     }

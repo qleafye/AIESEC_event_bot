@@ -198,6 +198,16 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="📱 Настройки меню «день форума»", callback_data=f"forumdaymenu_cfg:{_encode_city(code)}",
         )])
 
+        # 11. Идея №3 бэклога чек-ина: приветствие после первой отметки входа делегата —
+        # тумблер + текст (текст правится общим текстовым редактором «📋 Заявки», тот же приём,
+        # что у соседей checkin_qr_broadcast_text/checkin_not_arrived_text). Родной экран —
+        # этот же модуль (forumwelcome_cfg:*).
+        welcome_on = await get_setting_typed_for_city("forum_welcome_enabled", code) == "on"
+        lines.append(f"👋 Приветствие после отметки на входе: {_status(welcome_on)}")
+        buttons.append([InlineKeyboardButton(
+            text="👋 Настройки приветствия после отметки", callback_data=f"forumwelcome_cfg:{_encode_city(code)}",
+        )])
+
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
 
@@ -476,3 +486,62 @@ async def forumdaymenu_time_step(message: types.Message, state: FSMContext):
     text, kb = await _forumdaymenu_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Идея №3 бэклога чек-ина: приветствие после первой отметки входа делегата ────────────────
+# Тумблер-only экран (в отличие от соседей выше — нет своего временного поля): САМ текст
+# (`forum_welcome_text`) правится общим текстовым редактором «📋 Заявки» (`settings_edit:*`,
+# капа «settings» — попадание в `_APPS_FIELD_ORDER`, `handlers/admin_settings.py`), тот же
+# приём, что у соседей `checkin_qr_broadcast_text`/`checkin_not_arrived_text`; здесь — только
+# тумблер (капа «moderate_reg», тот же довод, что у остального хаба).
+
+async def _welcome_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("forum_welcome_enabled", code)
+    label = await city_label(code) if code else None
+    on = enabled == "on"
+
+    lines = ["👋 <b>Приветствие после отметки на входе</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Отправка: {'✅ Вкл' if on else '❌ Выкл'}")
+    text_set = bool((await get_setting_typed_for_city("forum_welcome_text", code) or "").strip())
+    if not text_set:
+        lines.append("\n⚠️ Текст приветствия пуст — отправка НЕ пойдёт, даже если включена здесь.")
+    lines.append("\nТекст правится в «⚙️ Настройки» → «📋 Заявки» → «👋 Текст приветствия после отметки на входе».")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Отправка: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"forumwelcome_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("forumwelcome_cfg:"))
+async def forumwelcome_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await _welcome_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("forumwelcome_toggle:"))
+async def forumwelcome_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "forum_welcome_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current == "on" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    text, kb = await _welcome_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)

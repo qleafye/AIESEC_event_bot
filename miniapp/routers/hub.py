@@ -24,7 +24,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 
 from cities import get_setting_typed_for_city
-from database.db import get_referrals, get_setting, get_user, settings_snapshot
+from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
 from payment_options import parse_options
 import reg_engine
 from services import applications, i18n, reg_edit_policy
@@ -99,6 +99,28 @@ async def _payment_card(user: dict, lang: str, tr_map: dict[str, str]) -> dict |
         "due_label": due_label_tpl.replace("{дата}", due_date) if due_label_tpl else None,
         "reminder_note": await i18n.tr_setting("reg_status_payment_reminder_note_text", lang, tr_map),
     }
+
+
+# ── Идея №4 бэклога чек-ина: «✅ Ты отмечен» в хабе Mini App ─────────────────────────────────
+# Координация владельца 24.09: ОДНА функция чтения (`database.db.get_checkin_status`), общая с
+# ботовской кнопкой «🎟 Мой QR» (`handlers/user_actions.py::show_my_checkin_qr`) — второй копии
+# SQL/логики здесь нет. Строка видна ТОЛЬКО когда включён `checkin_qr_enabled` (тот же
+# мастер-тумблер, что у самой кнопки QR) — показ факта отметки без выданного QR не имеет
+# смысла и не запрошен.
+async def _checkin_status_fact(telegram_id: int, lang: str, tr_map: dict[str, str]) -> str | None:
+    if await get_setting_typed("checkin_qr_enabled") != "on":
+        return None
+    status = await get_checkin_status(telegram_id)
+    if status is None:
+        return None
+    template = await i18n.tr_setting("checked_in_status_text", lang, tr_map)
+    if not template:
+        return None
+    scanned_at = status.get("scanned_at") or ""
+    time_part = scanned_at[11:16] or "—"
+    # `.replace`, не `.format` — та же защита от посторонних `{}` в тексте менеджера, что у
+    # `reg_i18n.tr_fmt` (T-073-03-05); подстановка ПОСЛЕ перевода — `template` уже переведён.
+    return template.replace("{time}", time_part).replace("{sessions}", str(status.get("sessions_count", 0)))
 
 
 def _days_until(raw: str | None) -> int | None:
@@ -187,6 +209,8 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
 
     referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username, lang, tr_map)
 
+    checkin_status_fact = await _checkin_status_fact(p.telegram_id, lang, tr_map)
+
     return {
         "balance_eyebrow": await i18n.tr_setting("miniapp_hub_balance_eyebrow", lang, tr_map),
         "balance_unit": await i18n.tr_setting("miniapp_hub_balance_unit", lang, tr_map),
@@ -200,6 +224,7 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
         "rank_eyebrow": await i18n.tr_setting("miniapp_leaderboard_plate_eyebrow", lang, tr_map),
         "rank_unit": rank_unit,
         "referral": referral,
+        "checkin_status_fact": checkin_status_fact,
     }
 
 
