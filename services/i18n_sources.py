@@ -141,7 +141,11 @@ _NON_LANGUAGE_PAY_KEYS: frozenset[str] = frozenset({
 
 # Квик 260917-en: `contact_person`/`contact_vk`/`contact_tg` — юзернейм/URL, не текст на языке
 # (машинный перевод URL/@username в лучшем случае no-op, в худшем — риск порчи ссылки).
-_NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({"contact_person", "contact_vk", "contact_tg"})
+_NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
+    "contact_person", "contact_vk", "contact_tg",
+    # Ревью 24.09 (находка 1): телефон/контакт, не язык — тот же довод, что contact_person.
+    "sos_fallback_contact_text",
+})
 
 _NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
     ADMIN_KEYS_IN_DELEGATE_GROUPS | _ADMIN_ONLY_GAME_KEYS | _NON_LANGUAGE_PAY_KEYS

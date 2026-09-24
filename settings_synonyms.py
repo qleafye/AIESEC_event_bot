@@ -51,6 +51,13 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "sos_location_prompt_text": ["sos геопозиция", "sos отправь местоположение"],
     "sos_sent_text": ["sos отправлен подтверждение", "sos оргкомитет получил"],
     "sos_already_open_text": ["sos уже открыт", "sos повторная отправка"],
+    # Ревью 24.09 (находки 1/3): не доставлено никуда + экстренный контакт + повторное
+    # открытие + напоминание взявшему.
+    "sos_delivery_failed_text": ["sos не получилось передать", "sos карточка не дошла"],
+    "sos_fallback_contact_text": ["sos экстренный телефон", "sos контакт если не доставлено"],
+    "sos_recent_followup_text": ["sos дополнить заявку", "sos свежий повторный"],
+    "sos_reopen_window_minutes": ["sos окно повторного открытия", "sos через сколько новый"],
+    "sos_claimed_remind_minutes": ["sos напоминание взявшему", "sos не решил вовремя"],
     "faq_intro_text": ["частые вопросы вступление", "faq вступление"],
     "faq_empty_text": ["частые вопросы пусто", "faq пока пусто"],
     "faq_ask_button_text": ["не нашёл ответ кнопка", "спросить менеджера кнопка"],
