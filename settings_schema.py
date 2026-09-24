@@ -3860,19 +3860,13 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+    # D-29 (владелец 24.09, FORUM-CHECKIN.md): одна кнопка вместо двух — интерактивная
+    # программа сессий/залов (handlers/program.py, был отдельный ключ menu_schedule) стала
+    # запасным видом ВНУТРИ этой же кнопки, когда фото не загружено. Кнопка рисуется, пока
+    # есть фото ИЛИ у города делегата есть хотя бы одна сессия (`database.db.
+    # has_program_sessions_for_city`, keyboards/builders.py::get_main_menu_kb).
     "menu_program": {
         "type": "enum", "group": "menu", "label": "📅 Программа форума",
-        "options": ["on", "off"], "prompt": None, "default": "on",
-        "per_city": True,
-    },
-    # Форум-ночь п.4 (расписание форума в боте): интерактивное расписание сессий/залов
-    # (handlers/program.py) — форма записи byte-в-byte как у соседних menu_* (экран «🔘 Кнопки
-    # меню» и пер-городные резолверы подхватывают её автоматически). Сама кнопка рисуется
-    # только пока у города делегата есть хотя бы одна сессия (`database.db.
-    # has_program_sessions_for_city`, keyboards/builders.py::get_main_menu_kb) — тот же приём,
-    # что у menu_faq/has_faq_for_city: не показываем пункт меню, за которым пока пусто.
-    "menu_schedule": {
-        "type": "enum", "group": "menu", "label": "🗓 Программа",
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },

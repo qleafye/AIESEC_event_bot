@@ -155,9 +155,6 @@ EXPECTED_PER_CITY_KEYS = {
     # Квик 260923 (форум-чекин, D-03): кнопка меню — та же ось per_city, что остальные menu_*
     # выше (город может отдельно спрятать/показать любую кнопку меню).
     "menu_checkin_qr",
-    # Форум-ночь п.4 (расписание форума в боте): кнопка «🗓 Программа» — та же ось per_city,
-    # что остальные menu_* (город может отдельно спрятать/показать её).
-    "menu_schedule",
     # Квик 260923-p37 (CITY-REG-CLOSE, D-01/D-05): дата закрытия регистрации на город и её
     # тексты — per_city по решению владельца, дата ставится ДЛЯ КОНКРЕТНОГО города.
     "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text",
@@ -174,7 +171,7 @@ EXPECTED_PER_CITY_KEYS = {
     # settings_schema.py:5708).
     "checkin_not_arrived_text",
     # Форум-ночь п.7 («❗ Важное»): кнопка меню — та же ось per_city, что остальные menu_*
-    # выше (menu_checkin_qr/menu_schedule).
+    # выше (menu_checkin_qr/menu_program).
     "menu_important",
     # Форум-ночь п.8 (идея №19, SOS): кнопка меню — та же ось per_city, что остальные menu_*
     # (город может отдельно спрятать/показать SOS); окно активности и эскалация — per_city,

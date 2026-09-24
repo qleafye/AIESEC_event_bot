@@ -1133,6 +1133,12 @@ async def info_place(callback: types.CallbackQuery):
 # Phase 09.2: подписи program_caption/speakers_caption не ключи SETTINGS_SCHEMA (пишутся
 # как побочный эффект загрузки фото) — их пер-городной вариант отложен, см.
 # 09.2-RESEARCH Pitfall 1.
+# D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): одна кнопка программы вместо двух —
+# старый ключ/подпись menu_program/«📅 Программа форума» сохранены (уже настроены у
+# менеджеров, см. keyboards/builders.py::MENU_BUTTONS), новая интерактивная программа
+# (handlers/program.py, бывшая отдельная кнопка menu_schedule) стала ЗАПАСНЫМ видом: фото —
+# приоритет, если фото нет — текстовая программа сессий, если и её нет — пустая заглушка.
+# Видимость самой кнопки — `keyboards.builders.get_main_menu_kb` (фото ИЛИ сессии есть).
 # 📅 Программа форума
 @router.message(F.text.in_(MENU_TEXTS["menu_program"]))
 async def show_program(message: types.Message):
@@ -1155,9 +1161,19 @@ async def show_program(message: types.Message):
     try:
         photo = FSInputFile("resources/program.jpg")
         await message.answer_photo(photo, caption=program_caption, parse_mode="HTML")
+        return
     except Exception:
-        # Phase 17.1 (17.1-03): empty-state из реестра.
-        await reg_i18n.say(message, await get_setting_typed("program_empty_text"))
+        pass
+
+    # D-29: фото нет — интерактивная программа сессий (handlers/program.py), если она заведена
+    # в боте для города делегата. Ленивый импорт — handlers/program.py импортирует router
+    # ИЗ этого модуля (см. его докстринг), обратный импорт на уровне модуля дал бы цикл.
+    from handlers.program import send_program_schedule_text
+    if await send_program_schedule_text(message):
+        return
+
+    # Phase 17.1 (17.1-03): empty-state из реестра.
+    await reg_i18n.say(message, await get_setting_typed("program_empty_text"))
 
 # 🗣 Спикеры
 @router.message(F.text.in_(MENU_TEXTS["menu_speakers"]))
