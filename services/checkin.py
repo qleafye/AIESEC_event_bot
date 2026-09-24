@@ -206,6 +206,25 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     return buf.getvalue(), caption
 
 
+async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) -> None:
+    """Форум-ночь B2 (идея №17): единая точка «отметка на форуме -> время в Google-таблице»,
+    вызывается ВСЕМИ тремя источниками отметки СРАЗУ ПОСЛЕ `database.db.record_checkin`
+    (miniapp/routers/checkin.py::checkin_scan/checkin_manual, handlers/admin_checkin.py::
+    checkin_point_pick) — тот же приём, что `services.sheets.update_status_in_sheet` для
+    «Статус» (services/sheets.py::update_arrived_in_sheet ниже — точечное обновление одной
+    ячейки, не переаппенд строки).
+
+    Только на `'new'` (первая отметка) — `'duplicate'` уже писала то же самое время скана при
+    первой отметке, второй вызов Sheets API на тот же результат был бы просто тратой квоты.
+    Сам вызов уже fail-soft (update_arrived_in_sheet ловит исключения и возвращает False) —
+    отметка в БД к этому моменту уже сохранена вызывающим, лист может упасть без последствий
+    для самого чек-ина (D-17)."""
+    if status != "new":
+        return
+    from services.sheets import update_arrived_in_sheet
+    await update_arrived_in_sheet(telegram_id, scanned_at)
+
+
 # ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
 #
 # «Под любое приложение»: бот не полагается на конкретную структуру колонок конкретного
