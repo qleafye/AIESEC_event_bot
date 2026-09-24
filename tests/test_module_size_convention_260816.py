@@ -423,7 +423,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "тумблер текста checkin_volunteer_guide_text); 860 -> 877.",
     ),
     "admin.py": (
-        925,
+        927,
+        "Форум-ночь п.8 (идея №19, SOS): +2 строки — шов-импорт `from handlers import "
+        "admin_sos` (экран/карточка/привязка чата SOS) в самый хвост файла, после "
+        "admin_checkin (925 -> 927). "
         "сам агрегатор-ядро после 13-06, уже на границе GUIDELINE; +52 строки (Phase 15, "
         "STAT-03/D-10/D-18) -- городской скоуп render_stats_text по привязке staff.city + "
         "кнопка «🌐 Открыть дашборд» (_stats_keyboard_for). "
@@ -544,7 +547,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1131,
+        1144,
+        "Форум-ночь п.8 (идея №19, SOS): +13 строк — capability-записи экрана/карточки SOS "
+        "(admin_sos/asos:*/sos_claim:*/sos_resolve:*/special:sos_reply, капа «moderate_reg» — "
+        "те же люди отвечают на вопросы делегатов) и привязки чата SOS (asos_bind/"
+        "asos_bind_cancel/state:SosChatBind:*, капа «settings» — та же, что у остальной "
+        "интеграционной привязки чата); 1131 -> 1144, потолок до фактического размера. "
         "Ночная починка 24.09 (переделка «❗ Важное»/«🔕», cfdde41/6f4ea8b/3876ea6): +9 строк — "
         "capability-записи bc_important_toggle (капа «broadcast» — тот же тумблер важности, что "
         "у sched_important_toggle рядом) и sched_important_toggle/sched_go/sched_no "

@@ -467,6 +467,25 @@ _CODE_LITERALS_EN = {
     "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
         "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
     "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
+    # Форум-ночь п.8 (идея №19, SOS): реестровые дефолты пяти текстов визарда «🆘 SOS»
+    # (group "event", `sos_category_prompt_text`/`sos_details_prompt_text`/
+    # `sos_location_prompt_text`/`sos_sent_text`/`sos_already_open_text`).
+    "Что случилось?": "What happened?",
+    "Опиши коротко, что случилось — текстом или фото. Можно пропустить.":
+        "Briefly describe what happened — text or a photo. You can skip this.",
+    "Отправь геопозицию, если знаешь, где находишься. Можно пропустить.":
+        "Send your location if you know where you are. You can skip this.",
+    "🆘 Оргкомитет получил, с тобой свяжутся.": "🆘 The organizers got it — they'll reach out to you.",
+    "У тебя уже есть открытый SOS — организаторы уже знают и скоро свяжутся.":
+        "You already have an open SOS — the organizers already know and will reach out soon.",
+    # Категории SOS (`lit:services.sos.category_*`) + подпись кнопки геопозиции
+    # (`lit:sos.location_button`) — идут через tr_kb (кнопки inline/reply-клавиатур), не
+    # видны АСТ-сторожу, см. комментарий у их регистрации в services/i18n_sources.py.
+    "🤒 Плохо себя чувствую": "🤒 I feel unwell",
+    "🧭 Потерялся": "🧭 I'm lost",
+    "🔑 Потерял вещь": "🔑 I lost something",
+    "⚠️ Другое": "⚠️ Other",
+    "📍 Отправить геопозицию": "📍 Send location",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ

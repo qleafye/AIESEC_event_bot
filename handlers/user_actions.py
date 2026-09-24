@@ -1679,6 +1679,13 @@ async def show_important_today(message: types.Message):
     await message.answer(header + "\n\n" + "\n\n".join(lines))
 
 
+# Форум-ночь п.8 (идея №19, SOS): экран «🆘 SOS» — импорт СРАЗУ ПОСЛЕ show_important_today и
+# ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импорта program выше: фолбэк-хендлер
+# ниже ловит ЛЮБОЙ текст без активного FSM-состояния — кнопка меню обязана зарегистрироваться
+# раньше него). Сам хендлер/логика — в шве handlers/sos.py.
+from handlers import sos as sos_handlers  # noqa: E402,F401
+
+
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
 # handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
