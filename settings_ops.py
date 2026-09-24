@@ -611,6 +611,11 @@ TOGGLE_SECTION: dict[str, str] = {
     # «📋 Заявки», что сосед checkin_qr_broadcast_enabled выше (обе — рассылки-напоминания
     # накануне форума).
     "checkin_volunteer_guide_broadcast_enabled": "apps",
+    # Идея №1 бэклога чек-ина: режим «день форума» главного меню делегата (services/
+    # forum_day_menu.py) — тот же раздел «📋 Заявки», что соседи выше (обе про форумный день),
+    # свой экран у бота — handlers/admin_forum_functions.py (forumdaymenu_cfg:*), не строка
+    # раздела admin_sections.SECTIONS (тот же приём, что у checkin_qr_broadcast_enabled).
+    "forum_day_menu_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
