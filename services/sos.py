@@ -8,6 +8,18 @@
 services/, хендлеры — тонкий шов» (та же форма, что `services/questions.py` для «❓ Задать
 вопрос», `services/chat_tracking.py` для привязки чата делегатов).
 
+Решение владельца D-31 (24.09, `.planning/FORUM-CHECKIN.md`): **SOS без категорий.** Кнопки
+категорий без пояснительного текста бесполезны — в экстренной ситуации важна скорость, не
+классификация. Кнопка «🆘 SOS» СРАЗУ создаёт заявку и публикует карточку («подробности ещё не
+прислали»); делегат попадает в режим «дописываю SOS» (`SosReport.collecting`,
+`handlers/sos.py`) — всё, что он пишет/присылает (текст, фото, геопозиция), уходит В ТРЕД
+карточки И дописывает саму карточку (первый текст/фото снимает пометку «подробности ещё не
+прислали»). Режим живёт до «Готово», решения заявки оргом, таймаута
+(`sos_collecting_timeout_minutes`) или следующего `/start`. Старые категорийные кнопки/тексты
+(`CATEGORY_*`, `sos_category_prompt_text`/`sos_details_prompt_text`/`sos_location_prompt_text`)
+удалены из потока целиком; колонка `sos_reports.category` осталась в БД NULL-able ради
+обратной совместимости (старые строки), но новый код её никогда не пишет и не читает.
+
 Метки времени — московские (`services.timeutil.msk_now()`, конвенция квика 260912-mcj для
 НОВОГО кода — SOS заведён 24.09, после этой конвенции, поэтому в
 `database.db._MSK_MIGRATION_COLUMNS`-исключение из UTC-семьи `delegate_questions` не
@@ -31,22 +43,6 @@ from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
-
-# ── Категории (кнопки делегата, пункт 1 плана) — фиксированный набор, не реестр: владелец
-# согласовал именно эти четыре (идея №19), «Кодовые значения... человеку не показываем»
-# (CLAUDE.md) — код категории («bad»/«lost»/...) никогда не виден делегату/менеджеру, только
-# подпись из этого словаря.
-CATEGORY_BAD = "bad"
-CATEGORY_LOST = "lost"
-CATEGORY_ITEM = "lost_item"
-CATEGORY_OTHER = "other"
-CATEGORY_ORDER = (CATEGORY_BAD, CATEGORY_LOST, CATEGORY_ITEM, CATEGORY_OTHER)
-CATEGORY_LABELS = {
-    CATEGORY_BAD: "🤒 Плохо себя чувствую",
-    CATEGORY_LOST: "🧭 Потерялся",
-    CATEGORY_ITEM: "🔑 Потерял вещь",
-    CATEGORY_OTHER: "⚠️ Другое",
-}
 
 # ── Статус строки (зеркало database.db._SOS_STATUS_SQL — то же правило "чистой" функцией,
 # тот же приём, что services/questions.py::question_status рядом со своим SQL-зеркалом).
@@ -75,6 +71,11 @@ DEFAULT_ACTIVE_DAYS = 2
 # Пункт 4 плана: дефолт эскалации «без «Беру»» — 5 минут, настройка per_city
 # `sos_escalation_minutes`.
 DEFAULT_ESCALATION_MINUTES = 5
+
+# D-31: дефолт «сколько ждать дозапись» (режим «дописываю SOS» после мгновенной карточки) —
+# 30 минут, настройка per_city `sos_collecting_timeout_minutes` (тот же довод, что у
+# sos_reopen_window_minutes/sos_claimed_remind_minutes — форумы городов идут в разные дни).
+DEFAULT_COLLECTING_TIMEOUT_MINUTES = 30
 
 
 async def is_sos_active_for_city(city: str | None) -> bool:
@@ -277,8 +278,14 @@ async def resolve_city_label(city_code: str | None) -> str | None:
 def render_card_text(report: dict, user: dict | None, *, city_label: str | None = None) -> str:
     """`city_label` — уже РЕЗОЛВЕННАЯ человеческая подпись города (CLAUDE.md: «Кодовые значения
     ... человеку не показываем»), не код. Функция остаётся синхронной/чистой (`cities.city_label`
-    — async, резолвится ОДИН раз в вызывающем коде — `post_card`/`admin_sos._refresh_card`,
-    оба уже в async-контексте) — сырой код `report["city"]` сюда не подставляется никогда."""
+    — async, резолвится ОДИН раз в вызывающем коде — `post_card`/`refresh_card`, оба уже в
+    async-контексте) — сырой код `report["city"]` сюда не подставляется никогда.
+
+    D-31: карточка публикуется МГНОВЕННО, до того как делегат прислал хоть слово — пока
+    `details_text`/`details_photo_file_id` оба пусты, строка «🆘 СРОЧНО — подробности ещё не
+    прислали» держит место вместо категории (которую убрали целиком); как только делегат в
+    режиме «дописываю SOS» (`SosReport.collecting`) присылает первый текст/фото
+    (`database.db.add_sos_details`), пометка сменяется на сами подробности."""
     user = user or {}
     full_name = html_module.escape(str(user.get("full_name") or "—"))
     username = user.get("username")
@@ -286,10 +293,9 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
     university = html_module.escape(str(user.get("university") or "—"))
     phone = html_module.escape(str(user.get("phone") or "—"))
     city_text = html_module.escape(str(city_label)) if city_label else "—"
-    category_label = CATEGORY_LABELS.get(report.get("category"), str(report.get("category")))
 
     lines = [
-        f"🆘 <b>SOS #{report['id']}</b> · {category_label}",
+        f"🆘 <b>SOS #{report['id']}</b>",
         f"🆔 <code>{report['telegram_id']}</code> {full_name}",
         f"👤 {username_line}",
         f"🏙 {city_text}",
@@ -297,10 +303,15 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
         f"📞 {phone}",
     ]
     details = report.get("details_text")
+    photo = report.get("details_photo_file_id")
     if details:
         lines.append(f"«{html_module.escape(str(details))}»")
-    if report.get("details_photo_file_id") and not details:
+        if photo:
+            lines.append("📷 фото приложено")
+    elif photo:
         lines.append("📷 фото приложено")
+    else:
+        lines.append("🆘 СРОЧНО — подробности ещё не прислали")
     lat, lon = report.get("latitude"), report.get("longitude")
     if lat is not None and lon is not None:
         lines.append(f"📍 https://maps.google.com/?q={lat},{lon}")
@@ -443,6 +454,75 @@ async def record_delivery_outcome(report_id: int, result: PostCardResult) -> Non
     from database.db import set_sos_delivery_failed
 
     await set_sos_delivery_failed(report_id, result.delivered_total == 0)
+
+
+# ── D-31: перерисовка карточки в чате после «дописывания» (текст/фото/гео режима collecting) ─
+#
+# Тот же рендер, что раньше жил ТОЛЬКО в `handlers/admin_sos.py::_refresh_card` (после захвата/
+# решения заявки) — перенесён сюда, потому что теперь его зовёт ещё и делегатская сторона
+# (`handlers/sos.py`, режим «дописываю SOS»), а домен карточки целиком живёт в этом модуле
+# (докстринг файла). `admin_sos._refresh_card` остаётся тонкой обёрткой ради обратной
+# совместимости места вызова.
+
+async def refresh_card(bot, report_id: int) -> None:
+    """Перерисовывает карточку в чате (если она там есть) — fail-soft: карточка могла быть
+    удалена/устареть, это не должно ронять сам вызов (дозапись делегата/захват/решение)."""
+    from database.db import get_user
+
+    report = await get_sos_report(report_id)
+    if report is None or not report.get("chat_id") or not report.get("card_message_id"):
+        return
+    user = await get_user(report["telegram_id"])
+    text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
+    kb = (
+        None if report_status(report) == STATUS_RESOLVED
+        else build_card_kb(report_id)
+    )
+    try:
+        await bot.edit_message_text(
+            text, chat_id=report["chat_id"], message_id=report["card_message_id"],
+            parse_mode="HTML", reply_markup=kb,
+        )
+    except Exception:
+        pass
+
+
+# ── D-31: режим «дописываю SOS» — всё, что делегат шлёт после мгновенной карточки, уходит В
+# ТРЕД (реплаем на карточку в чате оргов ЛИБО, без привязанного чата/при её провале, личным
+# веером держателям `moderate_reg` — известное ограничение фоллбэка без треда, то же, что у
+# `post_card`/`_fallback_fanout`).
+
+async def relay_delegate_message(message, report_id: int) -> None:
+    """`message` — оригинал делегата (текст/фото/геопозиция), копируется КАК ЕСТЬ
+    (`message.copy_to`) — та же форма, что была у `handlers/sos.py::_relay_report_followup`
+    до переноса сюда (пункт 3 плана: реплай уводит ответ орга мимо тихих часов, здесь —
+    обратное направление, делегат дописывает свою же заявку)."""
+    report = await get_sos_report(report_id)
+    if report is None:
+        return
+    if report.get("chat_id") and report.get("card_message_id"):
+        try:
+            await message.copy_to(
+                report["chat_id"], reply_to_message_id=report["card_message_id"],
+            )
+            return
+        except Exception as e:
+            logger.warning(
+                f"sos.relay_delegate_message: не удалось отправить в чат id={report['chat_id']}: {e}",
+            )
+    from config import config
+    from handlers.admin_caps import capability_holders
+
+    recipients = await capability_holders("moderate_reg", city=report.get("city"))
+    if not recipients:
+        recipients = list(config.ADMIN_IDS)
+    prefix = f"💬 Делегат дополнил SOS #{report_id}:"
+    for uid in recipients:
+        try:
+            await message.bot.send_message(uid, prefix)
+            await message.copy_to(uid)
+        except Exception as e:
+            logger.info(f"sos.relay_delegate_message: не удалось написать id={uid}: {e}")
 
 
 # ── Повторная попытка доставки (пункт 1 плана, находка 1) — ОДНА попытка через минуту, джоба
