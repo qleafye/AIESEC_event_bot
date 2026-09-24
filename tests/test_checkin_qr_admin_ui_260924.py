@@ -21,12 +21,23 @@ from config import config
 from database import db
 from database.db import _connect
 from handlers import admin_checkin
+from handlers.admin_caps import role_caps_key, role_enabled_key
 from handlers.states import CheckinQrTimeEdit
 import services.scheduler as sched
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910202
+MANAGER_ID = 910203
 UID = 260924201
+
+
+def _bind_manager_to_city(manager_id, city):
+    """Тот же приём, что `tests/test_admin_percity_ui.py::_add_bound_manager` — менеджер,
+    закреплённый ЗА ОДНИМ городом (`staff.city`), не суперадмин (не в `config.ADMIN_IDS`)."""
+    asyncio.run(db.add_staff(manager_id, "reg_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(manager_id, city))
+    asyncio.run(db.set_setting(role_enabled_key("reg_manager"), "on"))
+    asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
 
 
 def _db_ready(tmp_path, name="test_checkin_qr_admin_ui_260924.db"):
@@ -302,3 +313,52 @@ def test_time_step_scoped_to_city_when_cities_module_on(tmp_path, monkeypatch):
         assert s.get_job("checkin_qr_evening:spb") is not None
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Права: менеджер, закреплённый за ОДНИМ городом, не трогает чужой (тот же довод, что
+# `handlers.admin_settings._cycle_enum_setting` для per-city ключей)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_bound_manager_denied_config_for_other_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _bind_manager_to_city(MANAGER_ID, "tyumen")
+
+    cb = _FakeCallback("checkinqr_cfg:spb", MANAGER_ID)
+    asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
+    assert cb.message.sent == []  # экран не показан
+    assert cb.answers and cb.answers[0][1] is True  # show_alert=True
+
+
+def test_bound_manager_denied_send_for_other_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _bind_manager_to_city(MANAGER_ID, "tyumen")
+    asyncio.run(_insert_user(UID, event_city="spb"))
+
+    cb = _FakeCallback("checkinqr_send:spb", MANAGER_ID)
+    asyncio.run(admin_checkin.checkinqr_send_confirm(cb))
+    assert cb.message.sent == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_bound_manager_denied_toggle_for_other_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _bind_manager_to_city(MANAGER_ID, "tyumen")
+
+    cb = _FakeCallback("checkinqr_toggle:spb", MANAGER_ID)
+    asyncio.run(admin_checkin.checkinqr_toggle_go(cb))
+    assert cb.message.edited == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_bound_manager_allowed_config_for_own_city(tmp_path):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _bind_manager_to_city(MANAGER_ID, "spb")
+
+    cb = _FakeCallback("checkinqr_cfg:spb", MANAGER_ID)
+    asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
+    assert cb.message.sent  # экран показан — свой город
