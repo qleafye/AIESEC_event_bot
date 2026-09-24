@@ -268,3 +268,100 @@ async def send_guide(city: str | None) -> dict:
         f"of {len(targets)} (держателей {len(holders)}, уже было {len(already)})"
     )
     return {"sent": sent, "failed": failed, "total": len(targets)}
+
+
+# ── Шпаргалка новому держателю checkin (выдали роль или право существующей роли) ──────────
+#
+# Рассылка накануне берёт аудиторию на срабатывании — кто получил право ДО неё, получит её и
+# так. Здесь закрываем окно ПОСЛЕ неё: канун/день форума, джоба уже отработала, а волонтёра
+# назначили только что. Та же таблица отметок `checkin_volunteer_guide_sends` по дню форума —
+# второго сообщения ни от джобы, ни от повторной выдачи права не будет.
+
+_PRIORITY = {"sent": 3, "already": 3, "morning": 2, "not_due": 1, "skipped": 0}
+
+
+async def _holder_cities(tid: int) -> list[str | None]:
+    """Города, в чью рассылку шпаргалки попадёт этот держатель — та же логика, что
+    `capability_holders(city=...)`: привязан к городу — только он, не привязан — все."""
+    from cities import cities_module_on, enabled_cities, normalize_city
+    if not await cities_module_on():
+        return [None]
+    from database.db import get_staff_city
+    bound = await get_staff_city(tid)
+    if bound:
+        return [normalize_city(bound)]
+    return [c["code"] for c in await enabled_cities()]
+
+
+async def _guide_for_holder_in_city(tid: int, city: str | None, now: datetime) -> str:
+    if not await broadcast_enabled_for(city):
+        return "skipped"
+    text = (await get_setting_typed("checkin_volunteer_guide_text") or "").strip()
+    date_str = await forum_date_for(city)
+    run_at = guide_run_at(date_str, await _time_for(city)) if text else None
+    if run_at is None:
+        return "skipped"
+    forum_day = run_at.date() + timedelta(days=1)
+    if forum_day < now.date():
+        return "skipped"  # форум прошёл
+    if now < run_at:
+        return "not_due"  # рассылка накануне ещё впереди и возьмёт его сама
+    day = forum_day.strftime("%Y-%m-%d")
+    if tid in await checkin_volunteer_guide_sent_ids(day):
+        return "already"
+    from services.checkin_broadcast import EVENING_CATCHUP_CUTOFF
+    if forum_day > now.date() and now.time() >= EVENING_CATCHUP_CUTOFF:
+        # Канун после 22:00 — не будим ночью: утренняя джоба города отправит (джоба дедупит
+        # по дню, так что остальным повторно не уйдёт).
+        result = await schedule_city_job(city)
+        if result.get("scheduled"):
+            return "morning"
+    ok = await _sched._safe_send(lambda cid: _sched._bot.send_message(cid, text), tid)
+    if not ok:
+        return "skipped"
+    await checkin_volunteer_guide_mark_sent(tid, day, city, now.strftime("%Y-%m-%d %H:%M:%S"))
+    return "sent"
+
+
+async def guide_for_new_holder(tid: int) -> str:
+    """Человек только что получил право checkin. Возвращает самый «сильный» исход по его
+    городам: `sent` (ушла сейчас, отмечена), `already` (уже получал на этот день форума),
+    `morning` (канун после 22:00 — уйдёт утренней джобой), `not_due` (рассылка накануне ещё
+    впереди), `skipped` (гейты выключены, даты нет, форум прошёл, не доставлено)."""
+    now = msk_now()
+    best = "skipped"
+    for city in await _holder_cities(tid):
+        try:
+            status = await _guide_for_holder_in_city(tid, city, now)
+        except Exception as e:
+            logger.error(f"checkin_volunteer_broadcast.guide_for_new_holder({tid}, {city!r}): {e}")
+            continue
+        if _PRIORITY[status] > _PRIORITY[best]:
+            best = status
+    return best
+
+
+async def greet_new_holder(bot, tid: int) -> None:
+    """Шпаргалка тому, кто впервые получил право checkin. Если форум близко — по правилу выше
+    (с отметкой); иначе — прежняя отправка сразу при назначении (форум-ночь B3), без отметки:
+    накануне форума рассылка напомнит ещё раз, это другой повод."""
+    try:
+        if await guide_for_new_holder(tid) in ("sent", "already", "morning"):
+            return
+        text = (await get_setting_typed("checkin_volunteer_guide_text") or "").strip()
+        if text and bot is not None:
+            await bot.send_message(tid, text)
+    except Exception:
+        logger.warning("greet_new_holder: не удалось отправить шпаргалку tid=%s", tid, exc_info=True)
+
+
+async def greet_new_holders(bot, before: set[int]) -> None:
+    """После правки прав роли / её включения: всем, у кого checkin появился только сейчас.
+    `before` — `capability_holders("checkin")` до правки. Суперадмины держат право всегда."""
+    from config import config
+    from handlers.admin_caps import capability_holders
+    for tid in await capability_holders(_CAP):
+        if tid in before or tid in config.ADMIN_IDS:
+            continue
+        await greet_new_holder(bot, tid)
+        await asyncio.sleep(0.05)
