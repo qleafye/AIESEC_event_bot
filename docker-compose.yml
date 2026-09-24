@@ -69,6 +69,9 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      # D-29: диск-фоллбэк фото программы (resources/program.jpg) — тот же каталог, что у бота,
+      # иначе Mini App видел бы файл из образа, а чат — с хоста.
+      - ./resources:/app/resources:ro
     networks:
       - default
       - edge
