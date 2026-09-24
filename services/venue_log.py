@@ -83,6 +83,23 @@ def staff_display_name(*, first_name: str | None = None, last_name: str | None =
     return name or (f"@{uname}" if uname else None)
 
 
+def staff_name_of(tg_user) -> str | None:
+    """То же для объекта пользователя Telegram (aiogram `User` — утиная типизация, модуль
+    aiogram-free)."""
+    if tg_user is None:
+        return None
+    return staff_display_name(
+        first_name=getattr(tg_user, "first_name", None), last_name=getattr(tg_user, "last_name", None),
+        username=getattr(tg_user, "username", None),
+    )
+
+
+async def log_by(tg_user, action: str, **kwargs) -> int | None:
+    """`log_action` от имени пользователя Telegram, нажавшего кнопку в боте, — одна строка
+    врезки в хендлере (перевыпуск QR, загрузка CSV)."""
+    return await log_action(action, staff_id=getattr(tg_user, "id", None), staff_name=staff_name_of(tg_user), **kwargs)
+
+
 async def person_name(telegram_id: int | None) -> str:
     """Человеческое имя по id: ФИО из анкеты -> @username -> «id N»."""
     if telegram_id is None:
