@@ -76,6 +76,9 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +
     # загрузка выгрузки офлайн-сканера (handlers/admin_checkin.py).
     ("✅ Отметки на форуме", "admin_checkin"),
+    # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — единый статус-экран всех
+    # форумных тумблеров (handlers/admin_forum_functions.py).
+    ("🎪 Форум: функции", "admin_forum_functions"),
 ]
 
 
