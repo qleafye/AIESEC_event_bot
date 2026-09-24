@@ -637,17 +637,21 @@ _ENGINE_DYNAMIC_EN = {
     # короткие ответы бота (`handlers/user_actions.py`, callback_data `rnm_accept`/`rnm_confirm`/
     # `rnm_decline`) — хардкод в коде (та же конвенция, что у кнопок «Уже еду»/«Не смогу
     # прийти»/«Я на месте» выше: подпись кнопки короче фразы, самого текста в реестре нет).
-    "✅ Перенести мою заявку в Москву": "✅ Move my application to Moscow",
+    # Ведущий эмодзи "✅ " отделяется `split_leading_symbols` ДО перевода (тот же приём, что у
+    # «🎟 Мой QR» выше) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
+    "Перенести мою заявку в Москву": "Move my application to Moscow",
     "Нет, спасибо": "No, thanks",
     "Перенести заявку в Москву? Анкету заново заполнять не нужно.":
         "Move your application to Moscow? No need to fill out the form again.",
-    "✅ Да, перенести": "✅ Yes, move it",
+    "Да, перенести": "Yes, move it",
     "Готово, твоя заявка теперь в Москве — даты и место в меню.":
         "Done, your application is now in Moscow — dates and venue are in the menu.",
     "Заявку посмотрят ещё раз.": "Your application will be reviewed again.",
     "Хорошо, до встречи в следующий раз!": "Okay, see you next time!",
     "Уже перенесено.": "Already moved.",
     "Заявка уже не в {city}.": "Your application is no longer in {city}.",
+    "Не получилось перенести заявку — напиши организаторам.":
+        "Couldn't move your application — please message the organizers.",
 }
 
 # ── Голые ключи реестра (group=event/reg/game/pay) — хаб/статус/оплата/задания за пределами

@@ -69,6 +69,7 @@ from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submiss
 from cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
     get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
+    city_label,  # Трек «региональные форумы → Москва»: подпись города в ответах rnm_*
 )
 from keyboards.builders import (
     get_cancel_kb,
@@ -2021,6 +2022,115 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
     caption = reg_i18n.tr_text(caption, lang, tr_map)
     photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
     await callback.message.answer_photo(photo, caption=caption)
+    await callback.answer()
+
+
+# ── Трек «региональные форумы → Москва»: ответ делегата на предложение переноса ──────────────
+# Мини-флоу в три хендлера: rnm_accept (предложение -> подтверждение) -> rnm_confirm
+# (подтверждение -> перенос) -> готово; rnm_decline доступна и с экрана предложения, и с экрана
+# подтверждения. Тот же fail-soft приём, что `cna:*`/`fnsp:*` выше — строки нет (чужой/
+# устаревший callback_data) -> тихо, без падения.
+
+async def _rnm_confirm_kb(lang: str, tr_map: dict):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, перенести", callback_data="rnm_confirm")],
+        [InlineKeyboardButton(text="Нет, спасибо", callback_data="rnm_decline")],
+    ])
+    return reg_i18n.tr_kb(kb, lang, tr_map)
+
+
+@router.callback_query(F.data == "rnm_accept")
+async def regional_noshow_move_accept(callback: types.CallbackQuery):
+    from database.db import RNM_MOVED
+    from services.regional_noshow_move import get_state
+
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    tid = callback.from_user.id
+    state = await get_state(tid)
+    if state is None:
+        await callback.answer()
+        return
+    if state.get("response") == RNM_MOVED:
+        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        return
+
+    user = await get_user(tid)
+    source_city = normalize_city(state.get("source_city"))
+    if user is None or normalize_city(user.get("event_city")) != source_city:
+        label = html.escape(await city_label(source_city))
+        text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+        await callback.answer(text, show_alert=True)
+        return
+
+    text = reg_i18n.tr_text(
+        "Перенести заявку в Москву? Анкету заново заполнять не нужно.", lang, tr_map,
+    )
+    await callback.message.edit_text(text, reply_markup=await _rnm_confirm_kb(lang, tr_map))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "rnm_confirm")
+async def regional_noshow_move_confirm(callback: types.CallbackQuery):
+    from database.db import RNM_MOVED
+    from services.regional_noshow_move import apply_move, get_state
+
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    tid = callback.from_user.id
+    state = await get_state(tid)
+    if state is None:
+        await callback.answer()
+        return
+    if state.get("response") == RNM_MOVED:
+        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        return
+
+    user = await get_user(tid)
+    source_city = normalize_city(state.get("source_city"))
+    if user is None or normalize_city(user.get("event_city")) != source_city:
+        label = html.escape(await city_label(source_city))
+        text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+        await callback.answer(text, show_alert=True)
+        return
+
+    report = await apply_move(tid, source_city=source_city)
+    if not report.get("ok"):
+        # Fail-soft (D-04): перенос не удался технически (например, город исчез из реестра
+        # между тапами) — сообщаем человеческими словами, не роняем хендлер.
+        await callback.message.answer(
+            reg_i18n.tr_text(
+                "Не получилось перенести заявку — напиши организаторам.", lang, tr_map,
+            ),
+        )
+        await callback.answer()
+        return
+
+    lines = [reg_i18n.tr_text(
+        "Готово, твоя заявка теперь в Москве — даты и место в меню.", lang, tr_map,
+    )]
+    if report.get("status_changed"):
+        lines.append(reg_i18n.tr_text("Заявку посмотрят ещё раз.", lang, tr_map))
+    await callback.message.edit_text("\n".join(lines))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "rnm_decline")
+async def regional_noshow_move_decline(callback: types.CallbackQuery):
+    from database.db import RNM_MOVED
+    from services.regional_noshow_move import get_state, record_decline
+
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    tid = callback.from_user.id
+    state = await get_state(tid)
+    if state is None:
+        await callback.answer()
+        return
+    if state.get("response") == RNM_MOVED:
+        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        return
+
+    await record_decline(tid)
+    text = reg_i18n.tr_text("Хорошо, до встречи в следующий раз!", lang, tr_map)
+    await callback.message.edit_text(text)
     await callback.answer()
 
 

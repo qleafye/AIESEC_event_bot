@@ -50,14 +50,17 @@ from handlers.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
 from handlers.states import ForumDayMenuTimeEdit
 from handlers.states import ForumDayReportTimeEdit, ForumNoshowPollTimeEdit
+from handlers.states import RegionalNoshowMoveTimeEdit
 from keyboards.builders import get_cancel_kb
 from services import session_feedback as sf
 from services.checkin_volunteer_broadcast import schedule_city_job as schedule_volunteer_guide_job
 from services.forum_day_menu import is_forum_day_menu_active_for_city
 from services import forum_day_report as fdr
 from services import forum_noshow_poll as fnsp
+from services import regional_noshow_move as rgnm
 from services.forum_day_report import schedule_city_job as schedule_day_report_job
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
+from services.regional_noshow_move import schedule_city_job as schedule_regional_noshow_move_job
 from services.sos import is_sos_active_for_city
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
@@ -247,6 +250,14 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         lines.append(f"❓ Опрос неявившихся «почему не пришёл»: {_status(poll_on)}")
         buttons.append([InlineKeyboardButton(
             text="❓ Настройки опроса неявившихся", callback_data=f"forumnoshowpoll_cfg:{_encode_city(code)}",
+        )])
+
+        # Трек «региональные форумы → Москва»: перенос неявившихся — тумблер + время + город
+        # назначения + статус после переноса, свой экран этого же модуля (rgnm_cfg:*).
+        rgnm_on = await get_setting_typed_for_city("regional_noshow_offer_enabled", code) == "on"
+        lines.append(f"🚌 Перенос неявившихся на форум в Москве: {_status(rgnm_on)}")
+        buttons.append([InlineKeyboardButton(
+            text="🚌 Настройки переноса в Москву", callback_data=f"rgnm_cfg:{_encode_city(code)}",
         )])
 
     if not await cities_module_on():
@@ -875,3 +886,229 @@ async def forumnoshowpoll_time_step(message: types.Message, state: FSMContext):
     text, kb = await _noshow_poll_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── Трек «региональные форумы → Москва»: перенос неявившихся ────────────────────────────────
+# Форма — тот же приём, что «Опрос неявившихся» выше (тумблер + время), плюс два кнопочных
+# выбора без свободного ввода (город назначения — из `cities.enabled_cities()`, статус после
+# переноса — тумблер-цикл между двумя значениями): «бот для людей» — код города/варианта
+# менеджер никогда не печатает.
+
+_RGNM_STATUS_LABELS = {
+    rgnm.STATUS_MODE_KEEP: "Сохранить одобрение",
+    rgnm.STATUS_MODE_TO_MODERATION: "Вернуть на модерацию",
+}
+
+
+async def _safe_reschedule_regional_noshow_move(code: str | None) -> None:
+    import logging
+    try:
+        await schedule_regional_noshow_move_job(code)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"regional_noshow_move reschedule({code!r}) failed: {e}")
+
+
+async def _regional_noshow_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+    enabled = await get_setting_typed_for_city("regional_noshow_offer_enabled", code)
+    t = await get_setting_typed_for_city("regional_noshow_offer_time", code) or "12:00"
+    label = await city_label(code) if code else None
+    on = enabled == "on"
+
+    target_code = await rgnm.target_city_for(code)
+    target_label = await city_label(target_code)
+    status_mode = await rgnm.move_status_for(code)
+    status_label = _RGNM_STATUS_LABELS[status_mode]
+
+    lines = ["🚌 <b>Перенос неявившихся на форум в Москве</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
+    lines.append(f"Время (день после форума): {t}")
+    lines.append(f"Город назначения: {html.escape(target_label)}")
+    lines.append(f"Статус после переноса: {status_label}")
+    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    if not forum_date_set:
+        lines.append("\n⚠️ «🗓 Дата начала форума» не задана — предложение не поставится, даже если Вкл здесь.")
+    text_set = bool((await get_setting_typed_for_city("regional_noshow_offer_text", code) or "").strip())
+    if not text_set:
+        lines.append("\n⚠️ Текст предложения пуст — рассылка НЕ уйдёт, даже если включена здесь.")
+
+    from cities import cities_module_on as _cmo, city_scope as _cscope
+    scope = _cscope(code) if code and await _cmo() else None
+    lines.append(f"\n{await rgnm.summary_text(city_scope=scope)}")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}",
+            callback_data=f"rgnm_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🕕 Время: {t}",
+            callback_data=f"rgnm_time:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🏙 Город назначения: {target_label}",
+            callback_data=f"rgnm_target_start:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"Статус после переноса: {status_label}",
+            callback_data=f"rgnm_status_toggle:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("rgnm_cfg:"))
+async def rgnm_cfg_screen(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    text, kb = await _regional_noshow_cfg_text_kb(code)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rgnm_toggle:"))
+async def rgnm_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "regional_noshow_offer_enabled"
+    current = await get_setting_typed_for_city(key, code)
+    new_val = "off" if current == "on" else "on"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    await _safe_reschedule_regional_noshow_move(code)
+    text, kb = await _regional_noshow_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("rgnm_time:"))
+async def rgnm_time_start(callback: types.CallbackQuery, state: FSMContext):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    await state.update_data(rgnm_time_city=code)
+    await state.set_state(RegionalNoshowMoveTimeEdit.waiting_value)
+    await callback.message.answer(
+        "Во сколько НА СЛЕДУЮЩИЙ ДЕНЬ после последнего дня форума слать предложение переноса "
+        "(московское время)? Формат <code>ЧЧ:ММ</code>, например <code>12:00</code>.",
+        parse_mode="HTML",
+        reply_markup=get_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(StateFilter(RegionalNoshowMoveTimeEdit), Command("cancel"))
+@router.message(StateFilter(RegionalNoshowMoveTimeEdit), F.text == "Отмена")
+async def cancel_rgnm_time_edit(message: types.Message, state: FSMContext):
+    await state.set_state(None)
+    await message.answer("Отменено.", reply_markup=ReplyKeyboardRemove())
+
+
+@router.message(RegionalNoshowMoveTimeEdit.waiting_value)
+async def rgnm_time_step(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    code = data.get("rgnm_time_city")
+    await state.set_state(None)
+
+    if not await _city_allowed(message.from_user.id, code):
+        await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
+        return
+
+    key = "regional_noshow_offer_time"
+    value, error = validate_setting_value(key, (message.text or "").strip())
+    if error:
+        await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(message.from_user.id, composed, value)
+    else:
+        await set_setting_by_admin(message.from_user.id, key, value)
+    await _safe_reschedule_regional_noshow_move(code)
+
+    text, kb = await _regional_noshow_cfg_text_kb(code)
+    await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("rgnm_status_toggle:"))
+async def rgnm_status_toggle_go(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    key = "regional_noshow_move_status"
+    current = await rgnm.move_status_for(code)
+    new_val = (
+        rgnm.STATUS_MODE_KEEP if current == rgnm.STATUS_MODE_TO_MODERATION
+        else rgnm.STATUS_MODE_TO_MODERATION
+    )
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, new_val)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, new_val)
+    text, kb = await _regional_noshow_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer(_RGNM_STATUS_LABELS[new_val], show_alert=True)
+
+
+@router.callback_query(F.data.startswith("rgnm_target_start:"))
+async def rgnm_target_start(callback: types.CallbackQuery):
+    code = _decode_city(callback.data.split(":", 1)[1])
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    cities = await enabled_cities()
+    buttons = [
+        [InlineKeyboardButton(
+            text=c["label"], callback_data=f"rgnm_target_pick:{_encode_city(code)}:{c['code']}",
+        )]
+        for c in cities
+    ]
+    if not buttons:
+        await callback.answer("Нет включённых городов.", show_alert=True)
+        return
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"rgnm_cfg:{_encode_city(code)}")])
+    await callback.message.answer(
+        "🏙 <b>Куда переносить неявившихся?</b>", parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rgnm_target_pick:"))
+async def rgnm_target_pick(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    code = _decode_city(parts[1])
+    target_code = parts[2]
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    from cities import get_city
+    if get_city(target_code) is None:
+        await callback.answer("Такого города нет.", show_alert=True)
+        return
+
+    key = "regional_noshow_target_city"
+    if code and await cities_module_on():
+        composed = per_city_key(key, code)
+        await set_setting_by_admin(callback.from_user.id, composed, target_code)
+    else:
+        await set_setting_by_admin(callback.from_user.id, key, target_code)
+
+    text, kb = await _regional_noshow_cfg_text_kb(code)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("✅ Сохранено")

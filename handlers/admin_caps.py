@@ -990,6 +990,16 @@ ADMIN_CAPS: dict[str, str] = {
     "forumnoshowpoll_time:*": "moderate_reg",
     "state:ForumNoshowPollTimeEdit:*": "moderate_reg",
 
+    # Трек «региональные форумы → Москва»: та же капа «moderate_reg», что и у остального хаба
+    # выше — массовая рассылка предложения делегатам региона + правка города/статуса переноса.
+    "rgnm_cfg:*": "moderate_reg",
+    "rgnm_toggle:*": "moderate_reg",
+    "rgnm_time:*": "moderate_reg",
+    "state:RegionalNoshowMoveTimeEdit:*": "moderate_reg",
+    "rgnm_status_toggle:*": "moderate_reg",
+    "rgnm_target_start:*": "moderate_reg",
+    "rgnm_target_pick:*": "moderate_reg",
+
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — та же капа «moderate_reg», что у
     # рассылки QR выше (тот же довод: массовая отправка сообщений делегатам города, не
     # рутинное сканирование на входе, которое разрешено волонтёру правом «checkin»).
