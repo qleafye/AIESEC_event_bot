@@ -633,6 +633,21 @@ _ENGINE_DYNAMIC_EN = {
     "Впиши город сам — менеджер увидит его как есть.": "Type your own city — the manager will see it exactly as you wrote it.",
     "Другой ВУЗ": "Other university",
     "Другой город": "Other city",
+    # Трек «региональные форумы → Москва» (25.09): подписи кнопок предложения переноса и
+    # короткие ответы бота (`handlers/user_actions.py`, callback_data `rnm_accept`/`rnm_confirm`/
+    # `rnm_decline`) — хардкод в коде (та же конвенция, что у кнопок «Уже еду»/«Не смогу
+    # прийти»/«Я на месте» выше: подпись кнопки короче фразы, самого текста в реестре нет).
+    "✅ Перенести мою заявку в Москву": "✅ Move my application to Moscow",
+    "Нет, спасибо": "No, thanks",
+    "Перенести заявку в Москву? Анкету заново заполнять не нужно.":
+        "Move your application to Moscow? No need to fill out the form again.",
+    "✅ Да, перенести": "✅ Yes, move it",
+    "Готово, твоя заявка теперь в Москве — даты и место в меню.":
+        "Done, your application is now in Moscow — dates and venue are in the menu.",
+    "Заявку посмотрят ещё раз.": "Your application will be reviewed again.",
+    "Хорошо, до встречи в следующий раз!": "Okay, see you next time!",
+    "Уже перенесено.": "Already moved.",
+    "Заявка уже не в {city}.": "Your application is no longer in {city}.",
 }
 
 # ── Голые ключи реестра (group=event/reg/game/pay) — хаб/статус/оплата/задания за пределами
@@ -864,6 +879,10 @@ _REGISTRY_TEXTS_EN = {
         "Welcome to the volunteer team! You've been granted access to the check-in scanner.",
     "Ссылка устарела, попроси у организатора новую.": "This link has expired, ask the organizer for a new one.",
     "У тебя уже есть доступ к боту как у менеджера.": "You already have manager-level access to the bot.",
+    # Трек «региональные форумы → Москва» (25.09): предложение переноса неявившегося делегата
+    # регионального форума на московский форум (group "reg", regional_noshow_offer_text).
+    "Не получилось на форум в {city}? Приезжай на Юлид в Москве {dates}":
+        "Couldn't make it to the forum in {city}? Come to YouLead in Moscow {dates}",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
