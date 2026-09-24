@@ -269,6 +269,15 @@
                                        же сервис, что и остальной поиск по фамилии в проекте
   GET  /app/api/checkin/stats      -> {arrived, approved, cities: null|[{code,label,arrived,
                                        approved}]} — задача A2, та же разбивка, что у бота
+  Делегат (D-29, FORUM-CHECKIN.md «Решения владельца 24.09» — плитка «📅 Программа», без
+  своего раздела-чекбокса, `delegate_gate` only, видимость плитки решают ДАННЫЕ, не тумблер):
+  GET  /app/api/program            -> {view: "table"|"photo",
+                                       photo_url: "/app/api/file/{id}"|null,
+                                       days[{day,label,slots[{start_time,end_time,now,next,
+                                       sessions[{id,title,speaker,hall_name,start_time,
+                                       end_time}]}]}], empty_text|null}
+                                       view/фото резолвятся services.program (общая точка
+                                       правды с чат-кнопкой и гейтом кнопки меню бота)
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -298,6 +307,7 @@ from miniapp.routers import (
     hub,
     page,
     profile,
+    program,
     questions,
     review,
     settings,
@@ -324,6 +334,7 @@ ALL_ROUTERS = [
     questions.router,
     faq.router,
     checkin.router,
+    program.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]

@@ -50,7 +50,7 @@ from fastapi.responses import StreamingResponse
 
 import reg_engine
 import tg_media
-from cities import cities_module_on, normalize_city
+from cities import cities_module_on, city_codes, normalize_city, per_city_key
 from dashboard.access import resolve_capabilities, staff_city
 from dashboard.db import read_conn
 from database.db import (
@@ -110,6 +110,17 @@ async def is_public_asset(file_id: str) -> bool:
     # который делегат обязан прочитать до подписи — открыт любому принципалу, как логотип.
     for _label, consent_key in await reg_engine.consent_entries():
         if (await get_setting(f"consent_pdf_{consent_key}") or "") == file_id:
+            return True
+    # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): фото программы — публичное
+    # оформление события (та же карточка, что делегат уже видит в чате по кнопке «📅 Программа
+    # форума»), не персональные данные — общий ключ ИЛИ per_city составной (`services.program.
+    # PROGRAM_PHOTO_KEY`, мимо обычного per_city-резолвера, D-10).
+    from services.program import PROGRAM_PHOTO_KEY
+    if (await get_setting(PROGRAM_PHOTO_KEY) or "") == file_id:
+        return True
+    for code in city_codes():
+        composed = per_city_key(PROGRAM_PHOTO_KEY, code)
+        if composed and (await get_setting(composed) or "") == file_id:
             return True
     return False
 
