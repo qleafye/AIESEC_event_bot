@@ -505,3 +505,32 @@ def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
         assert s.get_jobs() == []  # ничего не поставлено
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, monkeypatch):
+    """«🎟 Вход по QR» — от него зависит постановка джоб рассылки QR и шпаргалки волонтёру;
+    раньше включение ничего не планировало до рестарта бота."""
+    from handlers import admin_settings
+
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
+    monkeypatch.setattr(broadcast_svc, "msk_now", lambda: datetime(2026, 9, 24, 12, 0))
+    import services.checkin_volunteer_broadcast as vb
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 24, 12, 0))
+
+    async def body(s):
+        assert s.get_jobs() == []
+        cb = _FakeCallback("toggle_checkin_qr_enabled", ADMIN_ID)
+        await admin_settings.toggle_checkin_qr_enabled(cb)
+        assert await db.get_setting("checkin_qr_enabled") == "on"
+        assert s.get_job("checkin_qr_evening:all") is not None
+        assert s.get_job("checkin_qr_morning:all") is not None
+        assert s.get_job(vb.job_id(None)) is not None
+
+        cb = _FakeCallback("toggle_checkin_qr_enabled", ADMIN_ID)
+        await admin_settings.toggle_checkin_qr_enabled(cb)
+        assert await db.get_setting("checkin_qr_enabled") == "off"
+        assert s.get_jobs() == []
+
+    _run_scheduled(tmp_path, monkeypatch, body)

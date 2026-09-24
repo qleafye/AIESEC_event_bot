@@ -304,6 +304,21 @@ async def reconcile_broadcasts() -> list[str | None]:
     return touched
 
 
+async def reconcile_forum_jobs() -> None:
+    """Сверка обеих форумных рассылок — QR делегатам и шпаргалки волонтёру (обе зависят от
+    `forum_date` и мастера `checkin_qr_enabled`). Идемпотентна; fail-soft — сбой планировщика
+    не должен ронять ни переключение тумблера, ни периодическую джобу."""
+    try:
+        await reconcile_broadcasts()
+    except Exception as e:
+        logger.error(f"reconcile_forum_jobs: checkin_broadcast failed: {e}")
+    try:
+        from services.checkin_volunteer_broadcast import reconcile
+        await reconcile()
+    except Exception as e:
+        logger.error(f"reconcile_forum_jobs: checkin_volunteer_broadcast failed: {e}")
+
+
 # ── Аудитория ─────────────────────────────────────────────────────────────────────────────
 
 async def eligible_recipients(city: str | None) -> list[dict]:
