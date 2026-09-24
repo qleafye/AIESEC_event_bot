@@ -515,6 +515,12 @@ _CODE_LITERALS_EN = {
     "✍️ Напиши комментарий следующим сообщением.": "✍️ Write your comment as your next message.",
     "Спасибо, записал!": "Thanks, got it!",
     "Эта оценка тебе недоступна.": "This rating isn't available to you.",
+    # Идея №32: «↩️ Отменить» на плашке сканера Mini App (волонтёру).
+    "↩️ Отменить": "↩️ Undo",
+    "Отметка снята — делегат снова не отмечен на этой точке.":
+        "Check-in removed — the delegate is no longer checked in at this point.",
+    "Отменить уже нельзя. Если отметка ошибочная — попросите менеджера снять её в боте.":
+        "It's too late to undo. If the check-in is wrong, ask a manager to remove it in the bot.",
 }
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
