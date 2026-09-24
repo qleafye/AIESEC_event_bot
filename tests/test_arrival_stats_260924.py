@@ -217,3 +217,15 @@ def test_dashboard_block_absent_without_marks(tmp_path):
         assert queries.arrival_block(conn, queries.Scope()) is None
     finally:
         conn.close()
+
+
+def test_dashboard_page_renders_arrival_section(tmp_path, monkeypatch):
+    from tests import test_dashboard_render as tdr
+    db_path = tdr._use_tmp_db(tmp_path, "arrival_render.db")
+    monkeypatch.setattr(config, "ADMIN_IDS", [tdr.ADMIN_ID])
+    _run(db.set_setting("event_season", SEASON))
+    _seed_spb_forum()
+    client = tdr._stats_manager_client(db_path)
+    html_text = client.get("/").text
+    assert 'id="arrival"' in html_text
+    assert "Открытие" in html_text and "Явка" in html_text
