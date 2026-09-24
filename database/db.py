@@ -1645,12 +1645,17 @@ async def init_db():
         # привязанного чата, NULL — тред делегатского ответа в этом случае недоступен,
         # см. `services/sos.py`). `claimed_by`/`resolved_by` — атомарные UPDATE ... WHERE
         # IS NULL, тот же приём, что `claim_question`/T-08-33.
+        #
+        # D-31 (24.09, «SOS без категорий»): `category` осталась NULL-able ради обратной
+        # совместимости (старые строки с категориями сохранены как есть) — новый код её больше
+        # не пишет (`create_sos_report` больше не принимает этот аргумент вовсе) и не читает
+        # (`services.sos.render_card_text`/`handlers.admin_sos._row_text`).
         await db.execute('''
             CREATE TABLE IF NOT EXISTS sos_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER NOT NULL,
                 city TEXT,
-                category TEXT NOT NULL,
+                category TEXT,
                 details_text TEXT,
                 details_photo_file_id TEXT,
                 latitude REAL,
@@ -5248,22 +5253,62 @@ async def count_questions_by_status(*, city_scope=None) -> dict[str, int]:
 # создаётся ОДИН раз, атомарный захват (`claim_sos_report`) переворачивает `claimed_by` только
 # из NULL (T-08-33/D-14 идиома), `resolve_sos_report` закрывает случай «✅ Решено» без
 # предварительного «Беру» (COALESCE подставляет резолвера захватчиком одним UPDATE).
+#
+# D-31 («SOS без категорий»): `create_sos_report` больше не принимает `category` — карточка
+# публикуется МГНОВЕННО (без вопроса «что случилось»), `details_text`/`details_photo_file_id`
+# заполняются ПОЗЖЕ, в режиме «дописываю SOS» (`add_sos_details` ниже), `latitude`/`longitude`
+# опциональны на входе по той же причине (геопозиция чаще приходит уже после карточки,
+# `set_sos_location`).
 
 async def create_sos_report(
-    telegram_id: int, city: str | None, category: str, details_text: str | None,
-    details_photo_file_id: str | None, latitude: float | None, longitude: float | None,
-    prior_open_report_id: int | None = None,
+    telegram_id: int, city: str | None, details_text: str | None = None,
+    details_photo_file_id: str | None = None, latitude: float | None = None,
+    longitude: float | None = None, *, prior_open_report_id: int | None = None,
 ) -> int:
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT INTO sos_reports (telegram_id, city, category, details_text, "
+            "INSERT INTO sos_reports (telegram_id, city, details_text, "
             "details_photo_file_id, latitude, longitude, created_at, prior_open_report_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (telegram_id, city, category, details_text, details_photo_file_id, latitude,
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (telegram_id, city, details_text, details_photo_file_id, latitude,
              longitude, msk_now().strftime("%Y-%m-%d %H:%M:%S"), prior_open_report_id),
         )
         await db.commit()
         return cursor.lastrowid
+
+
+async def add_sos_details(report_id: int, *, text: str | None = None,
+                           photo_file_id: str | None = None) -> None:
+    """Режим «дописываю SOS» (`handlers/sos.py::SosReport.collecting`, D-31) — первый текст/
+    фото делегата садится в карточку (`services.sos.render_card_text` снимает пометку «подробности
+    ещё не прислали»); КАЖДОЕ поле — первый непустой раз побеждает (`WHERE ... IS NULL`), дальше
+    сообщения делегата всё равно уходят в тред карточки (`services.sos.relay_delegate_message`),
+    просто не переписывают уже сохранённые подробности."""
+    async with _connect() as db:
+        if text:
+            await db.execute(
+                "UPDATE sos_reports SET details_text = ? WHERE id = ? AND details_text IS NULL",
+                (text, report_id),
+            )
+        if photo_file_id:
+            await db.execute(
+                "UPDATE sos_reports SET details_photo_file_id = ? WHERE id = ? "
+                "AND details_photo_file_id IS NULL",
+                (photo_file_id, report_id),
+            )
+        await db.commit()
+
+
+async def set_sos_location(report_id: int, latitude: float, longitude: float) -> None:
+    """Геопозиция в режиме «дописываю SOS» — в отличие от `add_sos_details` ПЕРЕЗАПИСЫВАЕТ
+    координаты при повторной отправке (делегат мог сдвинуться, «последняя известная точка»
+    полезнее первой, в отличие от текстового описания)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET latitude = ?, longitude = ? WHERE id = ?",
+            (latitude, longitude, report_id),
+        )
+        await db.commit()
 
 
 async def get_sos_report(report_id: int) -> dict | None:

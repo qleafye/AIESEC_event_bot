@@ -1,41 +1,49 @@
-"""Форум-ночь п.8 (идея №19 бэклога чек-ина): делегатская сторона «🆘 SOS» — категория
-(кнопки) -> текст/фото (можно пропустить) -> геопозиция (можно пропустить) -> карточка в чат
-оргов + подтверждение делегату.
+"""Форум-ночь п.8 (идея №19 бэклога чек-ина): делегатская сторона «🆘 SOS».
+
+D-31 (24.09, `.planning/FORUM-CHECKIN.md`, «SOS без категорий»): кнопка «🆘 SOS» СРАЗУ, без
+единого уточняющего вопроса, создаёт заявку и публикует карточку в чат оргов («подробности ещё
+не прислали») — категорийный визард (что случилось? -> текст/фото -> геопозиция) снесён
+целиком, в экстренной ситуации важна скорость, не классификация. Делегат сразу попадает в режим
+«дописываю SOS» (`SosReport.collecting`): ЛЮБОЕ его сообщение (текст, фото, геопозиция) уходит
+В ТРЕД карточки И дописывает саму карточку (первый текст/фото снимает пометку «подробности ещё
+не прислали»). Режим живёт до «Готово», решения заявки оргом (не отслеживается активно —
+известное ограничение, см. докстринг `sos_collecting_step`), таймаута
+(`sos_collecting_timeout_minutes`) или следующего `/start`.
 
 Форма шва — та же, что у соседних делегатских экранов (FAQ/программа/чек-ин): своего
 `Router()` нет, `from handlers.user_actions import router`; импортирован ХВОСТОМ
-`handlers/user_actions.py`. Домен (категории, карточка, привязка чата, эскалация) целиком в
-`services/sos.py` — здесь только FSM-шаги и точки отправки. Тексты — через `reg_i18n.say`
-(тот же перевод делегатского чата, что остальные экраны); литералы этого модуля
+`handlers/user_actions.py`. Домен (карточка, привязка чата, эскалация, режим «дописываю»)
+целиком в `services/sos.py` — здесь только FSM-шаги и точки отправки. Тексты — через
+`reg_i18n.say` (тот же перевод делегатского чата, что остальные экраны); литералы этого модуля
 зарегистрированы в `services/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем).
 
-Анти-спам (пункт 1 плана «не чаще одного открытого SOS на делегата») — `get_open_sos_report`
-проверяется ДВАЖДЫ: на входе (кнопка «🆘 SOS») и повторно при выборе категории (гонка: два тапа
-подряд, пока первая заявка ещё не создана строкой). Полной атомарности здесь нет (в отличие от
-`claim_sos_report`) — цена гонки мала (одна лишняя открытая заявка на очень редком стечении
-таймингов), а неявная сериализация каждого делегатского сообщения через одно FSM-состояние уже
-снимает подавляющее большинство случаев."""
+Анти-спам (пункт 1 плана «не чаще одного открытого SOS на делегата») — повторное «🆘 SOS», пока
+предыдущий свой же SOS ещё свежий (`sos_reopen_window_minutes`), НЕ создаёт вторую заявку —
+делегат попадает в тот же режим «дописываю SOS», привязанный к СУЩЕСТВУЮЩЕЙ заявке
+(`sos_start`). «Старый» открытый SOS (окно истекло) новую заявку уже разрешает — с честной
+ссылкой в карточке на прежний (`services.sos.render_card_text`)."""
 import logging
+from datetime import datetime
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from cities import default_city_code, get_setting_typed_for_city
-from database.db import create_sos_report, get_open_sos_report
+from database.db import add_sos_details, create_sos_report, get_open_sos_report, set_sos_location
 from handlers import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
+from i18n_ui_en import DONE_WORDS
 from keyboards.builders import MENU_TEXTS, get_main_menu_kb
 from services import sos as sos_service
+from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
-_SKIP_TEXT = "Пропустить"
-_CANCEL_TEXT = "Отмена"
 _LOCATION_BUTTON_TEXT = "📍 Отправить геопозицию"
 
 
@@ -47,43 +55,19 @@ async def _resolve_city(telegram_id: int) -> str | None:
     return code or default_city_code()
 
 
-def _category_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=sos_service.CATEGORY_LABELS[code], callback_data=f"sos_cat:{code}")]
-        for code in sos_service.CATEGORY_ORDER
-    ])
-
-
-def _skip_cancel_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    kb.button(text=_SKIP_TEXT)
-    kb.button(text=_CANCEL_TEXT)
-    kb.adjust(2)
-    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
-
-def _location_kb() -> ReplyKeyboardMarkup:
+def _collecting_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
     kb.button(text=_LOCATION_BUTTON_TEXT, request_location=True)
-    kb.button(text=_SKIP_TEXT)
-    kb.button(text=_CANCEL_TEXT)
-    kb.adjust(1, 2)
-    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+    kb.button(text="Готово")
+    kb.adjust(1, 1)
+    return kb.as_markup(resize_keyboard=True)
 
 
-async def _cancel(message: types.Message, state: FSMContext) -> None:
-    await state.clear()
-    await reg_i18n.say(
-        message, "Действие отменено.",
-        reply_markup=await get_main_menu_kb(message.from_user.id),
-    )
-
-
-# ── Ревью 24.09 (находка 3): «свежий» открытый SOS того же делегата (младше
-# `sos_reopen_window_minutes`) больше НЕ блокирует наглухо — предлагает дополнить существующую
-# заявку (следующее сообщение уйдёт в её тред, см. `SosReport.followup` ниже). «Старый» —
-# новый SOS разрешён (прежний остаётся открытым, в карточке нового — честная ссылка на него,
-# `services.sos.render_card_text`/`database.db.create_sos_report(prior_open_report_id=...)`).
+# ── Ревью 24.09 (находка 3, сохранено при D-31): «свежий» открытый SOS того же делегата
+# (младше `sos_reopen_window_minutes`) не создаёт вторую заявку — делегат попадает в режим
+# «дописываю SOS», привязанный к СУЩЕСТВУЮЩЕЙ заявке. «Старый» — новый SOS разрешён (прежний
+# остаётся открытым, в карточке нового — честная ссылка на него, `services.sos.render_card_text`/
+# `database.db.create_sos_report(prior_open_report_id=...)`).
 
 async def _reopen_window_minutes(city: str | None) -> float:
     raw = await get_setting_typed_for_city("sos_reopen_window_minutes", city)
@@ -120,11 +104,40 @@ async def _recent_followup_text(report: dict, lang: str, tr_map: dict) -> str:
     return reg_i18n.tr_fmt(raw, lang, tr_map, claim_status=claim_status)
 
 
-async def _offer_followup(message: types.Message, state: FSMContext, report: dict) -> None:
-    await state.set_state(SosReport.followup)
-    await state.update_data(sos_followup_report_id=report["id"])
-    lang, tr_map = await reg_i18n.ctx_for(message)
-    await reg_i18n.say(message, await _recent_followup_text(report, lang, tr_map))
+async def _enter_collecting(state: FSMContext, report_id: int, city: str | None) -> None:
+    await state.set_state(SosReport.collecting)
+    await state.update_data(
+        sos_collecting_report_id=report_id,
+        sos_collecting_city=city,
+        sos_collecting_started=msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+async def _collecting_timeout_minutes(city: str | None) -> float:
+    raw = await get_setting_typed_for_city("sos_collecting_timeout_minutes", city)
+    try:
+        return float(raw) if raw else sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES
+    except (TypeError, ValueError):
+        return sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES
+
+
+async def _is_collecting_expired(started_raw: str | None, city: str | None) -> bool:
+    if not started_raw:
+        return False  # штамп потерян (гонка/старая версия state) -> не режем сессию
+    try:
+        started = datetime.strptime(started_raw, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+    elapsed_minutes = (msk_now() - started).total_seconds() / 60
+    return elapsed_minutes >= await _collecting_timeout_minutes(city)
+
+
+async def _expire_collecting(message: types.Message, state: FSMContext) -> None:
+    await state.clear()
+    await reg_i18n.say(
+        message, await get_setting_typed("sos_collecting_expired_text"),
+        reply_markup=await get_main_menu_kb(message.from_user.id),
+    )
 
 
 # 🆘 SOS — кнопка главного меню
@@ -132,138 +145,39 @@ async def _offer_followup(message: types.Message, state: FSMContext, report: dic
 async def sos_start(message: types.Message, state: FSMContext):
     if not await ensure_registered(message):
         return
+    city = await _resolve_city(message.from_user.id)
     open_report = await get_open_sos_report(message.from_user.id)
     prior_open_id = None
     if open_report is not None:
-        city_for_window = await _resolve_city(message.from_user.id)
-        if await _is_recent_open_report(open_report, city_for_window):
-            await _offer_followup(message, state, open_report)
+        if await _is_recent_open_report(open_report, city):
+            logger.info(f"User {message.from_user.id} reopened recent SOS #{open_report['id']}")
+            await _enter_collecting(state, open_report["id"], city)
+            lang, tr_map = await reg_i18n.ctx_for(message)
+            await reg_i18n.say(
+                message, await _recent_followup_text(open_report, lang, tr_map),
+                reply_markup=_collecting_kb(),
+            )
             return
         prior_open_id = open_report["id"]
     logger.info(f"User {message.from_user.id} opened SOS")
-    await state.update_data(sos_prior_open_id=prior_open_id)
-    await reg_i18n.say(
-        message, await get_setting_typed("sos_category_prompt_text"),
-        reply_markup=_category_kb(),
-    )
+    await _create_and_notify(message, state, city, prior_open_id)
 
 
-@router.callback_query(F.data.startswith("sos_cat:"))
-async def sos_pick_category(callback: types.CallbackQuery, state: FSMContext):
-    category = callback.data.split(":", 1)[1]
-    if category not in sos_service.CATEGORY_ORDER:
-        await callback.answer()
-        return
-    city = await _resolve_city(callback.from_user.id)
-    # Повторный гейт анти-спама — см. докстринг модуля (гонка «кнопка -> категория»).
-    open_report = await get_open_sos_report(callback.from_user.id)
-    prior_open_id = None
-    if open_report is not None:
-        if await _is_recent_open_report(open_report, city):
-            await callback.answer()
-            await state.set_state(SosReport.followup)
-            await state.update_data(sos_followup_report_id=open_report["id"])
-            lang, tr_map = await reg_i18n.ctx_for(callback)
-            try:
-                await callback.message.edit_text(await _recent_followup_text(open_report, lang, tr_map))
-            except Exception:
-                pass
-            return
-        prior_open_id = open_report["id"]
-
-    await state.update_data(sos_category=category, sos_city=city, sos_prior_open_id=prior_open_id)
-    await state.set_state(SosReport.details)
-    await callback.answer()
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-    await reg_i18n.say(
-        callback.message, await get_setting_typed("sos_details_prompt_text"),
-        reply_markup=_skip_cancel_kb(),
-    )
-
-
-@router.message(SosReport.details, F.text == _CANCEL_TEXT)
-async def sos_details_cancel(message: types.Message, state: FSMContext):
-    await _cancel(message, state)
-
-
-@router.message(SosReport.details, F.text == _SKIP_TEXT)
-async def sos_details_skip(message: types.Message, state: FSMContext):
-    await state.update_data(sos_details_text=None, sos_details_photo=None)
-    await _advance_to_location(message, state)
-
-
-@router.message(SosReport.details)
-async def sos_details_step(message: types.Message, state: FSMContext):
-    text = message.text or message.caption
-    photo_id = message.photo[-1].file_id if message.photo else None
-    if not text and not photo_id:
-        await reg_i18n.say(
-            message, f"Не понял, пришли текст, фото или нажми «{_SKIP_TEXT}».",
-        )
-        return
-    await state.update_data(sos_details_text=text, sos_details_photo=photo_id)
-    await _advance_to_location(message, state)
-
-
-async def _advance_to_location(message: types.Message, state: FSMContext) -> None:
-    await state.set_state(SosReport.location)
-    await reg_i18n.say(
-        message, await get_setting_typed("sos_location_prompt_text"),
-        reply_markup=_location_kb(),
-    )
-
-
-@router.message(SosReport.location, F.text == _CANCEL_TEXT)
-async def sos_location_cancel(message: types.Message, state: FSMContext):
-    await _cancel(message, state)
-
-
-@router.message(SosReport.location, F.text == _SKIP_TEXT)
-async def sos_location_skip(message: types.Message, state: FSMContext):
-    await _finalize_sos(message, state, latitude=None, longitude=None)
-
-
-@router.message(SosReport.location, F.location)
-async def sos_location_step(message: types.Message, state: FSMContext):
-    await _finalize_sos(
-        message, state,
-        latitude=message.location.latitude, longitude=message.location.longitude,
-    )
-
-
-@router.message(SosReport.location)
-async def sos_location_invalid(message: types.Message, state: FSMContext):
-    await reg_i18n.say(
-        message, f"Не понял, пришли геопозицию (кнопкой) или нажми «{_SKIP_TEXT}».",
-    )
-
-
-async def _finalize_sos(message: types.Message, state: FSMContext, *,
-                         latitude: float | None, longitude: float | None) -> None:
-    data = await state.get_data()
-    await state.clear()
-    category = data.get("sos_category")
-    city = data.get("sos_city")
-
+async def _create_and_notify(message: types.Message, state: FSMContext, city: str | None,
+                              prior_open_id: int | None) -> None:
+    """D-31: карточка публикуется МГНОВЕННО (пункт 1) — без вопроса «что случилось», сразу за
+    нажатием кнопки. `PostCardResult.delivered_total` — реальное число доставок (ревью 24.09,
+    находка 1), делегат слышит честный текст, а не пустое «получили», если карточка не дошла
+    НИКУДА (чат упал, фоллбэк-веер разошёлся нулю получателей)."""
     report_id = await create_sos_report(
-        message.from_user.id, city, category,
-        data.get("sos_details_text"), data.get("sos_details_photo"),
-        latitude, longitude,
-        prior_open_report_id=data.get("sos_prior_open_id"),
+        message.from_user.id, city, prior_open_report_id=prior_open_id,
     )
-    logger.info(f"User {message.from_user.id} created SOS #{report_id} (category={category})")
+    logger.info(f"User {message.from_user.id} created SOS #{report_id}")
 
-    # Ревью 24.09 (находка 1): раньше результат `post_card` игнорировался целиком — делегат
-    # слышал «Оргкомитет получил» даже когда карточка не дошла НИКУДА (чат упал, фоллбэк-веер
-    # разошёлся нулю получателей). `PostCardResult.delivered_total` — реальное число доставок;
-    # `record_delivery_outcome` штампует/снимает `sos_reports.delivery_failed_at` по факту.
     try:
         result = await sos_service.post_card(message.bot, report_id)
     except Exception as e:
-        logger.error(f"sos._finalize_sos: post_card({report_id}) failed: {e}")
+        logger.error(f"sos._create_and_notify: post_card({report_id}) failed: {e}")
         result = sos_service.PostCardResult()
     await sos_service.record_delivery_outcome(report_id, result)
 
@@ -274,20 +188,24 @@ async def _finalize_sos(message: types.Message, state: FSMContext, *,
         minutes = sos_service.DEFAULT_ESCALATION_MINUTES
     sos_service.schedule_escalation(report_id, minutes)
 
+    await _enter_collecting(state, report_id, city)
+
     if result.delivered_total > 0:
         await reg_i18n.say(
             message, await get_setting_typed("sos_sent_text"),
-            reply_markup=await get_main_menu_kb(message.from_user.id),
+            reply_markup=_collecting_kb(),
         )
         return
 
     # Ни в чат, ни фоллбэком в личку — делегат не должен уйти с пустым «получили». Одна
-    # повторная попытка доставки через минуту (джоба перечитывает статус).
-    logger.error(f"sos._finalize_sos: SOS #{report_id} не доставлен НИКОМУ, ставлю повтор")
+    # повторная попытка доставки через минуту (джоба перечитывает статус). Делегат всё равно
+    # остаётся в режиме «дописываю SOS» — то, что он пришлёт, уйдёт ПРИ следующей успешной
+    # доставке/повторе (карточка сама перерисуется, `services.sos.refresh_card`).
+    logger.error(f"sos._create_and_notify: SOS #{report_id} не доставлен НИКОМУ, ставлю повтор")
     sos_service.schedule_delivery_retry(report_id)
     await reg_i18n.say(
         message, await get_setting_typed("sos_delivery_failed_text"),
-        reply_markup=await get_main_menu_kb(message.from_user.id),
+        reply_markup=_collecting_kb(),
     )
     # Контакт (телефон и т.п.) — сырое значение, НЕ переводится (тот же приём, что
     # contact_person/contact_vk/contact_tg в handlers/user_actions.py::show_contacts),
@@ -303,11 +221,66 @@ async def _finalize_sos(message: types.Message, state: FSMContext, *,
         try:
             await message.answer(contact)
         except Exception as e:
-            logger.error(f"sos._finalize_sos: экстренный контакт не ушёл с HTML, повтор без разметки: {e}")
+            logger.error(f"sos._create_and_notify: экстренный контакт не ушёл с HTML, повтор без разметки: {e}")
             try:
                 await message.answer(contact, parse_mode=None)
             except Exception as e2:
-                logger.error(f"sos._finalize_sos: экстренный контакт не ушёл даже без разметки: {e2}")
+                logger.error(f"sos._create_and_notify: экстренный контакт не ушёл даже без разметки: {e2}")
+
+
+# ── Режим «дописываю SOS» (D-31) — ЛЮБОЕ сообщение делегата уходит в тред карточки И дописывает
+# саму карточку первым текстом/фото; «Готово» закрывает режим, таймаут закрывает его молча (без
+# явного действия делегата). «Решено» со стороны орга режим НЕ закрывает активно — известное
+# ограничение (см. докстринг `sos_collecting_step`).
+
+@router.message(SosReport.collecting, F.text.in_(DONE_WORDS))
+async def sos_collecting_done(message: types.Message, state: FSMContext):
+    await state.clear()
+    await reg_i18n.say(
+        message, await get_setting_typed("sos_done_text"),
+        reply_markup=await get_main_menu_kb(message.from_user.id),
+    )
+
+
+@router.message(SosReport.collecting, F.location)
+async def sos_collecting_location(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    report_id = data.get("sos_collecting_report_id")
+    city = data.get("sos_collecting_city")
+    if report_id is None:
+        await state.clear()
+        return
+    if await _is_collecting_expired(data.get("sos_collecting_started"), city):
+        await _expire_collecting(message, state)
+        return
+    await set_sos_location(report_id, message.location.latitude, message.location.longitude)
+    await sos_service.relay_delegate_message(message, report_id)
+    await sos_service.refresh_card(message.bot, report_id)
+
+
+@router.message(SosReport.collecting)
+async def sos_collecting_step(message: types.Message, state: FSMContext):
+    """Известное ограничение (D-31): «Решено» со стороны орга (`handlers/admin_sos.py::
+    sos_resolve`) не закрывает этот делегатский FSM активно — у админского хендлера нет
+    адресного доступа к FSM-хранилищу делегата (другой `StorageKey`). На практике не критично:
+    следующее сообщение делегата в этом состоянии просто уйдёт в тред уже решённой заявки
+    (`relay_delegate_message` фейл-софт по неизвестной/устаревшей карточке), лишний, но
+    безвредный проброс; режим сам закроется по «Готово»/таймауту/`/start`."""
+    data = await state.get_data()
+    report_id = data.get("sos_collecting_report_id")
+    city = data.get("sos_collecting_city")
+    if report_id is None:
+        await state.clear()
+        return
+    if await _is_collecting_expired(data.get("sos_collecting_started"), city):
+        await _expire_collecting(message, state)
+        return
+    text = message.text or message.caption
+    photo_id = message.photo[-1].file_id if message.photo else None
+    if text or photo_id:
+        await add_sos_details(report_id, text=text, photo_file_id=photo_id)
+        await sos_service.refresh_card(message.bot, report_id)
+    await sos_service.relay_delegate_message(message, report_id)
 
 
 # ── Ответ делегата на «Ответ по SOS» — снова в тред карточки (пункт 3 плана) ────────────────
@@ -324,65 +297,17 @@ def _is_sos_followup(message: types.Message) -> bool:
     return "🆘" in replied.text and "SOS #" in replied.text
 
 
-async def _relay_report_followup(message: types.Message, report: dict) -> None:
-    """Хвост обеих веток дополнения открытого SOS: реплай на карточку (`sos_delegate_followup`
-    ниже) И повторное «🆘 SOS» на СВЕЖУЮ заявку (`SosReport.followup`, ревью 24.09 находка 3) —
-    один и тот же приём доставки, разный триггер."""
-    if report.get("chat_id") and report.get("card_message_id"):
-        try:
-            await message.copy_to(
-                report["chat_id"], reply_to_message_id=report["card_message_id"],
-            )
-            return
-        except Exception as e:
-            logger.warning(
-                f"_relay_report_followup: не удалось отправить в чат id={report['chat_id']}: {e}",
-            )
-    # Фоллбэк без треда (чат не привязан или доставка в него упала) — известное ограничение
-    # (services/sos.py::post_card docstring): личный веер держателям moderate_reg города, без
-    # общего треда карточки. Копия сообщения делегата уходит КАЖДОМУ получателю отдельным
-    # вызовом (copy_message не умеет broadcast) — тот же приём, что services.sos._fallback_fanout.
-    from config import config
-    from handlers.admin_caps import capability_holders
-
-    recipients = await capability_holders("moderate_reg", city=report.get("city"))
-    if not recipients:
-        recipients = list(config.ADMIN_IDS)
-    prefix = f"💬 Делегат дополнил SOS #{report['id']}:"
-    for uid in recipients:
-        try:
-            await message.bot.send_message(uid, prefix)
-            await message.copy_to(uid)
-        except Exception as e:
-            logger.info(f"_relay_report_followup: не удалось написать id={uid}: {e}")
-
-
 @router.message(_is_sos_followup)
 async def sos_delegate_followup(message: types.Message):
     import re
 
-    from database.db import get_sos_report
-
     match = re.search(r"SOS #([0-9]+)", message.reply_to_message.text)
     if not match:
         return
-    report = await get_sos_report(int(match.group(1)))
-    if report is None or report.get("telegram_id") != message.from_user.id:
-        return  # чужая карточка/устаревшая ссылка — тихо, ничего не пересылаем не по адресу
-    await _relay_report_followup(message, report)
-
-
-# Ревью 24.09 (находка 3): «свежий» открытый SOS — повторное «🆘 SOS» ставит это состояние
-# (`_offer_followup` выше), следующее ЛЮБОЕ сообщение делегата (не обязательно реплай) уходит
-# дополнением к прежней заявке, ОДИН раз — состояние снимается сразу после.
-@router.message(SosReport.followup)
-async def sos_followup_step(message: types.Message, state: FSMContext):
+    report_id = int(match.group(1))
     from database.db import get_sos_report
 
-    data = await state.get_data()
-    await state.clear()
-    report_id = data.get("sos_followup_report_id")
-    report = await get_sos_report(report_id) if report_id else None
-    if report is None:
-        return
-    await _relay_report_followup(message, report)
+    report = await get_sos_report(report_id)
+    if report is None or report.get("telegram_id") != message.from_user.id:
+        return  # чужая карточка/устаревшая ссылка — тихо, ничего не пересылаем не по адресу
+    await sos_service.relay_delegate_message(message, report_id)
