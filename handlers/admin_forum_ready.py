@@ -14,6 +14,7 @@ import html
 import inspect
 import logging
 import time
+from datetime import datetime
 
 from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
@@ -44,10 +45,19 @@ def _row(light: str, text: str, fix: tuple[str, str] | None = None) -> dict:
 
 async def _row_forum_date(code: str | None) -> dict:
     date_str = await forum_date_for(code)
-    if date_str:
-        return _row(GREEN, f"Дата форума: {date_str}")
-    return _row(RED, "Дата форума не задана — без неё не уйдут QR и шпаргалка",
-                ("🗓 Задать дату форума", "settings_edit:forum_date"))
+    if not date_str:
+        return _row(RED, "Дата форума не задана — без неё не уйдут QR и шпаргалка",
+                    ("🗓 Задать дату форума", "settings_edit:forum_date"))
+    forum_day = datetime.strptime(date_str, "%d.%m.%Y").date()
+    today = msk_now().date()
+    if forum_day < today:
+        # Дата прошлого форума, которую забыли обновить, молча выключает рассылки QR и
+        # шпаргалки — ловим её здесь, а не в день форума.
+        return _row(YELLOW, f"Дата форума прошла ({date_str}) — это прошлый форум? Обновите дату",
+                    ("🗓 Обновить дату форума", "settings_edit:forum_date"))
+    if forum_day == today:
+        return _row(GREEN, f"Дата форума: {date_str} — сегодня")
+    return _row(GREEN, f"Дата форума: {date_str}")
 
 
 def _job_next_run(job_id: str):
