@@ -122,6 +122,46 @@ def test_settings_screen_shows_defaults_module_off(tmp_path):
     assert "asos_settings_edit:followup" in cbs
 
 
+def test_settings_screen_shows_collecting_timeout_preset_buttons(tmp_path):
+    """D-31 («SOS без категорий»): третий тайминг — «сколько ждать дозапись» (режим
+    «дописываю SOS») + два новых текста («Готово»/сессия истекла)."""
+    _ready(tmp_path)
+    text, kb = _run(admin_sos.render_sos_settings_screen(SUPERADMIN_ID))
+    assert "30 мин" in text  # сколько ждать дозапись
+    cbs = _cbs(kb)
+    assert "asos_set_delay:collecting:15" in cbs
+    assert "asos_delay_custom:collecting" in cbs
+    assert "asos_settings_edit:done" in cbs
+    assert "asos_settings_edit:expired" in cbs
+
+
+def test_set_delay_preset_collecting_module_off_writes_global_key(tmp_path):
+    _ready(tmp_path)
+    callback = _FakeCallback("asos_set_delay:collecting:15", user_id=SUPERADMIN_ID)
+    _run(admin_sos.asos_set_delay(callback))
+    assert _run(db.get_setting("sos_collecting_timeout_minutes")) == "15"
+
+
+def test_text_edit_global_done_saves_through_generic_editor(tmp_path):
+    from handlers import admin_settings
+    _ready(tmp_path)
+    state = _new_state(SUPERADMIN_ID)
+    _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:done"), state))
+    msg = _FakeMessage(text="Ок, спасибо!", user_id=SUPERADMIN_ID)
+    _run(admin_settings.settings_edit_value(msg, state))
+    assert _run(db.get_setting("sos_done_text")) == "Ок, спасибо!"
+
+
+def test_text_edit_global_expired_saves_through_generic_editor(tmp_path):
+    from handlers import admin_settings
+    _ready(tmp_path)
+    state = _new_state(SUPERADMIN_ID)
+    _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:expired"), state))
+    msg = _FakeMessage(text="Время вышло, напиши заново.", user_id=SUPERADMIN_ID)
+    _run(admin_settings.settings_edit_value(msg, state))
+    assert _run(db.get_setting("sos_collecting_expired_text")) == "Время вышло, напиши заново."
+
+
 def test_settings_open_via_callback(tmp_path):
     _ready(tmp_path)
     callback = _FakeCallback("asos_settings", user_id=SUPERADMIN_ID)
