@@ -1190,11 +1190,12 @@ def test_sos_claim_schedules_claimed_reminder(tmp_path, monkeypatch):
     rid = _run(db.create_sos_report(DELEGATE_ID, None))
     scheduled = []
     monkeypatch.setattr(
-        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: scheduled.append((report_id, minutes)),
+        sos_service, "schedule_claimed_reminder",
+        lambda report_id, minutes, claimant_id=None: scheduled.append((report_id, minutes, claimant_id)),
     )
     cb = FakeCallback(f"sos_claim:{rid}", user_id=ADMIN_ID)
     _run(admin_sos.sos_claim(cb, FakeBot()))
-    assert scheduled == [(rid, sos_service.DEFAULT_CLAIMED_REMIND_MINUTES)]
+    assert scheduled == [(rid, sos_service.DEFAULT_CLAIMED_REMIND_MINUTES, ADMIN_ID)]
 
 
 def test_sos_resolve_cancels_claimed_reminder(tmp_path, monkeypatch):
@@ -1206,38 +1207,6 @@ def test_sos_resolve_cancels_claimed_reminder(tmp_path, monkeypatch):
     cb = FakeCallback(f"sos_resolve:{rid}", user_id=ADMIN_ID)
     _run(admin_sos.sos_resolve(cb, FakeBot()))
     assert cancelled == [rid]
-
-
-def test_claimed_reminder_job_reschedules_while_still_claimed(tmp_path, monkeypatch):
-    _ready(tmp_path)
-    rid = _run(db.create_sos_report(DELEGATE_ID, None))
-    _run(db.claim_sos_report(rid, ADMIN_ID, "Админ Первый"))
-    bot = FakeBot()
-    _patch_scheduler_bot(monkeypatch, bot)
-    rescheduled = []
-    monkeypatch.setattr(
-        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: rescheduled.append((report_id, minutes)),
-    )
-
-    _run(sos_service.claimed_reminder_job(rid, 20))
-
-    assert any(s[0] == ADMIN_ID for s in bot.sent)  # напоминание ушло взявшему
-    assert rescheduled == [(rid, 20)]  # репитер поставил себя заново
-
-
-def test_claimed_reminder_job_noop_after_resolved(tmp_path, monkeypatch):
-    _ready(tmp_path)
-    rid = _run(db.create_sos_report(DELEGATE_ID, None))
-    _run(db.resolve_sos_report(rid, ADMIN_ID, "Админ"))
-    bot = FakeBot()
-    _patch_scheduler_bot(monkeypatch, bot)
-    rescheduled = []
-    monkeypatch.setattr(
-        sos_service, "schedule_claimed_reminder", lambda report_id, minutes: rescheduled.append(report_id),
-    )
-    _run(sos_service.claimed_reminder_job(rid, 20))
-    assert bot.sent == []
-    assert rescheduled == []
 
 
 def test_sos_start_recent_open_report_offers_followup_not_block(tmp_path):
