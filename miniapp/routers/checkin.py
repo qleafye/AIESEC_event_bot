@@ -50,6 +50,8 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
+from services import i18n
+from services import venue_log
 from services.person_search import search_people
 from services.program import checkin_session_points
 
@@ -67,6 +69,25 @@ async def _forward_first_entry(result: dict) -> dict:
     if event is not None:
         await enqueue("checkin_first_entry", event)
     return result
+
+def _staff_name(p: Principal) -> str | None:
+    return venue_log.staff_display_name(first_name=p.first_name, username=p.username)
+
+
+async def _with_undo(result: dict, p: Principal) -> dict:
+    """Идея №32: живая отметка (new/moved) получила строку журнала — фронт показывает на
+    плашке кнопку «↩️ Отменить» на `undo_seconds` секунд. Подпись — из реестра, в переводе
+    на язык волонтёра. Внутренний id журнала наружу уходит только как ключ отмены."""
+    log_id = result.pop("log_id", None)
+    if log_id:
+        lang, tr_map = await i18n.context(p.telegram_id)
+        result["undo"] = {
+            "id": log_id,
+            "seconds": venue_log.UNDO_WINDOW_SECONDS,
+            "label": await i18n.tr_setting("checkin_undo_button_text", lang, tr_map) or "↩️",
+        }
+    return result
+
 
 _SEARCH_LIMIT = 20
 _SECTION = "checkin"
@@ -202,9 +223,9 @@ async def checkin_scan(
         if entry_denial is not None:
             return {**entry_denial, **_person_fields(user)}
 
-    result = await _forward_first_entry(await record_arrival(
-        user, point, source="miniapp", by_staff_id=p.telegram_id,
-    ))
+    result = await _with_undo(await _forward_first_entry(await record_arrival(
+        user, point, source="miniapp", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
+    )), p)
     return {**result, **_person_fields(user)}
 
 
@@ -242,10 +263,33 @@ async def checkin_manual(
         if entry_denial is not None:
             return {**entry_denial, **_person_fields(user)}
 
-    result = await _forward_first_entry(await record_arrival(
-        user, point, source="manual", by_staff_id=p.telegram_id,
-    ))
+    result = await _with_undo(await _forward_first_entry(await record_arrival(
+        user, point, source="manual", by_staff_id=p.telegram_id, staff_name=_staff_name(p),
+    )), p)
     return {**result, **_person_fields(user)}
+
+
+class UndoBody(BaseModel):
+    id: int
+
+
+@router.post("/app/api/checkin/undo")
+async def checkin_undo(
+    body: UndoBody,
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Идея №32: волонтёр отменяет СВОЮ ПОСЛЕДНЮЮ отметку в окне отмены. Все проверки
+    (чья, последняя ли, не истекло ли окно) — на сервере, `services.venue_log.undo_last_scan`;
+    фронт только прячет кнопку по таймеру. Любой отказ — один человеческий текст из реестра:
+    дальше снимает менеджер в боте."""
+    code = await venue_log.undo_last_scan(p.telegram_id, _staff_name(p), body.id)
+    lang, tr_map = await i18n.context(p.telegram_id)
+    if code == "ok":
+        text = await i18n.tr_setting("checkin_undo_done_text", lang, tr_map)
+        return {"status": "undone", "reason_text": text}
+    text = await i18n.tr_setting("checkin_undo_refused_text", lang, tr_map)
+    return {"status": "undo_refused", "code": code, "reason_text": text}
 
 
 @router.get("/app/api/checkin/search")
