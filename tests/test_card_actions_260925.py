@@ -544,3 +544,449 @@ def test_card_button_visible_only_for_approved_and_rejected():
 
     assert REVERTIBLE_STATUSES == ("approved", "rejected")
     assert "pending" not in REVERTIBLE_STATUSES
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part D: services/delegate_overrides.py — общий примитив персональных исключений (задачи 2/3)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+from services import delegate_overrides  # noqa: E402
+
+
+def test_grant_override_creates_active_row_and_records_history(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        result = await delegate_overrides.grant_override(
+            DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID,
+        )
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        history = await db.get_answer_history(DELEGATE_ID)
+        return result, active, history
+
+    result, active, history = _run(scenario())
+    assert result["ok"] is True
+    assert active is not None
+    assert active["granted_by"] == SUPERADMIN_ID
+    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
+    assert history[0]["changes"] == [{"column": "resubmit_override", "old": None, "new": "granted"}]
+
+
+def test_grant_override_refuses_duplicate_active(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        return await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+
+    result = _run(scenario())
+    assert result["ok"] is False
+
+
+def test_grant_override_unknown_kind_refused(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        return await delegate_overrides.grant_override(DELEGATE_ID, "made_up_kind", SUPERADMIN_ID)
+
+    result = _run(scenario())
+    assert result["ok"] is False
+
+
+def test_revoke_override_closes_active_row(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        result = await delegate_overrides.revoke_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        return result, active
+
+    result, active = _run(scenario())
+    assert result["ok"] is True
+    assert active is None
+
+
+def test_revoke_override_refuses_when_nothing_active(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        return await delegate_overrides.revoke_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+
+    result = _run(scenario())
+    assert result["ok"] is False
+
+
+def test_consume_override_closes_active_row(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        consumed = await delegate_overrides.consume_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        return consumed, active
+
+    consumed, active = _run(scenario())
+    assert consumed is True
+    assert active is None
+
+
+def test_consume_override_without_active_is_harmless_noop(tmp_path):
+    """Обычный делегат без исключения — consume_override гасить нечего, вызывающий код
+    (services/reg_finalize.py) зовёт эту функцию БЕЗУСЛОВНО на каждой подаче/правке."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        return await delegate_overrides.consume_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+
+    consumed = _run(scenario())
+    assert consumed is False
+
+
+def test_regrant_after_revoke_creates_new_row_history_keeps_both(tmp_path):
+    """Append-only: повторная выдача после отзыва — новая строка, не перезапись старой; обе
+    записи истории («выдал»/«отозвал»/«выдал снова») видны."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        await delegate_overrides.revoke_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        result = await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        history = await db.get_answer_history(DELEGATE_ID, limit=10)
+        return result, history
+
+    result, history = _run(scenario())
+    assert result["ok"] is True
+    assert len(history) == 3
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part E: services/reg_edit_policy.py — гейт resubmit_gate уважает персональное исключение
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_resubmit_gate_denied_globally_but_allowed_via_override(tmp_path):
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        user = {"telegram_id": DELEGATE_ID, "status": "rejected", "event_city": None, "season": None}
+        before = await reg_edit_policy.resubmit_gate(user)
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        after = await reg_edit_policy.resubmit_gate(user)
+        return before, after
+
+    before, after = _run(scenario())
+    assert before[0] is False
+    assert after == (True, None)
+
+
+def test_resubmit_gate_peek_does_not_consume_override(tmp_path):
+    """Гейт — peek, не consume: несколько проверок за один поход делегата не гасят
+    исключение раньше времени (гашение — только в точке фактического использования,
+    services/reg_finalize.py)."""
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        user = {"telegram_id": DELEGATE_ID, "status": "rejected", "event_city": None, "season": None}
+        for _ in range(3):
+            await reg_edit_policy.resubmit_gate(user)
+        return await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+
+    active = _run(scenario())
+    assert active is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part F: services/reg_finalize.py — фактический резабмит гасит исключение
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_finalize_resubmit_consumes_override(tmp_path):
+    from services import reg_finalize as rf
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE_ID, "full_name": "Тест Тестов", "username": "@test",
+            "registration_date": "2026-01-01", "event_city": None, "participant_type": "full",
+        })
+        await db.set_user_status(DELEGATE_ID, "rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        draft = {"telegram_id": DELEGATE_ID, "kind": "edit", "answers": {"phone": "+79997778899"}, "updated_by": "bot"}
+        result = await rf.finalize_data(DELEGATE_ID, "@test", draft)
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        return result, active
+
+    result, active = _run(scenario())
+    assert result["resubmitted"] is True
+    assert active is None  # погашено
+
+
+def test_finalize_normal_edit_without_override_is_harmless(tmp_path):
+    """Обычная правка без активного исключения — consume_override вызывается безусловно и
+    не мешает обычному флоу (no-op)."""
+    from services import reg_finalize as rf
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE_ID, "full_name": "Тест Тестов", "username": "@test",
+            "registration_date": "2026-01-01", "event_city": None, "participant_type": "full",
+        })
+        await db.set_user_status(DELEGATE_ID, "rejected")
+        draft = {"telegram_id": DELEGATE_ID, "kind": "edit", "answers": {"phone": "+79997778899"}, "updated_by": "bot"}
+        return await rf.finalize_data(DELEGATE_ID, "@test", draft)
+
+    result = _run(scenario())
+    assert result["resubmitted"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part G: handlers/admin_resubmit_grant.py — UI-слой Task 2
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_resubg_start_shows_confirm_screen_for_rejected(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"resubg_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resubmit_grant.resubg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, kb = cb.message.edits[0]
+    assert "Разрешить повторную подачу" in text
+    buttons = _cbs(kb)
+    assert f"resubg_apply:{DELEGATE_ID}:1" in buttons  # дефолт — сообщить (notify=True)
+    assert f"resubg_cancel:{DELEGATE_ID}" in buttons
+
+
+def test_resubg_start_refuses_when_not_rejected(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"resubg_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resubmit_grant.resubg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_resubg_start_denied_when_city_out_of_scope(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="rejected")
+        cb = _FakeCallback(f"resubg_start:{DELEGATE_ID}", BOUND_MSK_ID)
+        await admin_resubmit_grant.resubg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_resubg_apply_grants_and_sends_default_notify(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+    bot = _FakeBot()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"resubg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID, bot=bot)
+        await admin_resubmit_grant.resubg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "выдано" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT))
+    assert active is not None
+    delegate_sends = [s for s in bot.sent if s[0] == DELEGATE_ID]
+    assert len(delegate_sends) == 1
+
+
+def test_resubg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+    bot = _FakeBot()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"resubg_apply:{DELEGATE_ID}:0", SUPERADMIN_ID, bot=bot)
+        await admin_resubmit_grant.resubg_apply(cb)
+        return cb
+
+    _run(scenario())
+    assert bot.sent == []
+
+
+def test_resubg_apply_refuses_forged_status(tmp_path):
+    """Подделанный callback (uid другого статуса): резолв делегата по /find шёл, когда он
+    был rejected, но к моменту тапа менеджер/делегат успели его сменить."""
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"resubg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID)
+        await admin_resubmit_grant.resubg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.answers and cb.answers[0][1] is True
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT))
+    assert active is None
+
+
+def test_resubg_apply_denies_forged_city_out_of_scope(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="rejected")
+        cb = _FakeCallback(f"resubg_apply:{DELEGATE_ID}:0", BOUND_MSK_ID)
+        await admin_resubmit_grant.resubg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_resubg_revoke_closes_active_override(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        cb = _FakeCallback(f"resubg_revoke:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resubmit_grant.resubg_revoke(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "отозвано" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT))
+    assert active is None
+
+
+def test_resubg_cancel_changes_nothing(tmp_path):
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"resubg_cancel:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resubmit_grant.resubg_cancel(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "не выдано" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT))
+    assert active is None
+
+
+def test_resubg_capability_registered_for_every_callback():
+    from handlers.admin_caps import ADMIN_CAPS
+
+    for prefix in (
+        "resubg_start:*", "resubg_toggle:*", "resubg_apply:*", "resubg_cancel:*", "resubg_revoke:*",
+    ):
+        assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix
+
+
+def test_card_shows_resubmit_override_line_and_revoke_button(tmp_path):
+    """Карточка /find показывает строку исключения + кнопку «отозвать» вместо кнопки выдачи,
+    когда исключение уже активно (33-SEED: «видны в карточке /find строкой ... с кнопкой
+    «отозвать»»)."""
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected", full_name="Отклонённый Делегат")
+        await db.add_user({
+            "telegram_id": SUPERADMIN_ID, "full_name": "Менеджер Менеджеров",
+            "registration_date": "2026-01-01",
+        })
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+
+        class _Msg:
+            def __init__(self):
+                self.answers = []
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                self.answers.append((text, reply_markup))
+
+        class _M:
+            def __init__(self):
+                self.text = f"/find @{DELEGATE_ID}"
+
+        msg = _M()
+        msg.answer = _Msg().answer
+
+        from database.db import get_user_by_username
+        import handlers.admin as admin_mod
+
+        async def _fake_get_user_by_username(username):
+            return await db.get_user(DELEGATE_ID)
+
+        orig = admin_mod.get_user_by_username
+        admin_mod.get_user_by_username = _fake_get_user_by_username
+        try:
+            captured = {}
+
+            async def _answer(text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+            msg.answer = _answer
+            await admin.cmd_find_user(msg)
+        finally:
+            admin_mod.get_user_by_username = orig
+        return captured
+
+    captured = _run(scenario())
+    assert "Разрешена повторная подача" in captured["text"]
+    assert "Менеджер Менеджеров" in captured["text"]
+    buttons = _cbs(captured["kb"])
+    assert f"resubg_revoke:{DELEGATE_ID}" in buttons
+    assert f"resubg_start:{DELEGATE_ID}" not in buttons

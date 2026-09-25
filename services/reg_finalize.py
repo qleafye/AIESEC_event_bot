@@ -356,6 +356,17 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                         source, season,
                     )
                     await set_user_status(telegram_id, status)
+                    # Phase 33 (задача 2): если этот конкретный резабмит прошёл благодаря
+                    # персональному исключению («🔁 Разрешить повторную подачу»,
+                    # handlers/admin_resubmit_grant.py), оно одноразовое — гасим ИМЕННО здесь,
+                    # в точке фактического использования (не в самом гейте — resubmit_gate
+                    # только смотрит, см. его докстринг). У делегата без исключения (общая
+                    # политика и так разрешала) — безвредный no-op.
+                    try:
+                        from services import delegate_overrides
+                        await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_RESUBMIT)
+                    except Exception as e:
+                        logger.error(f"resubmit override погашение сбоило для {telegram_id}: {e}")
                 elif status != "rejected" and await get_setting_typed("toggle_reg_edit_remoderation") == "on":
                     # D-12: тумблер «Изменённая анкета — снова на модерацию».
                     remoderated = True

@@ -478,6 +478,31 @@ async def cmd_find_user(message: types.Message):
             rows.append([InlineKeyboardButton(
                 text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
             )])
+        # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» — видна только для отклонённой
+        # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
+        # исключение вообще что-то меняет). Уже активное исключение — строкой в тексте карточки
+        # + кнопка «отозвать» вместо кнопки выдачи (не обе разом).
+        if user.get("status") == "rejected":
+            from services import delegate_overrides
+            resubmit_override = await delegate_overrides.active_override(
+                user["telegram_id"], delegate_overrides.KIND_RESUBMIT,
+            )
+            if resubmit_override:
+                granted_by_user = await get_user(resubmit_override["granted_by"])
+                granted_by_label = html_module.escape(str(
+                    (granted_by_user or {}).get("full_name") or resubmit_override["granted_by"]
+                ))
+                text += (
+                    f"\n\n🔁 Разрешена повторная подача — выдал {granted_by_label}, "
+                    f"{resubmit_override['granted_at']}"
+                )
+                rows.append([InlineKeyboardButton(
+                    text="🔁 Отозвать разрешение", callback_data=f"resubg_revoke:{user['telegram_id']}",
+                )])
+            else:
+                rows.append([InlineKeyboardButton(
+                    text="🔁 Разрешить повторную подачу", callback_data=f"resubg_start:{user['telegram_id']}",
+                )])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
@@ -1003,3 +1028,9 @@ from handlers import admin_lost_found  # noqa: E402
 # revertp_cancel in the very tail of admin.router (golden snapshot: a clean append, right
 # after admin_lost_found). Not a forum toggle — no hub row, same posture as admin_city_move.
 from handlers import admin_revert_pending  # noqa: E402
+
+# Phase 33 (задача 2): shared-router seam import for «🔁 Разрешить повторную подачу»
+# (handlers/admin_resubmit_grant.py) — registers resubg_start/resubg_toggle/resubg_apply/
+# resubg_cancel/resubg_revoke in the very tail of admin.router (golden snapshot: a clean
+# append, right after admin_revert_pending). Not a forum toggle — no hub row.
+from handlers import admin_resubmit_grant  # noqa: E402

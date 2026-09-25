@@ -489,7 +489,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1005,
+        1036,
+        "Phase 33 (задача 2, 25.09): +31 строка — строка «🔁 Разрешена повторная подача» и "
+        "кнопка выдачи/отзыва на карточке /find (условно для status=='rejected') + шов-импорт "
+        "`from handlers import admin_resubmit_grant` в хвост файла (1005 -> 1036). "
         "Phase 33 (delegate-card admin actions, 25.09): +14 строк — кнопка «↩️ Вернуть в "
         "ожидание» на карточке /find (условная, только для approved/rejected) + шов-импорт "
         "`from handlers import admin_revert_pending` в самый хвост файла (991 -> 1005). "
@@ -677,8 +680,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1312,
+        1319,
         "Капа тумблера «🔔 Сообщить делегату» на экране перевода в город (1304 -> 1305). "
+        "Phase 33 (задача 2, 25.09): +7 строк — капы «🔁 Разрешить повторную подачу» "
+        "(resubg_start/toggle/apply/cancel/revoke, moderate_reg); 1312 -> 1319. "
         "Phase 33 (delegate-card admin actions, 25.09): +7 строк — капы «↩️ Вернуть в "
         "ожидание» (revertp_start/toggle/apply/cancel, moderate_reg, та же капа, что у "
         "citymv_* выше); 1305 -> 1312. "

@@ -135,7 +135,24 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     любой сбой чтения реестра — fail-soft `(True, None)` с `logger.error`.
 
     Правка 260922-wrg: `reg_resubmit_after_reject`/`reg_resubmit_closed_text` — оба per_city,
-    резолвятся по тому же `user_row.get("event_city")`, что и `edit_gate` выше."""
+    резолвятся по тому же `user_row.get("event_city")`, что и `edit_gate` выше.
+
+    Phase 33 (delegate-card admin actions, задача 2): персональное исключение
+    (`services/delegate_overrides.py`, `kind="resubmit"`) проверяется ПЕРВЫМ, до общего
+    положения — менеджер лично разрешил ЭТОМУ отклонённому делегату подать анкету заново, даже
+    если общий переключатель стоит на «нельзя». Только peek (не гасит исключение) — гашение
+    происходит в точке фактического использования, `services/reg_finalize.py`."""
+    telegram_id = (user_row or {}).get("telegram_id")
+    if telegram_id is not None:
+        try:
+            from services import delegate_overrides
+            if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_RESUBMIT):
+                return True, None
+        except Exception:
+            logger.error(
+                "reg_edit_policy.resubmit_gate: сбой чтения личного исключения, fail-soft к общей политике",
+                exc_info=True,
+            )
     try:
         city = (user_row or {}).get("event_city")
         policy = await get_setting_typed_for_city("reg_resubmit_after_reject", city)
