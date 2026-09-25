@@ -94,24 +94,17 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     (`user_row.get("event_city")`), не по городу вызывающего админа/делегата откуда-то ещё —
     единственный источник города здесь та же строка, что несёт остальные поля гейта.
 
-    Phase 33 (delegate-card admin actions, задача 3): персональное исключение
-    (`services/delegate_overrides.py`, `kind="edit"`) проверяется ПЕРВЫМ, до общего положения
-    — менеджер разрешил ЭТОМУ делегату один раз отредактировать уже решённую анкету, даже
-    если общий переключатель стоит на «нельзя». Только peek (не гасит исключение) — гашение
-    происходит в точке фактического использования, `services/reg_finalize.py` (любая реально
-    применённая правка гасит его безусловно — активного исключения обычно и так нет, это
-    no-op для делегата без него)."""
-    telegram_id = (user_row or {}).get("telegram_id")
-    if telegram_id is not None:
-        try:
-            from services import delegate_overrides
-            if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_EDIT):
-                return True, None
-        except Exception:
-            logger.error(
-                "reg_edit_policy.edit_gate: сбой чтения личного исключения, fail-soft к общей политике",
-                exc_info=True,
-            )
+    Ревью 25.09 (Phase 33, задача 3): личное исключение (`services/delegate_overrides.py`,
+    `kind="edit"`) подменяет ТОЛЬКО решение `edit_allowed_for` (положение тумблера
+    `reg_edit_policy`) — прочие условия гейта (submitted/season через
+    `reg_engine.has_submitted_anketa`, Р-1 rejected вообще не гейтится) остаются в силе,
+    поэтому проверка идёт ПОСЛЕДНЕЙ, только когда обычное правило уже отказало. Защита в
+    глубину: исключение применимо, только пока `status == "approved"` — тот же статус, для
+    которого кнопка «✏️ Открыть правку после решения» вообще показывается на карточке
+    (`handlers/admin.py`); гейт не доверяет одной только видимости кнопки в хендлере. Только
+    peek (не гасит исключение) — гашение происходит в точке фактического использования,
+    `services/reg_finalize.py` (любая реально применённая правка гасит его безусловно —
+    активного исключения обычно и так нет, это no-op для делегата без него)."""
     try:
         city = (user_row or {}).get("event_city")
         policy = await get_setting_typed_for_city("reg_edit_policy", city)
@@ -120,6 +113,19 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
         status = (user_row or {}).get("status")
         if edit_allowed_for(policy, submitted=submitted, status=status):
             return True, None
+        if status == "approved":
+            telegram_id = (user_row or {}).get("telegram_id")
+            if telegram_id is not None:
+                try:
+                    from services import delegate_overrides
+                    if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_EDIT):
+                        return True, None
+                except Exception:
+                    logger.error(
+                        "reg_edit_policy.edit_gate: сбой чтения личного исключения, "
+                        "fail-soft к отказу общей политики",
+                        exc_info=True,
+                    )
         text = await get_setting_typed("reg_edit_closed_text")
         if not text:
             text = SETTINGS_SCHEMA["reg_edit_closed_text"]["default"]
@@ -156,22 +162,16 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     Правка 260922-wrg: `reg_resubmit_after_reject`/`reg_resubmit_closed_text` — оба per_city,
     резолвятся по тому же `user_row.get("event_city")`, что и `edit_gate` выше.
 
-    Phase 33 (delegate-card admin actions, задача 2): персональное исключение
-    (`services/delegate_overrides.py`, `kind="resubmit"`) проверяется ПЕРВЫМ, до общего
-    положения — менеджер лично разрешил ЭТОМУ отклонённому делегату подать анкету заново, даже
-    если общий переключатель стоит на «нельзя». Только peek (не гасит исключение) — гашение
-    происходит в точке фактического использования, `services/reg_finalize.py`."""
-    telegram_id = (user_row or {}).get("telegram_id")
-    if telegram_id is not None:
-        try:
-            from services import delegate_overrides
-            if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_RESUBMIT):
-                return True, None
-        except Exception:
-            logger.error(
-                "reg_edit_policy.resubmit_gate: сбой чтения личного исключения, fail-soft к общей политике",
-                exc_info=True,
-            )
+    Ревью 25.09 (Phase 33, задача 2): личное исключение (`services/delegate_overrides.py`,
+    `kind="resubmit"`) подменяет ТОЛЬКО решение `resubmit_allowed_for` (положение тумблера
+    `reg_resubmit_after_reject`) — прочие условия гейта (сезон строки через
+    `reg_engine.is_past_season_row`, статус не rejected — этот гейт вообще не про них) остаются
+    в силе, проверка идёт ПОСЛЕДНЕЙ, только когда обычное правило уже отказало. Защита в
+    глубину: исключение применимо, только пока `status == "rejected"` и делегат ТЕКУЩЕГО
+    сезона — те же условия, при которых кнопка «🔁 Разрешить повторную подачу» вообще
+    показывается на карточке (`handlers/admin.py`); гейт не доверяет одной только видимости
+    кнопки в хендлере. Только peek (не гасит исключение) — гашение происходит в точке
+    фактического использования, `services/reg_finalize.py`."""
     try:
         city = (user_row or {}).get("event_city")
         policy = await get_setting_typed_for_city("reg_resubmit_after_reject", city)
@@ -180,6 +180,19 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
         current_season = not reg_engine.is_past_season_row(user_row, season)
         if resubmit_allowed_for(policy, status=status, current_season=current_season):
             return True, None
+        if status == "rejected" and current_season:
+            telegram_id = (user_row or {}).get("telegram_id")
+            if telegram_id is not None:
+                try:
+                    from services import delegate_overrides
+                    if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_RESUBMIT):
+                        return True, None
+                except Exception:
+                    logger.error(
+                        "reg_edit_policy.resubmit_gate: сбой чтения личного исключения, "
+                        "fail-soft к отказу общей политики",
+                        exc_info=True,
+                    )
         text = await get_setting_typed_for_city("reg_resubmit_closed_text", city)
         if not text:
             text = SETTINGS_SCHEMA["reg_resubmit_closed_text"]["default"]
