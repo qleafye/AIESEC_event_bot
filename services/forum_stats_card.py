@@ -75,6 +75,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 from collections import Counter
 from typing import Any
 
@@ -133,6 +134,34 @@ _MONTH_EN = (
 
 
 # ── Подписи (RU/EN код-литералы, см. докстринг модуля) ──────────────────────────────────────
+
+def _ru_plural(n: int, one: str, few: str, many: str) -> str:
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return few
+    return many
+
+
+def _hero_caption(key: str, n: int, lang: str) -> str:
+    """Подпись под цифрой-героем в согласии с числом: «1 день на форуме», «2 дня», «5 дней»."""
+    if lang == "en":
+        word = {"days": ("day", "days"), "sessions": ("session", "sessions")}[key]
+        return f"{word[0] if int(n) == 1 else word[1]} at the forum"
+    forms = {"days": ("день", "дня", "дней"), "sessions": ("сессия", "сессии", "сессий")}[key]
+    return f"{_ru_plural(n, *forms)} на форуме"
+
+
+# Сезон вида «26/1» / «YL 26/1» — служебный код, людям непонятен: на картинке не показываем.
+_SEASON_CODE_RE = re.compile(r"[A-Za-zА-Яа-я]{0,4}\s*\d{1,2}\s*/\s*\d{1,2}")
+
+
+def _human_season(value: str | None) -> str | None:
+    if not value or _SEASON_CODE_RE.fullmatch(value.strip()):
+        return None
+    return value.strip()
+
 
 _LABELS: dict[str, dict[str, str]] = {
     "ru": {
@@ -395,7 +424,7 @@ def render_card_sync(
     name_font = ImageFont.truetype(_FONT_TITLE, 42)
     label_font = ImageFont.truetype(_FONT_LABEL, 28)
     value_font = ImageFont.truetype(_FONT_VALUE, 40)
-    hero_caption_font = ImageFont.truetype(_FONT_LABEL, 34)
+    hero_caption_font = ImageFont.truetype(_FONT_LABEL, 46)
     footer_font = ImageFont.truetype(_FONT_LABEL, 30)
 
     white = (255, 255, 255, 255)
@@ -418,6 +447,7 @@ def render_card_sync(
     content_start = y  # верх зоны героя/плашек — низ шапки (заголовок + имя)
 
     # ── герой: единственная крупная цифра карточки — дни, а если дней нет, сессии ──
+    stats = {**stats, "since": _human_season(stats.get("since"))}
     hero_key = "days" if stats.get("days") else ("sessions" if stats.get("sessions") else None)
     remaining_keys = [k for k in ("days", "sessions", "hall", "coins", "rank", "since") if k != hero_key]
 
@@ -459,9 +489,9 @@ def render_card_sync(
 
     if hero_key:
         hero_text = str(stats[hero_key])
-        hero_font = _fit_font(draw, hero_text, _FONT_TITLE, 230, 120, content_width)
+        hero_font = _fit_font(draw, hero_text, _FONT_TITLE, 340, 160, content_width)
         hero_num_h = draw.textbbox((0, 0), hero_text, font=hero_font)[3]
-        caption_text = _truncate(draw, labels[hero_key], hero_caption_font, content_width)
+        caption_text = _truncate(draw, _hero_caption(hero_key, stats[hero_key], lang), hero_caption_font, content_width)
         cap_h = draw.textbbox((0, 0), caption_text, font=hero_caption_font)[3]
         hero_block_h = hero_num_h + 6 + cap_h
 
