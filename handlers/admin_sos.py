@@ -512,6 +512,13 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
     )
     lines.append(f"⏱ Сколько ждать дозапись: {collecting} мин")
     lines.append(f"📞 Экстренный контакт: {html_module.escape(contact) if contact else 'не задан'}")
+    # Сколько дней видна кнопка SOS = длина форума; сама настройка живёт рядом с датой форума
+    # («🎪 Событие/Медиа»), здесь — только ссылка на неё.
+    days = await get_setting_typed_for_city("sos_active_days", code if per_city_ctx else None)
+    lines.append(
+        f"🗓 Кнопка SOS видна все дни форума ({days or sos_service.DEFAULT_ACTIVE_DAYS} дн.) — "
+        "длина форума меняется рядом с датой форума"
+    )
 
     buttons: list[list[InlineKeyboardButton]] = []
     can_edit_percity = (not per_city_ctx) or bool(code)
@@ -533,6 +540,10 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
         lines.append("")
         lines.append("<i>Тайминги выше меняются после выбора конкретного города.</i>")
 
+    from handlers.admin_caps import _holds, required_capability, resolve_capabilities
+    length_cb = "settings_edit:sos_active_days"
+    if _holds(await resolve_capabilities(admin_id), required_capability(callback_data=length_cb)):
+        buttons.append([InlineKeyboardButton(text="🗓 Сколько дней идёт форум", callback_data=length_cb)])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 📞 Экстренный контакт", callback_data="asos_settings_edit:contact")])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Не получилось передать", callback_data="asos_settings_edit:failed")])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Уже есть открытый — дополнить", callback_data="asos_settings_edit:followup")])
