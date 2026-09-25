@@ -10940,8 +10940,10 @@ async def regional_noshow_move_pending_ids(*, city_scope=None) -> list[int]:
     отметки входа НИ В ОДИН день форума (тот же фильтр `checkin_entry`=`CHECKIN_NO`, что
     `forum_noshow_poll_pending_ids` — единая точка правды), МИНУС те, кому предложение уже
     уходило В ЭТОМ сезоне, МИНУС те, кто в опросе неявившихся `forum_noshow_poll` ЭТОГО сезона
-    выбрал причину «Передумал(а)» (`FORUM_NOSHOW_REASON_CHANGED_MIND`) — предлагать Москву
-    тому, кто прямо сказал «не интересно», не нужно."""
+    ответил «не интересно» (решение координатора 25.09: «Передумал(а)»/
+    `FORUM_NOSHOW_REASON_CHANGED_MIND` И «Не смог(ла) по учёбе/работе»/
+    `FORUM_NOSHOW_REASON_STUDY_WORK`) — остальные причины (далеко/забыл/другое) предложение
+    получают как обычно."""
     filters: list[dict] = [{"field": "checkin_entry", "value": CHECKIN_NO}]
     if city_scope is not None:
         code, exclude = city_scope
@@ -10951,15 +10953,23 @@ async def regional_noshow_move_pending_ids(*, city_scope=None) -> list[int]:
         return []
     season = (await get_setting("event_season") or "").strip()
     already = await regional_noshow_move_sent_ids(season)
-    changed_mind = await _forum_noshow_poll_changed_mind_ids(season)
-    return [tid for tid in candidates if tid not in already and tid not in changed_mind]
+    not_interested = await _forum_noshow_poll_not_interested_ids(season)
+    return [tid for tid in candidates if tid not in already and tid not in not_interested]
 
 
-async def _forum_noshow_poll_changed_mind_ids(season: str) -> set[int]:
+_RNM_NOT_INTERESTED_POLL_REASONS = (
+    FORUM_NOSHOW_REASON_CHANGED_MIND, FORUM_NOSHOW_REASON_STUDY_WORK,
+)
+
+
+async def _forum_noshow_poll_not_interested_ids(season: str) -> set[int]:
+    """Кто в опросе неявившихся ЭТОГО сезона ответил одной из «не интересно»-причин
+    (`_RNM_NOT_INTERESTED_POLL_REASONS`) — решение координатора 25.09."""
+    placeholders = ",".join("?" for _ in _RNM_NOT_INTERESTED_POLL_REASONS)
     async with _connect() as db:
         async with db.execute(
-            "SELECT telegram_id FROM forum_noshow_poll WHERE season = ? AND reason = ?",
-            (season, FORUM_NOSHOW_REASON_CHANGED_MIND),
+            f"SELECT telegram_id FROM forum_noshow_poll WHERE season = ? AND reason IN ({placeholders})",
+            (season, *_RNM_NOT_INTERESTED_POLL_REASONS),
         ) as cursor:
             rows = await cursor.fetchall()
     return {int(r[0]) for r in rows}
@@ -11009,7 +11019,10 @@ async def record_regional_noshow_move_response(
     telegram_id: int, season: str, response: str, target_city: str | None, responded_at: str,
 ) -> bool:
     """Повторный тап меняет ответ (та же конвенция, что `record_forum_noshow_poll_response`) —
-    обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе -> `False`."""
+    обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе -> `False`.
+    Используется только для `RNM_DECLINED` (`record_decline`) — сам перенос (`RNM_MOVED`) идёт
+    через `regional_noshow_move_claim` ниже (ревью 🟡4: гонка двойного тапа требует атомарного
+    `WHERE response IS NULL`, не безусловного `UPDATE`)."""
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE regional_noshow_move SET response = ?, target_city = ?, responded_at = ? "
@@ -11018,6 +11031,39 @@ async def record_regional_noshow_move_response(
         )
         await db.commit()
         return bool(cursor.rowcount)
+
+
+async def regional_noshow_move_claim(
+    telegram_id: int, season: str, target_city: str, responded_at: str,
+) -> bool:
+    """Атомарный захват строки ПЕРЕД самим переносом (ревью 🟡4, `services.regional_noshow_move.
+    apply_move`) — `UPDATE ... WHERE response IS NULL`. `rowcount == 1` означает, что именно
+    ЭТОТ вызов выиграл гонку: СУБД сериализует конкурентные `UPDATE` на одну строку, второй
+    одновременный тап увидит `response` уже не `NULL` и получит `rowcount == 0`. Сам перенос
+    (`services.city_move.move_user_city`) стартует ТОЛЬКО после `True` здесь — не наоборот
+    (см. докстринг `apply_move`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE regional_noshow_move SET response = ?, target_city = ?, responded_at = ? "
+            "WHERE telegram_id = ? AND season = ? AND response IS NULL",
+            (RNM_MOVED, target_city, responded_at, telegram_id, season),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def regional_noshow_move_release_claim(telegram_id: int, season: str) -> None:
+    """Откат захвата (`regional_noshow_move_claim`) — сам перенос технически не удался ПОСЛЕ
+    того, как строка уже забрана: возвращаем `response`/`target_city`/`responded_at` в `NULL`,
+    чтобы делегат мог повторить тап «Да, перенести». Гард `response = ?` (`RNM_MOVED`) не
+    трогает строку, если она уже не в том состоянии, которое сам захват в неё записал."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE regional_noshow_move SET response = NULL, target_city = NULL, responded_at = NULL "
+            "WHERE telegram_id = ? AND season = ? AND response = ?",
+            (telegram_id, season, RNM_MOVED),
+        )
+        await db.commit()
 
 
 async def regional_noshow_move_unnotified_moved() -> list[dict]:
