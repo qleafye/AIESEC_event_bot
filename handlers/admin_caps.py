@@ -1107,6 +1107,12 @@ ADMIN_CAPS: dict[str, str] = {
     "regreset_toggle:*": "moderate_reg",
     "regreset_apply:*": "moderate_reg",
     "regreset_cancel:*": "moderate_reg",
+    # Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — та же капа, что
+    # у соседних карточных действий (handlers/admin_resume_replace.py); FSM-ожидание файла —
+    # тот же приём group-wide wildcard, что у state:StaffAdd:* выше.
+    "resumerep_start:*": "moderate_reg",
+    "resumerep_cancel:*": "moderate_reg",
+    "state:ResumeReplace:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»

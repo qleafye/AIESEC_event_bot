@@ -763,6 +763,9 @@ admin|message|lost_found_cancel_wizard|state:LostFoundNew:*,state:LostFoundNew:*
 admin|message|lost_found_photo_step|state:LostFoundNew:*
 admin|message|lost_found_photo_invalid|state:LostFoundNew:*
 admin|message|lost_found_where_step|state:LostFoundNew:*
+admin|message|resumerep_cancel_text|state:ResumeReplace:*
+admin|message|resumerep_receive_file|state:ResumeReplace:*
+admin|message|resumerep_receive_other|state:ResumeReplace:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1299,6 +1302,8 @@ admin|callback_query|regreset_start|regreset_start:*
 admin|callback_query|regreset_toggle|regreset_toggle:*
 admin|callback_query|regreset_apply|regreset_apply:*
 admin|callback_query|regreset_cancel|regreset_cancel:*
+admin|callback_query|resumerep_start|resumerep_start:*
+admin|callback_query|resumerep_cancel|resumerep_cancel:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1890,7 +1895,16 @@ def test_snapshot_total_handler_count_is_292():
     # внутри admin_roles.py — физическое место функции в файле, между roles_add_person и
     # roles_assign). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая
     # вставка (1 строка), 0 удалений, 0 реордеров (848 -> 849).
-    assert len(GOLDEN_SNAPSHOT) == 849
+    # Phase 33 (delegate-card admin actions, задача 3, 26.09): resumerep_* из нового шва
+    # handlers/admin_resume_replace.py («📎 Заменить резюме») — три message-хендлера
+    # (state:ResumeReplace:*) встали в хвост message-блока admin.router (сразу после
+    # lost_found_where_step, ПЕРЕД первым callback_query-хендлером show_admin_stats — тот же
+    # приём, что у остальных state-хендлеров фазы, физическое место модуля в хвосте импортов
+    # определяет то же самое место в message-блоке), два callback_query-хендлера встали сразу
+    # после regreset_cancel и ПЕРЕД prog_fbday_open (та же точка регистрации, что у
+    # regreset_* выше). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистых
+    # вставки (3 строки + 2 строки), 0 удалений, 0 реордеров (849 -> 854).
+    assert len(GOLDEN_SNAPSHOT) == 854
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
