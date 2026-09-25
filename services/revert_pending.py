@@ -15,10 +15,13 @@
     лист (`services/application_effects.py::apply_decision_effects`), лейбл — тот же, что у
     НОВОЙ заявки (`reg_labels.STATUS_LABELS["pending"]` = «Новая»), делегат в листе снова
     выглядит как неразобранная заявка;
-  - `services.reg_digest.notify_application(is_new=True)` — та же дверь очереди/дайджеста, что
-    у обычной подачи (D: «очередь модерации — как при обычной подаче»), делегат попадает в тот
-    же счётчик «Новые заявки: N» и в тот же дайджест-таймер, если менеджер держит режим
-    `reg_submit_notify_mode=digest`.
+  - `services.reg_digest.notify_application(is_new=True, reason=REASON_REVERT)` — та же
+    дверь очереди/дайджеста, что у обычной подачи (D: «очередь модерации — как при обычной
+    подаче»), и тот же дайджест-таймер, если менеджер держит режим
+    `reg_submit_notify_mode=digest`, НО НЕ тот же счётчик: ревью 25.09 — возврат не должен
+    выглядеть новой заявкой, поэтому `reason=REASON_REVERT` кладёт делегата в отдельный блок
+    пачки «↩️ Возвращены на модерацию», не в «📥 Новые заявки». В режиме `each` пометку несёт
+    сам `admin_text` ниже.
 
 QR чек-ина «перестаёт пускать» БЕЗ отдельного кода — `services.checkin.checkin_denial` читает
 `users.status` вживую на каждом скане/загрузке CSV (см. её докстринг: «Статус... строго
@@ -133,13 +136,14 @@ async def revert_to_pending(
 
     if bot is not None:
         try:
-            from services.reg_digest import notify_application
+            from services.reg_digest import REASON_REVERT, notify_application
             name = html_module.escape(str(user.get("full_name") or "-"))
             username = html_module.escape(str(user.get("username") or "-"))
             admin_text = f"↩️ <b>Возвращена на модерацию</b>\n👤 {name} ({username})"
             await notify_application(
                 bot, telegram_id=telegram_id, admin_text=admin_text,
                 city_raw=user.get("event_city"), is_new=True, auto_rejected=False,
+                reason=REASON_REVERT,
             )
         except Exception as e:
             logger.warning(f"revert_to_pending: notify_application({telegram_id}) failed: {e}")

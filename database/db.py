@@ -1315,6 +1315,12 @@ async def init_db():
         # очереди (до этой колонки) читаются как «не автоотказ», что и было их фактическим
         # состоянием (колонки не существовало, автоотказа не было вовсе).
         await _ensure_column(db, "reg_submit_digest_queue", "auto_rejected", "INTEGER NOT NULL DEFAULT 0")
+        # Ревью 25.09: причина постановки в очередь, помимо «обычная новая заявка» (NULL) и
+        # «автоотказ» (auto_rejected=1 выше) — сейчас единственное непустое значение "revert"
+        # («↩️ Вернуть в ожидание», handlers/admin_revert_pending.py) — не даёт пачке
+        # уведомлений menеджерам выглядеть НОВОЙ заявкой (services/reg_digest.py::
+        # send_reg_digest группирует по этому полю тем же приёмом, что и auto_rejected).
+        await _ensure_column(db, "reg_submit_digest_queue", "reason", "TEXT")
 
         # Quick 260904-dq1: «🌙 Тихие часы» — очередь уведомлений делегату, отложенных до конца
         # окна тишины (services/quiet_hours.py). `kind` — закрытый диспетчер на стороне
@@ -7893,16 +7899,18 @@ async def update_unsent_game_digest_city(user_id: int, new_city: str | None) -> 
 # ── Квик 260916: очередь дайджеста заявок ───────────────────────────────────────────────────
 
 async def enqueue_reg_digest(telegram_id: int, city: str | None, created_at: str, *,
-                              auto_rejected: int = 0) -> int:
-    """`auto_rejected` (Phase 31, 31-02, D-17) — хвостовой kwarg с дефолтом 0, существующие
-    вызывающие без нового аргумента остаются байт-в-байт прежними. Штампуется здесь, на
-    постановке в очередь, не выводится позже из `users.status` — см. комментарий у
-    `_ensure_column(..., "auto_rejected", ...)` в `init_db`."""
+                              auto_rejected: int = 0, reason: str | None = None) -> int:
+    """`auto_rejected` (Phase 31, 31-02, D-17) и `reason` (ревью 25.09) — хвостовые kwargs с
+    дефолтами, существующие вызывающие без новых аргументов остаются байт-в-байт прежними.
+    `reason` — та же идея, что `auto_rejected`, но для остальных причин постановки, помимо
+    обычной новой заявки (NULL): сейчас единственное значение `"revert"` («↩️ Вернуть в
+    ожидание»). Штампуется здесь, на постановке в очередь, не выводится позже из
+    `users.status` — тот же довод, что у `auto_rejected` (см. `_ensure_column` в `init_db`)."""
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT INTO reg_submit_digest_queue (telegram_id, city, created_at, auto_rejected) "
-            "VALUES (?, ?, ?, ?)",
-            (telegram_id, city, created_at, auto_rejected),
+            "INSERT INTO reg_submit_digest_queue (telegram_id, city, created_at, auto_rejected, reason) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, city, created_at, auto_rejected, reason),
         )
         await db.commit()
         return cursor.lastrowid

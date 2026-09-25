@@ -287,6 +287,9 @@ def test_revert_routes_through_reg_digest_notify_application(tmp_path, monkeypat
     assert calls[0]["is_new"] is True
     assert calls[0]["telegram_id"] == DELEGATE_ID
     assert calls[0]["auto_rejected"] is False
+    # Ревью 25.09: reason=REASON_REVERT — дайджест не должен посчитать это новой заявкой.
+    from services.reg_digest import REASON_REVERT
+    assert calls[0]["reason"] == REASON_REVERT
 
 
 def test_preview_revert_shows_coin_balance_and_referrer(tmp_path):
