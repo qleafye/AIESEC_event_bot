@@ -427,6 +427,54 @@ def test_notify_application_digest_mode_stamps_auto_rejected_flag(tmp_path, monk
     assert by_tid[DELEGATE_SPB] == 0
 
 
+def test_notify_application_digest_mode_stamps_reason(tmp_path, monkeypatch):
+    """Ревью 25.09: reason (напр. REASON_REVERT — «↩️ Вернуть в ожидание») штампуется в
+    очередь тем же приёмом, что и auto_rejected; обычная новая заявка (reason не передан) —
+    NULL, байт-в-байт прежнее поведение."""
+    _db_ready(tmp_path)
+    fake = _FakeScheduler()
+    monkeypatch.setattr(sched, "_scheduler", fake)
+    asyncio.run(db.set_setting("reg_submit_notify_mode", "digest"))
+    asyncio.run(db.set_setting("pending_notify_mode", "instant"))
+
+    asyncio.run(rd.notify_application(
+        _Bot(), telegram_id=DELEGATE_MSK, admin_text="↩️ Возвращена на модерацию",
+        reason=rd.REASON_REVERT,
+    ))
+    asyncio.run(rd.notify_application(
+        _Bot(), telegram_id=DELEGATE_SPB, admin_text="📋 Новая заявка",
+    ))
+
+    rows = asyncio.run(db.list_unsent_reg_digest(None))
+    by_tid = {r["telegram_id"]: r["reason"] for r in rows}
+    assert by_tid[DELEGATE_MSK] == rd.REASON_REVERT
+    assert by_tid[DELEGATE_SPB] is None
+
+
+def test_send_reg_digest_separates_reverted_from_new_applications(tmp_path, monkeypatch):
+    """Ревью 25.09: пачка не должна показывать возвращённого делегата в блоке «Новые
+    заявки» — свой заголовок «↩️ Возвращены на модерацию», отдельный от счётчика новых."""
+    _db_ready(tmp_path)
+    calls = _capture_notify(monkeypatch)
+    monkeypatch.setattr(sched, "_bot", _Bot())
+    _add_delegate(DELEGATE_MSK, "msk", "Иванова")
+    _add_delegate(DELEGATE_SPB, "msk", "Петров")
+    now = "2026-09-16 12:00:00"
+    asyncio.run(db.enqueue_reg_digest(DELEGATE_MSK, "msk", now, reason=rd.REASON_REVERT))
+    asyncio.run(db.enqueue_reg_digest(DELEGATE_SPB, "msk", now))
+
+    asyncio.run(rd.send_reg_digest("msk"))
+
+    text = calls[0]["text"]
+    assert "📥 <b>Новые заявки: 1</b>" in text
+    assert "• Петров" in text
+    assert "↩️ <b>Возвращены на модерацию: 1</b>" in text
+    assert "• Иванова" in text
+    # Иванова не должна попасть в блок новых заявок.
+    new_block = text.split("↩️")[0]
+    assert "Иванова" not in new_block
+
+
 def test_send_reg_digest_counts_auto_rejected_from_queue_not_live_status(tmp_path, monkeypatch):
     """D-17/Pitfall 3: счётчик считается по полю СТРОК очереди (штампуется на постановке), а
     не перечитыванием `users.status` — менеджер мог вернуть заявку из журнала автоотказов
