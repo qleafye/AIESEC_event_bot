@@ -101,7 +101,7 @@ async def _send_admin_alert(text: str) -> None:
         text = redact_secrets(text)
         for admin_id in config.ADMIN_IDS:
             try:
-                await _alert_bot.send_message(admin_id, text)
+                await _alert_bot.send_message(admin_id, text, parse_mode=None)
             except Exception as e:
                 logger.error(f"Sheets alert to {admin_id} failed: {e}")
     except Exception as e:

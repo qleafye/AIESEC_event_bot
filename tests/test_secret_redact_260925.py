@@ -35,13 +35,13 @@ def test_redact_bot_token_in_api_url():
     out = redact_secrets(f"Cannot connect: {URL}")
     assert TOKEN not in out
     assert "AAH-abc_DEF" not in out
-    assert "https://api.telegram.org/bot<скрыт>/sendPhoto" in out
+    assert "https://api.telegram.org/bot[скрыт]/sendPhoto" in out
 
 
 def test_redact_bare_token_without_bot_prefix():
     out = redact_secrets(f"token={REAL_SHAPE} rejected")
     assert REAL_SHAPE not in out
-    assert "token=<скрыт> rejected" == out
+    assert "token=[скрыт] rejected" == out
 
 
 def test_redact_registered_secret(monkeypatch):
@@ -91,8 +91,9 @@ class _FakeBot:
     def __init__(self):
         self.sent = []
 
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, parse_mode="HTML"):
         self.sent.append((chat_id, text))
+        self.parse_modes = getattr(self, "parse_modes", []) + [parse_mode]
 
 
 @pytest.fixture
@@ -125,7 +126,7 @@ def test_proxy_alert_hides_bot_token(alert_bot, make_error):
         assert "Причина:" in text
         assert TOKEN not in text
         assert "AAH-abc_DEF" not in text
-        assert "bot<скрыт>" in text
+        assert "bot[скрыт]" in text
 
 
 def test_proxy_alert_redacts_even_raw_cause(alert_bot):
@@ -135,6 +136,36 @@ def test_proxy_alert_redacts_even_raw_cause(alert_bot):
     ))
     assert alert_bot.sent
     assert all(TOKEN not in text for _chat, text in alert_bot.sent)
+
+
+def test_redacted_placeholder_is_not_an_html_tag():
+    """Стенд 25.09: плейсхолдер «<скрыт>» при parse_mode=HTML по умолчанию Telegram принимал
+    за тег («Unsupported start tag») и отклонял весь алерт — ни один админ его не получал."""
+    out = redact_secrets(f"TelegramNetworkError: {URL}")
+    assert "<" not in out and ">" not in out
+
+
+def test_proxy_alert_goes_as_plain_text_even_with_angle_brackets(alert_bot):
+    """В str(исключения) бывают свои <...> (repr объектов aiohttp) — алерт уходит простым
+    текстом (parse_mode=None), иначе при HTML по умолчанию Telegram его отклонит."""
+    asyncio.run(proxy_session._alert_admins_proxy_storm(
+        "direct", "direct", 1, None, None,
+        cause=f"ClientOSError: <ClientConnectorError host=x> {URL}",
+    ))
+    assert alert_bot.sent
+    assert alert_bot.parse_modes and all(pm is None for pm in alert_bot.parse_modes)
+    assert all("<ClientConnectorError" in text for _chat, text in alert_bot.sent)
+
+
+def test_sheets_alert_goes_as_plain_text(monkeypatch):
+    from services import sheets
+
+    bot = _FakeBot()
+    monkeypatch.setattr(config, "ADMIN_IDS", [111])
+    monkeypatch.setattr(sheets, "_alert_bot", bot)
+    asyncio.run(sheets._send_admin_alert(f"Ошибка <GSpreadException> {URL}"))
+    assert bot.sent and TOKEN not in bot.sent[0][1]
+    assert bot.parse_modes == [None]
 
 
 # ── логи ─────────────────────────────────────────────────────────────────────
@@ -168,7 +199,7 @@ def test_log_filter_redacts_msg_args_and_traceback():
     assert TOKEN not in out
     assert "AAH-abc_DEF" not in out
     assert "hunter2" not in out
-    assert out.count("bot<скрыт>") >= 6
+    assert out.count("bot[скрыт]") >= 6
     assert "Traceback" in out
 
 
@@ -203,4 +234,4 @@ def test_install_log_redaction_covers_child_loggers_via_root_handler():
     out = stream.getvalue()
     assert "via child" in out
     assert TOKEN not in out
-    assert "bot<скрыт>" in out
+    assert "bot[скрыт]" in out

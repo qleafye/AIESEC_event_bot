@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 
-REDACTED = "<скрыт>"
+REDACTED = "[скрыт]"
 
 # Путь Bot API: .../bot123456:AAH-abc_DEF/sendPhoto
 _BOT_URL_TOKEN_RE = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
