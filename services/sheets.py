@@ -772,7 +772,12 @@ def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str |
     to_main: dict[str, str] = dict(groups.pop("", {}))
     for tab_name, part in groups.items():
         try:
-            found = _write_arrived_on_sheet(_get_named_sheet(tab_name), part)
+            # НЕ _get_named_sheet: тот создаёт пустую вкладку на промахе (инцидент 05.09 —
+            # переименованная вкладка -> бот завёл новую). Нет вкладки — второй проход на
+            # главный лист, как у строки, не найденной на вкладке. Кэшированный хэндл значит,
+            # что вкладка уже существовала, — берём его без лишних запросов метаданных.
+            sheet = _named_sheets.get(tab_name) or _open_named_or_main_sync(tab_name)
+            found = _write_arrived_on_sheet(sheet, part) if sheet is not None else set()
         except Exception as e:
             _reset_named_sheet_cache(tab_name)
             failed |= {k: f"{tab_name}: {e}" for k in part}
