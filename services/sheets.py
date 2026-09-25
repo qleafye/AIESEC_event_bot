@@ -120,6 +120,31 @@ async def _alert_admins_sheet_failure(context: str) -> None:
     await _send_admin_alert(text)
 
 
+# Координатор 25.09 (fix update_row_by_id: вкладка либо главный лист, а не «откат вслепую» —
+# инцидент 21.09 standalone-script-sheet-traps / находка 2 lost-applications-260914): строка
+# делегата, найденная сразу на 2+ вкладках с одинаковой шапкой, не пишется никуда — бот не
+# угадывает, какая свежее. Процессный троттлинг «раз в час» на telegram_id, та же форма, что
+# services/sos.py::_mark_chat_unhealthy (не БД, не критичный журнал — переживёт рестарт молча).
+_row_ambiguous_alert_at: dict[int, float] = {}
+_ROW_AMBIGUOUS_ALERT_COOLDOWN_S = 60 * 60
+
+
+async def _alert_row_ambiguous(telegram_id: int, tab_titles: list[str]) -> None:
+    import time
+
+    now = time.monotonic()
+    last = _row_ambiguous_alert_at.get(telegram_id, 0.0)
+    if now - last < _ROW_AMBIGUOUS_ALERT_COOLDOWN_S:
+        return
+    _row_ambiguous_alert_at[telegram_id] = now
+    tabs_text = ", ".join(f"«{t}»" for t in tab_titles)
+    await _send_admin_alert(
+        f"⚠️ Google Sheets: строка делегата (id={telegram_id}) не обновлена — совпадение сразу "
+        f"на нескольких вкладках с одинаковой шапкой ({tabs_text}), непонятно какая актуальна. "
+        "Проверьте «🔄 Синхронизация таблицы» и таблицу вручную."
+    )
+
+
 _startup_tab_warning_sent = False
 
 
@@ -841,47 +866,143 @@ def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:
     return True
 
 
-def _update_row_by_id_sync(tab_name: str | None, telegram_id: int, row: list) -> bool:
-    """One attempt: named tab first (if given, mirrors _update_status_in_sheet_sync's
-    fallback), then the main sheet. Ненахождение строки — NOT an exception: returns False with
-    a warning (caller does append, plan 21-08). Exceptions raised while touching the MAIN sheet
-    propagate to the caller (update_row_by_id), which retries the whole attempt via
-    RETRY_DELAYS — same contract as append_to_sheet."""
-    if tab_name:
+def _sheet_header_row(sheet) -> list[str]:
+    """Row 1, stripped — same normalization `_ensure_named_header_sync` uses to compare an
+    existing header against the expected one."""
+    return [str(h).strip() for h in sheet.row_values(1)]
+
+
+def _row_id_present(sheet, telegram_id: int) -> bool:
+    """Col1 membership check only (no write) — used while scanning candidate tabs during the
+    cross-tab search below, where we must know IF a tab has the row before deciding whether to
+    touch it at all."""
+    target = str(telegram_id)
+    return any((v or "").strip() == target for v in sheet.col_values(1)[1:])  # skip header
+
+
+def _update_row_by_id_sync(
+    tab_name: str | None, telegram_id: int, row: list, expected_header: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    """One attempt. Returns `(code, extra)` — never a bare bool (сознательно шире контракта —
+    см. update_row_by_id's docstring for why): code is "updated" | "not_found" | "ambiguous";
+    `extra` is the list of matched tab titles for "ambiguous" (used only by the async wrapper's
+    admin alert), `[]` otherwise.
+
+    Координатор 25.09 (памятка standalone-script-sheet-traps находка 2 / lost-applications-260914
+    находка 2): раньше промах на именованной вкладке ВСЕГДА откатывался на главный лист и писал
+    туда чужой строкой — при переносе города это тихо перезаписывало Московскую строку колонками
+    другого города. Теперь:
+
+    1. Целевая вкладка открывается СТРОГО по реальному списку (`_open_named_or_main_sync` /
+       `_get_sheet()` для tab_name=None) — никогда не создаётся (это была отдельная дыра:
+       _get_named_sheet заводит пустую вкладку на промахе, D-11's auto-create предназначен для
+       append, не для «просто посмотреть»).
+    2. Нет на целевой (или целевой ещё нет) — ищем по ВСЕМ реально существующим вкладкам, чья
+       шапка (row 1, точное совпадение порядка и состава колонок — позиционная запись иначе
+       легла бы не под те заголовки) совпадает с шапкой целевой вкладки, а если целевой нет —
+       с `expected_header` (заголовки, которые получила бы свежесозданная вкладка; передаёт
+       вызывающий, знающий трек/город — сам sheets.py его не считает, чтобы не тянуть
+       handlers.registration). Нет `expected_header` и целевой нет — сравнивать не с чем,
+       "not_found" сразу (безопасный дефолт: вызывающий добавит строку на свою обычную
+       вкладку, как и раньше этого фикса).
+    3. Ровно одно совпадение — обновляем ЕГО, а не целевую (тем же update, что и «нашли сразу»).
+       Больше одного — "ambiguous": НИЧЕГО не пишем (не угадываем, какая строка свежее)."""
+    if tab_name is None:
+        target = _get_sheet()  # raises if unconfigured — propagates for the retry loop, unchanged
+    else:
+        target = _open_named_or_main_sync(tab_name)  # real worksheet or None; NEVER creates
+
+    if target is not None:
+        if _update_row_by_id_in_range(target, telegram_id, row):
+            return "updated", []
+        reference_header = _sheet_header_row(target)
+    elif expected_header:
+        reference_header = [str(h).strip() for h in expected_header]
+    else:
+        reference_header = None
+
+    if reference_header is None:
+        logger.warning(
+            f"update_row_by_id: telegram_id={telegram_id} not found — tab {tab_name!r} doesn't "
+            "exist yet and no expected header was given, skipping the cross-tab search"
+        )
+        return "not_found", []
+
+    target_title = target.title if target is not None else None
+    candidates = []
+    for ws in _all_worksheets_sync():
+        if target_title is not None and getattr(ws, "title", None) == target_title:
+            continue  # уже проверили выше
         try:
-            named_sheet = _get_named_sheet(tab_name)
-            if _update_row_by_id_in_range(named_sheet, telegram_id, row):
-                return True
+            if _sheet_header_row(ws) != reference_header:
+                continue
+            matched = _row_id_present(ws, telegram_id)
         except Exception as e:
             logger.warning(
-                f"_update_row_by_id_sync: tab {tab_name!r} lookup failed for "
-                f"telegram_id={telegram_id}, falling back to main sheet: {e}"
+                f"update_row_by_id: skipping tab {getattr(ws, 'title', '?')!r} during cross-tab "
+                f"search for telegram_id={telegram_id}: {e}"
             )
+            continue
+        if matched:
+            candidates.append(ws)
 
-    if _update_row_by_id_in_range(_get_sheet(), telegram_id, row):
-        return True
+    if not candidates:
+        logger.warning(
+            f"update_row_by_id: telegram_id={telegram_id} not found on tab {tab_name!r} "
+            "or any header-compatible tab"
+        )
+        return "not_found", []
+    if len(candidates) > 1:
+        titles = [getattr(ws, "title", "?") for ws in candidates]
+        logger.warning(
+            f"update_row_by_id: telegram_id={telegram_id} matched on {len(candidates)} "
+            f"header-compatible tabs ({', '.join(map(repr, titles))}) for tab {tab_name!r} — "
+            "refusing to write"
+        )
+        return "ambiguous", titles
 
-    logger.warning(
-        f"update_row_by_id: telegram_id={telegram_id} not found on tab {tab_name!r} "
-        "or the main sheet"
-    )
-    return False
+    _update_row_by_id_in_range(candidates[0], telegram_id, row)
+    return "updated", []
 
 
-async def update_row_by_id(tab_name: str | None, telegram_id: int, row: list) -> bool:
+async def update_row_by_id(
+    tab_name: str | None, telegram_id: int, row: list, expected_header: list[str] | None = None,
+) -> bool:
     """Точечное обновление строки делегата по telegram_id вместо второй строки-append (D-16):
-    правка анкеты в Mini App обновляет ту же строку таблицы, а не дублирует её. Найдена — один
-    запрос update() на диапазон A{row}:{end}. Не найдена — fail-soft False (вызывающий делает
-    append, план 21-08), данные не теряются. Провал API/сети — ретраи по RETRY_DELAYS (как
-    append_to_sheet), после исчерпания — _alert_admins_sheet_failure и False. В логах — только
-    telegram_id и имя вкладки, НИКОГДА содержимое row (T-21-17, ПД)."""
+    правка анкеты в Mini App обновляет ту же строку таблицы, а не дублирует её.
+
+    Контракт возврата (координатор 25.09 — раньше промах на именованной вкладке тихо откатывался
+    на главный лист и перезаписывал чужую строку, см. `_update_row_by_id_sync`'s docstring):
+    - `True` — вызывающему БОЛЬШЕ НЕЧЕГО ДЕЛАТЬ: строка либо найдена и обновлена (на целевой
+      вкладке или на единственной другой вкладке с той же шапкой), либо запись сознательно
+      отказана как опасная (совпадение сразу на нескольких вкладках) — админы уже предупреждены
+      (`_alert_row_ambiguous`), делать append здесь было бы ВТОРЫМ, лишним дублем.
+    - `False` — строка не найдена нигде безопасно проверяемом месте: вызывающий делает append по
+      своей обычной логике (план 21-08), это НЕ изменилось этим фиксом — append остаётся
+      единственным местом, где решение «дописать или нет» реально принимается.
+
+    `expected_header` (опционален, сегодня ни один вызывающий в репозитории его не передаёт —
+    доступен для будущих/внешних вызовов) — шапка, которую целевая вкладка получила бы при
+    создании (город/трек); нужен только когда целевой вкладки ещё нет и на ней надо было бы
+    что-то сравнивать при поиске по всем вкладкам — без него точечный поиск просто ничего не
+    находит (безопасный дефолт, не регрессия: раньше в этом случае строка тоже не находилась).
+
+    Провал API/сети — ретраи по RETRY_DELAYS (как append_to_sheet), после исчерпания —
+    _alert_admins_sheet_failure и False. В логах — только telegram_id и имя вкладки, НИКОГДА
+    содержимое row (T-21-17, ПД)."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         logger.warning("Google Sheet ID or Credentials not set. Skipping row update.")
         return False
 
     for attempt in range(MAX_RETRIES):
         try:
-            return await asyncio.to_thread(_update_row_by_id_sync, tab_name, telegram_id, row)
+            code, titles = await asyncio.to_thread(
+                _update_row_by_id_sync, tab_name, telegram_id, row, expected_header,
+            )
+            if code == "ambiguous":
+                await _alert_row_ambiguous(telegram_id, titles)
+                return True
+            return code == "updated"
         except Exception as e:
             _reset_sheet_cache()
             delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
@@ -1357,6 +1478,16 @@ def _open_named_or_main_sync(tab_name: str | None):
         return sh.worksheet(tab_name)
     except gspread.WorksheetNotFound:
         return None
+
+
+def _all_worksheets_sync() -> list:
+    """Fresh `sh.worksheets()` — real handles (not just titles, unlike
+    `_list_worksheet_titles_sync`), NEVER creates. Sole caller today: `_update_row_by_id_sync`'s
+    cross-tab search (координатор 25.09) — it needs each candidate's header AND col1, which a
+    plain title list can't give without a second round-trip per tab."""
+    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    return sh.worksheets()
 
 
 def _find_rows_by_id_sync(tab_name: str | None, telegram_id: int) -> list[int] | None:
