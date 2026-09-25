@@ -2134,6 +2134,16 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_admin_delegate_overrides_active "
             "ON admin_delegate_overrides(telegram_id, kind)"
         )
+        # Ревью 25.09: частичный UNIQUE поверх «активной» строки — сам constraint, а не только
+        # обычный код, не даёт параллельному двойному тапу «Выдать» завести два активных
+        # исключения одного вида одному делегату (check-then-insert в services/
+        # delegate_overrides.py::grant_override гонялся между запросом и вставкой). WHERE
+        # совпадает с фильтром active_override/grant_delegate_override.
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_delegate_overrides_unique_active "
+            "ON admin_delegate_overrides(telegram_id, kind) "
+            "WHERE revoked_at IS NULL AND consumed_at IS NULL"
+        )
 
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
@@ -4096,18 +4106,22 @@ async def revert_user_to_pending(telegram_id: int, from_status: str) -> bool:
 
 # ── Phase 33 (delegate-card admin actions, задачи 2/3): персональные одноразовые исключения ──
 
-async def grant_delegate_override(telegram_id: int, kind: str, granted_by: int, granted_at: str) -> int:
-    """Новая активная строка исключения. Вызывающий (`services/delegate_overrides.py`) обязан
-    сам проверить отсутствие уже активной строки ДО вызова — эта функция ничего не проверяет,
-    только вставляет."""
+async def grant_delegate_override(telegram_id: int, kind: str, granted_by: int, granted_at: str) -> int | None:
+    """Атомарная вставка новой активной строки исключения — сам constraint
+    (`idx_admin_delegate_overrides_unique_active`), не check-then-insert вызывающего кода, не
+    даёт завести вторую активную строку того же вида одному делегату (двойной тап «Выдать»,
+    гонка двух менеджеров). `INSERT OR IGNORE`: конфликт с уже активной строкой молча не
+    вставляет ничего — возвращает `None`, вызывающий (`services/delegate_overrides.py::
+    grant_override`) сам решает, что сказать менеджеру (обычно — дочитать активную строку и
+    показать её)."""
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT INTO admin_delegate_overrides (telegram_id, kind, granted_by, granted_at) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO admin_delegate_overrides "
+            "(telegram_id, kind, granted_by, granted_at) VALUES (?, ?, ?, ?)",
             (telegram_id, kind, granted_by, granted_at),
         )
         await db.commit()
-        return cursor.lastrowid
+        return cursor.lastrowid if cursor.rowcount > 0 else None
 
 
 async def get_active_delegate_override(telegram_id: int, kind: str) -> dict | None:
