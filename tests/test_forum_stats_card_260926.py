@@ -628,3 +628,22 @@ def test_send_broadcast_uses_delegate_language_for_render(tmp_path, monkeypatch)
     result = _run(go())
     assert result["sent"] == 1
     assert calls == ["en"]
+
+
+def test_hero_caption_agrees_with_number():
+    from services.forum_stats_card import _hero_caption
+    assert _hero_caption("days", 1, "ru") == "день на форуме"
+    assert _hero_caption("days", 2, "ru") == "дня на форуме"
+    assert _hero_caption("days", 5, "ru") == "дней на форуме"
+    assert _hero_caption("days", 11, "ru") == "дней на форуме"
+    assert _hero_caption("sessions", 21, "ru") == "сессия на форуме"
+    assert _hero_caption("days", 1, "en") == "day at the forum"
+    assert _hero_caption("sessions", 3, "en") == "sessions at the forum"
+
+
+def test_season_code_is_hidden_human_name_kept():
+    from services.forum_stats_card import _human_season
+    assert _human_season("26/1") is None
+    assert _human_season("YL 26/1") is None
+    assert _human_season("") is None
+    assert _human_season("Юлид весна 2026") == "Юлид весна 2026"
