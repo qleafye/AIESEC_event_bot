@@ -505,6 +505,41 @@ def test_apply_append_missing_partial_failure_does_not_abort_rest(tmp_path, monk
     assert len(ws.rows) == 1
 
 
+def test_apply_append_missing_unexpected_crash_preserves_partial_done(tmp_path, monkeypatch):
+    """Неожиданное исключение (настоящий raise, не штатный код «error» из fail-soft-контракта
+    append_to_existing_named_sheet) НЕ должно стереть уже накопленный done -- хендлер
+    (handlers/admin_sheet_reconcile.py) должен суметь сказать «записано N из M», а не просто
+    «упало». Возврат несёт `ok=False, crashed=True` плюс то, что реально успело."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+    _noop_header_ensure(monkeypatch, [])
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(260926521, city="spb", participant_type="short", full_name="Первый")
+        await _seed_user(260926522, city="spb", participant_type="short", full_name="Второй")
+        tab = await _resolve_tab("spb", "short")
+        ws = _FakeWorksheet(tab, ["id", "ФИО", "Статус"], [])
+        _patch_gspread(monkeypatch, {tab: ws})
+
+        calls = {"n": 0}
+
+        async def crashing_append(tab_name, data):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return "ok"
+            raise RuntimeError("таблица не ответила (тест)")
+
+        monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", crashing_append)
+        return await sr.apply_append_missing()
+
+    result = _run(scenario())
+    assert result["ok"] is False
+    assert result["crashed"] is True
+    assert result["done"] == 1
+    assert result["total"] == 2
+
+
 def test_apply_fix_statuses_writes_only_single_row_matches(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     _reset_sheets_state()
@@ -555,6 +590,40 @@ def test_apply_fix_statuses_reports_write_failure(tmp_path, monkeypatch):
     assert len(result["failed"]) == 1
 
 
+def test_apply_fix_statuses_unexpected_crash_preserves_partial_done(tmp_path, monkeypatch):
+    """Тот же посыл, что у `apply_append_missing`'s одноимённого теста -- неожиданный raise
+    посреди цикла не должен стереть уже накопленный done."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(260926523, city="spb", participant_type="short", status="approved", full_name="Первый")
+        await _seed_user(260926524, city="spb", participant_type="short", status="approved", full_name="Второй")
+        tab = await _resolve_tab("spb", "short")
+        ws = _FakeWorksheet(tab, ["id", "ФИО", "Статус"], [
+            ["260926523", "Первый", "Новая"], ["260926524", "Второй", "Новая"],
+        ])
+        _patch_gspread(monkeypatch, {tab: ws})
+
+        calls = {"n": 0}
+
+        async def crashing_update_status(tid, label):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return True
+            raise RuntimeError("таблица не ответила (тест)")
+
+        monkeypatch.setattr(sheets_mod, "update_status_in_sheet", crashing_update_status)
+        return await sr.apply_fix_statuses()
+
+    result = _run(scenario())
+    assert result["ok"] is False
+    assert result["crashed"] is True
+    assert result["done"] == 1
+    assert result["total"] == 2
+
+
 def test_apply_fix_statuses_recomputes_before_applying(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     _reset_sheets_state()
@@ -584,6 +653,49 @@ def test_apply_fix_statuses_recomputes_before_applying(tmp_path, monkeypatch):
     result, calls = _run(scenario())
     assert result["done"] == 0
     assert calls == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью-вопрос: build_sheet_batches гарантирует ли параллельность users/rows?
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_build_sheet_batches_users_rows_stay_aligned_for_zip(tmp_path):
+    """`apply_append_missing` строит `row_by_tid = {u["telegram_id"]: r for u, r in
+    zip(batch.users, batch.rows)}` -- безопасно ТОЛЬКО если build_sheet_batches добавляет
+    строку и пользователя строго парой, один к одному, в одном порядке (обещание в докстринге
+    `SheetBatch.users`: «идёт ПАРАЛЛЕЛЬНО rows»). По коду это так: КАЖДАЯ ветка build_sheet_batches
+    (и main, и именная) делает `.rows.append(row)` и `.users.append(u)` вместе, в одной итерации
+    цикла, без пути, где один список растёт без другого -- инвариант структурный, не случайный.
+    Явно фиксируем это здесь: несколько пользователей на разных вкладках/городах, и для каждого
+    zip-пары «ФИО» в строке должно совпасть с ИМЕННО этим пользователем (ловит смещение индекса,
+    если инвариант когда-нибудь сломают)."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(260926530, city="spb", participant_type="short", full_name="Аня СПб")
+        await _seed_user(260926531, city="spb", participant_type="short", full_name="Боря СПб")
+        await _seed_user(260926532, city="msk", participant_type="short", full_name="Вика Мск")
+        users = await db.get_all_users_dicts()
+        from handlers.admin_sheets import build_sheet_batches
+        return await build_sheet_batches(users)
+
+    batches = _run(scenario())
+    seen_users = 0
+    for batch in batches:
+        assert len(batch.users) == len(batch.rows), (
+            f"вкладка {batch.tab!r}: users и rows разъехались по длине — zip() в "
+            "apply_append_missing тихо обрежет/сместит пары"
+        )
+        if "ФИО" not in batch.headers:
+            continue
+        name_col = batch.headers.index("ФИО")
+        for u, row in zip(batch.users, batch.rows):
+            assert row[name_col] == (u.get("full_name") or "-"), (
+                f"строка для {u.get('telegram_id')} несёт чужое ФИО — zip() рассинхронизировался"
+            )
+            seen_users += 1
+    assert seen_users == 3  # ни один делегат не потерялся молча
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
