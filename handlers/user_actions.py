@@ -2042,7 +2042,7 @@ async def _rnm_confirm_kb(lang: str, tr_map: dict):
 @router.callback_query(F.data == "rnm_accept")
 async def regional_noshow_move_accept(callback: types.CallbackQuery):
     from database.db import RNM_MOVED
-    from services.regional_noshow_move import get_state
+    from services.regional_noshow_move import get_state, target_city_for
 
     lang, tr_map = await reg_i18n.ctx_for(callback)
     tid = callback.from_user.id
@@ -2062,8 +2062,13 @@ async def regional_noshow_move_accept(callback: types.CallbackQuery):
         await callback.answer(text, show_alert=True)
         return
 
-    text = reg_i18n.tr_text(
-        "Перенести заявку в Москву? Анкету заново заполнять не нужно.", lang, tr_map,
+    # Ревью 🔴2: город назначения — из `regional_noshow_target_city` (не хардкод «Москва»);
+    # фраза построена БЕЗ падежа («город: Название»), т.к. `city_label` может быть произвольной
+    # строкой реестра, где предлог «в …» грамматически ломается на части городов.
+    target_label = await city_label(await target_city_for(source_city))
+    text = reg_i18n.tr_fmt(
+        "Перенести заявку в другой город: {target_city}? Анкету заново заполнять не нужно.",
+        lang, tr_map, target_city=target_label,
     )
     await callback.message.edit_text(text, reply_markup=await _rnm_confirm_kb(lang, tr_map))
     await callback.answer()
@@ -2072,30 +2077,44 @@ async def regional_noshow_move_accept(callback: types.CallbackQuery):
 @router.callback_query(F.data == "rnm_confirm")
 async def regional_noshow_move_confirm(callback: types.CallbackQuery):
     from database.db import RNM_MOVED
-    from services.regional_noshow_move import apply_move, get_state
+    from services.regional_noshow_move import apply_move, revalidate_confirm
 
     lang, tr_map = await reg_i18n.ctx_for(callback)
     tid = callback.from_user.id
-    state = await get_state(tid)
-    if state is None:
+
+    # Ревью 🔴1: полная перепроверка из БД ПРЯМО ПЕРЕД переносом — состояние могло измениться
+    # между показом предложения (rnm_accept) и этим тапом (модерация отклонила заявку, вход
+    # отметили, перевели вручную, сезон сменился, предложение уже отвечено).
+    check = await revalidate_confirm(tid)
+    if check["state"] is None:
         await callback.answer()
         return
-    if state.get("response") == RNM_MOVED:
-        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
-        return
-
-    user = await get_user(tid)
-    source_city = normalize_city(state.get("source_city"))
-    if user is None or normalize_city(user.get("event_city")) != source_city:
-        label = html.escape(await city_label(source_city))
-        text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+    if not check["ok"]:
+        reason = check["reason"]
+        if reason == "wrong_city":
+            label = html.escape(await city_label(check["source_city"]))
+            text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+        elif reason == "already_answered":
+            already_moved = check["state"].get("response") == RNM_MOVED
+            key = "Уже перенесено." if already_moved else "Предложение уже отвечено."
+            text = reg_i18n.tr_text(key, lang, tr_map)
+        elif reason == "no_user":
+            text = reg_i18n.tr_text("Не нашли твою заявку — напиши организаторам.", lang, tr_map)
+        else:  # ineligible — не approved / сезон сменился / уже отмечен вход
+            text = reg_i18n.tr_text("Перенос сейчас недоступен — напиши организаторам.", lang, tr_map)
         await callback.answer(text, show_alert=True)
         return
 
-    report = await apply_move(tid, source_city=source_city)
+    report = await apply_move(tid, source_city=check["source_city"])
+    if report.get("claim_lost"):
+        # Гонка двойного тапа (ревью 🟡4) — строку уже забрал другой запрос, move_user_city для
+        # ЭТОГО тапа вообще не звался, повторного переноса не будет.
+        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        return
     if not report.get("ok"):
         # Fail-soft (D-04): перенос не удался технически (например, город исчез из реестра
-        # между тапами) — сообщаем человеческими словами, не роняем хендлер.
+        # между тапами) — сообщаем человеческими словами, не роняем хендлер. Строка предложения
+        # вернулась в response=NULL (apply_move) — повторный тап можно будет повторить.
         await callback.message.answer(
             reg_i18n.tr_text(
                 "Не получилось перенести заявку — напиши организаторам.", lang, tr_map,
@@ -2104,8 +2123,12 @@ async def regional_noshow_move_confirm(callback: types.CallbackQuery):
         await callback.answer()
         return
 
-    lines = [reg_i18n.tr_text(
-        "Готово, твоя заявка теперь в Москве — даты и место в меню.", lang, tr_map,
+    target_label = await city_label(
+        (report.get("after") or {}).get("event_city") or check["source_city"],
+    )
+    lines = [reg_i18n.tr_fmt(
+        "Готово, твоя заявка теперь здесь: {target_city}. Даты и место — в меню.",
+        lang, tr_map, target_city=target_label,
     )]
     if report.get("status_changed"):
         lines.append(reg_i18n.tr_text("Заявку посмотрят ещё раз.", lang, tr_map))

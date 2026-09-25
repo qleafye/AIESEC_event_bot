@@ -164,6 +164,7 @@ async def move_user_city(
     status_mode: str,
     by_admin: int,
     dry_run: bool = False,
+    history_source: str = "admin",
 ) -> dict:
     """Переводит делегата `telegram_id` в `new_city`. Возвращает отчёт — словарь с ключами:
     `ok` (bool), `error` (человекочитаемая причина отказа или `None`), `dry_run`,
@@ -178,7 +179,16 @@ async def move_user_city(
 
     `status_mode`: `"keep"` — статус не трогаем; `"to_moderation"` — штатный возврат на
     модерацию (`database.db.revert_user_to_pending`, тот же примитив, что
-    `services/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`."""
+    `services/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`.
+
+    `history_source` — `source` записи `reg_answer_history` (решение координатора 25.09):
+    дефолт `"admin"` — ручной перевод менеджером карточкой (`handlers/admin_city_move.py`,
+    `scripts/move_city_dry_run.py`, вызовы без этого параметра не меняются). Трек «региональные
+    форумы → Москва» (`services/regional_noshow_move.py::apply_move`) передаёт свой маркер
+    (`"system:regional_offer"`) — перенос инициирован делегатом по кнопке предложения, не
+    менеджером карточкой; экран истории правок показывает `source` как есть (см. `_EDITED_
+    SOURCE_LABELS.get(source, source)` в `services/applications.py`), незнакомое значение не
+    роняет экран, просто печатается сырым текстом."""
     if status_mode not in STATUS_MODES:
         return {"ok": False, "error": f"Неизвестный режим статуса: {status_mode!r}", "dry_run": dry_run}
 
@@ -327,7 +337,7 @@ async def move_user_city(
     written = await update_user_answers(telegram_id, patch, allowed_columns=list(patch.keys()))
     if written:
         changes = [{"column": k, "old": user.get(k), "new": v} for k, v in patch.items()]
-        await record_answer_history(telegram_id, changes, source="admin")
+        await record_answer_history(telegram_id, changes, source=history_source)
         report["db_changes"].append("users")
 
     # ── 3. БД: reg_drafts / reg_started / digest-очереди ────────────────────────────────────
