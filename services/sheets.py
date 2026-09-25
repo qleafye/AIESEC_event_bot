@@ -751,6 +751,8 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
     row lives on, which is not specific to the «Статус» column)."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return False
+    from services.sheet_arrival_sync import arrival_cell_value  # тот же вид ячейки, что у очереди
+    stamp = arrival_cell_value(stamp)
     try:
         tab_name = await _resolve_status_tab(telegram_id)
         ok = await asyncio.to_thread(_update_arrived_in_sheet_sync, telegram_id, stamp, tab_name)

@@ -207,13 +207,13 @@ def test_sheet_keeps_first_entry_and_recomputes_on_revoke(tmp_path, monkeypatch)
     _run(mark("2026-10-31 09:00:00"))  # живой скан второго дня
     _run(mark("2026-10-30 09:15:00"))  # CSV первого дня загрузили позже — он раньше, пишем его
     _run(mark("2026-11-01 09:00:00"))  # третий день — ячейку не трогаем
-    assert writes == [(UID, "2026-10-31 09:00:00"), (UID, "2026-10-30 09:15:00")]
+    assert writes == [(UID, "31.10 09:00"), (UID, "30.10 09:15")]
 
     rows = {r["day"]: r for r in _run(db.list_checkins_for_user(UID))}
     writes.clear()
     _run(venue_log.revoke_mark(rows["2026-10-30"]["id"], staff_id=1, staff_name="Менеджер"))
     _run(sheet_arrival_sync.drain())
-    assert writes == [(UID, "2026-10-31 09:00:00")]  # первый из оставшихся
+    assert writes == [(UID, "31.10 09:00")]  # первый из оставшихся
     assert sorted(_run(db.list_checkins_for_user(UID)), key=lambda r: r["day"])[0]["day"] == "2026-10-31"
 
 

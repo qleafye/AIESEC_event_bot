@@ -37,22 +37,17 @@ from services.timeutil import msk_now
 logger = logging.getLogger(__name__)
 
 
-def _response_kb(day: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚶 Уже еду", callback_data=f"cna:{CNA_COMING}:{day}")],
-        [InlineKeyboardButton(text="😔 Не смогу прийти", callback_data=f"cna:{CNA_CANT}:{day}")],
-        [InlineKeyboardButton(text="📍 Я на месте", callback_data=f"cna:{CNA_HERE}:{day}")],
-    ])
-
-
-async def _translated(telegram_id: int, text: str) -> str:
-    """Тот же перевод, что у остальных ответов делегату — ленивый импорт (Pitfall
-    циклического импорта на уровне модуля, см. докстринг `services/checkin_broadcast.py`)."""
+def _response_kb(day: str, lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
+    """Три кнопки ответа — на языке получателя. Ленивый импорт (Pitfall циклического импорта
+    на уровне модуля, см. докстринг `services/checkin_broadcast.py`)."""
     from handlers.reg_i18n import tr_text
-    from services import i18n as i18n_service
 
-    lang, tr_map = await i18n_service.context(telegram_id)
-    return tr_text(text, lang, tr_map)
+    m = tr_map or {}
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=tr_text("🚶 Уже еду", lang, m), callback_data=f"cna:{CNA_COMING}:{day}")],
+        [InlineKeyboardButton(text=tr_text("😔 Не смогу прийти", lang, m), callback_data=f"cna:{CNA_CANT}:{day}")],
+        [InlineKeyboardButton(text=tr_text("📍 Я на месте", lang, m), callback_data=f"cna:{CNA_HERE}:{day}")],
+    ])
 
 
 async def pending_count(*, city_scope=None) -> int:
@@ -84,7 +79,11 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     base_text = await get_setting_typed_for_city("checkin_not_arrived_text", city)
     now = msk_now()
     day = now.strftime("%Y-%m-%d")
+    from handlers.reg_i18n import tr_text
+    from services import i18n as i18n_service
+
     sent = quiet = failed = 0
+    tr_maps: dict[str, dict] = {}
     for tid in ids:
         user = await get_user(tid)
         if user is None:
@@ -99,8 +98,9 @@ async def send(*, city: str | None, city_scope=None) -> dict:
         )
         if not marked:
             continue
-        text = await _translated(tid, base_text)
-        kb = _response_kb(day)
+        lang, tr_map = await i18n_service.context_cached(tid, tr_maps)
+        text = tr_text(base_text, lang, tr_map)
+        kb = _response_kb(day, lang, tr_map)
         try:
             await _sched._bot.send_message(tid, text, reply_markup=kb)
         except Exception as e:
