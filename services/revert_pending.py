@@ -93,13 +93,21 @@ async def preview_revert_pending(telegram_id: int) -> dict:
 
 async def revert_to_pending(
     telegram_id: int, *, by_admin: int, notify: bool, bot=None, history_source: str = "admin",
+    admin_name: str | None = None,
 ) -> dict:
     """Возврат ОДНОГО делегата на модерацию. `report["ok"]=False` + `report["error"]` — отказ
     (не найден / уже на модерации / статус успели поменять параллельно), делегат НЕ трогается.
 
     `notify`/`bot` — делегатское сообщение (тумблер экрана подтверждения); `bot=None` с
     `notify=True` — сообщение тихо пропускается (fail-soft, тот же приём, что остальные
-    уведомители при отсутствии живого бота, например фоновые скрипты)."""
+    уведомители при отсутствии живого бота, например фоновые скрипты).
+
+    `admin_name` (координатор 25.09) — хвостовой kwarg с дефолтом `None`, существующие вызовы
+    остаются байт-в-байт прежними. Режиму `digest` он безразличен (в очередь уходит только
+    `telegram_id`/`city`/`reason`, не сам `admin_text`, см. `notify_application`); в режиме
+    `each` подставляется в заголовок сообщения менеджерам — до этого карточка each-режима
+    несла только «вернулась на модерацию», но не «кем», в отличие от digest-блока, у которого
+    своя пометка причины (`REASON_REVERT`) с 9d15517."""
     user = await get_user(telegram_id)
     if user is None:
         return {"ok": False, "error": "Делегат не найден"}
@@ -139,7 +147,11 @@ async def revert_to_pending(
             from services.reg_digest import REASON_REVERT, notify_application
             name = html_module.escape(str(user.get("full_name") or "-"))
             username = html_module.escape(str(user.get("username") or "-"))
-            admin_text = f"↩️ <b>Возвращена на модерацию</b>\n👤 {name} ({username})"
+            if admin_name:
+                title = f"↩️ <b>Возвращена на модерацию админом {html_module.escape(str(admin_name))}</b>"
+            else:
+                title = "↩️ <b>Возвращена на модерацию</b>"
+            admin_text = f"{title}\n👤 {name} ({username})"
             await notify_application(
                 bot, telegram_id=telegram_id, admin_text=admin_text,
                 city_raw=user.get("event_city"), is_new=True, auto_rejected=False,
