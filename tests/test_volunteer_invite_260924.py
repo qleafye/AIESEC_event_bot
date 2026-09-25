@@ -308,6 +308,66 @@ def test_cmd_start_does_not_downgrade_existing_wider_access(tmp_path):
     assert any("уже есть доступ" in a for a in msg.answers)
 
 
+# ── Приоритет координатора (25.09): привязка волонтёра к городу ссылки ──────────────────────
+# Без привязки staff-строка читается как «все города» — волонтёр СПб мог бы отмечать делегатов
+# Москвы. Гейты сканера (бот-путь и Mini App) покрыты отдельно —
+# `tests/test_miniapp_checkin_260924.py::test_scan_entry_point_volunteer_invite_binding_*`.
+
+def test_cmd_start_binds_volunteer_to_invite_city(tmp_path):
+    _ready(tmp_path)
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+        _run(db.set_setting("event_city_enabled", "on"))
+        _run(db.set_setting("volunteer_invite_enabled", "on"))
+        _run(db.create_volunteer_invite("c1", "spb", ADMIN_ID, None, None, None))
+        bot = FakeBot()
+        msg = _FakeMessage(VOLUNTEER_ID, username="vol1", full_name="Волонтёр Один")
+        _run(reg.cmd_start(msg, _new_state(VOLUNTEER_ID), bot=bot, command=_FakeCommand("vol_c1")))
+
+        assert _run(db.get_staff_city(VOLUNTEER_ID)) == "spb"
+        staff = _run(db.list_staff())
+        row = next(r for r in staff if r["telegram_id"] == VOLUNTEER_ID)
+        assert row["added_by"] == ADMIN_ID  # создатель ссылки, не None
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_cmd_start_does_not_bind_city_for_existing_staff(tmp_path):
+    """Уже державшему роль (`had_any_capability`) привязку не ставим — «без привязки» шире,
+    первый грант этому человеку сужать нельзя."""
+    _ready(tmp_path)
+    saved = list(cities_mod.CITIES)
+    try:
+        cities_mod.set_cities_for_test(_two_cities())
+        _run(db.set_setting("event_city_enabled", "on"))
+        _run(db.set_setting("volunteer_invite_enabled", "on"))
+        _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))  # без привязки к городу
+        _run(db.create_volunteer_invite("c1", "spb", ADMIN_ID, None, None, None))
+        bot = FakeBot()
+        msg = _FakeMessage(MANAGER_ID)
+        _run(reg.cmd_start(msg, _new_state(MANAGER_ID), bot=bot, command=_FakeCommand("vol_c1")))
+
+        assert _run(db.get_staff_city(MANAGER_ID)) is None
+    finally:
+        cities_mod.set_cities_for_test(saved)
+
+
+def test_cmd_start_does_not_bind_city_when_cities_module_off(tmp_path):
+    """Модуль городов выключен -> ссылка без настоящего города (одногородский бот) —
+    привязку не ставим, даже если у ссылки есть код города."""
+    _ready(tmp_path)
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    # event_city_enabled НЕ включаем -- дефолт off.
+    _run(db.create_volunteer_invite("c1", "spb", ADMIN_ID, None, None, None))
+    bot = FakeBot()
+    msg = _FakeMessage(VOLUNTEER_ID)
+    _run(reg.cmd_start(msg, _new_state(VOLUNTEER_ID), bot=bot, command=_FakeCommand("vol_c1")))
+
+    assert _run(db.get_staff_roles(VOLUNTEER_ID)) == ["volunteer"]
+    assert _run(db.get_staff_city(VOLUNTEER_ID)) is None
+
+
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # handlers/admin_volunteer_invite.py: экраны — чужой город менеджера, тумблер, мастер создания
 # ══════════════════════════════════════════════════════════════════════════════════════════
