@@ -245,6 +245,11 @@ _APPS_FIELD_ORDER = [
     # `regional_noshow_move_status` — НЕ здесь, живут на своём экране `handlers/
     # admin_forum_functions.py::_regional_noshow_cfg_text_kb`.
     "regional_noshow_offer_text",
+    # Phase 33 (delegate-card admin actions): текст уведомления делегату при переводе в
+    # другой город — редактор экрана достаётся бесплатно попаданием в этот список (тот же
+    # приём, что у соседних делегатских текстов выше); тумблер-переключатель «сообщить
+    # делегату» живёт на самом экране перевода (`handlers/admin_city_move.py`), не здесь.
+    "city_move_delegate_notice_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",

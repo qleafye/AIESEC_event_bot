@@ -896,6 +896,14 @@ _REGISTRY_TEXTS_EN = {
     # "reg", regional_noshow_offer_text). `{target_city}` заменил хардкод «Москва».
     "Не получилось на форум в {city}? Приезжай на Юлид: {target_city}{dates}":
         "Couldn't make it to the forum in {city}? Come to YouLead: {target_city}{dates}",
+    # Phase 33 (delegate-card admin actions): уведомление делегату после перевода в другой
+    # город (group "reg", city_move_delegate_notice_text). `{city}` переживает перевод
+    # сентинелами глоссария, тот же приём, что у остальных плейсхолдеров этого словаря.
+    "Твоя заявка перенесена в другой город: {city}. Программа, чат и все материалы — "
+    "теперь по новому городу.": (
+        "Your application has been moved to another city: {city}. The program, chat, and "
+        "all materials are now for the new city."
+    ),
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
