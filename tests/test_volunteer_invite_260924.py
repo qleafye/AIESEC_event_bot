@@ -500,6 +500,72 @@ def test_revoke_no_cancels_without_revoking(tmp_path):
     assert inv["revoked"] == 0
 
 
+# ── Список ссылок: сама ссылка вместо кода, срок без «до бессрочно» ────────────────────────
+
+class _FakeBotWithUsername:
+    """Тот же контракт, что `handlers.admin_volunteer_invite._bot_username` ожидает от
+    `bot.get_me()` — реальный aiogram Bot отдаёт объект с `.username`."""
+    def __init__(self, username="YouLead_bot"):
+        self.username = username
+        self.sent = []
+
+    async def get_me(self):
+        return self
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.sent.append((chat_id, text))
+
+
+def test_create_link_wizard_shows_real_link_with_bot_username(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    state = _fresh_state(ADMIN_ID)
+    bot = _FakeBotWithUsername()
+
+    dispatch_callback("volinvite_new:_all", ADMIN_ID, state=state, bot=bot)
+    dispatch_callback("volinv_le:7", ADMIN_ID, state=state, bot=bot)
+    dispatch_callback("volinv_re:none", ADMIN_ID, state=state, bot=bot)
+    result, event = dispatch_callback("volinv_lim:30", ADMIN_ID, state=state, bot=bot)
+
+    invites = _run(db.list_volunteer_invites())
+    code_token = invites[0]["code"]
+    creation_text = event.message.answers[0][0]
+    assert f"https://t.me/YouLead_bot?start=vol_{code_token}" in creation_text
+    # Права волонтёра — бессрочно (voluinv_re:none), фраза без «до».
+    assert "Права волонтёра: бессрочно" in creation_text
+    assert "Ссылка действует: до" in creation_text
+
+
+def test_invite_list_shows_link_not_code(tmp_path):
+    """Идея №5 (координатор, живая приёмка 25.09): список ссылок показывает саму ссылку
+    (кликабельно/копируемо через <code>), не служебный код."""
+    _ready(tmp_path)
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    _run(db.create_volunteer_invite("linkcode1", None, ADMIN_ID, None, None, None))
+    bot = _FakeBotWithUsername()
+
+    result, event = dispatch_callback("volinvite_cfg:_all", ADMIN_ID, bot=bot)
+    text, _parse_mode, _kb = event.message.answers[-1]
+    assert "https://t.me/YouLead_bot?start=vol_linkcode1" in text
+    assert "<code>https://t.me/YouLead_bot?start=vol_linkcode1</code>" in text
+    # Голый код («• linkcode1 —») больше не выводится отдельной строкой сам по себе.
+    assert "• <code>linkcode1</code>" not in text
+
+
+def test_invite_list_expiry_phrasing_no_do_bessrochno(tmp_path):
+    """«права волонтёра до бессрочно» — сломанный падеж; правильно «бессрочно» без «до»,
+    и «до 04.10.2026», когда срок задан."""
+    _ready(tmp_path)
+    _run(db.set_setting("volunteer_invite_enabled", "on"))
+    _run(db.create_volunteer_invite("expc1", None, ADMIN_ID, "2026-10-04", None, None))
+
+    result, event = dispatch_callback("volinvite_cfg:_all", ADMIN_ID)
+    text, _parse_mode, _kb = event.message.answers[-1]
+    assert "до бессрочно" not in text
+    assert "ссылка: до 04.10.2026" in text
+    assert "права волонтёра: бессрочно" in text
+
+
 def test_users_list_remove_button_removes_role(tmp_path):
     _ready(tmp_path)
     _run(db.set_setting("volunteer_invite_enabled", "on"))
