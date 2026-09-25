@@ -68,7 +68,7 @@ async def sfb_rate(callback: types.CallbackQuery):
     )
     try:
         await callback.message.edit_text(
-            thanks, reply_markup=reg_i18n.tr_kb(sf.comment_offer_keyboard(session_id), lang, tr_map),
+            thanks, reply_markup=sf.comment_offer_keyboard(session_id, lang, tr_map),
         )
     except Exception as e:
         logger.info("sfb_rate: edit_text failed for session=%s: %s", session_id, e)
