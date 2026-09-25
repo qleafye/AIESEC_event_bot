@@ -164,6 +164,28 @@ def test_pending_ids_other_poll_reason_still_offered(tmp_path):
     assert _run(db.regional_noshow_move_pending_ids()) == [1]
 
 
+def test_pending_ids_excludes_study_work_poll_answer(tmp_path):
+    """Решение координатора 25.09: «Не смог(ла) по учёбе/работе» — тоже «не интересно», как
+    «Передумал(а)» — предложение не получает."""
+    _ready(tmp_path)
+    _run(_set("event_season", "YL 26/2"))
+    _run(_add_delegate(1, season="YL 26/2"))
+    _run(_add_delegate(2, season="YL 26/2"))
+    _run(db.forum_noshow_poll_mark_sent(1, None, "YL 26/2", "2026-10-04 12:00:00"))
+    _run(db.record_forum_noshow_poll_response(1, "YL 26/2", "study_work", None, "2026-10-04 12:05:00"))
+    assert _run(db.regional_noshow_move_pending_ids()) == [2]
+
+
+def test_pending_ids_far_poll_answer_still_offered(tmp_path):
+    """«Далеко» (`far`) — не «не интересно», предложение уходит как обычно."""
+    _ready(tmp_path)
+    _run(_set("event_season", "YL 26/2"))
+    _run(_add_delegate(1, season="YL 26/2"))
+    _run(db.forum_noshow_poll_mark_sent(1, None, "YL 26/2", "2026-10-04 12:00:00"))
+    _run(db.record_forum_noshow_poll_response(1, "YL 26/2", "far", None, "2026-10-04 12:05:00"))
+    assert _run(db.regional_noshow_move_pending_ids()) == [1]
+
+
 def test_pending_ids_scoped_by_city(tmp_path):
     import cities as cities_mod
     _ready(tmp_path)
@@ -197,6 +219,35 @@ def test_summary_counts_offered_moved_declined(tmp_path):
     _run(db.record_regional_noshow_move_response(2, "", db.RNM_DECLINED, None, "2026-10-04 13:00:00"))
     summary = _run(db.regional_noshow_move_summary(""))
     assert summary == {"offered": 3, "moved": 1, "declined": 1}
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# regional_noshow_move_claim/release_claim: атомарный захват строки (ревью 🟡4)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_claim_atomic_second_call_loses_race(tmp_path):
+    _ready(tmp_path)
+    _run(db.regional_noshow_move_mark_sent(1, "spb", "", "2026-10-04 12:00:00"))
+    first = _run(db.regional_noshow_move_claim(1, "", "msk", "2026-10-04 13:00:00"))
+    second = _run(db.regional_noshow_move_claim(1, "", "msk", "2026-10-04 13:00:01"))
+    assert first is True
+    assert second is False
+    state = _run(db.regional_noshow_move_get(1, ""))
+    assert state["response"] == db.RNM_MOVED
+    assert state["target_city"] == "msk"
+
+
+def test_claim_release_resets_row_for_retry(tmp_path):
+    _ready(tmp_path)
+    _run(db.regional_noshow_move_mark_sent(1, "spb", "", "2026-10-04 12:00:00"))
+    _run(db.regional_noshow_move_claim(1, "", "msk", "2026-10-04 13:00:00"))
+    _run(db.regional_noshow_move_release_claim(1, ""))
+    state = _run(db.regional_noshow_move_get(1, ""))
+    assert state["response"] is None
+    assert state["target_city"] is None
+    assert state["responded_at"] is None
+    # Освобождённую строку можно захватить заново.
+    assert _run(db.regional_noshow_move_claim(1, "", "msk", "2026-10-04 13:05:00")) is True
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
@@ -345,22 +396,70 @@ def test_move_status_defaults_to_keep(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
+# _dates_label_for: формат «дд.мм–дд.мм», пустая строка без «висящих» слов (ревью 🔴2)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_dates_label_empty_when_forum_date_not_set(tmp_path):
+    _ready(tmp_path)
+    assert _run(rgnm._dates_label_for("msk")) == ""
+
+
+def test_dates_label_range_two_days_no_year(tmp_path):
+    _ready(tmp_path)
+    _run(_set("forum_date", "30.10.2026"))
+    _run(_set("sos_active_days", "2"))
+    assert _run(rgnm._dates_label_for("msk")) == " (30.10–31.10)"
+
+
+def test_dates_label_single_day_no_year(tmp_path):
+    _ready(tmp_path)
+    _run(_set("forum_date", "03.10.2026"))
+    _run(_set("sos_active_days", "1"))
+    assert _run(rgnm._dates_label_for("msk")) == " (03.10)"
+
+
+def test_offer_text_no_dangling_words_when_dates_missing(tmp_path, monkeypatch):
+    """Дефолт-текст без дат форума города назначения — фраза остаётся целой, без «висящего»
+    текста в конце (ревью 🔴2)."""
+    _ready(tmp_path)
+    _run(_add_delegate(1, city="spb"))
+    bot = _with_bot(monkeypatch)
+    _run(rgnm.send_offers("spb"))
+    assert bot.sent
+    _chat_id, text, _kb = bot.sent[0]
+    assert text.endswith("Москва, 30-31 октября")  # ни висящей скобки, ни пробела в конце
+
+
+def test_offer_text_includes_dates_when_forum_date_set(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(_set("forum_date", "30.10.2026"))
+    _run(_set("sos_active_days", "2"))
+    _run(_add_delegate(1, city="spb"))
+    bot = _with_bot(monkeypatch)
+    _run(rgnm.send_offers("spb"))
+    assert bot.sent
+    _chat_id, text, _kb = bot.sent[0]
+    assert text.endswith("Москва, 30-31 октября (30.10–31.10)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
 # handlers/user_actions.py: rnm_accept/rnm_confirm/rnm_decline — мини-флоу делегата
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _fake_move_user_city(monkeypatch, *, ok=True):
     calls = []
 
-    async def fake(telegram_id, new_city, *, status_mode, by_admin, dry_run=False):
+    async def fake(telegram_id, new_city, *, status_mode, by_admin, dry_run=False, history_source="admin"):
         calls.append({
             "telegram_id": telegram_id, "new_city": new_city,
-            "status_mode": status_mode, "by_admin": by_admin,
+            "status_mode": status_mode, "by_admin": by_admin, "history_source": history_source,
         })
         if not ok:
             return {"ok": False, "error": "boom"}
         return {
             "ok": True, "status_changed": status_mode == rgnm.STATUS_MODE_TO_MODERATION,
             "db_changes": ["users"], "sheet": {"moved": True},
+            "after": {"event_city": new_city, "participant_type": None, "status": "approved"},
         }
 
     monkeypatch.setattr(city_move_mod, "move_user_city", fake)
@@ -375,7 +474,9 @@ def test_rnm_accept_shows_confirmation(tmp_path):
     _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
     cb = FakeCallback("rnm_accept", UID)
     _run(ua.regional_noshow_move_accept(cb))
-    assert "Перенести заявку в Москву?" in cb.message.text
+    assert "Перенести заявку в другой город:" in cb.message.text
+    assert "Москва" in cb.message.text  # дефолт target_city_for -> cities.default_city_code()
+    assert "?" in cb.message.text
     callbacks = [b.callback_data for row in cb.message.markup.inline_keyboard for b in row]
     assert callbacks == ["rnm_confirm", "rnm_decline"]
 
@@ -409,7 +510,11 @@ def test_rnm_confirm_calls_move_user_city_with_target_and_status(tmp_path, monke
     import cities
     assert call["new_city"] == cities.default_city_code()
     assert call["status_mode"] == "to_moderation"
-    assert "теперь в Москве" in cb.message.text
+    assert call["by_admin"] == 0
+    # Ревью решение (4): системный маркер отличается от ручного перевода менеджером.
+    assert call["history_source"] == "system:regional_offer"
+    assert "теперь здесь:" in cb.message.text
+    assert "Москва" in cb.message.text
     assert "посмотрят ещё раз" in cb.message.text
 
 
@@ -443,7 +548,8 @@ def test_rnm_confirm_records_moved_response(tmp_path, monkeypatch):
 
 
 def test_rnm_confirm_twice_is_idempotent(tmp_path, monkeypatch):
-    """Повторный тап «Уже перенесено» — второй вызов move_user_city не происходит."""
+    """Повторный тап «Уже перенесено» — второй вызов move_user_city не происходит (одна
+    миграция), состояние в БД тоже осталось ровно с одной строкой ответа."""
     from handlers import user_actions as ua
 
     _ready(tmp_path)
@@ -457,6 +563,175 @@ def test_rnm_confirm_twice_is_idempotent(tmp_path, monkeypatch):
 
     assert len(calls) == 1  # второй вызов не дошёл до move_user_city
     assert cb2.answers[-1] == ("Уже перенесено.", True)
+    summary = _run(db.regional_noshow_move_summary(""))
+    assert summary["moved"] == 1
+
+
+def test_rnm_confirm_race_lost_claim_does_not_call_move(tmp_path, monkeypatch):
+    """Строку уже забрал конкурентный запрос (`regional_noshow_move_claim` напрямую, минуя
+    хендлер, — симуляция выигранной гонки ДРУГИМ тапом) ДО того, как этот `rnm_confirm`
+    добрался до `apply_move` — `move_user_city` для этого вызова не звался вовсе."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    calls = _fake_move_user_city(monkeypatch)
+    _run(db.regional_noshow_move_claim(UID, "", "msk", "2026-10-04 13:00:00"))
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert cb.answers[-1] == ("Уже перенесено.", True)
+
+
+def test_rnm_confirm_after_moderator_rejected_is_blocked(tmp_path, monkeypatch):
+    """Ревью 🔴1: заявку отклонили на модерации между предложением и тапом — перенос
+    отказывается человеческими словами, move_user_city не звался."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb", status="rejected"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    calls = _fake_move_user_city(monkeypatch)
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert cb.message.edit_calls == 0
+    assert "недоступен" in (cb.answers[-1][0] or "")
+
+
+def test_rnm_confirm_after_checkin_entry_is_blocked(tmp_path, monkeypatch):
+    """Ревью 🔴1: делегата отметили на входе форума между предложением и тапом — перенос
+    отказывается, move_user_city не звался."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp"))
+    calls = _fake_move_user_city(monkeypatch)
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert "недоступен" in (cb.answers[-1][0] or "")
+
+
+def test_rnm_confirm_after_manual_city_move_is_blocked(tmp_path, monkeypatch):
+    """Ревью 🔴1: делегата вручную перевели в другой город между предложением и тапом «Да,
+    перенести» — тап `rnm_confirm` (минуя `rnm_accept`) тоже перепроверяет свежий event_city."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    calls = _fake_move_user_city(monkeypatch)
+
+    async def _move_manually():
+        await db.update_user_answers(UID, {"event_city": "msk"}, allowed_columns=["event_city"])
+    _run(_move_manually())
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert "уже не в" in (cb.answers[-1][0] or "")
+
+
+def test_rnm_confirm_after_decline_is_blocked(tmp_path, monkeypatch):
+    """confirm+decline: делегат уже отказался (`rnm_decline`) — стale-тап «Да, перенести»
+    (кнопка могла остаться на экране, `edit_text` без снятия клавиатуры) не переносит."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    calls = _fake_move_user_city(monkeypatch)
+
+    _run(ua.regional_noshow_move_decline(FakeCallback("rnm_decline", UID)))
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert "уже отвечено" in (cb.answers[-1][0] or "")
+    summary = _run(db.regional_noshow_move_summary(""))
+    assert summary == {"offered": 1, "moved": 0, "declined": 1}
+
+
+def test_rnm_confirm_no_user_row_is_blocked(tmp_path, monkeypatch):
+    """Строка предложения есть, но делегата в `users` уже нет — явный человеческий ответ, не
+    падение."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    calls = _fake_move_user_city(monkeypatch)
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert calls == []
+    assert "не нашли" in (cb.answers[-1][0] or "").lower()
+
+
+def test_rnm_confirm_move_failure_releases_claim_for_retry(tmp_path, monkeypatch):
+    """Перенос технически не удался (`move_user_city` вернул `ok=False`) — строка вернулась в
+    `response=NULL`, делегат может повторить тап."""
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+    _fake_move_user_city(monkeypatch, ok=False)
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    assert "Не получилось перенести заявку" in (cb.message.answers[-1][0] if cb.message.answers else "")
+    state = _run(db.regional_noshow_move_get(UID, ""))
+    assert state["response"] is None  # можно повторить
+
+
+_CITIES_THREE = _CITIES + [
+    {"code": "tyumen", "label": "Тюмень", "tab_base": "Тюмень", "enabled": 1, "sort_order": 2},
+]
+
+
+def test_rnm_confirm_uses_non_default_target_city(tmp_path, monkeypatch):
+    """target_city ≠ дефолтного города («Москва») — кнопка/тексты показывают РЕАЛЬНЫЙ город
+    назначения из `regional_noshow_target_city` (никогда не хардкод)."""
+    from handlers import user_actions as ua
+    import cities
+
+    saved = cities.all_cities()
+    cities.set_cities_for_test([dict(c) for c in _CITIES_THREE])
+    try:
+        _ready(tmp_path)
+        _run(db.set_setting("event_city_enabled", "on"))
+        key = cities.per_city_key("regional_noshow_target_city", "spb")
+        _run(db.set_setting(key, "tyumen"))
+        _run(_add_delegate(UID, city="spb"))
+        _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+        calls = _fake_move_user_city(monkeypatch)
+
+        cb1 = FakeCallback("rnm_accept", UID)
+        _run(ua.regional_noshow_move_accept(cb1))
+        assert "Тюмень" in cb1.message.text
+        assert "Москва" not in cb1.message.text
+
+        cb2 = FakeCallback("rnm_confirm", UID)
+        _run(ua.regional_noshow_move_confirm(cb2))
+        assert calls[0]["new_city"] == "tyumen"
+        assert "Тюмень" in cb2.message.text
+        assert "Москва" not in cb2.message.text
+    finally:
+        cities.set_cities_for_test(saved)
 
 
 def test_rnm_decline_records_and_acks(tmp_path):
@@ -650,15 +925,19 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
     _run(_add_delegate(UID, city="spb"))
     _run(db.set_user_lang(UID, "en"))
 
+    import cities
+    target_label = _run(cities.city_label(cities.default_city_code()))
+
     bot = _with_bot(monkeypatch)
     _run(rgnm.send_offers("spb"))
     assert bot.sent
     _chat_id, text, kb = bot.sent[0]
     assert "Couldn't make it to the forum" in text
+    assert f"Come to YouLead: {target_label}" in text
     labels = [b.text for row in kb.inline_keyboard for b in row]
-    assert "✅ Move my application to Moscow" in labels
+    assert f"✅ Move application: {target_label}" in labels
     assert "No, thanks" in labels
 
     cb = FakeCallback("rnm_accept", UID)
     _run(ua.regional_noshow_move_accept(cb))
-    assert "Move your application to Moscow?" in cb.message.text
+    assert f"Move your application to another city: {target_label}?" in cb.message.text

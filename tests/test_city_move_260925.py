@@ -353,6 +353,66 @@ def test_move_updates_users_event_city_and_records_history(tmp_path, monkeypatch
     assert "event_city" in cols
 
 
+def test_move_records_custom_history_source(tmp_path, monkeypatch):
+    """Решение координатора (4, forum-regions-msk): `history_source` — необязательный параметр,
+    дефолт остаётся `"admin"` (тест выше), вызывающий (`services/regional_noshow_move.py::
+    apply_move`) может передать свой маркер."""
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
+        store.seed(new_tab, [])
+        return await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=0,
+            history_source="system:regional_offer",
+        )
+
+    report = _run(scenario())
+    assert report["ok"] is True
+
+    history = _run(db.get_answer_history(DELEGATE_ID))
+    assert history
+    assert history[0]["source"] == "system:regional_offer"
+
+
+def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monkeypatch):
+    """Экран «История правок» (`handlers/admin_moderation.py::appr_history`) строит подпись
+    источника через `_EDITED_SOURCE_LABELS.get(source, html_escape(source))` — незнакомый
+    `source` (не `"admin"`/`"miniapp"`) не роняет построение, просто печатается сырым текстом."""
+    import html as html_module
+    from services.applications import EDITED_SOURCE_LABELS
+
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
+        store.seed(new_tab, [])
+        await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=0,
+            history_source="system:regional_offer",
+        )
+        return await db.get_answer_history(DELEGATE_ID, limit=5)
+
+    rows = _run(scenario())
+    assert rows
+    source = rows[0]["source"]
+    assert source == "system:regional_offer"
+    # То же построение подписи, что появляется в handlers/admin_moderation.py::appr_history —
+    # незнакомый source не бросает исключение, отдаёт экранированный сырой текст.
+    label = EDITED_SOURCE_LABELS.get(source, html_module.escape(str(source or "")))
+    assert label == "system:regional_offer"
+
+
 def test_move_track_never_auto_switches_even_when_destination_mode_differs(tmp_path, monkeypatch):
     """Решение координатора 25.09 (отменяет прежнее авто-переключение): СПб (short) -> Москва
     с явным registration_mode=full — трек делегата ОСТАЁТСЯ short, ничего не пересчитывается.
