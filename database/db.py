@@ -10395,7 +10395,7 @@ async def list_marked_telegram_ids_for_session(session_id: int) -> list[int]:
 
 async def get_checkin_status(telegram_id: int) -> dict | None:
     """`{"scanned_at": "YYYY-MM-DD HH:MM:SS", "day": "YYYY-MM-DD", "is_today": bool,
-    "time_label": "ЧЧ:ММ" | "ДД.ММ в ЧЧ:ММ", "sessions_count": N}` — время отметки на входе
+    "time_label": "ЧЧ:ММ" | "ЧЧ:ММ (ДД.ММ)", "sessions_count": N}` — время отметки на входе
     (`CHECKIN_ENTRY_POINT`) и число ОТДЕЛЬНЫХ сессий, на которых делегат отмечен (`point LIKE
     'session:%'`, по одной строке на слот — D-20, `record_session_checkin` уже держит эту
     гарантию). `None`, если входа ещё не было — обе поверхности трактуют `None` как «не
@@ -10406,9 +10406,10 @@ async def get_checkin_status(telegram_id: int) -> dict | None:
     DESC, day DESC`, одним запросом, без отдельного «сначала проверить сегодня» похода в БД).
     `time_label` — готовая подпись для `{time}` обеих поверхностей (`handlers/user_actions.py::
     show_my_checkin_qr`, `miniapp/routers/hub.py::_checkin_status_fact`, единая функция чтения,
-    второй копии форматирования не заводим): просто «ЧЧ:ММ» для сегодняшнего входа, «ДД.ММ в
-    ЧЧ:ММ» для входа другого дня — без даты делегат мог бы принять вчерашний вход за
-    сегодняшний."""
+    второй копии форматирования не заводим): просто «ЧЧ:ММ» для сегодняшнего входа, «
+    ЧЧ:ММ (ДД.ММ)» для входа другого дня — без даты делегат мог бы принять вчерашний вход за
+    сегодняшний. Дата в скобках, а не «ДД.ММ в ЧЧ:ММ»: шаблон уже говорит «на входе в {time}»,
+    и подпись без предлогов одинаково читается в русском и английском тексте."""
     today = msk_now().strftime("%Y-%m-%d")
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
@@ -10432,7 +10433,7 @@ async def get_checkin_status(telegram_id: int) -> dict | None:
     if is_today or len(day) != 10:
         time_label = time_part
     else:
-        time_label = f"{day[8:10]}.{day[5:7]} в {time_part}"
+        time_label = f"{time_part} ({day[8:10]}.{day[5:7]})"
     return {
         "scanned_at": scanned_at, "day": day, "is_today": is_today,
         "time_label": time_label, "sessions_count": row[0],
