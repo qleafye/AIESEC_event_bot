@@ -453,6 +453,18 @@ def code_literals() -> list[tuple[str, str]]:
     # (fail-soft тихо промолчал бы, guard-тест — нет). Добавлено сюда же, а не отдельным коммитом.
     items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, увидимся на форуме!"))
 
+    # Перенос неявившихся регионального форума в другой город (handlers/user_actions.py,
+    # rnm_*): короткие ответы делегату — литералы с ручным EN в i18n_form_manual.
+    items.append(("lit:user_actions.rnm_1", 'Перенести заявку в другой город: {target_city}? Анкету заново заполнять не нужно.'))
+    items.append(("lit:user_actions.rnm_2", 'Хорошо, до встречи в следующий раз!'))
+    items.append(("lit:user_actions.rnm_3", 'Готово, твоя заявка теперь здесь: {target_city}. Даты и место — в меню.'))
+    items.append(("lit:user_actions.rnm_4", 'Заявку посмотрят ещё раз.'))
+    items.append(("lit:user_actions.rnm_5", 'Уже перенесено.'))
+    items.append(("lit:user_actions.rnm_6", 'Заявка уже не в {city}.'))
+    items.append(("lit:user_actions.rnm_7", 'Не получилось перенести заявку — напиши организаторам.'))
+    items.append(("lit:user_actions.rnm_8", 'Не нашли твою заявку — напиши организаторам.'))
+    items.append(("lit:user_actions.rnm_9", 'Перенос сейчас недоступен — напиши организаторам.'))
+
     # Форум-ночь п.6 (D-25, идея №14): ответ «Я на месте» на шаблон «Не пришёл»
     # (handlers/user_actions.py::checkin_not_arrived_respond) — показывает QR-экран тем же
     # приёмом, что и остальные литералы этого блока.
