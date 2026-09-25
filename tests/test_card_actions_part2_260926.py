@@ -889,3 +889,425 @@ def test_roles_addfor_capability_registered():
     from handlers.admin_caps import ADMIN_CAPS
 
     assert ADMIN_CAPS.get("roles_addfor:*") == "settings"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3: «📎 Заменить резюме»
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+from services.resume_replace import (  # noqa: E402
+    preview_resume_replace, replace_resume, validate_resume_document,
+)
+
+
+def _configure_nextcloud(monkeypatch):
+    monkeypatch.setattr(config, "NEXTCLOUD_WEBDAV_URL", "https://cloud.example.org/remote.php/dav/files/bot")
+    monkeypatch.setattr(config, "NEXTCLOUD_PUBLIC_URL", "https://cloud.example.org")
+    monkeypatch.setattr(config, "NEXTCLOUD_FOLDER_SHARE_TOKEN", "TOK")
+
+
+def _unconfigure_nextcloud(monkeypatch):
+    monkeypatch.setattr(config, "NEXTCLOUD_WEBDAV_URL", "")
+    monkeypatch.setattr(config, "NEXTCLOUD_PUBLIC_URL", "")
+    monkeypatch.setattr(config, "NEXTCLOUD_FOLDER_SHARE_TOKEN", "")
+
+
+class _FakeDocument:
+    def __init__(self, file_id, file_name, file_size=1000):
+        self.file_id = file_id
+        self.file_name = file_name
+        self.file_size = file_size
+
+
+class _FakeStateMessage:
+    def __init__(self, user_id, document=None, text=None):
+        self.from_user = _FakeUser(user_id)
+        self.document = document
+        self.text = text
+        self.answers = []
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append((text, parse_mode, reply_markup))
+
+
+# ── services/resume_replace.py — валидация + БД-слой ────────────────────────────────────────
+
+def test_validate_resume_document_rejects_wrong_extension():
+    assert validate_resume_document("resume.exe", 1000) is not None
+
+
+def test_validate_resume_document_rejects_too_large():
+    from reg_engine import RESUME_MAX_BYTES
+
+    assert validate_resume_document("resume.pdf", RESUME_MAX_BYTES + 1) is not None
+
+
+def test_validate_resume_document_accepts_pdf_and_docx():
+    assert validate_resume_document("resume.pdf", 1000) is None
+    assert validate_resume_document("resume.DOCX", 1000) is None
+
+
+def test_preview_resume_replace_none_for_unknown_user(tmp_path):
+    _db_ready(tmp_path)
+    assert _run(preview_resume_replace(999999999)) is None
+
+
+def test_preview_resume_replace_reports_old_state(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET resume_file_id = ?, resume_url = ? WHERE telegram_id = ?",
+                ("OLDFILE", "https://cloud.example.org/s/TOK/download?files=old.pdf", DELEGATE_ID),
+            )
+            await conn.commit()
+        return await preview_resume_replace(DELEGATE_ID)
+
+    preview = _run(scenario())
+    assert preview["ok"] is True
+    assert preview["had_old_file"] is True
+    assert preview["old_resume_url"] == "https://cloud.example.org/s/TOK/download?files=old.pdf"
+
+
+def test_preview_resume_replace_no_old_file(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        return await preview_resume_replace(DELEGATE_ID)
+
+    preview = _run(scenario())
+    assert preview["had_old_file"] is False
+    assert preview["old_resume_url"] is None
+
+
+def test_replace_resume_unknown_user_errors(tmp_path):
+    _db_ready(tmp_path)
+    report = _run(replace_resume(
+        _FakeBotWithId(), 999999999, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+    ))
+    assert report["ok"] is False
+
+
+def test_replace_resume_not_configured_still_updates_file_id(tmp_path, monkeypatch):
+    """Сбой/отсутствие Nextcloud НЕ рвёт саму замену file_id (fail-soft, 33-SEED)."""
+    _db_ready(tmp_path)
+    _unconfigure_nextcloud(monkeypatch)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        report = await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+        user = await db.get_user(DELEGATE_ID)
+        return report, user
+
+    report, user = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is False
+    assert report["cloud_error"] is not None
+    assert user["resume_file_id"] == "NEWFILE"
+
+
+def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+
+    from services import nextcloud as nextcloud_mod
+    from services import sheets as sheets_mod
+
+    upload_calls = []
+
+    async def _fake_upload_resume(bot, file_id, filename):
+        upload_calls.append((file_id, filename))
+        return "https://cloud.example.org/s/TOK/download?files=new.pdf"
+
+    sheet_calls = []
+
+    async def _fake_update_row_by_id(tab, tid, row):
+        sheet_calls.append((tab, tid))
+        return True
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+    monkeypatch.setattr(sheets_mod, "update_row_by_id", _fake_update_row_by_id)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET resume_file_id = ? WHERE telegram_id = ?", ("OLDFILE", DELEGATE_ID),
+            )
+            await conn.commit()
+        report = await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+        user = await db.get_user(DELEGATE_ID)
+        history = await db.get_answer_history(DELEGATE_ID)
+        return report, user, history
+
+    report, user, history = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is True
+    assert report["new_resume_url"] == "https://cloud.example.org/s/TOK/download?files=new.pdf"
+    assert user["resume_file_id"] == "NEWFILE"
+    assert user["resume_url"] == "https://cloud.example.org/s/TOK/download?files=new.pdf"
+    assert upload_calls and upload_calls[0][0] == "NEWFILE"
+    assert sheet_calls
+    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
+    assert history[0]["changes"] == [{"column": "resume_file_id", "old": True, "new": True}]
+
+
+def test_replace_resume_upload_failure_reports_cloud_error(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+
+    from services import nextcloud as nextcloud_mod
+
+    async def _fake_upload_resume_fail(bot, file_id, filename):
+        return None
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume_fail)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        return await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+
+    report = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is False
+    assert report["cloud_error"] is not None
+
+
+# ── handlers/admin_resume_replace.py — UI-слой ──────────────────────────────────────────────
+
+def test_resumerep_start_sets_state_and_shows_old_resume(tmp_path):
+    from handlers import admin_resume_replace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", full_name="Тест Тестов")
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET resume_file_id = ?, resume_url = ? WHERE telegram_id = ?",
+                ("OLDFILE", "https://cloud.example.org/s/TOK/download?files=old.pdf", DELEGATE_ID),
+            )
+            await conn.commit()
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        cb = _FakeCallback(f"resumerep_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resume_replace.resumerep_start(cb, state)
+        after_state = await state.get_state()
+        after_data = await state.get_data()
+        return cb, after_state, after_data
+
+    cb, after_state, after_data = _run(scenario())
+    text, kb = cb.message.edits[0]
+    assert "Заменить резюме" in text
+    assert "old.pdf" in text
+    from handlers.states import ResumeReplace
+    assert after_state == ResumeReplace.waiting_for_file.state
+    assert after_data["resumerep_tid"] == DELEGATE_ID
+    buttons = _cbs(kb)
+    assert f"resumerep_cancel:{DELEGATE_ID}" in buttons
+
+
+def test_resumerep_start_denied_when_city_out_of_scope(tmp_path):
+    from handlers import admin_resume_replace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        state = _fsm_ctx(storage, BOUND_MSK_ID)
+        cb = _FakeCallback(f"resumerep_start:{DELEGATE_ID}", BOUND_MSK_ID)
+        await admin_resume_replace.resumerep_start(cb, state)
+        after_state = await state.get_state()
+        return cb, after_state
+
+    cb, after_state = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+    assert after_state is None
+
+
+def test_resumerep_cancel_clears_state(tmp_path):
+    from handlers import admin_resume_replace
+    from handlers.states import ResumeReplace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        await state.set_state(ResumeReplace.waiting_for_file)
+        await state.update_data(resumerep_tid=DELEGATE_ID)
+        cb = _FakeCallback(f"resumerep_cancel:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_resume_replace.resumerep_cancel(cb, state)
+        after_state = await state.get_state()
+        return cb, after_state
+
+    cb, after_state = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "отменена" in text
+    assert after_state is None
+
+
+def test_resumerep_cancel_text_clears_state(tmp_path):
+    from handlers import admin_resume_replace
+    from handlers.states import ResumeReplace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        await state.set_state(ResumeReplace.waiting_for_file)
+        await state.update_data(resumerep_tid=DELEGATE_ID)
+        msg = _FakeStateMessage(SUPERADMIN_ID, text="/cancel")
+        await admin_resume_replace.resumerep_cancel_text(msg, state)
+        after_state = await state.get_state()
+        return msg, after_state
+
+    msg, after_state = _run(scenario())
+    assert "отменена" in msg.answers[0][0]
+    assert after_state is None
+
+
+def test_resumerep_receive_file_rejects_wrong_type_keeps_state(tmp_path):
+    from handlers import admin_resume_replace
+    from handlers.states import ResumeReplace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        await state.set_state(ResumeReplace.waiting_for_file)
+        await state.update_data(resumerep_tid=DELEGATE_ID)
+        msg = _FakeStateMessage(SUPERADMIN_ID, document=_FakeDocument("BAD", "resume.exe"))
+        await admin_resume_replace.resumerep_receive_file(msg, state, _FakeBotWithId())
+        after_state = await state.get_state()
+        user = await db.get_user(DELEGATE_ID)
+        return msg, after_state, user
+
+    msg, after_state, user = _run(scenario())
+    assert "PDF" in msg.answers[0][0] or "DOCX" in msg.answers[0][0]
+    assert after_state == ResumeReplace.waiting_for_file.state  # состояние осталось
+    assert user["resume_file_id"] is None  # не тронуто
+
+
+def test_resumerep_receive_file_success(tmp_path, monkeypatch):
+    from handlers import admin_resume_replace
+    from handlers.states import ResumeReplace
+
+    _db_ready(tmp_path)
+    _unconfigure_nextcloud(monkeypatch)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", full_name="Тест Тестов")
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        await state.set_state(ResumeReplace.waiting_for_file)
+        await state.update_data(resumerep_tid=DELEGATE_ID)
+        msg = _FakeStateMessage(SUPERADMIN_ID, document=_FakeDocument("NEWFILE", "resume.pdf"))
+        await admin_resume_replace.resumerep_receive_file(msg, state, _FakeBotWithId())
+        after_state = await state.get_state()
+        user = await db.get_user(DELEGATE_ID)
+        return msg, after_state, user
+
+    msg, after_state, user = _run(scenario())
+    text = msg.answers[0][0]
+    assert "заменено" in text
+    assert after_state is None
+    assert user["resume_file_id"] == "NEWFILE"
+
+
+def test_resumerep_receive_file_denies_forged_city_out_of_scope(tmp_path):
+    from handlers import admin_resume_replace
+    from handlers.states import ResumeReplace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        state = _fsm_ctx(storage, BOUND_MSK_ID)
+        await state.set_state(ResumeReplace.waiting_for_file)
+        await state.update_data(resumerep_tid=DELEGATE_ID)
+        msg = _FakeStateMessage(BOUND_MSK_ID, document=_FakeDocument("NEWFILE", "resume.pdf"))
+        await admin_resume_replace.resumerep_receive_file(msg, state, _FakeBotWithId())
+        after_state = await state.get_state()
+        user = await db.get_user(DELEGATE_ID)
+        return msg, after_state, user
+
+    msg, after_state, user = _run(scenario())
+    assert after_state is None  # состояние гасится и при отказе — начинать заново с карточки
+    assert user["resume_file_id"] is None
+
+
+def test_resumerep_receive_other_reminds(tmp_path):
+    from handlers import admin_resume_replace
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        msg = _FakeStateMessage(SUPERADMIN_ID, text="привет")
+        await admin_resume_replace.resumerep_receive_other(msg)
+        return msg
+
+    msg = _run(scenario())
+    assert "PDF" in msg.answers[0][0] or "DOCX" in msg.answers[0][0]
+
+
+def test_resumerep_capability_registered_for_every_callback():
+    from handlers.admin_caps import ADMIN_CAPS
+
+    for prefix in ("resumerep_start:*", "resumerep_cancel:*", "state:ResumeReplace:*"):
+        assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix
+
+
+def test_find_card_shows_resume_replace_button_for_submitted_delegate(tmp_path):
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", username="hasresume")
+
+        import handlers.admin as admin_mod
+
+        async def _fake_get_user_by_username(username):
+            return await db.get_user(DELEGATE_ID)
+
+        orig = admin_mod.get_user_by_username
+        admin_mod.get_user_by_username = _fake_get_user_by_username
+        try:
+            captured = {}
+
+            class _M:
+                def __init__(self):
+                    self.text = "/find @hasresume"
+
+                async def answer(self, text, parse_mode=None, reply_markup=None):
+                    captured["text"] = text
+                    captured["kb"] = reply_markup
+
+            await admin.cmd_find_user(_M())
+        finally:
+            admin_mod.get_user_by_username = orig
+        return captured
+
+    captured = _run(scenario())
+    buttons = _cbs(captured["kb"])
+    assert f"resumerep_start:{DELEGATE_ID}" in buttons

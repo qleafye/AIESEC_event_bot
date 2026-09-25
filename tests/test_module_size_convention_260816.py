@@ -496,7 +496,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1112,
+        1124,
+        "Phase 33 (delegate-card admin actions, задача 3, 26.09): +12 строк — кнопка «📎 "
+        "Заменить резюме» на карточке /find (только для поданной анкеты) + шов-импорт "
+        "`from handlers import admin_resume_replace` в самый хвост файла; 1112 -> 1124. "
         "Phase 33 (delegate-card admin actions, задача 2, 26.09): +32 строки — `/find` "
         "фоллбэк на reg_started (человек нажимал /start, анкету не подал), своя карточка + "
         "кнопки «👥 Выдать роль»/«🧹 Сбросить зависшую анкету» (условная); 1080 -> 1112. "
@@ -697,7 +700,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1336,
+        1342,
+        "Phase 33 (delegate-card admin actions, задача 3, 26.09): +6 строк — капы "
+        "«resumerep_start:*»/«resumerep_cancel:*»/«state:ResumeReplace:*» (moderate_reg); "
+        "1336 -> 1342. "
         "Phase 33 (delegate-card admin actions, задача 2, 26.09): +4 строки — капа "
         "«roles_addfor:*» (settings, прямой вход в мастер выдачи роли с карточки /find); "
         "1332 -> 1336. "
