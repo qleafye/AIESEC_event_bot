@@ -1142,6 +1142,14 @@ ADMIN_CAPS: dict[str, str] = {
     # навигационный приём, что «admin_city_pick:*»/«admin_city_switch*» выше: реальная
     # проверка (OR двух прав) — вручную внутри `handlers.admin_lost_found.lostfound_return`.
     "lostfound_return:*": ANY_CAPABILITY,
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах») — капа «moderate_reg», тот же довод, что
+    # у соседних строк хаба «🎪 Форум: функции» (checkinvol_cfg:*/lostfound_cfg:* выше):
+    # массовая рассылка + правка настроек экрана, не рутинное действие волонтёра.
+    "forumstats_cfg:*": "moderate_reg",
+    "forumstats_toggle:*": "moderate_reg",
+    "forumstats_preview:*": "moderate_reg",
+    "forumstats_pick:*": "moderate_reg",
+    "forumstats_send_go:*": "moderate_reg",
 }
 
 
