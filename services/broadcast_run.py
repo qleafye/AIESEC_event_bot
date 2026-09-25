@@ -16,9 +16,10 @@ from datetime import datetime, timedelta
 from aiogram.exceptions import TelegramRetryAfter
 
 from database.db import (
+    delivery_writer,
     finish_broadcast,
     list_broadcast_messages,
-    record_broadcast_delivery,
+    record_broadcast_deliveries,
     set_broadcast_status,
 )
 from services.timeutil import msk_now
@@ -36,6 +37,13 @@ _stop: set[int] = set()
 # раньше. Здесь, а не в хендлере: run_revoke тоже им пользуется.
 _PROGRESS_MIN_INTERVAL_S = 3
 _PROGRESS_EVERY_N = 25
+
+# Журнал доставки (`broadcast_deliveries`) пишется пачкой: не чаще раза в столько получателей
+# или секунд — что наступит раньше — и обязательно в конце прогона (в т.ч. после стопа). Раньше
+# каждая строка открывала своё соединение и коммитила — 15–30 мс на получателя из ~30
+# (бенчмарк 25.09, tools/bench_broadcast.py). Журнал нужен только отзыву ПОСЛЕ рассылки.
+_JOURNAL_FLUSH_EVERY_N = 25
+_JOURNAL_FLUSH_EVERY_S = 2.0
 
 
 def request_stop(broadcast_id: int) -> None:
@@ -69,6 +77,23 @@ def _retry_delay(retry_after: int) -> int:
     return retry_after + 1
 
 
+async def _flush_journal(broadcast_id, journal: list, final: bool = False) -> None:
+    """Пишет накопленные строки журнала и очищает буфер. Сбой записи не роняет рассылку:
+    строки остаются в буфере до следующей попытки, в конце прогона — ошибка в лог."""
+    if not journal:
+        return
+    try:
+        await record_broadcast_deliveries(list(journal))
+    except Exception as e:
+        logger.error(
+            "broadcast %s: не удалось записать журнал доставки (%s строк%s): %s: %s",
+            broadcast_id, len(journal), ", последняя попытка" if final else "",
+            type(e).__name__, e,
+        )
+        return
+    journal.clear()
+
+
 async def run_broadcast(
     broadcast_id, chat_ids, send_one, on_progress=None, on_finish=None, mute_skipped: int = 0,
 ):
@@ -87,57 +112,73 @@ async def run_broadcast(
     blocked = 0
     stopped = False
     last_progress_ts = time.monotonic()
+    journal: list[tuple[int, int, int, str]] = []
+    last_flush_ts = time.monotonic()
 
-    for i, chat_id in enumerate(chat_ids):
-        if is_stopped(broadcast_id):
-            stopped = True
-            break
-
-        message_ids = None
-        retried_ok = None
+    # Одно соединение на весь прогон для записей журнала; коммит каждой пачки сразу — между
+    # отправками транзакция не держится.
+    async with delivery_writer():
         try:
-            message_ids = await send_one(chat_id)
-            first_ok = True
-        except TelegramRetryAfter as e:
-            first_ok = False
-            await asyncio.sleep(_retry_delay(e.retry_after))
-            try:
-                message_ids = await send_one(chat_id)
-                retried_ok = True
-            except Exception as e2:
-                retried_ok = False
-                # Квик 260915-twr (Task B2): раньше причина недоставки терялась полностью —
-                # warning, не error: заблокировавший бота делегат — факт о человеке, не сбой
-                # бота (тот же довод, что в докстринге services/scheduler.py::_safe_send).
-                logger.warning(
-                    "broadcast %s retry send failed for %s: %s: %s",
-                    broadcast_id, chat_id, type(e2).__name__, e2,
-                )
-        except Exception as e:
-            first_ok = False
-            logger.warning(
-                "broadcast %s send failed for %s: %s: %s",
-                broadcast_id, chat_id, type(e).__name__, e,
-            )
+            for i, chat_id in enumerate(chat_ids):
+                if is_stopped(broadcast_id):
+                    stopped = True
+                    break
 
-        if first_ok or retried_ok:
-            delivered += 1
-            for message_id in (message_ids or []):
-                await record_broadcast_delivery(broadcast_id, chat_id, message_id)
-        else:
-            blocked += 1
+                message_ids = None
+                retried_ok = None
+                try:
+                    message_ids = await send_one(chat_id)
+                    first_ok = True
+                except TelegramRetryAfter as e:
+                    first_ok = False
+                    await asyncio.sleep(_retry_delay(e.retry_after))
+                    try:
+                        message_ids = await send_one(chat_id)
+                        retried_ok = True
+                    except Exception as e2:
+                        retried_ok = False
+                        # Квик 260915-twr (Task B2): раньше причина недоставки терялась
+                        # полностью — warning, не error: заблокировавший бота делегат — факт о
+                        # человеке, не сбой бота (довод из services/scheduler.py::_safe_send).
+                        logger.warning(
+                            "broadcast %s retry send failed for %s: %s: %s",
+                            broadcast_id, chat_id, type(e2).__name__, e2,
+                        )
+                except Exception as e:
+                    first_ok = False
+                    logger.warning(
+                        "broadcast %s send failed for %s: %s: %s",
+                        broadcast_id, chat_id, type(e).__name__, e,
+                    )
 
-        await asyncio.sleep(0.05)
+                if first_ok or retried_ok:
+                    delivered += 1
+                    sent_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+                    for message_id in (message_ids or []):
+                        journal.append((broadcast_id, chat_id, message_id, sent_at))
+                    if journal and (
+                        len(journal) >= _JOURNAL_FLUSH_EVERY_N
+                        or time.monotonic() - last_flush_ts >= _JOURNAL_FLUSH_EVERY_S
+                    ):
+                        await _flush_journal(broadcast_id, journal)
+                        last_flush_ts = time.monotonic()
+                else:
+                    blocked += 1
 
-        now = time.monotonic()
-        if on_progress and (
-            now - last_progress_ts >= _PROGRESS_MIN_INTERVAL_S or (i + 1) % _PROGRESS_EVERY_N == 0
-        ):
-            last_progress_ts = now
-            try:
-                await on_progress(delivered, blocked, total)
-            except Exception:
-                pass
+                await asyncio.sleep(0.05)
+
+                now = time.monotonic()
+                if on_progress and (
+                    now - last_progress_ts >= _PROGRESS_MIN_INTERVAL_S
+                    or (i + 1) % _PROGRESS_EVERY_N == 0
+                ):
+                    last_progress_ts = now
+                    try:
+                        await on_progress(delivered, blocked, total)
+                    except Exception:
+                        pass
+        finally:
+            await _flush_journal(broadcast_id, journal, final=True)
 
     status = "stopped" if stopped else "done"
     await finish_broadcast(broadcast_id, status, delivered, blocked, mute_skipped)

@@ -541,6 +541,10 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
 # Итог: 1 API-вызов на получателя для text/фото/видео/документа, до 2 — только для альбома в
 # редкий день, когда предложение ещё не показывалось.
 
+# Сколько строк журнала отзыва (`broadcast_deliveries`) копить до записи пачкой. Журнал нужен
+# только отзыву после рассылки; при крахе процесса теряется не больше этого хвоста.
+_JOURNAL_FLUSH_EVERY = 25
+
 MUTE_TODAY_CALLBACK = "bc_mute_today"
 UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
 
@@ -583,12 +587,68 @@ async def mute_button(chat_id: int) -> InlineKeyboardButton:
     return await _translated_button(MUTE_BUTTON_TEXT, MUTE_TODAY_CALLBACK, chat_id)
 
 
+class RecipientLangs:
+    """Язык и карта перевода получателей рассылки, прочитанные ОДИН раз на рассылку.
+
+    Бенчмарк 25.09 (tools/bench_broadcast.py): `i18n.context(chat_id)` на каждого получателя —
+    это 2–3 похода в БД (тумблер языка, `users.lang`, карта переводов), треть времени прогона.
+    Здесь то же правило `i18n.delegate_lang`/`load_map`, но тумблер и языки всех читаются одним
+    запросом, английская карта — один раз, кнопка «🔕» — одна на язык. Язык, сменённый делегатом
+    во время самой рассылки, до конца этой рассылки не подхватывается."""
+
+    def __init__(self, module_on: bool, stored: dict[int, str], tr_map_en: dict[str, str]):
+        self._module_on = module_on
+        self._stored = stored
+        self._tr_map_en = tr_map_en
+        self._buttons: dict[str, InlineKeyboardButton] = {}
+        self._offer_text: str | None = None
+
+    def context(self, chat_id: int) -> tuple[str, dict]:
+        from services import i18n as i18n_service
+        lang = i18n_service.resolve_lang(self._module_on, self._stored.get(chat_id), None)
+        return lang, (self._tr_map_en if lang == "en" else {})
+
+    def mute_button(self, chat_id: int) -> InlineKeyboardButton:
+        from handlers import reg_i18n
+        lang, tr_map = self.context(chat_id)
+        button = self._buttons.get(lang)
+        if button is None:
+            button = InlineKeyboardButton(
+                text=reg_i18n.tr_text(MUTE_BUTTON_TEXT, lang, tr_map),
+                callback_data=MUTE_TODAY_CALLBACK,
+            )
+            self._buttons[lang] = button
+        return button
+
+    async def mute_offer_text(self) -> str:
+        if self._offer_text is None:
+            self._offer_text = (
+                await get_setting_typed("broadcast_mute_offer_text") or _MUTE_OFFER_TEXT
+            )
+        return self._offer_text
+
+
+async def load_recipient_langs() -> RecipientLangs:
+    """Fail-soft как у `i18n.delegate_lang`: сбой чтения — всем русский и `logger.error`."""
+    from database.db import list_stored_langs
+    from services import i18n as i18n_service
+    try:
+        module_on = await get_setting_typed("delegate_lang_enabled") == "on"
+        stored = await list_stored_langs() if module_on else {}
+        tr_map_en = await i18n_service.load_map("en") if module_on else {}
+    except Exception:  # noqa: BLE001 — тот же широкий fail-soft, что у delegate_lang
+        logger.error("load_recipient_langs: сбой чтения языков получателей", exc_info=True)
+        return RecipientLangs(False, {}, {})
+    return RecipientLangs(module_on, stored, tr_map_en)
+
+
 async def unmute_button(chat_id: int) -> InlineKeyboardButton:
     return await _translated_button(UNMUTE_BUTTON_TEXT, UNMUTE_TODAY_CALLBACK, chat_id)
 
 
 async def recipient_markup(
     chat_id: int, important: bool, base_markup: InlineKeyboardMarkup | None = None,
+    langs: RecipientLangs | None = None,
 ) -> InlineKeyboardMarkup | None:
     """Клавиатура ПОЛУЧАТЕЛЯ рассылки: собственная клавиатура менеджера (`base_markup`, если
     есть — например, пересланный пост с кнопками-ссылками) + строка «🔕» ПОСЛЕДНЕЙ, когда
@@ -600,16 +660,21 @@ async def recipient_markup(
     D-30 (решение владельца 24.09): кнопка доступна ВЕСЬ СЕЗОН, не только в день форума —
     раньше гейт `offer_mute_today_if_forum_day` показывал её только в день форума города
     получателя («иначе кнопка лишняя»), но заглушка полезна и вне форумных дней (например,
-    делегат хочет не получать анонсы до самого события). Гейт убран целиком."""
+    делегат хочет не получать анонсы до самого события). Гейт убран целиком.
+
+    `langs` — языки, прочитанные один раз на рассылку (`load_recipient_langs`); без него язык
+    читается из БД на этого получателя, как раньше."""
     rows = [list(row) for row in (base_markup.inline_keyboard if base_markup else [])]
     if not important:
-        rows.append([await mute_button(chat_id)])
+        rows.append([langs.mute_button(chat_id) if langs else await mute_button(chat_id)])
     if not rows:
         return None
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int | None:
+async def send_mute_offer_if_eligible(
+    bot, chat_id: int, important: bool, langs: RecipientLangs | None = None,
+) -> int | None:
     """ТОЛЬКО для альбома — `bot.send_media_group` не принимает `reply_markup`, поэтому
     предложение «🔕» для альбомной рассылки остаётся ОТДЕЛЬНЫМ сообщением (в отличие от
     text/фото/видео/документа — там кнопка теперь внутри `recipient_markup`). Не чаще раза в
@@ -629,10 +694,16 @@ async def send_mute_offer_if_eligible(bot, chat_id: int, important: bool) -> int
             return None
         from handlers import reg_i18n
         from services import i18n as i18n_service
-        lang, tr_map = await i18n_service.context(chat_id)
-        base_text = await get_setting_typed("broadcast_mute_offer_text") or _MUTE_OFFER_TEXT
+        if langs is not None:
+            lang, tr_map = langs.context(chat_id)
+            base_text = await langs.mute_offer_text()
+            button = langs.mute_button(chat_id)
+        else:
+            lang, tr_map = await i18n_service.context(chat_id)
+            base_text = await get_setting_typed("broadcast_mute_offer_text") or _MUTE_OFFER_TEXT
+            button = await mute_button(chat_id)
         text = reg_i18n.tr_text(base_text, lang, tr_map)
-        kb = InlineKeyboardMarkup(inline_keyboard=[[await mute_button(chat_id)]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[[button]])
         msg = await bot.send_message(chat_id, text, reply_markup=kb)
         await mark_mute_offer_shown(chat_id, today)
         return msg.message_id
@@ -650,7 +721,7 @@ async def send_scheduled_broadcast(broadcast_id: int):
             get_all_users_ids, count_and_list_filtered,
             list_delivered_chat_ids, mark_delivery, cleanup_deliveries,
             create_broadcast, set_scheduled_log_broadcast_id,
-            record_broadcast_delivery, finish_broadcast,
+            record_broadcast_deliveries, finish_broadcast, delivery_writer,
         )
         row = await get_scheduled_broadcast(broadcast_id)
         if not row or row.get("status") != "pending":
@@ -761,37 +832,52 @@ async def send_scheduled_broadcast(broadcast_id: int):
         # _safe_send вызовет фабрику повторно — словарь перезапишется актуальным id, это
         # правильное поведение.
         sent_message_ids: dict[int, int] = {}
-        for chat_id in target_ids:
-            if chat_id in already:
-                skipped += 1
-                continue
-            # Ревью 470ce5e..3703ba4: раньше здесь уходило до 3 сообщений на получателя (маркер
-            # важности + содержимое + предложение «🔕») на одну паузу 0.05с, рассчитанную на
-            # один вызов. Теперь пометка — внутри `content`, кнопка «🔕» — внутри `markup`:
-            # ровно 1 API-вызов на получателя (scheduled-путь не поддерживает альбом, второго
-            # вызова здесь не бывает вовсе).
-            markup = await recipient_markup(chat_id, important)
-            if photo:
-                async def _send(cid, _photo=photo, _caption=content, _markup=markup):
-                    msg = await _bot.send_photo(cid, _photo, caption=_caption, reply_markup=_markup)
-                    sent_message_ids[cid] = msg.message_id
-                    return msg
-                ok = await _safe_send(_send, chat_id)
-            else:
-                async def _send(cid, _text=content, _markup=markup):
-                    msg = await _bot.send_message(cid, _text, reply_markup=_markup)
-                    sent_message_ids[cid] = msg.message_id
-                    return msg
-                ok = await _safe_send(_send, chat_id)
-            await mark_delivery(broadcast_id, chat_id, bool(ok))
-            if ok and chat_id in sent_message_ids:
-                # fail-soft: отсутствие id (странный ответ API) не должно ронять рассылку
-                await record_broadcast_delivery(log_bid, chat_id, sent_message_ids[chat_id])
-            if ok:
-                sent += 1
-            else:
-                failed += 1
-            await asyncio.sleep(0.05)
+        # Языки получателей и кнопка «🔕» — один раз на рассылку, не походом в БД на каждого.
+        langs = await load_recipient_langs() if not important else None
+        # Чекпоинт `mark_delivery` остаётся на КАЖДОГО получателя (он и есть защита от дубля
+        # после краха), но пишется через одно соединение на весь цикл (`delivery_writer`);
+        # строки журнала отзыва копятся и сбрасываются пачкой.
+        journal: list[tuple[int, int, int, str]] = []
+        async with delivery_writer():
+            try:
+                for chat_id in target_ids:
+                    if chat_id in already:
+                        skipped += 1
+                        continue
+                    # Ревью 470ce5e..3703ba4: ровно 1 API-вызов на получателя — пометка важности
+                    # внутри `content`, кнопка «🔕» внутри `markup` (альбома здесь не бывает).
+                    markup = await recipient_markup(chat_id, important, langs=langs)
+                    if photo:
+                        async def _send(cid, _photo=photo, _caption=content, _markup=markup):
+                            msg = await _bot.send_photo(
+                                cid, _photo, caption=_caption, reply_markup=_markup,
+                            )
+                            sent_message_ids[cid] = msg.message_id
+                            return msg
+                        ok = await _safe_send(_send, chat_id)
+                    else:
+                        async def _send(cid, _text=content, _markup=markup):
+                            msg = await _bot.send_message(cid, _text, reply_markup=_markup)
+                            sent_message_ids[cid] = msg.message_id
+                            return msg
+                        ok = await _safe_send(_send, chat_id)
+                    await mark_delivery(broadcast_id, chat_id, bool(ok))
+                    if ok and chat_id in sent_message_ids:
+                        # fail-soft: отсутствие id (странный ответ API) не должно ронять рассылку
+                        journal.append((
+                            log_bid, chat_id, sent_message_ids[chat_id],
+                            msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+                        ))
+                        if len(journal) >= _JOURNAL_FLUSH_EVERY:
+                            await record_broadcast_deliveries(journal)
+                            journal = []
+                    if ok:
+                        sent += 1
+                    else:
+                        failed += 1
+                    await asyncio.sleep(0.05)
+            finally:
+                await record_broadcast_deliveries(journal)
 
         await mark_broadcast_sent(broadcast_id)
         # sent + skipped: skipped — доставленные ПРЕДЫДУЩИМ прогоном после рестарта, для
