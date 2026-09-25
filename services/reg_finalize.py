@@ -343,6 +343,15 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     telegram_id, patch, allowed_columns=reg_engine.answer_columns()
                 )
                 await mark_user_edited(telegram_id, source)
+                # Phase 33 (задача 3): любая РЕАЛЬНО применённая правка гасит личное исключение
+                # «✏️ Открыть правку после решения» (handlers/admin_edit_grant.py), безусловно
+                # — не только когда именно оно разрешило эту правку (обычная правка pending-
+                # делегата без исключения гасит несуществующее активное = безвредный no-op).
+                try:
+                    from services import delegate_overrides
+                    await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_EDIT)
+                except Exception as e:
+                    logger.error(f"edit override погашение сбоило для {telegram_id}: {e}")
 
                 if status == "rejected" and not was_auto_rejected:
                     # D-10: повторная подача отклонённой анкеты -> pending, отдельная запись

@@ -92,7 +92,26 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
 
     Правка 260922-wrg: `reg_edit_policy` — per_city, резолвится по `event_city` СТРОКИ
     (`user_row.get("event_city")`), не по городу вызывающего админа/делегата откуда-то ещё —
-    единственный источник города здесь та же строка, что несёт остальные поля гейта."""
+    единственный источник города здесь та же строка, что несёт остальные поля гейта.
+
+    Phase 33 (delegate-card admin actions, задача 3): персональное исключение
+    (`services/delegate_overrides.py`, `kind="edit"`) проверяется ПЕРВЫМ, до общего положения
+    — менеджер разрешил ЭТОМУ делегату один раз отредактировать уже решённую анкету, даже
+    если общий переключатель стоит на «нельзя». Только peek (не гасит исключение) — гашение
+    происходит в точке фактического использования, `services/reg_finalize.py` (любая реально
+    применённая правка гасит его безусловно — активного исключения обычно и так нет, это
+    no-op для делегата без него)."""
+    telegram_id = (user_row or {}).get("telegram_id")
+    if telegram_id is not None:
+        try:
+            from services import delegate_overrides
+            if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_EDIT):
+                return True, None
+        except Exception:
+            logger.error(
+                "reg_edit_policy.edit_gate: сбой чтения личного исключения, fail-soft к общей политике",
+                exc_info=True,
+            )
     try:
         city = (user_row or {}).get("event_city")
         policy = await get_setting_typed_for_city("reg_edit_policy", city)
