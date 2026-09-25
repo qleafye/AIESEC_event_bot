@@ -245,3 +245,66 @@ def test_delivery_writer_rolls_back_failed_write(tmp_path, monkeypatch):
         assert sorted(await db.list_broadcast_messages(bid)) == [(1, 11), (3, 33)]
 
     asyncio.run(go())
+
+
+def test_journal_dropped_after_two_failed_flushes(tmp_path, monkeypatch, caplog):
+    """Пачка журнала падает дважды подряд: буфер сброшен (не копится бесконечно), в логе
+    error с id рассылки и числом потерянных строк, рассылка доходит до конца."""
+    import logging
+    _isolate(tmp_path, monkeypatch)
+    monkeypatch.setattr(br, "_JOURNAL_FLUSH_EVERY_N", 2)
+
+    async def go():
+        fast_init_db()
+        bid = await db.create_broadcast(1, "привет", 6)
+        real = br.record_broadcast_deliveries
+        calls = {"n": 0}
+        written = []
+
+        async def flaky(rows):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise RuntimeError("database is locked")
+            written.append(list(rows))
+            await real(rows)
+        monkeypatch.setattr(br, "record_broadcast_deliveries", flaky)
+
+        async def send_one(chat_id):
+            return [chat_id]
+
+        with caplog.at_level(logging.ERROR, logger=br.logger.name):
+            await br.run_broadcast(bid, [1, 2, 3, 4, 5, 6], send_one)
+        row = await db.get_broadcast(bid)
+        assert (row["status"], row["delivered"]) == ("done", 6)
+        # Пачка 1-2 упала (оставлена в буфере), 1-3 упала снова -> сброшена; 4-6 записаны.
+        assert [[r[1] for r in batch] for batch in written] == [[4, 5], [6]]
+        assert sorted(await db.list_broadcast_messages(bid)) == [(4, 4), (5, 5), (6, 6)]
+        lost = [r.getMessage() for r in caplog.records if "потеряно" in r.getMessage()]
+        assert lost == [
+            f"потеряно 3 строк журнала рассылки #{bid} — «Удалить у получателей» их не достанет"
+        ]
+        failed = [r.getMessage() for r in caplog.records if "не записано" in r.getMessage()]
+        assert len(failed) == 2 and all(f"broadcast {bid}:" in m for m in failed)
+
+    asyncio.run(go())
+
+
+def test_journal_buffer_capped(tmp_path, monkeypatch, caplog):
+    """Первый же сбой при буфере больше потолка — сброс, не ожидание второго сбоя."""
+    import logging
+    _isolate(tmp_path, monkeypatch)
+    monkeypatch.setattr(br, "_JOURNAL_MAX_BUFFER", 3)
+
+    async def boom(rows):
+        raise RuntimeError("disk I/O error")
+    monkeypatch.setattr(br, "record_broadcast_deliveries", boom)
+
+    async def go():
+        journal = [(7, c, c, "t") for c in range(5)]
+        state = {"failures": 0}
+        with caplog.at_level(logging.ERROR, logger=br.logger.name):
+            await br._flush_journal(7, journal, state)
+        assert journal == []
+        assert any("потеряно 5 строк журнала рассылки #7" in r.getMessage() for r in caplog.records)
+
+    asyncio.run(go())
