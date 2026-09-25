@@ -192,8 +192,12 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2892,
+        2897,
         "Перенос на main 5a95fb9: уведомление делегату о переводе + город волонтёра по ссылке (2887 -> 2892). "
+        "Phase 33 (delegate-card admin actions, 25.09): +5 строк — три новых ключа "
+        "(revert_pending_notify_text/resubmit_granted_notify_text/edit_granted_notify_text) "
+        "дописаны в _APPS_FIELD_ORDER (редактор экрана достаётся бесплатно попаданием в этот "
+        "список, тот же приём, что у соседних делегатских текстов); 2892 -> 2897. "
         "Трек «региональные форумы → Москва» (25.09, forum-regions-msk): +36 строк — "
         "`regional_noshow_offer_text` дописан в _APPS_FIELD_ORDER (тот же приём, что у "
         "lost_found_post_text ниже) + `_reschedule_regional_noshow_move_if_relevant` (тот же "
@@ -485,7 +489,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        991,
+        1005,
+        "Phase 33 (delegate-card admin actions, 25.09): +14 строк — кнопка «↩️ Вернуть в "
+        "ожидание» на карточке /find (условная, только для approved/rejected) + шов-импорт "
+        "`from handlers import admin_revert_pending` в самый хвост файла (991 -> 1005). "
         "Перенос на main 01d67ae: сложились форумные функции делегата и forum-1030 (985 -> 991). "
         "Слияние с main 3d0b70f: сложились перевод в город (фаза 33) и швы/капы «Сейчас на площадке»/«Учебные QR» (971). "
         "Бэклог чек-ина №12: +5 строк — шов-импорт `from handlers import admin_checkin_floor` "
@@ -670,8 +677,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1305,
+        1312,
         "Капа тумблера «🔔 Сообщить делегату» на экране перевода в город (1304 -> 1305). "
+        "Phase 33 (delegate-card admin actions, 25.09): +7 строк — капы «↩️ Вернуть в "
+        "ожидание» (revertp_start/toggle/apply/cancel, moderate_reg, та же капа, что у "
+        "citymv_* выше); 1305 -> 1312. "
         "Перенос неявившихся регионов (rnm_*, экран в хабе) поверх main 64c51da (1297 -> 1304). "
         "Перенос на main 01d67ae: сложились форумные функции делегата и forum-1030 (1287 -> 1294). "
         "Слияние с main 3d0b70f: сложились перевод в город (фаза 33) и швы/капы «Сейчас на площадке»/«Учебные QR» (1202). "
