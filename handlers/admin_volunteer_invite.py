@@ -61,13 +61,29 @@ def _invite_status_text(inv: dict) -> str:
     return "✅ активна"
 
 
-def _invite_line_text(inv: dict) -> str:
-    link_exp = format_ddmmyyyy(inv["link_expires_at"]) or "бессрочно"
-    rights_exp = format_ddmmyyyy(inv["rights_expires_at"]) or "бессрочно"
+def _expiry_suffix(exp_iso: str | None) -> str:
+    """«до 04.10.2026» при наличии срока, иначе «бессрочно» — без этого выходит «до
+    бессрочно» (бесконечность не наступает «до» точки во времени)."""
+    formatted = format_ddmmyyyy(exp_iso)
+    return f"до {formatted}" if formatted else "бессрочно"
+
+
+def _invite_link_html(code_token: str, bot_username: str | None) -> str:
+    """Сама ссылка-приглашение, а не код — код человеку ничего не говорит и его никуда не
+    вставить; <code> даёт тап-копирование в Telegram."""
+    raw = (
+        f"https://t.me/{bot_username}?start=vol_{code_token}" if bot_username
+        else f"?start=vol_{code_token}"
+    )
+    return f"<code>{html.escape(raw)}</code>"
+
+
+def _invite_line_text(inv: dict, bot_username: str | None) -> str:
     return (
-        f"• <code>{html.escape(inv['code'])}</code> — {_invite_status_text(inv)} · "
+        f"• {_invite_link_html(inv['code'], bot_username)} — {_invite_status_text(inv)} · "
         f"использовано {inv['used']} из {_limit_text(inv['max_uses'])} · "
-        f"ссылка до {link_exp} · права волонтёра до {rights_exp}"
+        f"ссылка: {_expiry_suffix(inv['link_expires_at'])} · "
+        f"права волонтёра: {_expiry_suffix(inv['rights_expires_at'])}"
     )
 
 
@@ -91,7 +107,7 @@ async def _bot_username(bot) -> str | None:
         return None
 
 
-async def _render_cfg(admin_id: int, code: str | None) -> tuple[str, InlineKeyboardMarkup]:
+async def _render_cfg(admin_id: int, code: str | None, bot: Bot) -> tuple[str, InlineKeyboardMarkup]:
     label = await city_label(code) if code and await cities_module_on() else None
     enabled = await get_setting_typed_for_city("volunteer_invite_enabled", code) == "on"
     lines = [
@@ -120,9 +136,10 @@ async def _render_cfg(admin_id: int, code: str | None) -> tuple[str, InlineKeybo
     if not invites:
         lines.append("\nСсылок пока нет.")
     else:
+        bot_username = await _bot_username(bot)
         lines.append("")
         for inv in invites:
-            lines.append(_invite_line_text(inv))
+            lines.append(_invite_line_text(inv, bot_username))
             row = []
             if _invite_is_live(inv):
                 row.append(InlineKeyboardButton(
@@ -149,7 +166,7 @@ async def _render_city_picker() -> tuple[str, InlineKeyboardMarkup]:
 
 
 @router.callback_query(F.data == "volinvite_entry")
-async def volinvite_entry(callback: types.CallbackQuery):
+async def volinvite_entry(callback: types.CallbackQuery, bot: Bot):
     """Точка входа с экрана «👥 Роли и доступы» (там нет своей шапки-города) — тот же
     трёхветочный резолвер, что `handlers.admin_forum_functions._resolve_screen_city`."""
     own_scope = await _admin_city_scope(callback.from_user.id)
@@ -159,35 +176,35 @@ async def volinvite_entry(callback: types.CallbackQuery):
     if code is None:
         text, kb = await _render_city_picker()
     else:
-        text, kb = await _render_cfg(callback.from_user.id, code)
+        text, kb = await _render_cfg(callback.from_user.id, code, bot)
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("volinvite_city_pick:"))
-async def volinvite_city_pick(callback: types.CallbackQuery):
+async def volinvite_city_pick(callback: types.CallbackQuery, bot: Bot):
     code = callback.data.split(":", 1)[1]
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    text, kb = await _render_cfg(callback.from_user.id, code)
+    text, kb = await _render_cfg(callback.from_user.id, code, bot)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("volinvite_cfg:"))
-async def volinvite_cfg_screen(callback: types.CallbackQuery):
+async def volinvite_cfg_screen(callback: types.CallbackQuery, bot: Bot):
     code = _decode_city(callback.data.split(":", 1)[1])
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    text, kb = await _render_cfg(callback.from_user.id, code)
+    text, kb = await _render_cfg(callback.from_user.id, code, bot)
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("volinvite_toggle:"))
-async def volinvite_toggle_go(callback: types.CallbackQuery):
+async def volinvite_toggle_go(callback: types.CallbackQuery, bot: Bot):
     code = _decode_city(callback.data.split(":", 1)[1])
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
@@ -199,7 +216,7 @@ async def volinvite_toggle_go(callback: types.CallbackQuery):
         await set_setting_by_admin(callback.from_user.id, per_city_key(key, code), new_val)
     else:
         await set_setting_by_admin(callback.from_user.id, key, new_val)
-    text, kb = await _render_cfg(callback.from_user.id, code)
+    text, kb = await _render_cfg(callback.from_user.id, code, bot)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
 
@@ -387,11 +404,11 @@ async def volinv_limit_pick_and_create(callback: types.CallbackQuery, state: FSM
     text = (
         "✅ Ссылка создана.\n\n"
         f"{link_line}\n\n"
-        f"Ссылка действует до: {format_ddmmyyyy(link_exp) or 'бессрочно'}\n"
-        f"Права волонтёра до: {format_ddmmyyyy(rights_exp) or 'бессрочно'}\n"
+        f"Ссылка действует: {_expiry_suffix(link_exp)}\n"
+        f"Права волонтёра: {_expiry_suffix(rights_exp)}\n"
         f"Лимит переходов: {_limit_text(_LIMIT_PRESETS[choice])}"
     )
-    kb_text, kb = await _render_cfg(callback.from_user.id, code)
+    kb_text, kb = await _render_cfg(callback.from_user.id, code, bot)
     await callback.message.answer(text)
     await callback.message.answer(kb_text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -430,24 +447,24 @@ async def volinv_revoke_confirm(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("volinv_revoke_go:"))
-async def volinv_revoke_go(callback: types.CallbackQuery):
+async def volinv_revoke_go(callback: types.CallbackQuery, bot: Bot):
     code_token = callback.data.split(":", 1)[1]
     inv = await _invite_in_scope(callback, code_token)
     if inv is None:
         return
     await revoke_volunteer_invite(code_token)
     await callback.answer("Ссылка отозвана", show_alert=True)
-    text, kb = await _render_cfg(callback.from_user.id, inv["city"] if inv else None)
+    text, kb = await _render_cfg(callback.from_user.id, inv["city"] if inv else None, bot)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("volinv_revoke_no:"))
-async def volinv_revoke_no(callback: types.CallbackQuery):
+async def volinv_revoke_no(callback: types.CallbackQuery, bot: Bot):
     code_token = callback.data.split(":", 1)[1]
     inv = await _invite_in_scope(callback, code_token)
     if inv is None:
         return
-    text, kb = await _render_cfg(callback.from_user.id, inv["city"])
+    text, kb = await _render_cfg(callback.from_user.id, inv["city"], bot)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
