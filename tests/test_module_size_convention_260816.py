@@ -192,7 +192,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2897,
+        2900,
+        "Phase 33 (delegate-card admin actions, задача 1, 26.09): +3 строки — "
+        "`reg_reset_notify_text` дописан в _APPS_FIELD_ORDER (тот же приём, что у трёх "
+        "соседних ключей карточки /find); 2897 -> 2900. "
         "Перенос на main 5a95fb9: уведомление делегату о переводе + город волонтёра по ссылке (2887 -> 2892). "
         "Phase 33 (delegate-card admin actions, 25.09): +5 строк — три новых ключа "
         "(revert_pending_notify_text/resubmit_granted_notify_text/edit_granted_notify_text) "
@@ -489,7 +492,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1066,
+        1080,
+        "Phase 33 (delegate-card admin actions, задача 1, 26.09): +14 строк — кнопка "
+        "«🧹 Сбросить зависшую анкету» на карточке /find (условная, только при открытом "
+        "черновике) + шов-импорт `from handlers import admin_reg_reset` в самый хвост файла "
+        "(1066 -> 1080). "
         "Phase 33 (задача 3, 25.09): +30 строк — строка «✏️ Открыта правка» и кнопка "
         "выдачи/отзыва на карточке /find (условно для status=='approved') + шов-импорт "
         "`from handlers import admin_edit_grant` в хвост файла (1036 -> 1066). "
@@ -683,7 +690,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1326,
+        1332,
+        "Phase 33 (delegate-card admin actions, задача 1, 26.09): +6 строк — капы «🧹 Сбросить "
+        "зависшую анкету» (regreset_start/toggle/apply/cancel, moderate_reg, та же капа, что у "
+        "соседних карточных действий); 1326 -> 1332. "
         "Капа тумблера «🔔 Сообщить делегату» на экране перевода в город (1304 -> 1305). "
         "Phase 33 (задача 3, 25.09): +7 строк — капы «✏️ Открыть правку после решения» "
         "(editg_start/toggle/apply/cancel/revoke, moderate_reg); 1319 -> 1326. "

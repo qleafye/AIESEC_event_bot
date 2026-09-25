@@ -1097,6 +1097,12 @@ ADMIN_CAPS: dict[str, str] = {
     "editg_apply:*": "moderate_reg",
     "editg_cancel:*": "moderate_reg",
     "editg_revoke:*": "moderate_reg",
+    # Phase 33 (delegate-card admin actions, задача 1): «🧹 Сбросить зависшую анкету» — та же
+    # капа, что у соседних карточных действий (handlers/admin_reg_reset.py).
+    "regreset_start:*": "moderate_reg",
+    "regreset_toggle:*": "moderate_reg",
+    "regreset_apply:*": "moderate_reg",
+    "regreset_cancel:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»

@@ -1294,6 +1294,10 @@ admin|callback_query|editg_toggle|editg_toggle:*
 admin|callback_query|editg_apply|editg_apply:*
 admin|callback_query|editg_cancel|editg_cancel:*
 admin|callback_query|editg_revoke|editg_revoke:*
+admin|callback_query|regreset_start|regreset_start:*
+admin|callback_query|regreset_toggle|regreset_toggle:*
+admin|callback_query|regreset_apply|regreset_apply:*
+admin|callback_query|regreset_cancel|regreset_cancel:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1873,7 +1877,13 @@ def test_snapshot_total_handler_count_is_292():
     # Phase 33 (delegate-card admin actions, 25.09): revertp_*/resubg_*/editg_* из трёх новых
     # швов (см. Drift note над GOLDEN_SNAPSHOT). Пересчитано RUNNING `_build_snapshot_lines()`,
     # difflib: одна чистая вставка (14 строк), 0 удалений, 0 реордеров (830 -> 844).
-    assert len(GOLDEN_SNAPSHOT) == 844
+    # Phase 33 (delegate-card admin actions, задача 1, 26.09): regreset_* из нового шва
+    # handlers/admin_reg_reset.py («🧹 Сбросить зависшую анкету»), встал сразу после
+    # editg_revoke и ПЕРЕД prog_fbday_open (точка регистрации — хвост импортов admin.py, тот
+    # же приём, что у revertp_*/resubg_*/editg_* выше). Пересчитано RUNNING
+    # `_build_snapshot_lines()`, difflib: одна чистая вставка (4 строки), 0 удалений, 0
+    # реордеров (844 -> 848).
+    assert len(GOLDEN_SNAPSHOT) == 848
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
