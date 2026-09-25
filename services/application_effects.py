@@ -70,7 +70,7 @@ async def _record_delivery_fail_soft(telegram_id: int, decision: str, status: st
 
 
 async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str | None = None, *,
-                                 notify: bool = True, sheet: bool = True) -> None:
+                                 notify: bool = True, sheet: bool = True, resend: bool = False) -> None:
     """Хвост одного решения по заявке. `approved`: приветствие (`approve_user`, ровно один раз
     — D-10) затем лист. `rejected`: сообщение делегату (`reject_message_text`, `parse_mode=HTML`)
     затем лист; сбой отправки — только в лог, решение НЕ откатывается (паритет с ботом).
@@ -89,7 +89,14 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     «доставлено»/«не доставлено»), «доставлено»/«не доставлено» при немедленной попытке.
     `notify=False` — эффект без попытки отправки (например, узкий пересчёт листа) — учёт НЕ
     трогается вовсе, писать «не доставлено» о письме, которое и не пытались слать, было бы
-    ложью."""
+    ложью.
+
+    Координатор 25.09 («📨 Переотправить решения»): `resend=True` — для `approved` шлёт
+    `handlers.reg_schema.resend_approve_text` (только текст решения) ВМЕСТО `approve_user` —
+    шаг оплаты не открывается и FSM делегата не трогается, даже если `payment_enabled=on`
+    (решение координатора: обычная переотправка через `approve_user` заново рисовала бы пикер
+    тарифов уже одобренному делегату). Для `rejected` разницы нет — там шага оплаты никогда не
+    было."""
     notify_now = notify
     if notify:
         from services import quiet_hours
@@ -106,8 +113,12 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
 
     if status == "approved":
         if notify_now:
-            from handlers.reg_schema import approve_user  # локальный импорт против цикла
-            send_err = await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
+            if resend:
+                from handlers.reg_schema import resend_approve_text  # локальный импорт против цикла
+                send_err = await resend_approve_text(bot, telegram_id)  # текст решения, без шага оплаты
+            else:
+                from handlers.reg_schema import approve_user  # локальный импорт против цикла
+                send_err = await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
             await _record_delivery_fail_soft(
                 telegram_id, "approved", "failed" if send_err else "delivered", send_err,
             )
