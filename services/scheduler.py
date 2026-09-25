@@ -298,6 +298,11 @@ async def init_scheduler(bot):
     # остальных интервалов намеренно: делегат ждёт быстрой реакции менеджеров.
     _add_interval_job(miniapp_outbox_drain_job, "miniapp_outbox_drain", timedelta(seconds=30))
 
+    # Нагрузочный прогон 25.09: запись «Пришёл» в лист пачками из очереди sheet_arrival_queue
+    # (отметки бота и Mini App). coalesce/max_instances=1 — из job_defaults/умолчаний
+    # APScheduler: долгий проход через медленный прокси не наслаивается на следующий.
+    _add_interval_job(sheet_arrival_drain_job, "sheet_arrival_drain", timedelta(seconds=30))
+
     # Phase 27 (27-03, LANG-04): разбор очереди перевода делегатской анкеты. 30с — тот же
     # интервал, что у miniapp_outbox выше (батч ограничен services/i18n_worker.py::BATCH_SIZE,
     # инференс — в отдельном потоке, длинный батч не морозит long polling ни на одном тике).
@@ -1104,6 +1109,17 @@ async def miniapp_outbox_drain_job():
         await drain(_bot)
     except Exception as e:
         logger.error(f"miniapp_outbox_drain_job failed: {e}")
+
+
+async def sheet_arrival_drain_job():
+    """Interval-job target (no args, picklable): очередь «Пришёл» -> Google-лист пачкой
+    (`services/sheet_arrival_sync.py::drain`). Сбой прохода не роняет планировщик — события
+    остаются в очереди до следующего тика."""
+    try:
+        from services.sheet_arrival_sync import drain
+        await drain()
+    except Exception as e:
+        logger.error(f"sheet_arrival_drain_job failed: {e}")
 
 
 async def translation_drain_job():
