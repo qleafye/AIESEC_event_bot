@@ -145,8 +145,8 @@ def test_batch_two_tabs_two_reads_two_writes(tmp_path, monkeypatch):
     assert main.batch_get_calls == 1 and spb.batch_get_calls == 1
     assert len(main.batch_update_calls) == 1 and len(spb.batch_update_calls) == 1
     assert len(spb.batch_update_calls[0]) == 3  # дубль 801 — одна ячейка
-    assert [r[2] for r in main.rows] == ["2026-10-03 09:00:00", "2026-10-03 09:01:00"]
-    assert [r[2] for r in spb.rows] == ["2026-10-03 09:02:00", "2026-10-03 09:03:00", "2026-10-03 09:04:00"]
+    assert [r[2] for r in main.rows] == ["03.10 09:00", "03.10 09:01"]
+    assert [r[2] for r in spb.rows] == ["03.10 09:02", "03.10 09:03", "03.10 09:04"]
     assert rows == []
 
 
@@ -178,7 +178,7 @@ def test_missing_city_tab_is_not_created_and_row_goes_to_main(tmp_path, monkeypa
 
     counts, rows = _run(go())
     assert counts == {"written": 1, "missing": 0, "failed": 0}
-    assert main.rows[0][2] == "2026-10-03 09:00:00"
+    assert main.rows[0][2] == "03.10 09:00"
     assert rows == []
 
 
@@ -250,7 +250,7 @@ def test_failed_event_retried_after_backoff_and_removed(tmp_path, monkeypatch):
 
     counts, rows = _run(go())
     assert counts["written"] == 1 and rows == []
-    assert main.rows[0][2] == "2026-10-03 09:00:00"
+    assert main.rows[0][2] == "03.10 09:00"
 
 
 def test_revoke_recomputes_cell_to_empty(tmp_path, monkeypatch):
@@ -269,7 +269,7 @@ def test_revoke_recomputes_cell_to_empty(tmp_path, monkeypatch):
         return written, rows
 
     written, rows = _run(go())
-    assert written == "2026-10-03 09:00:00"
+    assert written == "03.10 09:00"
     assert [r["action"] for r in rows] == [db.SHEET_ARRIVAL_RECOMPUTE]
     assert main.rows[0][2] == ""
 
@@ -316,7 +316,7 @@ def test_csv_500_rows_one_read_per_tab(tmp_path, monkeypatch):
     assert before == 0
     assert counts["written"] == 500 and rows == []
     assert main.batch_get_calls == 1 and len(main.batch_update_calls) == 1
-    assert all(r[2] == "2026-10-03 09:00:00" for r in main.rows)
+    assert all(r[2] == "03.10 09:00" for r in main.rows)
 
 
 def test_queue_stats(tmp_path):
@@ -360,3 +360,11 @@ _GUARDED = [ROOT / "services" / "checkin.py", ROOT / "services" / "venue_log.py"
 def test_checkin_and_miniapp_do_not_import_google_sheets(path):
     bad = {n for n in _imports(path) if any(n == f or n.startswith(f + ".") for f in _FORBIDDEN)}
     assert not bad, f"{path.relative_to(ROOT)} импортирует Google-листы: {sorted(bad)} — пишите в очередь"
+
+
+def test_arrival_cell_value_is_human():
+    """Ячейка «Пришёл» — «25.09 05:23», не «2026-09-25 05:23:33»."""
+    assert sheet_arrival_sync.arrival_cell_value("2026-09-25 05:23:33") == "25.09 05:23"
+    assert sheet_arrival_sync.arrival_cell_value(None) == ""
+    assert sheet_arrival_sync.arrival_cell_value("") == ""
+    assert sheet_arrival_sync.arrival_cell_value("вчера") == "вчера"
