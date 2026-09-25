@@ -119,7 +119,7 @@ async def forumstats_preview_go(callback: types.CallbackQuery):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
     await callback.answer("Строю превью…")
-    png = await fsc.render_preview("ru")
+    png = await fsc.render_preview("ru", code)
     await callback.message.answer_photo(
         BufferedInputFile(png, filename="yulead_stats_preview.png"),
         caption="👁 Превью с представительными данными — не твоя личная статистика.",
