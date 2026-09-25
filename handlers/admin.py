@@ -463,14 +463,22 @@ async def cmd_find_user(message: types.Message):
         # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
         # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
         # подтверждение живут в handlers/admin_city_move.py (citymv_*), здесь тоже только кнопка.
-        kb = InlineKeyboardMarkup(inline_keyboard=[
+        rows = [
             [InlineKeyboardButton(
                 text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
             )],
             [InlineKeyboardButton(
                 text="🏙 Перевести в город", callback_data=f"citymv_start:{user['telegram_id']}",
             )],
-        ])
+        ]
+        # Phase 33: «↩️ Вернуть в ожидание» — видна только для решённой заявки (одобрена/
+        # отклонена), для ожидающей возвращать не с чего (services/revert_pending.py
+        # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/admin_revert_pending.py.
+        if user.get("status") in ("approved", "rejected"):
+            rows.append([InlineKeyboardButton(
+                text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
+            )])
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
         await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
@@ -989,3 +997,9 @@ from handlers import admin_volunteer_invite  # noqa: E402
 # lostfound_cfg_screen/lostfound_toggle_go in the very tail of admin.router (golden
 # snapshot: a clean append, right after admin_volunteer_invite).
 from handlers import admin_lost_found  # noqa: E402
+
+# Phase 33 (delegate-card admin actions): shared-router seam import for «↩️ Вернуть в ожидание»
+# (handlers/admin_revert_pending.py) — registers revertp_start/revertp_toggle/revertp_apply/
+# revertp_cancel in the very tail of admin.router (golden snapshot: a clean append, right
+# after admin_lost_found). Not a forum toggle — no hub row, same posture as admin_city_move.
+from handlers import admin_revert_pending  # noqa: E402

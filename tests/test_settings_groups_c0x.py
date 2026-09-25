@@ -558,6 +558,9 @@ def test_render_snapshot_apps(tmp_path):
         # другой город — новый хвост группы (тумблер «сообщить делегату» живёт на самом
         # экране перевода, не здесь).
         "city_move_delegate_notice_text",
+        # Phase 33 (delegate-card admin actions): три сообщения делегату с карточки /find —
+        # новый хвост группы (кнопки экрана подтверждения — не ключи реестра).
+        "revert_pending_notify_text", "resubmit_granted_notify_text", "edit_granted_notify_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -598,6 +601,10 @@ def test_render_snapshot_apps(tmp_path):
         "🚌 Перенос в Москву: текст предложения",
         # Phase 33 (delegate-card admin actions): текст уведомления о переводе в город.
         "🏙 Уведомление о переводе в другой город",
+        # Phase 33 (delegate-card admin actions): три сообщения делегату с карточки /find.
+        "↩️ Возврат в ожидание: текст делегату",
+        "🔁 Разрешена повторная подача: текст делегату",
+        "✏️ Открыта правка после решения: текст делегату",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -637,6 +644,11 @@ def test_render_snapshot_apps(tmp_path):
         # Phase 33 (delegate-card admin actions): текст уведомления о переводе в город имеет
         # непустой дефолт в реестре.
         "🏙 Уведомление о переводе в другой город",
+        # Phase 33 (delegate-card admin actions): все три сообщения делегату имеют непустой
+        # дефолт в реестре.
+        "↩️ Возврат в ожидание: текст делегату",
+        "🔁 Разрешена повторная подача: текст делегату",
+        "✏️ Открыта правка после решения: текст делегату",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -1061,8 +1073,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Идея №20 бэклога чек-ина (бюро находок): lost_found_post_text — новый хвост
     # _APPS_FIELD_ORDER, ещё один ключ.
     # Phase 33 (delegate-card admin actions): city_move_delegate_notice_text — новый хвост
-    # _APPS_FIELD_ORDER, ещё один ключ.
-    assert admin_settings._settings_group_keys("apps")[-25:] == [
+    # _APPS_FIELD_ORDER, ещё один ключ; следом три сообщения делегату с карточки /find
+    # (возврат в ожидание / разрешение повторной подачи / разрешение правки после решения) —
+    # срез расширен до 28.
+    assert admin_settings._settings_group_keys("apps")[-28:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
@@ -1076,7 +1090,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
         "lost_found_post_text",
         # Трек «региональные форумы → Москва»: текст предложения переноса — новый хвост.
         "regional_noshow_offer_text",
-        "city_move_delegate_notice_text"]
+        "city_move_delegate_notice_text",
+        # Phase 33 (delegate-card admin actions): три сообщения делегату с карточки /find —
+        # новый хвост _APPS_FIELD_ORDER.
+        "revert_pending_notify_text", "resubmit_granted_notify_text", "edit_granted_notify_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

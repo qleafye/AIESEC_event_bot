@@ -250,6 +250,11 @@ _APPS_FIELD_ORDER = [
     # приём, что у соседних делегатских текстов выше); тумблер-переключатель «сообщить
     # делегату» живёт на самом экране перевода (`handlers/admin_city_move.py`), не здесь.
     "city_move_delegate_notice_text",
+    # Phase 33 (delegate-card admin actions): три опциональных сообщения делегату с карточки
+    # `/find` (возврат в ожидание / разрешение повторной подачи / разрешение правки после
+    # решения) — редактор экрана достаётся бесплатно попаданием в этот список, тот же приём,
+    # что у reg_edit_closed_text/reg_resubmit_closed_text выше.
+    "revert_pending_notify_text", "resubmit_granted_notify_text", "edit_granted_notify_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
