@@ -32,6 +32,7 @@ from config import config
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
 from reg_engine import is_past_season_row
 from reg_labels import STATUS_LABELS
+from services.decision_delivery import summarize_deliveries
 import services.sheets as sheets_service
 
 logger = logging.getLogger(__name__)
@@ -52,17 +53,11 @@ _SHEET_RESULT_TEXT = {
     "error": "ошибка таблицы",
 }
 
-# Недоставленные решения (одобрение/отказ): признака доставки в БД НЕТ — `apply_decision_effects`
-# (services/application_effects.py) шлёт делегату напрямую и на сбое только логирует
-# (`logger.error(f"Failed to notify rejected user ...")`), ничего не сохраняя. НЕ выдумываем
-# признак — честно называем, что нужно, чтобы он появился (тот же паттерн, что уже есть у SOS:
-# `sos_reports.delivery_failed_at`, services/sos.py::record_delivery_outcome).
-DECISIONS_UNDELIVERED_NOTE = (
-    "по базе это не определить: решения (одобрение/отказ) шлются напрямую ботом, а успех или "
-    "сбой доставки нигде не сохраняется — только в лог сервера. Чтобы «кому не дошло» можно "
-    "было увидеть здесь, нужен признак доставки на каждое решение (как у SOS-заявок, поле "
-    "delivery_failed_at) — отдельная задача, не эта сверка."
-)
+# Координатор 25.09: недоставленные решения (одобрение/отказ) теперь читаются из БД —
+# `users.decision_delivery_*` (database/db.py, пишет services/application_effects.py),
+# раскладка на категории — `services.decision_delivery.summarize_deliveries` (общая точка с
+# «📨 Переотправить решения», handlers/admin_sheet_reconcile.py). Решения ДО этой миграции
+# остаются NULL и попадают в отдельную категорию «неизвестно», не смешиваются с «не доставлено».
 
 
 def _user_matches_scope(user: dict, scope: tuple[str, tuple[str, ...]] | None) -> bool:
@@ -146,6 +141,11 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
     batches = await build_sheet_batches(users)
     main_batch, named_batches = batches[0], batches[1:]
 
+    # Координатор 25.09: раскладка доставки решения — над `users` из БД, от таблицы не зависит
+    # вовсе, поэтому считаем ДО обращения к Sheets (снимок ниже может упасть, а этот раздел
+    # отчёта должен остаться доступен и тогда).
+    decision_delivery = summarize_deliveries(users)
+
     snapshot = await _read_all_tabs_snapshot()
     report: dict = {
         "ok": snapshot is not None,
@@ -158,7 +158,7 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
         "status_mismatch": [],
         "unknown_sheet_ids": [],
         "headerless_tabs": [],
-        "decisions_undelivered_note": DECISIONS_UNDELIVERED_NOTE,
+        "decision_delivery": decision_delivery,
     }
     if snapshot is None:
         report["error"] = "таблица недоступна (Google Sheets не настроен или ошибка API)"
@@ -523,8 +523,24 @@ def render_report_lines(report: dict, *, city_label: str | None = None) -> list[
             lines.append(f"  …и ещё {extra}")
         lines.append("")
 
-    lines.append("📨 <b>Недоставленные решения (одобрение/отказ):</b>")
-    lines.append(f"  {html_module.escape(report['decisions_undelivered_note'])}")
+    dd = report.get("decision_delivery") or {"failed": [], "blocked": [], "queued": [], "unknown": []}
+    failed, blocked, queued, unknown = dd["failed"], dd["blocked"], dd["queued"], dd["unknown"]
+    lines.append(
+        f"📨 <b>Решения не доставлены</b> ({len(failed)}, из них бот заблокирован: {len(blocked)}):"
+    )
+    if failed:
+        shown, extra = _first_n(failed)
+        for it in shown:
+            name = html_module.escape(str(it.get("name") or it["tid"]))
+            username = it.get("username") or "-"
+            decision_label = "одобрение" if it["decision"] == "approved" else "отказ"
+            reason = html_module.escape(str(it.get("error") or "-"))
+            lines.append(f"  {name} ({html_module.escape(username)}): {decision_label} — {reason}")
+        if extra:
+            lines.append(f"  …и ещё {extra}")
+    if queued:
+        lines.append(f"  в очереди (тихие часы, доставится само): {len(queued)}")
+    lines.append(f"  неизвестно (до учёта доставки): {len(unknown)}")
 
     return lines
 
@@ -564,4 +580,25 @@ def report_to_csv_bytes(report: dict) -> bytes:
         writer.writerow(["Неизвестный id", it["tid"], "", "", it["tab"] or "(главная)", ""])
     for tab in report.get("headerless_tabs", []):
         writer.writerow(["Без заголовков", "", "", "", tab, ""])
+
+    dd = report.get("decision_delivery") or {}
+    decision_label = {"approved": "одобрение", "rejected": "отказ"}
+    for it in dd.get("resendable", []):
+        writer.writerow([
+            "Решение не доставлено", it["tid"], _csv_safe(it.get("name") or ""),
+            _csv_safe(it.get("username") or ""), it.get("city") or "",
+            f"{decision_label.get(it['decision'], it['decision'])}: {it.get('error') or '-'}",
+        ])
+    for it in dd.get("blocked", []):
+        writer.writerow([
+            "Решение — написать вручную (бот заблокирован)", it["tid"], _csv_safe(it.get("name") or ""),
+            _csv_safe(it.get("username") or ""), it.get("city") or "",
+            f"{decision_label.get(it['decision'], it['decision'])}: {it.get('error') or '-'}",
+        ])
+    for it in dd.get("unknown", []):
+        writer.writerow([
+            "Решение — доставка неизвестна", it["tid"], _csv_safe(it.get("name") or ""),
+            _csv_safe(it.get("username") or ""), it.get("city") or "",
+            decision_label.get(it["decision"], it["decision"]),
+        ])
     return output.getvalue().encode("utf-8-sig")
