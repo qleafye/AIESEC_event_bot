@@ -43,6 +43,12 @@ logger = logging.getLogger(__name__)
 CAP = "moderate_reg"
 JOB_PREFIX = "reg_digest:"
 
+# Ревью 25.09: единственная сейчас непустая причина постановки в очередь дайджеста, помимо
+# «обычная новая заявка» (reason=None) и «автоотказ» (auto_rejected=1) — «↩️ Вернуть в
+# ожидание» (handlers/admin_revert_pending.py). Строковая константа, не bool: reason — та же
+# расширяемая форма, что и остальные причины, которые могут появиться позже.
+REASON_REVERT = "revert"
+
 # Сколько имён влезает в одну строку дайджеста, прежде чем она превращается в простыню.
 # Остальные сворачиваются в «и ещё K» — сводка зовёт открыть «📋 Заявки», а не заменяет их.
 MAX_NAMES = 15
@@ -78,20 +84,32 @@ def _period_label(period: tuple[str, str] | None) -> str:
 
 def build_digest_text(pending_names: list[str], auto_names: list[str] | None = None,
                       rule_counts: list[tuple[str, int]] | None = None,
-                      period: tuple[str, str] | None = None) -> str:
+                      period: tuple[str, str] | None = None,
+                      reverted_names: list[str] | None = None) -> str:
     """Текст пачки уведомлений о заявках (владелец 23.09: «уродская строка» -> столбик).
 
-    Два блока: «📥 Новые заявки» (ушли на модерацию) и «🤖 Автоотказ» (отклонены правилами,
-    с разбивкой по правилам). Пустой блок не печатается. Период пачки («15:20–15:42») — в
-    заголовке первого блока, чтобы было видно, за какое время собрано. Каждый блок кончается
-    строкой «куда идти» — путём кнопками в админке. HTML-экранирование имён — здесь."""
+    Три блока: «📥 Новые заявки» (ушли на модерацию), «↩️ Возвращены на модерацию» (ревью
+    25.09 — «Вернуть в ожидание» с карточки делегата, НЕ новая подача, отдельный блок, чтобы
+    менеджер не принял их за новых делегатов) и «🤖 Автоотказ» (отклонены правилами, с
+    разбивкой по правилам). Пустой блок не печатается. Период пачки («15:20–15:42») — в
+    заголовке ПЕРВОГО непустого блока, чтобы было видно, за какое время собрано. Каждый блок
+    кончается строкой «куда идти» — путём кнопками в админке. HTML-экранирование имён —
+    здесь."""
     auto_names = auto_names or []
+    reverted_names = reverted_names or []
     period_text = _period_label(period)
     blocks: list[list[str]] = []
     if pending_names:
         blocks.append([
             f"📥 <b>Новые заявки: {len(pending_names)}</b>{period_text}",
             *_bullets(pending_names),
+            "Открыть: 📋 Заявки",
+        ])
+        period_text = ""
+    if reverted_names:
+        blocks.append([
+            f"↩️ <b>Возвращены на модерацию: {len(reverted_names)}</b>{period_text}",
+            *_bullets(reverted_names),
             "Открыть: 📋 Заявки",
         ])
         period_text = ""
@@ -197,14 +215,23 @@ async def auto_rejects_go_to_summary() -> bool:
 
 
 async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw=None,
-                             is_new: bool = True, auto_rejected: bool = False) -> None:
+                             is_new: bool = True, auto_rejected: bool = False,
+                             reason: str | None = None) -> None:
     """Точка входа из post_finalize: выбрать режим и отправить/отложить.
 
     `is_new=False` (правка/переподача уже поданной анкеты) уходит немедленно ВСЕГДА — см.
     докстринг модуля. `auto_rejected` (Phase 31, 31-06, D-17) — хвостовой kwarg с дефолтом
     `False`, штампуется в очередь дайджеста НА ПОСТАНОВКЕ (не выводится из `users.status` при
     отправке — к моменту отправки менеджер мог вернуть заявку из журнала, и счётчик соврал
-    бы)."""
+    бы).
+
+    `reason` (ревью 25.09) — тот же приём, ещё один хвостовой kwarg с дефолтом `None`:
+    существующие вызовы (обычная новая заявка) остаются байт-в-байт прежними. Единственное
+    сейчас значение — `REASON_REVERT` (`handlers/admin_revert_pending.py`): в режиме `each`
+    ничего не меняет (звонящий сам кладёт пометку «↩️ Возвращена на модерацию» в
+    `admin_text`), а в режиме `digest` штампуется в очередь, чтобы `send_reg_digest` показал
+    эти заявки ОТДЕЛЬНЫМ блоком «↩️ Возвращены на модерацию», не смешивая со счётчиком
+    «Новые заявки»."""
     from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     if is_new and auto_rejected and await auto_rejects_go_to_summary():
         return  # владелец 23.09: автоотказы — той же периодической сводкой, что и заявки
@@ -213,7 +240,7 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
     if mode == "digest":
         await enqueue_reg_digest(
             telegram_id, city, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
-            auto_rejected=1 if auto_rejected else 0,
+            auto_rejected=1 if auto_rejected else 0, reason=reason,
         )
         minutes = await get_setting_typed("reg_submit_digest_minutes")
         # Квик 260923 (D-C): потолок читает первую ещё НЕ отправленную строку очереди этого
@@ -245,7 +272,12 @@ async def send_reg_digest(city: str | None) -> int:
         if not rows:
             return 0
         pending_names = [
-            await _display_name(r["telegram_id"]) for r in rows if not r.get("auto_rejected")
+            await _display_name(r["telegram_id"]) for r in rows
+            if not r.get("auto_rejected") and r.get("reason") != REASON_REVERT
+        ]
+        reverted_names = [
+            await _display_name(r["telegram_id"]) for r in rows
+            if not r.get("auto_rejected") and r.get("reason") == REASON_REVERT
         ]
         auto_names = [await _display_name(r["telegram_id"]) for r in rows if r.get("auto_rejected")]
         auto_reject_count = len(auto_names)
@@ -258,7 +290,7 @@ async def send_reg_digest(city: str | None) -> int:
             _, rule_counts = await auto_reject_summary(telegram_ids=auto_ids, live_only=False)
         stamps = [str(r.get("created_at") or "") for r in rows]
         period = (stamps[0][11:16], stamps[-1][11:16]) if all(len(t) >= 16 for t in stamps) else None
-        text = build_digest_text(pending_names, auto_names, rule_counts, period)
+        text = build_digest_text(pending_names, auto_names, rule_counts, period, reverted_names)
         sent = await notify_by_capability(_sched._bot, CAP, text, parse_mode="HTML", city=city)
         await mark_reg_digest_sent(
             [r["id"] for r in rows], msk_now().strftime("%Y-%m-%d %H:%M:%S")
