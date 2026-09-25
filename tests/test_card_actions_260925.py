@@ -1085,6 +1085,56 @@ def test_edit_gate_peek_does_not_consume_override(tmp_path):
     assert active is not None
 
 
+def test_edit_gate_override_does_not_bypass_denial_for_non_approved_status(tmp_path):
+    """Ревью 25.09: личное исключение подменяет ТОЛЬКО решение тумблера reg_edit_policy —
+    защита в глубину гейта: применимо только при status == "approved" (та же граница, что у
+    кнопки на карточке). policy=never отказывает ЛЮБОМУ поданному статусу, в т.ч. pending —
+    override, выданный (ошибочно/в гонке) для НЕ approved делегата, отказ не снимает."""
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_edit_policy", "never")
+        user = {
+            "telegram_id": DELEGATE_ID, "status": "pending", "event_city": None,
+            "full_name": "Тест", "registration_date": "2026-01-01 00:00:00",
+        }
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        return await reg_edit_policy.edit_gate(user)
+
+    allowed, text = _run(scenario())
+    assert allowed is False
+    assert text
+
+
+def test_resubmit_gate_denial_condition_matches_override_eligibility(tmp_path):
+    """Симметричная защита в глубину для resubmit_gate: `resubmit_allowed_for` отказывает
+    ТОЛЬКО при status == "rejected" ТЕКУЩЕГО сезона (тот же критерий, по которому гейт вообще
+    консультирует override). Возвращенец ПРОШЛОГО сезона уже разрешён самим базовым правилом
+    (current_season=False) ДО того, как гейт дошёл бы до чтения override — случайно выданное
+    (или ещё не погашенное) исключение здесь ни при чём, оно не подменяет никакого отказа,
+    потому что отказа для этого случая нет вовсе."""
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_resubmit_after_reject", "deny")
+        await db.set_setting("event_season", "YL 26/2")
+        user = {
+            "telegram_id": DELEGATE_ID, "status": "rejected", "event_city": None,
+            "season": "YL 26/1",
+        }
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
+        return await reg_edit_policy.resubmit_gate(user)
+
+    allowed, text = _run(scenario())
+    # прошлый сезон уже разрешён самим правилом (не override) -- (True, None)
+    assert allowed is True
+    assert text is None
+
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Part I: services/reg_finalize.py — фактическая правка гасит исключение (Task 3)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
