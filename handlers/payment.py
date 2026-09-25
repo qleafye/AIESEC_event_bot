@@ -183,13 +183,19 @@ async def _schedule_deadline_reminders(telegram_id: int):
         logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
 
 
-async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str = "full"):
+async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str = "full") -> Exception | None:
     """Entry point called from approve_user() when payment_enabled=on. Fail-soft.
 
     Phase 5 (D-17): only the RENDERED keyboard is filtered by track — pay_option:{i}
     callback_data always indexes the FULL unfiltered `options` list (see
     process_payment_option), so a keyboard already delivered before a later settings edit
     can never resolve to a shifted tariff.
+
+    Координатор 25.09 (учёт доставки решения): возврат — `None` при успехе ЛЮБОЙ из веток
+    (пикер тарифов / фоллбэк на бесплатный путь / реквизиты одного тарифа), иначе — исключение
+    (после фоллбэка на приветственный текст тоже упавшего). Остаётся fail-soft: наружу
+    исключение не поднимается, только классифицируется для учёта доставки решения в
+    `services/application_effects.py`.
     """
     lang, tr_map = await i18n_service.context(telegram_id)
     try:
@@ -212,14 +218,13 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
             if block:
                 text += f"\n\n{block}"
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
-            return
+            return None
         if not visible:
             # D-18: no tariff matches this track — treat as free, same outcome as
             # payment_enabled=off. Never strand an approved user on a screen with no
             # actionable button (mirrors the free-path branch in _show_payment_details).
             from handlers.registration import send_completion_and_bonus
-            await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
-            return
+            return await send_completion_and_bonus(bot, telegram_id, participant_type=participant_type)
         # Single / free path: skip selection, go straight to details. Read from the
         # VISIBLE list — never the unfiltered list's first entry (T-05-05-07): a party-only
         # tariff sitting at a non-zero index of the full list must be the one shown and charged.
@@ -229,6 +234,7 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
         # WR-01: thread the already-resolved track through so a free/single-tariff party
         # delegate gets approve_text__party, not the global approve_text.
         await _show_payment_details(bot, telegram_id, ctx, label, price, participant_type=participant_type)
+        return None
     except Exception as e:
         logger.error(f"Failed to start payment step for {telegram_id}: {e}")
         # CR-01: never strand an approved user. If details failed to send (e.g. a
@@ -238,9 +244,10 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
             key = StorageKey(bot_id=bot.id, chat_id=telegram_id, user_id=telegram_id)
             await FSMContext(storage=_storage, key=key).clear()
             from handlers.registration import send_completion_and_bonus
-            await send_completion_and_bonus(bot, telegram_id)
+            return await send_completion_and_bonus(bot, telegram_id)
         except Exception as e2:
             logger.error(f"Failed fallback completion for {telegram_id}: {e2}")
+            return e2
 
 
 @router.callback_query(F.data.startswith("pay_option:"))

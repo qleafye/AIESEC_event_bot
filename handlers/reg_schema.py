@@ -532,7 +532,7 @@ async def _approve_text_for(participant_type: str | None, city_code: str | None 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
                                      participant_type: str | None = None, *,
                                      auto_approved: bool = False,
-                                     respect_quiet_hours: bool = False):
+                                     respect_quiet_hours: bool = False) -> Exception | None:
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
@@ -557,7 +557,16 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     утром. Единственный вызывающий с True — подтверждение чека менеджером
     (`handlers/admin_moderation.py::rcpt_confirm`), где менеджер тут же видит приписку «делегат
     увидит утром». Дефолт False оставляет остальные пути (ручное одобрение, бесплатный/разовый
-    взнос) байт-в-байт прежними — их черёд отдельным проходом."""
+    взнос) байт-в-байт прежними — их черёд отдельным проходом.
+
+    Координатор 25.09 (учёт доставки решения): возврат — `None` при успешной отправке ТЕКСТА
+    решения (или его постановке в очередь тихих часов — контракт `quiet_hours.send_or_queue_text`
+    здесь не считается провалом), иначе — итоговое исключение (после одного 429-ретрая,
+    `services.telegram_send.send_with_retry` — тот же приём, что у отказа в
+    `services/application_effects.py::apply_decision_effects`). Бонус (медиа) — best-effort:
+    его сбой НЕ портит статус доставки решения (само письмо уже ушло), только логируется.
+    Остаётся fail-soft: ни одна ветка не поднимает исключение наружу, вызывающий читает только
+    возврат."""
     city_code = None
     try:
         if await cities_module_on():
@@ -576,52 +585,73 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         # `quiet_now` — «сейчас» для очереди тихих часов; None = путь без неё (дефолт), и тогда
         # обе отправки ниже идут напрямую, как до 16.09.
         quiet_now = None
-        if respect_quiet_hours:
-            from services import quiet_hours
-            from services.scheduler import _now_moscow_naive
-            quiet_now = _now_moscow_naive()
-            await quiet_hours.send_or_queue_text(
-                quiet_now, telegram_id, complete_text,
-                sender=lambda: bot.send_message(telegram_id, complete_text, **kwargs),
-                reply_markup=kwargs.get("reply_markup"),
-            )
-        else:
-            await bot.send_message(telegram_id, complete_text, **kwargs)
+
+        async def _send_decision_text() -> None:
+            nonlocal quiet_now
+            if respect_quiet_hours:
+                from services import quiet_hours
+                from services.scheduler import _now_moscow_naive
+                quiet_now = _now_moscow_naive()
+                await quiet_hours.send_or_queue_text(
+                    quiet_now, telegram_id, complete_text,
+                    sender=lambda: bot.send_message(telegram_id, complete_text, **kwargs),
+                    reply_markup=kwargs.get("reply_markup"),
+                )
+            else:
+                await bot.send_message(telegram_id, complete_text, **kwargs)
+
+        from services.telegram_send import send_with_retry
+        send_err = await send_with_retry(_send_decision_text)
+        if send_err is not None:
+            logger.error(f"Failed to send completion/bonus to {telegram_id}: {send_err}")
+            return send_err
 
         if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
-            bonus_caption = reg_i18n.tr_text(
-                await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!", lang, tr_map,
-            )
-            bonus_photo = await get_setting("reg_bonus_photo_file_id")
-            bonus_doc = await get_setting("reg_bonus_doc_file_id")
-            method, file_id = ("send_document", bonus_doc) if bonus_doc else (
-                ("send_photo", bonus_photo) if bonus_photo else (None, None)
-            )
-            if file_id and quiet_now is not None:
-                from services import quiet_hours
-                await quiet_hours.send_or_queue_media(
-                    quiet_now, telegram_id,
-                    sender=lambda: getattr(bot, method)(
+            try:
+                bonus_caption = reg_i18n.tr_text(
+                    await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!", lang, tr_map,
+                )
+                bonus_photo = await get_setting("reg_bonus_photo_file_id")
+                bonus_doc = await get_setting("reg_bonus_doc_file_id")
+                method, file_id = ("send_document", bonus_doc) if bonus_doc else (
+                    ("send_photo", bonus_photo) if bonus_photo else (None, None)
+                )
+                if file_id and quiet_now is not None:
+                    from services import quiet_hours
+                    await quiet_hours.send_or_queue_media(
+                        quiet_now, telegram_id,
+                        sender=lambda: getattr(bot, method)(
+                            telegram_id, file_id, caption=bonus_caption, parse_mode="HTML",
+                        ),
+                        method=method, file_id=file_id, caption=bonus_caption, parse_mode="HTML",
+                    )
+                elif file_id:
+                    await getattr(bot, method)(
                         telegram_id, file_id, caption=bonus_caption, parse_mode="HTML",
-                    ),
-                    method=method, file_id=file_id, caption=bonus_caption, parse_mode="HTML",
-                )
-            elif file_id:
-                await getattr(bot, method)(
-                    telegram_id, file_id, caption=bonus_caption, parse_mode="HTML",
-                )
+                    )
+            except Exception as e:
+                # Координатор 25.09: бонус — best-effort, сбой здесь НЕ считается недоставкой
+                # решения (текст уже подтверждённо ушёл строкой выше).
+                logger.error(f"Failed to send bonus to {telegram_id}: {e}")
+        return None
     except Exception as e:
         logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
+        return e
 
 
-async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = False):
+async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = False) -> Exception | None:
     """Send the post-approval welcome (complete text + main menu + bonus) to a user
     by chat id. Reused by the auto-approve path here and the manager manual-approve
     path (admin.py). Fail-soft: a blocked/unknown user never raises.
     Quick 260904-3vm (E2): `auto_approved=True` — заявка принята БЕЗ модерации (short-трек и
     подобные сценарии) — делегат читает «заявка принята», а не «прошёл отбор». Default False
     keeps every existing caller (manual approve, receipt confirm, payment path) unchanged; the
-    ONLY caller passing True is `services/reg_finalize.py::post_finalize`'s auto-approve tail."""
+    ONLY caller passing True is `services/reg_finalize.py::post_finalize`'s auto-approve tail.
+
+    Координатор 25.09 (учёт доставки решения): возврат — `None` при успехе, иначе итоговое
+    исключение (`services/application_effects.py` классифицирует и пишет `users.
+    decision_delivery_*`). Остаётся fail-soft: ни один путь не поднимает исключение наружу,
+    существующие вызывающие, игнорирующие возврат, ведут себя byte-for-byte прежними."""
     logger.info(f"user={telegram_id} action=approve_welcome")
     # Phase 5 (D-15): resolve the track ONCE, here, at the top — BEFORE the module-gate
     # branch below (which checks the payment setting and returns early). approve_user
@@ -645,11 +675,11 @@ async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = Fals
             from handlers.payment import start_payment_step  # local import avoids circular
             # Phase 5 (05-05): reuse the SAME participant_type resolved once above (D-15's
             # ordering guard) — no second get_user call.
-            await start_payment_step(bot, telegram_id, participant_type)
-            return
+            return await start_payment_step(bot, telegram_id, participant_type)
 
-        await send_completion_and_bonus(
+        return await send_completion_and_bonus(
             bot, telegram_id, participant_type=participant_type, auto_approved=auto_approved,
         )
     except Exception as e:
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
+        return e
