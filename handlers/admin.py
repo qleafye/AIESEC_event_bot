@@ -563,9 +563,16 @@ async def cmd_find_user(message: types.Message):
             f"Город (по анкете): {html_module.escape(str(city_text))}\n\n"
             "<i>Нажимал(а) /start, анкету пока не подавал(а) — записи делегата в базе нет.</i>"
         )
-        rows = [[InlineKeyboardButton(
-            text="👥 Выдать роль", callback_data=f"roles_addfor:{started['telegram_id']}",
-        )]]
+        # Ревью part2: «roles_addfor:*» требует `settings` (ADMIN_CAPS) — модератор без этого
+        # права раньше видел кнопку, которая в ответ на тап отказывала бы (CapabilityMiddleware
+        # молча съедает нажатие «не туда»); показываем кнопку только тем, кто реально может ею
+        # воспользоваться (CLAUDE.md: ошибка объясняет, что делать — лучший вариант «объяснения»
+        # тут просто не показать бесполезную кнопку).
+        rows = []
+        if await has_capability(message.from_user.id, "settings"):
+            rows.append([InlineKeyboardButton(
+                text="👥 Выдать роль", callback_data=f"roles_addfor:{started['telegram_id']}",
+            )])
         from services.reg_stuck_reset import preview_stuck_reset
         if await preview_stuck_reset(started["telegram_id"]) is not None:
             rows.append([InlineKeyboardButton(
