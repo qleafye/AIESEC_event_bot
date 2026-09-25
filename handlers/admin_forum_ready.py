@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from config import config
-from database.db import checkin_qr_send_counts, get_staff_city
+from database.db import checkin_qr_send_counts, get_staff_city, sheet_arrival_queue_stats
 from handlers.admin import router
 from handlers.admin_caps import _holds, capability_holders, required_capability, resolve_capabilities
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 GREEN, YELLOW, RED, GRAY = "🟢", "🟡", "🔴", "⚪"
 _SHEET_FRESH_SECONDS = 3600
+_SHEET_QUEUE_STALE_MINUTES = 5
 
 
 def _row(light: str, text: str, fix: tuple[str, str] | None = None) -> dict:
@@ -144,16 +145,24 @@ def _ago(seconds: float) -> str:
     return f"{minutes // 60} ч {minutes % 60} мин назад"
 
 
-def _row_sheet() -> dict:
+async def _row_sheet() -> dict:
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return _row(GRAY, "Таблица не подключена")
     from services.sheets import last_write_state
     state = last_write_state()
     now = time.time()
     ok, fail = state.get("ok"), state.get("fail")
+    # «Пришёл» пишется в лист джобой из очереди (services/sheet_arrival_sync.py) — застрявшая
+    # очередь значит, что отметки входа до таблицы не доходят.
+    queued, oldest = await sheet_arrival_queue_stats()
+    age_min = int((msk_now() - datetime.strptime(oldest, "%Y-%m-%d %H:%M:%S")).total_seconds() // 60) if oldest else 0
+    queue_tail = f"; «Пришёл» ждут записи: {queued}, старейшая {age_min} мин" if queued else ""
     if fail and (not ok or fail > ok):
-        return _row(RED, f"Последняя запись в таблицу не прошла ({_ago(now - fail)}) — проверьте доступ",
+        return _row(RED, f"Последняя запись в таблицу не прошла ({_ago(now - fail)}) — проверьте доступ" + queue_tail,
                     ("🔄 Досинхронизировать таблицу", "admin_sync_sheet"))
+    if queued and age_min > _SHEET_QUEUE_STALE_MINUTES:
+        return _row(YELLOW, f"Отметки «Пришёл» копятся: в очереди {queued}, старейшая {age_min} мин — "
+                            "таблица не принимает запись, бот повторяет сам")
     if ok and now - ok < _SHEET_FRESH_SECONDS:
         return _row(GREEN, f"Таблица пишется: последняя запись {_ago(now - ok)}")
     if ok:
