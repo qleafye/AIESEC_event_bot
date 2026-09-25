@@ -338,6 +338,74 @@ def test_unknown_sheet_id_reported_not_touched(tmp_path, monkeypatch):
     assert len(ws.rows) == 2  # ничего не удалено
 
 
+class _QuotaGuardWorksheet(_FakeWorksheet):
+    """Координатор 25.09 (живой прогон на стенде): служебные/незавершённые/гейма вкладки не
+    должны читаться вовсе (квота) — этот фейк роняет тест, если `get_all_values()` всё же
+    позвали на нём."""
+
+    def get_all_values(self):
+        raise AssertionError(f"get_all_values() не должен звать на служебной вкладке {self.title!r}")
+
+
+def test_incomplete_service_and_game_tabs_do_not_produce_unknown_ids(tmp_path, monkeypatch):
+    """Координатор 25.09 (находка живого прогона): «Незавершённые»/«🤖 Автоотказы»/«Гейма» с
+    числовыми id внутри НЕ дают ложных «Строки с id, которого нет в БД» — бот их вообще не
+    читает (id там из reg_started/своих таблиц, не из users)."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await db.set_setting("auto_reject_sheet_tab", "🤖 Автоотказы")
+        await _seed_user(260926540, city="spb", participant_type="short")
+        tab = await _resolve_tab("spb", "short")
+
+        delegate_ws = _FakeWorksheet(tab, ["id", "ФИО", "Статус"], [["260926540", "Т", "Новая"]])
+        incomplete_ws = _QuotaGuardWorksheet(
+            "Незавершённые", ["id", "username"], [["999999901", "@ghost1"]],
+        )
+        auto_reject_ws = _QuotaGuardWorksheet(
+            "🤖 Автоотказы", ["id", "ФИО"], [["999999902", "Призрак2"]],
+        )
+        game_ws = _QuotaGuardWorksheet(
+            "Гейма", ["id"], [["999999903"]],
+        )
+        _patch_gspread(monkeypatch, {
+            tab: delegate_ws, "Незавершённые": incomplete_ws,
+            "🤖 Автоотказы": auto_reject_ws, "Гейма": game_ws,
+        })
+        return await sr.build_report()
+
+    report = _run(scenario())
+    assert report["ok"] is True
+    ghost_ids = {it["tid"] for it in report["unknown_sheet_ids"]}
+    assert 999999901 not in ghost_ids
+    assert 999999902 not in ghost_ids
+    assert 999999903 not in ghost_ids
+    assert report["unknown_sheet_ids"] == []
+    assert report["unknown_tabs"] == []  # известны боту по реестру — не «неизвестные»
+
+
+def test_unknown_tab_listed_without_reading_rows(tmp_path, monkeypatch):
+    """Вкладка, которую бот не знает ни в одной категории — отдельной строкой «Неизвестные
+    вкладки», без разбора строк (и без единого сетевого похода за её данными)."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(260926541, city="spb", participant_type="short")
+        tab = await _resolve_tab("spb", "short")
+        delegate_ws = _FakeWorksheet(tab, ["id", "ФИО", "Статус"], [["260926541", "Т", "Новая"]])
+        stray_ws = _QuotaGuardWorksheet("Черновик менеджера", ["что-то"], [["whatever"]])
+        _patch_gspread(monkeypatch, {tab: delegate_ws, "Черновик менеджера": stray_ws})
+        return await sr.build_report()
+
+    report = _run(scenario())
+    assert report["unknown_tabs"] == ["Черновик менеджера"]
+    assert report["unknown_sheet_ids"] == []
+
+
 def test_past_season_user_excluded(tmp_path, monkeypatch):
     """482 импортированных делегата прошлого сезона не должны заваливать отчёт ложными
     «нет строки» (память проекта: past-delegates-import-260910)."""
