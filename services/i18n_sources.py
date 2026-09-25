@@ -504,6 +504,14 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append(("lit:scheduler.mute_button", "Не присылать сегодня"))
     items.append(("lit:scheduler.unmute_button", "Присылать всё"))
+    # Кнопки делегатских рассылок форума: «✅ Сохранил, открывается» под QR накануне
+    # (services/checkin_broadcast.py), «✍️ Написать» после оценки сессии
+    # (services/session_feedback.py). Ключи без ведущего эмодзи — как у кнопок выше.
+    items.append(("lit:checkin_broadcast.confirm_button", "Сохранил, открывается"))
+    items.append(("lit:session_feedback.comment_button", "Написать"))
+    items.append(("lit:checkin_not_arrived.coming_button", "Уже еду"))
+    items.append(("lit:checkin_not_arrived.cant_button", "Не смогу прийти"))
+    items.append(("lit:checkin_not_arrived.here_button", "Я на месте"))
     items.append((
         "lit:user_actions.mute_today_confirm",
         "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».",

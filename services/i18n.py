@@ -131,6 +131,18 @@ async def context(telegram_id: int, language_code: str | None = None) -> tuple[s
     return lang, tr_map
 
 
+async def context_cached(telegram_id: int, maps: dict[str, dict]) -> tuple[str, dict]:
+    """`context()` для массовой рассылки: язык читается на каждого получателя, а карта
+    переводов грузится один раз на язык за всю рассылку (`maps` — словарь вызывающего,
+    живёт один прогон). Без этого рассылка на 1000 делегатов делала бы 1000 выборок
+    всей таблицы переводов."""
+    lang = await delegate_lang(telegram_id)
+    key = lang if lang in ("ru", "en") else "ru"
+    if key not in maps:
+        maps[key] = await load_map(key)
+    return lang, maps[key]
+
+
 # ── Phase 27 → Mini App за пределами анкеты (задача «делегатский интерфейс на английском») ──
 #
 # `tr()` сверху уже не завязан на группу `SETTINGS_SCHEMA`, из которой пришёл текст — ярус B
