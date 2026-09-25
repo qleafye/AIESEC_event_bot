@@ -303,9 +303,19 @@ def render_card_sync(
 
     row_height = 130
     row_gap = 22
+    # Плашки — отдельным слоем с альфа-смешиванием: ImageDraw на RGBA не смешивает, а
+    # заменяет пиксели, и полупрозрачная заливка превращалась в сплошной чёрный прямоугольник.
+    cards = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    cards_draw = ImageDraw.Draw(cards)
+    cy = y
+    for _ in rows:
+        cards_draw.rounded_rectangle(
+            (pad, cy, width - pad, cy + row_height), radius=28, fill=(255, 255, 255, 34),
+        )
+        cy += row_height + row_gap
+    img = Image.alpha_composite(img, cards)
+    draw = ImageDraw.Draw(img)
     for label_text, value_text in rows:
-        box = (pad, y, width - pad, y + row_height)
-        draw.rounded_rectangle(box, radius=28, fill=(0, 0, 0, 95))
         draw.text((pad + 32, y + 20), _truncate(draw, label_text, label_font, content_width - 64), font=label_font, fill=muted_white)
         draw.text((pad + 32, y + 60), _truncate(draw, value_text, value_font, content_width - 64), font=value_font, fill=white)
         y += row_height + row_gap
