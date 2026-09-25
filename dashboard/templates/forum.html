@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% block title %}Форум — {{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block body %}
+
+  <header class="site-header">
+    <div class="brand-row">
+      <a class="brand" href="/" aria-label="АЙСЕК — на главную">
+        <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>🎪 Форум</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+      </div>
+      <div class="event-logo-slot">
+        {% if event_logo_url %}
+        <img class="event-logo" src="{{ event_logo_url }}" alt="{{ event_name or 'Логотип мероприятия' }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <nav class="switchers" aria-label="Навигация">
+      <a class="switch-link" href="/">← К статистике</a>
+    </nav>
+
+    {% if show_city_switcher %}
+    <nav class="switchers" aria-label="Город">
+      <span class="switchers-label">Город:</span>
+      <a class="switch-link{% if not scope.city %} active{% endif %}"
+         {% if not scope.city %}aria-current="page"{% endif %}
+         href="?{% if scope.season %}season={{ scope.season }}{% endif %}">Все города</a>
+      {% for city in city_options %}
+      <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
+         {% if scope.city == city.code %}aria-current="page"{% endif %}
+         href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}">{{ city.label }}</a>
+      {% endfor %}
+    </nav>
+    {% elif viewer.bound_city %}
+    <div class="bound-city-note">Ваш город: {{ bound_city_label }}</div>
+    {% endif %}
+
+    {% if season_options|length > 1 %}
+    <nav class="switchers" aria-label="Сезон">
+      <span class="switchers-label">Сезон:</span>
+      {% for season in season_options %}
+      {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
+      <a class="switch-link{% if is_active %} active{% endif %}"
+         {% if is_active %}aria-current="page"{% endif %}
+         href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}">{{ season.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    <div class="updated-note">Данные на момент открытия страницы. Период по умолчанию — весь текущий сезон.</div>
+  </header>
+
+  <nav class="section-nav" aria-label="Разделы страницы">
+    <a class="switch-link" href="#arrival">Приход</a>
+    <a class="switch-link" href="#sessions">Сессии</a>
+    <a class="switch-link" href="#after">После форума</a>
+    <a class="switch-link" href="#sos">SOS</a>
+    <a class="switch-link" href="#decisions">Решения по заявкам</a>
+  </nav>
+
+  {# ═══ Приход + «Сейчас на площадке» (стойки/волонтёры) — общий с ботом arrival_stats.py,
+     переехало с главной страницы дашборда (задача 25.09). ═══ #}
+  <section class="page-section" id="arrival" aria-labelledby="arrival-title">
+    <h2 class="section-title" id="arrival-title">Приход</h2>
+    {% if not arrival %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — ни одной отметки на входе ещё не было.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ arrival.approved | thousands }}</div><div class="lbl">Одобрено</div></div>
+          <div class="kpi">
+            <div class="num">{{ arrival.arrived | thousands }}</div>
+            <div class="lbl">Пришли</div>
+            {% if arrival.approx %}<div class="delta">у {{ arrival.approx | thousands }} время примерное</div>{% endif %}
+          </div>
+          <div class="kpi"><div class="num">{{ arrival.not_arrived | thousands }}</div><div class="lbl">Не пришли</div></div>
+          <div class="kpi">
+            <div class="num text">{% if arrival.pct is not none %}{{ arrival.pct }}%{% else %}—{% endif %}</div>
+            <div class="lbl">Явка</div>
+          </div>
+        </div>
+        {% if arrival.days %}
+        <h3 class="cut-title">По дням</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>День</th><th class="num">Пришли</th><th class="num">Впервые на форуме</th></tr></thead>
+          <tbody>
+            {% for d in arrival.days %}
+            <tr>
+              <td data-label="День">{{ d.label }}</td>
+              <td class="num" data-label="Пришли">{{ d.present | thousands }}</td>
+              <td class="num" data-label="Впервые на форуме">{{ d.first_entry | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        <p class="empty-note">Если регион отмечает офлайн-сканером, числа растут после загрузки файла в боте. Время — московское.</p>
+      </div>
+    </section>
+    {% if arrival_floor %}
+    {% set fl = arrival_floor %}
+    <section class="block">
+      <h2 class="block-title">{% if fl.is_today %}Сейчас на площадке{% else %}На площадке {{ fl.day_label }}{% endif %}</h2>
+      <div class="card">
+        {% if fl.days | length > 1 %}
+        <nav class="switchers" aria-label="День форума">
+          <span class="switchers-label">День:</span>
+          {% for d in fl.days %}
+          <a class="switch-link{% if d.day == fl.day %} active{% endif %}"
+             {% if d.day == fl.day %}aria-current="page"{% endif %}
+             href="?{% if scope.city %}city={{ scope.city }}&{% endif %}{% if scope.season %}season={{ scope.season }}&{% endif %}arrival_day={{ d.day }}#arrival">{{ d.label }}</a>
+          {% endfor %}
+        </nav>
+        {% endif %}
+        <p class="cut-title">
+          Пришли {{ fl.present | thousands }} из {{ fl.approved | thousands }} одобренных{% if fl.pct is not none %} ({{ fl.pct }}%){% endif %}{% if fl.is_today %} · за последние 15 мин +{{ fl.recent | thousands }}{% endif %}
+        </p>
+        {% if fl.chart %}
+        <div class="chart-wrap">
+          <canvas id="arrival-chart"
+                  role="img"
+                  aria-label="Вход по 15 минут за {{ fl.day_label }}: {{ fl.chart.labels[0] }} — {{ fl.chart.labels[-1] }}; линия — пришли всего из {{ fl.approved }} одобренных"
+                  data-labels='{{ fl.chart.labels | tojson }}'
+                  data-values='{{ fl.chart.counts | tojson }}'
+                  data-cumulative='{{ fl.chart.cumulative | tojson }}'
+                  data-approved='{{ fl.approved | tojson }}'>График не загрузился — значения в таблице ниже.</canvas>
+        </div>
+        <p class="empty-note" id="arrival-chart-fallback" hidden>График не загрузился — значения в таблице ниже.</p>
+        <details class="chart-table">
+          <summary>Таблица по 15 минут</summary>
+          <table>
+            <thead><tr><th>Время</th><th class="num">Вошли</th><th class="num">Всего к этому времени</th></tr></thead>
+            <tbody>
+              {% for label in fl.chart.labels %}
+              <tr><td>{{ label }}</td><td class="num">{{ fl.chart.counts[loop.index0] | thousands }}</td><td class="num">{{ fl.chart.cumulative[loop.index0] | thousands }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+        {% endif %}
+        {% if fl.cities %}
+        <h3 class="cut-title">По городам</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Город</th><th class="num">Пришли</th><th class="num">Одобрено</th><th class="num">Явка</th></tr></thead>
+          <tbody>
+            {% for c in fl.cities %}
+            <tr>
+              <td data-label="Город">{{ c.label }}</td>
+              <td class="num" data-label="Пришли">{{ c.present | thousands }}</td>
+              <td class="num" data-label="Одобрено">{{ c.approved | thousands }}</td>
+              <td class="num" data-label="Явка">{% if c.pct is not none %}{{ c.pct }}%{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        <h3 class="cut-title">По точкам</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Точка</th><th class="num">Отметились</th><th class="num">Заполненность</th></tr></thead>
+          <tbody>
+            {% for pt in fl.points %}
+            <tr>
+              <td data-label="Точка">{% if pt.live %}🔴 {% endif %}{{ pt.label }}</td>
+              <td class="num" data-label="Отметились">{{ pt.count | thousands }}</td>
+              <td class="num" data-label="Заполненность">{% if pt.fill_pct is not none %}{{ pt.fill_pct }}% из {{ pt.capacity | thousands }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {# Стойки/волонтёры (пропускная способность): сканов на волонтёра, средний интервал —
+           та же сборка, что экран бота «Сейчас на площадке» (arrival_stats.build_stands). #}
+        {% if fl.stands %}
+        <h3 class="cut-title">Стойки входа — волонтёры</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Волонтёр</th><th class="num">Отметил(а)</th><th>Темп</th><th>Последний скан</th></tr></thead>
+          <tbody>
+            {% for st in fl.stands %}
+            <tr>
+              <td data-label="Волонтёр">{{ st.name }}</td>
+              <td class="num" data-label="Отметил(а)">{{ st.count | thousands }}</td>
+              <td data-label="Темп">{{ st.gap_text }}</td>
+              <td data-label="Последний скан">{{ st.last[11:16] }}{% if st.idle %} · ⏸ простаивает {{ st.since_last_min }} мин{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        <p class="empty-note">🔴 — сессия идёт сейчас. Стойки — отметки сканером и поиском по фамилии; файл офлайн-сканера в них не входит. Темп — обычный интервал между сканами; ⏸ — стойка не сканирует дольше {{ fl.idle_minutes }} мин, хотя другие за это время сканировали.</p>
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  {# ═══ Сессии: заполненность + оценки ⭐ ═══ #}
+  <section class="page-section" id="sessions" aria-labelledby="sessions-title">
+    <h2 class="section-title" id="sessions-title">Сессии</h2>
+    {% if not sessions %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — расписание сессий ещё не заведено или отметок пока нет.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              {% if not scope.city %}<th>Город</th>{% endif %}
+              <th>День</th><th>Время</th><th>Зал</th><th>Сессия</th>
+              <th class="num">Отметились</th><th class="num">Заполненность</th>
+              <th class="num">⭐ Средняя</th><th class="num">Оценок</th><th class="num">Комментариев</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+            <tr>
+              {% if not scope.city %}<td data-label="Город">{{ s.city_label }}</td>{% endif %}
+              <td data-label="День">{{ s.day_label }}</td>
+              <td data-label="Время">{{ s.start }}–{{ s.end }}</td>
+              <td data-label="Зал">{{ s.hall or "—" }}</td>
+              <td data-label="Сессия">{{ s.title }}</td>
+              <td class="num" data-label="Отметились">{{ s.count | thousands }}</td>
+              <td class="num" data-label="Заполненность">{% if s.fill_pct is not none %}{{ s.fill_pct }}% из {{ s.capacity | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="⭐ Средняя">{% if s.avg_rating is not none %}{{ s.avg_rating }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Оценок">{{ s.ratings_count | thousands }}</td>
+              <td class="num" data-label="Комментариев">{{ s.comments_count | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="empty-note">Оценка — тап делегата по ⭐ после сессии (1–5), опционально с комментарием; здесь — только счётчики, тексты комментариев не показываются.</p>
+      </div>
+    </section>
+    {% if top_sessions %}
+    <section class="block">
+      <h2 class="block-title">Топ по оценке</h2>
+      <div class="card">
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Сессия</th><th class="num">⭐ Средняя</th><th class="num">Оценок</th></tr></thead>
+          <tbody>
+            {% for s in top_sessions %}
+            <tr><td data-label="Сессия">{{ s.title }} ({{ s.day_label }} {{ s.start }})</td><td class="num" data-label="⭐ Средняя">{{ s.avg_rating }}</td><td class="num" data-label="Оценок">{{ s.ratings_count | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+    {% if bottom_sessions %}
+    <section class="block">
+      <h2 class="block-title">Анти-топ по оценке</h2>
+      <div class="card">
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Сессия</th><th class="num">⭐ Средняя</th><th class="num">Оценок</th></tr></thead>
+          <tbody>
+            {% for s in bottom_sessions %}
+            <tr><td data-label="Сессия">{{ s.title }} ({{ s.day_label }} {{ s.start }})</td><td class="num" data-label="⭐ Средняя">{{ s.avg_rating }}</td><td class="num" data-label="Оценок">{{ s.ratings_count | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  {# ═══ После форума: опрос неявившихся, перенос регионов, «Юлид в цифрах» ═══ #}
+  <section class="page-section" id="after" aria-labelledby="after-title">
+    <h2 class="section-title" id="after-title">После форума</h2>
+    {% if not (noshow_poll or regional_move or stats_card) %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — ни один из опросов/рассылок после форума ещё не уходил.</p></div></section>
+    {% endif %}
+    {% if noshow_poll %}
+    <section class="block">
+      <h2 class="block-title">Опрос неявившихся — «Почему не пришёл?»</h2>
+      <div class="card">
+        <p class="cut-title">Ответили {{ noshow_poll.answered | thousands }} из {{ noshow_poll.sent | thousands }}</p>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Причина</th><th class="num">Ответов</th></tr></thead>
+          <tbody>
+            {% for r in noshow_poll.by_reason %}
+            <tr><td data-label="Причина">{{ r.label }}</td><td class="num" data-label="Ответов">{{ r.count | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+    {% if regional_move %}
+    <section class="block">
+      <h2 class="block-title">Перенос регионов в другой город</h2>
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ regional_move.offered | thousands }}</div><div class="lbl">Предложено</div></div>
+          <div class="kpi"><div class="num">{{ regional_move.moved | thousands }}</div><div class="lbl">Перенеслись</div></div>
+          <div class="kpi"><div class="num">{{ regional_move.declined | thousands }}</div><div class="lbl">Отказались</div></div>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+    {% if stats_card %}
+    <section class="block">
+      <h2 class="block-title">«Юлид в цифрах»</h2>
+      <div class="card">
+        <p class="cut-title">Отправлено {{ stats_card.sent | thousands }}</p>
+      </div>
+    </section>
+    {% endif %}
+  </section>
+
+  {# ═══ SOS: только счётчики, без текстов и имён (D-17) ═══ #}
+  <section class="page-section" id="sos" aria-labelledby="sos-title">
+    <h2 class="section-title" id="sos-title">SOS</h2>
+    {% if not sos %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — обращений SOS ещё не было.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ sos.total | thousands }}</div><div class="lbl">Всего</div></div>
+          <div class="kpi"><div class="num">{{ sos.resolved | thousands }}</div><div class="lbl">Решено</div></div>
+          <div class="kpi"><div class="num">{{ sos.unresolved | thousands }}</div><div class="lbl">В работе</div></div>
+          <div class="kpi"><div class="num text">{{ sos.avg_claim_label }}</div><div class="lbl">Среднее время до «Беру»</div></div>
+        </div>
+        {% if sos.by_day %}
+        <h3 class="cut-title">По дням</h3>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>День</th><th class="num">Обращений</th></tr></thead>
+          <tbody>
+            {% for d in sos.by_day %}
+            <tr><td data-label="День">{{ d.day }}</td><td class="num" data-label="Обращений">{{ d.count | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        <p class="empty-note">Только счётчики — ни текстов обращений, ни имён на дашборде нет.</p>
+      </div>
+    </section>
+    {% endif %}
+  </section>
+
+  {# ═══ Решения по заявкам: доставка ═══ #}
+  <section class="page-section" id="decisions" aria-labelledby="decisions-title">
+    <h2 class="section-title" id="decisions-title">Решения по заявкам</h2>
+    {% if not decision_delivery %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — решений по заявкам в этом скоупе ещё не было.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ decision_delivery.delivered | thousands }}</div><div class="lbl">Доставлено</div></div>
+          <div class="kpi"><div class="num">{{ decision_delivery.failed | thousands }}</div><div class="lbl">Не доставлено</div>
+            {% if decision_delivery.blocked %}<div class="delta">из них заблокировали бота {{ decision_delivery.blocked | thousands }}</div>{% endif %}
+          </div>
+          <div class="kpi"><div class="num">{{ decision_delivery.queued | thousands }}</div><div class="lbl">В очереди</div></div>
+          <div class="kpi"><div class="num">{{ decision_delivery.unknown | thousands }}</div><div class="lbl">Неизвестно</div></div>
+        </div>
+        <p class="empty-note">Из {{ decision_delivery.total | thousands }} решённых заявок в скоупе. «Неизвестно» — решение принято до учёта доставки или доставка ещё не прошла ни одним путём.</p>
+      </div>
+    </section>
+    {% endif %}
+  </section>
+
+  <footer class="site-footer">
+    <img src="/static/brand/aiesec-human-blue.svg" alt="" aria-hidden="true">
+    <span>работает на АЙСЕК</span>
+  </footer>
+
+  {% if arrival_floor and arrival_floor.chart %}
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      // Вход по 15 минут — столбцы (--chart-1) + линия «пришли всего» на правой оси, подпись
+      // которой — число одобренных. Тот же рендер, что раньше жил на главной странице
+      // дашборда (задача 25.09: раздел «Приход» переехал сюда целиком).
+      var canvas = document.getElementById("arrival-chart");
+      if (!canvas) { return; }
+      if (typeof Chart === "undefined") {
+        var fb = document.getElementById("arrival-chart-fallback");
+        if (fb) { fb.hidden = false; }
+        canvas.parentNode.hidden = true;
+        return;
+      }
+      var css = getComputedStyle(document.documentElement);
+      var v = function (name, fallbackValue) {
+        return css.getPropertyValue(name).trim() || fallbackValue || "currentColor";
+      };
+      var approved = JSON.parse(canvas.getAttribute("data-approved") || "0");
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      new Chart(canvas, {
+        data: {
+          labels: JSON.parse(canvas.getAttribute("data-labels") || "[]"),
+          datasets: [
+            { type: "bar", label: "вошли за 15 мин", yAxisID: "y",
+              data: JSON.parse(canvas.getAttribute("data-values") || "[]"),
+              backgroundColor: v("--chart-1"), borderRadius: 2 },
+            { type: "line", label: "пришли всего", yAxisID: "y1",
+              data: JSON.parse(canvas.getAttribute("data-cumulative") || "[]"),
+              borderColor: v("--chart-2"), backgroundColor: v("--chart-2"), borderWidth: 2,
+              tension: 0, pointRadius: 0, pointHitRadius: 12 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          locale: "ru-RU",
+          animation: reduceMotion ? false : undefined,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: true, position: "bottom", labels: { boxWidth: 12, color: v("--chart-tick") } },
+            tooltip: {
+              backgroundColor: v("--surface"), titleColor: v("--text-muted"), bodyColor: v("--text"),
+              borderColor: v("--border"), borderWidth: 1, cornerRadius: 4, padding: 8
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, border: { color: v("--chart-grid") },
+                 ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: v("--chart-tick") } },
+            y: { beginAtZero: true, grid: { color: v("--chart-grid"), drawTicks: false }, border: { display: false },
+                 ticks: { precision: 0, maxTicksLimit: 5, padding: 6, color: v("--chart-tick") } },
+            y1: { position: "right", beginAtZero: true, suggestedMax: approved || undefined,
+                  grid: { display: false }, border: { display: false },
+                  title: { display: approved > 0, text: "одобрено " + approved, color: v("--chart-tick") },
+                  ticks: { precision: 0, maxTicksLimit: 5, color: v("--chart-tick") } }
+          }
+        }
+      });
+    })();
+  </script>
+  {% endif %}
+{% endblock %}

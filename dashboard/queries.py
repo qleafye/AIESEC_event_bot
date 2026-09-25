@@ -2204,3 +2204,240 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
         "past_winners": _ambassador_past_winners(conn, scope),
         "tasks": _ambassador_wave_tasks(conn, scope, wave),
     }
+
+
+# ── Страница «Форум» (25.09): сессии/оценки, SOS, доставка решений, опросы после форума.
+# Приход/стойки уже посчитаны arrival_block/arrival_floor выше (общий с ботом arrival_stats.py,
+# не дублируем). Здесь — агрегаты, которых в arrival_stats.py нет. SOS/доставка решений — ТОЛЬКО
+# счётчики, без текстов/имён (D-17: дашборд без ПД).
+
+def session_ratings(conn) -> dict[int, dict]:
+    """`{session_id: {avg, count, comments}}` из `session_feedback` (⭐1–5 + комментарий, одна
+    строка на делегата+сессию). У таблицы нет своего города/сезона — сессия сама несёт их через
+    `program_sessions` (id уникален по всей базе), поэтому здесь читаются ВСЕ строки без
+    городского фильтра — вызывающий (`main.build_forum_context`) берёт из результата только id
+    сессий, уже суженных scope через `arrival_block`."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_feedback'"
+    ).fetchone()
+    if has_table is None:
+        return {}
+    rows = conn.execute(
+        "SELECT session_id, AVG(rating), COUNT(rating), "
+        "COUNT(CASE WHEN comment IS NOT NULL AND TRIM(comment) != '' THEN 1 END) "
+        "FROM session_feedback GROUP BY session_id"
+    ).fetchall()
+    return {
+        r[0]: {
+            "avg": round(r[1], 1) if r[1] is not None else None,
+            "count": r[2] or 0,
+            "comments": r[3] or 0,
+        }
+        for r in rows
+    }
+
+
+def sos_block(conn, scope: Scope) -> dict | None:
+    """Раздел «SOS»: всего / решено / среднее время до «Беру», по дням — ТОЛЬКО счётчики
+    (D-17: без ПД, никаких текстов обращений/имён). `sos_reports.city` — снимок города на
+    момент отправки (тот же приём, что `checkin_qr_sends.event_city`); сезона у таблицы нет —
+    сужаем его через JOIN с `users` по автору обращения. `None`, пока обращений не было
+    (гейт по данным, тот же приём, что `arrival_block`/`questions_block`)."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sos_reports'"
+    ).fetchone()
+    if has_table is None:
+        return None
+    season_frag, season_params = _season_sql(conn, scope.season)
+    parts = [f"telegram_id IN (SELECT telegram_id FROM users WHERE {season_frag})"]
+    params: list = list(season_params)
+    if scope.city is not None:
+        # `sos_reports.city` — своя колонка (не `users.event_city`): `_city_fragment` сравнивает
+        # именно `event_city`, подменяем имя колонки, форма условия та же.
+        city_frag, city_params = _city_fragment(conn, scope.city)
+        parts.append(city_frag.replace("event_city", "city"))
+        params.extend(city_params)
+    total = _scalar(conn, f"SELECT COUNT(*) FROM sos_reports{_where(parts)}", params) or 0
+    if not total:
+        return None
+    resolved = _scalar(
+        conn, f"SELECT COUNT(*) FROM sos_reports{_where(parts + ['resolved_at IS NOT NULL'])}", params,
+    ) or 0
+    avg_claim_min = _scalar(
+        conn,
+        "SELECT AVG((julianday(claimed_at) - julianday(created_at)) * 1440.0) FROM sos_reports"
+        f"{_where(parts + ['claimed_at IS NOT NULL'])}",
+        params,
+    )
+    by_day_rows = conn.execute(
+        f"SELECT substr(created_at, 1, 10), COUNT(*) FROM sos_reports{_where(parts)} "
+        "GROUP BY 1 ORDER BY 1",
+        params,
+    ).fetchall()
+    return {
+        "total": total,
+        "resolved": resolved,
+        "unresolved": total - resolved,
+        "avg_claim_minutes": round(avg_claim_min, 1) if avg_claim_min is not None else None,
+        "avg_claim_label": format_processing_time(avg_claim_min),
+        "by_day": [
+            {"day": arrival_stats.day_short(r[0]), "count": r[1]} for r in by_day_rows if r[0]
+        ],
+    }
+
+
+# Строка причины сбоя должна совпадать с `services.decision_delivery.ERROR_BLOCKED` — дашборд
+# НЕ импортирует `services/*` (не тянуть транзитивно aiogram/aiosqlite в slim-образ, см.
+# докстринг модуля), поэтому строка продублирована здесь; дрейф ловит
+# `tests/test_dashboard_forum_stats_260926.py`.
+_DECISION_ERROR_BLOCKED = "бот заблокирован делегатом"
+
+
+def decision_delivery_block(conn, scope: Scope) -> dict | None:
+    """Раздел «Решения по заявкам»: доставлено / не доставлено (в т.ч. заблокировали бота) /
+    в очереди / неизвестно — та же раскладка, что `services.decision_delivery.
+    summarize_deliveries` (бот), но одним SQL-агрегатом по `users.decision_delivery_status` —
+    без обхода списка людей в Python и без ПД (D-17: только счётчики, ни одного имени)."""
+    has_column = any(
+        row["name"] == "decision_delivery_status" for row in conn.execute("PRAGMA table_info(users)")
+    )
+    if not has_column:
+        return None
+    parts, params = _scope_sql(conn, scope)
+    decided_parts = list(parts) + ["status IN ('approved', 'rejected')"]
+    total = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(decided_parts)}", params) or 0
+    if not total:
+        return None
+
+    def _count(extra_parts: list[str], extra_params: list | None = None) -> int:
+        return _scalar(
+            conn,
+            f"SELECT COUNT(*) FROM users{_where(decided_parts + extra_parts)}",
+            tuple(params) + tuple(extra_params or ()),
+        ) or 0
+
+    delivered = _count(["decision_delivery_status = 'delivered'"])
+    failed = _count(["decision_delivery_status = 'failed'"])
+    blocked = _count(
+        ["decision_delivery_status = 'failed'", "decision_delivery_error = ?"], [_DECISION_ERROR_BLOCKED],
+    )
+    queued = _count(["decision_delivery_status = 'queued'"])
+    unknown = _count(["(decision_delivery_status IS NULL OR decision_delivery_status = '')"])
+    return {
+        "total": total,
+        "delivered": delivered,
+        "failed": failed,
+        "blocked": blocked,
+        "resendable": failed - blocked,
+        "queued": queued,
+        "unknown": unknown,
+    }
+
+
+# Подписи причин — те же коды `FORUM_NOSHOW_REASON_*` из `database/db.py` (единая точка правды
+# кодов, подписи здесь — дефолтный русский текст соседних редактируемых кнопок опроса).
+_NOSHOW_REASON_ORDER = ("changed_mind", "study_work", "far", "forgot", "other")
+_NOSHOW_REASON_LABELS = {
+    "changed_mind": "Передумал(а)",
+    "study_work": "Учёба/работа",
+    "far": "Далеко/дорого",
+    "forgot": "Забыл(а)",
+    "other": "Другое",
+}
+
+
+def noshow_poll_block(conn, scope: Scope) -> dict | None:
+    """«Ответили N из M»: те же запросы, что `database.db.forum_noshow_poll_summary` (бот,
+    экран менеджера «🎪 Форум: функции»), здесь — read-only sqlite3. `None`, пока опрос никому
+    не уходил."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'forum_noshow_poll'"
+    ).fetchone()
+    if has_table is None:
+        return None
+    season = scope.season or _current_event_season(conn)
+    if not season:
+        return None
+    parts = ["season = ?"]
+    params: list = [season]
+    if scope.city is not None:
+        # `forum_noshow_poll.city` — своя колонка (не `users.event_city`), тот же приём, что
+        # у `sos_block`.
+        city_frag, city_params = _city_fragment(conn, scope.city)
+        parts.append(city_frag.replace("event_city", "city"))
+        params.extend(city_params)
+    where = _where(parts)
+    sent = _scalar(conn, f"SELECT COUNT(*) FROM forum_noshow_poll{where}", params) or 0
+    if not sent:
+        return None
+    reason_rows = conn.execute(
+        f"SELECT reason, COUNT(*) FROM forum_noshow_poll{where} AND reason IS NOT NULL GROUP BY reason",
+        params,
+    ).fetchall()
+    counts = {r[0]: r[1] for r in reason_rows}
+    answered = sum(counts.values())
+    return {
+        "sent": sent,
+        "answered": answered,
+        "by_reason": [
+            {"label": _NOSHOW_REASON_LABELS.get(code, code), "count": counts.get(code, 0)}
+            for code in _NOSHOW_REASON_ORDER
+        ],
+    }
+
+
+def regional_move_block(conn, scope: Scope) -> dict | None:
+    """«Предложено N, перенеслись M, отказались K» — те же запросы, что
+    `database.db.regional_noshow_move_summary` (бот). `source_city` — снимок города-источника
+    на момент отправки; фрагмент городского сравнения переиспользует `_city_fragment`
+    (сравнивает `event_city` — подменяем имя колонки, сама форма условия та же)."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'regional_noshow_move'"
+    ).fetchone()
+    if has_table is None:
+        return None
+    season = scope.season or _current_event_season(conn)
+    if not season:
+        return None
+    parts = ["season = ?"]
+    params: list = [season]
+    if scope.city is not None:
+        city_frag, city_params = _city_fragment(conn, scope.city)
+        parts.append(city_frag.replace("event_city", "source_city"))
+        params.extend(city_params)
+    where = _where(parts)
+    offered = _scalar(conn, f"SELECT COUNT(*) FROM regional_noshow_move{where}", params) or 0
+    if not offered:
+        return None
+    resp_rows = conn.execute(
+        f"SELECT response, COUNT(*) FROM regional_noshow_move{where} AND response IS NOT NULL GROUP BY response",
+        params,
+    ).fetchall()
+    counts = {r[0]: r[1] for r in resp_rows}
+    return {"offered": offered, "moved": counts.get("moved", 0), "declined": counts.get("declined", 0)}
+
+
+def stats_card_block(conn, scope: Scope) -> dict | None:
+    """«Юлид в цифрах»: сколько карточек-итогов отправлено — тот же запрос, что
+    `database.db.forum_stats_card_summary` (бот сам не считает знаменатель M кандидатов для
+    этой рассылки — не выдумываем его и здесь, честное «отправлено N»)."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'forum_stats_card_sends'"
+    ).fetchone()
+    if has_table is None:
+        return None
+    season = scope.season or _current_event_season(conn)
+    if not season:
+        return None
+    parts = ["season = ?"]
+    params: list = [season]
+    if scope.city is not None:
+        # `forum_stats_card_sends.city` — своя колонка (не `users.event_city`), тот же приём,
+        # что у `sos_block`.
+        city_frag, city_params = _city_fragment(conn, scope.city)
+        parts.append(city_frag.replace("event_city", "city"))
+        params.extend(city_params)
+    sent = _scalar(conn, f"SELECT COUNT(*) FROM forum_stats_card_sends{_where(parts)}", params) or 0
+    if not sent:
+        return None
+    return {"sent": sent}
