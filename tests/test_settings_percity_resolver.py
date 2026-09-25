@@ -213,6 +213,12 @@ EXPECTED_PER_CITY_KEYS = {
     "regional_noshow_target_city",
     "regional_noshow_move_status",
     "regional_noshow_offer_text",
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): тумблер + подпись — per_city, тот же
+    # довод, что forum_welcome_enabled/forum_welcome_text выше (регионы 03.10 и Москва 30-31.10
+    # в разных фазах). Фон (composite-ключ, мимо этого резолвера, D-10) в этот список НЕ
+    # входит — см. settings_schema.py комментарий у "forum_stats_card".
+    "forum_stats_card_enabled",
+    "forum_stats_card_caption_text",
 }
 
 
