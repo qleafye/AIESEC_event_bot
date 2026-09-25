@@ -1057,9 +1057,11 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "claim_status": "взял(а) Мария",
     # Форум-ночь п.9: название сессии в session_feedback_prompt_text («Как тебе «{title}»?»).
     "title": "Как продать идею АЙСЕК за 5 минут",
-    # Трек «региональные форумы → Москва»: даты форума города назначения в
-    # regional_noshow_offer_text («Приезжай на Юлид в Москве {dates}»).
-    "dates": "30.10.2026–31.10.2026",
+    # Трек «региональные форумы → Москва»: город назначения и даты его форума в
+    # regional_noshow_offer_text («Приезжай на Юлид: {target_city}{dates}») — `{dates}` уже
+    # несёт ведущий пробел и скобки (см. `services.regional_noshow_move._dates_label_for`).
+    "target_city": "Москва",
+    "dates": " (30.10–31.10)",
 }
 
 
