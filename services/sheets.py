@@ -738,6 +738,81 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
         return False
 
 
+def _write_arrived_on_sheet(sheet, id_to_value: dict[str, str]) -> set[str]:
+    """Одна вкладка очереди «Пришёл»: ОДНО чтение (шапка + столбец id одним batch_get) и один
+    batch_update на все найденные строки. Возвращает найденные id. Нет колонки «Пришёл» —
+    ничего не найдено (решает вызывающий: откат на главный лист или «не найден»). Дубли строк
+    одного id — пишем в последнюю, как `_update_cell_in_row_range`."""
+    header, col1 = sheet.batch_get(["1:1", "A:A"])
+    header = [str(h).strip() for h in (header[0] if header else [])]
+    if ARRIVED_HEADER not in header:
+        return set()
+    col = header.index(ARRIVED_HEADER) + 1
+    updates: dict[str, dict] = {}
+    for row_idx, cells in enumerate(list(col1)[1:], start=2):  # skip header
+        key = str(cells[0]).strip() if cells else ""
+        if key in id_to_value:
+            a1 = gspread.utils.rowcol_to_a1(row_idx, col)
+            updates[key] = {"range": a1, "values": [[id_to_value[key]]]}
+    if updates:
+        sheet.batch_update(list(updates.values()), value_input_option=_RAW)
+    return set(updates)
+
+
+def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str | None]) -> dict:
+    """Очередь «Пришёл»: группы по вкладке (как `_bulk_update_status_sync`), не найденные на
+    городской вкладке — вторым проходом на главный лист (старые строки до разбивки по
+    городам). Сбой вкладки (сеть/API) — её id в `failed` с текстом ошибки, остальные вкладки
+    пишутся дальше. Возвращает {"written": set, "missing": set, "failed": {id: str}}."""
+    groups: dict[str, dict[str, str]] = {}
+    for key, value in id_to_value.items():
+        groups.setdefault(tab_by_id.get(key) or "", {})[key] = value
+    written: set[str] = set()
+    failed: dict[str, str] = {}
+    to_main: dict[str, str] = dict(groups.pop("", {}))
+    for tab_name, part in groups.items():
+        try:
+            found = _write_arrived_on_sheet(_get_named_sheet(tab_name), part)
+        except Exception as e:
+            _reset_named_sheet_cache(tab_name)
+            failed |= {k: f"{tab_name}: {e}" for k in part}
+            continue
+        written |= found
+        to_main |= {k: v for k, v in part.items() if k not in found}
+    missing: set[str] = set()
+    if to_main:
+        try:
+            found = _write_arrived_on_sheet(_get_sheet(), to_main)
+            written |= found
+            missing = set(to_main) - found
+        except Exception as e:
+            _reset_sheet_cache()
+            failed |= {k: str(e) for k in to_main}
+    return {"written": written, "missing": missing, "failed": failed}
+
+
+async def write_arrivals_batch(id_to_value: dict[int, str]) -> dict:
+    """Пачка очереди «Пришёл» (`services/sheet_arrival_sync.py`): `{telegram_id: значение}` ->
+    {"written": set[int], "missing": set[int], "failed": {int: str}}. Вкладка каждого делегата —
+    `_resolve_status_tab`, то же правило, что у точечной записи. Бросает, только если сломалось
+    всё до похода в лист (разбор вызывающий считает сбоем всей пачки)."""
+    tab_by_id: dict[str, str | None] = {}
+    for tid in id_to_value:
+        tab_by_id[str(tid)] = await _resolve_status_tab(int(tid))
+    res = await asyncio.to_thread(
+        _write_arrivals_sync, {str(k): v for k, v in id_to_value.items()}, tab_by_id,
+    )
+    if res["written"]:
+        _note_write(True)
+    if res["failed"]:
+        _note_write(False)
+    return {
+        "written": {int(k) for k in res["written"]},
+        "missing": {int(k) for k in res["missing"]},
+        "failed": {int(k): v for k, v in res["failed"].items()},
+    }
+
+
 def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:
     """Point single-row update (D-16): col1 scan with the same normalization as
     _update_status_in_row_range (`(val or "").strip()`, header row skipped), then ONE
