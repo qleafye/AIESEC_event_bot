@@ -80,7 +80,7 @@ from services.scheduler import (
     # важности (встроена в содержимое) и клавиатуры получателя, не вторая копия.
     important_prefix,
     apply_important_prefix,
-    recipient_markup,
+    load_recipient_langs, recipient_markup,
     # Только альбом — media_group не принимает reply_markup, см. докстринг там же.
     send_mute_offer_if_eligible,
 )
@@ -574,13 +574,14 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     # только для альбома в день, когда предложение «🔕» ещё не показывалось (send_media_group не
     # принимает reply_markup, см. докстринг services/scheduler.py).
     important_prefix_text = await important_prefix() if important else ""
+    langs = await load_recipient_langs() if not important else None  # язык всех — одним чтением
 
     if bc_album:
         async def send_one(chat_id):
             media = _media_from_album_dicts(bc_album, important_prefix_text if important else None)
             results = await bot.send_media_group(chat_id, media)
             message_ids = [m.message_id for m in results]
-            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important)
+            extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important, langs)
             if extra_mid is not None:
                 message_ids.append(extra_mid)
                 # Единственный случай двух API-вызовов на получателя — вторая пауза здесь же,
@@ -590,13 +591,13 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
             return message_ids
     elif bc_kind == "text":
         async def send_one(chat_id):
-            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            markup = await recipient_markup(chat_id, important, bc_base_markup, langs)
             text = apply_important_prefix(bc_content_html, important, important_prefix_text)
             result = await bot.send_message(chat_id, text, reply_markup=markup)
             return [result.message_id]
     else:
         async def send_one(chat_id):
-            markup = await recipient_markup(chat_id, important, bc_base_markup)
+            markup = await recipient_markup(chat_id, important, bc_base_markup, langs)
             # `caption=None`, когда рассылка НЕ важная — Telegram сохраняет исходную подпись
             # копируемого сообщения байт-в-байт (никакого риска расхождения форматирования на
             # самой частой, неважной ветке); подмена нужна ТОЛЬКО чтобы вписать пометку важности.
