@@ -95,7 +95,7 @@ def test_get_checkin_status_falls_back_to_latest_day_when_no_entry_today(tmp_pat
     status = _run(db.get_checkin_status(UID))
     assert status["day"] == "2026-10-31"  # последний день из двух, не первый
     assert status["is_today"] is False
-    assert status["time_label"] == "31.10 в 08:05"
+    assert status["time_label"] == "08:05 (31.10)"
 
 
 def test_get_checkin_status_counts_sessions(tmp_path):
@@ -230,7 +230,7 @@ def test_qr_caption_translates_status_line_for_english_delegate(tmp_path):
     _photo, caption = message.photos[0]
     default_ru = "Отмечен на входе в {time} · сессий: {sessions}"
     # 2026-10-30 -- не сегодня на момент прогона теста, time_label несёт дату (D-04, задача 4).
-    expected_line = FORM_DEFAULT_EN[default_ru].replace("{time}", "30.10 в 09:15").replace("{sessions}", "0")
+    expected_line = FORM_DEFAULT_EN[default_ru].replace("{time}", "09:15 (30.10)").replace("{sessions}", "0")
     assert expected_line in caption
 
 

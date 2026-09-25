@@ -430,7 +430,7 @@ async def _forumdaymenu_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboa
     if on:
         active_now = await is_forum_day_menu_active_for_city(code)
         lines.append("Сейчас: 🎪 форумное меню" if active_now else "Сейчас: обычное меню")
-    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — режим не включится, даже если Вкл здесь.")
 
@@ -610,7 +610,7 @@ async def _day_report_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboard
     lines = ["📊 <b>Отчёт дня форума</b>" + (f" — {html.escape(label)}" if label else "")]
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Время (каждый день форума): {t}")
-    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — отчёт не поставится, даже если Вкл здесь.")
 
@@ -771,7 +771,7 @@ async def _noshow_poll_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboar
     lines = ["❓ <b>Опрос неявившихся «почему не пришёл»</b>" + (f" — {html.escape(label)}" if label else "")]
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Время (день после форума): {t}")
-    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.")
 
