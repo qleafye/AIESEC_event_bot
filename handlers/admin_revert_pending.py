@@ -160,7 +160,20 @@ async def revertp_apply(callback: types.CallbackQuery):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
 
-    report = await revert_to_pending(tid, by_admin=admin_id, notify=notify, bot=callback.bot)
+    # Координатор 25.09: в режиме уведомлений «каждая заявка» карточка менеджерам должна
+    # называть, КТО вернул заявку на модерацию (в digest-режиме это уже видно из отдельного
+    # блока пачки, 9d15517) — тот же приём резолва имени, что у sos_claim/sos_resolve
+    # (handlers/admin_sos.py): full_name -> username -> код-фолбэк. `getattr` — минимальные
+    # тестовые дублёры callback.from_user (напр. test_card_actions_260925.py::_FakeUser) несут
+    # только `.id`, настоящий aiogram User несёт оба поля всегда.
+    admin_name = (
+        getattr(callback.from_user, "full_name", None)
+        or getattr(callback.from_user, "username", None)
+        or "Админ"
+    )
+    report = await revert_to_pending(
+        tid, by_admin=admin_id, admin_name=admin_name, notify=notify, bot=callback.bot,
+    )
     if not report.get("ok"):
         await callback.message.edit_text(
             f"❌ Не вернул(а): {html_module.escape(str(report.get('error') or '-'))}",
