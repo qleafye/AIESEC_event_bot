@@ -219,6 +219,12 @@ EXPECTED_PER_CITY_KEYS = {
     # входит — см. settings_schema.py комментарий у "forum_stats_card".
     "forum_stats_card_enabled",
     "forum_stats_card_caption_text",
+    # Фаза 33 (действия карточки делегата): тексты уведомлений делегату — по городу, как
+    # остальные делегатские тексты.
+    "edit_granted_notify_text",
+    "reg_reset_notify_text",
+    "resubmit_granted_notify_text",
+    "revert_pending_notify_text",
 }
 
 
