@@ -113,6 +113,9 @@ class _FakeWorksheet:
 class _FakeSpreadsheet:
     def __init__(self, worksheets: dict):
         self._by_title = dict(worksheets)
+        for ws in self._by_title.values():
+            ws.spreadsheet = self  # нужно `_get_sheet().spreadsheet.worksheets()` — успешный
+            # резолв главной вкладки (test_row_found_on_main_tab_is_not_appended_as_duplicate).
         self.add_worksheet_calls: list[str] = []
 
     def worksheet(self, title):
@@ -215,6 +218,43 @@ def test_missing_row_on_existing_tab(tmp_path, monkeypatch):
     assert item["name"] == "Аня П."
     assert item["username"] == "@anya"  # database.db.store_username канон -- всегда с «@»
     assert item["tab"] == tab
+
+
+def test_row_on_main_tab_reported_as_other_tab_not_appended(tmp_path, monkeypatch):
+    """Делегат СПб реально лежит на главной вкладке (ручная правка/перевод города) — «Дописать
+    недостающие строки» не должен завести вторую строку рядом с уже существующей; отчёт относит
+    его к «строка не на своей вкладке», а не к «нет строки»."""
+    _db_ready(tmp_path)
+    _reset_sheets_state()
+
+    async def scenario():
+        await _enable_cities_module()
+        main_title = "Заявки"
+        await db.set_setting("main_sheet_tab", main_title)
+        await _seed_user(260926520, city="spb", participant_type="short", full_name="На главной", username="glav")
+        tab = await _resolve_tab("spb", "short")
+        main_ws = _FakeWorksheet(main_title, ["id", "ФИО", "Статус"], [["260926520", "На главной", "Новая"]])
+        spb_ws = _FakeWorksheet(tab, ["id", "ФИО", "Статус"], [])
+        fake_ss = _patch_gspread(monkeypatch, {main_title: main_ws, tab: spb_ws})
+        report = await sr.build_report()
+        result = await sr.apply_append_missing()
+        return report, result, fake_ss, spb_ws, tab
+
+    report, result, fake_ss, spb_ws, tab = _run(scenario())
+
+    assert report["missing_rows"] == []
+    assert len(report["other_tab_rows"]) == 1
+    entry = report["other_tab_rows"][0]
+    assert entry["tid"] == 260926520
+    assert entry["name"] == "На главной"
+    assert entry["username"] == "@glav"
+    assert entry["own_tab"] == tab
+    assert entry["found_tabs"] == ["Заявки"]
+
+    assert result["ok"] is True
+    assert result["done"] == 0  # нечего дописывать -- строка уже есть, просто не там
+    assert len(spb_ws.rows) == 0  # вторая строка на СПб-вкладке НЕ создана
+    assert fake_ss.add_worksheet_calls == []
 
 
 def test_duplicate_rows_reported_not_removed(tmp_path, monkeypatch):
@@ -563,7 +603,7 @@ def test_long_report_is_chunked_under_telegram_limit():
             for i in range(400)
         ],
         "headerless_tabs": [], "duplicate_rows": [], "status_mismatch": [], "unknown_sheet_ids": [],
-        "missing_rows": [],
+        "missing_rows": [], "other_tab_rows": [],
         "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
     }
     lines = sr.render_report_lines(report, city_label="Санкт-Петербург")
@@ -579,7 +619,7 @@ def test_render_report_lines_reports_honest_delivery_note():
     report = {
         "ok": True, "error": None, "user_count": 0,
         "missing_tabs": [], "headerless_tabs": [], "duplicate_rows": [], "status_mismatch": [],
-        "unknown_sheet_ids": [], "missing_rows": [],
+        "unknown_sheet_ids": [], "missing_rows": [], "other_tab_rows": [],
         "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
     }
     lines = sr.render_report_lines(report)
@@ -597,9 +637,12 @@ def test_csv_export_contains_every_section():
         "status_mismatch": [{"tid": 2, "tab": "СПб", "expected_label": "Одобрена", "sheet_label": "Новая"}],
         "unknown_sheet_ids": [{"tid": 3, "tab": "СПб"}],
         "missing_rows": [{"tid": 4, "name": "Имя", "username": "u", "tab": "СПб"}],
+        "other_tab_rows": [{
+            "tid": 5, "name": "Другой", "username": "u2", "own_tab": "СПб", "found_tabs": ["Заявки"],
+        }],
         "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
     }
     csv_bytes = sr.report_to_csv_bytes(report)
     text = csv_bytes.decode("utf-8-sig")
-    for needle in ("Тюмень", "СПб Акция", "1", "2", "3", "4", "Одобрена", "Новая"):
+    for needle in ("Тюмень", "СПб Акция", "1", "2", "3", "4", "5", "Одобрена", "Новая", "Заявки"):
         assert needle in text
