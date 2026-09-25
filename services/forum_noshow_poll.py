@@ -18,9 +18,8 @@ forum_noshow_poll`, `UNIQUE(telegram_id, season)`); опрос НЕ повтор
 кнопки повтора (в отличие от «Написать не пришедшим»), пропущенный делегат иначе не получил бы
 опрос вовсе.
 
-«🔕 Не присылать сегодня» (`users.mute_broadcasts_until`) — тот же фильтр, что у обычных
-массовых рассылок (`database.db.get_muted_today_ids`, `handlers/admin_broadcasts.py::bc_go`):
-делегат явно попросил тишины, опрос не исключение.
+«🔕 Не присылать сегодня» опрос НЕ глушит (решение владельца 26.09): вопрос приходит всем
+неявившимся, как служебное сообщение, — иначе причины неявки собираются неполными.
 
 Троттлинг отправки — `asyncio.sleep(0.05)` между получателями, тот же приём, что
 `services/checkin_not_arrived.py`/`services/checkin_volunteer_broadcast.py`.
@@ -240,7 +239,7 @@ async def _option_labels() -> dict[str, str]:
 async def send_poll(city: str | None) -> dict:
     """Отправляет опрос всем кандидатам города (`city=None` — все города, модуль выключен).
     Троттлинг/мут/тихие часы — докстринг модуля."""
-    from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_muted_today_ids, get_user
+    from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_user
     from settings_schema import get_setting_typed
     from services import quiet_hours
     import cities as _cities
@@ -258,13 +257,9 @@ async def send_poll(city: str | None) -> dict:
     question = await get_setting_typed("forum_noshow_poll_question_text") or DEFAULT_QUESTION
     labels = await _option_labels()
     now = msk_now()
-    muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
 
-    sent = queued = skipped_muted = failed = 0
+    sent = queued = skipped_muted = failed = 0  # skipped_muted остаётся 0: «🔕» опрос не глушит
     for tid in targets:
-        if tid in muted:
-            skipped_muted += 1
-            continue
         user = await get_user(tid)
         if user is None:
             continue

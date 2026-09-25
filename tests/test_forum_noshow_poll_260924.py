@@ -316,7 +316,8 @@ def test_send_poll_resends_on_new_season(tmp_path, monkeypatch):
     assert len(bot.sent) == 2
 
 
-def test_send_poll_respects_mute(tmp_path, monkeypatch):
+def test_send_poll_ignores_mute(tmp_path, monkeypatch):
+    """Решение владельца 26.09: опрос приходит всем неявившимся, «🔕» его не глушит."""
     from services.timeutil import msk_now
     _ready(tmp_path)
     _run(_add_delegate(1))
@@ -324,8 +325,8 @@ def test_send_poll_respects_mute(tmp_path, monkeypatch):
     _run(db.set_broadcast_mute(1, today))
     bot = _with_bot(monkeypatch)
     result = _run(fnsp.send_poll(None))
-    assert result == {"sent": 0, "queued": 0, "muted": 1, "failed": 0, "total": 1}
-    assert bot.sent == []
+    assert result["muted"] == 0
+    assert result["sent"] + result["queued"] == 1
 
 
 def test_send_poll_queues_during_quiet_hours(tmp_path, monkeypatch):
