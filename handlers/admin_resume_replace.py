@@ -139,8 +139,6 @@ async def resumerep_receive_file(message: types.Message, state: FSMContext, bot:
     lines = [f"✅ Резюме делегата <b>{name}</b> заменено."]
     if report.get("sheet_updated"):
         lines.append("Ссылка в таблице обновлена.")
-    elif report.get("sheet_error"):
-        lines.append(f"⚠️ Ссылка в таблице не обновлена: {html_module.escape(str(report['sheet_error']))}")
     elif report.get("cloud_error"):
         lines.append(f"⚠️ Ссылка в таблице не обновлена: {html_module.escape(str(report['cloud_error']))}")
     await message.answer("\n".join(lines), parse_mode="HTML")
