@@ -26,6 +26,9 @@ import asyncio
 import difflib
 import logging
 
+import gspread
+
+from config import config
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
 from reg_engine import is_past_season_row
 from reg_labels import STATUS_LABELS
@@ -85,84 +88,108 @@ async def _current_season_users(*, city_scope: tuple | None = None) -> list[dict
     ]
 
 
-def _read_tab_snapshot_sync(tab_name: str | None) -> list[list[str]] | None:
-    """ОДИН batch-вызов (`get_all_values`) на вкладку — заголовок + все строки одним запросом.
-    `None`, если вкладки нет среди РЕАЛЬНЫХ (никогда не создаёт — резолвер тот же, что у
-    `find_rows_by_id`/`delete_row_by_id`, `services/sheets.py::_open_named_or_main_sync`)."""
-    sheet = sheets_service._open_named_or_main_sync(tab_name)
-    if sheet is None:
+def _read_all_tabs_snapshot_sync() -> tuple[str | None, dict[str, list[list[str]]]]:
+    """Один проход по ВСЕМ реально существующим вкладкам, каждая — РОВНО один `get_all_values()`
+    за весь прогон (квота: build_report больше не ограничивается вкладками ожидаемой раскладки
+    из `build_sheet_batches` — строка делегата может лежать на ДРУГОЙ вкладке: перевод города,
+    переименование, или главная, если раньше он был в городах). Никогда не создаёт: сперва
+    пробует уже открытую/закешированную главную вкладку (`_get_sheet()`, тот же код, что
+    `_all_worksheets_sync` уже использует для кросс-вкладочного поиска в `update_row_by_id`) —
+    без лишнего сетевого похода, если она уже настроена и закеширована; при отказе (главная не
+    настроена — RuntimeError, см. `_get_sheet()`'s docstring) открывает таблицу напрямую и берёт
+    список вкладок без резолва главной, как `_all_worksheets_sync`'s собственный fallback.
+
+    Возвращает `(main_title, values_by_title)`. `main_title` — реальный заголовок главной
+    вкладки, если она настроена и открылась, иначе `None`: сверке тогда просто нечего сравнивать
+    ОТДЕЛЬНО с ней — если строка делегата всё же лежит на главной, она попадёт в
+    `values_by_title` под своим настоящим именем и будет учтена как «строка на другой
+    вкладке» (индекс id строится по реальным именам, не по роли «главная»/«именная»)."""
+    main_title: str | None = None
+    try:
+        main_ws = sheets_service._get_sheet()
+        main_title = main_ws.title
+        worksheets = main_ws.spreadsheet.worksheets()
+    except Exception:
+        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        worksheets = sh.worksheets()
+    values_by_title = {ws.title: ws.get_all_values() for ws in worksheets}
+    return main_title, values_by_title
+
+
+async def _read_all_tabs_snapshot() -> tuple[str | None, dict[str, list[list[str]]]] | None:
+    """Fail-soft wrapper (тот же контракт, что `list_worksheet_titles`): `None`, если Sheets не
+    настроен или запрос упал — вызывающий `build_report` тогда отдаёт `report["ok"] is False`."""
+    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return None
-    return sheet.get_all_values()
+    try:
+        return await asyncio.to_thread(_read_all_tabs_snapshot_sync)
+    except Exception as e:
+        logger.warning(f"sheet_reconcile: read_all_tabs_snapshot failed (treating as unavailable): {e}")
+        return None
 
 
 async def build_report(*, city_scope: tuple | None = None) -> dict:
     """Только чтение. `report["ok"] is False` — таблица недоступна (Sheets не настроен или
     сбой API до похода по вкладкам) — остальные списки в этом случае пустые, `report["error"]`
     называет причину. Пересчитывается заново на КАЖДЫЙ вызов (нет кеша) — и для самого отчёта,
-    и как первый шаг обоих массовых исправлений ниже."""
+    и как первый шаг обоих массовых исправлений ниже.
+
+    Читает ВСЕ реально существующие вкладки (не только те, что предсказывает раскладка) и
+    строит индекс id → [вкладки, где найдена строка]. Делегат, чья строка отсутствует на СВОЕЙ
+    ожидаемой вкладке, но нашлась на ДРУГОЙ реальной — не попадает в `missing_rows` (иначе
+    «Дописать недостающие строки» завела бы вторую строку рядом с уже существующей), а идёт в
+    отдельную категорию `other_tab_rows`."""
     users = await _current_season_users(city_scope=city_scope)
     from handlers.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
 
     batches = await build_sheet_batches(users)
     main_batch, named_batches = batches[0], batches[1:]
 
-    real_titles = await sheets_service.list_worksheet_titles()
+    snapshot = await _read_all_tabs_snapshot()
     report: dict = {
-        "ok": real_titles is not None,
+        "ok": snapshot is not None,
         "error": None,
         "user_count": len(users),
         "missing_tabs": [],
         "missing_rows": [],
+        "other_tab_rows": [],
         "duplicate_rows": [],
         "status_mismatch": [],
         "unknown_sheet_ids": [],
         "headerless_tabs": [],
         "decisions_undelivered_note": DECISIONS_UNDELIVERED_NOTE,
     }
-    if real_titles is None:
+    if snapshot is None:
         report["error"] = "таблица недоступна (Google Sheets не настроен или ошибка API)"
         return report
 
-    real_set = set(real_titles)
+    main_title, values_by_title = snapshot
+    real_titles = set(values_by_title)
     all_db_ids = set(await get_all_users_ids())
 
     for batch in named_batches:
-        if batch.tab not in real_set:
-            suggestion = difflib.get_close_matches(batch.tab, real_titles, n=1)
+        if batch.tab not in real_titles:
+            suggestion = difflib.get_close_matches(batch.tab, list(real_titles), n=1)
             report["missing_tabs"].append({
                 "tab": batch.tab, "kind": batch.kind, "count": len(batch.users),
                 "suggestion": suggestion[0] if suggestion else None,
             })
 
-    # Главная вкладка читается ТОЛЬКО когда на неё реально маршрутизирован хоть один текущий
-    # делегат — иначе `_open_named_or_main_sync(None)` (через `_get_sheet()`) требует явно
-    # настроенную главную вкладку (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB) даже когда
-    # сверке о ней нечего спрашивать (модуль городов включён, все текущие делегаты — в городах).
-    batch_by_tab: dict[str | None, object] = {}
-    if main_batch.users:
-        batch_by_tab[None] = main_batch
-    for b in named_batches:
-        if b.tab in real_set:
-            batch_by_tab[b.tab] = b
-
     id_to_user = {u["telegram_id"]: u for u in users}
 
-    for tab, batch in batch_by_tab.items():
-        values = await asyncio.to_thread(_read_tab_snapshot_sync, tab)
-        if values is None:
-            # Вкладку успели снести/переименовать между list_worksheet_titles() и открытием —
-            # узкая гонка, пропускаем эту вкладку в ЭТОМ прогоне, а не падаем всем отчётом.
-            logger.warning(f"sheet_reconcile: tab {tab!r} disappeared mid-read, skipping")
-            continue
-        expected_ids = {str(u["telegram_id"]) for u in batch.users}
+    # Проход 1 — по КАЖДОЙ реально существующей вкладке (уже прочитана снимком выше): парсит
+    # шапку/данные, копит duplicate_rows/unknown_sheet_ids/headerless_tabs (теперь по ВСЕМ
+    # вкладкам, не только по ожидаемой раскладке — чужая вкладка так же может нести дубль или
+    # чужой id) и строит id-индекс для прохода 2.
+    rows_by_title: dict[str, dict[str, list[list]]] = {}
+    status_col_by_title: dict[str, int] = {}
+    id_index: dict[str, list[str]] = {}
 
+    for title, values in values_by_title.items():
         if not values:
-            for tid_str in expected_ids:
-                u = id_to_user[int(tid_str)]
-                report["missing_rows"].append({
-                    "tid": int(tid_str), "name": u.get("full_name"), "username": u.get("username"),
-                    "tab": tab,
-                })
+            rows_by_title[title] = {}
+            status_col_by_title[title] = -1
             continue
 
         # Та же эвристика, что `services/sheets.py::_ensure_header_sync` уже применяет при
@@ -171,7 +198,7 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
         first_cell = (values[0][0] if values[0] else "").strip()
         headerless = bool(first_cell) and first_cell.lstrip("-").isdigit()
         if headerless:
-            report["headerless_tabs"].append(tab if tab is not None else "(главная)")
+            report["headerless_tabs"].append(title)
             data_rows = values
             status_col = -1
         else:
@@ -184,39 +211,64 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
             rid = (row[0] if row else "").strip()
             if rid:
                 rows_by_id.setdefault(rid, []).append(row)
+        rows_by_title[title] = rows_by_id
+        status_col_by_title[title] = status_col
 
         dup_ids = {rid for rid, rows in rows_by_id.items() if len(rows) > 1 and rid.lstrip("-").isdigit()}
         for rid in sorted(dup_ids, key=int):
-            report["duplicate_rows"].append({"tid": int(rid), "tab": tab, "count": len(rows_by_id[rid])})
-
-        for tid_str in sorted(expected_ids, key=int):
-            rows = rows_by_id.get(tid_str)
-            if not rows:
-                u = id_to_user[int(tid_str)]
-                report["missing_rows"].append({
-                    "tid": int(tid_str), "name": u.get("full_name"), "username": u.get("username"),
-                    "tab": tab,
-                })
-                continue
-            if tid_str in dup_ids:
-                continue  # уже в duplicate_rows — статус не сверяем, неясно, какая строка живая
-            if status_col >= 0:
-                row0 = rows[0]
-                sheet_label = (row0[status_col] if status_col < len(row0) else "").strip()
-                u = id_to_user[int(tid_str)]
-                expected_label = STATUS_LABELS.get(u.get("status") or "pending")
-                if expected_label and sheet_label and sheet_label != expected_label:
-                    report["status_mismatch"].append({
-                        "tid": int(tid_str), "tab": tab,
-                        "expected_label": expected_label, "sheet_label": sheet_label,
-                    })
+            report["duplicate_rows"].append({"tid": int(rid), "tab": title, "count": len(rows_by_id[rid])})
 
         for rid in rows_by_id:
             if not rid.lstrip("-").isdigit():
                 continue
+            id_index.setdefault(rid, []).append(title)
             tid = int(rid)
             if tid not in all_db_ids:
-                report["unknown_sheet_ids"].append({"tid": tid, "tab": tab})
+                report["unknown_sheet_ids"].append({"tid": tid, "tab": title})
+
+    # Проход 2 — раскладка «делегат → своя ожидаемая вкладка»: статус сверяем только на своей
+    # вкладке (дубль на своей — не сверяем, неясно, какая строка живая, тот же посыл, что и
+    # раньше); своей строки нет — сначала смотрим id-индекс (вдруг она на ДРУГОЙ реальной
+    # вкладке), и только если нигде — «нет строки». Своя вкладка вовсе не существует (уже в
+    # missing_tabs) и нигде не найдена — делегат НЕ дублируется в missing_rows построчно
+    # (аггрегата missing_tabs достаточно, «Дописать» туда всё равно не пишет).
+    for tab_repr, batch in [(None, main_batch)] + [(b.tab, b) for b in named_batches]:
+        own_title = main_title if tab_repr is None else (tab_repr if tab_repr in real_titles else None)
+        own_rows = rows_by_title.get(own_title, {}) if own_title is not None else {}
+        own_dup_ids = {
+            rid for rid, rows in own_rows.items() if len(rows) > 1 and rid.lstrip("-").isdigit()
+        }
+        status_col = status_col_by_title.get(own_title, -1) if own_title is not None else -1
+
+        expected_ids = {str(u["telegram_id"]) for u in batch.users}
+        for tid_str in sorted(expected_ids, key=int):
+            u = id_to_user[int(tid_str)]
+            rows = own_rows.get(tid_str)
+            if rows:
+                if tid_str in own_dup_ids:
+                    continue  # уже в duplicate_rows — статус не сверяем
+                if status_col >= 0:
+                    row0 = rows[0]
+                    sheet_label = (row0[status_col] if status_col < len(row0) else "").strip()
+                    expected_label = STATUS_LABELS.get(u.get("status") or "pending")
+                    if expected_label and sheet_label and sheet_label != expected_label:
+                        report["status_mismatch"].append({
+                            "tid": int(tid_str), "tab": tab_repr,
+                            "expected_label": expected_label, "sheet_label": sheet_label,
+                        })
+                continue
+
+            found = [t for t in id_index.get(tid_str, []) if t != own_title]
+            if found:
+                report["other_tab_rows"].append({
+                    "tid": int(tid_str), "name": u.get("full_name"), "username": u.get("username"),
+                    "own_tab": tab_repr, "found_tabs": found,
+                })
+            elif own_title is not None:
+                report["missing_rows"].append({
+                    "tid": int(tid_str), "name": u.get("full_name"), "username": u.get("username"),
+                    "tab": tab_repr,
+                })
 
     return report
 
@@ -249,16 +301,25 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
     (`ensure_sheet_header`/`ensure_named_sheet_header` перед первой строкой на вкладку — та же
     последовательность, что `sync_sheet`, заодно чинит «вкладку без заголовков», если она
     попала в выборку). По одной строке с паузой; сбой одной НЕ прерывает остальные — итог несёт
-    `done`/`failed` (причина словами на каждую)."""
+    `done`/`failed` (причина словами на каждую).
+
+    Неожиданный сбой (таблица не ответила, БД упала) ловится ЗДЕСЬ, а не только в хендлере —
+    иначе счётчик `done`, накопленный до сбоя, терялся бы вместе с исключением, и хендлер не
+    смог бы сказать «записано N из M (что успели)», только «упало». Возврат в этом случае несёт
+    `ok=False`, `crashed=True` и уже накопленные `done`/`failed`/`total`."""
     key = f"append:{_scope_key(city_scope)}"
     if not _claim(key):
         return {"ok": False, "error": "уже выполняется — подождите завершения предыдущего запуска"}
+    done = 0
+    failed: list[dict] = []
+    total = 0
     try:
         report = await build_report(city_scope=city_scope)
         if not report["ok"]:
             return {"ok": False, "error": report["error"] or "таблица недоступна"}
         if not report["missing_rows"]:
-            return {"ok": True, "done": 0, "failed": []}
+            return {"ok": True, "done": 0, "failed": [], "total": 0}
+        total = len(report["missing_rows"])
 
         users = await _current_season_users(city_scope=city_scope)
         from handlers.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
@@ -271,8 +332,6 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
         for item in report["missing_rows"]:
             missing_by_tab.setdefault(item["tab"], []).append(item)
 
-        done = 0
-        failed: list[dict] = []
         headers_ensured: set[str | None] = set()
         for tab, items in missing_by_tab.items():
             batch = batch_by_tab.get(tab)
@@ -298,7 +357,13 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
                 else:
                     failed.append({**it, "reason": _SHEET_RESULT_TEXT.get(result, result)})
                 await asyncio.sleep(_APPEND_PAUSE_S)
-        return {"ok": True, "done": done, "failed": failed}
+        return {"ok": True, "done": done, "failed": failed, "total": total}
+    except Exception as e:
+        logger.error(f"apply_append_missing: неожиданный сбой после done={done}/{total}: {e}")
+        return {
+            "ok": False, "crashed": True, "error": "таблица не ответила",
+            "done": done, "failed": failed, "total": total,
+        }
     finally:
         _release(key)
 
@@ -306,19 +371,25 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
 async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
     """Правит статус ТОЛЬКО там, где на вкладке РОВНО одна строка делегата (дубли — только
     показываем, руками) — тем же путём, что решение модератора (`services.sheets::
-    update_status_in_sheet`). По одному с паузой; сбой одного не прерывает остальные."""
+    update_status_in_sheet`). По одному с паузой; сбой одного не прерывает остальные.
+
+    Неожиданный сбой ловится ЗДЕСЬ же (см. `apply_append_missing`'s докстринг — тот же посыл):
+    возврат несёт `ok=False`, `crashed=True` и уже накопленные `done`/`failed`/`total`, чтобы
+    хендлер мог сказать «записано N из M», а не просто «упало»."""
     key = f"status:{_scope_key(city_scope)}"
     if not _claim(key):
         return {"ok": False, "error": "уже выполняется — подождите завершения предыдущего запуска"}
+    done = 0
+    failed: list[dict] = []
+    total = 0
     try:
         report = await build_report(city_scope=city_scope)
         if not report["ok"]:
             return {"ok": False, "error": report["error"] or "таблица недоступна"}
         if not report["status_mismatch"]:
-            return {"ok": True, "done": 0, "failed": []}
+            return {"ok": True, "done": 0, "failed": [], "total": 0}
+        total = len(report["status_mismatch"])
 
-        done = 0
-        failed: list[dict] = []
         for item in report["status_mismatch"]:
             ok = await sheets_service.update_status_in_sheet(item["tid"], item["expected_label"])
             if ok:
@@ -326,7 +397,13 @@ async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
             else:
                 failed.append({**item, "reason": "строка не найдена при записи"})
             await asyncio.sleep(_STATUS_PAUSE_S)
-        return {"ok": True, "done": done, "failed": failed}
+        return {"ok": True, "done": done, "failed": failed, "total": total}
+    except Exception as e:
+        logger.error(f"apply_fix_statuses: неожиданный сбой после done={done}/{total}: {e}")
+        return {
+            "ok": False, "crashed": True, "error": "таблица не ответила",
+            "done": done, "failed": failed, "total": total,
+        }
     finally:
         _release(key)
 
@@ -396,6 +473,23 @@ def render_report_lines(report: dict, *, city_label: str | None = None) -> list[
             lines.append(f"  …и ещё {extra}")
         lines.append("")
 
+    if report["other_tab_rows"]:
+        shown, extra = _first_n(report["other_tab_rows"])
+        lines.append(f"🧭 <b>Строка не на своей вкладке</b> ({len(report['other_tab_rows'])}):")
+        for it in shown:
+            name = html_module.escape(str(it.get("name") or it["tid"]))
+            username = it.get("username") or "-"
+            own = html_module.escape(str(it["own_tab"] if it["own_tab"] is not None else "главная"))
+            found = ", ".join(f"«{html_module.escape(t)}»" for t in it["found_tabs"])
+            lines.append(f"  {name} ({html_module.escape(username)}): своя «{own}», нашлась на {found}")
+        if extra:
+            lines.append(f"  …и ещё {extra}")
+        lines.append(
+            "  Дописывать сюда не будем — перенесите строку в таблице руками или переведите "
+            "делегата в нужный город через /find."
+        )
+        lines.append("")
+
     if report["duplicate_rows"]:
         lines.append(f"🧬 <b>Дубли строк</b> ({len(report['duplicate_rows'])}):")
         shown, extra = _first_n(report["duplicate_rows"])
@@ -452,6 +546,12 @@ def report_to_csv_bytes(report: dict) -> bytes:
         writer.writerow([
             "Нет строки", it["tid"], _csv_safe(it.get("name") or ""),
             _csv_safe(it.get("username") or ""), it["tab"] or "(главная)", "",
+        ])
+    for it in report.get("other_tab_rows", []):
+        writer.writerow([
+            "Другая вкладка", it["tid"], _csv_safe(it.get("name") or ""),
+            _csv_safe(it.get("username") or ""), it["own_tab"] or "(главная)",
+            "нашлась на: " + ", ".join(it["found_tabs"]),
         ])
     for it in report.get("duplicate_rows", []):
         writer.writerow(["Дубль", it["tid"], "", "", it["tab"] or "(главная)", f"{it['count']} строк"])
