@@ -146,6 +146,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "forum_date",
         # Quick 260924-4qf: родительный падеж — рядом с event_name (именительный, шапки).
         "event_name_genitive",
+        # 25.09: «🗓 Сколько дней идёт форум» (ключ sos_active_days) — под датой начала форума.
+        "sos_active_days",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
