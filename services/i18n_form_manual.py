@@ -633,23 +633,31 @@ _ENGINE_DYNAMIC_EN = {
     "Впиши город сам — менеджер увидит его как есть.": "Type your own city — the manager will see it exactly as you wrote it.",
     "Другой ВУЗ": "Other university",
     "Другой город": "Other city",
-    # Трек «региональные форумы → Москва» (25.09): подписи кнопок предложения переноса и
-    # короткие ответы бота (`handlers/user_actions.py`, callback_data `rnm_accept`/`rnm_confirm`/
-    # `rnm_decline`) — хардкод в коде (та же конвенция, что у кнопок «Уже еду»/«Не смогу
-    # прийти»/«Я на месте» выше: подпись кнопки короче фразы, самого текста в реестре нет).
-    # Ведущий эмодзи "✅ " отделяется `split_leading_symbols` ДО перевода (тот же приём, что у
-    # «🎟 Мой QR» выше) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
-    "Перенести мою заявку в Москву": "Move my application to Moscow",
+    # Трек «региональные форумы → Москва» (25.09, ревью 🔴2 forum-regions-msk): подписи кнопок
+    # предложения переноса и короткие ответы бота (`handlers/user_actions.py`, callback_data
+    # `rnm_accept`/`rnm_confirm`/`rnm_decline`) — хардкод в коде (та же конвенция, что у кнопок
+    # «Уже еду»/«Не смогу прийти»/«Я на месте» выше: подпись кнопки короче фразы, самого текста
+    # в реестре нет). Ведущий эмодзи "✅ " отделяется `split_leading_symbols` ДО перевода (тот
+    # же приём, что у «🎟 Мой QR» выше) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
+    # `{target_city}` — город назначения (`regional_noshow_target_city`, НИКОГДА не хардкод
+    # «Москва») — плейсхолдер переживает перевод (сентинелы глоссария) и подставляется ПОСЛЕ
+    # (`reg_i18n.tr_fmt`), RU/EN-ключи здесь намеренно с плейсхолдером внутри.
+    "Перенести заявку: {target_city}": "Move application: {target_city}",
     "Нет, спасибо": "No, thanks",
-    "Перенести заявку в Москву? Анкету заново заполнять не нужно.":
-        "Move your application to Moscow? No need to fill out the form again.",
+    "Перенести заявку в другой город: {target_city}? Анкету заново заполнять не нужно.":
+        "Move your application to another city: {target_city}? No need to fill out the form again.",
     "Да, перенести": "Yes, move it",
-    "Готово, твоя заявка теперь в Москве — даты и место в меню.":
-        "Done, your application is now in Moscow — dates and venue are in the menu.",
+    "Готово, твоя заявка теперь здесь: {target_city}. Даты и место — в меню.":
+        "Done, your application is now here: {target_city}. Dates and venue — in the menu.",
     "Заявку посмотрят ещё раз.": "Your application will be reviewed again.",
     "Хорошо, до встречи в следующий раз!": "Okay, see you next time!",
     "Уже перенесено.": "Already moved.",
+    "Предложение уже отвечено.": "This offer has already been answered.",
     "Заявка уже не в {city}.": "Your application is no longer in {city}.",
+    "Не нашли твою заявку — напиши организаторам.":
+        "We couldn't find your application — please message the organizers.",
+    "Перенос сейчас недоступен — напиши организаторам.":
+        "The transfer isn't available right now — please message the organizers.",
     "Не получилось перенести заявку — напиши организаторам.":
         "Couldn't move your application — please message the organizers.",
 }
@@ -883,10 +891,11 @@ _REGISTRY_TEXTS_EN = {
         "Welcome to the volunteer team! You've been granted access to the check-in scanner.",
     "Ссылка устарела, попроси у организатора новую.": "This link has expired, ask the organizer for a new one.",
     "У тебя уже есть доступ к боту как у менеджера.": "You already have manager-level access to the bot.",
-    # Трек «региональные форумы → Москва» (25.09): предложение переноса неявившегося делегата
-    # регионального форума на московский форум (group "reg", regional_noshow_offer_text).
-    "Не получилось на форум в {city}? Приезжай на Юлид в Москве {dates}":
-        "Couldn't make it to the forum in {city}? Come to YouLead in Moscow {dates}",
+    # Трек «региональные форумы → Москва» (25.09, ревью 🔴2 forum-regions-msk): предложение
+    # переноса неявившегося делегата регионального форума на форум города назначения (group
+    # "reg", regional_noshow_offer_text). `{target_city}` заменил хардкод «Москва».
+    "Не получилось на форум в {city}? Приезжай на Юлид: {target_city}{dates}":
+        "Couldn't make it to the forum in {city}? Come to YouLead: {target_city}{dates}",
 }
 
 # ── Голые ключи реестра группы `game` — амбассадорские волны (291bdd2): хаб амбассадора,
