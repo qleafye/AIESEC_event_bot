@@ -482,8 +482,8 @@ async def cmd_find_user(message: types.Message):
         # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
         # исключение вообще что-то меняет). Уже активное исключение — строкой в тексте карточки
         # + кнопка «отозвать» вместо кнопки выдачи (не обе разом).
+        from services import delegate_overrides
         if user.get("status") == "rejected":
-            from services import delegate_overrides
             resubmit_override = await delegate_overrides.active_override(
                 user["telegram_id"], delegate_overrides.KIND_RESUBMIT,
             )
@@ -507,7 +507,6 @@ async def cmd_find_user(message: types.Message):
         # заявки (services/reg_edit_policy.edit_gate гейтит ТОЛЬКО status == "approved", см. её
         # докстринг Р-1/Р-2). Та же пара «строка + кнопка отозвать» / «кнопка выдачи».
         if user.get("status") == "approved":
-            from services import delegate_overrides
             edit_override = await delegate_overrides.active_override(
                 user["telegram_id"], delegate_overrides.KIND_EDIT,
             )
