@@ -1090,6 +1090,13 @@ ADMIN_CAPS: dict[str, str] = {
     "resubg_apply:*": "moderate_reg",
     "resubg_cancel:*": "moderate_reg",
     "resubg_revoke:*": "moderate_reg",
+    # Phase 33 (задача 3): «✏️ Открыть правку после решения» / отзыв — та же капа, что у
+    # соседних карточных действий (handlers/admin_edit_grant.py).
+    "editg_start:*": "moderate_reg",
+    "editg_toggle:*": "moderate_reg",
+    "editg_apply:*": "moderate_reg",
+    "editg_cancel:*": "moderate_reg",
+    "editg_revoke:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»

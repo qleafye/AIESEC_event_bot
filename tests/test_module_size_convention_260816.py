@@ -489,7 +489,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1036,
+        1066,
+        "Phase 33 (задача 3, 25.09): +30 строк — строка «✏️ Открыта правка» и кнопка "
+        "выдачи/отзыва на карточке /find (условно для status=='approved') + шов-импорт "
+        "`from handlers import admin_edit_grant` в хвост файла (1036 -> 1066). "
         "Phase 33 (задача 2, 25.09): +31 строка — строка «🔁 Разрешена повторная подача» и "
         "кнопка выдачи/отзыва на карточке /find (условно для status=='rejected') + шов-импорт "
         "`from handlers import admin_resubmit_grant` в хвост файла (1005 -> 1036). "
@@ -680,8 +683,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1319,
+        1326,
         "Капа тумблера «🔔 Сообщить делегату» на экране перевода в город (1304 -> 1305). "
+        "Phase 33 (задача 3, 25.09): +7 строк — капы «✏️ Открыть правку после решения» "
+        "(editg_start/toggle/apply/cancel/revoke, moderate_reg); 1319 -> 1326. "
         "Phase 33 (задача 2, 25.09): +7 строк — капы «🔁 Разрешить повторную подачу» "
         "(resubg_start/toggle/apply/cancel/revoke, moderate_reg); 1312 -> 1319. "
         "Phase 33 (delegate-card admin actions, 25.09): +7 строк — капы «↩️ Вернуть в "
