@@ -1058,11 +1058,15 @@ def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
 
     sheet_calls = []
 
+    async def _fake_find_rows_by_id(tab, tid):
+        return [2]  # ровно одна строка -- «дальше пишем»
+
     async def _fake_update_row_by_id(tab, tid, row):
         sheet_calls.append((tab, tid))
         return True
 
     monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+    monkeypatch.setattr(sheets_mod, "find_rows_by_id", _fake_find_rows_by_id)
     monkeypatch.setattr(sheets_mod, "update_row_by_id", _fake_update_row_by_id)
 
     async def scenario():
@@ -1112,6 +1116,163 @@ def test_replace_resume_upload_failure_reports_cloud_error(tmp_path, monkeypatch
     assert report["ok"] is True
     assert report["sheet_updated"] is False
     assert report["cloud_error"] is not None
+
+
+# ── Ревью part2: запись ячейки листа не идёт через update_row_by_id напрямую (тот откатывается
+# на ГЛАВНЫЙ лист при промахе по именованной вкладке, standalone-script-sheet-traps) — своя
+# функция резолвит вкладку и проверяет find_rows_by_id (не создаёт вкладку) ПЕРЕД записью. ──
+
+class _ResumeFakeWorksheet:
+    def __init__(self, title, rows):
+        self.title = title
+        self.rows = [list(r) for r in rows]
+
+    def col_values(self, col):
+        idx = col - 1
+        out = ["ID"]
+        for r in self.rows:
+            out.append(str(r[idx]) if idx < len(r) else "")
+        return out
+
+
+class _ResumeFakeSpreadsheet:
+    def __init__(self, worksheets: dict):
+        self._by_title = dict(worksheets)
+        self.add_worksheet_calls: list = []
+
+    def worksheet(self, title):
+        import gspread
+        if title not in self._by_title:
+            raise gspread.WorksheetNotFound(title)
+        return self._by_title[title]
+
+    def worksheets(self):
+        return list(self._by_title.values())
+
+    def add_worksheet(self, title, rows, cols):
+        self.add_worksheet_calls.append(title)
+        raise AssertionError(f"add_worksheet({title!r}) must never be called — no-create contract")
+
+
+class _ResumeFakeClient:
+    def __init__(self, spreadsheet):
+        self._spreadsheet = spreadsheet
+
+    def open_by_key(self, key):
+        return self._spreadsheet
+
+
+def _patch_resume_gspread(monkeypatch, worksheets: dict):
+    from services import sheets as sheets_mod
+
+    sheets_mod._reset_sheet_cache()
+    sheets_mod._named_sheets.clear()
+    sheets_mod._header_checked_tabs.clear()
+    fake_ss = _ResumeFakeSpreadsheet(worksheets)
+    monkeypatch.setattr(sheets_mod.gspread, "service_account", lambda filename: _ResumeFakeClient(fake_ss))
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "fake-id")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "fake-creds.json")
+    return fake_ss
+
+
+async def _resume_target_tab(city, participant_type=None):
+    from services.reg_finalize import _resolve_update_tab
+    return await _resolve_update_tab(city, participant_type)
+
+
+def test_replace_resume_sheet_error_when_tab_missing_main_untouched(tmp_path, monkeypatch):
+    """Именованной вкладки делегата нет на листе вовсе -- лист НЕ обновляем (no-create), главный
+    лист не трогаем, вкладка не создаётся."""
+    _db_ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+
+    from services import nextcloud as nextcloud_mod
+
+    async def _fake_upload_resume(bot, file_id, filename):
+        return "https://cloud.example.org/s/TOK/download?files=new.pdf"
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+
+    async def scenario():
+        await _enable_cities_module()
+        await db.set_setting("sheet_logs_autosync", "off")
+        await db.set_setting("main_sheet_tab", "Главная")
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        target_tab = await _resume_target_tab("spb")
+        main_ws = _ResumeFakeWorksheet("Главная", [["999999999", "чужая", "строка"]])
+        # target_tab НАРОЧНО отсутствует среди реальных вкладок.
+        fake_ss = _patch_resume_gspread(monkeypatch, {"Главная": main_ws})
+        report = await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+        return report, fake_ss, main_ws
+
+    report, fake_ss, main_ws = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is False
+    assert report["sheet_error"]
+    assert fake_ss.add_worksheet_calls == []
+    assert main_ws.rows == [["999999999", "чужая", "строка"]]  # главный лист не тронут
+
+
+def test_replace_resume_sheet_error_when_row_not_found(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+
+    from services import nextcloud as nextcloud_mod
+
+    async def _fake_upload_resume(bot, file_id, filename):
+        return "https://cloud.example.org/s/TOK/download?files=new.pdf"
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+
+    async def scenario():
+        await _enable_cities_module()
+        await db.set_setting("sheet_logs_autosync", "off")
+        await db.set_setting("main_sheet_tab", "Главная")
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        target_tab = await _resume_target_tab("spb")
+        ws = _ResumeFakeWorksheet(target_tab, [])  # вкладка есть, строки делегата на ней нет
+        fake_ss = _patch_resume_gspread(monkeypatch, {"Главная": _ResumeFakeWorksheet("Главная", []), target_tab: ws})
+        return await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        ), fake_ss
+
+    report, fake_ss = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is False
+    assert "не найдена" in report["sheet_error"]
+    assert fake_ss.add_worksheet_calls == []
+
+
+def test_replace_resume_sheet_error_when_duplicate_rows(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _configure_nextcloud(monkeypatch)
+
+    from services import nextcloud as nextcloud_mod
+
+    async def _fake_upload_resume(bot, file_id, filename):
+        return "https://cloud.example.org/s/TOK/download?files=new.pdf"
+
+    monkeypatch.setattr(nextcloud_mod, "upload_resume", _fake_upload_resume)
+
+    async def scenario():
+        await _enable_cities_module()
+        await db.set_setting("sheet_logs_autosync", "off")
+        await db.set_setting("main_sheet_tab", "Главная")
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        target_tab = await _resume_target_tab("spb")
+        ws = _ResumeFakeWorksheet(target_tab, [[str(DELEGATE_ID), "A"], [str(DELEGATE_ID), "B"]])
+        fake_ss = _patch_resume_gspread(monkeypatch, {"Главная": _ResumeFakeWorksheet("Главная", []), target_tab: ws})
+        return await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        ), fake_ss
+
+    report, fake_ss = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet_updated"] is False
+    assert "несколько" in report["sheet_error"]
+    assert fake_ss.add_worksheet_calls == []
 
 
 # ── handlers/admin_resume_replace.py — UI-слой ──────────────────────────────────────────────
