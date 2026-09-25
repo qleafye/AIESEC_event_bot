@@ -58,7 +58,12 @@ REVERTIBLE_STATUSES = ("approved", "rejected")
 async def preview_revert_pending(telegram_id: int) -> dict:
     """Только чтение — для экрана подтверждения. `coins_balance`/`referrer` — «монеты/реф-баллы
     НЕ трогаются, но видно, что останутся» (33-SEED): реферер читается по `users.referrer_id`,
-    `None`, если делегат пришёл не по ссылке."""
+    `None`, если делегат пришёл не по ссылке.
+
+    Ревью 25.09: `payment_status`/`payment_option` — та же логика для оплаты, что у монет/
+    реф-баллов выше: `revert_to_pending` НИГДЕ не трогает `payment_status` (см. докстринг
+    модуля), экран подтверждения обязан явно предупредить об этом, когда оплата уже
+    подтверждена (`payment_status == "paid"`), а не просто молчать."""
     user = await get_user(telegram_id)
     if user is None:
         return {"ok": False, "error": "Делегат не найден"}
@@ -69,6 +74,8 @@ async def preview_revert_pending(telegram_id: int) -> dict:
         "status": status,
         "coins_balance": await get_balance(telegram_id),
         "referrer": None,
+        "payment_status": user.get("payment_status"),
+        "payment_option": user.get("payment_option"),
     }
     referrer_id = user.get("referrer_id")
     if referrer_id:
