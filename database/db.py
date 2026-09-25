@@ -11022,12 +11022,13 @@ async def record_regional_noshow_move_response(
     обычный `UPDATE` по уже существующей строке-приглашению. Строки нет вовсе -> `False`.
     Используется только для `RNM_DECLINED` (`record_decline`) — сам перенос (`RNM_MOVED`) идёт
     через `regional_noshow_move_claim` ниже (ревью 🟡4: гонка двойного тапа требует атомарного
-    `WHERE response IS NULL`, не безусловного `UPDATE`)."""
+    `WHERE response IS NULL`, не безусловного `UPDATE`). Уже перенесённого «Нет, спасибо» не
+    перетирает: тап «отказаться», проигравший гонку захвату переноса, просто ничего не меняет."""
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE regional_noshow_move SET response = ?, target_city = ?, responded_at = ? "
-            "WHERE telegram_id = ? AND season = ?",
-            (response, target_city, responded_at, telegram_id, season),
+            "WHERE telegram_id = ? AND season = ? AND (response IS NULL OR response != ?)",
+            (response, target_city, responded_at, telegram_id, season, RNM_MOVED),
         )
         await db.commit()
         return bool(cursor.rowcount)

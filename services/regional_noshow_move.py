@@ -521,10 +521,14 @@ async def apply_move(telegram_id: int, *, source_city: str | None) -> dict:
     if not claimed:
         return {"ok": False, "error": None, "claim_lost": True}
 
-    report = await move_user_city(
-        telegram_id, target_city, status_mode=status_mode, by_admin=0, dry_run=False,
-        history_source="system:regional_offer",
-    )
+    try:
+        report = await move_user_city(
+            telegram_id, target_city, status_mode=status_mode, by_admin=0, dry_run=False,
+            history_source="system:regional_offer",
+        )
+    except Exception as e:  # noqa: BLE001 — захват обязан вернуться, иначе повтор невозможен
+        logger.error("regional_noshow_move.apply_move: перенос %s упал: %s", telegram_id, e)
+        report = {"ok": False, "error": str(e)}
     report["claim_lost"] = False
     if not report.get("ok"):
         await regional_noshow_move_release_claim(telegram_id, season)
