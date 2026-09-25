@@ -546,6 +546,55 @@ def test_scan_entry_point_own_city_allowed_for_bound_manager(tmp_path):
     assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 1
 
 
+# ── Приоритет координатора (25.09): привязка волонтёра из ССЫЛКИ-приглашения ────────────────
+# Без привязки staff-строка читается как «все города» — волонтёр СПб мог бы отмечать делегатов
+# Москвы (`handlers/registration.py::_handle_volunteer_invite` не писал `staff.city`). Те же
+# гейты, что у `reg_manager`, привязанного вручную (тесты выше) — здесь привязка приходит из
+# НАСТОЯЩЕГО перехода по ссылке (`reg.cmd_start`), не из тестового сида.
+
+def _volunteer_bound_via_invite(city: str, telegram_id: int, invite_code: str) -> None:
+    from handlers import registration as reg
+    from tests.test_volunteer_invite_260924 import FakeBot, _FakeCommand, _FakeMessage, _new_state
+
+    _run(bot_db.set_setting("volunteer_invite_enabled", "on"))
+    _run(bot_db.create_volunteer_invite(invite_code, city, ADMIN_ID, None, None, None))
+    fake_bot = FakeBot()
+    msg = _FakeMessage(telegram_id, username=f"vol{telegram_id}", full_name="Волонтёр")
+    _run(reg.cmd_start(msg, _new_state(telegram_id), bot=fake_bot, command=_FakeCommand(f"vol_{invite_code}")))
+
+
+def test_scan_entry_point_volunteer_invite_binding_denies_other_city(tmp_path):
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    volunteer_id = 950070
+    _volunteer_bound_via_invite("spb", volunteer_id, "spbc1")
+    assert _run(bot_db.get_staff_city(volunteer_id)) == "spb"
+
+    uid = 950071
+    _run(_insert_user(uid, full_name="Морозов Марк", city="msk"))
+    payload = _qr(uid, city="Москва")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(volunteer_id))
+    body = resp.json()
+    assert body["status"] == "wrong_city"
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 0
+
+
+def test_scan_entry_point_volunteer_invite_binding_allows_own_city(tmp_path):
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    volunteer_id = 950072
+    _volunteer_bound_via_invite("spb", volunteer_id, "spbc2")
+    assert _run(bot_db.get_staff_city(volunteer_id)) == "spb"
+
+    uid = 950073
+    _run(_insert_user(uid, full_name="Соколова Софья", city="spb"))
+    payload = _qr(uid, city="СПб")
+    resp = client.post(f"{BASE}/scan", json={"payload": payload}, headers=_hdr(volunteer_id))
+    body = resp.json()
+    assert body["status"] == "new"
+    assert _run(bot_db.count_checkins_by_point(ENTRY_POINT)) == 1
+
+
 def test_scan_entry_point_unbound_manager_not_scoped(tmp_path):
     """Волонтёр БЕЗ привязки к городу (`GAME_MANAGER_ID`) на входе не ограничен — та же
     трёхветочная логика, что и у точек-сессий."""

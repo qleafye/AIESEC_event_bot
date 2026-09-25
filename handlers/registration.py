@@ -19,7 +19,7 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (0
 # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): свой маленький импорт, не в общий
 # список выше — тот уже стоит на потолке читаемости одной строки, а этот шов самодостаточен
 # (используется ровно в одном месте, _handle_volunteer_invite ниже).
-from database.db import add_staff, claim_volunteer_invite, get_volunteer_invite
+from database.db import add_staff, claim_volunteer_invite, get_volunteer_invite, set_staff_city
 from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
 from handlers.states import Registration
 from keyboards.builders import (
@@ -1087,7 +1087,19 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     had_any_capability = bool(await resolve_capabilities(user_id))
     invite = await get_volunteer_invite(code)
     rights_expires_at = (invite or {}).get("rights_expires_at")
-    await add_staff(user_id, "volunteer", None, expires_at=rights_expires_at)  # ROLES["volunteer"] = только checkin
+    invite_city = (invite or {}).get("city")
+    # added_by -- создатель ссылки (менеджер), не None: тот же смысл, что у ручной выдачи роли
+    # в handlers/admin_roles.py.
+    await add_staff(
+        user_id, "volunteer", (invite or {}).get("created_by"), expires_at=rights_expires_at,
+    )  # ROLES["volunteer"] = только checkin
+    # Без привязки города staff-строка значит «все города» -- волонтёр по ссылке города A смог
+    # бы отмечать делегатов города B. Привязываем ТОЛЬКО на первом гранте этому человеку
+    # (had_any_capability=False) -- у уже державшего роль доступ не сужаем (без привязки шире,
+    # чужую привязку не перетираем, роль не понижаем -- тот же приём, что у шпаргалки ниже).
+    # Модуль городов выключен -> ссылка без настоящего города, привязку не ставим.
+    if not had_any_capability and invite_city and await cities_module_on():
+        await set_staff_city(user_id, invite_city)
 
     if had_any_capability:
         text = await get_setting_typed("volunteer_invite_already_has_access_text")
@@ -1105,9 +1117,12 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     # Менеджеру-создателю ссылки -- «@user (Имя) зашёл по ссылке волонтёров <город>, N из M».
     if invite and invite.get("created_by"):
         try:
+            from cities import city_label
+
             name = message.from_user.full_name or message.from_user.username or str(user_id)
             uname = f" (@{message.from_user.username})" if message.from_user.username else ""
-            city_text = invite.get("city") or "без города"
+            invite_city = invite.get("city")
+            city_text = await city_label(invite_city) if invite_city else "без города"
             limit_text = "без лимита" if invite.get("max_uses") is None else str(invite.get("max_uses"))
             await bot.send_message(
                 invite["created_by"],
