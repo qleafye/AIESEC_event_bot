@@ -351,7 +351,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     from services import delegate_overrides
                     await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_EDIT)
                 except Exception as e:
-                    logger.error(f"edit override погашение сбоило для {telegram_id}: {e}")
+                    logger.error(f"сбой погашения исключения edit для {telegram_id}: {e}")
 
                 if status == "rejected" and not was_auto_rejected:
                     # D-10: повторная подача отклонённой анкеты -> pending, отдельная запись
@@ -375,7 +375,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                         from services import delegate_overrides
                         await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_RESUBMIT)
                     except Exception as e:
-                        logger.error(f"resubmit override погашение сбоило для {telegram_id}: {e}")
+                        logger.error(f"сбой погашения исключения resubmit для {telegram_id}: {e}")
                 elif status != "rejected" and await get_setting_typed("toggle_reg_edit_remoderation") == "on":
                     # D-12: тумблер «Изменённая анкета — снова на модерацию».
                     remoderated = True
