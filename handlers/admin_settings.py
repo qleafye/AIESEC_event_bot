@@ -88,10 +88,10 @@ logger = logging.getLogger(__name__)
 # change — until their own migration wave (coexistence invariant, SC#3).
 _EVENT_FIELD_ORDER = [
     # Phase 31 (31-03, D-30): дата начала форума — сразу после «дата для делегата», менеджер
-    # читает «дата для делегата → дата для расчётов» подряд.
-    "event_date", "forum_date", "event_time", "event_place_name", "event_place_address",
-    "contact_person", "contact_vk", "contact_tg", "start_text", "start_text_registered",
-    "start_text_returning",
+    # читает «дата для делегата → дата для расчётов» подряд; под ней — длина форума (25.09).
+    "event_date", "forum_date", "sos_active_days", "event_time", "event_place_name",
+    "event_place_address", "contact_person", "contact_vk", "contact_tg", "start_text",
+    "start_text_registered", "start_text_returning",
     # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два
     # экрана «прошлый ответ» анкеты, рядом со start_text_returning (то же «возвращение»).
     "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",
@@ -395,7 +395,7 @@ SETTINGS_FIELDS = (
 # never mistaken for a display default.
 _SETTINGS_DISPLAY_DEFAULTS = {
     k: v["default"] for k, v in SETTINGS_SCHEMA.items()
-    if v["type"] == "text" and v.get("default") not in (None, "")
+    if (v["type"] == "text" and v.get("default") not in (None, "")) or k == "sos_active_days"
 }
 
 # Quick 260724-c0x: group→keys grouping (NOT a per-key metadata registry) so the settings
@@ -411,7 +411,7 @@ _EVENT_GROUP_KEYS = [
     # Phase 31 (31-03, D-30): "date_only" добавлен к фильтру — forum_date иначе рендерился бы
     # в _EVENT_FIELD_ORDER, но не попадал на реальный экран «🎪 Событие/Медиа» (тот же баг
     # класса «тихо невидимый ключ», что фильтр здесь и призван не пускать).
-    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum", "date_only")
+    if SETTINGS_SCHEMA[k]["type"] in ("text", "enum", "date_only", "int")
 ]
 
 SETTINGS_GROUPS = [

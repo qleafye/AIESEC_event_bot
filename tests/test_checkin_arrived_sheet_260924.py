@@ -80,8 +80,8 @@ def test_update_arrived_writes_single_cell_on_main_sheet(tmp_path, monkeypatch):
         return await sheets.update_arrived_in_sheet(555, "2026-10-03 09:15:00")
 
     assert asyncio.run(go()) is True
-    assert main.rows == [["555", "Одобрена", "2026-10-03 09:15:00"]]
-    assert main.update_calls == [([["2026-10-03 09:15:00"]], "C2")]
+    assert main.rows == [["555", "Одобрена", "03.10 09:15"]]
+    assert main.update_calls == [([["03.10 09:15"]], "C2")]
 
 
 def test_update_arrived_routes_to_city_tab_first(tmp_path, monkeypatch):
@@ -95,7 +95,7 @@ def test_update_arrived_routes_to_city_tab_first(tmp_path, monkeypatch):
         return await sheets.update_arrived_in_sheet(444, "2026-10-03 10:00:00")
 
     assert asyncio.run(go()) is True
-    assert spb.rows == [["444", "Одобрена", "2026-10-03 10:00:00"]]
+    assert spb.rows == [["444", "Одобрена", "03.10 10:00"]]
     assert main.rows == []
 
 
@@ -110,7 +110,7 @@ def test_update_arrived_falls_back_to_main_when_row_only_on_main(tmp_path, monke
         return await sheets.update_arrived_in_sheet(777, "2026-10-03 11:00:00")
 
     assert asyncio.run(go()) is True
-    assert main.rows == [["777", "Одобрена", "2026-10-03 11:00:00"]]
+    assert main.rows == [["777", "Одобрена", "03.10 11:00"]]
 
 
 def test_update_arrived_missing_column_returns_false_no_crash(tmp_path, monkeypatch):
@@ -156,7 +156,7 @@ def test_mark_arrived_writes_on_new(tmp_path, monkeypatch):
         return untouched
 
     assert asyncio.run(go()) == [["555", "Одобрена", "-"]]  # сама отметка лист не трогает
-    assert main.rows == [["555", "Одобрена", "2026-10-03 09:15:00"]]  # записала джоба очереди
+    assert main.rows == [["555", "Одобрена", "03.10 09:15"]]  # записала джоба очереди
 
 
 def test_mark_arrived_skips_write_on_duplicate(tmp_path, monkeypatch):

@@ -273,7 +273,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
 
-    buttons.append([back_button("admin_checkin", "◀️ Назад")])
+    buttons.append([back_button("admin_forum_functions", "◀️ Назад")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -282,7 +282,7 @@ async def _render_city_picker() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"forumfn_city:{c['code']}")]
         for c in await enabled_cities()
     ]
-    buttons.append([back_button("admin_checkin", "◀️ Назад")])
+    buttons.append([back_button("admin_forum_functions", "◀️ Назад")])
     return "🎪 <b>Форум: функции</b>\n\nВыберите город.", InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

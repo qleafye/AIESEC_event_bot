@@ -39,9 +39,18 @@ _SHEET_FRESH_SECONDS = 3600
 _SHEET_QUEUE_STALE_MINUTES = 5
 
 
-def _row(light: str, text: str, fix: tuple[str, str] | None = None) -> dict:
-    """Строка светофора; `fix` — (подпись кнопки, callback_data) для жёлтой/красной строки."""
+def _row(light: str, text: str, fix=None) -> dict:
+    """Строка светофора; `fix` — (подпись кнопки, callback_data) для жёлтой/красной строки
+    или список таких пар (кнопки одним рядом; у зелёной строки — «Изменить» без цвета)."""
     return {"light": light, "text": text, "fix": fix}
+
+
+def _days_word(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} день"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} дня"
+    return f"{n} дней"
 
 
 async def _row_forum_date(code: str | None) -> dict:
@@ -49,16 +58,26 @@ async def _row_forum_date(code: str | None) -> dict:
     if not date_str:
         return _row(RED, "Дата форума не задана — без неё не уйдут QR и шпаргалка",
                     ("🗓 Задать дату форума", "settings_edit:forum_date"))
-    forum_day = datetime.strptime(date_str, "%d.%m.%Y").date()
+    from services.sos import sos_active_window
+    window = await sos_active_window(code)
+    if window is None:  # дата не парсится — тот же случай, что «не задана»
+        return _row(RED, f"Дата форума не читается ({html.escape(date_str)}) — задайте заново",
+                    ("🗓 Задать дату форума", "settings_edit:forum_date"))
+    start, end = window
+    days = (end - start).days + 1
+    span = start.strftime("%d.%m") if days == 1 else f"{start:%d.%m}–{end:%d.%m}"
     today = msk_now().date()
-    if forum_day < today:
+    if end < today:
         # Дата прошлого форума, которую забыли обновить, молча выключает рассылки QR и
         # шпаргалки — ловим её здесь, а не в день форума.
-        return _row(YELLOW, f"Дата форума прошла ({date_str}) — это прошлый форум? Обновите дату",
+        return _row(YELLOW, f"Дата форума прошла ({span}) — это прошлый форум? Обновите дату",
                     ("🗓 Обновить дату форума", "settings_edit:forum_date"))
-    if forum_day == today:
-        return _row(GREEN, f"Дата форума: {date_str} — сегодня")
-    return _row(GREEN, f"Дата форума: {date_str}")
+    # Длина форума — нейтрально, без жёлтого: у Москвы два дня законно. Диапазон виден явно,
+    # чтобы однодневный региональный форум с длиной 2 бросался в глаза.
+    edit = [("🗓 Изменить дату", "settings_edit:forum_date"),
+            ("🗓 Сколько дней идёт", "settings_edit:sos_active_days")]
+    tail = " — идёт сегодня" if start <= today else ""
+    return _row(GREEN, f"Форум: {span} ({_days_word(days)}){tail}", edit)
 
 
 def _job_next_run(job_id: str):
@@ -219,12 +238,20 @@ async def render_ready(admin_id: int, code: str | None, bot) -> tuple[str, Inlin
 
     buttons: list[list[InlineKeyboardButton]] = []
     seen: set[str] = set()
-    for r in rows:
-        if r["fix"] and r["light"] in (RED, YELLOW):
-            text, cb = r["fix"]
-            if cb not in seen and visible(cb):
-                seen.add(cb)
-                buttons.append([InlineKeyboardButton(text=f"{r['light']} {text}", callback_data=cb)])
+    # Сначала кнопки красных/жёлтых строк, потом «Изменить» у зелёных (строка даты форума).
+    for problem in (True, False):
+        for r in rows:
+            if not r["fix"] or (r["light"] in (RED, YELLOW)) != problem or r["light"] == GRAY:
+                continue
+            fixes = r["fix"] if isinstance(r["fix"], list) else [r["fix"]]
+            prefix = f"{r['light']} " if problem else ""
+            row_btns = []
+            for text, cb in fixes:
+                if cb not in seen and visible(cb):
+                    seen.add(cb)
+                    row_btns.append(InlineKeyboardButton(text=f"{prefix}{text}", callback_data=cb))
+            if row_btns:
+                buttons.append(row_btns)
     buttons.append([InlineKeyboardButton(text="🔄 Проверить снова", callback_data=f"forum_ready_re:{_encode_city(code)}")])
     buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
