@@ -526,6 +526,15 @@ async def cmd_find_user(message: types.Message):
                 rows.append([InlineKeyboardButton(
                     text="✏️ Открыть правку после решения", callback_data=f"editg_start:{user['telegram_id']}",
                 )])
+        # Phase 33 (задача 1): «🧹 Сбросить зависшую анкету» — видна, только когда есть
+        # незавершённый черновик (services/reg_stuck_reset.py::preview_stuck_reset); для
+        # одобренной/отклонённой заявки БЕЗ открытой правки черновика нет — кнопка не
+        # показывается вовсе (незачем звать экран подтверждения, который тут же откажет).
+        from services.reg_stuck_reset import preview_stuck_reset
+        if await preview_stuck_reset(user["telegram_id"]) is not None:
+            rows.append([InlineKeyboardButton(
+                text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{user['telegram_id']}",
+            )])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
     else:
@@ -1063,3 +1072,9 @@ from handlers import admin_resubmit_grant  # noqa: E402
 # editg_cancel/editg_revoke in the very tail of admin.router (golden snapshot: a clean
 # append, right after admin_resubmit_grant). Not a forum toggle — no hub row.
 from handlers import admin_edit_grant  # noqa: E402
+
+# Phase 33 (delegate-card admin actions, задача 1): shared-router seam import for «🧹 Сбросить
+# зависшую анкету» (handlers/admin_reg_reset.py) — registers regreset_start/regreset_toggle/
+# regreset_apply/regreset_cancel in the very tail of admin.router (golden snapshot: a clean
+# append, right after admin_edit_grant). Not a forum toggle — no hub row.
+from handlers import admin_reg_reset  # noqa: E402

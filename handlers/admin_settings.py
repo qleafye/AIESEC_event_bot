@@ -255,6 +255,9 @@ _APPS_FIELD_ORDER = [
     # решения) — редактор экрана достаётся бесплатно попаданием в этот список, тот же приём,
     # что у reg_edit_closed_text/reg_resubmit_closed_text выше.
     "revert_pending_notify_text", "resubmit_granted_notify_text", "edit_granted_notify_text",
+    # Phase 33 (delegate-card admin actions, задача 1): текст делегату при сбросе зависшей
+    # анкеты — тот же приём, что у трёх ключей выше.
+    "reg_reset_notify_text",
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
