@@ -184,19 +184,25 @@ def test_broadcast_filter_by_day_and_today(tmp_path, monkeypatch):
 # ── лист «Пришёл» ──────────────────────────────────────────────────────────────────────────
 
 def test_sheet_keeps_first_entry_and_recomputes_on_revoke(tmp_path, monkeypatch):
+    """Лист пишет джоба очереди (services/sheet_arrival_sync.py) — после каждой отметки
+    прогоняем её проход и смотрим, что ушло в лист."""
     _ready(tmp_path)
     writes: list[tuple[int, str]] = []
 
-    async def fake_update(tid, value):
-        writes.append((tid, value))
-        return True
+    async def fake_batch(id_to_value):
+        writes.extend(sorted(id_to_value.items()))
+        return {"written": set(id_to_value), "missing": set(), "failed": {}}
 
     import services.sheets as sheets
-    monkeypatch.setattr(sheets, "update_arrived_in_sheet", fake_update)
+    from services import sheet_arrival_sync
+    monkeypatch.setattr(sheets, "write_arrivals_batch", fake_batch)
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "fake-id")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "fake-creds.json")
 
     async def mark(stamp):
         status, ts = await db.record_checkin(UID, "entry", source="miniapp", scanned_at=stamp)
         await checkin_mod.mark_arrived_in_sheet(UID, status, ts)
+        await sheet_arrival_sync.drain()
 
     _run(mark("2026-10-31 09:00:00"))  # живой скан второго дня
     _run(mark("2026-10-30 09:15:00"))  # CSV первого дня загрузили позже — он раньше, пишем его
@@ -206,6 +212,7 @@ def test_sheet_keeps_first_entry_and_recomputes_on_revoke(tmp_path, monkeypatch)
     rows = {r["day"]: r for r in _run(db.list_checkins_for_user(UID))}
     writes.clear()
     _run(venue_log.revoke_mark(rows["2026-10-30"]["id"], staff_id=1, staff_name="Менеджер"))
+    _run(sheet_arrival_sync.drain())
     assert writes == [(UID, "2026-10-31 09:00:00")]  # первый из оставшихся
     assert sorted(_run(db.list_checkins_for_user(UID)), key=lambda r: r["day"])[0]["day"] == "2026-10-31"
 

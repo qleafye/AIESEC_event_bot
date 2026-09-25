@@ -36,6 +36,8 @@ from typing import TypedDict
 import segno
 
 from database.db import (
+    SHEET_ARRIVAL_SET,
+    enqueue_sheet_arrival,
     first_entry_scanned_at,
     get_checkin_token_replacement,
     get_or_create_checkin_token,
@@ -361,29 +363,28 @@ async def build_test_qr() -> tuple[bytes, str]:
     return buf.getvalue(), caption
 
 
-async def mark_arrived_in_sheet(telegram_id: int, status: str, scanned_at: str) -> None:
-    """Форум-ночь B2 (идея №17): единая точка «отметка на форуме -> время в Google-таблице»,
-    вызывается ВСЕМИ тремя источниками отметки СРАЗУ ПОСЛЕ `database.db.record_checkin`
-    (miniapp/routers/checkin.py::checkin_scan/checkin_manual, handlers/admin_checkin.py::
-    checkin_point_pick) — тот же приём, что `services.sheets.update_status_in_sheet` для
-    «Статус» (services/sheets.py::update_arrived_in_sheet ниже — точечное обновление одной
-    ячейки, не переаппенд строки).
+async def mark_arrived_in_sheet(
+    telegram_id: int, status: str, scanned_at: str, *, city: str | None = None,
+) -> None:
+    """Форум-ночь B2 (идея №17): отметка входа -> колонка «Пришёл» Google-таблицы. Зовётся
+    внутри `record_arrival` после `database.db.record_checkin` — для ВСЕХ источников (сканер
+    Mini App, ручной поиск, CSV, авто-вход от сессии).
 
-    Только на `'new'` (первая отметка) — `'duplicate'` уже писала то же самое время скана при
-    первой отметке, второй вызов Sheets API на тот же результат был бы просто тратой квоты.
-    Вход каждый день: «Пришёл» — время ПЕРВОГО входа за форум. Новый вход второго дня ячейку
-    не трогает (раньше уже есть вход); пишем, только если этот вход — самый ранний из имеющихся
-    (обычный первый скан или CSV первого дня, загруженный после живых сканов второго).
-    Сам вызов уже fail-soft (update_arrived_in_sheet ловит исключения и возвращает False) —
-    отметка в БД к этому моменту уже сохранена вызывающим, лист может упасть без последствий
-    для самого чек-ина (D-17)."""
+    Нагрузочный прогон 25.09: сам лист здесь НЕ трогается — только событие в
+    `sheet_arrival_queue`, запись делает джоба бота пачками (`services/sheet_arrival_sync.py`).
+    Раньше ячейка писалась синхронно: из Mini App (отдельный процесс без Google-кредов) — никогда,
+    а в боте каждый первый скан до ответа волонтёру читал весь столбец id листа. Этот модуль
+    и `miniapp/` не импортируют Google-листы вовсе (сторож tests/test_sheet_arrival_queue_260925.py).
+
+    Событие — только на `'new'` и только если этот вход — самый ранний из имеющихся («Пришёл» —
+    время ПЕРВОГО входа за форум; вход второго дня ячейку не меняет). Значение ячейки джоба всё
+    равно берёт из базы, фильтр лишь не плодит пустых событий."""
     if status != "new":
         return
     first = await first_entry_scanned_at(telegram_id)
     if first is not None and first < scanned_at:
         return
-    from services.sheets import update_arrived_in_sheet
-    await update_arrived_in_sheet(telegram_id, scanned_at)
+    await enqueue_sheet_arrival(telegram_id, SHEET_ARRIVAL_SET, city)
 
 
 # ── Точка расширения «после ПЕРВОЙ отметки входа делегата» (24.09) ──────────────────────────
@@ -532,7 +533,7 @@ async def record_arrival(
             user["telegram_id"], point or ENTRY_POINT, source=source,
             scanned_at=scanned_at, approx=approx, by_staff_id=by_staff_id,
         )
-        await mark_arrived_in_sheet(user["telegram_id"], status, ts)
+        await mark_arrived_in_sheet(user["telegram_id"], status, ts, city=user.get("event_city"))
         result = {"status": status, "scanned_at": ts}
         if status == "new" and source != "csv":
             result["log_id"] = await _venue_log().log_live_checkin(
@@ -602,7 +603,9 @@ async def record_arrival(
             user["telegram_id"], ENTRY_POINT, source="auto_session", by_staff_id=by_staff_id,
             scanned_at=ts, approx=approx,
         )
-        await mark_arrived_in_sheet(user["telegram_id"], entry_status, entry_ts)
+        await mark_arrived_in_sheet(
+            user["telegram_id"], entry_status, entry_ts, city=user.get("event_city"),
+        )
         if source != "csv":
             result["log_id"] = await _venue_log().log_live_checkin(
                 user, point, status=status, scanned_at=ts, source=source,
