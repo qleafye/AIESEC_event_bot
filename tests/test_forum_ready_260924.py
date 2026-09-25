@@ -228,3 +228,25 @@ def test_future_forum_date_is_plain_green(tmp_path, monkeypatch):
     from datetime import datetime
     text, _kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 2, 23, 59))
     assert "🟢 Дата форума: 03.10.2026" in text.splitlines()
+
+
+def test_stale_arrival_queue_is_yellow(tmp_path, monkeypatch):
+    """Нагрузочный прогон 25.09: «Пришёл» пишется в лист из очереди — застрявшая больше 5 мин
+    очередь = жёлтая строка «Таблица» с числом и возрастом, свежая — не мешает зелёной."""
+    from datetime import datetime
+    _ready(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    monkeypatch.setattr(sheets, "_write_state", {"ok": time.time() - 120, "fail": None})
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 3, 9, 0))
+    _run(db.enqueue_sheet_arrival(1, db.SHEET_ARRIVAL_SET))
+    _run(db.enqueue_sheet_arrival(2, db.SHEET_ARRIVAL_SET))
+
+    monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 10, 3, 9, 3))
+    text, _ = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+    assert "🟢 Таблица пишется" in text
+
+    monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 10, 3, 9, 12))
+    text, _ = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+    assert "🟡 Отметки «Пришёл» копятся: в очереди 2, старейшая 12 мин" in text
