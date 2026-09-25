@@ -1096,6 +1096,7 @@ admin|callback_query|toggle_role_cap|roles_cap:*
 admin|callback_query|roles_city_start|roles_city:*
 admin|callback_query|roles_city_pick|roles_city_pick:*
 admin|callback_query|roles_add_start|roles_add
+admin|callback_query|roles_add_for|roles_addfor:*
 admin|callback_query|roles_assign|roles_addrole:*
 admin|callback_query|roles_remove|roles_del:*
 admin|callback_query|roles_expiry_start|rexp:*
@@ -1883,7 +1884,13 @@ def test_snapshot_total_handler_count_is_292():
     # же приём, что у revertp_*/resubg_*/editg_* выше). Пересчитано RUNNING
     # `_build_snapshot_lines()`, difflib: одна чистая вставка (4 строки), 0 удалений, 0
     # реордеров (844 -> 848).
-    assert len(GOLDEN_SNAPSHOT) == 848
+    # Phase 33 (delegate-card admin actions, задача 2, 26.09): roles_add_for
+    # (handlers/admin_roles.py) — прямой вход в мастер выдачи роли с карточки /find, встал
+    # СРАЗУ ПОСЛЕ roles_add_start и ПЕРЕД roles_assign (порядок регистрации callback_query
+    # внутри admin_roles.py — физическое место функции в файле, между roles_add_person и
+    # roles_assign). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая
+    # вставка (1 строка), 0 удалений, 0 реордеров (848 -> 849).
+    assert len(GOLDEN_SNAPSHOT) == 849
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
