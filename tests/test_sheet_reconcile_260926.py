@@ -716,7 +716,7 @@ def test_long_report_is_chunked_under_telegram_limit():
         ],
         "headerless_tabs": [], "duplicate_rows": [], "status_mismatch": [], "unknown_sheet_ids": [],
         "missing_rows": [], "other_tab_rows": [],
-        "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
+        "decision_delivery": {"failed": [], "blocked": [], "resendable": [], "queued": [], "unknown": []},
     }
     lines = sr.render_report_lines(report, city_label="Санкт-Петербург")
     chunks = sr.chunk_report_lines(lines)
@@ -727,17 +727,43 @@ def test_long_report_is_chunked_under_telegram_limit():
     assert "\n".join(chunks) == "\n".join(lines)
 
 
-def test_render_report_lines_reports_honest_delivery_note():
+def test_render_report_lines_reports_decision_delivery_counts():
+    """Координатор 25.09: раздел «Недоставленные решения» больше не честная отписка
+    («по базе это не определить») — реальные числа из `decision_delivery`, посчитанные
+    `services.decision_delivery.summarize_deliveries`."""
     report = {
-        "ok": True, "error": None, "user_count": 0,
+        "ok": True, "error": None, "user_count": 3,
         "missing_tabs": [], "headerless_tabs": [], "duplicate_rows": [], "status_mismatch": [],
         "unknown_sheet_ids": [], "missing_rows": [], "other_tab_rows": [],
-        "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
+        "decision_delivery": {
+            "failed": [
+                {"tid": 1, "name": "Заблокировал", "username": "@b", "city": "msk",
+                 "decision": "approved", "error": "бот заблокирован делегатом"},
+                {"tid": 2, "name": "Не дошло", "username": "@n", "city": "msk",
+                 "decision": "rejected", "error": "чат не найден"},
+            ],
+            "blocked": [
+                {"tid": 1, "name": "Заблокировал", "username": "@b", "city": "msk",
+                 "decision": "approved", "error": "бот заблокирован делегатом"},
+            ],
+            "resendable": [
+                {"tid": 2, "name": "Не дошло", "username": "@n", "city": "msk",
+                 "decision": "rejected", "error": "чат не найден"},
+            ],
+            "queued": [],
+            "unknown": [
+                {"tid": 3, "name": "До миграции", "username": "@u", "city": "msk",
+                 "decision": "approved", "error": None},
+            ],
+        },
     }
     lines = sr.render_report_lines(report)
     text = "\n".join(lines)
-    assert "не определить" in text
-    assert "delivery_failed_at" in text
+    assert "Решения не доставлены" in text
+    assert "(2, из них бот заблокирован: 1)" in text
+    assert "Не дошло" in text  # попал в первые 10
+    assert "чат не найден" in text
+    assert "неизвестно (до учёта доставки): 1" in text
 
 
 def test_csv_export_contains_every_section():
@@ -752,9 +778,26 @@ def test_csv_export_contains_every_section():
         "other_tab_rows": [{
             "tid": 5, "name": "Другой", "username": "u2", "own_tab": "СПб", "found_tabs": ["Заявки"],
         }],
-        "decisions_undelivered_note": sr.DECISIONS_UNDELIVERED_NOTE,
+        "decision_delivery": {
+            "failed": [], "blocked": [
+                {"tid": 6, "name": "Блок", "username": "u6", "city": "msk",
+                 "decision": "approved", "error": "бот заблокирован делегатом"},
+            ],
+            "resendable": [
+                {"tid": 7, "name": "НеДошло", "username": "u7", "city": "spb",
+                 "decision": "rejected", "error": "чат не найден"},
+            ],
+            "queued": [],
+            "unknown": [
+                {"tid": 8, "name": "Неизвестно", "username": "u8", "city": "msk",
+                 "decision": "approved", "error": None},
+            ],
+        },
     }
     csv_bytes = sr.report_to_csv_bytes(report)
     text = csv_bytes.decode("utf-8-sig")
-    for needle in ("Тюмень", "СПб Акция", "1", "2", "3", "4", "5", "Одобрена", "Новая", "Заявки"):
+    for needle in (
+        "Тюмень", "СПб Акция", "1", "2", "3", "4", "5", "Одобрена", "Новая", "Заявки",
+        "Блок", "НеДошло", "Неизвестно", "бот заблокирован делегатом", "чат не найден",
+    ):
         assert needle in text
