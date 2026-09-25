@@ -850,6 +850,30 @@ def test_resubg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
     assert bot.sent == []
 
 
+def test_resubg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
+    """Сбой отправки делегату — не повод откатывать саму выдачу разрешения (fail-soft, тот же
+    приём, что у revert_pending)."""
+    from handlers import admin_resubmit_grant
+
+    _db_ready(tmp_path)
+
+    class _BrokenBot(_FakeBot):
+        async def send_message(self, chat_id, text, **kwargs):
+            raise RuntimeError("delegate blocked the bot")
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"resubg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID, bot=_BrokenBot())
+        await admin_resubmit_grant.resubg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "выдано" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT))
+    assert active is not None
+
+
 def test_resubg_apply_refuses_forged_status(tmp_path):
     """Подделанный callback (uid другого статуса): резолв делегата по /find шёл, когда он
     был rejected, но к моменту тапа менеджер/делегат успели его сменить."""
@@ -990,3 +1014,344 @@ def test_card_shows_resubmit_override_line_and_revoke_button(tmp_path):
     buttons = _cbs(captured["kb"])
     assert f"resubg_revoke:{DELEGATE_ID}" in buttons
     assert f"resubg_start:{DELEGATE_ID}" not in buttons
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part H: services/reg_edit_policy.py — гейт edit_gate уважает персональное исключение (Task 3)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_edit_gate_denied_globally_but_allowed_via_override(tmp_path):
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_edit_policy", "until_decision")
+        user = {
+            "telegram_id": DELEGATE_ID, "status": "approved", "event_city": None,
+            "full_name": "Тест", "registration_date": "2026-01-01 00:00:00",
+        }
+        before = await reg_edit_policy.edit_gate(user)
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        after = await reg_edit_policy.edit_gate(user)
+        return before, after
+
+    before, after = _run(scenario())
+    assert before[0] is False
+    assert after == (True, None)
+
+
+def test_edit_gate_peek_does_not_consume_override(tmp_path):
+    from services import reg_edit_policy
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("reg_edit_policy", "until_decision")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        user = {
+            "telegram_id": DELEGATE_ID, "status": "approved", "event_city": None,
+            "full_name": "Тест", "registration_date": "2026-01-01 00:00:00",
+        }
+        for _ in range(3):
+            await reg_edit_policy.edit_gate(user)
+        return await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT)
+
+    active = _run(scenario())
+    assert active is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part I: services/reg_finalize.py — фактическая правка гасит исключение (Task 3)
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_finalize_edit_consumes_edit_override_status_stays_approved(tmp_path):
+    """toggle_reg_edit_remoderation=off (дефолт продакшена) — статус остаётся «Одобрена»,
+    исключение всё равно гасится (оно управляет ДОСТУПОМ к правке, не судьбой статуса)."""
+    from services import reg_finalize as rf
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.add_user({
+            "telegram_id": DELEGATE_ID, "full_name": "Тест Тестов", "username": "@test",
+            "registration_date": "2026-01-01", "event_city": None, "participant_type": "full",
+        })
+        await db.set_user_status(DELEGATE_ID, "approved")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        draft = {"telegram_id": DELEGATE_ID, "kind": "edit", "answers": {"phone": "+79997778899"}, "updated_by": "bot"}
+        result = await rf.finalize_data(DELEGATE_ID, "@test", draft)
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT)
+        user = await db.get_user(DELEGATE_ID)
+        return result, active, user
+
+    result, active, user = _run(scenario())
+    assert result["remoderated"] is False
+    assert user["status"] == "approved"
+    assert active is None  # погашено
+
+
+def test_finalize_edit_with_remoderation_on_moves_to_pending_and_consumes(tmp_path):
+    from services import reg_finalize as rf
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("toggle_reg_edit_remoderation", "on")
+        await db.add_user({
+            "telegram_id": DELEGATE_ID, "full_name": "Тест Тестов", "username": "@test",
+            "registration_date": "2026-01-01", "event_city": None, "participant_type": "full",
+        })
+        await db.set_user_status(DELEGATE_ID, "approved")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        draft = {"telegram_id": DELEGATE_ID, "kind": "edit", "answers": {"phone": "+79997778899"}, "updated_by": "bot"}
+        result = await rf.finalize_data(DELEGATE_ID, "@test", draft)
+        active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT)
+        return result, active
+
+    result, active = _run(scenario())
+    assert result["remoderated"] is True
+    assert active is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Part J: handlers/admin_edit_grant.py — UI-слой Task 3
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_editg_start_shows_confirm_screen_for_approved(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"editg_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_edit_grant.editg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, kb = cb.message.edits[0]
+    assert "Открыть правку после решения" in text
+    buttons = _cbs(kb)
+    assert f"editg_apply:{DELEGATE_ID}:1" in buttons  # дефолт — сообщить (notify=True)
+    assert f"editg_cancel:{DELEGATE_ID}" in buttons
+
+
+def test_editg_start_refuses_when_not_approved(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"editg_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_edit_grant.editg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_editg_start_denied_when_city_out_of_scope(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        cb = _FakeCallback(f"editg_start:{DELEGATE_ID}", BOUND_MSK_ID)
+        await admin_edit_grant.editg_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_editg_apply_grants_and_sends_default_notify(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+    bot = _FakeBot()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"editg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID, bot=bot)
+        await admin_edit_grant.editg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "открыта" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT))
+    assert active is not None
+    delegate_sends = [s for s in bot.sent if s[0] == DELEGATE_ID]
+    assert len(delegate_sends) == 1
+
+
+def test_editg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+    bot = _FakeBot()
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"editg_apply:{DELEGATE_ID}:0", SUPERADMIN_ID, bot=bot)
+        await admin_edit_grant.editg_apply(cb)
+        return cb
+
+    _run(scenario())
+    assert bot.sent == []
+
+
+def test_editg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
+    """Сбой отправки делегату — не повод откатывать саму выдачу разрешения (fail-soft, тот же
+    приём, что у revert_pending/resubg)."""
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    class _BrokenBot(_FakeBot):
+        async def send_message(self, chat_id, text, **kwargs):
+            raise RuntimeError("delegate blocked the bot")
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"editg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID, bot=_BrokenBot())
+        await admin_edit_grant.editg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "открыта" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT))
+    assert active is not None
+
+
+def test_editg_apply_refuses_forged_status(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        cb = _FakeCallback(f"editg_apply:{DELEGATE_ID}:1", SUPERADMIN_ID)
+        await admin_edit_grant.editg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.answers and cb.answers[0][1] is True
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT))
+    assert active is None
+
+
+def test_editg_apply_denies_forged_city_out_of_scope(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _setup_bound_staff()
+        await _seed_user(DELEGATE_ID, city="spb", status="approved")
+        cb = _FakeCallback(f"editg_apply:{DELEGATE_ID}:0", BOUND_MSK_ID)
+        await admin_edit_grant.editg_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_editg_revoke_closes_active_override(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+        cb = _FakeCallback(f"editg_revoke:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_edit_grant.editg_revoke(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "отозвано" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT))
+    assert active is None
+
+
+def test_editg_cancel_changes_nothing(tmp_path):
+    from handlers import admin_edit_grant
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"editg_cancel:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_edit_grant.editg_cancel(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "не открыта" in text
+    active = _run(delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_EDIT))
+    assert active is None
+
+
+def test_editg_capability_registered_for_every_callback():
+    from handlers.admin_caps import ADMIN_CAPS
+
+    for prefix in (
+        "editg_start:*", "editg_toggle:*", "editg_apply:*", "editg_cancel:*", "editg_revoke:*",
+    ):
+        assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix
+
+
+def test_card_shows_edit_override_line_and_revoke_button(tmp_path):
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", full_name="Одобренный Делегат")
+        await db.add_user({
+            "telegram_id": SUPERADMIN_ID, "full_name": "Менеджер Менеджеров",
+            "registration_date": "2026-01-01",
+        })
+        await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID)
+
+        import handlers.admin as admin_mod
+
+        async def _fake_get_user_by_username(username):
+            return await db.get_user(DELEGATE_ID)
+
+        orig = admin_mod.get_user_by_username
+        admin_mod.get_user_by_username = _fake_get_user_by_username
+        try:
+            captured = {}
+
+            class _M:
+                def __init__(self):
+                    self.text = f"/find @{DELEGATE_ID}"
+
+                async def answer(self, text, parse_mode=None, reply_markup=None):
+                    captured["text"] = text
+                    captured["kb"] = reply_markup
+
+            await admin.cmd_find_user(_M())
+        finally:
+            admin_mod.get_user_by_username = orig
+        return captured
+
+    captured = _run(scenario())
+    assert "Открыта правка" in captured["text"]
+    assert "Менеджер Менеджеров" in captured["text"]
+    buttons = _cbs(captured["kb"])
+    assert f"editg_revoke:{DELEGATE_ID}" in buttons
+    assert f"editg_start:{DELEGATE_ID}" not in buttons
