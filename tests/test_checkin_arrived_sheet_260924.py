@@ -6,8 +6,9 @@
   (собран до того, как её завели) — fail-soft False, без исключения.
 - Named-tab-first, fallback на main — тот же приём, что `tests/test_sheet_status_city_tab_
   260819.py` для «Статус» (FakeWorksheet/_patch_fake_sheets переиспользованы оттуда).
-- `services.checkin.mark_arrived_in_sheet` — пишет ТОЛЬКО на `status == "new"`; `"duplicate"`
-  не трогает лист вовсе (экономия квоты API — время скана уже писала первая отметка)."""
+- `services.checkin.mark_arrived_in_sheet` — ставит событие в очередь ТОЛЬКО на `status == "new"`;
+  `"duplicate"` не ставит ничего. Сам лист пишет джоба очереди (services/sheet_arrival_sync.py,
+  подробно — tests/test_sheet_arrival_queue_260925.py), отметка лист не трогает."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,8 @@ import gspread
 
 from config import config
 import services.sheets as sheets
+from database import db
+from services import sheet_arrival_sync
 from services.checkin import mark_arrived_in_sheet
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 
@@ -42,6 +45,16 @@ class ArrivedFakeWorksheet:
         self.update_calls.append((values, range_name))
         row, col = gspread.utils.a1_to_rowcol(range_name)
         self.rows[row - 2][col - 1] = values[0][0]
+
+    def batch_get(self, ranges):
+        assert ranges == ["1:1", "A:A"]
+        return [[list(self.header)], [[self.header[0]]] + [[r[0]] for r in self.rows]]
+
+    def batch_update(self, updates, value_input_option=None):
+        for u in updates:
+            self.update_calls.append((u["values"], u["range"]))
+            row, col = gspread.utils.a1_to_rowcol(u["range"])
+            self.rows[row - 2][col - 1] = u["values"][0][0]
 
 
 HEADER = ["id", sheets.STATUS_HEADER, sheets.ARRIVED_HEADER]
@@ -136,10 +149,14 @@ def test_mark_arrived_writes_on_new(tmp_path, monkeypatch):
 
     async def go():
         await _setup_city_user(555, None)
+        await db.record_checkin(555, "entry", source="miniapp", scanned_at="2026-10-03 09:15:00")
         await mark_arrived_in_sheet(555, "new", "2026-10-03 09:15:00")
+        untouched = [list(r) for r in main.rows]
+        await sheet_arrival_sync.drain()
+        return untouched
 
-    asyncio.run(go())
-    assert main.rows == [["555", "Одобрена", "2026-10-03 09:15:00"]]
+    assert asyncio.run(go()) == [["555", "Одобрена", "-"]]  # сама отметка лист не трогает
+    assert main.rows == [["555", "Одобрена", "2026-10-03 09:15:00"]]  # записала джоба очереди
 
 
 def test_mark_arrived_skips_write_on_duplicate(tmp_path, monkeypatch):
@@ -150,7 +167,8 @@ def test_mark_arrived_skips_write_on_duplicate(tmp_path, monkeypatch):
     async def go():
         await _setup_city_user(555, None)
         await mark_arrived_in_sheet(555, "duplicate", "2026-10-03 09:15:00")
+        return await db.sheet_arrival_queue_stats()
 
-    asyncio.run(go())
+    assert asyncio.run(go())[0] == 0  # в очередь ничего
     assert main.rows == [["555", "Одобрена", "09:00"]]  # не переписано
     assert main.update_calls == []  # Sheets API не дёрнут вовсе
