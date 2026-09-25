@@ -56,14 +56,20 @@ async def active_override(telegram_id: int, kind: str) -> dict | None:
 async def grant_override(telegram_id: int, kind: str, admin_id: int) -> dict:
     """`{"ok": True, "id", "granted_at"}` при успехе; `{"ok": False, "error"}` — уже есть
     активное исключение того же вида (менеджер сначала должен отозвать старое, экран
-    подтверждения не должен молча плодить дубли)."""
+    подтверждения не должен молча плодить дубли).
+
+    Атомарно: вставку и проверку «нет активной» держит сам `INSERT OR IGNORE` в
+    `grant_delegate_override` поверх частичного UNIQUE-индекса
+    (`idx_admin_delegate_overrides_unique_active`) — двойной тап «Выдать» (или гонка двух
+    менеджеров) даёт ровно одну активную строку, а не check-then-insert с окном гонки между
+    отдельным чтением и вставкой."""
     if kind not in KINDS:
         return {"ok": False, "error": f"Неизвестный вид исключения: {kind!r}"}
-    existing = await get_active_delegate_override(telegram_id, kind)
-    if existing is not None:
-        return {"ok": False, "error": "Исключение уже выдано — сначала отзовите его.", "existing": existing}
     now = _now()
     override_id = await grant_delegate_override(telegram_id, kind, admin_id, now)
+    if override_id is None:
+        existing = await get_active_delegate_override(telegram_id, kind)
+        return {"ok": False, "error": "Исключение уже выдано — сначала отзовите его.", "existing": existing}
     await record_answer_history(
         telegram_id, [{"column": f"{kind}_override", "old": None, "new": "granted"}],
         source=f"admin:{admin_id}",
