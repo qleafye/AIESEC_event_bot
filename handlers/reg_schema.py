@@ -532,7 +532,8 @@ async def _approve_text_for(participant_type: str | None, city_code: str | None 
 async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool = True,
                                      participant_type: str | None = None, *,
                                      auto_approved: bool = False,
-                                     respect_quiet_hours: bool = False) -> Exception | None:
+                                     respect_quiet_hours: bool = False,
+                                     send_bonus: bool = True) -> Exception | None:
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
@@ -566,7 +567,12 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     `services/application_effects.py::apply_decision_effects`). Бонус (медиа) — best-effort:
     его сбой НЕ портит статус доставки решения (само письмо уже ушло), только логируется.
     Остаётся fail-soft: ни одна ветка не поднимает исключение наружу, вызывающий читает только
-    возврат."""
+    возврат.
+
+    Координатор 25.09 («📨 Переотправить решения»): `send_bonus=False` — переотправка одобрения
+    шлёт ТОЛЬКО текст решения, бонус-файл повторно не уходит (делегат уже получил его при первом
+    решении). Используется `resend_approve_text` ниже; остальные вызывающие держат дефолт True
+    и ведут себя байт-в-байт прежними."""
     city_code = None
     try:
         if await cities_module_on():
@@ -606,7 +612,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
             logger.error(f"Failed to send completion/bonus to {telegram_id}: {send_err}")
             return send_err
 
-        if await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
+        if send_bonus and await get_setting_typed("reg_bonus_enabled") == "on":  # REG-02: registry-backed
             try:
                 bonus_caption = reg_i18n.tr_text(
                     await get_setting("reg_bonus_caption") or "\U0001f381 Бонус за регистрацию!", lang, tr_map,
@@ -683,3 +689,23 @@ async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = Fals
     except Exception as e:
         logger.error(f"Failed to send approval welcome to {telegram_id}: {e}")
         return e
+
+
+async def resend_approve_text(bot: Bot, telegram_id: int) -> Exception | None:
+    """Координатор 25.09 («📨 Переотправить решения»): переотправка одобрения — ТОЛЬКО текст
+    решения (тот же `approve_text` для трека/города/языка, что и обычное одобрение), бонус-файл
+    повторно НЕ шлётся (делегат уже получил его при первом решении). В отличие от `approve_user`,
+    шаг оплаты НЕ открывается никогда — при `payment_enabled=on` обычное одобрение уходит в
+    `handlers.payment.start_payment_step`, который заново рисует пикер тарифов и сбрасывает FSM
+    делегата (см. `services/application_effects.py::apply_decision_effects`, `resend=True`);
+    переотправка обязана прислать письмо, а не открыть заново шаг оплаты, поэтому здесь модуль
+    оплаты не проверяется вовсе — сразу `send_completion_and_bonus`."""
+    try:
+        user_row = await get_user(telegram_id)
+        participant_type = (user_row or {}).get("participant_type") or "full"
+    except Exception as e:
+        logger.error(f"Failed to resolve participant_type for resend {telegram_id}, defaulting to 'full': {e}")
+        participant_type = "full"
+    return await send_completion_and_bonus(
+        bot, telegram_id, participant_type=participant_type, send_bonus=False,
+    )

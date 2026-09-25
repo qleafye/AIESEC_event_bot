@@ -102,13 +102,17 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
     вручную», возвращается вызывающему для рендера).
 
     Отправка — ТЕМ ЖЕ кодом, что при модерации: `services.application_effects.
-    apply_decision_effects(bot, tid, decision, reason, sheet=False)` — текст решения строится
-    там же, где всегда (не дублируем), лист сверка правит отдельной кнопкой «Выправить статусы»,
-    переотправка её не трогает. `reason` для отказа — `services.applications.
-    last_rejection_reason` (единая точка правды причины ПОСЛЕДНЕГО отказа, та же, что читает
-    делегатский экран статуса/карточка менеджера). 429 — уже обработан ВНУТРИ
-    `apply_decision_effects` (один ретрай, `services.telegram_send.send_with_retry`); здесь —
-    только пауза между итерациями (антифлуд, тот же порядок, что `sheet_reconcile.py`).
+    apply_decision_effects(bot, tid, decision, reason, sheet=False, resend=True)` — текст решения
+    строится там же, где всегда (не дублируем), лист сверка правит отдельной кнопкой «Выправить
+    статусы», переотправка её не трогает. `resend=True` — координатор 25.09: для `approved` это
+    шлёт ТОЛЬКО текст решения (`handlers.reg_schema.resend_approve_text`), шаг оплаты НЕ
+    открывается никогда (при `payment_enabled=on` обычный `approve_user` заново нарисовал бы
+    пикер тарифов уже одобренному делегату и сбросил его FSM) и бонус-файл повторно не шлётся.
+    `reason` для отказа — `services.applications.last_rejection_reason` (единая точка правды
+    причины ПОСЛЕДНЕГО отказа, та же, что читает делегатский экран статуса/карточка менеджера).
+    429 — уже обработан ВНУТРИ `apply_decision_effects` (один ретрай,
+    `services.telegram_send.send_with_retry`); здесь — только пауза между итерациями (антифлуд,
+    тот же порядок, что `sheet_reconcile.py`).
 
     Двойной тап — тот же in-memory замок, что `sheet_reconcile.py::_claim/_release`, отдельным
     пространством ключей (`resend:*`), чтобы переотправка не блокировала «Дописать»/«Выправить»
@@ -136,7 +140,7 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
             decision = it["decision"]
             reason = await last_rejection_reason(tid) if decision == "rejected" else None
             try:
-                await apply_decision_effects(bot, tid, decision, reason, sheet=False)
+                await apply_decision_effects(bot, tid, decision, reason, sheet=False, resend=True)
             except Exception as e:
                 logger.error(f"resend_undelivered_decisions: сбой отправки {tid}: {e}")
                 failed.append({**it, "reason": f"ошибка отправки: {e}"})
