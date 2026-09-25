@@ -595,6 +595,16 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против
 # прежнего 726-строчного снимка: ровно две чистые вставки (3 + 5 строк), 0 удалений, 0
 # реордеров (726 -> 734).
+#
+# Drift note (25.09, Phase 33, delegate-card admin actions): 14 handlers inserted (830 -> 844),
+# re-captured by RUNNING `_build_snapshot_lines()` against HEAD after rebase onto main 238b924
+# and diffed (difflib.SequenceMatcher) against the prior 830-line snapshot -- one contiguous
+# insertion, 0 deletions, 0 reorders, every pre-existing line byte-for-byte identical in the
+# same relative order. The 14 new lines are admin.router callbacks from three seam modules
+# (handlers/admin_revert_pending.py: revertp_start/toggle/apply/cancel, handlers/
+# admin_resubmit_grant.py: resubg_start/toggle/apply/cancel/revoke, handlers/admin_edit_grant.py:
+# editg_start/toggle/apply/cancel/revoke), registered right after `lostfound_toggle_go` and
+# before `prog_fbday_open` (import order of the three new seams in admin.py's tail).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1270,6 +1280,20 @@ admin|callback_query|lost_found_publish|lostfound_publish
 admin|callback_query|lostfound_return|lostfound_return:*
 admin|callback_query|lostfound_cfg_screen|lostfound_cfg:*
 admin|callback_query|lostfound_toggle_go|lostfound_toggle:*
+admin|callback_query|revertp_start|revertp_start:*
+admin|callback_query|revertp_toggle|revertp_toggle:*
+admin|callback_query|revertp_apply|revertp_apply:*
+admin|callback_query|revertp_cancel|revertp_cancel:*
+admin|callback_query|resubg_start|resubg_start:*
+admin|callback_query|resubg_toggle|resubg_toggle:*
+admin|callback_query|resubg_apply|resubg_apply:*
+admin|callback_query|resubg_cancel|resubg_cancel:*
+admin|callback_query|resubg_revoke|resubg_revoke:*
+admin|callback_query|editg_start|editg_start:*
+admin|callback_query|editg_toggle|editg_toggle:*
+admin|callback_query|editg_apply|editg_apply:*
+admin|callback_query|editg_cancel|editg_cancel:*
+admin|callback_query|editg_revoke|editg_revoke:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1846,7 +1870,10 @@ def test_snapshot_total_handler_count_is_292():
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 3 чистых вставок, 0 удалений, 0 реордеров (817 -> 829).
     # Перевод в город: тумблер «🔔 Сообщить делегату» (citymove_notify_toggle) на экране подтверждения.
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (829 -> 830).
-    assert len(GOLDEN_SNAPSHOT) == 830
+    # Phase 33 (delegate-card admin actions, 25.09): revertp_*/resubg_*/editg_* из трёх новых
+    # швов (см. Drift note над GOLDEN_SNAPSHOT). Пересчитано RUNNING `_build_snapshot_lines()`,
+    # difflib: одна чистая вставка (14 строк), 0 удалений, 0 реордеров (830 -> 844).
+    assert len(GOLDEN_SNAPSHOT) == 844
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
