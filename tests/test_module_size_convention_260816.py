@@ -192,7 +192,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2900,
+        2912,
+        "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +12 строк — фон карточки дописан в "
+        "PHOTO_FIELDS, подпись к фото дописана в _APPS_FIELD_ORDER (тот же приём, что у соседних "
+        "форумных фото/текстов); 2900 -> 2912. "
         "Phase 33 (delegate-card admin actions, задача 1, 26.09): +3 строки — "
         "`reg_reset_notify_text` дописан в _APPS_FIELD_ORDER (тот же приём, что у трёх "
         "соседних ключей карточки /find); 2897 -> 2900. "
@@ -496,7 +499,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1138,
+        1146,
+        "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — хвостовой shared-router "
+        "seam import handlers/admin_forum_stats_card.py (golden append, тот же приём, что "
+        "соседние сидомные импорты); 1138 -> 1146. "
         "Ревью part2 (26.09): +7 строк — гейт «👥 Выдать роль» на карточке /find правом "
         "`settings` (has_capability), кнопка раньше отвечала отказом держателю без права; "
         "1131 -> 1138. "
@@ -706,7 +712,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1348,
+        1356,
+        "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — капы "
+        "«forumstats_cfg»/«forumstats_toggle»/«forumstats_preview»/«forumstats_pick»/"
+        "«forumstats_send_go» (moderate_reg, тот же класс, что «lostfound_cfg»/«lostfound_toggle»); "
+        "1348 -> 1356. "
         "Phase 33 (delegate-card admin actions, «Сверить с БД», 26.09): +6 строк — капы "
         "«admin_sheet_reconcile»/«sheetrec_*» (settings, тот же класс, что «admin_sync_sheet»/"
         "«admin_rebuild_sheet»); 1342 -> 1348. "
@@ -908,7 +918,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "не в БД; потолок поднят до фактического размера.",
     ),
     "admin_forum_functions.py": (
-        1114,
+        1124,
+        "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +10 строк — одна аддитивная строка "
+        "хаба «📊 Карточка «Юлид в цифрах»» (статус + кнопка на handlers/admin_forum_stats_card.py, "
+        "тот же приём, что соседняя строка «🧳 Бюро находок»); 1114 -> 1124. "
         "Перенос неявившихся регионов (rnm_*, экран в хабе) поверх main 64c51da (1109 -> 1114). "
         "Перенос на main 01d67ae: сложились форумные функции делегата и forum-1030 (872 -> 877). "
         "Трек «региональные форумы → Москва» (25.09, forum-regions-msk): +237 строк — новая "

@@ -1136,3 +1136,11 @@ from handlers import admin_resume_replace  # noqa: E402
 # very tail of admin.router (golden snapshot: a clean append, right after admin_resume_replace).
 # «📊 Данные» hub row: handlers/admin_core.py right after «♻️ Пересобрать таблицу».
 from handlers import admin_sheet_reconcile  # noqa: E402
+
+# Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): shared-router seam import for the
+# forum-stats-card broadcast screen (handlers/admin_forum_stats_card.py) — registers
+# forumstats_cfg/forumstats_toggle/forumstats_preview/forumstats_pick/forumstats_send_go in
+# the very tail of admin.router (golden snapshot: a clean append, right after
+# admin_sheet_reconcile). Hub row: handlers/admin_forum_functions.py, right after «🚌 Перенос
+# неявившихся на форум в Москве».
+from handlers import admin_forum_stats_card  # noqa: E402

@@ -260,6 +260,16 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🚌 Настройки переноса в Москву", callback_data=f"rgnm_cfg:{_encode_city(code)}",
         )])
 
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах») — картинка-итог делегату после форума,
+    # per_city, свой экран этого же трека (handlers/admin_forum_stats_card.py, forumstats_cfg:*).
+    # Строка добавлена аддитивно (RULES.md), номер шага соседей выше не переставляется.
+    stats_card_on = await get_setting_typed_for_city("forum_stats_card_enabled", code) == "on"
+    lines.append(f"📊 Карточка «Юлид в цифрах»: {_status(stats_card_on)}")
+    if visible(f"forumstats_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="📊 Настройки карточки «Юлид в цифрах»", callback_data=f"forumstats_cfg:{_encode_city(code)}",
+        )])
+
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
 
