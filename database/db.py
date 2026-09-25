@@ -4383,11 +4383,57 @@ async def list_delivered_chat_ids(broadcast_id: int) -> set[int]:
             return {r[0] for r in await cursor.fetchall()}
 
 
+# Бенчмарк 25.09 (tools/bench_broadcast.py): новое соединение на КАЖДУЮ запись о доставке
+# стоило 15–30 мс — не сам INSERT, а открытие и особенно закрытие: закрывая последнее
+# соединение с WAL-файлом, SQLite делает чекпоинт и fsync основной базы. Прогон рассылки
+# держит одно соединение на всё время цикла (`delivery_writer`), а `mark_delivery`/
+# `record_broadcast_deliveries` пишут через него. Каждая запись по-прежнему коммитится сразу —
+# транзакция не висит, пока ждём Telegram, и сканер чек-ина (второй писатель) не блокируется.
+_delivery_conn_var: ContextVar[aiosqlite.Connection | None] = ContextVar(
+    "_delivery_conn", default=None
+)
+
+
+@asynccontextmanager
+async def delivery_writer():
+    """Одно соединение для записей о доставке на время блока (цикл рассылки). Вложенный вызов
+    переиспользует внешнее соединение. Вне блока `mark_delivery` и соседи открывают своё, как
+    раньше."""
+    if _delivery_conn_var.get() is not None:
+        yield
+        return
+    async with _connect() as conn:
+        token = _delivery_conn_var.set(conn)
+        try:
+            yield
+        finally:
+            _delivery_conn_var.reset(token)
+
+
+@asynccontextmanager
+async def _delivery_conn():
+    held = _delivery_conn_var.get()
+    if held is None:
+        async with _connect() as conn:
+            yield conn
+        return
+    try:
+        yield held
+    except BaseException:
+        # Упавшая запись не должна оставить открытую транзакцию на общем соединении — иначе
+        # следующая запись продолжила бы её и держала блокировку писателя.
+        try:
+            await held.rollback()
+        except Exception:
+            pass
+        raise
+
+
 async def mark_delivery(broadcast_id: int, chat_id: int, ok: bool):
     """Checkpoint one send attempt. INSERT OR REPLACE so a retry after a crash that landed
     between the send and this write just overwrites the row."""
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
-    async with _connect() as db:
+    async with _delivery_conn() as db:
         await db.execute(
             "INSERT OR REPLACE INTO scheduled_broadcast_deliveries "
             "(broadcast_id, chat_id, status, sent_at) VALUES (?, ?, ?, ?)",
@@ -4456,6 +4502,39 @@ async def record_broadcast_delivery(broadcast_id: int, chat_id: int, message_id:
             (broadcast_id, chat_id, message_id, now),
         )
         await db.commit()
+
+
+async def record_broadcast_deliveries(rows: list[tuple[int, int, int, str]]):
+    """Пачка строк журнала `(broadcast_id, chat_id, message_id, sent_at)` одной транзакцией —
+    цикл рассылки копит их и сбрасывает раз в несколько получателей, а не коммитит каждую."""
+    if not rows:
+        return
+    async with _delivery_conn() as db:
+        await db.executemany(
+            "INSERT INTO broadcast_deliveries (broadcast_id, chat_id, message_id, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            rows,
+        )
+        await db.commit()
+
+
+async def list_stored_langs() -> dict[int, str]:
+    """Сохранённый язык ВСЕХ, у кого он есть, одним чтением — то же правило, что
+    `get_stored_lang` (сначала `users.lang`, потом `reg_started.lang`), для рассылки, которой
+    нужен язык каждого получателя."""
+    langs: dict[int, str] = {}
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id, lang FROM reg_started WHERE lang IS NOT NULL AND lang != ''"
+        ) as cur:
+            for tid, lang in await cur.fetchall():
+                langs[tid] = lang
+        async with db.execute(
+            "SELECT telegram_id, lang FROM users WHERE lang IS NOT NULL AND lang != ''"
+        ) as cur:
+            for tid, lang in await cur.fetchall():
+                langs[tid] = lang
+    return langs
 
 
 async def finish_broadcast(
