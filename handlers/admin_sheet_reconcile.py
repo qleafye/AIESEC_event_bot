@@ -36,6 +36,16 @@ def _tab_label(tab) -> str:
     return tab if tab is not None else "главная"
 
 
+def _crash_text(done: int, total: int) -> str:
+    """Тот же посыл, что у соседнего `sync_sheet` (handlers/admin_sheets.py): неожиданный сбой
+    (Sheets API/БД не ответили) ловится, а не роняет хендлер молча — но, в отличие от sync_sheet,
+    здесь важно сказать, сколько реально успело записаться ДО сбоя (apply_append_missing/
+    apply_fix_statuses несут это в `done`/`total` даже при `ok=False, crashed=True`)."""
+    if done:
+        return f"❌ Не получилось: таблица не ответила. Попробуйте позже — записано {done} из {total} (что успели)."
+    return "❌ Не получилось: таблица не ответила. Попробуйте позже — ничего не записано."
+
+
 def _breakdown(items: list[dict]) -> list[tuple[str, int]]:
     counts = Counter(it["tab"] for it in items)
     ordered = sorted(counts.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))
@@ -66,36 +76,49 @@ async def sheet_reconcile_open(callback: types.CallbackQuery):
     await callback.message.edit_text("🔍 Читаю таблицу и базу…", parse_mode="HTML")
 
     scope, label = await _admin_city_view(admin_id)
-    report = await build_report(city_scope=scope)
-    lines = render_report_lines(report, city_label=label)
-    chunks = chunk_report_lines(lines)
+    try:
+        report = await build_report(city_scope=scope)
+        lines = render_report_lines(report, city_label=label)
+        chunks = chunk_report_lines(lines)
 
-    await callback.message.edit_text(chunks[0], parse_mode="HTML")
-    for chunk in chunks[1:]:
-        await callback.message.answer(chunk, parse_mode="HTML")
+        await callback.message.edit_text(chunks[0], parse_mode="HTML")
+        for chunk in chunks[1:]:
+            await callback.message.answer(chunk, parse_mode="HTML")
 
-    kb = await _action_keyboard(admin_id, report)
-    await callback.message.answer("Что дальше:", reply_markup=kb)
+        kb = await _action_keyboard(admin_id, report)
+        await callback.message.answer("Что дальше:", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_open failed: {e}")
+        await callback.message.edit_text(_crash_text(0, 0), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "sheetrec_csv")
 async def sheet_reconcile_csv(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     scope, label = await _admin_city_view(admin_id)
-    report = await build_report(city_scope=scope)
-    csv_bytes = report_to_csv_bytes(report)
-    filename = "sheet_reconcile.csv" if scope is None else f"sheet_reconcile_{scope[0]}.csv"
-    caption = "Полный список расхождений" + (f" — {html_module.escape(label)}" if label else "")
-    document = BufferedInputFile(csv_bytes, filename=filename)
-    await callback.message.answer_document(document, caption=caption)
-    await callback.answer()
+    try:
+        report = await build_report(city_scope=scope)
+        csv_bytes = report_to_csv_bytes(report)
+        filename = "sheet_reconcile.csv" if scope is None else f"sheet_reconcile_{scope[0]}.csv"
+        caption = "Полный список расхождений" + (f" — {html_module.escape(label)}" if label else "")
+        document = BufferedInputFile(csv_bytes, filename=filename)
+        await callback.message.answer_document(document, caption=caption)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"sheet_reconcile_csv failed: {e}")
+        await callback.answer(_crash_text(0, 0), show_alert=True)
 
 
 @router.callback_query(F.data == "sheetrec_append_confirm")
 async def sheet_reconcile_append_confirm(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     scope, _label = await _admin_city_view(admin_id)
-    report = await build_report(city_scope=scope)
+    try:
+        report = await build_report(city_scope=scope)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_append_confirm failed: {e}")
+        await callback.answer(_crash_text(0, 0), show_alert=True)
+        return
     if not report["ok"]:
         await callback.answer(f"❌ {report['error'] or 'таблица недоступна'}", show_alert=True)
         return
@@ -123,29 +146,48 @@ async def sheet_reconcile_append_go(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     scope, _label = await _admin_city_view(admin_id)
     await callback.answer("➕ Дописываю...")
-    result = await apply_append_missing(city_scope=scope)
-    if not result["ok"]:
-        await callback.message.edit_text(f"❌ {html_module.escape(str(result['error']))}")
-        return
+    result = None
+    try:
+        result = await apply_append_missing(city_scope=scope)
+        if not result["ok"]:
+            if result.get("crashed"):
+                text = _crash_text(result.get("done", 0), result.get("total", 0))
+            else:
+                text = f"❌ {html_module.escape(str(result['error']))}"
+            await callback.message.edit_text(text, parse_mode="HTML")
+            return
 
-    lines = [f"✅ Дописано: <b>{result['done']}</b>"]
-    if result["failed"]:
-        lines.append(f"Не удалось: <b>{len(result['failed'])}</b>")
-        for it in result["failed"][:10]:
-            tab = html_module.escape(_tab_label(it["tab"]))
-            reason = html_module.escape(str(it.get("reason") or "-"))
-            lines.append(f"  id {it['tid']} на «{tab}»: {reason}")
-        if len(result["failed"]) > 10:
-            lines.append(f"  …и ещё {len(result['failed']) - 10}")
-    kb = await _action_keyboard(admin_id, await build_report(city_scope=scope))
-    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+        lines = [f"✅ Дописано: <b>{result['done']}</b>"]
+        if result["failed"]:
+            lines.append(f"Не удалось: <b>{len(result['failed'])}</b>")
+            for it in result["failed"][:10]:
+                tab = html_module.escape(_tab_label(it["tab"]))
+                reason = html_module.escape(str(it.get("reason") or "-"))
+                lines.append(f"  id {it['tid']} на «{tab}»: {reason}")
+            if len(result["failed"]) > 10:
+                lines.append(f"  …и ещё {len(result['failed']) - 10}")
+        kb = await _action_keyboard(admin_id, await build_report(city_scope=scope))
+        await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        # Дописать успело до сбоя (сам apply_append_missing уже отловил бы это и вернул
+        # crashed=True — сюда попадает только сбой ПОСЛЕ успешного apply, например обновление
+        # клавиатуры повторным build_report; result тогда уже несёт настоящий done/total).
+        logger.error(f"sheet_reconcile_append_go failed: {e}")
+        done = result.get("done", 0) if result else 0
+        total = result.get("total", 0) if result else 0
+        await callback.message.edit_text(_crash_text(done, total), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "sheetrec_status_confirm")
 async def sheet_reconcile_status_confirm(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     scope, _label = await _admin_city_view(admin_id)
-    report = await build_report(city_scope=scope)
+    try:
+        report = await build_report(city_scope=scope)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_status_confirm failed: {e}")
+        await callback.answer(_crash_text(0, 0), show_alert=True)
+        return
     if not report["ok"]:
         await callback.answer(f"❌ {report['error'] or 'таблица недоступна'}", show_alert=True)
         return
@@ -173,19 +215,30 @@ async def sheet_reconcile_status_go(callback: types.CallbackQuery):
     admin_id = callback.from_user.id
     scope, _label = await _admin_city_view(admin_id)
     await callback.answer("🔄 Выправляю...")
-    result = await apply_fix_statuses(city_scope=scope)
-    if not result["ok"]:
-        await callback.message.edit_text(f"❌ {html_module.escape(str(result['error']))}")
-        return
+    result = None
+    try:
+        result = await apply_fix_statuses(city_scope=scope)
+        if not result["ok"]:
+            if result.get("crashed"):
+                text = _crash_text(result.get("done", 0), result.get("total", 0))
+            else:
+                text = f"❌ {html_module.escape(str(result['error']))}"
+            await callback.message.edit_text(text, parse_mode="HTML")
+            return
 
-    lines = [f"✅ Выправлено: <b>{result['done']}</b>"]
-    if result["failed"]:
-        lines.append(f"Не удалось: <b>{len(result['failed'])}</b>")
-        for it in result["failed"][:10]:
-            tab = html_module.escape(_tab_label(it["tab"]))
-            reason = html_module.escape(str(it.get("reason") or "-"))
-            lines.append(f"  id {it['tid']} на «{tab}»: {reason}")
-        if len(result["failed"]) > 10:
-            lines.append(f"  …и ещё {len(result['failed']) - 10}")
-    kb = await _action_keyboard(admin_id, await build_report(city_scope=scope))
-    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+        lines = [f"✅ Выправлено: <b>{result['done']}</b>"]
+        if result["failed"]:
+            lines.append(f"Не удалось: <b>{len(result['failed'])}</b>")
+            for it in result["failed"][:10]:
+                tab = html_module.escape(_tab_label(it["tab"]))
+                reason = html_module.escape(str(it.get("reason") or "-"))
+                lines.append(f"  id {it['tid']} на «{tab}»: {reason}")
+            if len(result["failed"]) > 10:
+                lines.append(f"  …и ещё {len(result['failed']) - 10}")
+        kb = await _action_keyboard(admin_id, await build_report(city_scope=scope))
+        await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_status_go failed: {e}")
+        done = result.get("done", 0) if result else 0
+        total = result.get("total", 0) if result else 0
+        await callback.message.edit_text(_crash_text(done, total), parse_mode="HTML")
