@@ -43,6 +43,32 @@ woff2 напрямую и корректно рендерит кириллицу
 «🔕 Не присылать сегодня» (`database.db.get_muted_today_ids`) — этот модуль поэтому явно
 добавлен во владельцы механизма «🔕» в
 `tests/test_broadcast_mute_system_isolation_260924.py::_ALLOWED_OWNERS`.
+
+Редизайн композиции (правка координатора 25.09, «делегат должен ЗАХОТЕТЬ поделиться в
+сторис, не отчёт»): одна крупная АКЦЕНТНАЯ цифра-герой (дней на форуме, а если дней нет —
+сессий) оранжевым `#F48924` — ЕДИНСТВЕННАЯ оранжевая деталь карточки, всё остальное синее/
+белое, чёрного нет вовсе. Остальные показатели — плашками в 2 колонки, раскладка адаптивна к
+их числу (1–5, последняя нечётная — во всю ширину, без дыр). Нулевые значения (проверено
+только у монет — `days`/`sessions`/`rank` и так `None` при нуле, см. `collect_stats`) на
+КАРТИНКЕ не показываются — `collect_stats` продолжает отличать «нет данных» от настоящего
+нуля для остальных потребителей (тест `test_collect_stats_coins_zero_after_debit_is_real_data_
+not_missing` не трогать), фильтр нуля — только в `render_card_sync`. Низ карточки — лого
+мероприятия (`miniapp_logo`, тот же download-приём, что фон) + строка «Юлид · Город, даты»
+(`_footer_line`/`_resolve_footer_parts`): город — свой (`cities.city_label_or_none`,
+переведённый через `services.i18n.tr` тем же `tr_map`, что и остальной делегатский текст —
+город УЖЕ зарегистрирован для перевода в `services.i18n_sources.city_texts`, в отличие от
+шести фиксированных подписей этого модуля выше), даты — окно форума
+`services.sos.sos_active_window(city)` (`forum_date` + `sos_active_days`), месяц — родительный
+падеж (RU) / «Month D» (EN), обе таблицы месяцев — код-литералы этого модуля (тот же довод, что
+`services.applications._MONTH_NAMES_GENITIVE`: своя копия, не импорт).
+
+«С нами с …» (сезон предыдущей регистрации) — сезонный код людям читаем ТОЛЬКО если это
+свободный текст `event_season`, который администратор сам вписал при открытии сезона
+(`season`/`prev_season` в `users` — снимок значения `event_season` НА МОМЕНТ регистрации,
+отдельной таблицы код -> человеческое имя в проекте нет). Строка скрывается, если `since`
+пуст ИЛИ совпадает (без учёта регистра/пробелов) с ТЕКУЩИМ `event_season` — это одновременно
+покрывает «текущий сезон» и «первый сезон» (у новичка `since` = его же `season`, который при
+регистрации всегда равен текущему `event_season`).
 """
 from __future__ import annotations
 
@@ -84,6 +110,27 @@ _FONT_VALUE = "miniapp/static/fonts/lato-700.woff2"
 # (handlers/admin_settings.py::PHOTO_FIELDS/settings_receive_photo).
 BACKGROUND_SETTING_KEY = "forum_stats_card_photo_file_id"
 
+# Лого мероприятия — общий ключ реестра Mini App (`settings_schema.SETTINGS_SCHEMA["miniapp_logo"]`,
+# type="photo"), второго ключа под карточку не заводим (см. докстринг модуля).
+LOGO_SETTING_KEY = "miniapp_logo"
+
+# Единственная оранжевая деталь карточки (координатор 25.09) — фиксированный бренд-акцент
+# АЙСЕК, НЕ цвет активного пресета Mini App (тот красит только фон-заглушку, см. `_brand_colors`).
+_ORANGE_HEX = "#F48924"
+
+# Месяцы для «30–31 октября» / «October 30–31» — код-литералы этого модуля, своя копия таблицы
+# (тот же довод, что `services.applications._MONTH_NAMES_GENITIVE`: dashboard/miniapp/services
+# исторически не делят модули друг с другом, здесь то же самое правило распространено на этот
+# модуль — подписи карточки уже код-литералы, см. докстринг).
+_MONTH_GENITIVE_RU = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+_MONTH_EN = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
 
 # ── Подписи (RU/EN код-литералы, см. докстринг модуля) ──────────────────────────────────────
 
@@ -91,7 +138,7 @@ _LABELS: dict[str, dict[str, str]] = {
     "ru": {
         "title": "Юлид в цифрах",
         "days": "Дней на форуме",
-        "sessions": "Сессий посетил(а)",
+        "sessions": "Сессий на форуме",
         "hall": "Любимый зал",
         "coins": "Монет заработано",
         "rank": "Место в рейтинге",
@@ -102,7 +149,7 @@ _LABELS: dict[str, dict[str, str]] = {
         # Бренд кириллицей и в EN-версии тоже (см. докстринг модуля) — не "YouLead in numbers".
         "title": "Юлид in numbers",
         "days": "Forum days",
-        "sessions": "Sessions attended",
+        "sessions": "Forum sessions",
         "hall": "Favorite hall",
         "coins": "Coins earned",
         "rank": "Leaderboard place",
@@ -153,8 +200,13 @@ async def collect_stats(user: dict) -> dict[str, Any]:
     rank_total = len(await get_leaderboard(10_000)) if rank is not None else None
 
     # «С нами с …» — лучшее доступное приближение: prev_season хранит только ОДИН шаг назад
-    # (database.db.finalize_registration), не полную историю сезонов делегата.
+    # (database.db.finalize_registration), не полную историю сезонов делегата. Скрываем, если
+    # пусто ИЛИ совпадает с текущим event_season (текущий/первый сезон — см. докстринг модуля).
     since = (user.get("prev_season") or user.get("season") or "").strip() or None
+    if since:
+        current_season = (await get_setting_typed("event_season") or "").strip()
+        if current_season and since.lower() == current_season.lower():
+            since = None
     name = (user.get("full_name") or "").strip() or None
 
     return {
@@ -210,6 +262,54 @@ async def sent_summary(city: str | None) -> dict:
     return await forum_stats_card_summary(season, city_scope=_cities.city_scope(city))
 
 
+def format_forum_dates(start, end, lang: str) -> str:
+    """«30–31 октября» (RU, родительный падеж) / «October 30–31» (EN) — окно форума `[start,
+    end]` включительно (`services.sos.sos_active_window`). Один день -> без диапазона (
+    «30 октября» / «October 30»); разные месяцы — оба месяца пишутся полностью («30 октября –
+    1 ноября» / «October 30 – November 1»). Чистая функция (без БД) — вызывающий сам достаёт
+    `start`/`end` через `_resolve_footer_parts`."""
+    if lang == "en":
+        months = _MONTH_EN
+        if start == end:
+            return f"{months[start.month - 1]} {start.day}"
+        if start.month == end.month:
+            return f"{months[start.month - 1]} {start.day}–{end.day}"
+        return f"{months[start.month - 1]} {start.day} – {months[end.month - 1]} {end.day}"
+    months = _MONTH_GENITIVE_RU
+    if start == end:
+        return f"{start.day} {months[start.month - 1]}"
+    if start.month == end.month:
+        return f"{start.day}–{end.day} {months[end.month - 1]}"
+    return f"{start.day} {months[start.month - 1]} – {end.day} {months[end.month - 1]}"
+
+
+def _footer_line(city_label_text: str | None, date_range_text: str | None) -> str:
+    """«Юлид · Москва, 30–31 октября» (координатор 25.09) — бренд ВСЕГДА, город/даты — только
+    если реально известны (пропущенная часть просто не попадает в строку, без пустых «, »)."""
+    tail_parts = [p for p in (city_label_text, date_range_text) if p]
+    tail = ", ".join(tail_parts)
+    return f"Юлид · {tail}" if tail else "Юлид"
+
+
+async def _resolve_footer_parts(
+    city: str | None, lang: str, tr_map: dict[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    """Город делегата (переведённый тем же `tr_map`, что остальной делегатский текст — см.
+    докстринг модуля) + даты форума этого города — единственная точка, где рендер карточки
+    трогает БД/сеть за пределами `collect_stats`/фона/лого, поэтому вызывается из async-кода
+    ДО `render_card_sync` (чистая синхронная функция)."""
+    from cities import city_label_or_none
+    from services import i18n as i18n_service
+    from services import sos as sos_service
+
+    label = await city_label_or_none(city)
+    if label:
+        label = i18n_service.tr(label, lang, tr_map or {})
+    window = await sos_service.sos_active_window(city)
+    date_text = format_forum_dates(window[0], window[1], lang) if window else None
+    return label, date_text
+
+
 # ── Рендер (Pillow, синхронный ядро в asyncio.to_thread) ────────────────────────────────────
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -236,12 +336,38 @@ def _truncate(draw, text: str, font, max_width: int) -> str:
     return (text[:lo].rstrip() + ellipsis) if lo < len(text) else text
 
 
+def _fit_font(draw, text: str, font_path: str, start_size: int, min_size: int, max_width: int):
+    """Герой-цифра — редкий, но не невозможный случай трёхзначного числа сессий: уменьшаем
+    кегль шагом 10, пока строка не влезет, вместо обрезки многоточием (обрезанная крупная
+    цифра — самое заметное, что может сломаться на шеринговой картинке)."""
+    from PIL import ImageFont
+
+    size = start_size
+    while size > min_size:
+        font = ImageFont.truetype(font_path, size)
+        if draw.textlength(text, font=font) <= max_width:
+            return font
+        size -= 10
+    return ImageFont.truetype(font_path, min_size)
+
+
 def render_card_sync(
     stats: dict[str, Any], background_bytes: bytes | None, lang: str, accent_hex: str,
+    *,
+    logo_bytes: bytes | None = None,
+    city_label_text: str | None = None,
+    date_range_text: str | None = None,
 ) -> bytes:
     """Чистая (без БД/сети) синхронная функция — единственная, что зовёт `asyncio.to_thread`.
-    Никогда не падает на длинном имени/пустых данных/отсутствующем фоне (см. докстринг
-    модуля) — недостающие строки просто не рисуются, длинные — обрезаются `_truncate`."""
+    Никогда не падает на длинном имени/пустых данных/отсутствующем фоне/лого (см. докстринг
+    модуля) — недостающие строки просто не рисуются, длинные — обрезаются `_truncate`.
+
+    Композиция (координатор 25.09): заголовок+имя -> герой-цифра (дни, а если дней нет —
+    сессии) ЕДИНСТВЕННЫМ оранжевым `_ORANGE_HEX` элементом карточки -> остальные показатели
+    плашками в 2 колонки (нулевые/пустые пропускаются, последняя нечётная плашка — во всю
+    ширину) -> футер, ПРИЖАТЫЙ К НИЗУ независимо от объёма контента выше (`footer_y = max(...)`)
+    — нижняя треть карточки поэтому никогда не пустует: лого мероприятия (если задано) + строка
+    `_footer_line`."""
     from PIL import Image, ImageDraw, ImageFont, ImageOps
 
     labels = label_set(lang)
@@ -265,68 +391,158 @@ def render_card_sync(
     img = Image.alpha_composite(base.convert("RGBA"), overlay)
     draw = ImageDraw.Draw(img)
 
-    title_font = ImageFont.truetype(_FONT_TITLE, 74)
-    name_font = ImageFont.truetype(_FONT_TITLE, 50)
-    label_font = ImageFont.truetype(_FONT_LABEL, 32)
-    value_font = ImageFont.truetype(_FONT_VALUE, 52)
+    title_font = ImageFont.truetype(_FONT_TITLE, 66)
+    name_font = ImageFont.truetype(_FONT_TITLE, 42)
+    label_font = ImageFont.truetype(_FONT_LABEL, 28)
+    value_font = ImageFont.truetype(_FONT_VALUE, 40)
+    hero_caption_font = ImageFont.truetype(_FONT_LABEL, 34)
+    footer_font = ImageFont.truetype(_FONT_LABEL, 30)
 
     white = (255, 255, 255, 255)
     muted_white = (255, 255, 255, 205)
+    orange = _hex_to_rgb(_ORANGE_HEX) + (255,)
     pad = 72
     content_width = width - 2 * pad
 
     y = 96
-    draw.text((pad, y), _truncate(draw, labels["title"], title_font, content_width), font=title_font, fill=white)
-    y += 108
+    title_text = _truncate(draw, labels["title"], title_font, content_width)
+    draw.text((pad, y), title_text, font=title_font, fill=white)
+    y = draw.textbbox((pad, y), title_text, font=title_font)[3] + 26
 
     name = stats.get("name")
     if name:
-        draw.text((pad, y), _truncate(draw, str(name), name_font, content_width), font=name_font, fill=white)
-        y += 78
+        name_text = _truncate(draw, str(name), name_font, content_width)
+        draw.text((pad, y), name_text, font=name_font, fill=white)
+        y = draw.textbbox((pad, y), name_text, font=name_font)[3] + 24
 
-    y += 36
+    content_start = y  # верх зоны героя/плашек — низ шапки (заголовок + имя)
 
+    # ── герой: единственная крупная цифра карточки — дни, а если дней нет, сессии ──
+    hero_key = "days" if stats.get("days") else ("sessions" if stats.get("sessions") else None)
+    remaining_keys = [k for k in ("days", "sessions", "hall", "coins", "rank", "since") if k != hero_key]
+
+    # ── плашки: всё, кроме героя, пустого и нуля (координатор 25.09: ноль на шеринговой
+    # картинке не показываем, хотя collect_stats честно отличает 0 от «нет данных» — см.
+    # докстринг модуля), 2 колонки, последняя нечётная — во всю ширину ──
     rows: list[tuple[str, str]] = []
-    if stats.get("days"):
-        rows.append((labels["days"], str(stats["days"])))
-    if stats.get("sessions"):
-        rows.append((labels["sessions"], str(stats["sessions"])))
-    if stats.get("hall"):
-        rows.append((labels["hall"], str(stats["hall"])))
-    if stats.get("coins") is not None:
-        rows.append((labels["coins"], str(stats["coins"])))
-    if stats.get("rank"):
-        rank_text = labels["rank_fmt"].format(rank=stats["rank"], total=stats.get("rank_total") or "—")
-        rows.append((labels["rank"], rank_text))
-    if stats.get("since"):
-        rows.append((labels["since"], str(stats["since"])))
+    for key in remaining_keys:
+        value = stats.get(key)
+        if not value:
+            continue
+        if key == "rank":
+            rank_text = labels["rank_fmt"].format(rank=value, total=stats.get("rank_total") or "—")
+            rows.append((labels["rank"], rank_text))
+        else:
+            rows.append((labels[key], str(value)))
 
-    row_height = 130
-    row_gap = 22
-    # Плашки — отдельным слоем с альфа-смешиванием: ImageDraw на RGBA не смешивает, а
-    # заменяет пиксели, и полупрозрачная заливка превращалась в сплошной чёрный прямоугольник.
-    cards = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    cards_draw = ImageDraw.Draw(cards)
-    cy = y
-    for _ in rows:
-        cards_draw.rounded_rectangle(
-            (pad, cy, width - pad, cy + row_height), radius=28, fill=(255, 255, 255, 34),
-        )
-        cy += row_height + row_gap
-    img = Image.alpha_composite(img, cards)
-    draw = ImageDraw.Draw(img)
-    for label_text, value_text in rows:
-        draw.text((pad + 32, y + 20), _truncate(draw, label_text, label_font, content_width - 64), font=label_font, fill=muted_white)
-        draw.text((pad + 32, y + 60), _truncate(draw, value_text, value_font, content_width - 64), font=value_font, fill=white)
-        y += row_height + row_gap
+    # ── футер: геометрия считается ДО героя/плашек — прижат к низу карточки константным
+    # отступом, героя/плашки размещаем ВЫШЕ него (а не «сверху вниз, что получится»), поэтому
+    # нижняя треть никогда не пустует даже при минимуме данных (координатор 25.09) ──
+    footer_text = _footer_line(city_label_text, date_range_text)
+    footer_bbox = draw.textbbox((0, 0), footer_text, font=footer_font)
+    footer_h = footer_bbox[3] - footer_bbox[1]
+
+    logo_img = None
+    if logo_bytes:
+        try:
+            logo_img = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
+            max_h, max_w = 120, content_width
+            ratio = min(max_h / logo_img.height, max_w / logo_img.width, 1.0)
+            new_size = (max(1, round(logo_img.width * ratio)), max(1, round(logo_img.height * ratio)))
+            logo_img = logo_img.resize(new_size, Image.LANCZOS)
+        except Exception as e:
+            logger.error(f"forum_stats_card.render_card_sync: не удалось открыть лого ({e}) — карточка без лого")
+            logo_img = None
+    logo_gap = 24
+    logo_block_h = (logo_img.height + logo_gap) if logo_img is not None else 0
+    footer_top = height - 88 - footer_h - logo_block_h  # верх (лого +) строки футера
+
+    if hero_key:
+        hero_text = str(stats[hero_key])
+        hero_font = _fit_font(draw, hero_text, _FONT_TITLE, 230, 120, content_width)
+        hero_num_h = draw.textbbox((0, 0), hero_text, font=hero_font)[3]
+        caption_text = _truncate(draw, labels[hero_key], hero_caption_font, content_width)
+        cap_h = draw.textbbox((0, 0), caption_text, font=hero_caption_font)[3]
+        hero_block_h = hero_num_h + 6 + cap_h
+
+        if rows:
+            # Есть плашки — герой сразу под шапкой, дальше плашки, как раньше.
+            hero_y = content_start + 10
+        else:
+            # Плашек нет (мало данных) — герой ЦЕНТРИРУЕТСЯ в зоне между шапкой и футером,
+            # чтобы единственная цифра не терялась в пустоте (правка после самопросмотра
+            # min-примера: герой прижатый к шапке при пустой середине карточки выглядел
+            # незаконченным).
+            available = max(hero_block_h, footer_top - 40 - content_start)
+            hero_y = content_start + max(10, (available - hero_block_h) // 2)
+
+        draw.text((pad, hero_y), hero_text, font=hero_font, fill=orange)
+        draw.text((pad, hero_y + hero_num_h + 6), caption_text, font=hero_caption_font, fill=muted_white)
+        y = hero_y + hero_block_h + 48
+    else:
+        y = content_start + 20
+
+    if rows:
+        gap = 24
+        tile_w = (content_width - gap) // 2
+        tile_h = 140
+        n = len(rows)
+        positions: list[tuple[int, int, int, int]] = []
+        for i in range(n):
+            row = i // 2
+            alone = (i == n - 1) and (n % 2 == 1)
+            if alone:
+                x0, x1 = pad, width - pad
+            else:
+                col = i % 2
+                x0 = pad + col * (tile_w + gap)
+                x1 = x0 + tile_w
+            y0 = y + row * (tile_h + gap)
+            y1 = y0 + tile_h
+            positions.append((x0, y0, x1, y1))
+
+        # Плашки — отдельным слоем с альфа-смешиванием: ImageDraw на RGBA не смешивает, а
+        # заменяет пиксели, и полупрозрачная заливка превращалась в сплошной чёрный
+        # прямоугольник (commit 8153797 — не регрессировать).
+        cards = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        cards_draw = ImageDraw.Draw(cards)
+        for x0, y0, x1, y1 in positions:
+            cards_draw.rounded_rectangle((x0, y0, x1, y1), radius=26, fill=(255, 255, 255, 34))
+        img = Image.alpha_composite(img, cards)
+        draw = ImageDraw.Draw(img)
+
+        for (label_text, value_text), (x0, y0, x1, y1) in zip(rows, positions):
+            inner_w = (x1 - x0) - 64
+            draw.text((x0 + 32, y0 + 20), _truncate(draw, label_text, label_font, inner_w), font=label_font, fill=muted_white)
+            draw.text((x0 + 32, y0 + 58), _truncate(draw, value_text, value_font, inner_w), font=value_font, fill=white)
+        rows_count = (n + 1) // 2
+        y = y + rows_count * (tile_h + gap)
+
+    # Контента оказалось больше, чем в среднем случае (герой + 5 плашек мелким шрифтом) —
+    # футер сдвигается вниз вслед за контентом, а не наезжает на него (fail-soft край).
+    footer_top = max(footer_top, y)
+
+    if logo_img is not None:
+        logo_x = pad + (content_width - logo_img.width) // 2
+        img.alpha_composite(logo_img, (logo_x, footer_top))
+        draw = ImageDraw.Draw(img)
+        footer_y = footer_top + logo_img.height + logo_gap
+    else:
+        footer_y = footer_top
+
+    footer_x = pad + (content_width - (footer_bbox[2] - footer_bbox[0])) // 2
+    draw.text((footer_x, footer_y), footer_text, font=footer_font, fill=muted_white)
 
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="PNG", optimize=True)
     return buf.getvalue()
 
 
-async def _load_background_bytes() -> bytes | None:
-    file_id = await get_setting(BACKGROUND_SETTING_KEY)
+async def _download_setting_file(setting_key: str, *, purpose: str) -> bytes | None:
+    """Общий download-приём фона/лого — оба ключи реестра типа `"photo"`, скачиваются тем же
+    путём (`bot.get_file` -> `bot.download_file`). `purpose` — только для лога, чтобы отличить
+    сбой фона от сбоя лого."""
+    file_id = await get_setting(setting_key)
     if not file_id:
         return None
     bot = _sched._bot
@@ -338,8 +554,16 @@ async def _load_background_bytes() -> bytes | None:
         await bot.download_file(file.file_path, destination=buf)
         return buf.getvalue()
     except Exception as e:
-        logger.error(f"forum_stats_card: не удалось скачать фон ({e}) — однотонный фон бренда")
+        logger.error(f"forum_stats_card: не удалось скачать {purpose} ({e}) — карточка без него")
         return None
+
+
+async def _load_background_bytes() -> bytes | None:
+    return await _download_setting_file(BACKGROUND_SETTING_KEY, purpose="фон")
+
+
+async def _load_logo_bytes() -> bytes | None:
+    return await _download_setting_file(LOGO_SETTING_KEY, purpose="лого")
 
 
 async def _brand_colors() -> str:
@@ -363,10 +587,16 @@ _PREVIEW_STATS: dict[str, Any] = {
 }
 
 
-async def render_preview(lang: str = "ru") -> bytes:
+async def render_preview(lang: str = "ru", city: str | None = None) -> bytes:
     background = await _load_background_bytes()
+    logo = await _load_logo_bytes()
     accent = await _brand_colors()
-    return await asyncio.to_thread(render_card_sync, _PREVIEW_STATS, background, lang, accent)
+    render_lang = "en" if lang == "en" else "ru"
+    city_label_text, date_range_text = await _resolve_footer_parts(city, render_lang)
+    return await asyncio.to_thread(
+        render_card_sync, _PREVIEW_STATS, background, lang, accent,
+        logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
+    )
 
 
 # ── Рассылка (идемпотентная, захват двойного тапа, тихие часы + «🔕» — см. докстринг) ───────
@@ -409,14 +639,20 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         from services import quiet_hours
         from cities import get_setting_typed_for_city
 
-        # Фон/акцент читаются ОДИН раз на всю рассылку (не на каждого делегата) — фон качается
+        # Фон/лого/акцент читаются ОДИН раз на всю рассылку (не на каждого делегата) — качаются
         # из Telegram один раз, а не N раз подряд.
         background = await _load_background_bytes()
+        logo = await _load_logo_bytes()
         accent = await _brand_colors()
         caption_base = await get_setting_typed_for_city("forum_stats_card_caption_text", city)
 
         now = msk_now()
         muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
+
+        # Город/даты футера кэшируются по (город делегата, язык рендера) — в рассылке «всем
+        # городам» (city=None) у делегатов РАЗНЫЙ event_city, поэтому кэш не по city-параметру
+        # функции, а по фактическому городу каждого получателя.
+        footer_cache: dict[tuple[str | None, str], tuple[str | None, str | None]] = {}
 
         sent = failed = quiet_n = muted_n = 0
         for user in targets:
@@ -431,7 +667,15 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
                 lang, tr_map = await i18n_service.context(tid)
                 render_lang = "en" if lang == "en" else "ru"
                 stats = await collect_stats(user)
-                png = await asyncio.to_thread(render_card_sync, stats, background, render_lang, accent)
+                recipient_city = user.get("event_city")
+                cache_key = (recipient_city, render_lang)
+                if cache_key not in footer_cache:
+                    footer_cache[cache_key] = await _resolve_footer_parts(recipient_city, render_lang, tr_map)
+                city_label_text, date_range_text = footer_cache[cache_key]
+                png = await asyncio.to_thread(
+                    render_card_sync, stats, background, render_lang, accent,
+                    logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
+                )
                 caption = reg_i18n.tr_fmt(caption_base, lang, tr_map, name=stats.get("name") or "")
             except Exception as e:
                 logger.error(f"forum_stats_card.send_broadcast: build for {tid} failed: {e}")
