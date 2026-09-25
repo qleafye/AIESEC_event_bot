@@ -1037,7 +1037,13 @@ async def post_finalize(
         # путь менеджера — services/applications.py/admin_moderation.py). Делегат читает
         # «заявка принята», а не «прошёл отбор» — отбора не было. Покрывает и чат, и Mini App
         # (submit из приложения приходит сюда же через outbox reg_finalized).
-        await approve_user(bot, telegram_id, auto_approved=True)
+        send_err = await approve_user(bot, telegram_id, auto_approved=True)
+        # Учёт доставки и для автоодобрения на подаче — мимо apply_decision_effects: именно
+        # этот путь дал 38 одобренных без письма (инцидент 06.09), «Сверить с БД» должна их видеть.
+        from services.application_effects import _record_delivery_fail_soft
+        await _record_delivery_fail_soft(
+            telegram_id, "approved", "failed" if send_err else "delivered", send_err,
+        )
 
 
 async def derive_edit_facts(telegram_id: int, full: dict) -> tuple[list, bool, bool]:
