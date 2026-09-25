@@ -77,20 +77,36 @@ def _retry_delay(retry_after: int) -> int:
     return retry_after + 1
 
 
-async def _flush_journal(broadcast_id, journal: list, final: bool = False) -> None:
+# Потолок буфера журнала: если БД не принимает записи, буфер не растёт бесконечно.
+_JOURNAL_MAX_BUFFER = 200
+
+
+async def _flush_journal(broadcast_id, journal: list, state: dict, final: bool = False) -> None:
     """Пишет накопленные строки журнала и очищает буфер. Сбой записи не роняет рассылку:
-    строки остаются в буфере до следующей попытки, в конце прогона — ошибка в лог."""
+    после ПЕРВОГО сбоя строки остаются в буфере до следующей пачки. Если сбой повторился
+    подряд, буфер перерос `_JOURNAL_MAX_BUFFER` или это последняя попытка в конце прогона —
+    строки выбрасываются с `logger.error`: копить их дальше бессмысленно, а лог — единственное
+    место, где видно, что отзыв этой рассылки будет неполным. `state["failures"]` — счётчик
+    сбоев подряд, общий на прогон."""
     if not journal:
         return
     try:
         await record_broadcast_deliveries(list(journal))
     except Exception as e:
+        state["failures"] = state.get("failures", 0) + 1
         logger.error(
-            "broadcast %s: не удалось записать журнал доставки (%s строк%s): %s: %s",
-            broadcast_id, len(journal), ", последняя попытка" if final else "",
-            type(e).__name__, e,
+            "broadcast %s: не удалось записать журнал доставки — %s строк не записано "
+            "(сбой подряд №%s): %s: %s",
+            broadcast_id, len(journal), state["failures"], type(e).__name__, e,
         )
+        if final or state["failures"] >= 2 or len(journal) > _JOURNAL_MAX_BUFFER:
+            logger.error(
+                "потеряно %s строк журнала рассылки #%s — «Удалить у получателей» их не достанет",
+                len(journal), broadcast_id,
+            )
+            journal.clear()
         return
+    state["failures"] = 0
     journal.clear()
 
 
@@ -113,6 +129,7 @@ async def run_broadcast(
     stopped = False
     last_progress_ts = time.monotonic()
     journal: list[tuple[int, int, int, str]] = []
+    journal_state: dict = {"failures": 0}
     last_flush_ts = time.monotonic()
 
     # Одно соединение на весь прогон для записей журнала; коммит каждой пачки сразу — между
@@ -160,7 +177,7 @@ async def run_broadcast(
                         len(journal) >= _JOURNAL_FLUSH_EVERY_N
                         or time.monotonic() - last_flush_ts >= _JOURNAL_FLUSH_EVERY_S
                     ):
-                        await _flush_journal(broadcast_id, journal)
+                        await _flush_journal(broadcast_id, journal, journal_state)
                         last_flush_ts = time.monotonic()
                 else:
                     blocked += 1
@@ -178,7 +195,7 @@ async def run_broadcast(
                     except Exception:
                         pass
         finally:
-            await _flush_journal(broadcast_id, journal, final=True)
+            await _flush_journal(broadcast_id, journal, journal_state, final=True)
 
     status = "stopped" if stopped else "done"
     await finish_broadcast(broadcast_id, status, delivered, blocked, mute_skipped)
