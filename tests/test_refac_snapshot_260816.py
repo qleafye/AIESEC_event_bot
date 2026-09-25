@@ -1304,6 +1304,12 @@ admin|callback_query|regreset_apply|regreset_apply:*
 admin|callback_query|regreset_cancel|regreset_cancel:*
 admin|callback_query|resumerep_start|resumerep_start:*
 admin|callback_query|resumerep_cancel|resumerep_cancel:*
+admin|callback_query|sheet_reconcile_open|admin_sheet_reconcile
+admin|callback_query|sheet_reconcile_csv|sheetrec_csv
+admin|callback_query|sheet_reconcile_append_confirm|sheetrec_append_confirm
+admin|callback_query|sheet_reconcile_append_go|sheetrec_append_go
+admin|callback_query|sheet_reconcile_status_confirm|sheetrec_status_confirm
+admin|callback_query|sheet_reconcile_status_go|sheetrec_status_go
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1904,7 +1910,15 @@ def test_snapshot_total_handler_count_is_292():
     # после regreset_cancel и ПЕРЕД prog_fbday_open (та же точка регистрации, что у
     # regreset_* выше). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистых
     # вставки (3 строки + 2 строки), 0 удалений, 0 реордеров (849 -> 854).
-    assert len(GOLDEN_SNAPSHOT) == 854
+    # Phase 33 (delegate-card admin actions, «Сверить с БД», 26.09): шесть
+    # callback_query-хендлеров нового шва handlers/admin_sheet_reconcile.py
+    # (sheet_reconcile_open/sheet_reconcile_csv/sheet_reconcile_append_confirm/
+    # sheet_reconcile_append_go/sheet_reconcile_status_confirm/sheet_reconcile_status_go)
+    # встали сразу после resumerep_cancel и ПЕРЕД prog_fbday_open — та же точка регистрации,
+    # что у regreset_*/resumerep_* выше (модуль импортирован в самом хвосте handlers/admin.py,
+    # сразу после admin_resume_replace). Пересчитано RUNNING `_build_snapshot_lines()`, difflib:
+    # одна чистая вставка (6 строк), 0 удалений, 0 реордеров (854 -> 860).
+    assert len(GOLDEN_SNAPSHOT) == 860
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

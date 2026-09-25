@@ -60,6 +60,9 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📊 Опросы", "admin_polls"),  # рядом с рассылками: та же аудитория, то же право
     ("🔄 Синхронизация таблицы", "admin_sync_sheet"),
     ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
+    # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс операции, что
+    # соседние две строки выше (handlers/admin_sheet_reconcile.py).
+    ("🔍 Сверить с БД", "admin_sheet_reconcile"),
     ("🧹 Убрать дубли из таблицы", "admin_dedupe_sheet"),
     ("⚙️ Настройки форума", "admin_settings"),
     ("📖 Справка по настройкам", "admin_settings_guide"),

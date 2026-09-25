@@ -632,6 +632,12 @@ ADMIN_CAPS: dict[str, str] = {
     # список тумблеров раздела «🔧 Управление» — та же капа, что у «🌙 Тихие часы» выше.
     "toggle_chat_tracking_enabled": "settings",
     "admin_sync_sheet": "settings",
+    # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс экрана, что
+    # «🔄 Синхронизация»/«♻️ Пересобрать таблицу» выше (handlers/admin_sheet_reconcile.py, всё
+    # callback-пространство sheetrec_*: sheetrec_csv/sheetrec_append_confirm/sheetrec_append_go/
+    # sheetrec_status_confirm/sheetrec_status_go).
+    "admin_sheet_reconcile": "settings",
+    "sheetrec_*": "settings",
     # Quick 260902-vth: «🕓 Журналы в таблицу» — та же капа, что «🔄 Синхронизация таблицы».
     "sheet_logs_open": "settings",
     "sheet_logs_autosync_toggle": "settings",
