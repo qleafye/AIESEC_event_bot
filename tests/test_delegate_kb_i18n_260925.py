@@ -2,7 +2,8 @@
 
 Приёмка 25.09: EN-делегат получал «✅ Сохранил, открывается» под QR, «🚶 Уже еду / 😔 Не смогу
 прийти / 📍 Я на месте» под шаблоном «Не пришёл» и «✍️ Написать» после оценки сессии — перевод
-в словаре был (или не был), но клавиатуры строились без языка получателя.
+в словаре был (или не был), но клавиатуры строились без языка получателя. Плюс догонялка
+брошенной анкеты: текст и обе кнопки уходили по-русски.
 
 (а) построители клавиатур для EN-получателя дают английские подписи, для RU — русские;
 (б) статический сторож: в модулях, которые шлют делегату из джоб/рассылок (там нет шва
@@ -52,6 +53,24 @@ def test_session_feedback_comment_button_english():
     from services import session_feedback as sf
     assert _texts(sf.comment_offer_keyboard(7, "en", _TR_MAP)) == ["✍️ Write a comment"]
     assert _texts(sf.comment_offer_keyboard(7)) == ["✍️ Написать"]
+
+
+def test_nudge_keyboard_english():
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from services import scheduler
+    from settings_schema import SETTINGS_SCHEMA
+
+    chat = SETTINGS_SCHEMA["reg_nudge_chat_button_text"]["default"]
+    app = SETTINGS_SCHEMA["reg_nudge_app_button_text"]["default"]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=chat, url="https://t.me/x?start=continue")],
+        [InlineKeyboardButton(text=app, url="https://example.org/app")],
+    ])
+    out = scheduler._tr_markup(kb, "en", _TR_MAP)
+    assert _texts(out) == [FORM_DEFAULT_EN[chat], FORM_DEFAULT_EN[app]]
+    assert scheduler._tr_markup(kb, "ru", _TR_MAP) is kb
+    nudge = SETTINGS_SCHEMA["nudge_text"]["default"]
+    assert i18n.tr(nudge, "en", _TR_MAP) == FORM_DEFAULT_EN[nudge]
 
 
 def test_context_cached_loads_map_once_per_language(monkeypatch):
