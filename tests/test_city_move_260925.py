@@ -820,12 +820,24 @@ class _FakeMessage:
         self.edits.append((text, reply_markup))
 
 
+class _FakeBot:
+    def __init__(self, *, fail_send=False):
+        self.sent = []  # (chat_id, text)
+        self._fail_send = fail_send
+
+    async def send_message(self, chat_id, text, **kwargs):
+        if self._fail_send:
+            raise RuntimeError("делегат заблокировал бота (тест)")
+        self.sent.append((chat_id, text))
+
+
 class _FakeCallback:
-    def __init__(self, data, user_id):
+    def __init__(self, data, user_id, *, bot=None):
         self.data = data
         self.from_user = _FakeUser(user_id)
         self.message = _FakeMessage()
         self.answers = []
+        self.bot = bot if bot is not None else _FakeBot()
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
@@ -888,8 +900,11 @@ def test_citymove_pick_shows_track_unsupported_warning(tmp_path, monkeypatch):
     assert "нет анкеты" in text
     assert "останется с треком" in text
     buttons = _cbs(kb)
-    assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}" in buttons
-    assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_TO_MODERATION}" in buttons
+    # Дефолт тумблера «🔔 Сообщить делегату» — «да» (_NOTIFY_ON), состояние едет в callback_data
+    # обеих кнопок применения.
+    assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_ON}" in buttons
+    assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_TO_MODERATION}:{admin_city_move._NOTIFY_ON}" in buttons
+    assert any(b and b.startswith("citymv_notify:") for b in buttons)
 
 
 def test_citymove_pick_denies_forged_destination_out_of_scope(tmp_path):
@@ -921,15 +936,123 @@ def test_citymove_apply_executes_move_and_reports_result(tmp_path, monkeypatch):
         new_tab = await _resolve_tabs("msk", "short")
         store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
         store.seed(new_tab, [])
-        cb = _FakeCallback(f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}", SUPERADMIN_ID)
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_OFF}",
+            SUPERADMIN_ID,
+        )
         await admin_city_move.citymove_apply(cb)
         return cb
 
     cb = _run(scenario())
     text, kb = cb.message.edits[0]
     assert "переведён" in text
+    assert "город — Москва" in text  # падеж: «переведён(а): город — Москва», не «в Москва»
+    assert "users" not in text  # T-33: имя таблицы БД не для человека
     user = _run(db.get_user(DELEGATE_ID))
     assert user["event_city"] == "msk"
+
+
+def test_citymove_apply_notifies_delegate_when_toggle_on(tmp_path, monkeypatch):
+    """Тумблер «🔔 Сообщить делегату» = да -> делегат получает текст из
+    `city_move_delegate_notice_text` с названием НОВОГО города, подставленным после перевода."""
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_ON}",
+            SUPERADMIN_ID,
+        )
+        await admin_city_move.citymove_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert len(cb.bot.sent) == 1
+    chat_id, text = cb.bot.sent[0]
+    assert chat_id == DELEGATE_ID
+    assert "Москва" in text
+    edit_text, _kb = cb.message.edits[0]
+    assert "не удалось" not in edit_text
+
+
+def test_citymove_apply_notify_off_sends_nothing(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_OFF}",
+            SUPERADMIN_ID,
+        )
+        await admin_city_move.citymove_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.bot.sent == []
+
+
+def test_citymove_apply_notify_failure_does_not_block_move(tmp_path, monkeypatch):
+    """Делегат заблокировал бота -- перевод уже применён, откатывать его из-за недоставленного
+    уведомления нельзя; менеджер видит явное «не удалось»."""
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_ON}",
+            SUPERADMIN_ID,
+            bot=_FakeBot(fail_send=True),
+        )
+        await admin_city_move.citymove_apply(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _kb = cb.message.edits[0]
+    assert "не удалось" in text
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["event_city"] == "msk"  # перевод применился, несмотря на сбой уведомления
+
+
+def test_citymove_notify_toggle_flips_state_and_redraws(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb")
+        cb = _FakeCallback(
+            f"citymv_notify:{DELEGATE_ID}:msk:{admin_city_move._NOTIFY_OFF}", SUPERADMIN_ID,
+        )
+        await admin_city_move.citymove_notify_toggle(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, kb = cb.message.edits[0]
+    buttons = _cbs(kb)
+    # Тумблер перерисован в состояние "нет" — кнопки применения несут его дальше.
+    assert f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_OFF}" in buttons
+    assert any(
+        b and b.startswith("citymv_notify:") and b.endswith(f":{admin_city_move._NOTIFY_ON}")
+        for b in buttons
+    )
 
 
 def test_citymove_apply_denies_forged_old_city_out_of_scope(tmp_path, monkeypatch):
@@ -941,7 +1064,10 @@ def test_citymove_apply_denies_forged_old_city_out_of_scope(tmp_path, monkeypatc
         await _enable_cities_module()
         await _setup_bound_staff()
         await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
-        cb = _FakeCallback(f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}", BOUND_MSK_ID)
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_OFF}",
+            BOUND_MSK_ID,
+        )
         await admin_city_move.citymove_apply(cb)
         return cb
 

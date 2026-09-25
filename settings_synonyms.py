@@ -738,6 +738,10 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "volunteer_invite_already_has_access_text": [
         "волонтёр уже с доступом", "повторный переход по приглашению",
     ],
+    # ── Phase 33 (delegate-card admin actions): «🏙 Перевести в город» ────────────────────
+    "city_move_delegate_notice_text": [
+        "сообщение делегату о переводе в город", "текст после перевода в другой город",
+    ],
 }
 
 

@@ -16,14 +16,17 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import city_codes, city_label, cities_module_on, get_city, normalize_city
 from database.db import get_user
+from handlers import reg_i18n
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed
+from services import i18n as i18n_service
 from services.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
     move_user_city,
     preview_city_move,
 )
+from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,12 @@ _STATUS_LABELS = {
     "pending": "⏳ На рассмотрении", "approved": "✅ Одобрена", "rejected": "❌ Отклонена",
     "waitlist": "📋 Лист ожидания",
 }
+
+# Тумблер «🔔 Сообщить делегату» на экране подтверждения — состояние едет в callback_data
+# (FSM тут не заведена, экран одношаговый), дефолт «да». Перепроверяется на КАЖДОМ шаге,
+# как и коды городов (callback_data подделываема).
+_NOTIFY_ON = "1"
+_NOTIFY_OFF = "0"
 
 
 def _track_label(participant_type: str | None) -> str:
@@ -50,6 +59,24 @@ def _status_label(status: str | None) -> str:
 
 def _parse_tid(raw: str) -> int | None:
     return int(raw) if raw.isascii() and raw.lstrip("-").isdigit() else None
+
+
+async def _notify_delegate(bot, tid: int, city_label_plain: str) -> bool:
+    """Личное сообщение делегату о переводе, `city_move_delegate_notice_text` (группа "reg",
+    переводится корпусом). Сбой (делегат заблокировал бота, сеть) — fail-soft: сам перевод
+    уже применён и откатывать его из-за недоставленного уведомления нельзя, вызывающий сам
+    решает, что сказать менеджеру."""
+    try:
+        template = await get_setting_typed("city_move_delegate_notice_text")
+        if not (template or "").strip():
+            return False
+        lang, tr_map = await i18n_service.context(tid)
+        text = reg_i18n.tr_fmt(template, lang, tr_map, city=city_label_plain)
+        await bot.send_message(tid, text)
+        return True
+    except Exception as e:
+        logger.warning("admin_city_move._notify_delegate(%s): %s", tid, e, exc_info=True)
+        return False
 
 
 @router.callback_query(F.data.startswith("citymv_start:"))
@@ -94,36 +121,19 @@ async def citymove_start(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("citymv_pick:"))
-async def citymove_pick_city(callback: types.CallbackQuery):
-    parts = callback.data.split(":")
-    if len(parts) != 3:
-        await callback.answer("Неизвестная кнопка", show_alert=True)
-        return
-    tid = _parse_tid(parts[1])
-    code = parts[2]
-    if tid is None:
-        await callback.answer("Неизвестная кнопка", show_alert=True)
-        return
-    user = await get_user(tid)
-    if user is None:
-        await callback.answer(_NOT_FOUND_ALERT, show_alert=True)
-        return
-    if get_city(code) is None:
-        await callback.answer("Такого города нет.", show_alert=True)
-        return
+def _notify_toggle_button(tid: int, code: str, notify: str) -> InlineKeyboardButton:
+    is_on = notify == _NOTIFY_ON
+    label = "🔔 Сообщить делегату: да" if is_on else "🔕 Сообщить делегату: нет"
+    next_notify = _NOTIFY_OFF if is_on else _NOTIFY_ON
+    return InlineKeyboardButton(text=label, callback_data=f"citymv_notify:{tid}:{code}:{next_notify}")
 
-    admin_id = callback.from_user.id
+
+async def _render_confirm_screen(
+    tid: int, user: dict, code: str, notify: str,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран подтверждения перевода — вынесен отдельно от `citymove_pick_city`, чтобы тумблер
+    «🔔 Сообщить делегату» мог перерисовать ТОТ ЖЕ экран, не дублируя вёрстку."""
     old_city = normalize_city(user.get("event_city"))
-    # Callback-данные подделываемы (T-33 threat register): оба города — и старый, и новый —
-    # перепроверяются на КАЖДОМ шаге, не только здесь.
-    if not await _city_allowed(admin_id, old_city) or not await _city_allowed(admin_id, code):
-        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
-        return
-    if code == old_city:
-        await callback.answer("Делегат уже в этом городе.", show_alert=True)
-        return
-
     participant_type = user.get("participant_type")
     preview = await preview_city_move(participant_type, code)
 
@@ -158,33 +168,101 @@ async def citymove_pick_city(callback: types.CallbackQuery):
     lines.append("")
     lines.append(
         "Что изменится: строка в Google-таблице переедет на вкладку нового города; открытый "
-        "черновик анкеты (если есть) переедет вместе с городом. Делегату ничего не приходит."
+        "черновик анкеты (если есть) переедет вместе с городом. Делегату придёт уведомление, "
+        "если ниже включена кнопка «🔔 Сообщить делегату»."
     )
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=f"✅ Оставить статус ({status_label})",
-            callback_data=f"citymv_apply:{tid}:{code}:{STATUS_MODE_KEEP}",
+            callback_data=f"citymv_apply:{tid}:{code}:{STATUS_MODE_KEEP}:{notify}",
         )],
         [InlineKeyboardButton(
             text="↩️ Вернуть на модерацию",
-            callback_data=f"citymv_apply:{tid}:{code}:{STATUS_MODE_TO_MODERATION}",
+            callback_data=f"citymv_apply:{tid}:{code}:{STATUS_MODE_TO_MODERATION}:{notify}",
         )],
+        [_notify_toggle_button(tid, code, notify)],
         [InlineKeyboardButton(text="✖️ Отмена", callback_data=f"citymv_cancel:{tid}")],
     ])
-    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data.startswith("citymv_pick:"))
+async def citymove_pick_city(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid = _parse_tid(parts[1])
+    code = parts[2]
+    if tid is None:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    user = await get_user(tid)
+    if user is None:
+        await callback.answer(_NOT_FOUND_ALERT, show_alert=True)
+        return
+    if get_city(code) is None:
+        await callback.answer("Такого города нет.", show_alert=True)
+        return
+
+    admin_id = callback.from_user.id
+    old_city = normalize_city(user.get("event_city"))
+    # Callback-данные подделываемы (T-33 threat register): оба города — и старый, и новый —
+    # перепроверяются на КАЖДОМ шаге, не только здесь.
+    if not await _city_allowed(admin_id, old_city) or not await _city_allowed(admin_id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    if code == old_city:
+        await callback.answer("Делегат уже в этом городе.", show_alert=True)
+        return
+
+    text, kb = await _render_confirm_screen(tid, user, code, _NOTIFY_ON)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("citymv_apply:"))
-async def citymove_apply(callback: types.CallbackQuery):
+@router.callback_query(F.data.startswith("citymv_notify:"))
+async def citymove_notify_toggle(callback: types.CallbackQuery):
     parts = callback.data.split(":")
     if len(parts) != 4:
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
     tid = _parse_tid(parts[1])
     code = parts[2]
+    notify = parts[3]
+    if tid is None or notify not in (_NOTIFY_ON, _NOTIFY_OFF):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    user = await get_user(tid)
+    if user is None:
+        await callback.answer(_NOT_FOUND_ALERT, show_alert=True)
+        return
+    if get_city(code) is None:
+        await callback.answer("Такого города нет.", show_alert=True)
+        return
+
+    admin_id = callback.from_user.id
+    old_city = normalize_city(user.get("event_city"))
+    if not await _city_allowed(admin_id, old_city) or not await _city_allowed(admin_id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+
+    text, kb = await _render_confirm_screen(tid, user, code, notify)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("citymv_apply:"))
+async def citymove_apply(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid = _parse_tid(parts[1])
+    code = parts[2]
     mode_raw = parts[3]
+    notify = parts[4] if parts[4] == _NOTIFY_ON else _NOTIFY_OFF
     mode = STATUS_MODE_TO_MODERATION if mode_raw == STATUS_MODE_TO_MODERATION else STATUS_MODE_KEEP
     if tid is None:
         await callback.answer("Неизвестная кнопка", show_alert=True)
@@ -215,8 +293,9 @@ async def citymove_apply(callback: types.CallbackQuery):
         return
 
     name = html_module.escape(str(user.get("full_name") or "-"))
-    new_label = html_module.escape(await city_label(code))
-    lines = [f"✅ <b>{name}</b> переведён(а) в {new_label}."]
+    new_label_plain = await city_label(code)
+    new_label = html_module.escape(new_label_plain)
+    lines = [f"✅ <b>{name}</b> переведён(а): город — {new_label}."]
     if report.get("status_changed"):
         lines.append("Статус возвращён на модерацию.")
     note = report.get("status_note")
@@ -232,9 +311,15 @@ async def citymove_apply(callback: types.CallbackQuery):
             lines.append("Строка в таблице перенесена.")
     if sheet.get("error"):
         lines.append(f"⚠️ Лист: {html_module.escape(str(sheet['error']))}")
-    changed = report.get("db_changes") or []
-    if changed:
-        lines.append(f"Обновлено в базе: {', '.join(changed)}.")
+    # T-33: имена таблиц БД — не для человека (`db_changes` несёт технические имена вроде
+    # "users"/"reg_drafts") — только факт, что данные делегата обновлены.
+    if report.get("db_changes"):
+        lines.append("Данные делегата обновлены.")
+
+    if notify == _NOTIFY_ON:
+        sent = await _notify_delegate(callback.bot, tid, new_label_plain)
+        if not sent:
+            lines.append("⚠️ Делегату сообщить не удалось (возможно, заблокировал бота).")
 
     await callback.message.edit_text("\n".join(lines), parse_mode="HTML")
     await callback.answer("Готово")
