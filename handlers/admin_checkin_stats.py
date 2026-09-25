@@ -20,7 +20,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 import arrival_stats
-from cities import cities_module_on, city_label, city_scope, enabled_cities
+from cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope
 from services.checkin_arrival import arrival_report
@@ -43,7 +43,9 @@ async def _collect(admin_id: int) -> tuple[str | None, list[tuple[str, dict]], d
         return label, [(label, rep)], rep, {code: label}
     if not await cities_module_on():
         rep = await arrival_report(None, None)
-        return None, [("Весь форум", rep)], rep, {}
+        # Подписи всех городов реестра — колонка «Город» у сессий (CSV) и при выключенном
+        # модуле городов показывает «Москва», а не код «msk».
+        return None, [("Весь форум", rep)], rep, await city_labels_map()
     per_city: list[tuple[str, dict]] = []
     labels: dict = {}
     for c in await enabled_cities():

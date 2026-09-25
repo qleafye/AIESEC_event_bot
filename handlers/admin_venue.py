@@ -25,6 +25,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
+from cities import city_label_or_none
 from database.db import get_checkin, get_user, list_checkins_for_user, venue_log_page, venue_log_staff
 from handlers.admin import router
 from handlers.admin_caps import has_capability
@@ -201,7 +202,7 @@ async def venue_revoke_find_step(message: types.Message, state: FSMContext):
     await state.set_state(None)
     buttons = []
     for p in found:
-        meta = " · ".join(str(x) for x in (p.get("city"), f"@{p['username']}" if p.get("username") else None) if x)
+        meta = " · ".join(str(x) for x in (await city_label_or_none(p.get("city")), f"@{p['username']}" if p.get("username") else None) if x)
         text = f"{p.get('full_name') or '—'}" + (f" · {meta}" if meta else "")
         buttons.append([InlineKeyboardButton(text=text[:60], callback_data=f"vrv_u:{p['user_id']}")])
     await message.answer("Нашёл:", reply_markup=ReplyKeyboardRemove())

@@ -281,6 +281,24 @@ async def city_label(code: str) -> str:
     return code
 
 
+async def city_label_or_none(code: str | None) -> str | None:
+    """Код города -> подпись для человека там, где города может не быть (плашка сканера,
+    строка поиска, карточка). Работает ВСЕГДА, в том числе при выключенном модуле городов:
+    выключенный модуль прячет выбор города, но код «msk» в `users.event_city` остаётся, и
+    показывать его человеку нельзя (CLAUDE.md: кодовые значения человеку не показываем).
+    Пусто/«—» (плейсхолдер QR) -> `None`; остальное — `city_label` (настройка -> реестр ->
+    сам код только для неизвестного кода)."""
+    if not code or code == "—":
+        return None
+    return await city_label(code)
+
+
+async def city_labels_map() -> dict[str, str]:
+    """Код -> подпись для ВСЕХ городов реестра (включённых и нет) — для отчётов, где у строки
+    свой город (сессии в CSV «Статистика прихода»), в том числе при выключенном модуле."""
+    return {c["code"]: await city_label(c["code"]) for c in all_cities()}
+
+
 async def tab_suffix(kind: str) -> str:
     """Quick 260815-3hw (TABS-01/02/03): admin-configurable tab-name suffix for a track kind
     ("short"/"party"/"incomplete"/"game"/"game_history"), read from the registry

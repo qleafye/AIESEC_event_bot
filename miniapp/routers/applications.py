@@ -40,7 +40,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import ALL_CITIES, cities_module_on, city_label, normalize_city
+from cities import ALL_CITIES, cities_module_on, city_label, city_label_or_none, normalize_city
 from services import applications, quiet_hours
 from settings_schema import get_setting_typed
 
@@ -171,6 +171,9 @@ async def applications_next(
             "full_name": row.get("full_name"),
             "username": row.get("username"),
             "city": row.get("event_city"),
+            # Подпись для человека (JS показывает её, `city` — код для логики) — всегда, даже
+            # при выключенном модуле городов: иначе в строке карточки «msk» (CLAUDE.md).
+            "city_label": await city_label_or_none(row.get("event_city")),
             "registered_at": row.get("registration_date"),
         },
         "avatar": avatar,
