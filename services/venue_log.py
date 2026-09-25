@@ -215,14 +215,11 @@ async def log_denial(reason: str, *, staff_id: int | None, staff_name: str | Non
 
 async def _clear_arrived_in_sheet(telegram_id: int) -> None:
     """Снят вход -> «Пришёл» пересчитывается: время первого из ОСТАВШИХСЯ входов (вход каждый
-    день — снятие входа одного дня не стирает другой), нет входов — пустая ячейка. Тот же
-    точечный апдейт, что при отметке."""
-    try:
-        from database.db import first_entry_scanned_at
-        from services.sheets import update_arrived_in_sheet
-        await update_arrived_in_sheet(telegram_id, await first_entry_scanned_at(telegram_id) or "")
-    except Exception:
-        logger.exception("venue_log: не очистил «Пришёл» в таблице для %s", telegram_id)
+    день — снятие входа одного дня не стирает другой), нет входов — пустая ячейка. Сам лист
+    пишет джоба бота по очереди `sheet_arrival_queue` (`services/sheet_arrival_sync.py`) —
+    снятие бывает и из Mini App, где Google-кредов нет."""
+    from database.db import SHEET_ARRIVAL_RECOMPUTE, enqueue_sheet_arrival
+    await enqueue_sheet_arrival(telegram_id, SHEET_ARRIVAL_RECOMPUTE)
 
 
 async def undo_last_scan(staff_id: int, staff_name: str | None, log_id: int) -> str:
