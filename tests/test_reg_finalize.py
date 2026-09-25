@@ -684,3 +684,22 @@ def test_manual_approve_still_uses_default_approve_text(tmp_path, monkeypatch):
     bot = asyncio.run(go())
     assert len(bot.sent_messages) == 1
     assert bot.sent_messages[0][1] == reg_schema.DEFAULT_APPROVE_TEXT
+
+
+def test_post_finalize_auto_approve_records_decision_delivery(tmp_path, monkeypatch):
+    """Автоодобрение на подаче пишет учёт доставки письма (инцидент 06.09: 38 одобренных без
+    письма) — «Сверить с БД» должна видеть и этот путь, не только решения модератора."""
+    _ready(tmp_path)
+    _offline(monkeypatch)
+    _patch_sheet_calls(monkeypatch)
+    _patch_notify(monkeypatch)
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+
+    async def go():
+        await _seed_user(UID, status="approved", event_city=None)
+        await rf.post_finalize(FakeBot(), UID, "new")
+        return await db.get_user(UID)
+
+    user = asyncio.run(go())
+    assert user["decision_delivery_status"] == "delivered"
+    assert user["decision_delivery_decision"] == "approved"
