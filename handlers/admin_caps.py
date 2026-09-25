@@ -1077,6 +1077,13 @@ ADMIN_CAPS: dict[str, str] = {
     "citymv_cancel:*": "moderate_reg",
     "citymv_notify:*": "moderate_reg",
 
+    # Phase 33 (delegate-card admin actions): «↩️ Вернуть в ожидание» — та же капа «moderate_reg»,
+    # что у соседнего «🏙 Перевести в город» выше (handlers/admin_revert_pending.py).
+    "revertp_start:*": "moderate_reg",
+    "revertp_toggle:*": "moderate_reg",
+    "revertp_apply:*": "moderate_reg",
+    "revertp_cancel:*": "moderate_reg",
+
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
     # (handlers/admin_lost_found.py) — капа «checkin», тот же довод, что у admin_checkin выше

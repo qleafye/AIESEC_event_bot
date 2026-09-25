@@ -665,6 +665,13 @@ _ENGINE_DYNAMIC_EN = {
 # ── Голые ключи реестра (group=event/reg/game/pay) — хаб/статус/оплата/задания за пределами
 # готовых списков выше: подписи Mini App-анкеты, экрана статуса заявки, оплаты, монет, FAQ. ──
 _REGISTRY_TEXTS_EN = {
+    # Phase 33 (delegate-card admin actions): три опциональных сообщения делегату с карточки
+    # /find менеджера (группа "apps" — вне DELEGATE_GROUPS, сторож i18n_form_manual_coverage_
+    # 260917 их не требует, добавлены сверх минимума — тексты, которые реально уходят
+    # делегату, того же класса, что coins_manual_notify_text).
+    "Ваша заявка снова на рассмотрении — менеджер посмотрит её ещё раз.": "Your application is under review again — a manager will take another look.",
+    "Вы можете подать заявку заново — отправьте /start.": "You can submit your application again — send /start.",
+    "Менеджер разрешил вам ещё раз изменить анкету — откройте «Изменить» в профиле.": "A manager has allowed you to edit your application once more — open «Edit» in your profile.",
     "Москва, 30-31 октября": "Moscow, October 30–31",
     "Санкт-Петербург, 3 октября": "Saint Petersburg, October 3",
     "Тюмень, 3 октября": "Tyumen, October 3",
