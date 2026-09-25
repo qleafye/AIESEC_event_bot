@@ -1326,23 +1326,31 @@ async def nudge_incomplete_registrations():
         # быть не должно.
         kb = await _nudge_keyboard()
         from services import quiet_hours
+        from services import i18n as i18n_service
         now = _now_moscow_naive()
+        tr_maps: dict[str, dict] = {}
         for tid in candidates:
             if await quiet_hours.defer_until(now, tid) is not None:
                 continue  # тихие часы -- пропуск без mark_nudged, заберёт следующий тик
-            msg_text = text
+            # Делегат, выбравший английский до обрыва анкеты, получал напоминание и кнопки
+            # по-русски. Шаблон переводится ДО подстановки {remaining}. Перевод целиком
+            # (`i18n.tr`), не `reg_i18n.tr_text`: ручной словарь держит эти реестровые тексты
+            # вместе с ведущим эмодзи («👋 …», «💬 Продолжить в чате»).
+            lang, tr_map = await i18n_service.context_cached(tid, tr_maps)
+            msg_text = i18n_service.tr(text, lang, tr_map)
+            user_kb = _tr_markup(kb, lang, tr_map)
             if has_remaining_placeholder:
                 remaining = await _nudge_remaining_for(tid)
                 if remaining is None:
                     fallback = await get_setting_typed("nudge_remaining_fallback_text")
-                    msg_text = text.replace("{remaining}", fallback)
+                    msg_text = msg_text.replace("{remaining}", fallback)
                 else:
-                    msg_text = text.replace("{remaining}", str(remaining))
+                    msg_text = msg_text.replace("{remaining}", str(remaining))
             # A blocked user can never receive the nudge, so stamping nudged_at on permanent
             # failure is what keeps the "exactly once" contract (D-14) from degenerating into
             # "forever" — the give-up is the one-shot.
             ok = await _safe_send(
-                lambda cid, mt=msg_text: _bot.send_message(cid, mt, reply_markup=kb), tid,
+                lambda cid, mt=msg_text, k=user_kb: _bot.send_message(cid, mt, reply_markup=k), tid,
                 on_permanent_failure=mark_nudged,
             )
             if ok:
@@ -1350,6 +1358,20 @@ async def nudge_incomplete_registrations():
             await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"nudge_incomplete_registrations failed: {e}")
+
+
+def _tr_markup(markup: InlineKeyboardMarkup | None, lang: str, tr_map: dict) -> InlineKeyboardMarkup | None:
+    """Подписи инлайн-кнопок через `i18n.tr` целиком (с эмодзи) — для реестровых подписей,
+    чей ручной перевод заведён вместе с ведущим эмодзи. Русский -> тот же объект."""
+    from services import i18n as i18n_service
+
+    if markup is None or lang != "en":
+        return markup
+    rows = [
+        [btn.model_copy(update={"text": i18n_service.tr(btn.text, lang, tr_map)}) for btn in row]
+        for row in markup.inline_keyboard
+    ]
+    return markup.model_copy(update={"inline_keyboard": rows})
 
 
 async def _nudge_keyboard() -> InlineKeyboardMarkup | None:

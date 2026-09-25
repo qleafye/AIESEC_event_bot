@@ -140,3 +140,30 @@ def test_manager_with_unrelated_cap_sees_only_back_button(tmp_path):
 
     _text, kb = _run(aff._render_hub(MANAGER_ID, "msk"))
     assert _cbs(kb) == ["admin_sec:apps"]  # только «← Назад»
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# «◀️ Назад» хаба ведёт в раздел, где объявлен САМ хаб, а не «✅ Отметки на форуме»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_hub_back_leads_to_own_section(tmp_path, monkeypatch):
+    from handlers import admin_sections
+
+    _ready(tmp_path)
+    own = f"admin_sec:{admin_sections.section_of('admin_forum_functions')}"
+    assert own == "admin_sec:apps"
+
+    _text, kb = _run(aff._render_hub(SUPERADMIN_ID, "msk"))
+    assert _cbs(kb)[-1] == own
+    _text, kb = _run(aff._render_city_picker())
+    assert _cbs(kb)[-1] == own
+
+    # «Назад» выводится из раздела самого хаба: переезд «✅ Отметки на форуме» в другой
+    # раздел не должен уводить менеджера из хаба туда.
+    real = admin_sections.section_of
+    monkeypatch.setattr(
+        admin_sections, "section_of",
+        lambda cb: "other" if cb == "admin_checkin" else real(cb),
+    )
+    _text, kb = _run(aff._render_hub(SUPERADMIN_ID, "msk"))
+    assert _cbs(kb)[-1] == own

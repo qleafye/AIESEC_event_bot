@@ -299,11 +299,36 @@ SHEET_COLUMNS = [
     ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
     # Форум-ночь B2 (идея №17): точка прихода — В КОНЦЕ схемы, не посреди (см. предупреждение
     # в докстринге модуля выше: старт бота переписывает шапку листа, колонка посреди сдвигает
-    # уже записанные строки). Значение при первичной сборке строки (finalize) всегда «-» —
-    # реальное время пишет джоба очереди «Пришёл» (services/sheet_arrival_sync.py) ПОСЛЕ
-    # отметки на форуме (services.checkin.mark_arrived_in_sheet ставит событие).
-    ("Пришёл", None, lambda d: "-"),
+    # уже записанные строки). Отметку пишет джоба очереди «Пришёл» (services/sheet_arrival_sync.py),
+    # но ЛЮБАЯ полная перезапись строки (правка анкеты, перевод в город, пересборка, синхронизация)
+    # пишет и эту ячейку — поэтому значение берётся из базы тем же правилом, что у очереди: строители
+    # строки кладут его в `d[ARRIVED_CELL_KEY]` (`with_arrived_cell` / `arrived_cells_map`). Раньше
+    # здесь стояло «-», и пересборка листа в день форума стирала все отметки прихода.
+    ("Пришёл", None, lambda d: d.get(ARRIVED_CELL_KEY) or "-"),
 ]
+
+ARRIVED_CELL_KEY = "_arrived_cell"
+
+
+async def arrived_cells_map() -> dict[int, str]:
+    """{telegram_id: значение ячейки «Пришёл»} для всех, у кого есть вход, — ОДИН запрос к базе
+    на массовую пересборку/синхронизацию листа."""
+    from database.db import first_entry_scanned_at_map
+    from services.sheet_arrival_sync import arrival_cell_value
+
+    return {tid: arrival_cell_value(at) for tid, at in (await first_entry_scanned_at_map()).items()}
+
+
+async def with_arrived_cell(data: dict) -> dict:
+    """Копия `data` со значением ячейки «Пришёл» из базы (для построения ОДНОЙ строки). Уже
+    положенное значение (массовый путь через `arrived_cells_map`) не перезапрашивается."""
+    if ARRIVED_CELL_KEY in data or not data.get("telegram_id"):
+        return data
+    from database.db import first_entry_scanned_at
+    from services.sheet_arrival_sync import arrival_cell_value
+
+    at = await first_entry_scanned_at(int(data["telegram_id"]))
+    return {**data, ARRIVED_CELL_KEY: arrival_cell_value(at)}
 
 # Full static header list (all columns) — kept for reference/tests. Live sync uses the
 # dynamic active_sheet_headers() below.

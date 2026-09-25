@@ -45,6 +45,8 @@ from handlers.reg_schema import (
     city_row_tab,
     sheet_city_code,
     _sheet_kind,
+    ARRIVED_CELL_KEY,
+    arrived_cells_map,
 )
 # Квик 260915-4is: party_sheet_headers/short_sheet_headers и дефолтные имена вкладок нужны
 # build_sheet_batches, чтобы короткая/party-строка получала СВОЮ шапку, а не общую по городу
@@ -100,6 +102,9 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
     named_batches: dict[str, SheetBatch] = {}
     order: list[SheetBatch] = [main_batch]
     headers_cache: dict[tuple[str, str | None], list[str]] = {("main", None): main_headers}
+    # «Пришёл» — из базы одним запросом на всех: пересборка перезаписывает строку целиком, и «-»
+    # вместо времени стёр бы отметки прихода, уже записанные очередью (день форума).
+    arrived = await arrived_cells_map()
 
     for u in users:
         participant_type = u.get("participant_type")
@@ -125,7 +130,8 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
             else:
                 headers_cache[cache_key] = await active_sheet_headers(code)
         headers = headers_cache[cache_key]
-        row = [_sheet_value_map(u).get(h, "-") for h in headers]
+        values = _sheet_value_map({**u, ARRIVED_CELL_KEY: arrived.get(u.get("telegram_id"), "")})
+        row = [values.get(h, "-") for h in headers]
 
         if tab is None:
             # Инвариант sheet_city_code (см. его докстринг): tab is None <=> code is None —

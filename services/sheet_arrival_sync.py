@@ -8,8 +8,8 @@
 
 Здесь, в процессе бота, раз в 30 с (`services/scheduler.py`, джоба `sheet_arrival_drain`):
 пачка созревших событий -> дубли схлопываются по делегату -> значение ячейки из базы (время
-ПЕРВОГО входа за форум; входов не осталось — пусто) -> одно чтение и один batch_update на
-вкладку (`services.sheets.write_arrivals_batch`). Значение всегда из базы, поэтому повтор
+ПЕРВОГО входа за форум, для людей: «25.09 05:23»; входов не осталось — пусто) -> одно чтение
+и один batch_update на вкладку (`services.sheets.write_arrivals_batch`). Значение всегда из базы, поэтому повтор
 безвреден.
 
 Исходы по делегату:
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from config import config
 from database.db import (
@@ -42,6 +42,17 @@ BATCH_LIMIT = 2000
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 30 * 60
 _FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def arrival_cell_value(scanned_at: str | None) -> str:
+    """Значение ячейки «Пришёл» для людей: «2026-09-25 05:23:33» -> «25.09 05:23». Входа нет ->
+    пусто; нераспознанная строка уходит как есть (лучше сырое время, чем пустая ячейка)."""
+    if not scanned_at:
+        return ""
+    try:
+        return datetime.strptime(scanned_at.strip(), _FMT).strftime("%d.%m %H:%M")
+    except ValueError:
+        return scanned_at
 
 
 def backoff_seconds(attempts: int) -> int:
@@ -69,7 +80,7 @@ async def drain() -> dict:
         await drop_sheet_arrivals(upto)  # таблица не подключена — писать некуда
         return counts
 
-    values = {tid: await first_entry_scanned_at(tid) or "" for tid in upto}
+    values = {tid: arrival_cell_value(await first_entry_scanned_at(tid)) for tid in upto}
 
     from services.sheets import write_arrivals_batch  # процесс бота; Mini App сюда не ходит
 

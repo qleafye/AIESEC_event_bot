@@ -394,29 +394,39 @@ async def pending_broadcast_count(city: str | None) -> int:
 # `handlers/admin_broadcasts.py::bc_go`) — это НЕ упущение, а осознанное отличие служебного
 # сообщения от рассылки.
 
-def _confirm_kb() -> InlineKeyboardMarkup:
+def _confirm_kb(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
+    """Кнопка под QR — на языке получателя (EN-делегат видел «✅ Сохранил, открывается»).
+    Ленивый импорт: этот модуль зовётся из джоб-таргетов `services/scheduler.py`, которые уже
+    лениво тянут `handlers.*` внутри функций (Pitfall циклического импорта на уровне модуля,
+    см. докстринг `services/reg_digest.py`)."""
+    from handlers.reg_i18n import tr_text
+
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Сохранил, открывается", callback_data=CONFIRM_CALLBACK),
+        InlineKeyboardButton(
+            text=tr_text("✅ Сохранил, открывается", lang, tr_map or {}),
+            callback_data=CONFIRM_CALLBACK,
+        ),
     ]])
 
 
-async def _translated_caption(telegram_id: int, text: str) -> str:
-    """Тот же перевод, что у остальных ответов делегату (`handlers.reg_i18n.tr_text`,
-    `show_my_checkin_qr`) — ленивый импорт: этот модуль зовётся из джоб-таргетов
-    `services/scheduler.py`, которые уже лениво тянут `handlers.*` внутри функций (Pitfall
-    циклического импорта на уровне модуля, см. докстринг `services/reg_digest.py`)."""
+async def _render_for(
+    telegram_id: int, text: str, maps: dict[str, dict],
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Подпись и кнопка на языке получателя — тот же перевод, что у остальных ответов
+    делегату (`handlers.reg_i18n.tr_text`, `show_my_checkin_qr`). `maps` — карты переводов
+    на всю рассылку (`services.i18n.context_cached`), не выборка на каждого."""
     from handlers.reg_i18n import tr_text
     from services import i18n as i18n_service
 
-    lang, tr_map = await i18n_service.context(telegram_id)
-    return tr_text(text, lang, tr_map)
+    lang, tr_map = await i18n_service.context_cached(telegram_id, maps)
+    return tr_text(text, lang, tr_map), _confirm_kb(lang, tr_map)
 
 
-async def _send_one(telegram_id: int, png: bytes, caption: str) -> bool:
+async def _send_one(telegram_id: int, png: bytes, caption: str, kb: InlineKeyboardMarkup) -> bool:
     async def _factory(cid):
         return await _sched._bot.send_photo(
             cid, BufferedInputFile(png, filename="checkin_qr.png"),
-            caption=caption, reply_markup=_confirm_kb(),
+            caption=caption, reply_markup=kb,
         )
     return await _sched._safe_send(_factory, telegram_id)
 
@@ -470,16 +480,17 @@ async def send_broadcast(city: str | None) -> dict:
         base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
 
         sent = failed = 0
+        tr_maps: dict[str, dict] = {}
         for user in targets:
             tid = user["telegram_id"]
             try:
                 png, _default_caption = await build_checkin_qr(user)
-                caption = await _translated_caption(tid, base_text)
+                caption, kb = await _render_for(tid, base_text, tr_maps)
             except Exception as e:
                 logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
                 failed += 1
                 continue
-            ok = await _send_one(tid, png, caption)
+            ok = await _send_one(tid, png, caption, kb)
             if ok:
                 await checkin_qr_mark_sent(
                     tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -519,16 +530,17 @@ async def send_morning_repeat(city: str | None) -> dict:
     base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
 
     sent = failed = 0
+    tr_maps: dict[str, dict] = {}
     for user in targets:
         tid = user["telegram_id"]
         try:
             png, _default_caption = await build_checkin_qr(user)
-            caption = await _translated_caption(tid, base_text)
+            caption, kb = await _render_for(tid, base_text, tr_maps)
         except Exception as e:
             logger.error(f"checkin_broadcast.send_morning_repeat: build for {tid} failed: {e}")
             failed += 1
             continue
-        ok = await _send_one(tid, png, caption)
+        ok = await _send_one(tid, png, caption, kb)
         if ok:
             await checkin_qr_mark_sent(
                 tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),

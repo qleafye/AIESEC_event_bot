@@ -171,9 +171,15 @@ def rating_keyboard(session_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def comment_offer_keyboard(session_id: int) -> InlineKeyboardMarkup:
+def comment_offer_keyboard(
+    session_id: int, lang: str = "ru", tr_map: dict | None = None,
+) -> InlineKeyboardMarkup:
+    """Кнопка «✍️ Написать» — на языке получателя. Ленивый импорт: модуль aiogram-free на
+    уровне импорта `handlers.*` (см. докстринг)."""
+    from handlers.reg_i18n import tr_text
+
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✍️ Написать", callback_data=f"sfb:c:{session_id}"),
+        InlineKeyboardButton(text=tr_text("✍️ Написать", lang, tr_map or {}), callback_data=f"sfb:c:{session_id}"),
     ]])
 
 
@@ -209,12 +215,13 @@ async def deliver_feedback_prompts(session_id: int) -> None:
         bot = get_bot()
         now = _now_moscow_naive()
         recipients = await list_marked_telegram_ids_for_session(session_id)
+        tr_maps: dict[str, dict] = {}
         for telegram_id in recipients:
             stamp = now.strftime("%Y-%m-%d %H:%M:%S")
             inserted = await create_session_feedback_prompt(telegram_id, session_id, stamp)
             if not inserted:
                 continue  # уже приглашали (повторный тик джобы/reconcile) — не дублируем
-            lang, tr_map = await i18n_service.context(telegram_id)
+            lang, tr_map = await i18n_service.context_cached(telegram_id, tr_maps)
             text = reg_i18n.tr_fmt(template, lang, tr_map, title=title)
             await quiet_hours.send_or_queue_text(
                 now, telegram_id, text,

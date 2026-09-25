@@ -147,7 +147,9 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     # с небольшим запасом (650). 25.09: тексты делегату/волонтёру лесенки SOS, «Решено»,
     # индикатора связи сканера и тренировочного режима (реестровые дефолты с переводом) —
     # 634 -> 652, потолок 680.
-    assert 150 <= len(result) <= 680, len(result)
+    # 25.09 днём: переводимые тексты фазы 33 / №30 (перенос в Москву) и кнопки делегатских
+    # рассылок форума — 652 -> 681, потолок 720.
+    assert 150 <= len(result) <= 720, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"
