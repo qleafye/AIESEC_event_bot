@@ -23,13 +23,49 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
 from reg_labels import STATUS_LABELS
 from services.applications import reject_message_text
 from services.sheets import bulk_update_status_in_sheet, update_status_in_sheet
+from services.telegram_send import send_with_retry
 
 logger = logging.getLogger(__name__)
+
+
+# ── Координатор 25.09: учёт доставки решения ────────────────────────────────────────────────
+#
+# Человеческая причина сбоя — ТОЛЬКО для отчёта «Сверить с БД»/«📨 Переотправить решения»
+# (services/sheet_reconcile.py, services/decision_delivery.py), НЕ для решения «слать ли
+# повторно» — та развилка (D-01, services/scheduler.py::_PERMANENT_SEND_ERRORS) намеренно
+# классифицирует по ТИПУ исключения, не тексту («формулировка Telegram меняется без анонса»).
+# Здесь текст читаем осознанно: при неузнанной формулировке функция просто падает в
+# «ошибка отправки: <кратко>» — ничего не ломается, отчёт честно показывает исходную причину.
+def _classify_decision_delivery_error(exc: Exception) -> str:
+    msg = str(exc).lower()
+    if isinstance(exc, TelegramForbiddenError):
+        if "deactivated" in msg:
+            return "пользователь удалён"
+        return "бот заблокирован делегатом"
+    if isinstance(exc, TelegramBadRequest) and "chat not found" in msg:
+        return "чат не найден"
+    text = str(exc).strip()
+    if len(text) > 160:
+        text = text[:160] + "…"
+    return f"ошибка отправки: {text}" if text else f"ошибка отправки: {type(exc).__name__}"
+
+
+async def _record_delivery_fail_soft(telegram_id: int, decision: str, status: str,
+                                      error: Exception | None = None) -> None:
+    """Пишет `users.decision_delivery_*` (`database.db.record_decision_delivery`) — fail-soft:
+    сбой УЧЁТА не должен ломать само решение (координатор 25.09, п.2), поэтому любое исключение
+    здесь только логируется, никогда не поднимается наружу."""
+    try:
+        from database.db import record_decision_delivery
+        error_text = _classify_decision_delivery_error(error) if error is not None else None
+        await record_decision_delivery(telegram_id, decision, status, error_text)
+    except Exception as e:
+        logger.error(f"decision_delivery: не удалось записать учёт доставки для {telegram_id}: {e}")
 
 
 async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str | None = None, *,
@@ -43,7 +79,16 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     до утра нельзя); уведомление делегату — единственное, что откладывается. Если `notify`
     попал в окно тишины делегата, решение кладётся в очередь `services.quiet_hours` с
     due_at = конец окна, а немедленной отправки НЕ происходит (`quiet_hours.flush_due`
-    перечитывает `users.status` на разборе и доставляет — Task 3 260904-dq1-PLAN.md)."""
+    перечитывает `users.status` на разборе и доставляет — Task 3 260904-dq1-PLAN.md).
+
+    Координатор 25.09 (учёт доставки решения, память auto-approve-incident-260906): каждая
+    попытка отправить письмо о решении фиксируется в `users.decision_delivery_*`
+    (`_record_delivery_fail_soft`) — «в очереди» при уходе в тихие часы (этот же вызов, когда
+    его позовёт `services.quiet_hours._flush_application_decision_row`, перезапишет статус на
+    «доставлено»/«не доставлено»), «доставлено»/«не доставлено» при немедленной попытке.
+    `notify=False` — эффект без попытки отправки (например, узкий пересчёт листа) — учёт НЕ
+    трогается вовсе, писать «не доставлено» о письме, которое и не пытались слать, было бы
+    ложью."""
     notify_now = notify
     if notify:
         from services import quiet_hours
@@ -56,11 +101,15 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
                 {"status": status, "reason": reason}, due, now,
             )
             notify_now = False
+            await _record_delivery_fail_soft(telegram_id, status, "queued")
 
     if status == "approved":
         if notify_now:
             from handlers.reg_schema import approve_user  # локальный импорт против цикла
-            await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
+            send_err = await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
+            await _record_delivery_fail_soft(
+                telegram_id, "approved", "failed" if send_err else "delivered", send_err,
+            )
         if sheet:
             await update_status_in_sheet(telegram_id, STATUS_LABELS["approved"])
     elif status == "rejected":
@@ -71,10 +120,14 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             from services.i18n import context as _i18n_context
             lang, tr_map = await _i18n_context(telegram_id)
             text = await reject_message_text(reason, lang, tr_map)
-            try:
-                await bot.send_message(telegram_id, text, parse_mode="HTML")
-            except Exception as e:
-                logger.error(f"Failed to notify rejected user {telegram_id}: {e}")
+            send_err = await send_with_retry(
+                lambda: bot.send_message(telegram_id, text, parse_mode="HTML"),
+            )
+            if send_err is not None:
+                logger.error(f"Failed to notify rejected user {telegram_id}: {send_err}")
+            await _record_delivery_fail_soft(
+                telegram_id, "rejected", "failed" if send_err else "delivered", send_err,
+            )
         if sheet:
             await update_status_in_sheet(telegram_id, STATUS_LABELS["rejected"])
 
@@ -85,7 +138,14 @@ async def mass_approve_effects(bot, ids: list) -> None:
 
     Quick 260904-dq1: та же проверка окна на КАЖДОГО делегата — попал в тихие часы, строка в
     очередь, приветствие не шлётся. `bulk_update_status_in_sheet` — для ВСЕХ id одним вызовом,
-    как раньше (лист не ждёт тихих часов)."""
+    как раньше (лист не ждёт тихих часов).
+
+    Координатор 25.09 (учёт доставки решения): каждый `tid` получает свою запись
+    `users.decision_delivery_*` — «в очереди»/«доставлено»/«не доставлено», тем же приёмом, что
+    `apply_decision_effects`. `approve_user` (после правки того же коммита) сама ретраит один
+    раз на 429 и возвращает исключение вместо того, чтобы поднимать его — внешний
+    `except TelegramRetryAfter` ниже оставлен как защита на случай сбоя ДО входа в неё (например,
+    чтения `defer_until`), а не как основной путь ретрая."""
     if not ids:
         return
     from services import quiet_hours
@@ -100,18 +160,27 @@ async def mass_approve_effects(bot, ids: list) -> None:
                     tid, quiet_hours.KIND_APPLICATION_DECISION,
                     {"status": "approved", "reason": None}, due, now,
                 )
+                await _record_delivery_fail_soft(tid, "approved", "queued")
                 await asyncio.sleep(0.05)
                 continue
             from handlers.reg_schema import approve_user  # локальный импорт против цикла
-            await approve_user(bot, tid)
+            send_err = await approve_user(bot, tid)
+            await _record_delivery_fail_soft(
+                tid, "approved", "failed" if send_err else "delivered", send_err,
+            )
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after + 1)
             try:
                 from handlers.reg_schema import approve_user  # локальный импорт против цикла
-                await approve_user(bot, tid)
+                send_err = await approve_user(bot, tid)
+                await _record_delivery_fail_soft(
+                    tid, "approved", "failed" if send_err else "delivered", send_err,
+                )
             except Exception as e2:
                 logger.error(f"Mass-approve welcome retry failed for {tid}: {e2}")
+                await _record_delivery_fail_soft(tid, "approved", "failed", e2)
         except Exception as e:
             logger.error(f"Mass-approve welcome failed for {tid}: {e}")
+            await _record_delivery_fail_soft(tid, "approved", "failed", e)
         await asyncio.sleep(0.05)
     await bulk_update_status_in_sheet({str(t): STATUS_LABELS["approved"] for t in ids})

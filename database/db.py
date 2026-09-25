@@ -1113,6 +1113,27 @@ async def init_db():
         # и бота, и веба — `services.applications.claim_reject`), второй точки записи нет.
         await _ensure_column(db, "users", "rejected_at", "TEXT")
 
+        # Координатор 25.09 (учёт доставки решения, память auto-approve-incident-260906: 38
+        # заявок одобрены молча без письма — ровно то, что эти колонки должны ловить). Четыре
+        # аддитивные колонки на ПОСЛЕДНЕЕ решение (тот же приём, что approved_at/rejected_at
+        # выше — не append-only журнал, одна строка = текущее состояние доставки):
+        #   decision_delivery_status   — 'delivered' | 'failed' | 'queued' (тихие часы)
+        #   decision_delivery_decision — 'approved' | 'rejected', К КАКОМУ решению относится запись
+        #   decision_delivery_at       — момент последней записи (msk_now, "%Y-%m-%d %H:%M:%S")
+        #   decision_delivery_error    — человеческая причина сбоя (только status='failed')
+        # NULL у всех четырёх — «неизвестно»: либо решение ещё не было (pending), либо оно
+        # принято ДО этой миграции (признака тогда не было вовсе) — БЕЗ бэкафилла, честно не
+        # путаем с «не доставлено» (`services/sheet_reconcile.py` отчёт разводит эти две
+        # категории). Пишет `services.application_effects.apply_decision_effects`/
+        # `mass_approve_effects` — единственный choke-point всех путей решения (бот/веб/
+        # автоотказ/квик-скрипт, см. их докстринг). Возврат на модерацию
+        # (`revert_user_to_pending` ниже) сбрасывает все четыре в NULL — решения, к которому они
+        # относились, больше нет.
+        await _ensure_column(db, "users", "decision_delivery_status", "TEXT")
+        await _ensure_column(db, "users", "decision_delivery_decision", "TEXT")
+        await _ensure_column(db, "users", "decision_delivery_at", "TEXT")
+        await _ensure_column(db, "users", "decision_delivery_error", "TEXT")
+
         # Phase 28 (28-01, SU-01/SU-04/SU-08): СкиллАп 5 — новые вопросы анкеты (default-off,
         # тумблеры reg_q_stack/reg_q_experience/reg_q_readiness/reg_q_resume_link/reg_q_mini_*/
         # reg_q_case_optin) + пять НЕ-REG_FLOW полей резервной цепочки резюме/скоринга/амбассадора.
@@ -3788,6 +3809,29 @@ async def reject_user(telegram_id: int) -> bool:
         return cursor.rowcount == 1
 
 
+async def record_decision_delivery(telegram_id: int, decision: str, status: str,
+                                    error: str | None = None) -> None:
+    """Пишет `users.decision_delivery_*` (координатор 25.09, учёт доставки решения) —
+    единственная точка записи, зовётся из `services.application_effects.apply_decision_effects`/
+    `mass_approve_effects` ПОСЛЕ попытки отправить письмо о решении. `status` —
+    'delivered' | 'failed' | 'queued' (тихие часы — попытка ещё не случилась, но факт «решение
+    ждёт» уже стоит отдельно от «неизвестно»/pre-migration NULL). `error` — уже готовая
+    человеческая строка причины (классификация — на вызывающей стороне,
+    `_classify_decision_delivery_error`), NULL для delivered/queued.
+
+    БЕЗ WHERE status-условия (в отличие от approve_user_atomic/reject_user выше) — это не
+    первичный флип решения, а его следствие: к моменту вызова решение уже применено, гонка
+    здесь только «кто последний записал факт доставки», а не «кто выиграл решение»."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET decision_delivery_status = ?, decision_delivery_decision = ?, "
+            "decision_delivery_at = ?, decision_delivery_error = ? WHERE telegram_id = ?",
+            (status, decision, now, error, telegram_id),
+        )
+        await db.commit()
+
+
 # ── Phase 07.2 Plan 01 (CITY-02): city scope clause builder ──────────────────
 #
 # `cities.py` imports `database.db` (registry accessors need `get_setting`/`set_setting`),
@@ -4100,10 +4144,17 @@ async def get_last_application_decision(telegram_id: int) -> dict | None:
 async def revert_user_to_pending(telegram_id: int, from_status: str) -> bool:
     """Undo effect on `users`: puts the row back to `pending` ONLY if it is still in the
     status the decision expected (T-23-02) — a concurrent second decision by another manager
-    silently wins, this call returns False rather than clobbering it."""
+    silently wins, this call returns False rather than clobbering it.
+
+    Координатор 25.09 (учёт доставки решения): `decision_delivery_*` сбрасывается в NULL В ТОЙ
+    ЖЕ UPDATE — решение, к которому относилась запись, отменено, «доставлено»/«не доставлено»
+    предыдущего решения на pending-заявке смысла не несёт (следующее решение запишет своё
+    заново)."""
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE users SET status = 'pending' WHERE telegram_id = ? AND status = ?",
+            "UPDATE users SET status = 'pending', decision_delivery_status = NULL, "
+            "decision_delivery_decision = NULL, decision_delivery_at = NULL, "
+            "decision_delivery_error = NULL WHERE telegram_id = ? AND status = ?",
             (telegram_id, from_status),
         )
         await db.commit()
