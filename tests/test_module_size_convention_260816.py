@@ -496,10 +496,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1138,
-        "Ревью part2 (26.09): +7 строк — гейт «👥 Выдать роль» на карточке /find правом "
-        "`settings` (has_capability), кнопка раньше отвечала отказом держателю без права; "
-        "1131 -> 1138. "
+        1131,
         "Phase 33 (delegate-card admin actions, «Сверить с БД», 26.09): +7 строк — шов-импорт "
         "`from handlers import admin_sheet_reconcile` в самый хвост файла (сама кнопка «🔍 "
         "Сверить с БД» — строка handlers/admin_core.py, не здесь); 1124 -> 1131. "
