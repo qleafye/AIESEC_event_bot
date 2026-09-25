@@ -737,6 +737,7 @@ def test_find_falls_back_to_reg_started_when_not_in_users(tmp_path):
         class _M:
             def __init__(self):
                 self.text = "/find @started_only"
+                self.from_user = _FakeUser(SUPERADMIN_ID)
 
             async def answer(self, text, parse_mode=None, reply_markup=None):
                 captured["text"] = text
@@ -751,6 +752,36 @@ def test_find_falls_back_to_reg_started_when_not_in_users(tmp_path):
     assert "не найден в базе данных" not in captured["text"]
     buttons = _cbs(captured["kb"])
     assert f"roles_addfor:{STARTED_ONLY_ID}" in buttons
+
+
+def test_find_hides_role_button_without_settings_capability(tmp_path):
+    """Ревью part2: «roles_addfor:*» требует `settings` (ADMIN_CAPS) — модератор без этого
+    права не должен видеть кнопку, которая в ответ на тап отказала бы."""
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _setup_bound_staff()  # BOUND_MSK_ID держит только moderate_reg, не settings
+        await db.mark_reg_started(STARTED_ONLY_ID, "started_only", event_city="msk")
+
+        captured = {}
+
+        class _M:
+            def __init__(self):
+                self.text = "/find @started_only"
+                self.from_user = _FakeUser(BOUND_MSK_ID)
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+        await admin.cmd_find_user(_M())
+        return captured
+
+    captured = _run(scenario())
+    buttons = _cbs(captured["kb"])
+    assert f"roles_addfor:{STARTED_ONLY_ID}" not in buttons
 
 
 def test_find_still_reports_truly_unknown_username(tmp_path):
@@ -819,6 +850,7 @@ def test_find_reg_started_card_shows_reset_button_when_draft_exists(tmp_path):
         class _M:
             def __init__(self):
                 self.text = "/find @started_only"
+                self.from_user = _FakeUser(SUPERADMIN_ID)
 
             async def answer(self, text, parse_mode=None, reply_markup=None):
                 captured["text"] = text
@@ -1311,3 +1343,40 @@ def test_find_card_shows_resume_replace_button_for_submitted_delegate(tmp_path):
     captured = _run(scenario())
     buttons = _cbs(captured["kb"])
     assert f"resumerep_start:{DELEGATE_ID}" in buttons
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Ревью part2: _parse_tid отклоняет отрицательные id (делегатский telegram_id никогда не
+# отрицателен — это чаты/каналы, не люди), тот же гейт, что admin_roles._parse_staff_role_callback.
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_regreset_parse_tid_rejects_negative_id(tmp_path):
+    from handlers import admin_reg_reset
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        cb = _FakeCallback("regreset_start:-1", SUPERADMIN_ID)
+        await admin_reg_reset.regreset_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_resumerep_parse_tid_rejects_negative_id(tmp_path):
+    from handlers import admin_resume_replace
+
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        state = _fsm_ctx(storage, SUPERADMIN_ID)
+        cb = _FakeCallback("resumerep_start:-1", SUPERADMIN_ID)
+        await admin_resume_replace.resumerep_start(cb, state)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True

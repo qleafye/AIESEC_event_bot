@@ -36,7 +36,10 @@ _NOT_FOUND_ALERT = "Делегат не найден — возможно, ка�
 
 
 def _parse_tid(raw: str) -> int | None:
-    return int(raw) if raw.isascii() and raw.lstrip("-").isdigit() else None
+    # Ревью part2: делегатский telegram_id никогда не отрицателен (это чаты/каналы) —
+    # `lstrip("-")` зря расширял парсер; тот же гейт, что `handlers/admin_roles.py::
+    # _parse_staff_role_callback` (parts[1].isascii() and parts[1].isdigit()).
+    return int(raw) if raw.isascii() and raw.isdigit() else None
 
 
 def _old_resume_line(preview: dict) -> str:
