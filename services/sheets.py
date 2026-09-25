@@ -872,6 +872,23 @@ def _sheet_header_row(sheet) -> list[str]:
     return [str(h).strip() for h in sheet.row_values(1)]
 
 
+def _headers_compatible(a: list[str], b: list[str]) -> bool:
+    """Одна шапка — те же колонки в том же порядке. Хвостовые пустые ячейки не считаются, и
+    шапка, отстающая на колонки в КОНЦЕ, тоже совместима: бот при старте дописывает новые
+    колонки в хвост шапки (не в середину), вкладка, до которой дописывание ещё не дошло, пишется
+    теми же позициями, лишняя хвостовая ячейка просто ляжет правее."""
+    def trim(h):
+        h = list(h)
+        while h and not h[-1]:
+            h.pop()
+        return h
+    a, b = trim(a), trim(b)
+    if not a or not b:
+        return False
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return long_[:len(short)] == short
+
+
 def _row_id_present(sheet, telegram_id: int) -> bool:
     """Col1 membership check only (no write) — used while scanning candidate tabs during the
     cross-tab search below, where we must know IF a tab has the row before deciding whether to
@@ -934,7 +951,7 @@ def _update_row_by_id_sync(
         if target_title is not None and getattr(ws, "title", None) == target_title:
             continue  # уже проверили выше
         try:
-            if _sheet_header_row(ws) != reference_header:
+            if not _headers_compatible(_sheet_header_row(ws), reference_header):
                 continue
             matched = _row_id_present(ws, telegram_id)
         except Exception as e:
@@ -961,8 +978,10 @@ def _update_row_by_id_sync(
         )
         return "ambiguous", titles
 
-    _update_row_by_id_in_range(candidates[0], telegram_id, row)
-    return "updated", []
+    if _update_row_by_id_in_range(candidates[0], telegram_id, row):
+        return "updated", []
+    # Строку успели удалить между поиском и записью — пусть вызывающий допишет её как обычно.
+    return "not_found", []
 
 
 async def update_row_by_id(
@@ -1485,9 +1504,13 @@ def _all_worksheets_sync() -> list:
     `_list_worksheet_titles_sync`), NEVER creates. Sole caller today: `_update_row_by_id_sync`'s
     cross-tab search (координатор 25.09) — it needs each candidate's header AND col1, which a
     plain title list can't give without a second round-trip per tab."""
-    gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
-    return sh.worksheets()
+    try:
+        # Уже открытая таблица главного листа — без нового входа и open_by_key на каждый промах.
+        return _get_sheet().spreadsheet.worksheets()
+    except Exception:
+        gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
+        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        return sh.worksheets()
 
 
 def _find_rows_by_id_sync(tab_name: str | None, telegram_id: int) -> list[int] | None:
