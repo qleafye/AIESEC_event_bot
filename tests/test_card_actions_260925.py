@@ -585,6 +585,30 @@ def test_grant_override_refuses_duplicate_active(tmp_path):
     assert result["ok"] is False
 
 
+def test_grant_override_concurrent_double_tap_yields_one_active_row(tmp_path):
+    """Ревью 25.09: check-then-insert гонялся между чтением и вставкой (окно между двумя
+    await), поэтому обычный последовательный вызов гонку не воспроизводит — нужен настоящий
+    параллельный запуск (asyncio.gather) двух grant_override на одном (telegram_id, kind).
+    Атомарность держит частичный UNIQUE-индекс в БД: ровно один вызов получает ok=True, второй —
+    ok=False, а в таблице остаётся ровно одна активная строка."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        results = await asyncio.gather(
+            delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID),
+            delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID),
+        )
+        active = await db.get_active_delegate_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
+        return results, active
+
+    (result_a, result_b), active = _run(scenario())
+    oks = [r["ok"] for r in (result_a, result_b)]
+    assert oks.count(True) == 1
+    assert oks.count(False) == 1
+    assert active is not None
+
+
 def test_grant_override_unknown_kind_refused(tmp_path):
     _db_ready(tmp_path)
 
