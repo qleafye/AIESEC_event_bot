@@ -7,8 +7,10 @@ re-append'ов накопились дубли строк по одному tele
 что все три хелпера теперь тоже целятся в последнее совпадение — согласованно с дедупом.
 
 Мок переиспользован импортом (не скопирован): `FakeWorksheet`/`_patch_fake_sheets` из
-tests/test_sheet_status_city_tab_260819.py, `RecordingWorksheet` из
-tests/test_sheets_update_row.py. Для теста дедупа (нужен `delete_rows`, которого нет у
+tests/test_sheet_status_city_tab_260819.py, `RecordingWorksheet` — алиас на `_FakeWorksheet` из
+tests/test_sheets_update_row_safe_260926.py (координатор 25.09: старый `RecordingWorksheet` жил
+в tests/test_sheets_update_row.py, тот файл переехал на gspread-уровневый мок и больше не
+экспортирует class с этим именем). Для теста дедупа (нужен `delete_rows`, которого нет у
 FakeWorksheet) объявлен локальный подкласс.
 
 pytest-asyncio в окружении нет — async-хелперы гоняются через asyncio.run(), как в
@@ -21,7 +23,7 @@ import gspread
 import services.sheets as sheets
 from handlers import admin_cities  # Phase 13 (13-05): cities/dedupe screen
 from tests.test_sheet_status_city_tab_260819 import FakeWorksheet, _patch_fake_sheets
-from tests.test_sheets_update_row import RecordingWorksheet
+from tests.test_sheets_update_row_safe_260926 import _FakeWorksheet as RecordingWorksheet
 
 
 # ── _update_row_by_id_in_range: несколько совпадений → пишем в ПОСЛЕДНЕЕ ────────────────────
