@@ -6505,6 +6505,10 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "system",
         "label": "🚌 Перенос в Москву: статус после переноса",
         "options": ["keep", "to_moderation"], "prompt": None, "default": "keep",
+        "option_labels": {
+            "keep": "✅ Остаётся одобренным",
+            "to_moderation": "🕒 Снова на рассмотрение",
+        },
         "per_city": True,
     },
     "regional_noshow_offer_text": {
