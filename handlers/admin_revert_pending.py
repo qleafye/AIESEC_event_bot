@@ -68,6 +68,14 @@ async def _render_confirm(tid: int, notify: bool) -> tuple[str, InlineKeyboardMa
         coins_line += f" У пригласившего ({ref_name}) — {referrer.get('coins_balance') or 0}, тоже не меняется."
     lines.append(coins_line)
 
+    if preview.get("payment_status") == "paid":
+        payment_line = "⚠️ Оплата подтверждена"
+        payment_option = preview.get("payment_option")
+        if payment_option:
+            payment_line += f" ({html_module.escape(str(payment_option))})"
+        payment_line += " — статус оплаты НЕ меняется."
+        lines.append(payment_line)
+
     toggle_text = f"🔔 Сообщить делегату: {'ВКЛ' if notify else 'ВЫКЛ'}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=toggle_text, callback_data=f"revertp_toggle:{tid}:{0 if notify else 1}")],

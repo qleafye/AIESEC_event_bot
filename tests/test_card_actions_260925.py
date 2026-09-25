@@ -329,6 +329,33 @@ def test_preview_revert_refuses_when_pending(tmp_path):
     assert preview["ok"] is False
 
 
+def test_preview_revert_includes_confirmed_payment_status_and_option(tmp_path):
+    """Ревью 25.09: экран подтверждения обязан видеть payment_status/payment_option, чтобы
+    показать явное предупреждение, когда оплата уже подтверждена."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        await db.update_payment_status(DELEGATE_ID, "receipt_sent", payment_option="Полный участник — 5000 руб")
+        await db.update_payment_status(DELEGATE_ID, "paid")
+        return await preview_revert_pending(DELEGATE_ID)
+
+    preview = _run(scenario())
+    assert preview["payment_status"] == "paid"
+    assert preview["payment_option"] == "Полный участник — 5000 руб"
+
+
+def test_preview_revert_payment_status_not_paid_by_default(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        return await preview_revert_pending(DELEGATE_ID)
+
+    preview = _run(scenario())
+    assert preview["payment_status"] == "not_paid"
+
+
 def test_revert_source_admin_prefix_does_not_break_history_screen(tmp_path):
     """Формат `source=f"admin:{admin_id}"` не сравнивается с `"admin"` нигде в проекте
     (grep-проверка была сделана при разработке) — экран «🕓 История» печатает незнакомый
@@ -391,6 +418,63 @@ def test_revertp_start_shows_confirm_screen_for_approved(tmp_path):
     assert f"revertp_apply:{DELEGATE_ID}:0" in buttons
     assert f"revertp_toggle:{DELEGATE_ID}:1" in buttons
     assert f"revertp_cancel:{DELEGATE_ID}" in buttons
+
+
+def test_revertp_start_warns_about_confirmed_payment(tmp_path):
+    """Ревью 25.09: экран подтверждения явно предупреждает «Оплата подтверждена — статус
+    оплаты НЕ меняется» для одобренного делегата с payment_status='paid'."""
+    from handlers import admin_revert_pending
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        await db.update_payment_status(DELEGATE_ID, "receipt_sent", payment_option="Полный участник — 5000 руб")
+        await db.update_payment_status(DELEGATE_ID, "paid")
+        cb = _FakeCallback(f"revertp_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_revert_pending.revertp_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "Оплата подтверждена" in text
+    assert "Полный участник — 5000 руб" in text
+    assert "не меняется" in text.lower()
+
+
+def test_revertp_start_no_payment_warning_when_not_paid(tmp_path):
+    from handlers import admin_revert_pending
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        cb = _FakeCallback(f"revertp_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_revert_pending.revertp_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "Оплата подтверждена" not in text
+
+
+def test_revert_to_pending_does_not_touch_payment_status(tmp_path):
+    """Ревью 25.09: возврат в ожидание не должен трогать payment_status ни при каком исходном
+    положении — напоминания об оплате снимаются (T-3/T-1), сам факт оплаты остаётся."""
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        await db.update_payment_status(DELEGATE_ID, "receipt_sent", payment_option="Полный участник — 5000 руб")
+        await db.update_payment_status(DELEGATE_ID, "paid")
+        result = await revert_to_pending(DELEGATE_ID, by_admin=SUPERADMIN_ID, notify=False)
+        user = await db.get_user(DELEGATE_ID)
+        return result, user
+
+    result, user = _run(scenario())
+    assert result["ok"] is True
+    assert user["payment_status"] == "paid"
+    assert user["payment_option"] == "Полный участник — 5000 руб"
 
 
 def test_revertp_start_refuses_when_pending(tmp_path):
