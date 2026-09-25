@@ -10122,6 +10122,19 @@ async def first_entry_scanned_at(telegram_id: int) -> str | None:
     return row[0] if row and row[0] else None
 
 
+async def first_entry_scanned_at_map() -> dict[int, str]:
+    """`first_entry_scanned_at` для ВСЕХ делегатов одним запросом: {telegram_id: время первого
+    входа}. Нужен пересборке/синхронизации листа — ячейка «Пришёл» строится из базы, а не «-»,
+    и не запросом на строку."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id, MIN(scanned_at) FROM checkins WHERE point = ? GROUP BY telegram_id",
+            (CHECKIN_ENTRY_POINT,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(tid): at for tid, at in rows if at}
+
+
 async def has_entry_on_other_day(telegram_id: int, day: str) -> bool:
     """Был ли у делегата вход в ДРУГОЙ день форума, кроме `day` — `False` значит, что вход дня
     `day` — первый (и единственный) вход за форум."""
