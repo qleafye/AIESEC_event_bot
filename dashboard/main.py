@@ -246,8 +246,6 @@ def _page_sections(ctx: dict) -> list[dict]:
     `id in section_ids`). "Сейчас" и "Модерация и ответы" всегда в списке — там всегда есть
     хотя бы плитка KPI/«Среднее время обработки», гасить их нечем."""
     sections = [{"id": "now", "title": "Сейчас"}]
-    if ctx.get("arrival"):
-        sections.append({"id": "arrival", "title": "Приход"})
     if ctx["dynamics_enabled"] or ctx["funnel"] or ctx["dropout"] or ctx["months"]:
         sections.append({"id": "flow", "title": "Поток заявок"})
     sections.append({"id": "moderation", "title": "Модерация и ответы"})
@@ -268,7 +266,7 @@ def _city_label(conn, code: "str | None") -> "str | None":
 
 
 def build_page_context(
-    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, arrival_day: str | None = None,
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
 ) -> dict:
     """Собирает ВЕСЬ контекст страницы одним вызовом — шаблон сам не зовёт БД (D-16: на лету
     на каждый запрос, без кэша). Каждый блок гасится своим тумблером `dashboard_block_*`
@@ -364,11 +362,10 @@ def build_page_context(
     # `questions_block` без чтения тумблера (D-2 квика 260910-tt5): вопрос делегата — базовая
     # функция, не отключаемый модуль, гейт по наличию данных живёт ВНУТРИ самой функции.
     questions_stats = queries.questions_block(conn, scope)
-    # Бэклог чек-ина п.10: «Приход» — без тумблера, гейт по данным внутри arrival_block (до
-    # первой отметки на форуме раздела нет).
-    arrival = queries.arrival_block(conn, scope)
-    # Бэклог №12: «Сейчас на площадке» — за выбранный день (`?arrival_day=`) внутри «Прихода».
-    arrival_floor = queries.arrival_floor(conn, scope, arrival["days"], arrival_day) if arrival else None
+    # Задача 25.09: «Приход»/«Сейчас на площадке» переехали на отдельную страницу «🎪 Форум»
+    # (build_forum_context ниже, вместе с сессиями/оценками, SOS, доставкой решений, опросами
+    # после форума) — ссылка на неё в шапке рисуется безусловно (шаблон), второй запрос сюда
+    # заводить незачем.
 
     daily_chart = None
     if daily_rows is not None and daily_rows:
@@ -440,8 +437,6 @@ def build_page_context(
         "referrals": referrals,
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
-        "arrival": arrival,
-        "arrival_floor": arrival_floor,
     }
     ctx["page_sections"] = _page_sections(ctx)
     ctx["section_ids"] = {s["id"] for s in ctx["page_sections"]}
@@ -495,6 +490,61 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "scope": scope,
         "chat_bindings": all_chats,
         "cards": cards,
+        "bot_username": cfg.bot_username,
+    }
+
+
+def build_forum_context(
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, arrival_day: str | None = None,
+) -> dict:
+    """Задача 25.09: страница «🎪 Форум» — приход/стойки (переехали сюда с главной, тот же
+    `arrival_block`/`arrival_floor`, общий с ботом `arrival_stats.py` — не дублируем), сессии
+    с оценками (`session_feedback`, дашборд-only — в arrival_stats.py их нет), SOS, доставка
+    решений, опросы после форума. Каждый блок — `None`/пустой список, пока данных нет; шаблон
+    сам решает, показывать ли раздел ("нет данных" вместо пустой карточки)."""
+    flags = queries.dashboard_flags(conn)
+    arrival = queries.arrival_block(conn, scope)
+    arrival_floor = queries.arrival_floor(conn, scope, arrival["days"], arrival_day) if arrival else None
+
+    sessions: list[dict] = []
+    if arrival:
+        ratings = queries.session_ratings(conn)
+        for s in arrival["sessions"]:
+            r = ratings.get(s["id"], {})
+            sessions.append({
+                **s,
+                "avg_rating": r.get("avg"),
+                "ratings_count": r.get("count", 0),
+                "comments_count": r.get("comments", 0),
+            })
+    rated = [s for s in sessions if s["avg_rating"] is not None]
+    top_sessions = sorted(rated, key=lambda s: (-s["avg_rating"], -s["ratings_count"]))[:5]
+    bottom_sessions = sorted(rated, key=lambda s: (s["avg_rating"], -s["ratings_count"]))[:5]
+
+    city_options = queries.city_options(conn)
+    bound_city_code = viewer.get("bound_city")
+
+    return {
+        "event_name": flags.get("event_name"),
+        "event_season": scope.season or flags.get("event_season"),
+        "event_logo_url": _event_logo_url(conn),
+        "favicon_url": _favicon_url(conn),
+        "viewer": viewer,
+        "scope": scope,
+        "city_options": city_options,
+        "show_city_switcher": bool(city_options) and not bound_city_code,
+        "bound_city_label": _city_label(conn, bound_city_code),
+        "season_options": queries.season_options(conn),
+        "arrival": arrival,
+        "arrival_floor": arrival_floor,
+        "sessions": sessions,
+        "top_sessions": top_sessions,
+        "bottom_sessions": bottom_sessions,
+        "sos": queries.sos_block(conn, scope),
+        "decision_delivery": queries.decision_delivery_block(conn, scope),
+        "noshow_poll": queries.noshow_poll_block(conn, scope),
+        "regional_move": queries.regional_move_block(conn, scope),
+        "stats_card": queries.stats_card_block(conn, scope),
         "bot_username": cfg.bot_username,
     }
 
@@ -672,7 +722,6 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
-        arrival_day: Optional[str] = None,
     ):
         # Phase 26.1-02 (SD-08): на хосте супердашборда Telegram-вход не работает и не должен
         # (домен за ботом не закреплён) — показывать заведомо нерабочий /login хуже, чем
@@ -711,7 +760,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_page_context(conn, cfg, scope, viewer, arrival_day=arrival_day)
+            context = build_page_context(conn, cfg, scope, viewer)
 
         return templates.TemplateResponse(request, "dashboard.html", context)
 
@@ -755,6 +804,47 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             context = build_chat_context(conn, cfg, scope, viewer)
 
         return templates.TemplateResponse(request, "chat.html", context)
+
+    @app.get("/forum", response_class=HTMLResponse)
+    def forum_page(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+        arrival_day: Optional[str] = None,
+    ):
+        """Задача 25.09: периметр — копия `/` (редирект супердашборда, сессия/логин,
+        пересверка `stats` на каждый запрос, `viewer_scope`+`season`), тот же приём, что уже
+        применён в `/chat`."""
+        if multi_mode(cfg.events):
+            return RedirectResponse(url="/compare", status_code=302)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return RedirectResponse(url="/login", status_code=302)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                notify_access_request(
+                    cfg,
+                    telegram_id=telegram_id,
+                    username=request.session.get("username"),
+                    first_name=request.session.get("first_name"),
+                )
+                return templates.TemplateResponse(
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
+                )
+
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            viewer = {
+                "telegram_id": telegram_id,
+                "bound_city": staff_city(conn, telegram_id),
+            }
+            context = build_forum_context(conn, cfg, scope, viewer, arrival_day=arrival_day)
+
+        return templates.TemplateResponse(request, "forum.html", context)
 
     return app
 

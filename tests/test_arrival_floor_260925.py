@@ -176,7 +176,8 @@ def test_dashboard_page_renders_floor_block(tmp_path, monkeypatch):
     _freeze(monkeypatch)
     _seed()
     client = tdr._stats_manager_client(db_path)
-    html_text = client.get("/").text
+    # Задача 25.09: «Приход»/«Сейчас на площадке» переехали с главной страницы на «/forum».
+    html_text = client.get("/forum").text
     assert "Сейчас на площадке" in html_text
     assert 'id="arrival-chart"' in html_text and "data-cumulative" in html_text
     assert "Стойки входа" in html_text and "Анна (@anna)" in html_text

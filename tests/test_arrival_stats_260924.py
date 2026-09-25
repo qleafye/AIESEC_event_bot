@@ -245,6 +245,7 @@ def test_dashboard_page_renders_arrival_section(tmp_path, monkeypatch):
     _run(db.set_setting("event_season", SEASON))
     _seed_spb_forum()
     client = tdr._stats_manager_client(db_path)
-    html_text = client.get("/").text
+    # Задача 25.09: раздел «Приход» переехал с главной страницы на «/forum».
+    html_text = client.get("/forum").text
     assert 'id="arrival"' in html_text
     assert "Открытие" in html_text and "Явка" in html_text
