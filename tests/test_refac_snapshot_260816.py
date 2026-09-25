@@ -1245,6 +1245,7 @@ admin|callback_query|forum_ready_open|forum_ready:*
 admin|callback_query|forum_ready_refresh|forum_ready_re:*
 admin|callback_query|citymove_start|citymv_start:*
 admin|callback_query|citymove_pick_city|citymv_pick:*
+admin|callback_query|citymove_notify_toggle|citymv_notify:*
 admin|callback_query|citymove_apply|citymv_apply:*
 admin|callback_query|citymove_cancel|citymv_cancel:*
 admin|callback_query|checkin_floor_open|checkin_floor
@@ -1843,7 +1844,9 @@ def test_snapshot_total_handler_count_is_292():
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 7 чистых вставок, 0 удалений, 0 реордеров (757 -> 817).
     # Перенос неявившихся регионального форума в другой город: rnm_* делегата и экран настроек в хабе «🎪 Форум: функции».
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 3 чистых вставок, 0 удалений, 0 реордеров (817 -> 829).
-    assert len(GOLDEN_SNAPSHOT) == 829
+    # Перевод в город: тумблер «🔔 Сообщить делегату» (citymove_notify_toggle) на экране подтверждения.
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (829 -> 830).
+    assert len(GOLDEN_SNAPSHOT) == 830
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

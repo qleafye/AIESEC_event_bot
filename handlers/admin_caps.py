@@ -1075,6 +1075,7 @@ ADMIN_CAPS: dict[str, str] = {
     "citymv_pick:*": "moderate_reg",
     "citymv_apply:*": "moderate_reg",
     "citymv_cancel:*": "moderate_reg",
+    "citymv_notify:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
