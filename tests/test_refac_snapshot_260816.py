@@ -1310,6 +1310,8 @@ admin|callback_query|sheet_reconcile_append_confirm|sheetrec_append_confirm
 admin|callback_query|sheet_reconcile_append_go|sheetrec_append_go
 admin|callback_query|sheet_reconcile_status_confirm|sheetrec_status_confirm
 admin|callback_query|sheet_reconcile_status_go|sheetrec_status_go
+admin|callback_query|sheet_reconcile_resend_confirm|sheetrec_resend_confirm
+admin|callback_query|sheet_reconcile_resend_go|sheetrec_resend_go
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1918,7 +1920,13 @@ def test_snapshot_total_handler_count_is_292():
     # что у regreset_*/resumerep_* выше (модуль импортирован в самом хвосте handlers/admin.py,
     # сразу после admin_resume_replace). Пересчитано RUNNING `_build_snapshot_lines()`, difflib:
     # одна чистая вставка (6 строк), 0 удалений, 0 реордеров (854 -> 860).
-    assert len(GOLDEN_SNAPSHOT) == 860
+    # Координатор 25.09 (учёт доставки решения): «📨 Переотправить решения» — два новых
+    # callback_query-хендлера (sheet_reconcile_resend_confirm/sheet_reconcile_resend_go) в
+    # handlers/admin_sheet_reconcile.py, встали сразу после sheet_reconcile_status_go и ПЕРЕД
+    # prog_fbday_open (тот же файл, физическое место — хвост функций модуля, точка регистрации
+    # не сдвинулась). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая
+    # вставка (2 строки), 0 удалений, 0 реордеров (860 -> 862).
+    assert len(GOLDEN_SNAPSHOT) == 862
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
