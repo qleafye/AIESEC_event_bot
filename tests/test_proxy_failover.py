@@ -113,7 +113,7 @@ class _FakeBot:
         self.sent = []
         self.raise_on_send = raise_on_send
 
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, **kwargs):
         self.sent.append((chat_id, text))
         if self.raise_on_send:
             raise RuntimeError("simulated send failure")

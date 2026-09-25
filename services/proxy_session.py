@@ -143,7 +143,7 @@ async def _alert_admins_proxy_storm(
             if admin_id in _blocked_admins:
                 continue
             try:
-                await _alert_bot.send_message(admin_id, text)
+                await _alert_bot.send_message(admin_id, text, parse_mode=None)
             except TelegramForbiddenError as e:
                 _blocked_admins.add(admin_id)
                 logger.warning(
