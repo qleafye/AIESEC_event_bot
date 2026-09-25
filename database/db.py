@@ -2109,6 +2109,32 @@ async def init_db():
             )
         ''')
 
+        # Phase 33 (delegate-card admin actions, задачи 2/3): персональные одноразовые
+        # исключения из глобальных положений `reg_resubmit_after_reject`/`reg_edit_policy` —
+        # «🔁 Разрешить повторную подачу» и «✏️ Открыть правку после решения»
+        # (`services/delegate_overrides.py`). `kind` — 'resubmit' | 'edit'. Активная строка —
+        # `revoked_at IS NULL AND consumed_at IS NULL`; инвариант «не больше одной активной на
+        # (telegram_id, kind)» держит вызывающий код (grant отказывает, если уже есть активная),
+        # не UNIQUE-ограничение — так же, как остальные append-only журналы этого проекта
+        # (reg_answer_history и т.п.), где повторная выдача после отзыва — новая строка, не
+        # перезапись старой (история «кто и когда выдавал/отзывал» видна целиком).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS admin_delegate_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                granted_by INTEGER NOT NULL,
+                granted_at TEXT NOT NULL,
+                consumed_at TEXT,
+                revoked_at TEXT,
+                revoked_by INTEGER
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_delegate_overrides_active "
+            "ON admin_delegate_overrides(telegram_id, kind)"
+        )
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -4066,6 +4092,65 @@ async def revert_user_to_pending(telegram_id: int, from_status: str) -> bool:
         )
         await db.commit()
         return cursor.rowcount == 1
+
+
+# ── Phase 33 (delegate-card admin actions, задачи 2/3): персональные одноразовые исключения ──
+
+async def grant_delegate_override(telegram_id: int, kind: str, granted_by: int, granted_at: str) -> int:
+    """Новая активная строка исключения. Вызывающий (`services/delegate_overrides.py`) обязан
+    сам проверить отсутствие уже активной строки ДО вызова — эта функция ничего не проверяет,
+    только вставляет."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO admin_delegate_overrides (telegram_id, kind, granted_by, granted_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, kind, granted_by, granted_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_active_delegate_override(telegram_id: int, kind: str) -> dict | None:
+    """Последняя активная строка (`revoked_at IS NULL AND consumed_at IS NULL`) — `None`, если
+    исключения нет вовсе, уже отозвано или уже использовано."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM admin_delegate_overrides WHERE telegram_id = ? AND kind = ? "
+            "AND revoked_at IS NULL AND consumed_at IS NULL ORDER BY id DESC LIMIT 1",
+            (telegram_id, kind),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def revoke_delegate_override(telegram_id: int, kind: str, revoked_by: int, revoked_at: str) -> bool:
+    """`True` — активная строка была и закрыта этим вызовом; `False` — уже не было активной
+    (второй тап по «отозвать», или делегат успел её сам использовать первым — гонка не
+    считается ошибкой, просто нечего отзывать)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE admin_delegate_overrides SET revoked_at = ?, revoked_by = ? "
+            "WHERE telegram_id = ? AND kind = ? AND revoked_at IS NULL AND consumed_at IS NULL",
+            (revoked_at, revoked_by, telegram_id, kind),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def consume_delegate_override(telegram_id: int, kind: str, consumed_at: str) -> bool:
+    """Гасит активную строку (одноразовость) — `True`, если строка действительно была активна
+    и погашена этим вызовом; `False` — ничего активного не было (обычный делегат без
+    исключения проходит этот вызов как безвредный no-op, см. вызывающих в
+    `services/reg_finalize.py`)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE admin_delegate_overrides SET consumed_at = ? "
+            "WHERE telegram_id = ? AND kind = ? AND revoked_at IS NULL AND consumed_at IS NULL",
+            (consumed_at, telegram_id, kind),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 # ── Phase 23 (APP-TINDER-01, D-02): delegate avatar cache ────────────────────────────────────
@@ -9164,6 +9249,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # "checkin" (соседи forum_noshow_poll/checkin_not_arrived выше — тот же журнал отправки
     # делегату + его ответ).
     ("regional_noshow_move", "telegram_id", "checkin"),
+    # Phase 33 (delegate-card admin actions, задачи 2/3): admin_delegate_overrides.telegram_id
+    # — персональные исключения из reg_resubmit_after_reject/reg_edit_policy, личный след
+    # делегата (кому что разрешили). granted_by/revoked_by — id менеджера, авторские колонки,
+    # не трогаем отдельно (строка целиком уходит вместе с делегатом).
+    ("admin_delegate_overrides", "telegram_id", "overrides"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({

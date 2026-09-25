@@ -1083,6 +1083,13 @@ ADMIN_CAPS: dict[str, str] = {
     "revertp_toggle:*": "moderate_reg",
     "revertp_apply:*": "moderate_reg",
     "revertp_cancel:*": "moderate_reg",
+    # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» / отзыв — та же капа, что у соседних
+    # карточных действий (handlers/admin_resubmit_grant.py).
+    "resubg_start:*": "moderate_reg",
+    "resubg_toggle:*": "moderate_reg",
+    "resubg_apply:*": "moderate_reg",
+    "resubg_cancel:*": "moderate_reg",
+    "resubg_revoke:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
