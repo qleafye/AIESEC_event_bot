@@ -20,6 +20,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
+from services.decision_delivery import resend_undelivered_decisions
 from services.sheet_reconcile import (
     apply_append_missing,
     apply_fix_statuses,
@@ -63,6 +64,13 @@ async def _action_keyboard(admin_id: int, report: dict) -> InlineKeyboardMarkup:
     if report["ok"] and report["status_mismatch"]:
         rows.append([InlineKeyboardButton(
             text="🔄 Выправить статусы", callback_data="sheetrec_status_confirm",
+        )])
+    # Координатор 25.09: переотправка НЕ зависит от Google Sheets (apply_decision_effects(...,
+    # sheet=False)) — кнопка показывается и когда report["ok"] is False (таблица недоступна),
+    # раскладка decision_delivery посчитана над БД независимо от снимка листа.
+    if (report.get("decision_delivery") or {}).get("resendable"):
+        rows.append([InlineKeyboardButton(
+            text="📨 Переотправить решения", callback_data="sheetrec_resend_confirm",
         )])
     rows.append([InlineKeyboardButton(text="📥 Полный список (CSV)", callback_data="sheetrec_csv")])
     base = await op_return_keyboard(admin_id, "admin_sheet_reconcile")
@@ -239,6 +247,90 @@ async def sheet_reconcile_status_go(callback: types.CallbackQuery):
         await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logger.error(f"sheet_reconcile_status_go failed: {e}")
+        done = result.get("done", 0) if result else 0
+        total = result.get("total", 0) if result else 0
+        await callback.message.edit_text(_crash_text(done, total), parse_mode="HTML")
+
+
+# ── Координатор 25.09: «📨 Переотправить решения» ────────────────────────────────────────────
+#
+# Право — то же, что у остальных кнопок этого экрана («settings», wildcard `sheetrec_*` в
+# handlers/admin_caps.py уже покрывает новые callback'ы автоматически). НЕ `moderate_reg`:
+# переотправка — операция над «Сверить с БД» (учёт/техническое обслуживание записей решения),
+# не сама модерация заявок — тот же класс права, что у «🔄 Синхронизация»/«♻️ Пересобрать».
+
+@router.callback_query(F.data == "sheetrec_resend_confirm")
+async def sheet_reconcile_resend_confirm(callback: types.CallbackQuery):
+    admin_id = callback.from_user.id
+    scope, _label = await _admin_city_view(admin_id)
+    try:
+        report = await build_report(city_scope=scope)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_resend_confirm failed: {e}")
+        await callback.answer(_crash_text(0, 0), show_alert=True)
+        return
+
+    dd = report.get("decision_delivery") or {}
+    resendable = dd.get("resendable", [])
+    blocked = dd.get("blocked", [])
+    if not resendable:
+        await callback.answer("Уже нечего переотправлять — пересчитал заново.", show_alert=True)
+        return
+
+    counts = Counter(it["decision"] for it in resendable)
+    text = (
+        f"📨 <b>Переотправить решения {len(resendable)} делегатам</b> "
+        f"(одобрено {counts.get('approved', 0)}, отклонено {counts.get('rejected', 0)}).\n\n"
+        "Текст — тот же, что при решении, для каждого по его ТЕКУЩЕМУ статусу, городу и языку "
+        "(если статус успел смениться до отправки — письмо не уйдёт двойным, перед отправкой "
+        "всё пересчитывается заново)."
+    )
+    if blocked:
+        text += (
+            f"\n\nЗаблокировавшим бота ({len(blocked)}) не шлём — им нужно написать вручную "
+            "(список — в полном отчёте и в CSV)."
+        )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, переотправить", callback_data="sheetrec_resend_go")],
+        [InlineKeyboardButton(text="✖️ Отмена", callback_data="admin_sheet_reconcile")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sheetrec_resend_go")
+async def sheet_reconcile_resend_go(callback: types.CallbackQuery):
+    admin_id = callback.from_user.id
+    scope, _label = await _admin_city_view(admin_id)
+    await callback.answer("📨 Переотправляю...")
+    result = None
+    try:
+        result = await resend_undelivered_decisions(callback.bot, city_scope=scope)
+        if not result["ok"]:
+            if result.get("crashed"):
+                text = _crash_text(result.get("done", 0), result.get("total", 0))
+            else:
+                text = f"❌ {html_module.escape(str(result['error']))}"
+            await callback.message.edit_text(text, parse_mode="HTML")
+            return
+
+        lines = [f"✅ Доставлено: <b>{result['done']}</b>"]
+        if result["failed"]:
+            lines.append(f"Не удалось: <b>{len(result['failed'])}</b>")
+            for it in result["failed"][:10]:
+                name = html_module.escape(str(it.get("name") or it["tid"]))
+                reason = html_module.escape(str(it.get("reason") or "-"))
+                lines.append(f"  {name}: {reason}")
+            if len(result["failed"]) > 10:
+                lines.append(f"  …и ещё {len(result['failed']) - 10}")
+        if result.get("blocked"):
+            lines.append(
+                f"Бот заблокирован (не отправляли, напишите вручную): <b>{len(result['blocked'])}</b>"
+            )
+        kb = await _action_keyboard(admin_id, await build_report(city_scope=scope))
+        await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"sheet_reconcile_resend_go failed: {e}")
         done = result.get("done", 0) if result else 0
         total = result.get("total", 0) if result else 0
         await callback.message.edit_text(_crash_text(done, total), parse_mode="HTML")
