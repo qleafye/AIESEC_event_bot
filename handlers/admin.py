@@ -536,6 +536,11 @@ async def cmd_find_user(message: types.Message):
             rows.append([InlineKeyboardButton(
                 text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{user['telegram_id']}",
             )])
+        # Phase 33 (задача 3): «📎 Заменить резюме» — только для поданной анкеты (users-строка
+        # уже есть); человека из reg_started (ветка ниже) резюме ещё не касалось вовсе.
+        rows.append([InlineKeyboardButton(
+            text="📎 Заменить резюме", callback_data=f"resumerep_start:{user['telegram_id']}",
+        )])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -1110,3 +1115,10 @@ from handlers import admin_edit_grant  # noqa: E402
 # regreset_apply/regreset_cancel in the very tail of admin.router (golden snapshot: a clean
 # append, right after admin_edit_grant). Not a forum toggle — no hub row.
 from handlers import admin_reg_reset  # noqa: E402
+
+# Phase 33 (delegate-card admin actions, задача 3): shared-router seam import for «📎 Заменить
+# резюме» (handlers/admin_resume_replace.py) — registers resumerep_start/resumerep_cancel/
+# resumerep_cancel_text/resumerep_receive_file/resumerep_receive_other in the very tail of
+# admin.router (golden snapshot: a clean append, right after admin_reg_reset). Not a forum
+# toggle — no hub row.
+from handlers import admin_resume_replace  # noqa: E402

@@ -462,3 +462,10 @@ class LostFoundNew(StatesGroup):
     waiting_photo = State()
     waiting_where = State()
     preview = State()
+
+
+class ResumeReplace(StatesGroup):
+    # Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — менеджер шлёт
+    # файл в ответ на запрос бота (handlers/admin_resume_replace.py); telegram_id делегата
+    # несёт state.get_data() — тот же приём, что у StaffAdd выше.
+    waiting_for_file = State()
