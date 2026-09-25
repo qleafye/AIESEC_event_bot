@@ -546,6 +546,64 @@ def test_resend_double_tap_returns_busy(tmp_path, monkeypatch):
     assert len(oks) == 1
 
 
+def test_resend_approved_skips_payment_step_when_payment_enabled(tmp_path, monkeypatch):
+    """Координатор 25.09: переотправка одобрения при `payment_enabled=on` шлёт ТОЛЬКО текст
+    решения — `handlers.payment.start_payment_step` (единственное место, которое пишет FSM
+    делегата в пути одобрения) не вызывается вовсе, а не «вызывается и откатывается»."""
+    _db_ready(tmp_path)
+    _run(db.set_setting("payment_enabled", "on"))
+    _run(_seed_user(308, status="approved", full_name="Одобрен", username="apprvd"))
+    _run(db.record_decision_delivery(308, "approved", "failed", "чат не найден"))
+
+    import handlers.payment as payment_mod
+    payment_calls = []
+
+    async def fake_start_payment_step(bot, telegram_id, participant_type="full"):
+        payment_calls.append(telegram_id)
+        return None
+
+    monkeypatch.setattr(payment_mod, "start_payment_step", fake_start_payment_step)
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", _fake_update_status_in_sheet)
+
+    bot = _FakeBot()
+    result = _run(decision_delivery.resend_undelivered_decisions(bot))
+
+    assert result["ok"] is True
+    assert result["done"] == 1
+    assert payment_calls == []  # шаг оплаты не открывался
+    sent_ids = {cid for cid, _text in bot.sent}
+    assert sent_ids == {308}  # текст решения ушёл напрямую
+
+    user = _run(db.get_user(308))
+    assert user["decision_delivery_status"] == "delivered"
+    assert user["decision_delivery_decision"] == "approved"
+
+
+def test_normal_decision_still_opens_payment_step_when_payment_enabled(tmp_path, monkeypatch):
+    """Контроль: обычное решение модератора (не переотправка) при `payment_enabled=on`
+    по-прежнему уходит в шаг оплаты — эта задача меняет только путь переотправки."""
+    _db_ready(tmp_path)
+    _run(db.set_setting("payment_enabled", "on"))
+    _run(_seed_user(309, status="approved", full_name="Одобрен2", username="apprvd2"))
+
+    import handlers.payment as payment_mod
+    payment_calls = []
+
+    async def fake_start_payment_step(bot, telegram_id, participant_type="full"):
+        payment_calls.append(telegram_id)
+        return None
+
+    monkeypatch.setattr(payment_mod, "start_payment_step", fake_start_payment_step)
+    monkeypatch.setattr(application_effects, "update_status_in_sheet", _fake_update_status_in_sheet)
+
+    bot = _FakeBot()
+    _run(application_effects.apply_decision_effects(bot, 309, "approved"))
+
+    assert payment_calls == [309]  # обычное решение по-прежнему открывает шаг оплаты
+    user = _run(db.get_user(309))
+    assert user["decision_delivery_status"] == "delivered"
+
+
 def test_resend_city_scope_limits_to_admin_city(tmp_path, monkeypatch):
     """Город админа учитывается — переотправка в скоупе города не трогает недоставленные
     решения ДРУГОГО города."""
