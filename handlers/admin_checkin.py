@@ -28,6 +28,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from cities import (
     cities_module_on,
     city_label,
+    city_label_or_none,
     city_scope,
     default_city_code,
     enabled_cities,
@@ -608,7 +609,8 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         lines.append("<b>Требуют внимания:</b>")
         for reason, row in shown:
             name = html.escape(row["full_name"] or "(без имени)")
-            city = html.escape(row["city"] or "—")
+            # В QR лежит КОД города («msk») — человеку подпись, даже при выключенном модуле.
+            city = html.escape(await city_label_or_none(row["city"]) or "—")
             lines.append(f"❔ {name} · {city} — {reason}")
     remaining = len(flagged) - len(shown)
     if remaining > 0:
