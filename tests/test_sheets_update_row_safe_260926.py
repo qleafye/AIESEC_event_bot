@@ -314,3 +314,13 @@ def test_update_row_direct_target_exception_retries_then_succeeds(monkeypatch):
     assert result is True
     assert target.update_calls == [([new_row], "A2:C2")]
     assert sleeps == [sheets.RETRY_DELAYS[0]]
+
+
+def test_headers_compatible_rules():
+    from services.sheets import _headers_compatible
+    assert _headers_compatible(["id", "Имя"], ["id", "Имя"])
+    assert _headers_compatible(["id", "Имя", ""], ["id", "Имя"])  # хвостовые пустые
+    assert _headers_compatible(["id", "Имя"], ["id", "Имя", "Пришёл"])  # отстаёт на хвост
+    assert not _headers_compatible(["id", "Город", "Имя"], ["id", "Имя", "Город"])  # порядок
+    assert not _headers_compatible(["id", "Имя"], ["id", "Вуз"])
+    assert not _headers_compatible([], ["id"])
