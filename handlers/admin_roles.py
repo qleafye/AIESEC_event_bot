@@ -25,6 +25,7 @@ from config import config
 from settings_schema import get_setting_typed
 from database.db import (
     add_staff,
+    get_reg_started_by_id,  # Phase 33 (задача 2): экран назначения роли для «только /start»
     get_setting,
     get_staff_city,
     get_user,
@@ -851,28 +852,16 @@ async def roles_add_cancel(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-@router.message(StaffAdd.waiting_for_person)
-async def roles_add_person(message: types.Message, state: FSMContext):
-    telegram_id, marker = _resolve_staff_input(message)
-    reg_started_person = None  # человек нажал /start, но анкету не подал — users его не знает
-    if telegram_id is None and marker is not None and marker.startswith("@"):
-        found = await search_people(marker, include_started=True)  # users, потом reg_started
-        if not found:
-            await message.answer(f"Пользователь {html_module.escape(marker)} не найден в базе бота — попросите числовой id.")
-            return
-        telegram_id = found[0]["user_id"]
-        reg_started_person = found[0] if found[0]["source"] == "reg_started" else None
-        marker = None
-
-    if telegram_id is None:
-        await message.answer(marker or _STAFF_INPUT_ERROR)
-        return
-
-    await state.clear()
+async def _render_role_assign_screen(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран «Кого назначить» — общий рендер для мастера (после текстового ввода,
+    `roles_add_person`) и прямого входа с карточки `/find` для человека, который нажимал
+    /start, но анкету не подал (Phase 33, задача 2, `roles_add_for`, `handlers/admin.py::
+    cmd_find_user`), — уже известным `telegram_id`, без повторного текстового ввода."""
     user = await get_user(telegram_id)
     if user is not None:
         display_name, note = user.get("full_name") or user.get("username"), ""
     else:
+        reg_started_person = await get_reg_started_by_id(telegram_id)
         display_name = reg_started_person.get("username") if reg_started_person else None
         note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>" if reg_started_person else ""
     display_name = html_module.escape(str(display_name or telegram_id))
@@ -882,11 +871,44 @@ async def roles_add_person(message: types.Message, state: FSMContext):
         for role, meta in ROLES.items()
     ]
     buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_roles")])
-    await message.answer(
-        f"Кого назначить: {display_name}{note}",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-    )
+    text = f"Кого назначить: {display_name}{note}"
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+@router.message(StaffAdd.waiting_for_person)
+async def roles_add_person(message: types.Message, state: FSMContext):
+    telegram_id, marker = _resolve_staff_input(message)
+    if telegram_id is None and marker is not None and marker.startswith("@"):
+        found = await search_people(marker, include_started=True)  # users, потом reg_started
+        if not found:
+            await message.answer(f"Пользователь {html_module.escape(marker)} не найден в базе бота — попросите числовой id.")
+            return
+        telegram_id = found[0]["user_id"]
+        marker = None
+
+    if telegram_id is None:
+        await message.answer(marker or _STAFF_INPUT_ERROR)
+        return
+
+    await state.clear()
+    text, kb = await _render_role_assign_screen(telegram_id)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("roles_addfor:"))
+async def roles_add_for(callback: types.CallbackQuery):
+    """Phase 33 (delegate-card admin actions, задача 2): «👥 Выдать роль» с карточки /find для
+    человека, найденного ТОЛЬКО в reg_started (users его не знает — анкету не подавал) —
+    прямой вход в мастер выдачи роли БЕЗ повторного текстового ввода, тот же экран, что у
+    `roles_add_person` (`_render_role_assign_screen`)."""
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not (parts[1].isascii() and parts[1].isdigit()):
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return
+    tid = int(parts[1])
+    text, kb = await _render_role_assign_screen(tid)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("roles_addrole:"))
