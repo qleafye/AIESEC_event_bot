@@ -107,7 +107,11 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     assert "Чат SOS «Орги», бот в чате" in text
     assert "последняя запись 2 мин назад" in text
     assert "Всё готово." in text
-    assert _cbs(kb) == ["forum_ready_re:msk", "admin_forum_functions"]
+    # Зелёная строка даты несёт только «Изменить» (дата/длина форума), проблемных кнопок нет.
+    assert _cbs(kb) == [
+        "settings_edit:forum_date", "settings_edit:sos_active_days",
+        "forum_ready_re:msk", "admin_forum_functions",
+    ]
 
 
 def test_bot_kicked_from_sos_chat_and_sheet_failure_are_red(tmp_path, monkeypatch):
@@ -200,34 +204,65 @@ def test_count_program_sessions_none_counts_all_cities(tmp_path):
     assert _run(count_program_sessions(None)) == 2
 
 
-def _date_row(tmp_path, monkeypatch, forum_date, now):
+def _date_row(tmp_path, monkeypatch, forum_date, now, days=None):
     _ready(tmp_path)
     _patch_sched(monkeypatch, _FakeSched())
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "")
     monkeypatch.setattr(afr, "msk_now", lambda: now)
     _run(db.set_setting("forum_date", forum_date))
+    if days is not None:
+        _run(db.set_setting("sos_active_days", str(days)))
     return _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
 
 
 def test_past_forum_date_is_yellow_with_fix(tmp_path, monkeypatch):
-    """Дата прошлого форума (раньше сегодняшнего дня по МСК) — жёлтая строка с кнопкой правки."""
+    """Форум закончился (последний день раньше сегодняшнего по МСК) — жёлтая строка с кнопкой
+    правки."""
     from datetime import datetime
-    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 4, 0, 5))
-    assert "🟡 Дата форума прошла (03.10.2026) — это прошлый форум? Обновите дату" in text
+    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 5, 0, 5))
+    assert "🟡 Дата форума прошла (03.10–04.10) — это прошлый форум? Обновите дату" in text
     assert "settings_edit:forum_date" in _cbs(kb)
+
+
+def test_second_forum_day_is_not_past(tmp_path, monkeypatch):
+    """Второй день двухдневного форума — форум ещё идёт, не «дата прошла»."""
+    from datetime import datetime
+    text, _kb = _date_row(tmp_path, monkeypatch, "30.10.2026", datetime(2026, 10, 31, 9, 0), days=2)
+    assert "🟢 Форум: 30.10–31.10 (2 дня) — идёт сегодня" in text.splitlines()
 
 
 def test_forum_today_is_green_today(tmp_path, monkeypatch):
     from datetime import datetime
-    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 3, 23, 50))
-    assert "🟢 Дата форума: 03.10.2026 — сегодня" in text
-    assert "settings_edit:forum_date" not in _cbs(kb)
+    text, kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 3, 23, 50), days=1)
+    assert "🟢 Форум: 03.10 (1 день) — идёт сегодня" in text.splitlines()
 
 
 def test_future_forum_date_is_plain_green(tmp_path, monkeypatch):
     from datetime import datetime
-    text, _kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 2, 23, 59))
-    assert "🟢 Дата форума: 03.10.2026" in text.splitlines()
+    text, _kb = _date_row(tmp_path, monkeypatch, "03.10.2026", datetime(2026, 10, 2, 23, 59), days=1)
+    assert "🟢 Форум: 03.10 (1 день)" in text.splitlines()
+
+
+def test_two_day_forum_is_neutral_with_edit_buttons(tmp_path, monkeypatch):
+    """Длина > 1 дня — НЕ жёлтая (у Москвы два дня законно): нейтральная строка с явным
+    диапазоном и кнопками правки даты и длины, после кнопок проблемных строк."""
+    from datetime import datetime
+    text, kb = _date_row(tmp_path, monkeypatch, "30.10.2026", datetime(2026, 10, 20, 12, 0), days=2)
+    assert "🟢 Форум: 30.10–31.10 (2 дня)" in text.splitlines()
+    assert "🟡 Форум" not in text
+    rows = [[b.callback_data for b in row] for row in kb.inline_keyboard]
+    assert ["settings_edit:forum_date", "settings_edit:sos_active_days"] in rows
+    edit_idx = rows.index(["settings_edit:forum_date", "settings_edit:sos_active_days"])
+    # кнопки красных строк (QR, программа) — выше «Изменить» у зелёной строки даты
+    assert rows.index(["admin_program"]) < edit_idx
+    labels = [b.text for b in kb.inline_keyboard[edit_idx]]
+    assert labels == ["🗓 Изменить дату", "🗓 Сколько дней идёт"]
+
+
+def test_days_word():
+    assert [afr._days_word(n) for n in (1, 2, 5, 11, 21, 22)] == [
+        "1 день", "2 дня", "5 дней", "11 дней", "21 день", "22 дня",
+    ]
 
 
 def test_stale_arrival_queue_is_yellow(tmp_path, monkeypatch):
