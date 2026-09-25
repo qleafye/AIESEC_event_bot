@@ -200,6 +200,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_export_incomplete"),
         ("op", "admin_sync_sheet"),
         ("op", "admin_rebuild_sheet"),
+        ("op", "admin_sheet_reconcile"),
         ("op", "admin_dedupe_sheet"),
         ("group", "sheets"),
         ("screen", "sheet_logs_open", "🕓 Журналы в таблицу"),

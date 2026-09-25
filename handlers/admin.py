@@ -1122,3 +1122,10 @@ from handlers import admin_reg_reset  # noqa: E402
 # admin.router (golden snapshot: a clean append, right after admin_reg_reset). Not a forum
 # toggle — no hub row.
 from handlers import admin_resume_replace  # noqa: E402
+
+# Phase 33 (delegate-card admin actions): shared-router seam import for «🔍 Сверить с БД»
+# (handlers/admin_sheet_reconcile.py) — registers admin_sheet_reconcile/sheetrec_csv/
+# sheetrec_append_confirm/sheetrec_append_go/sheetrec_status_confirm/sheetrec_status_go in the
+# very tail of admin.router (golden snapshot: a clean append, right after admin_resume_replace).
+# «📊 Данные» hub row: handlers/admin_core.py right after «♻️ Пересобрать таблицу».
+from handlers import admin_sheet_reconcile  # noqa: E402
