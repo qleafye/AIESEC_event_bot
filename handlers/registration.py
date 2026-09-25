@@ -79,7 +79,7 @@ from handlers.reg_schema import (
     _is_step_enabled, active_sheet_headers, set_sheet_schema,
     _sheet_kind, city_row_tab, incomplete_city_batches, sheet_city_code,
     DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for,
-    send_completion_and_bonus, approve_user,
+    send_completion_and_bonus, approve_user, ARRIVED_CELL_KEY, with_arrived_cell,
 )
 # Phase 27 (27-05, LANG-02): единственная воронка отправки вопросов (_safe_answer ниже) и
 # сводка ответов (_build_summary) переводят через этот шов — верхнеуровневый импорт безопасен,
@@ -1388,7 +1388,7 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     приписанный апостроф был не защитой, а порчей данных (`'+79991234567`, `'@username` не
     находятся фильтром/ВПР)."""
     headers = await get_sheet_schema(city_code)
-    values = _sheet_value_map(data)
+    values = _sheet_value_map(await with_arrived_cell(data))
     return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
@@ -1488,7 +1488,7 @@ PARTY_SHEET_COLUMNS = [
     ("Проживание", "reg_q_housing", lambda d: d.get("housing") or "-"),
     ("Общая кровать", "reg_q_bed_sharing", lambda d: d.get("bed_sharing") or "-"),
     ("Сосед по кровати", "reg_q_bed_partner", lambda d: d.get("bed_partner") or "-"),
-    ("Пришёл", None, lambda d: "-"),  # Форум-ночь B2 (идея №17) — см. SHEET_COLUMNS
+    ("Пришёл", None, lambda d: d.get(ARRIVED_CELL_KEY) or "-"),  # из базы — см. SHEET_COLUMNS
 ]
 
 
@@ -1524,6 +1524,7 @@ async def party_sheet_row(data: dict, city_code: str | None = None) -> list:
     active_sheet_row/short_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
     resolver."""
     headers = await party_sheet_headers(city_code)
+    data = await with_arrived_cell(data)
     values = {h: _sheet_safe(fn(data)) for h, _g, fn in PARTY_SHEET_COLUMNS}
     return [values.get(h, "-") for h in headers]
 
@@ -1592,7 +1593,7 @@ async def short_sheet_row(data: dict, city_code: str | None = None) -> list:
     active_sheet_row/party_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
     resolver."""
     headers = await short_sheet_headers(city_code)
-    values = _sheet_value_map(data)
+    values = _sheet_value_map(await with_arrived_cell(data))
     return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
