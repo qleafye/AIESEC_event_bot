@@ -941,3 +941,35 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
     cb = FakeCallback("rnm_accept", UID)
     _run(ua.regional_noshow_move_accept(cb))
     assert f"Move your application to another city: {target_label}?" in cb.message.text
+
+
+def test_rnm_confirm_move_exception_releases_claim_for_retry(tmp_path, monkeypatch):
+    """`move_user_city` бросил исключение (не `ok=False`) — захват всё равно возвращён."""
+    from handlers import user_actions as ua
+    import services.city_move as cm
+
+    _ready(tmp_path)
+    _run(_add_delegate(UID, city="spb"))
+    _run(db.regional_noshow_move_mark_sent(UID, "spb", "", "2026-10-04 12:00:00"))
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("лист упал")
+
+    monkeypatch.setattr(cm, "move_user_city", boom)
+
+    cb = FakeCallback("rnm_confirm", UID)
+    _run(ua.regional_noshow_move_confirm(cb))
+
+    state = _run(db.regional_noshow_move_get(UID, ""))
+    assert state["response"] is None  # можно повторить
+
+
+def test_decline_does_not_overwrite_completed_move(tmp_path):
+    """«Нет, спасибо», проигравший гонку переносу, не перетирает «перенесён»."""
+    _ready(tmp_path)
+    _run(db.regional_noshow_move_mark_sent(1, "spb", "", "2026-10-04 12:00:00"))
+    assert _run(db.regional_noshow_move_claim(1, "", "msk", "2026-10-04 13:00:00")) is True
+    assert _run(db.record_regional_noshow_move_response(
+        1, "", db.RNM_DECLINED, None, "2026-10-04 13:00:01",
+    )) is False
+    assert _run(db.regional_noshow_move_get(1, ""))["response"] == db.RNM_MOVED
