@@ -110,7 +110,10 @@ def test_enqueue_is_fail_soft_without_table(tmp_path):
 def _two_tabs(monkeypatch):
     main = QueueFakeWorksheet("main", rows=[["701", "Одобрена", ""], ["702", "Одобрена", ""]])
     spb = QueueFakeWorksheet("СПб", rows=[["801", "Одобрена", ""], ["802", "Одобрена", ""], ["803", "Одобрена", ""]])
-    _patch_fake_sheets(monkeypatch, {"__main__": main, "СПб": spb})
+    tabs = {"__main__": main, "СПб": spb}
+    _patch_fake_sheets(monkeypatch, tabs)
+    # Очередь открывает вкладку без автосоздания (`_open_named_or_main_sync`), не `_get_named_sheet`.
+    monkeypatch.setattr(sheets, "_open_named_or_main_sync", lambda t: tabs.get(t) if t else main)
     return main, spb
 
 
@@ -144,6 +147,38 @@ def test_batch_two_tabs_two_reads_two_writes(tmp_path, monkeypatch):
     assert len(spb.batch_update_calls[0]) == 3  # дубль 801 — одна ячейка
     assert [r[2] for r in main.rows] == ["2026-10-03 09:00:00", "2026-10-03 09:01:00"]
     assert [r[2] for r in spb.rows] == ["2026-10-03 09:02:00", "2026-10-03 09:03:00", "2026-10-03 09:04:00"]
+    assert rows == []
+
+
+class _NoCreateSpreadsheet:
+    def worksheet(self, title):
+        raise gspread.WorksheetNotFound(title)
+
+    def add_worksheet(self, *a, **k):
+        raise AssertionError("очередь «Пришёл» не имеет права создавать вкладку")
+
+
+def test_missing_city_tab_is_not_created_and_row_goes_to_main(tmp_path, monkeypatch):
+    """Вкладку города переименовали/удалили: add_worksheet не зовётся, ячейка пишется на
+    главном листе вторым проходом (инцидент 05.09)."""
+    _use_tmp_db(tmp_path)
+    main = QueueFakeWorksheet("main", rows=[["801", "Одобрена", ""]])
+    _patch_fake_sheets(monkeypatch, {"__main__": main})
+    monkeypatch.setattr(sheets, "_get_named_sheet", lambda t: (_ for _ in ()).throw(
+        AssertionError("_get_named_sheet создаёт вкладку на промахе — очереди нельзя")))
+    monkeypatch.setattr(sheets, "_named_sheets", {})
+    client = type("C", (), {"open_by_key": lambda self, key: _NoCreateSpreadsheet()})()
+    monkeypatch.setattr(sheets.gspread, "service_account", lambda filename=None: client)
+
+    async def go():
+        await _setup_city_user(801, "spb")
+        await _mark(801, "2026-10-03 09:00:00")
+        counts = await sheet_arrival_sync.drain()
+        return counts, await _queue_rows()
+
+    counts, rows = _run(go())
+    assert counts == {"written": 1, "missing": 0, "failed": 0}
+    assert main.rows[0][2] == "2026-10-03 09:00:00"
     assert rows == []
 
 
