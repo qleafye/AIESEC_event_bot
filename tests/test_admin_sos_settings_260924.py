@@ -309,3 +309,46 @@ def test_text_edit_contact_denied_without_specific_city(tmp_path):
     _run(admin_sos.asos_settings_edit_start(callback, state))
     assert callback.answers[0][1] is True
     assert _run(state.get_state()) is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 25.09: длина форума (sos_active_days) живёт рядом с датой форума; здесь — только ссылка
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_settings_screen_links_forum_length(tmp_path):
+    _ready(tmp_path)
+    text, kb = _run(admin_sos.render_sos_settings_screen(SUPERADMIN_ID))
+    assert "Кнопка SOS видна все дни форума (2 дн.)" in text
+    assert "рядом с датой форума" in text
+    assert "settings_edit:sos_active_days" in _cbs(kb)
+
+
+def test_settings_screen_hides_length_button_without_settings_right(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
+    _run(db.add_staff(BOUND_MSK_ID, "reg_manager", SUPERADMIN_ID))
+    _text, kb = _run(admin_sos.render_sos_settings_screen(BOUND_MSK_ID))
+    assert "settings_edit:sos_active_days" not in _cbs(kb)
+
+
+def test_forum_length_sits_next_to_forum_date():
+    """Подпись по смыслу (длина форума, не «SOS»), подсказка с примерами, место — сразу под
+    датой начала форума на экране «🎪 Событие/Медиа»."""
+    from handlers.admin_settings import _settings_group_keys
+    from settings_schema import SETTINGS_SCHEMA
+    from settings_synonyms import SETTINGS_SYNONYMS
+
+    spec = SETTINGS_SCHEMA["sos_active_days"]
+    assert spec["label"] == "🗓 Сколько дней идёт форум"
+    assert "1 — однодневный форум (регионы), 2 — Москва 30–31.10" in spec["prompt"]
+    assert spec["default"] == 2 and spec["per_city"] is True
+    keys = _settings_group_keys("event")
+    assert keys[keys.index("forum_date") + 1] == "sos_active_days"
+    assert "длина форума" in SETTINGS_SYNONYMS["sos_active_days"]
+
+
+def test_event_screen_shows_forum_length_default(tmp_path):
+    from handlers.admin_settings import render_settings_group_text
+    _ready(tmp_path)
+    text = _run(render_settings_group_text("event"))
+    assert "🗓 Сколько дней идёт форум: <i>по умолчанию</i>" in text
