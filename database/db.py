@@ -2114,6 +2114,24 @@ async def init_db():
             )
         ''')
 
+        # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): идемпотентность рассылки итоговой
+        # картинки-карточки после форума. Та же форма, что `forum_noshow_poll`/
+        # `regional_noshow_move` выше — `UNIQUE(telegram_id, season)`, одна карточка на
+        # делегата за сезон (не за город: делегат мог сменить город анкеты между отправкой и
+        # повторным тапом «Разослать», вторая карточка ему не нужна). `city` — снимок
+        # `users.event_city` на момент отправки (для отчётности «отправлено N в городе X»,
+        # не для переадресации).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS forum_stats_card_sends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                season TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                UNIQUE(telegram_id, season)
+            )
+        ''')
+
         # Идея №20 бэклога чек-ина: бюро находок. `chat_id`/`message_id` — где опубликован
         # пост находки (группа делегатов, `services/chat_tracking.py::chat_for_city`), НЕ
         # личность делегата — тот же класс, что `sos_card_copies.chat_id` выше
@@ -9327,6 +9345,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # делегата (кому что разрешили). granted_by/revoked_by — id менеджера, авторские колонки,
     # не трогаем отдельно (строка целиком уходит вместе с делегатом).
     ("admin_delegate_overrides", "telegram_id", "overrides"),
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): forum_stats_card_sends.telegram_id —
+    # кому и когда ушла итоговая картинка-карточка, тот же личный след, группа общая "checkin"
+    # (соседи forum_noshow_poll/regional_noshow_move выше — тот же журнал отправки делегату).
+    ("forum_stats_card_sends", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -11090,6 +11112,52 @@ async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
         "answered": answered,
         "by_reason": {r: counts.get(r, 0) for r in FORUM_NOSHOW_REASONS},
     }
+
+
+# ── Идея №29 бэклога чек-ина: «Твой Юлид в цифрах» — картинка-итог после форума ─────────────
+
+async def forum_stats_card_sent_ids(season: str) -> set[int]:
+    """Кому УЖЕ отправлена карточка в ЭТОМ `season` — вызывающий (`services.forum_stats_card`)
+    вычитает этот набор из кандидатов, идемпотентность рассылки: повторный тик/тап не шлёт
+    дважды за один сезон."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM forum_stats_card_sends WHERE season = ?", (season,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(r[0]) for r in rows}
+
+
+async def forum_stats_card_mark_sent(telegram_id: int, city: str | None, season: str, sent_at: str) -> bool:
+    """`INSERT OR IGNORE` по `UNIQUE(telegram_id, season)` — `True` эта строка вставлена именно
+    этим вызовом (гонка двойного тапа/параллельного вызова видит `False` и не считает
+    делегата отправленным дважды)."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO forum_stats_card_sends (telegram_id, city, season, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, city, season, sent_at),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def forum_stats_card_summary(season: str, *, city_scope=None) -> dict:
+    """«Отправлено N» — строка экрана менеджера. `city_scope` — по СНИМКУ
+    `forum_stats_card_sends.city` (город на момент отправки), тот же приём, что
+    `checkin_qr_sent_ids`."""
+    city_frag, city_params = _city_clause(city_scope, "city")
+    where = "season = ?"
+    params: list = [season]
+    if city_frag:
+        where += f" AND {city_frag}"
+        params.extend(city_params)
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM forum_stats_card_sends WHERE {where}", params,
+        ) as cursor:
+            row = await cursor.fetchone()
+    return {"sent": int(row[0] or 0) if row else 0}
 
 
 # ── Трек «региональные форумы → Москва»: перенос неявившихся ────────────────────────────────
