@@ -564,6 +564,10 @@ def test_render_snapshot_apps(tmp_path):
         # Phase 33 (delegate-card admin actions, задача 1): текст делегату при сбросе
         # зависшей анкеты — новый хвост группы, тот же приём, что у трёх ключей выше.
         "reg_reset_notify_text",
+        # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога —
+        # новый хвост группы (тумблер forum_stats_card_enabled и фон — не здесь, живут на
+        # своём экране handlers/admin_forum_stats_card.py).
+        "forum_stats_card_caption_text",
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -611,6 +615,8 @@ def test_render_snapshot_apps(tmp_path):
         # Phase 33 (delegate-card admin actions, задача 1): текст делегату при сбросе
         # зависшей анкеты.
         "🧹 Сброс зависшей анкеты: текст делегату",
+        # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога.
+        "📊 Карточка «Юлид в цифрах»: подпись",
     ]
     defaulted_labels = {
         "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
@@ -658,6 +664,9 @@ def test_render_snapshot_apps(tmp_path):
         # Phase 33 (delegate-card admin actions, задача 1): текст делегату при сбросе
         # зависшей анкеты имеет непустой дефолт в реестре.
         "🧹 Сброс зависшей анкеты: текст делегату",
+        # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога
+        # имеет непустой дефолт в реестре.
+        "📊 Карточка «Юлид в цифрах»: подпись",
     }
     # Phase 28 (28-07): "по умолчанию" флаг в этом экране считается ТОЛЬКО по
     # _SETTINGS_DISPLAY_DEFAULTS (type == "text"), см. admin_settings.py — пороги курса/стека
@@ -1086,7 +1095,7 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # (возврат в ожидание / разрешение повторной подачи / разрешение правки после решения) —
     # срез расширен до 28; задача 1 (сброс зависшей анкеты) добавляет ещё один ключ — срез
     # расширен до 29.
-    assert admin_settings._settings_group_keys("apps")[-29:] == [
+    assert admin_settings._settings_group_keys("apps")[-30:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
@@ -1106,7 +1115,10 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
         "revert_pending_notify_text", "resubmit_granted_notify_text", "edit_granted_notify_text",
         # Phase 33 (delegate-card admin actions, задача 1): текст делегату при сбросе
         # зависшей анкеты — новый хвост _APPS_FIELD_ORDER.
-        "reg_reset_notify_text"]
+        "reg_reset_notify_text",
+        # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога —
+        # новый хвост _APPS_FIELD_ORDER.
+        "forum_stats_card_caption_text"]
     text = asyncio.run(admin_settings.render_settings_group_text("system"))
     # int без значения в БД -- «— не задано» (как proxy_*: parse-дефолт не display-дефолт)
     assert "⏱ Догонялка: как часто проверять: <i>— не задано</i>" in text

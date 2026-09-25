@@ -642,6 +642,10 @@ TOGGLE_SECTION: dict[str, str] = {
     # свой экран у бота — handlers/admin_forum_functions.py (rgnm_cfg:*), тот же приём, что у
     # соседей выше (forum_noshow_poll_enabled и т.д.).
     "regional_noshow_offer_enabled": "apps",
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): картинка-итог после форума — тот же
+    # раздел «📋 Заявки», свой экран у бота — handlers/admin_forum_stats_card.py
+    # (forumstats_cfg:*), тот же приём, что у соседей выше.
+    "forum_stats_card_enabled": "apps",
 }
 
 # Единственный источник «что подтверждаем» для ОБЕИХ поверхностей (UI-SPEC A6): вкладки
