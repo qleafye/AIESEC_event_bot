@@ -716,3 +716,176 @@ def test_find_card_hides_reset_button_without_draft(tmp_path):
     captured = _run(scenario())
     buttons = _cbs(captured["kb"])
     assert f"regreset_start:{DELEGATE_ID}" not in buttons
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: «👤 Роль для «только /start»»
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_find_falls_back_to_reg_started_when_not_in_users(tmp_path):
+    """/find сам ищет только @username (память проекта) — фоллбэк на reg_started тем же
+    приёмом, что services/person_search.py уже даёт мастеру выдачи ролей."""
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.mark_reg_started(STARTED_ONLY_ID, "started_only", event_city="msk")
+
+        captured = {}
+
+        class _M:
+            def __init__(self):
+                self.text = "/find @started_only"
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+        await admin.cmd_find_user(_M())
+        return captured
+
+    captured = _run(scenario())
+    assert "анкету не подавал" in captured["text"]
+    assert "started_only" in captured["text"]
+    assert "не найден в базе данных" not in captured["text"]
+    buttons = _cbs(captured["kb"])
+    assert f"roles_addfor:{STARTED_ONLY_ID}" in buttons
+
+
+def test_find_still_reports_truly_unknown_username(tmp_path):
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        captured = {}
+
+        class _M:
+            def __init__(self):
+                self.text = "/find @nobody_at_all"
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+        await admin.cmd_find_user(_M())
+        return captured
+
+    captured = _run(scenario())
+    assert "не найден в базе данных" in captured["text"]
+
+
+def test_find_users_row_takes_priority_over_reg_started(tmp_path):
+    """Тёзка (тот же telegram_id есть и в users, и в reg_started, обычный путь после подачи
+    анкеты) — карточка полная, не «не подавал(а)»."""
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", username="samepersn")
+        await db.mark_reg_started(DELEGATE_ID, "samepersn", event_city="msk")
+
+        captured = {}
+
+        class _M:
+            def __init__(self):
+                self.text = "/find @samepersn"
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+        await admin.cmd_find_user(_M())
+        return captured
+
+    captured = _run(scenario())
+    assert "Пользователь найден:" in captured["text"]
+    assert "анкету не подавал" not in captured["text"]
+
+
+def test_find_reg_started_card_shows_reset_button_when_draft_exists(tmp_path):
+    from handlers import admin
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.mark_reg_started(STARTED_ONLY_ID, "started_only", event_city="msk")
+        await _seed_draft(STARTED_ONLY_ID, kind="new")
+
+        captured = {}
+
+        class _M:
+            def __init__(self):
+                self.text = "/find @started_only"
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+                captured["kb"] = reply_markup
+
+        await admin.cmd_find_user(_M())
+        return captured
+
+    captured = _run(scenario())
+    buttons = _cbs(captured["kb"])
+    assert f"regreset_start:{STARTED_ONLY_ID}" in buttons
+
+
+# ── handlers/admin_roles.py — прямой вход в мастер выдачи роли ─────────────────────────────
+
+def test_roles_add_for_shows_assign_screen_for_reg_started_person(tmp_path):
+    from handlers import admin_roles
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.mark_reg_started(STARTED_ONLY_ID, "started_only", event_city="msk")
+        cb = _FakeCallback(f"roles_addfor:{STARTED_ONLY_ID}", SUPERADMIN_ID)
+        await admin_roles.roles_add_for(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, kb = cb.message.edits[0]
+    assert "Кого назначить" in text
+    assert "анкету пока не подавал" in text
+    buttons = _cbs(kb)
+    assert f"roles_addrole:{STARTED_ONLY_ID}:reg_manager" in buttons
+
+
+def test_roles_add_for_shows_assign_screen_for_users_row(tmp_path):
+    from handlers import admin_roles
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved", full_name="Полная Анкета")
+        cb = _FakeCallback(f"roles_addfor:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_roles.roles_add_for(cb)
+        return cb
+
+    cb = _run(scenario())
+    text, _ = cb.message.edits[0]
+    assert "Полная Анкета" in text
+    assert "анкету пока не подавал" not in text
+
+
+def test_roles_add_for_rejects_malformed_callback(tmp_path):
+    from handlers import admin_roles
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        cb = _FakeCallback("roles_addfor:not_a_number", SUPERADMIN_ID)
+        await admin_roles.roles_add_for(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and cb.answers[0][1] is True
+
+
+def test_roles_addfor_capability_registered():
+    from handlers.admin_caps import ADMIN_CAPS
+
+    assert ADMIN_CAPS.get("roles_addfor:*") == "settings"

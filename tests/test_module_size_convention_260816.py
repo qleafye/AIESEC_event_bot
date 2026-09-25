@@ -479,7 +479,11 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "заводит (1184 строки); потолок поднят до фактического размера + ~5%.",
     ),
     "admin_roles.py": (
-        1097,
+        1119,
+        "Phase 33 (delegate-card admin actions, задача 2, 26.09): +22 строки — "
+        "`_render_role_assign_screen` вынесен из `roles_add_person` в отдельную функцию, "
+        "переиспользуемую новым `roles_addfor` (прямой вход в мастер выдачи роли с карточки "
+        "/find для человека, найденного только в reg_started); 1097 -> 1119. "
         "роли + settings-guide (13-04). "
         "Форум-ночь B3 (идея №22): +17 строк — roles_assign шлёт шпаргалку волонтёра ЛИЧНЫМ "
         "сообщением тому, кто только что впервые получил право checkin (has_capability, "
@@ -492,7 +496,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1080,
+        1112,
+        "Phase 33 (delegate-card admin actions, задача 2, 26.09): +32 строки — `/find` "
+        "фоллбэк на reg_started (человек нажимал /start, анкету не подал), своя карточка + "
+        "кнопки «👥 Выдать роль»/«🧹 Сбросить зависшую анкету» (условная); 1080 -> 1112. "
         "Phase 33 (delegate-card admin actions, задача 1, 26.09): +14 строк — кнопка "
         "«🧹 Сбросить зависшую анкету» на карточке /find (условная, только при открытом "
         "черновике) + шов-импорт `from handlers import admin_reg_reset` в самый хвост файла "
@@ -690,7 +697,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1332,
+        1336,
+        "Phase 33 (delegate-card admin actions, задача 2, 26.09): +4 строки — капа "
+        "«roles_addfor:*» (settings, прямой вход в мастер выдачи роли с карточки /find); "
+        "1332 -> 1336. "
         "Phase 33 (delegate-card admin actions, задача 1, 26.09): +6 строк — капы «🧹 Сбросить "
         "зависшую анкету» (regreset_start/toggle/apply/cancel, moderate_reg, та же капа, что у "
         "соседних карточных действий); 1326 -> 1332. "

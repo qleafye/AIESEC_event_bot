@@ -685,6 +685,10 @@ ADMIN_CAPS: dict[str, str] = {
     "reg_resume_mode_toggle": "settings",
     "roles_add": "settings",
     "roles_addrole:*": "settings",
+    # Phase 33 (delegate-card admin actions, задача 2): прямой вход в мастер выдачи роли с
+    # карточки /find (handlers/admin_roles.py::roles_add_for) — та же капа, что у остального
+    # мастера выше.
+    "roles_addfor:*": "settings",
     "roles_del:*": "settings",
     # Phase 09.1 (C, ROLE-03): manager <-> city binding. "roles_city:*" does not swallow
     # "roles_city_pick:*" -- the prefixes diverge at the char right after "roles_city"

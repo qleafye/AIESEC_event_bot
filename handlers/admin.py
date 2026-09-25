@@ -22,6 +22,7 @@ from database.db import (
     export_users_csv,
     get_user,
     get_user_by_username,
+    get_reg_started_by_username,  # Phase 33 (задача 2): фоллбэк /find на «только /start»
     get_monthly_registration_stats,
     get_source_stats,
     get_setting,
@@ -537,8 +538,39 @@ async def cmd_find_user(message: types.Message):
             )])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
-    else:
-        await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
+        return
+
+    # Phase 33 (задача 2): фоллбэк на reg_started — человек нажал /start, но анкету не подал
+    # (users_row_only_on_submit, память проекта), поэтому его не было в users, но он всё
+    # равно существует в базе бота. `services/person_search.py` это уже умеет для мастера
+    # выдачи ролей (`handlers/admin_roles.py::roles_add_person`) — здесь та же фактическая
+    # проверка, только напрямую по username (без части ФИО — /find сам всегда искал только
+    # @username).
+    started = await get_reg_started_by_username(username)
+    if started:
+        city_code = started.get("event_city")
+        city_text = await city_label(city_code) if city_code else "-"
+        text = (
+            f"👤 <b>Пользователь найден (анкету не подавал(а)):</b>\n"
+            f"ID: <code>{started['telegram_id']}</code>\n"
+            f"Username: {html_module.escape(str(started.get('username') or ''))}\n"
+            f"Начал(а) регистрацию: {started.get('started_at') or '-'}\n"
+            f"Город (по анкете): {html_module.escape(str(city_text))}\n\n"
+            "<i>Нажимал(а) /start, анкету пока не подавал(а) — записи делегата в базе нет.</i>"
+        )
+        rows = [[InlineKeyboardButton(
+            text="👥 Выдать роль", callback_data=f"roles_addfor:{started['telegram_id']}",
+        )]]
+        from services.reg_stuck_reset import preview_stuck_reset
+        if await preview_stuck_reset(started["telegram_id"]) is not None:
+            rows.append([InlineKeyboardButton(
+                text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{started['telegram_id']}",
+            )])
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 
 
 # Метка едет в deep-link как `?start=src_<метка>`, а Telegram разрешает в этом параметре
