@@ -1728,6 +1728,32 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_checkins_point ON checkins(point)"
         )
 
+        # Нагрузочный прогон 25.09: очередь записи «Пришёл» в Google-лист. Отметка/снятие/CSV
+        # пишут ТОЛЬКО сюда (оба процесса — бот и Mini App без Google-кредов), джоба бота
+        # (`services/sheet_arrival_sync.py`) раз в 30 с разбирает пачку: одно чтение столбца id
+        # на вкладку и один batch_update, значение ячейки — всегда из `checkins` (время первого
+        # входа), поэтому строка события — лишь «пересчитать этого делегата», повтор безвреден.
+        # Дубли по telegram_id не схлопываются в схеме (UNIQUE дал бы гонку «прочитал значение —
+        # пришло новое событие — удалил»): джоба удаляет строки id <= прочитанного максимума.
+        # `action` — set (отметка) | recompute (снятие), для журнала; на значение не влияет.
+        # `next_try_at` — когда брать снова (экспоненциальный backoff после сбоя листа).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sheet_arrival_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                city TEXT,
+                action TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_try_at TEXT NOT NULL,
+                last_error TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sheet_arrival_queue_due "
+            "ON sheet_arrival_queue(next_try_at, id)"
+        )
+
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
         # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
@@ -7957,6 +7983,78 @@ async def purge_miniapp_outbox_for_user(telegram_id: int) -> int:
         return cursor.rowcount
 
 
+# ── Очередь записи «Пришёл» в Google-лист (нагрузочный прогон 25.09) ───────────────────────
+
+SHEET_ARRIVAL_SET = "set"
+SHEET_ARRIVAL_RECOMPUTE = "recompute"
+SHEET_ARRIVAL_ERROR_MAX = 500
+
+
+async def enqueue_sheet_arrival(telegram_id: int, action: str, city: str | None = None) -> None:
+    """Событие «пересчитать ячейку «Пришёл» делегата». Зовут отметка/снятие/CSV в ОБОИХ
+    процессах; Google здесь не трогается. Fail-soft: таблицы ещё нет (Mini App поднялся раньше
+    миграции бота) или база занята — предупреждение в лог, отметка в `checkins` уже сохранена."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        async with _connect() as db:
+            await db.execute(
+                "INSERT INTO sheet_arrival_queue (telegram_id, city, action, created_at, next_try_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (int(telegram_id), city, action, now, now),
+            )
+            await db.commit()
+    except Exception as e:
+        logger.warning("sheet_arrival_queue: не поставил событие для %s: %s", telegram_id, e)
+
+
+async def list_due_sheet_arrivals(now: str, limit: int) -> list[dict]:
+    """Созревшие события (`next_try_at <= now`) в порядке id."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sheet_arrival_queue WHERE next_try_at <= ? ORDER BY id LIMIT ?",
+            (now, int(limit)),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def drop_sheet_arrivals(upto: dict[int, int]) -> int:
+    """Удалить события делегатов `{telegram_id: max_id}` с id <= max_id — всё, что было в
+    очереди к моменту чтения значения; событие, пришедшее позже, остаётся на следующий тик."""
+    if not upto:
+        return 0
+    async with _connect() as db:
+        cursor = await db.executemany(
+            "DELETE FROM sheet_arrival_queue WHERE telegram_id = ? AND id <= ?",
+            [(tid, max_id) for tid, max_id in upto.items()],
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def fail_sheet_arrivals(upto: dict[int, int], error: str, next_try_at: str) -> None:
+    """Сбой записи: attempts + 1, текст ошибки (уже без секретов), следующий заход не раньше
+    `next_try_at`. Событие остаётся в очереди."""
+    if not upto:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "UPDATE sheet_arrival_queue SET attempts = attempts + 1, last_error = ?, next_try_at = ? "
+            "WHERE telegram_id = ? AND id <= ?",
+            [((error or "")[:SHEET_ARRIVAL_ERROR_MAX], next_try_at, tid, max_id)
+             for tid, max_id in upto.items()],
+        )
+        await db.commit()
+
+
+async def sheet_arrival_queue_stats() -> tuple[int, str | None]:
+    """(сколько событий в очереди, created_at самого старого) — для «🚦 Готовность к форуму»."""
+    async with _connect() as db:
+        async with db.execute("SELECT COUNT(*), MIN(created_at) FROM sheet_arrival_queue") as cursor:
+            row = await cursor.fetchone()
+    return (row[0] or 0, row[1]) if row else (0, None)
+
+
 async def get_active_submission(task_id: int, user_id: int) -> dict | None:
     """Most recent non-rejected submission for this pair, or None. Rejected submissions are
     invisible here on purpose — a fresh resubmission after rejection is a NEW row (D-05)."""
@@ -9029,6 +9127,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # `revoke_volunteer_invite`/`claim_volunteer_invite` — used не пересчитывается по
     # содержимому uses-таблицы, только инкрементируется атомарно).
     ("volunteer_invite_uses", "telegram_id", "invites"),
+    # Нагрузочный прогон 25.09: sheet_arrival_queue.telegram_id — несделанная запись «Пришёл»
+    # удаляемого делегата в лист. Строки листа удаления не переживают, писать некуда — событие
+    # уходит вместе с человеком, группа общая "checkin" (соседи checkins/venue_log выше).
+    ("sheet_arrival_queue", "telegram_id", "checkin"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
