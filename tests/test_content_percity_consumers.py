@@ -705,9 +705,13 @@ def test_approve_text_for_signature_and_callers_unchanged():
     sig = inspect.signature(reg_mod.send_completion_and_bonus)
     assert list(sig.parameters) == [
         "bot", "telegram_id", "with_menu", "participant_type", "auto_approved",
-        "respect_quiet_hours",
+        "respect_quiet_hours", "send_bonus",
     ]
     assert sig.parameters["respect_quiet_hours"].default is False
+    # 26.09 (переотправка решений): send_bonus — kw-only, дефолт True; False только у
+    # переотправки текста одобрения (бонус-файл повторно не шлём).
+    assert sig.parameters["send_bonus"].default is True
+    assert sig.parameters["send_bonus"].kind is inspect.Parameter.KEYWORD_ONLY
     assert sig.parameters["respect_quiet_hours"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
