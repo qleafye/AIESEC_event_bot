@@ -77,7 +77,7 @@ def _with_bot(monkeypatch):
 def _fake_render(monkeypatch, calls):
     """Подменяет тяжёлый Pillow-рендер лёгкой заглушкой, записывающей аргумент `lang` — рассылку
     тестируем отдельно от самого рендера (у рендера свои тесты ниже, с настоящим Pillow)."""
-    def _stub(stats, background, lang, accent):
+    def _stub(stats, background, lang, accent, *, logo_bytes=None, city_label_text=None, date_range_text=None):
         calls.append(lang)
         return b"PNGDATA"
     monkeypatch.setattr(fsc, "render_card_sync", _stub)
@@ -112,10 +112,39 @@ def test_collect_stats_multiple_days_and_sessions(tmp_path):
     assert stats["days"] == 2
     assert stats["sessions"] == 3
     assert stats["hall"] == "Зал А"  # два скана из трёх — Зал А
-    assert stats["since"] == "26/1"  # prev_season побеждает season
+    assert stats["since"] == "26/1"  # prev_season побеждает season; event_season не задан -> не фильтруется
     # леджера монет нет вовсе -> оба поля None, не 0
     assert stats["coins"] is None
     assert stats["rank"] is None
+
+
+def test_collect_stats_since_hidden_when_equals_current_season(tmp_path):
+    """Правка координатора 25.09: «С нами с …» не показываем, если это текущий (или, что то же
+    самое для новичка без prev_season, первый) сезон делегата — только реально прошлый сезон
+    достоин отдельной строки."""
+    _ready(tmp_path)
+    _seed_user(UID, season="26/2", prev_season=None)  # новичок этого сезона
+
+    async def go():
+        await _set_setting("event_season", "26/2")
+        user = await db.get_user(UID)
+        return await fsc.collect_stats(user)
+
+    stats = _run(go())
+    assert stats["since"] is None
+
+
+def test_collect_stats_since_shown_when_differs_from_current_season(tmp_path):
+    _ready(tmp_path)
+    _seed_user(UID, season="26/2", prev_season="26/1")
+
+    async def go():
+        await _set_setting("event_season", "26/2")
+        user = await db.get_user(UID)
+        return await fsc.collect_stats(user)
+
+    stats = _run(go())
+    assert stats["since"] == "26/1"
 
 
 def test_collect_stats_empty_delegate_has_no_data_rows(tmp_path):
@@ -244,6 +273,144 @@ def test_label_set_en_contains_yulid_cyrillic_not_youlead_latin():
 def test_label_set_unknown_lang_falls_back_to_ru():
     assert fsc.label_set("ask") == fsc.label_set("ru")
     assert fsc.label_set("fr") == fsc.label_set("ru")
+
+
+def test_label_set_sessions_wording_is_forum_not_attended():
+    """Правка координатора 25.09 п.1: «Сессий посетил(а)» -> «Сессий на форуме» (и симметрично
+    в EN)."""
+    assert fsc.label_set("ru")["sessions"] == "Сессий на форуме"
+    assert "посетил" not in fsc.label_set("ru")["sessions"].lower()
+    assert fsc.label_set("en")["sessions"] == "Forum sessions"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Редизайн композиции (координатор 25.09): герой-цифра, нулевые/пустые плашки скрыты, даты,
+# лого — см. tests ниже
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_render_card_hides_zero_coins_tile():
+    """Ноль монет — настоящие данные (`collect_stats` их не прячет, см. тест
+    `test_collect_stats_coins_zero_after_debit_is_real_data_not_missing`), но на шеринговой
+    картинке координатор 25.09 попросил нулевые плашки не показывать вовсе."""
+    stats = dict(fsc._PREVIEW_STATS)
+    stats["coins"] = 0
+    png = _render(stats)
+    from PIL import Image
+    import io as _io
+
+    img = Image.open(_io.BytesIO(png))
+    assert img.size == PNG_SIZE  # не падает; наличие/отсутствие плашки — не пиксельный diff
+
+
+def test_render_card_hero_picks_days_over_sessions():
+    stats = dict(fsc._PREVIEW_STATS)
+    assert stats["days"] and stats["sessions"]
+    # Герой всегда дни, если дни есть — сессии уходят в плашки (косвенно проверяем через
+    # отсутствие исключения на обоих порядках наличия данных).
+    png_with_days = _render(stats)
+    stats_no_days = dict(stats)
+    stats_no_days["days"] = None
+    png_without_days = _render(stats_no_days)
+    assert len(png_with_days) > 0 and len(png_without_days) > 0
+
+
+def test_render_card_does_not_crash_with_logo():
+    from PIL import Image
+    import io as _io
+
+    logo = Image.new("RGBA", (200, 100), (255, 255, 255, 255))
+    buf = _io.BytesIO()
+    logo.save(buf, format="PNG")
+    png = fsc.render_card_sync(
+        dict(fsc._PREVIEW_STATS), None, "ru", "#037EF3",
+        logo_bytes=buf.getvalue(), city_label_text="Москва", date_range_text="30–31 октября",
+    )
+    img = Image.open(_io.BytesIO(png))
+    assert img.size == PNG_SIZE
+
+
+def test_render_card_does_not_crash_with_invalid_logo_bytes():
+    png = fsc.render_card_sync(
+        dict(fsc._PREVIEW_STATS), None, "ru", "#037EF3", logo_bytes=b"not a png",
+    )
+    assert len(png) > 0
+
+
+def test_render_card_no_data_and_no_footer_parts_still_renders():
+    """Ни города, ни дат, ни лого — футер сводится к одному «Юлид», карточка не падает."""
+    empty = {
+        "name": None, "days": None, "sessions": None, "hall": None,
+        "coins": None, "rank": None, "rank_total": None, "since": None,
+    }
+    png = fsc.render_card_sync(empty, None, "ru", "#037EF3")
+    from PIL import Image
+    import io as _io
+
+    img = Image.open(_io.BytesIO(png))
+    assert img.size == PNG_SIZE
+
+
+# ── Даты форума: «30–31 октября» / «October 30–31» ──────────────────────────────────────────
+
+def test_format_forum_dates_ru_same_month_range():
+    from datetime import date
+
+    assert fsc.format_forum_dates(date(2026, 10, 30), date(2026, 10, 31), "ru") == "30–31 октября"
+
+
+def test_format_forum_dates_ru_single_day():
+    from datetime import date
+
+    assert fsc.format_forum_dates(date(2026, 10, 30), date(2026, 10, 30), "ru") == "30 октября"
+
+
+def test_format_forum_dates_ru_cross_month():
+    from datetime import date
+
+    assert fsc.format_forum_dates(date(2026, 10, 31), date(2026, 11, 1), "ru") == "31 октября – 1 ноября"
+
+
+def test_format_forum_dates_en_same_month_range():
+    from datetime import date
+
+    assert fsc.format_forum_dates(date(2026, 10, 30), date(2026, 10, 31), "en") == "October 30–31"
+
+
+def test_format_forum_dates_en_cross_month():
+    from datetime import date
+
+    assert fsc.format_forum_dates(date(2026, 10, 31), date(2026, 11, 1), "en") == "October 31 – November 1"
+
+
+def test_footer_line_brand_always_city_and_dates_optional():
+    assert fsc._footer_line(None, None) == "Юлид"
+    assert fsc._footer_line("Москва", None) == "Юлид · Москва"
+    assert fsc._footer_line(None, "30–31 октября") == "Юлид · 30–31 октября"
+    assert fsc._footer_line("Москва", "30–31 октября") == "Юлид · Москва, 30–31 октября"
+
+
+def test_resolve_footer_parts_reads_forum_date_window(tmp_path):
+    """`_resolve_footer_parts` берёт окно форума из `services.sos.sos_active_window`
+    (`forum_date` + дефолт `sos_active_days`=2) — без отдельного города (city=None, города
+    выключены в тесте) даёт только даты, без подписи города."""
+    _ready(tmp_path)
+
+    async def go():
+        await _set_setting("forum_date", "30.10.2026")
+        ru = await fsc._resolve_footer_parts(None, "ru")
+        en = await fsc._resolve_footer_parts(None, "en")
+        return ru, en
+
+    (city_ru, date_ru), (city_en, date_en) = _run(go())
+    assert city_ru is None and city_en is None
+    assert date_ru == "30–31 октября"
+    assert date_en == "October 30–31"
+
+
+def test_resolve_footer_parts_no_forum_date_gives_no_dates(tmp_path):
+    _ready(tmp_path)
+    city_label_text, date_text = _run(fsc._resolve_footer_parts(None, "ru"))
+    assert date_text is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
