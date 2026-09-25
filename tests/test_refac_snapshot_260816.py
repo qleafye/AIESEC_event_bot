@@ -740,6 +740,9 @@ admin|message|forumdayreport_time_step|state:ForumDayReportTimeEdit:*
 admin|message|cancel_forumnoshowpoll_time_edit|state:ForumNoshowPollTimeEdit:*,state:ForumNoshowPollTimeEdit:*
 admin|message|cancel_forumnoshowpoll_time_edit|state:ForumNoshowPollTimeEdit:*,state:ForumNoshowPollTimeEdit:*
 admin|message|forumnoshowpoll_time_step|state:ForumNoshowPollTimeEdit:*
+admin|message|cancel_rgnm_time_edit|state:RegionalNoshowMoveTimeEdit:*,state:RegionalNoshowMoveTimeEdit:*
+admin|message|cancel_rgnm_time_edit|state:RegionalNoshowMoveTimeEdit:*,state:RegionalNoshowMoveTimeEdit:*
+admin|message|rgnm_time_step|state:RegionalNoshowMoveTimeEdit:*
 admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
 admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
 admin|message|volinv_link_date_step|state:VolunteerInviteWizard:*
@@ -1228,6 +1231,12 @@ admin|callback_query|forumdayreport_csv_go|forumdayreport_csv:*
 admin|callback_query|forumnoshowpoll_cfg_screen|forumnoshowpoll_cfg:*
 admin|callback_query|forumnoshowpoll_toggle_go|forumnoshowpoll_toggle:*
 admin|callback_query|forumnoshowpoll_time_start|forumnoshowpoll_time:*
+admin|callback_query|rgnm_cfg_screen|rgnm_cfg:*
+admin|callback_query|rgnm_toggle_go|rgnm_toggle:*
+admin|callback_query|rgnm_time_start|rgnm_time:*
+admin|callback_query|rgnm_status_toggle_go|rgnm_status_toggle:*
+admin|callback_query|rgnm_target_start|rgnm_target_start:*
+admin|callback_query|rgnm_target_pick|rgnm_target_pick:*
 admin|callback_query|prog_view_toggle_go|prog_view_toggle:*
 admin|callback_query|checkin_stats_open|checkin_stats
 admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
@@ -1411,6 +1420,9 @@ user_actions|callback_query|ambassador_join|ambjoin
 user_actions|callback_query|checkin_qr_confirm_receipt|checkinqr_confirm
 user_actions|callback_query|checkin_not_arrived_respond|cna:*
 user_actions|callback_query|checkin_not_arrived_show_qr|cna_qr
+user_actions|callback_query|regional_noshow_move_accept|rnm_accept
+user_actions|callback_query|regional_noshow_move_confirm|rnm_confirm
+user_actions|callback_query|regional_noshow_move_decline|rnm_decline
 user_actions|callback_query|mute_broadcasts_today|bc_mute_today
 user_actions|callback_query|unmute_broadcasts_today|bc_unmute_today
 """.strip("\n").splitlines()
@@ -1829,7 +1841,9 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin.py (admin_city_move, затем admin_checkin_floor); 753 + 4 = 757.
     # Трек «форум: делегат» после переноса на main 01d67ae (forum-1030 + перевод в город): хендлеры форума делегата, срока ролей, приглашений волонтёров, бюро находок.
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 7 чистых вставок, 0 удалений, 0 реордеров (757 -> 817).
-    assert len(GOLDEN_SNAPSHOT) == 817
+    # Перенос неявившихся регионального форума в другой город: rnm_* делегата и экран настроек в хабе «🎪 Форум: функции».
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 3 чистых вставок, 0 удалений, 0 реордеров (817 -> 829).
+    assert len(GOLDEN_SNAPSHOT) == 829
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
