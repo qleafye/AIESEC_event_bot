@@ -403,7 +403,7 @@ export async function render(root, params, ctx) {
     updateHeader(card.remaining);
 
     const app = card.application;
-    const metaText = [app.username ? `@${app.username}` : null, app.city].filter(Boolean).join(" · ");
+    const metaText = [app.username ? `@${app.username}` : null, app.city_label].filter(Boolean).join(" · ");
     const badgeNodes = (card.badges || []).map((b) => h("span", {
       class: `chip ${EDITED_BADGE_KINDS.includes(b.kind) ? "accent" : ""}`.trim(),
       text: b.text,

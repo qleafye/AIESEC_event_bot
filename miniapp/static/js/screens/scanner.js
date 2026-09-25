@@ -256,7 +256,7 @@ export async function render(root, params, ctx) {
       // Тренировка: отметки нет — показываем, как выглядит отмена, без запроса на сервер.
       if (undo.demo) {
         showPlaque({
-          status: "undone", reason_text: undo.text, full_name: res.full_name, city: res.city,
+          status: "undone", reason_text: undo.text, full_name: res.full_name, city: res.city, city_label: res.city_label,
           training_note: res.training_note,
         }, { closeButton: true });
         return;
@@ -296,7 +296,7 @@ export async function render(root, params, ctx) {
       h("div", { class: "checkin-plaque-dot", text: dot }),
       h("div", { class: "checkin-plaque-heading", text: heading }),
       res.full_name ? h("div", { class: "checkin-plaque-name", text: res.full_name }) : null,
-      res.city ? h("div", { class: "checkin-plaque-city", text: res.city }) : null,
+      res.city_label ? h("div", { class: "checkin-plaque-city", text: res.city_label }) : null,
       res.reason_text && heading !== res.reason_text
         ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
       res.hint ? h("div", { class: "checkin-plaque-reason", text: res.hint }) : null,
@@ -356,7 +356,7 @@ export async function render(root, params, ctx) {
   let searchTimer = null;
 
   function resultRow(person) {
-    const metaBase = [person.city, person.username ? `@${person.username}` : null, person.university]
+    const metaBase = [person.city_label, person.username ? `@${person.username}` : null, person.university]
       .filter(Boolean).join(" · ") || "—";
     const meta = person.eligible ? metaBase : `${metaBase} — ${person.reason_text || "не допущен"}`;
     const btn = h("button", { class: "btn secondary", type: "button", text: "Отметить" });

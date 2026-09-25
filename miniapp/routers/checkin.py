@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from cities import (
     cities_module_on,
     city_label,
+    city_label_or_none,
     city_scope,
     default_city_code,
     enabled_cities,
@@ -243,12 +244,23 @@ class ScanBody(BaseModel):
     point: str = ENTRY_POINT
 
 
+async def _with_city_label(res: dict) -> dict:
+    """Плашка сканера: `city` — код (логика), `city_label` — подпись для человека. Всегда,
+    даже при выключенном модуле городов — иначе на плашке «msk» (CLAUDE.md)."""
+    res["city_label"] = await city_label_or_none(res.get("city"))
+    return res
+
+
 @router.post("/app/api/checkin/scan")
 async def checkin_scan(
     body: ScanBody, request: Request,
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
+    return await _with_city_label(await _scan(body, request, p))
+
+
+async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
     point = body.point or ENTRY_POINT
     parsed = parse_qr_payload(body.payload)
     # Бэклог чек-ина №7: учебный QR в любой точке — только учебная плашка, ничего не пишется.
@@ -312,6 +324,10 @@ async def checkin_manual(
 ) -> dict:
     """D-11/D-12: делегат найден поиском (телефон сел/нет QR под рукой), не сканом — та же
     отметка, источник `manual` отличает её в журнале (будущее B1-31)."""
+    return await _with_city_label(await _manual(body, request, p))
+
+
+async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
     point = body.point or ENTRY_POINT
     bound = await _bound_city(request, p)
     if point == checkin_training.TRAINING_POINT:
@@ -413,19 +429,16 @@ async def checkin_search(
     scope = city_scope(bound) if bound else None
     found = await search_people(q, city_scope=scope, limit=_SEARCH_LIMIT)
 
-    module_on = await cities_module_on()
     items = []
     for row in found:
         user = await get_user(row["user_id"]) if row["source"] == "users" else None
         denial_code = await checkin_denial(user) if user is not None else "no_user"
         raw_city = row.get("city")
-        city_text = raw_city
-        if raw_city and module_on:
-            city_text = await city_label(normalize_city(raw_city))
         items.append({
             "telegram_id": row["user_id"],
             "full_name": row.get("full_name") or "—",
-            "city": city_text,
+            "city": raw_city,
+            "city_label": await city_label_or_none(raw_city),
             "university": row.get("university"),
             "username": row.get("username"),
             "eligible": denial_code is None,
