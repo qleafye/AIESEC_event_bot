@@ -402,7 +402,7 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
             await bot.send_message(user_id, header, parse_mode="HTML")
             await message.copy_to(user_id)
     except Exception as e:
-        await message.reply(f"❌ Не удалось отправить ответ пользователю: {redact_secrets(e)}")
+        await message.reply(f"❌ Не удалось отправить ответ пользователю: {html_module.escape(redact_secrets(e))}")
         return
 
     sos_service.cancel_escalation(report_id)
