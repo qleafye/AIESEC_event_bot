@@ -1312,6 +1312,11 @@ admin|callback_query|sheet_reconcile_status_confirm|sheetrec_status_confirm
 admin|callback_query|sheet_reconcile_status_go|sheetrec_status_go
 admin|callback_query|sheet_reconcile_resend_confirm|sheetrec_resend_confirm
 admin|callback_query|sheet_reconcile_resend_go|sheetrec_resend_go
+admin|callback_query|forumstats_cfg_screen|forumstats_cfg:*
+admin|callback_query|forumstats_toggle_go|forumstats_toggle:*
+admin|callback_query|forumstats_preview_go|forumstats_preview:*
+admin|callback_query|forumstats_pick_go|forumstats_pick:*
+admin|callback_query|forumstats_send_go|forumstats_send_go:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1926,7 +1931,14 @@ def test_snapshot_total_handler_count_is_292():
     # prog_fbday_open (тот же файл, физическое место — хвост функций модуля, точка регистрации
     # не сдвинулась). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая
     # вставка (2 строки), 0 удалений, 0 реордеров (860 -> 862).
-    assert len(GOLDEN_SNAPSHOT) == 862
+    # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): пять новых callback_query-хендлеров
+    # (forumstats_cfg/forumstats_toggle/forumstats_preview/forumstats_pick/forumstats_send_go)
+    # в новом шве handlers/admin_forum_stats_card.py, импортирован в хвосте handlers/admin.py
+    # СРАЗУ ПОСЛЕ admin_sheet_reconcile — встали сразу после sheet_reconcile_resend_go и ПЕРЕД
+    # prog_fbday_open (та же точка регистрации, что у regreset_*/resumerep_*/sheetrec_* выше).
+    # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая вставка (5 строк),
+    # 0 удалений, 0 реордеров (862 -> 867).
+    assert len(GOLDEN_SNAPSHOT) == 867
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
