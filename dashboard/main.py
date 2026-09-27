@@ -448,19 +448,28 @@ def build_page_context(
 
 
 def _chat_rating_block(conn, chat: dict, period: str, admin_ids: set, now: datetime,
-                       season: str | None = None) -> dict:
-    """Режим рейтинга берётся из настроек города чата: формула (по умолчанию) или правила."""
+                       season: str | None = None, registered_only: bool | None = None) -> dict:
+    """Режим рейтинга берётся из настроек города чата: формула (по умолчанию) или правила.
+    `registered_only=None` — умолчание режима (формула — только с анкетой, правила — все)."""
     if chat_rating.chat_mode(conn, chat) == "rules":
         return {"rating": None, "rules_rating": chat_rating.rules_rating(
             conn, chat, period=period, admin_ids=admin_ids, now=now, season=season,
+            registered_only=registered_only,
         )}
     return {"rating": chat_rating.chat_rating(
         conn, chat, period=period, admin_ids=admin_ids, now=now,
+        registered_only=registered_only, season=season,
     ), "rules_rating": None}
+
+
+def _parse_reg(reg) -> bool | None:
+    """Параметр страницы «Только с анкетой»: «1»/«0»; всё остальное — умолчание режима."""
+    return {"1": True, "0": False}.get(reg)
 
 
 def build_chat_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, period: str | None = None,
+    reg: str | None = None,
 ) -> dict:
     """Квик 260914-rgr (RGR-01..07): собирает ВЕСЬ контекст страницы «Чат» одним вызовом
     (тот же принцип, что `build_page_context` — шаблон в БД не ходит). Менеджер, привязанный
@@ -474,7 +483,11 @@ def build_chat_context(
     )
 
     period = chat_rating.normalize_period(period)
+    registered_only = _parse_reg(reg)
     now = msk_now()
+    # Ссылки переключателей сохраняют город/сезон страницы (и явный выбор «Только с анкетой»).
+    base_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
+    reg_params = {} if registered_only is None else {"reg": "1" if registered_only else "0"}
     cards = []
     for chat in visible_chats:
         joins_rows = queries.chat_joins_daily(conn, chat["chat_id"])
@@ -499,15 +512,20 @@ def build_chat_context(
             # Квик 260927: живой рейтинг по баллам (формула chat_score, общая с тулом по
             # экспорту) вместо голого счёта сообщений, либо — для города в режиме «По
             # правилам города» — таблица правил (коины СПб). Команда в таблицу не входит.
-            **_chat_rating_block(conn, chat, period, set(cfg.admin_ids), now, scope.season),
+            **_chat_rating_block(conn, chat, period, set(cfg.admin_ids), now, scope.season,
+                                 registered_only),
         })
+        block = cards[-1]["rating"] or cards[-1]["rules_rating"]
+        reg_on = bool(block["registered_only"])
+        cards[-1]["reg_chip"] = {
+            "active": reg_on,
+            "href": "/chat?" + urlencode({**base_params, "period": period, "reg": "0" if reg_on else "1"}),
+        }
 
-    # Ссылки переключателя периода сохраняют город/сезон страницы.
-    base_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
     period_links = [
         {
             "code": code, "label": label, "active": code == period,
-            "href": "/chat?" + urlencode({**base_params, "period": code}),
+            "href": "/chat?" + urlencode({**base_params, "period": code, **reg_params}),
         }
         for code, label in chat_rating.PERIODS
     ]
@@ -934,6 +952,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         city: Optional[str] = None,
         season: Optional[str] = None,
         period: Optional[str] = None,
+        reg: Optional[str] = None,
     ):
         """Квик 260914-rgr (RGR-01..07): периметр — КОПИЯ маршрута `/` строка в строку
         (редирект супердашборда, сессия/логин, пересверка `stats` на каждый запрос,
@@ -966,7 +985,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_chat_context(conn, cfg, scope, viewer, period=period)
+            context = build_chat_context(conn, cfg, scope, viewer, period=period, reg=reg)
 
         return templates.TemplateResponse(request, "chat.html", context)
 

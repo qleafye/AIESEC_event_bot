@@ -268,6 +268,7 @@ def test_chat_page_renders_rules_for_spb_and_formula_for_msk(db_path):
     _msg(db_path, 1, STAFF, "2026-09-15 10:00:00")
     _msg(db_path, 2, 11, "2026-09-15 10:05:00", text_len=600, reply_mid=1, reply_author=STAFF)
     _msg(db_path, 3, 31, f"{today} 10:00:00", chat_id=MSK_CHAT)
+    _user(db_path, 31, event_city="msk")  # формула по умолчанию — только с анкетой
 
     client = _client(_cfg(db_path))
     _login(client, ADMIN_ID)
@@ -284,3 +285,6 @@ def test_chat_page_renders_rules_for_spb_and_formula_for_msk(db_path):
     assert "Регулярность" in msk_part
     assert "@msk_delegate" in msk_part
     assert "Рейтинг по правилам города" not in msk_part
+    # «Только с анкетой»: по правилам города выключен по умолчанию, по формуле — включён.
+    assert 'aria-pressed="false"' in spb_part.split("Итого, LC")[0]
+    assert 'aria-pressed="true"' in msk_part.split("Регулярность")[0]

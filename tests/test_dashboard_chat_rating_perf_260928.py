@@ -34,7 +34,7 @@ def test_period_bound_is_pushed_into_sql(db_path):  # noqa: F811
     _msg(db_path, 2, 12, "2026-09-22 10:00:00")
     _react(db_path, 1, 13)
     result, sql = _traced(db_path, lambda conn: chat_rating.chat_rating(
-        conn, CHAT, period="week", admin_ids=set(), now=NOW))
+        conn, CHAT, period="week", admin_ids=set(), now=NOW, registered_only=False))
     assert set(_by_id(result)) == {12}
     message_reads = [s for s in sql if "FROM chat_messages" in s and "SELECT message_id" in s]
     assert message_reads and all("ts >= '2026-09-21 00:00:00'" in s for s in message_reads)
