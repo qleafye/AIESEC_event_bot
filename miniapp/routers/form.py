@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 
 import reg_engine
 from cities import (
+    cities_module_on,
     ensure_cities_fresh,
     get_setting_typed_for_city,
 )
@@ -1001,6 +1002,21 @@ async def draft_submit(
             "reason": "resume_file_missing",
             "text": await i18n.tr_setting("reg_form_resume_file_missing_text", lang, tr_map),
         })
+
+    # Квик 27.09: новая анкета без города при нескольких открытых городах доходила до users с
+    # NULL. Город берём из уже известного (та же цепочка, что у бота), один открытый —
+    # подставляем, иначе возвращаем делегата к выбору города. Тоже ДО claim.
+    if ctx["kind"] == "new" and ctx["draft"] and not ctx["event_city"] and await cities_module_on():
+        from services.known_city import known_city
+        city_kind, city_code = await reg_engine.city_gate(await known_city(p.telegram_id))
+        if city_kind == "go" and city_code:
+            await upsert_reg_draft(p.telegram_id, kind="new", event_city=city_code, source="miniapp")
+        elif city_kind in ("fork", "closed"):
+            logger.info("reg draft submit refused telegram_id=%s reason=city_required", p.telegram_id)
+            raise HTTPException(409, {
+                "reason": "city_required",
+                "text": i18n.tr(await get_setting_typed("city_fork_text"), lang, tr_map),
+            })
 
     # T-21-02: claim перед финалом — второй submit (гонка с чатом) получает 409, не вторую запись.
     draft = await claim_reg_draft(p.telegram_id)
