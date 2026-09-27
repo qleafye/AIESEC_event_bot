@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import html as html_module
 import json
+import logging
 from datetime import datetime, timedelta
 
 import moderation_card
@@ -63,6 +64,8 @@ from settings_schema import get_setting_typed
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.
 # database.db.mark_user_edited) — CLAUDE.md запрещает показывать код менеджеру, это ЕДИНСТВЕННОЕ
 # место, которое превращает его в слова для карточки заявки / экрана истории.
+logger = logging.getLogger(__name__)
+
 EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
 
 # Plan 23-06 (Known Stub #1 из 23-05): column (users row) -> человеческая подпись, дословно
@@ -675,12 +678,20 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     decided_at = _stamp(now)
     if effects_already_sent:
         sent_at = _stamp(now)
-        if decision == "approved":
-            from services.referrals import credit_for_approved
-            await credit_for_approved(telegram_id)
-        return await record_application_decision(
+        # Строка журнала — ПЕРВОЙ (ревью 28.09): сбой начисления амбассадору не должен
+        # стирать из истории, кто принял решение. Начисление — своим try, сбой в лог.
+        decision_id = await record_application_decision(
             telegram_id, decision, reason, by, decided_at, sent_at, effects_sent_at=sent_at,
         )
+        if decision == "approved":
+            try:
+                from services.referrals import credit_for_approved
+                await credit_for_approved(telegram_id)
+            except Exception:
+                logger.exception(
+                    "record_decision: начисление амбассадору не прошло (tid=%s)", telegram_id,
+                )
+        return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
 
