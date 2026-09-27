@@ -78,6 +78,12 @@ def manager_name(manager_id: int, names: dict[int, str]) -> str:
     return str(name) if name else f"менеджер #{manager_id}"
 
 
+def _walkin_suffix(stats: dict) -> str:
+    """D-41: регистрация на месте без решения — не очередь менеджера, отдельная цифра."""
+    n = stats.get("apps_walkin_pending") or 0
+    return f" · ждут на стойке {n}" if n else ""
+
+
 def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
                       city_title: str | None = None) -> str | None:
     """Готовый HTML сводки, или None, если оба раздела пусты (тогда не шлём вовсе).
@@ -102,6 +108,7 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
         lines.append(
             f"📋 Заявки: новых {stats['apps_new']} · одобрено {stats['apps_approved']} · "
             f"отклонено {stats['apps_rejected']} · ждут {stats['apps_pending']}"
+            + _walkin_suffix(stats)
         )
         for manager_id, approved, rejected in stats["app_managers"][:MAX_ROWS]:
             who = html.escape(manager_name(manager_id, names))
@@ -111,7 +118,7 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
             for rule_name, count in stats.get("auto_reject_rules", [])[:MAX_ROWS]:
                 lines.append(f"   «{html.escape(str(rule_name))}» — {count}")
     else:
-        lines.append(f"📋 Заявки: сегодня тихо, ждут {stats['apps_pending']}")
+        lines.append(f"📋 Заявки: сегодня тихо, ждут {stats['apps_pending']}" + _walkin_suffix(stats))
 
     if game_active:
         lines.append(
