@@ -30,6 +30,7 @@ def _ready(tmp_path, name="onsite_chat.db"):
     config.DB_PATH = str(tmp_path / name)
     fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
+    onsite._start_times.clear()  # счётчик частоты запусков анкеты — процессный, между тестами
 
 
 def _two_cities():

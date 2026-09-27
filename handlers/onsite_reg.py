@@ -22,6 +22,8 @@ from __future__ import annotations
 import html
 import logging
 import re
+import time
+from collections import deque
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -55,6 +57,25 @@ _CONSENT_KEY = "onsite"
 _MIN_PHONE_DIGITS = 7
 # Слово ФИО — буквы (любого алфавита), допускаются дефис и апостроф внутри: «Мария-Анна», «О'Нил».
 _NAME_WORD_RE = re.compile(r"^[^\W\d_]+(?:[-'’][^\W\d_]+)*$")
+
+
+# Ссылку `?start=walkin_<город>` легко угадать — пока тумблер города включён, её открыть может
+# любой. Строка одна на аккаунт, а частоту запусков анкеты с одного аккаунта держит этот
+# процессный счётчик (как троттлинг SOS: не БД, рестарт его честно обнуляет).
+_START_LIMIT = 5
+_START_WINDOW_S = 10 * 60
+_start_times: dict[int, deque] = {}
+
+
+def _start_allowed(uid: int) -> bool:
+    now = time.monotonic()
+    times = _start_times.setdefault(uid, deque())
+    while times and now - times[0] > _START_WINDOW_S:
+        times.popleft()
+    if len(times) >= _START_LIMIT:
+        return False
+    times.append(now)
+    return True
 
 
 class OnsiteReg(StatesGroup):
@@ -115,6 +136,10 @@ async def start_walkin(message: types.Message, state: FSMContext, city_code: str
         return True
 
     await state.clear()
+    if not _start_allowed(uid):
+        logger.info("onsite_reg: слишком частые запуски анкеты (tid=%s)", uid)
+        await _say(message, "onsite_reg_rate_limited_text")
+        return True
     await state.set_state(OnsiteReg.consent)
     await state.update_data(onsite_city=city)
     button = await get_setting_typed("onsite_reg_consent_button_text")

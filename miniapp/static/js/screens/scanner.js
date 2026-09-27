@@ -73,6 +73,8 @@ const ONSITE_FALLBACK = {
   onsite_register_button_text: "📝 Зарегистрировать на месте",
   onsite_pending_title_text: "📝 Ждут на стойке",
   onsite_override_button_text: "⚠️ Пропустить вопреки отказу",
+  onsite_remove_button_text: "🗑 Убрать",
+  onsite_remove_confirm_text: "Убрать {name} из списка ждущих? Короткая анкета удалится — если человек всё же придёт, ему нужно будет заполнить её заново.",
   onsite_move_confirm_text: "Человек записан на форум в другом городе — после одобрения он переедет в {city}.",
   onsite_override_confirm_text: "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? Отказ будет отменён, решение запишется на вас и попадёт в журнал.",
 };
@@ -168,11 +170,24 @@ export async function render(root, params, ctx) {
   const onsiteRefresh = h("button", {
     class: "btn secondary", type: "button", text: "🔄 Обновить", onClick: () => loadOnsitePending(),
   });
+  const onsiteSearch = h("input", { class: "input", type: "text", placeholder: "Фамилия в списке" });
+  const onsiteCount = h("div", { class: "muted" });
+  const onsiteMore = h("button", {
+    class: "btn secondary hidden", type: "button", text: "Показать ещё", onClick: () => loadOnsitePending(true),
+  });
+  let onsiteSearchTimer = null;
+  onsiteSearch.addEventListener("input", () => {
+    if (onsiteSearchTimer) clearTimeout(onsiteSearchTimer);
+    onsiteSearchTimer = setTimeout(() => loadOnsitePending(), SEARCH_DEBOUNCE_MS);
+  });
   const onsiteBox = h("div", { class: "hidden" },
     h("div", { class: "task-actions" }, onsiteRegBtn),
     onsiteTitle,
+    h("div", { class: "field" }, onsiteSearch),
     h("div", { class: "task-actions" }, onsiteRefresh),
+    onsiteCount,
     onsiteList,
+    h("div", { class: "task-actions" }, onsiteMore),
   );
 
   function applyOnsite() {
@@ -589,11 +604,28 @@ export async function render(root, params, ctx) {
 
   // «Ждут на стойке»: при открытии экрана, после смены города и после каждого одобрения —
   // без таймера-опроса (сеть на площадке слабая), плюс кнопка «Обновить».
-  async function loadOnsitePending() {
-    if (!onsiteEnabled) { onsiteList.replaceChildren(); return; }
+  // Постранично (сервер отдаёт total/next_offset) и с поиском по фамилии: при сотнях коротких
+  // анкет у стойки старые не пропадают молча. append=true — «Показать ещё» дописывает страницу.
+  let onsiteOffset = 0;
+
+  function onsiteRow(it, canApprove) {
+    const actions = canApprove
+      ? h("div", { class: "task-actions" }, onsiteApproveButton(it), onsiteRemoveButton(it))
+      : null;
+    return flatRow(h, {
+      title: it.full_name,
+      meta: [it.university, it.username ? `@${it.username}` : null, it.registered_at].filter(Boolean).join(" · ") || "—",
+      trailing: actions,
+    });
+  }
+
+  async function loadOnsitePending(append = false) {
+    if (!onsiteEnabled) { onsiteList.replaceChildren(); onsiteMore.classList.add("hidden"); return; }
+    const offset = append ? onsiteOffset : 0;
+    const q = encodeURIComponent(onsiteSearch.value.trim());
     let page;
     try {
-      page = await api(`/checkin/onsite/pending?city=${cityParam()}`);
+      page = await api(`/checkin/onsite/pending?city=${cityParam()}&q=${q}&offset=${offset}`);
     } catch (err) {
       onsiteList.replaceChildren(h("p", {
         class: "error-inline",
@@ -602,16 +634,48 @@ export async function render(root, params, ctx) {
       return;
     }
     const items = page.items || [];
-    if (items.length === 0) {
-      onsiteList.replaceChildren(h("p", { class: "muted", text: "Пока никого" }));
+    const canApprove = Boolean(page.can_approve);
+    onsiteOffset = page.next_offset || 0;
+    onsiteMore.classList.toggle("hidden", page.next_offset == null);
+    onsiteCount.textContent = page.total ? `Всего: ${page.total}` : "";
+    if (!append && items.length === 0) {
+      onsiteList.replaceChildren(h("p", { class: "muted", text: onsiteSearch.value.trim() ? "Никого не нашли" : "Пока никого" }));
       return;
     }
-    const canApprove = Boolean(page.can_approve);
-    onsiteList.replaceChildren(...items.map((it) => flatRow(h, {
-      title: it.full_name,
-      meta: [it.university, it.username ? `@${it.username}` : null, it.registered_at].filter(Boolean).join(" · ") || "—",
-      trailing: canApprove ? onsiteApproveButton(it) : null,
-    })));
+    const rows = items.map((it) => onsiteRow(it, canApprove));
+    if (append) onsiteList.append(...rows);
+    else onsiteList.replaceChildren(...rows);
+  }
+
+  // «Убрать» короткую анкету (случайная, дубль, человек ушёл): подтверждение с именем, строку
+  // удаляет сервер (только walk-in без решения своего города).
+  async function removeWalkin(person, btn) {
+    if (onsiteBusy) return;
+    const ok = await askConfirm(ot("onsite_remove_confirm_text").replace("{name}", person.full_name || "—"));
+    if (!ok) return;
+    onsiteBusy = true;
+    if (btn) btn.setAttribute("disabled", "");
+    try {
+      const res = await measured(() => api("/checkin/onsite/remove", {
+        method: "POST", body: { telegram_id: person.telegram_id, city: citySelect.value || undefined },
+      }));
+      if (res.status !== "removed") say(res.reason_text || "Убрать не получилось.", "warn");
+      await loadOnsitePending();
+    } catch (err) {
+      say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось убрать — попробуйте ещё раз."), "warn");
+    } finally {
+      onsiteBusy = false;
+      if (btn) btn.removeAttribute("disabled");
+    }
+  }
+
+  function onsiteRemoveButton(person) {
+    const btn = h("button", { class: "btn secondary", type: "button", text: ot("onsite_remove_button_text") });
+    btn.addEventListener("click", () => {
+      if (btn.hasAttribute("disabled")) return;
+      removeWalkin(person, btn);
+    });
+    return btn;
   }
 
   await loadNetTexts();

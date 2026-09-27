@@ -976,6 +976,16 @@ _REGISTRY_TEXTS_EN = {
     "Заявка отклонена менеджером. Причина: {reason}":
         "The application was rejected by a manager. Reason: {reason}",
     "⚠️ Пропустить вопреки отказу": "⚠️ Let in despite rejection",
+    "🗑 Убрать": "🗑 Remove",
+    "Убрать {name} из списка ждущих? Короткая анкета удалится — если человек всё же "
+    "придёт, ему нужно будет заполнить её заново.": (
+        "Remove {name} from the waiting list? The short form will be deleted — if the person "
+        "does come, they will need to fill it in again."
+    ),
+    "Убрать нельзя — по человеку уже есть решение или это обычная заявка.":
+        "Can't remove — this person already has a decision or a regular application.",
+    "Слишком много попыток подряд. Подожди пару минут и открой ссылку снова.":
+        "Too many attempts in a row. Wait a couple of minutes and open the link again.",
     "Человек записан на форум в другом городе — после одобрения он переедет в {city}.":
         "This person signed up for the forum in another city — once approved, they will be "
         "moved to {city}.",
