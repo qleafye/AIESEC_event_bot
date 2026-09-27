@@ -132,6 +132,26 @@ def _classify_upload(content_type: str | None, size: int, target: str | None = N
     return "photo" if ct in PHOTO_CONTENT_TYPES and size <= PHOTO_MAX_BYTES else "document"
 
 
+# Признаки в `description` Telegram, что 400 — отказ именно файлу (формат, размеры,
+# повреждение), а не запросу (подпись длиннее лимита, разметка и т.п.). Только в первом
+# случае делегату есть что сделать с файлом, и только тогда фото имеет смысл повторить
+# документом.
+FILE_REJECT_MARKERS = (
+    "image_process_failed", "photo_invalid", "photo_ext_invalid", "photo_save_file_invalid",
+    "photo_crop", "image_", "photo_", "document_invalid", "file_parts_invalid",
+    "file is ", "file must", "wrong file", "wrong type", "type of file", "too big",
+    "failed to get http url content",
+)
+
+
+def _is_file_rejection(exc: TelegramApiError) -> bool:
+    """True, если Telegram ответил 400 из-за самого файла (см. `FILE_REJECT_MARKERS`)."""
+    if exc.status != 400 or not exc.description:
+        return False
+    desc = exc.description.lower()
+    return any(marker in desc for marker in FILE_REJECT_MARKERS)
+
+
 LOG_VALUE_MAX = 40
 
 
@@ -239,8 +259,10 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
 
     Квик 27.09: для сдачи задания фото — только JPEG/PNG/GIF ≤10 МБ (`PHOTO_CONTENT_TYPES`),
     остальное — документом. Ассеты настроек и обложки (`IMAGE_TARGETS`) — по прежнему правилу
-    «любая image/* фото, отказ Telegram = 502», без подмены на документ. Если Telegram всё же отверг фото (400), тот же файл один раз уходит
-    документом. Окончательный отказ Telegram по файлу (400) — HTTP 400 `file_rejected` с
+    «любая image/* фото, отказ Telegram = 502», без подмены на документ. Если Telegram всё
+    же отверг фото сдачи из-за файла (400), тот же файл один раз уходит документом.
+    Окончательный отказ Telegram именно по файлу (400 с признаком из
+    `FILE_REJECT_MARKERS`; прочие 400 — 502 и запись в лог) — HTTP 400 `file_rejected` с
     текстом реестра `miniapp_upload_file_rejected_text` (делегату есть что сделать);
     недоступность (сеть, 5xx, не-JSON) — прежний 502 `telegram_unavailable`. В лог — только
     content_type, расширение и размер (без имени файла и содержимого)."""
@@ -291,7 +313,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
                     cfg, actor.telegram_id, content, filename, content_type, caption,
                 )
             except TelegramApiError as exc:
-                if exc.status != 400 or target in IMAGE_TARGETS:
+                if not _is_file_rejection(exc) or target in IMAGE_TARGETS:
                     raise
                 # Telegram отверг картинку как фото — ровно один повтор документом.
                 logger.warning(
@@ -303,13 +325,20 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
                 cfg, actor.telegram_id, content, filename, content_type, caption,
             )
     except TelegramApiError as exc:
-        if exc.status == 400 and target not in IMAGE_TARGETS:
+        if _is_file_rejection(exc) and target not in IMAGE_TARGETS:
             lang, tr_map = await i18n.context(actor.telegram_id)
             lang = lang if lang in ("ru", "en") else "ru"
             raise HTTPException(400, {
                 "reason": "file_rejected",
                 "text": await i18n.tr_setting("miniapp_upload_file_rejected_text", lang, tr_map),
             })
+        if exc.status == 400:
+            # Отказ не файлу (например, подпись из реестра длиннее лимита) — «сохраните как
+            # JPG» тут не поможет; описание Telegram уже в логе telegram_api, дублируем с целью.
+            logger.warning(
+                "uploads: Telegram отклонил запрос не из-за файла (target=%s): %s",
+                _log_safe(target or "task"), exc.description or "—",
+            )
         raise HTTPException(502, {"reason": "telegram_unavailable", "detail": exc.reason})
 
     file_id = _extract_file_id(kind, result)
