@@ -12,6 +12,7 @@ Telegram, иначе ник из анкеты, иначе id; ФИО и конт
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import date, datetime, timedelta
 
@@ -310,6 +311,43 @@ def _date_map(rows) -> dict:
     return out
 
 
+def _default_city_code(conn) -> str:
+    """Копия dashboard.queries._default_city_code на кортежах (соединение вызывающего может быть
+    без row_factory)."""
+    configured = os.environ.get("EVENT_CITY_DEFAULT", "msk")
+    if _rows(conn, "SELECT code FROM cities WHERE code = ?", (configured,)):
+        return configured
+    rows = _rows(conn, "SELECT code FROM cities ORDER BY sort_order ASC, code ASC LIMIT 1")
+    return rows[0][0] if rows else "msk"
+
+
+def _users_scope_sql(conn, city, season) -> tuple[str, list]:
+    """Условие на users «делегат этого сезона и города чата» — та же логика, что у страницы:
+    сезон страницы, иначе текущий (users.season пуст или равен event_season; сезон не задан —
+    любой); город по умолчанию — исключением прочих известных кодов (ловит пустой город)."""
+    parts: list[str] = []
+    params: list = []
+    if season:
+        parts.append("season = ?")
+        params.append(season)
+    else:
+        current = (_settings(conn, ["event_season"]).get("event_season") or "").strip()
+        if current:
+            parts.append("(season IS NULL OR TRIM(season) = '' OR season = ?)")
+            params.append(current)
+    if city and city != _ALL_CITIES:
+        default = _default_city_code(conn)
+        others = [r[0] for r in _rows(conn, "SELECT code FROM cities WHERE code != ?", (default,))]
+        if city == default and others:
+            marks = ",".join("?" for _ in others)
+            parts.append(f"(event_city IS NULL OR event_city NOT IN ({marks}))")
+            params.extend(others)
+        else:
+            parts.append("event_city = ?")
+            params.append(city)
+    return (" AND ".join(parts) or "1 = 1"), params
+
+
 def _referral_dates(conn) -> dict:
     """Одобренные заявки текущего сезона с referrer_id, по дате одобрения. Текущий сезон —
     как везде на дашборде: users.season пуст или равен bot_settings.event_season (сезон не
@@ -324,23 +362,31 @@ def _referral_dates(conn) -> dict:
     return _date_map(_rows(conn, sql, params))
 
 
-def _social_dates(conn, task_ids: set) -> dict:
+def _social_dates(conn, task_ids: set, city=None, season=None) -> dict:
+    """Одобренные задания, выбранные для правила, — только у делегатов сезона и города чата."""
     if not task_ids:
         return {}
     ids = sorted(task_ids)
     marks = ",".join("?" for _ in ids)
+    scope, scope_params = _users_scope_sql(conn, city, season)
     return _date_map(_rows(
         conn,
         f"SELECT user_id, reviewed_at FROM game_submissions WHERE status = 'approved' "
-        f"AND reviewed_at IS NOT NULL AND task_id IN ({marks})",
-        ids,
+        f"AND reviewed_at IS NOT NULL AND task_id IN ({marks}) "
+        f"AND user_id IN (SELECT telegram_id FROM users WHERE {scope})",
+        [*ids, *scope_params],
     ))
 
 
-def _checkin_days(conn) -> dict:
-    """Дни форума с отметкой на входе; отметки на сессиях отдельно не считаются."""
+def _checkin_days(conn, city=None, season=None) -> dict:
+    """Дни форума с отметкой на входе — только у делегатов сезона и города чата; отметки на
+    сессиях отдельно не считаются."""
+    scope, scope_params = _users_scope_sql(conn, city, season)
     return _date_map(_rows(
-        conn, "SELECT telegram_id, day FROM checkins WHERE point = 'entry'",
+        conn,
+        "SELECT telegram_id, day FROM checkins WHERE point = 'entry' "
+        f"AND telegram_id IN (SELECT telegram_id FROM users WHERE {scope})",
+        scope_params,
     ))
 
 
@@ -357,7 +403,8 @@ def _chat_participants(conn, chat_id: int, records) -> set:
     return people
 
 
-def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
+def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
+                 season: str | None = None) -> dict:
     """Таблица по правилам города за период — только расчёт для публикации итогов: коины не
     начисляются, делегатам ничего не уходит. Посты могут быть старше окна, поэтому журнал
     читается целиком (до конца окна), а окно применяет score_city_rules."""
@@ -380,8 +427,8 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
     scored = chat_score.score_city_rules(
         records, team_ids=team, rules=rules,
         referral_dates=_referral_dates(conn),
-        social_dates=_social_dates(conn, task_ids),
-        checkin_days=_checkin_days(conn),
+        social_dates=_social_dates(conn, task_ids, city, season),
+        checkin_days=_checkin_days(conn, city, season),
         since=since, until=until,
     )
 

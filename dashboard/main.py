@@ -447,11 +447,12 @@ def build_page_context(
     return ctx
 
 
-def _chat_rating_block(conn, chat: dict, period: str, admin_ids: set, now: datetime) -> dict:
+def _chat_rating_block(conn, chat: dict, period: str, admin_ids: set, now: datetime,
+                       season: str | None = None) -> dict:
     """Режим рейтинга берётся из настроек города чата: формула (по умолчанию) или правила."""
     if chat_rating.chat_mode(conn, chat) == "rules":
         return {"rating": None, "rules_rating": chat_rating.rules_rating(
-            conn, chat, period=period, admin_ids=admin_ids, now=now,
+            conn, chat, period=period, admin_ids=admin_ids, now=now, season=season,
         )}
     return {"rating": chat_rating.chat_rating(
         conn, chat, period=period, admin_ids=admin_ids, now=now,
@@ -498,7 +499,7 @@ def build_chat_context(
             # Квик 260927: живой рейтинг по баллам (формула chat_score, общая с тулом по
             # экспорту) вместо голого счёта сообщений, либо — для города в режиме «По
             # правилам города» — таблица правил (коины СПб). Команда в таблицу не входит.
-            **_chat_rating_block(conn, chat, period, set(cfg.admin_ids), now),
+            **_chat_rating_block(conn, chat, period, set(cfg.admin_ids), now, scope.season),
         })
 
     # Ссылки переключателя периода сохраняют город/сезон страницы.

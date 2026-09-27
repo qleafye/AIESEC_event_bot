@@ -64,10 +64,10 @@ def _member(path, tid, chat_id=SPB_CHAT, status="member"):
 
 
 def _user(path, tid, *, referrer=None, status="approved", approved_at="2026-09-16 10:00:00",
-          season="YL 26/2", username="-"):
+          season="YL 26/2", username="-", event_city="spb"):
     _exec(path, "INSERT INTO users (telegram_id, full_name, username, status, referrer_id, "
-                "approved_at, season) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          (tid, f"ФИО {tid}", username, status, referrer, approved_at, season))
+                "approved_at, season, event_city) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          (tid, f"ФИО {tid}", username, status, referrer, approved_at, season, event_city))
 
 
 def _submission(path, task_id, user_id, status="approved", reviewed_at="2026-09-16 10:00:00"):
@@ -151,6 +151,7 @@ def test_referrals_count_only_approved_of_current_season(db_path):
 def test_social_counts_picked_tasks_with_cap_and_hidden_without_tasks(db_path):
     # Одна действующая сдача на задание у человека (уникальный индекс) — поэтому 4 задания.
     _member(db_path, 11)
+    _user(db_path, 11)  # задания и чек-ины — только у делегатов сезона и города чата
     for task in (7, 8, 9, 10):
         _submission(db_path, task, 11)
     _submission(db_path, 11, 11)                      # задание не выбрано для правила
@@ -168,6 +169,7 @@ def test_social_counts_picked_tasks_with_cap_and_hidden_without_tasks(db_path):
 
 def test_city_empty_task_marker_overrides_global_list(db_path):
     _member(db_path, 11)
+    _user(db_path, 11)
     _submission(db_path, 7, 11)
     _setting(db_path, "chat_rules_social_tasks", "7")
     assert _rows(_rules(db_path))[11]["social"] == 1
@@ -177,6 +179,7 @@ def test_city_empty_task_marker_overrides_global_list(db_path):
 
 def test_checkins_count_forum_days_with_entrance_only(db_path):
     _member(db_path, 11)
+    _user(db_path, 11)
     _checkin(db_path, 11, "entry", "2026-10-30")
     _checkin(db_path, 11, "entry", "2026-10-31")
     _checkin(db_path, 11, "session:5", "2026-10-31")
