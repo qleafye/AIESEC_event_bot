@@ -971,6 +971,9 @@ _REGISTRY_TEXTS_EN = {
     "Заявка отклонена менеджером. Причина: {reason}":
         "The application was rejected by a manager. Reason: {reason}",
     "⚠️ Пропустить вопреки отказу": "⚠️ Let in despite rejection",
+    "Человек записан на форум в другом городе — после одобрения он переедет в {city}.":
+        "This person signed up for the forum in another city — once approved, they will be "
+        "moved to {city}.",
     "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? "
     "Отказ будет отменён, решение запишется на вас и попадёт в журнал.": (
         "A manager rejected {name}'s application. Let them in despite the rejection and check "

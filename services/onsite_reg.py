@@ -85,6 +85,13 @@ async def _wrong_city_text(user: dict) -> str:
     return f"Делегат с форума в {label} — отправьте на стойку своего города/к организаторам"
 
 
+def is_pending_walkin(user: dict | None) -> bool:
+    """Короткая анкета у стойки без решения. Её город — лишь город ссылки, которую человек
+    отсканировал (или город по умолчанию у ссылки без кода): стойка другого города может
+    одобрить его, переведя в свой город (ревью 28.09)."""
+    return bool(user) and user.get("onsite_kind") == "walkin" and user.get("status") == "pending"
+
+
 def refine_denial(code: str | None, user: dict | None) -> str | None:
     """Код отказа для сканера: `checkin_denial` отдаёт `not_approved` и на «на рассмотрении»,
     и на отказ менеджера. Сканер различает их — отклонённую заявку волонтёр не должен принять за
@@ -170,9 +177,14 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     past = is_past_season_row(user, event_season)
     # D-26: привязанный к городу волонтёр работает только со своим городом — и для уже
     # одобренного делегата (иначе стойка поставила бы вход в чужом городе). Делегата прошлого
-    # сезона город не держит: его пускают на форум города стойки.
-    if bound and not past and normalize_city(user.get("event_city")) != bound:
+    # сезона и walk-in без решения город не держит: их пускают на форум города стойки, и
+    # одобрение переводит их туда.
+    walkin = is_pending_walkin(user)
+    if bound and not past and not walkin and normalize_city(user.get("event_city")) != bound:
         return {"status": "wrong_city", "reason_text": await _wrong_city_text(user)}
+    move_city = resolved if (
+        past or (walkin and resolved and normalize_city(user.get("event_city")) != resolved)
+    ) else None
 
     denial = await checkin_denial(user)
     if denial is None:
@@ -189,7 +201,7 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
 
     flipped = await approve_onsite(
         tid, by_staff_id=staff_id, season=event_season,
-        event_city=resolved if past else None, override_reject=overriding,
+        event_city=move_city, override_reject=overriding,
     )
     fresh = await get_user(tid) or user
     await ensure_onsite_outbox(fresh)

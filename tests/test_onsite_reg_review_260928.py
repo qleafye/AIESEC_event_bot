@@ -589,3 +589,59 @@ def test_default_invite_stays_scan_only(tmp_path):
     dispatch_callback("volinv_lim:30", INV_ADMIN, state=state)
     [inv] = _run(bot_db.list_volunteer_invites())
     assert (inv.get("role") or "volunteer") == "volunteer"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Walk-in «не того» города: стойка одобряет его, переводя в свой город
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _walkin(uid, *, city="msk", name="Гостев Гость"):
+    _run(bot_db.create_onsite_user(
+        uid, username="guest", full_name=name, phone="+79991112233",
+        university="СПбГУ", event_city=city, season=SEASON,
+    ))
+
+
+def test_bound_volunteer_approves_other_city_walkin_by_moving_it(tmp_path):
+    _seed_ready(tmp_path)
+    _onsite_on("spb")
+    _walkin(953501, city="msk")
+    res = _door(953501, city="spb", bound="spb")
+    assert res["status"] == "new" and res["onsite_approved"] is True
+    row = _row(953501)
+    assert row["status"] == "approved" and row["event_city"] == "spb"
+
+
+def test_bound_volunteer_still_cannot_approve_other_city_regular_applicant(tmp_path):
+    _seed_ready(tmp_path)
+    _onsite_on("spb")
+    _run(_insert_user(953502, status="pending", city="msk"))
+    res = _door(953502, city="spb", bound="spb")
+    assert res["status"] == "wrong_city"
+    assert _row(953502)["status"] == "pending"
+
+
+def test_search_shows_other_city_walkin_with_move_note(tmp_path):
+    client = _ready(tmp_path, enable=("spb", "msk"))
+    _grant_checkin_to_bound_manager()  # привязан к spb
+    _walkin(953503, city="msk", name="Переездов Гость")
+    _run(_insert_user(953504, full_name="Переездов Обычный", status="pending", city="msk"))
+    items = client.get(f"{BASE}/search?q=Переездов", headers=_hdr(BOUND_MANAGER_ID)).json()["items"]
+    by_id = {it["telegram_id"]: it for it in items}
+    assert 953504 not in by_id  # обычная заявка чужого города по-прежнему не видна
+    walkin = by_id[953503]
+    assert walkin["onsite_approve"] is True
+    assert walkin["onsite_move_to"]  # подпись города стойки для подтверждения
+
+    resp = client.post(f"{ONSITE}/approve", json={"telegram_id": 953503}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert resp["status"] == "new"
+    assert _row(953503)["event_city"] == "spb"
+
+
+def test_move_confirm_text_in_registry_and_scanner():
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    meta = SETTINGS_SCHEMA["onsite_move_confirm_text"]
+    assert "{city}" in meta["default"] and meta["default"] in FORM_DEFAULT_EN
+    src = SCANNER_JS.read_text(encoding="utf-8")
+    assert "onsite_move_confirm_text" in src
+    assert "onsite_move_to" in _js_function(src, "approveOnsite")
