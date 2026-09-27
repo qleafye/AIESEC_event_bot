@@ -508,7 +508,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1155,
+        1158,
+        "Квик 260927 (пост рейтинга в чат): +3 строки — seam import "
+        "handlers/admin_chat_rating_post.py сразу после admin_chat_cleanup; 1155 -> 1158. "
         "Квик 260927 (автоочистка служебных уведомлений): +3 строки — seam import "
         "handlers/admin_chat_cleanup.py сразу после admin_chat_rating; 1152 -> 1155. "
         "Квик 260927 (рейтинг чата): +6 строк — хвостовой shared-router seam import "
@@ -725,7 +727,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1362,
+        1364,
+        "Квик 260927 (пост рейтинга в чат): +2 строки — капы «chpost:*» и "
+        "«state:ChatRatingPostEdit:*» (settings); 1362 -> 1364. "
         "Квик 260927 (автоочистка служебных уведомлений): +3 строки — капы «admin_chat_cleanup», "
         "«chclean:*», «state:ChatCleanupEdit:*» (settings); 1359 -> 1362. "
         "Квик 260927 (рейтинг чата): +3 строки — капы «admin_chat_rating», «chrate:*» и "
