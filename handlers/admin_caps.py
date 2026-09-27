@@ -631,6 +631,7 @@ ADMIN_CAPS: dict[str, str] = {
     # `admin.router`, а значит и без записи в этом реестре. Тумблер учёта переехал в общий
     # список тумблеров раздела «🔧 Управление» — та же капа, что у «🌙 Тихие часы» выше.
     "toggle_chat_tracking_enabled": "settings",
+    "admin_chat_rating": "settings",  # Квик 260927: экран «🏆 Рейтинг чата» (раздел «🔧 Управление»)
     "admin_sync_sheet": "settings",
     # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс экрана, что
     # «🔄 Синхронизация»/«♻️ Пересобрать таблицу» выше (handlers/admin_sheet_reconcile.py, всё

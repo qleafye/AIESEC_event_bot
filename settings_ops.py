@@ -422,16 +422,19 @@ EXCLUDED_GROUPS = ("roles",)
 # запирать их в вебе, оставляя открытыми в боте, значило бы прятать проблему, а не чинить.
 # Гейт для суффиксов — отдельная задача, до неё суффиксы ведут себя как раньше в обеих
 # поверхностях.
-EXCLUDED_KEYS: frozenset[str] = frozenset(SHEET_TAB_NAME_KEYS)
+# Квик 260927: задания для «упоминаний в соцсетях» рейтинга чата хранятся id заданий игры — это
+# коды; в вебе их пришлось бы набирать руками. Правятся только экраном-галочками бота «🏆 Рейтинг
+# чата» (handlers/admin_chat_rating.py), где видны названия заданий.
+EXCLUDED_KEYS: frozenset[str] = frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks"}
 
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
 # литерал, а не импорт: admin_settings.py тянет aiogram, settings_ops.py — нет (D-12), а
 # импортировать оттуда сюда список токенов означало бы либо цикл (admin_settings уже
-# импортирует settings_ops), либо протаскивание aiogram транзитивно. Список — девять
+# импортирует settings_ops), либо протаскивание aiogram транзитивно. Список — десять
 # литералов, меняющихся вместе с редкой перестановкой экранов бота, не риск дрейфа кода
 # ключей (в отличие от подписей/текста, которые полностью читаются из реестра).
 _GROUP_SCREEN_ORDER = (
-    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "system",
+    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "chat", "system",
 )
 
 
@@ -484,6 +487,7 @@ GROUP_LABELS: dict[str, str] = {
     "party": "🎉 Party",
     "consent": "📋 Согласия",
     "game": "🎮 Геймификация",
+    "chat": "💬 Чат делегатов",
     "system": "🔧 Система",
     "reg_questions": "📋 Вопросы регистрации",
     "reg_prompts": "✏️ Тексты вопросов",
@@ -509,7 +513,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("pay", "💳 Оплата", ("pay",)),
     ("game", "🎮 Геймификация", ("game",)),
     ("data", "📊 Данные", ("sheets", "dashboard")),
-    ("manage", "🔧 Управление", ("miniapp", "system")),
+    ("manage", "🔧 Управление", ("miniapp", "chat", "system")),
 )
 
 # Phase 22 Plan 07 (D-16, владелец 03.09): какие разделы стартового экрана настроек попадают
