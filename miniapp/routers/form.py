@@ -650,8 +650,13 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
             unwrapped = await _canonicalize_answer(step_key, unwrapped, answer_lang, answer_tr_map)
         # Квик 27.09: код кнопки развилки («file»/«link»/«text»/«mini») — не резюме. Старые
         # закэшированные версии обзора правки слали его в resume_text; сервер отбивает сам,
-        # независимо от версии клиента.
-        if step_key == "resume" and reg_engine.is_resume_fork_code(unwrapped):
+        # независимо от версии клиента. Только в режиме `fork`: в других режимах кнопок
+        # развилки нет, и «выбери кнопкой» там — тупик для делегата, ответившего «file».
+        if (
+            step_key == "resume"
+            and reg_engine.is_resume_fork_code(unwrapped)
+            and await reg_engine.resume_mode(pre_patch.get("event_city") or ctx["event_city"]) == "fork"
+        ):
             errors[column] = await i18n.tr_setting("reg_form_resume_fork_code_error_text", lang, tr_map)
             continue
         # Phase 28 (28-03, SU-02, T-28-03-01): второй барьер лимита мультивыбора — веб-PATCH

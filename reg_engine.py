@@ -1958,9 +1958,9 @@ _RESUME_FORK_OPTIONS = [
 
 # Квик 27.09: коды кнопок развилки — служебные слова, резюме ими быть не может. Старый обзор
 # правки в приложении писал код кнопки в resume_text, джоба догрузки заливала «mini» в облако
-# как текстовое резюме. "none" — исторический код «нет резюме» (см. проверку отвеченности
-# шага resume ниже), его тоже держим в наборе.
-RESUME_FORK_CODES = frozenset(code for code, _key, _icon in _RESUME_FORK_OPTIONS) | {"none"}
+# как текстовое резюме. "none" в набор НЕ входит: это не кнопка, а обычный ответ (EN-делегат
+# без резюме пишет «None»), и ни один клиент не писал его в resume_text.
+RESUME_FORK_CODES = frozenset(code for code, _key, _icon in _RESUME_FORK_OPTIONS)
 
 
 def is_resume_fork_code(value) -> bool:
