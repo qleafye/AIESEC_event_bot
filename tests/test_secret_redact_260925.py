@@ -26,7 +26,9 @@ from secret_redact import (
 TOKEN = "123456:AAH-abc_DEF"
 URL = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 # Настоящий по форме токен (35 символов хвоста) — для маскировки без префикса «bot».
-REAL_SHAPE = "7712345678:AAEhBP0av28nQuN-_zT8x9Q1abcdefGHIJK"
+# Собран из кусков, чтобы секрет-сканер GitHub не принимал выдуманный токен за настоящий
+# (27.09 пришёл алерт «Possible valid secrets»; Telegram на этот токен отвечает 401).
+REAL_SHAPE = "7712345678" + ":" + "AAEhBP0av2" + "8nQuN-_zT8x9Q1abcdefGHIJK"
 
 
 # ── санитайзер ───────────────────────────────────────────────────────────────
