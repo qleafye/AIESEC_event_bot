@@ -755,6 +755,128 @@ tr:last-child td { border-bottom: none; }
    стандартного margin-top у .switchers (это не шапка события, а управление графиком). */
 .axis-toggle { margin-top: 0; margin-bottom: var(--sp-3); }
 
+/* ── Конструктор «Источники по дням» (/sources) ───────────────────────────────────────── */
+
+/* Чипы фильтров — те же .switch-link; длинная метка кампании переносится внутри чипа, а не
+   раздвигает страницу вбок. */
+.sources-filters .switchers:first-child { margin-top: 0; }
+.sources-filters .switch-link { max-width: 100%; overflow-wrap: anywhere; }
+.chip-count { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.switch-link.active .chip-count { color: inherit; }
+button.switch-link { font-family: var(--font-body); cursor: pointer; }
+
+.range-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.range-form input[type="date"] {
+  font-family: var(--font-body);
+  font-size: var(--fs-input);   /* 16px — iOS не зумит страницу при фокусе */
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sources-hint { margin: var(--sp-3) 0 0; font-size: 13px; color: var(--text-muted); }
+.sources-description { margin: 0 0 var(--sp-3); color: var(--text-muted); font-size: 13px; }
+.sources-caption { margin: 0 0 var(--sp-3); font-size: 13px; color: var(--text-muted); }
+
+/* Квадратик цвета категории: один и тот же у чипа, легенды, столбика графика и колонки. */
+.sw {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+.sw-1 { background: var(--chart-1); }
+.sw-2 { background: var(--chart-2); }
+.sw-3 { background: var(--chart-3); }
+.sw-4 { background: var(--chart-4); }
+.sw-5 { background: var(--chart-5); }
+.sw-6 { background: var(--chart-6); }
+.sw-7 { background: var(--chart-7); }
+.sw-other { background: var(--text-faint); }
+.sw-total { height: 2px; width: 14px; background: var(--text); vertical-align: middle; }
+
+.sources-chart-wrap { position: relative; height: 280px; }
+
+.sources-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-3);
+  font-size: 13px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.legend-item { color: var(--accent-text); }
+
+.sources-table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.sources-table-head .block-title { margin: 0; }
+
+/* Прокрутка вбок — только внутри контейнера таблицы; первая колонка (день) прилипает слева,
+   чтобы на телефоне было видно, к какому дню относится число. */
+.sources-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sources-table { width: max-content; min-width: 100%; }
+.sources-table th:first-child,
+.sources-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  white-space: nowrap;
+  box-shadow: 1px 0 0 var(--border);
+}
+.sources-table thead th {
+  vertical-align: bottom;
+  min-width: 76px;
+  max-width: 140px;
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sources-table tbody th,
+.sources-table tfoot th {
+  color: var(--text);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sources-table tbody th { font-weight: 400; }
+.th-cat { display: inline-flex; align-items: baseline; gap: var(--sp-1); text-align: right; }
+.sources-table .col-total { font-weight: 700; }
+.sources-table tfoot th,
+.sources-table tfoot td { font-weight: 700; border-top: 1px solid var(--border-strong); border-bottom: none; }
+.sources-table .cell-zero { color: var(--text-faint); }
+@media (hover: hover) {
+  .sources-table tbody tr:hover th { background: var(--surface-alt); }
+}
+
 /* ── Reduced motion ─────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
