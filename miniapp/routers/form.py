@@ -461,6 +461,8 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
         "resume_upload_error_text": await i18n.tr_setting("reg_form_resume_upload_error_text", lang, tr_map),
         # D13: подпись кнопки «Поделиться номером» на шаге телефона — из реестра, не литерал JS.
         "share_contact_text": await i18n.tr_setting("reg_form_share_contact_text", lang, tr_map),
+        # Обзор правки: возврат к кнопкам развилки резюме после выбора «Файл»/«Текстом».
+        "resume_other_way_text": await i18n.tr_setting("reg_form_resume_other_way_text", lang, tr_map),
         # Phase 30 (30-05, задача 4, A2-08): группа «Язык анкеты» в поповере настроек шапки
         # видна только при включённом модуле (фаза 27) — `lang` здесь ТОТ ЖЕ, что уже
         # резолвлен выше для перевода текстов спеки, второго похода в `i18n.context` не нужно.

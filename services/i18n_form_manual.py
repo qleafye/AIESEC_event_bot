@@ -769,6 +769,7 @@ _REGISTRY_TEXTS_EN = {
     "Не удалось загрузить файл — попробуй ещё раз или пришли резюме текстом.": "Couldn't upload the file — try again or send your CV as text.",
     "Выбери вариант резюме кнопкой ещё раз: приложи файл, дай ссылку или напиши о себе текстом.": "Pick your CV option with a button again: attach a file, share a link or write about yourself as text.",
     "Файл резюме ещё не загрузился — прикрепи его ещё раз.": "Your CV file hasn't uploaded yet — please attach it again.",
+    "Выбрать другой способ": "Choose another way",
     "Резюме принимается как PDF или DOCX — другой формат не подойдёт.": "Your CV is accepted as PDF or DOCX — other formats won't work.",
     "📱 Поделиться номером": "📱 Share phone number",
     "Вместо строчки «Анкета: одобрена» в профиле": "Instead of the «Application: approved» line in the profile",
