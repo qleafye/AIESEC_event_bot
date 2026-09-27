@@ -154,6 +154,7 @@ export async function render(root, params, ctx) {
 
   // ── регистрация на месте (D-41): подписи, блок «Ждут на стойке» ─────────────────────────
   let onsiteEnabled = false;
+  let onsiteCanApprove = false; // право «Одобрять на месте» (onsite_can_approve из /points)
   let onsiteBusy = false;
 
   function ot(key) {
@@ -286,6 +287,7 @@ export async function render(root, params, ctx) {
     if (!pointsData.some((pt) => pt.point === selectedPoint)) selectedPoint = ENTRY_POINT;
     renderPointChips();
     onsiteEnabled = Boolean(data.onsite_enabled);
+    onsiteCanApprove = Boolean(data.onsite_can_approve);
     applyOnsite();
   }
 
@@ -601,10 +603,11 @@ export async function render(root, params, ctx) {
       onsiteList.replaceChildren(h("p", { class: "muted", text: "Пока никого" }));
       return;
     }
+    const canApprove = Boolean(page.can_approve);
     onsiteList.replaceChildren(...items.map((it) => flatRow(h, {
       title: it.full_name,
       meta: [it.university, it.username ? `@${it.username}` : null, it.registered_at].filter(Boolean).join(" · ") || "—",
-      trailing: onsiteApproveButton(it),
+      trailing: canApprove ? onsiteApproveButton(it) : null,
     })));
   }
 

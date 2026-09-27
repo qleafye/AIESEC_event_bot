@@ -473,3 +473,119 @@ def test_bot_tail_no_alert_when_journal_row_present(tmp_path, monkeypatch):
     _patch_tail(monkeypatch, alerts)
     _run(onsite_reg.after_onsite_approved(_fake_bot(), 953304))
     assert alerts == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Отдельное право «Одобрять на месте» (checkin_approve)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _set_role_caps(role, caps):
+    _run(bot_db.set_setting(f"role_caps_{role}", caps))
+
+
+def test_checkin_approve_capability_and_reg_volunteer_role():
+    from dashboard import access
+    from handlers import admin_caps
+    assert "checkin_approve" in admin_caps.ALL_CAPABILITIES
+    assert list(access.ALL_CAPABILITIES) == list(admin_caps.ALL_CAPABILITIES)
+    assert admin_caps.CAP_LABELS["checkin_approve"]
+    assert admin_caps.ROLES["volunteer"]["default_caps"] == ["checkin"]
+    assert admin_caps.ROLES["reg_volunteer"]["default_caps"] == ["checkin", "checkin_approve"]
+    assert access._ROLE_DEFAULT_CAPS["reg_volunteer"] == ["checkin", "checkin_approve"]
+    assert SETTINGS_SCHEMA["role_caps_reg_volunteer"]["default"] == ["checkin", "checkin_approve"]
+    assert SETTINGS_SCHEMA["role_reg_volunteer_enabled"]["default"] == "on"
+
+
+def test_scanner_without_approve_right_gets_no_approve_buttons_and_403(tmp_path):
+    client = _ready(tmp_path)
+    _set_role_caps("game_manager", "moderate_game;checkin")
+    uid = 953401
+    _run(_insert_user(uid, status="pending", city="spb"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(uid), "city": "spb"},
+                       headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "denied"
+    assert body["onsite_approve"] is False and body["onsite_override"] is False
+    resp = client.post(f"{ONSITE}/approve", json={"telegram_id": uid, "city": "spb"},
+                       headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 403
+    assert resp.json()["cap"] == "checkin_approve"
+    assert _row(uid)["status"] == "pending"
+    points = client.get(f"{BASE}/points?city=spb", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert points["onsite_enabled"] is True and points["onsite_can_approve"] is False
+    pending = client.get(f"{ONSITE}/pending?city=spb", headers=_hdr(GAME_MANAGER_ID)).json()
+    assert pending["can_approve"] is False
+
+
+def test_scanner_with_approve_right_can_approve(tmp_path):
+    client = _ready(tmp_path)
+    _set_role_caps("game_manager", "moderate_game;checkin;checkin_approve")
+    uid = 953402
+    _run(_insert_user(uid, status="pending", city="spb"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(uid), "city": "spb"},
+                       headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["onsite_approve"] is True
+    resp = client.post(f"{ONSITE}/approve", json={"telegram_id": uid, "city": "spb"},
+                       headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 200 and resp.json()["onsite_approved"] is True
+
+
+def test_moderate_reg_holder_can_approve_without_explicit_right(tmp_path):
+    client = _ready(tmp_path)
+    _grant_checkin_to_bound_manager()  # moderate_reg;moderate_receipts;checkin
+    points = client.get(f"{BASE}/points", headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert points["onsite_can_approve"] is True
+
+
+def test_scanner_js_hides_approve_without_right():
+    src = SCANNER_JS.read_text(encoding="utf-8")
+    assert "onsite_can_approve" in src and "can_approve" in _js_function(src, "loadOnsitePending")
+
+
+# ── Приглашение волонтёров: опция «с одобрением на месте» ─────────────────────────────────
+
+def test_invite_with_approval_grants_reg_volunteer_role(tmp_path):
+    from tests.test_roles_phase8 import _fresh_state, dispatch_callback
+    from tests.test_volunteer_invite_260924 import ADMIN_ID as INV_ADMIN
+    from tests.test_volunteer_invite_260924 import FakeBot, _FakeCommand, _FakeMessage
+    from tests.test_volunteer_invite_260924 import _ready as inv_ready
+    from handlers import registration as reg
+    from handlers.admin_caps import resolve_capabilities
+
+    inv_ready(tmp_path)
+    _run(bot_db.set_setting("volunteer_invite_enabled", "on"))
+    result, event = dispatch_callback("volinvite_cfg:_all", INV_ADMIN)
+    _text, _pm, kb = event.message.answers[-1]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "volinvite_new:_all" in cbs and "volinvite_new:_all:appr" in cbs
+
+    state = _fresh_state(INV_ADMIN)
+    dispatch_callback("volinvite_new:_all:appr", INV_ADMIN, state=state)
+    dispatch_callback("volinv_le:7", INV_ADMIN, state=state)
+    dispatch_callback("volinv_re:none", INV_ADMIN, state=state)
+    dispatch_callback("volinv_lim:30", INV_ADMIN, state=state)
+    [inv] = _run(bot_db.list_volunteer_invites())
+    assert inv["role"] == "reg_volunteer"
+
+    uid = 953410
+    msg = _FakeMessage(uid, username="regvol", full_name="Волонтёр Регистрации")
+    _run(reg.cmd_start(msg, _fresh_state(uid), bot=FakeBot(), command=_FakeCommand(f"vol_{inv['code']}")))
+    assert _run(bot_db.get_staff_roles(uid)) == ["reg_volunteer"]
+    assert {"checkin", "checkin_approve"} <= _run(resolve_capabilities(uid))
+
+    dispatch_callback(f"volinv_removeuser:{inv['code']}:{uid}", INV_ADMIN)
+    assert _run(bot_db.get_staff_roles(uid)) == []
+
+
+def test_default_invite_stays_scan_only(tmp_path):
+    from tests.test_roles_phase8 import _fresh_state, dispatch_callback
+    from tests.test_volunteer_invite_260924 import ADMIN_ID as INV_ADMIN
+    from tests.test_volunteer_invite_260924 import _ready as inv_ready
+    inv_ready(tmp_path)
+    _run(bot_db.set_setting("volunteer_invite_enabled", "on"))
+    state = _fresh_state(INV_ADMIN)
+    dispatch_callback("volinvite_new:_all", INV_ADMIN, state=state)
+    dispatch_callback("volinv_le:7", INV_ADMIN, state=state)
+    dispatch_callback("volinv_re:none", INV_ADMIN, state=state)
+    dispatch_callback("volinv_lim:30", INV_ADMIN, state=state)
+    [inv] = _run(bot_db.list_volunteer_invites())
+    assert (inv.get("role") or "volunteer") == "volunteer"
