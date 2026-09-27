@@ -1704,6 +1704,61 @@ async def init_db():
                 checked_at TEXT
             )
         ''')
+        # Квик 260927 (живой рейтинг чата): журнал сообщений БЕЗ ТЕКСТА (D-9 — длина считается и
+        # сразу забывается), текущие реакции, ники и админы группы. ts — Москва,
+        # "%Y-%m-%d %H:%M:%S". reactions_extra заполняет только импорт экспорта: реакции,
+        # посчитанные Telegram, чьи дарители неизвестны.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                ts TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                text_len INTEGER NOT NULL DEFAULT 0,
+                reply_to_message_id INTEGER,
+                reply_to_author_id INTEGER,
+                is_channel_post INTEGER NOT NULL DEFAULT 0,
+                reactions_extra INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'live',
+                PRIMARY KEY (chat_id, message_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_ts ON chat_messages(chat_id, ts)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_author "
+            "ON chat_messages(chat_id, telegram_id)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_reactions (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                reaction TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                PRIMARY KEY (chat_id, message_id, telegram_id, reaction)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_reactions_msg ON chat_reactions(chat_id, message_id)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_usernames (
+                telegram_id INTEGER PRIMARY KEY,
+                username TEXT,
+                updated_at TEXT
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_admins (
+                chat_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                synced_at TEXT,
+                PRIMARY KEY (chat_id, telegram_id)
+            )
+        ''')
 
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
@@ -5545,6 +5600,100 @@ async def get_chat_bot_state(chat_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+# ── Квик 260927: живой рейтинг чата — журнал сообщений без текста, реакции, ники, админы ──
+
+async def log_chat_message(chat_id: int, message_id: int, telegram_id: int, ts: str, *,
+                           kind: str, text_len: int, reply_to_message_id: int | None,
+                           reply_to_author_id: int | None, is_channel_post: bool = False,
+                           reactions_extra: int = 0, source: str = "live") -> None:
+    """Одна строка на сообщение. INSERT OR IGNORE по (chat_id, message_id): повторный апдейт
+    не задваивает счёт. Текста здесь нет и быть не может — только длина (D-9)."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO chat_messages (chat_id, message_id, telegram_id, ts, kind, "
+            "text_len, reply_to_message_id, reply_to_author_id, is_channel_post, "
+            "reactions_extra, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (chat_id, message_id, telegram_id, ts, kind, int(text_len), reply_to_message_id,
+             reply_to_author_id, 1 if is_channel_post else 0, int(reactions_extra), source),
+        )
+        await db.commit()
+
+
+async def update_chat_message_len(chat_id: int, message_id: int, text_len: int) -> None:
+    """Правка сообщения меняет только длину — и только у уже записанной строки."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE chat_messages SET text_len = ? WHERE chat_id = ? AND message_id = ?",
+            (int(text_len), chat_id, message_id),
+        )
+        await db.commit()
+
+
+async def set_chat_reactions(chat_id: int, message_id: int, telegram_id: int,
+                             reactions: list[str], ts: str) -> None:
+    """Текущие реакции человека на сообщение — зеркало апдейта message_reaction (в нём всегда
+    ПОЛНЫЙ новый набор): стираем тройку и пишем набор заново, одной транзакцией."""
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM chat_reactions WHERE chat_id = ? AND message_id = ? AND telegram_id = ?",
+            (chat_id, message_id, telegram_id),
+        )
+        for reaction in dict.fromkeys(reactions):
+            await db.execute(
+                "INSERT OR IGNORE INTO chat_reactions (chat_id, message_id, telegram_id, reaction, ts) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (chat_id, message_id, telegram_id, reaction, ts),
+            )
+        await db.commit()
+
+
+async def upsert_chat_username(telegram_id: int, username: str | None) -> None:
+    """@ник автора из Telegram (в анкете его может не быть). Пустое значение прежний ник не
+    стирает — человек мог просто написать с клиента, где ник не пришёл."""
+    value = str(username or "").strip().lstrip("@")
+    if not value:
+        return
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO chat_usernames (telegram_id, username, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(telegram_id) DO UPDATE SET username = excluded.username, "
+            "updated_at = excluded.updated_at",
+            (telegram_id, value, now),
+        )
+        await db.commit()
+
+
+async def replace_chat_admins(chat_id: int, telegram_ids) -> None:
+    """Админы группы по итогу getChatAdministrators — список заменяется целиком."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute("DELETE FROM chat_admins WHERE chat_id = ?", (chat_id,))
+        for tid in dict.fromkeys(telegram_ids):
+            await db.execute(
+                "INSERT OR IGNORE INTO chat_admins (chat_id, telegram_id, synced_at) VALUES (?, ?, ?)",
+                (chat_id, tid, now),
+            )
+        await db.commit()
+
+
+async def prune_chat_history(cutoff_ts: str) -> dict[str, int]:
+    """Срок хранения истории рейтинга: сообщения старше `cutoff_ts`, реакции старше него или на
+    уже удалённые сообщения. Возвращает счётчики для лога."""
+    async with _connect() as db:
+        cur = await db.execute("DELETE FROM chat_messages WHERE ts < ?", (cutoff_ts,))
+        messages = cur.rowcount
+        cur = await db.execute(
+            "DELETE FROM chat_reactions WHERE ts < ? OR NOT EXISTS ("
+            "SELECT 1 FROM chat_messages m WHERE m.chat_id = chat_reactions.chat_id "
+            "AND m.message_id = chat_reactions.message_id)",
+            (cutoff_ts,),
+        )
+        reactions = cur.rowcount
+        await db.commit()
+    return {"messages": messages, "reactions": reactions}
+
+
 async def chat_member_ids(chat_id: int) -> set[int]:
     """Множество telegram_id, реально присутствующих (`CHAT_PRESENT_STATUSES`) в чате."""
     async with _connect() as db:
@@ -5668,6 +5817,10 @@ async def purge_chat_data(chat_id: int) -> None:
         await db.execute("DELETE FROM chat_members WHERE chat_id = ?", (chat_id,))
         await db.execute("DELETE FROM chat_activity WHERE chat_id = ?", (chat_id,))
         await db.execute("DELETE FROM chat_events WHERE chat_id = ?", (chat_id,))
+        # Квик 260927: журнал рейтинга этого чата. chat_usernames — общие на все чаты, не трогаем.
+        await db.execute("DELETE FROM chat_messages WHERE chat_id = ?", (chat_id,))
+        await db.execute("DELETE FROM chat_reactions WHERE chat_id = ?", (chat_id,))
+        await db.execute("DELETE FROM chat_admins WHERE chat_id = ?", (chat_id,))
         await db.commit()
 
 
@@ -9414,6 +9567,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("chat_members", "telegram_id", "chat"),
     ("chat_activity", "telegram_id", "chat"),
     ("chat_events", "telegram_id", "chat"),
+    # Квик 260927: живой рейтинг чата — свои сообщения, поставленные реакции, ник, строка админа.
+    ("chat_messages", "telegram_id", "chat"),
+    ("chat_reactions", "telegram_id", "chat"),
+    ("chat_usernames", "telegram_id", "chat"),
+    ("chat_admins", "telegram_id", "chat"),
     # Phase 31 (31-02): auto_reject_log — журнал срабатываний автоотказа, персональный след
     # делегата (кто, сколько раз, каким текстом отказали). returned_by в той же строке — id
     # менеджера, вернувшего заявку на ручную модерацию, отдельно не трогаем: строка целиком
@@ -9586,6 +9744,12 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
         await db.execute(
             "DELETE FROM sos_card_copies WHERE report_id IN "
             "(SELECT id FROM sos_reports WHERE telegram_id = ?)",
+            (telegram_id,),
+        )
+        # Квик 260927: чужие ответы этому человеку остаются в журнале, но без адресата — иначе
+        # удалённый продолжал бы получать отклик и всплывал в рейтинге голым id.
+        await db.execute(
+            "UPDATE chat_messages SET reply_to_author_id = NULL WHERE reply_to_author_id = ?",
             (telegram_id,),
         )
         for table, column, group in USER_PURGE_TABLES:
