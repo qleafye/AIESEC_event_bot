@@ -1956,6 +1956,18 @@ _RESUME_FORK_OPTIONS = [
     ("mini", "reg_resume_fork_none_label", "x"),
 ]
 
+# Квик 27.09: коды кнопок развилки — служебные слова, резюме ими быть не может. Старый обзор
+# правки в приложении писал код кнопки в resume_text, джоба догрузки заливала «mini» в облако
+# как текстовое резюме. "none" — исторический код «нет резюме» (см. проверку отвеченности
+# шага resume ниже), его тоже держим в наборе.
+RESUME_FORK_CODES = frozenset(code for code, _key, _icon in _RESUME_FORK_OPTIONS) | {"none"}
+
+
+def is_resume_fork_code(value) -> bool:
+    """True, если ответ на шаг резюме — это код кнопки развилки, а не текст делегата
+    (без учёта регистра и пробелов по краям)."""
+    return isinstance(value, str) and value.strip().lower() in RESUME_FORK_CODES
+
 
 async def resume_fork_options() -> list[dict]:
     """Спека кнопок развилки резюме (SU-04) — код/человеческая подпись из реестра
