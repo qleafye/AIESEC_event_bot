@@ -243,3 +243,41 @@ def test_result_shape(db_path):
     assert [c["key"] for c in result["columns"]] == [
         "comments", "valuable", "referrals", "checkins",
     ]
+
+
+# ── страница /chat: оба режима рядом ─────────────────────────────────────────────────────
+
+def test_chat_page_renders_rules_for_spb_and_formula_for_msk(db_path):
+    from tests.test_dashboard_chat_260914 import ADMIN_ID, _cfg, _client, _login
+
+    for code, label, order in (("spb", "Санкт-Петербург", 1), ("msk", "Москва", 0)):
+        _exec(db_path, "INSERT INTO cities (code, label, enabled, sort_order, created_at) "
+                       "VALUES (?, ?, 1, ?, '2026-01-01 00:00:00')", (code, label, order))
+    for key, value in {
+        "delegate_chat_id__city__spb": str(SPB_CHAT), "delegate_chat_title__city__spb": "СПб чат",
+        "delegate_chat_id__city__msk": str(MSK_CHAT), "delegate_chat_title__city__msk": "Мск чат",
+        "chat_rules_currency__city__spb": "LC",
+    }.items():
+        _setting(db_path, key, value)
+    _exec(db_path, "INSERT INTO chat_usernames (telegram_id, username) VALUES (11, 'spb_delegate'), "
+                   "(31, 'msk_delegate')")
+    today = NOW.strftime("%Y-%m-%d")
+    _msg(db_path, 1, STAFF, "2026-09-15 10:00:00")
+    _msg(db_path, 2, 11, "2026-09-15 10:05:00", text_len=600, reply_mid=1, reply_author=STAFF)
+    _msg(db_path, 3, 31, f"{today} 10:00:00", chat_id=MSK_CHAT)
+
+    client = _client(_cfg(db_path))
+    _login(client, ADMIN_ID)
+    resp = client.get("/chat")
+
+    assert resp.status_code == 200
+    html = resp.text
+    spb_part = html.split("СПб чат")[1]
+    msk_part = html.split("Мск чат")[1].split("СПб чат")[0]
+    assert "Рейтинг по правилам города" in spb_part
+    assert "Итого, LC" in spb_part
+    assert "@spb_delegate" in spb_part
+    assert "Бот ничего не начисляет" in spb_part
+    assert "Регулярность" in msk_part
+    assert "@msk_delegate" in msk_part
+    assert "Рейтинг по правилам города" not in msk_part
