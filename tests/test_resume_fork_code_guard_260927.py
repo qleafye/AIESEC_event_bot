@@ -46,12 +46,12 @@ def _fork_mode():
 
 # ── reg_engine.is_resume_fork_code ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("value", ["mini", " FILE ", "none", "link", "text", "Mini"])
+@pytest.mark.parametrize("value", ["mini", " FILE ", "link", "text", "Mini"])
 def test_is_resume_fork_code_true_for_codes(value):
     assert reg_engine.is_resume_fork_code(value) is True
 
 
-@pytest.mark.parametrize("value", [None, "", "мини", "minimal", "Работала в мини-проекте", 5, {"text": "mini"}])
+@pytest.mark.parametrize("value", [None, "", "none", "мини", "minimal", "Работала в мини-проекте", 5, {"text": "mini"}])
 def test_is_resume_fork_code_false_for_real_answers(value):
     assert reg_engine.is_resume_fork_code(value) is False
 
@@ -59,7 +59,8 @@ def test_is_resume_fork_code_false_for_real_answers(value):
 def test_fork_codes_cover_every_fork_button():
     codes = {code for code, _key, _icon in reg_engine._RESUME_FORK_OPTIONS}
     assert codes <= reg_engine.RESUME_FORK_CODES
-    assert "none" in reg_engine.RESUME_FORK_CODES
+    # «none» — не кнопка развилки: обычный ответ делегата без резюме, его не отбиваем.
+    assert "none" not in reg_engine.RESUME_FORK_CODES
 
 
 # ── Реестр: два новых текста ──────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ def test_new_registry_texts_sit_right_after_upload_error_text():
 
 # ── A1: PATCH не принимает код развилки как резюме ───────────────────────────────────────
 
-@pytest.mark.parametrize("code", ["mini", "file", "link", "text", "none", " Mini "])
+@pytest.mark.parametrize("code", ["mini", "file", "link", "text", " Mini "])
 def test_patch_rejects_fork_code_as_resume_text(client, code):
     _fork_mode()
     resp = client.patch(
