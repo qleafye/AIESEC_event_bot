@@ -66,7 +66,7 @@ def _member(path, tid, chat_id=SPB_CHAT, status="member"):
 def _user(path, tid, *, referrer=None, status="approved", approved_at="2026-09-16 10:00:00",
           season="YL 26/2", username="-"):
     _exec(path, "INSERT INTO users (telegram_id, full_name, username, status, referrer_id, "
-                "approved_at, event_season) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "approved_at, season) VALUES (?, ?, ?, ?, ?, ?, ?)",
           (tid, f"ФИО {tid}", username, status, referrer, approved_at, season))
 
 
