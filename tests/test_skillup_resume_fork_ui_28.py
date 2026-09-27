@@ -722,7 +722,12 @@ def test_text_branch_swaps_step_to_textarea_without_moving_step():
     pick_start = text.index("async function pickResumeBranch(")
     pick_end = text.index("async function goNext(", pick_start)
     pick_body = text[pick_start:pick_end]
-    assert 'code === "text"' in pick_body
+    # Квик 27.09: правило ветки вынесено в общий `form.js::resumeForkPick` (мастер + обзор
+    # правки) — «text» обязан оставаться в нём локальной веткой, как «file».
+    assert "resumeForkPick(code)" in pick_body
+    assert "pick.localBranch" in pick_body
+    form_js = _js_without_comments(FORM_JS)
+    assert 'RESUME_FORK_LOCAL_BRANCHES = new Set(["file", "text"])' in form_js
 
     go_back_start = text.index("function goBack(")
     go_back_end = text.index("const showProgress", go_back_start)
