@@ -691,18 +691,11 @@ async def onsite_approve(
     if status == "wrong_city":
         await _log_denial(p, bound, "wrong_city", point=ENTRY_POINT, source="manual", user=user)
     if status in ("wrong_city", "denied", "not_found"):
-        res.pop("outbox", None)
         res.pop("first_entry", None)
         return await _with_city_label({**res, **_person_fields(user)})
 
-    outbox = res.pop("outbox", None)
-    if outbox:
-        # Fail-soft: одобрение и отметка уже записаны — сбой очереди не должен давать 500
-        # и повторное нажатие; теряется только хвост (лист/сообщение человеку).
-        try:
-            await enqueue(outbox["kind"], outbox["payload"])
-        except Exception:  # noqa: BLE001
-            logger.exception("checkin: не удалось поставить onsite_approved в outbox")
+    # Событие onsite_approved (лист, сообщение, QR) сервис ставит сам сразу после флипа, а
+    # повторное нажатие восстанавливает его без дубля (`ensure_onsite_outbox`).
     await _forward_first_entry(res)
     if res.get("onsite_approved"):
         res["reason_text"] = _ONSITE_APPROVED_TEXT

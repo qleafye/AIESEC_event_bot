@@ -431,7 +431,8 @@ def test_approve_at_door_pending_full_path(tmp_path):
     res = _door(6001)
     assert res["status"] == "new"
     assert res["onsite_approved"] is True
-    assert res["outbox"] == {"kind": "onsite_approved", "payload": {"telegram_id": 6001}}
+    # событие для бота сервис ставит сам, сразу после флипа (ревью 28.09)
+    assert _count("SELECT COUNT(*) FROM miniapp_outbox WHERE kind = 'onsite_approved'") == 1
     assert "log_id" not in res
     assert res.get("first_entry")  # вызывающий Mini App переносит его в outbox
     row = _row(6001)

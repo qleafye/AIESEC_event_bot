@@ -8582,6 +8582,22 @@ async def enqueue_miniapp_outbox(kind: str, payload: dict, created_at: str) -> i
         return cursor.lastrowid
 
 
+async def enqueue_miniapp_outbox_once(kind: str, payload: dict, created_at: str) -> int | None:
+    """То же, что `enqueue_miniapp_outbox`, но не дублирует: событие того же `kind` с тем же
+    payload (обработанное или нет) уже есть — ничего не пишет и возвращает None. Проверка и
+    вставка — один INSERT … WHERE NOT EXISTS. Для событий, которые повтор нажатия обязан
+    восстановить, но не размножить (одобрение у стойки: payload несёт `onsite_at` решения)."""
+    text = json.dumps(payload, ensure_ascii=False)
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO miniapp_outbox (kind, payload, created_at) SELECT ?, ?, ? "
+            "WHERE NOT EXISTS (SELECT 1 FROM miniapp_outbox WHERE kind = ? AND payload = ?)",
+            (kind, text, created_at, kind, text),
+        )
+        await db.commit()
+        return cursor.lastrowid if cursor.rowcount == 1 else None
+
+
 async def list_unprocessed_miniapp_outbox(limit: int = 50) -> list[dict]:
     """Необработанные события в порядке `id`; `payload` уже разобран из JSON."""
     async with _connect() as db:

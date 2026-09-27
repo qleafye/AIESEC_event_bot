@@ -23,6 +23,7 @@ import logging
 import segno
 
 from cities import cities_module_on, city_label, get_setting_typed_for_city, normalize_city
+from database import db as _db
 from database.db import approve_onsite, get_user
 from reg_engine import is_past_season_row
 from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
@@ -118,6 +119,33 @@ async def rejected_reason_text(user: dict, lang: str = "ru", tr_map: dict | None
     return tr(await get_setting_typed("onsite_rejected_text"), lang, tr_map or {})
 
 
+def _door_approved(user: dict | None) -> bool:
+    """Текущее одобрение — решение стойки: `approve_onsite` ставит `approved_at` и `onsite_at`
+    одним значением; обычное одобрение позже переписало бы `approved_at`."""
+    return bool(
+        user and user.get("status") == "approved" and user.get("onsite_at")
+        and user.get("onsite_at") == user.get("approved_at")
+    )
+
+
+async def ensure_onsite_outbox(user: dict | None) -> None:
+    """Событие `onsite_approved` для бота (лист, сообщение, QR) — ровно одно на решение стойки.
+    Ставится сразу после выигранного флипа, до журналов и отметки: любой сбой дальше не теряет
+    хвост. Повторное нажатие волонтёра ставит его снова, если первое не записалось; дубль
+    отсекает `enqueue_miniapp_outbox_once` (payload несёт `onsite_at` решения — новое решение в
+    следующем сезоне даст новое событие). Сбой — в лог ошибкой: следующее нажатие повторит."""
+    if not _door_approved(user):
+        return
+    tid = user["telegram_id"]
+    try:
+        await _db.enqueue_miniapp_outbox_once(
+            "onsite_approved", {"telegram_id": tid, "onsite_at": user["onsite_at"]},
+            msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    except Exception:
+        logger.exception("onsite_reg: событие onsite_approved не поставлено (tid=%s)", tid)
+
+
 async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
                           staff_name: str | None, bound: str | None,
                           override_reject: bool = False) -> dict:
@@ -125,9 +153,9 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
 
     `city` — город стойки, выбранный в сканере; `bound` — город, к которому привязан волонтёр
     (D-26, важнее выбранного). Возвращает результат `record_arrival` ("new"/"duplicate"/...) и,
-    если одобрение выиграно этим вызовом, `onsite_approved: True` и событие outbox
-    `{"kind": "onsite_approved", "payload": {"telegram_id": …}}` — лист, сообщение и QR
-    человеку шлёт бот (`after_onsite_approved`). `first_entry` остаётся в результате — Mini App
+    если одобрение выиграно этим вызовом, `onsite_approved: True`. Событие outbox
+    `onsite_approved` (лист, сообщение и QR человеку шлёт бот, `after_onsite_approved`) ставит
+    сам сервис сразу после флипа — `ensure_onsite_outbox`. `first_entry` остаётся в результате — Mini App
     переносит его в outbox сам. Отказы: `onsite_off` (тумблер города выключен), `wrong_city`
     (D-26), `not_found`, `rejected` (заявку отклонил менеджер — без `override_reject` ничего не
     меняется). У одобрения нет `log_id`: кнопка «↩️ Отменить» сняла бы отметку, но не решение."""
@@ -148,6 +176,9 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
 
     denial = await checkin_denial(user)
     if denial is None:
+        # Повторное нажатие после сбоя: одобрение уже записано — восстановить хвост, если его
+        # событие не встало в очередь (дубль отсекается).
+        await ensure_onsite_outbox(user)
         return await record_arrival(
             user, ENTRY_POINT, source="manual", by_staff_id=staff_id, staff_name=staff_name,
         )
@@ -160,6 +191,8 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
         tid, by_staff_id=staff_id, season=event_season,
         event_city=resolved if past else None, override_reject=overriding,
     )
+    fresh = await get_user(tid) or user
+    await ensure_onsite_outbox(fresh)
     if flipped:
         from services import venue_log
         from services.applications import record_decision
@@ -177,7 +210,7 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
             details={"override_reject": True} if overriding else None,
         )
 
-    fresh = await get_user(tid) or user
+    fresh = await get_user(tid) or fresh
     # Флип проигран (параллельно одобрил кто-то другой) — пускаем, только если человек теперь
     # действительно допущен; иначе отказ словами, отметку не ставим.
     fresh_denial = await checkin_denial(fresh)
@@ -190,7 +223,6 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     result.pop("log_id", None)
     if flipped:
         result["onsite_approved"] = True
-        result["outbox"] = {"kind": "onsite_approved", "payload": {"telegram_id": tid}}
     return result
 
 

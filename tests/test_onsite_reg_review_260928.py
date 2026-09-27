@@ -304,3 +304,80 @@ def test_door_marker_cleared_on_next_season_application(tmp_path):
     _full_application(953103)
     row = _row(953103)
     assert row["onsite_kind"] is None and row["onsite_by"] is None
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Хвост одобрения не теряется: событие outbox — сразу после флипа и повторно при повторе
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _onsite_events(uid):
+    import json
+    return [r for r in _rows("SELECT * FROM miniapp_outbox WHERE kind = 'onsite_approved' ORDER BY id")
+            if json.loads(r["payload"]).get("telegram_id") == uid]
+
+
+def _onsite_on(city="spb"):
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _run(bot_db.set_setting(cities_mod.per_city_key("onsite_reg_enabled", city), "on"))
+
+
+def test_outbox_event_is_enqueued_before_check_in(tmp_path, monkeypatch):
+    import pytest
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953201, status="pending", city="spb"))
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(onsite_reg, "record_arrival", _boom)
+    with pytest.raises(RuntimeError):
+        _door(953201)
+    assert _row(953201)["status"] == "approved"
+    assert len(_onsite_events(953201)) == 1
+    monkeypatch.undo()
+
+    res = _door(953201)  # волонтёр нажал ещё раз
+    assert res["status"] == "new"
+    assert len(_onsite_events(953201)) == 1  # без дубля
+
+
+def test_repeat_press_re_enqueues_missing_event(tmp_path, monkeypatch):
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953202, status="pending", city="spb"))
+    real = bot_db.enqueue_miniapp_outbox_once
+
+    async def _fail(*_a, **_kw):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(bot_db, "enqueue_miniapp_outbox_once", _fail)
+    first = _door(953202)
+    assert first["status"] == "new" and first["onsite_approved"] is True
+    assert _onsite_events(953202) == []
+    monkeypatch.setattr(bot_db, "enqueue_miniapp_outbox_once", real)
+
+    second = _door(953202)
+    assert second["status"] == "duplicate"
+    assert len(_onsite_events(953202)) == 1
+    third = _door(953202)
+    assert third["status"] == "duplicate"
+    assert len(_onsite_events(953202)) == 1
+
+
+def test_normally_approved_delegate_gets_no_onsite_event(tmp_path):
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953203, status="approved", city="spb"))
+    _door(953203)
+    assert _onsite_events(953203) == []
+
+
+def test_endpoint_repeat_press_keeps_single_event(tmp_path):
+    client = _ready(tmp_path)
+    _grant_checkin_to_bound_manager()
+    uid = 953204
+    _run(_insert_user(uid, status="pending", city="spb"))
+    for _ in range(3):
+        client.post(f"{ONSITE}/approve", json={"telegram_id": uid}, headers=_hdr(BOUND_MANAGER_ID))
+    assert len(_onsite_events(uid)) == 1
