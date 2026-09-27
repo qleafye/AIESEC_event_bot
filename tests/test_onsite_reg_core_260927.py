@@ -327,3 +327,310 @@ def test_registry_texts_exist_with_english_defaults():
 def test_confirm_and_done_placeholders():
     assert "{name}" in SETTINGS_SCHEMA["onsite_approve_confirm_text"]["default"]
     assert "{name}" in SETTINGS_SCHEMA["onsite_reg_done_text"]["default"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# services/onsite_reg.py — тумблер, ссылка/QR walk-in, одобрение у стойки
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from unittest.mock import AsyncMock  # noqa: E402
+
+from services import onsite_reg  # noqa: E402
+
+
+def _cities_on():
+    _run(db.set_setting("event_city_enabled", "on"))
+
+
+def _enable(city):
+    _run(db.set_setting(cities_mod.per_city_key("onsite_reg_enabled", city), "on"))
+
+
+def _count(sql, *params):
+    conn = sqlite3.connect(config.DB_PATH)
+    n = conn.execute(sql, params).fetchone()[0]
+    conn.close()
+    return n
+
+
+def _decisions(uid):
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM application_decisions WHERE telegram_id = ?", (uid,))]
+    conn.close()
+    return rows
+
+
+def _venue(uid):
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM venue_log WHERE telegram_id = ? ORDER BY id", (uid,))]
+    conn.close()
+    return rows
+
+
+def _checkins(uid):
+    return _count("SELECT COUNT(*) FROM checkins WHERE telegram_id = ? AND point = 'entry'", uid)
+
+
+def _snapshot(uid):
+    return (_row(uid), _decisions(uid), _venue(uid), _checkins(uid))
+
+
+def _door(uid, *, city="spb", bound="spb"):
+    user = _run(db.get_user(uid))
+    return _run(onsite_reg.approve_at_door(
+        user, city=city, staff_id=STAFF_ID, staff_name="Волонтёр", bound=bound,
+    ))
+
+
+def test_onsite_enabled_per_city(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    assert _run(onsite_reg.onsite_enabled("spb")) is False
+    _enable("spb")
+    assert _run(onsite_reg.onsite_enabled("spb")) is True
+    assert _run(onsite_reg.onsite_enabled("msk")) is False
+
+
+def test_walkin_link(tmp_path):
+    _ready(tmp_path)
+    assert _run(onsite_reg.walkin_link("MyBot", "spb")) == "https://t.me/MyBot?start=walkin"
+    _cities_on()
+    assert _run(onsite_reg.walkin_link("MyBot", "spb")) == "https://t.me/MyBot?start=walkin_spb"
+    assert _run(onsite_reg.walkin_link("@MyBot", "spb")) == "https://t.me/MyBot?start=walkin_spb"
+    assert _run(onsite_reg.walkin_link(None, "spb")) is None
+    assert _run(onsite_reg.walkin_link("", "spb")) is None
+
+
+def test_walkin_qr_png():
+    png = onsite_reg.walkin_qr_png("https://t.me/MyBot?start=walkin_spb")
+    assert png.startswith(b"\x89PNG")
+
+
+def test_parse_walkin_arg():
+    assert onsite_reg.parse_walkin_arg("walkin") == (True, None)
+    assert onsite_reg.parse_walkin_arg("walkin_spb") == (True, "spb")
+    assert onsite_reg.parse_walkin_arg("vol_abc") == (False, None)
+    assert onsite_reg.parse_walkin_arg("walkinx") == (False, None)
+    assert onsite_reg.parse_walkin_arg("walkin_") == (False, None)
+    assert onsite_reg.parse_walkin_arg(None) == (False, None)
+    assert onsite_reg.parse_walkin_arg("") == (False, None)
+
+
+def test_approve_at_door_pending_full_path(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _create(6001)
+    res = _door(6001)
+    assert res["status"] == "new"
+    assert res["onsite_approved"] is True
+    assert res["outbox"] == {"kind": "onsite_approved", "payload": {"telegram_id": 6001}}
+    assert "log_id" not in res
+    assert res.get("first_entry")  # вызывающий Mini App переносит его в outbox
+    row = _row(6001)
+    assert row["status"] == "approved" and row["onsite_by"] == STAFF_ID
+    decisions = _decisions(6001)
+    assert len(decisions) == 1
+    assert decisions[0]["decision"] == "approved" and decisions[0]["decided_by"] == STAFF_ID
+    assert decisions[0]["effects_sent_at"]  # эффекты не ждут окна отмены
+    onsite_rows = [v for v in _venue(6001) if v["action"] == "onsite_approve"]
+    assert len(onsite_rows) == 1
+    assert onsite_rows[0]["staff_id"] == STAFF_ID and onsite_rows[0]["city"] == "spb"
+    assert _checkins(6001) == 1
+
+
+def test_approve_at_door_toggle_off_changes_nothing(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _create(6002)
+    before = _snapshot(6002)
+    res = _door(6002)
+    assert res["status"] == "onsite_off"
+    assert res["reason_text"] == SETTINGS_SCHEMA["onsite_off_text"]["default"]
+    assert _snapshot(6002) == before
+
+
+def test_approve_at_door_wrong_city_current_season(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _insert(6003, status="pending", city="msk")
+    before = _snapshot(6003)
+    res = _door(6003)
+    assert res["status"] == "wrong_city"
+    assert res["reason_text"]
+    assert _snapshot(6003) == before
+
+
+def test_approve_at_door_wrong_city_approved_current_season_not_checked_in(tmp_path):
+    """D-26 и для уже одобренного: волонтёр СПб не отмечает делегата Москвы у своей стойки."""
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _insert(6008, status="approved", city="msk")
+    before = _snapshot(6008)
+    assert _door(6008)["status"] == "wrong_city"
+    assert _snapshot(6008) == before
+
+
+def test_approve_at_door_past_season_other_city_moves_to_stand(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _insert(6004, status="approved", season=PAST, city="msk")
+    res = _door(6004)
+    assert res["status"] == "new"
+    assert res["onsite_approved"] is True
+    row = _row(6004)
+    assert row["status"] == "approved"
+    assert row["season"] == SEASON and row["prev_season"] == PAST
+    assert row["event_city"] == "spb"
+    assert _checkins(6004) == 1
+
+
+def test_approve_at_door_already_approved_just_checks_in(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _insert(6005, status="approved")
+    res = _door(6005)
+    assert res["status"] == "new"
+    assert "onsite_approved" not in res and "outbox" not in res
+    assert _decisions(6005) == []
+    assert _row(6005)["onsite_kind"] is None
+    assert _checkins(6005) == 1
+
+
+def test_approve_at_door_second_call_no_second_decision(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("spb")
+    _insert(6006, status="pending")
+    first = _door(6006)
+    assert first["onsite_approved"] is True
+    second = _door(6006)
+    assert second["status"] == "duplicate"
+    assert "outbox" not in second
+    assert len(_decisions(6006)) == 1
+
+
+def test_approve_at_door_unbound_uses_stand_city(tmp_path):
+    _ready(tmp_path)
+    _cities_on()
+    _enable("msk")
+    _insert(6007, status="rejected", city="msk")
+    res = _door(6007, city="msk", bound=None)
+    assert res["status"] == "new" and res["onsite_approved"] is True
+
+
+# ── after_onsite_approved: лист, текст, QR — в процессе бота ────────────────────────────
+
+def _fake_bot():
+    bot = AsyncMock()
+    bot.send_message = AsyncMock()
+    bot.send_photo = AsyncMock()
+    return bot
+
+
+def _patch_sheets(monkeypatch, calls, *, fail=False):
+    from services import reg_finalize, sheets
+
+    async def fake_row(tid, full, mode):
+        calls.append(("row", tid, mode))
+        if fail:
+            raise RuntimeError("лист упал")
+
+    async def fake_status(tid, label):
+        calls.append(("status", tid, label))
+        if fail:
+            raise RuntimeError("лист упал")
+        return True
+
+    monkeypatch.setattr(reg_finalize, "write_sheet_row", fake_row)
+    monkeypatch.setattr(sheets, "update_status_in_sheet", fake_status)
+
+
+def test_after_onsite_approved_sheet_text_and_qr(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("checkin_qr_enabled", "on"))
+    _create(6010)
+    _run(db.approve_onsite(6010, by_staff_id=STAFF_ID, season=SEASON))
+    calls = []
+    _patch_sheets(monkeypatch, calls)
+    bot = _fake_bot()
+    _run(onsite_reg.after_onsite_approved(bot, 6010))
+    assert ("row", 6010, "new") in calls
+    assert ("status", 6010, onsite_reg.ONSITE_SHEET_LABEL) in calls
+    assert bot.send_message.await_count == 1
+    sent_text = bot.send_message.await_args.args[1]
+    assert sent_text == SETTINGS_SCHEMA["onsite_reg_approved_text"]["default"]
+    assert bot.send_photo.await_count == 1
+    assert bot.send_photo.await_args.args[0] == 6010
+
+
+def test_after_onsite_approved_no_qr_when_disabled(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("checkin_qr_enabled", "off"))
+    _create(6011)
+    _run(db.approve_onsite(6011, by_staff_id=STAFF_ID, season=SEASON))
+    _patch_sheets(monkeypatch, [])
+    bot = _fake_bot()
+    _run(onsite_reg.after_onsite_approved(bot, 6011))
+    assert bot.send_message.await_count == 1
+    assert bot.send_photo.await_count == 0
+
+
+def test_after_onsite_approved_fail_soft(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("checkin_qr_enabled", "on"))
+    _create(6012)
+    _run(db.approve_onsite(6012, by_staff_id=STAFF_ID, season=SEASON))
+    _patch_sheets(monkeypatch, [], fail=True)
+    bot = _fake_bot()
+    bot.send_message.side_effect = RuntimeError("бот заблокирован")
+    bot.send_photo.side_effect = RuntimeError("бот заблокирован")
+    _run(onsite_reg.after_onsite_approved(bot, 6012))  # не падает
+
+
+def test_after_onsite_approved_unknown_user_no_crash(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _patch_sheets(monkeypatch, [])
+    bot = _fake_bot()
+    _run(onsite_reg.after_onsite_approved(bot, 6099))
+    assert bot.send_message.await_count == 0
+
+
+def test_outbox_routes_onsite_approved(monkeypatch):
+    from services import miniapp_outbox
+
+    seen = []
+
+    async def fake_after(bot, tid):
+        seen.append(tid)
+
+    monkeypatch.setattr(onsite_reg, "after_onsite_approved", fake_after)
+    _run(miniapp_outbox._handle_row(object(), "onsite_approved", {"telegram_id": 6020}))
+    assert seen == [6020]
+
+
+def test_venue_log_action_label():
+    from services import venue_log
+    assert venue_log.ACTION_ONSITE_APPROVE == "onsite_approve"
+    assert venue_log.ACTION_LABELS[venue_log.ACTION_ONSITE_APPROVE] == "📝 одобрил(а) на месте"
+
+
+def test_onsite_reg_module_does_not_import_sheets_or_aiogram_at_top():
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path(onsite_reg.__file__).read_text(encoding="utf-8"))
+    top = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            top |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top.add(node.module)
+    assert not any(n.startswith(("services.sheets", "gspread", "aiogram")) for n in top), top
