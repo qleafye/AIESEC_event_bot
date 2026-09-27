@@ -104,6 +104,11 @@ def _seed_comments(path):
     _msg(path, 10, STAFF, "2026-09-22 13:00:00", reply_mid=3, reply_author=11)  # ответ команды
     for tid, nick in ((11, "anna"), (12, "boris"), (14, "vera"), (15, "gleb"), (STAFF, "staffer")):
         _nick(path, tid, nick)
+    # Анкеты делегатов города: в режиме «по формуле» пост, как и дашборд, по умолчанию берёт
+    # только людей с анкетой сезона и города чата. 13 (без ника) анкеты тоже не имеет.
+    for tid in (11, 12, 14, 15):
+        _exec(path, "INSERT INTO users (telegram_id, full_name, status, event_city) "
+                    "VALUES (?, 'Делегат', 'approved', 'spb')", (tid,))
 
 
 # ── Реестр ──────────────────────────────────────────────────────────────────────────────
