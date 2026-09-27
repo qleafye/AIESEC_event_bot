@@ -134,3 +134,171 @@ def test_purge_chat_data_clears_per_chat_tables(tmp_path):
     for table in ("chat_messages", "chat_reactions", "chat_admins"):
         assert _run(_rows(f"SELECT COUNT(*) FROM {table}"))[0][0] == 0, table
     assert _run(_rows("SELECT COUNT(*) FROM chat_usernames"))[0][0] == 1  # ники — не по чату
+
+
+# ── Задача 2: групповые хендлеры — журнал, правки, реакции ─────────────────────────────────
+
+from datetime import datetime, timezone  # noqa: E402
+
+from aiogram.types import (  # noqa: E402
+    Chat, Dice, ForumTopicCreated, Message, MessageOriginUser, MessageReactionUpdated,
+    PhotoSize, ReactionTypeCustomEmoji, ReactionTypeEmoji, ReactionTypePaid, Sticker, User,
+)
+
+from handlers import group_chat  # noqa: E402
+from services import chat_tracking  # noqa: E402
+
+UTC_DATE = datetime(2026, 9, 27, 7, 30, 0, tzinfo=timezone.utc)  # 10:30 по Москве
+GROUP = Chat(id=CHAT, type="supergroup", title="Делегаты")
+
+
+def _user(uid, **kw):
+    return User(id=uid, is_bot=False, first_name="Имя", **kw)
+
+
+def _msg(mid, uid=A, **kw):
+    kw.setdefault("chat", GROUP)
+    return Message(message_id=mid, date=UTC_DATE, from_user=_user(uid, username=kw.pop("username", None)), **kw)
+
+
+def _live(tmp_path, *, tracking=True, bound=True):
+    _ready(tmp_path)
+    if tracking:
+        _run(db.set_setting("chat_tracking_enabled", "on"))
+    if bound:
+        _run(chat_tracking.bind_chat(ADMIN, CHAT, "Делегаты", None))
+
+
+def _logged():
+    return _run(_rows(
+        "SELECT message_id, telegram_id, ts, kind, text_len, reply_to_message_id, "
+        "reply_to_author_id, is_channel_post FROM chat_messages ORDER BY message_id"
+    ))
+
+
+def test_text_message_is_logged_without_text(tmp_path):
+    _live(tmp_path)
+    _run(group_chat.on_group_message(_msg(1, text="ы" * 120, username="alice")))
+    assert _logged() == [(1, A, "2026-09-27 10:30:00", "text", 120, None, None, 0)]
+    assert _run(_rows("SELECT username FROM chat_usernames WHERE telegram_id = ?", A)) == [("alice",)]
+
+
+def test_kinds_and_forwarded_length(tmp_path):
+    _live(tmp_path)
+    photo = [PhotoSize(file_id="f", file_unique_id="u", width=1, height=1)]
+    sticker = Sticker(file_id="s", file_unique_id="su", type="regular", width=1, height=1,
+                      is_animated=False, is_video=False)
+    _run(group_chat.on_group_message(_msg(1, photo=photo, caption="к" * 30)))
+    _run(group_chat.on_group_message(_msg(2, sticker=sticker)))
+    _run(group_chat.on_group_message(_msg(3, dice=Dice(emoji="🎲", value=3))))
+    origin = MessageOriginUser(date=UTC_DATE, sender_user=_user(C))
+    _run(group_chat.on_group_message(_msg(4, text="чужой текст", forward_origin=origin)))
+    rows = {r[0]: (r[3], r[4]) for r in _logged()}
+    assert rows == {1: ("media", 30), 2: ("sticker", 0), 3: ("other", 0), 4: ("text", 0)}
+
+
+def test_real_reply_in_normal_group(tmp_path):
+    _live(tmp_path)
+    target = _msg(1, uid=B, text="вопрос")
+    _run(group_chat.on_group_message(_msg(2, text="ответ", reply_to_message=target)))
+    assert _logged()[0][5:7] == (1, B)
+
+
+def test_topic_root_is_not_a_reply_but_real_reply_in_topic_is(tmp_path):
+    _live(tmp_path)
+    root = Message(message_id=100, date=UTC_DATE, chat=GROUP, from_user=_user(ADMIN),
+                   forum_topic_created=ForumTopicCreated(name="Флуд", icon_color=0))
+    _run(group_chat.on_group_message(_msg(
+        101, text="привет", reply_to_message=root, is_topic_message=True, message_thread_id=100,
+    )))
+    target = _msg(102, uid=B, text="вопрос", is_topic_message=True, message_thread_id=100)
+    _run(group_chat.on_group_message(_msg(
+        103, text="ответ", reply_to_message=target, is_topic_message=True, message_thread_id=100,
+    )))
+    rows = {r[0]: (r[5], r[6]) for r in _logged()}
+    assert rows[101] == (None, None)
+    assert rows[103] == (102, B)
+
+
+def test_automatic_channel_forward_is_a_channel_post(tmp_path):
+    _live(tmp_path)
+    channel = Chat(id=-1009999, type="channel", title="Канал")
+    post = Message(message_id=200, date=UTC_DATE, chat=GROUP, is_automatic_forward=True,
+                   sender_chat=channel, from_user=User(id=777000, is_bot=False, first_name="Telegram"),
+                   text="п" * 300)
+    _run(group_chat.on_group_message(post))
+    _run(group_chat.on_group_message(_msg(201, text="комментарий", reply_to_message=post)))
+    rows = {r[0]: r for r in _logged()}
+    assert rows[200][1] == -1009999 and rows[200][4] == 300 and rows[200][7] == 1
+    assert rows[201][5:7] == (200, None)
+    activity = _run(_rows("SELECT telegram_id FROM chat_activity"))
+    assert (777000,) not in activity and (-1009999,) not in activity
+
+
+def test_reply_to_bot_or_anonymous_admin_has_no_author(tmp_path):
+    _live(tmp_path)
+    bot_msg = Message(message_id=300, date=UTC_DATE, chat=GROUP,
+                      from_user=User(id=5, is_bot=True, first_name="Бот"), text="я бот")
+    anon = Message(message_id=301, date=UTC_DATE, chat=GROUP, sender_chat=GROUP,
+                   from_user=User(id=1087968824, is_bot=True, first_name="Group"), text="аноним")
+    _run(group_chat.on_group_message(_msg(302, text="а", reply_to_message=bot_msg)))
+    _run(group_chat.on_group_message(_msg(303, text="б", reply_to_message=anon)))
+    rows = {r[0]: (r[5], r[6]) for r in _logged()}
+    assert rows == {302: (300, None), 303: (301, None)}
+
+
+def test_nothing_logged_when_tracking_off_or_unbound(tmp_path):
+    _live(tmp_path, tracking=False)
+    _run(group_chat.on_group_message(_msg(1, text="раз")))
+    assert _logged() == []
+    _run(db.set_setting("chat_tracking_enabled", "on"))
+    other = Chat(id=-100123, type="supergroup")
+    _run(group_chat.on_group_message(_msg(2, text="два", chat=other)))
+    assert _logged() == []
+
+
+def test_edited_message_updates_length(tmp_path):
+    _live(tmp_path)
+    _run(group_chat.on_group_message(_msg(1, text="коротко")))
+    _run(group_chat.on_group_edited_message(_msg(1, text="д" * 77)))
+    assert _logged()[0][4] == 77
+
+
+def _reaction(new, user=None, actor_chat=None):
+    return MessageReactionUpdated(
+        chat=GROUP, message_id=1, date=UTC_DATE, old_reaction=[], new_reaction=new,
+        user=user, actor_chat=actor_chat,
+    )
+
+
+def test_reactions_are_mirrored(tmp_path):
+    _live(tmp_path)
+    _run(group_chat.on_group_reaction(_reaction([ReactionTypeEmoji(emoji="👍")], user=_user(B))))
+    _run(group_chat.on_group_reaction(_reaction(
+        [ReactionTypeCustomEmoji(custom_emoji_id="555"), ReactionTypePaid()], user=_user(C),
+    )))
+    _run(group_chat.on_group_reaction(_reaction([ReactionTypeEmoji(emoji="🔥")], actor_chat=GROUP)))
+    rows = sorted(_run(_rows("SELECT telegram_id, reaction, ts FROM chat_reactions")))
+    assert rows == [
+        (B, "👍", "2026-09-27 10:30:00"),
+        (C, "custom:555", "2026-09-27 10:30:00"),
+        (C, "paid", "2026-09-27 10:30:00"),
+    ]
+    _run(group_chat.on_group_reaction(_reaction([], user=_user(B))))
+    assert [r[0] for r in _run(_rows("SELECT telegram_id FROM chat_reactions"))] == [C, C]
+
+
+def test_update_types_include_reactions_and_edits():
+    from tests.test_chat_binding_260914 import _group_dispatcher
+    dp, _calls = _group_dispatcher()
+    used = dp.resolve_used_update_types()
+    assert "message_reaction" in used
+    assert "edited_message" in used
+
+
+def test_group_chat_touches_text_only_for_length():
+    import inspect
+    src = inspect.getsource(group_chat)
+    lines = [ln for ln in src.splitlines() if "message.text" in ln or "message.caption" in ln]
+    code_lines = [ln for ln in lines if not ln.strip().startswith(("#", "`", '"'))]
+    assert code_lines and all("len(" in ln for ln in code_lines), code_lines
