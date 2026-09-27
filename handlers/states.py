@@ -469,3 +469,11 @@ class ResumeReplace(StatesGroup):
     # файл в ответ на запрос бота (handlers/admin_resume_replace.py); telegram_id делегата
     # несёт state.get_data() — тот же приём, что у StaffAdd выше.
     waiting_for_file = State()
+
+
+class ChatRatingEdit(StatesGroup):
+    # Квик 260927: экран «🏆 Рейтинг чата» (handlers/admin_chat_rating.py) — менеджер вводит
+    # число правила города (или название баллов); ключ (per-city композит или общий) и город
+    # экрана несёт state.get_data(). Свой стейт, а не EditSetting: после сохранения менеджер
+    # возвращается на этот экран, а не на общий редактор настройки.
+    waiting_for_value = State()

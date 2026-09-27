@@ -506,7 +506,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1146,
+        1152,
+        "Квик 260927 (рейтинг чата): +6 строк — хвостовой shared-router seam import "
+        "handlers/admin_chat_rating.py (экран «🏆 Рейтинг чата», golden append); 1146 -> 1152. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — хвостовой shared-router "
         "seam import handlers/admin_forum_stats_card.py (golden append, тот же приём, что "
         "соседние сидомные импорты); 1138 -> 1146. "
@@ -719,8 +721,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1357,
-        "Квик 260927 (рейтинг чата): +1 строка — капа «admin_chat_rating» (settings); 1356 -> 1357. "
+        1359,
+        "Квик 260927 (рейтинг чата): +3 строки — капы «admin_chat_rating», «chrate:*» и "
+        "«state:ChatRatingEdit:*» (settings); 1356 -> 1359. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — капы "
         "«forumstats_cfg»/«forumstats_toggle»/«forumstats_preview»/«forumstats_pick»/"
         "«forumstats_send_go» (moderate_reg, тот же класс, что «lostfound_cfg»/«lostfound_toggle»); "
