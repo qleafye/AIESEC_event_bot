@@ -133,8 +133,10 @@ async def _alert_row_ambiguous(telegram_id: int, tab_titles: list[str]) -> None:
     import time
 
     now = time.monotonic()
-    last = _row_ambiguous_alert_at.get(telegram_id, 0.0)
-    if now - last < _ROW_AMBIGUOUS_ALERT_COOLDOWN_S:
+    # None, а не 0.0: monotonic считает от загрузки машины — на свежем сервере (аптайм < 1 ч)
+    # «0.0» глушил САМЫЙ ПЕРВЫЙ алерт как «уже был в пределах часа».
+    last = _row_ambiguous_alert_at.get(telegram_id)
+    if last is not None and now - last < _ROW_AMBIGUOUS_ALERT_COOLDOWN_S:
         return
     _row_ambiguous_alert_at[telegram_id] = now
     tabs_text = ", ".join(f"«{t}»" for t in tab_titles)

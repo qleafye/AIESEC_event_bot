@@ -1593,3 +1593,25 @@ def test_sos_resolve_notifies_delegate_in_english(tmp_path, monkeypatch):
     bot = FakeBot()
     _resolve_with_storage(rid, bot, None)
     assert [s[1] for s in bot.sent if s[0] == DELEGATE_ID][-1] == FORM_DEFAULT_EN[ru]
+
+
+def test_first_unhealthy_alert_fires_on_fresh_uptime(tmp_path, monkeypatch):
+    """monotonic() считает от загрузки машины: после перезагрузки сервера (аптайм < 1 ч)
+    дефолт «последний алерт в 0.0» глушил первый алерт «Чат SOS недоступен»."""
+    import time as _time
+
+    monkeypatch.setattr(_time, "monotonic", lambda: 5.0)
+    # Журнал алертов процессный: соседний тест на том же воркере мог оставить отметку
+    # с настоящим monotonic — при подменённых 5 с она «в будущем» и глушит алерт.
+    monkeypatch.setattr(sos_service, "_chat_alert_sent_at", {})
+    monkeypatch.setattr(sos_service, "_unhealthy_chats", set())
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов", None))
+    rid = _run(db.create_sos_report(DELEGATE_ID, None))
+    alert_bot = FakeBot()
+    _patch_scheduler_bot(monkeypatch, alert_bot)
+    bot = FakeBot()
+    bot.send_failures[CHAT_ID] = [Exception("kicked")]
+    _run(sos_service.post_card(bot, rid))
+    assert len([s for s in alert_bot.sent if "Чат SOS недоступен" in s[1]]) == 1

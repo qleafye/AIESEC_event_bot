@@ -324,3 +324,23 @@ def test_headers_compatible_rules():
     assert not _headers_compatible(["id", "Город", "Имя"], ["id", "Имя", "Город"])  # порядок
     assert not _headers_compatible(["id", "Имя"], ["id", "Вуз"])
     assert not _headers_compatible([], ["id"])
+
+
+def test_update_row_ambiguous_first_alert_fires_on_fresh_uptime(monkeypatch):
+    """monotonic() считает от загрузки машины: на свежем сервере/раннере CI (аптайм < 1 ч)
+    дефолт «последний алерт в 0.0» глушил САМЫЙ ПЕРВЫЙ алерт. 27.09 так падал CI."""
+    import time as _time
+
+    monkeypatch.setattr(_time, "monotonic", lambda: 5.0)
+    target = _FakeWorksheet("Тюмень", HEADER, rows=[])
+    main = _FakeWorksheet("main", HEADER, rows=[["888", "Одобрена", "a"]])
+    spb = _FakeWorksheet("СПб", HEADER, rows=[["888", "Одобрена", "b"]])
+    _patch_gspread(monkeypatch, {"Тюмень": target, "main": main, "СПб": spb}, main_title="main")
+    alerts: list[str] = []
+
+    async def fake_alert(text):
+        alerts.append(text)
+
+    monkeypatch.setattr(sheets, "_send_admin_alert", fake_alert)
+    _run(sheets.update_row_by_id("Тюмень", 888, ["888", "Одобрена", "new"]))
+    assert len(alerts) == 1
