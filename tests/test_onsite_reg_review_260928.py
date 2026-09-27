@@ -728,3 +728,54 @@ def test_approval_message_uses_person_language(tmp_path, monkeypatch):
     _run(onsite_reg.after_onsite_approved(bot, 953603))
     sent = bot.send_message.call_args.args[1]
     assert sent == FORM_DEFAULT_EN[SETTINGS_SCHEMA["onsite_reg_approved_text"]["default"]]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Телефон: только свой контакт, не пустой и не короткий номер
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _phone_step(uid, contact):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Msg
+    from tests.test_roles_phase8 import _fresh_state
+    state = _fresh_state(uid)
+    _run(state.set_state(onsite_handlers.OnsiteReg.phone))
+    _run(state.update_data(onsite_city="spb", onsite_name="Иванова Мария"))
+    msg = _Msg(uid, contact=contact)
+    _run(onsite_handlers.onsite_phone_contact(msg, state))
+    return msg, state
+
+
+def test_foreign_contact_card_is_rejected(tmp_path):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Contact
+    _chat_ready(tmp_path)
+    msg, state = _phone_step(953701, _Contact("79991234567", user_id=111))
+    assert _run(state.get_state()) == onsite_handlers.OnsiteReg.phone.state
+    assert (_run(state.get_data())).get("onsite_phone") is None
+    assert SETTINGS_SCHEMA["onsite_reg_foreign_contact_text"]["default"] in msg.texts()[0]
+
+
+def test_empty_or_short_contact_number_is_rejected(tmp_path):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Contact
+    _chat_ready(tmp_path)
+    for uid, phone in ((953702, ""), (953703, "12345")):
+        msg, state = _phone_step(uid, _Contact(phone, user_id=uid))
+        assert _run(state.get_state()) == onsite_handlers.OnsiteReg.phone.state
+        assert msg.texts()[0] == SETTINGS_SCHEMA["onsite_reg_bad_phone_text"]["default"]
+
+
+def test_own_contact_is_accepted(tmp_path):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Contact
+    _chat_ready(tmp_path)
+    msg, state = _phone_step(953704, _Contact("79991234567", user_id=953704))
+    assert _run(state.get_state()) == onsite_handlers.OnsiteReg.university.state
+    assert _run(state.get_data())["onsite_phone"] == "+79991234567"
+
+
+def test_foreign_contact_text_has_english_default():
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    meta = SETTINGS_SCHEMA["onsite_reg_foreign_contact_text"]
+    assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
