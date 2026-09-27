@@ -8,6 +8,7 @@
 // отказа из реестра (miniapp_upload_too_large_text), чисел и текстов в JS нет. Пустая отправка
 // — подсказка, черновик не сбрасывается (паритет с ботом). Отказ Telegram по файлу (400
 // file_rejected) — текст из реестра (miniapp_upload_file_rejected_text, фолбэк file_rejected_text).
+// Обрыв связи / 502 — тоже реестр (miniapp_upload_failed_text), {name} — имя файла.
 
 import { emptyState, errorState, errorText, guardedRender, isCoreHandledError, screenText } from "../ui.js";
 import { icon } from "../icons.js";
@@ -183,7 +184,7 @@ async function draw(root, params, ctx) {
       if (err && err.status === 413) showUploadError(limits.too_large_text);
       else if (err && err.status === 400 && err.reason === "file_rejected") {
         showUploadError(errorText(err, limits.file_rejected_text));
-      } else showUploadError(`Не удалось загрузить «${file.name}» — попробуйте ещё раз.`);
+      } else showUploadError((limits.upload_failed_text || "{name}").replace("{name}", file.name));
     } finally {
       pending -= 1;
       redraw();

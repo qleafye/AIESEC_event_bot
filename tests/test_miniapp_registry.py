@@ -56,6 +56,8 @@ MINIAPP_KEYS = [
     "miniapp_no_access_text",
     "miniapp_upload_too_large_text",
     "miniapp_upload_file_rejected_text",
+    "miniapp_upload_failed_text",
+    "miniapp_upload_cover_not_image_text",
     # Quick 260911-5ij (W2): пять текстов состояний — отказ первичной загрузки экрана
     # (Пилар 6) + гейт закрытой сдачи по task.can_submit (Пилар 5, известная находка №5).
     "miniapp_load_error_text",
@@ -330,7 +332,9 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 раздел-чекбокс «🎫 Сканер» (193 -> 194).
     # Квик 27.09: +1 текст отказа Telegram по файлу сдачи
     # (miniapp_upload_file_rejected_text) (194 -> 195).
-    assert len(MINIAPP_KEYS) == 195
+    # Квик 27.09 (ревью): +2 текста сбоя загрузки файла и обложки не-картинкой — раньше
+    # литералы JS, EN-делегат видел их по-русски (195 -> 197).
+    assert len(MINIAPP_KEYS) == 197
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -400,7 +404,8 @@ def test_text_keys_have_human_defaults():
     # Правила автоотказа: +1 текстовый ключ подписи чипа «только помеченные правилами»
     # (160 -> 161).
     # Квик 27.09: +1 текстовый ключ отказа Telegram по файлу сдачи (161 -> 162).
-    assert len(text_keys) == 162
+    # Квик 27.09 (ревью): +2 текста сбоя загрузки и обложки не-картинкой (162 -> 164).
+    assert len(text_keys) == 164
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key

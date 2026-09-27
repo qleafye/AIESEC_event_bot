@@ -68,7 +68,7 @@ def test_limits_carry_both_texts(client):  # noqa: F811
 
 def test_submit_screen_has_no_retry_literal():
     text = _js_without_comments(SCREENS_DIR / "submit.js")
-    assert "попробуйте ещё раз" not in text
+    assert "Не удалось загрузить" not in text
     assert "limits.upload_failed_text" in text
 
 
