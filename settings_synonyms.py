@@ -198,6 +198,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_form_resume_too_large_text": ["файл резюме большой", "превышен размер резюме"],
     "reg_form_resume_wrong_type_text": ["не тот файл резюме", "формат резюме"],
     "reg_form_resume_upload_error_text": ["ошибка загрузки резюме", "не загрузился файл резюме"],
+    "reg_form_resume_fork_code_error_text": ["кнопка вместо резюме", "код развилки резюме"],
+    "reg_form_resume_file_missing_text": ["резюме не доехало", "подача без файла резюме"],
     "reg_form_resume_text_only_text": ["резюме только текстом ответ", "файл резюме не принимается"],
     "reg_form_share_contact_text": ["поделиться номером", "кнопка контакта телефон"],
     "reg_form_prior_answer_badge_text": ["старый ответ", "ответ из прошлого сезона"],

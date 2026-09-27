@@ -648,6 +648,12 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
         unwrapped = _unwrap_other(raw)
         if answer_lang != "ru":
             unwrapped = await _canonicalize_answer(step_key, unwrapped, answer_lang, answer_tr_map)
+        # Квик 27.09: код кнопки развилки («file»/«link»/«text»/«mini») — не резюме. Старые
+        # закэшированные версии обзора правки слали его в resume_text; сервер отбивает сам,
+        # независимо от версии клиента.
+        if step_key == "resume" and reg_engine.is_resume_fork_code(unwrapped):
+            errors[column] = await i18n.tr_setting("reg_form_resume_fork_code_error_text", lang, tr_map)
+            continue
         # Phase 28 (28-03, SU-02, T-28-03-01): второй барьер лимита мультивыбора — веб-PATCH
         # не проходит через `process_multi_toggle` (бот), поэтому здесь этот лимит и есть
         # единственный реальный гейт (клиентский дизейбл в form.js — только подсказка).
@@ -929,6 +935,24 @@ async def draft_submit(
         raise HTTPException(400, {
             "reason": "invalid",
             "errors": {"full_name": name_error},
+        })
+
+    # Квик 27.09: выбран «файл», а файла на сервере нет (мастер не дождался загрузки) —
+    # не подаём анкету: после подачи загрузка получает 403 и файл теряется. Тоже ДО claim.
+    # Для правки файл/ссылка облака могут лежать только в `users`.
+    def _resume_value(column: str):
+        value = ctx["answers"].get(column)
+        if not value and ctx["kind"] == "edit" and ctx["user_row"]:
+            value = ctx["user_row"].get(column)
+        return value
+
+    if _resume_value("resume_type") == "file" and not (
+        _resume_value("resume_file_id") or _resume_value("resume_url")
+    ):
+        logger.info("reg draft submit refused telegram_id=%s reason=resume_file_missing", p.telegram_id)
+        raise HTTPException(400, {
+            "reason": "resume_file_missing",
+            "text": await i18n.tr_setting("reg_form_resume_file_missing_text", lang, tr_map),
         })
 
     # T-21-02: claim перед финалом — второй submit (гонка с чатом) получает 409, не вторую запись.
