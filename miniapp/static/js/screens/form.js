@@ -628,7 +628,7 @@ export async function render(root, params, ctx) {
     // «file»/«text» рисуется дропзоной/полем текста вместо кнопок развилки.
     function resumeEditSpec(spec) {
       if (spec.type !== "resume-fork" || !resumeEditBranch) return spec;
-      if (resumeEditBranch === "file") return { ...spec, type: "file" };
+      if (resumeEditBranch === "file") return { ...spec, type: "file", __resumeForkFile: true };
       return { ...spec, type: "textarea", __resumeForkText: true, prompt: spec.fork_text_prompt || spec.prompt };
     }
 
@@ -698,7 +698,9 @@ export async function render(root, params, ctx) {
           state.setValue(column, liveValue);
           drawList();
         });
-        const confirmBtn = isForkPick ? null : h("button", {
+        // Ветка «Файл» развилки: файл применяется сразу при выборе (uploadResume), галка
+        // записала бы в состояние сам объект файла — у этой строки её нет.
+        const confirmBtn = (isForkPick || spec.__resumeForkFile) ? null : h("button", {
           class: "btn", type: "button", "aria-label": spec.label,
           onClick: () => {
             state.setValue(column, liveValue);
