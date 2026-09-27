@@ -96,7 +96,8 @@ export async function render(root, params, ctx) {
     }
     const form = new FormData();
     form.append("file", file, file.name);
-    const res = await api("/uploads", { method: "POST", form });
+    // target=task_cover: сервер шлёт любую картинку фото и не подменяет её документом.
+    const res = await api("/uploads?target=task_cover", { method: "POST", form });
     if (res.kind !== "photo") {
       say("Обложка должна быть картинкой — файл другого типа не подойдёт.", "warn");
       return null;

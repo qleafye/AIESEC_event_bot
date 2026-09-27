@@ -815,7 +815,7 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     # Дедлайн — пресеты с сервера + своя дата с примером формата в подсказке.
     assert "deadline_presets" in text and "deadline_example" in text and "ДД.ММ.ГГГГ ЧЧ:ММ" in text
     # Фото: размер проверяется до отправки, текст из реестра; затем PATCH с part_token.
-    assert text.index("file.size > limits.photo_max_bytes") < text.index('api("/uploads", {')
+    assert text.index("file.size > limits.photo_max_bytes") < text.index('api("/uploads?target=task_cover", {')
     assert "too_large_text" in text and "part_token: up.part_token" in text
     # Двухшаговое подтверждение архивации и удаления с описанием последствий (формулировки
     # последствий — не переписаны, только кнопки лишились эмодзи-префикса).
