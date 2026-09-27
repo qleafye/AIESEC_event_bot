@@ -15,11 +15,11 @@ from config import config
 from database import db as bot_db
 
 from dashboard import db as dash_db
+from dashboard import timeutil as dash_timeutil
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
 from dashboard.queries import (
     Scope,
-    chat_activity_leaderboard,
     chat_bindings,
     chat_joins_daily,
     chat_last_sync_at,
@@ -198,29 +198,6 @@ def test_chat_not_joined_excludes_those_present(tmp_path):
     assert "full_name" not in rows[0] and "username" not in rows[0]
 
 
-def test_chat_activity_leaderboard_sorts_and_names_by_nick(tmp_path):
-    """Рейтинг: сумма по дням, сортировка по сообщениям; ник из users.username («@ник» или
-    «-» без ника) печатается одной собачкой, без ника — telegram_id; чужой чат не считается."""
-    path = _use_tmp_db(tmp_path)
-    _seed(
-        users=[
-            {"telegram_id": 1, "full_name": "А", "username": "@alpha", "status": "approved", "event_city": None},
-            {"telegram_id": 2, "full_name": "Б", "username": "-", "status": "approved", "event_city": None},
-        ],
-        chat_activity=[
-            {"chat_id": CHAT_ID, "telegram_id": 1, "day": "2026-01-01", "messages": 2, "replies": 1, "media": 0},
-            {"chat_id": CHAT_ID, "telegram_id": 1, "day": "2026-01-02", "messages": 2, "replies": 1, "media": 1},
-            {"chat_id": CHAT_ID, "telegram_id": 2, "day": "2026-01-01", "messages": 7, "replies": 0, "media": 0},
-            {"chat_id": SPB_CHAT_ID, "telegram_id": 1, "day": "2026-01-01", "messages": 99, "replies": 0, "media": 0},
-        ],
-    )
-    chat = {"city": None, "chat_id": CHAT_ID, "title": "x", "label": "x"}
-    with dash_db.read_conn(path) as conn:
-        rows = chat_activity_leaderboard(conn, Scope(), chat)
-    assert [r["display_name"] for r in rows] == ["2", "@alpha"]
-    assert rows[1] == {"display_name": "@alpha", "messages": 4, "replies": 2, "media": 1, "reply_rate": 50}
-
-
 # ── маршрут /chat (TestClient) ───────────────────────────────────────────────────────────
 
 def _cfg(db_path: str, **overrides) -> DashboardConfig:
@@ -392,3 +369,80 @@ def test_chat_route_redirects_to_compare_in_multi_mode(tmp_path):
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "/compare"
+
+
+def test_chat_route_shows_weighted_rating_with_periods_and_explanation(tmp_path):
+    """Квик 260927: вместо счёта сообщений — рейтинг по баллам (живой журнал chat_messages).
+    @ник из Telegram, «Как считается», переключатель периода с сохранением города; команда
+    (staff) в таблице не появляется, хотя пишет больше всех."""
+    path = _use_tmp_db(tmp_path)
+    today = dash_timeutil.msk_now().strftime("%Y-%m-%d")
+    _seed(
+        staff=[(STATS_MANAGER_ID, "reg_manager", None)],
+        settings={
+            "role_caps_reg_manager": "moderate_reg;stats",
+            "delegate_chat_id": str(CHAT_ID),
+            "delegate_chat_title": "Общий чат",
+        },
+        users=[{"telegram_id": 2, "full_name": "Секретное Имя", "username": "-",
+                "status": "approved", "event_city": None}],
+    )
+
+    async def _log():
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO chat_usernames (telegram_id, username) VALUES (1, 'delegate_nick'), "
+                f"({STATS_MANAGER_ID}, 'staff_nick')"
+            )
+            await conn.execute(
+                "INSERT INTO chat_bot_state (chat_id, bot_status) VALUES (?, 'member')", (CHAT_ID,),
+            )
+            rows = [(1, 1), (2, 2)] + [(10 + i, STATS_MANAGER_ID) for i in range(20)]
+            for mid, author in rows:
+                await conn.execute(
+                    "INSERT INTO chat_messages (chat_id, message_id, telegram_id, ts, kind, text_len) "
+                    "VALUES (?, ?, ?, ?, 'text', 50)",
+                    (CHAT_ID, mid, author, f"{today} 1{mid % 10}:00:00"),
+                )
+            await conn.commit()
+
+    asyncio.run(_log())
+    client = _client(_cfg(path))
+    _login(client, STATS_MANAGER_ID)
+
+    resp = client.get("/chat", params={"period": "7d", "season": "YL 26/2"})
+
+    assert resp.status_code == 200
+    html = resp.text
+    assert "@delegate_nick" in html
+    assert "@staff_nick" not in html
+    assert "Секретное Имя" not in html
+    assert "Как считается" in html
+    assert "Формула балла" in html
+    assert "Регулярность" in html
+    assert "Команда (сотрудники бота, суперадмины и админы группы) в рейтинг не входит" in html
+    assert "Бот в этом чате не администратор" in html
+    active = html.split('aria-current="page"')[1].split(">")[0]
+    assert 'href="/chat?season=YL+26%2F2&amp;period=7d"' in active
+    assert 'href="/chat?season=YL+26%2F2&amp;period=prev_week"' in html
+
+
+def test_chat_route_unknown_period_renders_all_time(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    _seed(
+        staff=[(STATS_MANAGER_ID, "reg_manager", None)],
+        settings={
+            "role_caps_reg_manager": "moderate_reg;stats",
+            "delegate_chat_id": str(CHAT_ID),
+            "delegate_chat_title": "Общий чат",
+        },
+    )
+    client = _client(_cfg(path))
+    _login(client, STATS_MANAGER_ID)
+
+    resp = client.get("/chat", params={"period": "<script>"})
+
+    assert resp.status_code == 200
+    assert "за последние 180 дней хранения" in resp.text
+    assert "Появится после первых сообщений в чате" in resp.text
+    assert "<script>" not in resp.text.split("</header>")[1].split("<script")[0]

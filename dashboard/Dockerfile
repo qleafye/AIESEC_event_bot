@@ -28,6 +28,8 @@ COPY --chown=appuser:appuser tg_media.py /app/tg_media.py
 COPY --chown=appuser:appuser arrival_stats.py /app/arrival_stats.py
 # Корневой санитайзер секретов (25.09): чистая stdlib, маскирует токен бота в логах.
 COPY --chown=appuser:appuser secret_redact.py /app/secret_redact.py
+# Формула рейтинга чата (квик 260927): чистая stdlib, общая с ботом и тулом по экспорту.
+COPY --chown=appuser:appuser chat_score.py /app/chat_score.py
 # Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —
 # раскладка каталогов в образе совпадает с репозиторием, поэтому `dashboard.main.PATTERN_DIR`
 # (`BASE_DIR.parent / "miniapp" / "static" / "pattern"`) резолвится одинаково и локально, и
