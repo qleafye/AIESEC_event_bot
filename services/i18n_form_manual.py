@@ -957,6 +957,11 @@ _REGISTRY_TEXTS_EN = {
         "I didn't get the number. Tap the “Share number” button below or type the number in "
         "digits, for example: +79991234567"
     ),
+    "Это не твой номер. Нажми кнопку «Отправить номер» ниже — Телеграм пришлёт твой — "
+    "или напиши свой номер цифрами, например: +79991234567": (
+        "That's not your number. Tap the “Share number” button below — Telegram will send "
+        "yours — or type your number in digits, for example: +79991234567"
+    ),
     "✅ Пропустить и одобрить": "✅ Let in and approve",
     "Одобрить {name} на месте и отметить вход? Решение запишется на вас.":
         "Approve {name} on site and check them in? The decision will be recorded under your name.",

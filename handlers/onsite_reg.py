@@ -210,7 +210,17 @@ async def _ask_university(message: types.Message, state: FSMContext, phone: str)
 
 @router.message(OnsiteReg.phone, F.contact)
 async def onsite_phone_contact(message: types.Message, state: FSMContext):
-    phone = message.contact.phone_number or ""
+    """Только СВОЯ карточка контакта (кнопка «Отправить номер»): пересланная чужая принесла бы в
+    строку телефон третьего лица. Пустой или короткий номер — та же подсказка, что у текста."""
+    city = (await state.get_data()).get("onsite_city")
+    contact = message.contact
+    if getattr(contact, "user_id", None) != message.from_user.id:
+        await _say(message, "onsite_reg_foreign_contact_text", reply_markup=await _phone_kb(city))
+        return
+    phone = (contact.phone_number or "").strip()
+    if sum(ch.isdigit() for ch in phone) < _MIN_PHONE_DIGITS:
+        await _say(message, "onsite_reg_bad_phone_text", reply_markup=await _phone_kb(city))
+        return
     if not phone.startswith("+"):
         phone = f"+{phone}"
     await _ask_university(message, state, phone)
