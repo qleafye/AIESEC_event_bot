@@ -5679,7 +5679,8 @@ async def replace_chat_admins(chat_id: int, telegram_ids) -> None:
 
 async def prune_chat_history(cutoff_ts: str) -> dict[str, int]:
     """Срок хранения истории рейтинга: сообщения старше `cutoff_ts`, реакции старше него или на
-    уже удалённые сообщения. Возвращает счётчики для лога."""
+    уже удалённые сообщения, и ники тех, от кого в журнале не осталось ни сообщения, ни
+    реакции (ник без следа в чате — лишние ПД). Возвращает счётчики для лога."""
     async with _connect() as db:
         cur = await db.execute("DELETE FROM chat_messages WHERE ts < ?", (cutoff_ts,))
         messages = cur.rowcount
@@ -5690,8 +5691,13 @@ async def prune_chat_history(cutoff_ts: str) -> dict[str, int]:
             (cutoff_ts,),
         )
         reactions = cur.rowcount
+        cur = await db.execute(
+            "DELETE FROM chat_usernames WHERE telegram_id NOT IN ("
+            "SELECT telegram_id FROM chat_messages UNION SELECT telegram_id FROM chat_reactions)"
+        )
+        usernames = cur.rowcount
         await db.commit()
-    return {"messages": messages, "reactions": reactions}
+    return {"messages": messages, "reactions": reactions, "usernames": usernames}
 
 
 async def chat_member_ids(chat_id: int) -> set[int]:
