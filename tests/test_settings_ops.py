@@ -185,6 +185,7 @@ def test_every_editable_key_reachable_exactly_once_via_section_maps():
 
 def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     toggle_keys = [k for k, m in SETTINGS_SCHEMA.items() if m.get("group") == "toggles"]
+    # D-41 (регистрация на месте): +1 (onsite_reg_enabled, «📋 Заявки») -- 58 -> 59.
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +1 (forum_stats_card_enabled,
     # «📋 Заявки») -- 57 -> 58.
     # Трек «региональные форумы → Москва» (25.09): +1 (regional_noshow_offer_enabled,
@@ -214,7 +215,7 @@ def test_toggle_section_covers_every_toggles_group_key_exactly_once():
     # Phase 28 (28-08, SU-08): +1 (apps_queue_sort_by_score) -- 26 -> 27.
     # Phase 28 (28-06, SU-05/SU-06/SU-07): +3 (reg_skip_source_for_referred/
     # reg_referrer_must_be_ambassador/reg_offer_ref_link) -- 23 -> 26.
-    assert len(settings_ops.TOGGLE_SECTION) == 58
+    assert len(settings_ops.TOGGLE_SECTION) == 59
     assert sorted(settings_ops.TOGGLE_SECTION) == sorted(toggle_keys)
     assert len(settings_ops.TOGGLE_SECTION) == len(set(settings_ops.TOGGLE_SECTION))
 

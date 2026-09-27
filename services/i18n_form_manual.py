@@ -913,6 +913,63 @@ _REGISTRY_TEXTS_EN = {
         "Welcome to the volunteer team! You've been granted access to the check-in scanner.",
     "Ссылка устарела, попроси у организатора новую.": "This link has expired, ask the organizer for a new one.",
     "У тебя уже есть доступ к боту как у менеджера.": "You already have manager-level access to the bot.",
+    # D-41 (FORUM-CHECKIN.md): регистрация на месте — тексты человеку у стойки (group "reg",
+    # onsite_reg_*) и волонтёру сканера (group "event", onsite_*).
+    "Привет! Это короткая регистрация на форум прямо на площадке — всего 3 вопроса: "
+    "имя, телефон и вуз.\n\n"
+    "Нажимая кнопку ниже, ты соглашаешься на обработку этих данных для участия в форуме.": (
+        "Hi! This is a quick on-site registration for the forum — just 3 questions: your name, "
+        "phone number and university.\n\n"
+        "By tapping the button below, you agree to the processing of this data for taking part "
+        "in the forum."
+    ),
+    "✅ Согласен(на), начать": "✅ I agree, let's start",
+    "Как тебя зовут? Напиши фамилию и имя, например: Иванова Мария":
+        "What's your name? Write your last and first name, for example: Ivanova Maria",
+    "Твой номер телефона? Нажми кнопку ниже или напиши номер, например: +79991234567":
+        "Your phone number? Tap the button below or type the number, for example: +79991234567",
+    "Где ты учишься? Напиши название вуза или нажми «Пропустить».":
+        "Where do you study? Type your university name or tap “Skip”.",
+    "Пропустить": "Skip",
+    "Готово, {name}! Подойди к волонтёру на стойке регистрации и назови свою фамилию — "
+    "он пропустит тебя на форум.": (
+        "All set, {name}! Go to the volunteer at the registration desk and say your last name — "
+        "they'll let you into the forum."
+    ),
+    "Регистрация на месте сейчас не открыта. Подойди, пожалуйста, к организаторам.":
+        "On-site registration isn't open right now. Please talk to the organizers.",
+    "Твоя заявка уже одобрена! Открой «🎟 Мой QR» в меню и покажи его волонтёру на входе.":
+        "Your application is already approved! Open “🎟 My QR” in the menu and show it to the "
+        "volunteer at the entrance.",
+    "У тебя уже есть заявка. Подойди к стойке регистрации — волонтёр найдёт тебя по фамилии.":
+        "You already have an application. Go to the registration desk — the volunteer will find "
+        "you by your last name.",
+    "Добро пожаловать на форум! Тебя зарегистрировали на месте. Ниже — твой QR: он "
+    "понадобится на сессиях, сохрани его.": (
+        "Welcome to the forum! You've been registered on site. Below is your QR code — you'll "
+        "need it at the sessions, so save it."
+    ),
+    "Не понял имя. Напиши фамилию и имя буквами через пробел, например: Иванова Мария":
+        "I didn't get the name. Write your last and first name in letters separated by a space, "
+        "for example: Ivanova Maria",
+    "Не понял номер. Нажми кнопку «Отправить номер» ниже или напиши номер цифрами, "
+    "например: +79991234567": (
+        "I didn't get the number. Tap the “Share number” button below or type the number in "
+        "digits, for example: +79991234567"
+    ),
+    "✅ Пропустить и одобрить": "✅ Let in and approve",
+    "Одобрить {name} на месте и отметить вход? Решение запишется на вас.":
+        "Approve {name} on site and check them in? The decision will be recorded under your name.",
+    "📝 Зарегистрировать на месте": "📝 Register on site",
+    "Пусть человек отсканирует этот QR камерой телефона и ответит на 3 вопроса в боте. "
+    "Потом найдите его в списке «Ждут на стойке» и одобрите.": (
+        "Have the person scan this QR code with their phone camera and answer 3 questions in "
+        "the bot. Then find them in the “Waiting at the desk” list and approve."
+    ),
+    "📝 Ждут на стойке": "📝 Waiting at the desk",
+    "Регистрация на месте выключена для этого города — включает менеджер в «🎪 Форум: функции».":
+        "On-site registration is off for this city — a manager can turn it on in "
+        "“🎪 Forum: features”.",
     # Трек «региональные форумы → Москва» (25.09, ревью 🔴2 forum-regions-msk): предложение
     # переноса неявившегося делегата регионального форума на форум города назначения (group
     # "reg", regional_noshow_offer_text). `{target_city}` заменил хардкод «Москва».
