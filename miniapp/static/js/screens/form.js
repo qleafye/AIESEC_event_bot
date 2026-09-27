@@ -12,6 +12,7 @@
 import {
   field, setFieldState, createFormState, diffView, confirmBox, errorText,
   isAuthError as isAuthErrorBase, stepIndexFromKey, validationErrors, firstFieldError,
+  resumeForkPick,
 } from "../form.js";
 import { fileUrl, flatRow, sectionTitle, labelText, noticeBox, screenText, formV2Text, ambassadorLinkBlock } from "../ui.js";
 import { icon } from "../icons.js";
@@ -284,6 +285,8 @@ export async function render(root, params, ctx) {
   // PATCH текстом затёр бы его, см. `form.js::createFormState`).
   // `ctx.getDraft`/`ctx.setDraft` — доступ к переменной `d`, объявленной `let` в замыкании
   // каждого режима (мастер/обзор), эта функция режимов не знает.
+  // Квик 27.09: возвращает true, если файл принят сервером, иначе false — мастер ждёт этот
+  // промис на «Дальше» и не двигает шаг без файла (обзор результат игнорирует).
   async function uploadResume(file, el, ctx) {
     let current = ctx.getDraft();
     if (!current.exists) {
@@ -294,7 +297,7 @@ export async function render(root, params, ctx) {
         ctx.setDraft(current);
       } catch (err) {
         if (!isAuthError(err)) setFieldState(el, "error", { text: errorText(err, current.resume_upload_error_text) });
-        return;
+        return false;
       }
     }
     setFieldState(el, "uploading", { text: "" });
@@ -308,9 +311,10 @@ export async function render(root, params, ctx) {
       ctx.state.markServerDirty(ctx.column);
       setFieldState(el, "default");
       if (ctx.onDone) ctx.onDone(fresh);
+      return true;
     } catch (err) {
-      if (isAuthError(err)) return;
-      setFieldState(el, "error", { text: errorText(err, ctx.getDraft().resume_upload_error_text) });
+      if (!isAuthError(err)) setFieldState(el, "error", { text: errorText(err, ctx.getDraft().resume_upload_error_text) });
+      return false;
     }
   }
 
@@ -452,6 +456,13 @@ export async function render(root, params, ctx) {
     let state = buildFormState(d);
     const fieldEls = {};
     let busy = false;
+    // Квик 27.09: выбранная в обзоре ветка развилки резюме, которая живёт на этом же шаге
+    // («file» — дропзона, «text» — поле текста), как resumeForkBranch у мастера. null — строка
+    // «Резюме» показывает кнопки развилки.
+    let resumeEditBranch = null;
+    // open() каждой редактируемой строки по ключу шага — чтобы после выбора ветки раскрыть
+    // нужную строку, не дублируя её разметку.
+    let openers = {};
 
     onRefresh = async () => {
       try {
@@ -475,6 +486,7 @@ export async function render(root, params, ctx) {
         try {
           d = await api("/reg/draft");
           state = buildFormState(d);
+          resumeEditBranch = null;
           cancelBox.close();
           drawList();
         } catch (err) {
@@ -543,12 +555,69 @@ export async function render(root, params, ctx) {
       }
     }
 
+    // Квик 27.09 (баг прода): тап кнопки развилки в обзоре правки раньше становился ЗНАЧЕНИЕМ
+    // resume_text (общая ветка liveValue + галка) — в облако уезжало слово «mini». Теперь выбор
+    // зеркалит мастер (pickResumeBranch): код уходит только как resume_type, шаг не двигается
+    // (обзор без step), «Файл»/«Текстом» подменяют строку «Резюме» дропзоной/полем текста,
+    // «Ссылка»/«Нет резюме» — сервер включает свои шаги, раскрываем появившуюся строку.
+    async function pickResumeBranchInOverview(code) {
+      if (busy) return;
+      const pick = resumeForkPick(code);
+      if (!pick) return;
+      busy = true;
+      // Несохранённые правки других строк переживают пересборку списка шагов.
+      const pending = state.collectPatch();
+      try {
+        d = await api("/reg/draft", {
+          method: "PATCH", body: { version: d.version, answers: { resume_type: pick.resumeType } },
+        });
+        state = buildFormState(d);
+        for (const [pendingColumn, pendingValue] of Object.entries(pending)) {
+          if (state.specs.some((s) => s.column === pendingColumn)) state.setValue(pendingColumn, pendingValue);
+        }
+        // resume_type уже в черновике — нужна кнопка «Отправить изменения», чтобы довести
+        // его до анкеты, но не повторный PATCH (markServerDirty, как у загруженного файла).
+        const resumeSpec = state.specs.find((s) => s.key === "resume");
+        if (resumeSpec) state.markServerDirty(resumeSpec.column);
+        resumeEditBranch = pick.localBranch;
+        busy = false;
+        drawList();
+        const target = pick.localBranch
+          ? resumeSpec
+          : state.specs.find((s) => (pick.resumeType === "link" ? s.key === "resume_link" : s.key.startsWith("mini_")));
+        if (target && openers[target.key]) openers[target.key]();
+      } catch (err) {
+        busy = false;
+        if (err && err.status === 409 && err.reason === "held_by_bot") {
+          try { showHandoff((await api("/reg/draft")).handoff || (err.payload || {})); }
+          catch (_) { showHandoff(err.payload || {}); }
+          return;
+        }
+        if (!isAuthError(err)) {
+          const t = failText(err);
+          if (t) say(t, "warn");
+        }
+        drawList();
+      }
+    }
+
+    // Та же подмена спеки строки «Резюме», что у мастера в drawStep: выбранная в обзоре ветка
+    // «file»/«text» рисуется дропзоной/полем текста вместо кнопок развилки.
+    function resumeEditSpec(spec) {
+      if (spec.type !== "resume-fork" || !resumeEditBranch) return spec;
+      if (resumeEditBranch === "file") return { ...spec, type: "file" };
+      return { ...spec, type: "textarea", __resumeForkText: true, prompt: spec.fork_text_prompt || spec.prompt };
+    }
+
     // Обзор правки на общих строках с мастером (questionRow, Task 2, обзор 19.1 находка №6):
     // заблокированное поле (город/трек/согласия, D-13) остаётся статичной строкой без
     // pen-line — поведение не меняется, меняется только визуал строки. Незаполненное
     // обязательное получает `q-required`, чтобы отличаться от просто пустой строки.
     function fieldRow(spec) {
+      spec = resumeEditSpec(spec);
       const column = spec.column;
+      // Кнопки развилки — выбор ветки, а не ответ: ни liveValue, ни галки у такой строки нет.
+      const isForkPick = spec.type === "resume-fork";
       const locked = Boolean(spec.locked);
       const value = state.value(column);
       // Пункт 4: «заполнен» — по НАБОРУ колонок шага (state.value на каждой), не только по
@@ -568,6 +637,10 @@ export async function render(root, params, ctx) {
         // УАТ 10-11.09 (пункт 2): placeholder закрытого списка — реестровый плейсхолдер
         // незаполненного поля (d.not_set_text, reg_form_not_set_text), не литерал JS.
         const el = field(h, { ...spec, placeholder: d.not_set_text }, value, (v) => {
+          if (isForkPick) {
+            pickResumeBranchInOverview(v);
+            return;
+          }
           liveValue = v;
           // Квик 260912-l53: «×» на дропзоне — немедленное удаление, симметрично загрузке
           // ниже (D9). Привязка к spec.type === "file" обязательна: плейсхолдер закрытого
@@ -596,15 +669,17 @@ export async function render(root, params, ctx) {
           state.setValue(column, liveValue);
           drawList();
         });
-        panel.append(el, ...[contactBtn].filter(Boolean), h("button", {
+        const confirmBtn = isForkPick ? null : h("button", {
           class: "btn", type: "button", "aria-label": spec.label,
           onClick: () => {
             state.setValue(column, liveValue);
             drawList();
           },
-        }, icon("check")));
+        }, icon("check"));
+        panel.append(el, ...[contactBtn, confirmBtn].filter(Boolean));
         panel.classList.remove("hidden");
       }
+      openers[spec.key] = open;
       const requiredEmpty = Boolean(spec.required) && empty;
       const row = questionRow(h, spec, {
         value, notSetText: d.not_set_text, onEdit: open,
@@ -614,6 +689,7 @@ export async function render(root, params, ctx) {
     }
 
     function drawList() {
+      openers = {};
       const list = h("div", { class: "flat-list flush" }, ...state.specs.map(fieldRow));
       const diffBox = diffView(h, state.base, state.current, { wasPrefix: "" });
       const dirty = state.specs.some((s) => state.isDirty(s.column));
@@ -654,6 +730,13 @@ export async function render(root, params, ctx) {
     // обычная дропзона (type: "file", тот же контрол, что режим file_or_text). Чисто клиентский
     // флаг — сбрасывается при уходе с шага "resume" в любую сторону.
     let resumeForkBranch = null;
+    // Квик 27.09 (баг прода): «Дальше» на файле резюме не ждала загрузки — анкета подавалась,
+    // а загрузка после подачи получала 403 и файл терялся. Промис загрузки в полёте живёт
+    // здесь: пока он есть, «Дальше» выключена, а goNext его дожидается. drawSeq — номер
+    // отрисовки шага, чтобы завершившаяся загрузка синхронизировала кнопку только того
+    // экрана, который сейчас на экране.
+    let pendingUpload = null;
+    let drawSeq = 0;
     // Quick 260915-4mw (ANIM-01/02): направление въезда контента шага ("fwd" по умолчанию,
     // goBack() и возврат на развилку резюме ставят "back") + отметка прогресса прошлого
     // рендера (drawStep() двигает полосу ОТ неё, не с нуля — "доезжает", а не перепрыгивает).
@@ -982,6 +1065,7 @@ export async function render(root, params, ctx) {
         return;
       }
       const rawSpec = specs[stepIndex];
+      const mySeq = ++drawSeq;
       // Phase 28 (28-05, SU-04): «файл» — клиентская подмена этого же шага дропзоной (см.
       // докстринг `resumeForkBranch` выше) — сервер про эту подмену не знает, stepIndex/шаг
       // черновика не двигаются. Владелец 17.09: «текстом» — та же подмена, но textarea вместо
@@ -1023,13 +1107,21 @@ export async function render(root, params, ctx) {
         // D9: файл резюме грузится СРАЗУ по выбору — goNext() ниже его в JSON PATCH не кладёт
         // (markServerDirty уже отработал здесь).
         if (typeof File !== "undefined" && v instanceof File) {
-          uploadResume(v, el, {
+          const upload = uploadResume(v, el, {
             getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column,
             // Приёмка 16.09: commit — только ПОСЛЕ того, как сервер принял файл (`onDone`
             // здесь зовётся из uploadResume уже после успешного POST /uploads), не на самом
             // выборе файла — тот же отложенный тик, что `opts.commit` ниже, второй проверки
-            // валидности не заводим (currentMainDisabled — общая точка).
+            // валидности не заводим (currentMainDisabled — общая точка). К этому тику
+            // pendingUpload уже снят (then ниже отрабатывает микрозадачей раньше таймера).
             onDone: () => { setTimeout(() => { if (!currentMainDisabled()) goNext(); }, 0); },
+          });
+          // Квик 27.09: пока файл едет, «Дальше» (кнопка футера и MainButton) выключена.
+          pendingUpload = upload;
+          syncMainButton();
+          upload.then(() => {
+            if (pendingUpload === upload) pendingUpload = null;
+            if (mySeq === drawSeq) syncMainButton();
           });
           return;
         }
@@ -1094,11 +1186,14 @@ export async function render(root, params, ctx) {
         setMainButton(null);
         // Владелец 17.09: «текстом» — та же клиентская подмена шага, что «файл» (не двигает
         // step/index, resumeForkBranch ниже подменяет только контрол), см. drawStep().
-        const staysOnStep = code === "file" || code === "text";
+        // Квик 27.09: правило ветки — общий resumeForkPick (form.js), тот же, что у обзора правки.
+        const pick = resumeForkPick(code);
+        if (!pick) { busy = false; drawStep(); return; }
+        const staysOnStep = pick.staysOnStep;
         try {
           const res = await api("/reg/draft", {
             method: "PATCH",
-            body: { version: d.version, answers: { resume_type: code }, step: staysOnStep ? null : spec.key },
+            body: { version: d.version, answers: { resume_type: pick.resumeType }, step: staysOnStep ? null : spec.key },
           });
           busy = false;
           if (staysOnStep) {
@@ -1106,7 +1201,7 @@ export async function render(root, params, ctx) {
             // resume_type уже сохранён сервером (нужен последующим PATCH для enabled_steps),
             // но список шагов/индекс не меняются — adoptDraft() здесь не нужен.
             d = res;
-            resumeForkBranch = code;
+            resumeForkBranch = pick.localBranch;
             drawStep();
           } else {
             // «link»/«mini» — сервер уже пересчитал enabled_steps (resume_link/mini_projects
@@ -1152,6 +1247,16 @@ export async function render(root, params, ctx) {
         // JSON PATCH нельзя (`JSON.stringify(File)` даёт "{}", сервер отвечает 400). Указатель
         // шага всё равно сдвигаем — answers пустой, step идёт отдельным полем.
         const isFileValue = typeof File !== "undefined" && liveValue instanceof File;
+        // Квик 27.09: файл ещё грузится — ждём; не доехал — шаг не двигаем (ошибку уже
+        // показала дропзона в uploadResume), иначе анкета уйдёт без резюме.
+        if (isFileValue) {
+          const uploaded = pendingUpload ? await pendingUpload : true;
+          if (!uploaded || !stepAnswered(spec, state)) {
+            busy = false;
+            syncMainButton();
+            return;
+          }
+        }
         // Phase 30 (30-05, задача 0б, хвост 30-04): composite-карточка «Образование»
         // (`form_types.js::compositeCard`) отдаёт onChange ОБЪЕКТОМ `{step_key: value, ...}` —
         // патч НЕСКОЛЬКИХ колонок одной карточкой, а не скаляром одной колонки `column`, как
@@ -1325,7 +1430,7 @@ export async function render(root, params, ctx) {
         return footerLabelOverride || (d.next_cta_text || "");
       }
       function currentMainDisabled() {
-        return busy || footerDisabledOverride;
+        return busy || footerDisabledOverride || pendingUpload !== null;
       }
       function syncMainButton() {
         if (mainLabelNode) mainLabelNode.textContent = currentMainLabel();
@@ -1348,6 +1453,11 @@ export async function render(root, params, ctx) {
           footerDisabledOverride = !!disabled;
           syncMainButton();
         });
+      }
+      // Квик 27.09: шаг перерисовали (фоновое обновление), пока файл ещё едет, — кнопку этого
+      // экрана включит завершение той же загрузки.
+      if (pendingUpload) {
+        pendingUpload.then(() => { if (mySeq === drawSeq) syncMainButton(); });
       }
 
       const footer = h("div", { class: "task-actions" },
@@ -1535,6 +1645,13 @@ export async function render(root, params, ctx) {
           preIndex = 0;
           say(failText(err), "warn");
           drawCurrent();
+        } else if (err && err.status === 400 && err.reason === "resume_file_missing") {
+          // Квик 27.09: сервер не подаёт анкету с «файлом» без файла — возвращаем делегата на
+          // вопрос о резюме сразу в ветку «файл». Текст — с сервера (payload.text).
+          say(failText(err), "warn");
+          stepIndex = stepIndexFromKey(state.specs, "resume");
+          resumeForkBranch = "file";
+          drawStep();
         } else if (!isAuthError(err)) {
           say(failText(err), "warn");
           stepIndex = Math.max(0, state.specs.length - 1);

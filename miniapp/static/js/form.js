@@ -536,6 +536,19 @@ function resumeForkControl(h, spec, value, onChange) {
   return { control: box };
 }
 
+// Квик 27.09: одно правило «куда ведёт кнопка развилки резюме» на мастер и обзор правки.
+// «Файл»/«Текстом» — клиентская подмена этого же шага (дропзона/поле текста), «Ссылка»/«Нет
+// резюме» — сервер включает свои шаги (resume_link / mini_*). Код кнопки — это resume_type,
+// а не ответ на вопрос: в значение поля он не кладётся никогда. Неизвестный код — null.
+const RESUME_FORK_LOCAL_BRANCHES = new Set(["file", "text"]);
+const RESUME_FORK_SERVER_BRANCHES = new Set(["link", "mini"]);
+
+export function resumeForkPick(code) {
+  if (RESUME_FORK_LOCAL_BRANCHES.has(code)) return { resumeType: code, localBranch: code, staysOnStep: true };
+  if (RESUME_FORK_SERVER_BRANCHES.has(code)) return { resumeType: code, localBranch: null, staysOnStep: false };
+  return null;
+}
+
 // Phase 28 (28-05, SU-04, 28-UI-SPEC §2): ссылка на резюме — обычный `url`-инпут + нейтральный
 // маркер домена под полем (chip, ОБА случая — из вайтлиста и личный сайт — визуально
 // ОДИНАКОВЫ, различаются только иконкой/текстом, A3 28-UI-SPEC: «не ошибка, а нейтральная
