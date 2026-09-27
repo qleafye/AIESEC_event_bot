@@ -394,6 +394,14 @@
   <section class="page-section" id="sources" aria-labelledby="sources-title">
     <h2 class="section-title" id="sources-title">Откуда приходят</h2>
 
+    {# Конструктор «Источники по дням» (запрос DXP СПб 27.09) — отдельная страница: у него
+       свои фильтры в URL, на главной они спорили бы со свитчерами города/сезона. #}
+    <section class="block">
+      <div class="card">
+        <a class="switch-link" href="/sources{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням — сколько пришло по каждому каналу в любой день</a>
+      </div>
+    </section>
+
     {# «Метки кампаний» (квик 260905-qqg, правка квик 260914-tj3) #}
     {% if utm %}
     <section class="block">
@@ -848,6 +856,7 @@
   <section class="block">
     <div class="card">
       <a class="switch-link" href="/forum">🎪 Статистика форума</a>
+      <a class="switch-link" href="/sources{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням</a>
     </div>
   </section>
 
