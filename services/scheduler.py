@@ -1284,6 +1284,20 @@ async def _nudge_remaining_for(tid: int) -> int | None:
         return None
 
 
+async def _record_nudged_event(tid: int) -> None:
+    """Append-only `reg_events.nudged` после ДОСТАВЛЕННОГО напоминания — след, который, в отличие
+    от `reg_started.nudged_at`, не стирается при подаче анкеты. Город — из `reg_started`, сезон —
+    текущий `event_season`, как у остальных событий журнала. Fail-soft: сбой записи не должен
+    сорвать ни рассылку остальным кандидатам, ни уже поставленную one-shot пометку."""
+    try:
+        from database import db as _db
+        city = await _db.get_reg_started_city(tid)
+        season = await get_setting_typed("event_season") or None
+        await _db.record_reg_event(tid, "nudged", event_city=city, season=season)
+    except Exception as e:
+        logger.warning(f"record_reg_event(nudged) failed for {tid}: {e}")
+
+
 async def nudge_incomplete_registrations():
     """Interval-job target (no args, picklable). Nudge each incomplete registration
     older than the threshold exactly once, then stamp nudged_at (D-14).
@@ -1355,6 +1369,7 @@ async def nudge_incomplete_registrations():
             )
             if ok:
                 await mark_nudged(tid)  # one-shot only after a successful send
+                await _record_nudged_event(tid)
             await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"nudge_incomplete_registrations failed: {e}")
