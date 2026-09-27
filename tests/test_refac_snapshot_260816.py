@@ -1339,6 +1339,9 @@ admin|callback_query|chpost_preview|chpost:preview:*
 admin|callback_query|chpost_publish_ask|chpost:pub:*
 admin|callback_query|chpost_publish_cancel|chpost:no
 admin|callback_query|chpost_publish_go|chpost:go:*
+admin|callback_query|onsitereg_cfg_screen|onsitereg_cfg:*
+admin|callback_query|onsitereg_toggle_go|onsitereg_toggle:*
+admin|callback_query|onsitereg_qr_send|onsitereg_qr:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1974,7 +1977,11 @@ def test_snapshot_total_handler_count_is_292():
     # admin_chat_cleanup — девять callback_query (chpost:*) после chclean_delay и message-хендлер
     # ввода (state:ChatRatingPostEdit:*) после chclean_delay_value. Две чистые вставки
     # (1 + 9 строк), 0 удалений, 0 реордеров (879 -> 889).
-    assert len(GOLDEN_SNAPSHOT) == 889
+    # D-41 (регистрация на месте): шов handlers/admin_onsite_reg.py в хвосте handlers/admin.py
+    # сразу после admin_chat_cleanup — три callback_query (onsitereg_cfg:*/onsitereg_toggle:*/
+    # onsitereg_qr:*) после chpost_publish_go (шов импортируется после admin_chat_rating_post).
+    # Одна чистая вставка (3 строки), 0 удалений, 0 реордеров (889 -> 892).
+    assert len(GOLDEN_SNAPSHOT) == 892
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

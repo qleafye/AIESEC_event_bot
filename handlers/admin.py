@@ -1156,3 +1156,8 @@ from handlers import admin_chat_cleanup  # noqa: E402,F401
 # Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/admin_chat_rating_post.py) —
 # golden append после admin_chat_cleanup: chpost:* и ввод ChatRatingPostEdit.
 from handlers import admin_chat_rating_post  # noqa: E402,F401
+# D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/admin_onsite_reg.py) —
+# onsitereg_cfg_screen/onsitereg_toggle_go/onsitereg_qr_send в самом хвосте admin.router
+# (golden snapshot: чистое добавление после admin_chat_cleanup). Строка хаба —
+# handlers/admin_forum_functions.py, сразу после «🧳 Бюро находок».
+from handlers import admin_onsite_reg  # noqa: E402,F401
