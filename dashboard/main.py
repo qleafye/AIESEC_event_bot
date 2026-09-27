@@ -447,6 +447,17 @@ def build_page_context(
     return ctx
 
 
+def _chat_rating_block(conn, chat: dict, period: str, admin_ids: set, now: datetime) -> dict:
+    """Режим рейтинга берётся из настроек города чата: формула (по умолчанию) или правила."""
+    if chat_rating.chat_mode(conn, chat) == "rules":
+        return {"rating": None, "rules_rating": chat_rating.rules_rating(
+            conn, chat, period=period, admin_ids=admin_ids, now=now,
+        )}
+    return {"rating": chat_rating.chat_rating(
+        conn, chat, period=period, admin_ids=admin_ids, now=now,
+    ), "rules_rating": None}
+
+
 def build_chat_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, period: str | None = None,
 ) -> dict:
@@ -485,10 +496,9 @@ def build_chat_context(
             # раньше показывал снесённый экран «💬 Чат» в боте.
             "last_sync": queries.chat_last_sync_at(conn, chat["chat_id"]),
             # Квик 260927: живой рейтинг по баллам (формула chat_score, общая с тулом по
-            # экспорту) вместо голого счёта сообщений. Команда в таблицу не входит.
-            "rating": chat_rating.chat_rating(
-                conn, chat, period=period, admin_ids=set(cfg.admin_ids), now=now,
-            ),
+            # экспорту) вместо голого счёта сообщений, либо — для города в режиме «По
+            # правилам города» — таблица правил (коины СПб). Команда в таблицу не входит.
+            **_chat_rating_block(conn, chat, period, set(cfg.admin_ids), now),
         })
 
     # Ссылки переключателя периода сохраняют город/сезон страницы.

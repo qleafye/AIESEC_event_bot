@@ -128,6 +128,66 @@
       {% endif %}
     </div>
 
+    {% if card.rules_rating %}
+    {# Квик 260927: город в режиме «По правилам города» (коины СПб) — таблица правил с разбивкой
+       и недельным срезом. Только расчёт для публикации: бот ничего не начисляет. #}
+    {% set rr = card.rules_rating %}
+    <div class="card">
+      <h3 class="block-title">Рейтинг по правилам города</h3>
+      <nav class="switchers" aria-label="Период рейтинга">
+        {% for link in period_links %}
+        <a class="switch-link{% if link.active %} active{% endif %}"
+           {% if link.active %}aria-current="page"{% endif %}
+           href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+      <p class="empty-note">Для еженедельной публикации — «Прошлая неделя».{% if rr.period == "all" %} Всё время — за последние {{ rr.retention_days }} дней хранения.{% endif %}</p>
+      {% if rr.bot_admin is false %}
+      <p class="empty-note">Бот в этом чате не администратор — он может видеть не все сообщения, и часть комментариев не засчитается. Сделайте бота администратором группы (права можно оставить минимальными).</p>
+      {% endif %}
+      {% if rr.rows %}
+      <div class="table-wrap">
+      <table class="responsive">
+        <thead>
+          <tr>
+            <th class="num">#</th>
+            <th>Участник</th>
+            {% for col in rr.columns %}<th class="num">{{ col.label }}</th>{% endfor %}
+            <th class="num">Итого, {{ rr.currency }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rr.rows %}
+          <tr>
+            <td data-label="#" class="num">{{ row.place }}</td>
+            <td data-label="Участник">{{ row.display_name }}</td>
+            {% for col in rr.columns %}
+            <td data-label="{{ col.label }}" class="num">{% if col.points_key %}{{ "%g" | format(row[col.points_key]) }} ({{ row[col.key] }}){% else %}{{ row[col.key] }}{% endif %}</td>
+            {% endfor %}
+            <td data-label="Итого, {{ rr.currency }}" class="num"><strong>{{ "%g" | format(row.total) }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="empty-note">В ячейке — {{ rr.currency }} и (сколько раз). Топ-100.</p>
+      {% else %}
+      <p class="empty-note">За этот период баллов ни у кого нет. Комментарии появятся после первых ответов делегатов на сообщения команды (нужен включённый учёт чата).</p>
+      {% endif %}
+      <details class="chart-table">
+        <summary>Как считается</summary>
+        <ul>
+          {% for line in rr.rules_text %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+        <p>Комментарий — настоящий ответ (reply) на сообщение команды или пост канала; ответ на корень темы не считается.</p>
+        <p>Друзья — одобренные заявки текущего сезона, где человек указан пригласившим (город заявки любой), по дате одобрения.</p>
+        <p>Соцсети — одобренные задания, выбранные для правила на экране «🏆 Рейтинг чата» в боте, по дате проверки.</p>
+        <p>Очно — дни форума с отметкой на входе; отметки на сессиях отдельно не считаются.</p>
+        <p>Команда (сотрудники бота, суперадмины и админы группы) баллов не получает. В таблице — те, кто сейчас в чате или писал в нём.</p>
+        <p>Бот ничего не начисляет — это расчёт для публикации итогов.</p>
+      </details>
+    </div>
+    {% else %}
     {# Квик 260927: живой рейтинг по баллам — формула chat_score (общая с тулом по экспорту),
        веса из настроек бота. Подпись — только @ник или id (D-17: без ФИО и контактов). #}
     {% set rating = card.rating %}
@@ -193,6 +253,7 @@
         <p>Всё время = за последние {{ rating.retention_days }} дней — старше бот не хранит.</p>
       </details>
     </div>
+    {% endif %}
   </section>
   {% endfor %}
 
