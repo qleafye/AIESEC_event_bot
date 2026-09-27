@@ -2576,7 +2576,13 @@ async def add_user(data: dict):
                 mini_projects=excluded.mini_projects,
                 mini_portfolio=excluded.mini_portfolio,
                 mini_direction=excluded.mini_direction,
-                case_optin=excluded.case_optin
+                case_optin=excluded.case_optin,
+                -- D-41 (ревью 28.09): полная анкета — обычная заявка. Признак регистрации на
+                -- месте (walk-in/door) снимается, иначе строка навсегда выпадала бы из очереди
+                -- модерации и «Принять всех» (_NOT_WALKIN) — тот же класс потерь, что 14.09.
+                onsite_kind=NULL,
+                onsite_at=NULL,
+                onsite_by=NULL
         ''', (
             data['telegram_id'],
             # UNAME-03 (квик 260911-0zu): канон записи "с @" -- единственная точка, где
