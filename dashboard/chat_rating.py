@@ -36,6 +36,8 @@ TOP_FORMULA = 50
 
 _TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 _BOT_ADMIN_STATUSES = ("administrator", "creator")
+# Служебный аккаунт Telegram (автопересылки связанного канала) — не участник рейтинга.
+SERVICE_USER_ID = 777000
 
 
 def normalize_period(period) -> str:
@@ -256,7 +258,7 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
     scores = chat_score.score_authors(aggs, weights)
     team = team_ids(conn, chat_id, admin_ids)
 
-    kept = [aid for aid in aggs if aid not in team and aid > 0]
+    kept = [aid for aid in aggs if aid not in team and aid > 0 and aid != SERVICE_USER_ID]
     if registered_only:
         registered = registered_ids(conn, chat.get("city"), season)
         kept = [aid for aid in kept if aid in registered]
@@ -502,7 +504,7 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
         columns.append({"key": key, "points_key": points_key, "label": label})
 
     participants = _chat_participants(conn, chat_id, records) - team
-    kept = [pid for pid in scored if pid in participants and pid > 0]
+    kept = [pid for pid in scored if pid in participants and pid > 0 and pid != SERVICE_USER_ID]
     if registered_only:
         registered = registered_ids(conn, city, season)
         kept = [pid for pid in kept if pid in registered]

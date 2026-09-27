@@ -1578,12 +1578,18 @@ def chat_joins_daily(conn, chat_id: int) -> list[tuple[str, int]]:
     return _fill_missing_days(sparse)
 
 
+# Служебный аккаунт Telegram (автопересылки связанного канала). До квика 260927 его
+# сообщения засчитывались в chat_activity как делегату; накопленные строки не показываем.
+_SERVICE_USER_ID = 777000
+
+
 def chat_messages_daily(conn, chat_id: int) -> list[tuple[str, int]]:
-    """Плотный календарь сообщений по дням — `SUM(messages)` из `chat_activity`."""
+    """Плотный календарь сообщений по дням — `SUM(messages)` из `chat_activity` (без служебного
+    777000)."""
     rows = conn.execute(
         "SELECT day, SUM(messages) AS cnt FROM chat_activity WHERE chat_id = ? "
-        "GROUP BY day ORDER BY day ASC",
-        (chat_id,),
+        "AND telegram_id != ? GROUP BY day ORDER BY day ASC",
+        (chat_id, _SERVICE_USER_ID),
     ).fetchall()
     sparse = [(row["day"], row["cnt"]) for row in rows]
     return _fill_missing_days(sparse)

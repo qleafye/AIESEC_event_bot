@@ -5856,21 +5856,28 @@ async def chat_last_sync_at(chat_id: int) -> str | None:
     return row[0] if row else None
 
 
+# Служебный аккаунт Telegram (автопересылки связанного канала): до квика 260927 его сообщения
+# засчитывались в chat_activity как делегату — накопленные строки в итоги не входят.
+TELEGRAM_SERVICE_USER_ID = 777000
+
+
 async def chat_activity_totals(chat_id: int) -> dict:
     """Сумма `messages` за СЕГОДНЯ и за последние 7 дней (по Москве, включительно) — нужна
     `/chat_stats` (`handlers/group_chat.py`), чтобы админ, разбирающийся прямо в группе, не
-    шёл за этими цифрами в бота отдельно."""
+    шёл за этими цифрами в бота отдельно. Служебный 777000 не в счёт."""
     today = msk_now().strftime("%Y-%m-%d")
     week_ago = (msk_now() - timedelta(days=6)).strftime("%Y-%m-%d")
     async with _connect() as db:
         async with db.execute(
-            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day = ?",
-            (chat_id, today),
+            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day = ? "
+            "AND telegram_id != ?",
+            (chat_id, today, TELEGRAM_SERVICE_USER_ID),
         ) as cursor:
             today_total = (await cursor.fetchone())[0]
         async with db.execute(
-            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day >= ?",
-            (chat_id, week_ago),
+            "SELECT COALESCE(SUM(messages), 0) FROM chat_activity WHERE chat_id = ? AND day >= ? "
+            "AND telegram_id != ?",
+            (chat_id, week_ago, TELEGRAM_SERVICE_USER_ID),
         ) as cursor:
             week_total = (await cursor.fetchone())[0]
     return {"today": today_total, "week": week_total}
