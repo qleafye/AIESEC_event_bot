@@ -3552,6 +3552,11 @@ async def mark_user_edited(telegram_id: int, source: str) -> None:
 # never overwrites: every call is a new row, so the dashboard's top-of-funnel counts survive
 # any number of re-entries per person.
 REG_EVENT_KINDS = ("start", "form_started", "form_completed")
+# Не ступени воронки, а служебные отметки в том же append-only журнале. `nudged` — напоминалка о
+# брошенной анкете реально доставлена: `reg_started.nudged_at` стирается при подаче
+# (`clear_reg_started`), а по этой строке «догнали напоминалкой → потом подал» считается и после.
+# Воронка/KPI дашборда фильтруют по конкретному `event`, поэтому сюда их не подмешать.
+REG_EVENT_SIDE_KINDS = ("nudged",)
 
 
 async def record_reg_event(
@@ -3568,7 +3573,7 @@ async def record_reg_event(
     never silently drop a funnel row -- but logged at WARNING so it doesn't go unnoticed.
     `source_tag` (квик 260905-qqg) — метка кампании из deep-link `src_<метка>`; NULL у
     органики и у ручного ответа на вопрос «Источник»."""
-    if event not in REG_EVENT_KINDS:
+    if event not in REG_EVENT_KINDS and event not in REG_EVENT_SIDE_KINDS:
         logger.warning(
             "record_reg_event: unexpected event kind %r for telegram_id=%s", event, telegram_id
         )
