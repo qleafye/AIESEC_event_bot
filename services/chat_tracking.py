@@ -284,15 +284,27 @@ async def refresh_chat_admins(bot, chat_id: int) -> None:
         await set_chat_bot_state(chat_id, getattr(own, "status", None), can_delete_from(own))
 
 
+async def _cleanup_enabled() -> bool:
+    """Отмечен ли хоть один тип автоочистки служебных уведомлений (ленивый импорт:
+    services.chat_cleanup сам импортирует этот модуль)."""
+    from services.chat_cleanup import ticked_codes
+
+    return bool(await ticked_codes())
+
+
 async def refresh_all_chats(bot) -> list[dict]:
-    """Сверяет ВСЕ привязанные чаты. Тумблер выключен -> пустой список, ни одного вызова
-    `get_chat_member` (ни у одного чата)."""
-    if not await tracking_on():
+    """Сверяет ВСЕ привязанные чаты. Тумблер учёта выключен -> пустой список, ни одного вызова
+    `get_chat_member` (ни у одного чата). Админов и права САМОГО бота (одним
+    getChatAdministrators на чат) перечитываем и при выключенном учёте, если включена
+    автоочистка: иначе однажды снятый флаг «нет прав» не вернулся бы никогда."""
+    tracking = await tracking_on()
+    if not tracking and not await _cleanup_enabled():
         return []
     reports = []
     for entry in await bound_chats():
-        report = await refresh_chat(bot, entry["chat_id"], entry["city"])
-        reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
+        if tracking:
+            report = await refresh_chat(bot, entry["chat_id"], entry["city"])
+            reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
         await refresh_chat_admins(bot, entry["chat_id"])
     return reports
 
