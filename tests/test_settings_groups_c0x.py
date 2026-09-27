@@ -236,6 +236,9 @@ def test_registry_coverage_event():
         # по городу — свой экран «✏️ Тексты вопросов» (handlers/admin_reg_config.py), вне
         # SETTINGS_FIELDS, как reg_questions.
         "reg_prompts",
+        # "chat" added quick 260927: веса формулы рейтинга чата (экран «💬 Чат делегатов» раздела
+        # «🔧 Управление») + режим и правила города (экран «🏆 Рейтинг чата»).
+        "chat",
     }
     # Phase 31 (31-03, D-30): "date_only" — дата без времени (форма отдельная от "date",
     # у которой время суток осмысленно — payment_deadline/планировщик напоминаний).

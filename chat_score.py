@@ -32,6 +32,8 @@ WEIGHTS = {
 
 # Потолки — целые счётчики «сколько ответов/реакций на сообщение засчитать».
 _INT_WEIGHTS = {"resonance_reply_cap", "resonance_reaction_cap"}
+# Делитель формулы длины: 0 из настроек дал бы деление на ноль — такой вес берётся по дефолту.
+_POSITIVE_WEIGHTS = {"burst_log_base"}
 
 DEFAULT_BURST_GAP = 120   # секунд: свои сообщения ближе этой паузы склеиваются в одну реплику
 DEFAULT_LONG_CHARS = 120  # символов: порог «длинного» сообщения (только счётчик, не балл)
@@ -298,7 +300,7 @@ def weights_from_settings(raw) -> tuple:
     weights = dict(WEIGHTS)
     for name, key in SETTING_KEYS.items():
         value = _parse_non_negative(raw.get(key))
-        if value is None:
+        if value is None or (name in _POSITIVE_WEIGHTS and value <= 0):
             continue
         weights[name] = int(value) if name in _INT_WEIGHTS else value
     gap = _parse_non_negative(raw.get(BURST_GAP_KEY))
@@ -398,7 +400,8 @@ def score_city_rules(records, *, team_ids, rules, referral_dates, social_dates, 
         for rec in comments:
             if cutoff is not None and rec.day > cutoff:
                 continue
-            valuable = rec.text_len >= r["valuable_min_chars"]
+            # valuable_points 0 = правило «ценного» выключено: длинный стоит как обычный.
+            valuable = r["valuable_points"] > 0 and rec.text_len >= r["valuable_min_chars"]
             award = r["valuable_points"] if valuable else r["comment_points"]
             key = (rec.author_id, rec.reply_to_message_id)
             prev = best.get(key)
