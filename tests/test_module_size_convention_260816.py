@@ -196,7 +196,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2922,
+        2923,
+        "Квик 260927 (автоочистка служебных уведомлений): +1 строка — задержка удаления в "
+        "_CHAT_FIELD_ORDER; 2922 -> 2923. "
         "Квик 260927 (рейтинг чата): +10 строк — группа «💬 Чат делегатов» (_CHAT_FIELD_ORDER из "
         "ключей chat_score, строка SETTINGS_GROUPS, _CHAT_FIELDS в SETTINGS_FIELDS, импорт); "
         "экран режима и правил города — в новом шве handlers/admin_chat_rating.py; 2912 -> 2922. "
@@ -506,7 +508,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "размера.",
     ),
     "admin.py": (
-        1152,
+        1155,
+        "Квик 260927 (автоочистка служебных уведомлений): +3 строки — seam import "
+        "handlers/admin_chat_cleanup.py сразу после admin_chat_rating; 1152 -> 1155. "
         "Квик 260927 (рейтинг чата): +6 строк — хвостовой shared-router seam import "
         "handlers/admin_chat_rating.py (экран «🏆 Рейтинг чата», golden append); 1146 -> 1152. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — хвостовой shared-router "
@@ -721,7 +725,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1359,
+        1362,
+        "Квик 260927 (автоочистка служебных уведомлений): +3 строки — капы «admin_chat_cleanup», "
+        "«chclean:*», «state:ChatCleanupEdit:*» (settings); 1359 -> 1362. "
         "Квик 260927 (рейтинг чата): +3 строки — капы «admin_chat_rating», «chrate:*» и "
         "«state:ChatRatingEdit:*» (settings); 1356 -> 1359. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — капы "

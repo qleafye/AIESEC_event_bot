@@ -1150,3 +1150,6 @@ from handlers import admin_forum_stats_card  # noqa: E402
 # хвосте admin.router (golden snapshot: чистое добавление после admin_forum_stats_card).
 # Строка раздела: handlers/admin_sections.py, «🔧 Управление», после тумблера учёта чата.
 from handlers import admin_chat_rating  # noqa: E402,F401
+# Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) — сразу
+# после admin_chat_rating (golden append: admin_chat_cleanup/chclean:* и ввод ChatCleanupEdit).
+from handlers import admin_chat_cleanup  # noqa: E402,F401

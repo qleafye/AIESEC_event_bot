@@ -767,6 +767,7 @@ admin|message|resumerep_cancel_text|state:ResumeReplace:*
 admin|message|resumerep_receive_file|state:ResumeReplace:*
 admin|message|resumerep_receive_other|state:ResumeReplace:*
 admin|message|chrate_value|state:ChatRatingEdit:*
+admin|message|chclean_delay_value|state:ChatCleanupEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1325,6 +1326,9 @@ admin|callback_query|chrate_edit|chrate:edit:*
 admin|callback_query|chrate_reset|chrate:rst:*
 admin|callback_query|chrate_tasks|chrate:tasks:*
 admin|callback_query|chrate_task_toggle|chrate:task:*
+admin|callback_query|chat_cleanup_open|admin_chat_cleanup
+admin|callback_query|chclean_toggle|chclean:t:*
+admin|callback_query|chclean_delay|chclean:delay
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1952,7 +1956,11 @@ def test_snapshot_total_handler_count_is_292():
     # (state:ChatRatingEdit:*) — хвостом message-хендлеров admin.router, после
     # resumerep_receive_other. Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые
     # вставки (1 + 7 строк), 0 удалений, 0 реордеров (867 -> 875).
-    assert len(GOLDEN_SNAPSHOT) == 875
+    # Квик 260927 (автоочистка служебных уведомлений): шов handlers/admin_chat_cleanup.py сразу
+    # после admin_chat_rating — три callback_query (admin_chat_cleanup/chclean:t:*/chclean:delay)
+    # после chrate_task_toggle и message-хендлер ввода задержки после chrate_value. Две чистые
+    # вставки (1 + 3 строки), 0 удалений, 0 реордеров (875 -> 879).
+    assert len(GOLDEN_SNAPSHOT) == 879
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
