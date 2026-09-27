@@ -22,7 +22,7 @@ import logging
 
 import segno
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, normalize_city
+from cities import cities_module_on, city_label, normalize_city, per_city_key
 from database import db as _db
 from database.db import approve_onsite, get_user
 from reg_engine import is_past_season_row
@@ -43,8 +43,16 @@ _OVERRIDE_REASON = "Одобрен(а) на месте вопреки отказ
 
 
 async def onsite_enabled(city: str | None) -> bool:
-    """D-36: тумблер `onsite_reg_enabled` по городу стойки, дефолт выключен."""
-    return await get_setting_typed_for_city("onsite_reg_enabled", city) == "on"
+    """D-36: тумблер `onsite_reg_enabled` по городу стойки, дефолт выключен. При включённом
+    модуле городов — СТРОГО значение города, без отката на общий ключ (тот же приём, что
+    `services.chat_rating_post.enabled_for`): одно общее «вкл» не должно открыть регистрацию на
+    месте во всех городах сразу. Без города при включённом модуле — выключено."""
+    if await cities_module_on():
+        key = per_city_key("onsite_reg_enabled", city) if city else None
+        if key is None:
+            return False
+        return ((await _db.get_setting(key)) or "").strip() == "on"
+    return await get_setting_typed("onsite_reg_enabled") == "on"
 
 
 async def walkin_link(bot_username: str | None, city: str | None) -> str | None:
@@ -55,6 +63,9 @@ async def walkin_link(bot_username: str | None, city: str | None) -> str | None:
         return None
     if not await cities_module_on():
         return f"https://t.me/{name}?start={WALKIN_PREFIX}"
+    if not city:
+        # Ссылка без города при включённом модуле увела бы человека в город по умолчанию.
+        return None
     return f"https://t.me/{name}?start={WALKIN_PREFIX}_{normalize_city(city)}"
 
 

@@ -170,7 +170,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
 
     # D-41 (регистрация на месте): короткая анкета по QR у стойки — per_city, свой экран
     # (handlers/admin_onsite_reg.py). Строка добавлена аддитивно, соседи не переставлены.
-    onsite_on = await get_setting_typed_for_city("onsite_reg_enabled", code) == "on"
+    from services.onsite_reg import onsite_enabled  # строго по городу, без общего ключа
+    onsite_on = await onsite_enabled(code)
     lines.append(f"📝 Регистрация на месте: {_status(onsite_on)}")
     if visible(f"onsitereg_cfg:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(

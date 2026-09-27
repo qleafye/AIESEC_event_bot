@@ -15,10 +15,11 @@ import logging
 from aiogram import Bot, F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from cities import cities_module_on, city_label, per_city_key
+from database.db import get_staff_city
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
-from services.onsite_reg import walkin_link, walkin_qr_png
+from services.onsite_reg import onsite_enabled, walkin_link, walkin_qr_png
 from settings_audit import set_setting_by_admin
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,26 @@ _QR_CAPTION = (
 )
 
 _NO_USERNAME_ALERT = "Не получилось узнать имя бота — попробуйте ещё раз."
+_PICK_CITY_ALERT = (
+    "Регистрация на месте включается для каждого города отдельно — выберите город в "
+    "«🎪 Форум: функции» и откройте этот экран оттуда."
+)
+
+
+async def _city_gate(callback: types.CallbackQuery, code: str | None) -> bool:
+    """Право на город (D-26) + «без города нельзя» при включённом модуле городов: общий ключ
+    включил бы регистрацию на месте во всех городах, а привязанный к городу менеджер обошёл бы
+    свою привязку, собрав callback без города. False — ответ уже показан."""
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return False
+    if code is None and await cities_module_on():
+        if await get_staff_city(callback.from_user.id):
+            await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        else:
+            await callback.answer(_PICK_CITY_ALERT, show_alert=True)
+        return False
+    return True
 
 
 def _onoff(enabled: bool) -> str:
@@ -49,7 +70,7 @@ def _onoff(enabled: bool) -> str:
 
 
 async def _onsitereg_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
-    enabled = await get_setting_typed_for_city(_KEY, code) == "on"
+    enabled = await onsite_enabled(code)
     label = await city_label(code) if code else None
     lines = [
         "📝 <b>Регистрация на месте</b>" + (f" — {html.escape(label)}" if label else ""),
@@ -82,11 +103,9 @@ async def onsitereg_cfg_screen(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("onsitereg_toggle:"))
 async def onsitereg_toggle_go(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
-    if not await _city_allowed(callback.from_user.id, code):
-        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+    if not await _city_gate(callback, code):
         return
-    current = await get_setting_typed_for_city(_KEY, code)
-    new_val = "off" if current == "on" else "on"
+    new_val = "off" if await onsite_enabled(code) else "on"
     if code and await cities_module_on():
         key = per_city_key(_KEY, code)
         if key is None:
@@ -103,8 +122,7 @@ async def onsitereg_toggle_go(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("onsitereg_qr:"))
 async def onsitereg_qr_send(callback: types.CallbackQuery, bot: Bot):
     code = _decode_city(callback.data.split(":", 1)[1])
-    if not await _city_allowed(callback.from_user.id, code):
-        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+    if not await _city_gate(callback, code):
         return
     try:
         me = await bot.me()
