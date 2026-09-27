@@ -71,10 +71,20 @@ def _settings(conn, keys) -> dict:
     }
 
 
+# Роль, которая командой в чате НЕ считается: волонтёр форума держит только право чек-ина,
+# её выдают по ссылке-приглашению и нередко делегатам.
+_NOT_TEAM_ROLES = ("volunteer",)
+
+
 def team_ids(conn, chat_id: int, admin_ids) -> set:
-    """Команда = сотрудники бота (staff) + суперадмины (ADMIN_IDS) + админы этой группы."""
+    """Команда = суперадмины (ADMIN_IDS) + сотрудники бота с любой ролью, кроме волонтёра
+    форума + админы этой группы с правами модерации (бот хранит в chat_admins только их:
+    владелец или право удалять сообщения / ограничивать участников)."""
     team = {int(x) for x in (admin_ids or ())}
-    team.update(row[0] for row in _rows(conn, "SELECT DISTINCT telegram_id FROM staff"))
+    marks = ",".join("?" for _ in _NOT_TEAM_ROLES)
+    team.update(row[0] for row in _rows(
+        conn, f"SELECT DISTINCT telegram_id FROM staff WHERE role NOT IN ({marks})", _NOT_TEAM_ROLES,
+    ))
     team.update(
         row[0] for row in _rows(
             conn, "SELECT telegram_id FROM chat_admins WHERE chat_id = ?", (chat_id,),
