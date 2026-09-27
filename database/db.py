@@ -1759,6 +1759,22 @@ async def init_db():
                 PRIMARY KEY (chat_id, telegram_id)
             )
         ''')
+        # Отложенное удаление служебных уведомлений (services/chat_cleanup.py): очередь в БД,
+        # которую разбирает одна интервальная джоба, — вместо date-джобы на каждое сообщение
+        # (массовое вступление по ссылке писало сотни строк в jobstore синхронно).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_cleanup_queue (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                code TEXT NOT NULL,
+                due_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (chat_id, message_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_cleanup_queue_due ON chat_cleanup_queue(due_at)"
+        )
 
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
@@ -5674,6 +5690,42 @@ async def replace_chat_admins(chat_id: int, telegram_ids) -> None:
                 "INSERT OR IGNORE INTO chat_admins (chat_id, telegram_id, synced_at) VALUES (?, ?, ?)",
                 (chat_id, tid, now),
             )
+        await db.commit()
+
+
+async def enqueue_chat_cleanup(chat_id: int, message_id: int, code: str, due_at: str) -> None:
+    """Служебное уведомление в очередь отложенного удаления (повтор того же id — не дубль)."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO chat_cleanup_queue (chat_id, message_id, code, due_at, "
+            "created_at) VALUES (?, ?, ?, ?, ?)",
+            (chat_id, message_id, code, due_at, now),
+        )
+        await db.commit()
+
+
+async def due_chat_cleanup(now_ts: str) -> list[dict]:
+    """Уведомления, чей срок удаления наступил: `{chat_id, message_id, code, created_at}`."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT chat_id, message_id, code, created_at FROM chat_cleanup_queue "
+            "WHERE due_at <= ? ORDER BY due_at, chat_id, message_id",
+            (now_ts,),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def drop_chat_cleanup(chat_id: int, message_ids) -> None:
+    ids = list(message_ids)
+    if not ids:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "DELETE FROM chat_cleanup_queue WHERE chat_id = ? AND message_id = ?",
+            [(chat_id, mid) for mid in ids],
+        )
         await db.commit()
 
 
@@ -9679,6 +9731,9 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     # Квик 260927: chat_bot_state.chat_id — группа делегатов, состояние САМОГО бота в ней (статус
     # и право удалять), не след делегата.
     "chat_bot_state",
+    # chat_cleanup_queue.chat_id — та же группа делегатов: очередь служебных уведомлений на
+    # удаление (id сообщения и тип), без автора.
+    "chat_cleanup_queue",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,

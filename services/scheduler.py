@@ -337,6 +337,9 @@ async def init_scheduler(bot):
         chat_history_prune_job, "chat_history_prune", timedelta(hours=24),
         first_run_delay=_BOOT_CATCHUP,
     )
+    # Отложенное удаление служебных уведомлений: одна джоба разбирает очередь в БД
+    # (chat_cleanup_queue) — вместо date-джобы на каждое уведомление.
+    _add_interval_job(chat_cleanup_drain_job, "chat_cleanup_drain", CHAT_CLEANUP_DRAIN_INTERVAL)
 
     # Квик 260916: «📊 Итоги дня» — ОДНА cron-джоба на весь бот, время из реестра
     # (daily_digest_time, ЧЧ:ММ МСК). Регистрируется на каждом старте с replace_existing, как
@@ -1471,6 +1474,20 @@ async def chat_membership_refresh_job():
         await refresh_all_chats(_bot)
     except Exception as e:
         logger.error(f"chat_membership_refresh_job failed: {e}")
+
+
+CHAT_CLEANUP_DRAIN_INTERVAL = timedelta(seconds=15)
+
+
+async def chat_cleanup_drain_job():
+    """Разбор очереди отложенного удаления служебных уведомлений (services/chat_cleanup.py):
+    галочка типа, привязка чата и право удалять перепроверяются там же, перед удалением."""
+    try:
+        from services.chat_cleanup import drain_queue
+
+        await drain_queue(_bot)
+    except Exception as e:
+        logger.error(f"chat_cleanup_drain_job failed: {e}")
 
 
 async def chat_history_prune_job():
