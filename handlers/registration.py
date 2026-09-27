@@ -1729,6 +1729,11 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # welcome -> CITY -> track fork -> start), so re-deriving it a second time inside
     # _resolve_track would risk the two resolutions disagreeing.
     saved_city = event_city or existing_data.get("event_city")
+    if not saved_city:  # квик 27.09: обходные входы («Заново», старые кнопки) не стартуют без города
+        from handlers.reg_city_gate import form_city_or_ask
+        _go, saved_city = await form_city_or_ask(message, state, referrer_id=referrer_id, source_tag=source_tag, participant_type=participant_type)
+        if not _go:
+            return
     # Phase 5 (D-02): resolve the effective track BEFORE the mark_reg_started write — a fresh
     # deep-link arg wins; otherwise inherit whatever was already recorded in this FSM session
     # (mirrors saved_referrer_id / saved_source_tag one line below).

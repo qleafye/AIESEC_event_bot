@@ -107,6 +107,22 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
         if not can_edit:
             await reg_i18n.say(tap_message, closed_text, reply_markup=await get_main_menu_kb(telegram_id))
             return
+    if not draft.get("event_city"):
+        # Квик 27.09: черновик без города (след старого обхода) продолжается только с городом —
+        # известным (`services.known_city`) или спрошенным; `city_pick` по маркеру
+        # `_resume_after_city` вернётся сюда с тем же черновиком, ответы не теряются.
+        from handlers.reg_city_gate import form_city_or_ask
+        go, city = await form_city_or_ask(tap_message, state, resume=True)
+        if not go:
+            return
+        if city:
+            draft = {**draft, "event_city": city}
+            try:
+                draft["version"] = await upsert_reg_draft(
+                    telegram_id, kind=draft.get("kind") or "new", event_city=city, source="bot",
+                )
+            except Exception as e:
+                logger.error(f"resume_from_draft: city persist failed for {telegram_id}: {e}")
     await state.clear()
     fsm_patch = dict(draft.get("answers") or {})
     if draft.get("participant_type"):
@@ -241,4 +257,8 @@ async def reg_resume_restart_yes(callback: types.CallbackQuery, state: FSMContex
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     # «Заново» стирает ответы, но не то, кто пригласил: реферер лежит в meta удалённого черновика.
     referrer_id = ((draft or {}).get("meta") or {}).get("referrer_id")
-    await _start_registration_flow(tap_message, state, referrer_id=referrer_id)
+    # Квик 27.09: и не город — черновик уже удалён, а FSM после перезапуска бота пуст, так
+    # что без явной передачи анкета стартовала без города (прод: заявки с event_city NULL).
+    await _start_registration_flow(
+        tap_message, state, referrer_id=referrer_id, event_city=(draft or {}).get("event_city"),
+    )
