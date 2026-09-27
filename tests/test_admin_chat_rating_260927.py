@@ -244,3 +244,26 @@ def test_capabilities_are_settings():
     assert required_capability(callback_data="chrate:mode:spb:rules") == "settings"
     assert required_capability(callback_data="chrate:task:spb:12") == "settings"
     assert required_capability(raw_state="ChatRatingEdit:waiting_for_value") == "settings"
+
+
+def test_typed_value_reaches_handler_through_real_dispatcher(tmp_path):
+    """Ввод числа в состоянии ChatRatingEdit не перехватывается ни одним хендлером, стоящим
+    раньше в admin.router (наш — последним message-хендлером роутера)."""
+    from aiogram import Bot
+    from aiogram.dispatcher.event.bases import UNHANDLED
+
+    import tests.test_refac_snapshot_260816 as snap
+    from handlers import admin as admin_mod
+
+    snap._roles_ready(tmp_path)
+    dp = snap._full_dispatcher()
+    bot = Bot(token="123456:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    try:
+        fsm = dp.fsm.resolve_context(bot, chat_id=snap.ADMIN_ID, user_id=snap.ADMIN_ID)
+        _run(fsm.set_state(ChatRatingEdit.waiting_for_value))
+        with snap._spied(admin_mod, "message", "chrate_value") as calls:
+            result = _run(dp.feed_update(bot, snap._make_message_update(1, "12,5", snap.ADMIN_ID)))
+            assert result is not UNHANDLED
+            assert len(calls) == 1
+    finally:
+        _run(bot.session.close())
