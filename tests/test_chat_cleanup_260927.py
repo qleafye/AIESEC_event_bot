@@ -329,26 +329,32 @@ def test_bot_membership_records_delete_right(tmp_path):
         assert (state["bot_status"], state["can_delete"]) == (status, flag), status
 
 
-def test_refresh_bot_state_reads_own_member_and_is_fail_soft(tmp_path):
+def _own_admin(can_delete):
+    return SimpleNamespace(status="administrator", can_delete_messages=can_delete,
+                           user=SimpleNamespace(id=BOT_ID, is_bot=True))
+
+
+def test_refresh_reads_own_admin_entry_and_is_fail_soft(tmp_path):
+    # План 04 свёл перечитывание прав бота к одному вызову getChatAdministrators
+    # (chat_tracking.refresh_chat_admins) — тот же ответ даёт и админов группы.
     _ready(tmp_path)
 
     class _B:
         id = BOT_ID
 
-        async def get_chat_member(self, chat_id, user_id):
-            assert user_id == BOT_ID
-            return SimpleNamespace(status="administrator", can_delete_messages=True)
+        async def get_chat_administrators(self, chat_id):
+            return [_own_admin(True)]
 
-    _run(chat_tracking.refresh_bot_state(_B(), CHAT))
+    _run(chat_tracking.refresh_chat_admins(_B(), CHAT))
     assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 1
 
     class _Broken:
         id = BOT_ID
 
-        async def get_chat_member(self, chat_id, user_id):
+        async def get_chat_administrators(self, chat_id):
             raise RuntimeError("network")
 
-    _run(chat_tracking.refresh_bot_state(_Broken(), CHAT))  # не бросает
+    _run(chat_tracking.refresh_chat_admins(_Broken(), CHAT))  # не бросает
     assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 1
 
 
@@ -359,8 +365,8 @@ def test_refresh_all_chats_refreshes_bot_state(tmp_path):
     class _B:
         id = BOT_ID
 
-        async def get_chat_member(self, chat_id, user_id):
-            return SimpleNamespace(status="administrator", can_delete_messages=False)
+        async def get_chat_administrators(self, chat_id):
+            return [_own_admin(False)]
 
     _run(chat_tracking.refresh_all_chats(_B()))
     assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 0
