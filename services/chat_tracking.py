@@ -264,9 +264,21 @@ def can_delete_from(member) -> bool:
     return False
 
 
+def moderates(member) -> bool:
+    """Админ группы с реальными правами модерации: владелец или право удалять сообщения /
+    ограничивать участников. Админ «ради подписи» (кастомный титул без прав) — не команда."""
+    status = getattr(member, "status", None)
+    if status == "creator":
+        return True
+    if status != "administrator":
+        return False
+    return bool(getattr(member, "can_delete_messages", False)
+                or getattr(member, "can_restrict_members", False))
+
+
 async def refresh_chat_admins(bot, chat_id: int) -> None:
-    """Квик 260927: один вызов getChatAdministrators — и админы группы (команда, которую
-    дашборд держит вне рейтинга), и состояние САМОГО бота (`chat_bot_state`: статус и право
+    """Квик 260927: один вызов getChatAdministrators — и админы группы с правами модерации
+    (`moderates`; команда, которую дашборд держит вне рейтинга), и состояние САМОГО бота (`chat_bot_state`: статус и право
     «Удаление сообщений») на случай, если апдейт my_chat_member потерялся. Бота нет среди
     админов -> он обычный участник, удалять не может. Fail-soft: сбой — прежние данные
     остаются."""
@@ -275,7 +287,7 @@ async def refresh_chat_admins(bot, chat_id: int) -> None:
     except Exception as e:
         logger.info("chat_tracking.refresh_chat_admins: чат id=%s: %s: %s", chat_id, type(e).__name__, e)
         return
-    people = [a.user.id for a in admins if not a.user.is_bot]
+    people = [a.user.id for a in admins if not a.user.is_bot and moderates(a)]
     await replace_chat_admins(chat_id, people)
     own = next((a for a in admins if a.user.id == getattr(bot, "id", None)), None)
     if own is None:

@@ -420,7 +420,7 @@ def test_chat_route_shows_weighted_rating_with_periods_and_explanation(tmp_path)
     assert "Как считается" in html
     assert "Формула балла" in html
     assert "Регулярность" in html
-    assert "Команда (сотрудники бота, суперадмины и админы группы) в рейтинг не входит" in html
+    assert "Команда (сотрудники бота, кроме волонтёров форума; суперадмины; админы группы с правом удалять сообщения или ограничивать участников) в рейтинг не входит" in html
     assert "Бот в этом чате не администратор" in html
     active = html.split('aria-current="page"')[1].split(">")[0]
     assert 'href="/chat?season=YL+26%2F2&amp;period=7d"' in active
