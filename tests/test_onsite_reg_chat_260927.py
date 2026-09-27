@@ -345,15 +345,15 @@ def test_walkin_final_step_lost_race_answers_existing(tmp_path):
     assert _run(state.get_state()) is None
 
 
-def test_start_walkin_intercepts_before_language_question(tmp_path, monkeypatch):
-    """D-41: перехват стоит до offer_language/предотбора — человек у стойки не должен упереться
-    в экран языка или отсев по таблице."""
+def test_start_walkin_goes_after_language_question(tmp_path, monkeypatch):
+    """D-41, ревью 28.09: вопрос о языке — как у обычного /start (многоязычное событие должно
+    дать иностранцу английскую анкету); сразу после него — короткая анкета, до предотбора."""
     _ready(tmp_path)
     called = []
 
     async def _fake_offer(*a, **k):
         called.append(1)
-        return True
+        return False  # язык уже известен / вопроса нет
 
     import handlers.reg_lang as reg_lang
     monkeypatch.setattr(reg_lang, "offer_language", _fake_offer)
@@ -361,8 +361,24 @@ def test_start_walkin_intercepts_before_language_question(tmp_path, monkeypatch)
         _enable("spb")
         state = _fresh_state(WALKER_ID)
         msg = _start(WALKER_ID, "walkin_spb", state)
-    assert not called
+    assert called
     assert msg.answers[0][0] == _setting("onsite_reg_intro_text")
+
+
+def test_start_walkin_waits_for_language_choice(tmp_path, monkeypatch):
+    _ready(tmp_path)
+
+    async def _fake_offer(*a, **k):
+        return True  # показан экран выбора языка
+
+    import handlers.reg_lang as reg_lang
+    monkeypatch.setattr(reg_lang, "offer_language", _fake_offer)
+    with _Cities():
+        _enable("spb")
+        state = _fresh_state(WALKER_ID)
+        msg = _start(WALKER_ID, "walkin_spb", state)
+    assert msg.answers == []
+    assert _run(state.get_state()) is None
 
 
 def test_onsite_router_is_included_before_registration_in_main():

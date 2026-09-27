@@ -4202,11 +4202,14 @@ async def create_onsite_user(telegram_id: int, username: str | None, full_name: 
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO users (telegram_id, username, full_name, email, phone, university, "
-            "event_city, season, status, onsite_kind, participant_type, source, registration_date) "
-            "VALUES (?, ?, ?, '-', ?, ?, ?, ?, 'pending', 'walkin', 'full', 'На месте', ?) "
+            "event_city, season, status, onsite_kind, participant_type, source, registration_date, "
+            "lang) "
+            "VALUES (?, ?, ?, '-', ?, ?, ?, ?, 'pending', 'walkin', 'full', 'На месте', ?, "
+            # язык, выбранный до анкеты (живёт в reg_started, как у обычной подачи)
+            "(SELECT lang FROM reg_started WHERE telegram_id = ?)) "
             "ON CONFLICT(telegram_id) DO NOTHING",
             (telegram_id, store_username(username), full_name, phone, university,
-             event_city, season, now),
+             event_city, season, now, telegram_id),
         )
         await db.commit()
         return cursor.rowcount == 1

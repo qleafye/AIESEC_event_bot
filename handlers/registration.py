@@ -2038,11 +2038,6 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     vol_code = _extract_volunteer_invite_code(args)
     if vol_code is not None and await _handle_volunteer_invite(message, bot, vol_code):
         return
-    # D-41: `?start=walkin_<город>` — короткая анкета на месте, до языка/funnel/предотбора.
-    from handlers.onsite_reg import try_walkin_start
-    if await try_walkin_start(message, state, args):
-        return
-
     dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
     # Квик 260905-qqg: поднято сюда, чтобы запись `start` уже несла метку кампании; функция
     # чистая — ни await, ни БД, поднять её раньше безопасно.
@@ -2057,6 +2052,11 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
     from handlers.reg_lang import offer_language
     if await offer_language(message, state, args):
+        return
+    # D-41: `?start=walkin_<город>` — короткая анкета на месте: после вопроса о языке (как у
+    # обычного /start), до funnel-лога и предотбора. Выбор языка реинвокнет /start с теми же args.
+    from handlers.onsite_reg import try_walkin_start
+    if await try_walkin_start(message, state, args):
         return
 
     # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate

@@ -645,3 +645,86 @@ def test_move_confirm_text_in_registry_and_scanner():
     src = SCANNER_JS.read_text(encoding="utf-8")
     assert "onsite_move_confirm_text" in src
     assert "onsite_move_to" in _js_function(src, "approveOnsite")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Язык короткой анкеты: как у обычного /start
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _chat_ready(tmp_path):
+    from tests.test_onsite_reg_chat_260927 import _ready as chat_ready
+    chat_ready(tmp_path)
+
+
+class _EnUser:
+    def __init__(self, uid):
+        self.id = uid
+        self.username = "guest"
+        self.full_name = "Guest"
+        self.language_code = "en"
+
+
+def test_walkin_asks_language_when_event_is_multilingual_then_speaks_english(tmp_path):
+    from handlers import registration as reg
+    from services import i18n_form_manual
+    from tests.test_onsite_reg_chat_260927 import _Bot, _Cmd, _Msg
+    from tests.test_roles_phase8 import _fresh_state
+
+    _chat_ready(tmp_path)
+    _run(i18n_form_manual.seed("en"))
+    _run(bot_db.set_setting("delegate_lang_enabled", "on"))
+    _run(bot_db.set_setting("delegate_lang_ask_on_start", "on"))
+    _run(bot_db.set_setting("onsite_reg_enabled", "on"))
+    uid = 953601
+    state = _fresh_state(uid)
+    msg = _Msg(uid)
+    msg.from_user = _EnUser(uid)
+    _run(reg.cmd_start(msg, state, bot=_Bot(), command=_Cmd("walkin")))
+    assert any("Choose the form language" in t for t in msg.texts())
+    assert _run(state.get_state()) is None  # анкета ещё не начата
+    assert _run(state.get_data()).get("_deeplink_resume_args") == "walkin"
+
+    # Тап «English» (handlers/reg_lang.py::lang_pick_choose): язык записан, /start повторён
+    # с теми же аргументами ссылки.
+    _run(bot_db.set_user_lang(uid, "en"))
+    again = _Msg(uid)
+    again.from_user = _EnUser(uid)
+    _run(reg.cmd_start(again, state, bot=_Bot(), command=_Cmd("walkin")))
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    intro_en = FORM_DEFAULT_EN[SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"]]
+    assert any(intro_en in t for t in again.texts()), again.texts()
+
+
+def test_walkin_single_language_event_goes_straight_to_form(tmp_path):
+    from handlers import registration as reg
+    from tests.test_onsite_reg_chat_260927 import _Bot, _Cmd, _Msg
+    from tests.test_roles_phase8 import _fresh_state
+
+    _chat_ready(tmp_path)
+    _run(bot_db.set_setting("onsite_reg_enabled", "on"))
+    uid = 953602
+    state = _fresh_state(uid)
+    msg = _Msg(uid)
+    msg.from_user = _EnUser(uid)
+    _run(reg.cmd_start(msg, state, bot=_Bot(), command=_Cmd("walkin")))
+    assert any(SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"] in t for t in msg.texts())
+
+
+def test_approval_message_uses_person_language(tmp_path, monkeypatch):
+    from services import i18n_form_manual
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    _seed_ready(tmp_path)
+    _run(i18n_form_manual.seed("en"))
+    _onsite_on()
+    _run(bot_db.set_setting("delegate_lang_enabled", "on"))
+    _run(bot_db.set_setting("delegate_lang_ask_on_start", "on"))
+    _run(bot_db.set_user_lang(953603, "en"))  # выбрал до анкеты — лежит в reg_started
+    _walkin(953603, city="spb")
+    assert _row(953603)["lang"] == "en"  # перенесено в users при создании строки
+    _door(953603)
+    alerts = []
+    _patch_tail(monkeypatch, alerts)
+    bot = _fake_bot()
+    _run(onsite_reg.after_onsite_approved(bot, 953603))
+    sent = bot.send_message.call_args.args[1]
+    assert sent == FORM_DEFAULT_EN[SETTINGS_SCHEMA["onsite_reg_approved_text"]["default"]]
