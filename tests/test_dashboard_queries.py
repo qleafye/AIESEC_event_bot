@@ -201,7 +201,8 @@ def test_kpi_row_on_empty_db_returns_zeros_and_none(tmp_path):
         "processing_avg_minutes": None, "processing_avg_label": "—",
         "game_review_avg_minutes": None, "game_review_avg_label": "—",
         "question_answer_avg_minutes": None, "question_answer_avg_label": "—",
-        "pending": 0, "pending_oldest_minutes": None, "pending_oldest_label": "—",
+        "pending": 0, "pending_walkin": 0,
+        "pending_oldest_minutes": None, "pending_oldest_label": "—",
     }
 
 

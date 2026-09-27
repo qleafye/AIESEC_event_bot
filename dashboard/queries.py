@@ -313,6 +313,20 @@ def _avg_game_review_minutes(conn, parts: list[str], params: tuple) -> float | N
     return round(value, 1) if value is not None else None
 
 
+def _not_walkin_sql(conn) -> str | None:
+    """D-41: walk-in без решения (короткая анкета у стойки) — не очередь менеджера. Колонку
+    читаем через PRAGMA: дашборд, поднятый раньше бота, не падает на старой схеме."""
+    if any(r["name"] == "onsite_kind" for r in conn.execute("PRAGMA table_info(users)")):
+        return "COALESCE(onsite_kind, '') != 'walkin'"
+    return None
+
+
+def _pending_parts(conn, parts: list[str]) -> list[str]:
+    """`status = ?` («pending») + «не walk-in» — «На модерации» = очередь менеджера."""
+    not_walkin = _not_walkin_sql(conn)
+    return parts + ["status = ?"] + ([not_walkin] if not_walkin else [])
+
+
 def kpi_row(conn, scope: Scope) -> dict:
     parts, params = _scope_sql(conn, scope)
 
@@ -391,13 +405,17 @@ def kpi_row(conn, scope: Scope) -> dict:
     # та же причина, что у `questions_block`/`game_block`: смешанные форматы дат в
     # `registration_date` сравнивать побайтово нельзя.
     pending = _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(_pending_parts(conn, parts))}",
+        params + ("pending",),
+    ) or 0
+    all_pending = _scalar(
         conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
         params + ("pending",),
     ) or 0
     pending_oldest_raw = _scalar(
         conn,
         "SELECT registration_date FROM users"
-        f"{_where(parts + ['status = ?'])} ORDER BY julianday(registration_date) ASC LIMIT 1",
+        f"{_where(_pending_parts(conn, parts))} ORDER BY julianday(registration_date) ASC LIMIT 1",
         params + ("pending",),
     )
     pending_oldest_minutes = None
@@ -431,6 +449,8 @@ def kpi_row(conn, scope: Scope) -> dict:
         "question_answer_avg_minutes": question_answer,
         "question_answer_avg_label": format_processing_time(question_answer),
         "pending": pending,
+        # D-41: короткая анкета у стойки без решения — отдельной строкой «ждут на стойке».
+        "pending_walkin": all_pending - pending,
         "pending_oldest_minutes": pending_oldest_minutes,
         "pending_oldest_label": format_processing_time(pending_oldest_minutes),
     }
@@ -482,6 +502,10 @@ def status_totals(conn, scope: Scope) -> dict:
     приёмке, а разная семантика двух функций."""
     parts, params = _scope_sql(conn, scope)
     totals = {"pending": 0, "approved": 0, "rejected": 0}
+    not_walkin = _not_walkin_sql(conn)
+    if not_walkin:
+        # D-41: «pending» = очередь менеджера, walk-in без решения ждут у стойки.
+        parts = parts + [f"(status != 'pending' OR {not_walkin})"]
     rows = conn.execute(
         f"SELECT status, COUNT(*) AS cnt FROM users{_where(parts)} GROUP BY status", params
     ).fetchall()
@@ -507,7 +531,7 @@ def funnel(conn, scope: Scope) -> list[tuple[str, int]]:
         ) or 0
 
     def _status_count(status: str) -> int:
-        status_parts = parts + ["status = ?"]
+        status_parts = _pending_parts(conn, parts) if status == "pending" else parts + ["status = ?"]
         status_params = params + (status,)
         # Отсечка по началу трекинга событий (см. funnel_tracking_since) -- только когда
         # reg_events не пуста. Заявки с пустым registration_date под отсечку НЕ проходят:
@@ -814,7 +838,7 @@ def city_comparison(conn, scope: Scope) -> list[dict]:
         params = tuple(season_params) + tuple(city_params)
         total = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts)}", params) or 0
         pending = _scalar(
-            conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}",
+            conn, f"SELECT COUNT(*) FROM users{_where(_pending_parts(conn, parts))}",
             params + ("pending",),
         ) or 0
         approved = _scalar(
