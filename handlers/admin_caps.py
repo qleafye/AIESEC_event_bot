@@ -43,6 +43,10 @@ ALL_CAPABILITIES = [
     "settings",
     "stats",
     "checkin",
+    # D-41 (ревью 28.09): одобрять человека у стойки — отдельно от отметки входа. Волонтёру
+    # у двери зала (D-42) хватает `checkin`; решение о пропуске неодобренного — у DXP/DXR и
+    # волонтёров регистрации (роль reg_volunteer ниже) и у держателей moderate_reg.
+    "checkin_approve",
 ]
 
 CAP_LABELS = {
@@ -53,6 +57,7 @@ CAP_LABELS = {
     "settings": "⚙️ Настройки",
     "stats": "📊 Статистика",
     "checkin": "✅ Чек-ин (с Phase 12)",
+    "checkin_approve": "📝 Одобрение на месте",
 }
 
 # D-07: roles fixed in code today (admin / reg_manager / game_manager), but the SHAPE is
@@ -83,6 +88,12 @@ ROLES = {
     "volunteer": {
         "label": "🎗 Волонтёр форума",
         "default_caps": ["checkin"],
+    },
+    # D-41 (ревью 28.09): волонтёр стойки регистрации — отметка входа И одобрение на месте.
+    # Выдаётся ссылкой-приглашением с опцией «с одобрением на месте» или вручную.
+    "reg_volunteer": {
+        "label": "🎗 Волонтёр регистрации",
+        "default_caps": ["checkin", "checkin_approve"],
     },
 }
 

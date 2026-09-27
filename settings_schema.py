@@ -3171,6 +3171,18 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "roles", "label": "🎗 Роль «Волонтёр форума»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
+    "role_caps_reg_volunteer": {
+        "type": "list", "group": "roles", "label": "🎗 Права роли: Волонтёр регистрации",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 🎗 Волонтёр регистрации»."
+        ),
+        "default": ["checkin", "checkin_approve"],
+    },
+    "role_reg_volunteer_enabled": {
+        "type": "enum", "group": "roles", "label": "🎗 Роль «Волонтёр регистрации»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
 
     # ── Phase 09.1 (A): "game" group ("🎮 Геймификация") ────────────────────────────────
     # Every text the free-form submission flow shows a delegate/manager, editable without

@@ -45,6 +45,15 @@ from services.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry
 from settings_audit import set_setting_by_admin
 
 VOLUNTEER_ROLE = "volunteer"  # handlers.admin_caps.ROLES — держит ровно "checkin"
+# Ревью 28.09 (D-41): ссылка «с одобрением на месте» выдаёт роль волонтёра регистрации —
+# отметка входа И одобрение человека у стойки (checkin + checkin_approve).
+REG_VOLUNTEER_ROLE = "reg_volunteer"
+_APPROVE_FLAG = "appr"
+
+
+def invite_role(inv: dict | None) -> str:
+    """Роль, которую выдаёт ссылка: у старых ссылок колонка пустая — обычный волонтёр."""
+    return (inv or {}).get("role") or VOLUNTEER_ROLE
 
 
 def _limit_text(max_uses: int | None) -> str:
@@ -79,8 +88,10 @@ def _invite_link_html(code_token: str, bot_username: str | None) -> str:
 
 
 def _invite_line_text(inv: dict, bot_username: str | None) -> str:
+    rights = "отметка + одобрение на месте" if invite_role(inv) == REG_VOLUNTEER_ROLE else "отметка входа"
     return (
         f"• {_invite_link_html(inv['code'], bot_username)} — {_invite_status_text(inv)} · "
+        f"может: {rights} · "
         f"использовано {inv['used']} из {_limit_text(inv['max_uses'])} · "
         f"ссылка: {_expiry_suffix(inv['link_expires_at'])} · "
         f"права волонтёра: {_expiry_suffix(inv['rights_expires_at'])}"
@@ -130,6 +141,12 @@ async def _render_cfg(admin_id: int, code: str | None, bot: Bot) -> tuple[str, I
 
     buttons.append([InlineKeyboardButton(
         text="🔗 Создать ссылку", callback_data=f"volinvite_new:{_encode_city(code)}",
+    )])
+    # Одобрять у стойки может не каждый волонтёр (у дверей залов хватает отметки) — отдельная
+    # кнопка, по умолчанию ссылка даёт только отметку входа.
+    buttons.append([InlineKeyboardButton(
+        text="🔗 Ссылка + одобрение на месте",
+        callback_data=f"volinvite_new:{_encode_city(code)}:{_APPROVE_FLAG}",
     )])
 
     invites = await list_volunteer_invites(city=code)
@@ -239,13 +256,21 @@ def _link_preset_kb(city: str | None) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data.startswith("volinvite_new:"))
 async def volinvite_new_start(callback: types.CallbackQuery, state: FSMContext):
-    code = _decode_city(callback.data.split(":", 1)[1])
+    enc, _, flag = callback.data.split(":", 1)[1].partition(":")
+    code = _decode_city(enc)
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    await state.update_data(volinv_city=code)
+    with_approve = flag == _APPROVE_FLAG
+    await state.update_data(
+        volinv_city=code, volinv_role=REG_VOLUNTEER_ROLE if with_approve else VOLUNTEER_ROLE,
+    )
+    rights = (
+        "Вошедший сможет отмечать вход и одобрять людей у стойки (решение запишется на него)."
+        if with_approve else "Вошедший сможет отмечать вход, но не одобрять людей у стойки."
+    )
     await callback.message.answer(
-        "🔗 <b>Новая ссылка-приглашение</b>\n\nНа сколько ССЫЛКА остаётся рабочей?",
+        f"🔗 <b>Новая ссылка-приглашение</b>\n\n{rights}\n\nНа сколько ССЫЛКА остаётся рабочей?",
         parse_mode="HTML",
         reply_markup=_link_preset_kb(code),
     )
@@ -389,11 +414,13 @@ async def volinv_limit_pick_and_create(callback: types.CallbackQuery, state: FSM
     code = data.get("volinv_city")
     link_exp = data.get("volinv_link_exp")
     rights_exp = data.get("volinv_rights_exp")
+    role = data.get("volinv_role") or VOLUNTEER_ROLE
     await state.set_state(None)
 
     code_token = secrets.token_urlsafe(9)
     await create_volunteer_invite(
         code_token, code, callback.from_user.id, link_exp, rights_exp, _LIMIT_PRESETS[choice],
+        role=None if role == VOLUNTEER_ROLE else role,
     )
 
     bot_username = await _bot_username(bot)
@@ -515,7 +542,7 @@ async def volinv_remove_user(callback: types.CallbackQuery):
     if tid not in {u["telegram_id"] for u in await list_volunteer_invite_uses(code_token)}:
         await callback.answer("Этот человек не входил по этой ссылке", show_alert=True)
         return
-    await remove_staff(tid, VOLUNTEER_ROLE)
+    await remove_staff(tid, invite_role(await get_volunteer_invite(code_token)))
     await callback.answer("Снят", show_alert=True)
     text, kb = await _users_text_kb(code_token)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
