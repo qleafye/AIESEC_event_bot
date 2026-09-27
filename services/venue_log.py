@@ -49,6 +49,8 @@ ACTION_REISSUE_QR = "reissue_qr"
 ACTION_PASS_ONCE = "pass_once"
 ACTION_CSV_UPLOAD = "csv_upload"
 ACTION_DENIED = "denied"
+# D-41/D-39: волонтёр/DXP одобрил человека у стойки (регистрация на месте).
+ACTION_ONSITE_APPROVE = "onsite_approve"
 
 ACTION_LABELS = {
     ACTION_CHECKIN: "✅ отметил(а)",
@@ -58,6 +60,7 @@ ACTION_LABELS = {
     ACTION_PASS_ONCE: "🎫 пропустил(а) разово",
     ACTION_CSV_UPLOAD: "📤 загрузил(а) файл сканера",
     ACTION_DENIED: "⛔ не пропустил(а)",
+    ACTION_ONSITE_APPROVE: "📝 одобрил(а) на месте",
 }
 
 # Код причины отказа -> короткая подпись для строки журнала. Коды — те же, что отдают
