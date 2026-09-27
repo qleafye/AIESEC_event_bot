@@ -51,6 +51,9 @@ ACTION_CSV_UPLOAD = "csv_upload"
 ACTION_DENIED = "denied"
 # D-41/D-39: волонтёр/DXP одобрил человека у стойки (регистрация на месте).
 ACTION_ONSITE_APPROVE = "onsite_approve"
+# Ревью 28.09 (D-41): волонтёр убрал короткую анкету из «Ждут на стойке» (строка удалена;
+# в журнале — без telegram_id: удалённого человека журнал не хранит, D-39).
+ACTION_ONSITE_REMOVE = "onsite_remove"
 
 ACTION_LABELS = {
     ACTION_CHECKIN: "✅ отметил(а)",
@@ -61,6 +64,7 @@ ACTION_LABELS = {
     ACTION_CSV_UPLOAD: "📤 загрузил(а) файл сканера",
     ACTION_DENIED: "⛔ не пропустил(а)",
     ACTION_ONSITE_APPROVE: "📝 одобрил(а) на месте",
+    ACTION_ONSITE_REMOVE: "🗑 убрал(а) короткую анкету из списка ждущих",
 }
 
 # Код причины отказа -> короткая подпись для строки журнала. Коды — те же, что отдают

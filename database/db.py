@@ -4254,6 +4254,21 @@ async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str,
         return cursor.rowcount == 1
 
 
+async def claim_walkin_removal(telegram_id: int) -> bool:
+    """Первый шаг «убрать из списка ждущих» (ревью 28.09): walk-in без решения атомарно
+    переводится в `rejected` — параллельное одобрение у стойки (`approve_onsite` без
+    `override_reject`) его больше не флипнет, и `purge_user` следом не сотрёт уже одобренного.
+    True — строка была walk-in в pending и заявлена этим вызовом."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'rejected' WHERE telegram_id = ? AND status = 'pending' "
+            "AND onsite_kind = 'walkin'",
+            (telegram_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
 async def list_onsite_pending(*, city_scope=None, day: str, limit: int = 50) -> list[dict]:
     """Walk-in, ждущие у стойки: pending, `onsite_kind='walkin'`, анкета подана в день `day`
     (YYYY-MM-DD, по Москве), в скоупе города; новые сверху."""

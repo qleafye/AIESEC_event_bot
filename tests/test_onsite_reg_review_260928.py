@@ -887,3 +887,107 @@ def test_single_city_bot_uses_global_toggle(tmp_path):
     _run(bot_db.set_setting("onsite_reg_enabled", "on"))
     assert _run(onsite_reg.onsite_enabled(None)) is True
     assert _run(onsite_reg.walkin_link("yl_bot", None)) == "https://t.me/yl_bot?start=walkin"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# «Ждут на стойке»: убрать из списка, постранично и поиск; частота запусков анкеты
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _today(hhmmss="10:00:00"):
+    return f"{msk_now().strftime('%Y-%m-%d')} {hhmmss}"
+
+
+def test_remove_pending_walkin_deletes_row_and_logs_without_pii(tmp_path):
+    client = _ready(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _walkin(953901, city="spb", name="Лишний Гость")
+    resp = client.post(f"{ONSITE}/remove", json={"telegram_id": 953901}, headers=_hdr(BOUND_MANAGER_ID))
+    assert resp.status_code == 200 and resp.json()["status"] == "removed"
+    assert _row(953901) is None
+    rows = [r for r in _rows("SELECT * FROM venue_log WHERE action = ?", venue_log.ACTION_ONSITE_REMOVE)]
+    assert len(rows) == 1
+    assert rows[0]["telegram_id"] is None and rows[0]["staff_id"] == BOUND_MANAGER_ID
+    assert "Лишний" not in (rows[0]["details"] or "")
+    assert venue_log.ACTION_LABELS[venue_log.ACTION_ONSITE_REMOVE]
+
+
+def test_remove_refuses_regular_or_decided_rows(tmp_path):
+    client = _ready(tmp_path)
+    _grant_checkin_to_bound_manager()
+    _run(_insert_user(953902, status="pending", city="spb"))
+    _walkin(953903, city="spb")
+    _exec("UPDATE users SET status = 'approved' WHERE telegram_id = 953903")
+    for uid in (953902, 953903, 959999):
+        body = client.post(f"{ONSITE}/remove", json={"telegram_id": uid}, headers=_hdr(BOUND_MANAGER_ID)).json()
+        assert body["status"] == "not_removable", uid
+    assert _row(953902) is not None and _row(953903) is not None
+
+
+def test_remove_needs_approve_right_and_own_city(tmp_path):
+    client = _ready(tmp_path, enable=("spb", "msk"))
+    _set_role_caps("game_manager", "moderate_game;checkin")
+    _walkin(953904, city="spb")
+    resp = client.post(f"{ONSITE}/remove", json={"telegram_id": 953904}, headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 403
+    _grant_checkin_to_bound_manager()  # spb
+    _walkin(953905, city="msk")
+    body = client.post(f"{ONSITE}/remove", json={"telegram_id": 953905}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert body["status"] == "not_removable"
+    assert _row(953904) is not None and _row(953905) is not None
+
+
+def test_pending_list_is_paginated_with_total_and_search(tmp_path):
+    client = _ready(tmp_path)
+    _grant_checkin_to_bound_manager()
+    for i in range(25):
+        uid = 954000 + i
+        _walkin(uid, city="spb", name=f"Гость{i:02d} Иван")
+        _exec("UPDATE users SET registration_date = ? WHERE telegram_id = ?", _today(f"10:{i:02d}:00"), uid)
+    _walkin(954100, city="spb", name="Ёлкина Мария")
+    _exec("UPDATE users SET registration_date = ? WHERE telegram_id = 954100", _today("09:00:00"))
+
+    first = client.get(f"{ONSITE}/pending", headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert first["total"] == 26 and len(first["items"]) == 20 and first["next_offset"] == 20
+    second = client.get(f"{ONSITE}/pending?offset=20", headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert len(second["items"]) == 6 and second["next_offset"] is None
+    found = client.get(f"{ONSITE}/pending?q=елкина", headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert [it["telegram_id"] for it in found["items"]] == [954100] and found["total"] == 1
+
+
+def test_scanner_js_has_remove_paging_and_search():
+    src = SCANNER_JS.read_text(encoding="utf-8")
+    assert "onsite/remove" in src and "onsite_remove_confirm_text" in src
+    loader = _js_function(src, "loadOnsitePending")
+    assert "offset=" in loader and "q=" in loader
+    remove = _js_function(src, "removeWalkin")
+    assert remove.index("askConfirm(") < remove.index("onsite/remove")
+
+
+def test_remove_texts_in_registry():
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    for key in ("onsite_remove_button_text", "onsite_remove_confirm_text", "onsite_reg_rate_limited_text"):
+        assert SETTINGS_SCHEMA[key]["default"] in FORM_DEFAULT_EN, key
+    assert "{name}" in SETTINGS_SCHEMA["onsite_remove_confirm_text"]["default"]
+
+
+def test_walkin_starts_are_rate_limited_per_user(tmp_path):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Msg
+    from tests.test_roles_phase8 import _fresh_state
+    _chat_ready(tmp_path)
+    _run(bot_db.set_setting("onsite_reg_enabled", "on"))
+    onsite_handlers._start_times.clear()
+    uid = 954200
+    for _ in range(onsite_handlers._START_LIMIT):
+        msg = _Msg(uid)
+        assert _run(onsite_handlers.start_walkin(msg, _fresh_state(uid), None)) is True
+        assert SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"] in msg.texts()[0]
+    msg = _Msg(uid)
+    state = _fresh_state(uid)
+    assert _run(onsite_handlers.start_walkin(msg, state, None)) is True
+    assert msg.texts()[0] == SETTINGS_SCHEMA["onsite_reg_rate_limited_text"]["default"]
+    assert _run(state.get_state()) is None
+    other = _Msg(954201)
+    _run(onsite_handlers.start_walkin(other, _fresh_state(954201), None))
+    assert SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"] in other.texts()[0]
+    onsite_handlers._start_times.clear()
