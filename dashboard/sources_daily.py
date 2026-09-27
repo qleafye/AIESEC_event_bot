@@ -62,6 +62,9 @@ ANSWER_NOT_GIVEN = "Не указано"
 ANSWER_BY_TAG = "По метке ссылки"
 TAG_NONE = "Без метки"
 TAG_AMBASSADOR = "Личная ссылка амбассадора"
+# Регистрация на месте (D-41): и walk-in, и одобренные у стойки — отдельная корзина разбивки
+# «Ссылка, по которой пришёл», важнее метки и ссылки амбассадора.
+TAG_ONSITE = "📍 На месте"
 REST = "_rest"
 REST_LABEL = "Остальные"
 
@@ -194,6 +197,8 @@ def _answer_key(row) -> str:
 
 
 def _tag_key(row) -> str:
+    if row.get("onsite"):
+        return TAG_ONSITE
     if row["is_tag"]:
         return row["source"]
     if row["amb"]:
@@ -209,11 +214,14 @@ def _fetch(conn, scope: queries.Scope) -> list[dict]:
     parts, params = queries._scope_sql(conn, scope)
     parts = parts + ["registration_date IS NOT NULL", "TRIM(registration_date) != ''"]
     tag_expr = " AND ".join(queries._UTM_TAG_PREDICATE)
+    # Колонку заводит бот при старте; дашборд, поднятый раньше бота, читает старую схему.
+    has_onsite = any(r["name"] == "onsite_kind" for r in conn.execute("PRAGMA table_info(users)"))
+    onsite_expr = "COALESCE(onsite_kind, '')" if has_onsite else "''"
     rows = conn.execute(
         "SELECT substr(registration_date, 1, 10) AS day, source, "
         f"CASE WHEN {tag_expr} THEN 1 ELSE 0 END AS is_tag, "
         "CASE WHEN referrer_id IS NOT NULL THEN 1 ELSE 0 END AS amb, "
-        "status, participant_type, event_city FROM users"
+        f"status, participant_type, event_city, {onsite_expr} AS onsite FROM users"
         f"{queries._where(parts)}",
         params,
     ).fetchall()
@@ -230,6 +238,7 @@ def _fetch(conn, scope: queries.Scope) -> list[dict]:
             "source": row["source"],
             "is_tag": bool(row["is_tag"]),
             "amb": bool(row["amb"]),
+            "onsite": bool(row["onsite"]),
             "status": row["status"],
             "track": row["participant_type"] or "full",
             "city": row["event_city"] if row["event_city"] in known else default_city,
