@@ -385,7 +385,9 @@ def test_chat_route_shows_weighted_rating_with_periods_and_explanation(tmp_path)
             "delegate_chat_title": "Общий чат",
         },
         users=[{"telegram_id": 2, "full_name": "Секретное Имя", "username": "-",
-                "status": "approved", "event_city": None}],
+                "status": "approved", "event_city": None, "season": "YL 26/2"},
+               {"telegram_id": 1, "full_name": "Делегат", "username": "-",
+                "status": "approved", "event_city": None, "season": "YL 26/2"}],
     )
 
     async def _log():

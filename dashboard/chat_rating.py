@@ -6,7 +6,12 @@ chat_usernames, chat_admins, chat_bot_state. Формула — общий ко�
 на дашборде считаются одинаково — это держит тест паритета tests/test_chat_rating_parity_260927.py.
 
 Только чтение (соединение mode=ro), ничего не пишет и не шлёт. Подпись участника — @ник из
-Telegram, иначе ник из анкеты, иначе id; ФИО и контакты сюда не попадают (D-17).
+Telegram, иначе ник из анкеты, иначе имя из Telegram (first_name, без фамилии), иначе «без
+ника»; голый telegram_id, ФИО и контакты сюда не попадают (D-17).
+
+Кого показывать: по формуле — по умолчанию только людей с анкетой сезона страницы и города
+чата («Только с анкетой»), по правилам города — всех участников чата (СПб считает всех);
+команда не показывается никогда.
 
 Модуль не импортирует ни бота, ни services/database: образ дашборда их не содержит.
 """
@@ -168,24 +173,45 @@ def _nick(raw) -> str:
     return "" if not value or value == "-" else value
 
 
+NO_NICK = "без ника"
+
+
 def display_names(conn, ids) -> dict:
-    """@ник из Telegram -> ник из анкеты (users.username) -> id. Только ники, никогда ФИО."""
+    """@ник из Telegram -> ник из анкеты (users.username) -> имя из Telegram (first_name) ->
+    «без ника». Никогда не ФИО и никогда не голый id."""
     ids = list(dict.fromkeys(int(i) for i in ids))
-    out = {i: str(i) for i in ids}
+    out = {i: NO_NICK for i in ids}
     if not ids:
         return out
     marks = ",".join("?" for _ in ids)
+    columns = {row[1] for row in _rows(conn, "PRAGMA table_info(chat_usernames)")}
+    has_first = "first_name" in columns
+    tg_rows = _rows(
+        conn,
+        f"SELECT telegram_id, username, {'first_name' if has_first else 'NULL'} "
+        f"FROM chat_usernames WHERE telegram_id IN ({marks})",
+        ids,
+    )
+    for row in tg_rows:
+        name = str(row[2] or "").strip()
+        if name:
+            out[row[0]] = name
     for row in _rows(conn, f"SELECT telegram_id, username FROM users WHERE telegram_id IN ({marks})", ids):
         nick = _nick(row[1])
         if nick:
             out[row[0]] = f"@{nick}"
-    for row in _rows(
-        conn, f"SELECT telegram_id, username FROM chat_usernames WHERE telegram_id IN ({marks})", ids,
-    ):
+    for row in tg_rows:
         nick = _nick(row[1])
         if nick:
             out[row[0]] = f"@{nick}"
     return out
+
+
+def registered_ids(conn, city, season=None) -> set:
+    """Кто подал анкету в сезоне страницы (по умолчанию — текущем) и городе чата — фильтр
+    «Только с анкетой»."""
+    scope, params = _users_scope_sql(conn, city, season)
+    return {row[0] for row in _rows(conn, f"SELECT telegram_id FROM users WHERE {scope}", params)}
 
 
 def bot_admin(conn, chat_id: int):
@@ -207,9 +233,14 @@ def _retention_floor(raw: dict, now: datetime) -> date:
     return now.date() - timedelta(days=retention_days(raw))
 
 
-def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
+def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
+                registered_only: bool | None = None, season: str | None = None) -> dict:
     """Рейтинг по формуле активности за период. Команда режется ПОСЛЕ расчёта (тот же
-    порядок, что у тула по экспорту): её ответы и реакции делегатам уже учтены."""
+    порядок, что у тула по экспорту): её ответы и реакции делегатам уже учтены.
+    `registered_only` (по умолчанию — да): только люди с анкетой сезона `season` и города чата;
+    фильтр тоже после расчёта — ответы участников без анкеты делегатам засчитываются."""
+    if registered_only is None:
+        registered_only = True
     chat_id = chat["chat_id"]
     period = normalize_period(period)
     since, until = period_bounds(period, now.date())
@@ -226,6 +257,9 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
     team = team_ids(conn, chat_id, admin_ids)
 
     kept = [aid for aid in aggs if aid not in team and aid > 0]
+    if registered_only:
+        registered = registered_ids(conn, chat.get("city"), season)
+        kept = [aid for aid in kept if aid in registered]
     names = display_names(conn, kept)
     rows = []
     for aid in kept:
@@ -233,7 +267,7 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
         agg = aggs[aid]
         rows.append({
             "telegram_id": aid,
-            "display_name": names.get(aid, str(aid)),
+            "display_name": names.get(aid, NO_NICK),
             "score": round(sc["score"], 1),
             "volume": round(sc["volume"], 1),
             "resonance": round(sc["resonance"], 1),
@@ -258,6 +292,7 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
         "retention_days": retention_days(raw),
         "bot_admin": bot_admin(conn, chat_id),
         "team_count": len(team & aggs.keys()),
+        "registered_only": registered_only,
     }
 
 
@@ -425,7 +460,7 @@ def _chat_participants(conn, chat_id: int, records) -> set:
 
 
 def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
-                 season: str | None = None) -> dict:
+                 season: str | None = None, registered_only: bool | None = None) -> dict:
     """Таблица по правилам города за период — только расчёт для публикации итогов: коины не
     начисляются, делегатам ничего не уходит. Посты могут быть старше окна, поэтому журнал
     читается за весь срок хранения (до конца окна), а окно применяет score_city_rules."""
@@ -433,6 +468,8 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
     city = chat.get("city")
     period = normalize_period(period)
     since, until = period_bounds(period, now.date())
+    if registered_only is None:
+        registered_only = False  # СПб считает всех, кто в чате
 
     rules_raw = {
         key: value for key in chat_score.RULE_SETTING_KEYS.values()
@@ -466,12 +503,15 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
 
     participants = _chat_participants(conn, chat_id, records) - team
     kept = [pid for pid in scored if pid in participants and pid > 0]
+    if registered_only:
+        registered = registered_ids(conn, city, season)
+        kept = [pid for pid in kept if pid in registered]
     names = display_names(conn, kept)
     rows = []
     for pid in kept:
         row = dict(scored[pid])
         row["telegram_id"] = pid
-        row["display_name"] = names.get(pid, str(pid))
+        row["display_name"] = names.get(pid, NO_NICK)
         rows.append(row)
     rows.sort(key=lambda r: (-r["total"], r["display_name"]))
     rows = rows[:TOP_RULES]
@@ -488,4 +528,5 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
         "columns": columns,
         "bot_admin": bot_admin(conn, chat_id),
         "retention_days": retention_days(raw),
+        "registered_only": registered_only,
     }
