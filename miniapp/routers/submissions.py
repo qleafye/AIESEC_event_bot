@@ -187,6 +187,9 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
         "max_text": MAX_TEXT_PART,
         "too_large_text": await i18n.tr_setting("miniapp_upload_too_large_text", lang, tr_map),
         "file_rejected_text": await i18n.tr_setting("miniapp_upload_file_rejected_text", lang, tr_map),
+        # {name} подставляет фронт — имя файла известно только ему.
+        "upload_failed_text": await i18n.tr_setting("miniapp_upload_failed_text", lang, tr_map),
+        "cover_not_image_text": await i18n.tr_setting("miniapp_upload_cover_not_image_text", lang, tr_map),
         "empty_hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
     }
 
