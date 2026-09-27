@@ -25,6 +25,7 @@ from config import config
 from cities import ALL_CITIES, cities_module_on, city_scope, enabled_cities, per_city_key
 from database.db import (
     count_and_list_filtered,
+    set_chat_bot_state,
     stale_chat_member_candidates,
     upsert_chat_member,
     CHAT_PRESENT_STATUSES,
@@ -251,6 +252,27 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
             "errors": errors, "truncated": truncated}
 
 
+def can_delete_from(member) -> bool:
+    """Право «Удаление сообщений» по объекту участника (ChatMember* или его заглушке):
+    владелец — всё может, администратор — по флагу, остальные — нет."""
+    status = getattr(member, "status", None)
+    if status == "creator":
+        return True
+    if status == "administrator":
+        return bool(getattr(member, "can_delete_messages", False))
+    return False
+
+
+async def refresh_bot_state(bot, chat_id: int) -> None:
+    """Квик 260927: перечитать статус САМОГО бота в чате и право удалять сообщения
+    (`chat_bot_state`) — на случай, если апдейт my_chat_member потерялся. Fail-soft."""
+    try:
+        member = await bot.get_chat_member(chat_id, bot.id)
+        await set_chat_bot_state(chat_id, getattr(member, "status", None), can_delete_from(member))
+    except Exception as e:
+        logger.info("chat_tracking.refresh_bot_state: чат id=%s: %s: %s", chat_id, type(e).__name__, e)
+
+
 async def refresh_all_chats(bot) -> list[dict]:
     """Сверяет ВСЕ привязанные чаты. Тумблер выключен -> пустой список, ни одного вызова
     `get_chat_member` (ни у одного чата)."""
@@ -260,6 +282,7 @@ async def refresh_all_chats(bot) -> list[dict]:
     for entry in await bound_chats():
         report = await refresh_chat(bot, entry["chat_id"], entry["city"])
         reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
+        await refresh_bot_state(bot, entry["chat_id"])
     return reports
 
 
@@ -282,6 +305,7 @@ async def bind_reconcile_job(chat_id: int, city: str | None, admin_id: int) -> N
 
         bot = scheduler_module.get_bot()
         report = await refresh_chat(bot, chat_id, city)
+        await refresh_bot_state(bot, chat_id)
         text = (await get_setting_typed(CHAT_BIND_RECONCILE_DONE_KEY)).format(
             present=report["present"], absent=report["absent"], not_found=report["not_found"],
         )
