@@ -173,6 +173,7 @@ _MISC = {
     "Скопировано": "Copied",
     "На главную": "Home",
     "Файл больше 20 МБ — пришлите его через бота.": "File is larger than 20 MB — send it via the bot.",
+    "Этот файл не получилось отправить. Сделайте скриншот или сохраните как JPG — или сдайте задание в чате с ботом, прикрепив файлом.": "This file couldn't be sent. Take a screenshot or save it as JPG — or submit the task in the chat with the bot, attaching it as a file.",
     "Не удалось загрузить данные. Проверьте связь и нажмите «Повторить».": (
         "Couldn't load the data. Check your connection and tap «Retry»."
     ),

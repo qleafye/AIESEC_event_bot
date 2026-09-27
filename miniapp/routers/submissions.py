@@ -43,6 +43,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -112,9 +113,15 @@ async def _read_capped(upload) -> bytes:
     return bytes(buf)
 
 
+# Квик 27.09: `sendPhoto` — только для форматов, которые Telegram гарантированно делает фото.
+# HEIC/HEIF (камера iPhone), WebP, TIFF и прочие image/* он отвергает 400 — они сразу идут
+# документом, а не «фото с последующей ошибкой».
+PHOTO_CONTENT_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png", "image/gif"})
+
+
 def _classify_upload(content_type: str | None, size: int) -> str:
-    ct = (content_type or "").lower()
-    return "photo" if ct.startswith("image/") and size <= PHOTO_MAX_BYTES else "document"
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    return "photo" if ct in PHOTO_CONTENT_TYPES and size <= PHOTO_MAX_BYTES else "document"
 
 
 def _extract_file_id(kind: str, result: dict) -> str | None:
@@ -141,6 +148,7 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
         "max_parts": MAX_PARTS,
         "max_text": MAX_TEXT_PART,
         "too_large_text": await i18n.tr_setting("miniapp_upload_too_large_text", lang, tr_map),
+        "file_rejected_text": await i18n.tr_setting("miniapp_upload_file_rejected_text", lang, tr_map),
         "empty_hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
     }
 
@@ -209,6 +217,14 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
 
 @router.post("/app/api/uploads")
 async def upload_part(request: Request, actor: UploadActor = Depends(upload_actor)) -> dict:
+    """Часть сдачи (или обложка/ассет) уходит в чат загрузившего через Bot API.
+
+    Квик 27.09: фото — только JPEG/PNG/GIF ≤10 МБ (`PHOTO_CONTENT_TYPES`), остальное —
+    документом. Если Telegram всё же отверг фото (400), тот же файл один раз уходит
+    документом. Окончательный отказ Telegram по файлу (400) — HTTP 400 `file_rejected` с
+    текстом реестра `miniapp_upload_file_rejected_text` (делегату есть что сделать);
+    недоступность (сеть, 5xx, не-JSON) — прежний 502 `telegram_unavailable`. В лог — только
+    content_type, расширение и размер (без имени файла и содержимого)."""
     length = request.headers.get("content-length")
     if length and length.isdigit() and int(length) > MAX_UPLOAD_BYTES + MULTIPART_SLACK:
         raise _too_large()
@@ -225,6 +241,10 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     content_type = upload.content_type or "application/octet-stream"
 
     target = request.query_params.get("target")
+    logger.info(
+        "uploads: target=%s content_type=%s ext=%s size=%s",
+        target or "task", content_type, os.path.splitext(filename)[1].lower() or "—", len(content),
+    )
     if target == "resume":
         return await _upload_resume(request, actor, content, filename, content_type)
 
@@ -245,15 +265,32 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
 
     cfg = request.app.state.cfg
     try:
+        result = None
         if kind == "photo":
-            result = await telegram_api.send_photo(
-                cfg, actor.telegram_id, content, filename, content_type, caption,
-            )
-        else:
+            try:
+                result = await telegram_api.send_photo(
+                    cfg, actor.telegram_id, content, filename, content_type, caption,
+                )
+            except TelegramApiError as exc:
+                if exc.status != 400:
+                    raise
+                # Telegram отверг картинку как фото — ровно один повтор документом.
+                logger.warning(
+                    "uploads: Telegram отверг фото (content_type=%s), шлём документом", content_type,
+                )
+                kind = "document"
+        if result is None:
             result = await telegram_api.send_document(
                 cfg, actor.telegram_id, content, filename, content_type, caption,
             )
     except TelegramApiError as exc:
+        if exc.status == 400:
+            lang, tr_map = await i18n.context(actor.telegram_id)
+            lang = lang if lang in ("ru", "en") else "ru"
+            raise HTTPException(400, {
+                "reason": "file_rejected",
+                "text": await i18n.tr_setting("miniapp_upload_file_rejected_text", lang, tr_map),
+            })
         raise HTTPException(502, {"reason": "telegram_unavailable", "detail": exc.reason})
 
     file_id = _extract_file_id(kind, result)
