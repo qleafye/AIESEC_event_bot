@@ -198,16 +198,24 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
         from services.applications import record_decision
 
         reason = _OVERRIDE_REASON if overriding else _DECISION_REASON
+        details: dict = {"override_reject": True} if overriding else {}
         try:
             await record_decision(
                 tid, "approved", reason, staff_id, msk_now(), effects_already_sent=True,
             )
         except Exception:
-            logger.exception("onsite_reg: журнал решений не записан (tid=%s, staff=%s)", tid, staff_id)
+            # Не молча: ошибкой в лог, пометка в журнале площадки (кто одобрил, остаётся там и
+            # в users.onsite_by), а бот, разбирая событие onsite_approved, пишет админам
+            # (`_alert_if_journal_missing`) — процесс Mini App сам в Telegram не пишет.
+            logger.error(
+                "onsite_reg: журнал решений не записан (tid=%s, staff=%s)", tid, staff_id,
+                exc_info=True,
+            )
+            details["decision_journal"] = "failed"
         await venue_log.log_action(
             venue_log.ACTION_ONSITE_APPROVE, staff_id=staff_id, staff_name=staff_name,
             telegram_id=tid, city=resolved, point=ENTRY_POINT, source="manual",
-            details={"override_reject": True} if overriding else None,
+            details=details or None,
         )
 
     fresh = await get_user(tid) or fresh
@@ -226,6 +234,27 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     return result
 
 
+async def _alert_if_journal_missing(full: dict) -> None:
+    """Процесс бота: одобрение у стойки есть, а строки «одобрено» в журнале решений нет (сбой
+    записи в `approve_at_door`) — письмо админам тем же помощником, что у сбоев листа. Кто
+    одобрил, видно в `users.onsite_by` и журнале площадки."""
+    tid = full.get("telegram_id")
+    try:
+        last = await _db.get_last_application_decision(tid)
+        if last and last.get("decision") == "approved" and (last.get("decided_at") or "") >= (
+            full.get("onsite_at") or ""
+        ):
+            return
+        from services.sheets import _send_admin_alert
+        await _send_admin_alert(
+            f"⚠️ Одобрение на месте не попало в журнал решений: делегат {tid}, одобрил(а) "
+            f"{full.get('onsite_by')} в {full.get('onsite_at')}. Одобрение действует, но в "
+            "истории решений и статистике менеджеров его нет — проверьте журнал площадки."
+        )
+    except Exception:
+        logger.exception("onsite_reg: проверка журнала решений не прошла (tid=%s)", tid)
+
+
 async def after_onsite_approved(bot, telegram_id: int) -> None:
     """Хвост одобрения у стойки в процессе бота: строка в Google-листе (тем же маршрутом, что
     анкета: обновить, если есть, иначе дописать), статус «На месте», сообщение человеку и QR
@@ -235,6 +264,8 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
     if not full:
         logger.warning("onsite_reg: after_onsite_approved — нет пользователя %s", telegram_id)
         return
+    if _door_approved(full):
+        await _alert_if_journal_missing(full)
 
     try:
         from services.reg_finalize import write_sheet_row

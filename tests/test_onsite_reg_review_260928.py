@@ -381,3 +381,95 @@ def test_endpoint_repeat_press_keeps_single_event(tmp_path):
     for _ in range(3):
         client.post(f"{ONSITE}/approve", json={"telegram_id": uid}, headers=_hdr(BOUND_MANAGER_ID))
     assert len(_onsite_events(uid)) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Журнал решений — раньше начисления амбассадору; сбой журнала не молчит
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_record_decision_writes_journal_even_if_referral_credit_fails(tmp_path, monkeypatch):
+    from datetime import datetime
+    from services import applications, referrals
+    _seed_ready(tmp_path)
+    _run(_insert_user(953301, status="approved", city="spb"))
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("referrals down")
+
+    monkeypatch.setattr(referrals, "credit_for_approved", _boom)
+    _run(applications.record_decision(
+        953301, "approved", "Одобрен(а) на месте", STAFF_ID, datetime(2026, 10, 3, 10, 0),
+        effects_already_sent=True,
+    ))
+    assert [d["decision"] for d in _decisions(953301)] == ["approved"]
+
+
+def test_journal_failure_at_door_is_marked_in_venue_log_and_logged(tmp_path, monkeypatch, caplog):
+    import logging
+    from services import applications
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953302, status="pending", city="spb"))
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("journal down")
+
+    monkeypatch.setattr(applications, "record_decision", _boom)
+    with caplog.at_level(logging.ERROR, logger="services.onsite_reg"):
+        res = _door(953302)
+    assert res["status"] == "new"
+    assert any(r.levelno >= logging.ERROR and "журнал решений" in r.getMessage() for r in caplog.records)
+    [row] = [v for v in _venue(953302) if v["action"] == venue_log.ACTION_ONSITE_APPROVE]
+    assert '"decision_journal": "failed"' in row["details"]
+
+
+def _patch_tail(monkeypatch, alerts):
+    from services import reg_finalize, sheets
+
+    async def _noop(*_a, **_kw):
+        return None
+
+    async def _alert(text):
+        alerts.append(text)
+
+    monkeypatch.setattr(reg_finalize, "write_sheet_row", _noop)
+    monkeypatch.setattr(sheets, "update_status_in_sheet", _noop)
+    monkeypatch.setattr(sheets, "_send_admin_alert", _alert)
+
+
+def _fake_bot():
+    from unittest.mock import AsyncMock
+    bot = AsyncMock()
+    bot.send_message = AsyncMock()
+    bot.send_photo = AsyncMock()
+    return bot
+
+
+def test_bot_tail_alerts_admins_when_journal_row_missing(tmp_path, monkeypatch):
+    from services import applications
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953303, full_name="Петрова Анна", status="pending", city="spb"))
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("journal down")
+
+    monkeypatch.setattr(applications, "record_decision", _boom)
+    _door(953303)
+    monkeypatch.undo()
+    alerts = []
+    _patch_tail(monkeypatch, alerts)
+    _run(onsite_reg.after_onsite_approved(_fake_bot(), 953303))
+    assert len(alerts) == 1
+    assert "953303" in alerts[0] and "журнал" in alerts[0]
+
+
+def test_bot_tail_no_alert_when_journal_row_present(tmp_path, monkeypatch):
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(953304, status="pending", city="spb"))
+    _door(953304)
+    alerts = []
+    _patch_tail(monkeypatch, alerts)
+    _run(onsite_reg.after_onsite_approved(_fake_bot(), 953304))
+    assert alerts == []
