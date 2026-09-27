@@ -227,3 +227,185 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
         "bot_admin": bot_admin(conn, chat_id),
         "team_count": len(team & aggs.keys()),
     }
+
+
+# ---------------------------------------------------------------------------
+# Режим «По правилам города» (пресет СПб «коины»)
+# ---------------------------------------------------------------------------
+
+_PER_CITY_SEP = "__city__"
+_ALL_CITIES = "*"
+_CHAT_PRESENT_STATUSES = ("creator", "administrator", "member")
+TOP_RULES = 100
+
+# Колонки таблицы по правилам: ключ счётчика, поле баллов (None — только счётчик), подпись и
+# сумма правила, от которой зависит видимость колонки.
+_RULE_COLUMNS = (
+    ("comments", "comment_points", "Комментарии", ("comment_points", "valuable_points")),
+    ("valuable", None, "Ценные", ("valuable_points",)),
+    ("referrals", "referral_points", "Друзья", ("referral_points",)),
+    ("social", "social_points", "Соцсети", ("social_points",)),
+    ("checkins", "checkin_points", "Очно", ("checkin_points",)),
+)
+
+
+def _city_setting(conn, key: str, city) -> str | None:
+    """Копия лестницы cities.get_setting_for_city только на чтение: значение города (если
+    непустое и не «*»), иначе общее, иначе None (дефолт берёт вызывающий). Дашборд не
+    импортирует cities.py — образ его не содержит."""
+    keys = [key]
+    if city and city != _ALL_CITIES:
+        keys.insert(0, f"{key}{_PER_CITY_SEP}{city}")
+    values = _settings(conn, keys)
+    for k in keys:
+        raw = values.get(k)
+        if raw is not None and str(raw).strip() and str(raw).strip() != _ALL_CITIES:
+            return str(raw)
+    return None
+
+
+def chat_mode(conn, chat: dict) -> str:
+    """«formula» | «rules» для города чата; незнакомое значение — формула (дефолт)."""
+    raw = (_city_setting(conn, chat_score.MODE_KEY, chat.get("city")) or "").strip()
+    return raw if raw in chat_score.MODES else chat_score.MODES[0]
+
+
+def _social_task_ids(raw) -> set:
+    """Список id заданий по одному на строку; «0» — маркер «у города пусто»."""
+    out = set()
+    for piece in str(raw or "").replace(",", "\n").split():
+        try:
+            value = int(piece)
+        except ValueError:
+            continue
+        if value > 0:
+            out.add(value)
+    return out
+
+
+def _day(value) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _date_map(rows) -> dict:
+    out: dict = {}
+    for pid, raw_day in rows:
+        day = _day(raw_day)
+        if pid is None or day is None:
+            continue
+        out.setdefault(int(pid), []).append(day)
+    return out
+
+
+def _referral_dates(conn) -> dict:
+    """Одобренные заявки текущего сезона с referrer_id, по дате одобрения. Текущий сезон —
+    как везде на дашборде: users.season пуст или равен bot_settings.event_season (сезон не
+    задан — все одобренные)."""
+    season = (_settings(conn, ["event_season"]).get("event_season") or "").strip()
+    sql = ("SELECT referrer_id, approved_at FROM users WHERE status = 'approved' "
+           "AND referrer_id IS NOT NULL AND approved_at IS NOT NULL")
+    params: list = []
+    if season:
+        sql += " AND (season IS NULL OR TRIM(season) = '' OR season = ?)"
+        params.append(season)
+    return _date_map(_rows(conn, sql, params))
+
+
+def _social_dates(conn, task_ids: set) -> dict:
+    if not task_ids:
+        return {}
+    ids = sorted(task_ids)
+    marks = ",".join("?" for _ in ids)
+    return _date_map(_rows(
+        conn,
+        f"SELECT user_id, reviewed_at FROM game_submissions WHERE status = 'approved' "
+        f"AND reviewed_at IS NOT NULL AND task_id IN ({marks})",
+        ids,
+    ))
+
+
+def _checkin_days(conn) -> dict:
+    """Дни форума с отметкой на входе; отметки на сессиях отдельно не считаются."""
+    return _date_map(_rows(
+        conn, "SELECT telegram_id, day FROM checkins WHERE point = 'entry'",
+    ))
+
+
+def _chat_participants(conn, chat_id: int, records) -> set:
+    marks = ",".join("?" for _ in _CHAT_PRESENT_STATUSES)
+    people = {
+        row[0] for row in _rows(
+            conn,
+            f"SELECT telegram_id FROM chat_members WHERE chat_id = ? AND status IN ({marks})",
+            (chat_id, *_CHAT_PRESENT_STATUSES),
+        )
+    }
+    people.update(r.author_id for r in records if not r.is_channel_post and r.author_id is not None)
+    return people
+
+
+def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
+    """Таблица по правилам города за период — только расчёт для публикации итогов: коины не
+    начисляются, делегатам ничего не уходит. Посты могут быть старше окна, поэтому журнал
+    читается целиком (до конца окна), а окно применяет score_city_rules."""
+    chat_id = chat["chat_id"]
+    city = chat.get("city")
+    period = normalize_period(period)
+    since, until = period_bounds(period, now.date())
+
+    rules_raw = {
+        key: value for key in chat_score.RULE_SETTING_KEYS.values()
+        if (value := _city_setting(conn, key, city)) is not None
+    }
+    rules = chat_score.rules_from_settings(rules_raw)
+    currency = (_city_setting(conn, chat_score.CURRENCY_KEY, city) or "").strip() \
+        or chat_score.DEFAULT_CURRENCY
+    task_ids = _social_task_ids(_city_setting(conn, chat_score.SOCIAL_TASKS_KEY, city))
+
+    records = load_records(conn, chat_id, until=until)
+    team = team_ids(conn, chat_id, admin_ids)
+    scored = chat_score.score_city_rules(
+        records, team_ids=team, rules=rules,
+        referral_dates=_referral_dates(conn),
+        social_dates=_social_dates(conn, task_ids),
+        checkin_days=_checkin_days(conn),
+        since=since, until=until,
+    )
+
+    columns = []
+    for key, points_key, label, amount_keys in _RULE_COLUMNS:
+        if not any(rules[a] > 0 for a in amount_keys):
+            continue
+        if key == "social" and not task_ids:
+            continue
+        columns.append({"key": key, "points_key": points_key, "label": label})
+
+    participants = _chat_participants(conn, chat_id, records) - team
+    kept = [pid for pid in scored if pid in participants and pid > 0]
+    names = display_names(conn, kept)
+    rows = []
+    for pid in kept:
+        row = dict(scored[pid])
+        row["telegram_id"] = pid
+        row["display_name"] = names.get(pid, str(pid))
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["total"], r["display_name"]))
+    rows = rows[:TOP_RULES]
+    for place, row in enumerate(rows, start=1):
+        row["place"] = place
+
+    raw = _settings(conn, [chat_score.RETENTION_KEY])
+    return {
+        "rows": rows,
+        "period": period,
+        "periods": PERIODS,
+        "currency": currency,
+        "rules": rules,
+        "rules_text": chat_score.describe_rules(rules, currency),
+        "columns": columns,
+        "bot_admin": bot_admin(conn, chat_id),
+        "retention_days": retention_days(raw),
+    }
