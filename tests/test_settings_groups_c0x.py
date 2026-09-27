@@ -97,7 +97,9 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
     assert [cd for cd in flat if cd and cd.startswith("settings_group:")] == [
         "settings_group:event", "settings_group:reg", "settings_group:apps",
         "settings_group:sheets", "settings_group:pay", "settings_group:party",
-        "settings_group:consent", "settings_group:game", "settings_group:system",
+        "settings_group:consent", "settings_group:game",
+        # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
+        "settings_group:chat", "settings_group:system",
     ]
     assert not any(cd and cd.startswith("settings_edit:") for cd in flat)
     assert not any(cd and cd.startswith("settings_photo:") for cd in flat)

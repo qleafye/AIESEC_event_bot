@@ -196,7 +196,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(Phase 14/16)",
     ),
     "admin_settings.py": (
-        2912,
+        2922,
+        "Квик 260927 (рейтинг чата): +10 строк — группа «💬 Чат делегатов» (_CHAT_FIELD_ORDER из "
+        "ключей chat_score, строка SETTINGS_GROUPS, _CHAT_FIELDS в SETTINGS_FIELDS, импорт); "
+        "экран режима и правил города — в новом шве handlers/admin_chat_rating.py; 2912 -> 2922. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +12 строк — фон карточки дописан в "
         "PHOTO_FIELDS, подпись к фото дописана в _APPS_FIELD_ORDER (тот же приём, что у соседних "
         "форумных фото/текстов); 2900 -> 2912. "
@@ -716,7 +719,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1356,
+        1357,
+        "Квик 260927 (рейтинг чата): +1 строка — капа «admin_chat_rating» (settings); 1356 -> 1357. "
         "Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): +8 строк — капы "
         "«forumstats_cfg»/«forumstats_toggle»/«forumstats_preview»/«forumstats_pick»/"
         "«forumstats_send_go» (moderate_reg, тот же класс, что «lostfound_cfg»/«lostfound_toggle»); "

@@ -225,6 +225,13 @@ EXPECTED_PER_CITY_KEYS = {
     "reg_reset_notify_text",
     "resubmit_granted_notify_text",
     "revert_pending_notify_text",
+    # Квик 260927 (рейтинг чата): режим и правила — по городу (СПб считает «коины» по своим
+    # правилам, остальные — по формуле); веса формулы глобальные и сюда не входят.
+    "chat_rating_mode",
+    "chat_rules_post_min_chars", "chat_rules_comment_points", "chat_rules_valuable_min_chars",
+    "chat_rules_valuable_points", "chat_rules_referral_points", "chat_rules_social_points",
+    "chat_rules_social_max", "chat_rules_checkin_points", "chat_rules_checkin_max",
+    "chat_rules_currency", "chat_rules_social_tasks",
 }
 
 
