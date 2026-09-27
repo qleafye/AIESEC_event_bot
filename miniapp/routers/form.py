@@ -892,6 +892,57 @@ async def set_lang(
 
 # ── POST /app/api/reg/draft/submit ───────────────────────────────────────────────────────
 
+# Колонки черновика, по которым видно, что в правке трогали именно ФАЙЛ резюме: выбор ветки
+# развилки (`resume_type`) или загрузка/удаление файла (`resume_file_id`; «×» очищает весь
+# набор колонок шага). Правка текста резюме или посторонних полей сюда не относится.
+_RESUME_FILE_TOUCH_COLUMNS = ("resume_type", "resume_file_id")
+
+
+async def _resume_file_missing(ctx: dict) -> bool:
+    """Квик 27.09 + ревью: выбрана ветка «файл», а файла нет — подавать анкету нельзя.
+
+    Срабатывает, только если шаг «Резюме» сейчас включён и режим города допускает файл
+    (`fork`/`file_or_text`): в `text_only` файл приложить нельзя (загрузка отвечает 409), и
+    устаревший `users.resume_type="file"` не должен запирать делегата. В правке — только
+    если в ЭТОЙ правке трогали файл резюме (`_RESUME_FILE_TOUCH_COLUMNS`): правка телефона
+    не блокируется старой потерей файла. Значение из черновика правки побеждает `users`
+    даже когда оно пустое — явное `None` после «×» значит «файл удалён», а не «не менялось».
+    Файлом считается только `resume_file_id`: `resume_url` у текстового резюме — ссылка
+    облака на .txt."""
+    kind = ctx["kind"]
+    if kind == "edit":
+        # Без строки черновика `answers` — снимок `users`, а не правка; подавать там нечего
+        # (submit ответит no_draft), гард не нужен.
+        if not ctx["draft"]:
+            return False
+        answers = ctx["answers"]
+        if not any(column in answers for column in _RESUME_FILE_TOUCH_COLUMNS):
+            return False
+        user_row = ctx["user_row"] or {}
+    else:
+        answers = ctx["answers"]
+        user_row = {}
+
+    mode = await reg_engine.resume_mode(ctx["event_city"])
+    if mode not in ("fork", "file_or_text"):
+        return False
+
+    def _value(column: str):
+        return answers[column] if column in answers else user_row.get(column)
+
+    if _value("resume_type") != "file" or _value("resume_file_id"):
+        return False
+    # «Файл или текст»: ответ текстом в этой же анкете — резюме есть, просто не файлом.
+    if mode == "file_or_text" and answers.get("resume_text"):
+        return False
+
+    snapshot = {**reg_engine.answers_from_user_row(ctx["user_row"] if kind == "edit" else None), **answers}
+    enabled = await reg_engine.enabled_steps(
+        {**snapshot, "participant_type": ctx["effective_track"]}, ctx["event_city"],
+    )
+    return "resume" in enabled
+
+
 @router.post("/app/api/reg/draft/submit")
 async def draft_submit(
     request: Request,
@@ -944,16 +995,7 @@ async def draft_submit(
 
     # Квик 27.09: выбран «файл», а файла на сервере нет (мастер не дождался загрузки) —
     # не подаём анкету: после подачи загрузка получает 403 и файл теряется. Тоже ДО claim.
-    # Для правки файл/ссылка облака могут лежать только в `users`.
-    def _resume_value(column: str):
-        value = ctx["answers"].get(column)
-        if not value and ctx["kind"] == "edit" and ctx["user_row"]:
-            value = ctx["user_row"].get(column)
-        return value
-
-    if _resume_value("resume_type") == "file" and not (
-        _resume_value("resume_file_id") or _resume_value("resume_url")
-    ):
+    if await _resume_file_missing(ctx):
         logger.info("reg draft submit refused telegram_id=%s reason=resume_file_missing", p.telegram_id)
         raise HTTPException(400, {
             "reason": "resume_file_missing",
