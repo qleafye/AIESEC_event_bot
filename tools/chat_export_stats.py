@@ -14,39 +14,39 @@ Bot API не отдаёт историю чата за период ДО тог�
 Коды выхода: 0 — посчитано (даже если часть контекста недоступна — см. предупреждения в шапке
 вывода); 1 — файл экспорта не читается или не в ожидаемом формате.
 
-Только stdlib. Импортов проекта нет — тул запускается и на сервере, и на ноутбуке менеджера.
+Только stdlib плюс корневой chat_score.py того же чекаута (формула общая с дашбордом) —
+тул запускается и на сервере, и на ноутбуке менеджера из клона репозитория.
 """
 import argparse
 import csv
 import json
-import math
 import sqlite3
 import sys
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from pathlib import Path
+
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from chat_score import (  # noqa: E402 — после бутстрапа sys.path
+    WEIGHTS,
+    AuthorAgg,  # noqa: F401 — реэкспорт для тестов и внешних скриптов
+    BurstInfo,  # noqa: F401 — реэкспорт
+    ChatRecord,
+    aggregate_records,
+    describe_formula,
+    score_authors,
+)
 
 _HOWTO = (
     "Как экспортировать правильно: Telegram Desktop → нужный чат → ⋮ → "
     "«Экспорт истории чата» → Формат: Machine-readable JSON."
 )
 
-# Веса формулы балла — единственный источник, --weights накатывает частичный JSON поверх этого
-# словаря (merge, не замена целиком), поэтому пользовательский файл может переопределить только
-# нужные ключи.
-WEIGHTS = {
-    "day_cap": 25.0,              # анти-флуд: очки одного дня не выше этого потолка
-    "burst_log_base": 80.0,       # длина реплики (символов) на единицу в формуле log2
-    "burst_log_cap": 3.0,         # потолок логарифмического бонуса за длину реплики
-    "burst_media_score": 1.0,     # реплика без текста, но с не-стикерным медиа
-    "burst_sticker_score": 0.5,   # реплика только из стикеров/GIF
-    "resonance_reply": 2.0,       # вес одного засчитанного (≤5/сообщение) полученного ответа
-    "resonance_reply_cap": 5,     # потолок засчитанных ответов на одно сообщение
-    "resonance_reaction": 0.5,    # вес одной засчитанной (≤10/сообщение) полученной реакции
-    "resonance_reaction_cap": 10,  # потолок засчитанных реакций на одно сообщение
-    "regularity_per_day": 3.0,    # вес одного активного дня
-    "giving_per_reaction": 0.25,  # вес одной поставленной реакции
-}
+# WEIGHTS / AuthorAgg / BurstInfo / score_authors реэкспортируются из chat_score — тесты и
+# внешние скрипты обращаются к ним как к атрибутам тула.
 
 CSV_COLUMNS = [
     "place", "telegram_id", "name", "username", "full_name", "status",
@@ -249,206 +249,46 @@ def parse_messages(raw_messages: list):
 
 
 # ---------------------------------------------------------------------------
-# Агрегация
+# Агрегация и балл — в chat_score.py
 # ---------------------------------------------------------------------------
 
-def _in_window(day: date, since: date | None, until: date | None) -> bool:
-    if since and day < since:
-        return False
-    if until and day > until:
-        return False
-    return True
-
-
-@dataclass
-class BurstInfo:
-    day: date
-    length: int
-    has_nonsticker_media: bool
-    stickers_only: bool
-
-
-@dataclass
-class AuthorAgg:
-    telegram_id: int
-    name: str = ""
-    messages: int = 0
-    chars_total: int = 0
-    short: int = 0
-    long: int = 0
-    media: int = 0
-    stickers: int = 0
-    active_days: int = 0
-    active_days_set: set = field(default_factory=set)
-    bursts: list = field(default_factory=list)
-    replies_given: int = 0
-    replies_received: int = 0
-    reactions_received: int = 0
-    reactions_given: int = 0
-    # Сырые счётчики НА СООБЩЕНИЕ: потолки резонанса — это веса, их применяет score_authors
-    # (иначе --weights менял бы потолок в шапке вывода, но не в самом расчёте).
-    reply_counts: list = field(default_factory=list)
-    reaction_counts: list = field(default_factory=list)
-    first_seen: datetime | None = None
-    last_seen: datetime | None = None
+def to_records(messages, reply_index) -> list:
+    """ParsedMessage -> ChatRecord. Здесь живёт правило корня топика: ответ засчитывается,
+    только если цель — обычное сообщение человека. Ответ на СЕРВИСНОЕ сообщение (обычно
+    topic_created) не ответ — иначе в форум-группах КАЖДОЕ сообщение формально «reply» на корень
+    топика, и счёт ответов превращается в счёт сообщений. Цель ищется по всему экспорту, поэтому
+    отклик засчитывается, даже если сама цель лежит вне окна --since/--until."""
+    records = []
+    for m in messages:
+        reply_mid = reply_author = None
+        if m.reply_to is not None:
+            target = reply_index.get(m.reply_to)
+            if target is not None:
+                t_type, t_author = target
+                if t_type == "message" and t_author is not None:
+                    reply_mid, reply_author = m.reply_to, t_author
+        records.append(ChatRecord(
+            message_id=m.id,
+            author_id=m.author_id,
+            ts=m.ts,
+            text_len=m.length,
+            has_media=m.has_media,
+            is_sticker=m.is_sticker_or_gif,
+            reply_to_message_id=reply_mid,
+            reply_to_author_id=reply_author,
+            reactions_received=m.reactions_received,
+            reaction_giver_ids=tuple(m.reaction_giver_ids),
+            author_name=m.author_name or "",
+        ))
+    return records
 
 
 def aggregate(messages, reply_index, *, long_chars=120, burst_gap=120, since=None, until=None):
-    """Считает сырые метрики на автора. Балл здесь НЕ считается — это работа score_authors,
-    которая применяет веса; aggregate хранит достаточно данных (bursts по дням), чтобы
-    посчитать дневной потолок позже, не пересчитывая склейку реплик заново."""
-    in_window = [
-        m for m in messages
-        if m.type == "message" and m.author_id is not None and _in_window(m.day, since, until)
-    ]
-
-    # Имя автора — «последнее непустое from в экспорте» смотрим по ВСЕМУ экспорту, а не только
-    # по окну: имя это просто подпись для вывода, а не метрика активности за период.
-    names: dict[int, str] = {}
-    for m in sorted(
-        (mm for mm in messages if mm.author_id is not None and mm.author_name), key=lambda x: x.ts
-    ):
-        names[m.author_id] = m.author_name
-
-    by_author: dict[int, list] = defaultdict(list)
-    for m in in_window:
-        by_author[m.author_id].append(m)
-
-    aggs: dict[int, AuthorAgg] = {}
-    # Владелец каждого сообщения-цели, получившего валидный ответ, и сколько их пришло — нужно
-    # ПОСЛЕ прохода по репликующим, т.к. владелец цели может не иметь ни одного сообщения в
-    # окне (цель лежит раньше --since), но резонанс ему всё равно причитается.
-    replies_to_message: Counter = Counter()
-
-    for author_id, msgs in by_author.items():
-        msgs.sort(key=lambda m: m.ts)
-        agg = AuthorAgg(telegram_id=author_id, name=names.get(author_id, ""))
-        agg.messages = len(msgs)
-        agg.first_seen = msgs[0].ts
-        agg.last_seen = msgs[-1].ts
-
-        current = None  # текущая незакрытая реплика (склейка своих подряд идущих сообщений)
-        for m in msgs:
-            agg.chars_total += m.length
-            if m.length > 0:
-                if m.length <= long_chars:
-                    agg.short += 1
-                else:
-                    agg.long += 1
-            if m.has_media:
-                agg.media += 1
-            if m.is_sticker_or_gif:
-                agg.stickers += 1
-            agg.active_days_set.add(m.day)
-            agg.reactions_received += m.reactions_received
-            if m.reactions_received:
-                agg.reaction_counts.append(m.reactions_received)
-
-            if current is not None and (m.ts - current["last_ts"]).total_seconds() <= burst_gap:
-                current["length"] += m.length
-                current["nonsticker_media"] = current["nonsticker_media"] or (
-                    m.has_media and not m.is_sticker_or_gif
-                )
-                current["all_sticker"] = current["all_sticker"] and m.is_sticker_or_gif
-                current["last_ts"] = m.ts
-            else:
-                if current is not None:
-                    agg.bursts.append(BurstInfo(
-                        day=current["day"], length=current["length"],
-                        has_nonsticker_media=current["nonsticker_media"],
-                        stickers_only=current["all_sticker"],
-                    ))
-                current = {
-                    "day": m.day, "length": m.length,
-                    "nonsticker_media": m.has_media and not m.is_sticker_or_gif,
-                    "all_sticker": m.is_sticker_or_gif, "last_ts": m.ts,
-                }
-
-            if m.reply_to is not None:
-                target = reply_index.get(m.reply_to)
-                if target is not None:
-                    t_type, t_author = target
-                    # Правило корня топика: ответ на СЕРВИСНОЕ сообщение (typically
-                    # topic_created) не считается ответом — иначе в форум-группах КАЖДОЕ
-                    # сообщение формально «reply» на корень топика, и счёт ответов превращается
-                    # в счёт сообщений. Ответ самому себе тоже не резонанс.
-                    if t_type == "message" and t_author is not None and t_author != author_id:
-                        agg.replies_given += 1
-                        replies_to_message[m.reply_to] += 1
-        if current is not None:
-            agg.bursts.append(BurstInfo(
-                day=current["day"], length=current["length"],
-                has_nonsticker_media=current["nonsticker_media"],
-                stickers_only=current["all_sticker"],
-            ))
-
-        agg.active_days = len(agg.active_days_set)
-        aggs[author_id] = agg
-
-    # ВАЖНО, порядок: сначала посчитали ответы/резонанс для ВСЕХ авторов (включая staff), и
-    # только main() после score_authors режет исключённых из рейтинга перед выводом. Если
-    # поменять порядок местами (сначала исключить, потом агрегировать), резонанс делегатов,
-    # которым отвечали в основном организаторы, молча обнулится.
-    for target_mid, count in replies_to_message.items():
-        t_type, t_author = reply_index[target_mid]
-        if t_author is None:
-            continue
-        agg = aggs.get(t_author)
-        if agg is None:
-            agg = AuthorAgg(telegram_id=t_author, name=names.get(t_author, ""))
-            aggs[t_author] = agg
-        agg.replies_received += count
-        agg.reply_counts.append(count)
-
-    for m in in_window:
-        for gid in m.reaction_giver_ids:
-            agg = aggs.get(gid)
-            if agg is None:
-                agg = AuthorAgg(telegram_id=gid, name=names.get(gid, ""))
-                aggs[gid] = agg
-            agg.reactions_given += 1
-
-    return aggs
-
-
-# ---------------------------------------------------------------------------
-# Балл
-# ---------------------------------------------------------------------------
-
-def _burst_score(b: BurstInfo, w: dict) -> float:
-    if b.length > 0:
-        return 1 + min(w["burst_log_cap"], math.log2(1 + b.length / w["burst_log_base"]))
-    if b.has_nonsticker_media:
-        return w["burst_media_score"]
-    if b.stickers_only:
-        return w["burst_sticker_score"]
-    return 0.0  # пересланный чужой текст без медиа — реплика есть, объёма не приносит
-
-
-def score_authors(aggs: dict, weights: dict | None = None) -> dict:
-    w = dict(WEIGHTS)
-    if weights:
-        w.update(weights)
-
-    results = {}
-    for author_id, agg in aggs.items():
-        day_scores: dict = defaultdict(float)
-        for b in agg.bursts:
-            day_scores[b.day] += _burst_score(b, w)
-        volume = sum(min(w["day_cap"], v) for v in day_scores.values())
-        resonance = (
-            w["resonance_reply"] * sum(min(w["resonance_reply_cap"], c) for c in agg.reply_counts)
-            + w["resonance_reaction"]
-            * sum(min(w["resonance_reaction_cap"], c) for c in agg.reaction_counts)
-        )
-        regularity = w["regularity_per_day"] * agg.active_days
-        giving = w["giving_per_reaction"] * agg.reactions_given
-        results[author_id] = {
-            "volume": volume, "resonance": resonance,
-            "regularity": regularity, "giving": giving,
-            "score": volume + resonance + regularity + giving,
-        }
-    return results
+    """Сырые метрики на автора — тонкая обёртка над chat_score.aggregate_records."""
+    return aggregate_records(
+        to_records(messages, reply_index),
+        long_chars=long_chars, burst_gap=burst_gap, since=since, until=until,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -589,17 +429,7 @@ def render_console(*, chat_name, since, until, total_messages, total_authors,
     if excl_bits:
         lines.append("Исключено из рейтинга: " + ", ".join(excl_bits))
 
-    w = weights
-    lines.append(
-        "Формула балла: score = volume + resonance + regularity + giving. "
-        f"Реплика: 1+min({w['burst_log_cap']:g}, log2(1+длина/{w['burst_log_base']:g})) за текст, "
-        f"{w['burst_media_score']:g} за медиа без текста, {w['burst_sticker_score']:g} за стикер/GIF; "
-        f"объём дня — не выше {w['day_cap']:g}. "
-        f"Резонанс = {w['resonance_reply']:g}×ответы(≤{w['resonance_reply_cap']:g}/сообщение) "
-        f"+ {w['resonance_reaction']:g}×реакции(≤{w['resonance_reaction_cap']:g}/сообщение). "
-        f"Регулярность = {w['regularity_per_day']:g}×активных дней. "
-        f"Отдача = {w['giving_per_reaction']:g}×поставленных реакций."
-    )
+    lines.append(describe_formula(weights))
 
     if not reactions_present:
         lines.append("В экспорте нет блока реакций (старый формат экспорта) — реакции не учтены.")
@@ -747,7 +577,7 @@ def main(argv=None) -> int:
     total_messages = sum(a.messages for a in aggregated.values())
     total_authors = sum(1 for a in aggregated.values() if a.messages > 0)
 
-    # Порядок принципиален (см. комментарий в aggregate): агрегация уже учла ответы/реакции
+    # Порядок принципиален (см. комментарий в chat_score.aggregate_records): агрегация уже учла ответы/реакции
     # исключённых, режем их из рейтинга только на этом, последнем шаге.
     kept_rows = _sort_rows(
         [r for r in rows_all if r["telegram_id"] not in excluded_ids], args.sort,
