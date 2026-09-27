@@ -406,6 +406,11 @@ async def init_scheduler(bot):
     _add_interval_job(
         _reconcile_forum_report_and_poll_job, "forum_report_poll_reconcile", timedelta(minutes=10),
     )
+    # Квик 260927: еженедельный пост рейтинга в чат города — cron-джоба на город; сверка сразу и
+    # раз в 10 минут (день/время/тумблер правит и Mini App, где планировщика нет).
+    from services.chat_rating_post import reconcile as _reconcile_chat_rating_post
+    await _reconcile_chat_rating_post()
+    _add_interval_job(_reconcile_chat_rating_post, "chat_rating_post_reconcile", timedelta(minutes=10))
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     logger.info(

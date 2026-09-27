@@ -235,8 +235,18 @@ def _retention_floor(raw: dict, now: datetime) -> date:
     return now.date() - timedelta(days=retention_days(raw))
 
 
+def _window(period, now: datetime, bounds) -> tuple:
+    """Окно расчёта: явные `bounds` (since, until) важнее кода периода. Нужны еженедельному
+    посту в чат (services/chat_rating_post.py): «с начала» там — до конца завершённой недели,
+    а не до «сейчас», которого у дашборда нет в списке периодов."""
+    if bounds is not None:
+        return bounds
+    return period_bounds(period, now.date())
+
+
 def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
-                registered_only: bool | None = None, season: str | None = None) -> dict:
+                registered_only: bool | None = None, season: str | None = None,
+                bounds=None) -> dict:
     """Рейтинг по формуле активности за период. Команда режется ПОСЛЕ расчёта (тот же
     порядок, что у тула по экспорту): её ответы и реакции делегатам уже учтены.
     `registered_only` (по умолчанию — да): только люди с анкетой сезона `season` и города чата;
@@ -245,7 +255,7 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
         registered_only = True
     chat_id = chat["chat_id"]
     period = normalize_period(period)
-    since, until = period_bounds(period, now.date())
+    since, until = _window(period, now, bounds)
     raw = _settings(
         conn,
         [*chat_score.SETTING_KEYS.values(), chat_score.BURST_GAP_KEY, chat_score.RETENTION_KEY],
@@ -462,14 +472,15 @@ def _chat_participants(conn, chat_id: int, records) -> set:
 
 
 def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
-                 season: str | None = None, registered_only: bool | None = None) -> dict:
+                 season: str | None = None, registered_only: bool | None = None,
+                 bounds=None) -> dict:
     """Таблица по правилам города за период — только расчёт для публикации итогов: коины не
     начисляются, делегатам ничего не уходит. Посты могут быть старше окна, поэтому журнал
     читается за весь срок хранения (до конца окна), а окно применяет score_city_rules."""
     chat_id = chat["chat_id"]
     city = chat.get("city")
     period = normalize_period(period)
-    since, until = period_bounds(period, now.date())
+    since, until = _window(period, now, bounds)
     if registered_only is None:
         registered_only = False  # СПб считает всех, кто в чате
 
