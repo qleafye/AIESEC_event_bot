@@ -101,30 +101,44 @@ def _parse_ts(value) -> datetime | None:
         return None
 
 
-def load_records(conn, chat_id: int, until: date | None = None) -> list:
-    """Все сообщения чата до конца дня `until` как ChatRecord. Начало окна применяет
-    aggregate_records: ответ в окне на старое сообщение всё равно засчитывает резонанс его
-    автору. Реакции: строки chat_reactions (дарители известны) + reactions_extra (импорт
-    экспорта: посчитаны Telegram, дарители неизвестны)."""
+def load_records(conn, chat_id: int, until: date | None = None, *,
+                 since: date | None = None) -> list:
+    """Сообщения чата с начала дня `since` до конца дня `until` как ChatRecord; обе границы —
+    в SQL (индекс chat_id+ts), реакции — только к сообщениям этого окна. Окно формулы по
+    периоду применяет aggregate_records: ответ в окне на старое сообщение несёт автора цели
+    в своей же строке (reply_to_author_id), поэтому старые сообщения грузить не нужно.
+    Реакции: строки chat_reactions (дарители известны) + reactions_extra (импорт экспорта:
+    посчитаны Telegram, дарители неизвестны)."""
+    bounds = ""
+    params: list = [chat_id]
+    if since is not None:
+        bounds += " AND ts >= ?"
+        params.append(f"{since.isoformat()} 00:00:00")
+    if until is not None:
+        bounds += " AND ts <= ?"
+        params.append(f"{until.isoformat()} 23:59:59")
+
     reactions: dict = {}
-    for row in _rows(
-        conn,
+    reaction_sql = (
         "SELECT message_id, COUNT(*), GROUP_CONCAT(telegram_id) FROM chat_reactions "
-        "WHERE chat_id = ? GROUP BY message_id",
-        (chat_id,),
-    ):
+        "WHERE chat_id = ?"
+    )
+    reaction_params: list = [chat_id]
+    if bounds:
+        reaction_sql += (
+            " AND message_id IN (SELECT message_id FROM chat_messages WHERE chat_id = ?"
+            f"{bounds})"
+        )
+        reaction_params += params
+    for row in _rows(conn, reaction_sql + " GROUP BY message_id", reaction_params):
         givers = tuple(int(x) for x in str(row[2] or "").split(",") if x.strip())
         reactions[row[0]] = (int(row[1] or 0), givers)
 
     sql = (
         "SELECT message_id, telegram_id, ts, kind, text_len, reply_to_message_id, "
         "reply_to_author_id, is_channel_post, reactions_extra FROM chat_messages WHERE chat_id = ?"
+        f"{bounds} ORDER BY ts, message_id"
     )
-    params: list = [chat_id]
-    if until is not None:
-        sql += " AND ts <= ?"
-        params.append(f"{until.isoformat()} 23:59:59")
-    sql += " ORDER BY ts, message_id"
 
     records = []
     for row in _rows(conn, sql, params):
@@ -187,6 +201,12 @@ def retention_days(raw: dict) -> int:
     return int(value) if value is not None and int(value) > 0 else chat_score.DEFAULT_RETENTION_DAYS
 
 
+def _retention_floor(raw: dict, now: datetime) -> date:
+    """Первый день, который ещё хранится: «Всё время» = не старше срока хранения, даже если
+    суточная чистка ещё не прошла (или импорт положил старые строки)."""
+    return now.date() - timedelta(days=retention_days(raw))
+
+
 def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
     """Рейтинг по формуле активности за период. Команда режется ПОСЛЕ расчёта (тот же
     порядок, что у тула по экспорту): её ответы и реакции делегатам уже учтены."""
@@ -199,7 +219,8 @@ def chat_rating(conn, chat: dict, *, period, admin_ids, now: datetime) -> dict:
     )
     weights, burst_gap = chat_score.weights_from_settings(raw)
 
-    records = load_records(conn, chat_id, until=until)
+    floor = _retention_floor(raw, now)
+    records = load_records(conn, chat_id, until=until, since=max(since or floor, floor))
     aggs = chat_score.aggregate_records(records, burst_gap=burst_gap, since=since, until=until)
     scores = chat_score.score_authors(aggs, weights)
     team = team_ids(conn, chat_id, admin_ids)
@@ -407,7 +428,7 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
                  season: str | None = None) -> dict:
     """Таблица по правилам города за период — только расчёт для публикации итогов: коины не
     начисляются, делегатам ничего не уходит. Посты могут быть старше окна, поэтому журнал
-    читается целиком (до конца окна), а окно применяет score_city_rules."""
+    читается за весь срок хранения (до конца окна), а окно применяет score_city_rules."""
     chat_id = chat["chat_id"]
     city = chat.get("city")
     period = normalize_period(period)
@@ -422,7 +443,10 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
         or chat_score.DEFAULT_CURRENCY
     task_ids = _social_task_ids(_city_setting(conn, chat_score.SOCIAL_TASKS_KEY, city))
 
-    records = load_records(conn, chat_id, until=until)
+    # Посты могут быть старше окна (и прошлые комментарии нужны для недельной разницы),
+    # поэтому журнал читается от границы срока хранения, а не от начала периода.
+    raw = _settings(conn, [chat_score.RETENTION_KEY])
+    records = load_records(conn, chat_id, until=until, since=_retention_floor(raw, now))
     team = team_ids(conn, chat_id, admin_ids)
     scored = chat_score.score_city_rules(
         records, team_ids=team, rules=rules,
@@ -454,7 +478,6 @@ def rules_rating(conn, chat: dict, *, period, admin_ids, now: datetime,
     for place, row in enumerate(rows, start=1):
         row["place"] = place
 
-    raw = _settings(conn, [chat_score.RETENTION_KEY])
     return {
         "rows": rows,
         "period": period,
