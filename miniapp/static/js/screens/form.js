@@ -467,6 +467,9 @@ export async function render(root, params, ctx) {
     // «Отправить изменения» выключена, а submitChanges его дожидается: иначе submit захватывал
     // черновик, загрузка получала 403, и новый файл терялся.
     let pendingUpload = null;
+    // Номер «жизни» ветки «Файл» строки резюме: «Другой способ» его двигает, и загрузка,
+    // доехавшая после возврата к развилке, уже не перерисовывает список.
+    let resumeUploadSeq = 0;
     let submitBtnEl = null;
     let submitShown = false;
     function submitDisabled() {
@@ -624,6 +627,20 @@ export async function render(root, params, ctx) {
       }
     }
 
+    // «Другой способ»: вернуть строке «Резюме» кнопки развилки, не трогая правки остальных
+    // строк (state не пересобирается, сервер не зовётся — resume_type сменит следующий выбор).
+    // Загрузка файла прежней ветки больше не держит «Отправить изменения» — как «Назад» мастера.
+    function backToResumeFork() {
+      if (busy) return;
+      pendingUpload = null;
+      resumeUploadSeq += 1;
+      resumeEditBranch = null;
+      syncSubmitButtons();
+      drawList();
+      const resumeSpec = state.specs.find((s) => s.key === "resume");
+      if (resumeSpec && openers[resumeSpec.key]) openers[resumeSpec.key]();
+    }
+
     // Та же подмена спеки строки «Резюме», что у мастера в drawStep: выбранная в обзоре ветка
     // «file»/«text» рисуется дропзоной/полем текста вместо кнопок развилки.
     function resumeEditSpec(spec) {
@@ -678,9 +695,10 @@ export async function render(root, params, ctx) {
           // D9: файл резюме грузится СРАЗУ по выбору, не дожидаясь галки — галка остаётся
           // способом подтвердить текстовый ввод ({text: …}).
           if (typeof File !== "undefined" && v instanceof File) {
+            const seq = resumeUploadSeq;
             const upload = uploadResume(v, el, {
               getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column,
-              onDone: () => drawList(),
+              onDone: () => { if (seq === resumeUploadSeq) drawList(); },
             });
             pendingUpload = upload;
             syncSubmitButtons();
@@ -716,7 +734,12 @@ export async function render(root, params, ctx) {
         value, notSetText: d.not_set_text, onEdit: open,
         extraCls: requiredEmpty ? "q-required" : null,
       });
-      return h("div", {}, row, panel);
+      // Подменённая строка «Резюме» (ветка «Файл»/«Текстом») — кнопка назад к развилке.
+      const otherWayBtn = (spec.__resumeForkFile || spec.__resumeForkText) && d.resume_other_way_text
+        ? h("button", { class: "btn ghost", type: "button", onClick: backToResumeFork },
+          icon("undo-2"), h("span", { text: d.resume_other_way_text }))
+        : null;
+      return h("div", {}, row, ...[otherWayBtn].filter(Boolean), panel);
     }
 
     function drawList() {
