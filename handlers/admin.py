@@ -1144,3 +1144,9 @@ from handlers import admin_sheet_reconcile  # noqa: E402
 # admin_sheet_reconcile). Hub row: handlers/admin_forum_functions.py, right after «🚌 Перенос
 # неявившихся на форум в Москве».
 from handlers import admin_forum_stats_card  # noqa: E402
+
+# Квик 260927 (рейтинг чата): shared-router seam import экрана «🏆 Рейтинг чата»
+# (handlers/admin_chat_rating.py) — admin_chat_rating/chrate:* и ввод ChatRatingEdit в самом
+# хвосте admin.router (golden snapshot: чистое добавление после admin_forum_stats_card).
+# Строка раздела: handlers/admin_sections.py, «🔧 Управление», после тумблера учёта чата.
+from handlers import admin_chat_rating  # noqa: E402,F401
