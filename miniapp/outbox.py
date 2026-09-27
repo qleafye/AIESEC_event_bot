@@ -17,6 +17,7 @@
     application_decided        {telegram_id, status, reason}
     application_mass_approved  {ids}
     checkin_first_entry        {user_id, city, day, source, by_staff_id, scanned_at, approx, session_id?}
+    onsite_approved            {telegram_id}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
 код (`services/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
@@ -49,6 +50,9 @@ Phase 21 (21-08, FORM-SYNC-02/04/07, D-05/D-06): `reg_finalized`/`reg_edited` �
 (`miniapp/routers/checkin.py`); бот зовёт `services.checkin.fire_first_entry(bot, **payload)`
 — слушателей `register_first_entry_listener`, которые есть только в процессе бота.
 
+`onsite_approved` (27.09, D-41) — волонтёр одобрил человека у стойки в сканере Mini App; бот
+зовёт `services.onsite_reg.after_onsite_approved` (строка листа, сообщение и QR человеку).
+
 Fail-soft: таблицу создаёт `database.db.init_db` (схемой владеет ТОЛЬКО бот, здесь
 миграций нет и быть не может). Если бот ещё старой версии и таблицы нет — `enqueue`
 логирует предупреждение и возвращает None: сама сдача уже сохранена, уведомление догонит
@@ -79,6 +83,7 @@ OUTBOX_KINDS = frozenset({
     "application_decided",
     "application_mass_approved",
     "checkin_first_entry",
+    "onsite_approved",
 })
 
 
