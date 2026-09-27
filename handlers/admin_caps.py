@@ -1158,6 +1158,12 @@ ADMIN_CAPS: dict[str, str] = {
     "forumstats_preview:*": "moderate_reg",
     "forumstats_pick:*": "moderate_reg",
     "forumstats_send_go:*": "moderate_reg",
+    # D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/admin_onsite_reg.py)
+    # — капа «moderate_reg», тот же довод, что у соседних тумблеров хаба «🎪 Форум: функции»
+    # (lostfound_cfg:*/volinvite_cfg:*): включение функции для города и QR ссылки для стойки.
+    "onsitereg_cfg:*": "moderate_reg",
+    "onsitereg_toggle:*": "moderate_reg",
+    "onsitereg_qr:*": "moderate_reg",
 }
 
 

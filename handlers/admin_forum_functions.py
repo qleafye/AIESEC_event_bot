@@ -168,6 +168,15 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🧳 Настройки бюро находок", callback_data=f"lostfound_cfg:{_encode_city(code)}",
         )])
 
+    # D-41 (регистрация на месте): короткая анкета по QR у стойки — per_city, свой экран
+    # (handlers/admin_onsite_reg.py). Строка добавлена аддитивно, соседи не переставлены.
+    onsite_on = await get_setting_typed_for_city("onsite_reg_enabled", code) == "on"
+    lines.append(f"📝 Регистрация на месте: {_status(onsite_on)}")
+    if visible(f"onsitereg_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(
+            text="📝 Регистрация на месте", callback_data=f"onsitereg_cfg:{_encode_city(code)}",
+        )])
+
     # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
     # `services.program.program_menu_visible` (тумблер menu_program города И есть фото или
     # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.
