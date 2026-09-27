@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback
+from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -453,6 +453,9 @@ async def main():
     dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands
     dp.include_router(payment.router)  # payment callbacks/states checked before registration
+    # D-41: короткая анкета на месте — раньше registration.router, чтобы состояния OnsiteReg
+    # не перехватили catch-all хендлеры анкеты делегата.
+    dp.include_router(onsite_reg.router)
     dp.include_router(registration.router)
     dp.include_router(user_actions.router)
     # Опросы: poll_answer/poll — другие типы апдейтов, с message/callback не конкурируют.
