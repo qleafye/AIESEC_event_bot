@@ -155,3 +155,9 @@ def test_describe_rules_is_human_text():
     assert "chat_rules" not in text
     with_len = cs.describe_rules(dict(cs.RULES_DEFAULTS, post_min_chars=200), "коины")
     assert "200" in with_len[0]
+
+
+def test_valuable_points_zero_means_long_comment_is_regular():
+    res = _score([_rec(1, TEAM), _reply(2, A, 1, 900)], rules=_rules(valuable_points=0))
+    assert res[A]["comment_points"] == 10
+    assert res[A]["valuable"] == 0
