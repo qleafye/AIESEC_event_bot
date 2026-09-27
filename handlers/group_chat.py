@@ -175,8 +175,13 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
     new_status = event.new_chat_member.status
     # Квик 260927: статус бота и право «Удаление сообщений» — для ЛЮБОГО чата (привязанного
     # или нет), до всех веток ниже. Права вернули повышением — очистка служебных уведомлений
-    # (services/chat_cleanup.py) продолжится сама.
-    await set_chat_bot_state(event.chat.id, new_status, chat_tracking.can_delete_from(event.new_chat_member))
+    # (services/chat_cleanup.py) продолжится сама. Fail-soft: сбой БД здесь не должен сорвать
+    # привязку чата и личное сообщение админу ниже.
+    try:
+        await set_chat_bot_state(event.chat.id, new_status, chat_tracking.can_delete_from(event.new_chat_member))
+    except Exception as e:
+        logger.warning("group_chat: chat_bot_state для чата id=%s не записан: %s: %s",
+                       event.chat.id, type(e).__name__, e)
     if new_status == "administrator":
         admin_ok = await chat_tracking.is_bot_admin_user(event.from_user.id)
         if not admin_ok:
