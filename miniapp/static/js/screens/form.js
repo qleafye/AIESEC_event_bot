@@ -463,6 +463,19 @@ export async function render(root, params, ctx) {
     // open() каждой редактируемой строки по ключу шага — чтобы после выбора ветки раскрыть
     // нужную строку, не дублируя её разметку.
     let openers = {};
+    // Ревью квика 27.09: промис загрузки файла резюме в полёте — как у мастера. Пока он есть,
+    // «Отправить изменения» выключена, а submitChanges его дожидается: иначе submit захватывал
+    // черновик, загрузка получала 403, и новый файл терялся.
+    let pendingUpload = null;
+    let submitBtnEl = null;
+    let submitShown = false;
+    function submitDisabled() {
+      return busy || pendingUpload !== null;
+    }
+    function syncSubmitButtons() {
+      if (submitBtnEl) submitBtnEl.disabled = submitDisabled();
+      if (submitShown) setMainButton(d.submit_cta_text || null, submitChanges, { disabled: submitDisabled() });
+    }
 
     onRefresh = async () => {
       try {
@@ -499,6 +512,16 @@ export async function render(root, params, ctx) {
     async function submitChanges() {
       if (busy) return;
       busy = true;
+      if (pendingUpload) {
+        syncSubmitButtons();
+        const uploaded = await pendingUpload;
+        if (!uploaded) {
+          // Ошибку загрузки уже показала дропзона — подавать анкету без файла не пытаемся.
+          busy = false;
+          syncSubmitButtons();
+          return;
+        }
+      }
       drawList();
       try {
         // UAT 21-12 находка 1 (round 2): касание поля в обзоре меняло только локальный
@@ -655,9 +678,15 @@ export async function render(root, params, ctx) {
           // D9: файл резюме грузится СРАЗУ по выбору, не дожидаясь галки — галка остаётся
           // способом подтвердить текстовый ввод ({text: …}).
           if (typeof File !== "undefined" && v instanceof File) {
-            uploadResume(v, el, {
+            const upload = uploadResume(v, el, {
               getDraft: () => d, setDraft: (nd) => { d = nd; }, state, column,
               onDone: () => drawList(),
+            });
+            pendingUpload = upload;
+            syncSubmitButtons();
+            upload.then(() => {
+              if (pendingUpload === upload) pendingUpload = null;
+              syncSubmitButtons();
             });
           }
         });
@@ -693,20 +722,24 @@ export async function render(root, params, ctx) {
       const list = h("div", { class: "flat-list flush" }, ...state.specs.map(fieldRow));
       const diffBox = diffView(h, state.base, state.current, { wasPrefix: "" });
       const dirty = state.specs.some((s) => state.isDirty(s.column));
+      submitBtnEl = dirty
+        ? h("button", { class: "btn", type: "button", disabled: submitDisabled(), onClick: submitChanges },
+          h("span", { text: d.submit_cta_text || "" }))
+        : null;
+      submitShown = dirty;
       const footer = dirty
         ? h("div", { class: "task-actions" },
           h("button", { class: "btn ghost", type: "button", onClick: () => cancelBox.open() },
             icon("undo-2"), h("span", { text: d.cancel_changes_text || "" })),
           cancelBox,
-          h("button", { class: "btn", type: "button", disabled: busy, onClick: submitChanges },
-            h("span", { text: d.submit_cta_text || "" })),
+          submitBtnEl,
         )
         : null;
       const banner = d.rejected_banner_text
         ? h("div", { class: "confirm-box" }, h("p", { text: d.rejected_banner_text }))
         : null;
       holder.replaceChildren(...[banner, sectionTitle(h, d.questions_eyebrow), list, diffBox, footer].filter(Boolean));
-      setMainButton(dirty ? (d.submit_cta_text || null) : null, dirty ? submitChanges : null, { disabled: busy });
+      setMainButton(dirty ? (d.submit_cta_text || null) : null, dirty ? submitChanges : null, { disabled: submitDisabled() });
     }
 
     drawList();
