@@ -29,6 +29,7 @@ from handlers import reg_resume
 from services import reg_finalize as rf
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db
+from tests.test_miniapp_form import bot_api  # noqa: F401 — фикстура для сторожей Mini App ниже
 from tests.test_reg_resume_draft import (
     FakeCommand,
     _FakeCallback,
@@ -306,3 +307,48 @@ def test_single_open_city_is_used_on_bypass_path(tmp_path):
     asked, started = asyncio.run(go())
     assert not [d for d in asked if d and d.startswith("city_pick:")], asked
     assert started == ["msk"]
+
+
+# ── Mini App: подача новой анкеты без города ─────────────────────────────────────────────────
+
+def _miniapp_ready(tmp_path, name):
+    from tests.test_miniapp_routes import _standard_seed, _set, _use_tmp_db
+    path = _use_tmp_db(tmp_path, name)
+    _standard_seed()
+    _set("event_city_enabled", "on")
+    _set("event_season", SEASON)
+    return path
+
+
+def test_miniapp_submit_without_city_asks_city(tmp_path, bot_api):
+    from tests.test_miniapp_form import _draft_row, _seed_draft
+    from tests.test_miniapp_routes import UNREGISTERED_ID, _cfg, _client, _hdr
+    path = _miniapp_ready(tmp_path, "miniapp_city_required.db")
+    _seed_draft(UNREGISTERED_ID, kind="new", event_city=None,
+                patch={"age": 22, "full_name": "Иван Иванов"})
+    resp = _client(_cfg(path)).post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["reason"] == "city_required"
+    assert resp.json()["text"]
+    assert asyncio.run(db.get_user(UNREGISTERED_ID)) is None
+    assert _draft_row(UNREGISTERED_ID) is not None  # черновик не захвачен и не потерян
+
+
+def test_miniapp_submit_without_city_uses_known_city(tmp_path, bot_api):
+    from tests.test_miniapp_form import _seed_draft
+    from tests.test_miniapp_routes import UNREGISTERED_ID, _cfg, _client, _hdr
+    path = _miniapp_ready(tmp_path, "miniapp_city_known.db")
+    asyncio.run(db.record_reg_event(UNREGISTERED_ID, "start", event_city="tyumen", season=SEASON))
+    _seed_draft(UNREGISTERED_ID, kind="new", event_city=None,
+                patch={"age": 22, "full_name": "Иван Иванов"})
+    resp = _client(_cfg(path)).post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    assert asyncio.run(db.get_user(UNREGISTERED_ID))["event_city"] == "tyumen"
+
+
+def test_miniapp_form_screen_handles_city_required():
+    from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
+    text = _js_without_comments(SCREENS_DIR / "form.js")
+    start = text.index("async function submitForm(")
+    body = text[start:start + 2500]
+    assert '"city_required"' in body
