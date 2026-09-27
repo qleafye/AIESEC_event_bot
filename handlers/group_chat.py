@@ -18,9 +18,11 @@ Telegram (aiogram собирает `allowed_updates` из зарегистрир
 СЪЕДАЮТСЯ catch-all хендлером `on_group_message` в самом конце файла и дальше, к
 `registration.router`, не идут (D-4): личные хендлеры в группе больше не отвечают.
 
-D-9 — железное правило всего модуля: текст сообщения из группы НИГДЕ не читается и не
-логируется. Каждый хендлер ниже работает только с id/статусами/типами вложений, никогда с
-`message.text`/`message.caption`. Форум-ночь п.8 (SOS) — ОДНО узкое, явное исключение:
+D-9 — железное правило всего модуля: текст сообщения из группы НИГДЕ не хранится и не
+логируется. Каждый хендлер ниже работает только с id/статусами/типами вложений. Квик 260927
+(живой рейтинг, решение владельца 20.09 «таблица message_id -> автор без текста»): единственное
+касание текста — `_own_text_len`, длина текста считается и сразу забывается; сам текст не
+сохраняется и не логируется. Форум-ночь п.8 (SOS) — ОДНО узкое, явное исключение:
 `on_sos_id_command` матчит фиксированную команду `/sos_id` (не содержимое) и не читает
 `message.text` за пределами этого совпадения — см. комментарий у самого хендлера.
 
@@ -48,10 +50,15 @@ from database.db import (
     CHAT_PRESENT_STATUSES,
     bump_chat_activity,
     log_chat_event,
+    log_chat_message,
     set_chat_bot_state,
+    set_chat_reactions,
+    update_chat_message_len,
     upsert_chat_member,
+    upsert_chat_username,
 )
 from services import chat_cleanup, chat_tracking
+from services.timeutil import aware_to_msk
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -61,6 +68,10 @@ router = Router()
 router.message.filter(F.chat.type.in_({"group", "supergroup"}))
 router.my_chat_member.filter(F.chat.type.in_({"group", "supergroup"}))
 router.chat_member.filter(F.chat.type.in_({"group", "supergroup"}))
+# Квик 260927: правки (длина сообщения в журнале рейтинга) и реакции. Регистрация observer'ов —
+# это и есть подписка: aiogram собирает allowed_updates из них (resolve_used_update_types).
+router.edited_message.filter(F.chat.type.in_({"group", "supergroup"}))
+router.message_reaction.filter(F.chat.type.in_({"group", "supergroup"}))
 
 _MEDIA_ATTRS = ("photo", "video", "document", "voice", "video_note", "animation", "sticker", "audio")
 
@@ -85,6 +96,56 @@ def _is_real_reply(message: types.Message) -> bool:
         if thread_id is not None and getattr(replied, "message_id", None) == thread_id:
             return False
     return True
+
+
+# Квик 260927: что пишется в журнал рейтинга (chat_messages). Остальные типы (служебные
+# уведомления, создание темы и т.п.) журналом не учитываются.
+LOGGED_CONTENT_TYPES = frozenset({
+    "text", "photo", "video", "document", "voice", "video_note", "animation", "sticker",
+    "audio", "poll", "location", "venue", "contact", "dice", "story",
+})
+_MEDIA_KINDS = {"photo", "video", "document", "voice", "video_note", "audio"}
+
+
+def _message_kind(message: types.Message) -> str:
+    content_type = message.content_type
+    if content_type == "text":
+        return "text"
+    if content_type in ("sticker", "animation"):
+        return "sticker"
+    if content_type in _MEDIA_KINDS:
+        return "media"
+    return "other"
+
+
+def _own_text_len(message: types.Message) -> int:
+    """ЕДИНСТВЕННОЕ касание текста в модуле (D-9): длина считается и сразу забывается.
+    Пересланный чужой текст — не собственный вклад автора, длина 0 (автопересылка из
+    связанного канала — не «чужой» текст, это сам пост канала)."""
+    if getattr(message, "forward_origin", None) is not None and not getattr(message, "is_automatic_forward", False):
+        return 0
+    return len(message.text or message.caption or "")
+
+
+def _reply_fields(message: types.Message) -> tuple[int | None, int | None]:
+    """(id сообщения-цели, автор-человек цели). Автопривязка к корню темы — не ответ; ответ
+    боту, анонимному админу или посту канала — ответ без автора-человека."""
+    if not _is_real_reply(message):
+        return None, None
+    replied = message.reply_to_message
+    author = None
+    sender = getattr(replied, "from_user", None)
+    if getattr(replied, "sender_chat", None) is None and sender is not None and not sender.is_bot:
+        author = sender.id
+    return replied.message_id, author
+
+
+def _msk_ts(dt) -> str:
+    return aware_to_msk(dt).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def _is_bound(chat_id: int) -> bool:
+    return any(b["chat_id"] == chat_id for b in await chat_tracking.bound_chats())
 
 
 async def _dm(bot: Bot, user_id: int, text: str, reply_markup=None) -> bool:
@@ -257,17 +318,71 @@ async def on_group_message(message: types.Message):
     апдейт не идёт (D-4). Текст/подпись сообщения нигде не читаются (D-9) — только факт
     наличия ответа/вложения по ИМЕНАМ полей, не по содержимому. Бот НИЧЕГО не отвечает в
     группу — только считает (правка 15.09: снесён `/chat_stats`, единственный хендлер,
-    который отвечал прямо в группу)."""
+    который отвечал прямо в группу).
+
+    Квик 260927: плюс строка журнала рейтинга (chat_messages) — без текста, только длина.
+    Автопересылка поста из связанного канала приходит от служебного 777000 (не бот) и раньше
+    засчитывалась как делегат — теперь это пост канала: в журнал с is_channel_post, в
+    активность людей — нет."""
+    if getattr(message, "is_automatic_forward", False) and message.sender_chat is not None:
+        if await chat_tracking.tracking_on() and await _is_bound(message.chat.id):
+            await log_chat_message(
+                message.chat.id, message.message_id, message.sender_chat.id, _msk_ts(message.date),
+                kind=_message_kind(message), text_len=_own_text_len(message),
+                reply_to_message_id=None, reply_to_author_id=None, is_channel_post=True,
+            )
+        return
     if message.from_user is None or message.from_user.is_bot:
         return
     if not await chat_tracking.tracking_on():
         return
-    bound = await chat_tracking.bound_chats()
-    if not any(b["chat_id"] == message.chat.id for b in bound):
+    if not await _is_bound(message.chat.id):
         return
     reply = _is_real_reply(message)
     media = any(getattr(message, attr, None) for attr in _MEDIA_ATTRS)
     await bump_chat_activity(message.chat.id, message.from_user.id, reply=reply, media=media)
+    if getattr(message, "content_type", None) in LOGGED_CONTENT_TYPES:
+        reply_mid, reply_author = _reply_fields(message)
+        await log_chat_message(
+            message.chat.id, message.message_id, message.from_user.id, _msk_ts(message.date),
+            kind=_message_kind(message), text_len=_own_text_len(message),
+            reply_to_message_id=reply_mid, reply_to_author_id=reply_author,
+        )
+        await upsert_chat_username(message.from_user.id, message.from_user.username)
+
+
+@router.edited_message()
+async def on_group_edited_message(message: types.Message):
+    """Квик 260927: правка меняет только длину в журнале рейтинга (текст не читается дальше
+    `_own_text_len`)."""
+    if not await chat_tracking.tracking_on() or not await _is_bound(message.chat.id):
+        return
+    await update_chat_message_len(message.chat.id, message.message_id, _own_text_len(message))
+
+
+def _reaction_key(reaction) -> str | None:
+    kind = getattr(reaction, "type", None)
+    if kind == "emoji":
+        return reaction.emoji
+    if kind == "custom_emoji":
+        return f"custom:{reaction.custom_emoji_id}"
+    if kind == "paid":
+        return "paid"
+    return None
+
+
+@router.message_reaction()
+async def on_group_reaction(event: types.MessageReactionUpdated):
+    """Квик 260927: текущие реакции человека на сообщение (приходят, только если бот —
+    администратор чата). Реакции от имени чата/канала (actor_chat без user) и ботов не
+    учитываются."""
+    user = event.user
+    if user is None or user.is_bot:
+        return
+    if not await chat_tracking.tracking_on() or not await _is_bound(event.chat.id):
+        return
+    keys = [k for k in (_reaction_key(r) for r in event.new_reaction) if k]
+    await set_chat_reactions(event.chat.id, event.message_id, user.id, keys, _msk_ts(event.date))
 
 
 # ── Личка: выбор города после сообщения от бота (правка 15.09) ──────────────────────────
