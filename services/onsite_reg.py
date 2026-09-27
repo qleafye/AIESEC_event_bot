@@ -1,0 +1,207 @@
+"""Регистрация на месте (FORUM-CHECKIN.md D-41): человек, которого нет в базе или который не
+одобрен, проходит на форум через стойку проблемных случаев. Решение принимает волонтёр/DXP
+одной кнопкой, и оно записано на него.
+
+Два входа:
+- walk-in — человека нет в базе: волонтёр показывает QR ссылки `walkin_<город>`, человек
+  отвечает в боте на 3 вопроса (`database.db.create_onsite_user`, строка pending без QR), потом
+  волонтёр находит его в списке «Ждут на стойке» и одобряет;
+- door — заявка есть, но не одобрена (или прошлого сезона): волонтёр одобряет её у стойки.
+
+Оба сходятся в `approve_at_door`: одобрение ОДНОГО человека (`approve_onsite`), запись в журнал
+решений (на волонтёра) и в журнал площадки, отметка входа. Массового варианта нет (урок
+инцидента 06.09 — тихие массовые одобрения). QR человеку уходит только ПОСЛЕ одобрения (D-02):
+`after_onsite_approved` в процессе бота — напрямую из чата или через outbox из Mini App.
+
+Модуль импортирует и процесс Mini App: Google-листы и aiogram — только ленивыми импортами
+внутри `after_onsite_approved` (сторож tests/test_sheet_arrival_queue_260925.py)."""
+from __future__ import annotations
+
+import io
+import logging
+
+import segno
+
+from cities import cities_module_on, city_label, get_setting_typed_for_city, normalize_city
+from database.db import approve_onsite, get_user
+from reg_engine import is_past_season_row
+from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
+from services.timeutil import msk_now
+from settings_schema import get_setting_typed
+
+logger = logging.getLogger(__name__)
+
+# Статус строки в Google-листе после одобрения у стойки — отдельный от «Одобрен», чтобы
+# организатор видел в таблице, кого пустили на месте.
+ONSITE_SHEET_LABEL = "На месте"
+WALKIN_PREFIX = "walkin"
+_DECISION_REASON = "Одобрен(а) на месте"
+
+
+async def onsite_enabled(city: str | None) -> bool:
+    """D-36: тумблер `onsite_reg_enabled` по городу стойки, дефолт выключен."""
+    return await get_setting_typed_for_city("onsite_reg_enabled", city) == "on"
+
+
+async def walkin_link(bot_username: str | None, city: str | None) -> str | None:
+    """Ссылка короткой анкеты для QR у стойки. Модуль городов выключен — без города. Нет
+    юзернейма бота — `None` (вызывающий объясняет волонтёру, что делать)."""
+    name = (bot_username or "").strip().lstrip("@")
+    if not name:
+        return None
+    if not await cities_module_on():
+        return f"https://t.me/{name}?start={WALKIN_PREFIX}"
+    return f"https://t.me/{name}?start={WALKIN_PREFIX}_{normalize_city(city)}"
+
+
+def walkin_qr_png(link: str) -> bytes:
+    """PNG QR-кода ссылки walk-in — тот же масштаб/поля, что у QR делегата (`build_checkin_qr`)."""
+    buf = io.BytesIO()
+    segno.make(link).save(buf, kind="png", scale=6, border=2)
+    return buf.getvalue()
+
+
+def parse_walkin_arg(args: str | None) -> tuple[bool, str | None]:
+    """Аргумент /start → (это ссылка walk-in?, код города). «walkin» → (True, None);
+    «walkin_<код>» → (True, код); прочее → (False, None). Код не проверяется здесь — вызывающий
+    сверяет его со списком включённых городов."""
+    if not args:
+        return False, None
+    if args == WALKIN_PREFIX:
+        return True, None
+    prefix = f"{WALKIN_PREFIX}_"
+    if args.startswith(prefix) and len(args) > len(prefix):
+        return True, args[len(prefix):]
+    return False, None
+
+
+async def _wrong_city_text(user: dict) -> str:
+    delegate_city = normalize_city(user.get("event_city"))
+    label = await city_label(delegate_city) if delegate_city else "—"
+    return f"Делегат с форума в {label} — отправьте на стойку своего города/к организаторам"
+
+
+async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
+                          staff_name: str | None, bound: str | None) -> dict:
+    """Одобрение ОДНОГО человека у стойки + отметка входа.
+
+    `city` — город стойки, выбранный в сканере; `bound` — город, к которому привязан волонтёр
+    (D-26, важнее выбранного). Возвращает результат `record_arrival` ("new"/"duplicate"/...) и,
+    если одобрение выиграно этим вызовом, `onsite_approved: True` и событие outbox
+    `{"kind": "onsite_approved", "payload": {"telegram_id": …}}` — лист, сообщение и QR
+    человеку шлёт бот (`after_onsite_approved`). `first_entry` остаётся в результате — Mini App
+    переносит его в outbox сам. Отказы: `onsite_off` (тумблер города выключен), `wrong_city`
+    (D-26), `not_found`. У одобрения нет `log_id`: кнопка «↩️ Отменить» сняла бы отметку, но не
+    решение."""
+    if not user:
+        return {"status": "not_found", "reason_text": DENIAL_REASON_TEXT["no_user"]}
+    tid = user["telegram_id"]
+    resolved = bound or city or normalize_city(user.get("event_city"))
+    if not await onsite_enabled(resolved):
+        return {"status": "onsite_off", "reason_text": await get_setting_typed("onsite_off_text")}
+
+    event_season = await get_setting_typed("event_season") or None
+    past = is_past_season_row(user, event_season)
+    # D-26: привязанный к городу волонтёр работает только со своим городом — и для уже
+    # одобренного делегата (иначе стойка поставила бы вход в чужом городе). Делегата прошлого
+    # сезона город не держит: его пускают на форум города стойки.
+    if bound and not past and normalize_city(user.get("event_city")) != bound:
+        return {"status": "wrong_city", "reason_text": await _wrong_city_text(user)}
+
+    denial = await checkin_denial(user)
+    if denial is None:
+        return await record_arrival(
+            user, ENTRY_POINT, source="manual", by_staff_id=staff_id, staff_name=staff_name,
+        )
+
+    flipped = await approve_onsite(
+        tid, by_staff_id=staff_id, season=event_season,
+        event_city=resolved if past else None,
+    )
+    if flipped:
+        from services import venue_log
+        from services.applications import record_decision
+
+        try:
+            await record_decision(
+                tid, "approved", _DECISION_REASON, staff_id, msk_now(), effects_already_sent=True,
+            )
+        except Exception:
+            logger.exception("onsite_reg: журнал решений не записан (tid=%s, staff=%s)", tid, staff_id)
+        await venue_log.log_action(
+            venue_log.ACTION_ONSITE_APPROVE, staff_id=staff_id, staff_name=staff_name,
+            telegram_id=tid, city=resolved, point=ENTRY_POINT, source="manual",
+        )
+
+    fresh = await get_user(tid) or user
+    # Флип проигран (параллельно одобрил кто-то другой) — пускаем, только если человек теперь
+    # действительно допущен; иначе отказ словами, отметку не ставим.
+    fresh_denial = await checkin_denial(fresh)
+    if fresh_denial is not None:
+        return {"status": "denied", "reason_text": DENIAL_REASON_TEXT.get(fresh_denial, fresh_denial)}
+
+    result = await record_arrival(
+        fresh, ENTRY_POINT, source="manual", by_staff_id=staff_id, staff_name=staff_name,
+    )
+    result.pop("log_id", None)
+    if flipped:
+        result["onsite_approved"] = True
+        result["outbox"] = {"kind": "onsite_approved", "payload": {"telegram_id": tid}}
+    return result
+
+
+async def after_onsite_approved(bot, telegram_id: int) -> None:
+    """Хвост одобрения у стойки в процессе бота: строка в Google-листе (тем же маршрутом, что
+    анкета: обновить, если есть, иначе дописать), статус «На месте», сообщение человеку и QR
+    (D-02: QR только после одобрения; если выпуск QR включён). Служебное сообщение — тихие часы
+    не действуют (D-35). Каждый шаг fail-soft."""
+    full = await get_user(telegram_id)
+    if not full:
+        logger.warning("onsite_reg: after_onsite_approved — нет пользователя %s", telegram_id)
+        return
+
+    try:
+        from services.reg_finalize import write_sheet_row
+        await write_sheet_row(telegram_id, full, "new")
+    except Exception:
+        logger.exception("onsite_reg: строка листа не записана (tid=%s)", telegram_id)
+    try:
+        from services.sheets import update_status_in_sheet
+        await update_status_in_sheet(telegram_id, ONSITE_SHEET_LABEL)
+    except Exception:
+        logger.exception("onsite_reg: статус в листе не обновлён (tid=%s)", telegram_id)
+
+    lang, tr_map = "ru", {}
+    try:
+        from services.i18n import context as i18n_context
+        lang, tr_map = await i18n_context(telegram_id)
+    except Exception:
+        logger.exception("onsite_reg: язык человека не определён (tid=%s)", telegram_id)
+
+    from services.i18n import tr
+    from services.telegram_send import send_with_retry
+
+    try:
+        text = tr(await get_setting_typed("onsite_reg_approved_text"), lang, tr_map)
+        err = await send_with_retry(lambda: bot.send_message(telegram_id, text))
+        if err is not None:
+            logger.error("onsite_reg: сообщение об одобрении не доставлено %s: %s", telegram_id, err)
+    except Exception:
+        logger.exception("onsite_reg: сообщение об одобрении не отправлено (tid=%s)", telegram_id)
+
+    try:
+        if await get_setting_typed("checkin_qr_enabled") != "on":
+            return
+        if await checkin_denial(full) is not None:
+            return
+        from aiogram.types import BufferedInputFile
+        from services.checkin import build_checkin_qr
+
+        png, caption = await build_checkin_qr(full)
+        caption = tr(caption, lang, tr_map)
+        photo = BufferedInputFile(png, filename="qr.png")
+        err = await send_with_retry(lambda: bot.send_photo(telegram_id, photo, caption=caption))
+        if err is not None:
+            logger.error("onsite_reg: QR не доставлен %s: %s", telegram_id, err)
+    except Exception:
+        logger.exception("onsite_reg: QR не отправлен (tid=%s)", telegram_id)
