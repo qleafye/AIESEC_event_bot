@@ -479,6 +479,12 @@ class ChatRatingEdit(StatesGroup):
     waiting_for_value = State()
 
 
+class ChatRatingPostEdit(StatesGroup):
+    # Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/admin_chat_rating_post.py) —
+    # время, число мест, заголовки и подпись поста; поле и город экрана несёт state.get_data().
+    waiting_for_value = State()
+
+
 class ChatCleanupEdit(StatesGroup):
     # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) —
     # менеджер вводит задержку удаления в секундах; после сохранения — обратно на экран.

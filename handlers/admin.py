@@ -1153,3 +1153,6 @@ from handlers import admin_chat_rating  # noqa: E402,F401
 # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) — сразу
 # после admin_chat_rating (golden append: admin_chat_cleanup/chclean:* и ввод ChatCleanupEdit).
 from handlers import admin_chat_cleanup  # noqa: E402,F401
+# Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/admin_chat_rating_post.py) —
+# golden append после admin_chat_cleanup: chpost:* и ввод ChatRatingPostEdit.
+from handlers import admin_chat_rating_post  # noqa: E402,F401
