@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 
 from database import db as bot_db
+# Часы теста = часы бота: `ambassador_since` и `wave_open` считают по Москве (`msk_now`).
+# С `datetime.now()` на CI (UTC) «вступил» уезжал на 3 ч позже старта «следующей волны».
+from services.timeutil import msk_now
 
 from tests.test_miniapp_delegate import client  # noqa: F401 — переиспользуемая фикстура
 from tests.test_miniapp_routes import DELEGATE_ID, _hdr
@@ -40,7 +43,7 @@ def _fmt(dt: datetime) -> str:
 
 def _task(title: str, *, days: int | None = 3, audience: str = "all",
           wave_id: int | None = None, coins: int = 10) -> int:
-    deadline = _fmt(datetime.now() + timedelta(days=days)) if days is not None else bot_db.NO_DEADLINE_AT
+    deadline = _fmt(msk_now() + timedelta(days=days)) if days is not None else bot_db.NO_DEADLINE_AT
     return _run(bot_db.create_task(
         f"{title} — описание", "Light", coins, "photo", deadline, None,
         title=title, wave_id=wave_id, audience=audience,
@@ -48,7 +51,7 @@ def _task(title: str, *, days: int | None = 3, audience: str = "all",
 
 
 def _make_ambassador(telegram_id: int, since: str | None = None) -> None:
-    _run(bot_db.set_ambassador_flag(telegram_id, active=True, at=since or _fmt(datetime.now())))
+    _run(bot_db.set_ambassador_flag(telegram_id, active=True, at=since or _fmt(msk_now())))
 
 
 # ── структурный сторож: список.py без visible_tasks_for рядом с list_active_tasks — дыра ────
@@ -274,7 +277,7 @@ class _FakeWaveCallback:
 
 
 def _active_wave(days_ago_start: int = 1, days_ahead_end: int = 5) -> int:
-    now = datetime.now()
+    now = msk_now()
     wave_id = _run(bot_db.create_wave(
         starts_at=_fmt(now - timedelta(days=days_ago_start)),
         ends_at=_fmt(now + timedelta(days=days_ahead_end)),
@@ -290,7 +293,7 @@ def _credit_wave_task(uid: int, wave_id: int, coins: int) -> None:
 
 def test_wave_rating_button_shown_for_ambassador_with_active_eligible_wave(client):  # noqa: F811
     wave_id = _active_wave()
-    _make_ambassador(DELEGATE_ID, since=_fmt(datetime.now() - timedelta(days=10)))
+    _make_ambassador(DELEGATE_ID, since=_fmt(msk_now() - timedelta(days=10)))
     assert wave_id
     _task("Обычное")
     _text, kb = _run(ua_mod._game_task_list_screen(DELEGATE_ID))
@@ -308,7 +311,7 @@ def test_wave_rating_button_absent_without_active_wave(client):  # noqa: F811
 
 def test_wave_rating_screen_shows_top_and_own_line_when_names_on(client):  # noqa: F811
     wave_id = _active_wave()
-    since = _fmt(datetime.now() - timedelta(days=10))
+    since = _fmt(msk_now() - timedelta(days=10))
     _make_ambassador(DELEGATE_ID, since=since)
     _make_ambassador(OTHER_AMB_ID, since=since)
     _run(bot_db.add_user({
@@ -332,7 +335,7 @@ def test_wave_rating_screen_wave_label_translated_for_english_ambassador(client)
     обход `reg_i18n` — англоязычный амбассадор видел русское слово «Волна» посреди
     переведённого экрана рейтинга."""
     wave_id = _active_wave()
-    _make_ambassador(DELEGATE_ID, since=_fmt(datetime.now() - timedelta(days=10)))
+    _make_ambassador(DELEGATE_ID, since=_fmt(msk_now() - timedelta(days=10)))
     _run(bot_db.set_setting("delegate_lang_enabled", "on"))
     _run(bot_db.set_user_lang(DELEGATE_ID, "en"))
 
@@ -345,7 +348,7 @@ def test_wave_rating_screen_wave_label_translated_for_english_ambassador(client)
 
 def test_wave_rating_hides_other_names_when_toggle_off_but_keeps_own_line(client):  # noqa: F811
     wave_id = _active_wave()
-    since = _fmt(datetime.now() - timedelta(days=10))
+    since = _fmt(msk_now() - timedelta(days=10))
     _run(bot_db.add_user({
         "telegram_id": OTHER_AMB_ID, "full_name": "Скрытый Сосед",
         "registration_date": "2026-08-01",
@@ -398,9 +401,9 @@ def test_wave_rating_after_ends_at_closing_wave_shows_final_table_not_closed_tex
     волну по датам, но пока итоги не объявлены (`closing`), участник обязан видеть финальную
     таблицу с пометкой, а не «нет активной волны» — снимок призёров ещё не готов, но рейтинг
     посчитать можно (та же `wave_rating`, что и во время волны)."""
-    since = _fmt(datetime.now() - timedelta(days=10))
+    since = _fmt(msk_now() - timedelta(days=10))
     wave_id = _run(bot_db.create_wave(
-        starts_at=since, ends_at=_fmt(datetime.now() - timedelta(hours=1)),
+        starts_at=since, ends_at=_fmt(msk_now() - timedelta(hours=1)),
     ))
     _run(bot_db.set_wave_state(wave_id, "active"))
     _run(bot_db.set_wave_state(wave_id, "closing", expected_state="active"))
@@ -421,13 +424,13 @@ def test_wave_rating_after_ends_at_closing_wave_shows_final_table_not_closed_tex
 def test_wave_rating_after_ends_at_no_closing_wave_still_shows_closed_text(client):  # noqa: F811
     """Волна уже `announced` (итоги объявлены) — это НЕ closing, старое пустое состояние без
     изменений."""
-    since = _fmt(datetime.now() - timedelta(days=10))
+    since = _fmt(msk_now() - timedelta(days=10))
     wave_id = _run(bot_db.create_wave(
-        starts_at=since, ends_at=_fmt(datetime.now() - timedelta(hours=1)),
+        starts_at=since, ends_at=_fmt(msk_now() - timedelta(hours=1)),
     ))
     _run(bot_db.set_wave_state(wave_id, "active"))
     _run(bot_db.set_wave_state(wave_id, "closing", expected_state="active"))
-    _run(bot_db.announce_wave_atomic(wave_id, [], _fmt(datetime.now())))
+    _run(bot_db.announce_wave_atomic(wave_id, [], _fmt(msk_now())))
     _make_ambassador(DELEGATE_ID, since=since)
 
     cb = _FakeWaveCallback(DELEGATE_ID)
@@ -542,7 +545,7 @@ def test_ambleave_without_confirm_changes_nothing_in_db(client):  # noqa: F811
 
 def test_ambleave_go_clears_ambassador_keeps_balance_and_current_wave_rating(client):  # noqa: F811
     wave_id = _active_wave()
-    since = _fmt(datetime.now() - timedelta(days=10))
+    since = _fmt(msk_now() - timedelta(days=10))
     _make_ambassador(DELEGATE_ID, since=since)
     _credit_wave_task(DELEGATE_ID, wave_id, 25)
     balance_before = _run(bot_db.get_balance(DELEGATE_ID))
@@ -575,13 +578,13 @@ def test_ambjoin_restores_flag_with_fresh_since_current_wave_unavailable_next_av
     # волна» стартует вскоре ПОСЛЕ вступления (ambassador_since <= starts_at) и активна;
     # проверяем eligible_wave_ids с явным `now` ПОЗЖЕ её собственного starts_at — «после того
     # как волна реально началась», а не в момент постановки.
-    soon = datetime.now() + timedelta(hours=1)
+    soon = msk_now() + timedelta(hours=1)
     next_wave_id = _run(bot_db.create_wave(
-        starts_at=_fmt(soon), ends_at=_fmt(datetime.now() + timedelta(days=20)),
+        starts_at=_fmt(soon), ends_at=_fmt(msk_now() + timedelta(days=20)),
     ))
     _run(bot_db.set_wave_state(next_wave_id, "active"))
     next_wave = _run(bot_db.get_wave(next_wave_id))
-    later = datetime.now() + timedelta(hours=2)
+    later = msk_now() + timedelta(hours=2)
     assert next_wave_id in _eligible(user, [next_wave], now=later)
 
 
