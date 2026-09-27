@@ -767,6 +767,8 @@ _REGISTRY_TEXTS_EN = {
     "Здесь резюме принимается текстом — напиши коротко в ответном сообщении.": "Here your CV is accepted as text — write a short reply message.",
     "Файл больше 20 МБ — сожмите или пришлите ссылку в описании.": "File is larger than 20 MB — compress it or send a link in the description.",
     "Не удалось загрузить файл — попробуй ещё раз или пришли резюме текстом.": "Couldn't upload the file — try again or send your CV as text.",
+    "Выбери вариант резюме кнопкой ещё раз: приложи файл, дай ссылку или напиши о себе текстом.": "Pick your CV option with a button again: attach a file, share a link or write about yourself as text.",
+    "Файл резюме ещё не загрузился — прикрепи его ещё раз.": "Your CV file hasn't uploaded yet — please attach it again.",
     "Резюме принимается как PDF или DOCX — другой формат не подойдёт.": "Your CV is accepted as PDF or DOCX — other formats won't work.",
     "📱 Поделиться номером": "📱 Share phone number",
     "Вместо строчки «Анкета: одобрена» в профиле": "Instead of the «Application: approved» line in the profile",
