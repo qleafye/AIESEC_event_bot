@@ -53,6 +53,9 @@ Telegram или пересобирать таблицу самому — еди�
 - `checkin_first_entry` -> `services.checkin.fire_first_entry(bot, **payload)` (24.09) —
   слушатели первой отметки входа делегата, отмеченного сканером/поиском Mini App. Слушатели
   fail-soft сами, строка из очереди выходит обработанной даже при их сбое (не ретраим).
+- `onsite_approved` -> `services.onsite_reg.after_onsite_approved(bot, telegram_id)` (D-41) —
+  человека одобрили у стойки в сканере Mini App: строка листа, сообщение и QR (только ПОСЛЕ
+  одобрения, D-02). Каждый шаг fail-soft сам.
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -237,6 +240,12 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         from services.checkin import fire_first_entry  # ленивый: checkin тянет segno/sheets
 
         await fire_first_entry(bot, **payload)
+        return
+    if kind == "onsite_approved":
+        # D-41/D-02: одобрение у стойки из Mini App — лист, сообщение и QR человеку шлёт бот.
+        from services.onsite_reg import after_onsite_approved  # ленивый, как checkin выше
+
+        await after_onsite_approved(bot, payload.get("telegram_id"))
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
