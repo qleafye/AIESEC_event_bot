@@ -25,6 +25,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -35,6 +36,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 import web_theme
 from secret_redact import install_log_redaction, register_secret
+from dashboard import chat_rating
 from dashboard import queries
 from dashboard import sources_daily
 from dashboard.access import has_stats, staff_city, viewer_scope
@@ -445,7 +447,9 @@ def build_page_context(
     return ctx
 
 
-def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict) -> dict:
+def build_chat_context(
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, period: str | None = None,
+) -> dict:
     """Квик 260914-rgr (RGR-01..07): собирает ВЕСЬ контекст страницы «Чат» одним вызовом
     (тот же принцип, что `build_page_context` — шаблон в БД не ходит). Менеджер, привязанный
     к городу (`viewer["bound_city"]`), видит плитку только своего чата — тот же D-10, что у
@@ -457,6 +461,8 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         [c for c in all_chats if c["city"] == bound_city_code] if bound_city_code else all_chats
     )
 
+    period = chat_rating.normalize_period(period)
+    now = msk_now()
     cards = []
     for chat in visible_chats:
         joins_rows = queries.chat_joins_daily(conn, chat["chat_id"])
@@ -478,10 +484,22 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
             # Владелец 15.09: «последняя сверка» на карточке — тот же MAX(updated_at), что
             # раньше показывал снесённый экран «💬 Чат» в боте.
             "last_sync": queries.chat_last_sync_at(conn, chat["chat_id"]),
-            # Рейтинг активности делегатов в чате (задача 21.09): сообщения, ответы, медиа —
-            # агрегаты из chat_activity за всё время, отфильтровано по скоупу (город/сезон).
-            "leaderboard": queries.chat_activity_leaderboard(conn, scope, chat, limit=50),
+            # Квик 260927: живой рейтинг по баллам (формула chat_score, общая с тулом по
+            # экспорту) вместо голого счёта сообщений. Команда в таблицу не входит.
+            "rating": chat_rating.chat_rating(
+                conn, chat, period=period, admin_ids=set(cfg.admin_ids), now=now,
+            ),
         })
+
+    # Ссылки переключателя периода сохраняют город/сезон страницы.
+    base_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
+    period_links = [
+        {
+            "code": code, "label": label, "active": code == period,
+            "href": "/chat?" + urlencode({**base_params, "period": code}),
+        }
+        for code, label in chat_rating.PERIODS
+    ]
 
     return {
         "event_name": flags.get("event_name"),
@@ -492,6 +510,8 @@ def build_chat_context(conn, cfg: DashboardConfig, scope: queries.Scope, viewer:
         "scope": scope,
         "chat_bindings": all_chats,
         "cards": cards,
+        "period": period,
+        "period_links": period_links,
         "bot_username": cfg.bot_username,
     }
 
@@ -902,6 +922,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        period: Optional[str] = None,
     ):
         """Квик 260914-rgr (RGR-01..07): периметр — КОПИЯ маршрута `/` строка в строку
         (редирект супердашборда, сессия/логин, пересверка `stats` на каждый запрос,
@@ -934,7 +955,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_chat_context(conn, cfg, scope, viewer)
+            context = build_chat_context(conn, cfg, scope, viewer, period=period)
 
         return templates.TemplateResponse(request, "chat.html", context)
 
