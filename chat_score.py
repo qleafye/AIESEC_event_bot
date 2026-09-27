@@ -318,3 +318,156 @@ def describe_formula(w: dict) -> str:
         f"Регулярность = {w['regularity_per_day']:g}×активных дней. "
         f"Отдача = {w['giving_per_reaction']:g}×поставленных реакций."
     )
+
+
+# ---------------------------------------------------------------------------
+# Режим «По правилам города» (пресет СПб «коины»)
+# ---------------------------------------------------------------------------
+
+# Пресет СПб (организатор, 27.09): ЛЮБОЕ сообщение команды — «пост» (post_min_chars 0 =
+# выключено); порог длины оставлен для других городов.
+RULES_DEFAULTS = {
+    "post_min_chars": 0,        # сообщение команды короче — не пост (0 = любое)
+    "comment_points": 10,       # комментарий под постом
+    "valuable_min_chars": 500,  # с этой длины комментарий «ценный»
+    "valuable_points": 20,      # ценный комментарий (вместо обычного, не вдобавок)
+    "referral_points": 5,       # за каждого одобренного приглашённого, без потолка
+    "social_points": 15,        # за одобренное задание в соцсетях
+    "social_max": 3,            # заданий в соцсетях засчитывается не больше
+    "checkin_points": 20,       # за день форума с отметкой на входе
+    "checkin_max": 2,           # дней форума засчитывается не больше
+}
+_INT_RULES = {"post_min_chars", "valuable_min_chars", "social_max", "checkin_max"}
+RULE_SETTING_KEYS = {name: f"chat_rules_{name}" for name in RULES_DEFAULTS}
+CURRENCY_KEY = "chat_rules_currency"
+DEFAULT_CURRENCY = "баллы"
+# Id игровых заданий «соцсети», по одному на строку — правит только экран-выбор в админке.
+SOCIAL_TASKS_KEY = "chat_rules_social_tasks"
+
+_RULE_FIELDS = ("comments", "valuable", "comment_points", "referrals", "referral_points",
+                "social", "social_points", "checkins", "checkin_points", "total")
+
+
+def rules_from_settings(raw) -> dict:
+    """bot_settings (ключ -> строка) -> суммы и пороги правил. Кривое -> дефолт, не бросает."""
+    raw = raw or {}
+    rules = dict(RULES_DEFAULTS)
+    for name, key in RULE_SETTING_KEYS.items():
+        value = _parse_non_negative(raw.get(key))
+        if value is None:
+            continue
+        rules[name] = int(value) if name in _INT_RULES else value
+    return rules
+
+
+def score_city_rules(records, *, team_ids, rules, referral_dates, social_dates, checkin_days,
+                     since=None, until=None) -> dict:
+    """Баллы по правилам города за окно [since, until] (даты включительно).
+
+    Чистая детерминированная функция без I/O: не пишет коины и ничего не шлёт. Будущий
+    начислятель вызовет её и сравнит с уже начисленным.
+
+    - Пост — сообщение команды (team_ids) или канала с длиной ≥ post_min_chars.
+    - Комментарий — ответ участника на пост: comment_points, с длины valuable_min_chars —
+      valuable_points вместо них. За один пост человеку не больше одного начисления (максимум).
+    - Приглашённые — без потолка; задания в соцсетях и дни форума — с потолком на
+      накопленном списке.
+    Окно = накопленное к until минус накопленное к дню перед since, поэтому неделя после
+    потолка даёт 0, а «апгрейд» комментария до ценного попадает в неделю апгрейда.
+    Команда баллов не получает. Возвращаются только люди с total > 0.
+    """
+    r = dict(RULES_DEFAULTS)
+    r.update(rules or {})
+    team = set(team_ids or ())
+
+    post_ids = {
+        rec.message_id for rec in records
+        if (rec.is_channel_post or (rec.author_id is not None and rec.author_id in team))
+        and rec.text_len >= r["post_min_chars"]
+    }
+    comments = [
+        rec for rec in records
+        if not rec.is_channel_post and rec.author_id is not None and rec.author_id not in team
+        and rec.reply_to_message_id is not None and rec.reply_to_message_id in post_ids
+    ]
+
+    def _totals(cutoff):
+        out: dict = defaultdict(lambda: dict.fromkeys(_RULE_FIELDS, 0))
+
+        best: dict = {}
+        for rec in comments:
+            if cutoff is not None and rec.day > cutoff:
+                continue
+            valuable = rec.text_len >= r["valuable_min_chars"]
+            award = r["valuable_points"] if valuable else r["comment_points"]
+            key = (rec.author_id, rec.reply_to_message_id)
+            prev = best.get(key)
+            if prev is None or (award, valuable) > prev:
+                best[key] = (award, valuable)
+        for (pid, _post), (award, valuable) in best.items():
+            row = out[pid]
+            row["comments"] += 1
+            row["valuable"] += 1 if valuable else 0
+            row["comment_points"] += award
+
+        def _upto(days):
+            return sorted(d for d in days if cutoff is None or d <= cutoff)
+
+        for pid, days in (referral_dates or {}).items():
+            if pid in team:
+                continue
+            n = len(_upto(days))
+            if n:
+                out[pid]["referrals"] = n
+                out[pid]["referral_points"] = n * r["referral_points"]
+        for pid, days in (social_dates or {}).items():
+            if pid in team:
+                continue
+            n = min(len(_upto(days)), int(r["social_max"]))
+            if n:
+                out[pid]["social"] = n
+                out[pid]["social_points"] = n * r["social_points"]
+        for pid, days in (checkin_days or {}).items():
+            if pid in team:
+                continue
+            n = min(len(set(_upto(days))), int(r["checkin_max"]))
+            if n:
+                out[pid]["checkins"] = n
+                out[pid]["checkin_points"] = n * r["checkin_points"]
+
+        for row in out.values():
+            row["total"] = (row["comment_points"] + row["referral_points"]
+                            + row["social_points"] + row["checkin_points"])
+        return out
+
+    upto = _totals(until)
+    if since is not None:
+        before = _totals(date.fromordinal(since.toordinal() - 1))
+        window = {}
+        for pid, row in upto.items():
+            prev = before.get(pid)
+            window[pid] = {k: row[k] - (prev[k] if prev else 0) for k in _RULE_FIELDS}
+    else:
+        window = {pid: dict(row) for pid, row in upto.items()}
+    return {pid: row for pid, row in window.items() if row["total"] > 0}
+
+
+def describe_rules(rules: dict, currency: str = DEFAULT_CURRENCY) -> list:
+    """Правила человеческим языком — подсказка на дашборде."""
+    r = dict(RULES_DEFAULTS)
+    r.update(rules or {})
+    cur = currency or DEFAULT_CURRENCY
+    post = "сообщением команды"
+    if r["post_min_chars"] > 0:
+        post += f" (от {r['post_min_chars']:g} символов)"
+    return [
+        f"Комментарий под {post}: {r['comment_points']:g} {cur}, "
+        "не больше одного за сообщение",
+        f"Ценный комментарий (от {r['valuable_min_chars']:g} символов): "
+        f"{r['valuable_points']:g} {cur} вместо обычного",
+        f"Приглашённый, чью заявку одобрили: {r['referral_points']:g} {cur} за каждого",
+        f"Задание в соцсетях: {r['social_points']:g} {cur}, засчитывается не больше "
+        f"{r['social_max']:g}",
+        f"День форума с отметкой на входе: {r['checkin_points']:g} {cur}, не больше "
+        f"{r['checkin_max']:g} дней",
+    ]
