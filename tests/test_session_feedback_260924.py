@@ -47,6 +47,12 @@ async def _add_delegate(tid: int, *, full_name="Тест Делегатов"):
     })
 
 
+def _TOMORROW_NOON():
+    """Завтра 12:00 по Москве — «будущая» сессия, у которой ЧЧ:ММ начала и конца не переходят
+    через полночь ни при каком времени прогона."""
+    return (msk_now() + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+
+
 async def _make_session(city="msk", *, day=None, start_offset_min=-60, end_offset_min=-30):
     """Сессия, чьи `day`/`start_time`/`end_time` считаются от РЕАЛЬНОГО `msk_now()` — по
     умолчанию уже закончилась 30 минут назад (типичный сценарий джобы отзыва). `day` берётся у
@@ -310,7 +316,9 @@ def test_list_session_feedback_comments_pagination(tmp_path):
 
 def test_schedule_for_session_uses_end_time_plus_delay(tmp_path, monkeypatch):
     _ready(tmp_path)
-    now = msk_now()
+    # Завтра в 12:00–12:30, а не «сейчас + 30 мин»: около полуночи «ЧЧ:ММ» конца переваливал
+    # за 00:00 и оказывался раньше начала — на CI (прогон в ~22:00 МСК) тест падал.
+    now = _TOMORROW_NOON()
     end = now + timedelta(minutes=30)
     sid = _run(db.create_program_session(
         "msk", now.strftime("%Y-%m-%d"), now.strftime("%H:%M"), end.strftime("%H:%M"), "Сессия",
@@ -331,7 +339,7 @@ def test_schedule_for_session_uses_end_time_plus_delay(tmp_path, monkeypatch):
 
 def test_schedule_for_session_reschedule_on_edit_replaces_not_duplicates(tmp_path, monkeypatch):
     _ready(tmp_path)
-    now = msk_now()
+    now = _TOMORROW_NOON()  # см. test_schedule_for_session_uses_end_time_plus_delay — полночь
     sid = _run(db.create_program_session(
         "msk", now.strftime("%Y-%m-%d"), now.strftime("%H:%M"),
         (now + timedelta(minutes=30)).strftime("%H:%M"), "Сессия",
