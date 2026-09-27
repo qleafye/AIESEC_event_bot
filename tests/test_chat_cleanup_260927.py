@@ -114,36 +114,38 @@ def test_already_deleted_message_is_silent(tmp_path, caplog):
     assert state is None or state["can_delete"] != 0
 
 
-def test_delay_schedules_persistent_job(tmp_path, monkeypatch):
+def test_delay_queues_in_db_not_in_jobstore(tmp_path, monkeypatch):
+    # Отложенное удаление — строка в chat_cleanup_queue, а не date-джоба на каждое уведомление.
     _ready(tmp_path)
     _run(db.set_setting(chat_cleanup.DELAY_KEY, "30"))
     jobs = []
 
     class _Sched:
-        def add_job(self, func, trigger, **kw):
-            jobs.append((func, trigger, kw))
+        def add_job(self, *a, **kw):
+            jobs.append((a, kw))
 
     import services.scheduler as sched
     monkeypatch.setattr(sched, "get_scheduler", lambda: _Sched())
     bot = _Bot()
     _run(chat_cleanup.handle_service_message(bot, CHAT, 11, "join"))
     assert bot.deleted == []
-    func, trigger, kw = jobs[0]
-    assert func is chat_cleanup.delete_service_message_job
-    assert trigger == "date"
-    assert kw["id"] == f"chatclean_{CHAT}_11"
-    assert kw["args"] == [CHAT, 11]
+    assert jobs == []
+
+    async def _queued():
+        async with db._connect() as conn:
+            async with conn.execute("SELECT chat_id, message_id, code FROM chat_cleanup_queue") as cur:
+                return await cur.fetchall()
+    assert _run(_queued()) == [(CHAT, 11, "join")]
 
 
-def test_delay_without_scheduler_deletes_immediately(tmp_path, monkeypatch):
+def test_delay_queue_failure_deletes_immediately(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(db.set_setting(chat_cleanup.DELAY_KEY, "30"))
 
-    def _boom():
-        raise RuntimeError("Scheduler not initialised")
+    async def _boom(*a, **k):
+        raise RuntimeError("database is locked")
 
-    import services.scheduler as sched
-    monkeypatch.setattr(sched, "get_scheduler", _boom)
+    monkeypatch.setattr(chat_cleanup, "enqueue_chat_cleanup", _boom)
     bot = _Bot()
     _run(chat_cleanup.handle_service_message(bot, CHAT, 11, "join"))
     assert bot.deleted == [(CHAT, 11)]
