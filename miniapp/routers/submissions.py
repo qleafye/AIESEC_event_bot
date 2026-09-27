@@ -132,6 +132,16 @@ def _classify_upload(content_type: str | None, size: int, target: str | None = N
     return "photo" if ct in PHOTO_CONTENT_TYPES and size <= PHOTO_MAX_BYTES else "document"
 
 
+LOG_VALUE_MAX = 40
+
+
+def _log_safe(value: str) -> str:
+    """Значение из запроса в строку лога: без управляющих символов (подделать строку лога
+    переводом строки нельзя) и не длиннее `LOG_VALUE_MAX`."""
+    cleaned = "".join(ch if ch.isprintable() else "?" for ch in str(value))
+    return cleaned[:LOG_VALUE_MAX]
+
+
 def _extract_file_id(kind: str, result: dict) -> str | None:
     if kind == "photo":
         photos = result.get("photo") or []
@@ -252,7 +262,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     target = request.query_params.get("target")
     logger.info(
         "uploads: target=%s content_type=%s ext=%s size=%s",
-        target or "task", content_type, os.path.splitext(filename)[1].lower() or "—", len(content),
+        _log_safe(target or "task"), _log_safe(content_type), os.path.splitext(filename)[1].lower() or "—", len(content),
     )
     if target == "resume":
         return await _upload_resume(request, actor, content, filename, content_type)
