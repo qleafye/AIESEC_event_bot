@@ -118,9 +118,17 @@ async def _read_capped(upload) -> bytes:
 # документом, а не «фото с последующей ошибкой».
 PHOTO_CONTENT_TYPES = frozenset({"image/jpeg", "image/jpg", "image/png", "image/gif"})
 
+# Цели загрузки, которым нужна именно ФОТО-картинка: ассет оформления настроек и обложка
+# задания. Бот потом отдаёт их через `answer_photo`, и `file_id` документа там не работает —
+# поэтому для них прежнее правило: любая image/* уходит `sendPhoto`, а отказ Telegram не
+# подменяется документом (менеджер видит ошибку, а не молчаливую заглушку у делегатов).
+IMAGE_TARGETS = frozenset({"settings_asset", "task_cover"})
 
-def _classify_upload(content_type: str | None, size: int) -> str:
+
+def _classify_upload(content_type: str | None, size: int, target: str | None = None) -> str:
     ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if target in IMAGE_TARGETS:
+        return "photo" if ct.startswith("image/") and size <= PHOTO_MAX_BYTES else "document"
     return "photo" if ct in PHOTO_CONTENT_TYPES and size <= PHOTO_MAX_BYTES else "document"
 
 
@@ -219,8 +227,9 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
 async def upload_part(request: Request, actor: UploadActor = Depends(upload_actor)) -> dict:
     """Часть сдачи (или обложка/ассет) уходит в чат загрузившего через Bot API.
 
-    Квик 27.09: фото — только JPEG/PNG/GIF ≤10 МБ (`PHOTO_CONTENT_TYPES`), остальное —
-    документом. Если Telegram всё же отверг фото (400), тот же файл один раз уходит
+    Квик 27.09: для сдачи задания фото — только JPEG/PNG/GIF ≤10 МБ (`PHOTO_CONTENT_TYPES`),
+    остальное — документом. Ассеты настроек и обложки (`IMAGE_TARGETS`) — по прежнему правилу
+    «любая image/* фото, отказ Telegram = 502», без подмены на документ. Если Telegram всё же отверг фото (400), тот же файл один раз уходит
     документом. Окончательный отказ Telegram по файлу (400) — HTTP 400 `file_rejected` с
     текстом реестра `miniapp_upload_file_rejected_text` (делегату есть что сделать);
     недоступность (сеть, 5xx, не-JSON) — прежний 502 `telegram_unavailable`. В лог — только
@@ -248,7 +257,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     if target == "resume":
         return await _upload_resume(request, actor, content, filename, content_type)
 
-    kind = _classify_upload(upload.content_type, len(content))
+    kind = _classify_upload(upload.content_type, len(content), target)
     # Quick 260904-8o3 Task 2 (E3): `is_staff_upload` из `deps.upload_actor` отвечает на
     # вопрос «прошёл ли делегатский гейт», а не «зачем грузим» — менеджер, который сам
     # одновременно одобренный делегат (владелец, тестировщица), по нему ВСЕГДА делегат, тогда
@@ -272,7 +281,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
                     cfg, actor.telegram_id, content, filename, content_type, caption,
                 )
             except TelegramApiError as exc:
-                if exc.status != 400:
+                if exc.status != 400 or target in IMAGE_TARGETS:
                     raise
                 # Telegram отверг картинку как фото — ровно один повтор документом.
                 logger.warning(
@@ -284,7 +293,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
                 cfg, actor.telegram_id, content, filename, content_type, caption,
             )
     except TelegramApiError as exc:
-        if exc.status == 400:
+        if exc.status == 400 and target not in IMAGE_TARGETS:
             lang, tr_map = await i18n.context(actor.telegram_id)
             lang = lang if lang in ("ru", "en") else "ru"
             raise HTTPException(400, {
