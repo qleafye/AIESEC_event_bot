@@ -48,7 +48,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "850 -> 856, потолок был уже на границе, поднят до фактического размера."
     ),
     "registration.py": (
-        2770,
+        2774,
+        "28.09 (регистрация на месте, D-41): +4 строки — перехват `?start=walkin_<город>` в "
+        "`cmd_start` сразу после ветки `vol_` (`handlers.onsite_reg.try_walkin_start`); вся "
+        "короткая анкета — в шве handlers/onsite_reg.py; 2770 -> 2774. "
         "27.09 (заявки с пустым городом): +5 строк — `_start_registration_flow` без города зовёт "
         "`handlers.reg_city_gate.form_city_or_ask` (известный город или экран выбора) вместо "
         "старта анкеты без города; сама логика — в шве reg_city_gate/services.known_city; 2765 -> 2770. "
