@@ -2469,7 +2469,9 @@ async def add_user(data: dict):
                 bed_partner=excluded.bed_partner,
                 participant_type=excluded.participant_type,
                 alumni_status=excluded.alumni_status,
-                event_city=excluded.event_city,
+                -- Квик 27.09: повторная подача без города (обходной вход, приложение) не затирает
+                -- уже известный город заявки — NULL поверх города не пишем никогда.
+                event_city=COALESCE(excluded.event_city, users.event_city),
                 -- Phase 07.3 (A): unconditional overwrite (not COALESCE) — a new registration
                 -- always writes the CURRENT event_season; prev_season is only ever non-NULL when
                 -- the caller (plan 04's finalize_registration) explicitly passes it.
@@ -3585,6 +3587,25 @@ async def record_reg_event(
             (telegram_id, event, event_city, season, ts, source_tag),
         )
         await db.commit()
+
+
+async def get_last_reg_event_city(telegram_id: int, season: str | None = None) -> str | None:
+    """Квик 27.09: последний НЕпустой город этого делегата в воронке (`reg_events`) — одно из
+    звеньев цепочки «что уже известно о городе» (`services.known_city`). `season` задан —
+    только записи этого сезона: город прошлого сезона не должен молча переехать в новый."""
+    query = (
+        "SELECT event_city FROM reg_events WHERE telegram_id = ? "
+        "AND event_city IS NOT NULL AND event_city != ''"
+    )
+    params: tuple = (telegram_id,)
+    if season:
+        query += " AND season = ?"
+        params = (telegram_id, season)
+    query += " ORDER BY id DESC LIMIT 1"
+    async with _connect() as db:
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
 
 
 async def backfill_reg_event_city(telegram_id: int, event_city: str) -> None:

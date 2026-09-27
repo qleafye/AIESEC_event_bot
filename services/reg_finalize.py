@@ -533,6 +533,17 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 season = None
                 data["season"] = None
 
+            # Квик 27.09: подача без города (обходной вход, приложение) наследует уже известный
+            # город заявки — иначе лист/уведомления/`form_completed` уходят без города, а
+            # `add_user` его бы и так не затёр (COALESCE), но всё остальное по пути — да.
+            if not data.get("event_city"):
+                try:
+                    _old_row = await get_user(telegram_id)
+                    if _old_row and _old_row.get("event_city"):
+                        data["event_city"] = _old_row["event_city"]
+                except Exception as e:
+                    logger.error(f"event_city inherit failed for {telegram_id}: {e}")
+
             # Ночное ревью, находка #4: единственный неогороженный await во всей финализации —
             # падение здесь обязано быть видимым (пробрасывается в общий except ниже), а не
             # тихо поглощённым, иначе делегат уверен, что зарегистрировался, а строки нет.
