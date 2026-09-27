@@ -390,3 +390,144 @@ def test_walkin_logs_have_no_phone_or_name(tmp_path, caplog):
     )
     assert "79991234567" not in joined
     assert "Иванова" not in joined
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Task 2: экран менеджера «📝 Регистрация на месте» и строка хаба «🎪 Форум: функции»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from types import SimpleNamespace  # noqa: E402
+
+from handlers import admin_forum_functions as aff  # noqa: E402
+from handlers import admin_onsite_reg as aor  # noqa: E402
+from handlers.admin_caps import required_capability  # noqa: E402
+from tests.test_roles_phase8 import dispatch_callback  # noqa: E402
+
+
+def _cbs(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+class _AdminMsg:
+    def __init__(self):
+        self.answers = []  # (text, kwargs)
+        self.edits = []
+        self.photos = []  # (photo, kwargs)
+
+    async def answer(self, text, **k):
+        self.answers.append((text, k))
+
+    async def edit_text(self, text, **k):
+        self.edits.append((text, k))
+
+    async def answer_photo(self, photo, **k):
+        self.photos.append((photo, k))
+
+
+class _AdminCb:
+    def __init__(self, data, uid=ADMIN_ID):
+        self.data = data
+        self.from_user = _User(uid)
+        self.message = _AdminMsg()
+        self.alerts = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.alerts.append((text, show_alert))
+
+
+class _MeBot:
+    def __init__(self, username="yl_test_bot"):
+        self.username = username
+
+    async def me(self):
+        return SimpleNamespace(username=self.username)
+
+
+def test_hub_has_onsite_row_and_button(tmp_path):
+    _ready(tmp_path)
+    with _Cities():
+        text, kb = _run(aff._render_hub(ADMIN_ID, "spb"))
+    assert "📝 Регистрация на месте: ❌ Выкл" in text
+    assert "onsitereg_cfg:spb" in _cbs(kb)
+
+
+def test_hub_row_shows_on_after_enable(tmp_path):
+    _ready(tmp_path)
+    with _Cities():
+        _enable("spb")
+        text, _kb = _run(aff._render_hub(ADMIN_ID, "spb"))
+    assert "📝 Регистрация на месте: ✅ Вкл" in text
+
+
+def test_onsite_cfg_screen_shows_toggle_explanation_and_qr_button(tmp_path):
+    _ready(tmp_path)
+    with _Cities():
+        cb = _AdminCb("onsitereg_cfg:spb")
+        _run(aor.onsitereg_cfg_screen(cb))
+    text, k = cb.message.answers[-1]
+    assert "Регистрация на месте" in text
+    assert "СПб" in text
+    assert "волонт" in text.lower()
+    assert "пакет" in text.lower()
+    cbs = _cbs(k["reply_markup"])
+    assert "onsitereg_toggle:spb" in cbs
+    assert "onsitereg_qr:spb" in cbs
+    assert "admin_forum_functions" in cbs
+    # человеческие подписи, без ключей настроек
+    assert "onsite_reg_enabled" not in text
+
+
+def test_onsite_toggle_flips_only_own_city(tmp_path):
+    from cities import get_setting_typed_for_city
+    _ready(tmp_path)
+    with _Cities():
+        cb = _AdminCb("onsitereg_toggle:spb")
+        _run(aor.onsitereg_toggle_go(cb))
+        assert _run(get_setting_typed_for_city("onsite_reg_enabled", "spb")) == "on"
+        assert _run(get_setting_typed_for_city("onsite_reg_enabled", "msk")) == "off"
+        assert cb.alerts[-1] == ("✅ Вкл", True)
+        assert cb.message.edits  # экран перерисован
+        cb2 = _AdminCb("onsitereg_toggle:spb")
+        _run(aor.onsitereg_toggle_go(cb2))
+        assert _run(get_setting_typed_for_city("onsite_reg_enabled", "spb")) == "off"
+        assert cb2.alerts[-1] == ("❌ Выкл", True)
+
+
+def test_onsite_qr_sends_png_with_walkin_link(tmp_path):
+    _ready(tmp_path)
+    with _Cities():
+        cb = _AdminCb("onsitereg_qr:spb")
+        _run(aor.onsitereg_qr_send(cb, _MeBot()))
+    assert cb.message.photos
+    photo, k = cb.message.photos[-1]
+    assert photo.data.startswith(b"\x89PNG")
+    assert "https://t.me/yl_test_bot?start=walkin_spb" in k["caption"]
+    assert "распечат" in k["caption"].lower()
+
+
+def test_onsite_qr_without_bot_username_alerts(tmp_path):
+    _ready(tmp_path)
+    with _Cities():
+        cb = _AdminCb("onsitereg_qr:spb")
+        _run(aor.onsitereg_qr_send(cb, _MeBot(username=None)))
+    assert not cb.message.photos
+    assert cb.alerts and "имя бота" in (cb.alerts[-1][0] or "")
+
+
+def test_onsite_screens_respect_manager_city_binding(tmp_path):
+    from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT
+    _ready(tmp_path)
+    with _Cities():
+        _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+        _run(db.set_staff_city(MANAGER_ID, "msk"))
+        for data in ("onsitereg_cfg:spb", "onsitereg_toggle:spb", "onsitereg_qr:spb"):
+            _result, event = dispatch_callback(data, MANAGER_ID)
+            assert event.answers, data
+            assert event.answers[0][0] == _CITY_FORBIDDEN_ALERT, data
+        from cities import get_setting_typed_for_city
+        assert _run(get_setting_typed_for_city("onsite_reg_enabled", "spb")) == "off"
+
+
+def test_onsite_callbacks_need_moderate_reg():
+    for data in ("onsitereg_cfg:spb", "onsitereg_toggle:spb", "onsitereg_qr:spb"):
+        assert required_capability(callback_data=data) == "moderate_reg"
