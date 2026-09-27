@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Источники по дням — {{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block body %}
+
+  <header class="site-header">
+    <div class="brand-row">
+      <a class="brand" href="/" aria-label="АЙСЕК — на главную">
+        <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>📈 Источники по {{ "неделям" if week else "дням" }}</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
+      </div>
+      <div class="event-logo-slot">
+        {% if event_logo_url %}
+        <img class="event-logo" src="{{ event_logo_url }}" alt="{{ event_name or 'Логотип мероприятия' }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <nav class="switchers" aria-label="Навигация">
+      <a class="switch-link" href="/{% if scope.city or scope.season %}?{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}{% if scope.city and scope.season %}&{% endif %}{% if scope.season %}season={{ scope.season | urlencode }}{% endif %}{% endif %}">← К статистике</a>
+    </nav>
+
+    <div class="updated-note">
+      Считаются поданные анкеты по дню подачи (московское время). Данные на момент открытия страницы.
+    </div>
+  </header>
+
+  {# Конструктор: чипы — обычные ссылки, всё состояние в URL (ссылкой можно поделиться,
+     кнопка «назад» работает). ИЛИ внутри группы, И между группами. #}
+  <section class="block">
+    <h2 class="block-title">Что показать</h2>
+    <div class="card sources-filters">
+      {% if city_links %}
+      <nav class="switchers" aria-label="Город">
+        <span class="switchers-label">Город:</span>
+        {% for link in city_links %}
+        <a class="switch-link{% if link.active %} active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+      {% elif viewer.bound_city %}
+      <div class="bound-city-note">Ваш город: {{ bound_city_label }}</div>
+      {% endif %}
+
+      <nav class="switchers" aria-label="Период">
+        <span class="switchers-label">Период:</span>
+        {% for link in period_links %}
+        <a class="switch-link{% if link.active %} active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+      <form class="range-form" method="get" action="/sources">
+        {% for name, value in range_form_fields %}
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+        {% endfor %}
+        <label>с <input type="date" name="from" value="{{ q.date_from.isoformat() if q.date_from else '' }}"></label>
+        <label>по <input type="date" name="to" value="{{ q.date_to.isoformat() if q.date_to else '' }}"></label>
+        <button class="switch-link{% if q.custom_range %} active{% endif %}" type="submit">Показать свои даты</button>
+      </form>
+
+      <nav class="switchers" aria-label="Разбить по">
+        <span class="switchers-label">Разбить по:</span>
+        {% for link in by_links %}
+        <a class="switch-link{% if link.active %} active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+      <nav class="switchers" aria-label="Шаг">
+        <span class="switchers-label">Шаг:</span>
+        {% for link in step_links %}
+        <a class="switch-link{% if link.active %} active{% endif %}" {% if link.active %}aria-current="page"{% endif %} href="{{ link.href }}">{{ link.label }}</a>
+        {% endfor %}
+      </nav>
+
+      {% for group in groups %}
+      <nav class="switchers" aria-label="{{ group.title }}">
+        <span class="switchers-label">{{ group.title }}:</span>
+        {% for chip in group["items"] %}
+        <a class="switch-link{% if chip.active %} active{% endif %}" href="{{ chip.href }}">
+          {% if chip.color %}<span class="sw sw-{{ chip.color }}" aria-hidden="true"></span>{% endif %}
+          <span>{{ chip.label }}</span>
+          {% if chip.count is not none %}<span class="chip-count">{{ chip.count | thousands }}</span>{% endif %}
+          {% if chip.active %}<span class="visually-hidden">(выбрано)</span>{% endif %}
+        </a>
+        {% endfor %}
+      </nav>
+      {% endfor %}
+
+      <p class="sources-hint">Можно выбрать несколько вариантов в одной группе — покажем любой из них; фильтры из разных групп действуют вместе.
+        {% if q.has_filters %}<a href="{{ reset_href }}">Сбросить фильтры</a>{% endif %}</p>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2 class="block-title">{{ by_label }} · по {{ "неделям" if week else "дням" }}</h2>
+    <div class="subtitle sources-description">{{ description }}</div>
+    <div class="card">
+      {% if result.has_data %}
+      <div class="sources-chart-wrap">
+        <canvas id="sources-chart"
+                role="img"
+                aria-label="Заявки по {{ 'неделям' if week else 'дням' }} с разбивкой «{{ by_label }}»: столбики по категориям, линия — всего"
+                data-chart='{{ result.chart | tojson }}'>График не загрузился — все числа в таблице ниже.</canvas>
+      </div>
+      <p class="empty-note" id="sources-chart-fallback" hidden>График не загрузился — все числа в таблице ниже.</p>
+      <noscript><p class="empty-note">График не загрузился — все числа в таблице ниже.</p></noscript>
+      <nav class="sources-legend" aria-label="Легенда: нажмите, чтобы оставить только эту категорию">
+        {% for item in legend %}
+        {% if item.href %}
+        <a class="legend-item" href="{{ item.href }}"><span class="sw sw-{{ item.color }}" aria-hidden="true"></span>{{ item.label }}</a>
+        {% else %}
+        <span class="legend-item"><span class="sw sw-{{ item.color }}" aria-hidden="true"></span>{{ item.label }}</span>
+        {% endif %}
+        {% endfor %}
+        <span class="legend-item"><span class="sw sw-total" aria-hidden="true"></span>Всего</span>
+      </nav>
+      {% elif result.base_count %}
+      <p class="empty-note">Под выбранные фильтры заявок нет. Снимите часть фильтров или <a href="{{ reset_href }}">сбросьте их все</a>.</p>
+      {% else %}
+      <p class="empty-note">Заявок пока нет — здесь появятся поданные анкеты по дням, как только делегаты начнут регистрироваться.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if result.has_data %}
+  <section class="block">
+    <div class="sources-table-head">
+      <h2 class="block-title">Таблица</h2>
+      {% if csv_href %}<a class="button" href="{{ csv_href }}" download="{{ csv_filename }}">Скачать CSV</a>{% endif %}
+    </div>
+    <div class="card">
+      <p class="sources-caption"><b>«По ссылке амбассадора»</b> — факт: делегат пришёл по личной ссылке амбассадора.
+        Ответ «Узнал от амбассадора» в анкете человек выбирает сам — эти числа пересекаются, но не обязаны совпадать.</p>
+      <div class="table-wrap sources-table-wrap">
+        <table class="sources-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ "Неделя" if week else "День" }}</th>
+              {% for col in result.columns %}
+              <th scope="col" class="num"><span class="th-cat"><span class="sw sw-{{ col.color }}" aria-hidden="true"></span>{{ col.label }}</span></th>
+              {% endfor %}
+              <th scope="col" class="num col-amb">По ссылке амбассадора</th>
+              <th scope="col" class="num col-total">Всего за {{ "неделю" if week else "день" }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in result.rows %}
+            <tr>
+              <th scope="row">{{ row.label }}</th>
+              {% for n in row.counts %}
+              <td class="num{% if not n %} cell-zero{% endif %}">{{ n | thousands }}</td>
+              {% endfor %}
+              <td class="num col-amb{% if not row.ambassador %} cell-zero{% endif %}">{{ row.ambassador | thousands }}</td>
+              <td class="num col-total{% if not row.total %} cell-zero{% endif %}">{{ row.total | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Итого</th>
+              {% for n in result.totals.counts %}
+              <td class="num">{{ n | thousands }}</td>
+              {% endfor %}
+              <td class="num col-amb">{{ result.totals.ambassador | thousands }}</td>
+              <td class="num col-total">{{ result.totals.total | thousands }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <footer class="site-footer">
+    <img src="/static/brand/aiesec-human-blue.svg" alt="" aria-hidden="true">
+    <span>работает на АЙСЕК</span>
+  </footer>
+
+  {% if result.has_data %}
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      var canvas = document.getElementById("sources-chart");
+      if (!canvas) { return; }
+      if (typeof Chart === "undefined") {
+        document.getElementById("sources-chart-fallback").hidden = false;
+        canvas.parentNode.hidden = true;
+        return;
+      }
+      var data = JSON.parse(canvas.getAttribute("data-chart") || "{}");
+      // Цвета — только из CSS-токенов (tokens.css): категория N — --chart-N, как у квадратика
+      // в таблице и в легенде; «Остальные» — серый --text-faint; линия «Всего» — --text.
+      var css = getComputedStyle(document.documentElement);
+      var v = function (name, fallbackValue) {
+        return css.getPropertyValue(name).trim() || fallbackValue || "currentColor";
+      };
+      var colorOf = function (c) { return c === "other" ? v("--text-faint") : v("--chart-" + c); };
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      Chart.defaults.font.family = v("--font-body", "sans-serif");
+      Chart.defaults.font.size = 12;
+      Chart.defaults.color = v("--chart-tick");
+
+      var datasets = (data.datasets || []).map(function (d) {
+        return {
+          type: "bar", label: d.label, data: d.data, stack: "cats",
+          backgroundColor: colorOf(d.color), borderWidth: 0, maxBarThickness: 32
+        };
+      });
+      datasets.push({
+        type: "line", label: "Всего", data: data.totals || [], stack: "total", order: -1,
+        borderColor: v("--text"), borderWidth: 1.5, tension: 0, fill: false,
+        pointRadius: 0, pointHitRadius: 10, pointHoverRadius: 4,
+        pointBackgroundColor: v("--text")
+      });
+
+      new Chart(canvas, {
+        type: "bar",
+        data: { labels: data.labels || [], datasets: datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          locale: "ru-RU",
+          animation: reduceMotion ? false : undefined,
+          interaction: { mode: "index", intersect: false },
+          layout: { padding: { top: 8, right: 8 } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: v("--surface"),
+              titleColor: v("--text-muted"),
+              bodyColor: v("--text"),
+              borderColor: v("--border"),
+              borderWidth: 1,
+              cornerRadius: 4,
+              padding: 8,
+              // пустые категории дня в подсказке не показываем — только то, что было
+              filter: function (item) { return item.dataset.type === "line" || item.parsed.y > 0; },
+              callbacks: {
+                label: function (ctx) { return ctx.dataset.label + ": " + ctx.parsed.y; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false },
+              border: { color: v("--chart-grid") },
+              ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: v("--chart-tick") }
+            },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              grid: { color: v("--chart-grid"), drawTicks: false },
+              border: { display: false },
+              ticks: { precision: 0, maxTicksLimit: 5, padding: 6, color: v("--chart-tick") }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+  {% endif %}
+{% endblock %}

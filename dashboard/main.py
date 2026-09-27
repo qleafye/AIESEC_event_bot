@@ -36,6 +36,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import web_theme
 from secret_redact import install_log_redaction, register_secret
 from dashboard import queries
+from dashboard import sources_daily
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
 from dashboard.cf_access import require_superadmin_email
@@ -45,6 +46,7 @@ from dashboard.db import read_conn
 from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
 from dashboard.notify import notify_access_request
 from dashboard.registry import multi_mode
+from dashboard.timeutil import msk_now
 
 # Ось динамики /compare — белый список (T-26.1-02-08: query не должен попадать в контекст
 # непроверенным значением дальше "day_n"/"calendar").
@@ -549,6 +551,137 @@ def build_forum_context(
     }
 
 
+# Группа фильтра, которую переключает клик по легенде/заголовку колонки данной разбивки.
+_SOURCES_GROUP_OF_BY = {"answer": "src", "tag": "tag", "status": "status"}
+_SOURCES_BY_OF_GROUP = {v: k for k, v in _SOURCES_GROUP_OF_BY.items()}
+
+
+def build_sources_context(
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, q: "sources_daily.SourcesQuery",
+) -> dict:
+    """Запрос менеджера DXP СПб 27.09: конструктор «Источники по дням» — фильтры-чипы
+    (ИЛИ внутри группы, И между группами), разбивка, шаг, период; всё состояние в URL, чтобы
+    ссылкой можно было поделиться и работала кнопка «назад». Числа — `sources_daily.build`,
+    здесь только ссылки чипов/легенды и подписи."""
+    flags = queries.dashboard_flags(conn)
+    city_options = queries.city_options(conn)
+    bound_city_code = viewer.get("bound_city")
+    show_city_switcher = bool(city_options) and not bound_city_code
+    city = scope.city
+    season = scope.season
+    if q.by == "city" and (not city_options or city):
+        q = replace(q, by="answer")  # разбивка по городу внутри одного города бессмысленна
+
+    result = sources_daily.build(conn, scope, q)
+
+    def href(**kw) -> str:
+        return q.href(city=kw.pop("city", city), season=season, **kw)
+
+    def chips(group: str, items: list[dict], selected: tuple) -> list[dict]:
+        # Цвет-метка у чипа — только у группы, по которой сейчас разбита таблица: тот же
+        # цвет, что у колонки и у столбика графика.
+        colored = _SOURCES_BY_OF_GROUP.get(group) == q.by
+        return [
+            {
+                "label": item["label"],
+                "count": item.get("count"),
+                "color": item.get("color") if colored else None,
+                "active": item["value"] in selected,
+                "href": href(toggle=(group, item["value"])),
+            }
+            for item in items
+        ]
+
+    options = result["options"]
+    groups: list[dict] = [
+        {"title": "Статус заявки", "items": chips("status", options["status"], q.statuses)},
+        {"title": "Ответ в анкете «Откуда узнал»", "items": chips("src", options["answer"], q.answers)},
+    ]
+    if len(options["tag"]) > 1 or q.tags:
+        groups.append({"title": "Ссылка, по которой пришёл", "items": chips("tag", options["tag"], q.tags)})
+    if len(options["track"]) > 1 or q.tracks:
+        groups.append({"title": "Трек", "items": chips("track", options["track"], q.tracks)})
+    groups.append({"title": "Амбассадоры", "items": [{
+        "label": "Только по ссылке амбассадора", "count": None, "color": None,
+        "active": q.ambassador_only, "href": href(ambassador_only=not q.ambassador_only),
+    }]})
+
+    city_links: list[dict] = []
+    if show_city_switcher:
+        city_links.append({"label": "Все города", "active": not city, "href": href(city=None)})
+        city_links += [
+            {"label": c["label"], "active": city == c["code"], "href": href(city=c["code"])}
+            for c in city_options
+        ]
+
+    by_allowed = {"answer", "tag", "status"} | ({"city"} if city_options and not city else set())
+    by_links = [
+        {"label": sources_daily.BY_LABELS[b], "active": q.by == b, "href": href(by=b)}
+        for b in sources_daily.BREAKDOWNS if b in by_allowed
+    ]
+    step_links = [
+        {"label": sources_daily.STEP_LABELS[s], "active": q.step == s, "href": href(step=s)}
+        for s in sources_daily.STEPS
+    ]
+    period_links = [
+        {
+            "label": sources_daily.PERIOD_LABELS[p],
+            "active": not q.custom_range and q.period == p,
+            "href": href(period=p, date_from=None, date_to=None),
+        }
+        for p in ("7", "30", "all")
+    ]
+    # Форма «свои даты» — GET, прочие параметры едут скрытыми полями, чтобы выбор дат не
+    # сбрасывал уже нажатые чипы.
+    range_form_fields = replace(q, period="all", date_from=None, date_to=None).pairs(
+        city=city, season=season,
+    )
+
+    legend: list[dict] = []
+    for column in result["columns"]:
+        if q.by == "city":
+            link = (
+                href(city=column["key"], by="answer")
+                if column["key"] != sources_daily.REST and show_city_switcher else None
+            )
+        elif q.by == "status" and column["key"] not in sources_daily.STATUS_LABELS:
+            link = None
+        else:
+            link = href(toggle=(_SOURCES_GROUP_OF_BY[q.by], column["key"]))
+        legend.append({**column, "href": link})
+
+    description = sources_daily.describe(q, city_label=_city_label(conn, city))
+    csv_href = sources_daily.csv_data_href(result, description) if result["has_data"] else None
+
+    return {
+        "event_name": flags.get("event_name"),
+        "event_season": season or flags.get("event_season"),
+        "event_logo_url": _event_logo_url(conn),
+        "favicon_url": _favicon_url(conn),
+        "viewer": viewer,
+        "scope": scope,
+        "q": q,
+        "result": result,
+        "groups": groups,
+        "city_links": city_links,
+        "bound_city_label": _city_label(conn, bound_city_code),
+        "by_links": by_links,
+        "step_links": step_links,
+        "period_links": period_links,
+        "range_form_fields": range_form_fields,
+        "legend": legend,
+        "reset_href": href(
+            statuses=(), answers=(), tags=(), tracks=(), ambassador_only=False,
+            period="all", date_from=None, date_to=None,
+        ),
+        "description": description,
+        "csv_href": csv_href,
+        "csv_filename": f"источники-{msk_now():%Y-%m-%d}.csv",
+        "by_label": sources_daily.BY_LABELS[q.by],
+        "week": q.step == "week",
+    }
+
+
 def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.cfg = cfg
@@ -845,6 +978,48 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             context = build_forum_context(conn, cfg, scope, viewer, arrival_day=arrival_day)
 
         return templates.TemplateResponse(request, "forum.html", context)
+
+    @app.get("/sources", response_class=HTMLResponse)
+    def sources_page(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+    ):
+        """Конструктор «Источники по дням»: периметр — копия `/` (редирект супердашборда,
+        сессия/логин, пересверка `stats` на каждый запрос, `viewer_scope`+`season`), как у
+        `/chat` и `/forum`. Отдельного маршрута выгрузки нет (D-17): CSV — `data:`-ссылка
+        прямо на странице, из тех же агрегатов."""
+        if multi_mode(cfg.events):
+            return RedirectResponse(url="/compare", status_code=302)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return RedirectResponse(url="/login", status_code=302)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                notify_access_request(
+                    cfg,
+                    telegram_id=telegram_id,
+                    username=request.session.get("username"),
+                    first_name=request.session.get("first_name"),
+                )
+                return templates.TemplateResponse(
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
+                )
+
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            viewer = {
+                "telegram_id": telegram_id,
+                "bound_city": staff_city(conn, telegram_id),
+            }
+            q = sources_daily.SourcesQuery.from_params(request.query_params)
+            context = build_sources_context(conn, cfg, scope, viewer, q)
+
+        return templates.TemplateResponse(request, "sources.html", context)
 
     return app
 
