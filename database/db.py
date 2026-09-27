@@ -4204,24 +4204,38 @@ async def create_onsite_user(telegram_id: int, username: str | None, full_name: 
 
 
 async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str,
-                         event_city: str | None = None) -> bool:
-    """Одобрение ОДНОГО человека у стойки одним атомарным UPDATE. Флипает pending/rejected и
+                         event_city: str | None = None, override_reject: bool = False) -> bool:
+    """Одобрение ОДНОГО человека у стойки одним атомарным UPDATE. Флипает pending и
     одобренного ПРОШЛОГО сезона (тот переезжает в текущий сезон, старый — в prev_season);
     одобренного текущего сезона не трогает. True — флип выигран этим вызовом (второй вызов
     подряд — False). `event_city` (если передан) переписывает город — для делегата прошлого
-    сезона, которого пустили на форум города стойки."""
+    сезона, которого пустили на форум города стойки.
+
+    Отклонённую заявку флипает ТОЛЬКО `override_reject=True` — волонтёр явно подтвердил, что
+    пропускает вопреки отказу менеджера. Тогда в том же UPDATE снимаются `rejected_at`, маркеры
+    автоотказа и учёт доставки прошлого решения: карточка не должна одновременно говорить
+    «одобрен» и «отклонён»."""
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    clear = (
+        "rejected_at = NULL, auto_reject_rule_ids = NULL, auto_rejected_at = NULL, "
+        "auto_rule_note = NULL, decision_delivery_status = NULL, "
+        "decision_delivery_decision = NULL, decision_delivery_at = NULL, "
+        "decision_delivery_error = NULL, "
+        if override_reject else ""
+    )
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'approved', approved_at = :now, onsite_at = :now, "
-            "onsite_by = :by, onsite_kind = COALESCE(onsite_kind, 'door'), "
+            f"onsite_by = :by, onsite_kind = COALESCE(onsite_kind, 'door'), {clear}"
             "prev_season = CASE WHEN COALESCE(season, '') != '' AND season != :season "
             "THEN season ELSE prev_season END, "
             "season = :season, event_city = COALESCE(:city, event_city) "
-            "WHERE telegram_id = :tid AND (COALESCE(status, '') != 'approved' "
-            "OR COALESCE(season, '') NOT IN ('', :season))",
+            "WHERE telegram_id = :tid AND ("
+            "COALESCE(status, '') NOT IN ('approved', 'rejected') "
+            "OR (status = 'rejected' AND :override = 1) "
+            "OR (status = 'approved' AND COALESCE(season, '') NOT IN ('', :season)))",
             {"now": now, "by": by_staff_id, "season": season, "city": event_city,
-             "tid": telegram_id},
+             "tid": telegram_id, "override": 1 if override_reject else 0},
         )
         await db.commit()
         return cursor.rowcount == 1

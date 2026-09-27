@@ -88,7 +88,8 @@ def test_manual_denial_is_logged_as_search(tmp_path):
     _run(_insert_user(uid, status="rejected"))
     client.post(f"{BASE}/manual", json={"telegram_id": uid}, headers=_hdr(GAME_MANAGER_ID))
     [row] = _denials()
-    assert row["source"] == "manual" and row["details"] == {"reason": "not_approved"}
+    # Отклонённая заявка — свой код «rejected» (ревью 28.09), не «на рассмотрении».
+    assert row["source"] == "manual" and row["details"] == {"reason": "rejected"}
 
 
 def test_successful_scan_writes_no_denial(tmp_path):
