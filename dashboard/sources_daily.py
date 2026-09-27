@@ -216,7 +216,9 @@ def _fetch(conn, scope: queries.Scope) -> list[dict]:
     tag_expr = " AND ".join(queries._UTM_TAG_PREDICATE)
     # Колонку заводит бот при старте; дашборд, поднятый раньше бота, читает старую схему.
     has_onsite = any(r["name"] == "onsite_kind" for r in conn.execute("PRAGMA table_info(users)"))
-    onsite_expr = "COALESCE(onsite_kind, '')" if has_onsite else "''"
+    # «На месте» — только короткая анкета у стойки (walk-in). Одобренный у стойки (door) пришёл
+    # своим каналом раньше — задним числом он из корзины своей ссылки/метки не уходит.
+    onsite_expr = "CASE WHEN onsite_kind = 'walkin' THEN 1 ELSE 0 END" if has_onsite else "0"
     rows = conn.execute(
         "SELECT substr(registration_date, 1, 10) AS day, source, "
         f"CASE WHEN {tag_expr} THEN 1 ELSE 0 END AS is_tag, "

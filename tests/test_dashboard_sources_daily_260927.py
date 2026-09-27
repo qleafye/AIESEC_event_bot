@@ -407,7 +407,9 @@ def test_onsite_rows_get_own_tag_bucket(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _seed(users=[
         _u("2026-09-21", "На месте", onsite_kind="walkin"),
-        _u("2026-09-21", "ВК", referrer=5, onsite_kind="door"),  # на месте важнее ссылки
+        # Ревью 28.09: одобренный у стойки (door) пришёл своим каналом неделями раньше — он
+        # остаётся в корзине своей ссылки, «На месте» — только короткая анкета у стойки.
+        _u("2026-09-21", "ВК", referrer=5, onsite_kind="door"),
         _u("2026-09-21", "vk_post"),
         _u("2026-09-21", "Соцсети АЙСЕК", referrer=5),
         _u("2026-09-21", "Соцсети АЙСЕК"),
@@ -415,9 +417,9 @@ def test_onsite_rows_get_own_tag_bucket(tmp_path):
     res = _build(db_path, query="by=tag")
     day = _row(res, "2026-09-21")
     assert sd.TAG_ONSITE == "📍 На месте"
-    assert day["counts"][_col(res, "📍 На месте")] == 2
+    assert day["counts"][_col(res, "📍 На месте")] == 1
     assert day["counts"][_col(res, "vk_post")] == 1
-    assert day["counts"][_col(res, "Личная ссылка амбассадора")] == 1
+    assert day["counts"][_col(res, "Личная ссылка амбассадора")] == 2
     assert day["counts"][_col(res, "Без метки")] == 1
     # разбивка по ответу в анкете не тронута
     res_answer = _build(db_path, query="by=answer")
