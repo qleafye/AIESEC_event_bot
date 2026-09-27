@@ -6,13 +6,17 @@
 // Файлы уходят на сервер сразу при выборе (POST /uploads -> file_id + part_token), каждый
 // независимо; размер проверяется ДО отправки по лимитам из API (GET /uploads/limits) — текст
 // отказа из реестра (miniapp_upload_too_large_text), чисел и текстов в JS нет. Пустая отправка
-// — подсказка, черновик не сбрасывается (паритет с ботом).
+// — подсказка, черновик не сбрасывается (паритет с ботом). Отказ Telegram по файлу (400
+// file_rejected) — текст из реестра (miniapp_upload_file_rejected_text, фолбэк file_rejected_text).
 
-import { emptyState, errorState, guardedRender, isCoreHandledError, screenText } from "../ui.js";
+import { emptyState, errorState, errorText, guardedRender, isCoreHandledError, screenText } from "../ui.js";
 import { icon } from "../icons.js";
 import { confetti, haptic } from "../motion.js";
 
 const KIND_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
+// Та же граница, что у сервера (routers/submissions.py::PHOTO_CONTENT_TYPES): HEIC/WebP и
+// прочие image/* Telegram фото не делает — они идут документом.
+const PHOTO_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif"]);
 
 function counterGroups(h, parts) {
   const n = (k) => parts.filter((p) => p.kind === k).length;
@@ -159,7 +163,7 @@ async function draw(root, params, ctx) {
     }
     say("");
     clearUploadError();
-    const isPhoto = file.type.startsWith("image/") && file.size <= limits.photo_max_bytes;
+    const isPhoto = PHOTO_TYPES.has((file.type || "").toLowerCase()) && file.size <= limits.photo_max_bytes;
     const part = { kind: isPhoto ? "photo" : "document", content: null, status: "uploading", label: file.name };
     parts.push(part);
     pending += 1;
@@ -177,7 +181,9 @@ async function draw(root, params, ctx) {
       const idx = parts.indexOf(part);
       if (idx >= 0) parts.splice(idx, 1);
       if (err && err.status === 413) showUploadError(limits.too_large_text);
-      else showUploadError(`Не удалось загрузить «${file.name}» — попробуйте ещё раз.`);
+      else if (err && err.status === 400 && err.reason === "file_rejected") {
+        showUploadError(errorText(err, limits.file_rejected_text));
+      } else showUploadError(`Не удалось загрузить «${file.name}» — попробуйте ещё раз.`);
     } finally {
       pending -= 1;
       redraw();
