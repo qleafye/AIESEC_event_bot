@@ -836,3 +836,54 @@ def test_dashboard_pending_on_old_schema_without_onsite_column(tmp_path):
     with dash_db.read_conn(bot_config.DB_PATH) as conn:
         kpi = kpi_row(conn, Scope())
     assert kpi["pending"] == 3 and kpi["pending_walkin"] == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Тумблер регистрации на месте — строго по городу
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_toggle_without_city_asks_to_pick_city_when_cities_on(tmp_path):
+    from handlers import admin_onsite_reg as aor
+    from tests.test_onsite_reg_chat_260927 import _AdminCb, _Cities
+    _chat_ready(tmp_path)
+    with _Cities():
+        cb = _AdminCb("onsitereg_toggle:_all")
+        _run(aor.onsitereg_toggle_go(cb))
+        assert cb.alerts and "город" in (cb.alerts[-1][0] or "").lower()
+        assert _run(bot_db.get_setting("onsite_reg_enabled")) in (None, "off")
+        qr = _AdminCb("onsitereg_qr:_all")
+        _run(aor.onsitereg_qr_send(qr, object()))
+        assert not qr.message.photos
+        assert "город" in (qr.alerts[-1][0] or "").lower()
+
+
+def test_bound_manager_cannot_toggle_without_city(tmp_path):
+    from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT
+    from tests.test_onsite_reg_chat_260927 import MANAGER_ID, ADMIN_ID as CHAT_ADMIN, _Cities
+    from tests.test_roles_phase8 import dispatch_callback
+    _chat_ready(tmp_path)
+    with _Cities():
+        _run(bot_db.add_staff(MANAGER_ID, "reg_manager", CHAT_ADMIN))
+        _run(bot_db.set_staff_city(MANAGER_ID, "msk"))
+        _result, event = dispatch_callback("onsitereg_toggle:_all", MANAGER_ID)
+        assert event.answers and event.answers[0][0] == _CITY_FORBIDDEN_ALERT
+    assert _run(bot_db.get_setting("onsite_reg_enabled")) in (None, "off")
+
+
+def test_global_key_does_not_enable_cities_without_own_value(tmp_path):
+    from tests.test_onsite_reg_chat_260927 import _Cities
+    _chat_ready(tmp_path)
+    with _Cities():
+        _run(bot_db.set_setting("onsite_reg_enabled", "on"))
+        assert _run(onsite_reg.onsite_enabled("spb")) is False
+        _run(bot_db.set_setting(cities_mod.per_city_key("onsite_reg_enabled", "spb"), "on"))
+        assert _run(onsite_reg.onsite_enabled("spb")) is True
+        assert _run(onsite_reg.onsite_enabled(None)) is False
+        assert _run(onsite_reg.walkin_link("yl_bot", None)) is None
+
+
+def test_single_city_bot_uses_global_toggle(tmp_path):
+    _chat_ready(tmp_path)
+    _run(bot_db.set_setting("onsite_reg_enabled", "on"))
+    assert _run(onsite_reg.onsite_enabled(None)) is True
+    assert _run(onsite_reg.walkin_link("yl_bot", None)) == "https://t.me/yl_bot?start=walkin"
