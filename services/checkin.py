@@ -132,6 +132,10 @@ def parse_qr_payload(qr_payload: str) -> dict:
 DENIAL_REASON_TEXT = {
     "no_user": "QR не найден — отправьте на стойку проблемных случаев",
     "not_approved": "Заявка ещё на рассмотрении",
+    # D-41 (ревью 28.09): отдельный код сканера для status='rejected' — `checkin_denial` его НЕ
+    # отдаёт (там и отказ, и «на рассмотрении» — `not_approved`), уточняет сканер
+    # (`services.onsite_reg.refine_denial`): волонтёр обязан видеть, что заявку ОТКЛОНИЛИ.
+    "rejected": "Заявка отклонена менеджером",
     "past_season": "Делегат прошлого сезона",
     "foreign_event": "QR другого мероприятия",
     # Форум-ночь B1 (идея №10): менеджер перевыпустил QR (handlers/admin.py::cmd_find_user ->

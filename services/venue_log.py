@@ -71,6 +71,7 @@ DENIAL_LABELS = {
     "token_replaced": "старый QR (перевыпущен)",
     "foreign_event": "QR другого мероприятия",
     "not_approved": "заявка не одобрена",
+    "rejected": "заявка отклонена",
     "past_season": "делегат прошлого сезона",
     "wrong_city": "делегат другого города",
     "wrong_city_point": "сессия другого города",

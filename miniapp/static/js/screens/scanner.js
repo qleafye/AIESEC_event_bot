@@ -26,6 +26,7 @@
 // Регистрация на месте (D-41, 27.09) — только при включённом тумблере города стойки
 // (`onsite_enabled` из /checkin/points, D-36): на 🔴 «не одобрен / прошлый сезон» — кнопка
 // «Пропустить и одобрить» (всегда через подтверждение с именем, один человек за запрос), на
+// отклонённой менеджером — только «Пропустить вопреки отказу» со своим подтверждением, на
 // «не найден» и пустом поиске — QR короткой анкеты (data URI в JSON: тег img не шлёт initData),
 // список «Ждут на стойке» — walk-in сегодняшнего дня своего города. Подписи — /checkin/net-texts.
 
@@ -51,6 +52,7 @@ const STATUS_TONE = {
   wrong_city: "error",
   invalid_point: "error",
   onsite_off: "error",
+  rejected: "error",
   undone: "warn",
   undo_refused: "error",
 };
@@ -62,6 +64,7 @@ const STATUS_HEADING = {
   wrong_city: "Не пропущен",
   invalid_point: "Не пропущен",
   onsite_off: "Не пропущен",
+  rejected: "Не пропущен",
 };
 // Запасные подписи регистрации на месте — только если /checkin/net-texts не дошёл.
 const ONSITE_FALLBACK = {
@@ -69,6 +72,8 @@ const ONSITE_FALLBACK = {
   onsite_approve_confirm_text: "Одобрить {name} на месте и отметить вход? Решение запишется на вас.",
   onsite_register_button_text: "📝 Зарегистрировать на месте",
   onsite_pending_title_text: "📝 Ждут на стойке",
+  onsite_override_button_text: "⚠️ Пропустить вопреки отказу",
+  onsite_override_confirm_text: "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? Отказ будет отменён, решение запишется на вас и попадёт в журнал.",
 };
 const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };
 // D-18..D-20: и «new», и «moved» — успешная отметка (попап остаётся открытым, продолжаем
@@ -363,6 +368,8 @@ export async function render(root, params, ctx) {
       res.undo ? undoButton(res.undo, res) : null,
       res.onsite_approve && res.telegram_id && selectedPoint !== TRAINING_POINT
         ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }) : null,
+      res.onsite_override && res.telegram_id && selectedPoint !== TRAINING_POINT
+        ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }, { override: true }) : null,
       res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
@@ -425,6 +432,9 @@ export async function render(root, params, ctx) {
     const meta = person.eligible ? metaBase : `${metaBase} — ${person.reason_text || "не допущен"}`;
     if (!person.eligible && person.onsite_approve && onsiteAllowed()) {
       return flatRow(h, { title: person.full_name, meta, trailing: onsiteApproveButton(person) });
+    }
+    if (!person.eligible && person.onsite_override && onsiteAllowed()) {
+      return flatRow(h, { title: person.full_name, meta, trailing: onsiteApproveButton(person, { override: true }) });
     }
     if (person.onsite_register && onsiteAllowed()) {
       return flatRow(h, { title: person.full_name, meta, trailing: onsiteRegisterButton() });
@@ -498,16 +508,20 @@ export async function render(root, params, ctx) {
 
   // Одобрение ОДНОГО человека у стойки: всегда через подтверждение с именем, кнопка
   // заблокирована на время запроса (двойной тап). Решение и отметку пишет сервер.
-  async function approveOnsite(person, btn) {
+  // override — заявку отклонил менеджер: своё подтверждение («отказ будет отменён») и флаг
+  // override_reject, без него сервер отклонённую заявку не одобряет.
+  async function approveOnsite(person, btn, override = false) {
     if (onsiteBusy) return;
-    const question = ot("onsite_approve_confirm_text").replace("{name}", person.full_name || "—");
+    const confirmKey = override ? "onsite_override_confirm_text" : "onsite_approve_confirm_text";
+    const question = ot(confirmKey).replace("{name}", person.full_name || "—");
     const ok = await askConfirm(question);
     if (!ok) return;
     onsiteBusy = true;
     if (btn) btn.setAttribute("disabled", "");
     try {
       const res = await measured(() => api("/checkin/onsite/approve", {
-        method: "POST", body: { telegram_id: person.telegram_id, city: citySelect.value || undefined },
+        method: "POST",
+        body: { telegram_id: person.telegram_id, city: citySelect.value || undefined, override_reject: override },
       }));
       showPlaque(res, { closeButton: true });
       await loadStats();
@@ -521,11 +535,12 @@ export async function render(root, params, ctx) {
     }
   }
 
-  function onsiteApproveButton(person) {
-    const btn = h("button", { class: "btn", type: "button", text: ot("onsite_approve_button_text") });
+  function onsiteApproveButton(person, { override = false } = {}) {
+    const label = ot(override ? "onsite_override_button_text" : "onsite_approve_button_text");
+    const btn = h("button", { class: override ? "btn secondary" : "btn", type: "button", text: label });
     btn.addEventListener("click", () => {
       if (btn.hasAttribute("disabled")) return;
-      approveOnsite(person, btn);
+      approveOnsite(person, btn, override);
     });
     return btn;
   }
