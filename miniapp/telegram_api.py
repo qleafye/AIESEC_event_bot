@@ -30,14 +30,36 @@ DOWNLOAD_TIMEOUT = 60.0
 DOWNLOAD_CHUNK = 64 * 1024
 
 
+DESCRIPTION_MAX = 200
+
+
 class TelegramApiError(Exception):
     """`reason` — короткий безопасный код: upstream_unavailable | bad_response | api_error |
-    not_found. Никогда не содержит URL, токена или тела ответа Bot API."""
+    not_found. Никогда не содержит URL, токена или тела ответа Bot API.
 
-    def __init__(self, reason: str, status: int | None = None):
+    `status` — HTTP-код ответа Telegram. 400 значит «Telegram отверг запрос/файл» (например,
+    картинку, которую он не умеет сделать фото) — повтор тем же способом бессмыслен; всё
+    остальное (нет ответа, 5xx, не-JSON) — недоступность/ошибка апстрима. `description` —
+    текст Telegram из ответа, обрезанный до 200 символов и без токена бота (квик 27.09)."""
+
+    def __init__(self, reason: str, status: int | None = None, description: str | None = None):
         super().__init__(reason)
         self.reason = reason
         self.status = status
+        self.description = description
+
+
+def _safe_description(cfg, payload) -> str | None:
+    """`description` ответа Bot API — только строка, до 200 символов, токен бота вырезан."""
+    if not isinstance(payload, dict):
+        return None
+    desc = payload.get("description")
+    if not isinstance(desc, str) or not desc:
+        return None
+    token = getattr(cfg, "bot_token", None)
+    if token:
+        desc = desc.replace(token, "***")
+    return desc[:DESCRIPTION_MAX]
 
 
 def _make_client(cfg, timeout: float) -> httpx.AsyncClient:
@@ -67,8 +89,10 @@ async def _call(cfg, method: str, *, data: dict | None = None, files: dict | Non
         logger.warning("telegram_api: %s вернул не-JSON, код %s", method, response.status_code)
         raise TelegramApiError("bad_response", response.status_code) from None
     if response.status_code != 200 or not isinstance(payload, dict) or not payload.get("ok"):
-        logger.warning("telegram_api: %s вернул код %s", method, response.status_code)
-        raise TelegramApiError("api_error", response.status_code)
+        description = _safe_description(cfg, payload)
+        logger.warning("telegram_api: %s вернул код %s: %s",
+                       method, response.status_code, description or "—")
+        raise TelegramApiError("api_error", response.status_code, description)
     result = payload.get("result")
     return result if isinstance(result, dict) else {}
 
