@@ -364,3 +364,124 @@ def test_refresh_all_chats_refreshes_bot_state(tmp_path):
 
     _run(chat_tracking.refresh_all_chats(_B()))
     assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 0
+
+
+# ── Задача 3: экран «🧹 Служебные сообщения в чате» ──────────────────────────────────────
+
+from aiogram.fsm.context import FSMContext  # noqa: E402
+from aiogram.fsm.storage.base import StorageKey  # noqa: E402
+from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
+
+from handlers import admin_chat_cleanup as scr  # noqa: E402
+from handlers.admin_caps import required_capability  # noqa: E402
+from handlers.states import ChatCleanupEdit  # noqa: E402
+
+
+class _U:
+    id = ADMIN
+
+
+class _M:
+    def __init__(self, text=None):
+        self.text = text
+        self.from_user = _U()
+        self.answers = []
+        self.edited = None
+        self.markup = None
+
+    async def answer(self, text, parse_mode=None, reply_markup=None):
+        self.answers.append(text)
+        self.markup = reply_markup
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.edited = text
+        self.markup = reply_markup
+
+
+class _CB:
+    def __init__(self, data):
+        self.data = data
+        self.from_user = _U()
+        self.message = _M()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _st():
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=ADMIN, user_id=ADMIN))
+
+
+def _texts(kb):
+    return [b.text for row in kb.inline_keyboard for b in row]
+
+
+def _cbs(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_screen_lists_types_and_toggles_codes(tmp_path):
+    _ready(tmp_path, types_=None)
+    text, kb = _run(scr.render_chat_cleanup_screen(ADMIN))
+    for label in chat_cleanup.CLEANUP_TYPES.values():
+        assert any(label in t for t in _texts(kb))
+    assert "SOS" in text
+    assert "ничего не удаляется" in text
+    for code in chat_cleanup.CLEANUP_TYPES:
+        assert code not in text + "".join(_texts(kb))
+    join_cb = [cd for cd, t in zip(_cbs(kb), _texts(kb)) if chat_cleanup.CLEANUP_TYPES["join"] in t][0]
+    cb = _CB(join_cb)
+    _run(scr.chclean_toggle(cb))
+    assert _run(chat_cleanup.ticked_codes()) == ["join"]
+    assert any(t.startswith("✅") and chat_cleanup.CLEANUP_TYPES["join"] in t for t in _texts(cb.message.markup))
+    _run(scr.chclean_toggle(_CB(join_cb)))
+    assert _run(chat_cleanup.ticked_codes()) == []
+    forged = _CB("chclean:t:nope")
+    _run(scr.chclean_toggle(forged))
+    assert forged.answers and forged.answers[0][1]
+
+
+def test_chat_status_lines(tmp_path):
+    _ready(tmp_path)
+    text, _ = _run(scr.render_chat_cleanup_screen(ADMIN))
+    assert "❔ «Делегаты»: права ещё не проверялись" in text
+    _run(db.set_chat_bot_state(CHAT, "administrator", False))
+    text, _ = _run(scr.render_chat_cleanup_screen(ADMIN))
+    assert "⚠️ «Делегаты»: сделайте бота администратором с правом «Удаление сообщений»" in text
+    _run(db.set_chat_bot_state(CHAT, "administrator", True))
+    text, _ = _run(scr.render_chat_cleanup_screen(ADMIN))
+    assert "✅ «Делегаты»: бот удаляет" in text
+    _run(db.delete_setting("delegate_chat_id"))
+    text, _ = _run(scr.render_chat_cleanup_screen(ADMIN))
+    assert "Чат делегатов ещё не подключён" in text
+
+
+def test_delay_is_typed_int(tmp_path):
+    _ready(tmp_path)
+    _, kb = _run(scr.render_chat_cleanup_screen(ADMIN))
+    assert any(t.startswith("⏱ Удалять через: сразу") for t in _texts(kb))
+    state = _st()
+    _run(scr.chclean_delay(_CB("chclean:delay"), state))
+    assert _run(state.get_state()) == ChatCleanupEdit.waiting_for_value.state
+    bad = _M("-5")
+    _run(scr.chclean_delay_value(bad, state))
+    assert _run(db.get_setting(chat_cleanup.DELAY_KEY)) is None
+    assert bad.answers
+    good = _M("60")
+    _run(scr.chclean_delay_value(good, state))
+    assert _run(db.get_setting(chat_cleanup.DELAY_KEY)) == "60"
+    assert _run(state.get_state()) is None
+    assert any(t.startswith("⏱ Удалять через: 60 сек") for t in _texts(good.markup))
+
+
+def test_cleanup_capabilities():
+    assert required_capability(callback_data="admin_chat_cleanup") == "settings"
+    assert required_capability(callback_data="chclean:t:join") == "settings"
+    assert required_capability(raw_state="ChatCleanupEdit:waiting_for_value") == "settings"
+
+
+def test_cleanup_screen_row_in_manage_section():
+    from handlers import admin_sections as sec
+    callbacks = [sec.row_callback(r) for r in sec._declared_rows("manage")]
+    assert callbacks.index("admin_chat_cleanup") == callbacks.index("admin_chat_rating") + 1
