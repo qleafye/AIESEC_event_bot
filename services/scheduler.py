@@ -331,6 +331,12 @@ async def init_scheduler(bot):
         timedelta(minutes=chat_refresh_minutes),
         first_run_delay=_BOOT_CATCHUP,
     )
+    # Квик 260927: срок хранения истории рейтинга чата — раз в сутки, первый прогон вскоре после
+    # старта (бот, перезапускаемый чаще раза в сутки, иначе не чистил бы никогда).
+    _add_interval_job(
+        chat_history_prune_job, "chat_history_prune", timedelta(hours=24),
+        first_run_delay=_BOOT_CATCHUP,
+    )
 
     # Квик 260916: «📊 Итоги дня» — ОДНА cron-джоба на весь бот, время из реестра
     # (daily_digest_time, ЧЧ:ММ МСК). Регистрируется на каждом старте с replace_existing, как
@@ -1465,6 +1471,25 @@ async def chat_membership_refresh_job():
         await refresh_all_chats(_bot)
     except Exception as e:
         logger.error(f"chat_membership_refresh_job failed: {e}")
+
+
+async def chat_history_prune_job():
+    """Квик 260927: удаляет журнал рейтинга чата (сообщения без текста, реакции) старше
+    «Сколько дней хранить историю чата» (дефолт 180). Тумблер учёта НЕ гейтит: срок хранения —
+    про приватность, а не про учёт; выключенный учёт не должен оставлять старую историю
+    навсегда."""
+    try:
+        import chat_score
+        from database.db import prune_chat_history
+        from settings_schema import get_setting_typed
+
+        days = _int_or_default(await get_setting_typed(chat_score.RETENTION_KEY),
+                               chat_score.DEFAULT_RETENTION_DAYS)
+        cutoff = (msk_now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        counts = await prune_chat_history(cutoff)
+        logger.info(f"chat_history_prune_job: старше {days} дн. удалено {counts}")
+    except Exception as e:
+        logger.error(f"chat_history_prune_job failed: {e}")
 
 
 # ── Phase 32 (32-08, D-11/D-26/D-30): джобы амбассадорских волн ──────────────────────────
