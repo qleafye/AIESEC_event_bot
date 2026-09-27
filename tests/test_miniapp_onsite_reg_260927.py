@@ -18,7 +18,6 @@ from settings_schema import SETTINGS_SCHEMA
 from tests.test_miniapp_checkin_260924 import (
     BASE,
     _grant_checkin_to_bound_manager,
-    _grant_checkin_to_game_manager,
     _insert_user,
     _qr,
     _run,
@@ -34,6 +33,12 @@ from tests.test_miniapp_routes import (
 )
 
 ONSITE = f"{BASE}/onsite"
+
+
+def _grant_checkin_to_game_manager():
+    """Волонтёр стойки регистрации: отметка входа И право «Одобрять на месте» (ревью 28.09 —
+    одной `checkin` для одобрения мало)."""
+    _run(bot_db.set_setting("role_caps_game_manager", "moderate_game;checkin;checkin_approve"))
 
 
 def _ready(tmp_path, *, enable=("spb",)):

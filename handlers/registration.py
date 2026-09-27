@@ -1090,9 +1090,8 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     invite_city = (invite or {}).get("city")
     # added_by -- создатель ссылки (менеджер), не None: тот же смысл, что у ручной выдачи роли
     # в handlers/admin_roles.py.
-    await add_staff(
-        user_id, "volunteer", (invite or {}).get("created_by"), expires_at=rights_expires_at,
-    )  # ROLES["volunteer"] = только checkin
+    await add_staff(  # роль ссылки: volunteer — checkin; reg_volunteer — ещё одобрение на месте
+        user_id, (invite or {}).get("role") or "volunteer", (invite or {}).get("created_by"), expires_at=rights_expires_at)
     # Без привязки города staff-строка значит «все города» -- волонтёр по ссылке города A смог
     # бы отмечать делегатов города B. Привязываем ТОЛЬКО на первом гранте этому человеку
     # (had_any_capability=False) -- у уже державшего роль доступ не сужаем (без привязки шире,

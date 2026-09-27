@@ -31,7 +31,7 @@ from __future__ import annotations
 import base64
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from cities import (
@@ -137,6 +137,14 @@ async def _with_undo(result: dict, p: Principal) -> dict:
 _SEARCH_LIMIT = 20
 _SECTION = "checkin"
 _CAP = "checkin"
+# D-41 (ревью 28.09): одобрять у стойки — отдельное право. Волонтёру у двери зала хватает
+# `checkin`; одобряют держатели `checkin_approve` (волонтёр регистрации) и `moderate_reg`.
+_APPROVE_CAP = "checkin_approve"
+_APPROVE_CAPS = frozenset({_APPROVE_CAP, "moderate_reg"})
+
+
+def _can_approve(p: Principal) -> bool:
+    return bool(p.caps & _APPROVE_CAPS)
 
 
 async def _bound_city(request: Request, p: Principal) -> str | None:
@@ -178,10 +186,12 @@ _ONSITE_APPROVE_CODES = frozenset({"not_approved", "past_season"})
 class _OnsiteGate:
     """Тумблер «регистрация на месте» на один запрос: читается один раз на город."""
 
-    def __init__(self, stand: str | None, bound: str | None, event_season: str | None):
+    def __init__(self, stand: str | None, bound: str | None, event_season: str | None,
+                 can_approve: bool = True):
         self.stand = stand
         self.bound = bound
         self.event_season = event_season
+        self.can_approve = can_approve
         self._cache: dict[str | None, bool] = {}
 
     async def enabled(self, city: str | None) -> bool:
@@ -202,7 +212,9 @@ class _OnsiteGate:
         подтверждением; `onsite_register` — человека нет в базе. Все — только при включённом
         тумблере города стойки."""
         approve = override = False
-        if denial_code in _ONSITE_APPROVE_CODES and user:
+        if not self.can_approve:
+            pass  # кнопок одобрения нет — нет права «Одобрять на месте»
+        elif denial_code in _ONSITE_APPROVE_CODES and user:
             approve = await self._may_approve(user)
         elif denial_code == "rejected" and user:
             override = await self._may_approve(user)
@@ -214,7 +226,7 @@ class _OnsiteGate:
 async def _onsite_gate(request: Request, p: Principal, requested: str | None) -> _OnsiteGate:
     return _OnsiteGate(
         await _stand_city(request, p, requested), await _bound_city(request, p),
-        await get_setting_typed("event_season") or None,
+        await get_setting_typed("event_season") or None, _can_approve(p),
     )
 
 
@@ -596,6 +608,7 @@ async def checkin_points(
         "city": resolved, "cities": cities_payload, "points": points,
         # D-36: кнопки регистрации на месте в сканере — только при включённом тумблере города.
         "onsite_enabled": bool(resolved) and await onsite_enabled(resolved),
+        "onsite_can_approve": _can_approve(p),
     }
 
 
@@ -667,7 +680,10 @@ async def onsite_approve(
     """D-41: волонтёр одобряет человека у стойки и сразу отмечает вход. Решение записано на
     него (журнал решений + журнал площадки, `approve_at_door`); лист, сообщение и QR человеку
     шлёт бот через outbox `onsite_approved`. Город стойки — привязка волонтёра (D-26), иначе
-    выбранный в сканере; тумблер города проверяется здесь, на сервере (D-36)."""
+    выбранный в сканере; тумблер города проверяется здесь, на сервере (D-36). Право — не
+    просто `checkin`, а «Одобрять на месте» (`checkin_approve` или `moderate_reg`)."""
+    if not _can_approve(p):
+        raise HTTPException(403, {"reason": "no_cap", "cap": _APPROVE_CAP})
     bound = await _bound_city(request, p)
     stand = await _stand_city(request, p, body.city)
     user = await get_user(body.telegram_id)
@@ -729,7 +745,7 @@ async def onsite_pending(
             "city_label": await city_label_or_none(row.get("event_city")),
             "registered_at": (row.get("registration_date") or "")[11:16],
         })
-    return {"items": items, "enabled": True}
+    return {"items": items, "enabled": True, "can_approve": _can_approve(p)}
 
 
 @router.get("/app/api/checkin/onsite/link")

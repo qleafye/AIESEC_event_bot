@@ -771,6 +771,9 @@ async def init_db():
                 PRIMARY KEY (invite_code, telegram_id)
             )
         ''')
+        # Ревью 28.09 (D-41): какую роль выдаёт ссылка. NULL у старых ссылок = «volunteer»
+        # (только отметка входа); «reg_volunteer» — отметка и одобрение на месте.
+        await _ensure_column(db, "volunteer_invites", "role", "TEXT")
 
         # Phase 14 (CITY-07): city registry moves from `.env` into the DB -- this table is
         # the source of truth from now on. `cities.seed_cities_if_empty()` fills it once from
@@ -6271,15 +6274,16 @@ async def get_staff_ids_by_role(role: str) -> list[int]:
 async def create_volunteer_invite(
     code: str, city: str | None, created_by: int | None,
     link_expires_at: str | None, rights_expires_at: str | None, max_uses: int | None,
+    *, role: str | None = None,
 ) -> None:
     async with _connect() as db:
         await db.execute(
             "INSERT INTO volunteer_invites "
             "(code, city, created_by, created_at, link_expires_at, rights_expires_at, "
-            "max_uses, used, revoked) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)",
+            "max_uses, used, revoked, role) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)",
             (
                 code, city, created_by, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
-                link_expires_at, rights_expires_at, max_uses,
+                link_expires_at, rights_expires_at, max_uses, role,
             ),
         )
         await db.commit()

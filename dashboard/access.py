@@ -32,6 +32,7 @@ ALL_CAPABILITIES = [
     "settings",
     "stats",
     "checkin",
+    "checkin_approve",
 ]
 
 # Дефолты `role_caps_<role>` — дублируют `settings_schema.SETTINGS_SCHEMA["role_caps_<role>"]
@@ -46,6 +47,8 @@ _ROLE_DEFAULT_CAPS: dict[str, list[str]] = {
     # Mini App-сканер (miniapp/deps.py резолвит capability ЧЕРЕЗ этот же модуль) — тот же
     # довод, что у stats_manager строкой выше.
     "volunteer": ["checkin"],
+    # Ревью 28.09 (D-41): волонтёр регистрации — отметка и одобрение на месте.
+    "reg_volunteer": ["checkin", "checkin_approve"],
 }
 
 
