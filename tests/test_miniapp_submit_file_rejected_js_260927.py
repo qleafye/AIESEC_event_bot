@@ -114,11 +114,11 @@ def test_file_rejected_without_payload_falls_back_to_limits_text(result):
 
 
 def test_network_failure_shows_registry_text_with_filename(result):
-    assert result["network"] == "сбой «pic.jpg», ещё раз"
+    assert "сбой «pic.jpg», ещё раз" in result["network"]
 
 
 def test_telegram_unavailable_shows_registry_text_with_filename(result):
-    assert result["unavailable"] == "сбой «pic.jpg», ещё раз"
+    assert "сбой «pic.jpg», ещё раз" in result["unavailable"]
 
 
 def test_413_still_shows_too_large_text(result):

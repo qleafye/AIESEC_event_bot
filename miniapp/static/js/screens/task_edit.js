@@ -87,7 +87,7 @@ export async function render(root, params, ctx) {
   // ── загрузка обложки: размер проверяется ДО отправки по лимитам из API ──
   async function uploadCover(file, limits) {
     if (!file.type.startsWith("image/")) {
-      say("Обложка должна быть картинкой — файл другого типа не подойдёт.", "warn");
+      say(limits.cover_not_image_text, "warn");
       return null;
     }
     if (file.size > limits.photo_max_bytes) {
@@ -99,7 +99,7 @@ export async function render(root, params, ctx) {
     // target=task_cover: сервер шлёт любую картинку фото и не подменяет её документом.
     const res = await api("/uploads?target=task_cover", { method: "POST", form });
     if (res.kind !== "photo") {
-      say("Обложка должна быть картинкой — файл другого типа не подойдёт.", "warn");
+      say(limits.cover_not_image_text, "warn");
       return null;
     }
     return { photo_file_id: res.content, part_token: res.part_token };
