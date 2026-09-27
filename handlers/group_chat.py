@@ -48,9 +48,10 @@ from database.db import (
     CHAT_PRESENT_STATUSES,
     bump_chat_activity,
     log_chat_event,
+    set_chat_bot_state,
     upsert_chat_member,
 )
-from services import chat_tracking
+from services import chat_cleanup, chat_tracking
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,10 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
         return  # изменился статус не бота, а другого участника — это дело chat_member ниже
 
     new_status = event.new_chat_member.status
+    # Квик 260927: статус бота и право «Удаление сообщений» — для ЛЮБОГО чата (привязанного
+    # или нет), до всех веток ниже. Права вернули повышением — очистка служебных уведомлений
+    # (services/chat_cleanup.py) продолжится сама.
+    await set_chat_bot_state(event.chat.id, new_status, chat_tracking.can_delete_from(event.new_chat_member))
     if new_status == "administrator":
         admin_ok = await chat_tracking.is_bot_admin_user(event.from_user.id)
         if not admin_ok:
@@ -187,23 +192,27 @@ async def on_chat_member_changed(event: types.ChatMemberUpdated):
 
 
 @router.message(F.new_chat_members)
-async def on_new_chat_members(message: types.Message):
+async def on_new_chat_members(message: types.Message, bot: Bot | None = None):
     """Фолбэк, когда апдейт `chat_member` не пришёл (не у всех прав бота он включается
-    одинаково надёжно) — тот же учёт, `source="message"`."""
+    одинаково надёжно) — тот же учёт, `source="message"`. Квик 260927: учёт — СНАЧАЛА,
+    удаление уведомления «вступил(а)» (если менеджер отметил этот тип) — последней строкой."""
     for user in message.new_chat_members:
         if user.is_bot:
             continue
         await upsert_chat_member(message.chat.id, user.id, "member", source="message")
         await log_chat_event(message.chat.id, user.id, "join")
+    if bot is not None:
+        await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, "join")
 
 
 @router.message(F.left_chat_member)
-async def on_left_chat_member(message: types.Message):
+async def on_left_chat_member(message: types.Message, bot: Bot | None = None):
     user = message.left_chat_member
-    if user.is_bot:
-        return
-    await upsert_chat_member(message.chat.id, user.id, "left", source="message")
-    await log_chat_event(message.chat.id, user.id, "leave")
+    if not user.is_bot:
+        await upsert_chat_member(message.chat.id, user.id, "left", source="message")
+        await log_chat_event(message.chat.id, user.id, "leave")
+    if bot is not None:
+        await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, "leave")
 
 
 # Форум-ночь п.8 (идея №19, SOS): `/sos_id` — узкое, ЯВНОЕ исключение из D-9 («текст сообщения
@@ -225,6 +234,21 @@ async def on_sos_id_command(message: types.Message, bot: Bot):
     await sos_service.complete_chat_bind(
         bot, message.from_user.id, message.chat.id, message.chat.title or "",
     )
+
+
+# Квик 260927: остальные служебные уведомления из закрытого набора автоочистки (закреп, смена
+# названия/фото, темы, бусты, видеочаты). Уведомление съедается здесь, ДО catch-all ниже —
+# поэтому закреп или смена названия больше не засчитываются автору как активность в чате.
+# Вступления/выходы — в своих хендлерах выше (там сначала учёт); создание темы
+# (forum_topic_created) в набор не входит и идёт в catch-all, как раньше.
+_SERVICE_CONTENT_TYPES = set(chat_cleanup.CONTENT_TYPE_TO_CODE) - {"new_chat_members", "left_chat_member"}
+
+
+@router.message(F.content_type.in_(_SERVICE_CONTENT_TYPES))
+async def on_group_service_message(message: types.Message, bot: Bot):
+    code = chat_cleanup.CONTENT_TYPE_TO_CODE.get(message.content_type)
+    if code is not None:
+        await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, code)
 
 
 @router.message()
