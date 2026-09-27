@@ -2358,6 +2358,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .checkin-plaque.tone-error .checkin-plaque-heading { color: var(--danger-text); }
 .checkin-plaque-next { margin-top: var(--sp-4); }
 .checkin-plaque-undo { margin-top: var(--sp-4); width: 100%; }
+.checkin-onsite-qr { text-align: center; }
+.checkin-onsite-qr-img { display: block; width: 100%; max-width: 280px; height: auto; margin: var(--sp-3) auto; image-rendering: pixelated; }
+.checkin-onsite-qr-url { word-break: break-all; }
 /* Идея №11: полоса «сеть медленная» вверху сканера — тон .chip.warn, новых цветов нет. */
 .checkin-net-banner {
   margin: var(--sp-2) 0;

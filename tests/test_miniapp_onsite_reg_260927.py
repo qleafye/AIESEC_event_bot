@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import json
 import sqlite3
+from pathlib import Path
 
 import cities as cities_mod
 from config import config as bot_config
@@ -349,3 +350,32 @@ def test_admin_superuser_unrestricted_link(tmp_path):
     body = client.get(f"{ONSITE}/link?city=msk", headers=_hdr(ADMIN_ID)).json()
     assert body["url"].endswith("walkin_msk")
     assert json.dumps(body)
+
+
+# ── экран сканера ────────────────────────────────────────────────────────────────────────
+
+SCANNER_JS = Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "scanner.js"
+
+
+def _js_function(src: str, name: str) -> str:
+    body = src[src.index(f"function {name}("):]
+    return body[:body.index("\n  }\n") + 4]
+
+
+def test_scanner_js_wires_onsite_endpoints_through_confirm():
+    src = SCANNER_JS.read_text(encoding="utf-8")
+    for needle in ("onsite/approve", "showConfirm", "onsite/pending", "onsite/link",
+                   "onsite_approve_button_text", "onsite_register_button_text",
+                   "onsite_pending_title_text", "onsite_enabled"):
+        assert needle in src, needle
+    # одобрение уходит на сервер только после «да» в подтверждении
+    approve = _js_function(src, "approveOnsite")
+    assert approve.index("askConfirm(") < approve.index("onsite/approve")
+    assert "if (!ok) return;" in approve
+    assert "showConfirm" in _js_function(src, "askConfirm")
+    # QR — data URI из JSON, не отдельный URL картинки (тег img не шлёт initData)
+    qr = _js_function(src, "showWalkinQr")
+    assert "src: res.qr" in qr
+    # в сканере нет массового одобрения: тело — один telegram_id
+    assert "telegram_ids" not in src and "approve-all" not in src
+    assert "innerHTML" not in src
