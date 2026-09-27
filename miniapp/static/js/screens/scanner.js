@@ -22,12 +22,19 @@
 // Защита от повторного скана: камера в непрерывном режиме присылает ОДИН И ТОТ ЖЕ текст QR
 // много раз за секунды, пока волонтёр не отвёл камеру — `RESCAN_GUARD_MS` глушит повторы
 // того же текста, а не блокирует скан вовсе (другой делегат сканируется сразу).
+//
+// Регистрация на месте (D-41, 27.09) — только при включённом тумблере города стойки
+// (`onsite_enabled` из /checkin/points, D-36): на 🔴 «не одобрен / прошлый сезон» — кнопка
+// «Пропустить и одобрить» (всегда через подтверждение с именем, один человек за запрос), на
+// «не найден» и пустом поиске — QR короткой анкеты (data URI в JSON: тег img не шлёт initData),
+// список «Ждут на стойке» — walk-in сегодняшнего дня своего города. Подписи — /checkin/net-texts.
 
 import { flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
 
 const ENTRY_POINT = "entry";
+const TRAINING_POINT = "training"; // «🧪 Тренировка» ничего не пишет — кнопок «на месте» там нет
 const SEARCH_DEBOUNCE_MS = 300;
 const RESCAN_GUARD_MS = 3000;
 
@@ -43,6 +50,7 @@ const STATUS_TONE = {
   foreign_event: "error",
   wrong_city: "error",
   invalid_point: "error",
+  onsite_off: "error",
   undone: "warn",
   undo_refused: "error",
 };
@@ -53,6 +61,14 @@ const STATUS_HEADING = {
   foreign_event: "Не пропущен",
   wrong_city: "Не пропущен",
   invalid_point: "Не пропущен",
+  onsite_off: "Не пропущен",
+};
+// Запасные подписи регистрации на месте — только если /checkin/net-texts не дошёл.
+const ONSITE_FALLBACK = {
+  onsite_approve_button_text: "✅ Пропустить и одобрить",
+  onsite_approve_confirm_text: "Одобрить {name} на месте и отметить вход? Решение запишется на вас.",
+  onsite_register_button_text: "📝 Зарегистрировать на месте",
+  onsite_pending_title_text: "📝 Ждут на стойке",
 };
 const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };
 // D-18..D-20: и «new», и «moved» — успешная отметка (попап остаётся открытым, продолжаем
@@ -102,12 +118,15 @@ export async function render(root, params, ctx) {
   );
   const netHealth = createNetHealth();
   let netTextsLoaded = false;
+  let onsiteTexts = {};
 
   async function loadNetTexts() {
     if (netTextsLoaded) return;
     try {
       const t = await api("/checkin/net-texts");
       netTextsLoaded = true;
+      onsiteTexts = t.onsite || {};
+      applyOnsite();
       if (t.text) netText.textContent = `⚠️ ${t.text}`;
       if (t.help_label && t.help_text) {
         netHelpBtn.textContent = t.help_label;
@@ -128,6 +147,41 @@ export async function render(root, params, ctx) {
     return timed(netHealth, fn, onNetChange);
   }
 
+  // ── регистрация на месте (D-41): подписи, блок «Ждут на стойке» ─────────────────────────
+  let onsiteEnabled = false;
+  let onsiteBusy = false;
+
+  function ot(key) {
+    return onsiteTexts[key] || ONSITE_FALLBACK[key] || "";
+  }
+
+  const onsiteTitle = h("h2", { text: ONSITE_FALLBACK.onsite_pending_title_text });
+  const onsiteList = h("div", { class: "flat-list" });
+  const onsiteRegBtn = h("button", { class: "btn secondary", type: "button", onClick: () => showWalkinQr() });
+  const onsiteRefresh = h("button", {
+    class: "btn secondary", type: "button", text: "🔄 Обновить", onClick: () => loadOnsitePending(),
+  });
+  const onsiteBox = h("div", { class: "hidden" },
+    h("div", { class: "task-actions" }, onsiteRegBtn),
+    onsiteTitle,
+    h("div", { class: "task-actions" }, onsiteRefresh),
+    onsiteList,
+  );
+
+  function applyOnsite() {
+    onsiteBox.classList.toggle("hidden", !onsiteEnabled);
+    onsiteRegBtn.textContent = ot("onsite_register_button_text");
+    onsiteTitle.textContent = ot("onsite_pending_title_text");
+  }
+
+  function onsiteAllowed() {
+    return onsiteEnabled && selectedPoint !== TRAINING_POINT;
+  }
+
+  function cityParam() {
+    return encodeURIComponent(citySelect.value || "");
+  }
+
   root.append(
     h("h1", { text: "Сканер" }),
     netBanner,
@@ -145,6 +199,7 @@ export async function render(root, params, ctx) {
     h("h2", { text: "Поиск по фамилии" }),
     h("div", { class: "field" }, searchInput),
     searchResults,
+    onsiteBox,
   );
 
   async function loadStats() {
@@ -225,10 +280,14 @@ export async function render(root, params, ctx) {
     pointsData = data.points || [];
     if (!pointsData.some((pt) => pt.point === selectedPoint)) selectedPoint = ENTRY_POINT;
     renderPointChips();
+    onsiteEnabled = Boolean(data.onsite_enabled);
+    applyOnsite();
   }
 
-  citySelect.addEventListener("change", () => {
-    if (citySelect.value) loadPoints(citySelect.value);
+  citySelect.addEventListener("change", async () => {
+    if (!citySelect.value) return;
+    await loadPoints(citySelect.value);
+    await loadOnsitePending();
   });
 
   const SCAN_POPUP_TEXT = "Зелёная вибрация — отмечен. Иначе окно закроется";
@@ -302,6 +361,9 @@ export async function render(root, params, ctx) {
       res.hint ? h("div", { class: "checkin-plaque-reason", text: res.hint }) : null,
       res.training_note ? h("div", { class: "checkin-plaque-city", text: `🧪 ${res.training_note}` }) : null,
       res.undo ? undoButton(res.undo, res) : null,
+      res.onsite_approve && res.telegram_id && selectedPoint !== TRAINING_POINT
+        ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }) : null,
+      res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");
@@ -316,7 +378,9 @@ export async function render(root, params, ctx) {
     if (scanBusy) return;
     scanBusy = true;
     try {
-      const res = await measured(() => api("/checkin/scan", { method: "POST", body: { payload: payloadText, point: selectedPoint } }));
+      const res = await measured(() => api("/checkin/scan", {
+        method: "POST", body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
+      }));
       loadNetTexts();
       const isSuccess = SUCCESS_STATUSES.has(res.status);
       if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
@@ -359,6 +423,12 @@ export async function render(root, params, ctx) {
     const metaBase = [person.city_label, person.username ? `@${person.username}` : null, person.university]
       .filter(Boolean).join(" · ") || "—";
     const meta = person.eligible ? metaBase : `${metaBase} — ${person.reason_text || "не допущен"}`;
+    if (!person.eligible && person.onsite_approve && onsiteAllowed()) {
+      return flatRow(h, { title: person.full_name, meta, trailing: onsiteApproveButton(person) });
+    }
+    if (person.onsite_register && onsiteAllowed()) {
+      return flatRow(h, { title: person.full_name, meta, trailing: onsiteRegisterButton() });
+    }
     const btn = h("button", { class: "btn secondary", type: "button", text: "Отметить" });
     if (!person.eligible) btn.setAttribute("disabled", "");
     btn.addEventListener("click", async () => {
@@ -366,7 +436,7 @@ export async function render(root, params, ctx) {
       btn.setAttribute("disabled", "");
       try {
         const res = await measured(() => api("/checkin/manual", {
-          method: "POST", body: { telegram_id: person.telegram_id, point: selectedPoint },
+          method: "POST", body: { telegram_id: person.telegram_id, point: selectedPoint, city: citySelect.value || undefined },
         }));
         loadNetTexts();
         showPlaque(res);
@@ -387,7 +457,7 @@ export async function render(root, params, ctx) {
     if (needle.length < 2) return;
     let items;
     try {
-      const page = await api(`/checkin/search?q=${encodeURIComponent(needle)}`);
+      const page = await api(`/checkin/search?q=${encodeURIComponent(needle)}&city=${cityParam()}`);
       items = page.items;
     } catch (err) {
       searchResults.append(h("p", {
@@ -399,6 +469,7 @@ export async function render(root, params, ctx) {
     if (searchInput.value.trim() !== needle) return; // ушли дальше, пока грузили
     if (items.length === 0) {
       searchResults.append(h("p", { class: "muted", text: "Никого не нашли — проверьте написание." }));
+      if (onsiteAllowed()) searchResults.append(h("div", { class: "task-actions" }, onsiteRegisterButton()));
       return;
     }
     searchResults.append(...items.map(resultRow));
@@ -410,7 +481,120 @@ export async function render(root, params, ctx) {
     searchTimer = setTimeout(() => search(value), SEARCH_DEBOUNCE_MS);
   });
 
+  // ── регистрация на месте (D-41) ──────────────────────────────────────────────────────
+  function askConfirm(text) {
+    return new Promise((resolve) => {
+      if (tg && typeof tg.showConfirm === "function") {
+        try {
+          tg.showConfirm(text, (ok) => resolve(Boolean(ok)));
+          return;
+        } catch (err) {
+          // старый клиент Telegram — ниже обычный confirm
+        }
+      }
+      resolve(window.confirm(text));
+    });
+  }
+
+  // Одобрение ОДНОГО человека у стойки: всегда через подтверждение с именем, кнопка
+  // заблокирована на время запроса (двойной тап). Решение и отметку пишет сервер.
+  async function approveOnsite(person, btn) {
+    if (onsiteBusy) return;
+    const question = ot("onsite_approve_confirm_text").replace("{name}", person.full_name || "—");
+    const ok = await askConfirm(question);
+    if (!ok) return;
+    onsiteBusy = true;
+    if (btn) btn.setAttribute("disabled", "");
+    try {
+      const res = await measured(() => api("/checkin/onsite/approve", {
+        method: "POST", body: { telegram_id: person.telegram_id, city: citySelect.value || undefined },
+      }));
+      showPlaque(res, { closeButton: true });
+      await loadStats();
+      await loadPoints(citySelect.value || undefined);
+      await loadOnsitePending();
+    } catch (err) {
+      say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось одобрить — попробуйте ещё раз."), "warn");
+    } finally {
+      onsiteBusy = false;
+      if (btn) btn.removeAttribute("disabled");
+    }
+  }
+
+  function onsiteApproveButton(person) {
+    const btn = h("button", { class: "btn", type: "button", text: ot("onsite_approve_button_text") });
+    btn.addEventListener("click", () => {
+      if (btn.hasAttribute("disabled")) return;
+      approveOnsite(person, btn);
+    });
+    return btn;
+  }
+
+  function onsiteRegisterButton() {
+    return h("button", {
+      class: "btn secondary", type: "button", text: ot("onsite_register_button_text"),
+      onClick: () => showWalkinQr(),
+    });
+  }
+
+  // QR короткой анкеты своего города — для камеры телефона человека. Картинка приходит
+  // data URI внутри JSON: отдельный URL картинки получил бы 401 (тег img не шлёт initData).
+  async function showWalkinQr() {
+    let res;
+    try {
+      res = await measured(() => api(`/checkin/onsite/link?city=${cityParam()}`));
+    } catch (err) {
+      say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось показать QR — попробуйте ещё раз."), "warn");
+      return;
+    }
+    if (!res.url || !res.qr) {
+      say(res.reason_text || "Не получилось показать QR — попробуйте ещё раз.", "warn");
+      return;
+    }
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    const closeBtn = h("button", {
+      class: "btn secondary checkin-plaque-next", type: "button", text: "Закрыть",
+      onClick: () => plaque.classList.add("hidden"),
+    });
+    plaque.className = "checkin-plaque checkin-onsite-qr";
+    plaque.replaceChildren(...[
+      h("div", { class: "checkin-plaque-heading", text: ot("onsite_register_button_text") }),
+      h("img", { class: "checkin-onsite-qr-img", src: res.qr, alt: "QR" }),
+      h("div", { class: "checkin-plaque-city checkin-onsite-qr-url", text: res.url }),
+      res.hint ? h("div", { class: "checkin-plaque-reason", text: res.hint }) : null,
+      closeBtn,
+    ].filter(Boolean));
+    if (typeof plaque.scrollIntoView === "function") plaque.scrollIntoView({ block: "center" });
+  }
+
+  // «Ждут на стойке»: при открытии экрана, после смены города и после каждого одобрения —
+  // без таймера-опроса (сеть на площадке слабая), плюс кнопка «Обновить».
+  async function loadOnsitePending() {
+    if (!onsiteEnabled) { onsiteList.replaceChildren(); return; }
+    let page;
+    try {
+      page = await api(`/checkin/onsite/pending?city=${cityParam()}`);
+    } catch (err) {
+      onsiteList.replaceChildren(h("p", {
+        class: "error-inline",
+        text: isNetworkError(err) ? NETWORK_TEXT : "Список недоступен — нажмите «Обновить».",
+      }));
+      return;
+    }
+    const items = page.items || [];
+    if (items.length === 0) {
+      onsiteList.replaceChildren(h("p", { class: "muted", text: "Пока никого" }));
+      return;
+    }
+    onsiteList.replaceChildren(...items.map((it) => flatRow(h, {
+      title: it.full_name,
+      meta: [it.university, it.username ? `@${it.username}` : null, it.registered_at].filter(Boolean).join(" · ") || "—",
+      trailing: onsiteApproveButton(it),
+    })));
+  }
+
   await loadNetTexts();
   await loadStats();
   await loadPoints();
+  await loadOnsitePending();
 }
