@@ -618,8 +618,10 @@ async def _mark_chat_unhealthy(chat_id: int, city: str | None) -> None:
 
     _unhealthy_chats.add(chat_id)
     now = time.monotonic()
-    last = _chat_alert_sent_at.get(chat_id, 0.0)
-    if now - last < _CHAT_ALERT_COOLDOWN_SECONDS:
+    # None, а не 0.0: monotonic считает от загрузки машины — на свежем сервере (аптайм < 1 ч)
+    # «0.0» глушил САМЫЙ ПЕРВЫЙ алерт как «уже был в пределах часа».
+    last = _chat_alert_sent_at.get(chat_id)
+    if last is not None and now - last < _CHAT_ALERT_COOLDOWN_SECONDS:
         return  # алерт этого чата уже уходил в пределах часа — тихо, без повтора
     _chat_alert_sent_at[chat_id] = now
     try:
