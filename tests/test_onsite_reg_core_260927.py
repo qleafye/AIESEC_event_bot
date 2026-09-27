@@ -163,9 +163,12 @@ def test_approve_onsite_walkin_keeps_kind(tmp_path):
 
 
 def test_approve_onsite_rejected(tmp_path):
+    # Отказ менеджера отменяется только явным «вопреки отказу» (ревью 28.09).
     _ready(tmp_path)
     _insert(5022, status="rejected")
-    assert _run(db.approve_onsite(5022, by_staff_id=STAFF_ID, season=SEASON)) is True
+    assert _run(db.approve_onsite(5022, by_staff_id=STAFF_ID, season=SEASON)) is False
+    assert _row(5022)["status"] == "rejected"
+    assert _run(db.approve_onsite(5022, by_staff_id=STAFF_ID, season=SEASON, override_reject=True)) is True
     assert _row(5022)["status"] == "approved"
 
 
@@ -522,7 +525,7 @@ def test_approve_at_door_unbound_uses_stand_city(tmp_path):
     _ready(tmp_path)
     _cities_on()
     _enable("msk")
-    _insert(6007, status="rejected", city="msk")
+    _insert(6007, status="pending", city="msk")
     res = _door(6007, city="msk", bound=None)
     assert res["status"] == "new" and res["onsite_approved"] is True
 

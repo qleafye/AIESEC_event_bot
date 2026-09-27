@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 ONSITE_SHEET_LABEL = "На месте"
 WALKIN_PREFIX = "walkin"
 _DECISION_REASON = "Одобрен(а) на месте"
+# Волонтёр пропустил вопреки отказу менеджера — отдельная пометка в журнале решений, чтобы
+# менеджер видел, чей отказ отменён у стойки и кем.
+_OVERRIDE_REASON = "Одобрен(а) на месте вопреки отказу"
 
 
 async def onsite_enabled(city: str | None) -> bool:
@@ -81,8 +84,43 @@ async def _wrong_city_text(user: dict) -> str:
     return f"Делегат с форума в {label} — отправьте на стойку своего города/к организаторам"
 
 
+def refine_denial(code: str | None, user: dict | None) -> str | None:
+    """Код отказа для сканера: `checkin_denial` отдаёт `not_approved` и на «на рассмотрении»,
+    и на отказ менеджера. Сканер различает их — отклонённую заявку волонтёр не должен принять за
+    ждущую решения (обычной кнопки одобрения у неё нет, только «вопреки отказу»)."""
+    if code == "not_approved" and (user or {}).get("status") == "rejected":
+        return "rejected"
+    return code
+
+
+async def _stored_reject_reason(user: dict) -> str | None:
+    """Причина отказа, если она записана: последний ручной отказ в журнале решений, иначе
+    пометка автоотказа. Fail-soft — без причины текст всё равно честный."""
+    try:
+        from services.applications import last_rejection_reason
+        reason = await last_rejection_reason(user["telegram_id"])
+    except Exception:
+        logger.exception("onsite_reg: причина отказа не прочитана (tid=%s)", user.get("telegram_id"))
+        reason = None
+    if not reason and (user.get("auto_reject_rule_ids") or "").strip() not in ("", "[]"):
+        reason = (user.get("auto_rule_note") or "").strip() or None
+    return reason
+
+
+async def rejected_reason_text(user: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
+    """«Заявка отклонена менеджером» (+ причина, если записана) — тексты из реестра (D-34)."""
+    from services.i18n import tr
+
+    reason = await _stored_reject_reason(user)
+    if reason:
+        template = tr(await get_setting_typed("onsite_rejected_reason_text"), lang, tr_map or {})
+        return template.replace("{reason}", reason)
+    return tr(await get_setting_typed("onsite_rejected_text"), lang, tr_map or {})
+
+
 async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
-                          staff_name: str | None, bound: str | None) -> dict:
+                          staff_name: str | None, bound: str | None,
+                          override_reject: bool = False) -> dict:
     """Одобрение ОДНОГО человека у стойки + отметка входа.
 
     `city` — город стойки, выбранный в сканере; `bound` — город, к которому привязан волонтёр
@@ -91,8 +129,8 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     `{"kind": "onsite_approved", "payload": {"telegram_id": …}}` — лист, сообщение и QR
     человеку шлёт бот (`after_onsite_approved`). `first_entry` остаётся в результате — Mini App
     переносит его в outbox сам. Отказы: `onsite_off` (тумблер города выключен), `wrong_city`
-    (D-26), `not_found`. У одобрения нет `log_id`: кнопка «↩️ Отменить» сняла бы отметку, но не
-    решение."""
+    (D-26), `not_found`, `rejected` (заявку отклонил менеджер — без `override_reject` ничего не
+    меняется). У одобрения нет `log_id`: кнопка «↩️ Отменить» сняла бы отметку, но не решение."""
     if not user:
         return {"status": "not_found", "reason_text": DENIAL_REASON_TEXT["no_user"]}
     tid = user["telegram_id"]
@@ -114,23 +152,29 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
             user, ENTRY_POINT, source="manual", by_staff_id=staff_id, staff_name=staff_name,
         )
 
+    overriding = user.get("status") == "rejected"
+    if overriding and not override_reject:
+        return {"status": "rejected", "reason_text": await rejected_reason_text(user)}
+
     flipped = await approve_onsite(
         tid, by_staff_id=staff_id, season=event_season,
-        event_city=resolved if past else None,
+        event_city=resolved if past else None, override_reject=overriding,
     )
     if flipped:
         from services import venue_log
         from services.applications import record_decision
 
+        reason = _OVERRIDE_REASON if overriding else _DECISION_REASON
         try:
             await record_decision(
-                tid, "approved", _DECISION_REASON, staff_id, msk_now(), effects_already_sent=True,
+                tid, "approved", reason, staff_id, msk_now(), effects_already_sent=True,
             )
         except Exception:
             logger.exception("onsite_reg: журнал решений не записан (tid=%s, staff=%s)", tid, staff_id)
         await venue_log.log_action(
             venue_log.ACTION_ONSITE_APPROVE, staff_id=staff_id, staff_name=staff_name,
             telegram_id=tid, city=resolved, point=ENTRY_POINT, source="manual",
+            details={"override_reject": True} if overriding else None,
         )
 
     fresh = await get_user(tid) or user

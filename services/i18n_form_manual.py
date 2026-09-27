@@ -967,6 +967,16 @@ _REGISTRY_TEXTS_EN = {
         "the bot. Then find them in the “Waiting at the desk” list and approve."
     ),
     "📝 Ждут на стойке": "📝 Waiting at the desk",
+    "Заявка отклонена менеджером": "The application was rejected by a manager",
+    "Заявка отклонена менеджером. Причина: {reason}":
+        "The application was rejected by a manager. Reason: {reason}",
+    "⚠️ Пропустить вопреки отказу": "⚠️ Let in despite rejection",
+    "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? "
+    "Отказ будет отменён, решение запишется на вас и попадёт в журнал.": (
+        "A manager rejected {name}'s application. Let them in despite the rejection and check "
+        "them in? The rejection will be cancelled, and the decision will be recorded under your "
+        "name in the log."
+    ),
     "Регистрация на месте выключена для этого города — включает менеджер в «🎪 Форум: функции».":
         "On-site registration is off for this city — a manager can turn it on in "
         "“🎪 Forum: features”.",

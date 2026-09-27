@@ -62,7 +62,14 @@ from services.checkin import (
 )
 from services import checkin_arrival, checkin_training, i18n
 from services import venue_log
-from services.onsite_reg import approve_at_door, onsite_enabled, walkin_link, walkin_qr_png
+from services.onsite_reg import (
+    approve_at_door,
+    onsite_enabled,
+    refine_denial,
+    rejected_reason_text,
+    walkin_link,
+    walkin_qr_png,
+)
 from services.person_search import search_people
 from settings_schema import get_setting_typed
 from services.program import checkin_session_points
@@ -182,18 +189,26 @@ class _OnsiteGate:
             self._cache[city] = await onsite_enabled(city)
         return self._cache[city]
 
+    async def _may_approve(self, user: dict) -> bool:
+        past = is_past_season_row(user, self.event_season)
+        other_city = self.bound and not past and normalize_city(user.get("event_city")) != self.bound
+        city = self.stand or normalize_city(user.get("event_city"))
+        return not other_city and await self.enabled(city)
+
     async def flags(self, denial_code: str | None, user: dict | None) -> dict:
         """`onsite_approve` — заявка есть, но не одобрена/прошлого сезона, и волонтёр вправе её
-        одобрить (та же проверка города, что в `approve_at_door`); `onsite_register` — человека
-        нет в базе. Оба — только при включённом тумблере города стойки."""
-        approve = False
+        одобрить (та же проверка города, что в `approve_at_door`); `onsite_override` — заявку
+        ОТКЛОНИЛ менеджер (код `rejected`): вместо обычной кнопки — «вопреки отказу» со своим
+        подтверждением; `onsite_register` — человека нет в базе. Все — только при включённом
+        тумблере города стойки."""
+        approve = override = False
         if denial_code in _ONSITE_APPROVE_CODES and user:
-            past = is_past_season_row(user, self.event_season)
-            other_city = self.bound and not past and normalize_city(user.get("event_city")) != self.bound
-            city = self.stand or normalize_city(user.get("event_city"))
-            approve = not other_city and await self.enabled(city)
+            approve = await self._may_approve(user)
+        elif denial_code == "rejected" and user:
+            override = await self._may_approve(user)
         register = denial_code == "no_user" and await self.enabled(self.stand)
-        return {"onsite_approve": bool(approve), "onsite_register": bool(register)}
+        return {"onsite_approve": bool(approve), "onsite_register": bool(register),
+                "onsite_override": bool(override)}
 
 
 async def _onsite_gate(request: Request, p: Principal, requested: str | None) -> _OnsiteGate:
@@ -201,6 +216,15 @@ async def _onsite_gate(request: Request, p: Principal, requested: str | None) ->
         await _stand_city(request, p, requested), await _bound_city(request, p),
         await get_setting_typed("event_season") or None,
     )
+
+
+async def _denial_text(code: str, user: dict | None, p: Principal) -> str:
+    """Текст отказа на плашке. Отклонённая заявка — из реестра, с причиной, на языке волонтёра;
+    остальные коды — общая таблица `DENIAL_REASON_TEXT`."""
+    if code == "rejected" and user:
+        lang, tr_map = await i18n.context(p.telegram_id)
+        return await rejected_reason_text(user, lang, tr_map)
+    return DENIAL_REASON_TEXT.get(code, code)
 
 
 async def _point_city_denial(bound: str | None, point: str) -> dict | None:
@@ -348,12 +372,13 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
 
     token = parsed.get("token")
     user, denial_code = await resolve_scanned_user(token, point=point, source="miniapp")
+    denial_code = refine_denial(denial_code, user)
     if denial_code is not None:
         await _log_denial(p, bound, denial_code, point=point, source="miniapp", user=user)
         gate = await _onsite_gate(request, p, body.city)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
-            "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
+            "reason_text": await _denial_text(denial_code, user, p),
             "full_name": (user or {}).get("full_name") or parsed.get("full_name") or None,
             "city": (user or {}).get("event_city") or parsed.get("city") or None,
             "telegram_id": (user or {}).get("telegram_id"),
@@ -402,13 +427,13 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
         return point_denial
 
     user = await get_user(body.telegram_id)
-    denial_code = await checkin_denial(user)
+    denial_code = refine_denial(await checkin_denial(user), user)
     if denial_code is not None:
         await _log_denial(p, bound, denial_code, point=point, source="manual", user=user)
         gate = await _onsite_gate(request, p, body.city)
         return {
             "status": "not_found" if denial_code == "no_user" else "denied",
-            "reason_text": DENIAL_REASON_TEXT.get(denial_code, denial_code),
+            "reason_text": await _denial_text(denial_code, user, p),
             "full_name": (user or {}).get("full_name") if user else None,
             "city": (user or {}).get("event_city") if user else None,
             "telegram_id": (user or {}).get("telegram_id"),
@@ -483,6 +508,8 @@ _ONSITE_TEXT_KEYS = (
     "onsite_register_button_text",
     "onsite_register_hint_text",
     "onsite_pending_title_text",
+    "onsite_override_button_text",
+    "onsite_override_confirm_text",
 )
 
 
@@ -511,7 +538,7 @@ async def checkin_search(
     items = []
     for row in found:
         user = await get_user(row["user_id"]) if row["source"] == "users" else None
-        denial_code = await checkin_denial(user) if user is not None else "no_user"
+        denial_code = refine_denial(await checkin_denial(user), user) if user is not None else "no_user"
         raw_city = row.get("city")
         items.append({
             "telegram_id": row["user_id"],
@@ -521,7 +548,7 @@ async def checkin_search(
             "university": row.get("university"),
             "username": row.get("username"),
             "eligible": denial_code is None,
-            "reason_text": None if denial_code is None else DENIAL_REASON_TEXT.get(denial_code, denial_code),
+            "reason_text": None if denial_code is None else await _denial_text(denial_code, user, p),
             **await gate.flags(denial_code, user),
         })
     # Одобренные текущего сезона (eligible) — первыми (D-12); внутри каждой группы порядок
@@ -626,6 +653,9 @@ class OnsiteApproveBody(BaseModel):
     # Один человек за запрос — списков id нет (урок инцидента 06.09 с тихим массовым одобрением).
     telegram_id: int
     city: str | None = None
+    # Заявку отклонил менеджер: без явного «вопреки отказу» (отдельная кнопка и своё
+    # подтверждение в сканере) сервер её не одобряет.
+    override_reject: bool = False
 
 
 @router.post("/app/api/checkin/onsite/approve")
@@ -646,8 +676,16 @@ async def onsite_approve(
 
     res = await approve_at_door(
         user, city=stand, staff_id=p.telegram_id, staff_name=_staff_name(p), bound=bound,
+        override_reject=body.override_reject,
     )
     status = res.get("status")
+    if status == "rejected":
+        # Город и тумблер approve_at_door уже проверил — волонтёр может пропустить только
+        # отдельной кнопкой «вопреки отказу».
+        return await _with_city_label({
+            "status": "rejected", "reason_text": await _denial_text("rejected", user, p),
+            "telegram_id": user["telegram_id"], "onsite_override": True, **_person_fields(user),
+        })
     if status == "onsite_off":
         return await _with_city_label({**await _onsite_off(p), **_person_fields(user)})
     if status == "wrong_city":
