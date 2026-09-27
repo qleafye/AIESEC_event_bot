@@ -1684,7 +1684,9 @@ export async function render(root, params, ctx) {
         renderComplete(res);
       } catch (err) {
         busy = false;
-        if (err && err.status === 409 && err.reason === "consent_required") {
+        if (err && err.status === 409 && (err.reason === "consent_required" || err.reason === "city_required")) {
+          // Квик 27.09: город анкеты не выбран — тот же возврат к экранам до анкеты, что и у
+          // несогласованных согласий (выбор города живёт там же).
           preIndex = 0;
           say(failText(err), "warn");
           drawCurrent();
