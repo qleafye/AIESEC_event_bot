@@ -1693,6 +1693,17 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_chat_events_chat_ts ON chat_events(chat_id, ts)"
         )
+        # Квик 260927 (автоочистка служебных уведомлений): статус САМОГО бота в группе и право
+        # «Удаление сообщений». can_delete NULL = ещё не проверяли; 0 = удалять нельзя (очистка
+        # молча пропускает чат без вызовов API, пока права не вернут — my_chat_member обновит).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_bot_state (
+                chat_id INTEGER PRIMARY KEY,
+                bot_status TEXT,
+                can_delete INTEGER,
+                checked_at TEXT
+            )
+        ''')
 
         # Indexes under the hot admin/scheduler queries. Each one mirrors a real WHERE/ORDER BY
         # in this module (see the comments in _HOT_PATH_INDEXES); nothing speculative.
@@ -5504,6 +5515,34 @@ async def bump_chat_activity(chat_id: int, telegram_id: int, *, reply: bool, med
             (chat_id, telegram_id, day, 1 if reply else 0, 1 if media else 0),
         )
         await db.commit()
+
+
+async def set_chat_bot_state(chat_id: int, status: str | None, can_delete: bool | None) -> None:
+    """UPSERT состояния бота в группе. `status=None` — статус не меняем (очистка узнала только
+    про право удалять, не про статус); `can_delete=None` — «не проверяли»."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    flag = None if can_delete is None else (1 if can_delete else 0)
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO chat_bot_state (chat_id, bot_status, can_delete, checked_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
+            "bot_status = COALESCE(excluded.bot_status, chat_bot_state.bot_status), "
+            "can_delete = excluded.can_delete, checked_at = excluded.checked_at",
+            (chat_id, status, flag, now),
+        )
+        await db.commit()
+
+
+async def get_chat_bot_state(chat_id: int) -> dict | None:
+    """`{"chat_id", "bot_status", "can_delete", "checked_at"}` или `None` (бота не видели)."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT chat_id, bot_status, can_delete, checked_at FROM chat_bot_state WHERE chat_id = ?",
+            (chat_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
 
 
 async def chat_member_ids(chat_id: int) -> set[int]:
@@ -9473,6 +9512,9 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     # делегата (тот же класс, что sos_card_copies.chat_id выше); posted_by/returned_by — id
     # сотрудника (волонтёра/менеджера), не удаляемого делегата.
     "lost_found",
+    # Квик 260927: chat_bot_state.chat_id — группа делегатов, состояние САМОГО бота в ней (статус
+    # и право удалять), не след делегата.
+    "chat_bot_state",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
