@@ -821,6 +821,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "onsite_pending_title_text": ["ждут на стойке заголовок", "список walk-in"],
     "onsite_rejected_text": ["заявка отклонена у стойки", "сканер отказ менеджера"],
     "onsite_rejected_reason_text": ["причина отказа на сканере", "отклонена с причиной у стойки"],
+    "onsite_move_confirm_text": ["перевод walk-in в город стойки", "переедет в город при одобрении"],
     "onsite_override_button_text": ["пропустить вопреки отказу", "отменить отказ у стойки"],
     "onsite_override_confirm_text": ["подтверждение вопреки отказу", "отказ будет отменён у стойки"],
     "onsite_off_text": ["регистрация на месте выключена сканер", "стойка выключена для города"],

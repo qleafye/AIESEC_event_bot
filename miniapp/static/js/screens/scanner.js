@@ -73,6 +73,7 @@ const ONSITE_FALLBACK = {
   onsite_register_button_text: "📝 Зарегистрировать на месте",
   onsite_pending_title_text: "📝 Ждут на стойке",
   onsite_override_button_text: "⚠️ Пропустить вопреки отказу",
+  onsite_move_confirm_text: "Человек записан на форум в другом городе — после одобрения он переедет в {city}.",
   onsite_override_confirm_text: "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? Отказ будет отменён, решение запишется на вас и попадёт в журнал.",
 };
 const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };
@@ -369,7 +370,7 @@ export async function render(root, params, ctx) {
       res.training_note ? h("div", { class: "checkin-plaque-city", text: `🧪 ${res.training_note}` }) : null,
       res.undo ? undoButton(res.undo, res) : null,
       res.onsite_approve && res.telegram_id && selectedPoint !== TRAINING_POINT
-        ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }) : null,
+        ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name, onsite_move_to: res.onsite_move_to }) : null,
       res.onsite_override && res.telegram_id && selectedPoint !== TRAINING_POINT
         ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }, { override: true }) : null,
       res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
@@ -515,7 +516,9 @@ export async function render(root, params, ctx) {
   async function approveOnsite(person, btn, override = false) {
     if (onsiteBusy) return;
     const confirmKey = override ? "onsite_override_confirm_text" : "onsite_approve_confirm_text";
-    const question = ot(confirmKey).replace("{name}", person.full_name || "—");
+    let question = ot(confirmKey).replace("{name}", person.full_name || "—");
+    // walk-in «не того» города: одобрение переведёт его в город стойки — говорим это прямо.
+    if (person.onsite_move_to) question += `\n\n${ot("onsite_move_confirm_text").replace("{city}", person.onsite_move_to)}`;
     const ok = await askConfirm(question);
     if (!ok) return;
     onsiteBusy = true;

@@ -64,6 +64,7 @@ from services import checkin_arrival, checkin_training, i18n
 from services import venue_log
 from services.onsite_reg import (
     approve_at_door,
+    is_pending_walkin,
     onsite_enabled,
     refine_denial,
     rejected_reason_text,
@@ -201,9 +202,21 @@ class _OnsiteGate:
 
     async def _may_approve(self, user: dict) -> bool:
         past = is_past_season_row(user, self.event_season)
-        other_city = self.bound and not past and normalize_city(user.get("event_city")) != self.bound
+        # walk-in без решения стойка одобряет, переводя в свой город (как делегата прошлого
+        # сезона); обычная заявка чужого города — по-прежнему D-26.
+        free = past or is_pending_walkin(user)
+        other_city = self.bound and not free and normalize_city(user.get("event_city")) != self.bound
         city = self.stand or normalize_city(user.get("event_city"))
         return not other_city and await self.enabled(city)
+
+    async def move_to(self, user: dict | None) -> str | None:
+        """Подпись города стойки, если одобрение переведёт walk-in туда из другого города —
+        сканер добавит это в подтверждение."""
+        if not is_pending_walkin(user) or not self.stand:
+            return None
+        if normalize_city(user.get("event_city")) == self.stand:
+            return None
+        return await city_label(self.stand)
 
     async def flags(self, denial_code: str | None, user: dict | None) -> dict:
         """`onsite_approve` — заявка есть, но не одобрена/прошлого сезона, и волонтёр вправе её
@@ -220,7 +233,8 @@ class _OnsiteGate:
             override = await self._may_approve(user)
         register = denial_code == "no_user" and await self.enabled(self.stand)
         return {"onsite_approve": bool(approve), "onsite_register": bool(register),
-                "onsite_override": bool(override)}
+                "onsite_override": bool(override),
+                "onsite_move_to": await self.move_to(user) if approve else None}
 
 
 async def _onsite_gate(request: Request, p: Principal, requested: str | None) -> _OnsiteGate:
@@ -522,6 +536,7 @@ _ONSITE_TEXT_KEYS = (
     "onsite_pending_title_text",
     "onsite_override_button_text",
     "onsite_override_confirm_text",
+    "onsite_move_confirm_text",
 )
 
 
@@ -546,6 +561,15 @@ async def checkin_search(
     scope = city_scope(bound) if bound else None
     found = await search_people(q, city_scope=scope, limit=_SEARCH_LIMIT)
     gate = await _onsite_gate(request, p, city)
+    if scope is not None and gate.can_approve:
+        # Walk-in без решения, отсканировавший QR чужого города, стоит у ЭТОЙ стойки —
+        # привязанный волонтёр находит его по фамилии и одобряет с переводом в свой город.
+        seen = {row["user_id"] for row in found}
+        for row in await search_people(q, limit=_SEARCH_LIMIT, include_started=False):
+            if row["user_id"] not in seen and row["source"] == "users" and is_pending_walkin(
+                await get_user(row["user_id"])
+            ):
+                found.append(row)
 
     items = []
     for row in found:
