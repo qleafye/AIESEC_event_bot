@@ -1147,7 +1147,10 @@ export async function render(root, params, ctx) {
             // выборе файла — тот же отложенный тик, что `opts.commit` ниже, второй проверки
             // валидности не заводим (currentMainDisabled — общая точка). К этому тику
             // pendingUpload уже снят (then ниже отрабатывает микрозадачей раньше таймера).
-            onDone: () => { setTimeout(() => { if (!currentMainDisabled()) goNext(); }, 0); },
+            // Ревью квика 27.09: только если на экране всё ещё ЭТА отрисовка шага резюме —
+            // делегат мог уйти «Назад» или сменить ветку, пока файл ехал, и старая загрузка не
+            // должна сама двигать чужой шаг.
+            onDone: () => { setTimeout(() => { if (mySeq === drawSeq && !currentMainDisabled()) goNext(); }, 0); },
           });
           // Квик 27.09: пока файл едет, «Дальше» (кнопка футера и MainButton) выключена.
           pendingUpload = upload;
@@ -1222,6 +1225,8 @@ export async function render(root, params, ctx) {
         // Квик 27.09: правило ветки — общий resumeForkPick (form.js), тот же, что у обзора правки.
         const pick = resumeForkPick(code);
         if (!pick) { busy = false; drawStep(); return; }
+        // Ревью квика 27.09: смена ветки — загрузка прежней ветки «файл» больше не держит «Дальше».
+        pendingUpload = null;
         const staysOnStep = pick.staysOnStep;
         try {
           const res = await api("/reg/draft", {
@@ -1371,6 +1376,9 @@ export async function render(root, params, ctx) {
 
       function goBack() {
         if (busy) return;
+        // Ревью квика 27.09: уход с шага — загрузка файла в полёте больше не держит «Дальше»
+        // на других шагах (сама загрузка доедет, но шаг не двинет — см. onDone).
+        pendingUpload = null;
         stepDir = "back"; // quick 260915-4mw: все три ветки ниже зовут drawStep()
         // Phase 28 (28-05, SU-04, A-03 CONTEXT): единственные исключения из «Назад = предыдущий
         // вопрос» — ветка «файл» (клиентская подмена этого же шага) и четыре шага-ветки
@@ -1463,7 +1471,7 @@ export async function render(root, params, ctx) {
         return footerLabelOverride || (d.next_cta_text || "");
       }
       function currentMainDisabled() {
-        return busy || footerDisabledOverride || pendingUpload !== null;
+        return busy || footerDisabledOverride || (pendingUpload !== null && rawSpec.key === "resume");
       }
       function syncMainButton() {
         if (mainLabelNode) mainLabelNode.textContent = currentMainLabel();
@@ -1682,8 +1690,14 @@ export async function render(root, params, ctx) {
           // Квик 27.09: сервер не подаёт анкету с «файлом» без файла — возвращаем делегата на
           // вопрос о резюме сразу в ветку «файл». Текст — с сервера (payload.text).
           say(failText(err), "warn");
-          stepIndex = stepIndexFromKey(state.specs, "resume");
-          resumeForkBranch = "file";
+          // Шага «Резюме» в анкете может не быть (выключили) — тогда stepIndexFromKey дал бы
+          // первый шаг и подача зациклилась бы; возвращаем на последний, как общая ветка.
+          if (state.specs.some((s) => s.key === "resume")) {
+            stepIndex = stepIndexFromKey(state.specs, "resume");
+            resumeForkBranch = "file";
+          } else {
+            stepIndex = Math.max(0, state.specs.length - 1);
+          }
           drawStep();
         } else if (!isAuthError(err)) {
           say(failText(err), "warn");
