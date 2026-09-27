@@ -155,8 +155,8 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
     elif header:
         lines.append("<i>Это общие значения — их берут города без своих.</i>")
     lines.append(
-        "<i>Рейтинг виден на веб-дашборде, страница «💬 Чат». Бот никому ничего не начисляет и "
-        "не пишет — только считает.</i>"
+        "<i>Рейтинг виден на веб-дашборде, страница «💬 Чат». Бот никому ничего не начисляет; "
+        "в чат пишет, только если включить «📣 Публиковать рейтинг в чат».</i>"
     )
 
     rows = []
@@ -177,6 +177,10 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
         rows.append([InlineKeyboardButton(
             text="📋 Задания для «упоминаний»", callback_data=f"chrate:tasks:{token}",
         )])
+    # Еженедельный пост рейтинга в чат города (handlers/admin_chat_rating_post.py) — ленивый
+    # импорт: тот модуль сам импортирует этот.
+    from handlers.admin_chat_rating_post import toggle_row
+    rows.extend(await toggle_row(code, header))
     rows.append([InlineKeyboardButton(text="⚖️ Веса формулы", callback_data="settings_group:chat")])
     if header:
         rows.append([InlineKeyboardButton(text="🏙 Сменить город", callback_data="admin_city_switch:manage")])
