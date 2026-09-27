@@ -2,8 +2,8 @@
 
 Сервер теперь отвечает 400 `file_rejected` с текстом реестра, когда Telegram не принял файл
 (`miniapp_upload_file_rejected_text`). Экран обязан показать этот текст (фолбэк —
-`limits.file_rejected_text` из GET /uploads/limits), а литерал «…попробуйте ещё раз» оставить
-только сбою связи / 502. Клиентская догадка kind до ответа сервера совпадает с серверным
+`limits.file_rejected_text` из GET /uploads/limits), а текст «не удалось загрузить — ещё раз»
+(`limits.upload_failed_text`, с именем файла вместо `{name}`) оставить только сбою связи / 502. Клиентская догадка kind до ответа сервера совпадает с серверным
 правилом: фото — только JPEG/PNG/GIF.
 
 Node-подпроцесс с фейковым DOM из `tests/test_miniapp_error_states_js_260911.py`.
@@ -26,6 +26,7 @@ const limits = {
   max_parts: 5, max_bytes: 1000000, photo_max_bytes: 500000, max_text: 500,
   too_large_text: "слишком большой", empty_hint: "нечего отправлять",
   file_rejected_text: "не принят",
+  upload_failed_text: "сбой «{name}», ещё раз",
 };
 
 function allNodes(node, out = []) {
@@ -104,22 +105,20 @@ def result(node) -> dict:  # noqa: F811
 
 def test_file_rejected_shows_server_text(result):
     assert "серверный текст" in result["rejectedWithText"]
-    assert "попробуйте ещё раз" not in result["rejectedWithText"]
+    assert "сбой" not in result["rejectedWithText"]
 
 
 def test_file_rejected_without_payload_falls_back_to_limits_text(result):
     assert "не принят" in result["rejectedNoText"]
-    assert "попробуйте ещё раз" not in result["rejectedNoText"]
+    assert "сбой" not in result["rejectedNoText"]
 
 
-def test_network_failure_keeps_retry_literal_with_filename(result):
-    assert "pic.jpg" in result["network"]
-    assert "попробуйте ещё раз" in result["network"]
+def test_network_failure_shows_registry_text_with_filename(result):
+    assert result["network"] == "сбой «pic.jpg», ещё раз"
 
 
-def test_telegram_unavailable_keeps_retry_literal(result):
-    assert "pic.jpg" in result["unavailable"]
-    assert "попробуйте ещё раз" in result["unavailable"]
+def test_telegram_unavailable_shows_registry_text_with_filename(result):
+    assert result["unavailable"] == "сбой «pic.jpg», ещё раз"
 
 
 def test_413_still_shows_too_large_text(result):
