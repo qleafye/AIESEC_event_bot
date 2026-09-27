@@ -353,7 +353,8 @@ async def on_group_message(message: types.Message):
             kind=_message_kind(message), text_len=_own_text_len(message),
             reply_to_message_id=reply_mid, reply_to_author_id=reply_author,
         )
-        await upsert_chat_username(message.from_user.id, message.from_user.username)
+        await upsert_chat_username(message.from_user.id, message.from_user.username,
+                                   message.from_user.first_name)
 
 
 @router.edited_message()
@@ -388,6 +389,8 @@ async def on_group_reaction(event: types.MessageReactionUpdated):
         return
     keys = [k for k in (_reaction_key(r) for r in event.new_reaction) if k]
     await set_chat_reactions(event.chat.id, event.message_id, user.id, keys, _msk_ts(event.date))
+    # Тот, кто только ставит реакции, тоже попадает в рейтинг («отдача») — нужна подпись.
+    await upsert_chat_username(user.id, getattr(user, "username", None), getattr(user, "first_name", None))
 
 
 # ── Личка: выбор города после сообщения от бота (правка 15.09) ──────────────────────────

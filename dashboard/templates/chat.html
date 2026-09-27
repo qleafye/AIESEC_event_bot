@@ -141,6 +141,12 @@
            href="{{ link.href }}">{{ link.label }}</a>
         {% endfor %}
       </nav>
+      <nav class="switchers" aria-label="Кого показывать">
+        <a class="switch-link{% if card.reg_chip.active %} active{% endif %}"
+           aria-pressed="{{ 'true' if card.reg_chip.active else 'false' }}"
+           href="{{ card.reg_chip.href }}">Только с анкетой</a>
+      </nav>
+      <p class="empty-note">{% if card.reg_chip.active %}Только те, кто подал анкету в выбранном сезоне{% if card.chat.city %} в городе этого чата{% endif %}.{% else %}Все участники чата, кроме команды, — и с анкетой, и без.{% endif %}</p>
       <p class="empty-note">Для еженедельной публикации — «Прошлая неделя».{% if rr.period == "all" %} Всё время — за последние {{ rr.retention_days }} дней хранения.{% endif %}</p>
       {% if rr.bot_admin is false %}
       <p class="empty-note">Бот в этом чате не администратор — он может видеть не все сообщения, и часть комментариев не засчитается. Сделайте бота администратором группы (права можно оставить минимальными).</p>
@@ -200,6 +206,12 @@
            href="{{ link.href }}">{{ link.label }}</a>
         {% endfor %}
       </nav>
+      <nav class="switchers" aria-label="Кого показывать">
+        <a class="switch-link{% if card.reg_chip.active %} active{% endif %}"
+           aria-pressed="{{ 'true' if card.reg_chip.active else 'false' }}"
+           href="{{ card.reg_chip.href }}">Только с анкетой</a>
+      </nav>
+      <p class="empty-note">{% if card.reg_chip.active %}Только те, кто подал анкету в выбранном сезоне{% if card.chat.city %} в городе этого чата{% endif %}.{% else %}Все участники чата, кроме команды, — и с анкетой, и без.{% endif %}</p>
       {% if rating.period == "all" %}
       <p class="empty-note">Всё время — за последние {{ rating.retention_days }} дней хранения.</p>
       {% endif %}

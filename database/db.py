@@ -1751,6 +1751,9 @@ async def init_db():
                 updated_at TEXT
             )
         ''')
+        # Подпись участника без @ника на дашборде — имя из Telegram (только first_name, без
+        # фамилии), иначе «без ника»: голый telegram_id менеджеру не показываем.
+        await _ensure_column(db, "chat_usernames", "first_name", "TEXT")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS chat_admins (
                 chat_id INTEGER NOT NULL,
@@ -5663,19 +5666,24 @@ async def set_chat_reactions(chat_id: int, message_id: int, telegram_id: int,
         await db.commit()
 
 
-async def upsert_chat_username(telegram_id: int, username: str | None) -> None:
-    """@ник автора из Telegram (в анкете его может не быть). Пустое значение прежний ник не
-    стирает — человек мог просто написать с клиента, где ник не пришёл."""
-    value = str(username or "").strip().lstrip("@")
-    if not value:
+async def upsert_chat_username(telegram_id: int, username: str | None,
+                               first_name: str | None = None) -> None:
+    """@ник автора из Telegram (в анкете его может не быть) и его имя (first_name, без фамилии)
+    — подпись на дашборде для тех, у кого ника нет. Пустое значение прежнее не стирает —
+    человек мог просто написать с клиента, где ник не пришёл."""
+    value = str(username or "").strip().lstrip("@") or None
+    name = str(first_name or "").strip()[:64] or None
+    if value is None and name is None:
         return
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            "INSERT INTO chat_usernames (telegram_id, username, updated_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(telegram_id) DO UPDATE SET username = excluded.username, "
+            "INSERT INTO chat_usernames (telegram_id, username, first_name, updated_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(telegram_id) DO UPDATE SET "
+            "username = COALESCE(excluded.username, chat_usernames.username), "
+            "first_name = COALESCE(excluded.first_name, chat_usernames.first_name), "
             "updated_at = excluded.updated_at",
-            (telegram_id, value, now),
+            (telegram_id, value, name, now),
         )
         await db.commit()
 

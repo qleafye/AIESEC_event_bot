@@ -194,7 +194,7 @@ def test_chat_rating_rows_match_export_tool_minus_team(db_path):
     with dash_db.read_conn(db_path) as conn:
         result = chat_rating.chat_rating(
             conn, {"chat_id": CHAT_ID, "city": None}, period="all",
-            admin_ids={ADMIN_ID}, now=chat_rating_now(),
+            admin_ids={ADMIN_ID}, now=chat_rating_now(), registered_only=False,
         )
     rows = result["rows"]
     ids_in_rows = {r["telegram_id"] for r in rows}
@@ -215,7 +215,7 @@ def test_team_ids_is_staff_plus_admin_ids_plus_group_admins(db_path):
         assert GROUP_ADMIN_ID not in chat_rating.team_ids(conn, -1, set())
         result = chat_rating.chat_rating(
             conn, {"chat_id": CHAT_ID, "city": None}, period="all",
-            admin_ids={ADMIN_ID}, now=chat_rating_now(),
+            admin_ids={ADMIN_ID}, now=chat_rating_now(), registered_only=False,
         )
     ids_in_rows = {r["telegram_id"] for r in result["rows"]}
     assert not ids_in_rows & TEAM

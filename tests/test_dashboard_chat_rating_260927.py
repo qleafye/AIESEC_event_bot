@@ -58,9 +58,11 @@ def _setting(path, key, value):
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
 
 
-def _rating(path, period="all", admin_ids=(), chat=CHAT):
+def _rating(path, period="all", admin_ids=(), chat=CHAT, registered_only=False):
+    # Механика формулы проверяется на всех авторах; фильтр «Только с анкетой» — в своём тесте.
     with dash_db.read_conn(path) as conn:
-        return chat_rating.chat_rating(conn, chat, period=period, admin_ids=set(admin_ids), now=NOW)
+        return chat_rating.chat_rating(conn, chat, period=period, admin_ids=set(admin_ids), now=NOW,
+                                       registered_only=registered_only)
 
 
 def _by_id(result):
@@ -130,8 +132,8 @@ def test_display_names_fallback_chain_and_no_full_name(db_path):
     rows = _by_id(_rating(db_path))
     assert rows[11]["display_name"] == "@tg_nick"
     assert rows[12]["display_name"] == "@form_nick"
-    assert rows[13]["display_name"] == "13"
-    assert rows[14]["display_name"] == "14"
+    assert rows[13]["display_name"] == "без ника"  # голый id менеджеру не показываем
+    assert rows[14]["display_name"] == "без ника"
     blob = repr(rows)
     assert "Иван" not in blob and "Пётр" not in blob and "Анна" not in blob
 
