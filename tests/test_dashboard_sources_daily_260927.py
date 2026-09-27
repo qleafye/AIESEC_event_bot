@@ -399,3 +399,39 @@ def test_every_breakdown_and_step_consistent(tmp_path, by, step):
     chart = res["chart"]
     assert len(chart["labels"]) == len(res["rows"])
     assert [d["label"] for d in chart["datasets"]] == [c["label"] for c in res["columns"]]
+
+
+# ── регистрация на месте (D-41) ──────────────────────────────────────────────────────────
+
+def test_onsite_rows_get_own_tag_bucket(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        _u("2026-09-21", "На месте", onsite_kind="walkin"),
+        _u("2026-09-21", "ВК", referrer=5, onsite_kind="door"),  # на месте важнее ссылки
+        _u("2026-09-21", "vk_post"),
+        _u("2026-09-21", "Соцсети АЙСЕК", referrer=5),
+        _u("2026-09-21", "Соцсети АЙСЕК"),
+    ])
+    res = _build(db_path, query="by=tag")
+    day = _row(res, "2026-09-21")
+    assert sd.TAG_ONSITE == "📍 На месте"
+    assert day["counts"][_col(res, "📍 На месте")] == 2
+    assert day["counts"][_col(res, "vk_post")] == 1
+    assert day["counts"][_col(res, "Личная ссылка амбассадора")] == 1
+    assert day["counts"][_col(res, "Без метки")] == 1
+    # разбивка по ответу в анкете не тронута
+    res_answer = _build(db_path, query="by=answer")
+    assert _row(res_answer, "2026-09-21")["counts"][_col(res_answer, "На месте")] == 1
+
+
+def test_old_db_without_onsite_column_still_builds(tmp_path):
+    import sqlite3
+
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[_u("2026-09-21", "ВК")])
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE users DROP COLUMN onsite_kind")
+    conn.commit()
+    conn.close()
+    res = _build(db_path, query="by=tag")
+    assert _row(res, "2026-09-21")["counts"][_col(res, "Без метки")] == 1
