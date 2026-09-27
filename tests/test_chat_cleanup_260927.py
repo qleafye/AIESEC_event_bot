@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from types import SimpleNamespace
 
 from aiogram.enums import ContentType
 
@@ -80,8 +81,15 @@ def test_sos_and_foreign_chats_are_never_touched(tmp_path):
 
 
 def test_no_rights_warns_once_and_stops_calling_api(tmp_path, caplog):
+    # Флаг «нет прав» ставит только явная проверка прав бота (getChatMember), а не сама ошибка.
     _ready(tmp_path)
-    bot = _Bot(error="Telegram server says - Bad Request: message can't be deleted")
+    bot = _Bot(error="Telegram server says - Bad Request: not enough rights to delete a message")
+    bot.id = 777927
+
+    async def _member(chat_id, user_id):
+        return SimpleNamespace(status="member")
+
+    bot.get_chat_member = _member
     with caplog.at_level(logging.WARNING, logger="services.chat_cleanup"):
         _run(chat_cleanup.handle_service_message(bot, CHAT, 11, "join"))
         state = _run(db.get_chat_bot_state(CHAT))
@@ -194,7 +202,6 @@ def test_chat_bot_state_idempotent_and_purge_excluded(tmp_path):
 # ── Задача 2: групповые хендлеры — учёт ДО удаления, состояние бота ─────────────────────
 
 from datetime import datetime  # noqa: E402
-from types import SimpleNamespace  # noqa: E402
 
 from aiogram.types import (  # noqa: E402
     Chat, ChatMemberAdministrator, ChatMemberMember, ChatMemberOwner, ChatMemberUpdated,
