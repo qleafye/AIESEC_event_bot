@@ -376,6 +376,7 @@ _CHAT_FIELD_ORDER = [chat_score.SETTING_KEYS[n] for n in (
     "resonance_reply", "resonance_reaction", "regularity_per_day", "giving_per_reaction", "day_cap",
     "resonance_reply_cap", "resonance_reaction_cap", "burst_log_base", "burst_log_cap",
     "burst_media_score", "burst_sticker_score")] + [chat_score.BURST_GAP_KEY, chat_score.RETENTION_KEY]
+_CHAT_FIELD_ORDER.append("chat_cleanup_delay_seconds")  # набор типов — экран «🧹 Служебные сообщения»
 
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
 _APPS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _APPS_FIELD_ORDER]

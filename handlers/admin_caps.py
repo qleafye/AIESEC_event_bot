@@ -634,6 +634,9 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_chat_rating": "settings",  # Квик 260927: экран «🏆 Рейтинг чата» (раздел «🔧 Управление»)
     "chrate:*": "settings",  # его кнопки: режим, суммы правил, галочки заданий
     "state:ChatRatingEdit:*": "settings",  # ввод суммы правила / названия баллов
+    "admin_chat_cleanup": "settings",  # Квик 260927: экран «🧹 Служебные сообщения в чате»
+    "chclean:*": "settings",  # его галочки типов и задержка
+    "state:ChatCleanupEdit:*": "settings",  # ввод задержки удаления
     "admin_sync_sheet": "settings",
     # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс экрана, что
     # «🔄 Синхронизация»/«♻️ Пересобрать таблицу» выше (handlers/admin_sheet_reconcile.py, всё

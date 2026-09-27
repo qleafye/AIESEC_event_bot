@@ -477,3 +477,9 @@ class ChatRatingEdit(StatesGroup):
     # экрана несёт state.get_data(). Свой стейт, а не EditSetting: после сохранения менеджер
     # возвращается на этот экран, а не на общий редактор настройки.
     waiting_for_value = State()
+
+
+class ChatCleanupEdit(StatesGroup):
+    # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) —
+    # менеджер вводит задержку удаления в секундах; после сохранения — обратно на экран.
+    waiting_for_value = State()
