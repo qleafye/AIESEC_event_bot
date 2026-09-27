@@ -245,8 +245,9 @@ def test_delay_custom_reconciles_existing_session_job(tmp_path, monkeypatch):
 
     _ready(tmp_path)
     code = cities.default_city_code()
-    now = msk_now()
     from datetime import timedelta
+    # Завтра 12:00: «сейчас + 30 мин» около полуночи переваливал ЧЧ:ММ через 00:00 (конец < начала).
+    now = (msk_now() + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
     end = now + timedelta(minutes=30)
     sid = _run(db.create_program_session(
         code, now.strftime("%Y-%m-%d"), now.strftime("%H:%M"), end.strftime("%H:%M"), "Сессия",
