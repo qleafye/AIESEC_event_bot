@@ -22,7 +22,13 @@
 - реакции: известные дарители (recent) — строки chat_reactions, остаток count − известных —
   reactions_extra (Telegram хранит неполный список дарителей); кастомный эмодзи без
   document_id получает ключ «export:<позиция>»;
-- время — Москва по date_unixtime (поле date в экспорте — локальное время того, кто выгружал).
+- время — Москва по date_unixtime; поле date в экспорте — локальное время того, кто выгружал,
+  поэтому сообщение без date_unixtime пропускается (их число — в отчёте);
+- срок хранения (chat_rating_retention_days, по умолчанию 180 дней): строки старше него
+  суточная чистка бота удалила бы сразу — пробный прогон пишет, сколько таких, --apply их
+  не записывает;
+- ников в экспорте нет: у авторов и дарителей реакций сохраняется имя (первое слово поля
+  from) в chat_usernames — только если бот ещё не знает его сам; живые ники не трогаются.
 Повторный запуск ничего не добавляет: INSERT OR IGNORE по (чат, id сообщения); живые строки с
 тем же id не трогаются (и их реакции тоже). Разрыв между датой экспорта и началом живого учёта
 не заполняется — выгрузите экспорт прямо перед импортом, перекрытие безопасно.
@@ -40,6 +46,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+import chat_score  # noqa: E402 — после бутстрапа sys.path; только stdlib
 from tools.chat_export_stats import (  # noqa: E402 — после бутстрапа sys.path
     ExportError,
     _has_media,
@@ -53,20 +60,29 @@ _TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 _PER_CITY_PREFIX = "delegate_chat_id__city__"
 
 
+def _now() -> datetime:
+    """Сейчас по Москве, наивное (как ts в chat_messages). Отдельной функцией — для тестов."""
+    return datetime.now(_MSK).replace(tzinfo=None)
+
+
 def _msk_ts(raw: dict) -> str | None:
+    """Время по Москве из date_unixtime (UTC-секунды). Одного поля date мало: это локальное
+    время того, кто выгружал, — такое сообщение пропускается."""
     unix = raw.get("date_unixtime")
-    if unix is not None:
-        try:
-            return datetime.fromtimestamp(int(unix), tz=_MSK).strftime(_TS_FORMAT)
-        except (TypeError, ValueError, OSError):
-            pass
-    value = raw.get("date")
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value).strftime(_TS_FORMAT)
-        except ValueError:
-            return None
-    return None
+    if unix is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(unix), tz=_MSK).strftime(_TS_FORMAT)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _first_name(raw_from) -> str | None:
+    """Имя из поля from экспорта (там «Имя Фамилия») — только первое слово, без фамилии."""
+    if not isinstance(raw_from, str):
+        return None
+    parts = raw_from.split()
+    return parts[0][:64] if parts else None
 
 
 def _peer(raw_from_id):
@@ -107,8 +123,13 @@ def _reaction_key(reaction: dict, position: int) -> str:
     return f"export:{position}"
 
 
-def build_rows(data: dict, chat_id: int):
-    """-> (messages, reactions): строки для chat_messages и chat_reactions. Текста в них нет."""
+def build_rows(data: dict, chat_id: int, *, stats: dict | None = None):
+    """-> (messages, reactions): строки для chat_messages и chat_reactions. Текста в них нет.
+    `stats` (если передан) получает: no_unixtime — сколько сообщений пропущено без
+    date_unixtime; names — {telegram_id: имя} авторов и дарителей реакций."""
+    stats = stats if stats is not None else {}
+    stats.setdefault("no_unixtime", 0)
+    names: dict = stats.setdefault("names", {})
     raw_messages = [m for m in data["messages"] if isinstance(m, dict)]
     export_chat = data.get("id")
 
@@ -133,6 +154,7 @@ def build_rows(data: dict, chat_id: int):
             continue
         ts = _msk_ts(raw)
         if ts is None:
+            stats["no_unixtime"] += 1
             continue
         peer_kind, peer_id = _peer(raw.get("from_id"))
         if peer_kind is None:
@@ -141,6 +163,8 @@ def build_rows(data: dict, chat_id: int):
         if is_channel and export_chat is not None and str(peer_id) == str(export_chat):
             continue  # анонимный админ пишет от имени группы — живой учёт такие не видит
         author = int(f"-100{peer_id}") if is_channel else peer_id
+        if not is_channel and (name := _first_name(raw.get("from"))):
+            names[author] = name
 
         if is_channel or not raw.get("forwarded_from"):
             text_len = _text_length(raw.get("text"))
@@ -174,6 +198,8 @@ def build_rows(data: dict, chat_id: int):
                 g_kind, g_id = _peer(entry.get("from_id"))
                 if g_kind == "user" and (g_id, key) not in givers:
                     givers.append((g_id, key))
+                if g_kind == "user" and (name := _first_name(entry.get("from"))):
+                    names.setdefault(g_id, name)
         for g_id, key in givers:
             reactions.append((chat_id, mid, g_id, key, ts))
 
@@ -185,6 +211,15 @@ def build_rows(data: dict, chat_id: int):
             "reactions_extra": max(0, total - len(givers)),
         })
     return messages, reactions
+
+
+def retention_days(conn) -> int:
+    """Срок хранения истории чата из bot_settings (тот же разбор, что у бота и дашборда)."""
+    row = conn.execute(
+        "SELECT value FROM bot_settings WHERE key = ?", (chat_score.RETENTION_KEY,),
+    ).fetchone()
+    value = chat_score._parse_non_negative(row[0] if row else None)
+    return int(value) if value is not None and int(value) > 0 else chat_score.DEFAULT_RETENTION_DAYS
 
 
 def bound_city(conn, chat_id: int):
@@ -254,7 +289,11 @@ def main(argv=None) -> int:
             )
 
         is_bound, city = bound_city(conn, chat_id)
-        messages, reactions = build_rows(data, chat_id)
+        stats: dict = {}
+        messages, reactions = build_rows(data, chat_id, stats=stats)
+        keep_days = retention_days(conn)
+        cutoff = (_now() - timedelta(days=keep_days)).strftime(_TS_FORMAT)
+        too_old = [m for m in messages if m["ts"] < cutoff]
         days = sorted(m["ts"][:10] for m in messages)
         existing = {
             r[0] for r in conn.execute(
@@ -274,6 +313,16 @@ def main(argv=None) -> int:
         print(f"Постов канала: {sum(m['is_channel_post'] for m in messages)}")
         print(f"Реакций с известным автором: {len(reactions)}; "
               f"без автора (в reactions_extra): {sum(m['reactions_extra'] for m in messages)}")
+        if stats["no_unixtime"]:
+            print(f"Пропущено сообщений без date_unixtime: {stats['no_unixtime']} (поле date — "
+                  "локальное время того, кто выгружал; выгрузите экспорт заново в Telegram Desktop)")
+        if too_old:
+            print(f"Сообщений старше срока хранения ({keep_days} дн.): {len(too_old)} — бот удалил бы "
+                  "их первой же суточной чисткой, поэтому при --apply они не записываются. "
+                  "Нужна история длиннее — увеличьте «Сколько дней хранить историю чата» в боте "
+                  "и повторите импорт.")
+        print("Ников в экспорте нет: у тех, кого бот ещё не видел в чате, на дашборде будет "
+              "имя из Telegram (первое слово), ник появится, когда человек напишет в чат.")
 
         if not is_bound and not args.force:
             return _err(
@@ -286,9 +335,15 @@ def main(argv=None) -> int:
             return 0
 
         added_messages = added_reactions = 0
+        has_first_name = "first_name" in {
+            r[1] for r in conn.execute("PRAGMA table_info(chat_usernames)")
+        }
+        now_ts = _now().strftime(_TS_FORMAT)
         with conn:  # одна транзакция: либо всё, либо ничего
             inserted = set()
             for m in messages:
+                if m["ts"] < cutoff:
+                    continue  # старше срока хранения — суточная чистка удалила бы сразу
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO chat_messages (chat_id, message_id, telegram_id, ts, "
                     "kind, text_len, reply_to_message_id, reply_to_author_id, is_channel_post, "
@@ -308,7 +363,19 @@ def main(argv=None) -> int:
                     "reaction, ts) VALUES (?, ?, ?, ?, ?)", row,
                 )
                 added_reactions += cur.rowcount
+            if has_first_name:
+                people = {m["telegram_id"] for m in messages if m["message_id"] in inserted}
+                people |= {row[2] for row in reactions if row[1] in inserted}
+                for tid in sorted(p for p in people if p in stats["names"]):
+                    conn.execute(
+                        "INSERT INTO chat_usernames (telegram_id, username, first_name, updated_at) "
+                        "VALUES (?, NULL, ?, ?) ON CONFLICT(telegram_id) DO UPDATE SET "
+                        "first_name = COALESCE(chat_usernames.first_name, excluded.first_name)",
+                        (tid, stats["names"][tid], now_ts),
+                    )
         print(f"Записано. Новых сообщений: {added_messages}, новых реакций: {added_reactions}.")
+        if too_old:
+            print(f"Старше срока хранения не записаны: {len(too_old)}.")
         return 0
     except sqlite3.Error as e:
         return _err(f"Ошибка базы: {e}. Ничего не записано.")
