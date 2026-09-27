@@ -44,10 +44,12 @@ from cities import (
     normalize_city,
 )
 from database.db import (
+    claim_walkin_removal,
     count_checkins_by_point,
     get_program_session,
     get_user,
     list_onsite_pending,
+    purge_user,
 )
 from reg_engine import is_past_season_row
 from services.checkin import (
@@ -537,6 +539,8 @@ _ONSITE_TEXT_KEYS = (
     "onsite_override_button_text",
     "onsite_override_confirm_text",
     "onsite_move_confirm_text",
+    "onsite_remove_button_text",
+    "onsite_remove_confirm_text",
 )
 
 
@@ -743,14 +747,25 @@ async def onsite_approve(
     return await _with_city_label({**res, **_person_fields(fresh)})
 
 
+_PENDING_PAGE = 20
+_PENDING_SCAN_MAX = 5000  # потолок выборки дня одного города — с запасом на любой форум
+
+
+def _fold_name(s: str | None) -> str:
+    """Поиск по фамилии у стойки: без регистра и с ё=е (как `services.person_search`)."""
+    return (s or "").lower().replace("ё", "е")
+
+
 @router.get("/app/api/checkin/onsite/pending")
 async def onsite_pending(
-    request: Request, city: str | None = None,
+    request: Request, city: str | None = None, q: str = "", offset: int = 0,
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     """D-41: walk-in сегодняшнего дня своего города, ждущие одобрения у стойки. Телефон наружу
-    не отдаётся — волонтёру хватает имени, вуза и @username (T-wt3-14)."""
+    не отдаётся — волонтёру хватает имени, вуза и @username (T-wt3-14). Постранично по
+    `_PENDING_PAGE` с общим числом (`total`, `next_offset`) и поиском по фамилии (`q`) —
+    при сотнях анкет у стойки старые не пропадают молча."""
     stand = await _stand_city(request, p, city)
     if not await onsite_enabled(stand):
         return {"items": [], "enabled": False}
@@ -758,9 +773,17 @@ async def onsite_pending(
 
     rows = await list_onsite_pending(
         city_scope=city_scope(stand) if stand else None, day=msk_now().strftime("%Y-%m-%d"),
+        limit=_PENDING_SCAN_MAX,
     )
+    needle = _fold_name(q.strip())
+    if needle:
+        rows = [row for row in rows if needle in _fold_name(row.get("full_name"))]
+    total = len(rows)
+    offset = max(0, int(offset))
+    page = rows[offset:offset + _PENDING_PAGE]
+    next_offset = offset + _PENDING_PAGE if offset + _PENDING_PAGE < total else None
     items = []
-    for row in rows:
+    for row in page:
         items.append({
             "telegram_id": row["telegram_id"],
             "full_name": row.get("full_name") or "—",
@@ -769,7 +792,53 @@ async def onsite_pending(
             "city_label": await city_label_or_none(row.get("event_city")),
             "registered_at": (row.get("registration_date") or "")[11:16],
         })
-    return {"items": items, "enabled": True, "can_approve": _can_approve(p)}
+    return {"items": items, "enabled": True, "can_approve": _can_approve(p),
+            "total": total, "next_offset": next_offset}
+
+
+class OnsiteRemoveBody(BaseModel):
+    telegram_id: int
+    city: str | None = None
+
+
+@router.post("/app/api/checkin/onsite/remove")
+async def onsite_remove(
+    body: OnsiteRemoveBody, request: Request,
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Ревью 28.09 (D-41): «Убрать» короткую анкету из «Ждут на стойке» (случайная, дубль,
+    человек ушёл). Только walk-in без решения своего города и только держателю права
+    «Одобрять на месте». Строка удаляется общим путём удаления делегата (`purge_user`) после
+    атомарного claim — параллельное одобрение не даст стереть уже одобренного. Журнал
+    площадки — без telegram_id (D-39: удалённого журнал не хранит)."""
+    if not _can_approve(p):
+        raise HTTPException(403, {"reason": "no_cap", "cap": _APPROVE_CAP})
+    lang, tr_map = await i18n.context(p.telegram_id)
+    refusal = {
+        "status": "not_removable",
+        "reason_text": await i18n.tr_setting("onsite_remove_refused_text", lang, tr_map)
+        or "Убрать нельзя — по человеку уже есть решение или это обычная заявка.",
+    }
+    stand = await _stand_city(request, p, body.city)
+    user = await get_user(body.telegram_id)
+    if not is_pending_walkin(user):
+        return refusal
+    if stand and normalize_city(user.get("event_city")) != stand:
+        return refusal
+    if not await claim_walkin_removal(body.telegram_id):
+        return refusal
+    await purge_user(body.telegram_id)
+    try:
+        await venue_log.log_action(
+            venue_log.ACTION_ONSITE_REMOVE, staff_id=p.telegram_id, staff_name=_staff_name(p),
+            telegram_id=None, city=stand, point=ENTRY_POINT, source="manual",
+        )
+    except Exception:  # noqa: BLE001 — журнал fail-soft, удаление уже состоялось
+        logger.exception("checkin: не записал удаление короткой анкеты в журнал площадки")
+    logger.info("checkin: короткая анкета убрана из списка ждущих (tid=%s, staff=%s)",
+                body.telegram_id, p.telegram_id)
+    return {"status": "removed"}
 
 
 @router.get("/app/api/checkin/onsite/link")
