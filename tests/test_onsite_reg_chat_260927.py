@@ -384,6 +384,9 @@ def test_walkin_logs_have_no_phone_or_name(tmp_path, caplog):
             _run(onsite.onsite_name(_Msg(WALKER_ID, "Иванова Мария"), state))
             _run(onsite.onsite_phone_text(_Msg(WALKER_ID, "+79991234567"), state))
             _run(onsite.onsite_skip(_Cb(WALKER_ID, "onsite_skip"), state))
-    joined = "\n".join(r.getMessage() for r in caplog.records)
+    # Только логи бота (aiosqlite на DEBUG печатает параметры SQL — это не наш лог).
+    joined = "\n".join(
+        r.getMessage() for r in caplog.records if r.name.startswith(("handlers", "services"))
+    )
     assert "79991234567" not in joined
     assert "Иванова" not in joined
