@@ -77,8 +77,9 @@ class _Chat:
 
 
 class _Contact:
-    def __init__(self, phone):
+    def __init__(self, phone, user_id=WALKER_ID):
         self.phone_number = phone
+        self.user_id = user_id  # своя карточка контакта (кнопка «Отправить номер»)
 
 
 class _Msg:

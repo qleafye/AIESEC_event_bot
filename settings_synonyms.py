@@ -814,6 +814,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "onsite_reg_approved_text": ["пропущен на месте сообщение", "одобрили у стойки qr"],
     "onsite_reg_bad_name_text": ["ошибка имени на месте", "не понял фамилию"],
     "onsite_reg_bad_phone_text": ["ошибка телефона на месте", "не понял номер у стойки"],
+    "onsite_reg_foreign_contact_text": ["чужой контакт на месте", "не твой номер у стойки"],
     "onsite_approve_button_text": ["кнопка одобрить у стойки", "пропустить и одобрить сканер"],
     "onsite_approve_confirm_text": ["подтверждение одобрения на месте", "решение запишется на вас"],
     "onsite_register_button_text": ["кнопка регистрации на месте", "зарегистрировать у стойки"],
