@@ -850,6 +850,9 @@ async def post_finalize(
             )
         except Exception as e:
             logger.error(f"Nextcloud resume upload failed for {telegram_id}: {e}")
+    elif resume_text and reg_engine.is_resume_fork_code(resume_text):
+        # Квик 27.09: код кнопки развилки («mini», «link»…) — не резюме, в облако не льём.
+        logger.warning(f"post_finalize: у делегата {telegram_id} вместо резюме код кнопки развилки, не выгружаем")
     elif resume_text:
         try:
             stem_mode = await _resume_filename_mode()
@@ -1190,6 +1193,12 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
                     continue
                 ext = os.path.splitext(tg_file.file_path or "")[1] or ".pdf"
                 url = await asyncio.wait_for(upload_resume(bot, file_id, f"{stem}{ext}"), timeout=20)
+            elif row.get("resume_text") and reg_engine.is_resume_fork_code(row["resume_text"]):
+                # Квик 27.09: код кнопки развилки вместо резюме — не выгружаем и не берём
+                # эту строку каждый тик.
+                logger.warning(f"resume_upload_retry: у делегата {tid} вместо резюме записан код кнопки развилки, пропускаем")
+                _resume_retry_dead.add(tid)
+                continue
             elif row.get("resume_text"):
                 url = await asyncio.wait_for(
                     upload_text_resume(row["resume_text"], f"{stem}.txt"), timeout=20
