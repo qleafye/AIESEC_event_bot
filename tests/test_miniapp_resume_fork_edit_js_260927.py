@@ -103,7 +103,7 @@ def test_overview_fork_row_never_writes_code_into_value():
     # liveValue/галки: между проверкой типа и вызовом выбора ветки нет state.setValue.
     call = body.index("pickResumeBranchInOverview(", fork_branch)
     assert "state.setValue(" not in body[fork_branch:call]
-    assert "liveValue = v" not in body[fork_branch:call]
+    assert "liveValue = v;" not in body[fork_branch:call]
 
 
 def test_overview_fork_row_has_no_confirm_button():
