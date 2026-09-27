@@ -639,6 +639,9 @@ TOGGLE_SECTION: dict[str, str] = {
     # экран у бота — handlers/admin_volunteer_invite.py (volinvite_cfg:*), тот же приём, что у
     # соседей выше (forum_day_menu_enabled и т.д.).
     "volunteer_invite_enabled": "apps",
+    # D-41: регистрация на месте — тот же раздел «📋 Заявки», свой экран у бота (хаб
+    # «🎪 Форум: функции»), тот же приём, что у соседей выше.
+    "onsite_reg_enabled": "apps",
     # Идея №20 бэклога чек-ина: бюро находок — тот же раздел «📋 Заявки», свой экран у бота —
     # handlers/admin_lost_found.py (lostfound_cfg:*), тот же приём, что у соседей выше.
     "lost_found_enabled": "apps",
