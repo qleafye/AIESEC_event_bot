@@ -1104,6 +1104,13 @@ async def init_db():
         # старые/нетронутые строки: вопрос «Источник» в профиле показывается как раньше.
         await _ensure_column(db, "users", "source_from_tag", "INTEGER DEFAULT 0")
 
+        # D-41 (FORUM-CHECKIN.md): регистрация «на месте» — 'walkin' (новый человек прошёл
+        # короткую анкету у стойки) или 'door' (существующая заявка одобрена волонтёром у
+        # стойки); onsite_at/onsite_by — когда и кто одобрил на месте. NULL у всех старых строк.
+        await _ensure_column(db, "users", "onsite_kind", "TEXT")
+        await _ensure_column(db, "users", "onsite_at", "TEXT")
+        await _ensure_column(db, "users", "onsite_by", "INTEGER")
+
         # Phase 30 (30-05, задача 3, A2-07): дата решения по отказу — экран статуса заявки
         # подписывает причину отказа ТОЛЬКО датой (30-CONTEXT.md решение владельца №5: без
         # имени менеджера), для чего дата нужна отдельной колонкой — раньше `users` не хранил
@@ -4055,8 +4062,14 @@ def _pending_where(city_scope, track, changed_only, *, city_column: str = "event
     flagged_frag = _flagged_only_clause(flagged_only)
     if flagged_frag:
         parts.append(flagged_frag)
+    # D-41: walk-in (короткая анкета у стойки) решает только стойка — в очередь менеджера нет.
+    parts.append(_NOT_WALKIN)
     extra = "".join(f" AND {p}" for p in parts)
     return extra, params
+
+
+# D-41: фрагмент «не walk-in» — общий для очереди заявок и «Принять всех».
+_NOT_WALKIN = "COALESCE(onsite_kind, '') != 'walkin'"
 
 
 async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
@@ -4145,10 +4158,13 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
     approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
     for BOTH mass-approve callers: the bot's appr_all_yes calls this function directly (not
     through services.applications.claim_approve_all), so stamping only in the service wrapper
-    would silently miss the chat path."""
+    would silently miss the chat path.
+
+    D-41: walk-in (onsite_kind='walkin') сюда не попадает — решение по нему принимает стойка."""
     approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
+    extra += f" AND {_NOT_WALKIN}"
     async with _connect() as db:
         async with db.execute(
             f"UPDATE users SET status = 'approved', approved_at = ? "
@@ -4158,6 +4174,75 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
             rows = await cursor.fetchall()
         await db.commit()
         return [row[0] for row in rows]
+
+
+# ── D-41 (FORUM-CHECKIN.md): регистрация на месте ────────────────────────────────────────────
+#
+# Человек, которого нет в базе или который не одобрен, проходит через стойку проблемных
+# случаев. Три функции: короткая строка walk-in (никогда не затирает существующую анкету),
+# одобрение ОДНОГО человека у стойки и список walk-in, ждущих у стойки. Массового варианта нет
+# и не будет (урок инцидента 06.09 — тихие массовые одобрения).
+
+async def create_onsite_user(telegram_id: int, username: str | None, full_name: str,
+                             phone: str | None, university: str | None,
+                             event_city: str | None, season: str | None) -> bool:
+    """Короткая анкета у стойки: строка `pending`, `onsite_kind='walkin'`. True — строка
+    создана; False — у человека уже есть строка `users` (любой статус), она не тронута
+    (ON CONFLICT DO NOTHING — защита от затирания настоящей анкеты)."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO users (telegram_id, username, full_name, email, phone, university, "
+            "event_city, season, status, onsite_kind, participant_type, source, registration_date) "
+            "VALUES (?, ?, ?, '-', ?, ?, ?, ?, 'pending', 'walkin', 'full', 'На месте', ?) "
+            "ON CONFLICT(telegram_id) DO NOTHING",
+            (telegram_id, store_username(username), full_name, phone, university,
+             event_city, season, now),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str,
+                         event_city: str | None = None) -> bool:
+    """Одобрение ОДНОГО человека у стойки одним атомарным UPDATE. Флипает pending/rejected и
+    одобренного ПРОШЛОГО сезона (тот переезжает в текущий сезон, старый — в prev_season);
+    одобренного текущего сезона не трогает. True — флип выигран этим вызовом (второй вызов
+    подряд — False). `event_city` (если передан) переписывает город — для делегата прошлого
+    сезона, которого пустили на форум города стойки."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'approved', approved_at = :now, onsite_at = :now, "
+            "onsite_by = :by, onsite_kind = COALESCE(onsite_kind, 'door'), "
+            "prev_season = CASE WHEN COALESCE(season, '') != '' AND season != :season "
+            "THEN season ELSE prev_season END, "
+            "season = :season, event_city = COALESCE(:city, event_city) "
+            "WHERE telegram_id = :tid AND (COALESCE(status, '') != 'approved' "
+            "OR COALESCE(season, '') NOT IN ('', :season))",
+            {"now": now, "by": by_staff_id, "season": season, "city": event_city,
+             "tid": telegram_id},
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def list_onsite_pending(*, city_scope=None, day: str, limit: int = 50) -> list[dict]:
+    """Walk-in, ждущие у стойки: pending, `onsite_kind='walkin'`, анкета подана в день `day`
+    (YYYY-MM-DD, по Москве), в скоупе города; новые сверху."""
+    frag, city_params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, full_name, username, university, event_city, phone, "
+            "registration_date FROM users "
+            "WHERE status = 'pending' AND onsite_kind = 'walkin' "
+            f"AND substr(registration_date, 1, 10) = ?{extra} "
+            "ORDER BY registration_date DESC, telegram_id DESC LIMIT ?",
+            (day, *city_params, limit),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
 
 
 # ── Phase 23 (APP-TINDER-01, D-06): journal of application decisions ─────────────────────────
