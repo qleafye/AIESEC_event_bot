@@ -3122,7 +3122,8 @@ async def get_city_counts() -> list[tuple]:
     async with _connect() as db:
         async with db.execute(
             "SELECT event_city, COUNT(*), "
-            "SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), "
+            # D-41: walk-in без решения — не очередь менеджера (_NOT_WALKIN), его ждёт стойка.
+            f"SUM(CASE WHEN status = 'pending' AND {_NOT_WALKIN} THEN 1 ELSE 0 END), "
             "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) "
             "FROM users GROUP BY event_city"
         ) as cursor:
@@ -6902,7 +6903,8 @@ async def clear_sos_bind_pending(admin_id: int) -> None:
 _APPLICATION_STATUS_SQL = {
     "approved": "u.status = 'approved'",
     "rejected": "u.status = 'rejected'",
-    "pending": "u.status = 'pending'",
+    # D-41: walk-in без решения — не заявка на модерацию (его ждёт стойка), как в очереди.
+    "pending": "u.status = 'pending' AND COALESCE(u.onsite_kind, '') != 'walkin'",
 }
 
 # Порядок COALESCE в каждом выражении — три рубежа даты решения, от самого точного к самому
@@ -10022,6 +10024,7 @@ async def daily_digest_stats(day: str, *, city_scope=None) -> dict:
 
     stats: dict = {
         "apps_new": 0, "apps_approved": 0, "apps_rejected": 0, "apps_pending": 0,
+        "apps_walkin_pending": 0,
         "app_managers": [], "game_submissions": 0, "game_reviewed": 0,
         "coins_awarded": 0, "game_managers": [],
     }
@@ -10032,11 +10035,17 @@ async def daily_digest_stats(day: str, *, city_scope=None) -> dict:
         ) as cursor:
             stats["apps_new"] = (await cursor.fetchone())[0] or 0
 
+        # D-41: «ждут» — та же очередь, что у менеджера; walk-in без решения ждут у стойки и
+        # считаются отдельной цифрой.
         async with db.execute(
-            "SELECT COUNT(*) FROM users WHERE status = 'pending'" + users_where,
+            f"SELECT SUM(CASE WHEN {_NOT_WALKIN} THEN 1 ELSE 0 END), "
+            f"SUM(CASE WHEN {_NOT_WALKIN} THEN 0 ELSE 1 END) "
+            "FROM users WHERE status = 'pending'" + users_where,
             list(plain_params),
         ) as cursor:
-            stats["apps_pending"] = (await cursor.fetchone())[0] or 0
+            row = await cursor.fetchone()
+            stats["apps_pending"] = (row[0] if row else 0) or 0
+            stats["apps_walkin_pending"] = (row[1] if row else 0) or 0
 
         per_manager: dict[int, list[int]] = {}
         # Квик 260923: сентинел автоотказа (`services.reject_journal.AUTO_DECIDED_BY == -1`)

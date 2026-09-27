@@ -779,3 +779,60 @@ def test_foreign_contact_text_has_english_default():
     from services.i18n_form_manual import FORM_DEFAULT_EN
     meta = SETTINGS_SCHEMA["onsite_reg_foreign_contact_text"]
     assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Счётчики «на модерации» = очередь: walk-in без решения — отдельно, «ждут на стойке»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _queue_fixture(tmp_path):
+    _seed_ready(tmp_path)
+    _exec("DELETE FROM users")
+    _run(_insert_user(953801, status="pending", city="spb"))
+    _walkin(953802, city="spb")
+    _walkin(953803, city="spb")
+    _exec("UPDATE users SET registration_date = ? WHERE telegram_id IN (953801, 953802, 953803)",
+          msk_now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def test_bot_counters_match_the_queue(tmp_path):
+    _queue_fixture(tmp_path)
+    assert _run(bot_db.get_pending_count()) == 1
+    [row] = [r for r in _run(bot_db.get_city_counts()) if r[0] == "spb"]
+    assert row[2] == 1  # pending
+    counts = _run(bot_db.count_applications())
+    assert counts["pending"] == 1
+    page = _run(bot_db.list_applications_page(status="pending"))
+    rows = page["rows"] if isinstance(page, dict) else page
+    assert [r["telegram_id"] for r in rows] == [953801]
+
+
+def test_daily_digest_counts_walkins_separately(tmp_path):
+    from services.daily_digest import build_digest_text
+    _queue_fixture(tmp_path)
+    stats = _run(bot_db.daily_digest_stats(msk_now().strftime("%Y-%m-%d")))
+    assert stats["apps_pending"] == 1
+    assert stats["apps_walkin_pending"] == 2
+    text = build_digest_text(stats, {}, day_label="сегодня")
+    assert "ждут 1" in text and "ждут на стойке 2" in text
+
+
+def test_dashboard_pending_excludes_walkins(tmp_path):
+    from dashboard import db as dash_db
+    from dashboard.queries import Scope, funnel, kpi_row, status_totals
+    _queue_fixture(tmp_path)
+    with dash_db.read_conn(bot_config.DB_PATH) as conn:
+        kpi = kpi_row(conn, Scope())
+        assert kpi["pending"] == 1 and kpi["pending_walkin"] == 2
+        assert dict(funnel(conn, Scope()))["На модерации"] == 1
+        assert status_totals(conn, Scope())["pending"] == 1
+
+
+def test_dashboard_pending_on_old_schema_without_onsite_column(tmp_path):
+    from dashboard import db as dash_db
+    from dashboard.queries import Scope, kpi_row
+    _queue_fixture(tmp_path)
+    _exec("ALTER TABLE users DROP COLUMN onsite_kind")
+    with dash_db.read_conn(bot_config.DB_PATH) as conn:
+        kpi = kpi_row(conn, Scope())
+    assert kpi["pending"] == 3 and kpi["pending_walkin"] == 0

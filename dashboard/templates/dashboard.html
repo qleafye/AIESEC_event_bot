@@ -113,6 +113,9 @@
           {% elif kpi.pending == 0 %}
           <div class="delta">очередь пуста</div>
           {% endif %}
+          {% if kpi.pending_walkin %}
+          <div class="delta">ждут на стойке {{ kpi.pending_walkin | thousands }}</div>
+          {% endif %}
         </div>
       </div>
     </section>
