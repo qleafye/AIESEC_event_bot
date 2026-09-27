@@ -251,3 +251,56 @@ def test_scanner_js_override_button_has_own_confirm_and_flag():
     assert "override_reject" in approve
     assert "onsite_override" in _js_function(src, "showPlaque")
     assert "onsite_override" in _js_function(src, "resultRow")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Признак walk-in не «прилипает»: полная анкета делает строку обычной заявкой
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _full_application(uid, *, season=SEASON, city="spb"):
+    _run(bot_db.add_user({
+        "telegram_id": uid, "username": "masha", "full_name": "Иванова Мария",
+        "email": "m@example.com", "phone": "+79991234567", "university": "СПбГУ",
+        "event_city": city, "season": season, "participant_type": "full",
+        "registration_date": msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+    }))
+
+
+def test_full_application_after_walkin_is_visible_in_moderation_queue(tmp_path):
+    _seed_ready(tmp_path)
+    _run(bot_db.create_onsite_user(
+        953101, username="masha", full_name="Иванова Мария", phone="+79991234567",
+        university=None, event_city="spb", season="YL'25",
+    ))
+    assert 953101 not in {u["telegram_id"] for u in _run(bot_db.get_pending_users(limit=50))}
+    count_before = _run(bot_db.get_pending_count())
+    _full_application(953101)
+    row = _row(953101)
+    assert row["onsite_kind"] is None and row["onsite_at"] is None and row["onsite_by"] is None
+    assert row["status"] == "pending"
+    assert 953101 in {u["telegram_id"] for u in _run(bot_db.get_pending_users(limit=50))}
+    assert _run(bot_db.get_pending_count()) == count_before + 1
+
+
+def test_rejected_walkin_resubmitting_full_form_returns_to_queue(tmp_path):
+    _seed_ready(tmp_path)
+    _run(bot_db.create_onsite_user(
+        953102, username=None, full_name="Петров Пётр", phone="+79990000000",
+        university=None, event_city="spb", season=SEASON,
+    ))
+    _exec("UPDATE users SET status = 'rejected' WHERE telegram_id = 953102")
+    _full_application(953102)
+    _exec("UPDATE users SET status = 'pending' WHERE telegram_id = 953102")  # как делает финал
+    assert _row(953102)["onsite_kind"] is None
+    assert 953102 in {u["telegram_id"] for u in _run(bot_db.get_pending_users(limit=50))}
+    assert 953102 in _run(bot_db.approve_all_pending())
+
+
+def test_door_marker_cleared_on_next_season_application(tmp_path):
+    _seed_ready(tmp_path)
+    _run(_insert_user(953103, status="pending", city="spb", season="YL'25"))
+    _exec("UPDATE users SET onsite_kind = 'door', onsite_at = '2025-10-03 10:00:00', onsite_by = 5 "
+          "WHERE telegram_id = 953103")
+    _full_application(953103)
+    row = _row(953103)
+    assert row["onsite_kind"] is None and row["onsite_by"] is None
