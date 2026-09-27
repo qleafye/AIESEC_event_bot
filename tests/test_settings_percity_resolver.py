@@ -232,6 +232,10 @@ EXPECTED_PER_CITY_KEYS = {
     "chat_rules_valuable_points", "chat_rules_referral_points", "chat_rules_social_points",
     "chat_rules_social_max", "chat_rules_checkin_points", "chat_rules_checkin_max",
     "chat_rules_currency", "chat_rules_social_tasks",
+    # Квик 260927 (пост рейтинга в чат): у каждого города свой чат, день, время и тексты поста.
+    "chat_rating_post_enabled", "chat_rating_post_weekday", "chat_rating_post_time",
+    "chat_rating_post_top", "chat_rating_post_cumulative", "chat_rating_post_title_rules",
+    "chat_rating_post_title_formula", "chat_rating_post_total_title", "chat_rating_post_footer",
 }
 
 

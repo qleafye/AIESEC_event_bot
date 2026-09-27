@@ -980,6 +980,9 @@ PREVIEW_ADDRESSEE_PLACEHOLDERS: frozenset[str] = frozenset({
 
 PREVIEW_SAMPLES: dict[str, str] = {
     "name": "Иван",
+    # Квик 260927: пост рейтинга в чат — даты недели и название баллов города.
+    "week": "21.09–27.09",
+    "currency": "коины",
     # F19 (25.09): лесенка напоминаний взявшему SOS — номер заявки, минуты в работе, кто взял.
     "id": "12",
     "minutes": "80",

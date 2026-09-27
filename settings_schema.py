@@ -6915,6 +6915,74 @@ SETTINGS_SCHEMA.update({
         ),
         "default": 0,
     },
+    # Квик 260927: еженедельный пост рейтинга в чат делегатов города (services/chat_rating_post.py,
+    # экран «📣 Публикация рейтинга в чат» из «🏆 Рейтинг чата»). Всё per_city: у каждого города
+    # свой чат, свой день и свои тексты. Тумблер по умолчанию выключен — выкатка ничего не шлёт.
+    # Тексты — для группы, а не для одного делегата: язык получателя у поста в группу не
+    # определён, поэтому группа "chat" вне DELEGATE_GROUPS и перевода не требует.
+    "chat_rating_post_enabled": {
+        "type": "enum", "group": "chat", "label": "📣 Публиковать рейтинг в чат",
+        "options": ["on", "off"], "prompt": None, "default": "off", "per_city": True,
+    },
+    "chat_rating_post_weekday": {
+        "type": "enum", "group": "chat", "label": "📣 В какой день публиковать рейтинг",
+        "options": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        "option_labels": {
+            "mon": "Пн", "tue": "Вт", "wed": "Ср", "thu": "Чт", "fri": "Пт", "sat": "Сб", "sun": "Вс",
+        },
+        "prompt": "День недели выбирается кнопками на экране «📣 Публикация рейтинга в чат».",
+        "default": "mon", "per_city": True,
+    },
+    "chat_rating_post_time": {
+        "type": "text", "group": "chat", "label": "📣 Во сколько публиковать рейтинг",
+        "prompt": (
+            "Во сколько бот публикует рейтинг в чат города. Формат ЧЧ:ММ, например 19:00. "
+            "Время московское, как везде в боте."
+        ),
+        "default": "12:00", "format": "time", "per_city": True,
+    },
+    "chat_rating_post_top": {
+        "type": "int", "group": "chat", "label": "📣 Сколько человек в посте",
+        "prompt": "Сколько лучших участников показать в посте — от 1 до 30, например 10.",
+        "default": 10, "per_city": True,
+    },
+    "chat_rating_post_cumulative": {
+        "type": "enum", "group": "chat", "label": "📣 Добавлять рейтинг «с начала»",
+        "options": ["on", "off"], "prompt": None, "default": "off", "per_city": True,
+    },
+    "chat_rating_post_title_rules": {
+        "type": "text", "group": "chat", "label": "📣 Заголовок поста (правила города)",
+        "prompt": (
+            "Первая строка поста, когда рейтинг считается по правилам города. {week} — даты "
+            "недели (например 21.09–27.09), {currency} — название баллов."
+        ),
+        "default": "🏆 Самые богатые участники недели {week}", "per_city": True,
+    },
+    "chat_rating_post_title_formula": {
+        "type": "text", "group": "chat", "label": "📣 Заголовок поста (формула активности)",
+        "prompt": (
+            "Первая строка поста, когда рейтинг считается по формуле активности. {week} — даты "
+            "недели (например 21.09–27.09)."
+        ),
+        "default": "🏆 Самые активные участники недели {week}", "per_city": True,
+    },
+    "chat_rating_post_total_title": {
+        "type": "text", "group": "chat", "label": "📣 Заголовок рейтинга «с начала»",
+        "prompt": (
+            "Заголовок второй таблицы — итог с начала рейтинга по конец прошедшей недели. "
+            "{week} — даты недели, {currency} — название баллов."
+        ),
+        "default": "📈 С начала рейтинга", "per_city": True,
+    },
+    "chat_rating_post_footer": {
+        "type": "text", "group": "chat", "label": "📣 Подпись внизу поста",
+        "prompt": (
+            "Последняя строка поста, например призыв писать и комментировать. {week} и "
+            "{currency} тоже работают."
+        ),
+        "default": "Рейтинг обновляется каждую неделю — пишите, комментируйте, участвуйте!",
+        "per_city": True,
+    },
 })
 del _W, _R
 
