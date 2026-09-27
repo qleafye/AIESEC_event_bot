@@ -15,8 +15,11 @@
   хендлер (`handlers/group_chat.py`) зовёт очистку последней строкой.
 
 Без права «Удаление сообщений» — одно предупреждение в лог на чат за процесс, чат помечается
-`chat_bot_state.can_delete = 0`, дальше уведомления пропускаются без вызовов API. Право
-вернули — апдейт my_chat_member перезаписывает состояние, очистка продолжается сама.
+`chat_bot_state.can_delete = 0`, дальше уведомления пропускаются без вызовов API. Флаг ставит
+только явная проверка прав бота (`verify_rights`, getChatMember), а не ошибка удаления одного
+сообщения. Право вернули — апдейт my_chat_member или плановая сверка админов
+(`chat_tracking.refresh_all_chats`, работает и при выключенном учёте, если очистка включена)
+перезаписывает состояние, очистка продолжается сама.
 
 Нагрузка: на чат — не больше одного вызова API за `DELETE_PAUSE_SECONDS`, накопленное за паузу
 уходит одним deleteMessages; на 429 — ждём, сколько просит Telegram, и повторяем. С задержкой —
@@ -100,11 +103,11 @@ CONTENT_TYPE_TO_CODE: dict[str, str] = {
 }
 
 
-# Ошибки Telegram «удалить нельзя» — права нет или сообщение старше 48 часов.
-_NO_RIGHTS_MARKERS = (
-    "NOT ENOUGH RIGHTS", "CAN'T BE DELETED", "MESSAGE_DELETE_FORBIDDEN", "CHAT_ADMIN_REQUIRED",
-)
-_GONE_MARKERS = ("MESSAGE TO DELETE NOT FOUND",)
+# Ошибки Telegram, похожие на нехватку прав. Сами по себе чат НЕ выключают: по ним бот
+# спрашивает свои права (getChatMember), и флаг «нет прав» ставит только этот ответ.
+_NO_RIGHTS_MARKERS = ("NOT ENOUGH RIGHTS", "MESSAGE_DELETE_FORBIDDEN", "CHAT_ADMIN_REQUIRED")
+# Проблема конкретного сообщения (уже удалено, старше 48 часов) — не прав бота.
+_GONE_MARKERS = ("MESSAGE TO DELETE NOT FOUND", "CAN'T BE DELETED")
 
 # Чаты, про которые уже предупредили в лог в этом процессе (warn once per chat).
 _warned: set[int] = set()
@@ -329,17 +332,35 @@ async def _handle_error(bot, chat_id: int, ids: list[int], e: Exception) -> bool
     if any(marker in text for marker in _GONE_MARKERS):
         return False  # кто-то удалил раньше — всё хорошо
     if any(marker in text for marker in _NO_RIGHTS_MARKERS):
-        await set_chat_bot_state(chat_id, None, False)
-        if chat_id not in _warned:
-            _warned.add(chat_id)
-            logger.warning(
-                "chat_cleanup: в чате id=%s у бота нет права «Удаление сообщений» — "
-                "служебные уведомления не удаляются, пока права не вернут", chat_id,
-            )
-        return True
+        if await verify_rights(bot, chat_id) is False:
+            return True
+        logger.info("chat_cleanup: id=%s в чате id=%s не удалён (%s), но права у бота есть",
+                    ids, chat_id, type(e).__name__)
+        return False
     logger.info("chat_cleanup: не удалось удалить id=%s в чате id=%s: %s: %s",
                 ids, chat_id, type(e).__name__, e)
     return False
+
+
+async def verify_rights(bot, chat_id: int) -> bool | None:
+    """Явная проверка: getChatMember самого бота -> `chat_bot_state`. True/False — может ли бот
+    удалять сообщения; None — спросить не вышло (флаг не трогаем). Только этот ответ выключает
+    очистку чата — одна неудачная попытка удалить сообщение её не выключает."""
+    try:
+        member = await bot.get_chat_member(chat_id, bot.id)
+    except Exception as e:
+        logger.info("chat_cleanup: права бота в чате id=%s проверить не вышло: %s: %s",
+                    chat_id, type(e).__name__, e)
+        return None
+    can_delete = chat_tracking.can_delete_from(member)
+    await set_chat_bot_state(chat_id, getattr(member, "status", None), can_delete)
+    if not can_delete and chat_id not in _warned:
+        _warned.add(chat_id)
+        logger.warning(
+            "chat_cleanup: в чате id=%s у бота нет права «Удаление сообщений» — "
+            "служебные уведомления не удаляются, пока права не вернут", chat_id,
+        )
+    return can_delete
 
 
 async def _delete(bot, chat_id: int, message_id: int) -> None:

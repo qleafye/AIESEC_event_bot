@@ -1461,16 +1461,15 @@ async def allowlist_refresh_job():
 
 async def chat_membership_refresh_job():
     """Interval-job target: периодическая сверка состава чата(ов) делегатов с Telegram.
-    Тумблер выключен -> ранний выход без единого вызова `get_chat_member` (та же форма, что
-    `allowlist_refresh_job` с `preselect_enabled` выше). Ленивый импорт — `services.chat_tracking`
+    Тумблер выключен -> ни одного вызова `get_chat_member`; только права бота
+    (getChatAdministrators), если включена автоочистка. Ленивый импорт — `services.chat_tracking`
     сама ничего из `services/scheduler.py` не импортирует, но порядок импорта модулей внутри
     `services/` держим единообразно ленивым для job-таргетов (тот же приём везде в этом файле)."""
     try:
-        from services.chat_tracking import tracking_on, refresh_all_chats
+        from services.chat_tracking import refresh_all_chats
 
-        if not await tracking_on():
-            logger.debug("Chat membership refresh skipped: chat_tracking_enabled is off")
-            return
+        # Тумблер учёта гейтит внутри refresh_all_chats: при выключенном учёте сверки состава
+        # нет, но права бота перечитываются, если включена автоочистка служебных уведомлений.
         await refresh_all_chats(_bot)
     except Exception as e:
         logger.error(f"chat_membership_refresh_job failed: {e}")
