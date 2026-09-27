@@ -172,3 +172,9 @@ def test_module_is_stdlib_only():
     imports = [ln.split()[1].split(".")[0] for ln in src.splitlines()
                if ln.startswith(("import ", "from "))]
     assert set(imports) <= {"math", "dataclasses", "collections", "datetime", "__future__"}
+
+
+def test_zero_length_base_falls_back_to_default():
+    # 0 в делителе формулы уронил бы дашборд делением на ноль.
+    weights, _ = cs.weights_from_settings({"chat_rating_length_base": "0"})
+    assert weights["burst_log_base"] == cs.WEIGHTS["burst_log_base"]

@@ -19,10 +19,12 @@ admin_settings.py упирается в потолок test_module_size_conventi
   написание из схемы.
 - `date_only` — маска `ДД.ММ.ГГГГ`, проверяется реальным `strptime` (Phase 31, 31-03,
   D-30) — не regex, `31.02.2026` отбрасывается. Нормализуется к ведущим нулям.
+- `format: "number"` (квик 260927) — число >= 0, дробь через запятую, нормализуется `:g`.
 - Остальные типы (text/list/date/toggle/photo/file) и незнакомые ключи — без проверки.
 
 Сброс («-») и пустое значение валидатор не видит — их обрабатывает сам хендлер раньше.
 """
+import math
 import re
 from datetime import datetime
 
@@ -171,6 +173,32 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
             )
         return f"{hours:02d}:{minutes:02d}", None
+
+    if entry.get("format") == "number":
+        # Квик 260927 (рейтинг чата): число 0 или больше, дробь через запятую («0,5» — так его
+        # набирает менеджер). Хранится нормализованным (`:g`), читает chat_score — тот же
+        # разбор, поэтому «что приняли здесь» == «что посчитает дашборд».
+        number = None
+        try:
+            number = float(value.strip().replace(",", "."))
+        except ValueError:
+            pass
+        minimum_exclusive = entry.get("number_min_exclusive")
+        bad = (
+            number is None or not math.isfinite(number) or number < 0
+            or (minimum_exclusive is not None and number <= minimum_exclusive)
+        )
+        if bad:
+            example = str(entry.get("default") or "1").replace(".", ",")
+            floor = (
+                "больше нуля" if minimum_exclusive is not None else "0 или больше"
+            )
+            return None, (
+                f"Нужно число {floor}, например <code>{example}</code> "
+                "(дробное — через запятую: <code>0,5</code>).\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
+        return f"{number:g}", None
 
     return value, None
 
