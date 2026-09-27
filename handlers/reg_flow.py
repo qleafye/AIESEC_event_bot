@@ -201,7 +201,7 @@ async def party_fallback_full(callback: types.CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("city_pick:"))
-async def city_pick(callback: types.CallbackQuery, state: FSMContext):
+async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot | None = None):
     """CITY-03 city-screen tap. The code is checked against the CLOSED CITIES vocabulary
     (T-071-09: no crafted callback payload can select a city outside the registry) before any
     action; is_city_registration_open is re-checked AFTER render (T-071-10, render-then-flip
@@ -228,6 +228,21 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext):
     # callback.message.from_user is the BOT — swap in the tapping user, same fix as party_pick.
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     data = await state.get_data()
+    if data.get("_resume_after_city"):
+        # Квик 27.09: город спрашивали посреди продолжения черновика (`resume_from_draft`) —
+        # пишем выбранный город в ЭТОТ черновик и продолжаем его, а не начинаем анкету заново.
+        from database.db import get_reg_draft, upsert_reg_draft
+        from handlers.reg_resume import resume_from_draft
+        draft = await get_reg_draft(callback.from_user.id)
+        if draft:
+            await upsert_reg_draft(
+                callback.from_user.id, kind=draft.get("kind") or "new", event_city=code, source="bot",
+            )
+            await resume_from_draft(
+                tap_message, state, bot or getattr(callback, "bot", None),
+                await get_reg_draft(callback.from_user.id),
+            )
+            return
     pending_track = data.get("participant_type")
     await _continue_after_city(tap_message, state, code, None, None, pending_track, None)
 
