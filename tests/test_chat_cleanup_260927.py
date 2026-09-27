@@ -187,3 +187,180 @@ def test_chat_bot_state_idempotent_and_purge_excluded(tmp_path):
     state = _run(db.get_chat_bot_state(CHAT))
     assert state["bot_status"] == "administrator"  # None = статус не меняем
     assert state["can_delete"] == 0
+
+
+# ── Задача 2: групповые хендлеры — учёт ДО удаления, состояние бота ─────────────────────
+
+from datetime import datetime  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from aiogram.types import (  # noqa: E402
+    Chat, ChatMemberAdministrator, ChatMemberMember, ChatMemberOwner, ChatMemberUpdated,
+    Message, User,
+)
+
+from handlers import group_chat  # noqa: E402
+from services import chat_tracking  # noqa: E402
+
+BOT_ID = 777927
+PERSON = 900927499
+
+
+class _OrderBot(_Bot):
+    """Запоминает, что было в chat_events в момент удаления — учёт обязан идти раньше."""
+
+    def __init__(self):
+        super().__init__()
+        self.id = BOT_ID
+        self.events_at_delete = None
+
+    async def delete_message(self, chat_id, message_id):
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT event FROM chat_events WHERE chat_id = ? AND telegram_id = ?",
+                (chat_id, PERSON),
+            ) as cur:
+                self.events_at_delete = [r[0] for r in await cur.fetchall()]
+        return await super().delete_message(chat_id, message_id)
+
+
+def _group_msg(**extra):
+    return Message(
+        message_id=55, date=datetime.now(), chat=Chat(id=CHAT, type="supergroup", title="Делегаты"),
+        from_user=User(id=PERSON, is_bot=False, first_name="Оля"), **extra,
+    )
+
+
+def test_join_notice_tracked_before_delete(tmp_path):
+    _ready(tmp_path, types_="join")
+    bot = _OrderBot()
+    msg = _group_msg(new_chat_members=[User(id=PERSON, is_bot=False, first_name="Оля")])
+    _run(group_chat.on_new_chat_members(msg, bot))
+    assert bot.deleted == [(CHAT, 55)]
+    assert bot.events_at_delete == ["join"]
+    assert _run(db.chat_member_row(CHAT, PERSON))["status"] == "member"
+
+
+def test_leave_notice_tracked_before_delete(tmp_path):
+    _ready(tmp_path, types_="leave")
+    _run(db.upsert_chat_member(CHAT, PERSON, "member", source="chat_member"))
+    bot = _OrderBot()
+    msg = _group_msg(left_chat_member=User(id=PERSON, is_bot=False, first_name="Оля"))
+    _run(group_chat.on_left_chat_member(msg, bot))
+    assert bot.deleted == [(CHAT, 55)]
+    assert bot.events_at_delete == ["leave"]
+
+
+def _handler(name):
+    return next(h for h in group_chat.router.message.handlers if h.callback.__name__ == name)
+
+
+def test_pin_notice_goes_to_service_handler_not_activity(tmp_path):
+    _ready(tmp_path, types_="pin")
+    _run(db.set_setting("chat_tracking_enabled", "on"))
+    pinned = Message(message_id=10, date=datetime.now(),
+                     chat=Chat(id=CHAT, type="supergroup"))
+    msg = _group_msg(pinned_message=pinned)
+    handlers = [h.callback.__name__ for h in group_chat.router.message.handlers]
+    assert handlers.index("on_group_service_message") < handlers.index("on_group_message")
+    ok, _kw = _run(_handler("on_group_service_message").check(msg))
+    assert ok
+    bot = _OrderBot()
+    _run(group_chat.on_group_service_message(msg, bot))
+    assert bot.deleted == [(CHAT, 55)]
+
+    async def _activity():
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM chat_activity") as cur:
+                return (await cur.fetchone())[0]
+    assert _run(_activity()) == 0
+
+
+def test_topic_created_is_not_a_service_handler_match(tmp_path):
+    _ready(tmp_path)
+    from aiogram.types import ForumTopicCreated
+    msg = _group_msg(forum_topic_created=ForumTopicCreated(name="Флуд", icon_color=0))
+    ok, _kw = _run(_handler("on_group_service_message").check(msg))
+    assert not ok
+
+
+def _admin(user, can_delete):
+    known = dict(
+        status="administrator", user=user, can_be_edited=False, is_anonymous=False,
+        can_manage_chat=True, can_delete_messages=can_delete, can_manage_video_chats=True,
+        can_restrict_members=True, can_promote_members=False, can_change_info=True,
+        can_invite_users=True, can_post_stories=False, can_edit_stories=False,
+        can_delete_stories=False,
+    )
+    for name, field in ChatMemberAdministrator.model_fields.items():
+        if field.is_required() and name not in known:
+            known[name] = False
+    return ChatMemberAdministrator(**known)
+
+
+def _bot_update(new_member):
+    bot_user = User(id=BOT_ID, is_bot=True, first_name="Бот")
+    return ChatMemberUpdated(
+        chat=Chat(id=CHAT, type="supergroup", title="Делегаты"),
+        from_user=User(id=PERSON, is_bot=False, first_name="Оля"), date=datetime.now(),
+        old_chat_member=ChatMemberMember(status="member", user=bot_user),
+        new_chat_member=new_member(bot_user),
+    )
+
+
+def test_bot_membership_records_delete_right(tmp_path):
+    _ready(tmp_path)
+
+    class _B:
+        id = BOT_ID
+
+        async def send_message(self, *a, **k):
+            return None
+
+    cases = [
+        (lambda u: _admin(u, False), "administrator", 0),
+        (lambda u: _admin(u, True), "administrator", 1),
+        (lambda u: ChatMemberMember(status="member", user=u), "member", 0),
+        (lambda u: ChatMemberOwner(status="creator", user=u, is_anonymous=False), "creator", 1),
+    ]
+    for build, status, flag in cases:
+        _run(group_chat.on_bot_membership_changed(_bot_update(build), _B()))
+        state = _run(db.get_chat_bot_state(CHAT))
+        assert (state["bot_status"], state["can_delete"]) == (status, flag), status
+
+
+def test_refresh_bot_state_reads_own_member_and_is_fail_soft(tmp_path):
+    _ready(tmp_path)
+
+    class _B:
+        id = BOT_ID
+
+        async def get_chat_member(self, chat_id, user_id):
+            assert user_id == BOT_ID
+            return SimpleNamespace(status="administrator", can_delete_messages=True)
+
+    _run(chat_tracking.refresh_bot_state(_B(), CHAT))
+    assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 1
+
+    class _Broken:
+        id = BOT_ID
+
+        async def get_chat_member(self, chat_id, user_id):
+            raise RuntimeError("network")
+
+    _run(chat_tracking.refresh_bot_state(_Broken(), CHAT))  # не бросает
+    assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 1
+
+
+def test_refresh_all_chats_refreshes_bot_state(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("chat_tracking_enabled", "on"))
+
+    class _B:
+        id = BOT_ID
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="administrator", can_delete_messages=False)
+
+    _run(chat_tracking.refresh_all_chats(_B()))
+    assert _run(db.get_chat_bot_state(CHAT))["can_delete"] == 0
