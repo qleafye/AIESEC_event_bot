@@ -76,6 +76,13 @@ MANY_REACTIONS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _frozen_now(monkeypatch):
+    # Срок хранения считается от «сейчас»: без заморозки фикстура сентября 2026 через полгода
+    # оказалась бы старше срока и тесты начали бы падать сами.
+    monkeypatch.setattr(imp, "_now", lambda: datetime(2026, 9, 27, 12, 0, 0))
+
+
 @pytest.fixture
 def db_path(tmp_path):
     path = str(tmp_path / "import.db")
