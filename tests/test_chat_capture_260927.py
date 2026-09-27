@@ -302,3 +302,115 @@ def test_group_chat_touches_text_only_for_length():
     lines = [ln for ln in src.splitlines() if "message.text" in ln or "message.caption" in ln]
     code_lines = [ln for ln in lines if not ln.strip().startswith(("#", "`", '"'))]
     assert code_lines and all("len(" in ln for ln in code_lines), code_lines
+
+
+# ── Задача 3: сверка админов группы и чистка старой истории ─────────────────────────────────
+
+from types import SimpleNamespace  # noqa: E402
+
+from services import scheduler as sched  # noqa: E402
+
+BOT_ID = 777927501
+
+
+def _adm(uid, *, is_bot=False, status="administrator", can_delete=True):
+    return SimpleNamespace(
+        status=status, can_delete_messages=can_delete,
+        user=SimpleNamespace(id=uid, is_bot=is_bot),
+    )
+
+
+class _AdminsBot:
+    id = BOT_ID
+
+    def __init__(self, admins, *, fail=False):
+        self.admins = admins
+        self.fail = fail
+        self.calls = 0
+
+    async def get_chat_administrators(self, chat_id):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("network")
+        return self.admins
+
+    async def get_chat_member(self, chat_id, user_id):
+        return SimpleNamespace(status="member")
+
+
+def test_refresh_chat_admins_replaces_and_sets_bot_state(tmp_path):
+    _ready(tmp_path)
+    bot = _AdminsBot([_adm(A, status="creator"), _adm(B), _adm(BOT_ID, is_bot=True, can_delete=False),
+                      _adm(5, is_bot=True)])
+    _run(chat_tracking.refresh_chat_admins(bot, CHAT))
+    ids = sorted(r[0] for r in _run(_rows("SELECT telegram_id FROM chat_admins WHERE chat_id = ?", CHAT)))
+    assert ids == sorted([A, B])
+    state = _run(db.get_chat_bot_state(CHAT))
+    assert (state["bot_status"], state["can_delete"]) == ("administrator", 0)
+
+
+def test_refresh_chat_admins_bot_absent_is_member(tmp_path):
+    _ready(tmp_path)
+    _run(chat_tracking.refresh_chat_admins(_AdminsBot([_adm(A)]), CHAT))
+    state = _run(db.get_chat_bot_state(CHAT))
+    assert (state["bot_status"], state["can_delete"]) == ("member", 0)
+
+
+def test_refresh_chat_admins_failure_keeps_previous(tmp_path):
+    _ready(tmp_path)
+    _run(db.replace_chat_admins(CHAT, [A]))
+    _run(chat_tracking.refresh_chat_admins(_AdminsBot([], fail=True), CHAT))
+    assert _run(_rows("SELECT telegram_id FROM chat_admins")) == [(A,)]
+
+
+def test_refresh_all_chats_and_bind_reconcile_sync_admins(tmp_path, monkeypatch):
+    _live(tmp_path)
+    bot = _AdminsBot([_adm(B)])
+    _run(chat_tracking.refresh_all_chats(bot))
+    assert bot.calls == 1
+    assert _run(_rows("SELECT telegram_id FROM chat_admins")) == [(B,)]
+
+    bot2 = _AdminsBot([_adm(C)])
+    bot2.send_message = lambda *a, **k: _noop()
+    monkeypatch.setattr(sched, "_bot", bot2)
+    _run(chat_tracking.bind_reconcile_job(CHAT, None, ADMIN))
+    assert bot2.calls == 1
+    assert _run(_rows("SELECT telegram_id FROM chat_admins")) == [(C,)]
+
+
+async def _noop():
+    return None
+
+
+def test_prune_job_uses_retention_even_with_tracking_off(tmp_path):
+    _ready(tmp_path)  # учёт выключен: срок хранения — про приватность, а не про учёт
+    from services.timeutil import msk_now
+    from datetime import timedelta as _td
+    old = (msk_now() - _td(days=200)).strftime("%Y-%m-%d %H:%M:%S")
+    fresh = (msk_now() - _td(days=10)).strftime("%Y-%m-%d %H:%M:%S")
+    _run(_log(1, A, ts=old))
+    _run(_log(2, A, ts=fresh))
+    _run(sched.chat_history_prune_job())
+    assert _run(_rows("SELECT message_id FROM chat_messages")) == [(2,)]
+    _run(db.set_setting("chat_rating_retention_days", "5"))
+    _run(sched.chat_history_prune_job())
+    assert _run(_rows("SELECT COUNT(*) FROM chat_messages"))[0][0] == 0
+
+
+def test_prune_job_is_registered_daily_with_boot_catchup(tmp_path, monkeypatch):
+    config.DB_PATH = str(tmp_path / "prune_sched.db")
+    monkeypatch.setattr(sched, "_JOBSTORE_URL", f"sqlite:///{tmp_path / 'jobs.sqlite'}")
+    monkeypatch.setattr(sched, "_scheduler", None)
+
+    async def go():
+        fast_init_db()
+        s = await sched.init_scheduler(bot=object())
+        try:
+            job = s.get_job("chat_history_prune")
+            assert job is not None
+            assert job.trigger.interval.total_seconds() == 24 * 3600
+            assert job.func is sched.chat_history_prune_job
+        finally:
+            s.shutdown(wait=False)
+
+    asyncio.run(go())
