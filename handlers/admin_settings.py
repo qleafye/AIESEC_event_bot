@@ -25,6 +25,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 # not a hack: raising it inside a handler makes that handler's match count as UNHANDLED.
 from aiogram.dispatcher.event.bases import SkipHandler
 
+import chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
 import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
@@ -369,6 +370,13 @@ _SHEETS_FIELD_ORDER = [
     "polls_sheet_tab",  # опросы: вкладка выгрузки результатов
 ]
 
+# Квик 260927: «💬 Чат делегатов» — глобальные веса формулы рейтинга чата (человеческий порядок).
+# Режим, правила города, название баллов, задания — per_city, на экране «🏆 Рейтинг чата».
+_CHAT_FIELD_ORDER = [chat_score.SETTING_KEYS[n] for n in (
+    "resonance_reply", "resonance_reaction", "regularity_per_day", "giving_per_reaction", "day_cap",
+    "resonance_reply_cap", "resonance_reaction_cap", "burst_log_base", "burst_log_cap",
+    "burst_media_score", "burst_sticker_score")] + [chat_score.BURST_GAP_KEY, chat_score.RETENTION_KEY]
+
 _REG_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _REG_FIELD_ORDER]
 _APPS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _APPS_FIELD_ORDER]
 _PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PAY_FIELD_ORDER]
@@ -377,6 +385,7 @@ _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]
 _SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
 _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
 _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
+_CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CHAT_FIELD_ORDER]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
 # PDF согласий грузятся в разделе «🧾 PDF согласий».
@@ -384,7 +393,7 @@ _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS + _SYSTEM_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -427,6 +436,7 @@ SETTINGS_GROUPS = [
     ("🎉 Party", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
     ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
+    ("💬 Чат делегатов", "chat", _CHAT_FIELD_ORDER),  # квик 260927: веса рейтинга чата
     ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
 ]
 
