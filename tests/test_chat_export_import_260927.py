@@ -67,6 +67,11 @@ MANY_REACTIONS = {
                     {"from_id": "user2", "date": "2026-09-03T11:02:00"}]},
         {"type": "custom_emoji", "document_id": "54321", "count": 1,
          "recent": [{"from_id": "user4", "date": "2026-09-03T11:03:00"}]},
+        # реальный экспорт СПб: кастомные эмодзи с пустым document_id — не слипаются
+        {"type": "custom_emoji", "document_id": "", "count": 1,
+         "recent": [{"from_id": "user4", "date": "2026-09-03T11:04:00"}]},
+        {"type": "custom_emoji", "document_id": "", "count": 1,
+         "recent": [{"from_id": "user4", "date": "2026-09-03T11:05:00"}]},
     ],
 }
 
@@ -169,7 +174,7 @@ def test_reactions_recent_become_rows_and_rest_goes_to_extra(db_path, tmp_path):
     reactions = _rows(db_path, "SELECT telegram_id, reaction FROM chat_reactions "
                                "WHERE chat_id = ? AND message_id = 33", (CHAT_ID,))
     assert sorted((r["telegram_id"], r["reaction"]) for r in reactions) == [
-        (1, "👍"), (2, "👍"), (4, "custom:54321"),
+        (1, "👍"), (2, "👍"), (4, "custom:54321"), (4, "export:2"), (4, "export:3"),
     ]
     msg = _rows(db_path, "SELECT reactions_extra FROM chat_messages WHERE message_id = 33")[0]
     assert msg["reactions_extra"] == 3
