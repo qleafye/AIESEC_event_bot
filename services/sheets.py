@@ -773,16 +773,17 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
         return False
 
 
-def _write_arrived_on_sheet(sheet, id_to_value: dict[str, str]) -> set[str]:
-    """Одна вкладка очереди «Пришёл»: ОДНО чтение (шапка + столбец id одним batch_get) и один
-    batch_update на все найденные строки. Возвращает найденные id. Нет колонки «Пришёл» —
-    ничего не найдено (решает вызывающий: откат на главный лист или «не найден»). Дубли строк
-    одного id — пишем в последнюю, как `_update_cell_in_row_range`."""
+def _write_column_on_sheet(sheet, header_name: str, id_to_value: dict[str, str]) -> set[str]:
+    """Одна вкладка очереди колонки («Пришёл», «В чате»): ОДНО чтение (шапка + столбец id одним
+    batch_get) и один batch_update на все найденные строки. Возвращает найденные id. Нет
+    колонки `header_name` — ничего не найдено (решает вызывающий: откат на главный лист или
+    «не найден»), другие колонки не трогаются. Дубли строк одного id — пишем в последнюю, как
+    `_update_cell_in_row_range`."""
     header, col1 = sheet.batch_get(["1:1", "A:A"])
     header = [str(h).strip() for h in (header[0] if header else [])]
-    if ARRIVED_HEADER not in header:
+    if header_name not in header:
         return set()
-    col = header.index(ARRIVED_HEADER) + 1
+    col = header.index(header_name) + 1
     updates: dict[str, dict] = {}
     for row_idx, cells in enumerate(list(col1)[1:], start=2):  # skip header
         key = str(cells[0]).strip() if cells else ""
@@ -794,8 +795,14 @@ def _write_arrived_on_sheet(sheet, id_to_value: dict[str, str]) -> set[str]:
     return set(updates)
 
 
-def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str | None]) -> dict:
-    """Очередь «Пришёл»: группы по вкладке (как `_bulk_update_status_sync`), не найденные на
+def _write_arrived_on_sheet(sheet, id_to_value: dict[str, str]) -> set[str]:
+    """Очередь «Пришёл» — тонкая обёртка над `_write_column_on_sheet`."""
+    return _write_column_on_sheet(sheet, ARRIVED_HEADER, id_to_value)
+
+
+def _write_column_sync(header_name: str, id_to_value: dict[str, str],
+                       tab_by_id: dict[str, str | None]) -> dict:
+    """Очередь колонки: группы по вкладке (как `_bulk_update_status_sync`), не найденные на
     городской вкладке — вторым проходом на главный лист (старые строки до разбивки по
     городам). Сбой вкладки (сеть/API) — её id в `failed` с текстом ошибки, остальные вкладки
     пишутся дальше. Возвращает {"written": set, "missing": set, "failed": {id: str}}."""
@@ -812,7 +819,7 @@ def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str |
             # главный лист, как у строки, не найденной на вкладке. Кэшированный хэндл значит,
             # что вкладка уже существовала, — берём его без лишних запросов метаданных.
             sheet = _named_sheets.get(tab_name) or _open_named_or_main_sync(tab_name)
-            found = _write_arrived_on_sheet(sheet, part) if sheet is not None else set()
+            found = _write_column_on_sheet(sheet, header_name, part) if sheet is not None else set()
         except Exception as e:
             _reset_named_sheet_cache(tab_name)
             failed |= {k: f"{tab_name}: {e}" for k in part}
@@ -822,7 +829,7 @@ def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str |
     missing: set[str] = set()
     if to_main:
         try:
-            found = _write_arrived_on_sheet(_get_sheet(), to_main)
+            found = _write_column_on_sheet(_get_sheet(), header_name, to_main)
             written |= found
             missing = set(to_main) - found
         except Exception as e:
@@ -831,16 +838,22 @@ def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str |
     return {"written": written, "missing": missing, "failed": failed}
 
 
-async def write_arrivals_batch(id_to_value: dict[int, str]) -> dict:
-    """Пачка очереди «Пришёл» (`services/sheet_arrival_sync.py`): `{telegram_id: значение}` ->
-    {"written": set[int], "missing": set[int], "failed": {int: str}}. Вкладка каждого делегата —
-    `_resolve_status_tab`, то же правило, что у точечной записи. Бросает, только если сломалось
-    всё до похода в лист (разбор вызывающий считает сбоем всей пачки)."""
+def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str | None]) -> dict:
+    """Очередь «Пришёл» — тонкая обёртка над `_write_column_sync`."""
+    return _write_column_sync(ARRIVED_HEADER, id_to_value, tab_by_id)
+
+
+async def write_column_batch(header_name: str, id_to_value: dict[int, str]) -> dict:
+    """Пачка очереди колонки (`services/sheet_arrival_sync.py`, `services/sheet_chat_sync.py`):
+    `{telegram_id: значение}` -> {"written": set[int], "missing": set[int], "failed": {int: str}}.
+    Вкладка каждого делегата — `_resolve_status_tab`, то же правило, что у точечной записи.
+    Бросает, только если сломалось всё до похода в лист (разбор вызывающий считает сбоем всей
+    пачки)."""
     tab_by_id: dict[str, str | None] = {}
     for tid in id_to_value:
         tab_by_id[str(tid)] = await _resolve_status_tab(int(tid))
     res = await asyncio.to_thread(
-        _write_arrivals_sync, {str(k): v for k, v in id_to_value.items()}, tab_by_id,
+        _write_column_sync, header_name, {str(k): v for k, v in id_to_value.items()}, tab_by_id,
     )
     if res["written"]:
         _note_write(True)
@@ -851,6 +864,11 @@ async def write_arrivals_batch(id_to_value: dict[int, str]) -> dict:
         "missing": {int(k) for k in res["missing"]},
         "failed": {int(k): v for k, v in res["failed"].items()},
     }
+
+
+async def write_arrivals_batch(id_to_value: dict[int, str]) -> dict:
+    """Пачка очереди «Пришёл» — тонкая обёртка над `write_column_batch`."""
+    return await write_column_batch(ARRIVED_HEADER, id_to_value)
 
 
 def _update_row_by_id_in_range(sheet, telegram_id: int, row: list) -> bool:

@@ -28,6 +28,7 @@ from cities import (
 from database.db import (
     chat_member_statuses,
     count_and_list_filtered,
+    enqueue_sheet_chat_cells,
     replace_chat_admins,
     set_chat_bot_state,
     stale_chat_member_candidates,
@@ -302,6 +303,10 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
             break
         if batch_start + REFRESH_BATCH < len(candidates):
             await asyncio.sleep(REFRESH_PAUSE_SECONDS)
+
+    # Колонка «В чате» в листе: пересчитать ВСЕХ одобренных города (первичное заполнение после
+    # выката и «не проверено» -> «да»/«нет»); значение джоба возьмёт из базы. Fail-soft внутри.
+    await enqueue_sheet_chat_cells(approved_ids)
 
     logger.info(
         "chat_tracking.refresh_chat: chat_id=%s city=%s checked=%s present=%s absent=%s "
