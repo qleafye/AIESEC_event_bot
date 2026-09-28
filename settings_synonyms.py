@@ -826,6 +826,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "onsite_remove_button_text": ["убрать из списка ждущих", "удалить короткую анкету у стойки"],
     "onsite_remove_confirm_text": ["подтверждение убрать walk-in", "короткая анкета удалится"],
     "onsite_remove_refused_text": ["убрать нельзя у стойки", "уже есть решение walk-in"],
+    "onsite_reg_consent_failed_text": ["согласие не сохранилось на месте", "нажми кнопку согласия ещё раз"],
     "onsite_reg_rate_limited_text": ["слишком много попыток на месте", "частые запуски короткой анкеты"],
     "onsite_override_button_text": ["пропустить вопреки отказу", "отменить отказ у стойки"],
     "onsite_override_confirm_text": ["подтверждение вопреки отказу", "отказ будет отменён у стойки"],
