@@ -5913,6 +5913,45 @@ async def chat_member_ids(chat_id: int) -> set[int]:
     return {row[0] for row in rows}
 
 
+_IN_CHUNK = 500  # плейсхолдеров на один IN (…): держимся ниже лимита SQLite на параметры
+
+
+async def users_status_city(telegram_ids: list[int]) -> dict[int, tuple[str | None, str | None]]:
+    """{telegram_id: (status, event_city)} по списку id — чанками, для колонки «В чате»
+    (`services.chat_tracking.chat_cell_values`). Незарегистрированных в ответе нет."""
+    ids = [int(t) for t in telegram_ids]
+    out: dict[int, tuple[str | None, str | None]] = {}
+    async with _connect() as db:
+        for i in range(0, len(ids), _IN_CHUNK):
+            part = ids[i:i + _IN_CHUNK]
+            placeholders = ",".join("?" for _ in part)
+            async with db.execute(
+                f"SELECT telegram_id, status, event_city FROM users WHERE telegram_id IN ({placeholders})",
+                part,
+            ) as cursor:
+                for tid, status, city in await cursor.fetchall():
+                    out[tid] = (status, city)
+    return out
+
+
+async def chat_member_statuses(chat_id: int, telegram_ids: list[int]) -> dict[int, str | None]:
+    """{telegram_id: статус в `chat_members`} для тех из списка, у кого запись в чате есть."""
+    ids = [int(t) for t in telegram_ids]
+    out: dict[int, str | None] = {}
+    async with _connect() as db:
+        for i in range(0, len(ids), _IN_CHUNK):
+            part = ids[i:i + _IN_CHUNK]
+            placeholders = ",".join("?" for _ in part)
+            async with db.execute(
+                f"SELECT telegram_id, status FROM chat_members WHERE chat_id = ? "
+                f"AND telegram_id IN ({placeholders})",
+                (chat_id, *part),
+            ) as cursor:
+                for tid, status in await cursor.fetchall():
+                    out[tid] = status
+    return out
+
+
 async def chat_member_row(chat_id: int, telegram_id: int) -> dict | None:
     async with _connect() as db:
         db.row_factory = aiosqlite.Row

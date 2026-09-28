@@ -79,7 +79,7 @@ from handlers.reg_schema import (
     _is_step_enabled, active_sheet_headers, set_sheet_schema,
     _sheet_kind, city_row_tab, incomplete_city_batches, sheet_city_code,
     DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for,
-    send_completion_and_bonus, approve_user, ARRIVED_CELL_KEY, with_arrived_cell,
+    send_completion_and_bonus, approve_user, ARRIVED_CELL_KEY, with_arrived_cell, with_sheet_cells,
 )
 # Phase 27 (27-05, LANG-02): единственная воронка отправки вопросов (_safe_answer ниже) и
 # сводка ответов (_build_summary) переводят через этот шов — верхнеуровневый импорт безопасен,
@@ -1387,7 +1387,7 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     приписанный апостроф был не защитой, а порчей данных (`'+79991234567`, `'@username` не
     находятся фильтром/ВПР)."""
     headers = await get_sheet_schema(city_code)
-    values = _sheet_value_map(await with_arrived_cell(data))
+    values = _sheet_value_map(await with_sheet_cells(data))
     return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 
@@ -1396,7 +1396,8 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
 # (no registration date/status/referral details yet) and must be excluded when reusing
 # active_sheet_headers().
 INCOMPLETE_BASE_HEADERS = ["ID Telegram", "Username", "Начал регистрацию", "Остановился на"]
-_INCOMPLETE_EXCLUDED_HEADERS = {"ID Telegram", "Username", "Дата регистрации", "Статус", "Детали"}
+# «В чате» — только про одобренных (вкладка переписывается целиком, строки не сдвигаются).
+_INCOMPLETE_EXCLUDED_HEADERS = {"ID Telegram", "Username", "Дата регистрации", "Статус", "Детали", "В чате"}
 
 
 async def incomplete_sheet_headers(city_code: str | None = None) -> list[str]:
@@ -1560,7 +1561,7 @@ async def append_to_party_sheet(data: list, city_code: str | None = None):
 # columns the short form can collect — nothing more. This is also the only way to keep the
 # "configurable track" promise: a manager turns on a 7th `reg_q_*__short` question and the
 # column appears on its own, no code change required.
-SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл"]
+SHORT_SHEET_SYSTEM_HEADERS = ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл", "В чате"]
 # «Детали» (referrer) is intentionally excluded — the promo form never collects it.
 
 
@@ -1592,7 +1593,7 @@ async def short_sheet_row(data: dict, city_code: str | None = None) -> list:
     active_sheet_row/party_sheet_row so `_sheet_dispatch` stays a plain (row_fn, append_fn)
     resolver."""
     headers = await short_sheet_headers(city_code)
-    values = _sheet_value_map(await with_arrived_cell(data))
+    values = _sheet_value_map(await with_sheet_cells(data))
     return [_sheet_safe(values.get(h, "-")) for h in headers]
 
 

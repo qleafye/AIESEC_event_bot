@@ -41,6 +41,7 @@ def test_short_sheet_headers_width_follows_short_gate_only(tmp_path):
     assert headers == [
         "ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Телефон", "Город",
         "Пришёл",
+        "В чате",
     ]
 
 
@@ -54,7 +55,7 @@ def test_short_sheet_headers_zero_keys_is_system_only(tmp_path):
         return await reg.short_sheet_headers()
 
     headers = asyncio.run(go())
-    assert headers == ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл"]
+    assert headers == ["ID Telegram", "Username", "Дата регистрации", "Статус", "ФИО", "Пришёл", "В чате"]
 
 
 # ── Group 3: Sheets rows stay RAW, no formula-injection prefix (квик 260919) ────────────────
