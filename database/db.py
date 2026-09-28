@@ -735,6 +735,21 @@ async def init_db():
         # разные роли одного человека могут иметь разный срок.
         await _ensure_column(db, "staff", "expires_at", "TEXT")
 
+        # 29.09: сотрудник, до которого бот не достучался (заблокировал бота / ни разу не нажал
+        # /start / удалил аккаунт). Отдельная таблица, а не колонка `staff`: суперадмины из
+        # `config.ADMIN_IDS` в `staff` не лежат, а сама `staff` — строка на роль, не на человека.
+        # `since` — первая неудача (не сдвигается повторами), `last_failed_at` — последняя.
+        # Строку снимает удачная доставка или любое сообщение человека боту
+        # (`services/staff_reach.py`). Время — московское (`msk_now`).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS staff_unreachable (
+                telegram_id INTEGER PRIMARY KEY,
+                since TEXT NOT NULL,
+                last_failed_at TEXT NOT NULL,
+                reason TEXT
+            )
+        ''')
+
         # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой. Одна ссылка -- одна строка;
         # `code` -- secrets.token_urlsafe, непубличный секрет (не подбирается перебором),
         # PRIMARY KEY естественно уникален. `city`/`created_by` -- атрибуция; `link_expires_at`/
@@ -6332,6 +6347,49 @@ async def list_staff() -> list[dict]:
             return [dict(row) for row in rows]
 
 
+# ── 29.09: сотрудник, до которого не доходят уведомления ──────────────────────────────────
+
+async def mark_staff_unreachable(telegram_id: int, reason: str | None) -> bool:
+    """Отметить «бот не может ему написать». True — отметка новая; повтор только обновляет
+    `last_failed_at`/`reason`, `since` остаётся датой ПЕРВОЙ неудачи."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO staff_unreachable (telegram_id, since, last_failed_at, reason) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, now, now, reason),
+        )
+        inserted = cursor.rowcount == 1
+        if not inserted:
+            await db.execute(
+                "UPDATE staff_unreachable SET last_failed_at = ?, reason = ? WHERE telegram_id = ?",
+                (now, reason, telegram_id),
+            )
+        await db.commit()
+        return inserted
+
+
+async def clear_staff_unreachable(telegram_id: int) -> bool:
+    """Снять отметку. True — отметка была."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM staff_unreachable WHERE telegram_id = ?", (telegram_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def list_staff_unreachable() -> dict[int, dict]:
+    """`{telegram_id: {"since", "last_failed_at", "reason"}}` — все текущие отметки."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT telegram_id, since, last_failed_at, reason FROM staff_unreachable"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {row["telegram_id"]: dict(row) for row in rows}
+
+
 # ── Phase 09.1 (C, ROLE-03): manager <-> city binding accessors ────────────────────────────
 
 async def get_staff_city(telegram_id: int) -> str | None:
@@ -10041,6 +10099,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "staff",
+    # 29.09: staff_unreachable — отметка «уведомления сотруднику не доходят», про роль
+    # менеджера, не про делегата (тот же класс, что staff выше); снимается сама при доставке.
+    "staff_unreachable",
     "bot_settings",
     "cities",
     "faq_items",
