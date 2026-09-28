@@ -1168,3 +1168,27 @@ def test_scanner_uses_registry_texts(tmp_path):
     from tests.test_miniapp_routes import ADMIN_ID as MINI_ADMIN
     body = client.get(f"{ONSITE}/link", headers=_hdr(MINI_ADMIN)).json()
     assert body["status"] == "error" and body["reason_text"] == "Сначала город"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Сезон не задан — одобрение у стойки не стирает сезон строки; вуз не длиннее потолка
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_approve_onsite_without_event_season_keeps_row_season(tmp_path):
+    _seed_ready(tmp_path)
+    _run(_insert_user(954501, status="pending", city="spb", season="YL'25"))
+    assert _run(bot_db.approve_onsite(954501, by_staff_id=STAFF_ID, season=None)) is True
+    row = _row(954501)
+    assert row["status"] == "approved"
+    assert row["season"] == "YL'25"
+    assert row["prev_season"] is None
+
+
+def test_approve_at_door_with_empty_event_season_keeps_season(tmp_path):
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(bot_db.set_setting("event_season", ""))
+    _run(_insert_user(954502, status="pending", city="spb", season="YL'25"))
+    res = _door(954502)
+    assert res["status"] == "new"
+    assert _row(954502)["season"] == "YL'25"
