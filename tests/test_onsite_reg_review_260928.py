@@ -1192,3 +1192,26 @@ def test_approve_at_door_with_empty_event_season_keeps_season(tmp_path):
     res = _door(954502)
     assert res["status"] == "new"
     assert _row(954502)["season"] == "YL'25"
+
+
+def test_university_answer_is_capped_with_hint(tmp_path):
+    from handlers import onsite_reg as onsite_handlers
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from tests.test_onsite_reg_chat_260927 import _Msg
+    from tests.test_roles_phase8 import _fresh_state
+    _chat_ready(tmp_path)
+    uid = 954601
+    state = _fresh_state(uid)
+    _run(state.set_state(onsite_handlers.OnsiteReg.university))
+    _run(state.update_data(onsite_city="spb", onsite_name="Иванова Мария", onsite_phone="+79991234567"))
+    msg = _Msg(uid, "В" * (onsite_handlers._MAX_UNIVERSITY_LEN + 1))
+    _run(onsite_handlers.onsite_university(msg, state))
+    assert _run(state.get_state()) == onsite_handlers.OnsiteReg.university.state
+    assert msg.texts()[0] == SETTINGS_SCHEMA["onsite_reg_university_too_long_text"]["default"]
+    assert _row(uid) is None
+    assert onsite_handlers._MAX_UNIVERSITY_LEN == 200
+    assert SETTINGS_SCHEMA["onsite_reg_university_too_long_text"]["default"] in FORM_DEFAULT_EN
+
+    ok = _Msg(uid, "В" * onsite_handlers._MAX_UNIVERSITY_LEN)
+    _run(onsite_handlers.onsite_university(ok, state))
+    assert _row(uid)["university"] == "В" * onsite_handlers._MAX_UNIVERSITY_LEN

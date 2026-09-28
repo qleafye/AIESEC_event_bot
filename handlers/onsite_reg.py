@@ -55,6 +55,8 @@ router = Router()
 
 _CONSENT_KEY = "onsite"
 _MIN_PHONE_DIGITS = 7
+# Вуз — свободный текст, он уходит в ячейку листа: потолок с понятной подсказкой.
+_MAX_UNIVERSITY_LEN = 200
 # Слово ФИО — буквы (любого алфавита), допускаются дефис и апостроф внутри: «Мария-Анна», «О'Нил».
 _NAME_WORD_RE = re.compile(r"^[^\W\d_]+(?:[-'’][^\W\d_]+)*$")
 
@@ -300,6 +302,9 @@ async def onsite_university(message: types.Message, state: FSMContext):
         await _say(message, "onsite_reg_university_prompt_text", reply_markup=_university_kb(skip))
         return
     university = None if text == skip else text
+    if university and len(university) > _MAX_UNIVERSITY_LEN:
+        await _say(message, "onsite_reg_university_too_long_text", reply_markup=_university_kb(skip))
+        return
     await _finish(message, state, message.from_user.id, message.from_user.username, university)
 
 
