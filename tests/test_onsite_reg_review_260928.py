@@ -991,3 +991,110 @@ def test_walkin_starts_are_rate_limited_per_user(tmp_path):
     _run(onsite_handlers.start_walkin(other, _fresh_state(954201), None))
     assert SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"] in other.texts()[0]
     onsite_handlers._start_times.clear()
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Пост рейтинга в чат: двойное нажатие и повтор той же недели не дают второго поста
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+class _SlowBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kwargs):
+        import asyncio
+        await asyncio.sleep(0.05)
+        self.sent.append((chat_id, text))
+        return type("Msg", (), {"message_id": 1})()
+
+
+def _rating_ready(tmp_path):
+    from tests import test_chat_rating_post_260927 as t
+    path = t._ready(tmp_path)
+    t._rules_mode(path)
+    t._seed_comments(path)
+    return t
+
+
+def test_double_tap_publish_posts_once(tmp_path):
+    import asyncio
+    from handlers import admin_chat_rating_post as post
+    t = _rating_ready(tmp_path)
+    post._publishing.clear()
+    post._published_messages.clear()
+    bot = _SlowBot()
+    shared = t._Message()
+    first, second = t._Callback("chpost:go:spb"), t._Callback("chpost:go:spb")
+    first.message = second.message = shared
+    shared.message_id = 77
+
+    async def both():
+        await asyncio.gather(post.chpost_publish_go(first, bot, now=t.NOW),
+                             post.chpost_publish_go(second, bot, now=t.NOW))
+
+    _run(both())
+    assert len(bot.sent) == 1
+    assert "Опубликовано" in shared.edited
+    busy = [a for cb in (first, second) for a in cb.answers if a[0] and "Публикую" in a[0]]
+    assert busy  # второй тап получил «уже публикую»
+
+    replay = t._Callback("chpost:go:spb")
+    replay.message = shared  # тот же экран подтверждения, запоздавший колбэк
+    _run(post.chpost_publish_go(replay, bot, now=t.NOW))
+    assert len(bot.sent) == 1
+
+
+def test_scheduled_post_skips_week_already_posted(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from handlers import admin_chat_rating_post as post
+    from services import chat_rating_post as crp
+    from services import scheduler as sched
+    t = _rating_ready(tmp_path)
+    post._publishing.clear()
+    post._published_messages.clear()
+    _run(bot_db.set_setting(f"{crp.KEY_ENABLED}__city__spb", "on"))
+    bot = t._Bot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    now = {"v": t.NOW}
+    monkeypatch.setattr(crp, "msk_now", lambda: now["v"])
+
+    _run(crp.run_job("spb"))
+    assert len(bot.sent) == 1
+    # время поста перенесли на тот же день позже — джоба сработала ещё раз
+    _run(crp.run_job("spb"))
+    assert len(bot.sent) == 1
+
+    now["v"] = t.NOW + timedelta(days=7)  # следующая неделя — публикуется
+    _run(crp.run_job("spb"))
+    assert len(bot.sent) == 2
+
+
+def test_manual_publish_counts_as_posted_week(tmp_path, monkeypatch):
+    from handlers import admin_chat_rating_post as post
+    from services import chat_rating_post as crp
+    from services import scheduler as sched
+    t = _rating_ready(tmp_path)
+    post._publishing.clear()
+    post._published_messages.clear()
+    _run(bot_db.set_setting(f"{crp.KEY_ENABLED}__city__spb", "on"))
+    bot = t._Bot()
+    _run(post.chpost_publish_go(t._Callback("chpost:go:spb"), bot, now=t.NOW))
+    assert len(bot.sent) == 1
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(crp, "msk_now", lambda: t.NOW)
+    _run(crp.run_job("spb"))
+    assert len(bot.sent) == 1
+
+
+def test_failed_scheduled_post_is_retried_same_week(tmp_path, monkeypatch):
+    from services import chat_rating_post as crp
+    from services import scheduler as sched
+    t = _rating_ready(tmp_path)
+    _run(bot_db.set_setting(f"{crp.KEY_ENABLED}__city__spb", "on"))
+    monkeypatch.setattr(crp, "msk_now", lambda: t.NOW)
+    monkeypatch.setattr(sched, "_bot", t._Bot(fail=RuntimeError("Forbidden")))
+    _run(crp.run_job("spb"))
+    ok_bot = t._Bot()
+    monkeypatch.setattr(sched, "_bot", ok_bot)
+    _run(crp.run_job("spb"))
+    assert len(ok_bot.sent) == 1

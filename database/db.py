@@ -1397,6 +1397,18 @@ async def init_db():
             "ON miniapp_outbox(processed_at, id)"
         )
 
+        # Пост рейтинга в чат делегатов (ревью 28.09): за какую неделю пост уже ушёл в чат
+        # города. Смена дня/времени после сегодняшнего поста переставляет cron-джобу, и она
+        # сработала бы второй раз за ту же неделю — джоба сверяется с этой строкой. `city` —
+        # код города, '' у одногородского бота. Ни одного telegram_id — не делегатский след.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS chat_rating_posts (
+                city TEXT PRIMARY KEY,
+                week TEXT NOT NULL,
+                posted_at TEXT NOT NULL
+            )
+        ''')
+
         # Phase 27 (27-02, LANG-02/LANG-03): хранилище переводов. Первичный ключ —
         # `(lang, src_hash)`, ГДЕ src_hash — sha256 РЕЗУЛЬТАТА резолюции (services/i18n.py::
         # src_hash), а не ключ реестра bot_settings. Причина: пространство делегатских ключей
@@ -8604,6 +8616,26 @@ async def enqueue_miniapp_outbox(kind: str, payload: dict, created_at: str) -> i
         )
         await db.commit()
         return cursor.lastrowid
+
+
+async def get_chat_rating_posted_week(city: str | None) -> str | None:
+    """Неделя (дата её понедельника), за которую пост рейтинга уже ушёл в чат города."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT week FROM chat_rating_posts WHERE city = ?", (city or "",)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+
+async def set_chat_rating_posted_week(city: str | None, week: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO chat_rating_posts (city, week, posted_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(city) DO UPDATE SET week = excluded.week, posted_at = excluded.posted_at",
+            (city or "", week, msk_now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        await db.commit()
 
 
 async def enqueue_miniapp_outbox_once(kind: str, payload: dict, created_at: str) -> int | None:
