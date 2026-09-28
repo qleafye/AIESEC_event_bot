@@ -2874,11 +2874,15 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "reg_prompts", "label": "📨 Шаг 3 заголовок (на проверке)",
         "prompt": "Заголовок третьего шага «Что дальше», состояние «на проверке».",
         "default": "После одобрения — оплата", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "После одобрения — детали",
     },
     "reg_status_review_step3_body_text": {
         "type": "text", "group": "reg_prompts", "label": "📨 Шаг 3 текст (на проверке)",
         "prompt": "Текст третьего шага «Что дальше», состояние «на проверке».",
         "default": "Тариф зависит от трека, реквизиты пришлём.", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Программу и организационные детали пришлём в чат.",
     },
     "reg_status_edit_button_text": {
         "type": "text", "group": "reg_prompts", "label": "📨 Кнопка «Изменить анкету» (статус)",
@@ -2899,6 +2903,8 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "reg_prompts", "label": "✅ Тело «одобрена» (статус)",
         "prompt": "Тело плиты экрана статуса, состояние «одобрена». {дата}/{город} — из данных мероприятия.",
         "default": "Осталось оплатить участие — и увидимся {дата} в {город}.", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Ждём тебя {дата} в {город}.",
     },
     "reg_status_payment_due_label_text": {
         "type": "text", "group": "reg_prompts", "label": "✅ Заголовок карточки оплаты (статус)",
@@ -2914,21 +2920,29 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "reg_prompts", "label": "✅ Шаг 1 заголовок (одобрена)",
         "prompt": "Заголовок первого шага «Что дальше», состояние «одобрена».",
         "default": "Оплати участие", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Следи за новостями в боте",
     },
     "reg_status_approved_step1_body_text": {
         "type": "text", "group": "reg_prompts", "label": "✅ Шаг 1 текст (одобрена)",
         "prompt": "Текст первого шага «Что дальше», состояние «одобрена».",
         "default": "Реквизиты и чек — в одном экране.", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Программу и детали пришлём сюда же, в чат.",
     },
     "reg_status_approved_step2_title_text": {
         "type": "text", "group": "reg_prompts", "label": "✅ Шаг 2 заголовок (одобрена)",
         "prompt": "Заголовок второго шага «Что дальше», состояние «одобрена».",
         "default": "Пришли чек", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Позови друзей",
     },
     "reg_status_approved_step2_body_text": {
         "type": "text", "group": "reg_prompts", "label": "✅ Шаг 2 текст (одобрена)",
         "prompt": "Текст второго шага «Что дальше», состояние «одобрена».",
         "default": "Менеджер подтвердит за день.", "per_city": True,
+        # Модуль оплаты выключен и своего текста нет — делегат видит этот вариант.
+        "default_free": "Поделись своей ссылкой-приглашением из бота.",
     },
     "reg_status_approved_step3_title_text": {
         "type": "text", "group": "reg_prompts", "label": "✅ Шаг 3 заголовок (одобрена)",
@@ -7500,6 +7514,14 @@ def option_label(key: str, code: str) -> str:
 async def get_setting_typed(key: str):
     """Thin async accessor (D-05) — raw read via the existing `get_setting` (database.db,
     unchanged, D-07) then dispatch through the pure `_parse_setting`. Does not duplicate
-    raw I/O; calls `get_setting` exactly once."""
+    raw I/O; calls `get_setting` exactly once.
+
+    `default_free` у записи реестра — заводской текст под бесплатное участие: берётся вместо
+    `default`, только если своего значения менеджера нет ВОВСЕ (строки в `bot_settings` нет) и
+    модуль оплаты выключен. Сохранённое значение, даже пустое, всегда сильнее обоих наборов."""
     raw = await get_setting(key)
+    if raw is None:
+        free = (SETTINGS_SCHEMA.get(key) or {}).get("default_free")
+        if free is not None and await get_setting_typed("payment_enabled") != "on":
+            return free
     return _parse_setting(key, raw)
