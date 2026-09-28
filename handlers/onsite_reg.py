@@ -159,7 +159,13 @@ async def onsite_consent(callback: types.CallbackQuery, state: FSMContext):
     try:
         await record_user_consent(callback.from_user.id, _CONSENT_KEY, raw_button=raw_button)
     except Exception:
+        # Без записанного согласия анкету дальше не ведём: строка users с ПДн без согласия
+        # недопустима. Человек остаётся на шаге согласия и жмёт кнопку ещё раз.
         logger.exception("onsite_reg: согласие не записано (tid=%s)", callback.from_user.id)
+        lang, tr_map = await reg_i18n.ctx_for(callback.message)
+        text = reg_i18n.tr_text(await get_setting_typed("onsite_reg_consent_failed_text"), lang, tr_map)
+        await callback.answer(text, show_alert=True)
+        return
     await state.set_state(OnsiteReg.name)
     await _say(callback.message, "onsite_reg_name_prompt_text")
     await callback.answer()
