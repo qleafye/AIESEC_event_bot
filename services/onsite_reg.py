@@ -90,10 +90,14 @@ def parse_walkin_arg(args: str | None) -> tuple[bool, str | None]:
     return False, None
 
 
-async def _wrong_city_text(user: dict) -> str:
+async def wrong_city_text(user: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
+    """D-26 для стойки — текст из реестра (D-34), `{city}` — город делегата."""
+    from services.i18n import tr
+
     delegate_city = normalize_city(user.get("event_city"))
     label = await city_label(delegate_city) if delegate_city else "—"
-    return f"Делегат с форума в {label} — отправьте на стойку своего города/к организаторам"
+    template = tr(await get_setting_typed("onsite_wrong_city_text"), lang, tr_map or {})
+    return template.replace("{city}", label)
 
 
 def is_pending_walkin(user: dict | None) -> bool:
@@ -192,7 +196,7 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     # одобрение переводит их туда.
     walkin = is_pending_walkin(user)
     if bound and not past and not walkin and normalize_city(user.get("event_city")) != bound:
-        return {"status": "wrong_city", "reason_text": await _wrong_city_text(user)}
+        return {"status": "wrong_city", "reason_text": await wrong_city_text(user)}
     move_city = resolved if (
         past or (walkin and resolved and normalize_city(user.get("event_city")) != resolved)
     ) else None

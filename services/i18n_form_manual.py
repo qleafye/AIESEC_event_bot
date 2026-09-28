@@ -972,6 +972,13 @@ _REGISTRY_TEXTS_EN = {
         "the bot. Then find them in the “Waiting at the desk” list and approve."
     ),
     "📝 Ждут на стойке": "📝 Waiting at the desk",
+    "Делегат с форума в {city} — отправьте на стойку своего города/к организаторам":
+        "Delegate of the forum in {city} — send them to their city's desk or to the organizers",
+    "Одобрен(а) на месте": "Approved on site",
+    "Не получилось собрать ссылку — откройте сканер заново.":
+        "Couldn't build the link — reopen the scanner.",
+    "Выберите город вверху экрана — у каждого города своя ссылка.":
+        "Choose a city at the top of the screen — each city has its own link.",
     "Заявка отклонена менеджером": "The application was rejected by a manager",
     "Заявка отклонена менеджером. Причина: {reason}":
         "The application was rejected by a manager. Reason: {reason}",
