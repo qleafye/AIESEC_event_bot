@@ -253,7 +253,8 @@ def test_digest_adds_one_line_when_a_recipient_is_unreachable(tmp_path, monkeypa
     _ready(tmp_path)
     asyncio.run(db.add_user({"telegram_id": 929050, "full_name": "Делегат",
                              "registration_date": msk_now().strftime("%Y-%m-%d 12:00:00")}))
-    asyncio.run(db.add_user({"telegram_id": MOD_BLOCKED, "full_name": "Пётр Модератор"}))
+    asyncio.run(db.add_user({"telegram_id": MOD_BLOCKED, "full_name": "Пётр Модератор",
+                             "registration_date": "2026-01-15 12:00:00"}))
     asyncio.run(db.mark_staff_unreachable(MOD_BLOCKED, "blocked"))
 
     async def fake_recipients(city):
