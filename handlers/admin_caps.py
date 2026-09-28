@@ -646,6 +646,7 @@ ADMIN_CAPS: dict[str, str] = {
     "chrate:*": "settings",  # его кнопки: режим, суммы правил, галочки заданий
     "state:ChatRatingEdit:*": "settings",  # ввод суммы правила / названия баллов
     "admin_chat_cleanup": "settings",  # Квик 260927: экран «🧹 Служебные сообщения в чате»
+    "admin_chat_reconcile": "settings",  # 29.09: «🔄 Сверить состав чата» (раздел «🔧 Управление»)
     "chclean:*": "settings",  # его галочки типов и задержка
     "state:ChatCleanupEdit:*": "settings",  # ввод задержки удаления
     "chpost:*": "settings",  # Квик 260927: пост рейтинга в чат — тумблер, день, проверка, публикация
