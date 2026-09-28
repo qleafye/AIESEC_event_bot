@@ -29,6 +29,7 @@ from payment_options import parse_options
 import reg_engine
 from services import applications, i18n, reg_edit_policy
 from settings_schema import get_setting_typed
+from text_fill import fill_collapsing
 
 from miniapp.deps import Principal, delegate_gate, form_gate
 from miniapp.routers.coins import count_participants
@@ -356,9 +357,11 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "title": (await i18n.tr_setting("reg_status_approved_title_text", lang, tr_map) or "").replace(
                 "{имя}", user.get("full_name") or "",
             ),
-            "screen_body": (
-                await i18n.tr_setting("reg_status_approved_body_text", lang, tr_map) or ""
-            ).replace("{дата}", event_dates or "").replace("{город}", event_place or ""),
+            # Пустые дата/место схлопываются вместе с предлогом: «…октября.», а не «…октября в .».
+            "screen_body": fill_collapsing(
+                await i18n.tr_setting("reg_status_approved_body_text", lang, tr_map) or "",
+                дата=event_dates, город=event_place,
+            ),
             "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
             "next_steps": await _next_steps("approved", lang, tr_map),
             "edit_button_text": None,
