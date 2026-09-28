@@ -49,6 +49,9 @@ from services.i18n import src_hash
 from services.i18n_engine import get_driver
 from services.i18n_glossary import (
     apply,
+    has_soft_wraps,
+    join_soft_wraps,
+    mentions_and_urls,
     protect,
     split_leading_symbols,
     split_trailing_symbols,
@@ -96,7 +99,7 @@ async def drain(limit_batches: int = 1) -> int:
 
         prepared = []
         for row in rows:
-            prefix, rest = split_leading_symbols(row["src_text"])
+            prefix, rest = split_leading_symbols(join_soft_wraps(row["src_text"]))
             body, suffix = split_trailing_symbols(rest)
             body = strip_gender_suffix(body)
             protected, mapping = protect(body)
@@ -177,6 +180,41 @@ async def bulk_seed(lang: str = "en") -> int:
         row_id = await enqueue_translation(lang, text_hash, text, origin_key=origin_key)
         if row_id is not None:
             queued += 1
+    return queued
+
+
+def _translated_before_prep_fix(src: str, text: str) -> bool:
+    """Машинный перевод сделан до склейки переносов и защиты @упоминаний (жалоба 28.09):
+    упоминание из исходника в переводе не уцелело, либо мягкие переносы перенесены строка в
+    строку (переводилось построчно — столько же \\n, сколько в исходнике). Свежий перевод
+    этим признакам не отвечает, поэтому повторный старт ничего не ставит заново."""
+    if any(m not in text for m in mentions_and_urls(src)):
+        return True
+    return has_soft_wraps(src) and text.count("\n") >= src.count("\n")
+
+
+async def requeue_stale_machine_translations(lang: str = "en") -> int:
+    """Ставит заново в очередь машинные переводы, испорченные до фикса предобработки. Ручные
+    (`manual=1`) и отброшенные (`text=''`) не трогает. Идемпотентно — зовётся на каждом
+    старте рядом с `bulk_seed`."""
+    queued = 0
+    offset = 0
+    while True:
+        rows, total = await list_translations(lang, offset=offset, limit=200, state=None)
+        for row in rows:
+            text = row.get("text")
+            if row.get("manual") or not text:
+                continue
+            if not _translated_before_prep_fix(row.get("src_text") or "", text):
+                continue
+            row_id = await enqueue_translation(
+                lang, row["src_hash"], row["src_text"], origin_key=row.get("origin_key"),
+            )
+            if row_id is not None:
+                queued += 1
+        offset += len(rows)
+        if not rows or offset >= total:
+            break
     return queued
 
 
