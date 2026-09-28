@@ -1098,3 +1098,35 @@ def test_failed_scheduled_post_is_retried_same_week(tmp_path, monkeypatch):
     monkeypatch.setattr(sched, "_bot", ok_bot)
     _run(crp.run_job("spb"))
     assert len(ok_bot.sent) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Согласие не записалось — анкета не продолжается
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_consent_write_failure_stops_with_human_text(tmp_path, monkeypatch):
+    from handlers import onsite_reg as onsite_handlers
+    from tests.test_onsite_reg_chat_260927 import _Cb
+    from tests.test_roles_phase8 import _fresh_state
+    _chat_ready(tmp_path)
+
+    async def _boom(*_a, **_kw):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(onsite_handlers, "record_user_consent", _boom)
+    uid = 954301
+    state = _fresh_state(uid)
+    _run(state.set_state(onsite_handlers.OnsiteReg.consent))
+    cb = _Cb(uid, "onsite_consent")
+    _run(onsite_handlers.onsite_consent(cb, state))
+    assert _run(state.get_state()) == onsite_handlers.OnsiteReg.consent.state
+    assert cb.alerts and cb.alerts[-1][1] is True
+    assert cb.alerts[-1][0] == SETTINGS_SCHEMA["onsite_reg_consent_failed_text"]["default"]
+    assert cb.message.texts() == []  # вопроса об имени нет
+    assert _row(uid) is None
+
+
+def test_consent_failed_text_has_english_default():
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    meta = SETTINGS_SCHEMA["onsite_reg_consent_failed_text"]
+    assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
