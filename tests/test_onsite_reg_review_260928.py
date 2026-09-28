@@ -1215,3 +1215,22 @@ def test_university_answer_is_capped_with_hint(tmp_path):
     ok = _Msg(uid, "В" * onsite_handlers._MAX_UNIVERSITY_LEN)
     _run(onsite_handlers.onsite_university(ok, state))
     assert _row(uid)["university"] == "В" * onsite_handlers._MAX_UNIVERSITY_LEN
+
+
+def test_outbox_event_is_enqueued_after_decision_journal(tmp_path, monkeypatch):
+    """Бот может разобрать событие сразу после постановки — к этому моменту строка журнала
+    решений уже должна быть, иначе проверка «журнал не записан» подняла бы ложную тревогу."""
+    _seed_ready(tmp_path)
+    _onsite_on()
+    _run(_insert_user(954701, status="pending", city="spb"))
+    seen = []
+    real = onsite_reg.ensure_onsite_outbox
+
+    async def _spy(user):
+        seen.append(len(_decisions(954701)))
+        await real(user)
+
+    monkeypatch.setattr(onsite_reg, "ensure_onsite_outbox", _spy)
+    _door(954701)
+    assert seen and seen[0] == 1
+    assert len(_onsite_events(954701)) == 1
