@@ -152,8 +152,8 @@ def _door_approved(user: dict | None) -> bool:
 
 async def ensure_onsite_outbox(user: dict | None) -> None:
     """Событие `onsite_approved` для бота (лист, сообщение, QR) — ровно одно на решение стойки.
-    Ставится сразу после выигранного флипа, до журналов и отметки: любой сбой дальше не теряет
-    хвост. Повторное нажатие волонтёра ставит его снова, если первое не записалось; дубль
+    Ставится сразу после выигранного флипа и записи журналов (fail-soft), до отметки входа:
+    сбой дальше не теряет хвост. Повторное нажатие волонтёра ставит его снова, если первое не записалось; дубль
     отсекает `enqueue_miniapp_outbox_once` (payload несёт `onsite_at` решения — новое решение в
     следующем сезоне даст новое событие). Сбой — в лог ошибкой: следующее нажатие повторит."""
     if not _door_approved(user):
@@ -218,8 +218,6 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
         tid, by_staff_id=staff_id, season=event_season,
         event_city=move_city, override_reject=overriding,
     )
-    fresh = await get_user(tid) or user
-    await ensure_onsite_outbox(fresh)
     if flipped:
         from services import venue_log
         from services.applications import record_decision
@@ -245,7 +243,11 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
             details=details or None,
         )
 
-    fresh = await get_user(tid) or fresh
+    # Событие для бота — сразу после флипа и двух fail-soft записей журналов (они не бросают),
+    # ДО отметки входа: сбой дальше не теряет хвост. Журнал решений к этому моменту уже
+    # записан — бот, разбирая событие, не примет «ещё не записан» за сбой.
+    fresh = await get_user(tid) or user
+    await ensure_onsite_outbox(fresh)
     # Флип проигран (параллельно одобрил кто-то другой) — пускаем, только если человек теперь
     # действительно допущен; иначе отказ словами, отметку не ставим.
     fresh_denial = await checkin_denial(fresh)
