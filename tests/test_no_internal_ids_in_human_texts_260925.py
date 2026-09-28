@@ -42,7 +42,7 @@ def _texts_of(value) -> list[str]:
 def test_settings_registry_texts_have_no_internal_ids():
     bad = []
     for key, spec in SETTINGS_SCHEMA.items():
-        for field in ("label", "prompt", "default"):
+        for field in ("label", "prompt", "default", "default_free"):
             for text in _texts_of(spec.get(field)):
                 m = INTERNAL_ID_RE.search(text)
                 if m:

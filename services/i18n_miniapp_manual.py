@@ -78,6 +78,18 @@ _HUB_STATUS = {
     "Осталось оплатить участие — и увидимся {дата} в {город}.": (
         "All that's left is to pay for participation — see you {дата} in {город}."
     ),
+    # Заводской набор под бесплатное участие (`default_free` в реестре, модуль оплаты выключен).
+    "Ждём тебя {дата} в {город}.": "See you {дата} in {город}.",
+    "Следи за новостями в боте": "Follow the news in the bot",
+    "Программу и детали пришлём сюда же, в чат.": (
+        "We'll send the programme and details right here, in the chat."
+    ),
+    "Позови друзей": "Invite your friends",
+    "Поделись своей ссылкой-приглашением из бота.": "Share your invite link from the bot.",
+    "После одобрения — детали": "After approval — the details",
+    "Программу и организационные детали пришлём в чат.": (
+        "We'll send the programme and logistics details to the chat."
+    ),
     "Что дальше": "What's next",
     "Изменить анкету": "Edit application",
     "Оплатить участие": "Pay for participation",
