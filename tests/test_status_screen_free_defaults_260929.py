@@ -183,3 +183,13 @@ def test_manager_saved_empty_string_is_respected(client):
             await conn.commit()
     _run(_save_empty())
     assert _run(get_setting_typed("reg_status_approved_step1_body_text")) == ""
+
+
+def test_free_defaults_have_manual_english():
+    from services.i18n_miniapp_manual import MANUAL_EN
+
+    for key in _FREE_KEYS:
+        free = SETTINGS_SCHEMA[key]["default_free"]
+        assert free in MANUAL_EN, (key, free)
+        for token in ("{дата}", "{город}"):
+            assert (token in free) == (token in MANUAL_EN[free]), (key, token)
