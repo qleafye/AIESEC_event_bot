@@ -114,6 +114,23 @@ POST: list[tuple[re.Pattern, str]] = [
 # сентинела одна и та же.
 _TAG_OR_PLACEHOLDER_RE = re.compile(r"</?[a-zA-Z][^<>]*>|\{[^{}]+\}")
 
+# @упоминания и ссылки — тоже неизменяемые куски (жалоба делегата 28.09: «@youlead26» →
+# «@youlea d26» во всех автопереводах текстов отказа). Идут отдельным проходом ПОСЛЕ
+# тэгов: ссылка внутри `<a href="...">` к этому моменту уже спрятана в сентинел тэга.
+_MENTION_OR_URL_RE = re.compile(
+    r"https?://[^\s<>]+[^\s<>.,!?;:)»\"']|(?<![\w@])@[A-Za-z0-9_]{3,}\b|\bt\.me/[A-Za-z0-9_/+-]+"
+)
+# Точку сразу после упоминания/ссылки прячем в тот же сентинел: терпимый поиск сентинела
+# (`_tolerant_sentinel_re`) съедает точку за токеном, и конец фразы иначе теряется.
+_MENTION_OR_URL_WITH_DOT_RE = re.compile(f"(?:{_MENTION_OR_URL_RE.pattern})\\.?")
+
+# Мягкий перенос: одиночный \n посреди предложения (тексты копируют из макетов с ручной
+# вёрсткой: «спешим сообщить о не\nпрохождении»). Движок переводит строки по отдельности и
+# теряет смысл, вплоть до потери отрицания. Склеиваем, если строка НЕ кончается знаком конца
+# фразы/эмодзи, а следующая начинается со строчной буквы; абзацы (\n\n) и строки списков
+# (начинаются с «-», «•», цифры, эмодзи) не трогаются.
+_SOFT_WRAP_RE = re.compile(r"(?<=[^\W_]|,|—)[ \t]*\n[ \t]*(?=[a-zа-яё])")
+
 # Ведущие эмодзи/символы/пробелы перед первой буквой (кириллической или латинской) — `\w` с
 # юникодом покрывает буквы любого алфавита, `\W` — всё остальное (эмодзи, пробел, спецсимвол).
 _LEADING_SYMBOLS_RE = re.compile(r"^[\W_]+", re.UNICODE)
@@ -196,6 +213,7 @@ def protect(text: str) -> tuple[str, dict[str, str]]:
         return token
 
     protected = _TAG_OR_PLACEHOLDER_RE.sub(lambda m: _wrap(m.group(0)), text)
+    protected = _MENTION_OR_URL_WITH_DOT_RE.sub(lambda m: _wrap(m.group(0)), protected)
 
     # Длинные термины раньше коротких («Нижний Новгород» до отдельного «Новгород», которого
     # тут нет, но принцип общий) — исключает частичное перекрытие при последовательных replace.
@@ -289,6 +307,21 @@ def split_trailing_symbols(text: str) -> tuple[str, str]:
     if not rest:
         return text, ""
     return rest, suffix
+
+
+def join_soft_wraps(text: str) -> str:
+    """Склеивает мягкие переносы внутри предложения пробелом (см. `_SOFT_WRAP_RE`). Вызывать
+    на исходнике ДО `split_leading_symbols`; в `translations.src_text` остаётся оригинал —
+    склейка касается только того, что уходит в движок."""
+    return _SOFT_WRAP_RE.sub(" ", text)
+
+
+def has_soft_wraps(text: str) -> bool:
+    return bool(_SOFT_WRAP_RE.search(text or ""))
+
+
+def mentions_and_urls(text: str) -> list[str]:
+    return _MENTION_OR_URL_RE.findall(text or "")
 
 
 def strip_gender_suffix(text: str) -> str:

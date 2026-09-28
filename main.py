@@ -337,9 +337,10 @@ async def main():
     # реально непереведённые (см. докстринг `services/i18n_worker.py::bulk_seed`).
     try:
         if await get_setting_typed("delegate_lang_enabled") == "on":
-            from services.i18n_worker import bulk_seed
+            from services.i18n_worker import bulk_seed, requeue_stale_machine_translations
 
             await bulk_seed()
+            await requeue_stale_machine_translations()
     except Exception:
         logger.warning("Не удалось досеять корпус перевода анкеты", exc_info=True)
 
