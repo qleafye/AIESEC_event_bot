@@ -706,6 +706,11 @@ async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = Fals
     decision_delivery_*`). Остаётся fail-soft: ни один путь не поднимает исключение наружу,
     существующие вызывающие, игнорирующие возврат, ведут себя byte-for-byte прежними."""
     logger.info(f"user={telegram_id} action=approve_welcome")
+    # Колонка «В чате» в листе: у одобренного «-» сменится на «да»/«нет»/«не проверено» —
+    # событие в очередь `sheet_chat_queue` (fail-soft внутри, одобрение не задерживает).
+    from database.db import enqueue_sheet_chat_cells
+
+    await enqueue_sheet_chat_cells([telegram_id])
     # Phase 5 (D-15): resolve the track ONCE, here, at the top — BEFORE the module-gate
     # branch below (which checks the payment setting and returns early). approve_user
     # receives only a chat id (no FSM data), so get_user() is the only way to learn the
