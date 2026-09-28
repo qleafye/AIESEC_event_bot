@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from datetime import timedelta
 
@@ -383,6 +384,84 @@ async def refresh_all_chats(bot) -> list[dict]:
             reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
         await refresh_chat_admins(bot, entry["chat_id"])
     return reports
+
+
+# ── 29.09: сверка состава по кнопке менеджера ────────────────────────────────────────────
+
+# Флаг, а не asyncio.Lock: проверка-и-установка без await между ними атомарна в одном цикле,
+# и флаг не привязан к event loop (тесты гоняют каждый сценарий своим asyncio.run).
+_reconcile_running = False
+
+
+def claim_reconcile() -> bool:
+    """Занять сверку. False — уже идёт (второе нажатие во время прогона)."""
+    global _reconcile_running
+    if _reconcile_running:
+        return False
+    _reconcile_running = True
+    return True
+
+
+def release_reconcile() -> None:
+    global _reconcile_running
+    _reconcile_running = False
+
+
+async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
+    """Сверка ВСЕХ привязанных чатов по кнопке «🔄 Сверить состав чата». Тумблер учёта здесь
+    НЕ гейтит — по той же причине, что в `bind_reconcile_job`: это явное действие менеджера, а
+    не фоновая активность. Сама сверка — `refresh_chat` (батчи, пауза, потолок, fail-soft) и
+    `refresh_chat_admins`; второй копии логики нет. Кто свежепроверен (`chat_refresh_minutes`),
+    повторно не спрашивается — повторное нажатие дозапрашивает остальных, а не тех же 500.
+
+    Возвращает по чату `{chat_id, city, city_label, title, in_chat, not_in_chat, unknown,
+    not_found, errors, truncated, checked}` (in/not_in/unknown — по базе ПОСЛЕ сверки, по
+    всем одобренным города) или `None`, если сверка уже идёт. `claimed=True` — флаг уже занят
+    вызывающим (`claim_reconcile`), здесь только снимается."""
+    if not claimed and not claim_reconcile():
+        return None
+    try:
+        from cities import city_label  # ленивый: чистая подпись города для отчёта
+
+        reports = []
+        for entry in await bound_chats():
+            chat_id, city = entry["chat_id"], entry["city"]
+            report = await refresh_chat(bot, chat_id, city)
+            await refresh_chat_admins(bot, chat_id)
+            approved = await _approved_ids_for_city(city)
+            statuses = await chat_member_statuses(chat_id, approved)
+            in_chat = sum(1 for s in statuses.values() if s in CHAT_PRESENT_STATUSES)
+            reports.append({
+                **report, "chat_id": chat_id, "city": city, "title": entry["title"],
+                "city_label": (await city_label(city)) if city else None,
+                "in_chat": in_chat, "not_in_chat": len(statuses) - in_chat,
+                "unknown": len(approved) - len(statuses),
+            })
+        return reports
+    finally:
+        release_reconcile()
+
+
+def reconcile_report_text(reports: list[dict]) -> str:
+    """Итог сверки для лички менеджера — по строке на чат, по-человечески."""
+    if not reports:
+        return "Чат делегатов не подключён — добавьте бота в группу администратором."
+    lines = ["🔄 <b>Сверка состава чата завершена</b>", ""]
+    retry = False
+    for rep in reports:
+        title = html.escape(rep.get("title") or "чат")
+        where = f"Чат «{title}»" + (f" ({rep['city_label']})" if rep.get("city_label") else "")
+        lines.append(
+            f"{where}: в чате — {rep['in_chat']}, не в чате — {rep['not_in_chat']}, "
+            f"аккаунт не найден — {rep['not_found']}, не удалось проверить — {rep['errors']}."
+        )
+        if rep.get("unknown"):
+            lines.append(f"Ещё не проверены: {rep['unknown']}.")
+        retry = retry or bool(rep.get("errors")) or bool(rep.get("truncated")) or bool(rep.get("unknown"))
+    lines += ["", "Колонка «В чате» в таблице обновится в течение пары минут."]
+    if retry:
+        lines.append("Нажмите кнопку ещё раз позже, чтобы дозапросить остальных.")
+    return "\n".join(lines)
 
 
 # ── Квик 260915-twr (D2): разовая сверка сразу после привязки чата ───────────────────────

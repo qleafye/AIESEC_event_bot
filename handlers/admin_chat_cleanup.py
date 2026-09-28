@@ -22,6 +22,7 @@ from handlers.admin import router
 from handlers.settings_validation import validate_setting_value
 from handlers.states import ChatCleanupEdit
 from services import chat_cleanup, chat_tracking
+from services.background import spawn
 from settings_audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)
@@ -147,3 +148,41 @@ async def chclean_delay_value(message: types.Message, state: FSMContext):
     await state.clear()
     text, kb = await render_chat_cleanup_screen(message.from_user.id)
     await message.answer("✅ Сохранено\n\n" + text, parse_mode="HTML", reply_markup=kb)
+
+
+# ── 29.09: «🔄 Сверить состав чата» (раздел «🔧 Управление») ────────────────────────────────
+# Сверка идёт фоном (до пары минут на 500 делегатов), итог — личным сообщением менеджеру.
+# Колбэк отвечает сразу, чтобы у менеджера не висел спиннер.
+
+async def _reconcile_and_report(bot, admin_id: int) -> None:
+    """Фоновая часть: флаг сверки уже занят хендлером, `reconcile_all_now` его снимет."""
+    try:
+        reports = await chat_tracking.reconcile_all_now(bot, claimed=True)
+        await bot.send_message(admin_id, chat_tracking.reconcile_report_text(reports or []),
+                               parse_mode="HTML")
+    except Exception:
+        chat_tracking.release_reconcile()
+        logger.exception("chat_reconcile_now: сверка состава чата упала")
+        try:
+            await bot.send_message(admin_id, "Сверка состава чата не удалась — попробуйте ещё раз "
+                                             "через пару минут.")
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data == "admin_chat_reconcile")
+async def chat_reconcile_now(callback: types.CallbackQuery, bot):
+    if not await chat_tracking.bound_chats():
+        await callback.answer(
+            "Чат делегатов не подключён — добавьте бота в группу делегатов администратором.",
+            show_alert=True,
+        )
+        return
+    if not chat_tracking.claim_reconcile():
+        await callback.answer("Сверка уже идёт — итог придёт сюда, в личку.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.answer(
+        "🔄 Сверяю состав чата, это займёт до пары минут — пришлю итог сюда."
+    )
+    spawn(_reconcile_and_report(bot, callback.from_user.id))
