@@ -830,6 +830,10 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "onsite_reg_rate_limited_text": ["слишком много попыток на месте", "частые запуски короткой анкеты"],
     "onsite_override_button_text": ["пропустить вопреки отказу", "отменить отказ у стойки"],
     "onsite_override_confirm_text": ["подтверждение вопреки отказу", "отказ будет отменён у стойки"],
+    "onsite_wrong_city_text": ["делегат другого города у стойки", "отправьте на стойку своего города"],
+    "onsite_approved_scanner_text": ["одобрен на месте плашка", "зелёная плашка стойки"],
+    "onsite_link_error_text": ["ссылка анкеты не собралась", "откройте сканер заново"],
+    "onsite_link_no_city_text": ["выберите город для ссылки анкеты", "у каждого города своя ссылка"],
     "onsite_off_text": ["регистрация на месте выключена сканер", "стойка выключена для города"],
     # ── Phase 33 (delegate-card admin actions): «🏙 Перевести в город» ────────────────────
     "city_move_delegate_notice_text": [

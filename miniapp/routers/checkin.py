@@ -71,6 +71,7 @@ from services.onsite_reg import (
     refine_denial,
     rejected_reason_text,
     walkin_link,
+    wrong_city_text,
     walkin_qr_png,
 )
 from services.person_search import search_people
@@ -679,9 +680,10 @@ async def checkin_stats(
 
 # ── регистрация на месте (D-41) ──────────────────────────────────────────────────────────
 
-_ONSITE_APPROVED_TEXT = "Одобрен(а) на месте"
-_LINK_ERROR_TEXT = "Не получилось собрать ссылку — откройте сканер заново."
-_LINK_NO_CITY_TEXT = "Выберите город вверху экрана — у каждого города своя ссылка."
+async def _staff_text(p: Principal, key: str) -> str:
+    """Текст волонтёру из реестра (D-34) на его языке."""
+    lang, tr_map = await i18n.context(p.telegram_id)
+    return await i18n.tr_setting(key, lang, tr_map) or ""
 
 
 async def _onsite_off(p: Principal) -> dict:
@@ -734,6 +736,8 @@ async def onsite_approve(
         return await _with_city_label({**await _onsite_off(p), **_person_fields(user)})
     if status == "wrong_city":
         await _log_denial(p, bound, "wrong_city", point=ENTRY_POINT, source="manual", user=user)
+        lang, tr_map = await i18n.context(p.telegram_id)
+        res["reason_text"] = await wrong_city_text(user, lang, tr_map)
     if status in ("wrong_city", "denied", "not_found"):
         res.pop("first_entry", None)
         return await _with_city_label({**res, **_person_fields(user)})
@@ -742,7 +746,7 @@ async def onsite_approve(
     # повторное нажатие восстанавливает его без дубля (`ensure_onsite_outbox`).
     await _forward_first_entry(res)
     if res.get("onsite_approved"):
-        res["reason_text"] = _ONSITE_APPROVED_TEXT
+        res["reason_text"] = await _staff_text(p, "onsite_approved_scanner_text")
     fresh = await get_user(body.telegram_id) or user
     return await _with_city_label({**res, **_person_fields(fresh)})
 
@@ -851,12 +855,12 @@ async def onsite_link(
     не шлёт initData, картинка отдельным URL получила бы 401."""
     stand = await _stand_city(request, p, city)
     if stand is None and await cities_module_on():
-        return {"status": "error", "reason_text": _LINK_NO_CITY_TEXT}
+        return {"status": "error", "reason_text": await _staff_text(p, "onsite_link_no_city_text")}
     if not await onsite_enabled(stand):
         return await _onsite_off(p)
     link = await walkin_link(request.app.state.cfg.bot_username, stand)
     if not link:
-        return {"status": "error", "reason_text": _LINK_ERROR_TEXT}
+        return {"status": "error", "reason_text": await _staff_text(p, "onsite_link_error_text")}
     lang, tr_map = await i18n.context(p.telegram_id)
     qr = base64.b64encode(walkin_qr_png(link)).decode("ascii")
     return {

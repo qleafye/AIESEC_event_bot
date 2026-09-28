@@ -1130,3 +1130,41 @@ def test_consent_failed_text_has_english_default():
     from services.i18n_form_manual import FORM_DEFAULT_EN
     meta = SETTINGS_SCHEMA["onsite_reg_consent_failed_text"]
     assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Тексты волонтёру — из реестра (D-34), с английским дефолтом
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+VOLUNTEER_TEXTS = ("onsite_wrong_city_text", "onsite_approved_scanner_text",
+                   "onsite_link_error_text", "onsite_link_no_city_text")
+
+
+def test_volunteer_texts_in_registry_with_english_defaults():
+    from services.i18n_form_manual import FORM_DEFAULT_EN
+    staff_group = SETTINGS_SCHEMA["checkin_undo_button_text"]["group"]
+    for key in VOLUNTEER_TEXTS:
+        meta = SETTINGS_SCHEMA[key]
+        assert meta["type"] == "text" and meta["group"] == staff_group, key
+        assert meta["default"] in FORM_DEFAULT_EN, key
+    assert "{city}" in SETTINGS_SCHEMA["onsite_wrong_city_text"]["default"]
+    src = (Path(__file__).resolve().parents[1] / "miniapp" / "routers" / "checkin.py").read_text(encoding="utf-8")
+    assert "_ONSITE_APPROVED_TEXT" not in src and "_LINK_NO_CITY_TEXT" not in src
+
+
+def test_scanner_uses_registry_texts(tmp_path):
+    client = _ready(tmp_path, enable=("spb", "msk"))
+    _grant_checkin_to_bound_manager()
+    _run(bot_db.set_setting("onsite_approved_scanner_text", "Пропущен у стойки"))
+    _run(bot_db.set_setting("onsite_wrong_city_text", "Чужой город: {city}"))
+    _run(_insert_user(954401, status="pending", city="spb"))
+    ok = client.post(f"{ONSITE}/approve", json={"telegram_id": 954401}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert ok["reason_text"] == "Пропущен у стойки"
+    _run(_insert_user(954402, status="pending", city="msk"))
+    wrong = client.post(f"{ONSITE}/approve", json={"telegram_id": 954402}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert wrong["status"] == "wrong_city" and wrong["reason_text"].startswith("Чужой город: ")
+
+    _run(bot_db.set_setting("onsite_link_no_city_text", "Сначала город"))
+    from tests.test_miniapp_routes import ADMIN_ID as MINI_ADMIN
+    body = client.get(f"{ONSITE}/link", headers=_hdr(MINI_ADMIN)).json()
+    assert body["status"] == "error" and body["reason_text"] == "Сначала город"
