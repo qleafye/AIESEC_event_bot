@@ -1888,6 +1888,27 @@ async def init_db():
             "ON sheet_arrival_queue(next_try_at, id)"
         )
 
+        # 29.09: очередь записи «В чате» в Google-лист — вход/выход из чата, одобрение, сверка
+        # состава. Та же семантика, что у sheet_arrival_queue выше (строка = «пересчитать
+        # делегата», значение всегда из базы, джоба `services/sheet_chat_sync.py` удаляет id <=
+        # прочитанного максимума). Отдельная таблица, а не вид события в sheet_arrival_queue:
+        # ту пишет и Mini App, а drop/fail по (telegram_id, id <= max) без фильтра по виду
+        # снесли бы чужие события уже работающей очереди.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sheet_chat_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_try_at TEXT NOT NULL,
+                last_error TEXT
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sheet_chat_queue_due "
+            "ON sheet_chat_queue(next_try_at, id)"
+        )
+
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
         # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
@@ -5702,6 +5723,20 @@ async def upsert_chat_member(chat_id: int, telegram_id: int, status: str, source
             "updated_at=excluded.updated_at, source=excluded.source",
             (chat_id, telegram_id, status, resolved_joined_at, resolved_left_at, now, source),
         )
+        # 29.09: колонка «В чате» в листе — событие в очередь при смене присутствия (и на первую
+        # запись: «не проверено» -> «да»/«нет»). Одобренность отсекает сам SELECT — посторонние
+        # из чата в очередь не попадают. Какой чат «свой» для делегата, решает джоба
+        # (`chat_tracking.chat_cell_values`), значение всегда из базы — лишний пересчёт безвреден.
+        # Сбой вставки не рвёт учёт чата: он важнее листа.
+        if row is None or was_present != now_present:
+            try:
+                await db.execute(
+                    "INSERT INTO sheet_chat_queue (telegram_id, created_at, next_try_at) "
+                    "SELECT telegram_id, ?, ? FROM users WHERE telegram_id = ? AND status = 'approved'",
+                    (now, now, telegram_id),
+                )
+            except Exception as e:
+                logger.warning("sheet_chat_queue: не поставил событие для %s: %s", telegram_id, e)
         await db.commit()
 
 
@@ -8839,6 +8874,64 @@ async def fail_sheet_arrivals(upto: dict[int, int], error: str, next_try_at: str
         await db.commit()
 
 
+# ── Очередь записи «В чате» в Google-лист (29.09) ─────────────────────────────────────────
+
+async def enqueue_sheet_chat_cells(telegram_ids: list[int]) -> None:
+    """События «пересчитать ячейку «В чате»» пачкой (одобрение, сверка состава). Fail-soft:
+    сбой — предупреждение в лог, лист догонит следующая сверка или пересборка."""
+    ids = [int(t) for t in telegram_ids]
+    if not ids:
+        return
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        async with _connect() as db:
+            await db.executemany(
+                "INSERT INTO sheet_chat_queue (telegram_id, created_at, next_try_at) VALUES (?, ?, ?)",
+                [(tid, now, now) for tid in ids],
+            )
+            await db.commit()
+    except Exception as e:
+        logger.warning("sheet_chat_queue: не поставил %s событий: %s", len(ids), e)
+
+
+async def list_due_sheet_chat(now: str, limit: int) -> list[dict]:
+    """Созревшие события очереди «В чате» в порядке id."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sheet_chat_queue WHERE next_try_at <= ? ORDER BY id LIMIT ?",
+            (now, int(limit)),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def drop_sheet_chat(upto: dict[int, int]) -> int:
+    """Как `drop_sheet_arrivals`: удалить события `{telegram_id: max_id}` с id <= max_id."""
+    if not upto:
+        return 0
+    async with _connect() as db:
+        cursor = await db.executemany(
+            "DELETE FROM sheet_chat_queue WHERE telegram_id = ? AND id <= ?",
+            [(tid, max_id) for tid, max_id in upto.items()],
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def fail_sheet_chat(upto: dict[int, int], error: str, next_try_at: str) -> None:
+    """Как `fail_sheet_arrivals`: attempts + 1, текст ошибки (уже без секретов), backoff."""
+    if not upto:
+        return
+    async with _connect() as db:
+        await db.executemany(
+            "UPDATE sheet_chat_queue SET attempts = attempts + 1, last_error = ?, next_try_at = ? "
+            "WHERE telegram_id = ? AND id <= ?",
+            [((error or "")[:SHEET_ARRIVAL_ERROR_MAX], next_try_at, tid, max_id)
+             for tid, max_id in upto.items()],
+        )
+        await db.commit()
+
+
 async def sheet_arrival_queue_stats() -> tuple[int, str | None]:
     """(сколько событий в очереди, created_at самого старого) — для «🚦 Готовность к форуму»."""
     async with _connect() as db:
@@ -9928,6 +10021,8 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # удаляемого делегата в лист. Строки листа удаления не переживают, писать некуда — событие
     # уходит вместе с человеком, группа общая "checkin" (соседи checkins/venue_log выше).
     ("sheet_arrival_queue", "telegram_id", "checkin"),
+    # 29.09: sheet_chat_queue.telegram_id — несделанная запись «В чате», та же логика.
+    ("sheet_chat_queue", "telegram_id", "checkin"),
     # Трек «региональные форумы → Москва»: regional_noshow_move.telegram_id — кому и когда ушло
     # предложение переноса + сам ответ (перенёсся/отказался), тот же личный след, группа общая
     # "checkin" (соседи forum_noshow_poll/checkin_not_arrived выше — тот же журнал отправки
