@@ -219,8 +219,16 @@ async def build_post(city: str | None, *, now: datetime | None = None) -> tuple:
     return text, chat
 
 
+def week_key(now: datetime) -> str:
+    """Ключ недели поста — дата понедельника последней завершённой недели."""
+    since, _until = last_week(now.date())
+    return since.isoformat()
+
+
 async def publish(city: str | None, bot, *, now: datetime | None = None) -> tuple[str, dict | None]:
-    """Отправить пост в чат города. Статус: ok / not_bound / empty / send_failed."""
+    """Отправить пост в чат города. Статус: ok / not_bound / empty / send_failed. Удачный пост
+    запоминает неделю (`chat_rating_posts`) — плановая джоба ту же неделю второй раз не шлёт."""
+    now = now or msk_now()
     text, chat = await build_post(city, now=now)
     if chat is None:
         return "not_bound", None
@@ -232,6 +240,11 @@ async def publish(city: str | None, bot, *, now: datetime | None = None) -> tupl
         logger.warning(f"chat_rating_post: не удалось отправить в чат {chat['chat_id']} "
                        f"(город {city!r}): {e}")
         return "send_failed", chat
+    try:
+        from database.db import set_chat_rating_posted_week
+        await set_chat_rating_posted_week(city, week_key(now))
+    except Exception as e:
+        logger.error(f"chat_rating_post: неделя поста не запомнена (город {city!r}): {e}")
     return "ok", chat
 
 
@@ -313,9 +326,16 @@ async def run_job(city: str | None) -> None:
         if not await _city_still_valid(city):
             logger.info(f"chat_rating_post: город {city!r} — публикация выключена, пропуск")
             return
+        from database.db import get_chat_rating_posted_week
         from services.scheduler import get_bot
 
-        status, chat = await publish(city, get_bot(), now=msk_now())
+        now = msk_now()
+        # Смена дня/времени после сегодняшнего поста переставляет джобу — пост той же недели
+        # второй раз не уходит (ручная публикация тоже считается).
+        if await get_chat_rating_posted_week(city) == week_key(now):
+            logger.info(f"chat_rating_post: город {city!r} — пост за эту неделю уже был, пропуск")
+            return
+        status, chat = await publish(city, get_bot(), now=now)
         if status == "ok":
             logger.info(f"chat_rating_post: рейтинг опубликован в чат {chat['chat_id']} ({city!r})")
         elif status == "not_bound":
