@@ -46,6 +46,7 @@ from handlers.reg_schema import (
     sheet_city_code,
     _sheet_kind,
     ARRIVED_CELL_KEY,
+    CHAT_CELL_KEY,
     arrived_cells_map,
 )
 # Квик 260915-4is: party_sheet_headers/short_sheet_headers и дефолтные имена вкладок нужны
@@ -105,6 +106,10 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
     # «Пришёл» — из базы одним запросом на всех: пересборка перезаписывает строку целиком, и «-»
     # вместо времени стёр бы отметки прихода, уже записанные очередью (день форума).
     arrived = await arrived_cells_map()
+    # «В чате» — тоже из базы одним проходом, иначе пересборка стёрла бы колонку в «-».
+    from services.chat_tracking import chat_cells_map
+
+    chat_cells = await chat_cells_map()
 
     for u in users:
         participant_type = u.get("participant_type")
@@ -130,7 +135,11 @@ async def build_sheet_batches(users: list[dict]) -> list[SheetBatch]:
             else:
                 headers_cache[cache_key] = await active_sheet_headers(code)
         headers = headers_cache[cache_key]
-        values = _sheet_value_map({**u, ARRIVED_CELL_KEY: arrived.get(u.get("telegram_id"), "")})
+        values = _sheet_value_map({
+            **u,
+            ARRIVED_CELL_KEY: arrived.get(u.get("telegram_id"), ""),
+            CHAT_CELL_KEY: chat_cells.get(u.get("telegram_id"), "-"),
+        })
         row = [values.get(h, "-") for h in headers]
 
         if tab is None:

@@ -22,13 +22,17 @@ import logging
 from datetime import timedelta
 
 from config import config
-from cities import ALL_CITIES, cities_module_on, city_scope, enabled_cities, per_city_key
+from cities import (
+    ALL_CITIES, cities_module_on, city_scope, enabled_cities, normalize_city, per_city_key,
+)
 from database.db import (
+    chat_member_statuses,
     count_and_list_filtered,
     replace_chat_admins,
     set_chat_bot_state,
     stale_chat_member_candidates,
     upsert_chat_member,
+    users_status_city,
     CHAT_PRESENT_STATUSES,
 )
 from services.timeutil import msk_now
@@ -182,6 +186,61 @@ async def is_bot_admin_user(telegram_id: int) -> bool:
     from handlers.admin_caps import resolve_capabilities
 
     return "settings" in await resolve_capabilities(telegram_id)
+
+
+# ── 29.09: колонка «В чате» в листе делегатов ────────────────────────────────────────────
+
+CHAT_CELL_YES = "да"
+CHAT_CELL_NO = "нет"
+CHAT_CELL_UNKNOWN = "не проверено"
+CHAT_CELL_NA = "-"
+
+
+async def chat_cell_values(telegram_ids: list[int]) -> dict[int, str]:
+    """ЕДИНСТВЕННЫЙ источник значения ячейки «В чате» (строка листа, пересборка, очередь).
+
+    Одобренный делегат -> «да» (статус в чате СВОЕГО города из `CHAT_PRESENT_STATUSES`),
+    «нет» (запись есть, но не присутствие), «не проверено» (записи нет — сверка ещё не
+    спрашивала). Не одобрен, не зарегистрирован или у его города чат не привязан -> «-».
+    Чат города выбирается по `bound_chats()` с той же семантикой, что `city_scope`
+    (`normalize_city`: NULL/мусор -> город по умолчанию), без фолбэка на чужой чат (D-7).
+    Запросов к базе: один по users + по одному на задействованный чат (чанками)."""
+    ids = list(dict.fromkeys(int(t) for t in telegram_ids))
+    out = {tid: CHAT_CELL_NA for tid in ids}
+    if not ids:
+        return out
+    chats = await bound_chats()
+    if not chats:
+        return out
+    users = await users_status_city(ids)
+    module_on = await cities_module_on()
+    chat_by_city = {entry["city"]: entry["chat_id"] for entry in chats}
+    by_chat: dict[int, list[int]] = {}
+    for tid in ids:
+        status, event_city = users.get(tid, (None, None))
+        if status != "approved":
+            continue
+        chat_id = chat_by_city.get(normalize_city(event_city) if module_on else None)
+        if chat_id is None:
+            continue
+        by_chat.setdefault(chat_id, []).append(tid)
+    for chat_id, members in by_chat.items():
+        statuses = await chat_member_statuses(chat_id, members)
+        for tid in members:
+            if tid not in statuses:
+                out[tid] = CHAT_CELL_UNKNOWN
+            elif statuses[tid] in CHAT_PRESENT_STATUSES:
+                out[tid] = CHAT_CELL_YES
+            else:
+                out[tid] = CHAT_CELL_NO
+    return out
+
+
+async def chat_cells_map() -> dict[int, str]:
+    """{telegram_id: «В чате»} для всех одобренных — массовая пересборка листа одним проходом.
+    Кого нет в ответе, тому «-» (не одобрен)."""
+    approved = await count_and_list_filtered([{"field": "status", "value": "approved"}])
+    return await chat_cell_values(approved)
 
 
 # ── Задача 2: периодическая сверка состава ───────────────────────────────────────────────
