@@ -1,5 +1,6 @@
 import asyncio
 import html
+import json
 import logging
 from datetime import datetime
 from aiogram import Router, F, types, Bot
@@ -118,12 +119,47 @@ async def ensure_registered(message: types.Message) -> bool:
     if kind == "pending":
         # Phase 17.1 (17.1-01): текст гейта — в реестре (сосед reject_text ниже уже был там).
         await reg_i18n.say(message, await get_setting_typed("pending_gate_text"))
-    else:  # rejected
+    elif not await _say_auto_reject_again(message, user):  # rejected
         await reg_i18n.say(
             message,
             await get_setting("reject_text") or "К сожалению, твоя заявка отклонена.",
         )
     return False
+
+
+async def _say_auto_reject_again(message: types.Message, user: dict) -> bool:
+    """Отклонённому автоправилом повторяем то же, что ушло при подаче: общий `reject_text` +
+    тексты сработавших правил. Без этого (жалоба 28.09) делегат при подаче читал «ты в
+    резерве», а на любой кнопке — голое «заявка отклонена». Снимок текстов — из живой строки
+    журнала автоотказов, как в `reg_finalize.post_finalize`; нет снимка — текущие тексты
+    правил. Вернуло False — вызывающий показывает общий текст."""
+    from database.db import get_live_auto_reject_log_entry, get_reject_rule
+    from handlers import registration
+    from services.applications import reject_message_text
+
+    raw_ids = (user.get("auto_reject_rule_ids") or "").strip()
+    if raw_ids in ("", "[]"):
+        return False
+    texts: list[str] = []
+    try:
+        entry = await get_live_auto_reject_log_entry(message.from_user.id)
+        if entry and entry.get("reject_texts"):
+            texts = [str(t) for t in json.loads(entry["reject_texts"]) or [] if str(t).strip()]
+        if not texts:
+            for rule_id in json.loads(raw_ids) or []:
+                rule = await get_reject_rule(int(rule_id))
+                text = str((rule or {}).get("reject_text") or "").strip()
+                if text:
+                    texts.append(text)
+    except (TypeError, ValueError) as exc:
+        logger.error(f"_say_auto_reject_again: битые id/снимок правил у {message.from_user.id}: {exc}")
+        return False
+    if not texts:
+        return False
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    reason = "\n\n".join(reg_i18n.tr_text(t, lang, tr_map) for t in texts)
+    await registration._safe_answer(message, await reject_message_text(reason, lang, tr_map))
+    return True
 
 
 async def _returning_text_if_past_season(
