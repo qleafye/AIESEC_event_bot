@@ -420,6 +420,11 @@ async def main():
     # задача ниже пишет heartbeat-файл только пока эти отметки свежие — т.е. файл отражает
     # живость поллинга, а не event loop. Семантика целиком — в services/heartbeat.py.
     bot.session.middleware(PollingHeartbeatMiddleware())
+    # 29.09: сотрудник сам написал боту в личку -> снимаем отметку «уведомления не доходят»
+    # (services/staff_reach.py). Outer на update — после встроенного UserContextMiddleware,
+    # поэтому event_from_user/event_chat уже в data. Хендлер вызывается всегда.
+    from services.staff_reach import StaffReachMiddleware
+    dp.update.outer_middleware(StaffReachMiddleware())
 
     # CR-8: global error handler. Without this, any unhandled exception in a handler is
     # silently dropped (the update just vanishes). Fails soft (return True = handled). The

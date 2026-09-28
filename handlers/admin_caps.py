@@ -29,6 +29,7 @@ from settings_schema import get_setting_typed
 # only config/database.db/settings_schema (see cities.py's own module docstring) -- it never
 # imports handlers.*, so importing it here from handlers/admin_caps.py cannot form a cycle.
 from cities import cities_module_on, normalize_city
+from services import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
 
 logger = logging.getLogger(__name__)
 
@@ -247,8 +248,10 @@ async def notify_by_capability(
         try:
             await bot.send_message(uid, text, parse_mode=parse_mode)
             sent += 1
-        except TelegramForbiddenError:
+            await staff_reach.note_delivered(uid)
+        except TelegramForbiddenError as e:
             blocked.append(uid)
+            await staff_reach.note_undeliverable(uid, e)
             if now - _blocked_notified_at.get(uid, 0) >= _BLOCKED_ALERT_COOLDOWN:
                 to_alert.append(uid)
                 _blocked_notified_at[uid] = now
@@ -258,7 +261,12 @@ async def notify_by_capability(
                     uid, cap,
                 )
         except Exception as e:
-            logger.error("notify_by_capability: failed to notify %s (cap=%s): %s", uid, cap, e)
+            if not staff_reach.is_unreachable_error(e):
+                logger.error("notify_by_capability: failed to notify %s (cap=%s): %s", uid, cap, e)
+                continue
+            await staff_reach.note_undeliverable(uid, e)  # «chat not found»: не нажимал /start
+            log = logger.warning if staff_reach.first_warning_today(uid) else logger.debug
+            log("notify_by_capability: %s is unreachable (cap=%s): %s", uid, cap, e)
 
     if to_alert:
         try:
