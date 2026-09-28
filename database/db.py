@@ -4228,7 +4228,7 @@ async def create_onsite_user(telegram_id: int, username: str | None, full_name: 
         return cursor.rowcount == 1
 
 
-async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str,
+async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str | None,
                          event_city: str | None = None, override_reject: bool = False) -> bool:
     """Одобрение ОДНОГО человека у стойки одним атомарным UPDATE. Флипает pending и
     одобренного ПРОШЛОГО сезона (тот переезжает в текущий сезон, старый — в prev_season);
@@ -4252,9 +4252,11 @@ async def approve_onsite(telegram_id: int, *, by_staff_id: int, season: str,
         cursor = await db.execute(
             "UPDATE users SET status = 'approved', approved_at = :now, onsite_at = :now, "
             f"onsite_by = :by, onsite_kind = COALESCE(onsite_kind, 'door'), {clear}"
-            "prev_season = CASE WHEN COALESCE(season, '') != '' AND season != :season "
-            "THEN season ELSE prev_season END, "
-            "season = :season, event_city = COALESCE(:city, event_city) "
+            # Сезон события не задан (:season NULL) — сезон строки не трогаем: иначе флип
+            # обнулил бы его, а prev_season получил бы мусор.
+            "prev_season = CASE WHEN :season IS NOT NULL AND COALESCE(season, '') != '' "
+            "AND season != :season THEN season ELSE prev_season END, "
+            "season = COALESCE(:season, season), event_city = COALESCE(:city, event_city) "
             "WHERE telegram_id = :tid AND ("
             "COALESCE(status, '') NOT IN ('approved', 'rejected') "
             "OR (status = 'rejected' AND :override = 1) "
