@@ -305,9 +305,15 @@ SHEET_COLUMNS = [
     # строки кладут его в `d[ARRIVED_CELL_KEY]` (`with_arrived_cell` / `arrived_cells_map`). Раньше
     # здесь стояло «-», и пересборка листа в день форума стирала все отметки прихода.
     ("Пришёл", None, lambda d: d.get(ARRIVED_CELL_KEY) or "-"),
+    # 29.09: «В чате» — ПОСЛЕДНЕЙ, после «Пришёл», по тому же правилу «новая колонка только в
+    # конец». Значение из базы (`services.chat_tracking.chat_cell_values`): строители строки
+    # кладут его в `d[CHAT_CELL_KEY]` (`with_chat_cell` / `chat_cells_map`), живые изменения
+    # дописывает очередь `sheet_chat_queue` (`services/sheet_chat_sync.py`).
+    ("В чате", None, lambda d: d.get(CHAT_CELL_KEY) or "-"),
 ]
 
 ARRIVED_CELL_KEY = "_arrived_cell"
+CHAT_CELL_KEY = "_chat_cell"
 
 
 async def arrived_cells_map() -> dict[int, str]:
@@ -329,6 +335,22 @@ async def with_arrived_cell(data: dict) -> dict:
 
     at = await first_entry_scanned_at(int(data["telegram_id"]))
     return {**data, ARRIVED_CELL_KEY: arrival_cell_value(at)}
+
+
+async def with_chat_cell(data: dict) -> dict:
+    """Копия `data` со значением ячейки «В чате» из базы (для ОДНОЙ строки). Уже положенное
+    значение (массовый путь через `chat_cells_map`) не перезапрашивается."""
+    if CHAT_CELL_KEY in data or not data.get("telegram_id"):
+        return data
+    from services.chat_tracking import chat_cell_values
+
+    tid = int(data["telegram_id"])
+    return {**data, CHAT_CELL_KEY: (await chat_cell_values([tid])).get(tid, "-")}
+
+
+async def with_sheet_cells(data: dict) -> dict:
+    """Обе ячейки «из базы» (Пришёл + В чате) для строки главной/городской/короткой вкладки."""
+    return await with_chat_cell(await with_arrived_cell(data))
 
 # Full static header list (all columns) — kept for reference/tests. Live sync uses the
 # dynamic active_sheet_headers() below.
