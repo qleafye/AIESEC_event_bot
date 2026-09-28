@@ -1330,6 +1330,7 @@ admin|callback_query|chrate_task_toggle|chrate:task:*
 admin|callback_query|chat_cleanup_open|admin_chat_cleanup
 admin|callback_query|chclean_toggle|chclean:t:*
 admin|callback_query|chclean_delay|chclean:delay
+admin|callback_query|chat_reconcile_now|admin_chat_reconcile
 admin|callback_query|chpost_open|chpost:open:*
 admin|callback_query|chpost_toggle|chpost:toggle:*
 admin|callback_query|chpost_day|chpost:day:*
@@ -1981,7 +1982,10 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после admin_chat_cleanup — три callback_query (onsitereg_cfg:*/onsitereg_toggle:*/
     # onsitereg_qr:*) после chpost_publish_go (шов импортируется после admin_chat_rating_post).
     # Одна чистая вставка (3 строки), 0 удалений, 0 реордеров (889 -> 892).
-    assert len(GOLDEN_SNAPSHOT) == 892
+    # 29.09 (колонка «В чате»): кнопка «🔄 Сверить состав чата» — callback_query
+    # chat_reconcile_now (admin_chat_reconcile) хвостом шва handlers/admin_chat_cleanup.py, сразу
+    # после chclean_delay. Одна чистая вставка, 0 удалений, 0 реордеров (892 -> 893).
+    assert len(GOLDEN_SNAPSHOT) == 893
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
