@@ -344,12 +344,34 @@ async def chpost_publish_cancel(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# Двойное нажатие «✅ Да, опубликовать» давало два поста с @-упоминаниями (убрать — только
+# руками в чате). Процессная защита: город в работе и уже отработанные экраны подтверждения
+# (chat_id, message_id) — запоздавший колбэк того же экрана второй раз не публикует.
+_publishing: set = set()
+_published_messages: set = set()
+
+
 @router.callback_query(F.data.startswith("chpost:go:"))
 async def chpost_publish_go(callback: types.CallbackQuery, bot: Bot, now: datetime | None = None):
     ok, code = await _checked_city(callback, callback.data.split(":", 2)[2])
     if not ok:
         return
-    status, chat = await crp.publish(code, bot, now=now)
+    msg = callback.message
+    msg_key = (getattr(getattr(msg, "chat", None), "id", None), getattr(msg, "message_id", None))
+    if code in _publishing or (msg_key[1] is not None and msg_key in _published_messages):
+        await callback.answer("Публикую — второй раз нажимать не нужно.")
+        return
+    _publishing.add(code)
+    if msg_key[1] is not None:
+        _published_messages.add(msg_key)
+    try:
+        await msg.edit_text("⏳ Публикую…")  # кнопки подтверждения исчезают сразу
+    except Exception:
+        pass
+    try:
+        status, chat = await crp.publish(code, bot, now=now)
+    finally:
+        _publishing.discard(code)
     messages = {
         "ok": "✅ Опубликовано в чат «{title}».",
         "not_bound": "Чат делегатов города не привязан — публиковать некуда. Добавьте бота в чат "
