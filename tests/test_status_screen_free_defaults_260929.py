@@ -13,7 +13,7 @@ import pytest
 
 from database import db as bot_db
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from text_fill import fill_collapsing
+from services.text_fill import fill_collapsing
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,

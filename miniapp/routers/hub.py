@@ -29,7 +29,7 @@ from payment_options import parse_options
 import reg_engine
 from services import applications, i18n, reg_edit_policy
 from settings_schema import get_setting_typed
-from text_fill import fill_collapsing
+from services.text_fill import fill_collapsing
 
 from miniapp.deps import Principal, delegate_gate, form_gate
 from miniapp.routers.coins import count_participants
