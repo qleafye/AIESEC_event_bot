@@ -35,6 +35,7 @@ from database.db import (
     set_staff_expiry,
 )
 from services.person_search import search_people
+from services.staff_reach import mark_text, superadmin_lines, unreachable_marks
 from services.staff_expiry import (
     forum_end_date_iso,
     format_ddmmyyyy,
@@ -456,6 +457,7 @@ async def render_roles_text() -> str:
     if not staff:
         lines.append("<i>Пока никто не назначен.</i>")
     show_city = await cities_module_on()  # Phase 09.1 (C, ROLE-03)
+    marks = await unreachable_marks()  # 29.09: кому уведомления не доходят (fail-soft -> {})
     for row in staff:
         tid = row["telegram_id"]
         role_label = ROLES.get(row["role"], {}).get("label", row["role"])
@@ -470,7 +472,10 @@ async def render_roles_text() -> str:
             city_text = await city_label(city) if city else "🌍 Все города"
             line += f" · 🏙 {city_text}"
         line += f" · {_expiry_line_text(row.get('expires_at'))}"
+        if tid in marks:
+            line += f" · {mark_text(marks[tid].get('since'))}"
         lines.append(line)
+    lines.extend(superadmin_lines(marks))
 
     lines.append("")
     admins_text = ", ".join(str(a) for a in config.ADMIN_IDS)

@@ -44,6 +44,7 @@ from cities import cities_module_on, city_label, city_scope, enabled_cities
 from database.db import auto_reject_summary, daily_digest_stats, get_display_names
 from settings_schema import get_setting_typed
 from services.timeutil import msk_now
+from services import staff_reach
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,18 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
         lines.append("🎮 Геймификация: сегодня тихо")
 
     return "\n".join(lines)
+
+
+def unreachable_line(names: list[str]) -> str | None:
+    """29.09: одна строка «кому из получателей сводки бот не может написать» — или None.
+    Имена экранируются здесь. Кто именно и с какого числа — на экране «👥 Роли и доступы»."""
+    if not names:
+        return None
+    who = ", ".join(html.escape(str(n)) for n in names)
+    return (
+        f"⚠️ Не получают уведомления бота: {who} — заблокировали бота или не нажали /start. "
+        "Подробнее — «👥 Роли и доступы»."
+    )
 
 
 # ── Async helpers ─────────────────────────────────────────────────────────────
@@ -227,12 +240,25 @@ async def send_city_digest(bot, city: str | None) -> int:
         return 0
 
     recipients = await digest_recipients(city) or list(config.ADMIN_IDS)
+    # 29.09: отметки «не доходит» берутся ДО рассылки — по итогам прошлых неудач; сбой -> {}.
+    marks = await staff_reach.unreachable_marks()
+    lost = [uid for uid in recipients if uid in marks]
+    if lost:
+        try:
+            lost_names = await get_display_names(lost)
+        except Exception as e:
+            logger.warning(f"daily_digest: unreachable names lookup failed: {e}")
+            lost_names = {}
+        text += "\n" + unreachable_line([manager_name(uid, lost_names) for uid in lost])
     sent = 0
     for uid in recipients:
         try:
             await bot.send_message(uid, text, parse_mode="HTML")
             sent += 1
+            await staff_reach.note_delivered(uid)
         except Exception as e:
+            if staff_reach.is_unreachable_error(e):
+                await staff_reach.note_undeliverable(uid, e)
             # Тот же fail-soft, что у notify_by_capability: один сломанный чат не блокирует
             # доставку остальным.
             logger.warning(f"daily_digest: failed to send to {uid}: {e}")
