@@ -991,6 +991,9 @@ _REGISTRY_TEXTS_EN = {
     ),
     "Убрать нельзя — по человеку уже есть решение или это обычная заявка.":
         "Can't remove — this person already has a decision or a regular application.",
+    "Слишком длинно — напиши название вуза короче, до 200 символов, например: СПбГУ":
+        "That's too long — write a shorter university name, up to 200 characters, for example: "
+        "SPbU",
     "Не получилось сохранить согласие — нажми кнопку ещё раз.":
         "Couldn't save your consent — please tap the button again.",
     "Слишком много попыток подряд. Подожди пару минут и открой ссылку снова.":
