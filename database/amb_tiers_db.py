@@ -218,3 +218,139 @@ async def referral_coin_ordinals(user_id: int) -> dict[int, int]:
         ) as cursor:
             rows = await cursor.fetchall()
     return {int(row[0]): n for n, row in enumerate(rows, start=1)}
+
+
+# ── Админка «🎓 Ступени амбассадоров»: выгрузка и ручное исключение ────────────────────────
+
+_O2O_LABELS = {"granted": "выдан", "waitlist": "лист ожидания"}
+
+AMB_CSV_HEADERS = [
+    "telegram_id", "@username", "Дата вступления", "Всего по ссылке", "На рассмотрении",
+    "Прошли отбор", "Дошли", "Текущая ступень", "Дата ступени", "Разбор резюме (O2O)",
+]
+
+
+async def export_ambassador_tiers_csv(season: str) -> tuple[list[str], list[list]]:
+    """`(headers, rows)` выгрузки «Амбассадоры: прогресс и ступени».
+
+    Строка — это АМБАССАДОР (сейчас `is_ambassador = 1` или уже получил ступень): ни одного
+    поля приглашённых в файл не идёт, только числа по ним. Счётчики — те же, что у ступеней
+    (`referral_counts_bulk`, текущий сезон). Сортировка по ТЗ: больше дошедших выше, при
+    равенстве — больше прошедших отбор, затем раньше достигнутая текущая ступень."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT telegram_id, username, ambassador_since FROM users "
+            "WHERE is_ambassador = 1 "
+            "OR telegram_id IN (SELECT telegram_id FROM ambassador_tiers)"
+        ) as cursor:
+            people = [dict(r) for r in await cursor.fetchall()]
+        async with conn.execute(
+            "SELECT telegram_id, tier, reached_at, o2o_status FROM ambassador_tiers"
+        ) as cursor:
+            tier_rows = [dict(r) for r in await cursor.fetchall()]
+    counts = await referral_counts_bulk([p["telegram_id"] for p in people], season)
+
+    top: dict[int, dict] = {}
+    o2o: dict[int, str | None] = {}
+    for row in tier_rows:
+        tid = int(row["telegram_id"])
+        if tid not in top or int(row["tier"]) > int(top[tid]["tier"]):
+            top[tid] = row
+        if int(row["tier"]) == 2:
+            o2o[tid] = row["o2o_status"]
+
+    records = []
+    for person in people:
+        tid = int(person["telegram_id"])
+        c = counts.get(tid, _ZERO)
+        best = top.get(tid)
+        records.append((c, best, person))
+    records.sort(key=lambda rec: (
+        -rec[0]["arrived"], -rec[0]["qualified"],
+        rec[1]["reached_at"] if rec[1] else "9999",
+        int(rec[2]["telegram_id"]),
+    ))
+
+    rows = []
+    for c, best, person in records:
+        tid = int(person["telegram_id"])
+        username = (person.get("username") or "").strip().lstrip("@")
+        rows.append([
+            tid,
+            # Без «@» в ячейке: ведущая «@» — триггер формулы, `_csv_safe` приписал бы к ней
+            # апостроф, и в Excel было бы видно «'@name». Заголовок колонки говорит, что это.
+            _db._csv_safe(username),
+            _db._csv_safe(person.get("ambassador_since") or ""),
+            c["total"], c["pending"], c["qualified"], c["arrived"],
+            int(best["tier"]) if best else 0,
+            _db._csv_safe(best["reached_at"] if best else ""),
+            _db._csv_safe(_O2O_LABELS.get(o2o.get(tid) or "", "—")),
+        ])
+    return list(AMB_CSV_HEADERS), rows
+
+
+async def exclude_invitee(invitee_id: int, reason: str, excluded_by: int | None, at: str) -> bool:
+    """Исключает приглашённого из зачёта. `False` — уже был исключён (повторное нажатие)."""
+    async with _db._connect() as conn:
+        cursor = await conn.execute(
+            "INSERT OR IGNORE INTO ambassador_exclusions "
+            "(invitee_id, reason, excluded_by, excluded_at) VALUES (?, ?, ?, ?)",
+            (int(invitee_id), reason, excluded_by, at),
+        )
+        won = cursor.rowcount == 1
+        await conn.commit()
+    return won
+
+
+async def get_exclusion(invitee_id: int) -> dict | None:
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM ambassador_exclusions WHERE invitee_id = ?", (int(invitee_id),)
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def unexclude_invitee(invitee_id: int) -> dict | None:
+    """Возвращает приглашённого в зачёт; отдаёт удалённую строку (`None` — его уже вернули)."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM ambassador_exclusions WHERE invitee_id = ?", (int(invitee_id),)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        cursor = await conn.execute(
+            "DELETE FROM ambassador_exclusions WHERE invitee_id = ?", (int(invitee_id),)
+        )
+        won = cursor.rowcount == 1
+        await conn.commit()
+    return dict(row) if won else None
+
+
+async def count_exclusions() -> int:
+    async with _db._connect() as conn:
+        async with conn.execute("SELECT COUNT(*) FROM ambassador_exclusions") as cursor:
+            return int((await cursor.fetchone())[0])
+
+
+async def list_exclusions(limit: int = 10, offset: int = 0) -> list[dict]:
+    """Исключённые для экрана МЕНЕДЖЕРА (ему имена видны): свежие сверху, с именем
+    приглашённого и пригласившего."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT e.invitee_id, e.reason, e.excluded_by, e.excluded_at, "
+            "u.full_name AS invitee_name, u.username AS invitee_username, "
+            "u.referrer_id AS referrer_id, r.full_name AS referrer_name "
+            "FROM ambassador_exclusions e "
+            "LEFT JOIN users u ON u.telegram_id = e.invitee_id "
+            "LEFT JOIN users r ON r.telegram_id = u.referrer_id "
+            "ORDER BY e.excluded_at DESC, e.invitee_id DESC LIMIT ? OFFSET ?",
+            (int(limit), int(offset)),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]

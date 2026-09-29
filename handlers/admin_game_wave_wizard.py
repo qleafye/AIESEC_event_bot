@@ -597,3 +597,9 @@ __all__ = [
     "wave_create_intro_step", "wave_create_intro_skip", "wave_create_redates",
     "wave_create_go", "wave_copy_go", "wave_create_cancel",
 ]
+
+
+# Шов «🎓 Ступени амбассадоров» (квалифицированная амбассадорка СкиллАп): хвостом последнего
+# файла игровой цепочки — его хендлеры регистрируются сразу после визарда волн, этот модуль
+# и main.py не растут.
+from handlers import admin_amb_tiers  # noqa: E402,F401
