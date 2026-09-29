@@ -165,3 +165,64 @@ async def check_tiers_for_invitees(invitee_ids) -> None:
             await check_tiers(referrers)
     except Exception:
         logger.exception("amb_tiers: check_tiers_for_invitees не прошла")
+
+
+async def preview_backfill() -> list[dict]:
+    """Предпросмотр разового пересчёта «кому какая ступень» — ничего не пишет.
+
+    Список амбассадоров (сейчас `is_ambassador = 1`), которым положена хотя бы одна НОВАЯ
+    ступень, в том порядке, в каком `tools/backfill_amb_tiers.py --apply` будет их
+    обрабатывать: по времени, когда амбассадор набрал порог разбора резюме (одобрение
+    `t2`-го прошедшего отбор; не дотянул — по порогу ступени 1), при равенстве — по id. Этот
+    же порядок — порядок раздачи квоты, поэтому прогноз «выдан / лист ожидания» совпадает с
+    тем, что запишет `--apply` (он зовёт тот же `check_tiers` по одному в этом порядке).
+
+    Элемент: `{"telegram_id", "username", "qualified", "tiers": [{"tier", "o2o_status",
+    "exists"}]}` — `exists=True` у ступеней, которые уже выданы. Дедлайн прошёл — `[]`."""
+    if await deadline_passed():
+        return []
+    t1, t2, t3 = await thresholds()
+    quota = int(await get_setting_typed("amb_o2o_quota"))
+    season = await current_season()
+    times = await amb_tiers_db.qualified_approval_times(season)
+    existing: dict[int, dict[int, dict]] = {}
+    for row in await amb_tiers_db.list_tiers():
+        existing.setdefault(int(row["telegram_id"]), {})[int(row["tier"])] = row
+
+    candidates = []
+    for rid, approvals in times.items():
+        qualified = len(approvals)
+        if qualified < t1:
+            continue
+        user = await _db.get_user(rid)
+        if not user or int(user.get("is_ambassador") or 0) != 1:
+            continue
+        reached = [t for t, th in ((1, t1), (2, t2), (3, t3)) if qualified >= th]
+        have = existing.get(rid, {})
+        if all(t in have for t in reached):
+            continue
+        key_idx = (t2 if qualified >= t2 else t1) - 1
+        candidates.append((approvals[key_idx], rid, user, qualified, reached, have))
+    candidates.sort(key=lambda c: (c[0], c[1]))
+
+    granted = (await amb_tiers_db.o2o_summary())["granted"]
+    result = []
+    for _, rid, user, qualified, reached, have in candidates:
+        tiers = []
+        for tier in reached:
+            if tier in have:
+                tiers.append({"tier": tier, "o2o_status": have[tier].get("o2o_status"), "exists": True})
+                continue
+            o2o_status = None
+            if tier == 2:
+                o2o_status = "granted" if granted < quota else "waitlist"
+                if o2o_status == "granted":
+                    granted += 1
+            tiers.append({"tier": tier, "o2o_status": o2o_status, "exists": False})
+        result.append({
+            "telegram_id": rid,
+            "username": (user.get("username") or "").strip().lstrip("@"),
+            "qualified": qualified,
+            "tiers": tiers,
+        })
+    return result
