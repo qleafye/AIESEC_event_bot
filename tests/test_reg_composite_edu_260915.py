@@ -11,13 +11,13 @@ import asyncio
 from config import config
 from database.db import init_db, set_setting
 
-from reg_engine import (
+from core.reg_engine import (
     _composite_spec_for,
     parse_age,
     step_spec,
     validate_answer,
 )
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 AGE_ERROR = "Укажи корректный возраст числом от 10 до 120."
@@ -139,7 +139,7 @@ def test_composite_spec_studying_option_none_when_options_list_empty(tmp_path, m
     async def _empty_options(step_key):
         return []
 
-    import reg_engine
+    from core import reg_engine
     monkeypatch.setattr(reg_engine, "options", _empty_options)
     spec = asyncio.run(_composite_spec_for("education", None, None, _ALL_ON_FLAGS))
     assert spec["studying_option"] is None

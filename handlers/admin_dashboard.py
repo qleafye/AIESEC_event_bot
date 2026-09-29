@@ -14,8 +14,8 @@ Phase 13.
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 # Порядок блоков на странице дашборда (D-14): воронка -> динамика ->

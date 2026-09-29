@@ -39,15 +39,15 @@ import re
 from dataclasses import dataclass
 
 from config import config
-from cities import (
+from core.cities import (
     PER_CITY_SEP, city_codes, city_label, city_tab_base, normalize_city, split_per_city_key,
     tab_suffix,
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
-from reg_presets import apply_reg_preset
+from core.reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
-from settings_validation import is_command_like, validate_setting_value
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
+from core.settings_validation import is_command_like, validate_setting_value
 
 
 # ── event_type preset (D-05) ──────────────────────────────────────────────────────────────

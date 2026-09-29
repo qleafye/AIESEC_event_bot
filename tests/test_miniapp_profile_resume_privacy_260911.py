@@ -12,7 +12,7 @@ import json
 from urllib.parse import quote
 
 import miniapp.routers.profile as profile_module
-import reg_engine
+from core import reg_engine
 
 from tests.test_miniapp_delegate import _fill_profile
 from tests.test_miniapp_routes import DELEGATE_ID, _cfg, _client, _hdr, _set, _standard_seed, _use_tmp_db

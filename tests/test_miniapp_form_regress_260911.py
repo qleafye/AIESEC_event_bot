@@ -16,9 +16,9 @@ import asyncio
 import json
 import re
 
-import reg_engine
-import settings_schema
-import settings_synonyms
+from core import reg_engine
+from core import settings_schema
+from core import settings_synonyms
 from database import db as bot_db
 
 from tests.test_miniapp_frontend import (

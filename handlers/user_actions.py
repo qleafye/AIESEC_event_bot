@@ -67,7 +67,7 @@ from services.ambassador_waves import (  # Phase 32 (32-06): участие в �
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
 )
-from cities import (
+from core.cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
     get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
     city_label,  # Трек «региональные форумы → Москва»: подпись города в ответах rnm_*
@@ -80,7 +80,7 @@ from keyboards.builders import (
     MENU_TEXTS,
 )
 from handlers.states import Question, GameSubmit
-from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
+from core.settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
@@ -88,7 +88,7 @@ from services.timeutil import msk_now  # Квик 260912-mcj: сравнение
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from config import config
-from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
+from core.reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
 router = Router()
 logger = logging.getLogger(__name__)

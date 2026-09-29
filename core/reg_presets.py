@@ -31,7 +31,7 @@ Mini App не имеет права тянуть тот корневой мод�
 import logging
 
 from database.db import set_setting
-from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
+from core.reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 
 logger = logging.getLogger(__name__)
 

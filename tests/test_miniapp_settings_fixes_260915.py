@@ -17,7 +17,7 @@ from config import config
 from database.db import init_db, set_setting
 
 from miniapp.routers.settings import _reg_questions_matrix
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 ROOT = Path(__file__).resolve().parent.parent

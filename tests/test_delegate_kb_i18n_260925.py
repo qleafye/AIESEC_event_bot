@@ -58,7 +58,7 @@ def test_session_feedback_comment_button_english():
 def test_nudge_keyboard_english():
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     from services import scheduler
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     chat = SETTINGS_SCHEMA["reg_nudge_chat_button_text"]["default"]
     app = SETTINGS_SCHEMA["reg_nudge_app_button_text"]["default"]

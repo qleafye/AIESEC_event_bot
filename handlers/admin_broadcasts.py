@@ -13,7 +13,7 @@ import asyncio
 import csv
 import html as html_module
 import io
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 import json
 import logging
 import os
@@ -89,7 +89,7 @@ from services.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
-from cities import CITIES, cities_module_on, city_label, city_scope
+from core.cities import CITIES, cities_module_on, city_label, city_scope
 from handlers.admin import router
 from config import config
 
@@ -1225,7 +1225,7 @@ def _value_picker_kb(field: str, options: list[str], page: int,
 # Human labels for payment_status values (shown in the filter summary / value picker).
 # Phase 19 (Mini App): словарь переехал в корневой `reg_labels.py` — профиль Mini App
 # показывает тот же статус оплаты теми же словами.
-from reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS  # noqa: E402
+from core.reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS  # noqa: E402
 
 
 def _filter_summary(filters: list[dict]) -> str:

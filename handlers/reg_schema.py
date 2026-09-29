@@ -21,25 +21,25 @@ import logging
 from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
-from reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
+from core.reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
 # Phase 21 (21-01, FORM-SYNC-01): REG_FLOW и его непосредственные зависимости переехали в
 # корневой aiogram-free reg_engine.py (та же причина, что у REG_LABELS выше — веб-процесс
 # Mini App не должен импортировать handlers.* и тянуть за собой весь бот). Реэкспорт ТЕХ ЖЕ
 # объектов — handlers/registration.py, handlers/admin.py, admin_reg_config.py и тесты
 # продолжают импортировать их отсюда как раньше.
-from reg_engine import (  # noqa: F401
+from core.reg_engine import (  # noqa: F401
     REG_FLOW, _is_party_track, SHORT_TRACK, _is_short_track,
     REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
     STEP_TO_COLUMN, REG_STEP_TYPES, is_step_enabled_for_track,
     parse_repeatable, repeatable_display,
     MINI_RESUME_STEPS, mini_resume_branch_active,
 )
-from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
+from core.cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
 # Квик 260917-en (приёмка 17.09, п.4): текст после одобрения — самый частый делегатский текст
 # после /start, раньше уходил по-русски даже при lang=en (bot.send_message мимо reg_i18n.say,
@@ -87,7 +87,7 @@ def dropout_step_label(step_key: str | None) -> str:
 # aiogram-free `reg_presets.py` — settings_ops.py (Mini App web process) needs the same
 # writer without importing anything from `handlers.*`. Re-exported under the same name so
 # every existing import site here keeps working unchanged.
-from reg_presets import REG_PRESETS  # noqa: F401,E402
+from core.reg_presets import REG_PRESETS  # noqa: F401,E402
 
 
 # WR-03: the D-08 overnight-only questions are excluded from _apply_party_preset's blanket

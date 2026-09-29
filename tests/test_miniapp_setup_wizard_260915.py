@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import re
 
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA
+from core import settings_ops
+from core.settings_schema import SETTINGS_SCHEMA
 
 from miniapp.setup_wizard import STEPS, step_done, visible_steps
 

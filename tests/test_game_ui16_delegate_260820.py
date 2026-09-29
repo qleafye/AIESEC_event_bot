@@ -8,7 +8,7 @@ from config import config
 from database import db
 from handlers import game_labels
 from handlers import user_actions as ua_mod
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

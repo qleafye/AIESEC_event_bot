@@ -23,7 +23,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, normalize_city
+from core.cities import cities_module_on, city_label, normalize_city
 from database.db import (
     add_coins,
     count_manual_coin_entries,
@@ -33,7 +33,7 @@ from database.db import (
     list_manual_coin_entries,
     search_users_by_name,
 )
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue

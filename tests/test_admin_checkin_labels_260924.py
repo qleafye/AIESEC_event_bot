@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-import cities
+from core import cities
 from config import config
 from database import db
 from database.db import _connect

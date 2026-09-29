@@ -27,7 +27,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_stored_lang, get_user, set_user_lang
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services.i18n import delegate_lang
 from handlers.registration import router
 # Задача 1 (смена языка из меню): keyboards.builders хендлеры не импортирует на уровне модуля

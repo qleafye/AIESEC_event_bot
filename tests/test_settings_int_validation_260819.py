@@ -19,7 +19,7 @@ from config import config
 from database import db
 from handlers import admin_settings
 from handlers.settings_validation import validate_setting_value
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900801

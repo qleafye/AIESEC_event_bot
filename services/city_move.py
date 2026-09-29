@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from cities import get_city, get_setting_typed_for_city, normalize_city
+from core.cities import get_city, get_setting_typed_for_city, normalize_city
 from database.db import (
     get_user,
     record_answer_history,
@@ -47,7 +47,7 @@ from database.db import (
     update_unsent_reg_digest_city,
     update_user_answers,
 )
-from reg_engine import _is_party_track, _is_short_track
+from core.reg_engine import _is_party_track, _is_short_track
 import services.sheets as sheets_service
 
 logger = logging.getLogger(__name__)

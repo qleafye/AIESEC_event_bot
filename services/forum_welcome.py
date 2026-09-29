@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from cities import get_setting_typed_for_city
+from core.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 

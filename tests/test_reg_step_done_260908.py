@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-import reg_engine
+from core import reg_engine
 from database import db
 from config import config
 

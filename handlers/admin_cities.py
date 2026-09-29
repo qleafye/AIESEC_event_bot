@@ -22,8 +22,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
 from database.db import (
     get_setting,
     get_staff_city,
@@ -41,7 +41,7 @@ from services.sheets import dedupe_sheet_by_id, REFUSED_UNPINNED_TAB
 from services.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
 from handlers.states import CityForm, SeasonReset, SeasonImport
-from cities import (
+from core.cities import (
     CITIES,
     ALL_CITIES,
     ALL_CITIES_LABEL,

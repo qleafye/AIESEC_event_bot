@@ -32,7 +32,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from handlers import registration as reg
 from handlers import reg_ambassador
 
@@ -355,7 +355,7 @@ def test_want_sets_is_ambassador_and_sends_bare_link(tmp_path):
     assert parse_mode is None
     assert link_markup is None
     note_text, _note_markup, _note_parse_mode = callback.message.sent[1]
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     assert "{section}" not in note_text
     assert SETTINGS_SCHEMA["miniapp_hub_referral_label_text"]["default"] in note_text
 
@@ -443,7 +443,7 @@ def test_ambassador_endpoint_sets_flag_and_returns_link(http_client):
     assert body["copied_toast"]
     # Приёмка 17.09 (п.2): пояснение под ссылкой упоминает постоянное место в приложении.
     assert body["note"]
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     assert "{section}" not in body["note"]
     assert SETTINGS_SCHEMA["miniapp_hub_referral_label_text"]["default"] in body["note"]
     user = _run(db.get_user(DELEGATE_ID))

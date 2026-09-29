@@ -183,7 +183,7 @@ def test_counter_button_label_comes_from_registry(tmp_path):
 
 
 def test_registry_has_two_new_game_keys_and_admin_order_lists_them():
-    import settings_schema as s
+    from core import settings_schema as s
     from handlers import admin as _admin_mod  # noqa: F401 -- ядро первым, иначе circular import
     from handlers import admin_settings
     for key in ("game_proof_collected_template", "game_proof_remove_last_button"):

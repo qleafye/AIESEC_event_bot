@@ -275,7 +275,7 @@ def test_event_city_picker_options_come_from_registry_not_db(tmp_path):
     """The base below has NO spb rows at all — spb must STILL be offered, because the values
     come from the city registry. DISTINCT over the column would also drop the default city
     entirely (its rows are NULL)."""
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
@@ -289,7 +289,7 @@ def test_event_city_picker_options_come_from_registry_not_db(tmp_path):
 
 
 def test_event_city_picker_buttons_show_labels_not_codes(tmp_path):
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
@@ -306,7 +306,7 @@ def test_event_city_picker_buttons_show_labels_not_codes(tmp_path):
 def test_event_city_picker_labels_survive_pagination(tmp_path):
     """Page navigation redraws the same keyboard — the human labels must not degrade back to
     raw codes on page 2."""
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
@@ -324,7 +324,7 @@ def test_event_city_picker_labels_survive_pagination(tmp_path):
 
 
 def _pick_city(tmp_path, code):
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
@@ -340,7 +340,7 @@ def _pick_city(tmp_path, code):
 
 
 def test_picking_default_city_stores_non_empty_exclude(tmp_path):
-    import cities
+    from core import cities
     default_code = cities.default_city_code()
     filters = _pick_city(tmp_path, default_code)
     assert len(filters) == 1
@@ -360,7 +360,7 @@ def test_picking_non_default_city_stores_empty_exclude(tmp_path):
 
 def test_picked_city_filter_produces_expected_sql(tmp_path):
     """End-to-end: what the picker stores is exactly what the SQL builder consumes."""
-    import cities
+    from core import cities
     filters = _pick_city(tmp_path, cities.default_city_code())
     where, params = _build_filter_clause(json.loads(json.dumps(filters, ensure_ascii=False)))
     assert "IS NULL" in where
@@ -368,7 +368,7 @@ def test_picked_city_filter_produces_expected_sql(tmp_path):
 
 
 def test_filter_summary_shows_city_label_not_code(tmp_path):
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     filters = _pick_city(tmp_path, "spb")
@@ -392,7 +392,7 @@ def test_broadcast_filter_menu_opens_empty_even_with_selected_city(tmp_path):
     """Deliberate decision: the admin's selected city does NOT pre-fill the broadcast filter —
     a pre-set condition nobody typed is exactly how a manager sends to a third of the base
     while believing they sent to everyone."""
-    import cities
+    from core import cities
     from handlers import admin as admin_mod
     from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     _admin_ready(tmp_path)
@@ -448,7 +448,7 @@ def test_filter_f_event_city_is_a_registered_callback():
 # рассылку. Пересчёт делается в момент ОТПРАВКИ.
 
 def test_refresh_city_filter_spec_recomputes_exclude_from_the_live_registry():
-    import cities
+    from core import cities
     default_code = cities.default_city_code()
     stale = [{"field": "event_city", "value": default_code, "exclude": []}]
     fresh = cities.refresh_city_filter_spec(stale)
@@ -460,20 +460,20 @@ def test_refresh_city_filter_spec_recomputes_exclude_from_the_live_registry():
 def test_refresh_city_filter_spec_refuses_a_code_the_registry_no_longer_knows():
     """None = «не отправлять». Молча нормализовать неизвестный код нельзя: normalize_city
     свернул бы его в город ПО УМОЛЧАНИЮ и перенаправил всю рассылку туда."""
-    import cities
+    from core import cities
     assert cities.refresh_city_filter_spec(
         [{"field": "event_city", "value": "atlantis"}]
     ) is None
 
 
 def test_refresh_city_filter_spec_leaves_non_city_filters_untouched():
-    import cities
+    from core import cities
     spec = [{"field": "status", "value": "approved"}, {"field": "city", "value": "Москва"}]
     assert cities.refresh_city_filter_spec(spec) == spec
 
 
 def test_refresh_city_filter_spec_hands_an_empty_value_to_the_wr01_guard():
-    import cities
+    from core import cities
     out = cities.refresh_city_filter_spec([{"field": "event_city", "value": ""}])
     assert _build_filter_clause(out) == (" WHERE 0", [])
 
@@ -481,7 +481,7 @@ def test_refresh_city_filter_spec_hands_an_empty_value_to_the_wr01_guard():
 def test_stale_exclude_leaks_other_cities_until_it_is_refreshed(tmp_path):
     """Тот самый дефект в цифрах: снимок снят, когда реестр знал только msk и spb; tyumen
     добавили позже, и «московская» спека забирает тюменцев. После пересчёта — не забирает."""
-    import cities
+    from core import cities
     _seed_broadcast_base(tmp_path)
     default_code = cities.default_city_code()
     stale = [{"field": "event_city", "value": default_code, "exclude": ["spb"]}]
@@ -522,7 +522,7 @@ def _run_scheduled_broadcast(tmp_path, spec_obj):
 def test_send_scheduled_broadcast_refreshes_the_frozen_city_exclude(tmp_path):
     """WR-02 end-to-end: отложенная рассылка со СТАРЫМ снимком exclude обязана уйти только
     в свой город — пересчёт делается в момент отправки, а не берётся из JSON."""
-    import cities
+    from core import cities
     default_code = cities.default_city_code()
     sent = _run_scheduled_broadcast(
         tmp_path, [{"field": "event_city", "value": default_code, "exclude": ["spb"]}]

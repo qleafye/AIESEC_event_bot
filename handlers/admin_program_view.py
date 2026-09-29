@@ -18,11 +18,11 @@
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton
 
-from cities import cities_module_on, per_city_key
+from core.cities import cities_module_on, per_city_key
 from handlers.admin import router
 from services.program import PROGRAM_VIEW_KEY, resolve_program_view
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA
 
 _CYCLE = {"table": "photo", "photo": "table"}
 

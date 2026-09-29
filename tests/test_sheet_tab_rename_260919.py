@@ -20,13 +20,13 @@ from aiogram.types import InlineKeyboardButton
 import gspread
 import pytest
 
-import cities
+from core import cities
 from config import config
 from database import db
 from handlers import admin_sheet_tabs
 from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
-import settings_ops
+from core import settings_ops
 from tests._dbtpl import fast_init_db
 
 

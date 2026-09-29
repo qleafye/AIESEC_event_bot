@@ -8,9 +8,9 @@ import asyncio
 
 from config import config
 from database import db
-import cities
+from core import cities
 from handlers import registration as reg
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 
 def _use_tmp_db(tmp_path):

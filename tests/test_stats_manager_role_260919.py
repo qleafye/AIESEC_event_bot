@@ -54,7 +54,7 @@ def test_stats_manager_disabled_role_grants_nothing(tmp_path):
 
 def test_role_caps_stats_manager_default_is_registry_default(tmp_path):
     _ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     value = asyncio.run(get_setting_typed("role_caps_stats_manager"))
     assert value == ["stats"]
@@ -72,14 +72,14 @@ def test_capability_holders_stats_includes_stats_manager(tmp_path):
 
 
 def test_stats_manager_registry_keys_are_in_roles_group(tmp_path):
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     assert SETTINGS_SCHEMA["role_caps_stats_manager"]["group"] == "roles"
     assert SETTINGS_SCHEMA["role_stats_manager_enabled"]["group"] == "roles"
 
 
 def test_stats_manager_registry_keys_not_editable(tmp_path):
-    import settings_ops
+    from core import settings_ops
 
     assert "role_caps_stats_manager" not in settings_ops.editable_keys()
     assert "role_stats_manager_enabled" not in settings_ops.editable_keys()
@@ -169,7 +169,7 @@ def test_roles_addrole_stats_manager_creates_staff_with_all_cities(tmp_path):
 def test_roles_toggle_stats_manager_flips_enabled_setting(tmp_path):
     from tests.test_roles_phase8 import dispatch_callback
     from aiogram.dispatcher.event.bases import UNHANDLED
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     _ready(tmp_path)
     result, _ = dispatch_callback(f"roles_toggle:{STATS_ROLE}", ADMIN_ID)

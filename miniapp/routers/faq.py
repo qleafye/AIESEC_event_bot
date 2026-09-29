@@ -32,7 +32,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, normalize_city
+from core.cities import cities_module_on, city_label, normalize_city
 from database.db import (
     create_faq_item,
     delete_faq_item,
@@ -45,7 +45,7 @@ from database.db import (
 )
 from services import applications, i18n
 from services.faq import apply_city_overrides, city_badge, normalize_question
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_cap, require_section
 

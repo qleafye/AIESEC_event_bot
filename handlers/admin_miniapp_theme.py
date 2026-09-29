@@ -30,11 +30,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-import dashboard_favicon
-import web_theme
+from core import dashboard_favicon
+from core import web_theme
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
-from settings_schema import get_setting_typed, option_label, option_labels
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.settings_schema import get_setting_typed, option_label, option_labels
 from handlers.admin import router
 from handlers.states import EditSetting, MiniAppTheme
 

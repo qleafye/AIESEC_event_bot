@@ -18,7 +18,7 @@ import html as html_module
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from handlers.game_labels import category_label, penalized_coins
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────

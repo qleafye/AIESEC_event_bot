@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import asyncio
 
-import moderation_card as mc
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, multi_codes, multi_labels, multi_options
-from settings_validation import validate_setting_value
+from core import moderation_card as mc
+from core import settings_ops
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting, multi_codes, multi_labels, multi_options
+from core.settings_validation import validate_setting_value
 
 
 def _run(coro):
@@ -154,5 +154,5 @@ def test_registry_multi_entries_are_well_formed():
 def test_modcard_fields_registry_meta():
     entry = SETTINGS_SCHEMA["modcard_fields"]
     assert entry["type"] == "multi"
-    assert entry["options_ref"] == "moderation_card:CARD_STEPS"
+    assert entry["options_ref"] == "core.moderation_card:CARD_STEPS"
     assert entry["empty_value"] == mc.EMPTY_SENTINEL

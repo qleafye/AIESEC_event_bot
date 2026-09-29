@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def _known_code(code: str | None) -> str | None:
     if not code:
         return None
-    from cities import all_cities
+    from core.cities import all_cities
     return code if code in {c["code"] for c in all_cities()} else None
 
 
@@ -37,7 +37,7 @@ async def known_city(telegram_id: int) -> str | None:
     from database.db import (
         get_last_reg_event_city, get_reg_draft, get_reg_started_city, get_user,
     )
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     try:
         draft = await get_reg_draft(telegram_id)
@@ -61,7 +61,7 @@ async def known_city(telegram_id: int) -> str | None:
         season = None
 
     try:
-        import reg_engine
+        from core import reg_engine
         user = await get_user(telegram_id)
         if user and not reg_engine.is_past_season_row(user, season):
             code = _known_code(user.get("event_city"))

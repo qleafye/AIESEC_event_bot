@@ -161,7 +161,7 @@ def test_pending_ids_includes_current_season(tmp_path):
 
 
 def test_pending_ids_scoped_by_city(tmp_path):
-    import cities as cities_mod
+    from core import cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))
@@ -346,7 +346,7 @@ def test_send_poll_queues_during_quiet_hours(tmp_path, monkeypatch):
 
 
 def test_send_poll_scoped_to_city(tmp_path, monkeypatch):
-    import cities as cities_mod
+    from core import cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))
@@ -459,8 +459,8 @@ def test_fnsp_other_step_empty_text_does_not_record(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from core.settings_schema import SETTINGS_SCHEMA
+    from core import settings_ops
 
     enabled = SETTINGS_SCHEMA["forum_noshow_poll_enabled"]
     assert enabled["default"] == "off"
@@ -492,7 +492,7 @@ def test_registry_defaults_and_format():
 
 
 def test_registry_defaults_have_manual_en_translation():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     from services.i18n_form_manual import FORM_DEFAULT_EN
 
     for key in (

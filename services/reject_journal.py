@@ -27,7 +27,7 @@ import json
 import logging
 from datetime import datetime
 
-from cities import city_scope
+from core.cities import city_scope
 from database.db import (
     claim_auto_reject_return,
     count_auto_reject_log,
@@ -42,7 +42,7 @@ from database.db import (
 )
 from services.reject_rules import rule_summary
 from services.timeutil import msk_now
-from settings_ops import per_city_visible_codes
+from core.settings_ops import per_city_visible_codes
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
     # трогал. Тот же fail-soft приём, что revert_user_to_pending выше: возврат УЖЕ зафиксирован
     # (claim выигран, статус в БД сменён) — сбой листа только логируется, не откатывает возврат.
     try:
-        from reg_labels import STATUS_LABELS
+        from core.reg_labels import STATUS_LABELS
         from services.sheets import update_status_in_sheet
         await update_status_in_sheet(telegram_id, STATUS_LABELS["pending"])
         from services.scheduler import sync_auto_reject_sheet_job

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 
-import web_theme
+from core import web_theme
 from database import db as bot_db
 
 from tests.test_miniapp_routes import ADMIN_ID, _cfg, _client, _hdr, _seed, _set, _standard_seed, _use_tmp_db

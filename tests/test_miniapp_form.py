@@ -16,7 +16,7 @@ import aiosqlite
 import httpx
 import pytest
 
-import reg_options
+from core import reg_options
 from database import db as bot_db
 
 from miniapp import telegram_api
@@ -242,7 +242,7 @@ def test_draft_get_exposes_wizard_screen_texts(client):
 def test_continue_in_chat_and_profile_edit_defaults_have_no_emoji(client):
     """D-04: эмодзи-иконки убираем — кнопки и так рисуют icon("message-circle")/
     icon("pen-line"), эмодзи в подписи дублировал бы иконку."""
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()
@@ -660,7 +660,7 @@ def test_patch_does_not_log_answer_values(client, caplog):
 # (те же города и те же подписи, что у клавиатур бота); deep-link/edit приоритетны (409).
 
 def test_pre_items_city_fork_carries_field_and_server_options(client):
-    import cities
+    from core import cities
 
     _set("event_city_enabled", "on")
     body = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID)).json()
@@ -709,7 +709,7 @@ def test_patch_city_choice_persists_and_hides_fork(client):
 
 
 def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
-    import reg_engine
+    from core import reg_engine
 
     assert reg_engine.CITY_CHOICE_INVALID_TEXT == "Некорректный выбор."
     assert reg_engine.CITY_CLOSED_TEXT == "Регистрация на этот город закрыта."
@@ -746,7 +746,7 @@ def test_patch_city_when_already_set_409_deeplink_wins(client):
 
 
 def test_patch_track_choice_resolves_like_bot(client):
-    import reg_engine
+    from core import reg_engine
 
     _set("party_enabled", "on")
     resp = client.patch(
@@ -820,7 +820,7 @@ def test_engine_aliases_are_same_objects():
     from pathlib import Path
 
     import handlers.registration as reg
-    import reg_engine
+    from core import reg_engine
 
     assert reg._resolve_track is reg_engine.resolve_track
     assert reg._PARTY_TAG_MAP is reg_engine.PARTY_TAG_MAP
@@ -833,7 +833,7 @@ def test_engine_aliases_are_same_objects():
 
 
 def test_form_spec_hides_party_fork_when_track_known(db_path):
-    import reg_engine
+    from core import reg_engine
 
     _set("party_enabled", "on")
     _set("party_fork_question", "on")

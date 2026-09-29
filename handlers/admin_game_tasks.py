@@ -29,7 +29,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from database.db import (
     NO_DEADLINE_AT,
     TASK_AUDIENCES,

@@ -26,7 +26,7 @@ from handlers import reg_flow  # noqa: F401 -- регистрирует хенд
 from handlers import reg_steps  # noqa: F401 -- регистрирует хендлеры на registration.router
 from handlers import reg_i18n
 from handlers import registration as reg
-from i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
+from core.i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 
 UID = 830001
 

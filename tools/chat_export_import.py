@@ -46,7 +46,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import chat_score  # noqa: E402 — после бутстрапа sys.path; только stdlib
+from core import chat_score  # noqa: E402 — после бутстрапа sys.path; только stdlib
 from tools.chat_export_stats import (  # noqa: E402 — после бутстрапа sys.path
     ExportError,
     _has_media,

@@ -20,7 +20,7 @@ from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
+from core.cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from config import config
 from database.db import checkin_qr_send_counts, get_staff_city, sheet_arrival_queue_stats
 from handlers.admin import router
@@ -30,7 +30,7 @@ from services.checkin_arrival import count_program_sessions
 from services.program import resolve_program_photo
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

@@ -29,7 +29,7 @@ from database import db
 from handlers import registration as reg  # noqa: F401 -- тянет reg_lang в хвосте модуля
 from handlers import reg_lang  # noqa: F401 -- регистрирует menu_lang_open на registration.router
 from handlers import user_actions as ua_mod
-from i18n_ui_en import MENU_EN
+from core.i18n_ui_en import MENU_EN
 from keyboards.builders import (
     CONFERENCE_MENU_LABELS, LEGACY_MENU_TEXTS, MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb,
 )

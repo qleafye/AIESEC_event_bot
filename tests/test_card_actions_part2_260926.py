@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-import cities
+from core import cities
 from config import config
 from database import db
 from handlers.admin_caps import role_caps_key
@@ -969,7 +969,7 @@ def test_validate_resume_document_rejects_wrong_extension():
 
 
 def test_validate_resume_document_rejects_too_large():
-    from reg_engine import RESUME_MAX_BYTES
+    from core.reg_engine import RESUME_MAX_BYTES
 
     assert validate_resume_document("resume.pdf", RESUME_MAX_BYTES + 1) is not None
 

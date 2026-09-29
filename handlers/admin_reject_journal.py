@@ -47,7 +47,7 @@ from services.reject_journal import (
     return_to_moderation,
 )
 from services.scheduler import _now_moscow_naive
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

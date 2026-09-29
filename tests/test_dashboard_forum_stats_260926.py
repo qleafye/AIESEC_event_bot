@@ -376,7 +376,7 @@ def test_forum_page_bound_city_manager_sees_only_own_city_sos(tmp_path, monkeypa
 # пути — см. отчёт исполнителя, кнопка выгрузки из задачи сознательно не реализована). ────────
 
 def test_arrival_stats_sheet_safe_escapes_formula_prefixes():
-    import arrival_stats
+    from core import arrival_stats
 
     assert arrival_stats._sheet_safe("=SUM(A1)") == "'=SUM(A1)"
     assert arrival_stats._sheet_safe("+1") == "'+1"

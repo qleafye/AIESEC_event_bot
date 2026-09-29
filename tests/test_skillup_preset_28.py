@@ -15,7 +15,7 @@ pytest-asyncio недоступен в этом окружении — async ч�
 """
 import asyncio
 
-import reg_presets
+from core import reg_presets
 from config import config
 from database import db
 from database.db import get_setting
@@ -95,7 +95,7 @@ def _ready(tmp_path, name="test_skillup_preset_28.db"):
 # ── Задача 1: перенос модуля ──────────────────────────────────────────────────────────────
 
 def test_reg_presets_module_is_aiogram_free():
-    loaded = _loaded_aiogram("import reg_presets")
+    loaded = _loaded_aiogram("from core import reg_presets")
     assert loaded == [], f"reg_presets потянул aiogram: {loaded}"
 
 
@@ -213,14 +213,14 @@ def test_preset_does_not_touch_scoring_sets(tmp_path):
 
 
 def test_event_type_has_four_options():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     assert SETTINGS_SCHEMA["event_type"]["options"] == [
         "forum", "conference", "custom", "skillup",
     ]
 
 
 def test_web_and_bot_apply_same_preset(tmp_path):
-    import settings_ops
+    from core import settings_ops
     from handlers.admin_reg_config import _apply_event_preset
 
     async def _snapshot():
@@ -241,5 +241,5 @@ def test_web_and_bot_apply_same_preset(tmp_path):
 
 
 def test_settings_ops_still_aiogram_free():
-    loaded = _loaded_aiogram("import settings_ops")
+    loaded = _loaded_aiogram("from core import settings_ops")
     assert loaded == [], f"settings_ops потянул aiogram: {loaded}"

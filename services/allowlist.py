@@ -8,7 +8,7 @@ import asyncio
 import logging
 
 from database.db import get_setting
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

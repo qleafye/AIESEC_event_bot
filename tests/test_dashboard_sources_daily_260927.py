@@ -344,7 +344,7 @@ def test_params_whitelist_and_toggle_href():
 
 
 def test_track_labels_match_bot_registry():
-    import reg_options
+    from core import reg_options
 
     assert sd.TRACK_LABELS == dict(reg_options.PARTY_TRACK_OPTIONS)
 

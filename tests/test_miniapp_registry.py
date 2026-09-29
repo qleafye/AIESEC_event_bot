@@ -19,9 +19,9 @@ import re
 
 from handlers import user_actions
 from handlers.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
-import web_theme
+from core import web_theme
 from miniapp import config as miniapp_config
 
 MINIAPP_KEYS = [
@@ -475,8 +475,8 @@ def test_plate_pattern_asset_key_wired_into_theme_and_file_proxy():
     """Phase 23.1-02 (D-05): добавление ключа в `ASSET_KEYS` автоматически даёт и поле в
     `/app/api/me`, и доступ к файлу через `can_read_file` — руками `page.py`/`files.py`
     не правятся, проверяем именно эту проводку."""
-    import web_theme
-    import settings_ops
+    from core import web_theme
+    from core import settings_ops
 
     assert web_theme.ASSET_KEYS["plate_pattern_file_id"] == "miniapp_theme_pattern"
     assert "miniapp_theme_pattern" in settings_ops.file_setting_keys()

@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import config
 from database.db import get_setting
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services.timeutil import MOSCOW_TZ, msk_now
 
 logger = logging.getLogger(__name__)
@@ -763,7 +763,7 @@ async def send_scheduled_broadcast(broadcast_id: int):
                 # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
                 # broadcast addressed to another city. Re-resolve against the LIVE registry at
                 # send time; the stored exclude is only a fallback for pre-WR-02 rows.
-                from cities import refresh_city_filter_spec
+                from core.cities import refresh_city_filter_spec
                 spec = refresh_city_filter_spec(spec)
                 if spec is None:
                     # An event_city filter names a code the registry no longer knows. Refuse:
@@ -784,7 +784,7 @@ async def send_scheduled_broadcast(broadcast_id: int):
                     # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
                     # аудитория есть только если карта пуста целиком, а не устарела).
                     if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
-                        from cities import city_scope as _city_scope
+                        from core.cities import city_scope as _city_scope
                         from services.chat_tracking import bound_chats
 
                         bound = await bound_chats()
@@ -1299,7 +1299,7 @@ async def _nudge_remaining_for(tid: int) -> int | None:
     нейтральное слово вместо числа, а не пустые фигурные скобки (T-28-09-04)."""
     try:
         from database.db import get_reg_draft
-        import reg_engine
+        from core import reg_engine
         draft = await get_reg_draft(tid)
         if not draft:
             return None
@@ -1513,9 +1513,9 @@ async def chat_history_prune_job():
     про приватность, а не про учёт; выключенный учёт не должен оставлять старую историю
     навсегда."""
     try:
-        import chat_score
+        from core import chat_score
         from database.db import prune_chat_history
-        from settings_schema import get_setting_typed
+        from core.settings_schema import get_setting_typed
 
         days = _int_or_default(await get_setting_typed(chat_score.RETENTION_KEY),
                                chat_score.DEFAULT_RETENTION_DAYS)
@@ -1551,7 +1551,7 @@ async def _wave_eligible_ambassador_ids(wave: dict) -> list[int]:
     scope` на голой строке)."""
     from database.db import list_ambassadors
     from services.ambassador_waves import wave_eligible
-    import cities
+    from core import cities
 
     ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
     ids: list[int] = []
@@ -1670,7 +1670,7 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
         from services.ambassador_waves import wave_eligible
         from services import quiet_hours, i18n
-        import game_labels
+        from core import game_labels
 
         wave = await get_wave(wave_id)
         if not wave or wave.get("state") == "draft":
@@ -1783,7 +1783,7 @@ async def _task_out_of_wave_recipients(task: dict) -> list[int]:
     этот файл (вне `files_modified`), поэтому фильтрация — здесь, по уже существующим
     `list_ambassadors`/`get_all_users_dicts`."""
     from database.db import list_ambassadors, get_all_users_dicts
-    import cities
+    from core import cities
 
     if task.get("audience") == "ambassadors":
         rows = await list_ambassadors(city_scope=cities.city_scope(task.get("event_city")))
@@ -1819,7 +1819,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         from database.db import get_task, get_active_submission, list_ambassadors, get_wave, task_title
         from services.ambassador_waves import wave_eligible, wave_open
         from services import quiet_hours, i18n
-        import game_labels
+        from core import game_labels
 
         task = await get_task(task_id)
         if not task or task.get("archived_at"):
@@ -1845,7 +1845,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             # может так и остаться черновиком.
             if not wave or not wave_open(wave, now=now):
                 return
-            import cities
+            from core import cities
             recipients = []
             for a in await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city"))):
                 user = dict(a)
@@ -1920,7 +1920,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
     сообщение уходило напрямую через `_safe_send` в 23:59:59 (момент конца волны) мимо тихих
     часов менеджера."""
     try:
-        import game_labels
+        from core import game_labels
         from services import quiet_hours
         from services.ambassador_waves import close_wave, wave_end_summary
         from handlers.admin_caps import capability_holders
@@ -2005,7 +2005,7 @@ async def send_wave_results(wave_id: int) -> None:
     остальным."""
     try:
         from database.db import get_wave, get_wave_results, get_display_names, mark_wave_result_notified
-        import game_labels
+        from core import game_labels
         from services import quiet_hours, i18n
 
         wave = await get_wave(wave_id)
@@ -2106,7 +2106,7 @@ async def reconcile_wave_jobs() -> None:
         from database.db import (
             list_active_tasks, list_waves, list_wave_tasks, count_wave_results_pending_notify,
         )
-        import game_labels
+        from core import game_labels
 
         waves = await list_waves(states=("active",))
         for wave in waves:

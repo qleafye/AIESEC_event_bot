@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import asyncio
 
-from cities import PER_CITY_SEP
+from core.cities import PER_CITY_SEP
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.routers import settings as settings_router
 from miniapp.routers.settings import DANGER_CONFIRM, EDITABLE_KEYS

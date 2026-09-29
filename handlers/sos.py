@@ -32,16 +32,16 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-from cities import default_city_code, get_setting_typed_for_city
+from core.cities import default_city_code, get_setting_typed_for_city
 from database.db import add_sos_details, create_sos_report, get_open_sos_report, set_sos_location
 from handlers import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
-from i18n_ui_en import DONE_WORDS
+from core.i18n_ui_en import DONE_WORDS
 from keyboards.builders import MENU_TEXTS, get_main_menu_kb
 from services import sos as sos_service
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

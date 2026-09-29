@@ -20,8 +20,8 @@ import pytest
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from core.settings_schema import SETTINGS_SCHEMA
+from core.settings_validation import validate_setting_value
 
 
 # ── Task 1: реестр ──────────────────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ def _ready(tmp_path, name):
 
 from datetime import datetime, time as dtime, timedelta
 
-from cities import per_city_key
+from core.cities import per_city_key
 import services.quiet_hours as qh
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 

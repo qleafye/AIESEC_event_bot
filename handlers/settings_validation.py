@@ -7,7 +7,7 @@
 `miniapp/routers/settings.py`. Один валидатор на две поверхности (D-06) возможен только из
 корня. Бот и старые тесты продолжают импортировать отсюда — объекты те же (`is`), не копия.
 """
-from settings_validation import (  # noqa: F401
+from core.settings_validation import (  # noqa: F401
     _COMMAND_RE,
     _int_example,
     is_command_like,

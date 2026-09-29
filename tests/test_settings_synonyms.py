@@ -9,9 +9,9 @@
 """
 from __future__ import annotations
 
-from settings_ops import editable_keys
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_ops import editable_keys
+from core.settings_schema import SETTINGS_SCHEMA
+from core.settings_synonyms import SETTINGS_SYNONYMS
 
 EDITABLE_KEYS = set(editable_keys())
 
@@ -135,7 +135,7 @@ def test_settings_synonyms_module_has_no_handlers_import():
     он живёт в корне рядом с `settings_schema.py`, до aiogram-слоя (D-15)."""
     import inspect
 
-    import settings_synonyms
+    from core import settings_synonyms
 
     src = inspect.getsource(settings_synonyms)
     assert "handlers" not in src

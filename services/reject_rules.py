@@ -31,7 +31,7 @@ import logging
 from datetime import datetime
 
 from config import config
-from cities import city_label, city_scope, normalize_city, get_setting_typed_for_city
+from core.cities import city_label, city_scope, normalize_city, get_setting_typed_for_city
 from database.db import (
     create_reject_rule,
     delete_reject_rule,
@@ -42,7 +42,7 @@ from database.db import (
     list_reject_rules,
     update_reject_rule,
 )
-from reg_engine import (
+from core.reg_engine import (
     REG_FLOW,
     condition_operators,
     evaluate_reject_rules,
@@ -53,8 +53,8 @@ from reg_engine import (
     rule_pause_reason,
 )
 from services.i18n import src_hash
-from settings_ops import per_city_visible_codes
-from settings_schema import get_setting_typed
+from core.settings_ops import per_city_visible_codes
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

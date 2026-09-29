@@ -11,10 +11,10 @@
 """
 import asyncio
 
-import reg_options
+from core import reg_options
 from config import config
 from database import db
-from reg_engine import with_defaults
+from core.reg_engine import with_defaults
 from tests._dbtpl import fast_init_db
 
 

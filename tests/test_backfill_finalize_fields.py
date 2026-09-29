@@ -6,7 +6,7 @@ import sqlite3
 
 import pytest
 
-import reg_options
+from core import reg_options
 from tools.backfill_finalize_fields import (
     apply_changes,
     main,

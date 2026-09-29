@@ -16,9 +16,9 @@ import asyncio
 
 from config import config
 from database import db
-import cities
-import reg_engine as e
-import settings_ops
+from core import cities
+from core import reg_engine as e
+from core import settings_ops
 from handlers import admin_reg_config
 from handlers import reg_schema
 from tests._dbtpl import fast_init_db

@@ -25,12 +25,12 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from database.db import get_setting, settings_snapshot
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
 from handlers.states import EditSetting
 from handlers.reg_schema import REG_FLOW, REG_LABELS, REG_CATEGORIES
-from cities import (
+from core.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,
@@ -47,7 +47,7 @@ from handlers.admin_reg_config import (
     _refresh_party_sheet_header,
     _refresh_short_sheet_header,
 )
-import reg_engine  # квик 260906-7zv: help_default/has_help — швов циклов нет, reg_engine handlers не импортирует
+from core import reg_engine  # квик 260906-7zv: help_default/has_help — швов циклов нет, reg_engine handlers не импортирует
 
 logger = logging.getLogger(__name__)
 

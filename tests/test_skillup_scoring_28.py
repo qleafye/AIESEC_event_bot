@@ -16,7 +16,7 @@ import inspect
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from services import reg_finalize as rf
 import services.applications as applications
 from handlers import admin_moderation as am

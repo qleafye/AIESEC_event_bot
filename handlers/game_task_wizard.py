@@ -26,8 +26,8 @@ from datetime import datetime, timedelta
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import cities
-from settings_schema import get_setting_typed
+from core import cities
+from core.settings_schema import get_setting_typed
 from database.db import NO_DEADLINE_AT, list_waves
 from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
 from services.scheduler import (

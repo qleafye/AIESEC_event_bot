@@ -2,7 +2,7 @@
 только «ДД.ММ.ГГГГ» — в приложении не проходил ни один шаг-дата."""
 from pathlib import Path
 
-import reg_engine
+from core import reg_engine
 
 
 def test_iso_birth_date_is_accepted_and_stored_like_chat():

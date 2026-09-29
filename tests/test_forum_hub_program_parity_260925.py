@@ -9,7 +9,7 @@ import asyncio
 
 import pytest
 
-from cities import default_city_code
+from core.cities import default_city_code
 from config import config
 from database import db
 from handlers import admin_forum_functions as aff

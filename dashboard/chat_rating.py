@@ -21,8 +21,8 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta
 
-import chat_score
-from chat_score import ChatRecord
+from core import chat_score
+from core.chat_score import ChatRecord
 
 PERIODS = [
     ("all", "Всё время"),

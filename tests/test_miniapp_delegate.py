@@ -274,7 +274,7 @@ def _me(client, telegram_id):
 
 
 def test_me_form_status_contract(client):
-    from reg_labels import STATUS_LABELS
+    from core.reg_labels import STATUS_LABELS
 
     body = _me(client, UNREGISTERED_ID)
     assert body["form_status"] == "none"
@@ -487,7 +487,7 @@ def test_task_list_section_off(client):
 
 
 def test_task_card_uses_shared_render(client):
-    import game_labels
+    from core import game_labels
 
     t = _task("Карточка", proof="photo,link")
     _submission(t, DELEGATE_ID, "rejected")
@@ -521,7 +521,7 @@ def test_task_card_deadline_left_text_present_for_future_deadline(client):
     # Phase 32 (32-14, D-27): дата берётся через общий `game_labels.task_deadline`, а не
     # собственным `datetime.strptime` по `deadline_at` — зеркало теперь смотрит на тот же
     # помощник, что и роутер, иначе тест продолжал бы проходить даже со своей копией разбора.
-    import game_labels
+    from core import game_labels
     from miniapp.timeutil import today_msk
 
     t = _task("Свежее", days=5)

@@ -19,15 +19,15 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city, per_city_key
+from core.cities import get_setting_typed_for_city, per_city_key
 from handlers.admin import router
 from handlers.admin_chat_rating import _GLOBAL, _checked_city, _raw, _screen_city
 from handlers.settings_validation import is_command_like, validate_setting_value
 from handlers.states import ChatRatingPostEdit
 from services import chat_rating_post as crp
 from services.chat_tracking import chat_for_city
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

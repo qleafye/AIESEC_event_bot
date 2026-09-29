@@ -11,13 +11,13 @@
 только хендлеры и рендер экрана."""
 import html as html_module
 import re
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from core.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,
@@ -37,8 +37,8 @@ from handlers.admin_caps import has_capability, required_capability
 from handlers.admin_core import _admin_city_view
 from handlers.states import EditSetting, SosChatBind
 from keyboards.builders import get_cancel_kb
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
 from services.timeutil import msk_now
@@ -464,7 +464,7 @@ async def _sos_settings_city_scope(admin_id: int) -> tuple[bool, str | None]:
     code = await admin_selected_city(admin_id)
     if code in (None, ALL_CITIES):
         return True, None
-    import settings_ops
+    from core import settings_ops
     if code not in await settings_ops.per_city_visible_codes(admin_id):
         return True, None
     return True, code

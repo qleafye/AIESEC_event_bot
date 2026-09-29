@@ -178,7 +178,7 @@ def test_content_type_map_is_closed_and_keeps_topic_root():
 
 
 def test_registry_multi_uses_cleanup_types():
-    from settings_schema import SETTINGS_SCHEMA, _parse_setting, multi_options
+    from core.settings_schema import SETTINGS_SCHEMA, _parse_setting, multi_options
     entry = SETTINGS_SCHEMA[chat_cleanup.TYPES_KEY]
     assert entry["type"] == "multi" and entry["group"] == "chat"
     assert [c for c, _ in multi_options(chat_cleanup.TYPES_KEY)] == list(chat_cleanup.CLEANUP_TYPES)

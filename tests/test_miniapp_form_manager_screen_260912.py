@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
 
