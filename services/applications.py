@@ -629,12 +629,20 @@ async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
     точка, которую зовут И бот (`handlers/admin_moderation.py::appr_all_yes`), И веб, так что
     бот-путь и веб-путь структурно не могут разъехаться по начислению (раньше бот звал
     `approve_all_pending` напрямую, минуя `claim_approve_all`). approved_at ставит
-    `approve_all_pending` в той же атомарной записи, что и status (D-10)."""
+    `approve_all_pending` в той же атомарной записи, что и status (D-10). Здесь же — проверка
+    ступеней амбассадоров (`services.amb_tiers`)."""
     ids = await approve_all_pending(city_scope=scope)
     if not ids:
         return ids, {"credited": 0, "coins": 0, "ambassadors": 0}
     from services.referrals import credit_for_approved_bulk
     summary = await credit_for_approved_bulk(ids)
+    # Ступени амбассадоров СкиллАп — рядом с начислением, своим try: сбой одного не
+    # отменяет другое.
+    try:
+        from services.amb_tiers import check_tiers_for_invitees
+        await check_tiers_for_invitees(ids)
+    except Exception:
+        logger.exception("claim_approve_all_with_credits: проверка ступеней не прошла")
     return ids, summary
 
 
@@ -674,7 +682,8 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     Фикс WR-02 (фаза 32): начисление амбассадору за приглашённого (`claim_approve` раньше
     делал это само, см. его докстринг) для решения `approved` без окна отмены происходит
     ИМЕННО здесь — синхронно, тем же вызовом, каким бот-путь помечает эффекты уже
-    отправленными; решение уже необратимо, откладывать нечего."""
+    отправленными; решение уже необратимо, откладывать нечего. Там же — проверка ступеней
+    амбассадоров (`services.amb_tiers`)."""
     decided_at = _stamp(now)
     if effects_already_sent:
         sent_at = _stamp(now)
@@ -690,6 +699,15 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
             except Exception:
                 logger.exception(
                     "record_decision: начисление амбассадору не прошло (tid=%s)", telegram_id,
+                )
+            # Ступени амбассадоров СкиллАп: бот-одиночное и вход на площадке — решение уже
+            # необратимо. Свой try: сбой начисления не отменяет проверку ступеней и наоборот.
+            try:
+                from services.amb_tiers import check_tiers_for_invitees
+                await check_tiers_for_invitees([telegram_id])
+            except Exception:
+                logger.exception(
+                    "record_decision: проверка ступеней не прошла (tid=%s)", telegram_id,
                 )
         return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
@@ -744,13 +762,23 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
     физически не может вернуть строку с `undone_at IS NOT NULL` (T-23-01), так что до этой
     строки кода доходят только решения, которые никто не откатил. `credit_for_approved` сам
     перепроверяет `status == "approved"` — повторное решение по тому же делегату (гонка с
-    другим менеджером) начисления не даст."""
+    другим менеджером) начисления не даст. Ступени амбассадоров проверяются здесь же, по той
+    же причине: до окна отмены одобрение Mini App не засчитывается."""
     due = await claim_due_application_decisions(_stamp(now))
     if due:
         from services.referrals import credit_for_approved
         for row in due:
             if row["decision"] == "approved":
                 await credit_for_approved(row["telegram_id"])
+        # Ступени амбассадоров СкиллАп: одобрение Mini App засчитывается только сейчас, когда
+        # окно отмены прошло (отменённое сюда не доходит). Одним вызовом на всю пачку.
+        approved_ids = [row["telegram_id"] for row in due if row["decision"] == "approved"]
+        if approved_ids:
+            try:
+                from services.amb_tiers import check_tiers_for_invitees
+                await check_tiers_for_invitees(approved_ids)
+            except Exception:
+                logger.exception("flush_due_decisions: проверка ступеней не прошла")
     for row in due:
         enqueue(row["decision"], row)
     return len(due)

@@ -233,3 +233,289 @@ def test_deadline_validator():
     assert value is None and "2026-11-14 23:59" in error
     value, error = validate_setting_value("amb_count_deadline", "нет")
     assert error is None and value == ""
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: check_tiers и все пути одобрения
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+import json  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+
+from services import amb_tiers, applications  # noqa: E402
+
+
+def _on(*, deadline="2099-01-01 00:00", quota=None):
+    _run(db.set_setting("amb_qualified_program", "on"))
+    _run(db.set_setting("amb_count_deadline", deadline))
+    if quota is not None:
+        _run(db.set_setting("amb_o2o_quota", str(quota)))
+
+
+def _approve_bot(tid, by=1):
+    """Бот-путь целиком: флип + запись решения с уже отправленными эффектами."""
+    won = _run(applications.claim_approve(tid))
+    if won:
+        _run(applications.record_decision(
+            tid, "approved", None, by, datetime.now(), effects_already_sent=True,
+        ))
+    return won
+
+
+def _approve_web(tid, by=1, now=None):
+    """Mini App одиночное: флип + живая строка журнала (эффекты ждут окна отмены)."""
+    won = _run(applications.claim_approve(tid))
+    decision_id = None
+    if won:
+        decision_id = _run(applications.record_decision(
+            tid, "approved", None, by, now or datetime.now(),
+        ))
+    return decision_id
+
+
+def _events():
+    rows = _sql("SELECT payload FROM miniapp_outbox WHERE kind = 'amb_tier_reached' ORDER BY id")
+    return [json.loads(r[0]) for r in rows]
+
+
+def _tiers(tid):
+    return [(r["tier"], r["o2o_status"]) for r in _run(tdb.list_tiers(tid))]
+
+
+def _flush(now):
+    return _run(applications.flush_due_decisions(now, lambda kind, row: None))
+
+
+def test_program_off_no_rows_no_events(tmp_path):
+    """Приёмка 11 / D-09: тумблер выключен — ни строк ступеней, ни событий."""
+    _ready(tmp_path)
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _approve_bot(201)
+    _run(applications.claim_approve_all_with_credits(None))
+    assert _run(amb_tiers.check_tiers([100])) == []
+    assert _tiers(100) == []
+    assert _events() == []
+
+
+def test_acceptance_1_to_4_single_then_bulk(tmp_path):
+    """Приёмка 1–4: трое подали — ничего; одно одобрение — ступень 1 (осталось 2); ещё
+    двое (один через «Принять всех») — ровно одно событие ступени 2, слот granted;
+    повторное «Принять всех» и повторный check_tiers — ничего нового."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    assert _run(amb_tiers.check_tiers([100])) == []
+    assert _events() == []
+
+    _approve_bot(201)
+    assert _tiers(100) == [(1, None)]
+    assert _events() == [{"telegram_id": 100, "tier": 1, "left": 2}]
+
+    _approve_bot(202)
+    assert len(_events()) == 1
+    ids, _summary = _run(applications.claim_approve_all_with_credits(None))
+    assert ids == [203]
+    assert _tiers(100) == [(1, None), (2, "granted")]
+    events = _events()
+    assert len(events) == 2 and events[1] == {"telegram_id": 100, "tier": 2, "left": 0}
+
+    ids2, _ = _run(applications.claim_approve_all_with_credits(None))
+    assert ids2 == []
+    assert _run(amb_tiers.check_tiers([100])) == []
+    assert len(_events()) == 2 and len(_tiers(100)) == 2
+
+
+def test_quota_one_second_ambassador_waitlist(tmp_path):
+    """Приёмка 5: квота 1 — второй амбассадор, дошедший до 3, получает лист ожидания."""
+    _ready(tmp_path)
+    _on(quota=1)
+    _make_ambassador(100)
+    _make_ambassador(101)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    for tid in (211, 212, 213):
+        _seed_user(tid, referrer_id=101)
+    for tid in (201, 202, 203, 211, 212, 213):
+        _approve_bot(tid)
+    assert (2, "granted") in _tiers(100)
+    assert (2, "waitlist") in _tiers(101)
+
+
+def test_self_ref_does_not_trigger_tier(tmp_path):
+    """Приёмка 6: амбассадор со ссылкой на самого себя ступень не получает."""
+    _ready(tmp_path)
+    _on()
+    _seed_user(100, status="pending")
+    _run(db.set_ambassador_flag(100, active=True, at="2026-01-01 00:00:00"))
+    _sql("UPDATE users SET referrer_id = 100 WHERE telegram_id = 100")
+    _approve_bot(100)
+    assert _tiers(100) == []
+    assert _events() == []
+
+
+def test_deadline_passed_counts_grow_no_tier(tmp_path):
+    """Приёмка 7: после дедлайна счётчик растёт, новой ступени нет."""
+    _ready(tmp_path)
+    _on(deadline="2020-01-01 00:00")
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100)
+    _approve_bot(201)
+    assert _counts(100)["qualified"] == 1
+    assert _tiers(100) == []
+    assert _events() == []
+
+
+def test_unparseable_or_empty_deadline_means_no_deadline(tmp_path):
+    _ready(tmp_path)
+    _on(deadline="14.11.2026")
+    assert _run(amb_tiers.deadline_passed()) is False
+    _run(db.set_setting("amb_count_deadline", ""))
+    assert _run(amb_tiers.deadline_passed()) is False
+
+
+def test_not_ambassador_gets_no_tier(tmp_path):
+    """D-02: без is_ambassador = 1 ступеней нет."""
+    _ready(tmp_path)
+    _on()
+    _seed_user(100, status="approved")
+    _seed_user(201, referrer_id=100)
+    _approve_bot(201)
+    assert _tiers(100) == []
+
+
+def test_zero_to_three_in_one_bulk_single_event_for_top_tier(tmp_path):
+    """0 -> 3 одним «Принять всех»: две строки, одно событие ступени 2, младшая помечена."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _run(applications.claim_approve_all_with_credits(None))
+    rows = {r["tier"]: r for r in _run(tdb.list_tiers(100))}
+    assert set(rows) == {1, 2}
+    assert rows[1]["notified_at"] is not None
+    assert rows[2]["notified_at"] is None
+    assert _events() == [{"telegram_id": 100, "tier": 2, "left": 0}]
+
+
+def test_failure_inside_check_tiers_does_not_undo_approval_or_credit(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _on()
+    _run(db.set_setting("ambassador_referral_coins", "30"))
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100)
+
+    async def boom(*_a, **_kw):
+        raise RuntimeError("сбой подсчёта")
+
+    monkeypatch.setattr(tdb, "referral_counts", boom)
+    assert _approve_bot(201) is True
+    assert _run(db.get_user(201))["status"] == "approved"
+    assert _run(db.get_referral_credit(201)) is not None
+    assert _tiers(100) == []
+
+
+def test_web_single_approval_tier_only_after_undo_window(tmp_path):
+    """Mini App одиночное: ступени нет, пока окно отмены не прошло; после flush — есть."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100)
+    now = datetime.now()
+    _approve_web(201, now=now)
+    assert _run(amb_tiers.check_tiers([100])) == []
+    assert _tiers(100) == []
+    _flush(now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1))
+    assert _tiers(100) == [(1, None)]
+    assert len(_events()) == 1
+
+
+def test_web_single_approval_undone_gives_no_tier(tmp_path):
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100)
+    now = datetime.now()
+    decision_id = _approve_web(201, now=now)
+    assert _run(applications.undo_decision(decision_id))["ok"] is True
+    _flush(now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1))
+    assert _tiers(100) == []
+    assert _events() == []
+
+
+def test_undo_window_live_approval_not_counted_by_other_path(tmp_path):
+    """A и B одобрены ботом, C — в Mini App (живая строка журнала): проверка ступеней от
+    другого пути даёт ступень 1, но не ступень 2; после flush — ступень 2 и одно событие."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _approve_bot(201)
+    _approve_bot(202)
+    now = datetime.now()
+    _approve_web(203, now=now)
+    _run(amb_tiers.check_tiers([100]))
+    assert _tiers(100) == [(1, None)]
+    _flush(now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1))
+    assert _tiers(100) == [(1, None), (2, "granted")]
+    assert [e["tier"] for e in _events()] == [1, 2]
+
+
+def test_undo_window_live_approval_undone_stays_at_two(tmp_path):
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _approve_bot(201)
+    _approve_bot(202)
+    now = datetime.now()
+    decision_id = _approve_web(203, now=now)
+    assert _run(applications.undo_decision(decision_id))["ok"] is True
+    _flush(now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1))
+    assert _tiers(100) == [(1, None)]
+    assert _counts(100)["qualified"] == 2
+
+
+def test_auto_approval_on_finalize_gives_tier(tmp_path, monkeypatch):
+    """Авто-одобрение на финале анкеты (full_approval=auto) — ступень 1."""
+    from services import reg_finalize as rf
+
+    _ready(tmp_path)
+    _on()
+    monkeypatch.setattr(config, "ADMIN_IDS", [])
+    _make_ambassador(100)
+
+    async def go():
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("full_approval", "auto")
+        draft = {
+            "telegram_id": 8001, "kind": "new",
+            "answers": {"full_name": "Новый Делегат"},
+            "meta": {"referrer_id": 100},
+        }
+        return await rf.finalize_data(8001, "@newbie", draft)
+
+    result = _run(go())
+    assert result["status"] == "approved"
+    assert _tiers(100) == [(1, None)]
+    assert len(_events()) == 1
+
+
+def test_onsite_approval_path_gives_tier(tmp_path):
+    """Вход на площадке: approve_onsite + record_decision(effects_already_sent=True) — та же
+    пара вызовов, что services.onsite_reg.approve_at_door."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100)
+    assert _run(db.approve_onsite(201, by_staff_id=7, season=SEASON)) is True
+    _run(applications.record_decision(
+        201, "approved", "на месте", 7, datetime.now(), effects_already_sent=True,
+    ))
+    assert _tiers(100) == [(1, None)]

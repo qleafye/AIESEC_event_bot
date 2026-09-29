@@ -14,11 +14,13 @@ pytest-asyncio недоступен в этом окружении — async ч�
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import pathlib
 import re
 import sqlite3
+import warnings
 from datetime import datetime
 
 from config import config
@@ -357,11 +359,11 @@ _EXPECTED_APPROVAL_WRITERS = {
     "database/db.py": (
         "боевой шов: approve_user_atomic + approve_all_pending (RAW UPDATE) — их зовут "
         "services.applications.claim_approve / claim_approve_all_with_credits, которые сами "
-        "зовут credit_for_approved(_bulk)"
+        "зовут credit_for_approved(_bulk) и рядом check_tiers_for_invitees (ступени амбассадоров)"
     ),
     "services/reg_finalize.py": (
         "боевой шов: full_approval=auto/short_approval=auto/party_approval=auto зовёт "
-        "credit_for_approved напрямую (план 32-05, задача 2)"
+        "credit_for_approved напрямую (план 32-05, задача 2), рядом check_tiers_for_invitees"
     ),
     "handlers/uat_seed.py": (
         "осознанное исключение (T-32-05-07): сидер состояний команды /uat на стенде — "
@@ -417,6 +419,87 @@ def test_approval_status_writers_guard():
 
     missing = expected_files - actual_files
     assert not missing, f"Ожидаемые швы пропали из исходников: {missing} — план устарел?"
+
+
+# ── Сторож: каждый путь, начисляющий баллы за приглашённого, проверяет и ступени ────────────
+
+_CREDIT_NAMES = {"credit_for_approved", "credit_for_approved_bulk"}
+_TIER_NAMES = {"check_tiers_for_invitees", "check_tiers"}
+
+# Где начисление без проверки ступеней законно — с объяснением.
+_CREDIT_WITHOUT_TIERS_OK = {
+    "services/referrals.py": (
+        "внутренности начисления: credit_for_approved_bulk — цикл по credit_for_approved; "
+        "ступени проверяет вызывающий путь одобрения, бэкафилл ступеней — свой инструмент"
+    ),
+}
+
+
+def _call_name(node) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _functions_crediting_without_tiers() -> list[str]:
+    offenders: list[str] = []
+    for top in _SCAN_DIRS:
+        top_dir = _REPO_ROOT / top
+        if not top_dir.exists():
+            continue
+        for path in top_dir.rglob("*.py"):
+            rel = path.relative_to(_REPO_ROOT).as_posix()
+            if rel in _CREDIT_WITHOUT_TIERS_OK:
+                continue
+            try:
+                with warnings.catch_warnings():
+                    # чужие исходники с «\|» в обычных строках — не наша забота здесь
+                    warnings.simplefilter("ignore", SyntaxWarning)
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, SyntaxError):
+                continue
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if fn.name in _CREDIT_NAMES:
+                    continue
+                calls = {
+                    _call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)
+                }
+                if calls & _CREDIT_NAMES and not calls & _TIER_NAMES:
+                    offenders.append(f"{rel}::{fn.name}")
+    return offenders
+
+
+def test_every_credit_call_site_also_checks_tiers():
+    """Каждая функция, которая зовёт credit_for_approved(_bulk), обязана рядом звать и
+    проверку ступеней амбассадоров (services.amb_tiers) — иначе новый путь одобрения молча
+    не выдаст ступень. Исключения — _CREDIT_WITHOUT_TIERS_OK с объяснением."""
+    offenders = _functions_crediting_without_tiers()
+    assert not offenders, (
+        "Начисление за приглашённого без проверки ступеней: " + ", ".join(offenders)
+        + " — добавьте рядом check_tiers_for_invitees (ленивый импорт, свой try/except) "
+        "или внесите файл в _CREDIT_WITHOUT_TIERS_OK с объяснением."
+    )
+
+
+def test_credit_guard_sees_all_four_known_sites():
+    """Сторож не пустой: он действительно видит известные пути одобрения."""
+    seen: set[str] = set()
+    for rel in ("services/applications.py", "services/reg_finalize.py"):
+        tree = ast.parse((_REPO_ROOT / rel).read_text(encoding="utf-8"))
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                calls = {_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)}
+                if calls & _CREDIT_NAMES:
+                    assert calls & _TIER_NAMES, f"{rel}::{fn.name}"
+                    seen.add(fn.name)
+    assert {"record_decision", "flush_due_decisions", "claim_approve_all_with_credits"} <= seen
+    assert len(seen) >= 4, seen
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
