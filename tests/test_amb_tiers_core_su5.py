@@ -563,3 +563,53 @@ def test_miniapp_decide_uses_single_transaction_claim():
     source = inspect.getsource(router._decide)
     assert "claim_web_decision" in source
     assert "claim_approve" not in source and "record_decision" not in source
+
+
+# ── Прыжок через ступени: о разборе резюме сообщаем всегда ────────────────────────────────
+
+def test_notify_tiers_for_keeps_o2o_tier():
+    assert amb_tiers.notify_tiers_for([1]) == [1]
+    assert amb_tiers.notify_tiers_for([1, 2]) == [2]
+    assert amb_tiers.notify_tiers_for([1, 2, 3]) == [2, 3]
+    assert amb_tiers.notify_tiers_for([2, 3]) == [2, 3]
+    assert amb_tiers.notify_tiers_for([3]) == [3]
+    assert amb_tiers.notify_tiers_for([]) == []
+
+
+def _jump_to_seven(quota=None):
+    _on(quota=quota)
+    _make_ambassador(100)
+    for tid in range(201, 208):
+        _seed_user(tid, referrer_id=100)
+    _run(applications.claim_approve_all_with_credits(None))
+
+
+def test_zero_to_seven_notifies_o2o_slot_and_top(tmp_path):
+    """0 -> 7 одним «Принять всех»: событие о слоте разбора резюме и о нетворкинге; ступень 1
+    помечена сразу (никакого «осталось 0»)."""
+    _ready(tmp_path)
+    _jump_to_seven()
+    rows = {r["tier"]: r for r in _run(tdb.list_tiers(100))}
+    assert rows[1]["notified_at"] is not None
+    assert rows[2]["notified_at"] is None and rows[3]["notified_at"] is None
+    assert [e["tier"] for e in _events()] == [2, 3]
+
+
+def test_zero_to_seven_waitlist_still_told(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("amb_o2o_quota", "1"))
+    _run(tdb.claim_new_tiers(999, [2], "2026-09-01 00:00:00", 1))
+    _jump_to_seven(quota=1)
+    assert _tiers(100) == [(1, None), (2, "waitlist"), (3, None)]
+    assert [e["tier"] for e in _events()] == [2, 3]
+
+
+def test_zero_to_seven_backfill_notify_sends_o2o_message(tmp_path):
+    """Бэкафилл с сообщениями у того, кто давно дошёл до 7: о разборе резюме он тоже узнаёт."""
+    _ready(tmp_path)
+    _make_ambassador(100)
+    for tid in range(201, 208):
+        _seed_user(tid, referrer_id=100, status="approved")
+    _on()
+    _run(amb_tiers.check_tiers([100], notify=True, force=True))
+    assert [e["tier"] for e in _events()] == [2, 3]
