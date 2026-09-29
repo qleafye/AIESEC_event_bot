@@ -176,4 +176,5 @@ def test_runbook_working_part_has_no_legacy_scheme(forbidden):
 def test_readme_links_runbook():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/DEPLOY-DOMAIN.md" in readme
-    assert "## Дашборд статистики" in readme
+    # 29.09: README переписан — дашборд стал пунктом «Возможностей», а не разделом «##».
+    assert "Дашборд статистики" in readme
