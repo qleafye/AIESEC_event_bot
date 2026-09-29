@@ -178,6 +178,11 @@ _MISC = {
     "Каждый, кто зарегистрируется по твоей ссылке, будет засчитан тебе как приглашённый.": (
         "Everyone who signs up with your link will be counted as invited by you."
     ),
+    "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя гарантированный разбор резюме с рекрутером. Считаем только тех, кто прошёл отбор, так что зови тех, кому форум правда нужен.": (
+        "Invite your people. We'll give you a personal link: once three people who used it "
+        "pass selection, you get a guaranteed resume review with a recruiter. We only count "
+        "those who pass selection, so invite people who really need the forum."
+    ),
     "Хочу свою ссылку": "I want my own link",
     "Позже": "Later",
     "Твоя ссылка": "Your link",
