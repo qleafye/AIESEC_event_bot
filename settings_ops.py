@@ -1079,6 +1079,9 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "penalized": "70",
     "top": "1. Иван — 300\n2. Мария — 280",
     "pending": "5",
+    # Ступени амбассадоров СкиллАп: amb_progress_text / amb_invitees_counts_text.
+    "qualified": "3",
+    "next_step": "До нетворкинга: 4",
     # Квик 260923-p37 (CITY-REG-CLOSE): название закрытого города в city_reg_closed_text.
     "city": "Санкт-Петербург",
     # Ревью 24.09 (находка 3): «кто уже взял SOS» в sos_recent_followup_text
