@@ -82,6 +82,12 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 f"(например <code>{_int_example(entry)}</code>).\n\n"
                 "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
             )
+        minimum = int(entry.get("min") or 0)
+        if number < minimum:
+            return None, (
+                f"Нужно число {minimum} или больше (например <code>{_int_example(entry)}</code>)."
+                "\n\nПришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
         return str(number), None
 
     if entry_type == "enum":
@@ -226,3 +232,45 @@ def _int_example(entry: dict) -> str:
     if isinstance(default, int) and default > 0:
         return str(default)
     return "120"
+
+
+# Пороги ступеней амбассадоров: следующая ступень обязана требовать больше прошедших отбор,
+# чем предыдущая, иначе вторая ступень выдаётся раньше первой, а прогресс противоречит
+# сообщениям.
+AMB_THRESHOLD_KEYS: tuple[str, str, str] = (
+    "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold",
+)
+_AMB_TIER_NAMES = {
+    "amb_tier1_threshold": "ступень 1",
+    "amb_tier2_threshold": "ступень 2 (разбор резюме)",
+    "amb_tier3_threshold": "ступень 3 (нетворкинг)",
+}
+
+
+def amb_threshold_order_error(key: str, value: str, current: dict[str, int]) -> str | None:
+    """Порядок порогов «ступень 1 < ступень 2 < ступень 3» для нового значения `value` ключа
+    `key` против текущих значений двух других (`current`, их передаёт вызывающий — функция
+    остаётся без БД). `None` — порядок соблюдён или ключ не порог."""
+    if key not in AMB_THRESHOLD_KEYS:
+        return None
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    values = {**current, key: number}
+    ordered = [int(values[k]) for k in AMB_THRESHOLD_KEYS]
+    pairs = zip(AMB_THRESHOLD_KEYS, AMB_THRESHOLD_KEYS[1:], ordered, ordered[1:])
+    for lower_key, upper_key, lower, upper in pairs:
+        if lower >= upper:
+            upper_name = _AMB_TIER_NAMES[upper_key]
+            return (
+                f"{upper_name[0].upper()}{upper_name[1:]} должна требовать больше прошедших "
+                f"отбор, чем {_AMB_TIER_NAMES[lower_key]}, а получилось бы "
+                f"{lower} для первой из них и {upper} для второй.\n\n"
+                f"Пороги сейчас: {current.get(AMB_THRESHOLD_KEYS[0])} / "
+                f"{current.get(AMB_THRESHOLD_KEYS[1])} / {current.get(AMB_THRESHOLD_KEYS[2])}. "
+                "Пришлите число, при котором каждая следующая ступень больше предыдущей "
+                "(например 1 / 3 / 7), или «-», чтобы сбросить к значению по умолчанию. "
+                "Сдвигаете все пороги вверх — начните со ступени 3, вниз — со ступени 1."
+            )
+    return None

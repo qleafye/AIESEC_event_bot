@@ -47,7 +47,9 @@ from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
-from settings_validation import is_command_like, validate_setting_value
+from settings_validation import (
+    AMB_THRESHOLD_KEYS, amb_threshold_order_error, is_command_like, validate_setting_value,
+)
 
 
 # ── event_type preset (D-05) ──────────────────────────────────────────────────────────────
@@ -760,6 +762,16 @@ def next_value_from(key: str, current) -> str:
     return ""
 
 
+async def cross_setting_error(key: str, value: str | None) -> str | None:
+    """Проверки, которым нужны ДРУГИЕ настройки (валидатор значения их не видит): пороги
+    ступеней амбассадоров обязаны расти 1 < 2 < 3. Сверка — с сохранёнными значениями двух
+    других порогов. `None` — всё в порядке, иначе готовый текст ошибки для менеджера."""
+    if value is None or value == "-" or key not in AMB_THRESHOLD_KEYS:
+        return None
+    current = {k: int(await get_setting_typed(k)) for k in AMB_THRESHOLD_KEYS}
+    return amb_threshold_order_error(key, value, current)
+
+
 async def dangerous_confirm_text(key: str, next_value: str) -> str | None:
     """Plain-текст подтверждения (D-06) для направления `key -> next_value` из реестра, либо
     `None`: направление безопасно или текст считается по месту (вкладки Sheets)."""
@@ -927,6 +939,7 @@ async def validate_batch_item(
 
     if value is not None:
         value, error = validate_setting_value(key, value)
+        error = error or await cross_setting_error(key, value)
         if error:
             return BatchCheck(None, error=plain_text(error))
 
