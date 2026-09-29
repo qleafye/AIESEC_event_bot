@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
@@ -164,7 +165,12 @@ async def _referral_block(
 
     # Ступени амбассадоров СкиллАп: амбассадору вместо счётчика — прогресс цифрами (часть блока
     # ссылки, поэтому от `menu_invites` не зависит). Программа выключена — прежний счётчик.
-    invites_text = await amb_progress.render_progress(telegram_id, tr_key)
+    # Fail-soft: сбой БД (например, таблиц ступеней ещё нет) не роняет хаб — прежний счётчик.
+    try:
+        invites_text = await amb_progress.render_progress(telegram_id, tr_key)
+    except Exception:
+        logging.getLogger(__name__).exception("hub: прогресс амбассадора не посчитан (tid=%s)", telegram_id)
+        invites_text = None
     if invites_text is None and await get_setting_typed_for_city("menu_invites", event_city) == "on":
         count = len(await get_referrals(telegram_id))
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
