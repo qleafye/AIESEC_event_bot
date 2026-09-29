@@ -291,8 +291,8 @@ python -m pytest -n 8
 |---|---|
 | Менеджеру события, первая настройка | [docs/ADMIN_CHEATSHEET.md](docs/ADMIN_CHEATSHEET.md) |
 | Менеджеру события, полный гайд | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) |
-| Менеджеру, правила автоотказа | [AUTOREJECT_GUIDE.md](AUTOREJECT_GUIDE.md) |
-| Менеджеру, волны амбассадоров | [AMBASSADOR_WAVES_GUIDE.md](AMBASSADOR_WAVES_GUIDE.md) |
+| Менеджеру, правила автоотказа | [docs/AUTOREJECT_GUIDE.md](docs/AUTOREJECT_GUIDE.md) |
+| Менеджеру, волны амбассадоров | [docs/AMBASSADOR_WAVES_GUIDE.md](docs/AMBASSADOR_WAVES_GUIDE.md) |
 | Тестировщику, чек-лист перед приёмкой | [docs/BOT_GUIDE.md](docs/BOT_GUIDE.md) |
 | Про трек «вечеринка» | [docs/party-flow-guide.md](docs/party-flow-guide.md) |
 | Деплой на домен, туннель, Nextcloud | [docs/DEPLOY-DOMAIN.md](docs/DEPLOY-DOMAIN.md) |
