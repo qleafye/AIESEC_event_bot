@@ -285,3 +285,115 @@ def test_mask_off_returns_same_object(tmp_path):
         return await get_setting_typed(key)
 
     assert _run(amb_progress.mask_referral_coin_rows(AMB, rows, tr_key)) is rows
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Mini App: хаб, история баллов, «Хочу свою ссылку», текст оффера
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+import pytest  # noqa: E402
+
+from tests.test_miniapp_routes import (  # noqa: E402
+    DELEGATE_ID,
+    _cfg,
+    _client,
+    _hdr,
+    _set,
+    _standard_seed,
+    _use_tmp_db,
+)
+
+
+@pytest.fixture
+def client(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "amb_tiers_screens_miniapp.db")
+    _standard_seed()
+    return _client(_cfg(db_path))
+
+
+def _seed_http_invitees(n=3, *, approve=0):
+    """Приглашённые делегата DELEGATE_ID (сезон события не задан — считаются пустым сезоном)."""
+    async def seed():
+        for i in range(n):
+            tid = DELEGATE_ID + 600 + i
+            await db.add_user({
+                "telegram_id": tid, "full_name": f"Скрытый Приглашённый {i}",
+                "registration_date": "2026-09-20", "referrer_id": DELEGATE_ID,
+            })
+            await db.set_user_status(tid, "approved" if i < approve else "pending")
+    _run(seed())
+
+
+def _hub_invites(client):
+    resp = client.get("/app/api/hub", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    return resp.json()["referral"]["invites_text"]
+
+
+def test_hub_progress_for_ambassador_acceptance_2(client):
+    _set("amb_qualified_program", "on")
+    _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
+    _seed_http_invitees(3, approve=1)
+    assert _hub_invites(client) == "По твоей ссылке: 3. Прошли отбор: 1. До разбора резюме: 2"
+
+
+def test_hub_progress_ignores_menu_invites_toggle(client):
+    _set("amb_qualified_program", "on")
+    _set("menu_invites", "off")
+    _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
+    _seed_http_invitees(1)
+    assert _hub_invites(client).startswith("По твоей ссылке: 1.")
+
+
+def test_hub_program_off_keeps_old_counter_acceptance_11(client):
+    from settings_schema import SETTINGS_SCHEMA
+
+    _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
+    _seed_http_invitees(2)
+    tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
+    assert _hub_invites(client) == tpl.format(count=2)
+    _set("menu_invites", "off")
+    assert _hub_invites(client) is None
+
+
+def test_hub_non_ambassador_keeps_old_counter(client):
+    from settings_schema import SETTINGS_SCHEMA
+
+    _set("amb_qualified_program", "on")
+    _seed_http_invitees(2)
+    tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
+    assert _hub_invites(client) == tpl.format(count=2)
+
+
+def _seed_referral_coins():
+    async def seed():
+        for i, name in enumerate(("Иван Уникальный", "Пётр Особый")):
+            tid = DELEGATE_ID + 700 + i
+            await db.add_user({
+                "telegram_id": tid, "full_name": name,
+                "registration_date": "2026-09-20", "referrer_id": DELEGATE_ID,
+            })
+            await db.claim_referral_credit_atomic(
+                tid, DELEGATE_ID, 5, None, reason=f"Приглашённый: {name}", changed_by=None,
+            )
+        await db.add_coins(DELEGATE_ID, 10, "Бонус за активность", None)
+    _run(seed())
+
+
+def test_coins_history_masks_names_acceptance_9(client):
+    _set("amb_hide_invitee_names", "on")
+    _seed_referral_coins()
+    resp = client.get("/app/api/coins/history", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.text
+    assert "Иван Уникальный" not in body and "Пётр Особый" not in body
+    reasons = [item["reason"] for item in resp.json()["items"]]
+    assert reasons == ["Бонус за активность", "Приглашённый №2", "Приглашённый №1"]
+    stored = [r[0] for r in _sql("SELECT reason FROM coins WHERE source = 'referral' ORDER BY id")]
+    assert stored == ["Приглашённый: Иван Уникальный", "Приглашённый: Пётр Особый"]
+
+
+def test_coins_history_off_returns_stored_reason(client):
+    _seed_referral_coins()
+    reasons = [i["reason"] for i in client.get("/app/api/coins/history", headers=_hdr(DELEGATE_ID)).json()["items"]]
+    assert reasons == ["Бонус за активность", "Приглашённый: Пётр Особый", "Приглашённый: Иван Уникальный"]
