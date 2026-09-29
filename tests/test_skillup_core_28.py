@@ -13,7 +13,7 @@ import sqlite3
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from tests._dbtpl import fast_init_db
 
 

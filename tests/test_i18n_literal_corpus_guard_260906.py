@@ -19,7 +19,7 @@
 import ast
 from pathlib import Path
 
-from i18n_ui_en import UI_EN
+from core.i18n_ui_en import UI_EN
 from services import i18n_sources
 
 ROOT = Path(__file__).resolve().parent.parent

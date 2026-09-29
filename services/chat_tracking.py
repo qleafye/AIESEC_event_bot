@@ -23,7 +23,7 @@ import logging
 from datetime import timedelta
 
 from config import config
-from cities import (
+from core.cities import (
     ALL_CITIES, cities_module_on, city_scope, enabled_cities, normalize_city, per_city_key,
 )
 from database.db import (
@@ -38,8 +38,8 @@ from database.db import (
     CHAT_PRESENT_STATUSES,
 )
 from services.timeutil import msk_now
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +421,7 @@ async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
     if not claimed and not claim_reconcile():
         return None
     try:
-        from cities import city_label  # ленивый: чистая подпись города для отчёта
+        from core.cities import city_label  # ленивый: чистая подпись города для отчёта
 
         reports = []
         for entry in await bound_chats():

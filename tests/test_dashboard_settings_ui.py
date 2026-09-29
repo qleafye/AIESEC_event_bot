@@ -13,7 +13,7 @@ import asyncio
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_settings
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from tests._dbtpl import fast_init_db

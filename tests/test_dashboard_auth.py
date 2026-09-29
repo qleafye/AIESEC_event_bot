@@ -311,7 +311,7 @@ def test_all_capabilities_matches_bot_capability_model():
 
 
 def test_role_default_caps_matches_settings_schema():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     for role, caps in _ROLE_DEFAULT_CAPS.items():
         key = f"role_caps_{role}"

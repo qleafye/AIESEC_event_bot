@@ -47,7 +47,7 @@ from database.db import (
     list_applications_page,
 )
 from services.ambassador_waves import current_wave_for_city_raw, wave_eligible
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

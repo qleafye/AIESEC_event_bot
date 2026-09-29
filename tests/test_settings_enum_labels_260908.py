@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import asyncio
 
-import web_theme
+from core import web_theme
 from handlers.admin_miniapp_theme import _FONT_LABELS, _PRESET_LABELS
 from handlers.admin_settings import _enum_human_label
-from settings_schema import SETTINGS_SCHEMA, option_label, option_labels
+from core.settings_schema import SETTINGS_SCHEMA, option_label, option_labels
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,

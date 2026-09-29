@@ -96,7 +96,7 @@ from database.db import (
 from services import scheduler as _sched
 from services.checkin import ENTRY_POINT, checkin_denial
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,7 @@ async def eligible_recipients(city: str | None, *, only_arrived: bool) -> list[d
     строке (единая точка правды допуска D-02, тот же приём, что `services.checkin_broadcast.
     eligible_recipients`) — `only_arrived=True` дополнительно требует хотя бы один вход
     (`database.db.first_entry_scanned_at`, любой день форума)."""
-    import cities as _cities
+    from core import cities as _cities
 
     candidates = await list_approved_users(city_scope=_cities.city_scope(city))
     eligible = [u for u in candidates if await checkin_denial(u) is None]
@@ -279,13 +279,13 @@ async def audience_counts(city: str | None) -> dict:
 
 
 async def enabled_for(city: str | None) -> bool:
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     return await get_setting_typed_for_city("forum_stats_card_enabled", city) == "on"
 
 
 async def sent_summary(city: str | None) -> dict:
     """«Отправлено N» — знаменатель «из M» считает вызывающий сам (`audience_counts`)."""
-    import cities as _cities
+    from core import cities as _cities
 
     season = (await get_setting_typed("event_season") or "").strip()
     return await forum_stats_card_summary(season, city_scope=_cities.city_scope(city))
@@ -327,7 +327,7 @@ async def _resolve_footer_parts(
     докстринг модуля) + даты форума этого города — единственная точка, где рендер карточки
     трогает БД/сеть за пределами `collect_stats`/фона/лого, поэтому вызывается из async-кода
     ДО `render_card_sync` (чистая синхронная функция)."""
-    from cities import city_label_or_none
+    from core.cities import city_label_or_none
     from services import i18n as i18n_service
     from services import sos as sos_service
 
@@ -600,7 +600,7 @@ async def _brand_colors() -> str:
     """Акцент активного пресета Mini App (`web_theme.PRESETS`) — читаем РЕАЛЬНО сохранённые
     ручки темы, не хардкодим пресет "youlead": бот универсальный (CLAUDE.md), карточка обязана
     красить фон в цвет ТЕКУЩЕГО события, не только YouLead."""
-    import web_theme
+    from core import web_theme
 
     settings = {}
     for key in web_theme.THEME_KEYS.values():
@@ -667,7 +667,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         from handlers import reg_i18n
         from services import i18n as i18n_service
         from services import quiet_hours
-        from cities import get_setting_typed_for_city
+        from core.cities import get_setting_typed_for_city
 
         # Фон/лого/акцент читаются ОДИН раз на всю рассылку (не на каждого делегата) — качаются
         # из Telegram один раз, а не N раз подряд.

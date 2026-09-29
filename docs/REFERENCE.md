@@ -174,7 +174,7 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 6. Расшарить таблицу на `client_email` из `google_credentials.json` с правами редактора.
 
 **Колонки, включённые вопросы анкеты.** Список колонок собирается из `SHEET_COLUMNS`
-(`handlers/reg_schema.py`, значения переехали в `reg_labels.py`/`reg_options.py`, схема
+(`handlers/reg_schema.py`, значения переехали в `core/reg_labels.py`/`core/reg_options.py`, схема
 реэкспортирует их байт-в-байт): служебные (ID, username, дата, статус, ФИО, детали) плюс по
 колонке на каждый включённый вопрос `reg_q_*` в порядке анкеты. Шапку пишет `ensure_sheet_header`
 (`services/sheets.py`) при старте бота, при «🔄 Синхронизация таблицы» и при правке тумблеров
@@ -234,17 +234,19 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 AIESEC_event_bot/
 ├── main.py                    # Точка входа: роутеры, планировщик, фоновые циклы, логи
 ├── config.py                  # pydantic-settings поверх .env
-├── settings_schema.py         # SETTINGS_SCHEMA, реестр настроек bot_settings
-├── settings_ops.py            # Правила настроек, общие для бота и Mini App, без aiogram
-├── settings_validation.py     # Валидация значения настройки до записи в bot_settings
-├── settings_synonyms.py       # Синонимы для поиска по настройкам в Mini App
-├── cities.py                  # Реестр городов мероприятия (event_city)
-├── reg_engine.py               # Ядро анкеты без aiogram, общее для бота и Mini App
-├── reg_labels.py               # Подписи анкеты, корневой модуль без aiogram
-├── reg_options.py              # Списки вариантов ответа анкеты
-├── game_labels.py              # RU-подписи геймификации, корневой модуль без aiogram
-├── moderation_card.py          # Карточка заявки для модератора: что показывать, как обрезать
-├── web_theme.py                # Пресеты оформления Mini App и дашборда
+├── core/                       # Общие модули без aiogram: бот, Mini App и дашборд (см. core/README.md)
+│   ├── settings_schema.py      # SETTINGS_SCHEMA, реестр настроек bot_settings
+│   ├── settings_ops.py         # Правила настроек, общие для бота и Mini App, без aiogram
+│   ├── settings_validation.py  # Валидация значения настройки до записи в bot_settings
+│   ├── settings_synonyms.py    # Синонимы для поиска по настройкам в Mini App
+│   ├── cities.py               # Реестр городов мероприятия (event_city)
+│   ├── reg_engine.py           # Ядро анкеты без aiogram, общее для бота и Mini App
+│   ├── reg_labels.py           # Подписи анкеты
+│   ├── reg_options.py          # Списки вариантов ответа анкеты
+│   ├── game_labels.py          # RU-подписи геймификации
+│   ├── moderation_card.py      # Карточка заявки для модератора: что показывать, как обрезать
+│   ├── web_theme.py            # Пресеты оформления Mini App и дашборда
+│   └── …                       # остальные общие модули (arrival_stats, chat_score, tg_media, …)
 │
 ├── handlers/                   # Модули ~800 строк, общий Router на группу (admin_*, reg_*)
 │   ├── admin.py                # Агрегатор админки: импортирует admin_* «швы» в один router
@@ -543,7 +545,7 @@ sequenceDiagram
 `MiniAppTheme`. Все устроены одинаково, одно состояние на шаг мастера, подтверждение,
 последний шаг читает `state.get_data()` вместо отдельного состояния.
 
-Поток анкеты собирается движком `REG_FLOW` (`reg_engine.py`) на лету: набор шагов зависит от
+Поток анкеты собирается движком `REG_FLOW` (`core/reg_engine.py`) на лету: набор шагов зависит от
 включённых вопросов, трека участника и предыдущих ответов. Отмена доступна везде, кнопка
 «Отмена», `/cancel` или inline «❌ Отмена».
 

@@ -51,13 +51,13 @@ from database.db import (
     upsert_reg_draft,
     username_needle,
 )
-from cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
+from core.cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
 from handlers import admin_caps
 from handlers.admin_purge import _footprint_lines
-from reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
+from core.reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
 from services.scheduler import cancel_payment_reminders
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

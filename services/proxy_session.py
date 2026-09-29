@@ -50,7 +50,7 @@ from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 
 from config import config
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 from services.background import spawn
 from services.timeutil import msk_now
 

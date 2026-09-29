@@ -18,7 +18,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
-import cities
+from core import cities
 from tests._dbtpl import fast_init_db
 
 
@@ -421,7 +421,7 @@ def test_html_settings_branch_checked_against_base_key():
 
 def test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix():
     per_city_keys = [
-        k for k, v in __import__("settings_schema").SETTINGS_SCHEMA.items() if v.get("per_city")
+        k for k, v in __import__("core.settings_schema", fromlist=["SETTINGS_SCHEMA"]).SETTINGS_SCHEMA.items() if v.get("per_city")
     ]
     for k in per_city_keys:
         assert k not in admin_settings._SHEET_TAB_WRITE_MODE, k

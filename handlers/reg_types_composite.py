@@ -33,7 +33,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers import reg_i18n
 from handlers.registration import _ask_step, _sync_draft_out, router
-from reg_engine import (
+from core.reg_engine import (
     STEP_TO_COLUMN,
     _COMPOSITE_GROUPS,
     _COMPOSITE_TOGGLE_STEP,
@@ -43,7 +43,7 @@ from reg_engine import (
     label_for,
     studying_statuses,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 
 class _CompositeChat(StatesGroup):

@@ -33,7 +33,7 @@ from handlers.admin_core import _admin_city_view
 from handlers.admin_questions import render_questions_screen
 from handlers.states import FaqItem
 from keyboards.builders import get_cancel_kb
-from cities import ALL_CITIES, admin_selected_city, city_label
+from core.cities import ALL_CITIES, admin_selected_city, city_label
 from services import faq as faq_service
 from services.questions import question_status
 

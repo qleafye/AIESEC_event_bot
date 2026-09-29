@@ -23,9 +23,9 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
@@ -38,8 +38,8 @@ from handlers.reg_schema import (
 )
 # Phase 28 (28-10, SU-11): единый bulk-writer пресетов — корневой aiogram-free модуль,
 # тот же, что зовёт веб-путь (settings_ops.apply_event_type_preset).
-from reg_presets import apply_reg_preset
-from cities import (
+from core.reg_presets import apply_reg_preset
+from core.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,

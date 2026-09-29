@@ -32,15 +32,15 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from core.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_program_session
 from handlers import reg_i18n
 from handlers.admin import router
 from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.states import EditSetting, SessionFeedbackComment
 from handlers.user_actions import router as delegate_router
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 from services import session_feedback as sf
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ async def _is_marked(telegram_id: int, session_id: int) -> bool:
 
 
 async def _setting_or(key: str, default: str) -> str:
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     return await get_setting_typed(key) or default
 
 

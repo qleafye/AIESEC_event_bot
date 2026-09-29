@@ -88,14 +88,14 @@ from __future__ import annotations
 
 import logging
 
-from cities import CITIES, split_per_city_key
-import cities
+from core.cities import CITIES, split_per_city_key
+from core import cities
 from config import config
-from settings_schema import SETTINGS_SCHEMA
-import reg_engine
-import reg_labels
-import reg_options
-import payment_options
+from core.settings_schema import SETTINGS_SCHEMA
+from core import reg_engine
+from core import reg_labels
+from core import reg_options
+from core import payment_options
 
 logger = logging.getLogger(__name__)
 

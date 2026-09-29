@@ -111,7 +111,7 @@ from handlers import admin_game_tasks  # noqa: E402  (новый шов-моду
 from handlers import admin_core  # noqa: E402
 from handlers import user_actions as ua_mod  # noqa: E402
 from handlers import game_labels  # noqa: E402
-import settings_schema  # noqa: E402
+from core import settings_schema  # noqa: E402
 
 
 class FakeUser:

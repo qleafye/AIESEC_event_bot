@@ -22,7 +22,7 @@ from __future__ import annotations
 import html as html_module
 import logging
 
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from core.settings_schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

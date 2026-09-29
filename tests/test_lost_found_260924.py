@@ -16,13 +16,13 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_lost_found as alf  # noqa: F401 -- регистрирует lost_found_*/lostfound_*
 from handlers.admin_caps import resolve_capabilities
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import _fresh_state
 
@@ -160,7 +160,7 @@ def _bind_chat(city):
 
 
 def _enable(city=None):
-    from cities import per_city_key
+    from core.cities import per_city_key
     if city:
         _run(db.set_setting(per_city_key("lost_found_enabled", city), "on"))
     else:

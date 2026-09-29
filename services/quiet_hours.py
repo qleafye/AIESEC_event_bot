@@ -28,11 +28,11 @@
 from __future__ import annotations
 
 import logging
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 from datetime import datetime, time, timedelta
 
-from settings_schema import get_setting_typed
-from cities import cities_module_on, get_setting_typed_for_city, normalize_city
+from core.settings_schema import get_setting_typed
+from core.cities import cities_module_on, get_setting_typed_for_city, normalize_city
 from database.db import get_user
 
 logger = logging.getLogger(__name__)

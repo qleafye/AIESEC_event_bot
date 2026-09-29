@@ -12,7 +12,7 @@ from datetime import datetime
 
 import aiosqlite
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from services import timeutil as timeutil_mod

@@ -23,8 +23,8 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import chat_score
-from cities import (
+from core import chat_score
+from core.cities import (
     ALL_CITIES,
     admin_selected_city,
     city_codes,
@@ -37,8 +37,8 @@ from handlers.admin import router
 from handlers.admin_settings import _per_city_visible_codes
 from handlers.settings_validation import is_command_like, validate_setting_value
 from handlers.states import ChatRatingEdit
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

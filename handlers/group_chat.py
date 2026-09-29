@@ -44,7 +44,7 @@ from aiogram import F, Router, types, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, enabled_cities
+from core.cities import city_codes, city_label, cities_module_on, enabled_cities
 from config import config
 from database.db import (
     CHAT_PRESENT_STATUSES,
@@ -59,7 +59,7 @@ from database.db import (
 )
 from services import chat_cleanup, chat_tracking
 from services.timeutil import aware_to_msk
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

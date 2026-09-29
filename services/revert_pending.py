@@ -49,7 +49,7 @@ import html as html_module
 import logging
 
 from database.db import get_balance, get_user, record_answer_history, revert_user_to_pending
-from reg_labels import STATUS_LABELS
+from core.reg_labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders
 from services.sheets import update_status_in_sheet
 
@@ -162,11 +162,11 @@ async def revert_to_pending(
 
     if notify and bot is not None:
         try:
-            from cities import get_setting_typed_for_city
+            from core.cities import get_setting_typed_for_city
             from services import quiet_hours
             from services.i18n import context as _i18n_context, tr as _i18n_tr
             from services.scheduler import _now_moscow_naive
-            from settings_schema import SETTINGS_SCHEMA
+            from core.settings_schema import SETTINGS_SCHEMA
 
             template = await get_setting_typed_for_city("revert_pending_notify_text", user.get("event_city"))
             if not template:

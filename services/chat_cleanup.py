@@ -45,7 +45,7 @@ from database.db import (
 )
 from services import chat_tracking
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

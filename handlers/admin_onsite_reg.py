@@ -15,12 +15,12 @@ import logging
 from aiogram import Bot, F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, per_city_key
+from core.cities import cities_module_on, city_label, per_city_key
 from database.db import get_staff_city
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.onsite_reg import onsite_enabled, walkin_link, walkin_qr_png
-from settings_audit import set_setting_by_admin
+from core.settings_audit import set_setting_by_admin
 
 logger = logging.getLogger(__name__)
 

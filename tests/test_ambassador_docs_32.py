@@ -23,7 +23,7 @@ import pytest
 
 import handlers.admin_roles as roles
 import handlers.admin_sections as sec
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 DOCS_ROOT = Path(__file__).resolve().parent.parent / "docs"
 GUIDE = DOCS_ROOT / "ADMIN_GUIDE.md"

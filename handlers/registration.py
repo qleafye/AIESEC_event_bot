@@ -15,12 +15,12 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _sheet_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below; квик 260919: _csv_safe -> _sheet_safe (08-sheets-dashboard) — Sheets-строки больше не нейтрализуются, gspread пишет явным RAW
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): свой маленький импорт, не в общий
 # список выше — тот уже стоит на потолке читаемости одной строки, а этот шов самодостаточен
 # (используется ровно в одном месте, _handle_volunteer_invite ниже).
 from database.db import add_staff, claim_volunteer_invite, get_volunteer_invite, set_staff_city
-from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
+from core.cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -55,7 +55,7 @@ from services import reg_edit_policy  # Квик 260911-w2m: гейт правк
 from services.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
-from reg_options import (
+from core.reg_options import (
     ALUMNI_STATUS_OPTIONS,
     BED_SHARING_OPTIONS,
     TRANSPORT_OPTIONS,
@@ -147,8 +147,8 @@ DEFAULT_REG_COMPLETE_TEXT = (
 # Квик 260923-p37 (CITY-REG-CLOSE): модульный импорт (не `from reg_engine import city_gate`) —
 # `_city_fork_then_continue` уже несёт свой keyword-параметр `city_gate`, бэйр-имя функции
 # затенялось бы им внутри тела.
-import reg_engine
-from reg_engine import (
+from core import reg_engine
+from core.reg_engine import (
     REG_STEP_TYPES, STEP_TO_COLUMN, SELECT_CONFIG, MULTI_CONFIG, RECALLABLE_STEPS,
     enabled_steps, option_list_for, is_step_enabled_for_track, prompt,
     options as engine_options,  # Phase 28: алиас — в _ask_step локальная `options` затеняла бы импорт
@@ -1116,7 +1116,7 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     # Менеджеру-создателю ссылки -- «@user (Имя) зашёл по ссылке волонтёров <город>, N из M».
     if invite and invite.get("created_by"):
         try:
-            from cities import city_label
+            from core.cities import city_label
 
             name = message.from_user.full_name or message.from_user.username or str(user_id)
             uname = f" (@{message.from_user.username})" if message.from_user.username else ""

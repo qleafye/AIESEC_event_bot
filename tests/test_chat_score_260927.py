@@ -6,7 +6,7 @@
 import dataclasses
 from datetime import date, datetime, timedelta
 
-import chat_score as cs
+from core import chat_score as cs
 
 A, B, C = 101, 102, 103
 T0 = datetime(2026, 9, 1, 10, 0, 0)

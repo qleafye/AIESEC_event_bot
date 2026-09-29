@@ -2,7 +2,7 @@ import asyncio
 import logging
 import sqlite3
 import threading
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 
 import gspread
 from config import config
@@ -76,7 +76,7 @@ async def _tab_explicitly_configured() -> bool:
     cached right now — so destructive-op refusal (rebuild/dedupe, see REFUSED_UNPINNED_TAB
     above) and the startup warning below both reflect the CURRENT settings, not stale
     in-process cache state."""
-    from settings_schema import get_setting_typed  # local import: settings_schema has no
+    from core.settings_schema import get_setting_typed  # local import: settings_schema has no
     # reverse dependency on this module, so this is safe, but keeping it local avoids widening
     # this module's top-level import surface for a single call site.
     main_tab = await get_setting_typed(_MAIN_TAB_SETTING_KEY)
@@ -643,7 +643,7 @@ async def _resolve_status_tab(telegram_id: int) -> str | None:
     as city_row_tab itself. Async and run BEFORE the asyncio.to_thread hop below: get_user
     (aiosqlite) and the cities.py helpers (get_setting_typed) need a running event loop, which
     the sync worker thread does not have."""
-    from cities import cities_module_on, city_tab_base, is_default_city, normalize_city, tab_suffix
+    from core.cities import cities_module_on, city_tab_base, is_default_city, normalize_city, tab_suffix
     from database.db import get_user
 
     user = await get_user(telegram_id)

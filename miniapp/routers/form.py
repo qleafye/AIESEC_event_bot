@@ -37,8 +37,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-import reg_engine
-from cities import (
+from core import reg_engine
+from core.cities import (
     cities_module_on,
     ensure_cities_fresh,
     get_setting_typed_for_city,
@@ -56,7 +56,7 @@ from database.db import (
     upsert_reg_draft,
     set_user_lang,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services import i18n, reg_edit_policy
 from services.consent import outstanding_consents
 from services.lookup import search_lookup, top_chips

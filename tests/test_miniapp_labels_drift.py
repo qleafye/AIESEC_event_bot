@@ -70,7 +70,7 @@ def _loaded_aiogram(code: str) -> list[str]:
 # ── identity: перенос, а не копия ────────────────────────────────────────────────────────
 
 def test_reg_schema_reexports_same_objects():
-    import reg_labels
+    from core import reg_labels
     from handlers import reg_schema
 
     assert reg_schema.REG_LABELS is reg_labels.REG_LABELS
@@ -78,7 +78,7 @@ def test_reg_schema_reexports_same_objects():
 
 
 def test_admin_broadcasts_payment_labels_same_object():
-    import reg_labels
+    from core import reg_labels
     from handlers import admin_broadcasts
 
     assert admin_broadcasts._PAYMENT_STATUS_LABELS is reg_labels.PAYMENT_STATUS_LABELS
@@ -86,14 +86,14 @@ def test_admin_broadcasts_payment_labels_same_object():
 
 @pytest.mark.parametrize("name", GAME_LABELS_PUBLIC + ["_CATEGORY_KEY", "_PROOF_TYPE_KEY"])
 def test_handlers_game_labels_shim_reexports_same_objects(name):
-    import game_labels
+    from core import game_labels
     from handlers import game_labels as shim
 
     assert getattr(shim, name) is getattr(game_labels, name)
 
 
 def test_game_labels_public_names_declared():
-    import game_labels
+    from core import game_labels
 
     assert sorted(game_labels.__all__) == sorted(GAME_LABELS_PUBLIC)
 
@@ -101,7 +101,7 @@ def test_game_labels_public_names_declared():
 # ── aiogram-free ────────────────────────────────────────────────────────────────────────
 
 def test_root_label_modules_do_not_load_aiogram():
-    assert _loaded_aiogram("import reg_labels, game_labels") == []
+    assert _loaded_aiogram("from core import reg_labels, game_labels") == []
 
 
 def test_handlers_game_labels_loads_aiogram_so_shim_is_needed():
@@ -121,7 +121,7 @@ def test_miniapp_imports_root_modules_not_handlers():
 # ── снимок ключей ───────────────────────────────────────────────────────────────────────
 
 def test_reg_labels_keys_snapshot():
-    import reg_labels
+    from core import reg_labels
 
     assert list(reg_labels.REG_LABELS) == REG_LABELS_KEYS_SNAPSHOT
     assert reg_labels.STATUS_LABELS == {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
@@ -138,8 +138,8 @@ def test_profile_columns_cover_only_known_labels():
     подписи) — вместо этого профиль исключает его ЯВНО в `_profile_columns()`
     (`reg_engine.FULL_NAME_STEP`): имя уже на плите карточки профиля, вторая строка ответа
     не нужна."""
-    import reg_engine
-    import reg_labels
+    from core import reg_engine
+    from core import reg_labels
     from miniapp.routers.profile import _profile_columns
 
     columns = _profile_columns()

@@ -32,8 +32,8 @@ from handlers import reg_extra_steps
 from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
 from handlers.states import Registration
 from handlers import reg_i18n
-from settings_schema import get_setting_typed
-from reg_engine import (
+from core.settings_schema import get_setting_typed
+from core.reg_engine import (
     help_text, prompt, resume_fork_options, resume_link_whitelist,
     validate_answer, validate_resume_link,
 )

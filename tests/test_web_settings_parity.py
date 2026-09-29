@@ -13,11 +13,11 @@ from __future__ import annotations
 import asyncio
 
 import handlers.admin_sections as admin_sections
-import settings_ops
+from core import settings_ops
 from database import db as bot_db
 from handlers.admin_settings import SETTINGS_GROUPS, _settings_group_label
 from miniapp.routers import settings as settings_router
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -306,7 +306,7 @@ def test_reg_questions_matrix_structure_and_track_semantics(tmp_path):
     полную форму при отсутствии `__party` (D-03/D-04 reg_engine.is_step_enabled_for_track),
     short без `__short` — жёсткий off (SHORT-04); флат-список `group["items"]` остаётся рядом
     (T-19-45, поиск)."""
-    import reg_engine
+    from core import reg_engine
 
     client = _setup(tmp_path)
     body = _sections_body(client)

@@ -42,9 +42,9 @@ from __future__ import annotations
 
 import logging
 
-import reg_engine
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from cities import get_setting_typed_for_city
+from core import reg_engine
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 

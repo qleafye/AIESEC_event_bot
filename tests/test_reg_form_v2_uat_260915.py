@@ -14,8 +14,8 @@ from config import config
 from database import db as bot_db
 from database.db import init_db, set_setting
 
-import reg_engine
-from reg_engine import (
+from core import reg_engine
+from core.reg_engine import (
     advance_anchor,
     composite_absorbed_steps,
     form_spec,
@@ -277,7 +277,7 @@ def test_city_fork_in_app_sees_cities_added_after_start(client):
     """Живой стенд: в `.env` три города, менеджер завёл четвёртый в админке — бот его
     показывал, приложение нет. `reload_cities()` зовёт только процесс бота; веб обязан
     подтягивать справочник сам (`cities.ensure_cities_fresh` в `_load_context`)."""
-    import cities
+    from core import cities
 
     # Кэш городов — процессный, его правка переживает тест: восстанавливаем исходный, чтобы
     # соседи по прогону (xdist кладёт их в тот же воркер) не увидели чужой справочник.

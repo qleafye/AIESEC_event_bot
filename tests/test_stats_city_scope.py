@@ -16,7 +16,7 @@ import re
 from config import config
 from database import db
 from handlers import admin as admin_mod
-import cities
+from core import cities
 from tests._dbtpl import fast_init_db
 
 

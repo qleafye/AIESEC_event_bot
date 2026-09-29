@@ -25,10 +25,10 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_gamification
 from handlers.admin_sections import section_of
 from handlers.admin_caps import ADMIN_CAPS, required_capability
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
-import settings_ops
-import cities
+from core import settings_ops
+from core import cities
 from tests._dbtpl import fast_init_db
 
 

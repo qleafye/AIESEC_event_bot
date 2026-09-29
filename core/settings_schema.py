@@ -27,10 +27,10 @@ legacy literal tables in handlers/admin.py holds throughout the incremental migr
 """
 from datetime import datetime
 
-import chat_score
+from core import chat_score
 
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
-from reg_labels import REG_LABELS
+from core.reg_labels import REG_LABELS
 
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
@@ -5824,7 +5824,7 @@ SETTINGS_SCHEMA = {
     # `_parse_setting` читал бы обратно как дефолтные 20 вопросов).
     "modcard_fields": {
         "type": "multi", "group": "apps", "label": "🧾 Поля карточки заявки",
-        "options_ref": "moderation_card:CARD_STEPS",
+        "options_ref": "core.moderation_card:CARD_STEPS",
         "empty_value": "—",
         "prompt": (
             "Какие ответы анкеты видит менеджер в карточке заявки. Один набор и для "

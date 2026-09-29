@@ -22,7 +22,7 @@ from starlette.testclient import TestClient
 from config import config as bot_config
 from database import db as bot_db
 
-import web_theme
+from core import web_theme
 from dashboard import files as dashboard_files
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app

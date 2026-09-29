@@ -24,7 +24,7 @@ import asyncio
 import gspread
 import pytest
 
-import cities
+from core import cities
 from config import config
 from database import db
 import services.sheets as sheets_mod

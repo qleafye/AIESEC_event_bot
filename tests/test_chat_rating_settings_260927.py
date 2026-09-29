@@ -5,9 +5,9 @@
 """
 import re
 
-import chat_score as cs
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
-from settings_validation import validate_setting_value
+from core import chat_score as cs
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting
+from core.settings_validation import validate_setting_value
 
 FORMULA_KEYS = list(cs.SETTING_KEYS.values()) + [cs.BURST_GAP_KEY, cs.RETENTION_KEY]
 PER_CITY_KEYS = (

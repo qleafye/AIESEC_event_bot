@@ -19,10 +19,10 @@ import asyncio
 
 import pytest
 
-import reg_engine
+from core import reg_engine
 from config import config
 from database.db import init_db
-from reg_labels import REG_LABELS
+from core.reg_labels import REG_LABELS
 from tests._dbtpl import fast_init_db
 
 _DRIFTED = [

@@ -27,7 +27,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from core.cities import (
     city_codes,
     city_label,
     cities_module_on,
@@ -78,7 +78,7 @@ async def _city_allowed(admin_id: int, code: str | None) -> bool:
     привязки менеджера между рендером и тапом."""
     if not code:
         return True
-    import settings_ops
+    from core import settings_ops
     return code in await settings_ops.per_city_visible_codes(admin_id)
 
 

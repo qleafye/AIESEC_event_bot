@@ -12,7 +12,7 @@ import asyncio
 from config import config
 from database import db
 from database.db import set_setting
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from handlers import admin as admin_mod
 from handlers import admin_roles
 from handlers import admin_caps

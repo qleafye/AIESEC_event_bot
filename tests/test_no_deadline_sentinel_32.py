@@ -35,14 +35,14 @@ ROOT = Path(__file__).resolve().parent.parent
 # `.planning/` — исключены явно (фикстуры сидируют мусорные даты вида "2099-01-01", план
 # 32-04 их разбирал и признал классом (b) — не нарушение).
 SCAN_ROOT_ONLY = ROOT
-SCAN_SUBTREES = ("handlers", "miniapp", "services", "dashboard", "tools", "database")
+SCAN_SUBTREES = ("core", "handlers", "miniapp", "services", "dashboard", "tools", "database")
 EXCLUDE_DIR_NAMES = {"tests", ".venv", ".claude", "node_modules", ".planning", "__pycache__"}
 
 # Сторож 1 — единственный файл на проекте, которому разрешено разбирать `deadline_at` строкой
 # `strptime`: корневой `game_labels.py` (план 32-04, задача 1) — `task_deadline`/
 # `task_deadline_admin` и есть тот самый единственный разбор, на который обязаны переходить
 # все остальные читатели.
-ALLOWED_STRPTIME_FILES = {"game_labels.py"}
+ALLOWED_STRPTIME_FILES = {"core/game_labels.py"}
 
 # Сторож 2 — единственный файл, которому разрешён литерал `9999-12-31`: объявление
 # `NO_DEADLINE_AT` в `database/db.py` (план 32-01). `dashboard/queries.py` держит
@@ -159,5 +159,5 @@ def test_sentinel_literal_detector_catches_planted_sample(tmp_path):
 # ── контракт списков разрешений ──────────────────────────────────────────────────────────
 
 def test_allowed_file_lists_are_explicit_constants():
-    assert ALLOWED_STRPTIME_FILES == {"game_labels.py"}
+    assert ALLOWED_STRPTIME_FILES == {"core/game_labels.py"}
     assert ALLOWED_SENTINEL_FILES == {"database/db.py", "dashboard/queries.py"}

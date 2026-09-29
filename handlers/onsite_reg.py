@@ -36,7 +36,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from cities import (
+from core.cities import (
     cities_module_on,
     default_city_code,
     enabled_cities,
@@ -45,9 +45,9 @@ from cities import (
 )
 from database.db import create_onsite_user, get_user, record_user_consent
 from handlers import reg_i18n
-from reg_engine import is_past_season_row, validate_answer
+from core.reg_engine import is_past_season_row, validate_answer
 from services.onsite_reg import onsite_enabled, parse_walkin_arg
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

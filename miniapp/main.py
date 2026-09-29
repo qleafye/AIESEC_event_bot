@@ -58,7 +58,7 @@ from miniapp.config import (
 )
 from miniapp.deps import read_setting
 from miniapp.logging_config import configure_logging
-from secret_redact import register_secret
+from core.secret_redact import register_secret
 from miniapp.routers import ALL_ROUTERS
 from miniapp.routers.page import STATIC_PREFIX
 from miniapp.routers.page import render_disabled_page

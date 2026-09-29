@@ -19,8 +19,8 @@ from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-import arrival_stats
-from cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
+from core import arrival_stats
+from core.cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope
 from services.checkin_arrival import arrival_report

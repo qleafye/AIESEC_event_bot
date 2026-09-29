@@ -42,7 +42,7 @@ from aiogram.types import (
 )
 
 from config import config
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from database.db import (
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
@@ -76,7 +76,7 @@ from database.db import (
     update_task_photo,
     update_task_title,
 )
-from settings_audit import set_setting_by_admin
+from core.settings_audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets import sync_named_worksheet
 from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
@@ -110,7 +110,7 @@ from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers
     # every call site below goes through these, never the scheduler functions directly.
     _safe_cancel_reminder, _safe_schedule_reminder,
 )
-from cities import (
+from core.cities import (
     admin_selected_city,
     cities_module_on,
     city_codes,

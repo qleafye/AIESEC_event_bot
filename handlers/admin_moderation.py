@@ -58,9 +58,9 @@ from services.background import spawn as _spawn
 from services.consent import consent_card_line
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
-import moderation_card
-from settings_schema import get_setting_typed
-from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
+from core import moderation_card
+from core.settings_schema import get_setting_typed
+from core.cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from handlers.admin import router
 

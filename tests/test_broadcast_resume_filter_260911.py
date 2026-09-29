@@ -81,7 +81,7 @@ def test_resume_recall_columns_is_proper_subset_of_resume_columns():
 def test_has_prior_resume_matches_recall_columns_oracle():
     """`reg_engine.has_prior_resume` даёт True/False ровно на тех же строках, что кортеж
     `RESUME_RECALL_COLUMNS` — по строке-словарю на каждую колонку + строка с «-» + пустая."""
-    import reg_engine
+    from core import reg_engine
 
     for col in db.RESUME_RECALL_COLUMNS:
         assert reg_engine.has_prior_resume({col: "some-value"}) is True

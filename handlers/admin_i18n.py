@@ -42,7 +42,7 @@ from keyboards.builders import get_cancel_kb
 from services.i18n import src_hash as compute_src_hash
 from services.i18n_sources import corpus
 from services.i18n_worker import bulk_seed, progress
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 LANG = "en"
 PAGE_SIZE = 10

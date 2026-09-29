@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-import settings_schema
+from core import settings_schema
 from handlers import user_actions as ua_mod
 from handlers import admin as admin_mod
 from handlers import admin_gamification

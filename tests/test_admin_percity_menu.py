@@ -26,7 +26,7 @@ from handlers import admin as admin_mod
 from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
-import cities
+from core import cities
 from tests._dbtpl import fast_init_db
 
 

@@ -22,7 +22,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import normalize_city
+from core.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed
@@ -198,11 +198,11 @@ async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> boo
     успех, тот же контракт, что `services/quiet_hours.py::send_or_queue_text`); `False` —
     сбой (делегат заблокировал бота и т.п.), fail-soft, не рвёт саму выдачу разрешения."""
     try:
-        from cities import get_setting_typed_for_city
+        from core.cities import get_setting_typed_for_city
         from services import quiet_hours
         from services.i18n import context as _i18n_context, tr as _i18n_tr
         from services.scheduler import _now_moscow_naive
-        from settings_schema import SETTINGS_SCHEMA
+        from core.settings_schema import SETTINGS_SCHEMA
 
         template = await get_setting_typed_for_city("resubmit_granted_notify_text", event_city)
         if not template:

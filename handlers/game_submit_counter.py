@@ -13,7 +13,7 @@ fail-soft edit; хендлеры остаются в `handlers/user_actions.py` 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services import i18n as i18n_service
 
 PART_KIND_ORDER = ("photo", "document", "text", "link")

@@ -255,7 +255,7 @@ def test_off_tier_progress_to_sets_final_scale_without_intermediate_state(result
 # — grep по файлу), а не полный HTTP-раунд-трип: ключ реестра проверяется напрямую импортом
 # SETTINGS_SCHEMA, поверхности — присутствием ожидаемых строк в исходниках.
 
-from settings_schema import SETTINGS_SCHEMA  # noqa: E402
+from core.settings_schema import SETTINGS_SCHEMA  # noqa: E402
 
 PAGE_PY = ROOT / "miniapp" / "routers" / "page.py"
 APP_HTML = ROOT / "miniapp" / "templates" / "app.html"

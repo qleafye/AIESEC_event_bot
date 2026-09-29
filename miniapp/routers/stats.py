@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from database.db import GAME_CATEGORIES, get_game_stats
-from game_labels import category_label
+from core.game_labels import category_label
 
 from miniapp.deps import Principal, require_cap, require_section
 

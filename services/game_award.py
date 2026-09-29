@@ -13,8 +13,8 @@ Mini App не могло позвать (aiogram-модуль), поэтому `
 эту функцию — формула считается в одном месте буквально."""
 from __future__ import annotations
 
-from game_labels import penalized_coins, task_has_deadline
-from settings_schema import get_setting_typed
+from core.game_labels import penalized_coins, task_has_deadline
+from core.settings_schema import get_setting_typed
 
 
 async def award_for(submission: dict, task: dict, base_coins: int) -> tuple[int, bool]:

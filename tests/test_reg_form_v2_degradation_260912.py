@@ -27,7 +27,7 @@ import pytest
 from config import config
 from database.db import init_db, set_setting
 
-from reg_engine import FORM_V2_TOGGLE_KEYS, degrade_kind, form_spec, form_v2_flags
+from core.reg_engine import FORM_V2_TOGGLE_KEYS, degrade_kind, form_spec, form_v2_flags
 from tests._dbtpl import fast_init_db
 
 CANONICAL_KINDS = ("select", "lookup", "composite", "link", "multi", "repeatable", "text")

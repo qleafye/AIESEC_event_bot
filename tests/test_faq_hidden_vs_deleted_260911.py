@@ -110,7 +110,7 @@ def _restore_cities_cache():
     если тест падал раньше) — городская статистика, вкладки таблицы и percity-анкета
     валились в полном прогоне. Снимок с восстановлением — форма
     `tests/test_quiet_hours_screen_260911.py::_restore_cities_cache`."""
-    import cities
+    from core import cities
     snapshot = list(cities.CITIES)
     yield
     cities.CITIES.clear()
@@ -134,7 +134,7 @@ def test_hide_and_delete_buttons_not_adjacent_with_cities_module_bound_header(
     tmp_path, monkeypatch, _restore_cities_cache
 ):
     _admin_ready(tmp_path)
-    import cities as cities_mod
+    from core import cities as cities_mod
     _run(db.insert_city("msk", "Москва", "", 0))
     _run(db.set_setting("event_city_enabled", "on"))
     _run(cities_mod.reload_cities())

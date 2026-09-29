@@ -49,7 +49,7 @@ from services.checkin import build_checkin_qr, checkin_denial
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +118,12 @@ async def broadcast_enabled_for(city: str | None) -> bool:
     (дефолт "on", менеджер выключает конкретный город кнопкой)."""
     if await get_setting_typed("checkin_qr_enabled") != "on":
         return False
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     return await get_setting_typed_for_city("checkin_qr_broadcast_enabled", city) != "off"
 
 
 async def _times_for(city: str | None) -> tuple[str, str]:
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     evening = await get_setting_typed_for_city("checkin_qr_broadcast_time", city)
     morning = await get_setting_typed_for_city("checkin_qr_morning_repeat_time", city)
     return evening or _DEFAULT_EVENING_TIME, morning or _DEFAULT_MORNING_TIME
@@ -221,7 +221,7 @@ async def _city_still_valid(city: str | None) -> bool:
     юнит-тесты) этот барьер не проходят — менеджер, явно нажавший кнопку в своём городе, не
     должен упереться в гонку, которой физически нет."""
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from core.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -314,7 +314,7 @@ async def reconcile_broadcasts() -> list[str | None]:
     нужен для случая «дата форума/настройка поменялась, пока бот не работал» и для первой
     постановки джобы города, которую ещё никто не трогал. Плюс (находка ревью 260924)
     `_cancel_stale_city_jobs` — снимает джобы городов, выключенных с прошлого обхода."""
-    from cities import cities_module_on, enabled_cities
+    from core.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -361,7 +361,7 @@ async def eligible_recipients(city: str | None) -> list[dict]:
     """Одобренные текущего сезона города — через `services.checkin.checkin_denial` НА КАЖДОЙ
     строке (единая точка правила допуска D-02), не отдельная копия сезонного условия. Общий
     пул для вечерней/ручной рассылки И для превью счётчика (`pending_broadcast_count`)."""
-    import cities as _cities
+    from core import cities as _cities
 
     candidates = await list_approved_users(city_scope=_cities.city_scope(city))
     eligible = []
@@ -375,7 +375,7 @@ async def pending_broadcast_count(city: str | None) -> int:
     """Сколько делегатов города РЕАЛЬНО получат QR при следующей отправке (вечерней джобе или
     ручной кнопке «📤 Разослать QR сейчас») — превью для подтверждения «Уйдёт N делегатам
     города X» (handlers/admin_checkin.py)."""
-    import cities as _cities
+    from core import cities as _cities
 
     eligible = await eligible_recipients(city)
     already = await checkin_qr_sent_ids(city_scope=_cities.city_scope(city))
@@ -469,14 +469,14 @@ async def send_broadcast(city: str | None) -> dict:
         return {"sent": 0, "failed": 0, "total": 0, "already_running": True}
 
     async with lock:
-        import cities as _cities
+        from core import cities as _cities
 
         scope = _cities.city_scope(city)
         eligible = await eligible_recipients(city)
         already = await checkin_qr_sent_ids(city_scope=scope)
         targets = [u for u in eligible if u["telegram_id"] not in already]
 
-        from cities import get_setting_typed_for_city
+        from core.cities import get_setting_typed_for_city
         base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
 
         sent = failed = 0
@@ -519,14 +519,14 @@ async def send_morning_repeat(city: str | None) -> dict:
 
     Тихие часы делегатов НЕ действуют (D-35, 24.09) — служебное сообщение, см. докстринг
     `send_broadcast`."""
-    import cities as _cities
+    from core import cities as _cities
 
     scope = _cities.city_scope(city)
     eligible = await eligible_recipients(city)
     confirmed = await checkin_qr_confirmed_ids(city_scope=scope)
     targets = [u for u in eligible if u["telegram_id"] not in confirmed]
 
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
 
     sent = failed = 0

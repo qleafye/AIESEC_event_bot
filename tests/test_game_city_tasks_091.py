@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-import cities
+from core import cities
 from handlers import admin as admin_mod
 from handlers import admin_gamification
 from handlers import admin_game_tasks

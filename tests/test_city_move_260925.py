@@ -25,7 +25,7 @@ import aiosqlite
 import gspread
 import pytest
 
-import cities
+from core import cities
 from config import config
 from database import db
 from handlers import admin_city_move

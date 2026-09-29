@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import asyncio
 
-import settings_ops
+from core import settings_ops
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_routes import ADMIN_ID, _cfg, _client, _seed, _set, _standard_seed, _use_tmp_db, _hdr
 
@@ -67,7 +67,7 @@ def _seed_realistic_settings():
         if i % 3 == 0:
             _set(key, "on" if i % 2 == 0 else "текст-значение")
     per_city_keys = [k for k in keys if SETTINGS_SCHEMA[k].get("per_city")][:20]
-    from cities import per_city_key
+    from core.cities import per_city_key
     for key in per_city_keys:
         for code in ("msk", "spb", "tyumen"):
             _set(per_city_key(key, code), "override")

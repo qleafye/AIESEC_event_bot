@@ -47,9 +47,9 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-import reg_engine
-from reg_labels import REG_LABELS
-from cities import get_setting_for_city
+from core import reg_engine
+from core.reg_labels import REG_LABELS
+from core.cities import get_setting_for_city
 from config import config
 from database.db import (
     add_user,
@@ -68,7 +68,7 @@ from database.db import (
     get_resume_upload_backlog,
     settings_snapshot,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

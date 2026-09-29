@@ -17,7 +17,7 @@ from database import db
 from handlers import registration as reg
 from handlers import reg_extra_steps
 from handlers.states import Registration
-import reg_engine
+from core import reg_engine
 from tests._dbtpl import fast_init_db
 
 

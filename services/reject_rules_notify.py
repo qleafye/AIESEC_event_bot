@@ -39,12 +39,12 @@ import html
 import json
 import logging
 
-from cities import split_per_city_key
+from core.cities import split_per_city_key
 from database.db import list_reject_rules
-from reg_engine import MULTI_CONFIG, SELECT_CONFIG
+from core.reg_engine import MULTI_CONFIG, SELECT_CONFIG
 from services import scheduler as _sched
 from services.reject_rules import active_rules, rule_summary
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

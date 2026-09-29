@@ -5,18 +5,18 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
 from database.db import get_user, has_faq_for_city, has_important_today
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
-from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
+from core.settings_schema import get_setting_typed
+from core.cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
-from i18n_ui_en import MENU_EN
+from core.i18n_ui_en import MENU_EN
 from services.i18n import resolve_lang
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
 # aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
 # add_skip, порядок kb.adjust(...)) остаются здесь без изменений.
-from reg_options import (
+from core.reg_options import (
     DEFAULT_SOURCE_OPTIONS,
     EDUCATION_STATUS_OPTIONS,
     COURSE_OPTIONS,

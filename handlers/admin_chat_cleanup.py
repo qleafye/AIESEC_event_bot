@@ -23,7 +23,7 @@ from handlers.settings_validation import validate_setting_value
 from handlers.states import ChatCleanupEdit
 from services import chat_cleanup, chat_tracking
 from services.background import spawn
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
+from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)
 

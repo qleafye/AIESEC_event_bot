@@ -29,7 +29,7 @@ from datetime import datetime
 
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 # code (GAME_CATEGORIES) -> registry key name (game_category_label_{light,medium,hard,
 # referral,special}) — один код на один ключ, порядок не важен (lookup by dict, not order).
@@ -307,7 +307,7 @@ async def task_visible_to(user: dict | None, task: dict) -> bool:
     минуя список вовсе. Ленивые импорты (`database.db.list_waves` через `services.
     ambassador_waves.wave_visibility_ids`, `cities`) — этот модуль корневой для Mini App,
     таскать их на уровень модуля незачем ни боту, ни веб-процессу."""
-    from cities import cities_module_on, city_scope, normalize_city
+    from core.cities import cities_module_on, city_scope, normalize_city
     from services.ambassador_waves import wave_visibility_ids
 
     is_ambassador = bool(user and user.get("is_ambassador"))

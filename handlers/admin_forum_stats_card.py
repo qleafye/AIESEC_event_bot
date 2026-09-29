@@ -29,7 +29,7 @@ import html
 from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from core.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_setting
 from handlers.admin import router
 from handlers.admin_checkin import (
@@ -39,7 +39,7 @@ from handlers.admin_checkin import (
     _encode_city,
 )
 from services import forum_stats_card as fsc
-from settings_audit import set_setting_by_admin
+from core.settings_audit import set_setting_by_admin
 
 
 async def _cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:

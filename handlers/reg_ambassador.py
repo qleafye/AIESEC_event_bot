@@ -27,11 +27,11 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_user, set_ambassador_flag
-from cities import get_setting_typed_for_city
-from settings_schema import get_setting_typed
+from core.cities import get_setting_typed_for_city
+from core.settings_schema import get_setting_typed
 from handlers.registration import router
 from handlers import reg_i18n
-from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
+from core.reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
 from services.timeutil import msk_now  # Phase 32 (32-06, D-31): единый момент вступления
 
 logger = logging.getLogger(__name__)

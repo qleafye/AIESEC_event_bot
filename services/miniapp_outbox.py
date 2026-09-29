@@ -70,7 +70,7 @@ At-least-once, с ретраями (T-19-56): исключение -> `mark_mini
 может нести ПД, например имя делегата).
 """
 import logging
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 
 from database.db import (
     list_unprocessed_miniapp_outbox,
@@ -84,7 +84,7 @@ from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ async def _handle_task_changed(payload: dict) -> None:
     более раннего дедлайна и напомнит слишком поздно."""
     from database.db import get_task
     from services.scheduler import cancel_task_deadline_reminder, schedule_task_deadline_reminder
-    from game_labels import task_deadline
+    from core.game_labels import task_deadline
 
     task_id = payload.get("task_id")
     if task_id is None:

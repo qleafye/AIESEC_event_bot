@@ -15,9 +15,9 @@ from pathlib import Path
 
 import aiosqlite
 
-from cities import city_scope
+from core.cities import city_scope
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,

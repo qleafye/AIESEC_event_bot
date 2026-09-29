@@ -23,7 +23,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
-from cities import admin_selected_city, city_label, ALL_CITIES, ALL_CITIES_LABEL
+from core.cities import admin_selected_city, city_label, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_caps import required_capability, resolve_capabilities, _holds
 from handlers.admin import router
 

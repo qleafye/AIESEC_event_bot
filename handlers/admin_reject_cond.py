@@ -36,7 +36,7 @@ from handlers.admin import router
 from handlers.admin_reject_rules import render_rule_card
 from handlers.states import RejectCond
 from keyboards.builders import get_cancel_kb
-from reg_engine import (
+from core.reg_engine import (
     REG_FLOW,
     condition_operators,
     is_step_enabled_for_track,

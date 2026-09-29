@@ -27,7 +27,7 @@ from database import db
 from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
 from handlers.states import RejectRuleEdit
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

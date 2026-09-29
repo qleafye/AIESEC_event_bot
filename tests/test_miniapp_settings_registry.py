@@ -10,11 +10,11 @@ import asyncio
 
 import pytest
 
-import settings_ops
-from cities import ALL_CITIES, PER_CITY_SEP, city_codes
+from core import settings_ops
+from core.cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -395,7 +395,7 @@ def test_hints_countdown_all_cities_lists_missing_city_labels(tmp_path):
     assert "Города без даты:" in countdown["text"]
 
     async def _labels():
-        import cities as cities_mod
+        from core import cities as cities_mod
         return {code: await cities_mod.city_label(code) for code in city_codes()}
 
     labels = asyncio.run(_labels())
@@ -424,7 +424,7 @@ def _group_for_key(body, key):
 def test_theme_keys_group_carries_theme_preview_flag(tmp_path):
     """Решение «где рисовать превью» — сервер (row["theme_preview"], тот же приём, что
     row["matrix"] у reg_questions): группа, несущая ключи web_theme.THEME_KEYS, помечена."""
-    import web_theme
+    from core import web_theme
 
     client = _setup(tmp_path)
     body = _all(client).json()
@@ -442,7 +442,7 @@ def test_theme_key_flag_distinguishes_theme_items_within_shared_group(tmp_path):
     """Группа "miniapp" несёт ключи оформления вперемешку с обычными текстами (D-контекст
     плана) — `item.theme_key` не даёт фронту случайно отправить неродственную правку в
     theme/preview (и получить 403, роняющий весь экран, см. api.js::authErrorHandler)."""
-    import web_theme
+    from core import web_theme
 
     client = _setup(tmp_path)
     body = _all(client).json()
@@ -517,8 +517,8 @@ def test_counter_defaults_carry_three_plural_forms(key):
 
 # ── quick 260906-6xe: «🧾 Поля карточки заявки» — чекбоксы с подписями, не коды ─────────────
 
-import moderation_card as mc
-from settings_schema import multi_options as _multi_options
+from core import moderation_card as mc
+from core.settings_schema import multi_options as _multi_options
 
 
 def test_multi_item_never_leaks_step_codes(tmp_path):

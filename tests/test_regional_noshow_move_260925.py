@@ -96,14 +96,14 @@ def _run_scheduled(tmp_path, monkeypatch, body):
 
 
 def _cities_fixture(monkeypatch):
-    import cities
+    from core import cities
     saved = cities.all_cities()
     cities.set_cities_for_test([dict(c) for c in _CITIES])
     return saved
 
 
 def _restore_cities(saved):
-    import cities
+    from core import cities
     cities.set_cities_for_test(saved)
 
 
@@ -188,7 +188,7 @@ def test_pending_ids_far_poll_answer_still_offered(tmp_path):
 
 
 def test_pending_ids_scoped_by_city(tmp_path):
-    import cities as cities_mod
+    from core import cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))
@@ -373,7 +373,7 @@ def test_send_offers_no_bot_returns_zeroes(tmp_path, monkeypatch):
 
 def test_target_city_defaults_to_default_city_code(tmp_path):
     """«Не хардкодить msk» — дефолт берётся из `cities.default_city_code()`, не литерала."""
-    import cities
+    from core import cities
     _ready(tmp_path)
     assert _run(rgnm.target_city_for("spb")) == cities.default_city_code()
 
@@ -383,7 +383,7 @@ def test_target_city_uses_per_city_override(tmp_path, monkeypatch):
     try:
         _ready(tmp_path)
         _run(db.set_setting("event_city_enabled", "on"))
-        import cities
+        from core import cities
         key = cities.per_city_key("regional_noshow_target_city", "spb")
         _run(db.set_setting(key, "msk"))
         assert _run(rgnm.target_city_for("spb")) == "msk"
@@ -508,7 +508,7 @@ def test_rnm_confirm_calls_move_user_city_with_target_and_status(tmp_path, monke
     assert len(calls) == 1
     call = calls[0]
     assert call["telegram_id"] == UID
-    import cities
+    from core import cities
     assert call["new_city"] == cities.default_city_code()
     assert call["status_mode"] == "to_moderation"
     assert call["by_admin"] == 0
@@ -708,7 +708,7 @@ def test_rnm_confirm_uses_non_default_target_city(tmp_path, monkeypatch):
     """target_city ≠ дефолтного города («Москва») — кнопка/тексты показывают РЕАЛЬНЫЙ город
     назначения из `regional_noshow_target_city` (никогда не хардкод)."""
     from handlers import user_actions as ua
-    import cities
+    from core import cities
 
     saved = cities.all_cities()
     cities.set_cities_for_test([dict(c) for c in _CITIES_THREE])
@@ -810,8 +810,8 @@ def test_notify_managers_job_no_pending_rows_sends_nothing(tmp_path, monkeypatch
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from core.settings_schema import SETTINGS_SCHEMA
+    from core import settings_ops
 
     enabled = SETTINGS_SCHEMA["regional_noshow_offer_enabled"]
     assert enabled["default"] == "off"
@@ -844,7 +844,7 @@ def test_registry_defaults_and_format():
 
 
 def test_registry_default_text_has_manual_en_translation():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     from services.i18n_form_manual import FORM_DEFAULT_EN
 
     default = SETTINGS_SCHEMA["regional_noshow_offer_text"]["default"]
@@ -926,7 +926,7 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
     _run(_add_delegate(UID, city="spb"))
     _run(db.set_user_lang(UID, "en"))
 
-    import cities
+    from core import cities
     target_label = _run(cities.city_label(cities.default_city_code()))
 
     bot = _with_bot(monkeypatch)

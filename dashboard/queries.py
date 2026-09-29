@@ -20,7 +20,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import arrival_stats
+from core import arrival_stats
 from dashboard.timeutil import msk_now
 
 

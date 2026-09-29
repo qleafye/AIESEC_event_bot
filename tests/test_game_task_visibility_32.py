@@ -14,7 +14,7 @@
 """
 import asyncio
 
-import game_labels
+from core import game_labels
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db
@@ -175,7 +175,7 @@ def test_card_byte_identical_at_zero_percent(tmp_path):
     собирается вручную по прежней формуле («до {dd.mm}», без строки штрафа) и сравнивается с
     результатом обновлённой render_task_card_text."""
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     task = _task(deadline_at="2026-05-05 12:00:00", coins=20, category="Medium")
 
     async def _old_style_expected() -> str:

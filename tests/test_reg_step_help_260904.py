@@ -15,7 +15,7 @@ import asyncio
 import pytest
 
 import database.db as db
-import reg_engine
+from core import reg_engine
 from config import config
 from database.db import init_db
 from tests._dbtpl import fast_init_db

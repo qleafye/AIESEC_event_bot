@@ -13,8 +13,8 @@ import asyncio
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_schema import SETTINGS_SCHEMA
+from core.settings_synonyms import SETTINGS_SYNONYMS
 from services import sheet_logs
 import handlers.admin_sections as sec
 from handlers.admin_caps import ADMIN_CAPS
@@ -60,7 +60,7 @@ def test_synonyms_cover_new_keys():
     """Квик 260919-mlu: имена вкладок правятся только из бота, поэтому их синонимы переехали
     из SETTINGS_SYNONYMS (поиск ВЕБ-настроек) в BOT_ONLY_SYNONYMS. Тексты никуда не делись —
     проверяем их там, где они теперь лежат."""
-    from settings_synonyms import BOT_ONLY_SYNONYMS
+    from core.settings_synonyms import BOT_ONLY_SYNONYMS
 
     for key in ("history_sheet_tab", "questions_sheet_tab"):
         assert key in BOT_ONLY_SYNONYMS
@@ -96,7 +96,7 @@ def test_history_rows_order_and_field_count(tmp_path):
 
 
 def reg_engine_label(step):
-    import reg_engine
+    from core import reg_engine
     return reg_engine.label_for(step)
 
 

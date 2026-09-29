@@ -34,7 +34,7 @@ import asyncio
 import logging
 from datetime import date, datetime, time, timedelta
 
-from cities import get_setting_typed_for_city
+from core.cities import get_setting_typed_for_city
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ def cancel_city_job(city: str | None) -> None:
 
 async def _city_still_valid(city: str | None) -> bool:
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from core.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -190,7 +190,7 @@ def _cancel_stale_city_jobs(enabled_codes: set[str]) -> None:
 
 
 async def reconcile() -> list[str | None]:
-    from cities import cities_module_on, enabled_cities
+    from core.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -228,7 +228,7 @@ def poll_keyboard(labels: dict[str, str]):
 
 
 async def _option_labels() -> dict[str, str]:
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     return {
         reason: (await get_setting_typed(key)) or OPTION_DEFAULTS[reason]
@@ -240,9 +240,9 @@ async def send_poll(city: str | None) -> dict:
     """Отправляет опрос всем кандидатам города (`city=None` — все города, модуль выключен).
     Троттлинг/мут/тихие часы — докстринг модуля."""
     from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_user
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     from services import quiet_hours
-    import cities as _cities
+    from core import cities as _cities
 
     bot = _bot()
     if bot is None:
@@ -313,7 +313,7 @@ async def record_answer(telegram_id: int, reason: str, comment: str | None) -> b
     вызывающий отвечает тихо, не пишет вслепую (тот же приём, что `services.session_feedback.
     record_rating`)."""
     from database.db import record_forum_noshow_poll_response
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     season = (await get_setting_typed("event_season") or "").strip()
     stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
@@ -325,7 +325,7 @@ async def summary_text(*, city_scope=None) -> str:
     admin_forum_functions.py`). `total_sent == 0` — вызывающий сам решает, показывать ли строку
     вовсе (тот же приём, что `services.checkin_not_arrived.summary_text`)."""
     from database.db import forum_noshow_poll_summary
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     season = (await get_setting_typed("event_season") or "").strip()
     s = await forum_noshow_poll_summary(season, city_scope=city_scope)

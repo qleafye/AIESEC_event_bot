@@ -22,7 +22,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from database.db import (
     add_staff,
     get_reg_started_by_id,  # Phase 33 (задача 2): экран назначения роли для «только /start»
@@ -42,7 +42,7 @@ from services.staff_expiry import (
     is_expiry_active,
     parse_ddmmyyyy,
 )
-from settings_audit import set_setting_by_admin
+from core.settings_audit import set_setting_by_admin
 from handlers.states import RolesExpiryEdit, StaffAdd
 from handlers.admin_caps import (
     ALL_CAPABILITIES,
@@ -57,7 +57,7 @@ from services.checkin_volunteer_broadcast import greet_new_holder, greet_new_hol
 from keyboards.builders import get_cancel_kb
 
 logger = logging.getLogger(__name__)
-from cities import (
+from core.cities import (
     CITIES,
     cities_module_on,
     city_codes,

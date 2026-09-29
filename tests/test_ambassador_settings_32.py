@@ -21,7 +21,7 @@ import services.i18n_sources as i18n_sources
 from config import config
 from database import db
 from handlers.admin_settings import _GAME_FIELD_ORDER
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

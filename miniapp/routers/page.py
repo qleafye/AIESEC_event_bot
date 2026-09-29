@@ -31,12 +31,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
-from reg_labels import STATUS_LABELS
-from settings_schema import SETTINGS_SCHEMA
+from core.reg_labels import STATUS_LABELS
+from core.settings_schema import SETTINGS_SCHEMA
 
 from services import i18n
 
-import web_theme
+from core import web_theme
 from miniapp.deps import (
     SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
 )

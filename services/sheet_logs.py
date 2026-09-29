@@ -22,9 +22,9 @@ from database.db import (
     get_all_users_dicts,
     _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from core.settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from services.questions import format_stamp as _fmt_dt, status_label
-import reg_engine
+from core import reg_engine
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ async def build_questions_sheet_rows() -> list[list]:
     `handlers/user_actions.py::process_question` (город есть -> «Менеджеры города X», иначе
     «Все менеджеры»); отдельной колонки для этого в БД нет и не заводим — это факт вычисления
     на момент выгрузки, не сохранённый факт отправки."""
-    from cities import cities_module_on, normalize_city, city_label  # cities -> database.db, обратной зависимости нет
+    from core.cities import cities_module_on, normalize_city, city_label  # cities -> database.db, обратной зависимости нет
 
     users = await get_all_users_dicts()
     by_id = {u["telegram_id"]: u for u in users}

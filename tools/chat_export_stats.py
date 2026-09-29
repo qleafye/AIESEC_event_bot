@@ -30,7 +30,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from chat_score import (  # noqa: E402 — после бутстрапа sys.path
+from core.chat_score import (  # noqa: E402 — после бутстрапа sys.path
     WEIGHTS,
     AuthorAgg,  # noqa: F401 — реэкспорт для тестов и внешних скриптов
     BurstInfo,  # noqa: F401 — реэкспорт

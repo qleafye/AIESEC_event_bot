@@ -25,7 +25,7 @@ import logging
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
-from reg_labels import STATUS_LABELS
+from core.reg_labels import STATUS_LABELS
 from services.applications import reject_message_text
 from services.decision_delivery import ERROR_BLOCKED, ERROR_CHAT_NOT_FOUND, ERROR_DEACTIVATED
 from services.sheets import bulk_update_status_in_sheet, update_status_in_sheet

@@ -22,11 +22,11 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
-from cities import city_label, normalize_city
+from core.cities import city_label, normalize_city
 from database.db import count_user_footprint, find_user_id_by_username, get_staff_roles, get_user, purge_user
 from handlers import admin_caps
 from handlers.admin import router
-from reg_labels import STATUS_LABELS
+from core.reg_labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders
 
 logger = logging.getLogger(__name__)

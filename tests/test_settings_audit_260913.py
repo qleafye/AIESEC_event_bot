@@ -80,9 +80,9 @@ def _db_ready(tmp_path):
 
 def test_set_setting_by_admin_logs_author_and_persists(tmp_path, caplog):
     _db_ready(tmp_path)
-    from settings_audit import set_setting_by_admin
+    from core.settings_audit import set_setting_by_admin
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="core.settings_audit"):
         asyncio.run(set_setting_by_admin(777, "test_key", "on"))
 
     assert any("admin=777" in r.getMessage() for r in caplog.records), [
@@ -93,12 +93,12 @@ def test_set_setting_by_admin_logs_author_and_persists(tmp_path, caplog):
 
 def test_delete_setting_by_admin_logs_author_and_removes(tmp_path, caplog):
     _db_ready(tmp_path)
-    from settings_audit import delete_setting_by_admin, set_setting_by_admin
+    from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
 
     asyncio.run(set_setting_by_admin(777, "test_key", "on"))
     caplog.clear()
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="core.settings_audit"):
         asyncio.run(delete_setting_by_admin(777, "test_key"))
 
     assert any("admin=777" in r.getMessage() for r in caplog.records), [
@@ -112,9 +112,9 @@ def test_admin_id_none_is_allowed_and_logged_as_is(tmp_path, caplog):
     соседи) прокидывают `admin_id=None`, если вызывающий не смог его определить — воронка
     не должна падать, строка лога всё равно отличима префиксом `admin=`."""
     _db_ready(tmp_path)
-    from settings_audit import set_setting_by_admin
+    from core.settings_audit import set_setting_by_admin
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="core.settings_audit"):
         asyncio.run(set_setting_by_admin(None, "test_key", "on"))
 
     assert any("admin=None" in r.getMessage() for r in caplog.records)

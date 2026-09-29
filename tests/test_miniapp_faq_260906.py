@@ -61,7 +61,7 @@ def _restore_cities_cache():
     """Форма `tests/test_faq_260906.py::_restore_cities_cache` — `cities.reload_cities()`
     мутирует `cities.CITIES` НА МЕСТЕ, conftest.py проекта не сбрасывает состояние между
     тестами/файлами."""
-    import cities
+    from core import cities
     snapshot = list(cities.CITIES)
     yield
     cities.CITIES.clear()
@@ -75,7 +75,7 @@ def _seed_kzn_city():
     # CITIES[0], когда config.EVENT_CITY_DEFAULT не зарегистрирован).
     _run(bot_db.insert_city("msk", "Москва", "", 0))
     _run(bot_db.insert_city("kzn", "Казань", "", 1))
-    import cities
+    from core import cities
     _run(cities.reload_cities())
 
 
@@ -172,7 +172,7 @@ def test_faq_other_city_delegate_does_not_see_kzn_item(client, _restore_cities_c
 def test_faq_wired_into_sections_and_nav():
     from miniapp.deps import SECTIONS
     from handlers.admin_miniapp import SECTION_KEYS
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     assert "faq" in SECTIONS
     assert "miniapp_section_faq" in SECTION_KEYS

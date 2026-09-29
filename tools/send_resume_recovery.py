@@ -98,7 +98,7 @@ def render_text_b(username: str) -> str:
 
 
 async def read_event_season() -> str | None:
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     return await get_setting_typed("event_season")
 
@@ -177,7 +177,7 @@ async def build_bot():
     from aiogram.enums import ParseMode
 
     from services.proxy_session import FailoverAiohttpSession, build_proxy_chain
-    from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+    from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
     default = DefaultBotProperties(parse_mode=ParseMode.HTML)
     chain = build_proxy_chain(

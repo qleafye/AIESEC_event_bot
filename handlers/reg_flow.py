@@ -27,9 +27,9 @@ from database.db import get_user, get_setting, record_user_consent, delete_reg_d
 # Квик 260914-k74 (LEAK-01): набор колонок резюме для снимка process_confirm_edit — тот же
 # источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
 from database.db import RESUME_RECALL_COLUMNS
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services.consent import tapped_button_text
-from cities import CITIES, is_city_registration_open
+from core.cities import CITIES, is_city_registration_open
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.registration import (
@@ -42,28 +42,28 @@ from handlers.registration import (
     _is_allowed_resume, _resume_too_large, _err_kb,
 )
 # Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
-from reg_engine import validate_answer, validate_date_range as _validate_date_range
+from core.reg_engine import validate_answer, validate_date_range as _validate_date_range
 # Квик 260914-k74 (LEAK-01): карта step_key -> колонка users для снимка process_confirm_edit —
 # тот же источник, что у reg_engine.prior_answers_for/recall_keep, второй литерал не заводим.
-from reg_engine import STEP_TO_COLUMN
+from core.reg_engine import STEP_TO_COLUMN
 # Квик 260919-u7e (находка #2): набор колонок шага резюме (включая `resume_file_name`, которой
 # нет в `RESUME_RECALL_COLUMNS` — она никогда не жила в `users`, только в reg_drafts/FSM) для
 # того же снимка -- см. докстринг ниже у `recall_columns`.
-from reg_engine import columns_for_step
+from core.reg_engine import columns_for_step
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
-from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
+from core.reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
 # Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
 # делегата — общий резолвер движка, гейт на входе в шаг документа.
-from reg_engine import resume_mode
+from core.reg_engine import resume_mode
 # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — читает движок, текст ошибки из реестра
 # (не второй литерал рядом с reg_multi_limit_error_text).
-from reg_engine import multi_max
+from core.reg_engine import multi_max
 # Phase 27 (27-05, LANG-02/LANG-06/LANG-08): say()/tr_for() переводят делегатские отправки
 # этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
 # ярус A i18n_ui_en, не второй список литералов.
 from handlers import reg_i18n
-from i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
+from core.i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 from services import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
 
 logger = logging.getLogger(__name__)

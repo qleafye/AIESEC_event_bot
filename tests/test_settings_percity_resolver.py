@@ -19,8 +19,8 @@ import asyncio
 
 from config import config
 from database import db
-import settings_schema as s
-import cities
+from core import settings_schema as s
+from core import cities
 from tests._dbtpl import fast_init_db
 
 

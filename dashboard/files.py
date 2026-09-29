@@ -20,8 +20,8 @@ import httpx
 
 from dashboard.db import read_conn
 
-import tg_media
-import web_theme
+from core import tg_media
+from core import web_theme
 
 logger = logging.getLogger(__name__)
 

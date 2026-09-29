@@ -39,12 +39,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
 from database.db import get_setting, update_city
-from cities import reload_cities
+from core.cities import reload_cities
 from handlers.admin import router
 from handlers.states import EditSetting
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from settings_ops import (
+from core.settings_audit import delete_setting_by_admin, set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_ops import (
     SHEET_TAB_WRITE_MODE, after_tab_setting_saved, bot_tab_prefix, current_tab_titles,
     plan_prefix_renames,
 )

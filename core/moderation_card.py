@@ -33,8 +33,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import reg_engine
-from reg_labels import REG_LABELS
+from core import reg_engine
+from core.reg_labels import REG_LABELS
 from services.timeutil import msk_now
 
 # Вопрос анкеты (step_key) -> человеческая подпись, ТОЛЬКО через reg_engine.label_for —

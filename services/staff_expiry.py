@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from cities import get_setting_typed_for_city
+from core.cities import get_setting_typed_for_city
 from services.timeutil import msk_now
 
 DEFAULT_ACTIVE_DAYS = 2  # тот же дефолт, что services.sos.DEFAULT_ACTIVE_DAYS

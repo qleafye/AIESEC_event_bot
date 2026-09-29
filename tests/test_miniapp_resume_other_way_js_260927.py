@@ -13,8 +13,8 @@
 from __future__ import annotations
 
 from services.i18n_form_manual import _REGISTRY_TEXTS_EN
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_schema import SETTINGS_SCHEMA
+from core.settings_synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_frontend import _js_without_comments
 from tests.test_miniapp_resume_fork_edit_js_260927 import _between, _screen_text

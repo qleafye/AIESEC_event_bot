@@ -13,8 +13,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
-import reg_engine
+from core import cities
+from core import reg_engine
 from config import config
 from database import db
 from handlers import registration as reg
@@ -23,8 +23,8 @@ from handlers import reg_flow
 # handlers.admin импортируется ПЕРВЫМ, admin_settings в одиночку не импортируется.
 from handlers import admin as _admin_mod  # noqa: F401
 from handlers import admin_settings
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from core.settings_schema import SETTINGS_SCHEMA
+from core.settings_validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 

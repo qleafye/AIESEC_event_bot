@@ -36,12 +36,12 @@ import html as html_module
 import logging
 from datetime import date, datetime, timedelta
 
-from cities import cities_module_on, get_setting_typed_for_city, per_city_key
+from core.cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
 from services.timeutil import msk_now
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +278,7 @@ async def resolve_city_label(city_code: str | None) -> str | None:
     if not city_code:
         return None
     try:
-        from cities import city_label
+        from core.cities import city_label
 
         return await city_label(city_code)
     except Exception as e:

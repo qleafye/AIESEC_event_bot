@@ -130,8 +130,8 @@ def test_format_time_falls_back_on_garbage():
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from core.settings_schema import SETTINGS_SCHEMA
+    from core import settings_ops
 
     enabled = SETTINGS_SCHEMA["forum_welcome_enabled"]
     assert enabled["default"] == "off"

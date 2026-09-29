@@ -31,11 +31,11 @@ import html
 import logging
 from datetime import date, datetime, timedelta
 
-from cities import cities_module_on, enabled_cities, get_setting_typed_for_city, per_city_key
+from core.cities import cities_module_on, enabled_cities, get_setting_typed_for_city, per_city_key
 from config import config
 from database.db import get_setting
 from services.timeutil import MOSCOW_TZ, msk_now
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

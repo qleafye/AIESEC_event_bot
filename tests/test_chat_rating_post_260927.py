@@ -19,14 +19,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
+from core import cities
 import services.scheduler as sched
 from config import config
 from dashboard import chat_rating
 from dashboard import db as dash_db
 from database import db
 from services import chat_rating_post as crp
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 ADMIN = 900927401

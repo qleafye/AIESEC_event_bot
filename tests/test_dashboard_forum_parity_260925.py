@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
-import cities
+from core import cities
 import services.decision_delivery as decision_delivery_service
 from config import config
 from database import db

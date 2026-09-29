@@ -37,7 +37,7 @@ def _flat_button_texts(kb):
 
 def test_reminders_interval_via_registry_matches_oracle(tmp_path):
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     from services.reminders import _reminder_interval
 
     for raw in [None, "900", "0", "abc"]:
@@ -54,7 +54,7 @@ def test_reminders_interval_via_registry_matches_oracle(tmp_path):
 
 def test_scheduler_date_via_registry_matches_oracle(tmp_path):
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     from services.scheduler import _parse_schedule_dt
 
     for raw in [None, "garbage", "15.08.2026 23:59"]:
@@ -220,7 +220,7 @@ def test_edu_conditional_gate_equiv(tmp_path):
     # Phase 21 (21-01, FORM-SYNC-01): _get_enabled_steps is now an alias for
     # reg_engine.enabled_steps, which resolves get_setting_typed via reg_engine's OWN module
     # globals -- patching handlers.registration's binding no longer intercepts the call.
-    import reg_engine
+    from core import reg_engine
 
     calls = []
 
@@ -279,7 +279,7 @@ def test_party_enabled_gate_equiv(tmp_path):
     # Phase 21 (21-01, FORM-SYNC-01): _should_show_fork is now an alias for
     # reg_engine.should_show_fork (resolves get_setting_typed via reg_engine's own module
     # globals); _progress stays local to handlers/registration.py unmoved. Patch both.
-    import reg_engine
+    from core import reg_engine
 
     calls = []
 
@@ -497,7 +497,7 @@ def test_is_module_enabled_gate_equiv(tmp_path):
     # Phase 21 (21-01, FORM-SYNC-01): _is_module_enabled moved from reg_schema.py to
     # reg_engine.py (reg_schema re-exports it) -- it now resolves get_setting_typed via
     # reg_engine's own module globals, so the patch target moves with it.
-    import reg_engine
+    from core import reg_engine
 
     calls = []
 
@@ -694,7 +694,7 @@ def test_full_approval_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     for raw in [None, "", "manual", "auto"]:
         asyncio.run(delete_setting("full_approval"))
@@ -721,7 +721,7 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     for raw in [None, "", "manual", "auto"]:
         asyncio.run(delete_setting("short_approval"))
@@ -767,7 +767,7 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     for raw in [None, "", "instant", "batched"]:
         asyncio.run(delete_setting("pending_notify_mode"))
@@ -804,7 +804,7 @@ def test_raw_read_sites_preserved(tmp_path):
     import handlers.registration as reg_mod
     # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py.
     import handlers.reg_steps as reg_steps_mod
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     # Site 1: registration_mode raw read (process_full_name) -- branch is `mode != "full"`.
     # Migrating to get_setting_typed (default "short") cannot change this branch: None and ""

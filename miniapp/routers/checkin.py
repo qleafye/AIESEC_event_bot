@@ -34,7 +34,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import (
+from core.cities import (
     cities_module_on,
     city_label,
     city_label_or_none,
@@ -51,7 +51,7 @@ from database.db import (
     list_onsite_pending,
     purge_user,
 )
-from reg_engine import is_past_season_row
+from core.reg_engine import is_past_season_row
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
@@ -75,7 +75,7 @@ from services.onsite_reg import (
     walkin_qr_png,
 )
 from services.person_search import search_people
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 from services.program import checkin_session_points
 
 from miniapp.deps import Principal, require_cap, require_section

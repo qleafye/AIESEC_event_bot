@@ -418,7 +418,7 @@ def test_stale_screen_without_state_data(tmp_path):
 # ── UAT 19.08: напоминание про Google-таблицу при смене сезона ─────────────────────────────
 
 def _assert_sheet_reminder(text: str):
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     assert "таблиц" in text.lower()
     assert "Настройки" in text
     # реальный лейбл настройки вкладки, а не код ключа

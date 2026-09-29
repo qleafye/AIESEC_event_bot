@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA
+from core import settings_ops
+from core.settings_schema import SETTINGS_SCHEMA
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 from tests._dbtpl import fast_init_db
 
@@ -29,7 +29,7 @@ def _use_tmp_db(tmp_path):
 # ── модуль aiogram-free (сторож T-22-06 / D-12) ──────────────────────────────────────────
 
 def test_settings_ops_module_does_not_load_aiogram():
-    loaded = _loaded_aiogram("import settings_ops")
+    loaded = _loaded_aiogram("from core import settings_ops")
     assert loaded == [], f"settings_ops потянул aiogram: {loaded}"
 
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 
-import reg_engine
+from core import reg_engine
 
 STEP_KEYS = [step_key for step_key, _setting_key, _step_type in reg_engine.REG_FLOW]
 
@@ -75,6 +75,6 @@ def test_no_multi_step_is_skippable_today():
 
 def test_university_skip_button_saves_placeholder_not_literal():
     """Приёмка 17.09: «Пропустить» у ВУЗа в текстовом режиме сохранялся как название ВУЗа."""
-    import reg_engine
+    from core import reg_engine
     assert reg_engine.validate_answer("university", "Пропустить") == ("-", None)
     assert reg_engine.validate_answer("university", "МГУ") == ("МГУ", None)

@@ -4,8 +4,8 @@
 ТЕХ ЖЕ объектов, чтобы `handlers/user_actions.py`, `handlers/admin_gamification.py`,
 `handlers/admin_game_tasks.py` и тесты не правились (сторож `is` —
 `tests/test_miniapp_labels_drift.py`)."""
-from game_labels import *  # noqa: F401,F403
-from game_labels import (  # noqa: F401 — явный реэкспорт публичных и приватных имён
+from core.game_labels import *  # noqa: F401,F403
+from core.game_labels import (  # noqa: F401 — явный реэкспорт публичных и приватных имён
     _CATEGORY_KEY,
     _PATH_CATEGORIES,
     _PROOF_TYPE_KEY,

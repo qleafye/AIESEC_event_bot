@@ -14,7 +14,7 @@ from config import config
 from database import db as bot_db
 from services import reg_handoff
 from services.reg_handoff import SURFACE_BOT, SURFACE_APP, draft_holder
-import reg_engine
+from core import reg_engine
 
 USER_ID = 910100200
 
@@ -781,7 +781,7 @@ def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_pa
 # Задача 4 — D16: короткий трек в вебе; D15: режим правки только у поданной анкеты
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-from cities import per_city_key
+from core.cities import per_city_key
 from tests._dbtpl import fast_init_db
 
 

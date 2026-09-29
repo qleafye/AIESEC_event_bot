@@ -99,7 +99,7 @@ def test_referral_denied_for_pending_delegate_via_gate(client):
 # ── Ссылка + пояснение на финальном экране анкеты — упоминает постоянное место в приложении ──
 
 def test_ambassador_note_mentions_hub_referral_section_label(client):
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     resp = client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 200, resp.text

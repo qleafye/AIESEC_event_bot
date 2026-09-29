@@ -47,7 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import reg_options
+from core import reg_options
 
 SOURCE_TAG_RE = re.compile(r"Saved source_tag=([A-Za-z0-9_-]+) for user (\d+)")
 REFERRER_RE = re.compile(r"Saved referrer_id=(\d+) for user (\d+)")

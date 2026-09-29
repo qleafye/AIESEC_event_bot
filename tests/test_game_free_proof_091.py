@@ -97,7 +97,7 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # original 09.1-Wave-1 baseline of 9. Phase 14 (14-04, GAME-09) added an 11th key,
     # "coins_manual_notify_text". Quick 260819-gtl added two more ("game_task_title_prompt",
     # "game_task_photo_prompt") -- 13. Test name kept for git-blame continuity.
-    import settings_schema as s
+    from core import settings_schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
     # Phase 17.1 (17.1-01): +7 ключей хвоста монетного блока -- рейтинг (3), заголовок
     # истории (1), рефералка (3).

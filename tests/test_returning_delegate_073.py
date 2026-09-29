@@ -17,8 +17,8 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 
-import cities as cities_mod
-import reg_options
+from core import cities as cities_mod
+from core import reg_options
 from config import config
 from database import db
 from handlers import registration as reg

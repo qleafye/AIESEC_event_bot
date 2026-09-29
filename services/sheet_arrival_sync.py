@@ -33,7 +33,7 @@ from database.db import (
     first_entry_scanned_at,
     list_due_sheet_arrivals,
 )
-from secret_redact import redact_secrets
+from core.secret_redact import redact_secrets
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

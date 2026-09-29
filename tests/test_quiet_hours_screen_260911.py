@@ -26,7 +26,7 @@ def _restore_cities_cache():
     conftest.py этого проекта намеренно не сбрасывает состояние между тестами/файлами. Без
     восстановления города, дописанные этим тестом, продолжают жить и в следующих тестовых
     файлах того же процесса (форма `tests/test_faq_260906.py::_restore_cities_cache`)."""
-    import cities
+    from core import cities
     snapshot = list(cities.CITIES)
     yield
     cities.CITIES.clear()
@@ -205,7 +205,7 @@ def test_city_module_off_no_city_line(tmp_path):
 
 def test_bound_city_header_shows_city_line_and_per_city_hours(tmp_path, _restore_cities_cache):
     _roles_ready(tmp_path)
-    import cities as cities_mod
+    from core import cities as cities_mod
     _run(db.insert_city("msk", "Москва", "", 0))
     _run(db.insert_city("spb", "Питер", "", 1))
     _run(db.set_setting("event_city_enabled", "on"))
@@ -214,7 +214,7 @@ def test_bound_city_header_shows_city_line_and_per_city_hours(tmp_path, _restore
     _run(db.set_setting("quiet_hours_enabled", "on"))
     _run(db.set_setting("quiet_hours_start", "22:00"))
     _run(db.set_setting("quiet_hours_end", "09:00"))
-    from cities import per_city_key
+    from core.cities import per_city_key
     _run(db.set_setting(per_city_key("quiet_hours_start", "spb"), "23:00"))
 
     text, kb = _run(qh_screen.render_quiet_hours_screen(ADMIN_ID))
@@ -225,7 +225,7 @@ def test_bound_city_header_shows_city_line_and_per_city_hours(tmp_path, _restore
 
 def test_all_cities_header_no_city_line(tmp_path, _restore_cities_cache):
     _roles_ready(tmp_path)
-    import cities as cities_mod
+    from core import cities as cities_mod
     _run(db.insert_city("msk", "Москва", "", 0))
     _run(db.set_setting("event_city_enabled", "on"))
     _run(cities_mod.reload_cities())

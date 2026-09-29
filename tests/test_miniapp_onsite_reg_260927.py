@@ -8,12 +8,12 @@ import json
 import sqlite3
 from pathlib import Path
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from miniapp import outbox as outbox_mod
 from services import venue_log
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,

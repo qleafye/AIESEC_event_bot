@@ -19,9 +19,9 @@ import logging
 
 from config import config
 from database import db
-import reg_presets
+from core import reg_presets
 import services.reject_rules_notify as rrn
-import settings_audit
+from core import settings_audit
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900200001
@@ -293,7 +293,7 @@ def test_hook_exception_does_not_block_setting_write(tmp_path, monkeypatch):
 
 def test_admin_log_line_unchanged(tmp_path, caplog):
     _ready(tmp_path)
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="core.settings_audit"):
         _run(settings_audit.set_setting_by_admin(777, "test_key", "on"))
     assert any("admin=777 setting test_key" in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records

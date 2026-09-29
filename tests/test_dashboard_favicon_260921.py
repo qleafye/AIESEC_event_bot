@@ -29,7 +29,7 @@ from config import config as bot_config
 from database import db as bot_db
 from database import db
 
-import dashboard_favicon
+from core import dashboard_favicon
 from dashboard import files as dashboard_files
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
@@ -37,7 +37,7 @@ from dashboard.main import create_app
 from handlers import admin_miniapp_theme as theme_mod
 from handlers import admin_settings as st
 from handlers.states import EditSetting
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_admin_sections_ia20 import FakeAnswerMessage, FakeCallback, FakePhoto, FakeState
 from tests.test_roles_phase8 import ADMIN_ID, _flat_callback_data, _roles_ready

@@ -25,23 +25,23 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 # not a hack: raising it inside a handler makes that handler's match count as UNHANDLED.
 from aiogram.dispatcher.event.bases import SkipHandler
 
-import chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
-import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
+from core import chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
+from core import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
     get_setting,
     get_dropout_step_stats,
     settings_snapshot,
 )
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import (
     sync_named_worksheet,
     tab_row_count,
 )
 from handlers.states import EditSetting
 from handlers.settings_validation import validate_setting_value, is_command_like
-from settings_ops import (
+from core.settings_ops import (
     apply_event_type_preset as _apply_event_type_preset,
     per_city_visible_codes as _per_city_visible_codes,
     HTML_SETTINGS,
@@ -59,7 +59,7 @@ from handlers.reg_schema import (
     dropout_step_label,
     incomplete_city_batches,
 )
-from cities import (
+from core.cities import (
     city_label,
     cities_module_on,
     admin_selected_city,

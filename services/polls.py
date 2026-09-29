@@ -29,7 +29,7 @@ from database.db import (
     _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from core.settings_schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ async def resolve_poll_audience(poll: dict) -> list[int]:
     spec = poll.get("audience") or []
     if not spec:
         return await get_all_users_ids()
-    from cities import refresh_city_filter_spec  # cities импортирует database.db — цикла нет
+    from core.cities import refresh_city_filter_spec  # cities импортирует database.db — цикла нет
     spec = refresh_city_filter_spec(spec)
     if spec is None:
         logger.error("poll %s targets an unknown event_city — refusing to send", poll.get("id"))
@@ -232,7 +232,7 @@ async def build_polls_sheet_rows(poll_ids: list[int] | None = None) -> list[list
     polls = await list_polls()
     if poll_ids is not None:
         polls = [p for p in polls if p["id"] in set(poll_ids)]
-    from cities import city_label  # cities импортирует database.db, обратной зависимости нет
+    from core.cities import city_label  # cities импортирует database.db, обратной зависимости нет
     rows: list[list] = []
     for poll in sorted(polls, key=lambda p: p["id"]):
         q = poll["question"]

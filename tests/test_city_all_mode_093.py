@@ -16,7 +16,7 @@ import asyncio
 
 from config import config
 from database import db
-import cities
+from core import cities
 from tests._dbtpl import fast_init_db
 
 
@@ -207,7 +207,7 @@ def test_get_setting_typed_for_city_all_cities_returns_global_not_default_city_o
     resolved = asyncio.run(go())
 
     async def expected():
-        import settings_schema as s
+        from core import settings_schema as s
         return await s.get_setting_typed("registration_mode")
 
     assert resolved == asyncio.run(expected())

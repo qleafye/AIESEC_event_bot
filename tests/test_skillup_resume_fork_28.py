@@ -11,7 +11,7 @@ import asyncio
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from services import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 
@@ -216,7 +216,7 @@ def test_resume_mode_percity_override_cycles_too(tmp_path):
     """Городская ветка тумблера ведёт себя как глобальная — тот же цикл из трёх, свой
     композитный ключ, глобальный ключ не тронут."""
     from handlers import admin_reg_percity
-    import cities
+    from core import cities
 
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))

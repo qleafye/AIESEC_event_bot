@@ -22,15 +22,15 @@ async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
 
-import reg_options
+from core import reg_options
 from config import config
 from database.db import init_db
-from reg_engine import REG_FLOW
-from reg_labels import REG_LABELS
+from core.reg_engine import REG_FLOW
+from core.reg_labels import REG_LABELS
 
 # Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
 # выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
-import reg_engine as SOURCE  # noqa: E402
+from core import reg_engine as SOURCE  # noqa: E402
 from tests._dbtpl import fast_init_db
 
 

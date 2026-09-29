@@ -14,7 +14,7 @@ import asyncio
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from handlers import reg_schema
 from handlers import admin_reg_config
 from handlers import admin_reg_percity
@@ -223,7 +223,7 @@ def test_resume_mode_toggle_percity_refreshes_that_citys_tab(tmp_path, monkeypat
 
     async def prepare():
         await db.set_setting("event_city_enabled", "on")
-        import cities
+        from core import cities
         await cities.set_admin_city(ADMIN_ID, "spb")
 
     _run(prepare())

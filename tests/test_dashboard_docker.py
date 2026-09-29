@@ -65,34 +65,64 @@ def test_dashboard_dockerfile_copies_whole_package_with_static():
 
 
 def test_dashboard_dockerfile_copies_web_theme_module():
-    """`dashboard.main` импортирует корневой `web_theme` (19.1) — без COPY образ падает на старте
+    """`dashboard.main` импортирует общий `core.web_theme` (19.1) — без COPY образ падает на старте
     `ModuleNotFoundError: web_theme` (прод 31.08). Тест-стенд этого не ловил: стоял на коммите до 19.1."""
     body = DOCKERFILE.read_text(encoding="utf-8").splitlines()
-    assert any(ln.startswith("COPY --chown=appuser:appuser web_theme.py /app/web_theme.py") for ln in body)
+    assert any(
+        ln.startswith("COPY --chown=appuser:appuser core/web_theme.py /app/core/web_theme.py") for ln in body
+    )
 
 
-def test_dashboard_dockerfile_copies_every_root_module_the_package_imports():
-    """Каждый корневой модуль репозитория (`<name>.py` в корне), который импортирует пакет
-    dashboard/, должен быть скопирован в образ явной строкой COPY. Прод падал дважды на одном и
-    том же: web_theme (31.08) и tg_media (10.09) — импорт добавили, Dockerfile не тронули, pytest
-    образ не собирает. Сторож ловит это статически, без docker."""
+def test_dashboard_dockerfile_copies_empty_core_package_init():
+    """Модули `core/` копируются поштучно, поэтому `core/__init__.py` нужен отдельной строкой — без
+    него `from core import web_theme` в образе не найдёт пакет. И он обязан быть ПУСТЫМ: любой импорт
+    в нём потянул бы в образ дашборда модули, которых там нет (database.db, aiosqlite)."""
+    body = _body(DOCKERFILE)
+    assert "COPY --chown=appuser:appuser core/__init__.py /app/core/__init__.py" in body
+    assert (ROOT / "core" / "__init__.py").read_text(encoding="utf-8").strip() == ""
+    # каталог core/ целиком в образ не едет — только перечисленные файлы
+    assert not any(ln.startswith("COPY") and " core/ " in ln for ln in body)
+
+
+def test_dashboard_dockerfile_copies_every_core_module_the_package_imports():
+    """Каждый модуль пакета `core/`, который импортирует пакет dashboard/, должен быть скопирован
+    в образ явной строкой COPY. Прод падал дважды на одном и том же: web_theme (31.08) и tg_media
+    (10.09) — импорт добавили, Dockerfile не тронули, pytest образ не собирает. Сторож ловит это
+    статически, без docker. Корневые модули (`<name>.py` в корне, кроме main/config) тоже
+    проверяются — на случай, если такой модуль вернётся в корень."""
     import re
     root = ROOT
+    core_modules = {p.stem for p in (root / "core").glob("*.py")} - {"__init__"}
     root_modules = {p.stem for p in root.glob("*.py")}
-    imported = set()
+    imported_core = set()
+    imported_root = set()
     for src in (root / "dashboard").glob("*.py"):
-        for m in re.finditer(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Za-z_][\w]*))",
-                             src.read_text(encoding="utf-8"), re.M):
+        text = src.read_text(encoding="utf-8")
+        for m in re.finditer(r"^\s*from\s+core\s+import\s+\(?([\w\s,]+?)\)?\s*(?:#.*)?$", text, re.M):
+            for part in m.group(1).split(","):
+                name = part.strip().split(" as ")[0].strip()
+                if name in core_modules:
+                    imported_core.add(name)
+        for m in re.finditer(r"^\s*(?:from|import)\s+core\.(\w+)", text, re.M):
+            if m.group(1) in core_modules:
+                imported_core.add(m.group(1))
+        for m in re.finditer(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Za-z_][\w]*))", text, re.M):
             name = m.group(1) or m.group(2)
             if name in root_modules:
-                imported.add(name)
-    assert imported, "ожидались корневые импорты (web_theme, tg_media) — регэксп сломан?"
+                imported_root.add(name)
+    assert imported_core, "ожидались импорты из core (web_theme, tg_media) — регэксп сломан?"
     body = _body(DOCKERFILE)
     missing = [
-        name for name in sorted(imported)
+        f"core/{name}.py" for name in sorted(imported_core)
+        if not any(
+            ln.startswith(f"COPY --chown=appuser:appuser core/{name}.py /app/core/{name}.py") for ln in body
+        )
+    ]
+    missing += [
+        f"{name}.py" for name in sorted(imported_root)
         if not any(ln.startswith(f"COPY --chown=appuser:appuser {name}.py /app/{name}.py") for ln in body)
     ]
-    assert not missing, f"в dashboard/Dockerfile нет COPY для корневых модулей: {missing}"
+    assert not missing, f"в dashboard/Dockerfile нет COPY для модулей, которые импортирует дашборд: {missing}"
 
 
 def test_dashboard_dockerfile_copies_only_pattern_assets_from_miniapp():

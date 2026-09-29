@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import asyncio
 
-import reg_engine
-import reg_labels
-import moderation_card as mc
+from core import reg_engine
+from core import reg_labels
+from core import moderation_card as mc
 from handlers import admin_moderation as am
 
 
@@ -286,8 +286,8 @@ def test_split_for_telegram_hard_cuts_long_line_among_normal_lines():
 
 from pathlib import Path
 
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting
+from core.settings_synonyms import SETTINGS_SYNONYMS
 from handlers import admin_sections as sec
 from handlers import admin_settings
 from handlers import admin_modcard
@@ -341,7 +341,7 @@ def test_registry_keys_live_in_apps_group():
     # ветка _parse_setting) не изменилось ни на йоту.
     modcard_entry = SETTINGS_SCHEMA["modcard_fields"]
     assert modcard_entry["type"] == "multi"
-    assert modcard_entry["options_ref"] == "moderation_card:CARD_STEPS"
+    assert modcard_entry["options_ref"] == "core.moderation_card:CARD_STEPS"
     assert modcard_entry["empty_value"] == mc.EMPTY_SENTINEL
     assert SETTINGS_SCHEMA["modcard_answer_limit"]["type"] == "int"
 

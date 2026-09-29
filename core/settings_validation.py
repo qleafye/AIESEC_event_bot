@@ -28,8 +28,8 @@ import math
 import re
 from datetime import datetime
 
-from cities import PER_CITY_SEP
-from settings_schema import SETTINGS_SCHEMA, multi_codes
+from core.cities import PER_CITY_SEP
+from core.settings_schema import SETTINGS_SCHEMA, multi_codes
 
 # Quick 260820-rms: одиночная команда — `/slovo` или `/slovo@YouLead_bot`, без пробелов и без
 # продолжения. Ровно то, что телеграм отправляет по тапу на подсказку команды; ровно то, чем

@@ -6,7 +6,7 @@ SQL и сборка отчёта живут в корневом `arrival_stats.p
 `count_approved_current_season`) и поход в базу."""
 from __future__ import annotations
 
-import arrival_stats
+from core import arrival_stats
 from database.db import _city_clause, _connect, get_setting
 
 

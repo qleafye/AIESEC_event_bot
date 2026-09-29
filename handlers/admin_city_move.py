@@ -14,7 +14,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, get_city, normalize_city
+from core.cities import city_codes, city_label, cities_module_on, get_city, normalize_city
 from database.db import get_user
 from handlers import reg_i18n
 from handlers.admin import router
@@ -26,7 +26,7 @@ from services.city_move import (
     move_user_city,
     preview_city_move,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

@@ -17,7 +17,7 @@ import pytest
 from config import config
 from database.db import init_db, set_setting
 
-from reg_engine import (
+from core.reg_engine import (
     APP_PROJECTION,
     CHAT_PROJECTION,
     FORM_V2_TOGGLE_KEYS,

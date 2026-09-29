@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton
 
 from config import config
 from database import db
-import cities
+from core import cities
 from handlers import admin as admin_mod
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
