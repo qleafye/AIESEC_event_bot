@@ -646,6 +646,12 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     await credit_for_approved(telegram_id)
                 except Exception as e:
                     logger.error(f"credit_for_approved failed for {telegram_id}: {e}")
+                # Ступени амбассадоров СкиллАп — своим try рядом с начислением.
+                try:
+                    from services.amb_tiers import check_tiers_for_invitees
+                    await check_tiers_for_invitees([telegram_id])
+                except Exception as e:
+                    logger.error(f"check_tiers_for_invitees failed for {telegram_id}: {e}")
 
             try:
                 await record_reg_event(
