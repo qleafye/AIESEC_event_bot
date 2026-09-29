@@ -365,6 +365,26 @@ def test_hub_non_ambassador_keeps_old_counter(client):
     assert _hub_invites(client) == tpl.format(count=2)
 
 
+def test_hub_progress_db_error_falls_back_to_old_counter(client, monkeypatch):
+    """Сбой подсчёта прогресса (нет таблицы ступеней, БД занята) не роняет хаб — прежний
+    счётчик приглашённых."""
+    import sqlite3
+
+    from services import amb_progress
+    from settings_schema import SETTINGS_SCHEMA
+
+    _set("amb_qualified_program", "on")
+    _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
+    _seed_http_invitees(2)
+
+    async def boom(*_a, **_kw):
+        raise sqlite3.OperationalError("no such table: ambassador_exclusions")
+
+    monkeypatch.setattr(amb_progress, "render_progress", boom)
+    tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
+    assert _hub_invites(client) == tpl.format(count=2)
+
+
 def _seed_referral_coins():
     async def seed():
         for i, name in enumerate(("Иван Уникальный", "Пётр Особый")):
