@@ -263,14 +263,9 @@ def _approve_bot(tid, by=1):
 
 
 def _approve_web(tid, by=1, now=None):
-    """Mini App одиночное: флип + живая строка журнала (эффекты ждут окна отмены)."""
-    won = _run(applications.claim_approve(tid))
-    decision_id = None
-    if won:
-        decision_id = _run(applications.record_decision(
-            tid, "approved", None, by, now or datetime.now(),
-        ))
-    return decision_id
+    """Mini App одиночное: флип + живая строка журнала одной транзакцией (эффекты ждут окна
+    отмены) — тот же вызов, что miniapp/routers/applications.py::_decide."""
+    return _run(applications.claim_web_decision(tid, "approved", None, by, now or datetime.now()))
 
 
 def _events():
@@ -519,3 +514,52 @@ def test_onsite_approval_path_gives_tier(tmp_path):
         201, "approved", "на месте", 7, datetime.now(), effects_already_sent=True,
     ))
     assert _tiers(100) == [(1, None)]
+
+
+# ── Веб-одобрение: статус и строка окна отмены — одной транзакцией ───────────────────────
+
+def test_web_decision_status_and_undo_row_are_atomic(tmp_path):
+    """Если строку окна отмены записать не удалось, статус тоже не меняется: одобрения без
+    строки окна отмены (его засчитал бы подсчёт ступеней) не бывает ни на миг."""
+    _ready(tmp_path)
+    _on()
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _approve_bot(201)
+    _approve_bot(202)
+    _sql(
+        "CREATE TRIGGER boom BEFORE INSERT ON application_decisions "
+        "BEGIN SELECT RAISE(ABORT, 'locked'); END"
+    )
+    try:
+        _approve_web(203)
+    except Exception:
+        pass
+    else:
+        raise AssertionError("ожидали ошибку записи журнала")
+    assert _run(db.get_user(203))["status"] == "pending"
+    _run(amb_tiers.check_tiers([100]))
+    assert _tiers(100) == [(1, None)]
+
+
+def test_web_decision_second_claim_loses_without_row(tmp_path):
+    _ready(tmp_path)
+    _seed_user(201)
+    first = _run(applications.claim_web_decision(201, "approved", None, 1, datetime.now()))
+    second = _run(applications.claim_web_decision(201, "rejected", "x", 1, datetime.now()))
+    assert first and second is None
+    user = _run(db.get_user(201))
+    assert user["status"] == "approved" and user["approved_at"]
+    rows = _sql("SELECT decision, effects_sent_at FROM application_decisions WHERE telegram_id = 201")
+    assert rows == [("approved", None)]
+
+
+def test_miniapp_decide_uses_single_transaction_claim():
+    import inspect
+
+    from miniapp.routers import applications as router
+
+    source = inspect.getsource(router._decide)
+    assert "claim_web_decision" in source
+    assert "claim_approve" not in source and "record_decision" not in source

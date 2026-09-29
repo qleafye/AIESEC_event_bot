@@ -43,6 +43,7 @@ from database.db import (
     approve_all_pending,
     approve_user_atomic,
     claim_application_undo,
+    claim_decision_with_undo_row,
     claim_due_application_decisions,
     get_answer_history,
     get_application_decision,
@@ -712,6 +713,19 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
         return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
+
+
+async def claim_web_decision(telegram_id: int, decision: str, reason: str | None, by: int,
+                             now: datetime) -> int | None:
+    """Веб-путь (Mini App) с окном отмены: флип статуса и живая строка журнала одной
+    транзакцией (`claim_decision_with_undo_row`). Двумя шагами (`claim_approve` +
+    `record_decision`) между коммитами одобрение было видно без строки окна отмены, и
+    подсчёт ступеней амбассадоров засчитывал решение, которое ещё можно отменить. Возвращает
+    id решения или `None`, если заявку уже решили."""
+    return await claim_decision_with_undo_row(
+        telegram_id, decision, reason, by, _stamp(now),
+        _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS)),
+    )
 
 
 async def get_decision(decision_id: int) -> dict | None:
