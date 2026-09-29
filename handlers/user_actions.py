@@ -87,6 +87,7 @@ from services.faq import apply_city_overrides, short as _faq_short  # Quick 2609
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
+from services import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -236,6 +237,12 @@ async def render_leaderboard(
     return "\n".join(lines)
 
 
+def _amb_tr(lang: str, tr_map: dict | None):
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+        return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map or {})
+    return tr_key
+
+
 def _format_coin_entry_line(row: dict, manual_label: str, task_label: str, referral_label: str = "") -> str:
     """`"{dd.mm} {sign}{delta}🪙 — {reason or source label}"` — shared by the balance summary
     (last 5) and the paginated «📜 История» screen. `reason` wins when set; otherwise falls
@@ -279,6 +286,7 @@ async def _balance_screen(
         balance=balance, rank=rank if rank is not None else "—", total=total or "—",
     )
     rows = await list_coin_entries_for_user(user_id, limit=5, offset=0)
+    rows = await amb_progress.mask_referral_coin_rows(user_id, rows, _amb_tr(lang, tr_map))
     lines = [header, ""]
     if not rows:
         lines.append(reg_i18n.tr_text(await get_setting_typed("balance_history_empty"), lang, tr_map))
@@ -306,6 +314,7 @@ async def _balance_history_screen(
     limit = 10
     total = await count_coin_entries_for_user(user_id)
     rows = await list_coin_entries_for_user(user_id, limit=limit, offset=offset)
+    rows = await amb_progress.mask_referral_coin_rows(user_id, rows, _amb_tr(lang, tr_map))
     lines = [reg_i18n.tr_text(await get_setting_typed("balance_history_header_text"), lang, tr_map)]
     if total == 0:
         lines.append("")
@@ -1306,6 +1315,9 @@ async def _referral_screen(
     buttons: list[list[InlineKeyboardButton]] = []
     is_ambassador = bool(user and user.get("is_ambassador"))
     if is_ambassador:
+        progress = await amb_progress.render_progress(user_id, _amb_tr(lang, tr_map))
+        if progress is not None:
+            text += "\n\n" + progress
         prompt = reg_i18n.tr_text(await get_setting_typed("ambassador_path_prompt_text"), lang, tr_map)
         text += "\n\n" + prompt
         current_path = user.get("ambassador_path") or "none"  # IN-03: NULL -> метка "none"
@@ -1355,6 +1367,9 @@ async def my_referrals(message: types.Message, bot: Bot):
         referral_link = build_referral_link(bot_user.username, message.from_user.id)
         empty_tpl = await get_setting_typed("referral_list_empty_text")
         await message.answer(reg_i18n.tr_fmt(empty_tpl, lang, tr_map, link=referral_link))
+        return
+    if await amb_progress.hide_names_on():
+        await message.answer(await amb_progress.render_invitee_counts(message.from_user.id, _amb_tr(lang, tr_map)))
         return
 
     names = "\n".join(f"• {html.escape(str(name))}" for name in referrals)
