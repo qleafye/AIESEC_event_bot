@@ -2,3 +2,6 @@
 # конвертации переводов строк — иначе `core.autocrlf=true` на Windows подменит LF на CRLF при
 # следующем checkout, и `cmp` с исходником из mockups/assets/ перестанет совпадать.
 miniapp/static/pattern/*.svg -text
+
+# Git-хуки — shell-скрипты: CRLF ломает их в sh на любой ОС.
+.githooks/* text eol=lf

@@ -12,6 +12,36 @@ on:
     branches: [main]
 
 jobs:
+  commit-trailers:
+    # Облачные сессии Claude Code дописывают «Claude-Session: https://claude.ai/code/…» в сообщение
+    # коммита; репозиторий публичный — новые коммиты с такой строкой не пропускаем. Локально её
+    # вырезает .githooks/commit-msg (git config core.hooksPath .githooks). Старые — отдельной чисткой.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No Claude-Session trailers in new commits
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            range="$BASE_SHA..HEAD"
+          elif [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -qE '^0+$' && git cat-file -e "$BEFORE" 2>/dev/null; then
+            range="$BEFORE..HEAD"
+          else
+            range="HEAD~1..HEAD"
+          fi
+          bad=$(git log --format='%h %s' --grep='^Claude-Session:' "$range")
+          if [ -n "$bad" ]; then
+            echo "::error::Коммиты со ссылкой на сессию Claude Code (строка Claude-Session:) — уберите её из сообщения:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "ok: $range"
+
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 45
