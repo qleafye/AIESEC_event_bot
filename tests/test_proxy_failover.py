@@ -23,6 +23,7 @@ from services.proxy_session import (
 
 PRIMARY = "http://primary:8080"
 BACKUP = "http://backup:8080"
+ALERT_ADMIN_ID = 910001
 
 
 class _Clock:
@@ -145,10 +146,18 @@ def _reset_alert_state():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_proxy_alert_module_state():
+def _isolate_proxy_alert_module_state(monkeypatch):
     """`_alert_bot`/`_alert_bot_warned` are module-level globals (mirrors services/sheets.py's
     `_alert_bot` pattern). Without this autouse reset, a bot set in an EARLIER test would
-    leak into a LATER one that expects `_alert_bot is None` (fail-soft "no bot set" path)."""
+    leak into a LATER one that expects `_alert_bot is None` (fail-soft "no bot set" path).
+
+    The alert goes to every `config.ADMIN_IDS` entry, and the asserts here count sends
+    (`len(fake_bot.sent) == 1`). `config` is a process-wide object that other test files
+    overwrite without restoring (e.g. test_notify_blocked_260914 leaves three admins), so
+    under xdist the count depended on what ran earlier in the same worker. Pin one admin."""
+    from config import config
+
+    monkeypatch.setattr(config, "ADMIN_IDS", [ALERT_ADMIN_ID])
     _reset_alert_state()
     yield
     _reset_alert_state()
