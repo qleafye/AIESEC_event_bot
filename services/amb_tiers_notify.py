@@ -7,7 +7,11 @@
 (`database.amb_tiers_db.claim_tier_notification`, `UPDATE ... WHERE notified_at IS NULL`),
 и только выигравший вызов шлёт сообщение. Временный сбой отправки снимает отметку и бросает
 исключение — очередь сделает ретрай (до `MAX_ATTEMPTS`). Человек заблокировал бота —
-отметка остаётся, ретраить бессмысленно.
+отметка остаётся, ретраить бессмысленно. Битая HTML-разметка в тексте менеджера («can't parse
+entities») — тоже не временный сбой: пять повторов дали бы ту же ошибку, поэтому сообщение
+сразу уходит вторым запросом без форматирования (теги вырезаны), в лог — предупреждение.
+Ограничение: сообщение, отложенное тихими часами, отправляет общая очередь тихих часов, и там
+этого отката нет.
 
 Тексты — ключи реестра `amb_tier*_text`; в них только цифры и ступени, ни имени, ни ника,
 ни статуса конкретного приглашённого. Перевод на язык амбассадора — `services.i18n`, тот же
@@ -18,7 +22,9 @@
 """
 from __future__ import annotations
 
+import html
 import logging
+import re
 
 from database import amb_tiers_db
 from services.timeutil import msk_now
@@ -27,6 +33,7 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 logger = logging.getLogger(__name__)
 
 _STAMP = "%Y-%m-%d %H:%M:%S"
+_TAG_RE = re.compile(r"</?[A-Za-z][^<>]*>")
 
 
 def _text_key(tier: int, o2o_status: str | None) -> str | None:
@@ -48,6 +55,20 @@ def _is_permanent(exc: Exception) -> bool:
     if isinstance(exc, TelegramForbiddenError):
         return True
     return isinstance(exc, TelegramBadRequest) and "chat not found" in str(exc).lower()
+
+
+def _is_bad_markup(exc: Exception) -> bool:
+    """Telegram не разобрал HTML текста — повтор с тем же текстом ничего не изменит."""
+    try:
+        from aiogram.exceptions import TelegramBadRequest
+    except Exception:  # noqa: BLE001
+        return False
+    return isinstance(exc, TelegramBadRequest) and "can't parse entities" in str(exc).lower()
+
+
+def _plain(text: str) -> str:
+    """Текст без HTML: теги вырезаны, сущности (&lt; и т.п.) раскрыты."""
+    return html.unescape(_TAG_RE.sub("", text))
 
 
 async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int | None) -> bool:
@@ -75,10 +96,19 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
 
         from services import quiet_hours
 
-        await quiet_hours.send_or_queue_text(
-            msk_now(), telegram_id, text,
-            sender=lambda: bot.send_message(telegram_id, text, parse_mode="HTML"),
-        )
+        async def send():
+            try:
+                return await bot.send_message(telegram_id, text, parse_mode="HTML")
+            except Exception as exc:
+                if not _is_bad_markup(exc):
+                    raise
+                logger.warning(
+                    "amb_tiers_notify: в тексте %s битая разметка — отправляю без форматирования "
+                    "(tid=%s)", key, telegram_id,
+                )
+                return await bot.send_message(telegram_id, _plain(text), parse_mode=None)
+
+        await quiet_hours.send_or_queue_text(msk_now(), telegram_id, text, sender=send)
         return True
     except Exception as exc:
         if _is_permanent(exc):
