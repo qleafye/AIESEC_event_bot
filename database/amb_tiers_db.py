@@ -354,3 +354,27 @@ async def list_exclusions(limit: int = 10, offset: int = 0) -> list[dict]:
         ) as cursor:
             rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+async def qualified_approval_times(season: str) -> dict[int, list[str]]:
+    """`{амбассадор: [approved_at прошедших отбор, по возрастанию]}` — порядок раздачи квоты
+    разборов резюме у разового бэкафилла (кто раньше набрал порог, тот раньше в очереди).
+    Те же условия, что у `referral_counts`; пустой `approved_at` (легаси) — в конец."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT u.referrer_id, COALESCE(u.approved_at, '') FROM users u "
+            "WHERE u.referrer_id IS NOT NULL AND u.telegram_id != u.referrer_id "
+            "AND COALESCE(u.season, '') = ? AND u.status = 'approved' "
+            "AND u.telegram_id NOT IN (SELECT invitee_id FROM ambassador_exclusions) "
+            "AND NOT EXISTS (SELECT 1 FROM application_decisions d "
+            "  WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved' "
+            "  AND d.effects_sent_at IS NULL AND d.undone_at IS NULL)",
+            ((season or "").strip(),),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result: dict[int, list[str]] = {}
+    for rid, approved_at in rows:
+        result.setdefault(int(rid), []).append(approved_at or "9999")
+    for times in result.values():
+        times.sort()
+    return result
