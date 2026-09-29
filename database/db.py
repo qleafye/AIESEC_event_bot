@@ -4398,6 +4398,47 @@ async def record_application_decision(telegram_id: int, decision: str, reason: s
         return cursor.lastrowid
 
 
+async def claim_decision_with_undo_row(telegram_id: int, decision: str, reason: str | None,
+                                       decided_by: int, decided_at: str,
+                                       effects_due_at: str) -> int | None:
+    """Веб-путь решения с окном отмены: флип `users.status` (pending -> approved/rejected, с
+    отметкой approved_at/rejected_at, как `approve_user_atomic`/`reject_user`) И живая строка
+    `application_decisions` — ОДНОЙ транзакцией `BEGIN IMMEDIATE`. Раньше это были два
+    коммита, и между ними приглашённый выглядел одобренным без строки окна отмены: подсчёт
+    ступеней амбассадоров (`database.amb_tiers_db`) засчитывал ещё отменяемое одобрение.
+    Теперь другой процесс видит либо ничего, либо статус вместе со строкой. Возвращает id
+    строки решения, `None` — флип проиграли (заявка уже решена)."""
+    if decision == "approved":
+        stamp_col, status = "approved_at", "approved"
+    elif decision == "rejected":
+        stamp_col, status = "rejected_at", "rejected"
+    else:
+        raise ValueError(f"unknown decision: {decision!r}")
+    async with _connect() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                f"UPDATE users SET status = ?, {stamp_col} = ? "
+                "WHERE telegram_id = ? AND status = 'pending'",
+                (status, msk_now().strftime("%Y-%m-%d %H:%M:%S"), telegram_id),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+            cursor = await db.execute(
+                "INSERT INTO application_decisions "
+                "(telegram_id, decision, reason, decided_by, decided_at, effects_due_at, "
+                "effects_sent_at) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                (telegram_id, decision, reason, decided_by, decided_at, effects_due_at),
+            )
+            decision_id = cursor.lastrowid
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        return decision_id
+
+
 async def claim_application_undo(decision_id: int) -> dict | None:
     """Claims the undo for one decision — succeeds exactly once. `effects_sent_at IS NULL AND
     undone_at IS NULL` in the WHERE closes the race against `claim_due_application_decisions`

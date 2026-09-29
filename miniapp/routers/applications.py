@@ -15,10 +15,10 @@
 
 Порядок решения по одной заявке — `POST /{tid}/approve|reject`:
 
-    ПРОВЕРИТЬ скоуп (out_of_scope) -> claim_approve/claim_reject (атомарно, побеждает один)
+    ПРОВЕРИТЬ скоуп (out_of_scope) -> claim_web_decision: флип статуса + строка журнала
+       одной транзакцией (побеждает один, эффекты отложены до effects_due_at)
     -> ПРОИГРАВШИЙ: {ok: false, "already"}, без единой записи
-    -> ПОБЕДИТЕЛЬ: record_decision (эффекты отложены до effects_due_at)
-       -> {ok: true, decision_id, undo_seconds}
+    -> ПОБЕДИТЕЛЬ: {ok: true, decision_id, undo_seconds}
 
 Домен целиком в `services/applications.py` (тонкие обёртки над атомарными UPDATE,
 очередь/карточка/журнал отмены) — здесь нет ни одного SQL и ни одной копии правила; аватар —
@@ -212,11 +212,13 @@ class RejectIn(BaseModel):
 async def _decide(tid: int, decision: str, reason: str | None, p: Principal) -> dict:
     if await applications.out_of_scope(p.city, tid):
         raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
-    claim = applications.claim_approve if decision == "approved" else applications.claim_reject
-    won = await claim(tid)
-    if not won:
+    # Флип статуса и строка окна отмены — одной транзакцией: иначе между двумя коммитами
+    # одобрение видно без окна отмены и засчитывается в ступени амбассадора.
+    decision_id = await applications.claim_web_decision(
+        tid, decision, reason, p.telegram_id, now_msk_naive(),
+    )
+    if decision_id is None:
         return {"ok": False, "reason": "already"}
-    decision_id = await applications.record_decision(tid, decision, reason, p.telegram_id, now_msk_naive())
     asyncio.create_task(_delayed_flush())
     # Quick 260904-dq1: приписка «делегат узнает в 09:00» для тоста менеджера. Сама проверка
     # окна при отправке живёт в apply_decision_effects (вызовется позже, после окна отмены,
