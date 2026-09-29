@@ -17,7 +17,7 @@ from database.db import (
     get_user_rank,
     list_coin_entries_for_user,
 )
-from services import i18n
+from services import amb_progress, i18n
 from settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
@@ -60,6 +60,12 @@ async def history(offset: str | None = None, limit: str | None = None,
     lang = lang if lang in ("ru", "en") else "ru"
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
+
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+        return await i18n.tr_setting(key, lang, tr_map)
+
+    # Тумблер «Скрывать имена приглашённых»: «Приглашённый №N» вместо имени, БД не трогаем.
+    rows = await amb_progress.mask_referral_coin_rows(p.telegram_id, rows, tr_key)
     manual_label = await i18n.tr_setting("balance_source_manual_label", lang, tr_map)
     task_label = await i18n.tr_setting("balance_source_task_label", lang, tr_map)
     # Phase 32 (32-06, D-36): начисление за приглашённого (`claim_referral_credit`, план 32-01)
