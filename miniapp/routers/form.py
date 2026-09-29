@@ -51,8 +51,8 @@ from database.db import (
     get_user_consents,
     record_user_consent,
     set_reg_draft_surface,
+    set_ambassador_flag,
     settings_snapshot,
-    update_user_answers,
     upsert_reg_draft,
     set_user_lang,
 )
@@ -67,6 +67,7 @@ from miniapp import telegram_api
 from miniapp.deps import Principal, form_gate, require_section
 from miniapp.outbox import enqueue
 from miniapp.telegram_api import TelegramApiError
+from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1112,8 +1113,10 @@ async def draft_ambassador(
     _: Principal = Depends(require_section("form")),
 ) -> dict:
     """«Хочу свою ссылку» (SU-07, D-09) — паритет с ботовским `regamb:want`. Пишет ТОЛЬКО
-    `is_ambassador` СВОЕЙ строки автора запроса (T-28-06-03: `allowed_columns` из одной
-    колонки, `telegram_id` — из подписанного initData, не из тела запроса). Ссылка строится
+    амбассадорский флаг СВОЕЙ строки автора запроса (`telegram_id` — из подписанного initData,
+    не из тела запроса) через `set_ambassador_flag`, как бот: заполняется `ambassador_since`
+    (дата вступления, паритет поверхностей D-31 фазы 32), а повторный тап действующему
+    амбассадору дату не переставляет. Ссылка строится
     сервером (`ref_code` = `telegram_id`, OQ-3) — фронт её не собирает и не может подделать.
 
     Приёмка 17.09 (п.2): `note` — пояснение под ссылкой, где её найти потом (тот же ключ и та
@@ -1121,7 +1124,7 @@ async def draft_ambassador(
     поверхностей) — `{section}` внутри шаблона подставляется подписью постоянного места
     реф-ссылки в хабе (`miniapp_hub_referral_label_text`, тот же ключ, что рисует
     `GET /app/api/hub`), второй литерал названия раздела не заводим."""
-    await update_user_answers(p.telegram_id, {"is_ambassador": 1}, allowed_columns=["is_ambassador"])
+    await set_ambassador_flag(p.telegram_id, active=True, at=now_msk_naive().strftime("%Y-%m-%d %H:%M:%S"))
     bot_username = request.app.state.cfg.bot_username
     link = reg_engine.build_referral_link(bot_username, p.telegram_id) if bot_username else None
     user = await get_user(p.telegram_id)
