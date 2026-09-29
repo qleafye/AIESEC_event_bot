@@ -77,6 +77,19 @@ async def deadline_passed(now: datetime | None = None) -> bool:
     return (now or msk_now()) > deadline
 
 
+O2O_TIER = 2
+
+
+def notify_tiers_for(new_tiers) -> list[int]:
+    """О каких из новых ступеней сообщить, по возрастанию: старшая всегда, ступень разбора
+    резюме — всегда, если она среди новых (её текст говорит, слот у человека или лист
+    ожидания). Ступень 1 при прыжке выше не сообщается."""
+    tiers = {int(t) for t in new_tiers}
+    if not tiers:
+        return []
+    return sorted({max(tiers)} | ({O2O_TIER} & tiers))
+
+
 async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None = None,
                       force: bool = False) -> list[dict]:
     """Выдаёт амбассадорам достигнутые ступени. Возвращает только НОВЫЕ:
@@ -85,9 +98,11 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
     `force=True` игнорирует тумблер (только для разового бэкафилла) — дедлайн действует всегда.
     `notify=False` — тихо: все новые ступени сразу помечаются уведомлёнными.
 
-    Несколько ступеней за раз (0 -> 3 одним «Принять всех»): строки пишутся для каждой, а
-    уведомление ставится только для старшей — младшие сразу помечаются уведомлёнными, иначе
-    человек получил бы «до разбора резюме осталось 0» следом за «слот за тобой»."""
+    Несколько ступеней за раз (0 -> 3 одним «Принять всех», бэкафилл): строки пишутся для
+    каждой, а уведомления — для старшей и, если среди новых есть ступень разбора резюме, ещё и
+    для неё (слот или лист ожидания — это обещание, которого нет в тексте старшей ступени).
+    Ступень 1 при прыжке помечается уведомлённой сразу: иначе человек получил бы «до разбора
+    резюме осталось 0» следом за «слот за тобой». Так за раз не больше двух сообщений."""
     if not force and not await program_on():
         return []
     if await deadline_passed(now):
@@ -125,21 +140,22 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
             if not notify:
                 await amb_tiers_db.mark_tiers_notified(rid, new_tiers, stamp)
                 continue
-            top = max(new_tiers)
-            lower = [t for t in new_tiers if t != top]
+            notify_tiers = notify_tiers_for(new_tiers)
+            lower = [t for t in new_tiers if t not in notify_tiers]
             if lower:
                 await amb_tiers_db.mark_tiers_notified(rid, lower, stamp)
-            try:
-                await _db.enqueue_miniapp_outbox(
-                    TIER_EVENT_KIND,
-                    {"telegram_id": rid, "tier": top, "left": max(t2 - qualified, 0)},
-                    stamp,
-                )
-            except Exception:
-                logger.warning(
-                    "amb_tiers: уведомление о ступени %s не поставлено в очередь (tid=%s)",
-                    top, rid, exc_info=True,
-                )
+            for tier in notify_tiers:
+                try:
+                    await _db.enqueue_miniapp_outbox(
+                        TIER_EVENT_KIND,
+                        {"telegram_id": rid, "tier": tier, "left": max(t2 - qualified, 0)},
+                        stamp,
+                    )
+                except Exception:
+                    logger.warning(
+                        "amb_tiers: уведомление о ступени %s не поставлено в очередь (tid=%s)",
+                        tier, rid, exc_info=True,
+                    )
         except Exception:
             logger.exception("amb_tiers: проверка ступеней не прошла (tid=%s)", rid)
     return result
