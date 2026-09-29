@@ -29,6 +29,7 @@ from handlers.states import SosChatBind, SosReport
 from services import sos as sos_service
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db
+from tests._lang_on import enable_delegate_lang
 
 ADMIN_ID = 902001
 MANAGER_ID = 902002
@@ -1390,7 +1391,7 @@ from services.i18n_form_manual import FORM_DEFAULT_EN, seed  # noqa: E402
 
 async def _make_english_delegate(tid: int, **kwargs):
     await _add_delegate(tid, **kwargs)
-    await db.set_setting("delegate_lang_enabled", "on")
+    await enable_delegate_lang()
     await seed("en")
     await db.set_user_lang(tid, "en")
 

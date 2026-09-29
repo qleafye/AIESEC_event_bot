@@ -15,6 +15,7 @@ from config import config
 from database import db
 from handlers import user_actions as ua_mod
 from tests._dbtpl import fast_init_db
+from tests._lang_on import enable_delegate_lang
 
 UID = 924101
 
@@ -217,7 +218,7 @@ def test_qr_caption_translates_status_line_for_english_delegate(tmp_path):
     _use_tmp_db(tmp_path)
     _seed_user()
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("delegate_lang_enabled", "on"))
+    _run(enable_delegate_lang())
     _run(seed())
     _run(db.record_checkin(UID, db.CHECKIN_ENTRY_POINT, source="miniapp", scanned_at="2026-10-30 09:15:00"))
     conn = sqlite3.connect(config.DB_PATH)
