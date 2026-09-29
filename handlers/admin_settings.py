@@ -323,7 +323,9 @@ _GAME_FIELD_ORDER = [
     # Ступени амбассадоров СкиллАп: пороги, квота, дедлайн, тексты (тумблер — кнопкой).
     "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold", "amb_o2o_quota",
     "amb_count_deadline", "amb_tier1_text", "amb_tier2_granted_text",
-    "amb_tier2_waitlist_text", "amb_tier3_text",
+    "amb_tier2_waitlist_text", "amb_tier3_text", "amb_progress_text",
+    "amb_next_step_o2o_text", "amb_next_step_networking_text", "amb_next_step_done_text",
+    "amb_invitees_counts_text", "amb_invitee_masked_label_text",
     # Тексты старта волны, напоминания, итогов (D-04) — делегатские, переводятся автоматически.
     "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
     "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",

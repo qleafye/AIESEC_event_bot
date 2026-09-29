@@ -1068,6 +1068,13 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Трое твоих прошли отбор. Слот на разбор резюме с рекрутером за тобой, время пришлём ближе к форуму. Следующая ступень на 7: закрытый нетворкинг со спикерами и партнёрами.": "Three of your invitees have passed selection. A resume review slot with a recruiter is yours — we'll send the time closer to the forum. Next level at 7: a closed networking session with speakers and partners.",
     "Трое твоих прошли отбор, спасибо. Слоты на разбор резюме для амбассадоров уже разобрали, ты в листе ожидания и первым получишь место, если кто-то откажется. Нетворкинг на 7 в силе.": "Three of your invitees have passed selection — thank you! The resume review slots for ambassadors are already taken, so you're on the waiting list and will be the first to get a spot if someone drops out. Networking at 7 still stands.",
     "Семеро по твоей ссылке прошли отбор. Зовём тебя на закрытый нетворкинг со спикерами и партнёрами 21 ноября, детали напишем в личку.": "Seven people you invited have passed selection. We're inviting you to a closed networking session with speakers and partners on November 21 — we'll send the details in a private message.",
+    # Экраны амбассадора: прогресс цифрами и скрытие имён приглашённых.
+    "По твоей ссылке: {total}. Прошли отбор: {qualified}. {next_step}": "Joined via your link: {total}. Passed selection: {qualified}. {next_step}",
+    "До разбора резюме: {n}": "Until the resume review: {n}",
+    "До нетворкинга: {n}": "Until networking: {n}",
+    "Все ступени твои": "All levels are yours",
+    "Всего по твоей ссылке: {total}\nНа рассмотрении: {pending}\nПрошли отбор: {qualified}": "Total via your link: {total}\nUnder review: {pending}\nPassed selection: {qualified}",
+    "Приглашённый №{n}": "Invitee #{n}",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {
