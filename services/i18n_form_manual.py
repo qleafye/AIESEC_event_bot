@@ -1040,7 +1040,7 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Как тебе больше нравится помогать как амбассадору?": "How do you prefer to help as an ambassador?",
     "без срока": "no deadline",
     "После дедлайна ({deadline}) — {penalized} баллов вместо {coins}. Штраф фиксированный, не зависит от того, насколько поздно.": "After the deadline ({deadline}) — {penalized} points instead of {coins}. The penalty is fixed, no matter how late.",
-    "Скоро дедлайн ({deadline}), а у тебя ещё не сдано: «{task}» ({coins} баллов). Успеешь — получишь баллы полностью, после дедлайна — со штрафом.": "The deadline ({deadline}) is coming up, and you still haven't submitted: «{task}» ({coins} points). Make it in time and you'll get the full points — after the deadline, there's a penalty.",
+    "Скоро дедлайн ({deadline}), а у тебя ещё не сдано: «{task}» ({coins} баллов). Успей сдать до дедлайна, чтобы получить баллы.": "The deadline ({deadline}) is coming up, and you still haven't submitted: «{task}» ({coins} points). Submit before the deadline to get your points.",
     "Сейчас нет активной волны амбассадоров — рейтинг появится, когда волна начнётся.": "There's no active ambassador wave right now — the ranking will appear once a wave starts.",
     "🏅 <b>Рейтинг волны</b>": "🏅 <b>Wave ranking</b>",
     "Ты {rank}-й из {total}. До призового места ({place}-е) — {gap} баллов.": "You're #{rank} out of {total}. {gap} points to the prize place ({place}).",
