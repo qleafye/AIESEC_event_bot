@@ -16,6 +16,10 @@
 - `services.applications.claim_approve_all_with_credits` — «Принять всех» в боте и Mini App;
 - `services/reg_finalize.py` — авто-одобрение на финале анкеты.
 
+И отдельно — при вступлении в амбассадоры (`check_tiers_for_new_ambassador`: бот
+`handlers/reg_ambassador.py`, возврат `handlers/user_actions.py::ambassador_join`, Mini App
+`miniapp/routers/form.py::draft_ambassador`).
+
 Сторож `tests/test_referral_credit_32.py::test_every_credit_call_site_also_checks_tiers`
 валит сборку, если новый путь зовёт начисление без проверки ступеней.
 
@@ -181,6 +185,19 @@ async def check_tiers_for_invitees(invitee_ids) -> None:
             await check_tiers(referrers)
     except Exception:
         logger.exception("amb_tiers: check_tiers_for_invitees не прошла")
+
+
+async def check_tiers_for_new_ambassador(telegram_id) -> None:
+    """Человек только что стал амбассадором («Хочу свою ссылку» в боте или приложении,
+    возврат кнопкой на «Моя ссылка»): ступени по приглашённым, одобренным ДО вступления, иначе
+    пришли бы только со следующим одобрением — а его может и не быть. Никогда не бросает;
+    при выключенной программе — одно чтение настройки."""
+    try:
+        if not await program_on():
+            return
+        await check_tiers([int(telegram_id)])
+    except Exception:
+        logger.exception("amb_tiers: проверка ступеней при вступлении не прошла (tid=%s)", telegram_id)
 
 
 async def preview_backfill() -> list[dict]:

@@ -10,7 +10,9 @@
 `--apply` записывает ступени ТИХО (амбассадоры сообщений не получают); `--notify` вместе с
 `--apply` ставит каждому сообщение о старшей новой ступени (и отдельно — о разборе резюме:
 слот или лист ожидания, если эта ступень среди новых) в очередь бота.
-`--apply` при выключенной программе отказывается.
+`--apply` работает и при выключенной программе — так и задумано: сначала пересчёт, потом
+включение, иначе живые одобрения в промежутке обгоняют давно дошедших в очереди за слотами
+разбора резюме. `--notify` требует включённой программы.
 
 Запуск на сервере:
 
@@ -36,9 +38,10 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
-PROGRAM_OFF_MESSAGE = (
-    "Программа ступеней выключена. Включите её в админке («🎮 Геймификация → 🎓 Ступени "
-    "амбассадоров») и запустите снова."
+PROGRAM_OFF_NOTIFY_MESSAGE = (
+    "Программа ступеней выключена, а --notify рассылает сообщения о ней. Запустите без "
+    "--notify (ступени запишутся тихо) или сначала включите программу в админке "
+    "(«🎮 Геймификация → 🎓 Ступени амбассадоров»)."
 )
 _O2O = {"granted": "разбор резюме: выдан", "waitlist": "разбор резюме: лист ожидания"}
 
@@ -62,8 +65,8 @@ async def _run(apply: bool, notify: bool) -> int:
     from services import amb_tiers
 
     program = await amb_tiers.program_on()
-    if apply and not program:
-        print(PROGRAM_OFF_MESSAGE)
+    if apply and notify and not program:
+        print(PROGRAM_OFF_NOTIFY_MESSAGE)
         return 2
     if await amb_tiers.deadline_passed():
         print("Дедлайн подсчёта ступеней уже прошёл — новые ступени не выдаются.")
@@ -73,7 +76,7 @@ async def _run(apply: bool, notify: bool) -> int:
     season = await amb_tiers.current_season()
     print(f"Сезон: {season or 'не задан'}")
     if not program:
-        print("Программа ступеней сейчас выключена — это только предпросмотр.")
+        print("Программа ступеней сейчас выключена." + ("" if apply else " Это предпросмотр."))
     if not preview:
         print("Новых ступеней к выдаче нет.")
         return 0
@@ -104,6 +107,8 @@ async def _run(apply: bool, notify: bool) -> int:
     print(f"\nЗаписано ступеней: {written}.")
     print("Сообщения амбассадорам поставлены в очередь бота." if notify
           else "Сообщений амбассадорам не отправляли (без --notify).")
+    if not program:
+        print("Теперь включите программу: «🎮 Геймификация → 🎓 Ступени амбассадоров».")
     return 0
 
 
