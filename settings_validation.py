@@ -174,6 +174,23 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             )
         return f"{hours:02d}:{minutes:02d}", None
 
+    if entry.get("format") == "msk_datetime":
+        # Дедлайн ступеней амбассадоров: «ГГГГ-ММ-ДД ЧЧ:ММ» по Москве. «нет» — без дедлайна
+        # (хранится пустой строкой); «-» сюда не доходит — это сброс к значению по умолчанию.
+        stripped = value.strip()
+        if stripped.lower() in ("нет", "без дедлайна"):
+            return "", None
+        try:
+            parsed = datetime.strptime(stripped, "%Y-%m-%d %H:%M")
+        except ValueError:
+            return None, (
+                "Не понял дату. Нужен формат <code>ГГГГ-ММ-ДД ЧЧ:ММ</code> по Москве, "
+                "например <code>2026-11-14 23:59</code>.\n\n"
+                "Пришлите ещё раз, «нет», чтобы убрать дедлайн, или «-», чтобы вернуть "
+                "значение по умолчанию."
+            )
+        return parsed.strftime("%Y-%m-%d %H:%M"), None
+
     if entry.get("format") == "number":
         # Квик 260927 (рейтинг чата): число 0 или больше, дробь через запятую («0,5» — так его
         # набирает менеджер). Хранится нормализованным (`:g`), читает chat_score — тот же
