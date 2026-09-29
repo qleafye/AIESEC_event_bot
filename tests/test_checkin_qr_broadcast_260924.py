@@ -16,6 +16,7 @@ from database import db
 import services.scheduler as sched
 import services.checkin_broadcast as cb
 from tests._dbtpl import fast_init_db
+from tests._lang_on import enable_delegate_lang
 
 UID = 260924101
 
@@ -520,7 +521,7 @@ def test_send_broadcast_translates_caption_for_english_delegate(tmp_path, monkey
     from services.i18n_form_manual import FORM_DEFAULT_EN, seed
 
     _ready(tmp_path)
-    _run(_set_setting("delegate_lang_enabled", "on"))
+    _run(enable_delegate_lang())
     _run(seed())
     _seed_user(UID, status="approved")
     conn = sqlite3.connect(config.DB_PATH)

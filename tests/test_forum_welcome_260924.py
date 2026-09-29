@@ -17,6 +17,7 @@ import services.checkin as checkin_mod
 from services.checkin import ENTRY_POINT, record_arrival
 import services.forum_welcome as fw
 from tests._dbtpl import fast_init_db
+from tests._lang_on import enable_delegate_lang
 
 ADMIN_ID = 924001
 UID = 924010
@@ -352,7 +353,7 @@ def test_english_delegate_gets_translated_greeting(tmp_path):
 
     _ready(tmp_path)
     _run(db.set_setting("forum_welcome_enabled", "on"))
-    _run(db.set_setting("delegate_lang_enabled", "on"))
+    _run(enable_delegate_lang())
     _run(seed())
     fw.register()
     _run(_add_delegate(UID))
