@@ -489,3 +489,12 @@ class ChatCleanupEdit(StatesGroup):
     # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) —
     # менеджер вводит задержку удаления в секундах; после сохранения — обратно на экран.
     waiting_for_value = State()
+
+
+class AmbExclude(StatesGroup):
+    # Ступени амбассадоров СкиллАп (handlers/admin_amb_tiers.py): ручное исключение
+    # приглашённого из зачёта — кого (пересылка / @username / id), причина свободным текстом,
+    # подтверждение кнопкой. Данные человека и причина живут в state.get_data().
+    waiting_for_person = State()
+    waiting_for_reason = State()
+    waiting_for_confirm = State()

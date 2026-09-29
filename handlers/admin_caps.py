@@ -942,6 +942,19 @@ ADMIN_CAPS: dict[str, str] = {
     "state:WaveCreate:*": "moderate_game",
     "state:WaveEdit:*": "moderate_game",
 
+    # Экран «🎓 Ступени амбассадоров» (handlers/admin_amb_tiers.py). Та же ловушка префиксов:
+    # "ambt_unexcl:*" НЕ покрывает "ambt_unexcl_go:*", "ambt_excl" не покрывает "ambt_excl_go".
+    "admin_amb_tiers": "moderate_game",
+    "ambt_toggle:*": "moderate_game",
+    "ambt_csv": "moderate_game",
+    "ambt_excl": "moderate_game",
+    "ambt_excl_go": "moderate_game",
+    "ambt_excl_cancel": "moderate_game",
+    "ambt_excl_list:*": "moderate_game",
+    "ambt_unexcl:*": "moderate_game",
+    "ambt_unexcl_go:*": "moderate_game",
+    "state:AmbExclude:*": "moderate_game",
+
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
     # `checkin` — до этого она существовала в ALL_CAPABILITIES/ROLES без единой строки меню.
