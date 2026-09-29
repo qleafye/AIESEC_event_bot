@@ -96,6 +96,8 @@ async def regamb_want(callback: types.CallbackQuery):
     `ambassador_since`, а прежний путь его вообще не заполнял)."""
     uid = callback.from_user.id
     await set_ambassador_flag(uid, active=True, at=msk_now().strftime("%Y-%m-%d %H:%M:%S"))
+    from services.amb_tiers import check_tiers_for_new_ambassador  # ступени до вступления
+    await check_tiers_for_new_ambassador(uid)
     await callback.answer()
     try:
         await callback.message.edit_reply_markup(reply_markup=None)

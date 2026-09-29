@@ -222,15 +222,26 @@ def test_cli_notify_without_apply_is_error(tmp_path):
     assert exc.value.code == 2
 
 
-def test_cli_apply_refuses_when_program_off(tmp_path, capsys):
+def test_cli_apply_works_silently_when_program_off(tmp_path, capsys):
+    """Порядок «сначала пересчёт, потом включение»: --apply при выключенной программе пишет
+    ступени тихо, живые одобрения их не обгоняют; --notify без включённой программы — отказ."""
     from tools import backfill_amb_tiers as tool
     _three_approved_before_program(tmp_path, program="off")
-    assert tool.main(["--apply"]) == 2
-    assert "Включите её в админке" in capsys.readouterr().out
-    assert _run(tdb.list_tiers()) == []
     # предпросмотр при выключенной программе работает
     assert tool.main([]) == 0
     assert "выключена" in capsys.readouterr().out
+    assert _run(tdb.list_tiers()) == []
+
+    assert tool.main(["--apply", "--notify"]) == 2
+    assert "без --notify" in capsys.readouterr().out
+    assert _run(tdb.list_tiers()) == []
+
+    assert tool.main(["--apply"]) == 0
+    assert "включите программу" in capsys.readouterr().out
+    rows = _run(tdb.list_tiers(100))
+    assert [r["tier"] for r in rows] == [1, 2]
+    assert all(r["notified_at"] for r in rows)
+    assert _outbox_events() == []
 
 
 def test_block_quota_zero_is_zero_not_default(tmp_path):

@@ -1973,6 +1973,8 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
     участвует только со следующей (то же правило `wave_eligible`, что и у только что
     вступившего впервые, D-31)."""
     await set_ambassador_flag(callback.from_user.id, active=True, at=_msk_now_str())
+    from services.amb_tiers import check_tiers_for_new_ambassador  # ступени до возврата
+    await check_tiers_for_new_ambassador(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
     await callback.message.edit_text(text, reply_markup=kb)
