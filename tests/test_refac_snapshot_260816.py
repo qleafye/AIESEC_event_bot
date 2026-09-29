@@ -715,6 +715,9 @@ admin|message|wave_edit_intro_step|state:WaveEdit:*
 admin|message|wave_edit_prize_step|state:WaveEdit:*
 admin|message|wave_create_dates_step|state:WaveCreate:*
 admin|message|wave_create_intro_step|state:WaveCreate:*
+admin|message|amb_exclude_person_step|state:AmbExclude:*
+admin|message|amb_exclude_reason_step|state:AmbExclude:*
+admin|message|amb_exclude_confirm_hint|state:AmbExclude:*
 admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_question_step|state:PollCreate:*
@@ -1177,6 +1180,15 @@ admin|callback_query|wave_create_redates|wcredates
 admin|callback_query|wave_create_go|wccreate_go
 admin|callback_query|wave_copy_go|wavecopy_go:*
 admin|callback_query|wave_create_cancel|wccancel
+admin|callback_query|show_amb_tiers|admin_amb_tiers
+admin|callback_query|amb_tiers_toggle|ambt_toggle:*
+admin|callback_query|amb_tiers_csv|ambt_csv
+admin|callback_query|amb_exclude_start|ambt_excl
+admin|callback_query|amb_exclude_cancel|ambt_excl_cancel
+admin|callback_query|amb_exclude_go|ambt_excl_go
+admin|callback_query|amb_exclusions_list|ambt_excl_list:*
+admin|callback_query|amb_unexclude_confirm|ambt_unexcl:*
+admin|callback_query|amb_unexclude_go|ambt_unexcl_go:*
 admin|callback_query|show_admin_polls|admin_polls
 admin|callback_query|show_admin_polls_closed|admin_polls_closed
 admin|callback_query|show_poll_card|poll_card:*
@@ -1985,7 +1997,12 @@ def test_snapshot_total_handler_count_is_292():
     # 29.09 (колонка «В чате»): кнопка «🔄 Сверить состав чата» — callback_query
     # chat_reconcile_now (admin_chat_reconcile) хвостом шва handlers/admin_chat_cleanup.py, сразу
     # после chclean_delay. Одна чистая вставка, 0 удалений, 0 реордеров (892 -> 893).
-    assert len(GOLDEN_SNAPSHOT) == 893
+    # 29.09 (квалифицированная амбассадорка СкиллАп 5): шов handlers/admin_amb_tiers.py
+    # хвостом мастера волн (admin_game_wave_wizard.py) — 3 admin.message (state:AmbExclude:*)
+    # сразу после wave_create_intro_step и 9 admin.callback_query сразу после
+    # wave_create_cancel. Сверено diff'ом (difflib.SequenceMatcher): две чистые вставки
+    # (3 + 9 строк), 0 удалений, 0 реордеров (893 -> 905).
+    assert len(GOLDEN_SNAPSHOT) == 905
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
