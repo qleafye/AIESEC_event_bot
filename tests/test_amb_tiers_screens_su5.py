@@ -410,3 +410,17 @@ def test_miniapp_ambassador_endpoint_sets_since_once(client):
     assert client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID)).status_code == 200
     assert _run(db.get_user(DELEGATE_ID))["ambassador_since"] == "2026-01-01 00:00:00"
     assert first != "2026-01-01 00:00:00"
+
+
+def test_offer_body_default_new_text_with_english():
+    from services.i18n_miniapp_manual import MANUAL_EN
+    from settings_schema import SETTINGS_SCHEMA
+
+    entry = SETTINGS_SCHEMA["miniapp_form_ambassador_offer_body_text"]
+    assert entry["default"] == (
+        "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя гарантированный "
+        "разбор резюме с рекрутером. Считаем только тех, кто прошёл отбор, так что зови тех, "
+        "кому форум правда нужен."
+    )
+    assert entry["per_city"] is True
+    assert MANUAL_EN.get(entry["default"])
