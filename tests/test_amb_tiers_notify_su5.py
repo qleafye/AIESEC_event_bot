@@ -183,3 +183,37 @@ def test_end_to_end_approval_to_single_message_without_invitee_names(tmp_path):
         for full_name, username in names.values():
             for part in full_name.split() + [username]:
                 assert part not in text
+
+
+class _MarkupBot:
+    """Отвечает «can't parse entities» на HTML, принимает простой текст."""
+    id = 42
+
+    def __init__(self):
+        self.calls: list[tuple[str | None, str]] = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, **_kwargs):
+        from aiogram.exceptions import TelegramBadRequest
+
+        self.calls.append((parse_mode, text))
+        if parse_mode == "HTML":
+            raise TelegramBadRequest(
+                method=None, message="Bad Request: can't parse entities: unclosed tag at byte 5",
+            )
+
+
+def test_broken_html_sent_once_without_formatting(tmp_path):
+    """Битый HTML в тексте ступени — не пять ретраев и тишина, а сразу простой текст."""
+    _ready(tmp_path)
+    _make_ambassador(100)
+    _tier_row(100, 3)
+    _run(db.set_setting("amb_tier3_text", "<b>Семеро прошли отбор &amp; зовём на нетворкинг"))
+    bot = _MarkupBot()
+    assert _run(amb_tiers_notify.deliver_tier_notification(bot, 100, 3, 0)) is True
+    assert bot.calls == [
+        ("HTML", "<b>Семеро прошли отбор &amp; зовём на нетворкинг"),
+        (None, "Семеро прошли отбор & зовём на нетворкинг"),
+    ]
+    assert _run(tdb.list_tiers(100))[0]["notified_at"] is not None
+    assert _run(amb_tiers_notify.deliver_tier_notification(bot, 100, 3, 0)) is False
+    assert len(bot.calls) == 2
