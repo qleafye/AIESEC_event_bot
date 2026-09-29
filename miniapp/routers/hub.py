@@ -27,7 +27,7 @@ from cities import get_setting_typed_for_city
 from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
 from payment_options import parse_options
 import reg_engine
-from services import applications, i18n, reg_edit_policy
+from services import amb_progress, applications, i18n, reg_edit_policy
 from settings_schema import get_setting_typed
 from services.text_fill import fill_collapsing
 
@@ -159,8 +159,13 @@ async def _referral_block(
         return None
     if not bot_username:
         return None
-    invites_text = None
-    if await get_setting_typed_for_city("menu_invites", event_city) == "on":
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+        return await i18n.tr_setting(key, lang, tr_map or {})
+
+    # Ступени амбассадоров СкиллАп: амбассадору вместо счётчика — прогресс цифрами (часть блока
+    # ссылки, поэтому от `menu_invites` не зависит). Программа выключена — прежний счётчик.
+    invites_text = await amb_progress.render_progress(telegram_id, tr_key)
+    if invites_text is None and await get_setting_typed_for_city("menu_invites", event_city) == "on":
         count = len(await get_referrals(telegram_id))
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
