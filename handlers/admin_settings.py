@@ -49,7 +49,7 @@ from settings_ops import (
     SHEET_TAB_WRITE_MODE as _SHEET_TAB_WRITE_MODE,
     after_tab_setting_saved as _after_tab_setting_saved,
     tab_confirm_text_html as _tab_confirm_text,
-    tab_check_failed_warning as _tab_check_failed_warning,
+    tab_check_failed_warning as _tab_check_failed_warning, cross_setting_error,
 )
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
@@ -2680,6 +2680,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # waiting_for_value so the admin just retypes. "-" (reset) bypasses validation.
     if value != "-":
         value, error = validate_setting_value(key, value)
+        error = error or await cross_setting_error(key, value)  # пороги ступеней 1 < 2 < 3
         if error:
             await message.answer(error, parse_mode="HTML")
             return

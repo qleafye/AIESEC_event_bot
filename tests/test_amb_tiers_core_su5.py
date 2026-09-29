@@ -613,3 +613,65 @@ def test_zero_to_seven_backfill_notify_sends_o2o_message(tmp_path):
     _on()
     _run(amb_tiers.check_tiers([100], notify=True, force=True))
     assert [e["tier"] for e in _events()] == [2, 3]
+
+
+# ── Квота 0 и пороги ─────────────────────────────────────────────────────────────────────
+
+def test_quota_zero_means_no_slots(tmp_path):
+    from settings_schema import _parse_setting
+
+    assert validate_setting_value("amb_o2o_quota", "0") == ("0", None)
+    assert _parse_setting("amb_o2o_quota", "0") == 0
+    assert _parse_setting("amb_o2o_quota", None) == 15
+    assert _parse_setting("amb_o2o_quota", "мусор") == 15
+    _ready(tmp_path)
+    _on(quota=0)
+    _make_ambassador(100)
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _run(applications.claim_approve_all_with_credits(None))
+    assert _tiers(100) == [(1, None), (2, "waitlist")]
+
+
+def test_other_int_keys_zero_still_default():
+    """allow_zero — только у квоты: у прочих int 0 по-прежнему = значение по умолчанию."""
+    from settings_schema import _parse_setting
+
+    assert _parse_setting("amb_tier2_threshold", "0") == 3
+
+
+def test_threshold_zero_rejected_with_hint():
+    for key in ("amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold"):
+        value, error = validate_setting_value(key, "0")
+        assert value is None and "1 или больше" in error, key
+    assert validate_setting_value("amb_tier1_threshold", "1") == ("1", None)
+
+
+def test_threshold_order_pure_check():
+    from settings_validation import amb_threshold_order_error
+
+    current = {"amb_tier1_threshold": 1, "amb_tier2_threshold": 3, "amb_tier3_threshold": 7}
+    assert amb_threshold_order_error("amb_tier2_threshold", "5", current) is None
+    assert amb_threshold_order_error("amb_o2o_quota", "0", current) is None
+    error = amb_threshold_order_error("amb_tier1_threshold", "3", current)
+    assert error and "Ступень 2" in error and "1 / 3 / 7" in error
+    assert amb_threshold_order_error("amb_tier3_threshold", "3", current)
+    assert amb_threshold_order_error("amb_tier2_threshold", "8", current)
+
+
+def test_threshold_order_checked_on_save_bot_and_web(tmp_path):
+    import settings_ops
+
+    _ready(tmp_path)
+    assert _run(settings_ops.cross_setting_error("amb_tier2_threshold", "1")) is not None
+    assert _run(settings_ops.cross_setting_error("amb_tier2_threshold", "4")) is None
+    assert _run(settings_ops.cross_setting_error("amb_tier2_threshold", "-")) is None
+    check = _run(settings_ops.validate_batch_item(
+        "amb_tier3_threshold", "2", visible_codes=[], selected_city=None, cities_on=False,
+    ))
+    assert check.error and "Ступень 3" in check.error
+
+    import inspect
+
+    from handlers import admin_settings
+    assert "cross_setting_error" in inspect.getsource(admin_settings.settings_edit_value)

@@ -37,7 +37,7 @@ def amb_tiers_block(conn, scope) -> "dict | None":
             quota = int(_setting(conn, "amb_o2o_quota") or _QUOTA_DEFAULT)
         except ValueError:
             quota = _QUOTA_DEFAULT
-        if quota <= 0:
+        if quota < 0:  # 0 = слотов нет (как у бота: allow_zero в реестре), не дефолт
             quota = _QUOTA_DEFAULT
 
         season = scope.season if getattr(scope, "season", None) else (_setting(conn, "event_season") or "")
