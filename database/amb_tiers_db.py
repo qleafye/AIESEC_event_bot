@@ -205,3 +205,16 @@ async def o2o_summary() -> dict:
     for status, count in rows:
         result[status] = int(count)
     return result
+
+
+async def referral_coin_ordinals(user_id: int) -> dict[int, int]:
+    """`{coins.id: N}` — порядковый номер каждой строки начисления за приглашённого
+    (`source = 'referral'`) среди таких строк пользователя, по возрастанию `coins.id`, с 1.
+    Номер не зависит от страницы истории и поверхности (бот/Mini App)."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT id FROM coins WHERE user_id = ? AND source = 'referral' ORDER BY id",
+            (int(user_id),),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {int(row[0]): n for n, row in enumerate(rows, start=1)}
