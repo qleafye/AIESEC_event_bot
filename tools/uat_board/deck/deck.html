@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бот на форуме</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700;800&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F3F4F8; --card:#FFFFFF; --ink:#1C1C1C; --muted:#52565E; --line:#DDE1E8; --blue:#037EF3; --orange:#F48924; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; }
+  header.top { background:var(--blue); color:#fff; }
+  header.top .in { max-width:1200px; margin:0 auto; padding:28px 16px 24px; display:flex; flex-wrap:wrap; gap:16px 32px; align-items:end; justify-content:space-between; }
+  header.top h1 { margin:0; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(26px, 4vw, 40px); line-height:1.1; }
+  header.top p { margin:6px 0 0; font-size:16px; line-height:1.45; opacity:.95; max-width:640px; }
+  .who { display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:700; }
+  .who input { font:inherit; font-weight:400; font-size:16px; padding:10px 12px; border-radius:8px; border:0; width:240px; max-width:100%; color:var(--ink); }
+  .who a { color:#fff; font-size:15px; }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 80px; display:flex; flex-direction:column; gap:40px; }
+  .unit { display:flex; flex-direction:column; gap:0; scroll-margin-top:16px; }
+  .frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:12px 12px 0 0; border:1px solid var(--line); border-bottom:0; background:#fff; }
+  .stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+  .stage > section { width:1920px; height:1080px; position:relative; box-sizing:border-box; overflow:hidden; }
+  .stage * { box-sizing:border-box; }
+  .stage h1, .stage h2, .stage h3, .stage p, .stage ul, .stage table { margin:0; }
+  .stage ul { padding:0 0 0 1.2em; }
+  .stage hr { border:0; height:0; margin:0; width:100%; }
+  .stage table { border-collapse:collapse; width:100%; }
+  .stage th, .stage td { padding:.35em .6em; text-align:left; vertical-align:top; border-bottom:1px solid rgba(128,128,128,.28); }
+  .stage th { font-weight:800; }
+  .meta { background:var(--card); border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:0 0 12px 12px; padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+  .num { font-size:14px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .aside { margin:0; font-size:15px; line-height:1.5; color:var(--muted); }
+  .notes { display:flex; flex-direction:column; gap:8px; }
+  .note { background:#F7F8FB; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:15px; line-height:1.45; }
+  .note .by { font-size:13px; color:var(--muted); margin-bottom:4px; display:flex; gap:12px; }
+  .note .by button { border:0; background:none; color:#9F2F2D; font:inherit; cursor:pointer; padding:0; text-decoration:underline; }
+  .note .txt { white-space:pre-wrap; word-break:break-word; }
+  .compose { display:flex; gap:8px; align-items:stretch; }
+  .compose textarea { flex:1; font:inherit; font-size:16px; line-height:1.4; padding:10px 12px; border:1px solid var(--line); border-radius:8px; resize:vertical; min-height:46px; }
+  .compose textarea:focus, .who input:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  .compose button { font:inherit; font-weight:800; font-size:15px; padding:0 18px; border:0; border-radius:8px; background:var(--ink); color:#fff; cursor:pointer; }
+  .compose button:disabled { opacity:.5; cursor:default; }
+  .foot { margin:0; font-size:14px; color:var(--muted); text-align:center; }
+  .foot a { color:var(--muted); }
+  .ncount { color:var(--blue); }
+  .status { font-size:13px; color:var(--muted); min-height:1em; }
+  @media (max-width:600px) {
+    .compose { flex-direction:column; }
+    .compose button { padding:12px; }
+  }
+  @media print {
+    @page { size:1920px 1080px; margin:0; }
+    header.top, .meta { display:none !important; }
+    body, main { background:#fff; }
+    main { padding:0; gap:0; max-width:none; }
+    .unit { break-after:page; page-break-after:always; }
+    .frame { width:1920px; height:1080px; aspect-ratio:auto; border:0; border-radius:0; }
+    .stage { transform:none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="in">
+    <div>
+      <h1>Бот на форуме</h1>
+      <p>Черновик для ОК. Под каждым слайдом пишите комментарии прямо здесь: что поправить, что непонятно, что добавить. Комментарий сохраняется на сервере, его сразу видят все, у кого есть ссылка. Скачивать ничего не нужно.</p>
+    </div>
+    <div class="who">
+      <label for="who">Как тебя подписать</label>
+      <input id="who" placeholder="Имя, например Аня из ОК" maxlength="60" autocomplete="name">
+    </div>
+  </div>
+</header>
+<main>
+
+<article class="unit" id="u-cover" data-id="cover">
+  <div class="frame"><div class="stage"><section id="cover" data-transition="fade" style="display:flex; flex-direction:column; justify-content:space-between; padding:128px; background:#037ef3">
+  <p style="font-family:'Nunito Sans', Arial, sans-serif; font-size:28px; font-weight:800; letter-spacing:4px; text-transform:uppercase; color:#ffffff">АЙСЕК · Юлид'26</p>
+  <div style="display:flex; flex-direction:column; gap:40px">
+    <h1 style="font-family:Raleway, Arial, sans-serif; font-size:160px; font-weight:800; line-height:1; color:#ffffff">Бот на форуме</h1>
+    <p style="width:1300px; font-family:'Nunito Sans', Arial, sans-serif; font-size:40px; line-height:1.35; color:#ffffff">Чек-ин, расписание, рассылки, отзывы и сертификаты. Что предлагаем сделать и что нужно решить ОК.</p>
+  </div>
+  <div style="display:flex; flex-direction:row; gap:24px">
+    <p style="padding:16px 28px; font-family:'Nunito Sans', Arial, sans-serif; font-size:28px; font-weight:700; color:#ffffff; border:2px solid #ffffff; border-radius:8px">СПб и Тюмень: 3 октября</p>
+    <p style="padding:16px 28px; font-family:'Nunito Sans', Arial, sans-serif; font-size:28px; font-weight:700; color:#037ef3; background:#ffffff; border-radius:8px">Москва: 30 и 31 октября</p>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">1 / 18 · Бот на форуме<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Цель встречи: согласовать, что бот делает на самом форуме, и собрать обратную связь ОК.</p>
+    <div class="notes" data-list="cover"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-journey" data-id="journey">
+  <div class="frame"><div class="stage"><section id="journey" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Как бот участвует в форуме</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Форум глазами делегата</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:24px">
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px 24px; display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">01</p>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">До форума</h3>
+      <p style="font-size:24px; line-height:1.45; color:#52565E">Тест компетенций. В бот приходят расписание и личный QR-код.</p>
+    </div>
+    <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:28px 24px; display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; color:#B85A0A">02 · главное</p>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Вход</h3>
+      <p style="font-size:24px; line-height:1.45; color:#52565E">Орг сканирует QR с телефона делегата, и делегат отмечен.</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px 24px; display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">03</p>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Сессии</h3>
+      <p style="font-size:24px; line-height:1.45; color:#52565E">Скан у входа в зал. После сессии бот просит её оценить.</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px 24px; display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">04</p>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">В течение дня</h3>
+      <p style="font-size:24px; line-height:1.45; color:#52565E">Рассылки тем, кто пришёл, и тем, кого нет. Кнопка «Вопрос оргам».</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px 24px; display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">05</p>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">После форума</h3>
+      <p style="font-size:24px; line-height:1.45; color:#52565E">Спасибо, анкета, фото и сертификат с ростом по компетенциям.</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <p style="font-size:32px; line-height:1.4; width:1400px; color:#1C1C1C">Шаг «Вход» выделен: почти всё остальное работает от отметки. Кто пришёл, на каких сессиях был, кого спросить об отзыве и кому выдать сертификат.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">2 / 18 · Форум глазами делегата<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="journey"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-now-new" data-id="now-new">
+  <div class="frame"><div class="stage"><section id="now-new" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Отправная точка</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Что уже есть и что добавим</h2>
+  </div>
+  <div style="display:flex; gap:32px">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:40px; display:flex; flex-direction:column; gap:20px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:36px; font-weight:800; color:#52565E">Уже работает</h3>
+      <ul style="font-size:28px; line-height:1.6; color:#52565E">
+        <li>Регистрация и отбор заявок</li>
+        <li>Рассылки с фильтрами и по расписанию</li>
+        <li>Опросы, пока по одному вопросу</li>
+        <li>Игра с монетами и рейтингом</li>
+        <li>Дашборд со статистикой</li>
+        <li>Mini App внутри Telegram</li>
+      </ul>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:2px solid #037EF3; border-radius:12px; padding:40px; display:flex; flex-direction:column; gap:20px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:36px; font-weight:800; color:#037EF3">Добавим к форуму</h3>
+      <ul style="font-size:28px; line-height:1.6; color:#1C1C1C">
+        <li>Расписание форума в боте</li>
+        <li>Чек-ин по QR-коду</li>
+        <li>Рассылки «пришёл» и «не пришёл»</li>
+        <li>«Важное» и «Не присылать сегодня»</li>
+        <li>Кнопка «Вопрос оргам»</li>
+        <li>Отзывы о каждой сессии</li>
+        <li>Тест компетенций и сертификаты</li>
+        <li>Цепочка сообщений после форума</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">3 / 18 · Что уже есть и что добавим<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="now-new"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-checkin-hub" data-id="checkin-hub">
+  <div class="frame"><div class="stage"><section id="checkin-hub" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Чек-ин</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Всё начинается с отметки</h2>
+    <p style="font-size:28px; line-height:1.4; color:#52565E">Одна отметка запускает рассылки, отзывы, статистику и сертификаты.</p>
+  </div>
+  
+  <div style="position:relative; width:1664px; height:600px">
+    <div style="position:absolute; left:0px; top:208px; width:300px; height:180px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:24px; display:flex; flex-direction:column; gap:8px">
+      <p style="font-size:28px; font-weight:800">QR-код</p>
+      <p style="font-size:24px; line-height:1.3; color:#52565E">в боте</p>
+    </div>
+    <div style="position:absolute; left:392px; top:208px; width:300px; height:180px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:24px; display:flex; flex-direction:column; gap:8px">
+      <p style="font-size:28px; font-weight:800">Орг сканирует</p>
+      <p style="font-size:24px; line-height:1.3; color:#52565E">на входе и у каждого зала</p>
+    </div>
+    <div style="position:absolute; left:784px; top:208px; width:320px; height:180px; background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:24px; display:flex; flex-direction:column; gap:8px">
+      <p style="font-size:28px; font-weight:800">Отметка в боте</p>
+      <p style="font-size:24px; line-height:1.3; color:#52565E">кто, где и во сколько</p>
+    </div>
+    <div style="position:absolute; left:1200px; top:0px; width:464px; height:104px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:4px">
+      <p style="font-size:28px; font-weight:800">Рассылки</p>
+      <p style="font-size:24px; color:#52565E">кто пришёл и кто нет</p>
+    </div>
+    <div style="position:absolute; left:1200px; top:164px; width:464px; height:104px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:4px">
+      <p style="font-size:28px; font-weight:800">Отзывы о сессиях</p>
+      <p style="font-size:24px; color:#52565E">только тем, кто был в зале</p>
+    </div>
+    <div style="position:absolute; left:1200px; top:328px; width:464px; height:104px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:4px">
+      <p style="font-size:28px; font-weight:800">Статистика</p>
+      <p style="font-size:24px; color:#52565E">по дням и по залам</p>
+    </div>
+    <div style="position:absolute; left:1200px; top:492px; width:464px; height:104px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:4px">
+      <p style="font-size:28px; font-weight:800">Сертификаты и монеты</p>
+      <p style="font-size:24px; color:#52565E">за посещённые сессии</p>
+    </div>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="300.0" y1="298.0" x2="380.0" y2="298.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="392.0,298.0 377.0,305.8 377.0,290.2" fill="#8A93A3"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="692.0" y1="298.0" x2="772.0" y2="298.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="784.0,298.0 769.0,305.8 769.0,290.2" fill="#8A93A3"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1104.0" y1="298.0" x2="1152.0" y2="298.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1152.0" y1="52.0" x2="1152.0" y2="544.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1152.0" y1="52.0" x2="1188.0" y2="52.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/><polygon points="1200.0,52.0 1185.0,59.8 1185.0,44.2" fill="#F48924"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1152.0" y1="216.0" x2="1188.0" y2="216.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/><polygon points="1200.0,216.0 1185.0,223.8 1185.0,208.2" fill="#F48924"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1152.0" y1="380.0" x2="1188.0" y2="380.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/><polygon points="1200.0,380.0 1185.0,387.8 1185.0,372.2" fill="#F48924"/></svg>
+    <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="1152.0" y1="544.0" x2="1188.0" y2="544.0" stroke="#F48924" stroke-width="3.0" stroke-linecap="round"/><polygon points="1200.0,544.0 1185.0,551.8 1185.0,536.2" fill="#F48924"/></svg>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">4 / 18 · Всё начинается с отметки<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> У каждого делегата свой код. Это не Telegram ID: код случайный, угадать чужой нельзя.</p>
+    <div class="notes" data-list="checkin-hub"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-checkin-ways" data-id="checkin-ways">
+  <div class="frame"><div class="stage"><section id="checkin-ways" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Чек-ин</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Три способа отметить делегата</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+    <div style="background:#FFFFFF; border:2px solid #037EF3; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:16px">
+      <div style="display:flex"><p style="font-size:24px; font-weight:800; padding:6px 16px; background:#E1F0FE; color:#0B5CAD; border-radius:999px">Основной</p></div>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Сканер в Mini App</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Орг открывает сканер в Telegram и сканирует подряд. Если человек уже отмечен, сканер покажет, когда.</p>
+      <hr style="border-top:1px solid #DDE1E8">
+      <p style="font-size:24px; line-height:1.4; color:#52565E"><b>Интернет:</b> нужен. Без него переходим на приложение-сканер.</p>
+      <p style="font-size:24px; color:#52565E"><b>Время отметки:</b> точное</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:16px">
+      <div style="display:flex"><p style="font-size:24px; font-weight:800; padding:6px 16px; background:#FBF3DB; color:#7A5200; border-radius:999px">Запасной</p></div>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Приложение-сканер</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Любое приложение, которое читает QR без сети и сохраняет сканы в файл. Файл потом загружаем в бот.</p>
+      <hr style="border-top:1px solid #DDE1E8">
+      <p style="font-size:24px; line-height:1.4; color:#52565E"><b>Интернет:</b> не нужен, Telegram тоже.</p>
+      <p style="font-size:24px; color:#52565E"><b>Время отметки:</b> точное</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:16px">
+      <div style="display:flex"><p style="font-size:24px; font-weight:800; padding:6px 16px; background:#FDEBEC; color:#9F2F2D; border-radius:999px">Крайний случай</p></div>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Записать от руки</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Нет сети и телефон делегата сел: орг пропускает и записывает фамилию, город, @юзернейм. Потом отмечает через поиск в боте.</p>
+      <hr style="border-top:1px solid #DDE1E8">
+      <p style="font-size:24px; line-height:1.4; color:#52565E"><b>Интернет:</b> не нужен, телефон тоже.</p>
+      <p style="font-size:24px; color:#52565E"><b>Время отметки:</b> примерное</p>
+    </div>
+  </div>
+  <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:24px 32px; display:flex; align-items:center; gap:24px">
+    <svg viewBox="0 0 24 24" width="40" height="40" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    <p style="font-size:26px; line-height:1.4; color:#1C1C1C">QR не читается или телефон сел? Орг найдёт делегата по фамилии — рядом город и @юзернейм, тёзок не перепутать.</p>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">5 / 18 · Три способа отметить делегата<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="checkin-ways"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-offline" data-id="offline">
+  <div class="frame"><div class="stage"><section id="offline" data-transition="fade" style="background:#0B2545; color:#FFFFFF; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:row; align-items:center; gap:80px">
+  <div style="width:540px; display:flex; flex-direction:column; gap:28px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#8FC3FF">Без связи</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#FFFFFF">Если на площадке нет связи</h2>
+    <p style="font-size:30px; line-height:1.45; color:#D6E2F2">Сервер бота стоит не на площадке и работает всё время. Связи нет только у телефонов в зале.</p>
+    <p style="font-size:30px; line-height:1.45; font-weight:800; color:#FFFFFF">Поэтому бот ничего не теряет, он откладывает.</p>
+  </div>
+  <table style="flex:1; font-size:24px; color:#E6EDF7">
+    <tr style="background:#133A66">
+      <th style="width:26%; color:#8FC3FF">Что</th>
+      <th style="width:34%; color:#8FC3FF">Пока связи нет</th>
+      <th style="width:40%; color:#8FC3FF">Когда связь вернулась</th>
+    </tr>
+    <tr>
+      <td>Отметки</td>
+      <td>копятся в приложении-сканере или записываются от руки</td>
+      <td>файл из приложения-сканера загружаем в бот</td>
+    </tr>
+    <tr>
+      <td>Рассылка пришедшим</td>
+      <td>уходит по отметкам, которые успели дойти. Бот предупредит менеджера, если они старые</td>
+      <td>следующие рассылки видят уже все отметки</td>
+    </tr>
+    <tr>
+      <td>Отзывы о сессиях</td>
+      <td>ждут</td>
+      <td>уходят, как только отметка дошла до бота</td>
+    </tr>
+    <tr>
+      <td>Сообщения делегатам</td>
+      <td>ждут в Telegram</td>
+      <td>приходят, когда у делегата появилась сеть</td>
+    </tr>
+    <tr>
+      <td>Вопрос оргам</td>
+      <td>не работает</td>
+      <td>запасной канал: телефон дежурного орга на бейдже</td>
+    </tr>
+  </table>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">6 / 18 · Если на площадке нет связи<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Ответ на вопрос «а если связи нет вообще». Запись от руки отмечает посещение, остальное догоняет, когда отметки попадут в бот. Отзыв о сессии имеет смысл спрашивать в тот же день, поэтому у него будет срок годности.</p>
+    <div class="notes" data-list="offline"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-schedule" data-id="schedule">
+  <div class="frame"><div class="stage"><section id="schedule" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Расписание</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Расписание заводим в боте</h2>
+  </div>
+  <div style="display:flex; gap:64px; align-items:start">
+    <div style="width:600px; display:flex; flex-direction:column; gap:24px">
+      <div style="display:flex; gap:20px; align-items:start">
+        <p style="font-size:28px; font-weight:800; color:#037EF3; width:40px">1</p>
+        <p style="flex:1; font-size:28px; line-height:1.4">Менеджер открывает «Расписание» в админке</p>
+      </div>
+      <div style="display:flex; gap:20px; align-items:start">
+        <p style="font-size:28px; font-weight:800; color:#037EF3; width:40px">2</p>
+        <p style="flex:1; font-size:28px; line-height:1.4">Выбирает день и время начала</p>
+      </div>
+      <div style="display:flex; gap:20px; align-items:start">
+        <p style="font-size:28px; font-weight:800; color:#B85A0A; width:40px">3</p>
+        <p style="flex:1; font-size:28px; line-height:1.4">Добавляет в это время одну сессию или несколько параллельных</p>
+      </div>
+      <div style="display:flex; gap:20px; align-items:start">
+        <p style="font-size:28px; font-weight:800; color:#037EF3; width:40px">4</p>
+        <p style="flex:1; font-size:28px; line-height:1.4">У каждой сессии название, зал и компетенция</p>
+      </div>
+      <p style="font-size:24px; line-height:1.45; color:#52565E; border-top:1px solid #DDE1E8; padding:24px 0px 0px 0px">Импорт из таблицы не делаем: у ОК таблица может быть в любом формате, а кнопками надёжнее.</p>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#52565E">Так бот видит день</p>
+      <div style="display:grid; grid-template-columns:120px 1fr 1fr 1fr; gap:12px">
+        <p style="font-size:24px; color:#52565E"></p>
+        <p style="font-size:24px; font-weight:800; color:#52565E">Зал A</p>
+        <p style="font-size:24px; font-weight:800; color:#52565E">Зал B</p>
+        <p style="font-size:24px; font-weight:800; color:#52565E">Зал C</p>
+        <p style="font-size:28px; font-weight:800; color:#037EF3">10:00</p>
+        <div style="grid-column:span 3; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:10px; padding:20px 24px"><p style="font-size:26px">Открытие, для всех</p></div>
+        <p style="font-size:28px; font-weight:800; color:#B85A0A">11:30</p>
+        <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:10px; padding:20px 24px; display:flex; flex-direction:column; gap:6px"><p style="font-size:26px">[сессия]</p><p style="font-size:24px; color:#52565E">[компетенция]</p></div>
+        <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:10px; padding:20px 24px; display:flex; flex-direction:column; gap:6px"><p style="font-size:26px">[сессия]</p><p style="font-size:24px; color:#52565E">[компетенция]</p></div>
+        <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:10px; padding:20px 24px; display:flex; flex-direction:column; gap:6px"><p style="font-size:26px">[сессия]</p><p style="font-size:24px; color:#52565E">[компетенция]</p></div>
+        <p style="font-size:28px; font-weight:800; color:#037EF3">13:00</p>
+        <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:10px; padding:20px 24px; display:flex; flex-direction:column; gap:6px"><p style="font-size:26px">[сессия]</p><p style="font-size:24px; color:#52565E">[компетенция]</p></div>
+        <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:10px; padding:20px 24px; display:flex; flex-direction:column; gap:6px"><p style="font-size:26px">[сессия]</p><p style="font-size:24px; color:#52565E">[компетенция]</p></div>
+        <div style="background:#FFFFFF; border:1px dashed #C9CFD9; border-radius:10px; padding:20px 24px"><p style="font-size:24px; color:#52565E">зал свободен</p></div>
+      </div>
+      <p style="font-size:24px; color:#52565E">В 11:30 три сессии идут параллельно</p>
+    </div>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">7 / 18 · Расписание заводим в боте<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Время и залы для примера. Расписание можно править прямо во время форума: сдвинули сессию в админке, и у всех обновилось.</p>
+    <div class="notes" data-list="schedule"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-parallel" data-id="parallel">
+  <div class="frame"><div class="stage"><section id="parallel" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Расписание</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Когда сессии идут параллельно</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; flex-direction:column; gap:16px">
+      <svg viewBox="0 0 24 24" width="48" height="48" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Орг выбирает зал</h3>
+      <p style="font-size:26px; line-height:1.45; color:#52565E">Не сессию, а свой зал. Какая сессия в нём идёт сейчас, бот знает из расписания.</p>
+    </div>
+    <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:36px; display:flex; flex-direction:column; gap:16px">
+      <svg viewBox="0 0 24 24" width="48" height="48" style="flex:none" fill="none" stroke="#B85A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 010 8M22 21c0-3-2-5-4-6"/></svg>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Делегат сменил зал</h3>
+      <p style="font-size:26px; line-height:1.45; color:#52565E">Предлагаем засчитывать зал, где его отсканировали последним. Отзыв спросим именно об этой сессии.</p>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; flex-direction:column; gap:16px">
+      <svg viewBox="0 0 24 24" width="48" height="48" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; line-height:1.15">Что выбирали</h3>
+      <p style="font-size:26px; line-height:1.45; color:#52565E">Статистика покажет, какую из параллельных сессий выбирали чаще и насколько был полон каждый зал.</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <p style="font-size:28px; line-height:1.4; width:1500px">Для рассылок это тоже работает: можно написать тем, кто сейчас в зале B, например если сессию переносят.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">8 / 18 · Когда сессии идут параллельно<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="parallel"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-live" data-id="live">
+  <div class="frame"><div class="stage"><section id="live" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:row; gap:96px; align-items:center">
+  <div style="flex:1; display:flex; flex-direction:column; gap:40px">
+    <div style="display:flex; flex-direction:column; gap:16px">
+      <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Mini App</p>
+      <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Живое расписание в Mini App</h2>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:24px">
+      <p style="font-size:28px; line-height:1.4; border-left:4px solid #037EF3; padding:0px 0px 0px 24px">Сверху то, что идёт сейчас, и что будет дальше</p>
+      <p style="font-size:28px; line-height:1.4; border-left:4px solid #037EF3; padding:0px 0px 0px 24px">Параллельные сессии стоят рядом, с залами</p>
+      <p style="font-size:28px; line-height:1.4; border-left:4px solid #037EF3; padding:0px 0px 0px 24px">Видно, где делегат уже отмечен</p>
+      <p style="font-size:28px; line-height:1.4; border-left:4px solid #F48924; padding:0px 0px 0px 24px">Сдвинули сессию в админке, и расписание у всех обновилось само</p>
+    </div>
+    <p style="font-size:24px; color:#52565E">Макет для примера</p>
+  </div>
+  <div style="width:480px; height:824px; background:#FFFFFF; border:10px solid #1C1C1C; border-radius:48px; padding:32px 24px; display:flex; flex-direction:column; gap:16px; overflow:hidden">
+    <p style="font-size:24px; font-weight:800; color:#52565E">Суббота, 12:47</p>
+    <p style="font-size:24px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#037EF3">Идёт сейчас</p>
+    <div style="background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:8px">
+      <div style="display:flex; justify-content:space-between"><p style="font-size:24px; font-weight:800">Зал A</p><p style="font-size:24px; font-weight:800; color:#B85A0A">ты здесь</p></div>
+      <p style="font-size:24px">[сессия]</p>
+      <div style="height:8px; background:#FBDDBE; border-radius:4px; display:flex"><div style="width:60%; background:#F48924; border-radius:4px"></div></div>
+    </div>
+    <div style="background:#F3F4F8; border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:8px">
+      <p style="font-size:24px; font-weight:800">Зал B</p>
+      <p style="font-size:24px">[сессия]</p>
+      <div style="height:8px; background:#DDE1E8; border-radius:4px; display:flex"><div style="width:60%; background:#037EF3; border-radius:4px"></div></div>
+    </div>
+    <div style="background:#F3F4F8; border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:8px">
+      <p style="font-size:24px; font-weight:800">Зал C</p>
+      <p style="font-size:24px">[сессия]</p>
+      <div style="height:8px; background:#DDE1E8; border-radius:4px; display:flex"><div style="width:60%; background:#037EF3; border-radius:4px"></div></div>
+    </div>
+    <p style="font-size:24px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#52565E">Дальше, 14:00</p>
+    <div style="border:1px solid #DDE1E8; border-radius:12px; padding:16px 18px"><p style="font-size:24px">Обед</p></div>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">9 / 18 · Живое расписание в Mini App<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="live"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-feedback" data-id="feedback">
+  <div class="frame"><div class="stage"><section id="feedback" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Обратная связь</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Отзыв сразу после сессии</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0px">
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">12:00</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Сессия началась</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">12:05</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Орг отсканировал делегата у входа в зал</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">13:00</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Сессия закончилась</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#B85A0A">13:30</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#F48924"></div></div>
+      <p style="font-size:28px; line-height:1.4">Бот спрашивает: «Оцени сессию от 1 до 5» и «Что заберёшь с собой?»</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex; gap:32px">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Кого спросим</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Только тех, у кого есть отметка на этой сессии</p>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Когда</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Задержку после конца сессии выбирает менеджер</p>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Что получим</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Оценку каждой сессии и спикера на дашборде</p>
+    </div>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">10 / 18 · Отзыв сразу после сессии<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Время на слайде для примера. Вопросы отзыва выбирает ОК. Общая анкета в конце форума остаётся, она уходит цепочкой после форума.</p>
+    <div class="notes" data-list="feedback"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-send-time" data-id="send-time">
+  <div class="frame"><div class="stage"><section id="send-time" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Рассылки</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Получатели считаются при отправке</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0px">
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">23:00</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Менеджер ставит рассылку «тем, кто пришёл» на 11:00</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">Ночь</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Пришедших ноль, и это нормально: список ещё не собран</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">09:00</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Делегаты отмечаются на входе</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#B85A0A">11:00</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#F48924"></div></div>
+      <p style="font-size:28px; line-height:1.4">Бот собирает список прямо сейчас: все, кто отметился к 11:00</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex; gap:32px">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Тем, кого нет</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Работает так же: уйдёт тем, у кого к моменту отправки нет отметки. Тон заботливый: «не видим тебя на регистрации, всё хорошо?»</p>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Уже умеем</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Отложенные рассылки бот и сейчас собирает в момент отправки. Добавим только фильтры «пришёл», «не пришёл» и «был на сессии».</p>
+    </div>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">11 / 18 · Получатели считаются при отправке<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="send-time"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-important" data-id="important">
+  <div class="frame"><div class="stage"><section id="important" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Рассылки</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Важное доходит всегда</h2>
+  </div>
+  <div style="display:flex; gap:64px; align-items:start">
+    <div style="width:560px; display:flex; flex-direction:column; gap:24px">
+      <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:16px; padding:32px; display:flex; flex-direction:column; gap:20px">
+        <p style="font-size:24px; font-weight:800; color:#52565E">Бот · обычная рассылка</p>
+        <p style="font-size:28px; line-height:1.4">Через 15 минут начинается вторая сессия. Залы есть в расписании.</p>
+        <p style="font-size:26px; font-weight:800; padding:16px 24px; background:#E1F0FE; color:#0B5CAD; border-radius:8px; text-align:center">Не присылать сегодня</p>
+      </div>
+      <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:16px; padding:28px 32px; display:flex; align-items:center; gap:20px">
+        <div style="width:48px; height:48px; border-radius:8px; background:#037EF3; display:flex; align-items:center; justify-content:center"><svg viewBox="0 0 24 24" width="32" height="32" style="flex:none" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></div>
+        <p style="font-size:26px; line-height:1.35">У менеджера в рассылке галочка «Важное»</p>
+      </div>
+      <p style="font-size:24px; color:#52565E">Текст сообщения для примера</p>
+    </div>
+    
+    <div style="position:relative; width:1040px; height:540px">
+      <div style="position:absolute; left:320px; top:0px; width:400px; height:100px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:24px; display:flex; align-items:center; justify-content:center">
+        <p style="font-size:28px; font-weight:800; text-align:center">Рассылка важная?</p>
+      </div>
+      <div style="position:absolute; left:0px; top:190px; width:360px; height:152px; background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:20px 24px; display:flex; flex-direction:column; gap:6px">
+        <p style="font-size:24px; font-weight:800; letter-spacing:1px; color:#B85A0A">ДА</p>
+        <p style="font-size:28px; font-weight:800; line-height:1.25">Приходит всем, без исключений</p>
+      </div>
+      <div style="position:absolute; left:520px; top:190px; width:520px; height:152px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:20px 24px; display:flex; flex-direction:column; gap:6px">
+        <p style="font-size:24px; font-weight:800; letter-spacing:1px; color:#52565E">НЕТ</p>
+        <p style="font-size:28px; font-weight:800; line-height:1.25">Делегат нажал «Не присылать сегодня»?</p>
+      </div>
+      <div style="position:absolute; left:440px; top:410px; width:280px; height:120px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:6px">
+        <p style="font-size:24px; font-weight:800; letter-spacing:1px; color:#52565E">ДА</p>
+        <p style="font-size:26px; line-height:1.25">Молчим до конца дня</p>
+      </div>
+      <div style="position:absolute; left:760px; top:410px; width:280px; height:120px; background:#FFFFFF; border:1px solid #C9CFD9; border-radius:12px; padding:16px 24px; display:flex; flex-direction:column; gap:6px">
+        <p style="font-size:24px; font-weight:800; letter-spacing:1px; color:#52565E">НЕТ</p>
+        <p style="font-size:26px; line-height:1.25">Приходит</p>
+      </div>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="520.0" y1="100.0" x2="520.0" y2="166.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="180.0" y1="166.0" x2="780.0" y2="166.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="180.0" y1="166.0" x2="180.0" y2="178.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="180.0,190.0 172.2,175.0 187.8,175.0" fill="#8A93A3"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="780.0" y1="166.0" x2="780.0" y2="178.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="780.0,190.0 772.2,175.0 787.8,175.0" fill="#8A93A3"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="780.0" y1="342.0" x2="780.0" y2="386.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="580.0" y1="386.0" x2="900.0" y2="386.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="580.0" y1="386.0" x2="580.0" y2="398.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="580.0,410.0 572.2,395.0 587.8,395.0" fill="#8A93A3"/></svg>
+      <svg style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none" width="1" height="1" aria-hidden="true"><line x1="900.0" y1="386.0" x2="900.0" y2="398.0" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><polygon points="900.0,410.0 892.2,395.0 907.8,395.0" fill="#8A93A3"/></svg>
+    </div>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">12 / 18 · Важное доходит всегда<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Важное: смена расписания, безопасность, трансфер. Кнопка «Не присылать сегодня» стоит под каждой обычной рассылкой и выключает только обычные до 23:59 по Москве.</p>
+    <div class="notes" data-list="important"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-stats" data-id="stats">
+  <div class="frame"><div class="stage"><section id="stats" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Статистика</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Что покажет страница «Форум»</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:32px">
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; gap:28px; align-items:start">
+      <svg viewBox="0 0 24 24" width="56" height="56" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 010 8M22 21c0-3-2-5-4-6"/></svg>
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Пришли на форум</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">По отметкам на входе, по дням и городам</p>
+      </div>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; gap:28px; align-items:start">
+      <svg viewBox="0 0 24 24" width="56" height="56" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Заполняемость залов</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Сколько людей было на каждой сессии</p>
+      </div>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; gap:28px; align-items:start">
+      <svg viewBox="0 0 24 24" width="56" height="56" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Выключили рассылки на день</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Кто нажал «Не присылать сегодня»</p>
+      </div>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:36px; display:flex; gap:28px; align-items:start">
+      <svg viewBox="0 0 24 24" width="56" height="56" style="flex:none" fill="none" stroke="#037EF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Заблокировали бота</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Telegram сообщает об этом сразу. Сейчас бот узнаёт о блокировке только при рассылке и не запоминает, кто это был.</p>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:28px; line-height:1.4; color:#1C1C1C">Всё это на дашборде, на отдельной странице «Форум», с разбивкой по городам.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">13 / 18 · Что покажет страница «Форум»<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="stats"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-sos" data-id="sos">
+  <div class="frame"><div class="stage"><section id="sos" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Связь с оргами</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Кнопка «Вопрос оргам»</h2>
+  </div>
+  <div style="display:flex; gap:16px; align-items:stretch">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">1 · Делегат</p>
+      <p style="font-size:26px; line-height:1.4">Жмёт «Вопрос оргам» и пишет, что случилось</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">2 · Чат оргов</p>
+      <p style="font-size:26px; line-height:1.4">Бот присылает вопрос с именем и городом делегата</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#B85A0A">3 · Орг</p>
+      <p style="font-size:26px; line-height:1.4">Отвечает реплаем на это сообщение прямо в чате</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">4 · Делегат</p>
+      <p style="font-size:26px; line-height:1.4">Получает ответ от бота в личке</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+    <div style="display:flex; flex-direction:column; gap:10px; border-top:3px solid #037EF3; padding:24px 0px 0px 0px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Настройка</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Добавить бота в чат оргов и нажать в админке «Сделать чатом оргов»</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px; border-top:3px solid #037EF3; padding:24px 0px 0px 0px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Без спама</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Один вопрос от делегата раз в несколько минут</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px; border-top:3px solid #037EF3; padding:24px 0px 0px 0px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Что есть сейчас</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Бот уже сидит в группах, но пересылать туда вопросы пока не умеет</p>
+    </div>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">14 / 18 · Кнопка «Вопрос оргам»<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="sos"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-competencies" data-id="competencies">
+  <div class="frame"><div class="stage"><section id="competencies" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Компетенции</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Тест компетенций до и после</h2>
+  </div>
+  <div style="display:flex; gap:16px; align-items:stretch">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">1 · До форума</p>
+      <p style="font-size:26px; line-height:1.4">Тест: уровень по каждой компетенции</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">2 · Сессии</p>
+      <p style="font-size:26px; line-height:1.4">У каждой сессии своя компетенция. Отметка значит «был»</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#037EF3">3 · После форума</p>
+      <p style="font-size:26px; line-height:1.4">Тот же тест ещё раз</p>
+    </div>
+    <svg width="48" height="24" viewBox="0 0 48 24" style="align-self:center; flex:none" aria-hidden="true"><line x1="2" y1="12" x2="38" y2="12" stroke="#8A93A3" stroke-width="3.0" stroke-linecap="round"/><path d="M34 5 L46 12 L34 19 Z" fill="#8A93A3"/></svg>
+    <div style="flex:1; background:#FFF6EC; border:2px solid #F48924; border-radius:12px; padding:28px; display:flex; flex-direction:column; gap:12px">
+      <p style="font-size:24px; font-weight:800; color:#B85A0A">4 · Сертификат</p>
+      <p style="font-size:26px; line-height:1.4">Уровень был и стал</p>
+    </div>
+  </div>
+  <div style="display:flex; gap:32px; align-items:stretch">
+    <div style="flex:3; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:4px">
+      <p style="font-size:24px; font-weight:800; color:#52565E; padding:0px 0px 12px 0px">Админка → Тест перед форумом</p>
+      <p style="font-size:26px; padding:14px 0px; border-top:1px solid #E6EAF0">Список компетенций</p>
+      <p style="font-size:26px; padding:14px 0px; border-top:1px solid #E6EAF0">Вопросы и шкала уровней</p>
+      <p style="font-size:26px; padding:14px 0px; border-top:1px solid #E6EAF0">Когда отправить тест до форума</p>
+      <p style="font-size:26px; padding:14px 0px; border-top:1px solid #E6EAF0">Тест после форума: копия одной кнопкой</p>
+    </div>
+    <div style="flex:2; background:#FBF3DB; border:1px solid #EAD9A6; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:16px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; color:#5C3E00">Решает ОК</h3>
+      <p style="font-size:26px; line-height:1.45; color:#5C3E00">Самооценка по шкале или вопросы с правильными ответами? Кто пишет вопросы и список компетенций?</p>
+    </div>
+  </div>
+  
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">15 / 18 · Тест компетенций до и после<span class="ncount"></span></div>
+    <p class="aside"><b>Пояснение.</b> Тест до форума нужно разослать заранее, иначе не с чем сравнивать. Поэтому по срокам он идёт одним из первых, хотя сертификаты будут в самом конце.</p>
+    <div class="notes" data-list="competencies"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-certificate" data-id="certificate">
+  <div class="frame"><div class="stage"><section id="certificate" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">Компетенции</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Сертификат с ростом уровня</h2>
+  </div>
+  <div style="display:flex; gap:64px; align-items:start">
+    <div style="width:860px; display:flex; flex-direction:column; gap:12px">
+      <div style="background:#FFFFFF; border:1px solid #DDE1E8; border-top:16px solid #037EF3; border-radius:12px; padding:44px 48px; display:flex; flex-direction:column; gap:20px">
+        <p style="font-size:24px; font-weight:800; letter-spacing:4px; text-transform:uppercase; color:#037EF3">Сертификат</p>
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:52px; font-weight:800; line-height:1.1">[Имя Фамилия]</h3>
+        <p style="font-size:26px; color:#52565E">Юлид'26 · Москва · 30 и 31 октября</p>
+        <table style="font-size:26px; color:#1C1C1C">
+          <tr style="background:#F3F4F8">
+            <th style="width:60%">Компетенция</th>
+            <th style="width:20%; text-align:center">До</th>
+            <th style="width:20%; text-align:center">После</th>
+          </tr>
+          <tr>
+            <td>[Компетенция 1]</td>
+            <td style="text-align:center">2</td>
+            <td style="text-align:center">3</td>
+          </tr>
+          <tr>
+            <td>[Компетенция 2]</td>
+            <td style="text-align:center">1</td>
+            <td style="text-align:center">3</td>
+          </tr>
+        </table>
+        <p style="font-size:24px; color:#52565E">Номер для проверки: [№]</p>
+      </div>
+      <p style="font-size:24px; color:#52565E">Макет для примера, уровни условные</p>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:32px">
+      <div style="display:flex; flex-direction:column; gap:8px; border-left:4px solid #037EF3; padding:0px 0px 0px 24px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Шаблон</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Рисует дизайнер ОК, картинкой</p>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; border-left:4px solid #037EF3; padding:0px 0px 0px 24px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Заполнение</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Бот вписывает имя и уровни и присылает файл в личку</p>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:8px; border-left:4px solid #F48924; padding:0px 0px 0px 24px">
+        <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:30px; font-weight:800">Как считать рост</h3>
+        <p style="font-size:26px; line-height:1.4; color:#52565E">Решаем вместе: по тесту после, по посещённым сессиям или по обоим</p>
+      </div>
+    </div>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">16 / 18 · Сертификат с ростом уровня<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="certificate"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-after" data-id="after">
+  <div class="frame"><div class="stage"><section id="after" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:48px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">После форума</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Цепочка сообщений после форума</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0px">
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">+0 ч</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Спасибо за форум</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">+1 день</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Анкета обратной связи и тест после форума</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#037EF3">+3 дня</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Фото с форума</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:20px; padding:0px 32px 0px 0px">
+      <p style="font-size:48px; font-weight:800; color:#B85A0A">+7 дней</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#F48924"></div></div>
+      <p style="font-size:28px; line-height:1.4">Сертификат</p>
+    </div>
+  </div>
+  <div style="flex:1"></div>
+  <div style="display:flex; gap:32px">
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Настраивается заранее</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Тексты и сроки ОК заводит до форума, в разделе админки «После форума»</p>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Своё время у города</h3>
+      <p style="font-size:26px; line-height:1.4; color:#52565E">Отсчёт идёт от конца форума, поэтому цепочка для СПб, Тюмени и Москвы сдвигается сама</p>
+    </div>
+  </div>
+  <p style="font-size:24px; color:#52565E">Сроки на слайде для примера</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">17 / 18 · Цепочка сообщений после форума<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="after"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+
+<article class="unit" id="u-plan" data-id="plan">
+  <div class="frame"><div class="stage"><section id="plan" data-transition="fade" style="background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; gap:40px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <p style="font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3">План</p>
+    <h2 style="font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C">Сначала регионы, потом Москва</h2>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0px">
+    <div style="display:flex; flex-direction:column; gap:16px; padding:0px 32px 0px 0px">
+      <p style="font-size:40px; font-weight:800; color:#037EF3">23 сентября</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">Согласуем с ОК и начинаем</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:16px; padding:0px 32px 0px 0px">
+      <p style="font-size:40px; font-weight:800; color:#037EF3">3 октября</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#037EF3"></div><div style="flex:1; height:4px; background:#9CC8F5"></div></div>
+      <p style="font-size:28px; line-height:1.4">СПб и Тюмень: проверяем основное вживую</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:16px; padding:0px 32px 0px 0px">
+      <p style="font-size:40px; font-weight:800; color:#B85A0A">30 и 31 октября</p>
+      <div style="display:flex; align-items:center"><div style="width:24px; height:24px; border-radius:50%; background:#F48924"></div></div>
+      <p style="font-size:28px; line-height:1.4">Москва: работает всё</p>
+    </div>
+  </div>
+  <div style="display:flex; gap:32px; align-items:stretch">
+    <div style="flex:1; background:#FFFFFF; border:2px solid #037EF3; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800; color:#037EF3">Волна 1, к регионам</h3>
+      <p style="font-size:26px; line-height:1.5; color:#1C1C1C">Расписание в боте · чек-ин тремя способами · рассылки «пришёл» и «не пришёл» · «Важное» и «Не присылать сегодня» · вопрос оргам · отзывы о сессиях · статистика форума</p>
+    </div>
+    <div style="flex:1; background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px; display:flex; flex-direction:column; gap:12px">
+      <h3 style="font-family:'Raleway', Arial, sans-serif; font-size:32px; font-weight:800">Волна 2, к Москве</h3>
+      <p style="font-size:26px; line-height:1.5; color:#1C1C1C">Живое расписание в Mini App · тест компетенций, который уходит делегатам заранее · сертификаты · цепочка после форума · правки по итогам регионов</p>
+    </div>
+  </div>
+  <p style="font-size:26px; line-height:1.4; color:#52565E">На первую волну десять дней. Если что-то не успеваем, отзывы и статистика переезжают к Москве. Чек-ин, расписание и рассылки не двигаем.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">18 / 18 · Сначала регионы, потом Москва<span class="ncount"></span></div>
+    
+    <div class="notes" data-list="plan"></div>
+    <div class="compose">
+      <textarea placeholder="Ваш комментарий к этому слайду" rows="2"></textarea>
+      <button type="button">Отправить</button>
+    </div>
+  </div>
+</article>
+  <p class="foot">Нужна версия для печати? <a href="/deck.pdf" download>PDF со всеми слайдами</a>, без комментариев.</p>
+</main>
+<script>
+(function () {
+  var stages = document.querySelectorAll('.stage');
+  function fit() {
+    stages.forEach(function (s) {
+      var w = s.parentElement.clientWidth;
+      s.style.transform = 'scale(' + (w / 1920) + ')';
+    });
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  var cid = store('deck-cid');
+  if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store('deck-cid', cid); }
+  var who = document.getElementById('who');
+  who.value = store('deck-who') || '';
+  who.addEventListener('input', function () { store('deck-who', who.value.trim()); });
+
+  var version = -1;
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function render(state) {
+    version = state.v;
+    document.querySelectorAll('.notes').forEach(function (box) {
+      var list = (state.notes || {})[box.getAttribute('data-list')] || [];
+      var cnt = box.parentElement.querySelector('.ncount');
+      if (cnt) cnt.textContent = list.length ? ' · комментариев: ' + list.length : '';
+      box.innerHTML = list.map(function (n) {
+        return '<div class="note"><div class="by"><span>' + esc(n.who || 'Без имени') + ' · ' + esc(n.at) + '</span>' +
+          (n.mine ? '<button type="button" data-del="' + esc(n.id) + '">удалить</button>' : '') +
+          '</div><div class="txt">' + esc(n.text) + '</div></div>';
+      }).join('');
+    });
+  }
+  function load() {
+    fetch('/api/notes', { headers: { 'X-Client': cid }, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { if (s.v !== version) render(s); })
+      .catch(function () {});
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client': cid }, body: JSON.stringify(body) })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+  }
+  document.querySelectorAll('.unit').forEach(function (u) {
+    var id = u.getAttribute('data-id');
+    var ta = u.querySelector('textarea');
+    var btn = u.querySelector('.compose button');
+    btn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      if (!who.value.trim()) { who.focus(); who.placeholder = 'Сначала подпишись вверху страницы'; return; }
+      btn.disabled = true; btn.textContent = 'Сохраняю';
+      post('/api/notes', { slide: id, who: who.value.trim(), text: text })
+        .then(function (s) { ta.value = ''; render(s); btn.textContent = 'Отправить'; })
+        .catch(function () { btn.textContent = 'Не сохранилось, ещё раз'; })
+        .then(function () { btn.disabled = false; });
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-del');
+    if (!id) return;
+    post('/api/notes/delete', { id: id }).then(render).catch(function () {});
+  });
+  load();
+  setInterval(load, 15000);
+})();
+</script>
+</body>
+</html>
