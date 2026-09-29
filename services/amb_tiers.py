@@ -35,7 +35,7 @@ miniapp запрещена.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import amb_tiers_db
 from database import db as _db
@@ -69,7 +69,10 @@ async def current_season() -> str:
 async def deadline_passed(now: datetime | None = None) -> bool:
     """Прошёл ли дедлайн выдачи ступеней (МСК). Пусто = дедлайна нет. Значение, записанное
     в обход валидатора и не разбираемое, тоже = дедлайна нет (с предупреждением в лог):
-    опечатка менеджера не должна лишать амбассадоров ступеней."""
+    опечатка менеджера не должна лишать амбассадоров ступеней.
+
+    Минута дедлайна входит целиком: «23:59» значит «до 23:59:59 включительно» — так это
+    понимает менеджер, а `msk_now()` с секундами иначе закрывал бы приём в 23:59:00."""
     raw = ((await get_setting_typed("amb_count_deadline")) or "").strip()
     if not raw:
         return False
@@ -78,7 +81,7 @@ async def deadline_passed(now: datetime | None = None) -> bool:
     except ValueError:
         logger.warning("amb_tiers: не разобрал amb_count_deadline — считаю, что дедлайна нет")
         return False
-    return (now or msk_now()) > deadline
+    return (now or msk_now()) >= deadline + timedelta(minutes=1)
 
 
 O2O_TIER = 2

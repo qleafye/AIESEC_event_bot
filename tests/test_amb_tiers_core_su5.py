@@ -720,3 +720,16 @@ def test_every_ambassador_join_path_checks_tiers():
     for fn in (reg_ambassador.regamb_want, user_actions.ambassador_join, form.draft_ambassador):
         source = inspect.getsource(fn)
         assert "set_ambassador_flag" in source and "check_tiers_for_new_ambassador" in source, fn
+
+
+def test_deadline_minute_is_inclusive(tmp_path):
+    """«2026-11-14 23:59» — одобрение в 23:59:30 ещё даёт ступень, в 00:00:00 уже нет."""
+    _ready(tmp_path)
+    _on(deadline="2026-11-14 23:59")
+    assert _run(amb_tiers.deadline_passed(datetime(2026, 11, 14, 23, 59, 0))) is False
+    assert _run(amb_tiers.deadline_passed(datetime(2026, 11, 14, 23, 59, 59, 999999))) is False
+    assert _run(amb_tiers.deadline_passed(datetime(2026, 11, 15, 0, 0, 0))) is True
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100, status="approved")
+    _run(amb_tiers.check_tiers([100], now=datetime(2026, 11, 14, 23, 59, 30)))
+    assert _tiers(100) == [(1, None)]
