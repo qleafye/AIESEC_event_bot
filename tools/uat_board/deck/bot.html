@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бот для мероприятий АЙСЕК</title>
+<meta name="description" content="Универсальный Telegram-бот для форумов и конференций АЙСЕК: что уже есть, что в планах и когда.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,700;0,800;1,400&family=Raleway:ital,wght@0,700;0,800;1,800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F3F4F8; --card:#FFFFFF; --ink:#1C1C1C; --muted:#52565E; --line:#DDE1E8; --blue:#037EF3; --blue-deep:#0B3D91; --orange:#F48924; --tint:#EAF3FE; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; }
+  header.top { background:var(--blue); color:#fff; }
+  header.top .in { max-width:1200px; margin:0 auto; padding:28px 16px 24px; display:flex; flex-wrap:wrap; gap:16px 32px; align-items:end; justify-content:space-between; }
+  header.top h1 { margin:0; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(26px, 4vw, 40px); line-height:1.1; }
+  header.top p { margin:6px 0 0; font-size:16px; line-height:1.45; opacity:.95; max-width:640px; }
+  .who { display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:700; }
+  .who input { font:inherit; font-weight:400; font-size:16px; padding:10px 12px; border-radius:8px; border:0; width:240px; max-width:100%; color:var(--ink); }
+  .who a.pdf { align-self:flex-start; margin-top:6px; padding:10px 16px; border-radius:8px; background:#fff; color:var(--blue); font-size:15px; font-weight:800; text-decoration:none; }
+  .who a.pdf:hover { background:var(--tint); }
+  .who a.pdf:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 80px; display:flex; flex-direction:column; gap:40px; }
+  .unit { display:flex; flex-direction:column; scroll-margin-top:16px; }
+  .frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:12px 12px 0 0; border:1px solid var(--line); border-bottom:0; background:#fff; }
+  .stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+  .meta { background:var(--card); border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:0 0 12px 12px; padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+  .num { font-size:14px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .ncount { color:var(--blue); }
+  .notes { display:flex; flex-direction:column; gap:8px; }
+  .note { background:#F7F8FB; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:15px; line-height:1.45; }
+  .note .by { font-size:13px; color:var(--muted); margin-bottom:4px; display:flex; gap:12px; }
+  .note .by button { border:0; background:none; color:#9F2F2D; font:inherit; cursor:pointer; padding:0; text-decoration:underline; }
+  .note .txt { white-space:pre-wrap; word-break:break-word; }
+  .compose { display:flex; gap:8px; align-items:stretch; }
+  .compose textarea { flex:1; font:inherit; font-size:16px; line-height:1.4; padding:10px 12px; border:1px solid var(--line); border-radius:8px; resize:vertical; min-height:46px; }
+  .compose textarea:focus, .who input:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  .compose button { font:inherit; font-weight:800; font-size:15px; padding:0 18px; border:0; border-radius:8px; background:var(--ink); color:#fff; cursor:pointer; }
+  .compose button:disabled { opacity:.5; cursor:default; }
+  .compose button:active { transform:translateY(1px); }
+  @media (max-width:600px) { .compose { flex-direction:column; } .compose button { padding:12px; } }
+
+  /* ---------- слайды 1920×1080 ---------- */
+  .s { width:1920px; height:1080px; position:relative; overflow:hidden; padding:112px 128px; display:flex; flex-direction:column; gap:48px; background:var(--bg); color:var(--ink); }
+  .s * { box-sizing:border-box; margin:0; }
+  .s h2 { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:72px; line-height:1.08; letter-spacing:-.01em; max-width:1664px; }
+  .s h3 { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:40px; line-height:1.15; }
+  .s p, .s li { font-size:31px; line-height:1.42; }
+  .s .lead { font-size:32px; line-height:1.4; color:var(--muted); max-width:1300px; }
+  .s .mut { color:var(--muted); }
+  .s ul { padding:0; list-style:none; display:flex; flex-direction:column; gap:22px; }
+  .s ul li { padding-left:32px; position:relative; }
+  .s ul li::before { content:""; position:absolute; left:0; top:.62em; width:14px; height:3px; background:var(--blue); }
+  .s .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:48px 48px; display:flex; flex-direction:column; gap:24px; }
+  .s .card.hl { background:#FFF6EC; border:2px solid var(--orange); }
+  .s .card.bl { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .s .card.bl p, .s .card.bl li { color:#fff; }
+  .s .card.bl ul li::before { background:#fff; }
+  .s .phone { border-radius:36px; border:10px solid #1C1C1C; overflow:hidden; background:#1C1C1C; flex:none; }
+  .s .phone img { display:block; width:100%; height:100%; object-fit:cover; object-position:top; }
+  .s .cap { font-size:22px; color:var(--muted); line-height:1.35; }
+  .s .foot { position:absolute; left:128px; right:128px; bottom:56px; display:flex; justify-content:space-between; font-size:20px; font-weight:700; color:var(--muted); }
+  .s.dark .foot { color:rgba(255,255,255,.75); }
+  .s .big { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:104px; line-height:1; color:var(--blue); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .s .tag { display:inline-block; padding:10px 20px; border-radius:8px; font-size:24px; font-weight:800; }
+
+  @media print {
+    @page { size:1920px 1080px; margin:0; }
+    header.top, .meta { display:none !important; }
+    body, main { background:#fff; }
+    main { padding:0; gap:0; max-width:none; }
+    .unit { break-after:page; page-break-after:always; }
+    .frame { width:1920px; height:1080px; aspect-ratio:auto; border:0; border-radius:0; }
+    .stage { transform:none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="in">
+    <div>
+      <h1>Бот для мероприятий АЙСЕК</h1>
+      <p>Что бот умеет сейчас и что я делаю дальше. Вопросы пишите прямо под слайдами, я их вижу и отвечаю. Регистрация не нужна.</p>
+    </div>
+    <div class="who">
+      <label for="who">Как тебя подписать</label>
+      <input id="who" placeholder="Имя, например Рита" maxlength="60" autocomplete="name">
+      <a class="pdf" href="/bot.pdf" download>Скачать PDF</a>
+    </div>
+  </div>
+</header>
+<main>
+
+<!-- 1. Обложка -->
+<article class="unit" data-id="cover"><div class="frame"><div class="stage">
+<section class="s dark" style="background:var(--blue); color:#fff; justify-content:space-between; padding:128px">
+  <p style="font-size:28px; font-weight:800; letter-spacing:4px; text-transform:uppercase">АЙСЕК · Telegram-бот для мероприятий</p>
+  <div style="display:flex; flex-direction:column; gap:40px">
+    <h1 style="font-family:Raleway, Arial, sans-serif; font-size:136px; font-weight:800; line-height:1.02; letter-spacing:-.02em">Один бот<br>на все события</h1>
+    <p style="width:1250px; font-size:40px; line-height:1.35">Ведёт делегата от анкеты до конца форума. Менеджер меняет всё сам, кнопками в Telegram, программист для этого не нужен.</p>
+  </div>
+  <div style="display:flex; gap:20px; flex-wrap:wrap">
+    <span class="tag" style="color:var(--blue); background:#fff">Юлид'26: 3 города</span>
+    <span class="tag" style="border:2px solid #fff">РилТолк</span>
+    <span class="tag" style="border:2px solid #fff">СкиллАп</span>
+    <span class="tag" style="border:2px solid #fff">Национальные конференции</span>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">1 / 12 · Обложка<span class="ncount"></span></div><div class="notes" data-list="cover"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 2. Идея -->
+<article class="unit" data-id="idea"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Под новое событие бот не пишется заново</h2>
+  <div style="display:grid; grid-template-columns:1fr 1.25fr; gap:40px; flex:1">
+    <div class="card">
+      <h3>Как обычно</h3>
+      <ul class="mut">
+        <li>На каждое мероприятие заново делают гугл-форму, таблицу и чат-бота</li>
+        <li>Чтобы поменять текст или вопрос, нужен программист</li>
+        <li>Заявки, оплаты и рассылки ведут руками, каждое в своём месте</li>
+        <li>К следующему сезону всё начинают с нуля</li>
+      </ul>
+    </div>
+    <div class="card bl">
+      <h3>Как у нас</h3>
+      <ul>
+        <li>Код один, у каждого события своя копия бота и своя база</li>
+        <li>Тексты, вопросы анкеты, тарифы и правила меняются в админке</li>
+        <li>Настроек больше 700, у каждой понятная подпись и подсказка</li>
+        <li>Есть пресеты: новое событие можно настроить за вечер</li>
+        <li>Каждую функцию проверяю вопросом: разберётся ли менеджер сам, ночью перед мероприятием</li>
+      </ul>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">2 / 12 · Идея<span class="ncount"></span></div><div class="notes" data-list="idea"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 3. Цифры -->
+<article class="unit" data-id="numbers"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Регистрация на Юлид'26 идёт через бота</h2>
+    <p class="lead">Москва, Петербург и Тюмень в одном боте. Цифры на 27 сентября 2026.</p>
+  </div>
+  <div style="display:grid; grid-template-columns:1.3fr 1fr 1fr; grid-template-rows:1fr 1fr; gap:28px; flex:1; min-height:0">
+    <div class="card" style="grid-row:span 2; background:var(--blue); border-color:var(--blue); color:#fff; justify-content:space-between">
+      <p style="font-size:28px; font-weight:800">Заявок подано</p>
+      <div>
+        <p class="big" style="color:#fff; font-size:160px">3&nbsp;388</p>
+        <p style="font-size:28px; margin-top:20px; color:#fff">2&nbsp;618 одобрено, 569 отказов. Москва&nbsp;2&nbsp;285, СПб&nbsp;919, Тюмень&nbsp;184.</p>
+      </div>
+    </div>
+    <div class="card" style="padding:36px 40px; gap:16px"><p class="big" style="font-size:92px">10&nbsp;945</p><p class="mut">сообщений доставили рассылки</p></div>
+    <div class="card" style="padding:36px 40px; gap:16px"><p class="big" style="font-size:92px">60%</p><p class="mut">тех, кто нажал /start, подали анкету</p></div>
+    <div class="card" style="padding:36px 40px; gap:16px"><p class="big" style="font-size:92px">12,9 ч</p><p class="mut">обычно проходит от подачи анкеты до решения (медиана)</p></div>
+    <div class="card hl" style="padding:36px 40px; gap:16px"><p class="big" style="font-size:92px; color:var(--orange)">263</p><p class="mut">амбассадора с личными ссылками. По ним пришёл 121 одобренный делегат</p></div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">3 / 12 · Цифры<span class="ncount"></span></div><div class="notes" data-list="numbers"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 4. Путь делегата -->
+<article class="unit" data-id="journey"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Путь делегата</h2>
+  <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:20px">
+    <div class="card" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--blue)">Анкета</p><p class="mut" style="font-size:25px; line-height:1.35">Чат или Mini App, русский или английский</p></div>
+    <div class="card" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--blue)">Отбор</p><p class="mut" style="font-size:25px; line-height:1.35">Автоотказ по правилам и модерация</p></div>
+    <div class="card" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--blue)">Оплата</p><p class="mut" style="font-size:25px; line-height:1.35">Тарифы, чек, напоминания</p></div>
+    <div class="card" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--blue)">Подготовка</p><p class="mut" style="font-size:25px; line-height:1.35">Задания, рефералы, чат города</p></div>
+    <div class="card hl" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--orange)">Форум</p><p class="mut" style="font-size:25px; line-height:1.35">QR на входе, программа, SOS</p></div>
+    <div class="card" style="padding:28px 24px"><p style="font-size:28px; font-weight:800; color:var(--blue)">После</p><p class="mut" style="font-size:25px; line-height:1.35">Отчёт, опросы, итоги в цифрах</p></div>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start; flex:1; min-height:0">
+    <div class="phone" style="width:260px; height:500px"><img style="object-position:bottom" src="shots/bot_menu.png" alt="Меню делегата в боте: реферальная ссылка, программа, вопросы, задания, QR"></div>
+    <div style="display:flex; flex-direction:column; gap:24px; padding-top:16px; max-width:1000px">
+      <p style="font-size:30px; line-height:1.4">Делегат видит только то, что включил менеджер. Кнопки меню, разделы и тексты меняются в админке, делегат видит правку сразу.</p>
+      <p class="mut">Предотбор, ручную модерацию, оплату и задания включают тумблерами. Если на конференции нет оплаты, этот шаг просто выключен.</p>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">4 / 12 · Путь делегата<span class="ncount"></span></div><div class="notes" data-list="journey"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 5. Регистрация и отбор -->
+<article class="unit" data-id="reg"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Регистрация и отбор</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; flex:1">
+    <div class="card">
+      <h3>Анкета</h3>
+      <ul>
+        <li>Анкета собирается из готовых вопросов, каждый включается отдельно</li>
+        <li>Треки: полный участник, вечеринка, короткая анкета под акцию</li>
+        <li>Если у события несколько городов, у каждого своя ссылка, вопросы, чат и вкладка в таблице</li>
+        <li>Вузы и города из справочника с поиском, резюме файлом, ссылкой или текстом</li>
+        <li>Согласия на обработку данных с версиями и журналом</li>
+        <li>Тем, кто бросил анкету, бот напоминает</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Отбор</h3>
+      <ul>
+        <li>Правила автоотказа строятся по любому вопросу анкеты, кнопками</li>
+        <li>Правило либо отклоняет заявку с причиной, либо помечает её для модератора</li>
+        <li>Бот считает балл заявки, очередь можно сортировать по нему</li>
+        <li>Заявки идут по одной карточке, поэтому тысяча заявок не заваливает чат</li>
+        <li>Менеджер города видит только свои заявки</li>
+        <li>Вечером приходит итог, кто сколько заявок проверил</li>
+      </ul>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">5 / 12 · Регистрация и отбор<span class="ncount"></span></div><div class="notes" data-list="reg"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 6. Админка -->
+<article class="unit" data-id="admin"><div class="frame"><div class="stage">
+<section class="s" style="flex-direction:row; gap:96px; align-items:center">
+  <div style="display:flex; flex-direction:column; gap:40px; flex:1">
+    <h2>Админка живёт в том же Telegram</h2>
+    <ul>
+      <li>Текст, вопрос, тариф или правило меняется сразу, перезапускать бота не нужно</li>
+      <li>Права выдаются по отдельности: заявки, чеки, задания, настройки, статистика</li>
+      <li>Волонтёрам и оргам можно отправить ссылку, она сразу выдаёт нужную роль</li>
+      <li>Пресет события одной кнопкой включает нужные модули</li>
+      <li>Мастер первой настройки ведёт по шагам под тип события</li>
+      <li>В журнале видно, кто и когда менял настройки</li>
+    </ul>
+  </div>
+  <div style="display:flex; gap:32px; align-items:flex-end">
+    <div style="display:flex; flex-direction:column; gap:16px">
+      <div class="phone" style="width:330px; height:714px"><img src="shots/bot_forum_hub.png" alt="Экран функций форума в админке: тумблеры включения модулей"></div>
+      <p class="cap">Модули форума: тумблеры</p>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">6 / 12 · Админка<span class="ncount"></span></div><div class="notes" data-list="admin"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 7. Коммуникация -->
+<article class="unit" data-id="comms"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Рассылки, опросы и чат делегатов</h2>
+  <div style="display:grid; grid-template-columns:1.4fr 1fr; gap:40px; flex:1">
+    <div class="card">
+      <h3>Рассылки и опросы</h3>
+      <ul>
+        <li>Фильтры: город, трек, статус заявки, сезон, наличие резюме, есть ли человек в чате</li>
+        <li>Перед отправкой бот просит подтвердить, отправку можно запланировать на время</li>
+        <li>Рассылку можно остановить на ходу и отозвать у получателей</li>
+        <li>Опросы идут обычными опросами Telegram, итоги выгружаются в таблицу</li>
+        <li>Тихие часы: ночью уведомления копятся до утра</li>
+      </ul>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:40px">
+      <div class="card">
+        <h3>Чат города</h3>
+        <p class="mut">Бот сверяет чат со списком одобренных, считает активность участников и раз в неделю публикует топ.</p>
+      </div>
+      <div class="card">
+        <h3>Вопросы и FAQ</h3>
+        <p class="mut">Перед формой вопроса делегат видит FAQ. Удачный ответ организатора переносится в FAQ одной кнопкой.</p>
+      </div>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">7 / 12 · Коммуникация<span class="ncount"></span></div><div class="notes" data-list="comms"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 8. Геймификация -->
+<article class="unit" data-id="game"><div class="frame"><div class="stage">
+<section class="s" style="flex-direction:row; gap:96px; align-items:center">
+  <div class="phone" style="width:400px; height:794px"><img src="shots/app_hub.png" alt="Главный экран Mini App: баланс монет, статус заявки, задания и рейтинг"></div>
+  <div style="display:flex; flex-direction:column; gap:40px; flex:1">
+    <h2>Амбассадоры и геймификация</h2>
+    <ul>
+      <li>У каждого делегата есть реферальная ссылка. Когда приглашённого одобряют, пригласившему начисляются баллы</li>
+      <li>Задания сдают фото или текстом. Дедлайн мягкий: после него сдать можно, но со штрафом</li>
+      <li>Амбассадоры работают волнами, у каждой свои задания и рейтинг. Призёров считают по итогу на момент закрытия волны</li>
+      <li>Каждое начисление монет записано, баланс всегда можно проверить по истории</li>
+    </ul>
+    <p class="mut">На Юлиде в этом сезоне 263 амбассадора.</p>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">8 / 12 · Геймификация<span class="ncount"></span></div><div class="notes" data-list="game"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 9. Mini App, дашборд, таблица -->
+<article class="unit" data-id="surfaces"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Приложение, дашборд и таблица</h2>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); grid-template-rows:auto auto; gap:32px; flex:1">
+    <div class="card" style="grid-row:span 2; background:var(--tint); border-color:#B9D7FB">
+      <h3>Mini App внутри Telegram</h3>
+      <p>Та же анкета, задания, отбор заявок, FAQ и настройки, только в виде приложения. Длинные списки и файлы там смотреть удобнее. Цвета и логотип у каждого события свои.</p>
+      <h3 style="margin-top:12px">Два языка</h3>
+      <p>Анкета, меню, оплата и задания есть на русском и английском. Когда менеджер пишет новый текст, бот переводит его сам, перевод можно поправить.</p>
+    </div>
+    <div class="card">
+      <h3>Дашборд статистики</h3>
+      <p class="mut">Воронка, динамика по дням, разбивка по городам и трекам, скорость обработки заявок. Можно сравнить несколько событий.</p>
+    </div>
+    <div class="card">
+      <h3>Google-таблица</h3>
+      <p class="mut">Заявки копируются во вкладки по городам и трекам. Сами данные хранятся в боте, так что если таблица упадёт, регистрация продолжится.</p>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">9 / 12 · Приложение и данные<span class="ncount"></span></div><div class="notes" data-list="surfaces"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 10. День форума -->
+<article class="unit" data-id="forum"><div class="frame"><div class="stage">
+<section class="s" style="gap:40px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Дни форума</h2>
+    <p class="lead">Всё готово, впервые запускаем на региональных форумах Юлида 3 октября.</p>
+  </div>
+  <div style="display:flex; gap:56px; flex:1; min-height:0">
+    <div style="display:flex; gap:24px">
+      <div class="phone" style="width:260px; height:562px"><img style="object-position:center 70%" src="shots/bot_myqr.png" alt="Личный QR-код делегата для входа"></div>
+      <div class="phone" style="width:260px; height:516px; align-self:flex-end"><img src="shots/app_scanner_ok.png" alt="Сканер волонтёра: делегат отмечен"></div>
+    </div>
+    <ul style="flex:1; gap:16px">
+      <li>У делегата личный QR в боте, волонтёр сканирует его своим телефоном</li>
+      <li>Если на площадке нет сети, сканирует отдельное приложение, файл загружается потом</li>
+      <li>Программа с залами и параллельными сессиями, отметки на каждой сессии</li>
+      <li>Кнопка SOS пишет в чат оргов, отвечают реплаем. Есть бюро находок</li>
+      <li>Сколько людей пришло, видно сразу, вечером приходит отчёт за день</li>
+      <li>Бот спрашивает не пришедших, почему их не было, собирает отзывы о сессиях и присылает каждому личную карточку «форум в цифрах»</li>
+    </ul>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">10 / 12 · День форума<span class="ncount"></span></div><div class="notes" data-list="forum"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 11. Планы и сроки -->
+<article class="unit" data-id="roadmap"><div class="frame"><div class="stage">
+<section class="s" style="gap:56px">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Что в планах и когда</h2>
+    <p class="lead">Сроки примерные, очередь определяют ближайшие мероприятия.</p>
+  </div>
+  <div style="position:relative; flex:1">
+    <div style="position:absolute; left:0; right:0; top:22px; height:4px; background:var(--line)"></div>
+    <div style="position:absolute; left:0; width:25%; top:22px; height:4px; background:var(--blue)"></div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:32px; position:relative">
+      <div style="display:flex; flex-direction:column; gap:28px">
+        <span style="width:48px; height:48px; border-radius:50%; background:var(--blue); border:8px solid #CFE5FD"></span>
+        <div style="display:flex; flex-direction:column; gap:14px">
+          <p style="font-size:30px; font-weight:800; color:var(--blue)">Октябрь 2026</p>
+          <h3>Первые форумы</h3>
+          <p class="mut" style="font-size:29px; line-height:1.42">Регионы 3 октября, Москва 30 и 31 октября. К Москве добавятся тест компетенций до и после форума, сертификаты и письма после форума</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:28px">
+        <span style="width:48px; height:48px; border-radius:50%; background:#fff; border:4px solid var(--blue)"></span>
+        <div style="display:flex; flex-direction:column; gap:14px">
+          <p style="font-size:30px; font-weight:800; color:var(--blue)">Ноябрь 2026</p>
+          <h3>Отбор и набор</h3>
+          <p class="mut" style="font-size:29px; line-height:1.42">К СкиллАпу 14 ноября: запись на интервью по слотам, лист ожидания, выгрузка для партнёров. Отбор заявок свайпами в приложении</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:28px">
+        <span style="width:48px; height:48px; border-radius:50%; background:#fff; border:4px solid var(--blue)"></span>
+        <div style="display:flex; flex-direction:column; gap:14px">
+          <p style="font-size:30px; font-weight:800; color:var(--blue)">Декабрь 2026</p>
+          <h3>Города и админка</h3>
+          <p class="mut" style="font-size:29px; line-height:1.42">Любую настройку можно будет задать отдельно для города. Админка появится отдельным сайтом, заходить можно будет без Telegram. Монеты можно будет потратить в магазине</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:28px">
+        <span style="width:48px; height:48px; border-radius:50%; background:#fff; border:4px solid var(--orange)"></span>
+        <div style="display:flex; flex-direction:column; gap:14px">
+          <p style="font-size:30px; font-weight:800; color:var(--orange)">Январь и февраль 2027</p>
+          <h3>Второй канал</h3>
+          <p class="mut" style="font-size:29px; line-height:1.42">Регистрация через форму на сайте, если с Telegram что-то случится. Заявки будут уходить в CRM (Битрикс)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section></div></div>
+<div class="meta"><div class="num">11 / 12 · Планы и сроки<span class="ncount"></span></div><div class="notes" data-list="roadmap"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+<!-- 12. Как попробовать -->
+<article class="unit" data-id="next"><div class="frame"><div class="stage">
+<section class="s dark" style="background:var(--blue); color:#fff; justify-content:space-between">
+  <h2 style="font-size:96px">Как попробовать у вас</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+    <div style="border-top:4px solid #fff; padding-top:28px; display:flex; flex-direction:column; gap:14px">
+      <h3>Созвон и демо</h3>
+      <p style="font-size:32px; line-height:1.4">Минут на сорок. Покажу бота и админку вживую и спрошу, как устроены ваши форумы.</p>
+    </div>
+    <div style="border-top:4px solid #fff; padding-top:28px; display:flex; flex-direction:column; gap:14px">
+      <h3>Тестовый бот</h3>
+      <p style="font-size:32px; line-height:1.4">За день-два подниму копию под ваше событие. Команда сама пройдёт путь делегата и менеджера.</p>
+    </div>
+    <div style="border-top:4px solid #fff; padding-top:28px; display:flex; flex-direction:column; gap:14px">
+      <h3>Под ваш формат</h3>
+      <p style="font-size:32px; line-height:1.4">Сделаю пресет под ваши мероприятия и оформлю приложение в вашем стиле. Если нужен казахский язык, добавлю.</p>
+    </div>
+  </div>
+  <p style="font-size:32px; font-weight:700">Андрей Алексеев</p>
+</section></div></div>
+<div class="meta"><div class="num">12 / 12 · Дальше<span class="ncount"></span></div><div class="notes" data-list="next"></div><div class="compose"><textarea placeholder="Вопрос или комментарий к этому слайду" rows="2"></textarea><button type="button">Отправить</button></div></div></article>
+
+</main>
+<script>
+(function () {
+  var API = 'bot/api/notes';
+  var stages = document.querySelectorAll('.stage');
+  function fit() {
+    stages.forEach(function (s) { s.style.transform = 'scale(' + (s.parentElement.clientWidth / 1920) + ')'; });
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  var cid = store('deck-cid');
+  if (!cid) { cid = Math.random().toString(36).slice(2) + Date.now().toString(36); store('deck-cid', cid); }
+  var who = document.getElementById('who');
+  who.value = store('deck-who') || '';
+  who.addEventListener('input', function () { store('deck-who', who.value.trim()); });
+
+  var version = -1;
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function render(state) {
+    version = state.v;
+    document.querySelectorAll('.notes').forEach(function (box) {
+      var list = (state.notes || {})[box.getAttribute('data-list')] || [];
+      var cnt = box.parentElement.querySelector('.ncount');
+      if (cnt) cnt.textContent = list.length ? ' · комментариев: ' + list.length : '';
+      box.innerHTML = list.map(function (n) {
+        return '<div class="note"><div class="by"><span>' + esc(n.who || 'Без имени') + ' · ' + esc(n.at) + '</span>' +
+          (n.mine ? '<button type="button" data-del="' + esc(n.id) + '">удалить</button>' : '') +
+          '</div><div class="txt">' + esc(n.text) + '</div></div>';
+      }).join('');
+    });
+  }
+  function load() {
+    fetch('/' + API, { headers: { 'X-Client': cid }, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { if (s.v !== version) render(s); })
+      .catch(function () {});
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client': cid }, body: JSON.stringify(body) })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+  }
+  document.querySelectorAll('.unit').forEach(function (u) {
+    var id = u.getAttribute('data-id');
+    var ta = u.querySelector('textarea');
+    var btn = u.querySelector('.compose button');
+    btn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ta.focus(); return; }
+      if (!who.value.trim()) { who.focus(); who.placeholder = 'Сначала подпишись вверху страницы'; window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      btn.disabled = true; btn.textContent = 'Сохраняю';
+      post('/' + API, { slide: id, who: who.value.trim(), text: text })
+        .then(function (s) { ta.value = ''; render(s); btn.textContent = 'Отправить'; })
+        .catch(function () { btn.textContent = 'Не сохранилось, ещё раз'; })
+        .then(function () { btn.disabled = false; });
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-del');
+    if (!id) return;
+    post('/' + API + '/delete', { id: id }).then(render).catch(function () {});
+  });
+  load();
+  setInterval(load, 15000);
+})();
+</script>
+</body>
+</html>

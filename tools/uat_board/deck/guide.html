@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бот на форуме: гайд</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700;800&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F3F4F8; --card:#FFFFFF; --ink:#1C1C1C; --muted:#52565E; --line:#DDE1E8; --blue:#037EF3; --orange:#F48924; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; }
+  header.top { background:var(--blue); color:#fff; }
+  header.top .in { max-width:1200px; margin:0 auto; padding:28px 16px 24px; display:flex; flex-wrap:wrap; gap:16px 32px; align-items:end; justify-content:space-between; }
+  header.top h1 { margin:0; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(26px, 4vw, 40px); line-height:1.1; }
+  header.top p { margin:6px 0 0; font-size:16px; line-height:1.45; opacity:.95; max-width:640px; }
+  header.top nav { font-size:15px; font-weight:700; }
+  header.top nav a { color:#fff; }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 80px; display:flex; flex-direction:column; gap:40px; }
+  .unit { display:flex; flex-direction:column; gap:0; scroll-margin-top:16px; }
+  .frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:12px 12px 0 0; border:1px solid var(--line); border-bottom:0; background:#fff; }
+  .stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+  .stage > section { width:1920px; height:1080px; position:relative; box-sizing:border-box; overflow:hidden; }
+  .stage * { box-sizing:border-box; }
+  .stage h1, .stage h2, .stage h3, .stage p, .stage ul, .stage table, .stage figure { margin:0; }
+  .stage ul { padding:0 0 0 1.2em; }
+  .stage table { border-collapse:collapse; width:100%; }
+  .stage th, .stage td { padding:.35em .6em; text-align:left; vertical-align:top; border-bottom:1px solid rgba(128,128,128,.28); }
+  .stage th { font-weight:800; }
+  .meta { background:var(--card); border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:0 0 12px 12px; padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+  .num { font-size:14px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .aside { margin:0; font-size:15px; line-height:1.5; color:var(--muted); }
+  .foot { margin:0; font-size:14px; color:var(--muted); text-align:center; }
+
+  /* слайды */
+  .sl { background:#F3F4F8; color:#1C1C1C; font-family:'Nunito Sans', Arial, sans-serif; padding:112px 128px; display:flex; flex-direction:column; gap:44px; }
+  .sl.cover { justify-content:space-between; padding:128px; color:#fff; }
+  .sl.scr-sl { flex-direction:row; align-items:center; gap:72px; padding:80px 128px; }
+  .sl.tight { padding:80px 128px; gap:36px; }
+  .col { flex:1; display:flex; flex-direction:column; gap:40px; }
+  .hd { display:flex; flex-direction:column; gap:16px; }
+  .kick { font-size:24px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#037EF3; }
+  .h2 { font-family:'Raleway', Arial, sans-serif; font-size:64px; font-weight:800; line-height:1.1; color:#1C1C1C; }
+  .h3 { font-family:'Raleway', Arial, sans-serif; font-size:34px; font-weight:800; line-height:1.15; }
+  .lead { font-size:28px; line-height:1.4; color:#52565E; }
+  .t { font-size:28px; line-height:1.4; color:#52565E; }
+  .card { background:#FFFFFF; border:1px solid #DDE1E8; border-radius:12px; padding:32px 36px; }
+  .card.acc { background:#FFF6EC; border:2px solid #F48924; }
+  .card.blue { border:2px solid #037EF3; }
+  .pill { align-self:flex-start; font-size:24px; font-weight:800; padding:6px 16px; background:#E1F0FE; color:#0B5CAD; border-radius:999px; }
+  .pts { display:flex; flex-direction:column; gap:22px; }
+  .pt { font-size:30px; line-height:1.35; border-left:5px solid #037EF3; padding:2px 0 2px 24px; }
+  .pt.o { border-left-color:#F48924; font-weight:700; }
+  .note { font-size:28px; line-height:1.4; background:#FFFFFF; border:1px solid #DDE1E8; border-left:6px solid #F48924; border-radius:12px; padding:22px 28px; }
+  .phones { display:flex; gap:32px; align-items:flex-start; justify-content:flex-end; }
+  .ph-wrap { display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .phone { background:#1C1C1C; border-radius:52px; padding:14px; box-shadow:0 20px 50px rgba(28,28,28,.18); }
+  .scr { position:relative; border-radius:40px; overflow:hidden; background:#E9ECF2; }
+  .scr img { display:block; width:100%; height:100%; object-fit:cover; object-position:top; }
+  .stub { display:none; position:absolute; inset:0; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:28px;
+          background:repeating-linear-gradient(135deg, #E9ECF2 0 22px, #E2E6ED 22px 44px); color:#52565E; }
+  .stub span { font-size:28px; font-weight:800; line-height:1.3; }
+  .stub small { font-size:18px; color:#8A93A3; word-break:break-all; }
+  .browser { background:#1C1C1C; border-radius:16px; padding:0 10px 10px; box-shadow:0 20px 50px rgba(28,28,28,.18); }
+  .browser .bar { height:40px; display:flex; gap:10px; align-items:center; padding:0 8px; }
+  .browser .bar i { width:14px; height:14px; border-radius:50%; background:#52565E; display:block; }
+  .cap { font-size:24px; font-weight:800; color:#52565E; }
+  .plate { width:100%; border-radius:14px; padding:20px 24px; display:flex; flex-direction:column; gap:8px; }
+  .plate.g { background:#E6F6EC; border:3px solid #2E9E5B; }
+  .plate.y { background:#FFF4D6; border:3px solid #E0A800; }
+  .plate.r { background:#FDEBEC; border:3px solid #D6454A; }
+  .pt-t { font-size:30px; font-weight:800; line-height:1.25; }
+  .pt-d { font-size:28px; line-height:1.3; color:#1C1C1C; }
+  .chks { display:flex; flex-direction:column; gap:14px; }
+  .chk { display:grid; grid-template-columns:60px 620px 1fr; align-items:center; gap:20px; background:#fff; border:1px solid #DDE1E8; border-radius:12px; padding:14px 28px; }
+  .chk.last { background:#FFF6EC; border:2px solid #F48924; }
+  .chk .box { font-size:40px; color:#037EF3; line-height:1; }
+  .b { font-size:30px; font-weight:800; color:#1C1C1C; }
+  .chk .t, .act .t { font-size:28px; }
+  .acts { display:flex; flex-direction:column; gap:12px; }
+  .act { display:grid; grid-template-columns:560px 1fr; gap:24px; align-items:center; background:#fff; border:1px solid #DDE1E8; border-radius:12px; padding:14px 24px; }
+  .tgs { display:flex; flex-wrap:wrap; gap:14px; }
+  .tg { font-size:28px; font-weight:700; padding:12px 22px; background:#E1F0FE; color:#0B5CAD; border-radius:10px; }
+  .tbl { font-size:28px; line-height:1.35; background:#fff; border-radius:12px; overflow:hidden; }
+  .tbl th { background:#037EF3; color:#fff; padding:18px 24px; font-size:28px; }
+  .tbl td { padding:16px 24px; }
+  .places { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .place { background:#fff; border:1px solid #DDE1E8; border-radius:12px; padding:24px 32px; display:flex; flex-direction:column; gap:10px; }
+  .place .b { color:#037EF3; font-size:32px; }
+
+  @media print {
+    @page { size:1920px 1080px; margin:0; }
+    header.top, .meta, .foot { display:none !important; }
+    body, main { background:#fff; }
+    main { padding:0; gap:0; max-width:none; }
+    .unit { break-after:page; page-break-after:always; }
+    .frame { width:1920px; height:1080px; aspect-ratio:auto; border:0; border-radius:0; }
+    .stage { transform:none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="in">
+    <div>
+      <h1>Бот на форуме: что сделано и как с этим работать</h1>
+      <p>Гайд для владельца и менеджеров Юлида. Под каждым слайдом — что говорить. Скриншоты подставляются из папки shots/ рядом с файлом; если файла нет, на его месте серая заглушка.</p>
+    </div>
+    <nav>36 слайдов · регионы 3.10 · Москва 30–31.10</nav>
+  </div>
+</header>
+<main>
+<article class="unit" id="u-cover" data-id="cover">
+  <div class="frame"><div class="stage"><section id="cover" data-transition="fade" class="sl cover" style="background:#037EF3">
+
+  <p style="font-size:28px; font-weight:800; letter-spacing:4px; text-transform:uppercase; color:#fff">АЙСЕК · Юлид'26 · гайд для менеджеров</p>
+  <div style="display:flex; flex-direction:column; gap:40px">
+    <h1 style="font-family:Raleway, Arial, sans-serif; font-size:140px; font-weight:800; line-height:1; color:#fff">Бот на форуме</h1>
+    <p style="width:1400px; font-size:44px; line-height:1.3; color:#fff">Что уже сделано и как с этим работать. По одной мысли на слайд, все кнопки подписаны так же, как в боте.</p>
+  </div>
+  <div style="display:flex; gap:24px">
+    <p style="padding:16px 28px; font-size:30px; font-weight:700; color:#fff; border:2px solid #fff; border-radius:8px">Регионы: 3 октября</p>
+    <p style="padding:16px 28px; font-size:30px; font-weight:700; color:#037EF3; background:#fff; border-radius:8px">Москва: 30 и 31 октября</p>
+  </div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">1 / 36 · Бот на форуме: что сделано и как с этим работать</div>
+    <p class="aside"><b>Что говорить.</b> Презентация для владельца и менеджеров. Цель: чтобы каждый менеджер мог провести форумный день через бота сам, без разработчика.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-map" data-id="map">
+  <div class="frame"><div class="stage"><section id="map" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Карта</p><h2 class="h2">Что умеет бот на форуме</h2></div><div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:28px"><div class="card acc" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">🎟</p><h3 class="h3">Вход по QR</h3><p class="t">У каждого одобренного свой QR. Волонтёр сканирует, делегат отмечен.</p></div><div class="card" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">🗓</p><h3 class="h3">Программа и отзывы</h3><p class="t">Расписание в чате и в приложении. После сессии бот просит оценку.</p></div><div class="card" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">🆘</p><h3 class="h3">SOS и «Важное»</h3><p class="t">Одна кнопка — и оргам в чат летит карточка. Важные рассылки не глушатся.</p></div><div class="card" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">🎗</p><h3 class="h3">Волонтёры и стойки</h3><p class="t">Приглашение ссылкой, шпаргалка, учебные QR, живой экран стоек.</p></div><div class="card" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">📊</p><h3 class="h3">Статистика и отчёты</h3><p class="t">Кто пришёл, где пик, какие сессии полные. Отчёт дня вечером сам.</p></div><div class="card" style="display:flex; flex-direction:column; gap:10px; padding:26px 32px"><p style="font-size:48px; line-height:1">🚌</p><h3 class="h3">После форума</h3><p class="t">Опрос неявившихся, перенос регионов в Москву, «Юлид в цифрах».</p></div></div><p class="t" style="font-size:30px">Каждая функция включается отдельным тумблером. Выключено — делегат её просто не видит.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">2 / 36 · Что умеет бот на форуме</div>
+    <p class="aside"><b>Что говорить.</b> Шесть блоков — это весь форумный модуль. Дальше пройдём по каждому, от подготовки до итогов. Вход выделен: от отметки работает почти всё остальное.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-path" data-id="path">
+  <div class="frame"><div class="stage"><section id="path" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Схема</p><h2 class="h2">Путь делегата: от анкеты до итогов</h2></div><svg viewBox="0 0 1664 690" width="1664" height="690" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><rect x="0" y="20" width="364" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="182.0" y="98" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">1 · Анкета</text><text x="182.0" y="134" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">подаёт в боте</text><line x1="370" y1="105.0" x2="411.0" y2="105.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="427,105.0 411.0,113.0 411.0,97.0" fill="#8A93A3"/><rect x="433" y="20" width="364" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="615.0" y="98" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">2 · Одобрение</text><text x="615.0" y="134" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">решает менеджер</text><line x1="803" y1="105.0" x2="844.0" y2="105.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="860,105.0 844.0,113.0 844.0,97.0" fill="#8A93A3"/><rect x="866" y="20" width="364" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1048.0" y="98" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">3 · QR накануне</text><text x="1048.0" y="134" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">картинка в чат, 18:00</text><line x1="1236" y1="105.0" x2="1277.0" y2="105.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="1293,105.0 1277.0,113.0 1277.0,97.0" fill="#8A93A3"/><rect x="1299" y="20" width="364" height="170" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="1481.0" y="98" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">4 · Вход по QR</text><text x="1481.0" y="134" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">сканирует волонтёр</text><rect x="0.0" y="340" width="508.6666666666667" height="170" rx="14" fill="#E8F3FE" stroke="#037EF3" stroke-width="3"/><text x="254.33333333333334" y="418" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">7 · «Юлид в цифрах»</text><text x="254.33333333333334" y="454" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">карточка после форума</text><line x1="571.6666666666667" y1="425.0" x2="530.7" y2="425.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="514.6666666666667,425.0 530.7,417.0 530.7,433.0" fill="#8A93A3"/><rect x="577.6666666666667" y="340" width="508.6666666666667" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="832.0000000000001" y="418" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">6 · Отзыв</text><text x="832.0000000000001" y="454" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">после каждой сессии</text><line x1="1149.3333333333335" y1="425.0" x2="1108.3" y2="425.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="1092.3333333333335,425.0 1108.3,417.0 1108.3,433.0" fill="#8A93A3"/><rect x="1155.3333333333335" y="340" width="508.6666666666667" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1409.6666666666667" y="418" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">5 · День форума</text><text x="1409.6666666666667" y="454" text-anchor="middle" font-size="28" font-weight="400" fill="#52565E">программа · SOS · «Важное»</text><line x1="1481.0" y1="196" x2="1481.0" y2="318.0" stroke="#F48924" stroke-width="4" stroke-linecap="round"/><polygon points="1481.0,334 1473.0,318.0 1489.0,318.0" fill="#F48924"/><rect x="0" y="590" width="1664" height="90" rx="14" fill="#FFFFFF" stroke="#9AA3B2" stroke-width="2" stroke-dasharray="10 8"/><text x="832.0" y="644" text-anchor="middle" font-size="28" font-weight="700" fill="#52565E">Не пришёл → на следующий день опрос «что помешало», регионам — предложение переехать в Москву</text></svg>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">3 / 36 · Путь делегата</div>
+    <p class="aside"><b>Что говорить.</b> Покажите цепочку целиком: делегат ничего не нажимает лишнего, всё приходит само. Менеджер вмешивается только на одобрении и если что-то пошло не так.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-lanes" data-id="lanes">
+  <div class="frame"><div class="stage"><section id="lanes" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Схема</p><h2 class="h2">День форума: кто что делает</h2></div><svg viewBox="0 0 1664 664" width="1664" height="664" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><text x="400.5" y="44" text-anchor="middle" font-size="30" font-weight="800" fill="#037EF3">Накануне</text><text x="761.5" y="44" text-anchor="middle" font-size="30" font-weight="800" fill="#037EF3">Утро: вход</text><text x="1122.5" y="44" text-anchor="middle" font-size="30" font-weight="800" fill="#037EF3">Днём</text><text x="1483.5" y="44" text-anchor="middle" font-size="30" font-weight="800" fill="#037EF3">Вечер и после</text><rect x="0" y="72" width="1664" height="184" rx="16" fill="#EBEDF3"/><text x="28" y="175.0" font-size="32" font-weight="800" fill="#1C1C1C">Делегат</text><rect x="232" y="90" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="400.5" y="156" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Приходит QR,</text><text x="400.5" y="192" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">меню меняется</text><line x1="571" y1="164.0" x2="575.0" y2="164.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="591,164.0 575.0,172.0 575.0,156.0" fill="#B5BCC8"/><rect x="593" y="90" width="337" height="148" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="761.5" y="156" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Показывает QR</text><text x="761.5" y="192" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">на входе</text><line x1="932" y1="164.0" x2="936.0" y2="164.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="952,164.0 936.0,172.0 936.0,156.0" fill="#B5BCC8"/><rect x="954" y="90" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1122.5" y="156" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Программа, SOS,</text><text x="1122.5" y="192" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">отзыв о сессии</text><line x1="1293" y1="164.0" x2="1297.0" y2="164.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="1313,164.0 1297.0,172.0 1297.0,156.0" fill="#B5BCC8"/><rect x="1315" y="90" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1483.5" y="156" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Опрос неявки,</text><text x="1483.5" y="192" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">«Юлид в цифрах»</text><rect x="0" y="272" width="1664" height="184" rx="16" fill="#F7F8FB"/><text x="28" y="375.0" font-size="32" font-weight="800" fill="#1C1C1C">Волонтёр</text><rect x="232" y="290" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="400.5" y="356" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Шпаргалка</text><text x="400.5" y="392" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">и учебные QR</text><line x1="571" y1="364.0" x2="575.0" y2="364.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="591,364.0 575.0,372.0 575.0,356.0" fill="#B5BCC8"/><rect x="593" y="290" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="761.5" y="356" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Сканирует</text><text x="761.5" y="392" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">вход</text><line x1="932" y1="364.0" x2="936.0" y2="364.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="952,364.0 936.0,372.0 936.0,356.0" fill="#B5BCC8"/><rect x="954" y="290" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1122.5" y="356" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Сканирует сессии,</text><text x="1122.5" y="392" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">находки</text><line x1="1293" y1="364.0" x2="1297.0" y2="364.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="1313,364.0 1297.0,372.0 1297.0,356.0" fill="#B5BCC8"/><rect x="1315" y="290" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1483.5" y="356" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">Загружает файл,</text><text x="1483.5" y="392" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">если был офлайн</text><rect x="0" y="472" width="1664" height="184" rx="16" fill="#EBEDF3"/><text x="28" y="575.0" font-size="32" font-weight="800" fill="#1C1C1C">Менеджер</text><rect x="232" y="490" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="400.5" y="556" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">🚦 Готовность</text><text x="400.5" y="592" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">к форуму</text><line x1="571" y1="564.0" x2="575.0" y2="564.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="591,564.0 575.0,572.0 575.0,556.0" fill="#B5BCC8"/><rect x="593" y="490" width="337" height="148" rx="14" fill="#E8F3FE" stroke="#037EF3" stroke-width="3"/><text x="761.5" y="556" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">📍 Сейчас</text><text x="761.5" y="592" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">на площадке</text><line x1="932" y1="564.0" x2="936.0" y2="564.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="952,564.0 936.0,572.0 936.0,556.0" fill="#B5BCC8"/><rect x="954" y="490" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1122.5" y="556" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">SOS, «❗ Важное»,</text><text x="1122.5" y="592" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">рассылки</text><line x1="1293" y1="564.0" x2="1297.0" y2="564.0" stroke="#B5BCC8" stroke-width="4" stroke-linecap="round"/><polygon points="1313,564.0 1297.0,572.0 1297.0,556.0" fill="#B5BCC8"/><rect x="1315" y="490" width="337" height="148" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1483.5" y="556" text-anchor="middle" font-size="29" font-weight="800" fill="#1C1C1C">📊 Отчёт дня,</text><text x="1483.5" y="592" text-anchor="middle" font-size="29" font-weight="400" fill="#52565E">итоги</text></svg>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">4 / 36 · День форума по ролям</div>
+    <p class="aside"><b>Что говорить.</b> Три дорожки — три роли. Делегату ничего учить не нужно, волонтёру хватает сканера, менеджер смотрит два экрана и отвечает на SOS.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-roles" data-id="roles">
+  <div class="frame"><div class="stage"><section id="roles" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Права</p><h2 class="h2">Кто что может в боте</h2><p class="lead">Админка → «🔧 Управление» → «👥 Роли и доступы»</p></div><div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px"><div class="card acc" style="display:flex; flex-direction:column; gap:16px"><h3 class="h3">🎗 Волонтёр форума</h3><p class="pill">право «✅ Чек-ин»</p><p class="t">Сканер, загрузка файла сканера, учебные QR, «🧳 Нашли вещь». Больше ничего.</p></div><div class="card blue" style="display:flex; flex-direction:column; gap:16px"><h3 class="h3">🛂 Менеджер регистраций</h3><p class="pill">право «📋 Модерация заявок»</p><p class="t">Почти весь форум: рассылки QR, SOS, статистика, журнал, отчёты, /find.</p></div><div class="card " style="display:flex; flex-direction:column; gap:16px"><h3 class="h3">⚙️ Настройки</h3><p class="pill">тяжёлое право</p><p class="t">Программа, тексты, чат SOS, роли. Может выдать права кому угодно — даже себе.</p></div></div><p class="note">Волонтёру давайте только «🎗 Волонтёр форума» и сразу срок «🏁 До конца форума города» — тогда право само пропадёт после форума.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">5 / 36 · Кто что может</div>
+    <p class="aside"><b>Что говорить.</b> Главное правило: волонтёру — только чек-ин. «⚙️ Настройки» выдаём так же осторожно, как полный админский доступ.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-prep" data-id="prep">
+  <div class="frame"><div class="stage"><section id="prep" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Подготовка</p><h2 class="h2">Перед форумом за 5 минут</h2></div><div class="chks"><div class="chk"><span class="box">☐</span><span class="b">🗓 Дата начала форума</span><span class="t">«🎪 Событие». Без даты не уйдут QR и шпаргалка</span></div><div class="chk"><span class="box">☐</span><span class="b">🎟 QR для чек-ина на форуме</span><span class="t">тумблер в «📋 Заявки», один на все города</span></div><div class="chk"><span class="box">☐</span><span class="b">🎟 Настройки рассылки QR</span><span class="t">время накануне и утром, для каждого города</span></div><div class="chk"><span class="box">☐</span><span class="b">🗓 Программа форума</span><span class="t">сессии и залы, или хотя бы фото программы</span></div><div class="chk"><span class="box">☐</span><span class="b">🔗 Пригласить волонтёров</span><span class="t">одна ссылка вместо списка юзернеймов</span></div><div class="chk"><span class="box">☐</span><span class="b">🔗 Привязать чат SOS</span><span class="t">бот в чате оргов города</span></div><div class="chk last"><span class="box">☐</span><span class="b">🚦 Готовность к форуму</span><span class="t">финальная проверка: всё должно стать 🟢</span></div></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">6 / 36 · Перед форумом за 5 минут</div>
+    <p class="aside"><b>Что говорить.</b> Семь кнопок по порядку. Последняя — «🚦 Готовность к форуму»: она сама покажет, что из первых шести забыли.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-ready" data-id="ready">
+  <div class="frame"><div class="stage"><section id="ready" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Подготовка</p><h2 class="h2">🚦 Готовность к форуму</h2><p class="lead">Админка → «📋 Заявки» → «🎪 Форум: функции» → «🚦 Готовность к форуму»</p></div><div class="pts"><p class="pt">Семь проверок, у каждой кружок: 🟢 всё хорошо, 🟡 стоит глянуть, 🔴 не заработает</p><p class="pt">Под красной строкой — кнопка, которая ведёт сразу на нужный экран</p><p class="pt o">Открыть накануне и ещё раз утром. После правок — «🔄 Проверить снова»</p></div><p class="note">Что проверяет: Дата форума · Вход по QR · Волонтёры · Программа · Чат SOS · Таблица · Чат делегатов</p></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_ready.png" alt="экран «🚦 Готовность к форуму»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>экран «🚦 Готовность к форуму»</span><small>shots/bot_ready.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">7 / 36 · 🚦 Готовность к форуму</div>
+    <p class="aside"><b>Что говорить.</b> Кнопка-исправление ничего не включает втихую, а открывает экран, где решаете вы. Цель — ноль красных строк к утру форума.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_ready.png</p>
+  </div>
+</article>
+<article class="unit" id="u-hub" data-id="hub">
+  <div class="frame"><div class="stage"><section id="hub" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Один экран</p><h2 class="h2">🎪 Форум: функции</h2><p class="lead">Админка → «📋 Заявки» → «🎪 Форум: функции»</p></div><div class="pts"><p class="pt">Все форумные тумблеры на одном экране: что включено, что нет</p><p class="pt">Отсюда же — настройки QR, SOS, шпаргалки, отчёта дня, опроса, переноса в Москву</p><p class="pt o">Почти всё по умолчанию выключено. Включаете только то, что нужно этому городу</p><p class="pt">Настройки у каждого города свои: регионы и Москва не мешают друг другу</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_forum_hub.png" alt="экран «🎪 Форум: функции»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>экран «🎪 Форум: функции»</span><small>shots/bot_forum_hub.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">8 / 36 · 🎪 Форум: функции</div>
+    <p class="aside"><b>Что говорить.</b> Если потерялись в админке — возвращайтесь сюда. Это пульт всего форумного модуля.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_forum_hub.png</p>
+  </div>
+</article>
+<article class="unit" id="u-myqr" data-id="myqr">
+  <div class="frame"><div class="stage"><section id="myqr" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Делегат</p><h2 class="h2">🎟 Мой QR</h2><p class="lead">QR — это и есть пропуск. На бейдже QR нет</p></div><div class="pts"><p class="pt">Накануне в 18:00 бот сам присылает картинку QR. Утром в 08:00 — тем, кто не открыл</p><p class="pt">Кнопка «🎟 Мой QR» в меню — открыть в любой момент</p><p class="pt o">Попросите делегатов открыть QR заранее: открытая картинка видна и без интернета</p><p class="pt">QR только у одобренных. Внутри случайный код, чужой не угадать</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_myqr.png" alt="«🎟 Мой QR» у делегата" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>«🎟 Мой QR» у делегата</span><small>shots/bot_myqr.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">9 / 36 · 🎟 Мой QR</div>
+    <p class="aside"><b>Что говорить.</b> Ручная отправка — «📤 Разослать QR сейчас» на экране «✅ Отметки на форуме». Если QR утёк — перевыпуск через /find, старый перестаёт пускать.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_myqr.png</p>
+  </div>
+</article>
+<article class="unit" id="u-menu" data-id="menu">
+  <div class="frame"><div class="stage"><section id="menu" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Делегат</p><h2 class="h2">Меню в день форума</h2><p class="lead">«🎪 Форум: функции» → «📱 Настройки меню «день форума»»</p></div><div class="pts"><p class="pt">С вечера накануне наверх поднимаются «🎟 Мой QR», «📅 Программа форума», «❗ Важное», «🆘 SOS»</p><p class="pt">Анкета и остальное уходят вниз, но не пропадают</p><p class="pt o">Включается по дате форума своего города: у регионов 3.10, у Москвы 30.10</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_menu.png" alt="меню делегата в день форума" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>меню делегата в день форума</span><small>shots/bot_menu.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">10 / 36 · Меню в день форума</div>
+    <p class="aside"><b>Что говорить.</b> Нажимать ничего не нужно: меню перестроится само и вернётся обратно после форума.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_menu.png</p>
+  </div>
+</article>
+<article class="unit" id="u-program" data-id="program">
+  <div class="frame"><div class="stage"><section id="program" data-transition="fade" class="sl scr-sl">
+<div class="col" style="width:640px; flex:none"><div class="hd"><p class="kick">Программа</p><h2 class="h2">Программа в чате и в приложении</h2></div><div class="pts"><p class="pt">Делегат жмёт «📅 Программа форума»</p><p class="pt">В день форума пометки «🔴 Идёт сейчас» и «⏭ Следующая»</p><p class="pt o">Вид — таблица сессий или фото. Кнопка «🔄 Переключить вид»</p><p class="pt">Заводит программу менеджер: «🎪 Событие» → «🗓 Программа форума»</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:250px; height:541px"><img src="shots/bot_program.png" alt="программа в чате" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>программа в чате</span><small>shots/bot_program.png</small></div></div></div><p class="cap">В чате</p></figure><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:250px; height:541px"><img src="shots/app_program_table.png" alt="таблица сессий в приложении" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>таблица сессий в приложении</span><small>shots/app_program_table.png</small></div></div></div><p class="cap">Приложение: таблица</p></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">11 / 36 · Программа в чате и в приложении</div>
+    <p class="aside"><b>Что говорить.</b> Сессию заводят кнопками: время, название, зал, спикер. Если зал в это время занят, бот предупредит. Программу одного города можно скопировать в другой.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_program.png, shots/app_program_table.png</p>
+  </div>
+</article>
+<article class="unit" id="u-scanner" data-id="scanner">
+  <div class="frame"><div class="stage"><section id="scanner" data-transition="fade" class="sl scr-sl">
+<div class="col" style="width:640px; flex:none"><div class="hd"><p class="kick">Сканер в приложении</p><h2 class="h2">Сканер: выбрать точку и сканировать</h2></div><div class="pts"><p class="pt">Волонтёр открывает приложение → сканер</p><p class="pt o">Точка: «🚪 Вход» всегда первая, дальше «🧪 Тренировка» и сессии</p><p class="pt">Сканер не закрывается между сканами — сканируйте подряд</p><p class="pt">Ошибся — «↩️ Отменить», 10 секунд на плашке</p><p class="pt">QR не читается — поиск по фамилии, рядом город и @юзернейм</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:330px; height:714px"><img src="shots/app_hub.png" alt="главный экран приложения" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>главный экран приложения</span><small>shots/app_hub.png</small></div></div></div><p class="cap">Главный экран</p></figure><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:330px; height:714px"><img src="shots/app_scanner_entry.png" alt="выбор точки в сканере" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>выбор точки в сканере</span><small>shots/app_scanner_entry.png</small></div></div></div><p class="cap">Выбор точки</p></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">12 / 36 · Сканер: выбрать точку и сканировать</div>
+    <p class="aside"><b>Что говорить.</b> Скан сразу ставит отметку, отдельной кнопки «отметить» нет. Волонтёр с привязкой к городу видит только свой город.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/app_hub.png, shots/app_scanner_entry.png</p>
+  </div>
+</article>
+<article class="unit" id="u-plates" data-id="plates">
+  <div class="frame"><div class="stage"><section id="plates" data-transition="fade" class="sl tight">
+<div class="hd"><p class="kick">Сканер в приложении</p><h2 class="h2">Три цвета — три действия</h2></div><div style="display:flex; justify-content:space-between"><div style="display:flex; flex-direction:column; gap:20px; align-items:center; width:500px"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:236px; height:511px"><img src="shots/app_scanner_ok.png" alt="зелёная плашка «Отмечен»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>зелёная плашка «Отмечен»</span><small>shots/app_scanner_ok.png</small></div></div></div></figure><div class="plate g"><p class="pt-t">✅ Отмечен</p><p class="pt-d">Пропускайте и сканируйте следующего</p></div></div><div style="display:flex; flex-direction:column; gap:20px; align-items:center; width:500px"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:236px; height:511px"><img src="shots/app_scanner_warn.png" alt="жёлтая плашка «Уже был»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>жёлтая плашка «Уже был»</span><small>shots/app_scanner_warn.png</small></div></div></div></figure><div class="plate y"><p class="pt-t">🟡 Уже был в ЧЧ:ММ</p><p class="pt-d">Пропускайте, если QR показывает он сам</p></div></div><div style="display:flex; flex-direction:column; gap:20px; align-items:center; width:500px"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:236px; height:511px"><img src="shots/app_scanner_deny.png" alt="красная плашка «не пускать»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>красная плашка «не пускать»</span><small>shots/app_scanner_deny.png</small></div></div></div></figure><div class="plate r"><p class="pt-t">🔴 Не одобрен · прошлый сезон · чужой QR</p><p class="pt-d">Не пускать — на стойку проблемных</p></div></div></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">13 / 36 · Три плашки сканера</div>
+    <p class="aside"><b>Что говорить.</b> Волонтёру не нужно читать текст — смотрит на цвет. Зелёный и жёлтый пропускаем, красный отправляем на стойку проблемных случаев.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/app_scanner_ok.png, shots/app_scanner_warn.png, shots/app_scanner_deny.png</p>
+  </div>
+</article>
+<article class="unit" id="u-slow" data-id="slow">
+  <div class="frame"><div class="stage"><section id="slow" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Сканер в приложении</p><h2 class="h2">Сеть медленная</h2><p class="lead">Сканер сам замечает, что связь плохая</p></div><div class="pts"><p class="pt">Три скана подряд дольше 5 секунд — сверху жёлтая полоса</p><p class="pt">«Сеть медленная. Переключитесь на приложение-сканер.»</p><p class="pt">Кнопка «Как переключиться» — открывает шпаргалку</p><p class="pt o">Полоса пропадёт сама, когда сеть снова быстрая</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/app_scanner_slow.png" alt="полоса «Сеть медленная»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>полоса «Сеть медленная»</span><small>shots/app_scanner_slow.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">14 / 36 · Сеть медленная</div>
+    <p class="aside"><b>Что говорить.</b> Это сигнал перейти на запасной вариант, пока очередь не выросла. Сам запасной вариант — на слайде «Нет сети».</p>
+    <p class="aside"><b>Скриншоты:</b> shots/app_scanner_slow.png</p>
+  </div>
+</article>
+<article class="unit" id="u-training" data-id="training">
+  <div class="frame"><div class="stage"><section id="training" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Волонтёры</p><h2 class="h2">Учебные QR и тренировка</h2><p class="lead">«✅ Отметки на форуме» → «🧪 Учебные QR»</p></div><div class="pts"><p class="pt">Бот присылает лист с пятью учебными QR — все случаи плашек</p><p class="pt">В сканере выбрать точку «🧪 Тренировка» и отсканировать все пять</p><p class="pt o">Ничего не записывается: «Тренировка: отметка не записана.»</p><p class="pt">«🧪 Проверить приложение-сканер» — проверка запасного приложения, тоже без записи</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/app_scanner_training.png" alt="сканер в точке «Тренировка»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>сканер в точке «Тренировка»</span><small>shots/app_scanner_training.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">15 / 36 · Учебные QR и тренировка</div>
+    <p class="aside"><b>Что говорить.</b> Проведите тренировку накануне: пять сканов, и волонтёр уже видел все цвета. Заодно проверьте, что у каждого открывается приложение.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/app_scanner_training.png</p>
+  </div>
+</article>
+<article class="unit" id="u-invite" data-id="invite">
+  <div class="frame"><div class="stage"><section id="invite" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Волонтёры</p><h2 class="h2">Пригласить волонтёров ссылкой</h2><p class="lead">«🎪 Форум: функции» → «🔗 Пригласить волонтёров»</p></div><div class="pts"><p class="pt">Сначала тумблер «Приглашения: ✅ Вкл»</p><p class="pt">Три шага кнопками: срок ссылки → срок прав → лимит переходов</p><p class="pt">Волонтёр жмёт ссылку — и сразу получает сканер своего города</p><p class="pt o">«⛔ Отозвать» останавливает ссылку, но права не снимает — их снимают в «👥 N вошли»</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_volunteer_invite.png" alt="готовая ссылка-приглашение" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>готовая ссылка-приглашение</span><small>shots/bot_volunteer_invite.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">16 / 36 · Пригласить волонтёров ссылкой</div>
+    <p class="aside"><b>Что говорить.</b> Ставьте лимит переходов, если ссылка уходит в общий чат. Шпаргалку волонтёр получит сразу и ещё раз накануне в 17:00.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_volunteer_invite.png</p>
+  </div>
+</article>
+<article class="unit" id="u-floor" data-id="floor">
+  <div class="frame"><div class="stage"><section id="floor" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">День форума</p><h2 class="h2">📍 Сейчас на площадке</h2><p class="lead">«✅ Отметки на форуме» → «📍 Сейчас на площадке»</p></div><div class="pts"><p class="pt">Сколько пришли и сколько за последние 15 минут</p><p class="pt">Какие сессии идут прямо сейчас и насколько полны залы</p><p class="pt">Стойки: сколько сканов у каждого волонтёра</p><p class="pt o">⏸ «стойка не сканирует дольше N мин» — пора проверить, что там</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_floor.png" alt="экран «📍 Сейчас на площадке»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>экран «📍 Сейчас на площадке»</span><small>shots/bot_floor.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">17 / 36 · 📍 Сейчас на площадке</div>
+    <p class="aside"><b>Что говорить.</b> Это экран «что происходит в эту минуту». Смотрите его утром на входе, чтобы вовремя перекинуть людей на загруженные стойки.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_floor.png</p>
+  </div>
+</article>
+<article class="unit" id="u-stats" data-id="stats">
+  <div class="frame"><div class="stage"><section id="stats" data-transition="fade" class="sl scr-sl">
+<div class="col" style="width:520px; flex:none"><div class="hd"><p class="kick">День форума</p><h2 class="h2">📊 Статистика прихода</h2></div><div class="pts"><p class="pt">«✅ Отметки на форуме» → «📊 Статистика прихода»</p><p class="pt">Пришли N из M по городу и итогом</p><p class="pt">По дням и по сессиям, заполненность залов</p><p class="pt o">«📥 Выгрузить CSV» — всё одним файлом</p></div></div><div class="phones" style="gap:40px"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:280px; height:606px"><img src="shots/bot_stats.png" alt="«📊 Статистика прихода» в боте" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>«📊 Статистика прихода» в боте</span><small>shots/bot_stats.png</small></div></div></div><p class="cap">В боте</p></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">18 / 36 · 📊 Статистика прихода</div>
+    <p class="aside"><b>Что говорить.</b> Итоговые цифры дня — здесь, а не на «Сейчас на площадке». Если регион отмечал офлайн, числа вырастут после загрузки файла сканера.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_stats.png</p>
+  </div>
+</article>
+<article class="unit" id="u-dashboard" data-id="dashboard">
+  <div class="frame"><div class="stage"><section id="dashboard" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Дашборд</p><h2 class="h2">Вся статистика форума — на одной странице</h2></div><div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px"><div class="card acc" style="display:flex; flex-direction:column; gap:14px"><p style="font-size:64px; font-weight:800; color:#F48924; line-height:1">1</p><h3 class="h3">Открыть дашборд</h3><p class="t">yl26.alekseev.info (стенд — test.alekseev.info)</p></div><div class="card acc" style="display:flex; flex-direction:column; gap:14px"><p style="font-size:64px; font-weight:800; color:#F48924; line-height:1">2</p><h3 class="h3">«Войти через Telegram»</h3><p class="t">Нужно право «📊 Статистика» в «👥 Роли и доступы»</p></div><div class="card acc" style="display:flex; flex-direction:column; gap:14px"><p style="font-size:64px; font-weight:800; color:#F48924; line-height:1">3</p><h3 class="h3">«🎪 Статистика форума»</h3><p class="t">Ссылка на главной дашборда</p></div></div><div class="pts" style="margin-top:0; gap:6px; font-size:0.82em"><p class="pt">Приход по дням, часам и городам + стойки</p><p class="pt">Сессии: заполненность и оценки</p><p class="pt">После форума: опрос, перенос в Москву, «Юлид в цифрах»</p><p class="pt">SOS: сколько, сколько решено, за сколько взяли</p><p class="pt">Письма с решением: доставлено / не доставлено</p></div><p class="note">Только общие цифры — без имён и текстов. Менеджер с привязкой к городу видит только свой город. Выгрузка в файл — в боте, кнопка «📥 Выгрузить CSV».</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">19 / 36 · Дашборд: статистика форума</div>
+    <p class="aside"><b>Что говорить.</b> Для отчёта ОК после форума не нужно собирать цифры руками: всё уже на дашборде, по городам и дням.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-venue-log" data-id="venue-log">
+  <div class="frame"><div class="stage"><section id="venue-log" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Исправление ошибок</p><h2 class="h2">Журнал и снятие ошибочной отметки</h2><p class="lead">«✅ Отметки на форуме» → «📓 Журнал площадки»</p></div><div class="pts"><p class="pt">Кто сканировал, кто отменял, кто грузил файлы — всё записано</p><p class="pt">«👤 Фильтр по волонтёру» — действия одного человека</p><p class="pt o">«🗑 Снять отметку делегату»: фамилия → отметка → подтверждение</p><p class="pt">Бот заранее пишет, что изменится. Запись о снятии остаётся в журнале</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_venue_log.png" alt="«📓 Журнал площадки»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>«📓 Журнал площадки»</span><small>shots/bot_venue_log.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">20 / 36 · Журнал и снятие ошибочной отметки</div>
+    <p class="aside"><b>Что говорить.</b> Отсканировали не того или не тот зал — снимаем ровно одну отметку. Снятие входа не трогает сессии этого дня, их снимают отдельно.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_venue_log.png</p>
+  </div>
+</article>
+<article class="unit" id="u-sos" data-id="sos">
+  <div class="frame"><div class="stage"><section id="sos" data-transition="fade" class="sl scr-sl">
+<div class="col" style="width:620px; flex:none"><div class="hd"><p class="kick">SOS</p><h2 class="h2">SOS: одно нажатие</h2></div><div class="pts"><p class="pt">Категорий нет — скорость важнее</p><p class="pt">Делегат может дописать текст, фото или геопозицию — всё в ту же карточку</p><p class="pt">Ответ реплаем на карточку уходит делегату</p><p class="pt o">Никто не взял за 5 минут — сигнал в чат и лично менеджерам</p></div></div><div style="flex:none"><svg viewBox="0 0 500 708" width="500" height="708" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><rect x="0" y="0" width="500" height="150" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="250.0" y="65" text-anchor="middle" font-size="30" font-weight="400" fill="#52565E">Делегат жмёт</text><text x="250.0" y="104" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">«🆘 SOS»</text><line x1="250" y1="154" x2="250.0" y2="166.0" stroke="#F48924" stroke-width="4" stroke-linecap="round"/><polygon points="250,182 242.0,166.0 258.0,166.0" fill="#F48924"/><rect x="0" y="186" width="500" height="150" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="250.0" y="251" text-anchor="middle" font-size="30" font-weight="400" fill="#52565E">Карточка в чат</text><text x="250.0" y="290" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">«🆘 СРОЧНО»</text><line x1="250" y1="340" x2="250.0" y2="352.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="250,368 242.0,352.0 258.0,352.0" fill="#8A93A3"/><rect x="0" y="372" width="500" height="150" rx="14" fill="#E8F3FE" stroke="#037EF3" stroke-width="3"/><text x="250.0" y="437" text-anchor="middle" font-size="30" font-weight="400" fill="#52565E">Орг жмёт</text><text x="250.0" y="476" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">«🙋 Беру»</text><line x1="250" y1="526" x2="250.0" y2="538.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="250,554 242.0,538.0 258.0,538.0" fill="#8A93A3"/><rect x="0" y="558" width="500" height="150" rx="14" fill="#E6F6EC" stroke="#2E9E5B" stroke-width="3"/><text x="250.0" y="623" text-anchor="middle" font-size="30" font-weight="400" fill="#52565E">После помощи</text><text x="250.0" y="662" text-anchor="middle" font-size="32" font-weight="800" fill="#1C1C1C">«✅ Решено»</text></svg></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:320px; height:693px"><img src="shots/bot_sos_card.png" alt="карточка SOS в чате оргов" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>карточка SOS в чате оргов</span><small>shots/bot_sos_card.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">21 / 36 · SOS: одно нажатие</div>
+    <p class="aside"><b>Что говорить.</b> Для работы SOS чат оргов города должен быть привязан: «🆘 SOS» → «🔗 Привязать чат SOS». Не удаляйте бота из этого чата — SOS перестанет доходить.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_sos_card.png</p>
+  </div>
+</article>
+<article class="unit" id="u-important" data-id="important">
+  <div class="frame"><div class="stage"><section id="important" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Рассылки</p><h2 class="h2">«❗ Важное» и «🔕 Не присылать сегодня»</h2></div>
+<div style="display:flex; gap:32px">
+  <div class="card acc" style="flex:1; display:flex; flex-direction:column; gap:18px">
+    <p class="kick" style="color:#B85A0A">Менеджер</p>
+    <h3 class="h3">«❗ Отметить как важное»</h3>
+    <p class="t">Тумблер на экране подтверждения любой рассылки.</p>
+    <p class="t">Сверху сообщения — «❗ Важно».</p>
+    <p class="t"><b>Доходит всем</b>, даже тем, кто нажал «🔕».</p>
+  </div>
+  <div class="card blue" style="flex:1; display:flex; flex-direction:column; gap:18px">
+    <p class="kick">Делегат</p>
+    <h3 class="h3">«🔕 Не присылать сегодня»</h3>
+    <p class="t">Кнопка под обычной рассылкой, весь сезон.</p>
+    <p class="t">Обычные рассылки молчат до конца дня.</p>
+    <p class="t">Передумал — «🔔 Присылать всё».</p>
+  </div>
+</div>
+<p class="note">Не ставьте «❗ Важное» на рутину. Иначе делегаты привыкнут и пропустят то, что действительно важно.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">22 / 36 · «❗ Важное» и «🔕 Не присылать сегодня»</div>
+    <p class="aside"><b>Что говорить.</b> Две кнопки уравновешивают друг друга: делегат может выключить шум, а мы всё равно достучимся с важным. В отчёте рассылки видно, скольким не отправили из-за «🔕».</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-noshow-msg" data-id="noshow-msg">
+  <div class="frame"><div class="stage"><section id="noshow-msg" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">День форума</p><h2 class="h2">📨 Написать не пришедшим</h2><p class="lead">«✅ Отметки на форуме» → «📨 Написать не пришедшим»</p></div><svg viewBox="0 0 1664 172" width="1664" height="172" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><rect x="0" y="0" width="370" height="170" rx="14" fill="#FFF4D6" stroke="#E0A800" stroke-width="3"/><text x="185.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Все файлы</text><text x="185.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">сканера загружены?</text><line x1="374" y1="85" x2="411.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="427,85 411.0,93.0 411.0,77.0" fill="#8A93A3"/><rect x="431" y="0" width="370" height="170" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="616.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">«📨 Написать</text><text x="616.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">не пришедшим»</text><line x1="805" y1="85" x2="842.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="858,85 842.0,93.0 842.0,77.0" fill="#8A93A3"/><rect x="862" y="0" width="370" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1047.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Бот считает</text><text x="1047.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">в момент отправки</text><line x1="1236" y1="85" x2="1273.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="1289,85 1273.0,93.0 1273.0,77.0" fill="#8A93A3"/><rect x="1293" y="0" width="370" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="1478.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Уходит тем, кто</text><text x="1478.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">не отмечен сегодня</text></svg><div style="display:flex; gap:32px"><div class="card" style="flex:1"><p class="t" style="font-size:30px">Бот покажет, скольким уйдёт, и спросит «Отправить?»</p></div><div class="card acc" style="flex:1"><p class="t" style="font-size:30px; color:#1C1C1C"><b>Сначала загрузите все файлы сканера.</b> Иначе «мы тебя не видим» получит тот, кто уже пришёл.</p></div></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">23 / 36 · Написать не пришедшим</div>
+    <p class="aside"><b>Что говорить.</b> Тон сообщения заботливый: «не видим тебя, всё хорошо?». Кто уже получил этот вопрос сегодня, повторно его не получит.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-day-report" data-id="day-report">
+  <div class="frame"><div class="stage"><section id="day-report" data-transition="fade" class="sl scr-sl">
+<div class="col" style="width:760px; flex:none"><div class="hd"><p class="kick">Вечер</p><h2 class="h2">Отчёт дня приходит сам</h2><p class="lead">«🎪 Форум: функции» → «📊 Настройки отчёта дня форума»</p></div><div class="pts"><p class="pt">Каждый вечер дня форума, по умолчанию в 21:00</p><p class="pt">В чат оргов города и лично менеджерам</p><p class="pt">«📊 Отчёт дня сейчас» — собрать прямо сейчас</p><p class="pt o">«📥 Выгрузить отметки (CSV)» — все отметки дня файлом</p></div></div><div class="card" style="flex:1; display:flex; flex-direction:column; gap:14px; padding:40px 44px; border-left:6px solid #037EF3"><p style="font-size:34px; font-weight:800; line-height:1.35">📊 Отчёт дня форума</p><p style="font-size:30px; font-weight:400; line-height:1.35">Пришли 412 из 480 одобренных</p><p style="font-size:30px; font-weight:400; line-height:1.35">Пик прихода: 09:00–09:59</p><p style="font-size:30px; font-weight:400; line-height:1.35">Топ-3 и антитоп-3 сессий</p><p style="font-size:30px; font-weight:400; line-height:1.35">Ответы «не пришёл»</p><p style="font-size:30px; font-weight:400; line-height:1.35">SOS: решено, время до «Беру»</p><p style="font-size:24px; color:#52565E; margin-top:10px">Числа для примера</p></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">24 / 36 · Отчёт дня приходит сам</div>
+    <p class="aside"><b>Что говорить.</b> По умолчанию выключено — включите заранее. Строка попадает в отчёт, только если по ней есть данные.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-noshow-poll" data-id="noshow-poll">
+  <div class="frame"><div class="stage"><section id="noshow-poll" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">После форума</p><h2 class="h2">Опрос: почему не пришёл</h2><p class="lead">«🎪 Форум: функции» → «❓ Настройки опроса неявившихся»</p></div>
+<div style="display:flex; gap:48px; align-items:flex-start">
+  <div class="card" style="width:900px; display:flex; flex-direction:column; gap:24px; padding:40px">
+    <p style="font-size:32px; line-height:1.4">Мы не видели тебя на форуме. Расскажешь, что помешало прийти?</p>
+    <div class="tgs"><p class="tg">Передумал(а)</p><p class="tg">Не смог(ла) по учёбе/работе</p><p class="tg">Далеко ехать</p><p class="tg">Забыл(а)</p><p class="tg">Другое</p></div>
+  </div>
+  <div style="flex:1"><div class="pts"><p class="pt">На следующий день после форума, в 12:00</p><p class="pt">Только одобренным без отметки входа</p><p class="pt o">Регионам с офлайн-сканером — сначала загрузить файлы</p></div></div>
+</div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">25 / 36 · Почему не пришёл</div>
+    <p class="aside"><b>Что говорить.</b> Один вопрос, пять кнопок — отвечают охотно. Ответы попадут в отчёт дня и помогут в следующем наборе.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-move" data-id="move">
+  <div class="frame"><div class="stage"><section id="move" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">После форума</p><h2 class="h2">Не доехал в регион — предложим Москву</h2><p class="lead">«🎪 Форум: функции» → «🚌 Настройки переноса в Москву»</p></div><svg viewBox="0 0 1664 172" width="1664" height="172" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><rect x="0" y="0" width="370" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="185.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Региональный</text><text x="185.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">форум 3.10</text><line x1="374" y1="85" x2="411.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="427,85 411.0,93.0 411.0,77.0" fill="#8A93A3"/><rect x="431" y="0" width="370" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="616.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Делегат</text><text x="616.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">не пришёл</text><line x1="805" y1="85" x2="842.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="858,85 842.0,93.0 842.0,77.0" fill="#8A93A3"/><rect x="862" y="0" width="370" height="170" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="1047.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">На следующий день</text><text x="1047.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">предложение в 12:00</text><line x1="1236" y1="85" x2="1273.0" y2="85.0" stroke="#F48924" stroke-width="4" stroke-linecap="round"/><polygon points="1289,85 1273.0,93.0 1273.0,77.0" fill="#F48924"/><rect x="1293" y="0" width="370" height="170" rx="14" fill="#E8F3FE" stroke="#037EF3" stroke-width="3"/><text x="1478.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">«✅ Перенести заявку:</text><text x="1478.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Москва»</text></svg>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+  <div class="card"><h3 class="h3">Кому не шлём</h3><p class="t">Кто ответил «Передумал(а)» или «Не смог(ла) по учёбе/работе»</p></div>
+  <div class="card"><h3 class="h3">Статус</h3><p class="t">Кнопкой: «Сохранить одобрение» или «Вернуть на модерацию»</p></div>
+  <div class="card blue"><h3 class="h3">Менеджер Москвы</h3><p class="t">Раз в 30 минут сводка: сколько перенеслось и откуда</p></div>
+</div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">26 / 36 · Перенос регионов в Москву</div>
+    <p class="aside"><b>Что говорить.</b> Делегат решает сам одной кнопкой, анкету заново не заполняет. Это массовое предложение; перенести одного человека вручную можно через /find.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-stats-card" data-id="stats-card">
+  <div class="frame"><div class="stage"><section id="stats-card" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">После форума</p><h2 class="h2">«Юлид в цифрах»</h2><p class="lead">«🎪 Форум: функции» → «📊 Настройки карточки «Юлид в цифрах»»</p></div><div class="pts"><p class="pt">Личная картинка: дни на форуме, сессии, любимый зал, монеты</p><p class="pt">«👁 Превью себе» — посмотреть до рассылки</p><p class="pt">Кому: «пришедшим хотя бы раз» или «всем одобренным»</p><p class="pt o">Сама не уходит — только по кнопке менеджера</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_stats_card.png" alt="карточка «Юлид в цифрах»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>карточка «Юлид в цифрах»</span><small>shots/bot_stats_card.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">27 / 36 · «Юлид в цифрах»</div>
+    <p class="aside"><b>Что говорить.</b> Повод поделиться в сторис. Фон можно загрузить свой, без него будет фирменный однотонный.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_stats_card.png</p>
+  </div>
+</article>
+<article class="unit" id="u-find" data-id="find">
+  <div class="frame"><div class="stage"><section id="find" data-transition="fade" class="sl scr-sl">
+<div class="col" style="flex:1"><div class="hd"><p class="kick">Один делегат</p><h2 class="h2">Карточка делегата: /find</h2><p class="lead">Напишите боту /find @username — откроется карточка с кнопками</p></div><div class="acts"><div class="act"><span class="b">🏙 Перевести в город</span><span class="t">строка в таблице переедет, трек не меняется</span></div><div class="act"><span class="b">↩️ Вернуть в ожидание</span><span class="t">снова на модерацию, QR перестанет пускать</span></div><div class="act"><span class="b">🔁 Разрешить повторную подачу</span><span class="t">один раз, после отказа</span></div><div class="act"><span class="b">✏️ Открыть правку после решения</span><span class="t">одна правка одобренной анкеты</span></div><div class="act"><span class="b">🧹 Сбросить зависшую анкету</span><span class="t">если застрял посреди анкеты</span></div><div class="act"><span class="b">📎 Заменить резюме</span><span class="t">прислать новый файл, ссылка обновится</span></div><div class="act"><span class="b">🔄 Перевыпустить QR</span><span class="t">старый QR перестанет работать</span></div></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:330px; height:714px"><img src="shots/bot_find_card.png" alt="карточка делегата /find" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>карточка делегата /find</span><small>shots/bot_find_card.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">28 / 36 · Карточка делегата: /find</div>
+    <p class="aside"><b>Что говорить.</b> Каждое действие сначала показывает, что именно изменится, и только потом делает. Кнопки появляются только те, что подходят к статусу заявки.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_find_card.png</p>
+  </div>
+</article>
+<article class="unit" id="u-reconcile" data-id="reconcile">
+  <div class="frame"><div class="stage"><section id="reconcile" data-transition="fade" class="sl scr-sl">
+<div class="col"><div class="hd"><p class="kick">Таблица</p><h2 class="h2">🔍 Сверить с БД</h2><p class="lead">Админка → «📊 Данные» → «🔍 Сверить с БД»</p></div><div class="pts"><p class="pt">Ищет расхождения между ботом и Google-таблицей. Сама ничего не меняет</p><p class="pt">«➕ Дописать недостающие строки», «🔄 Выправить статусы»</p><p class="pt o">«📨 Переотправить решения» — кому не дошло одобрение или отказ</p><p class="pt">«📥 Полный список (CSV)» — всегда</p></div></div><div class="phones"><figure class="ph-wrap"><div class="phone"><div class="scr" style="width:360px; height:779px"><img src="shots/bot_reconcile.png" alt="отчёт «🔍 Сверить с БД»" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="stub"><span>скриншот:<br>отчёт «🔍 Сверить с БД»</span><small>shots/bot_reconcile.png</small></div></div></div></figure></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">29 / 36 · 🔍 Сверить с БД</div>
+    <p class="aside"><b>Что говорить.</b> «Меня нет в списке» чаще всего значит «строка не на своей вкладке» или потерянная строка. Сверка найдёт, кнопки поправят.</p>
+    <p class="aside"><b>Скриншоты:</b> shots/bot_reconcile.png</p>
+  </div>
+</article>
+<article class="unit" id="u-offline" data-id="offline">
+  <div class="frame"><div class="stage"><section id="offline" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Если что-то пошло не так</p><h2 class="h2">Нет сети: запасной путь</h2></div><svg viewBox="0 0 1664 172" width="1664" height="172" font-family="'Nunito Sans', Arial, sans-serif" role="img" aria-hidden="true" style="display:block; overflow:visible"><rect x="0" y="0" width="296" height="170" rx="14" fill="#FDEBEC" stroke="#D6454A" stroke-width="3"/><text x="148.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Нет сети</text><text x="148.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">на стойке</text><line x1="300" y1="85" x2="322.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="338,85 322.0,93.0 322.0,77.0" fill="#8A93A3"/><rect x="342" y="0" width="296" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="490.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Приложение-</text><text x="490.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">сканер без сети</text><line x1="642" y1="85" x2="664.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="680,85 664.0,93.0 664.0,77.0" fill="#8A93A3"/><rect x="684" y="0" width="296" height="170" rx="14" fill="#FFFFFF" stroke="#C9CFD9" stroke-width="2"/><text x="832.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Выгрузить</text><text x="832.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">историю в CSV</text><line x1="984" y1="85" x2="1006.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="1022,85 1006.0,93.0 1006.0,77.0" fill="#8A93A3"/><rect x="1026" y="0" width="296" height="170" rx="14" fill="#FFF6EC" stroke="#F48924" stroke-width="3"/><text x="1174.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">«📤 Загрузить</text><text x="1174.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">файл сканера»</text><line x1="1326" y1="85" x2="1348.0" y2="85.0" stroke="#8A93A3" stroke-width="4" stroke-linecap="round"/><polygon points="1364,85 1348.0,93.0 1348.0,77.0" fill="#8A93A3"/><rect x="1368" y="0" width="296" height="170" rx="14" fill="#E6F6EC" stroke="#2E9E5B" stroke-width="3"/><text x="1516.0" y="76" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">Выбрать точку,</text><text x="1516.0" y="114" text-anchor="middle" font-size="30" font-weight="800" fill="#1C1C1C">получить отчёт</text></svg>
+<div style="display:flex; gap:32px">
+  <div class="card" style="flex:1"><h3 class="h3">Заранее</h3><p class="t">Проверить приложение кнопкой «🧪 Проверить приложение-сканер»: читает ли оно время скана</p></div>
+  <div class="card" style="flex:1"><h3 class="h3">Человека с QR</h3><p class="t">пропускаем: QR есть только у одобренных</p></div>
+  <div class="card acc" style="flex:1"><h3 class="h3">И телефон сел</h3><p class="t">Пропустить, записать от руки фамилию, город, @юзернейм. Потом отметить через поиск</p></div>
+</div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">30 / 36 · Если нет сети</div>
+    <p class="aside"><b>Что говорить.</b> Сервер бота стоит не на площадке и работает всё время, связи нет только у телефонов. Поэтому ничего не теряется: отметки догоняют после загрузки файла.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-trouble" data-id="trouble">
+  <div class="frame"><div class="stage"><section id="trouble" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Если что-то пошло не так</p><h2 class="h2">Что делать, если…</h2></div><table class="tbl"><tr><th style="width:38%">Случилось</th><th>Что делать</th></tr><tr><td style="font-weight:800">Делегата нет в базе или не одобрен</td><td>Красная плашка. Отправить на стойку проблемных, там решают</td></tr><tr><td style="font-weight:800">Отсканировали не того</td><td>«↩️ Отменить» за 10 секунд или «🗑 Снять отметку делегату» в журнале</td></tr><tr><td style="font-weight:800">SOS не доходит до оргов</td><td>Проверить «🚦 Готовность к форуму», строка «Чат SOS». Бот должен быть в чате</td></tr><tr><td style="font-weight:800">Таблица отстаёт от бота</td><td>«🔍 Сверить с БД» → «➕ Дописать недостающие строки»</td></tr><tr><td style="font-weight:800">Не может открыть QR</td><td>Одобрен ли? Включён ли вход по QR? Если да — «🔄 Перевыпустить QR» в /find</td></tr><tr><td style="font-weight:800">Файл загрузили, отметок нет</td><td>Волонтёр привязан к другому городу — загрузить от своего волонтёра</td></tr></table>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">31 / 36 · Если что-то пошло не так</div>
+    <p class="aside"><b>Что говорить.</b> Держите этот слайд открытым на стойке менеджера. Почти любая проблема решается одной кнопкой из этого списка.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-dxp-urgent" data-id="dxp-urgent">
+  <div class="frame"><div class="stage"><section id="dxp-urgent" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Вопросы к DXP · до 28.09</p><h2 class="h2">Нужно к регионам 03.10</h2></div><table class="tbl"><tr><th>Вопрос</th><th>Варианты / что нужно</th></tr><tr><td style="font-weight:800; width:34%">1. Кого пускаем без регистрации?</td><td>а) не пускаем · б) на стойку проблемных, решает старший · в) пускаем всех, отмечаем потом. Кто решает на месте?</td></tr><tr><td style="font-weight:800; width:34%">2. Сколько сессий идёт параллельно?</td><td>По СПб, Тюмени, Москве. На каждый зал в слоте — волонтёр со сканером</td></tr><tr><td style="font-weight:800; width:34%">3. На сессиях — дверь или обход?</td><td>Сканируем на входе в зал или ходим по рядам</td></tr><tr><td style="font-weight:800; width:34%">4. Волонтёры по ссылке</td><td>Кто создаёт ссылку, на какой срок, сколько человек на ссылку</td></tr><tr><td style="font-weight:800; width:34%">5. Чат SOS в каждом городе</td><td>Какая группа, кто дежурит и отвечает. Бота — админом в группу</td></tr><tr><td style="font-weight:800; width:34%">6. Интернет на стойках</td><td>Есть ли Wi-Fi / мобильная сеть на входе; кто прогоняет приложение-сканер офлайн до 01.10</td></tr></table>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">32 / 36 · Вопросы к DXP — срочно</div>
+    <p class="aside"><b>Что говорить.</b> Без ответа на первый вопрос волонтёр не знает, что делать с красной плашкой. Остальное определяет, сколько людей и какие чаты нужны в день форума.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-dxp-moscow" data-id="dxp-moscow">
+  <div class="frame"><div class="stage"><section id="dxp-moscow" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Вопросы к DXP · до 10.10</p><h2 class="h2">Нужно к Москве 30–31.10</h2></div><table class="tbl" style="font-size:22px"><tr><th>Вопрос</th><th>Варианты / что нужно</th></tr><tr><td style="font-weight:800; width:34%">7. Партнёры, спикеры, волонтёры на входе</td><td>а) список → гостевой QR с типом · б) через стойку проблемных без QR</td></tr><tr><td style="font-weight:800; width:34%">8. Монеты за посещение</td><td>Даём ли, сколько, автоматически или заданием</td></tr><tr><td style="font-weight:800; width:34%">9. Зачем отмечаем сессии</td><td>Только отзывы и статистика · + сертификат (X% сессий) · + монеты</td></tr><tr><td style="font-weight:800; width:34%">10. Опрос после форума</td><td>Общий или свой на форум; отдельный для вечеринки; анонимный или нет</td></tr><tr><td style="font-weight:800; width:34%">11. Регионы → Москва</td><td>Предлагаем? Остаются одобренными или на модерацию; есть ли квота мест и доплата; кто в Москве получает сводку</td></tr><tr><td style="font-weight:800; width:34%">12. Баллы за чат</td><td>«+5 ответом в чате» · конкурсы заданиями · авто для самых активных · из таблички; показывать баланс сразу или до форума</td></tr><tr><td style="font-weight:800; width:34%">13. «Юлид в цифрах»</td><td>Фон карточки (фото/бренд), кому рассылаем: пришедшим хотя бы раз или всем одобренным</td></tr><tr><td style="font-weight:800; width:34%">14. Тестовый прогон с ОК</td><td>2–3 человека на 30–40 минут до 01.10 — кто и когда</td></tr><tr><td style="font-weight:800; width:34%">15. Мелочи карточки и прав</td><td>Английская карточка — «Юлид» кириллицей ок? · Названия сезонов для строки «С нами с» · Фон один или по городам · «📨 Переотправить решения» — только с правом настроек или и модераторам заявок</td></tr></table>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">33 / 36 · Вопросы к DXP — к Москве</div>
+    <p class="aside"><b>Что говорить.</b> Технически бот всё это умеет или сделает за день — нужно только правило. Гостевые QR уже подготовлены в коде, ждут ответа на вопрос 7.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-design-1" data-id="design-1">
+  <div class="frame"><div class="stage"><section id="design-1" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">ТЗ дизайнеру · 1 из 2</p><h2 class="h2">Картинки для бота и приложения</h2></div><table class="tbl"><tr><th>Что</th><th>Требования</th><th>Срок</th></tr><tr><td style="font-weight:800; width:30%">1. Фон «Твой Юлид в цифрах»</td><td>1080×1350, PNG/JPG, один на все города, без текста. Верх ~250 px и низ ~200 px — спокойные (заголовок, имя, футер). Середина — без мелкого рисунка: там крупная оранжевая цифра и плашки. Бот сам затемняет фото</td><td style="width:14%; font-weight:800; color:#F48924">до 01.10</td></tr><tr><td style="font-weight:800; width:30%">2. Логотип</td><td>Квадрат от 512×512, PNG с прозрачностью, читается на синем. Идёт в приложение и в футер карточки</td><td style="width:14%; font-weight:800; color:#F48924">до 01.10</td></tr><tr><td style="font-weight:800; width:30%">3. Фото программы — по городу</td><td>СПб, Тюмень, Москва. Вертикально 1080×1350 или 1080×1920. Крупный текст — читается с телефона без увеличения: даты, залы, время</td><td style="width:14%; font-weight:800; color:#F48924">до 01.10</td></tr></table><p class="note">Бренд: синий #037EF3, оранжевый #F48924, шрифты как в этой презентации. «Юлид» и «АЙСЕК» — только кириллицей.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">34 / 36 · ТЗ дизайнеру — картинки бота</div>
+    <p class="aside"><b>Что говорить.</b> Три картинки, без которых бот работает, но выглядит заглушкой: фон карточки итогов, логотип и фото программы по городам.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-design-2" data-id="design-2">
+  <div class="frame"><div class="stage"><section id="design-2" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">ТЗ дизайнеру · 2 из 2</p><h2 class="h2">Печать для площадки</h2></div><table class="tbl"><tr><th>Что</th><th>Требования</th><th>Срок</th></tr><tr><td style="font-weight:800; width:30%">4. Таблички с QR программы</td><td>A4/A3 на навигацию (не на бейдж). QR от 8 см, подпись «Программа форума в боте». Рядом — никаких других QR, чтобы волонтёры не сканировали не тот</td><td style="width:14%; font-weight:800; color:#F48924">до 01.10</td></tr><tr><td style="font-weight:800; width:30%">5. Учебный лист для волонтёров</td><td>Макет A4 под 5 учебных кодов с подписями: 🟢 одобрен · 🟡 уже был · 🔴 не одобрен · 🔴 прошлый сезон · 🔴 чужое событие. Сами коды генерирует бот</td><td style="width:14%; font-weight:800; color:#F48924">до инструктажа</td></tr><tr><td style="font-weight:800; width:30%">6. Рамка личного QR (по желанию)</td><td>Макет 1080×1080: место под QR от 700 px и поле под имя. Сейчас бот шлёт голый QR с подписью</td><td style="width:14%; font-weight:800; color:#F48924">по желанию</td></tr></table><p class="note">Бренд: синий #037EF3, оранжевый #F48924, шрифты как в этой презентации. «Юлид» и «АЙСЕК» — только кириллицей.</p>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">35 / 36 · ТЗ дизайнеру — печать</div>
+    <p class="aside"><b>Что говорить.</b> Таблички и учебный лист печатаются до форума. Главное правило табличек — один QR в поле зрения, иначе волонтёры сканируют не тот.</p>
+    
+  </div>
+</article>
+<article class="unit" id="u-where" data-id="where">
+  <div class="frame"><div class="stage"><section id="where" data-transition="fade" class="sl">
+<div class="hd"><p class="kick">Шпаргалка</p><h2 class="h2">Где что лежит</h2><p class="lead">Всё начинается с команды /admin → «👮‍♂️ Панель администратора»</p></div><div class="places"><div class="place"><p class="b">📋 Заявки</p><p class="t">«✅ Отметки на форуме», «🎪 Форум: функции», «🆘 SOS», «🧳 Нашли вещь», тумблер «🎟 QR для чек-ина на форуме»</p></div><div class="place"><p class="b">🎪 Событие</p><p class="t">«🗓 Программа форума», дата форума, «🔘 Кнопки меню»</p></div><div class="place"><p class="b">📊 Данные</p><p class="t">«🔍 Сверить с БД», «📨 Переотправить решения»</p></div><div class="place"><p class="b">🔧 Управление</p><p class="t">«👥 Роли и доступы», «🔗 Пригласить волонтёров»</p></div><div class="place"><p class="b">📢 Рассылки</p><p class="t">«❗ Отметить как важное», фильтры «Были на сессии …»</p></div><div class="place"><p class="b">/find @username</p><p class="t">карточка одного делегата</p></div></div>
+</section>
+</div></div>
+  <div class="meta">
+    <div class="num">36 / 36 · Где что лежит</div>
+    <p class="aside"><b>Что говорить.</b> Финальная шпаргалка: сфотографируйте её. Если не помните, где кнопка, — почти всё форумное живёт в «📋 Заявки» → «🎪 Форум: функции».</p>
+    
+  </div>
+</article>
+  <p class="foot">Для печати: Ctrl+P — каждый слайд на отдельной странице 1920×1080, без пояснений.</p>
+</main>
+<script>
+(function () {
+  var stages = document.querySelectorAll('.stage');
+  function fit() {
+    stages.forEach(function (s) {
+      var w = s.parentElement.clientWidth;
+      s.style.transform = 'scale(' + (w / 1920) + ')';
+    });
+  }
+  window.addEventListener('resize', fit);
+  fit();
+})();
+</script>
+</body>
+</html>
