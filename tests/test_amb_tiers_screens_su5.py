@@ -412,15 +412,26 @@ def test_miniapp_ambassador_endpoint_sets_since_once(client):
     assert first != "2026-01-01 00:00:00"
 
 
-def test_offer_body_default_new_text_with_english():
+def test_offer_body_default_unchanged_new_text_only_in_skillup_preset():
+    """Общий дефолт оффера прежний (иначе обещание разбора резюме утекло бы на YL/RT с
+    включённой реф-ссылкой); новый текст пишет только пресет «СкиллАп». Оба с переводом."""
+    import reg_presets
     from services.i18n_miniapp_manual import MANUAL_EN
     from settings_schema import SETTINGS_SCHEMA
 
     entry = SETTINGS_SCHEMA["miniapp_form_ambassador_offer_body_text"]
-    assert entry["default"] == (
+    old = "Каждый, кто зарегистрируется по твоей ссылке, будет засчитан тебе как приглашённый."
+    assert entry["default"] == old
+    assert entry["per_city"] is True
+    new = (
         "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя гарантированный "
         "разбор резюме с рекрутером. Считаем только тех, кто прошёл отбор, так что зови тех, "
         "кому форум правда нужен."
     )
-    assert entry["per_city"] is True
-    assert MANUAL_EN.get(entry["default"])
+    preset_settings = reg_presets.REG_PRESETS["skillup"]["settings"]
+    assert preset_settings["miniapp_form_ambassador_offer_body_text"] == new
+    for key, preset in reg_presets.REG_PRESETS.items():
+        if key != "skillup":
+            assert "miniapp_form_ambassador_offer_body_text" not in preset.get("settings", {})
+    assert MANUAL_EN.get(old)
+    assert MANUAL_EN.get(new)

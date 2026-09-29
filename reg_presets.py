@@ -47,6 +47,12 @@ logger = logging.getLogger(__name__)
 # set_setting. Only "skillup" carries it; the four presets below have no "settings" key and
 # are therefore untouched byte-for-byte by this extension
 # (tests/test_skillup_preset_28.py::test_existing_presets_byte_identical, D-06).
+SKILLUP_AMB_OFFER_BODY_TEXT = (
+    "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя "
+    "гарантированный разбор резюме с рекрутером. Считаем только тех, кто прошёл "
+    "отбор, так что зови тех, кому форум правда нужен."
+)
+
 REG_PRESETS = {
     "forum": {
         "label": "🏛 Форум (Юлид)",
@@ -123,6 +129,10 @@ REG_PRESETS = {
             "reg_multi_max_goal": "2",
             "score_course_from": "3",
             "score_stack_from": "2",
+            # Текст оффера реф-ссылки под ступени амбассадоров СкиллАп: обещает разбор резюме,
+            # поэтому живёт только в пресете — общий дефолт реестра остаётся прежним, иначе
+            # обещание утекло бы на все события с включённой реф-ссылкой.
+            "miniapp_form_ambassador_offer_body_text": SKILLUP_AMB_OFFER_BODY_TEXT,
         },
     },
 }
