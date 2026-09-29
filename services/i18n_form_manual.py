@@ -1063,6 +1063,11 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Ты среди призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}\nСпасибо за работу в этой волне.": "You're among the winners of wave {wave} — {place} place, {points} points!\n{prize}\nThanks for your work in this wave.",
     # 32-FIX-common-2 (хвост IN-09б): экран рейтинга closing-волны без объявленных итогов.
     "Волна закончилась — итоги готовятся.": "The wave has ended — the results are being prepared.",
+    # Ступени амбассадоров СкиллАп (квалифицированная амбассадорка): уведомления о ступенях.
+    "Первый человек по твоей ссылке прошёл отбор. Теперь ты официально амбассадор СкиллАп, сертификат выдадим после форума. До гарантированного разбора резюме осталось {left}.": "The first person you invited has passed selection. You're now an official SkillUp ambassador — we'll give you a certificate after the forum. {left} more to go until your guaranteed resume review.",
+    "Трое твоих прошли отбор. Слот на разбор резюме с рекрутером за тобой, время пришлём ближе к форуму. Следующая ступень на 7: закрытый нетворкинг со спикерами и партнёрами.": "Three of your invitees have passed selection. A resume review slot with a recruiter is yours — we'll send the time closer to the forum. Next level at 7: a closed networking session with speakers and partners.",
+    "Трое твоих прошли отбор, спасибо. Слоты на разбор резюме для амбассадоров уже разобрали, ты в листе ожидания и первым получишь место, если кто-то откажется. Нетворкинг на 7 в силе.": "Three of your invitees have passed selection — thank you! The resume review slots for ambassadors are already taken, so you're on the waiting list and will be the first to get a spot if someone drops out. Networking at 7 still stands.",
+    "Семеро по твоей ссылке прошли отбор. Зовём тебя на закрытый нетворкинг со спикерами и партнёрами 21 ноября, детали напишем в личку.": "Seven people you invited have passed selection. We're inviting you to a closed networking session with speakers and partners on November 21 — we'll send the details in a private message.",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {

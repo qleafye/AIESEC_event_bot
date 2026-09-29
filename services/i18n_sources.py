@@ -125,6 +125,8 @@ _ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
     "game_task_title_prompt", "game_task_photo_prompt", "game_task_preview_intro",
     "game_wizard_preview_title", "game_wizard_publish_btn", "coins_manual_amount_presets",
     "wave_end_manager_text",
+    # Дедлайн ступеней амбассадоров — дата «ГГГГ-ММ-ДД ЧЧ:ММ», не язык: переводить нечего.
+    "amb_count_deadline",
 })
 
 # Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты

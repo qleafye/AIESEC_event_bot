@@ -117,6 +117,8 @@ HTML_SETTINGS = {
     # (wave_rating_header_text несёт <b> в самом дефолте).
     "wave_start_message_text", "wave_deadline_reminder_text", "wave_results_announce_text",
     "wave_results_winner_text", "wave_rating_header_text", "wave_end_manager_text",
+    # Ступени амбассадоров СкиллАп: уведомления уходят с parse_mode="HTML", prompt обещает HTML.
+    "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text", "amb_tier3_text",
 }
 
 

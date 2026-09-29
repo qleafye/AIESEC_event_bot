@@ -1335,6 +1335,38 @@ async def init_db():
             "ON referral_credits(referrer_id, wave_id)"
         )
 
+        # Ступени амбассадоров СкиллАп (квалифицированная амбассадорка): одна строка на
+        # (амбассадор, ступень), пишется `INSERT OR IGNORE` + `rowcount == 1`
+        # (database/amb_tiers_db.py::claim_new_tiers) — повтор «Принять всех», два менеджера,
+        # бот и веб одновременно второй строки не создают. Ступень НЕ снимается никогда, даже
+        # если приглашённому потом отказали. `o2o_status` — только у ступени 2: 'granted' в
+        # пределах квоты, дальше 'waitlist'. `notified_at` ставится ДО отправки уведомления —
+        # повторный разбор события из очереди второго сообщения не шлёт.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS ambassador_tiers (
+                telegram_id INTEGER NOT NULL,
+                tier INTEGER NOT NULL,
+                reached_at TEXT NOT NULL,
+                o2o_status TEXT,
+                notified_at TEXT,
+                PRIMARY KEY (telegram_id, tier)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ambassador_tiers_o2o "
+            "ON ambassador_tiers(tier, o2o_status, reached_at)"
+        )
+        # Ручное исключение приглашённого из зачёта амбассадора (накрутка). Исключённый не
+        # входит ни в один счётчик; уже выданные ступени исключение НЕ удаляет.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS ambassador_exclusions (
+                invitee_id INTEGER PRIMARY KEY,
+                reason TEXT NOT NULL,
+                excluded_by INTEGER,
+                excluded_at TEXT NOT NULL
+            )
+        ''')
+
         # Квик 260916: та же очередь, но для НОВЫХ ЗАЯВОК (режим reg_submit_notify_mode =
         # digest, services/reg_digest.py). Отдельная таблица, а не общая с играми: у сдач
         # свои submission_id/task_id, у заявок их нет, а общая таблица с половиной пустых
@@ -10030,6 +10062,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # invitee_id вдобавок не даёт начислить второй раз, если тот же Telegram-аккаунт
     # зарегистрируется заново — удаление строки открыло бы дублирующее начисление.
     ("referral_credits", "referrer_id", "referral_credits"),
+    # Ступени амбассадора СкиллАп — его личный след (как referral_credits по referrer_id выше),
+    # уходят вместе с ним. ambassador_exclusions по invitee_id не трогаем: это решение
+    # менеджера о чужом зачёте, а не след удаляемого.
+    ("ambassador_tiers", "telegram_id", "referral_credits"),
     # Phase 12 (FORUM-CHECKIN.md): checkins.telegram_id — личная отметка «пришёл» делегата
     # (вход/сессия форума). Тот же журнал делегатского следа, что chat_activity/reg_events
     # выше — уходит вместе с человеком. by_staff_id в той же строке — id волонтёра/менеджера,
