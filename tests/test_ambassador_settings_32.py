@@ -90,6 +90,7 @@ def test_wave_rating_show_names_deliberately_excluded_from_field_order():
 _KNOWN_GAME_GROUP_TOGGLE_EXCEPTIONS = {
     "game_submit_notify_mode",  # Quick 260822 — тумблер, отдельная кнопка
     "wave_rating_show_names",  # Phase 32-02 (D-29) — тумблер, отдельная кнопка
+    "amb_qualified_program",  # тумблер, кнопка на экране «🎓 Ступени амбассадоров»
 }
 
 

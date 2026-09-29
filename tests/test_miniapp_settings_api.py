@@ -57,8 +57,9 @@ def test_editable_keys_are_only_miniapp_toggles():
     # 291bdd2 была пустой заготовкой (см. комментарий модуля выше). Это ожидаемо: тот же
     # тумблер «Показывать имена в рейтинге волны», что и в боевой админке, безопасен для
     # облегчённого экрана Mini App -- его группа "game" уже подписана в GROUP_LABELS.
+    # `amb_qualified_program` (29.09, ступени амбассадоров СкиллАп) -- второй такой тумблер.
     non_section = {k for k in EDITABLE_KEYS if k not in ("miniapp_enabled", "miniapp_staff_only")}
-    assert non_section - {"wave_rating_show_names"} == {
+    assert non_section - {"wave_rating_show_names", "amb_qualified_program"} == {
         k for k in non_section if k.startswith("miniapp_section_")
     }
     # Вне белого списка -- ни оплата, ни роли, ни Sheets, ни произвольный "bot_token".
