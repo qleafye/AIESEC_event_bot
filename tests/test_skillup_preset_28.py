@@ -79,6 +79,11 @@ SKILLUP_SETTINGS = {
     "reg_multi_max_goal": "2",
     "score_course_from": "3",
     "score_stack_from": "2",
+    "miniapp_form_ambassador_offer_body_text": (
+        "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя "
+        "гарантированный разбор резюме с рекрутером. Считаем только тех, кто прошёл "
+        "отбор, так что зови тех, кому форум правда нужен."
+    ),
 }
 
 SCORING_SET_KEYS = {
