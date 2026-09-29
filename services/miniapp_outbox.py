@@ -56,6 +56,11 @@ Telegram или пересобирать таблицу самому — еди�
 - `onsite_approved` -> `services.onsite_reg.after_onsite_approved(bot, telegram_id)` (D-41) —
   человека одобрили у стойки в сканере Mini App: строка листа, сообщение и QR (только ПОСЛЕ
   одобрения, D-02). Каждый шаг fail-soft сам.
+- `amb_tier_reached` -> `services.amb_tiers_notify.deliver_tier_notification(bot, telegram_id,
+  tier, left)` — амбассадор СкиллАп дошёл до новой ступени. Событие ставит
+  `services.amb_tiers.check_tiers` и из бота, и из веб-процесса (одобрение в Mini App после
+  окна отмены); одно событие на старшую из новых ступеней (младшие помечаются сразу). Повтор
+  безопасен: доставка сначала атомарно ставит `notified_at`, второе сообщение не уходит.
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -246,6 +251,14 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         from services.onsite_reg import after_onsite_approved  # ленивый, как checkin выше
 
         await after_onsite_approved(bot, payload.get("telegram_id"))
+        return
+    if kind == "amb_tier_reached":
+        # Ступень амбассадора СкиллАп: одно сообщение на ступень даже при повторной доставке.
+        from services.amb_tiers_notify import deliver_tier_notification  # ленивый, как выше
+
+        await deliver_tier_notification(
+            bot, payload.get("telegram_id"), payload.get("tier"), payload.get("left"),
+        )
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
