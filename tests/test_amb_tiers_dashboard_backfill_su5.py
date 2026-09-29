@@ -231,3 +231,12 @@ def test_cli_apply_refuses_when_program_off(tmp_path, capsys):
     # предпросмотр при выключенной программе работает
     assert tool.main([]) == 0
     assert "выключена" in capsys.readouterr().out
+
+
+def test_block_quota_zero_is_zero_not_default(tmp_path):
+    """Квота 0 = слотов нет — дашборд показывает 0 из 0, как и бот, а не «из 15»."""
+    path = _ready(tmp_path)
+    _run(db.set_setting("amb_o2o_quota", "0"))
+    _fixture()
+    with dash_db.read_conn(path) as conn:
+        assert amb_tiers_block(conn, Scope())["o2o_quota"] == 0

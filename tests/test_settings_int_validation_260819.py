@@ -91,10 +91,13 @@ INT_KEY = "nudge_after_minutes"  # type int, default 120
 
 
 def test_schema_has_no_min_max_fields():
-    """Фиксируем предпосылку валидатора: схема не задаёт min/max — правило «целое >= 0»."""
+    """Фиксируем предпосылку валидатора: правило «целое >= 0»; `max` схема не задаёт, `min`
+    (30.09) — только у порогов ступеней амбассадоров, где 0 бессмыслен («с нуля прошедших»)."""
     assert SETTINGS_SCHEMA[INT_KEY]["type"] == "int"
+    with_min = {key for key, entry in SETTINGS_SCHEMA.items() if "min" in entry}
+    assert with_min == {"amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold"}
     for entry in SETTINGS_SCHEMA.values():
-        assert "min" not in entry and "max" not in entry
+        assert "max" not in entry
 
 
 # ── int: отказ ────────────────────────────────────────────────────────────────────────────────
