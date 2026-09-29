@@ -736,6 +736,17 @@
           {% endif %}
         </div>
 
+        {# Ступени амбассадоров СкиллАп — только при включённой программе, одни агрегаты. #}
+        {% if ambassadors.tiers %}
+        <h3 class="cut-title">Ступени амбассадоров</h3>
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ ambassadors.tiers.active | thousands }}</div><div class="lbl">С прошедшими отбор</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.tiers.qualified_total | thousands }}</div><div class="lbl">Прошли отбор всего</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.tiers.o2o_granted }} / {{ ambassadors.tiers.o2o_quota }}</div><div class="lbl">Разборов резюме выдано</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.tiers.waitlist | thousands }}</div><div class="lbl">В листе ожидания</div></div>
+        </div>
+        {% endif %}
+
         {% if ambassadors.funnel %}
         <h3 class="cut-title">Воронка приглашённых по амбассадору</h3>
         <div class="table-wrap">

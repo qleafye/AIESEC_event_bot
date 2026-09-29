@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import arrival_stats
+from dashboard.amb_tiers_block import amb_tiers_block as _amb_tiers_block
 from dashboard.timeutil import msk_now
 
 
@@ -2179,6 +2180,8 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
         "lifetime": _ambassador_lifetime_top(conn, scope),
         "past_winners": _ambassador_past_winners(conn, scope),
         "tasks": _ambassador_wave_tasks(conn, scope, wave),
+        # Ступени амбассадоров СкиллАп: четыре агрегата, None при выключенной программе.
+        "tiers": _amb_tiers_block(conn, scope),
     }
 
 
