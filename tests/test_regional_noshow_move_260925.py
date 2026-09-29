@@ -18,6 +18,7 @@ import services.scheduler as sched
 import services.regional_noshow_move as rgnm
 import services.city_move as city_move_mod
 from tests._dbtpl import fast_init_db
+from tests._lang_on import enable_delegate_lang
 from tests.test_roles_phase8 import FakeCallback
 
 ADMIN_ID = 925201
@@ -920,7 +921,7 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
     from services.i18n_form_manual import seed
 
     _ready(tmp_path)
-    _run(_set("delegate_lang_enabled", "on"))
+    _run(enable_delegate_lang())
     _run(seed("en"))
     _run(_add_delegate(UID, city="spb"))
     _run(db.set_user_lang(UID, "en"))
