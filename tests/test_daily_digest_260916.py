@@ -9,6 +9,8 @@ pytest-asyncio в проекте нет — async гоняется через as
 """
 import asyncio
 
+import pytest
+
 import cities
 from config import config
 from database import db
@@ -25,9 +27,20 @@ DELEGATE_SPB = 944411
 # «Сегодня» по Москве: `add_coins`/`claim_submission` ставят время сами (`msk_now`), подсунуть
 # им прошлое нельзя — значит и остальные «сегодняшние» строки сеем сегодняшним днём, а
 # «вчерашние» — заведомо прошлой датой.
+#
+# «Сегодня» берётся В НАЧАЛЕ КАЖДОГО ТЕСТА (фикстура ниже), не при импорте: полный прогон
+# собирает файл до полуночи МСК, а гоняет тесты после — модульный DAY оставался вчерашним,
+# а `add_coins`/`claim_submission`/`send_city_digest` жили уже в новом дне.
 DAY = msk_now().strftime("%Y-%m-%d")
 STAMP = f"{DAY} 12:00:00"
 OTHER_DAY_STAMP = "2026-01-15 12:00:00"
+
+
+@pytest.fixture(autouse=True)
+def _today_by_moscow():
+    global DAY, STAMP
+    DAY = msk_now().strftime("%Y-%m-%d")
+    STAMP = f"{DAY} 12:00:00"
 
 
 def _db_ready(tmp_path):
@@ -37,7 +50,8 @@ def _db_ready(tmp_path):
 
 
 def _add_delegate(telegram_id, event_city, full_name, *, status="pending",
-                  registration_date=STAMP):
+                  registration_date=None):
+    registration_date = registration_date or STAMP
     asyncio.run(db.add_user({
         "telegram_id": telegram_id,
         "event_city": event_city,
@@ -47,9 +61,10 @@ def _add_delegate(telegram_id, event_city, full_name, *, status="pending",
     asyncio.run(db.set_user_status(telegram_id, status))
 
 
-def _decide(telegram_id, decision, by, at=STAMP, *, undoable=False):
+def _decide(telegram_id, decision, by, at=None, *, undoable=False):
     """`undoable=True` — живая строка (`effects_sent_at IS NULL`), которую можно отменить:
     ровно так пишет решения веб-путь Mini App."""
+    at = at or STAMP
     return asyncio.run(db.record_application_decision(
         telegram_id, decision, None, by, at, at,
         effects_sent_at=None if undoable else at,
