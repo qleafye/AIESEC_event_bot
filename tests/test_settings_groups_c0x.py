@@ -180,7 +180,7 @@ def test_settings_group_noop_just_answers(tmp_path):
 # does not exist yet, this file will fail to collect with ModuleNotFoundError). See
 # .planning/phases/06-settings-schema-registry/06-01-PLAN.md / 06-CONTEXT.md (D-15/D-16/D-17).
 
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
 from tests._dbtpl import fast_init_db
 
 
@@ -890,7 +890,7 @@ def test_toggle_keys_coverage():
     # it doesn't mention. See reg_engine.MODULE_SWITCH_TOGGLES for the explicit allowlist that
     # replaces this blanket rule.
     from handlers.reg_schema import REG_DEFAULTS
-    from reg_engine import MODULE_SWITCH_TOGGLES
+    from core.reg_engine import MODULE_SWITCH_TOGGLES
 
     toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}
     assert set(REG_DEFAULTS.keys()) <= toggle_keys_in_schema, (

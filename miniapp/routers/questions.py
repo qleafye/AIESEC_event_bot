@@ -34,7 +34,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, normalize_city
+from core.cities import cities_module_on, city_label, normalize_city
 from database.db import (
     claim_question,
     count_questions_by_status,
@@ -45,7 +45,7 @@ from database.db import (
 )
 from services import applications, quiet_hours
 from services.questions import FILTER_LABELS, STATUSES, format_stamp, is_stuck, question_status, status_label
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, require_cap, require_section

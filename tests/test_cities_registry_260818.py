@@ -15,7 +15,7 @@ import pathlib
 
 from config import config
 from database import db
-import cities
+from core import cities
 
 
 def _db_ready(tmp_path):
@@ -129,6 +129,7 @@ def test_db_py_never_imports_cities_module():
     src = pathlib.Path(__file__).resolve().parents[1].joinpath("database", "db.py").read_text(encoding="utf-8")
     assert "import cities" not in src
     assert "from cities" not in src
+    assert "core.cities" not in src
 
 
 # ── Task 2: cache, seed-from-.env, reload with in-place mutation, code generator ────────────
@@ -351,7 +352,7 @@ def test_no_module_besides_cities_reads_config_EVENT_CITIES():
     name "EVENT_CITIES" as historical context from Phase 07.1/07.2 -- those are not reads and
     are not this plan's regression to fix."""
     root = pathlib.Path(__file__).resolve().parents[1]
-    allowed = {root / "cities.py"}
+    allowed = {root / "core" / "cities.py"}
     offenders = []
     for path in root.rglob("*.py"):
         parts = path.relative_to(root).parts

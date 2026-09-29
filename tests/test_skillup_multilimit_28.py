@@ -11,7 +11,7 @@ import pytest
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 

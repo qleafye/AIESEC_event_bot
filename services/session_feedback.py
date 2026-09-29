@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city
+from core.cities import get_setting_typed_for_city
 from database.db import (
     create_session_feedback_prompt,
     get_program_session,
@@ -35,7 +35,7 @@ from database.db import (
     set_session_feedback_comment,
     set_session_feedback_rating,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

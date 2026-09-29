@@ -20,8 +20,8 @@ import hashlib
 import logging
 
 from database import db
-from i18n_ui_en import UI_EN
-from settings_schema import get_setting_typed
+from core.i18n_ui_en import UI_EN
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,7 @@ async def tr_setting(key: str, lang: str, tr_map: dict[str, str]) -> str | None:
     FAQ, обзор). Ленивый импорт `settings_schema` — тот же приём, что уже использует
     `database/db.py::_maybe_enqueue_translation`, ради разрыва цикла (`settings_schema`
     импортирует `database.db` на уровне модуля)."""
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
 
     value = await get_setting_typed(key)
     return tr(value, lang, tr_map) if value else value
@@ -169,7 +169,7 @@ async def tr_setting_for_city(
     """То же самое, что `tr_setting`, но для городского оверрайда
     (`cities.get_setting_typed_for_city`) — хаб и экран статуса читают событийные тексты
     по городу делегата."""
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
 
     value = await get_setting_typed_for_city(key, city)
     return tr(value, lang, tr_map) if value else value

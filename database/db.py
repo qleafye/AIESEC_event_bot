@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta
 
 import aiosqlite
-import reg_options
+from core import reg_options
 from config import config
 from services.timeutil import msk_now, process_clock_is_utc
 
@@ -2462,7 +2462,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
         if not value:
             return
 
-        from settings_schema import get_setting_typed
+        from core.settings_schema import get_setting_typed
 
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return
@@ -9369,7 +9369,7 @@ async def _maybe_enqueue_city_label_translation(label: str, *, origin_key: str) 
     try:
         if not label:
             return
-        from settings_schema import get_setting_typed
+        from core.settings_schema import get_setting_typed
 
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return

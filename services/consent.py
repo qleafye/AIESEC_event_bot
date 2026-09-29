@@ -13,7 +13,7 @@ import html
 import logging
 
 from database.db import current_consent_version, get_user_consent_versions
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

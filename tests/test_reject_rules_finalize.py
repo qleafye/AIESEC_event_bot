@@ -12,7 +12,7 @@ import json
 
 from config import config
 from database import db
-import reg_engine
+from core import reg_engine
 from services import reg_finalize as rf
 import services.reject_rules as reject_rules_mod
 from handlers import registration as reg_mod

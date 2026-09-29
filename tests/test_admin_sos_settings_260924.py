@@ -16,7 +16,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
+from core import cities
 from config import config
 from database import db
 from handlers import admin_sos
@@ -335,8 +335,8 @@ def test_forum_length_sits_next_to_forum_date():
     """Подпись по смыслу (длина форума, не «SOS»), подсказка с примерами, место — сразу под
     датой начала форума на экране «🎪 Событие/Медиа»."""
     from handlers.admin_settings import _settings_group_keys
-    from settings_schema import SETTINGS_SCHEMA
-    from settings_synonyms import SETTINGS_SYNONYMS
+    from core.settings_schema import SETTINGS_SCHEMA
+    from core.settings_synonyms import SETTINGS_SYNONYMS
 
     spec = SETTINGS_SCHEMA["sos_active_days"]
     assert spec["label"] == "🗓 Сколько дней идёт форум"

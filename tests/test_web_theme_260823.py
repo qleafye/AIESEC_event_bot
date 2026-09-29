@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import web_theme
+from core import web_theme
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -347,7 +347,7 @@ def test_import_web_theme_does_not_load_aiogram():
     env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONIOENCODING"] = "utf-8"
     snippet = (
-        "import web_theme\nimport sys\n"
+        "from core import web_theme\nimport sys\n"
         "print(sorted(m for m in sys.modules if m == 'aiogram' or m.startswith('aiogram.')))"
     )
     proc = subprocess.run(

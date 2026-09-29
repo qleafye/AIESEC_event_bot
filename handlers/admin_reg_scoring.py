@@ -27,10 +27,10 @@ from __future__ import annotations
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import reg_engine
-from moderation_card import EMPTY_SENTINEL
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core import reg_engine
+from core.moderation_card import EMPTY_SENTINEL
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 # (ключ реестра, step_key анкеты, заголовок группы на экране, вес в формуле ТЗ §3.6 — только

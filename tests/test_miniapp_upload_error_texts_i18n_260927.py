@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 from services.i18n_miniapp_manual import MANUAL_EN
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments
 from tests.test_miniapp_submissions import DELEGATE_ID, client  # noqa: F401 — фикстура client

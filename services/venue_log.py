@@ -161,7 +161,7 @@ async def point_label(point: str | None) -> str:
 
 
 def _city_of(user: dict | None) -> str | None:
-    import cities as _cities  # ленивый импорт — тот же приём, что services.checkin
+    from core import cities as _cities  # ленивый импорт — тот же приём, что services.checkin
 
     return _cities.normalize_city((user or {}).get("event_city"))
 

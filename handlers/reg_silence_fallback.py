@@ -33,7 +33,7 @@ from handlers.admin_caps import resolve_capabilities
 from handlers.reg_resume import offer_resume
 from handlers.registration import _resumable_draft_for
 from handlers import reg_i18n
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

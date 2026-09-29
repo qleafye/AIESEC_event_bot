@@ -26,7 +26,7 @@ from handlers import admin_reg_config
 from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.admin_caps import role_caps_key, role_enabled_key
 from handlers.reg_schema import REG_FLOW
-import cities
+from core import cities
 from tests._dbtpl import fast_init_db
 
 
@@ -107,7 +107,7 @@ def test_render_questions_text_at_city_header_names_city_and_marks_own_row(tmp_p
     assert spb_label in text.splitlines()[0]
     assert "spb" not in text
 
-    from reg_labels import REG_LABELS
+    from core.reg_labels import REG_LABELS
     age_label = REG_LABELS[SETTING_KEY]
     age_line = [ln for ln in text.splitlines() if age_label in ln][0]
     assert age_line.startswith("❌")
@@ -130,7 +130,7 @@ def test_build_questions_keyboard_at_city_header_no_city_code_in_labels(tmp_path
     kb = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     texts = _kb_texts(kb)
     assert not any("spb" in t for t in texts)
-    from reg_labels import REG_LABELS
+    from core.reg_labels import REG_LABELS
     age_text = [t for t in texts if REG_LABELS[SETTING_KEY] in t][0]
     assert age_text.startswith("❌")
     assert "•" in age_text  # own-value bullet marker
@@ -253,7 +253,7 @@ def test_toggle_short_question_city_explicit_on_off_no_delete(tmp_path, monkeypa
     composed = cities.per_city_key(f"{SETTING_KEY}__short", "spb")
 
     deleted = []
-    from settings_audit import delete_setting_by_admin as real_delete_by_admin
+    from core.settings_audit import delete_setting_by_admin as real_delete_by_admin
 
     async def _tracking_delete(admin_id, key):
         deleted.append(key)

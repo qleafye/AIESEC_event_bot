@@ -22,7 +22,7 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_gamification
 from handlers.admin_caps import required_capability
 from handlers.states import CoinsManual, GameReview
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 

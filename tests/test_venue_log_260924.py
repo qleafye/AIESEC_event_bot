@@ -198,7 +198,7 @@ def test_revoked_session_mark_gets_no_feedback_prompt(tmp_path):
 # ── экран журнала: фильтры и строки ──────────────────────────────────────────────────────────
 
 def test_page_filters_by_city_and_staff(tmp_path):
-    import cities
+    from core import cities
 
     _ready(tmp_path)
     _run(record_arrival(_user(), ENTRY_POINT, source="miniapp", by_staff_id=STAFF, staff_name="Анна"))

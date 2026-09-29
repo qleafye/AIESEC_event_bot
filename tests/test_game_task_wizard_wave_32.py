@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import asyncio
 
-import game_labels
+from core import game_labels
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
+from core import cities
 from config import config
 from database import db
 import services.scheduler as sched

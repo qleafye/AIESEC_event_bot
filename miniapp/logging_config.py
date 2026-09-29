@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from secret_redact import install_log_redaction
+from core.secret_redact import install_log_redaction
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 

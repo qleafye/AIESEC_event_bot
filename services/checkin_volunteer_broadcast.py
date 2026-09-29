@@ -44,7 +44,7 @@ from services import scheduler as _sched
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +78,14 @@ async def broadcast_enabled_for(city: str | None) -> bool:
     и держателям checkin там, где чек-ин вообще не используется."""
     if await get_setting_typed("checkin_qr_enabled") != "on":
         return False
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     return await get_setting_typed_for_city(
         "checkin_volunteer_guide_broadcast_enabled", city,
     ) != "off"
 
 
 async def _time_for(city: str | None) -> str:
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     t = await get_setting_typed_for_city("checkin_volunteer_guide_broadcast_time", city)
     return t or _DEFAULT_TIME
 
@@ -160,7 +160,7 @@ async def _city_still_valid(city: str | None) -> bool:
     """Тот же барьер, что `services.checkin_broadcast._city_still_valid` — город/тумблер могли
     выключить МЕЖДУ постановкой джобы и её срабатыванием."""
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from core.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -206,7 +206,7 @@ async def reconcile() -> list[str | None]:
     """На боте: (пере)ставить джобу КАЖДОГО включённого города (или один общий проход
     `city=None`, если модуль городов выключен) — fail-soft НА ГОРОД, не блокирует старт бота
     целиком. Вызывается из `main.py` рядом с `services.checkin_broadcast.reconcile_broadcasts`."""
-    from cities import cities_module_on, enabled_cities
+    from core.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -307,7 +307,7 @@ _PRIORITY = {"sent": 3, "already": 3, "morning": 2, "not_due": 1, "skipped": 0}
 async def _holder_cities(tid: int) -> list[str | None]:
     """Города, в чью рассылку шпаргалки попадёт этот держатель — та же логика, что
     `capability_holders(city=...)`: привязан к городу — только он, не привязан — все."""
-    from cities import cities_module_on, enabled_cities, normalize_city
+    from core.cities import cities_module_on, enabled_cities, normalize_city
     if not await cities_module_on():
         return [None]
     from database.db import get_staff_city

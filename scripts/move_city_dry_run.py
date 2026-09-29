@@ -44,7 +44,7 @@ async def main() -> int:
     print(f"режим: {'ПРИМЕНИТЬ (--apply)' if args.apply else 'ПРОСМОТР (dry-run, ничего не меняю)'}")
     print("=" * 78)
 
-    from cities import reload_cities
+    from core.cities import reload_cities
     from database.db import get_user
     from services.city_move import move_user_city
 

@@ -175,7 +175,7 @@ def test_next_empty_queue_filtered_by_track(client):
 # ── карточка ─────────────────────────────────────────────────────────────────────────────
 
 def test_next_returns_one_card_oldest_first_with_avatar_and_fields(client):
-    import moderation_card
+    from core import moderation_card
     _seed_user(930001, age="20", full_name="Иван Петров", registration_date="2026-01-01 00:00:01")
     _seed_user(930002, age="21", full_name="Пётр Иванов", registration_date="2026-01-01 00:00:02")
     resp = client.get("/app/api/applications/next", headers=_hdr(REG_MANAGER_ID))
@@ -229,7 +229,7 @@ def test_next_resume_link_kind(client):
 def test_next_resume_mini_kind(client):
     """Приёмка 19.09 (review-260919, находки №2/№3 «Модерация»): развилка резюме, ветка
     «мини-профиль» — карточка Mini App показывает три подполя, а не «нет резюме»."""
-    import moderation_card
+    from core import moderation_card
 
     _seed_user(930006, mini_projects="Бот для АЙСЕК", mini_direction="Бэкенд")
     _run(bot_db.update_user_answers(930006, {"resume_type": "mini"}, allowed_columns=["resume_type"]))
@@ -257,7 +257,7 @@ def test_next_resume_warning_when_type_set_but_data_lost(client):
 # ── история правок: сервер отдаёт готовые подписи, а не сырые коды (23-06, Known Stub 23-05) ──
 
 def test_next_history_carries_labels_and_source_not_raw_columns(client):
-    import moderation_card
+    from core import moderation_card
 
     _seed_user(931001, age="20", registration_date="2026-01-01 00:00:01")
     _run(bot_db.record_answer_history(
@@ -300,7 +300,7 @@ def test_next_city_label_absent_when_cities_module_off(client):
 
 
 def test_next_city_label_all_cities_for_unbound_manager(client):
-    from cities import ALL_CITIES_LABEL
+    from core.cities import ALL_CITIES_LABEL
 
     _set("event_city_enabled", "on")
     _seed_user(932002, registration_date="2026-01-01 00:00:01")
@@ -309,7 +309,7 @@ def test_next_city_label_all_cities_for_unbound_manager(client):
 
 
 def test_next_city_label_matches_bound_manager_city(client):
-    from cities import city_label as _city_label_fn
+    from core.cities import city_label as _city_label_fn
 
     _set("event_city_enabled", "on")
     _seed_user(932003, event_city="spb", registration_date="2026-01-01 00:00:01")

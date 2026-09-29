@@ -18,8 +18,8 @@ from datetime import datetime
 from config import config
 from database import db
 from services.i18n_sources import delegate_registry_keys
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
-from settings_validation import validate_setting_value
+from core.settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+from core.settings_validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 
@@ -128,7 +128,7 @@ def test_forum_date_resolves_per_city_with_city_override_winning(tmp_path):
     городской override побеждает глобальное значение (тот же приём, что
     test_typed_resolver_registration_mode в tests/test_settings_percity_resolver.py)."""
     _ready(tmp_path)
-    import cities
+    from core import cities
 
     async def scenario():
         await db.set_setting("event_city_enabled", "on")

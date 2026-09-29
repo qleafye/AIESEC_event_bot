@@ -13,10 +13,10 @@ import logging
 
 import pytest
 
-import settings_ops
-from cities import ALL_CITIES, PER_CITY_SEP
+from core import settings_ops
+from core.cities import ALL_CITIES, PER_CITY_SEP
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.routers import settings as settings_router
 
@@ -390,7 +390,7 @@ def test_validate_batch_item_mirrors_bot_check_order(tmp_path):
 
 import re
 
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 from miniapp.deps import Principal
 from miniapp.routers.files import can_read_file
@@ -495,7 +495,7 @@ def test_file_setting_keys_are_exactly_photo_and_file_types():
 
 # ── quick 260906-6xe: PATCH «🧾 Поля карточки заявки» — подписи → байт-формат бота ──────────
 
-import moderation_card as mc
+from core import moderation_card as mc
 
 
 def test_batch_multi_labels_write_bot_byte_format_in_registry_order(tmp_path, no_tab):

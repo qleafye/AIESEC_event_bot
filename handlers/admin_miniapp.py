@@ -29,8 +29,8 @@ from aiogram.types import (
 )
 
 from config import config
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)

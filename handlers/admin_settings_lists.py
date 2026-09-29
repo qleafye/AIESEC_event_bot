@@ -31,10 +31,10 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
-from cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
+from core.settings_audit import set_setting_by_admin, delete_setting_by_admin
+from core.cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
 from handlers.states import EditSetting
 from handlers.settings_validation import is_command_like
 from handlers.admin import router

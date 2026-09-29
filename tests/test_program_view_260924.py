@@ -43,7 +43,7 @@ def test_resolve_program_photo_own_city_overrides_global(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     _run(db.set_setting("program_photo_file_id", "GLOBAL_FILE_ID"))
-    from cities import per_city_key
+    from core.cities import per_city_key
     _run(db.set_setting(per_city_key("program_photo_file_id", "msk"), "MSK_FILE_ID"))
     assert _run(program.resolve_program_photo("msk")) == "MSK_FILE_ID"
     # Другой город override не задан — видит общее.
@@ -57,7 +57,7 @@ def test_resolve_program_photo_ignores_override_when_cities_module_off(tmp_path)
     модуль (переопределение "утекло" бы)."""
     _use_tmp_db(tmp_path)
     _run(db.set_setting("program_photo_file_id", "GLOBAL_FILE_ID"))
-    from cities import per_city_key
+    from core.cities import per_city_key
     _run(db.set_setting(per_city_key("program_photo_file_id", "msk"), "MSK_FILE_ID"))
     assert _run(program.resolve_program_photo("msk")) == "GLOBAL_FILE_ID"
 
@@ -86,7 +86,7 @@ def test_resolve_program_view_per_city_override_wins_over_global(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     _run(db.set_setting("program_miniapp_view", "photo"))
-    from cities import per_city_key
+    from core.cities import per_city_key
     _run(db.set_setting(per_city_key("program_miniapp_view", "msk"), "table"))
     assert _run(program.resolve_program_view("msk")) == "table"
     assert _run(program.resolve_program_view("spb")) == "photo"
@@ -182,7 +182,7 @@ def test_show_program_chat_button_uses_delegate_city_photo(tmp_path):
     _use_tmp_db(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     _run(db.set_setting("program_photo_file_id", "GLOBAL_FILE_ID"))
-    from cities import per_city_key
+    from core.cities import per_city_key
     _run(db.set_setting(per_city_key("program_photo_file_id", "msk"), "MSK_FILE_ID"))
 
     delegate_id = 941924301

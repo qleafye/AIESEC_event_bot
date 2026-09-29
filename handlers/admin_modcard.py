@@ -15,10 +15,10 @@ EMPTY_SENTINEL` (иначе `_parse_setting` вернул бы дефолтны�
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import moderation_card
-import reg_engine
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core import moderation_card
+from core import reg_engine
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 from handlers.admin import router
 
 # Пресеты длины ответа (символов); последний — «не обрезать» (2 полных сообщения Telegram

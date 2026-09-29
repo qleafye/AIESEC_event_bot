@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 
-import cities
+from core import cities
 from config import config
 from database import db
 from services import daily_digest as dd
@@ -95,7 +95,7 @@ def _stats(**overrides):
 # ── Реестр и UI ───────────────────────────────────────────────────────────────
 
 def test_schema_keys_present_with_human_labels():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
     enabled = SETTINGS_SCHEMA["daily_digest_enabled"]
     assert enabled["type"] == "enum" and enabled["options"] == ["on", "off"]
     assert enabled["default"] == "off" and enabled["group"] == "toggles"
@@ -171,7 +171,7 @@ def test_parse_time_reads_human_input_and_falls_back_on_garbage():
 
 
 def test_time_input_is_validated_before_it_reaches_the_registry():
-    from settings_validation import validate_setting_value
+    from core.settings_validation import validate_setting_value
     value, error = validate_setting_value("daily_digest_time", "21:30")
     assert (value, error) == ("21:30", None)
     value, error = validate_setting_value("daily_digest_time", "9:00")

@@ -39,7 +39,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from core.cities import (
     cities_module_on,
     city_label,
     default_city_code,
@@ -60,8 +60,8 @@ from handlers.admin_checkin import (
 from handlers.states import LostFoundNew
 from keyboards.builders import get_cancel_kb
 from services import chat_tracking
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

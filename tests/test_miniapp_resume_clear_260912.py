@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-import reg_engine
+from core import reg_engine
 
 from tests.test_miniapp_form import _draft_row, _fill, _seed_draft
 from tests.test_miniapp_routes import (

@@ -20,7 +20,7 @@ from handlers.registration import (
     _get_enabled_steps, _ask_step_or_recall, finalize_registration, _after_full_name,
     _advance, _err_kb,
 )
-from reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN, studying_statuses
+from core.reg_engine import validate_answer, apply_answer, STEP_TO_COLUMN, studying_statuses
 # Phase 27 (27-05, LANG-02): say() переводит делегатские отправки этого шва на отправке —
 # ноль правок публичных сигнатур хендлеров.
 from handlers import reg_i18n

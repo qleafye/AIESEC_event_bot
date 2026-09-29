@@ -10,7 +10,7 @@
 """
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_label, get_setting_typed_for_city, open_cities
+from core.cities import city_label, get_setting_typed_for_city, open_cities
 from handlers import reg_i18n
 
 
@@ -53,7 +53,7 @@ async def send_city_closed(message, closed_code: str | None) -> None:
 async def _show_city_fork(message) -> None:
     """Тот же экран выбора города, что у /start (`city_fork_text` + кнопки открытых городов),
     с тем же переводом текста и кнопок."""
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     text = await get_setting_typed("city_fork_text")
     lang, tr_map = await reg_i18n.ctx_for(message)
     await message.answer(
@@ -77,8 +77,8 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     `_resume_after_city`, по которому `city_pick` продолжит ЭТОТ черновик, а не начнёт анкету
     заново. Атрибуция (реферер/метка/трек), пришедшая параметрами, кладётся в FSM до экрана —
     тот же приём, что `_persist_fork_attribution`."""
-    import reg_engine
-    from cities import cities_module_on
+    from core import reg_engine
+    from core.cities import cities_module_on
     from services.known_city import known_city
 
     uid = message.from_user.id
@@ -93,7 +93,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     if city:
         try:
             from database.db import get_user
-            from settings_schema import get_setting_typed
+            from core.settings_schema import get_setting_typed
             season = (await get_setting_typed("event_season") or "").strip() or None
             is_edit = reg_engine.has_submitted_anketa(await get_user(uid), season)
         except Exception:

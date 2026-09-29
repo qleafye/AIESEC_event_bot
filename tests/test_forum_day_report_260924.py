@@ -117,7 +117,7 @@ def test_count_checkins_by_point_and_day_scopes_by_day(tmp_path):
 
 
 def test_count_checkins_by_point_and_day_scoped_by_city(tmp_path):
-    import cities as cities_mod
+    from core import cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))
@@ -380,8 +380,8 @@ def test_checkins_csv_for_city_day_contains_rows(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from core.settings_schema import SETTINGS_SCHEMA
+    from core import settings_ops
 
     enabled = SETTINGS_SCHEMA["forum_day_report_enabled"]
     assert enabled["default"] == "off"

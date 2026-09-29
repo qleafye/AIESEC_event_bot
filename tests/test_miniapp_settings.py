@@ -20,12 +20,12 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_miniapp
 from handlers import admin_miniapp_theme
 from handlers.states import MiniAppTheme
 from handlers.admin_caps import ADMIN_CAPS, required_capability
-import web_theme
+from core import web_theme
 from tests._dbtpl import fast_init_db
 
 

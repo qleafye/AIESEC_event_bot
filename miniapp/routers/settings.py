@@ -34,10 +34,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-import reg_engine
-import settings_ops
-import web_theme
-from cities import (
+from core import reg_engine
+from core import settings_ops
+from core import web_theme
+from core.cities import (
     ALL_CITIES,
     ALL_CITIES_LABEL,
     admin_selected_city,
@@ -50,8 +50,8 @@ from cities import (
     set_admin_city,
 )
 from database.db import get_setting, set_setting, settings_snapshot
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
-from settings_synonyms import SETTINGS_SYNONYMS
+from core.settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
+from core.settings_synonyms import SETTINGS_SYNONYMS
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.setup_wizard import TEXTS as SETUP_TEXTS

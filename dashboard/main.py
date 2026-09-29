@@ -34,8 +34,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-import web_theme
-from secret_redact import install_log_redaction, register_secret
+from core import web_theme
+from core.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
 from dashboard import queries
 from dashboard import sources_daily

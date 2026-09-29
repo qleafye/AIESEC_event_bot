@@ -18,7 +18,7 @@ from database.db import (
     list_coin_entries_for_user,
 )
 from services import i18n
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
 from miniapp.routers.tasks import parse_page

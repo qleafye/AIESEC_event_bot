@@ -41,7 +41,7 @@ from database.db import (
     get_staff_city,
 )
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ async def _pending_breakdown_suffix(total: int) -> str:
     `event_city` сворачивается в дефолтный город тем же приёмом, что «По городам» у
     `render_stats_text` (handlers/admin.py) — db.py не может импортировать `cities`, поэтому
     свёртка всегда на стороне вызывающего."""
-    from cities import CITIES, cities_module_on, city_label, normalize_city
+    from core.cities import CITIES, cities_module_on, city_label, normalize_city
 
     if total <= 0 or len(CITIES) <= 1 or not await cities_module_on():
         return ""
@@ -152,7 +152,7 @@ async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
     Ожидание=0 и автоотказ>0 -> уходит ОДНА строка про автоотказ (первая строка про ожидание не
     печатается пустой). При выключенном модуле (`reject_rules_enabled=off`) текст байт-в-байт
     прежний — `_auto_reject_count_since` не ходит в БД вовсе."""
-    from cities import cities_module_on, city_label, city_scope, normalize_city
+    from core.cities import cities_module_on, city_label, city_scope, normalize_city
 
     bound = None
     if uid not in config.ADMIN_IDS and await cities_module_on():

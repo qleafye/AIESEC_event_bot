@@ -27,7 +27,7 @@ from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb
-from reg_engine import (
+from core.reg_engine import (
     STEP_TO_COLUMN,
     _REPEATABLE_NOUNS,
     _SKIP_ALLOWED_STEPS,
@@ -35,7 +35,7 @@ from reg_engine import (
     repeatable_max,
     validate_answer,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 
 async def ask_step(step_key: str, message: types.Message, state: FSMContext,

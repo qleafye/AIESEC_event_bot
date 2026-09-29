@@ -21,7 +21,7 @@ import inspect
 
 import pytest
 
-import reg_engine
+from core import reg_engine
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

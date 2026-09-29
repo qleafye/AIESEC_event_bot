@@ -102,7 +102,7 @@ def test_nudge_substitutes_per_candidate(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_per_candidate.db")
     from services import scheduler as sched
     from database import db as db_mod
-    import reg_engine
+    from core import reg_engine
 
     marked = []
     _patch_common(
@@ -171,7 +171,7 @@ def test_nudge_still_one_shot(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_oneshot.db")
     from services import scheduler as sched
     from database import db as db_mod
-    import reg_engine
+    from core import reg_engine
 
     marked = []
     _patch_common(

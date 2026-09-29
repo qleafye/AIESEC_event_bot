@@ -20,7 +20,7 @@ import pytest
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from services import reg_edit_policy
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
@@ -588,7 +588,7 @@ def test_reg_resume_restart_yes_still_works_when_never(tmp_path):
 # кнопка-цикл раздела «📋 Заявки», врезки в /start, rereg_start, finalize_registration.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-import reg_engine
+from core import reg_engine
 
 
 # ── resubmit_allowed_for — чистое правило ────────────────────────────────────────────────────
@@ -1001,7 +1001,7 @@ def test_finalize_registration_passes_through_for_rejected_current_season_when_a
 # город B «можно» -> разные решения одним и тем же гейтом на разных строках.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-import cities as cities_mod
+from core import cities as cities_mod
 from tests._dbtpl import fast_init_db
 
 

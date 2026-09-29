@@ -37,9 +37,9 @@ import gspread
 
 from config import config
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
-from settings_schema import get_setting_typed
-from reg_engine import is_past_season_row
-from reg_labels import STATUS_LABELS
+from core.settings_schema import get_setting_typed
+from core.reg_engine import is_past_season_row
+from core.reg_labels import STATUS_LABELS
 from services.decision_delivery import summarize_deliveries
 import services.sheets as sheets_service
 
@@ -161,7 +161,7 @@ async def _known_non_delegate_tab_titles() -> set[str]:
     Пустое значение настройки (например, выключенный `auto_reject_sheet_tab`) не добавляет
     строку — такой вкладки бот не ведёт вовсе, она либо не существует, либо это чья-то ЧУЖАЯ
     вкладка со случайно совпавшим именем (не наш случай)."""
-    from cities import cities_module_on, enabled_cities
+    from core.cities import cities_module_on, enabled_cities
     from handlers.registration import city_incomplete_tab
     from services.game_sheets import game_tab_plan
 
@@ -486,7 +486,7 @@ def chunk_report_lines(lines: list[str], limit: int = 4096) -> list[str]:
     разрывая строку пополам — граница чанка всегда между строками. Не изобретаем свой резчик:
     `moderation_card.split_for_telegram` уже делает это (и уже покрыт тестами) для «📄 Полная
     анкета» (handlers/admin_moderation.py::appr_full) — тот же класс задачи."""
-    from moderation_card import split_for_telegram
+    from core.moderation_card import split_for_telegram
 
     return split_for_telegram("\n".join(lines), limit=limit)
 

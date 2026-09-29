@@ -37,8 +37,8 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-import moderation_card
-from cities import cities_module_on, city_scope, normalize_city
+from core import moderation_card
+from core.cities import cities_module_on, city_scope, normalize_city
 from database.db import (
     approve_all_pending,
     approve_user_atomic,
@@ -56,10 +56,10 @@ from database.db import (
     reject_user,
     revert_user_to_pending,
 )
-from reg_engine import STEP_TO_COLUMN, label_for
+from core.reg_engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
 from services.timeutil import utc_naive_to_msk
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.
 # database.db.mark_user_edited) — CLAUDE.md запрещает показывать код менеджеру, это ЕДИНСТВЕННОЕ

@@ -26,10 +26,10 @@ import re
 from pathlib import Path
 
 from handlers.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
-import reg_labels
-import reg_options
-import web_theme
-from settings_schema import SETTINGS_SCHEMA
+from core import reg_labels
+from core import reg_options
+from core import web_theme
+from core.settings_schema import SETTINGS_SCHEMA
 
 LATIN_BRAND_SUBSTRINGS = ("aiesec", "youlead", "bluebook", "realtalk")
 

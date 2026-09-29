@@ -18,12 +18,12 @@ Async — через `asyncio.run()`, фикстура временной БД �
 `tests/test_skillup_preset_28.py::_ready`."""
 import asyncio
 
-import reg_presets
+from core import reg_presets
 from config import config
 from database import db
 from database.db import get_setting, set_setting
-from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
-from settings_schema import SETTINGS_SCHEMA
+from core.reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
+from core.settings_schema import SETTINGS_SCHEMA
 
 from handlers.reg_schema import _apply_party_preset, _apply_short_preset
 from tests._dbtpl import fast_init_db

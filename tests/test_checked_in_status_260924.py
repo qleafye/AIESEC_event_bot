@@ -121,7 +121,7 @@ def test_get_checkin_status_none_for_unknown_user(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_checked_in_status_text():
-    from settings_schema import SETTINGS_SCHEMA
+    from core.settings_schema import SETTINGS_SCHEMA
 
     entry = SETTINGS_SCHEMA["checked_in_status_text"]
     assert entry["type"] == "text"

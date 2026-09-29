@@ -72,7 +72,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     не блокирует повторный тап «Написать не пришедшим» позже (после тихих часов) — придёт как в
     первый раз. Менеджеру считаем отдельно (`quiet`), экран подтверждения показывает «N сейчас в
     тихих часах — не отправлено, повторите позже»."""
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     from services import quiet_hours
 
     ids = await checkin_not_arrived_pending_ids(city_scope=city_scope)

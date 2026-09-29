@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config
 from database import db
 from handlers import onsite_reg as onsite
@@ -59,7 +59,7 @@ def _enable(city="spb"):
 
 
 def _setting(key):
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     return _run(get_setting_typed(key))
 
 
@@ -496,7 +496,7 @@ def test_onsite_cfg_screen_shows_toggle_explanation_and_qr_button(tmp_path):
 
 
 def test_onsite_toggle_flips_only_own_city(tmp_path):
-    from cities import get_setting_typed_for_city
+    from core.cities import get_setting_typed_for_city
     _ready(tmp_path)
     with _Cities():
         cb = _AdminCb("onsitereg_toggle:spb")
@@ -542,7 +542,7 @@ def test_onsite_screens_respect_manager_city_binding(tmp_path):
             _result, event = dispatch_callback(data, MANAGER_ID)
             assert event.answers, data
             assert event.answers[0][0] == _CITY_FORBIDDEN_ALERT, data
-        from cities import get_setting_typed_for_city
+        from core.cities import get_setting_typed_for_city
         assert _run(get_setting_typed_for_city("onsite_reg_enabled", "spb")) == "off"
 
 

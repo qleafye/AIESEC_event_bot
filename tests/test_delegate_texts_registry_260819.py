@@ -27,7 +27,7 @@ from handlers import payment as pay_mod
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from handlers.states import Registration
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 from tests.test_registration_phase5 import _CapturingMessage as _RegCapturingMessage
 from tests._dbtpl import fast_init_db
 

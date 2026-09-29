@@ -20,7 +20,7 @@ Import discipline: this module imports `cities` (which imports `database.db` +
 import html
 import logging
 
-from cities import (
+from core.cities import (
     cities_module_on,
     city_label,
     city_tab_base,
@@ -28,7 +28,7 @@ from cities import (
     normalize_city,
     tab_suffix,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

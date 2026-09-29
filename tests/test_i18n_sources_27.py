@@ -6,7 +6,7 @@ import asyncio
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 import services.i18n_sources as i18n_sources
 from tests._dbtpl import fast_init_db

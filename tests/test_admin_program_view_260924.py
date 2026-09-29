@@ -92,7 +92,7 @@ def test_toggle_writes_percity_key_when_cities_module_on(tmp_path):
     _run(db.set_setting("event_city_enabled", "on"))
     callback = _FakeCallback("prog_view_toggle:msk:program")
     _run(admin_program_view.prog_view_toggle_go(callback))
-    from cities import per_city_key
+    from core.cities import per_city_key
     assert _run(db.get_setting(per_city_key("program_miniapp_view", "msk"))) == "table"
     assert _run(db.get_setting("program_miniapp_view")) is None  # общий ключ не тронут
 

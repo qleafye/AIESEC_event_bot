@@ -37,7 +37,7 @@ from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out 
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from services import reminders as reminders_mod
-import cities
+from core import cities
 
 
 ADMIN_ID = 940101
@@ -400,4 +400,4 @@ def test_readme_mentions_the_per_city_admin_panel_and_its_storage_key():
     readme = _read("README.md")
     assert "Погородная админка" in readme
     assert "admin_city__" in readme
-    assert "admin_city__" in _read("cities.py")
+    assert "admin_city__" in _read("core/cities.py")

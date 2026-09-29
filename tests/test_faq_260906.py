@@ -19,7 +19,7 @@ from database import db
 from services import faq as faq_service
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb
-from settings_schema import SETTINGS_SCHEMA
+from core.settings_schema import SETTINGS_SCHEMA
 
 
 def _run(coro):
@@ -37,7 +37,7 @@ async def _seed_cities(rows):
     tests/test_cities_registry_260818.py::_seed_cities_db. Нужно ТОЛЬКО тем тестам, что
     резолвят `cities.city_scope("kzn")` — чистое правило `services/faq.py` в резолве города
     не нуждается вовсе."""
-    import cities
+    from core import cities
     for r in rows:
         code, label, tab_base, sort_order = r[0], r[1], r[2], r[3]
         enabled = r[4] if len(r) > 4 else 1
@@ -52,7 +52,7 @@ def _restore_cities_cache():
     этого проекта намеренно не сбрасывает состояние между тестами/файлами. Без восстановления
     тест, дописавший «kzn»/«msk» в реестр, продолжает жить и в следующих тестовых файлах того
     же процесса (в т.ч. tests/test_admin_percity_menu.py, который ждёт СВОЙ набор городов)."""
-    import cities
+    from core import cities
     snapshot = list(cities.CITIES)
     yield
     cities.CITIES.clear()
@@ -186,7 +186,7 @@ def test_reorder_faq_items_writes_sequential_positions(tmp_path):
 def test_list_faq_items_with_city_scope_includes_city_and_general(tmp_path, _restore_cities_cache):
     _ready(tmp_path)
     _run(_seed_cities([("msk", "Москва", "", 0), ("kzn", "Казань", "", 1)]))
-    import cities
+    from core import cities
     general = _run(db.create_faq_item(city=None, question="Общий?", answer="o", created_by=1))
     kzn_item = _run(db.create_faq_item(city="kzn", question="Только Казань?", answer="k", created_by=1))
     spb_like = _run(db.create_faq_item(city="msk", question="Только Москва?", answer="m", created_by=1))
@@ -435,7 +435,7 @@ def test_get_main_menu_kb_shows_faq_button_once_item_exists(tmp_path):
 from handlers import admin as admin_mod  # noqa: E402 -- канонический порядок импорта хендлеров
 from handlers import admin_faq  # noqa: E402
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
-import cities as cities_mod
+from core import cities as cities_mod
 
 ADMIN_ID = 8901201
 MANAGER_ID = 8901202

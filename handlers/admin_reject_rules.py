@@ -23,13 +23,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
+from core.cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
 from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
-from reg_engine import label_for
+from core.reg_engine import label_for
 from services.reject_rules import (
     RULE_PRESETS,
     can_edit_city,
@@ -38,8 +38,8 @@ from services.reject_rules import (
     rules_for_admin,
     save_rule,
 )
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
 
 RULES_PAGE = 8
 

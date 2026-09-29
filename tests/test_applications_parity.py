@@ -19,8 +19,8 @@ import inspect
 import pathlib
 from datetime import datetime, timedelta
 
-import moderation_card
-import reg_engine
+from core import moderation_card
+from core import reg_engine
 import services.application_effects as application_effects
 import services.applications as applications
 from config import config

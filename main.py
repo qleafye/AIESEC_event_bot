@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
-from secret_redact import install_log_redaction, register_secret
+from core.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
 from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg
 from services.reminders import pending_reminder_loop
@@ -20,8 +20,8 @@ import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
-from cities import enabled_cities, is_default_city, seed_cities_if_empty, reload_cities
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from core.cities import enabled_cities, is_default_city, seed_cities_if_empty, reload_cities
+from core.settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import ErrorEvent

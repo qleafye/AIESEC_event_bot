@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config
 from database import db
 from handlers import admin_volunteer_invite as avi  # noqa: F401 -- регистрирует volinvite_*/volinv_*
@@ -431,7 +431,7 @@ def test_toggle_on_screen_has_create_button(tmp_path):
 def test_volinvite_toggle_flips_setting(tmp_path):
     _ready(tmp_path)
     dispatch_callback("volinvite_toggle:_all", ADMIN_ID)
-    from settings_schema import get_setting_typed
+    from core.settings_schema import get_setting_typed
     assert _run(get_setting_typed("volunteer_invite_enabled")) == "on"
     dispatch_callback("volinvite_toggle:_all", ADMIN_ID)
     assert _run(get_setting_typed("volunteer_invite_enabled")) == "off"

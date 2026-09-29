@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from cities import cities_module_on, city_codes, city_label, city_scope, enabled_cities, normalize_city
+from core.cities import cities_module_on, city_codes, city_label, city_scope, enabled_cities, normalize_city
 from database.db import (
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
@@ -48,7 +48,7 @@ from database.db import (
     update_task_text,
     update_task_title,
 )
-from game_labels import (
+from core.game_labels import (
     category_label,
     proof_types_label,
     render_task_card_text,
@@ -56,7 +56,7 @@ from game_labels import (
     task_deadline_short,
     task_has_deadline,
 )
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue

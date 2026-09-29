@@ -28,7 +28,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from core.cities import (
     cities_module_on,
     city_label,
     default_city_code,
@@ -62,9 +62,9 @@ from services.forum_day_report import schedule_city_job as schedule_day_report_j
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
 from services.regional_noshow_move import schedule_city_job as schedule_regional_noshow_move_job
 from services.sos import is_sos_active_for_city
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
-from settings_validation import validate_setting_value
+from core.settings_audit import set_setting_by_admin
+from core.settings_schema import get_setting_typed
+from core.settings_validation import validate_setting_value
 
 async def _resolve_screen_city(admin_id: int) -> str | None:
     """Тот же трёхветочный резолвер «город из шапки», что `handlers.admin_checkin.
@@ -806,7 +806,7 @@ async def _noshow_poll_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboar
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.")
 
-    from cities import cities_module_on as _cmo, city_scope as _cscope
+    from core.cities import cities_module_on as _cmo, city_scope as _cscope
     scope = _cscope(code) if code and await _cmo() else None
     summary = await fnsp.summary_text(city_scope=scope)
     lines.append(f"\n{summary}")
@@ -951,7 +951,7 @@ async def _regional_noshow_cfg_text_kb(code: str | None) -> tuple[str, InlineKey
     if not text_set:
         lines.append("\n⚠️ Текст предложения пуст — рассылка НЕ уйдёт, даже если включена здесь.")
 
-    from cities import cities_module_on as _cmo, city_scope as _cscope
+    from core.cities import cities_module_on as _cmo, city_scope as _cscope
     scope = _cscope(code) if code and await _cmo() else None
     lines.append(f"\n{await rgnm.summary_text(city_scope=scope)}")
 
@@ -1117,7 +1117,7 @@ async def rgnm_target_pick(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    from cities import get_city
+    from core.cities import get_city
     if get_city(target_code) is None:
         await callback.answer("Такого города нет.", show_alert=True)
         return

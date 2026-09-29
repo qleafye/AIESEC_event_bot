@@ -13,10 +13,10 @@ import logging
 import pytest
 from aiogram.exceptions import TelegramNetworkError
 
-import secret_redact
+from core import secret_redact
 import services.proxy_session as proxy_session
 from config import config
-from secret_redact import (
+from core.secret_redact import (
     RedactSecretsFilter,
     install_log_redaction,
     redact_secrets,

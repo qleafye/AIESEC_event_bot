@@ -28,8 +28,8 @@ from database import db
 from handlers import admin_reg_percity
 from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
-import cities
-import reg_engine
+from core import cities
+from core import reg_engine
 from tests._dbtpl import fast_init_db
 
 

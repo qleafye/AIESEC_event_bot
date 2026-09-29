@@ -391,8 +391,8 @@ def cities_fallback_snapshot() -> dict:
     прямым чтением .env-значения (сторож `tests/test_cities_registry_260818.py` запрещает
     читать это значение где-либо, кроме `cities.py`). Скрипт не вызывает `reload_cities()`,
     поэтому список — тот же холодный фолбэк из `.env`, что и раньше, если БД недоступна/пуста."""
-    import cities as cities_module
-    import reg_engine
+    from core import cities as cities_module
+    from core import reg_engine
 
     names: list[str] = []
     for entry in cities_module.all_cities():

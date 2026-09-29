@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from cities import cities_module_on, city_scope, normalize_city
+from core.cities import cities_module_on, city_scope, normalize_city
 from database.db import (
     count_rejected_submissions,
     get_active_submission,
@@ -27,7 +27,7 @@ from database.db import (
     list_active_tasks,
     task_title,
 )
-from game_labels import (
+from core.game_labels import (
     ambassador_block_index,
     category_label,
     proof_types_label,
@@ -42,7 +42,7 @@ from game_labels import (
 )
 from services import i18n
 from services.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_section
 from miniapp.timeutil import today_msk

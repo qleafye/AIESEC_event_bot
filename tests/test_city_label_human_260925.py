@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-import cities as cities_mod
+from core import cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from handlers import admin_checkin, admin_checkin_stats

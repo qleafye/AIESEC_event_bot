@@ -37,12 +37,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
-from reg_engine import (
+from core.reg_engine import (
     STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed,
     lookup_render_flags, prompt, validate_answer,
 )
 from services.lookup import enqueue_merge, search_lookup, top_chips
-from settings_schema import get_setting_typed
+from core.settings_schema import get_setting_typed
 
 _LOOKUP_LIMIT = 5
 
