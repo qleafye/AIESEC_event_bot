@@ -1125,6 +1125,9 @@ async def draft_ambassador(
     реф-ссылки в хабе (`miniapp_hub_referral_label_text`, тот же ключ, что рисует
     `GET /app/api/hub`), второй литерал названия раздела не заводим."""
     await set_ambassador_flag(p.telegram_id, active=True, at=now_msk_naive().strftime("%Y-%m-%d %H:%M:%S"))
+    # Ступени по приглашённым, одобренным до вступления (fail-soft, при off — одно чтение).
+    from services.amb_tiers import check_tiers_for_new_ambassador
+    await check_tiers_for_new_ambassador(p.telegram_id)
     bot_username = request.app.state.cfg.bot_username
     link = reg_engine.build_referral_link(bot_username, p.telegram_id) if bot_username else None
     user = await get_user(p.telegram_id)

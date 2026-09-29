@@ -675,3 +675,48 @@ def test_threshold_order_checked_on_save_bot_and_web(tmp_path):
 
     from handlers import admin_settings
     assert "cross_setting_error" in inspect.getsource(admin_settings.settings_edit_value)
+
+
+# ── Ступени при вступлении в амбассадоры ──────────────────────────────────────────────────
+
+def test_new_ambassador_gets_tiers_for_earlier_approvals(tmp_path):
+    """Приглашённых одобрили, когда пригласивший ещё не был амбассадором: ступени приходят в
+    момент вступления, а не только со следующим одобрением."""
+    _ready(tmp_path)
+    _on()
+    _seed_user(100, status="approved")
+    for tid in (201, 202, 203):
+        _seed_user(tid, referrer_id=100)
+    _run(applications.claim_approve_all_with_credits(None))
+    assert _tiers(100) == []
+    _run(db.set_ambassador_flag(100, active=True, at="2026-09-30 12:00:00"))
+    _run(amb_tiers.check_tiers_for_new_ambassador(100))
+    assert _tiers(100) == [(1, None), (2, "granted")]
+    assert [e["tier"] for e in _events()] == [2]
+
+
+def test_new_ambassador_check_is_fail_soft_and_off_noop(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _make_ambassador(100)
+    _seed_user(201, referrer_id=100, status="approved")
+    _run(amb_tiers.check_tiers_for_new_ambassador(100))  # программа выключена
+    assert _tiers(100) == []
+    _on()
+
+    async def boom(*_a, **_kw):
+        raise RuntimeError("сбой")
+
+    monkeypatch.setattr(amb_tiers, "check_tiers", boom)
+    _run(amb_tiers.check_tiers_for_new_ambassador(100))  # не бросает
+
+
+def test_every_ambassador_join_path_checks_tiers():
+    """Сторож: каждая точка, где человек становится амбассадором, зовёт проверку ступеней."""
+    import inspect
+
+    from handlers import reg_ambassador, user_actions
+    from miniapp.routers import form
+
+    for fn in (reg_ambassador.regamb_want, user_actions.ambassador_join, form.draft_ambassador):
+        source = inspect.getsource(fn)
+        assert "set_ambassador_flag" in source and "check_tiers_for_new_ambassador" in source, fn
