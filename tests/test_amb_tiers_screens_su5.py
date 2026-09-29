@@ -397,3 +397,16 @@ def test_coins_history_off_returns_stored_reason(client):
     _seed_referral_coins()
     reasons = [i["reason"] for i in client.get("/app/api/coins/history", headers=_hdr(DELEGATE_ID)).json()["items"]]
     assert reasons == ["Бонус за активность", "Приглашённый: Пётр Особый", "Приглашённый: Иван Уникальный"]
+
+
+def test_miniapp_ambassador_endpoint_sets_since_once(client):
+    resp = client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["is_ambassador"] == 1
+    assert user["ambassador_since"]
+    first = user["ambassador_since"]
+    _sql("UPDATE users SET ambassador_since = '2026-01-01 00:00:00' WHERE telegram_id = ?", (DELEGATE_ID,))
+    assert client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID)).status_code == 200
+    assert _run(db.get_user(DELEGATE_ID))["ambassador_since"] == "2026-01-01 00:00:00"
+    assert first != "2026-01-01 00:00:00"
