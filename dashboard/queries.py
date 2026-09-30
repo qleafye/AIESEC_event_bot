@@ -1934,9 +1934,17 @@ def _ambassador_funnel(conn, scope: Scope) -> list[dict]:
     ).fetchall()
     funnel_by_id = {row["referrer_id"]: row for row in funnel_rows}
 
+    # у referral_credits тоже есть колонка season — в JOIN фильтр сезона квалифицируем по users
+    credited_frags = [season_frag.replace("season", "u.season")]
+    rc_cols = {r["name"] for r in conn.execute("PRAGMA table_info(referral_credits)")}
+    if {"referrer_was_ambassador", "excluded_at", "revoked_at"} <= rc_cols:
+        credited_frags.append(
+            "COALESCE(rc.referrer_was_ambassador, 1) = 1 AND rc.excluded_at IS NULL "
+            "AND rc.revoked_at IS NULL"
+        )
     credited_rows = conn.execute(
         "SELECT rc.referrer_id, COUNT(*) AS credited FROM referral_credits rc "
-        f"JOIN users u ON u.telegram_id = rc.invitee_id{_where([season_frag])} "
+        f"JOIN users u ON u.telegram_id = rc.invitee_id{_where(credited_frags)} "
         "GROUP BY rc.referrer_id",
         tuple(season_params),
     ).fetchall()
