@@ -51,7 +51,6 @@ from database.db import (
     get_user_consents,
     record_user_consent,
     set_reg_draft_surface,
-    set_ambassador_flag,
     settings_snapshot,
     upsert_reg_draft,
     set_user_lang,
@@ -67,7 +66,6 @@ from miniapp import telegram_api
 from miniapp.deps import Principal, form_gate, require_section
 from miniapp.outbox import enqueue
 from miniapp.telegram_api import TelegramApiError
-from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1086,53 +1084,43 @@ async def draft_submit(
         # раньше это была одна иконка check без текста и без aria-label (accessibility BLOCKER).
         "home_cta": await i18n.tr_setting("miniapp_form_complete_home_cta_text", lang, tr_map),
     }
-    # Phase 28 (28-06, SU-07, D-09): паритет с чатом бота — блок-предложение реф-ссылки на том
-    # же терминальном экране «Заявка принята», только при mode == "new" и включённом тумблере
-    # (дефолт off, D-06). Ссылка сама НЕ строится здесь — только тексты; сервером выдаётся
-    # отдельным эндпоинтом POST /app/api/reg/ambassador по тапу «Хочу свою ссылку».
-    if result["mode"] == "new" and await get_setting_typed("reg_offer_ref_link") == "on":
-        response["ambassador"] = {
-            "heading": await i18n.tr_setting_for_city(
-                "miniapp_form_ambassador_offer_heading_text", event_city, lang, tr_map,
-            ),
-            "body": await i18n.tr_setting_for_city(
-                "miniapp_form_ambassador_offer_body_text", event_city, lang, tr_map,
-            ),
-            "cta": await i18n.tr_setting("miniapp_form_ambassador_cta_text", lang, tr_map),
-            "later": await i18n.tr_setting("miniapp_form_ambassador_later_text", lang, tr_map),
-        }
+    # Предложение реф-ссылки на экране «Заявка принята» (паритет с чатом бота). Правила входа —
+    # services.amb_status: при набранном лимите и у отказанного блока нет; кандидату (режим
+    # отбора, «да» в анкете) — подтверждение и сразу его ссылка, независимо от тумблера.
+    if result["mode"] == "new":
+        from services import amb_status
+        try:
+            amb_state = await amb_status.delegate_state(p.telegram_id)
+        except Exception:
+            logger.exception("reg draft submit: delegate_state failed telegram_id=%s", p.telegram_id)
+            amb_state = "open"
+        if amb_state == "candidate":
+            response["ambassador_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+            response["ambassador_link"] = await _ambassador_link_payload(request, p.telegram_id)
+        elif amb_state not in ("full", "declined") and await get_setting_typed("reg_offer_ref_link") == "on":
+            response["ambassador"] = {
+                "heading": await i18n.tr_setting_for_city(
+                    "miniapp_form_ambassador_offer_heading_text", event_city, lang, tr_map,
+                ),
+                "body": await i18n.tr_setting_for_city(
+                    "miniapp_form_ambassador_offer_body_text", event_city, lang, tr_map,
+                ),
+                "cta": await i18n.tr_setting("miniapp_form_ambassador_cta_text", lang, tr_map),
+                "later": await i18n.tr_setting("miniapp_form_ambassador_later_text", lang, tr_map),
+            }
     return response
 
 
 # ── POST /app/api/reg/ambassador ─────────────────────────────────────────────────────────
 
-@router.post("/app/api/reg/ambassador")
-async def draft_ambassador(
-    request: Request,
-    p: Principal = Depends(form_gate),
-    _: Principal = Depends(require_section("form")),
-) -> dict:
-    """«Хочу свою ссылку» (SU-07, D-09) — паритет с ботовским `regamb:want`. Пишет ТОЛЬКО
-    амбассадорский флаг СВОЕЙ строки автора запроса (`telegram_id` — из подписанного initData,
-    не из тела запроса) через `set_ambassador_flag`, как бот: заполняется `ambassador_since`
-    (дата вступления, паритет поверхностей D-31 фазы 32), а повторный тап действующему
-    амбассадору дату не переставляет. Ссылка строится
-    сервером (`ref_code` = `telegram_id`, OQ-3) — фронт её не собирает и не может подделать.
-
-    Приёмка 17.09 (п.2): `note` — пояснение под ссылкой, где её найти потом (тот же ключ и та
-    же per_city-подстановка, что у ботовского `reg_ambassador.regamb_want`, D-09 паритет
-    поверхностей) — `{section}` внутри шаблона подставляется подписью постоянного места
-    реф-ссылки в хабе (`miniapp_hub_referral_label_text`, тот же ключ, что рисует
-    `GET /app/api/hub`), второй литерал названия раздела не заводим."""
-    await set_ambassador_flag(p.telegram_id, active=True, at=now_msk_naive().strftime("%Y-%m-%d %H:%M:%S"))
-    # Ступени по приглашённым, одобренным до вступления (fail-soft, при off — одно чтение).
-    from services.amb_tiers import check_tiers_for_new_ambassador
-    await check_tiers_for_new_ambassador(p.telegram_id)
+async def _ambassador_link_payload(request: Request, telegram_id: int) -> dict:
+    """Блок «Ваша ссылка»: ссылку строит сервер (`ref_code` = `telegram_id`), фронт её не
+    собирает. `note` — где найти ссылку потом, `{section}` — подпись раздела хаба."""
     bot_username = request.app.state.cfg.bot_username
-    link = reg_engine.build_referral_link(bot_username, p.telegram_id) if bot_username else None
-    user = await get_user(p.telegram_id)
+    link = reg_engine.build_referral_link(bot_username, telegram_id) if bot_username else None
+    user = await get_user(telegram_id)
     event_city = user.get("event_city") if user else None
-    lang, tr_map = await i18n.context(p.telegram_id)
+    lang, tr_map = await i18n.context(telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
     note_tpl = await i18n.tr_setting_for_city(
         "miniapp_form_ambassador_link_note_text", event_city, lang, tr_map,
@@ -1146,6 +1134,31 @@ async def draft_ambassador(
         "copied_toast": await i18n.tr_setting("miniapp_form_ambassador_copied_toast_text", lang, tr_map),
         "note": note,
     }
+
+
+@router.post("/app/api/reg/ambassador")
+async def draft_ambassador(
+    request: Request,
+    p: Principal = Depends(form_gate),
+    _: Principal = Depends(require_section("form")),
+) -> dict:
+    """«Хочу свою ссылку» — вход через `services.amb_status.request_join` (`telegram_id` только
+    из initData): `state` = active | candidate | full, при full ничего не пишется и ссылки нет."""
+    from services import amb_status
+    result = await amb_status.request_join(p.telegram_id, source="button_app")
+    if result.outcome in ("full", "declined"):
+        lang, tr_map = await i18n.context(p.telegram_id)
+        lang = lang if lang in ("ru", "en") else "ru"
+        return {"state": "full", "message": await i18n.tr_setting("amb_slots_full_text", lang, tr_map)}
+    payload = await _ambassador_link_payload(request, p.telegram_id)
+    if result.outcome in ("candidate", "already_candidate"):
+        lang, tr_map = await i18n.context(p.telegram_id)
+        lang = lang if lang in ("ru", "en") else "ru"
+        payload["state"] = "candidate"
+        payload["status_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+    else:
+        payload["state"] = "active" if result.outcome in ("active", "already_active") else "none"
+    return payload
 
 
 # ── Поиск по справочнику ВУЗ/город (A2-03) ──────────────────────────────────────────────────
