@@ -736,6 +736,21 @@
           {% endif %}
         </div>
 
+        {# Команда амбассадоров по статусу — только при включённом модуле отбора, одни числа. #}
+        {% if ambassadors.team %}
+        <h3 class="cut-title">Команда амбассадоров</h3>
+        <div class="kpi-grid secondary">
+          <div class="kpi"><div class="num">{{ ambassadors.team.team | thousands }}</div><div class="lbl">В команде</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.team.candidates | thousands }}</div><div class="lbl">Кандидатов</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.team.declined | thousands }}</div><div class="lbl">Отказано</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.team.with_pack | thousands }}</div><div class="lbl">С пакетом</div></div>
+          <div class="kpi"><div class="num">{{ ambassadors.team.without_pack | thousands }}</div><div class="lbl">Без пакета</div></div>
+          {% if ambassadors.team.slots_limit is not none %}
+          <div class="kpi"><div class="num">{{ ambassadors.team.slots_taken }} / {{ ambassadors.team.slots_limit }}</div><div class="lbl">Мест занято</div></div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         {# Ступени амбассадоров СкиллАп — только при включённой программе, одни агрегаты. #}
         {% if ambassadors.tiers %}
         <h3 class="cut-title">Ступени амбассадоров</h3>
