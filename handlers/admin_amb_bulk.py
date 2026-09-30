@@ -470,3 +470,7 @@ async def season_reset_apply(old_season: str) -> str:
         return "\n⚠️ Статусы амбассадоров сбросить не удалось — напишите разработчику."
     logger.warning("season_reset: amb statuses archived and reset n=%s old=%r", n, old_season)
     return f"\nСтатусы амбассадоров сброшены: {n}." if n else ""
+
+
+# «Закрепить приглашённого» (admin_amb_journal: admin_amb_attach, ambj_*) - хвост admin.router.
+from handlers import admin_amb_journal  # noqa: E402,F401

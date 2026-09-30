@@ -507,6 +507,15 @@ class AmbAppoint(StatesGroup):
     waiting_for_person = State()
 
 
+class AmbAttach(StatesGroup):
+    # «Амбассадоры» - «Закрепить приглашённого» (handlers/admin_amb_journal.py): кто пришёл,
+    # кто привёл, заметка («скрины в чате»), подтверждение кнопкой.
+    waiting_invitee = State()
+    waiting_referrer = State()
+    waiting_note = State()
+    waiting_confirm = State()
+
+
 class AmbSlotsEdit(StatesGroup):
     # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/admin_amb_section.py): менеджер
     # вводит число мест в команде амбассадоров (0 — без лимита); после сохранения — на экран.
