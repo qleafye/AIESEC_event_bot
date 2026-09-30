@@ -48,7 +48,7 @@ from handlers.admin_amb_candidates import (
 )
 from handlers.admin_caps import has_capability
 from handlers.states import AmbAppoint
-from services import person_search
+from services import amb_status, person_search
 from services.background import spawn
 from settings_schema import get_setting_typed
 
@@ -442,8 +442,11 @@ async def archive_csv(callback: types.CallbackQuery):
 
 async def season_reset_line() -> str:
     """Строка экрана чисел мастера «🔄 Новый сезон». Сбой чтения — пустая строка: мастер
-    сезона не должен падать из-за амбассадоров."""
+    сезона не должен падать из-за амбассадоров. Модуль отбора выключен — строки нет: статусы
+    не сбрасываются."""
     try:
+        if not await amb_status.selection_enabled():
+            return ""
         n = await amb_status_db.count_with_status()
     except Exception:
         logger.error("season_reset: не прочитал число амбассадоров", exc_info=True)
@@ -456,8 +459,10 @@ async def season_reset_line() -> str:
 
 async def season_reset_apply(old_season: str) -> str:
     """Сброс статусов с архивом прошлого сезона; строка итога для мастера. Сбой — лог и
-    честная строка, сезон всё равно меняется."""
+    честная строка, сезон всё равно меняется. Модуль отбора выключен — статусы не трогаются."""
     try:
+        if not await amb_status.selection_enabled():
+            return ""
         n = await amb_status_db.archive_and_reset_season(old_season or "", at=_now())
     except Exception:
         logger.error("season_reset: статусы амбассадоров не сброшены (old=%r)", old_season,

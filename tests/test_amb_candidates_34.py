@@ -35,6 +35,8 @@ def _ready(tmp_path, name="test_amb_candidates_34.db"):
     fast_init_db()
     config.ADMIN_IDS = [ADMIN_ID]
     _run(db.set_setting("event_season", SEASON))
+    # Правила отбора и лимита живут только при включённом модуле «🤝 Отбор амбассадоров».
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
 
 
 def _sql(query, params=()):

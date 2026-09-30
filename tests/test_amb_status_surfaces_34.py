@@ -35,6 +35,8 @@ def ready(tmp_path, monkeypatch):
     config.DB_PATH = str(tmp_path / "test_amb_status_surfaces_34.db")
     fast_init_db()
     _run(db.set_setting("event_season", SEASON))
+    # Правила отбора и лимита живут только при включённом модуле «🤝 Отбор амбассадоров».
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
     monkeypatch.setattr(config, "ADMIN_IDS", [])
     calls: list[int] = []
 
@@ -280,6 +282,7 @@ APP_BOT = "YouLead_test_bot"
 def http(tmp_path, monkeypatch):
     path = _use_tmp_http_db(tmp_path, "test_amb_status_surfaces_34_http.db")
     _standard_seed()
+    _set("amb_team_selection_enabled", "on")  # правила отбора — только при включённом модуле
     calls: list[int] = []
 
     async def _fake_tiers(tid):

@@ -1201,6 +1201,8 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
         buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
         # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
         buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
+        from handlers.admin_amb_section import selection_toggle_button  # тумблер «🤝 Отбор амбассадоров»
+        buttons.append([await selection_toggle_button()])
     # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
     # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/admin_sections.py) — это
     # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового

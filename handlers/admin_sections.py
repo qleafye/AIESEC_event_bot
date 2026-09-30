@@ -542,6 +542,12 @@ def is_section(token: str | None) -> bool:
     return bool(token) and token in _SECTION_LABELS
 
 
+async def _amb_section_on() -> bool:
+    """Раздел «🤝 Амбассадоры» есть только при включённом модуле «🤝 Отбор амбассадоров»."""
+    from services.amb_status import selection_enabled  # ленивый шов
+    return await selection_enabled()
+
+
 async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineKeyboardMarkup] | None:
     """Пара (текст, клавиатура) экрана раздела — или `None`, если раздела нет либо в нём не
     осталось ни одной доступной строки (права отозвали между нажатием и перерисовкой).
@@ -549,6 +555,8 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
     ОДИН предикат «раздел показуем» на весь проект: и экран раздела, и возврат из
     переключателя города спрашивают здесь, а не каждый по-своему."""
     if not is_section(token):
+        return None
+    if token == "amb" and not await _amb_section_on():
         return None
     caps = await resolve_capabilities(admin_id)
     if not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
@@ -569,7 +577,12 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
 async def show_admin_section(callback: types.CallbackQuery):
     # T-20-03: токен ищется в SECTIONS точным сравнением; неизвестный — алерт и выход, в
     # сообщение пользовательская строка не форматируется никогда.
-    screen = await section_screen(callback.from_user.id, callback.data.split(":", 1)[1])
+    token = callback.data.split(":", 1)[1]
+    if token == "amb" and not await _amb_section_on():
+        from handlers.admin_amb_section import SECTION_OFF_ALERT  # ленивый шов
+        await callback.answer(SECTION_OFF_ALERT, show_alert=True)
+        return
+    screen = await section_screen(callback.from_user.id, token)
     if screen is None:
         # T-20-04: текст не перечисляет существующие разделы — чужая раскладка не утекает.
         await callback.answer("Раздел недоступен.", show_alert=True)

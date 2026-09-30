@@ -605,6 +605,11 @@ def _build_snapshot_lines():
 # admin_resubmit_grant.py: resubg_start/toggle/apply/cancel/revoke, handlers/admin_edit_grant.py:
 # editg_start/toggle/apply/cancel/revoke), registered right after `lostfound_toggle_go` and
 # before `prog_fbday_open` (import order of the three new seams in admin.py's tail).
+# Drift note (30.09, тумблер «🤝 Отбор амбассадоров»): 2 handlers inserted (932 -> 934) прямо
+# перед `show_amb_entry` (handlers/admin_amb_section.py): `amb_section_off` — алерт на устаревшие
+# кнопки раздела при выключенном модуле (фильтр-функция, поэтому колонка ключей пуста; обязан
+# стоять ДО хендлеров раздела), и `toggle_amb_team_selection` — сам тумблер. Пересчитано
+# `_build_snapshot_lines()`, остальные строки не сдвинулись относительно друг друга.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1357,6 +1362,8 @@ admin|callback_query|chpost_publish_go|chpost:go:*
 admin|callback_query|onsitereg_cfg_screen|onsitereg_cfg:*
 admin|callback_query|onsitereg_toggle_go|onsitereg_toggle:*
 admin|callback_query|onsitereg_qr_send|onsitereg_qr:*
+admin|callback_query|amb_section_off|
+admin|callback_query|toggle_amb_team_selection|toggle_amb_team_selection
 admin|callback_query|show_amb_entry|admin_amb_entry
 admin|callback_query|amb_mode_confirm|ambs_mode
 admin|callback_query|amb_mode_apply|ambs_mode_go:*
@@ -2040,7 +2047,9 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_amb_candidates.py — admin.message appoint_person_step (state:AmbAppoint:*)
     # сразу после amb_limit_value и 8 admin.callback_query сразу после show_form_card. Сверено
     # diff'ом (difflib): две чистые вставки (1 + 8), 0 удалений, 0 реордеров (923 -> 932).
-    assert len(GOLDEN_SNAPSHOT) == 932
+    # 30.09 (тумблер «🤝 Отбор амбассадоров»): 2 admin.callback_query (amb_section_off,
+    # toggle_amb_team_selection) сразу перед show_amb_entry. Одна чистая вставка (932 -> 934).
+    assert len(GOLDEN_SNAPSHOT) == 934
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

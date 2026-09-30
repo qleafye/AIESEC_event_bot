@@ -35,6 +35,8 @@ def ready(tmp_path, monkeypatch):
     config.DB_PATH = str(tmp_path / "test_amb_status_service_34.db")
     fast_init_db()
     _run(db.set_setting("event_season", SEASON))
+    # Правила отбора и лимита живут только при включённом модуле «🤝 Отбор амбассадоров».
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
     calls: list[int] = []
 
     async def _fake_tiers(tid):

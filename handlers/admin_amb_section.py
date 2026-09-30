@@ -105,6 +105,66 @@ async def _edit_or_send(message: types.Message, text: str, kb: InlineKeyboardMar
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
+# ── тумблер модуля «🤝 Отбор амбассадоров» ────────────────────────────────────────────────
+# Выключен — раздела нет в корне /admin (handlers/admin_core.build_admin_keyboard), а устаревшие
+# кнопки раздела в чате отвечают алертом, как его включить. Кнопка тумблера — на экране группы
+# «🎮 Геймификация → ⚙️ Тексты и настройки» (handlers/admin_settings), не в самом разделе:
+# иначе выключенный раздел было бы нечем включить.
+
+SECTION_OFF_ALERT = (
+    "Раздел «🤝 Амбассадоры» выключен. Включить: /admin → 🎮 Геймификация → "
+    "⚙️ Тексты и настройки → «🤝 Отбор амбассадоров»."
+)
+
+_SECTION_CALLBACKS = ("admin_amb_entry", "admin_amb_candidates")
+_SECTION_PREFIXES = ("ambs_", "ambc", "ambp:")
+
+
+def is_section_callback(data: str | None) -> bool:
+    """Кнопка раздела «🤝 Амбассадоры» (вход, кандидаты, массовые действия, выгрузки)."""
+    data = data or ""
+    return data in _SECTION_CALLBACKS or data.startswith(_SECTION_PREFIXES)
+
+
+async def _section_off(callback: types.CallbackQuery) -> bool:
+    return is_section_callback(callback.data) and not await amb_status.selection_enabled()
+
+
+@router.callback_query(_section_off)
+async def amb_section_off(callback: types.CallbackQuery, state: FSMContext):
+    """Модуль выключен, а в чате осталась кнопка раздела — объясняем, где включить."""
+    await state.clear()
+    await callback.answer(SECTION_OFF_ALERT, show_alert=True)
+
+
+async def selection_toggle_button() -> InlineKeyboardButton:
+    on = await amb_status.selection_enabled()
+    state = "✅ Вкл → ❌ Выкл" if on else "❌ Выкл → ✅ Вкл"
+    return InlineKeyboardButton(text=f"🤝 Отбор амбассадоров: {state}",
+                                callback_data="toggle_amb_team_selection")
+
+
+_TOGGLE_ALERT = {
+    "on": ("🤝 Отбор амбассадоров: ✅ включён. Раздел «🤝 Амбассадоры» — в корне /admin: "
+           "способ входа, лимит мест, кандидаты."),
+    "off": ("🤝 Отбор амбассадоров: ❌ выключен. Амбассадором снова становятся сразу по кнопке, "
+            "без лимита. Кандидаты и настройки сохранены до включения."),
+}
+
+
+@router.callback_query(F.data == "toggle_amb_team_selection")
+async def toggle_amb_team_selection(callback: types.CallbackQuery):
+    from handlers.admin_settings import build_settings_group_keyboard, render_settings_group_text
+
+    new_val = "off" if await amb_status.selection_enabled() else "on"
+    await set_setting_by_admin(callback.from_user.id, amb_status.TOGGLE_KEY, new_val)
+    logger.info("admin=%s %s=%s", callback.from_user.id, amb_status.TOGGLE_KEY, new_val)
+    await callback.answer(_TOGGLE_ALERT[new_val], show_alert=True)
+    text = await render_settings_group_text("game", callback.from_user.id)
+    kb = await build_settings_group_keyboard("game", callback.from_user.id)
+    await _edit_or_send(callback.message, text, kb)
+
+
 # ── главный экран ────────────────────────────────────────────────────────────────────────
 
 async def render_entry_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
