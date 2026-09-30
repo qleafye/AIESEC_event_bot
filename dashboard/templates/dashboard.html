@@ -742,8 +742,13 @@
         <div class="kpi-grid secondary">
           <div class="kpi"><div class="num">{{ ambassadors.tiers.active | thousands }}</div><div class="lbl">С прошедшими отбор</div></div>
           <div class="kpi"><div class="num">{{ ambassadors.tiers.qualified_total | thousands }}</div><div class="lbl">Прошли отбор всего</div></div>
-          <div class="kpi"><div class="num">{{ ambassadors.tiers.o2o_granted }} / {{ ambassadors.tiers.o2o_quota }}</div><div class="lbl">Разборов резюме выдано</div></div>
-          <div class="kpi"><div class="num">{{ ambassadors.tiers.waitlist | thousands }}</div><div class="lbl">В листе ожидания</div></div>
+          {% for t in ambassadors.tiers.tiers %}
+          <div class="kpi"><div class="num">{{ t.reached | thousands }}</div><div class="lbl">Дошли до ступени {{ t.tier }} (от {{ t.threshold }})</div></div>
+          {% if t.quota is not none %}
+          <div class="kpi"><div class="num">{{ t.granted }} / {{ t.quota }}</div><div class="lbl">Ступень {{ t.tier }}: мест выдано</div></div>
+          <div class="kpi"><div class="num">{{ t.waitlist | thousands }}</div><div class="lbl">Ступень {{ t.tier }}: в листе ожидания</div></div>
+          {% endif %}
+          {% endfor %}
         </div>
         {% endif %}
 

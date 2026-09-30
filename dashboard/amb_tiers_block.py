@@ -8,15 +8,22 @@
 'approved'`, есть строка журнала зачётов без `excluded_at` (на старой схеме — без этого условия) и нет одобрения Mini App, ещё висящего в окне отмены. Паритет с ботом сверяет
 `tests/test_amb_tiers_dashboard_backfill_su5.py`.
 
+Ступеней 1–5 (`amb_tiers_count`), у любой может быть квота (`amb_tier{N}_quota_on`). Имена
+ключей даёт корневой чистый модуль `amb_tier_keys` (в образе дашборда лежит рядом с
+`chat_score.py`), дефолты ниже повторяют реестр бота.
+
 Скоуп страницы: город сужает круг АМБАССАДОРОВ (по их `event_city`); сезон задаёт сезон
-приглашённых (по умолчанию — текущий). Слоты разбора резюме и лист ожидания — общие на всё
-событие (квота одна), поэтому считаются без городского фильтра.
+приглашённых (по умолчанию — текущий). Выданные места квот и лист ожидания — общие на всё
+событие, поэтому считаются без городского фильтра.
 """
 from __future__ import annotations
 
 import sqlite3
 
+from amb_tier_keys import MAX_TIERS, tier_key
+
 _QUOTA_DEFAULT = 15
+_DEFAULT_THRESHOLDS = {1: 1, 2: 3, 3: 7, 4: 10, 5: 15}
 
 
 def _setting(conn, key: str) -> str | None:
@@ -24,21 +31,38 @@ def _setting(conn, key: str) -> str | None:
     return row[0] if row is not None else None
 
 
+def _int_setting(conn, key: str, default: int, *, allow_zero: bool = False) -> int:
+    try:
+        value = int(_setting(conn, key) or default)
+    except ValueError:
+        return default
+    if value < 0 or (value == 0 and not allow_zero):
+        return default
+    return value
+
+
 def amb_tiers_block(conn, scope) -> "dict | None":
     """`None` — программа выключена или в базе ещё нет таблиц ступеней (старая БД).
-    Иначе `{"active", "qualified_total", "o2o_granted", "o2o_quota", "waitlist"}`."""
+    Иначе `{"active", "qualified_total", "o2o_granted", "o2o_quota", "waitlist", "tiers"}`:
+    `tiers` — по ступеням `{"tier", "threshold", "reached", "quota", "granted", "waitlist"}`
+    (`quota` — `None`, если квота ступени выключена); `o2o_*` — сводка по первой ступени с
+    квотой (старые потребители), без квот — по ступени 2."""
     # Ленивый импорт: queries.py импортирует этот модуль, круг замыкаем при вызове.
     from dashboard.queries import _city_sql
 
     try:
         if (_setting(conn, "amb_qualified_program") or "off") != "on":
             return None
-        try:
-            quota = int(_setting(conn, "amb_o2o_quota") or _QUOTA_DEFAULT)
-        except ValueError:
-            quota = _QUOTA_DEFAULT
-        if quota < 0:  # 0 = слотов нет (как у бота: allow_zero в реестре), не дефолт
-            quota = _QUOTA_DEFAULT
+        count = max(1, min(MAX_TIERS, _int_setting(conn, "amb_tiers_count", 3)))
+        cfg = []
+        for n in range(1, count + 1):
+            quota_on = (_setting(conn, tier_key(n, "quota_on")) or "off") == "on"
+            cfg.append({
+                "tier": n,
+                "threshold": _int_setting(conn, tier_key(n, "threshold"), _DEFAULT_THRESHOLDS[n]),
+                "quota": (_int_setting(conn, tier_key(n, "quota"), _QUOTA_DEFAULT, allow_zero=True)
+                          if quota_on else None),
+            })
 
         season = scope.season if getattr(scope, "season", None) else (_setting(conn, "event_season") or "")
         city_frag, city_params = _city_sql(conn, getattr(scope, "city", None))
@@ -64,17 +88,34 @@ def amb_tiers_block(conn, scope) -> "dict | None":
             "GROUP BY u.referrer_id",
             (*city_params, (season or "").strip()),
         ).fetchall()
-        o2o = dict(conn.execute(
-            "SELECT o2o_status, COUNT(*) FROM ambassador_tiers "
-            "WHERE o2o_status IN ('granted', 'waitlist') GROUP BY o2o_status"
-        ).fetchall())
+        per_tier: dict[int, dict] = {}
+        for tier, status, n in conn.execute(
+            "SELECT tier, o2o_status, COUNT(*) FROM ambassador_tiers "
+            "WHERE o2o_status IN ('granted', 'waitlist') GROUP BY tier, o2o_status"
+        ).fetchall():
+            per_tier.setdefault(int(tier), {})[status] = int(n)
     except sqlite3.OperationalError:
         return None
 
+    tiers = []
+    for c in cfg:
+        counts = per_tier.get(c["tier"], {})
+        tiers.append({
+            **c,
+            "reached": sum(1 for r in rows if int(r[1]) >= c["threshold"]),
+            "granted": int(counts.get("granted", 0)),
+            "waitlist": int(counts.get("waitlist", 0)),
+        })
+    primary = next((t for t in tiers if t["quota"] is not None), None)
+    if primary is None:
+        primary = next((t for t in tiers if t["tier"] == 2), None) or {
+            "quota": _QUOTA_DEFAULT, "granted": 0, "waitlist": 0,
+        }
     return {
         "active": sum(1 for r in rows if int(r[1]) > 0),
         "qualified_total": sum(int(r[1]) for r in rows),
-        "o2o_granted": int(o2o.get("granted", 0)),
-        "o2o_quota": quota,
-        "waitlist": int(o2o.get("waitlist", 0)),
+        "o2o_granted": primary["granted"],
+        "o2o_quota": primary["quota"] if primary["quota"] is not None else _QUOTA_DEFAULT,
+        "waitlist": primary["waitlist"],
+        "tiers": tiers,
     }
