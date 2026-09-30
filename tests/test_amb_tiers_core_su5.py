@@ -34,6 +34,21 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def seed_journal_row(invitee_id, referrer_id, *, season=SEASON, excluded=False):
+    """Строка журнала зачётов для одобренного приглашённого: «прошли отбор» считается из неё."""
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO referral_credits (invitee_id, referrer_id, coins, credited_at, "
+            "source, season, excluded_at) VALUES (?, ?, 0, '2026-09-01 00:00:00', 'approval', ?, ?)",
+            (int(invitee_id), int(referrer_id), season,
+             "2026-09-02 00:00:00" if excluded else None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _seed_user(tid, *, referrer_id=None, status="pending", season=SEASON, full_name=None):
     _run(db.add_user({
         "telegram_id": tid,
@@ -43,6 +58,8 @@ def _seed_user(tid, *, referrer_id=None, status="pending", season=SEASON, full_n
         "season": season,
     }))
     _run(db.set_user_status(tid, status))
+    if referrer_id and status == "approved":
+        seed_journal_row(tid, referrer_id, season=season)
 
 
 def _make_ambassador(tid, *, since="2026-01-01 00:00:00"):
@@ -77,6 +94,8 @@ def test_three_pending_invitees_not_qualified(tmp_path):
     assert _counts(100) == {"total": 3, "pending": 3, "qualified": 0, "arrived": 0}
 
     _run(db.set_user_status(201, "approved"))
+    assert _counts(100)["qualified"] == 0  # без строки журнала (до бэкафилла) не прошёл
+    seed_journal_row(201, 100)
     counts = _counts(100)
     assert counts["qualified"] == 1 and counts["pending"] == 2 and counts["total"] == 3
 

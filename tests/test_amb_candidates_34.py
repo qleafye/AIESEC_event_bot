@@ -72,6 +72,12 @@ def _seed(tid, *, status="approved", amb_status=None, slot=False, pack=False, re
          "2026-09-04 10:00:00" if reserve else None,
          f"2026-09-01 00:{tid % 60:02d}:00", city, referrer, tid),
     )
+    if referrer and status == "approved":
+        _sql(
+            "INSERT OR IGNORE INTO referral_credits (invitee_id, referrer_id, coins, "
+            "credited_at, source, season) VALUES (?, ?, 0, '2026-09-01 00:00:00', 'approval', ?)",
+            (tid, referrer, SEASON),
+        )
     if language:
         _sql("UPDATE users SET language = ? WHERE telegram_id = ?", (language, tid))
 

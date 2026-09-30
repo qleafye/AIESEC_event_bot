@@ -5,7 +5,7 @@
 `services/` ему недоступны, поэтому SQL здесь самодостаточный и повторяет определения бота
 (`database/amb_tiers_db.py`): приглашённый — `users.referrer_id = амбассадор`, сезон =
 текущий `event_season`, не сам себя, не исключён менеджером; прошёл отбор — `status =
-'approved'` и нет одобрения Mini App, ещё висящего в окне отмены. Паритет с ботом сверяет
+'approved'`, есть строка журнала зачётов без `excluded_at` (на старой схеме — без этого условия) и нет одобрения Mini App, ещё висящего в окне отмены. Паритет с ботом сверяет
 `tests/test_amb_tiers_dashboard_backfill_su5.py`.
 
 Скоуп страницы: город сужает круг АМБАССАДОРОВ (по их `event_city`); сезон задаёт сезон
@@ -44,6 +44,12 @@ def amb_tiers_block(conn, scope) -> "dict | None":
         city_frag, city_params = _city_sql(conn, getattr(scope, "city", None))
         amb_where = "is_ambassador = 1" + (f" AND {city_frag}" if city_frag else "")
 
+        journal = ""
+        if any(r[1] == "excluded_at" for r in conn.execute("PRAGMA table_info(referral_credits)")):
+            journal = (
+                "AND EXISTS (SELECT 1 FROM referral_credits rc WHERE rc.invitee_id = u.telegram_id "
+                "  AND rc.excluded_at IS NULL) "
+            )
         rows = conn.execute(
             "SELECT u.referrer_id AS rid, COUNT(*) AS qualified FROM users u "
             f"WHERE u.referrer_id IN (SELECT telegram_id FROM users WHERE {amb_where}) "
@@ -51,6 +57,7 @@ def amb_tiers_block(conn, scope) -> "dict | None":
             "AND COALESCE(u.season, '') = ? "
             "AND u.telegram_id NOT IN (SELECT invitee_id FROM ambassador_exclusions) "
             "AND u.status = 'approved' "
+            + journal +
             "AND NOT EXISTS (SELECT 1 FROM application_decisions d "
             "  WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved' "
             "  AND d.effects_sent_at IS NULL AND d.undone_at IS NULL) "

@@ -23,6 +23,7 @@ from database import amb_tiers_db as tdb
 from database import db
 from services import amb_tiers
 from tests._dbtpl import fast_init_db
+from tests.test_amb_tiers_core_su5 import seed_journal_row
 
 SEASON = "SU26"
 
@@ -58,6 +59,8 @@ def _seed_user(tid, *, referrer_id=None, status="pending", full_name=None, appro
         "season": SEASON,
     }))
     _run(db.set_user_status(tid, status))
+    if referrer_id and status == "approved":
+        seed_journal_row(tid, referrer_id, season=SEASON)
     if approved_at:
         _sql("UPDATE users SET approved_at = ? WHERE telegram_id = ?", (approved_at, tid))
 
