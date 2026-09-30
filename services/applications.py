@@ -635,18 +635,9 @@ async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
     ids = await approve_all_pending(city_scope=scope)
     if not ids:
         return ids, {"credited": 0, "coins": 0, "ambassadors": 0}
-    from services.referrals import credit_for_approved_bulk
-    summary = await credit_for_approved_bulk(ids)
-    # Ступени амбассадоров СкиллАп — рядом с начислением, своим try: сбой одного не
-    # отменяет другое.
-    try:
-        from services.amb_tiers import check_tiers_for_invitees
-        await check_tiers_for_invitees(ids)
-    except Exception:
-        logger.exception("claim_approve_all_with_credits: проверка ступеней не прошла")
-    # Своя заявка амбассадора одобрена — место в лимите, если есть (сам не бросает).
-    from services.amb_status import on_applications_approved
-    await on_applications_approved(ids)
+    # Журнал зачётов + баллы + ступени + место в лимите — одной точкой (сама не бросает).
+    from services.amb_journal import on_invitees_approved
+    summary = await on_invitees_approved(ids)
     return ids, summary
 
 
@@ -697,24 +688,10 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
             telegram_id, decision, reason, by, decided_at, sent_at, effects_sent_at=sent_at,
         )
         if decision == "approved":
-            try:
-                from services.referrals import credit_for_approved
-                await credit_for_approved(telegram_id)
-            except Exception:
-                logger.exception(
-                    "record_decision: начисление амбассадору не прошло (tid=%s)", telegram_id,
-                )
-            # Ступени амбассадоров СкиллАп: бот-одиночное и вход на площадке — решение уже
-            # необратимо. Свой try: сбой начисления не отменяет проверку ступеней и наоборот.
-            try:
-                from services.amb_tiers import check_tiers_for_invitees
-                await check_tiers_for_invitees([telegram_id])
-            except Exception:
-                logger.exception(
-                    "record_decision: проверка ступеней не прошла (tid=%s)", telegram_id,
-                )
-            from services.amb_status import on_applications_approved
-            await on_applications_approved([telegram_id])
+            # Бот-одиночное и вход на площадке — решение уже необратимо. Журнал, баллы,
+            # ступени и место — одной точкой (сама не бросает).
+            from services.amb_journal import on_invitees_approved
+            await on_invitees_approved([telegram_id])
         else:
             from services.amb_status import on_applications_unapproved
             await on_applications_unapproved([telegram_id])
@@ -790,21 +767,12 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
     же причине: до окна отмены одобрение Mini App не засчитывается."""
     due = await claim_due_application_decisions(_stamp(now))
     if due:
-        from services.referrals import credit_for_approved
-        for row in due:
-            if row["decision"] == "approved":
-                await credit_for_approved(row["telegram_id"])
-        # Ступени амбассадоров СкиллАп: одобрение Mini App засчитывается только сейчас, когда
-        # окно отмены прошло (отменённое сюда не доходит). Одним вызовом на всю пачку.
+        # Одобрение Mini App засчитывается только сейчас, когда окно отмены прошло
+        # (отменённое сюда не доходит). Одним вызовом на всю пачку.
         approved_ids = [row["telegram_id"] for row in due if row["decision"] == "approved"]
         if approved_ids:
-            try:
-                from services.amb_tiers import check_tiers_for_invitees
-                await check_tiers_for_invitees(approved_ids)
-            except Exception:
-                logger.exception("flush_due_decisions: проверка ступеней не прошла")
-            from services.amb_status import on_applications_approved
-            await on_applications_approved(approved_ids)
+            from services.amb_journal import on_invitees_approved
+            await on_invitees_approved(approved_ids)
         rejected_ids = [row["telegram_id"] for row in due if row["decision"] != "approved"]
         if rejected_ids:
             from services.amb_status import on_applications_unapproved

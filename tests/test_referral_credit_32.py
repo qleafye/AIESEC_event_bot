@@ -437,18 +437,16 @@ def test_approval_status_writers_guard():
     assert not missing, f"Ожидаемые швы пропали из исходников: {missing} — план устарел?"
 
 
-# ── Сторож: каждый путь, начисляющий баллы за приглашённого, проверяет и ступени ────────────
+# ── Сторож одной точки «приглашённого одобрили» (журнал зачётов) ────────────────────────────
 
-_CREDIT_NAMES = {"credit_for_approved", "credit_for_approved_bulk"}
-_TIER_NAMES = {"check_tiers_for_invitees", "check_tiers"}
-
-# Где начисление без проверки ступеней законно — с объяснением.
-_CREDIT_WITHOUT_TIERS_OK = {
-    "services/referrals.py": (
-        "внутренности начисления: credit_for_approved_bulk — цикл по credit_for_approved; "
-        "ступени проверяет вызывающий путь одобрения, бэкафилл ступеней — свой инструмент"
-    ),
+_ENTRY_NAME = "on_invitees_approved"
+# Эти вызовы живут только внутри журнала (и тонких обёрток в referrals): путь одобрения,
+# который зовёт их напрямую, обходит журнал.
+_DIRECT_NAMES = {
+    "credit_for_approved", "credit_for_approved_bulk",
+    "check_tiers_for_invitees", "on_applications_approved",
 }
+_DIRECT_CALL_OK = {"services/amb_journal.py", "services/referrals.py"}
 
 
 def _call_name(node) -> str | None:
@@ -460,59 +458,53 @@ def _call_name(node) -> str | None:
     return None
 
 
-def _functions_crediting_without_tiers() -> list[str]:
-    offenders: list[str] = []
+def _parsed_sources():
     for top in _SCAN_DIRS:
         top_dir = _REPO_ROOT / top
         if not top_dir.exists():
             continue
         for path in top_dir.rglob("*.py"):
             rel = path.relative_to(_REPO_ROOT).as_posix()
-            if rel in _CREDIT_WITHOUT_TIERS_OK:
-                continue
             try:
                 with warnings.catch_warnings():
                     # чужие исходники с «\|» в обычных строках — не наша забота здесь
                     warnings.simplefilter("ignore", SyntaxWarning)
                     warnings.simplefilter("ignore", DeprecationWarning)
-                    tree = ast.parse(path.read_text(encoding="utf-8"))
+                    yield rel, ast.parse(path.read_text(encoding="utf-8"))
             except (UnicodeDecodeError, SyntaxError):
                 continue
-            for fn in ast.walk(tree):
-                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                if fn.name in _CREDIT_NAMES:
-                    continue
-                calls = {
-                    _call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)
-                }
-                if calls & _CREDIT_NAMES and not calls & _TIER_NAMES:
-                    offenders.append(f"{rel}::{fn.name}")
-    return offenders
 
 
-def test_every_credit_call_site_also_checks_tiers():
-    """Каждая функция, которая зовёт credit_for_approved(_bulk), обязана рядом звать и
-    проверку ступеней амбассадоров (services.amb_tiers) — иначе новый путь одобрения молча
-    не выдаст ступень. Исключения — _CREDIT_WITHOUT_TIERS_OK с объяснением."""
-    offenders = _functions_crediting_without_tiers()
+def test_nobody_calls_credit_or_tier_hooks_directly():
+    """Журнал зачётов — единая точка: никто, кроме services/amb_journal.py (и обёрток в
+    services/referrals.py), не зовёт начисление, проверку ступеней и выдачу места напрямую.
+    Инструменты tools/ и сами определения функций — вне проверки."""
+    offenders: list[str] = []
+    for rel, tree in _parsed_sources():
+        if rel in _DIRECT_CALL_OK or rel.startswith("tools/"):
+            continue
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            hit = {_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)} & _DIRECT_NAMES
+            if hit and fn.name not in _DIRECT_NAMES:
+                offenders.append(f"{rel}::{fn.name} -> {sorted(hit)}")
     assert not offenders, (
-        "Начисление за приглашённого без проверки ступеней: " + ", ".join(offenders)
-        + " — добавьте рядом check_tiers_for_invitees (ленивый импорт, свой try/except) "
-        "или внесите файл в _CREDIT_WITHOUT_TIERS_OK с объяснением."
+        "Прямой вызов в обход журнала зачётов: " + "; ".join(offenders)
+        + " — зовите services.amb_journal.on_invitees_approved."
     )
 
 
-def test_credit_guard_sees_all_four_known_sites():
-    """Сторож не пустой: он действительно видит известные пути одобрения."""
+def test_every_approval_path_calls_journal_entry_point():
+    """Все известные пути одобрения зовут on_invitees_approved (сторож не пустой)."""
     seen: set[str] = set()
     for rel in ("services/applications.py", "services/reg_finalize.py"):
         tree = ast.parse((_REPO_ROOT / rel).read_text(encoding="utf-8"))
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                calls = {_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)}
-                if calls & _CREDIT_NAMES:
-                    assert calls & _TIER_NAMES, f"{rel}::{fn.name}"
+                calls = [_call_name(n) for n in ast.walk(fn) if isinstance(n, ast.Call)]
+                if _ENTRY_NAME in calls:
+                    assert calls.count(_ENTRY_NAME) == 1, f"{rel}::{fn.name}"
                     seen.add(fn.name)
     assert {"record_decision", "flush_due_decisions", "claim_approve_all_with_credits"} <= seen
     assert len(seen) >= 4, seen
