@@ -97,7 +97,7 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
     assert [cd for cd in flat if cd and cd.startswith("settings_group:")] == [
         "settings_group:event", "settings_group:reg", "settings_group:apps",
         "settings_group:sheets", "settings_group:pay", "settings_group:party",
-        "settings_group:consent", "settings_group:game",
+        "settings_group:consent", "settings_group:game", "settings_group:amb",
         # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
         "settings_group:chat", "settings_group:system",
     ]
@@ -241,6 +241,8 @@ def test_registry_coverage_event():
         # "chat" added quick 260927: веса формулы рейтинга чата (экран «💬 Чат делегатов» раздела
         # «🔧 Управление») + режим и правила города (экран «🏆 Рейтинг чата»).
         "chat",
+        # "amb" — собственная группа раздела «🤝 Амбассадоры» (ключи переехали из game).
+        "amb",
     }
     # Phase 31 (31-03, D-30): "date_only" — дата без времени (форма отдельная от "date",
     # у которой время суток осмысленно — payment_deadline/планировщик напоминаний).
