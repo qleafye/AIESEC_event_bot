@@ -1412,6 +1412,8 @@ admin|callback_query|revoke_pick|ambl_rev_pick:*
 admin|callback_query|revoke_go|ambl_rev_go:*
 admin|callback_query|promote_confirm|ambl_prom:*
 admin|callback_query|promote_go|ambl_prom_go:*
+admin|callback_query|unrevoke_list|ambl_unrev
+admin|callback_query|unrevoke_go|ambl_unrev_go:*
 admin|callback_query|show_amb_points|admin_amb_points
 admin|callback_query|amb_points_start|ambpt_coins
 admin|callback_query|amb_points_cancel|ambpt_coins_cancel
@@ -2088,7 +2090,9 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_amb_tier_ladder.py — 1 admin.message (state:AmbPointsEdit:*) сразу после
     # revoke_pick_hint и 4 admin.callback_query сразу после promote_go. Две чистые вставки
     # (1 + 4), 0 удалений, 0 реордеров (956 -> 961).
-    assert len(GOLDEN_SNAPSHOT) == 961
+    # 01.10 («↩️ Вернуть ступень»): 2 admin.callback_query (unrevoke_list/unrevoke_go) сразу после
+    # promote_go — одна чистая вставка, 0 удалений, 0 реордеров (961 -> 963).
+    assert len(GOLDEN_SNAPSHOT) == 963
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

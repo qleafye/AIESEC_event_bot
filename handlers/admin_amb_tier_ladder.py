@@ -8,7 +8,8 @@
   настроек (`settings_edit:<ключ>`, право «⚙️ Настройки»): кнопки видит только его держатель;
 - галочка «Ступени только амбассадору с одобренной заявкой»;
 - «🚫 Снять ступень» — ручное решение менеджера (накрутка): ступень пропадает, место в квоте
-  освобождается, человеку ничего не шлётся;
+  освобождается, человеку ничего не шлётся; автоматика её (и старшие) больше не выдаёт;
+- «↩️ Вернуть ступень» — список снятых вручную, кнопка снимает запрет и сразу пересчитывает;
 - «🎁 Отдать место» — освободившееся место первому из листа ожидания, кнопкой и с
   подтверждением; автопродвижения из листа нет.
 
@@ -152,6 +153,10 @@ async def _ladder_screen(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
     if add_del:
         rows.append(add_del)
     rows.append([InlineKeyboardButton(text="🚫 Снять ступень у амбассадора", callback_data="ambl_rev")])
+    revoked = await amb_tiers_db.list_revocations(await amb_tiers.current_season())
+    if revoked:
+        rows.append([InlineKeyboardButton(
+            text=f"↩️ Вернуть ступень ({len(revoked)})", callback_data="ambl_unrev")])
     rows.append([InlineKeyboardButton(text="← Ступени амбассадоров", callback_data="admin_amb_tiers")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -359,8 +364,10 @@ async def revoke_pick(callback: types.CallbackQuery, state: FSMContext):
         f"<b>Снять ступень {tier} у {data['person_label']}?</b>\n"
         f"Ступень пропадёт из её прогресса и выгрузки, место в квоте освободится.{quota_part} "
         "Ей ничего не придёт.\n\n"
-        "Если у неё по-прежнему хватает прошедших отбор, ступень выдастся заново — сначала "
-        "исключите накрученных приглашённых («🎓 Ступени амбассадоров» → «🚫 Исключить»).",
+        f"Автоматически ступень {tier} и старшие этому человеку больше не выдаются, даже если "
+        "приглашённых хватает — пока вы сами не нажмёте «↩️ Вернуть ступень» на экране "
+        "«🪜 Лестница ступеней».\n"
+        "Накрученных приглашённых исключите отдельно («🎓 Ступени амбассадоров» → «🚫 Исключить»).",
         kb,
     )
     await callback.answer()
@@ -428,6 +435,56 @@ async def promote_go(callback: types.CallbackQuery):
         }.get(result, _STALE)
         await callback.answer(note, show_alert=True)
     await _show(callback.message, callback.from_user.id)
+
+
+# ── вернуть снятую ступень ───────────────────────────────────────────────────────────────
+
+_UNREVOKE_LIMIT = 20
+
+
+@router.callback_query(F.data == "ambl_unrev")
+async def unrevoke_list(callback: types.CallbackQuery):
+    rows = (await amb_tiers_db.list_revocations(await amb_tiers.current_season()))[:_UNREVOKE_LIMIT]
+    if not rows:
+        await callback.answer("Снятых вручную ступеней нет.", show_alert=True)
+        await _show(callback.message, callback.from_user.id)
+        return
+    buttons = []
+    lines = ["<b>↩️ Вернуть ступень</b>",
+             "Эти ступени сняты вручную и сами не вернутся. Нажмите на человека — ступень "
+             "снова станет доступна, и если приглашённых хватает, выдастся сразу.", ""]
+    for r in rows:
+        tid, tier = int(r["telegram_id"]), int(r["tier"])
+        label = _person_label(await db.get_user(tid), tid)
+        lines.append(f"• {label} — ступень {tier}, снята {_short_date(r['revoked_at'])}")
+        buttons.append([InlineKeyboardButton(
+            text=f"↩️ {tier} · {html.unescape(label)}"[:60], callback_data=f"ambl_unrev_go:{tid}:{tier}")])
+    buttons.append([InlineKeyboardButton(text="← К лестнице ступеней", callback_data="ambl:main")])
+    await _edit_or_send(callback.message, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ambl_unrev_go:"))
+async def unrevoke_go(callback: types.CallbackQuery):
+    try:
+        _, tid_raw, tier_raw = (callback.data or "").split(":")
+        tid, tier = int(tid_raw), int(tier_raw)
+    except ValueError:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    granted = await amb_tiers.unrevoke_tier(tid, tier, by=callback.from_user.id)
+    label = _person_label(await db.get_user(tid), tid)
+    if granted:
+        note = f"Ступень {tier} возвращена: {html.unescape(label)} получит уведомление."
+    else:
+        note = (f"Запрет на ступень {tier} снят. Пока приглашённых не хватает для неё — "
+                "выдастся сама, когда наберётся.")
+    await callback.answer(note, show_alert=True)
+    remaining = await amb_tiers_db.list_revocations(await amb_tiers.current_season())
+    if remaining:
+        await unrevoke_list(callback)
+    else:
+        await _show(callback.message, callback.from_user.id)
 
 
 # Экран «💰 Баллы и приватность» (admin_amb_points, ambpt_*) — хвост admin.router после
