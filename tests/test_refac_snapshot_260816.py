@@ -773,6 +773,7 @@ admin|message|chrate_value|state:ChatRatingEdit:*
 admin|message|chclean_delay_value|state:ChatCleanupEdit:*
 admin|message|chpost_value|state:ChatRatingPostEdit:*
 admin|message|amb_limit_value|state:AmbSlotsEdit:*
+admin|message|appoint_person_step|state:AmbAppoint:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1373,6 +1374,14 @@ admin|callback_query|remove_confirm|ambc_rm:*
 admin|callback_query|remove_apply|ambc_rm_go:*
 admin|callback_query|candidates_csv|ambc_csv
 admin|callback_query|show_form_card|ambc_card:*
+admin|callback_query|decline_all_confirm|ambc_decl
+admin|callback_query|decline_all_cancel|ambc_decl_no
+admin|callback_query|decline_all_go|ambc_decl_go:*
+admin|callback_query|appoint_start|ambc_add
+admin|callback_query|appoint_cancel|ambc_add_cancel
+admin|callback_query|appoint_pick|ambc_add_pick:*
+admin|callback_query|appoint_go|ambc_add_go:*
+admin|callback_query|archive_csv|ambc_arch_csv
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2027,7 +2036,11 @@ def test_snapshot_total_handler_count_is_292():
     # 30.09 (экран «🙋 Кандидаты и команда»): шов handlers/admin_amb_candidates.py хвостом
     # handlers/admin_amb_section.py — 11 admin.callback_query сразу после amb_texts_menu.
     # Сверено diff'ом (difflib): одна чистая вставка, 0 удалений, 0 реордеров (912 -> 923).
-    assert len(GOLDEN_SNAPSHOT) == 923
+    # 30.09 (массовые действия амбассадоров): шов handlers/admin_amb_bulk.py хвостом
+    # handlers/admin_amb_candidates.py — admin.message appoint_person_step (state:AmbAppoint:*)
+    # сразу после amb_limit_value и 8 admin.callback_query сразу после show_form_card. Сверено
+    # diff'ом (difflib): две чистые вставки (1 + 8), 0 удалений, 0 реордеров (923 -> 932).
+    assert len(GOLDEN_SNAPSHOT) == 932
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
