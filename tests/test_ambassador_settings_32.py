@@ -95,6 +95,13 @@ _KNOWN_GAME_GROUP_TOGGLE_EXCEPTIONS = {
     "amb_join_mode",  # кнопки экрана «🤝 Амбассадоры»
     "amb_slots_limit",  # кнопки экрана «🤝 Амбассадоры»
     "amb_team_selection_enabled",  # тумблер, кнопка на экране группы «🎮 Геймификация»
+    # Обобщённые ступени 1–5: правятся экраном «🎓 Ступени», не общим списком полей.
+    "amb_tiers_count", "amb_tiers_require_approved", "amb_tier4_threshold", "amb_tier5_threshold",
+    *(f"amb_tier{n}_quota_on" for n in range(1, 6)),
+    *(f"amb_tier{n}_quota" for n in (1, 3, 4, 5)),
+    *(f"amb_tier{n}_waitlist_text" for n in (1, 3, 4, 5)),
+    "amb_tier4_text", "amb_tier5_text",
+    *(f"amb_tier{n}_next_label" for n in (1, 4, 5)),
 }
 
 

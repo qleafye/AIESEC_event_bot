@@ -121,6 +121,8 @@ HTML_SETTINGS = {
     "wave_results_winner_text", "wave_rating_header_text", "wave_end_manager_text",
     # Ступени амбассадоров СкиллАп: уведомления уходят с parse_mode="HTML", prompt обещает HTML.
     "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text", "amb_tier3_text",
+    "amb_tier4_text", "amb_tier5_text", "amb_tier1_waitlist_text", "amb_tier3_waitlist_text",
+    "amb_tier4_waitlist_text", "amb_tier5_waitlist_text",
 }
 
 
@@ -764,12 +766,13 @@ def next_value_from(key: str, current) -> str:
 
 async def cross_setting_error(key: str, value: str | None) -> str | None:
     """Проверки, которым нужны ДРУГИЕ настройки (валидатор значения их не видит): пороги
-    ступеней амбассадоров обязаны расти 1 < 2 < 3. Сверка — с сохранёнными значениями двух
+    ступеней амбассадоров обязаны расти 1 < 2 < … (для включённых ступеней). Сверка — с сохранёнными значениями двух
     других порогов. `None` — всё в порядке, иначе готовый текст ошибки для менеджера."""
     if value is None or value == "-" or key not in AMB_THRESHOLD_KEYS:
         return None
     current = {k: int(await get_setting_typed(k)) for k in AMB_THRESHOLD_KEYS}
-    return amb_threshold_order_error(key, value, current)
+    count = int(await get_setting_typed("amb_tiers_count"))
+    return amb_threshold_order_error(key, value, current, count)
 
 
 async def dangerous_confirm_text(key: str, next_value: str) -> str | None:

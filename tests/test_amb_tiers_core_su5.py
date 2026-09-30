@@ -203,7 +203,7 @@ def test_init_db_twice_keeps_tier_rows(tmp_path):
 def test_registry_keys_defaults():
     expected = {
         "amb_qualified_program": "off", "amb_tier1_threshold": 1, "amb_tier2_threshold": 3,
-        "amb_tier3_threshold": 7, "amb_o2o_quota": 15, "amb_count_deadline": "2026-11-14 23:59",
+        "amb_tier3_threshold": 7, "amb_o2o_quota": 15, "amb_count_deadline": "",
     }
     for key, default in expected.items():
         assert SETTINGS_SCHEMA[key]["group"] == "game", key
@@ -214,7 +214,9 @@ def test_registry_keys_defaults():
         assert SETTINGS_SCHEMA[key]["group"] == "game"
         assert "SkillUp" not in default, key
         assert "{name}" not in default and "{username}" not in default, key
-    assert "СкиллАп" in SETTINGS_SCHEMA["amb_tier1_text"]["default"]
+    for key in ("amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
+                "amb_tier3_text"):
+        assert "СкиллАп" not in SETTINGS_SCHEMA[key]["default"], key
     assert "{left}" in SETTINGS_SCHEMA["amb_tier1_text"]["default"]
 
 
@@ -654,7 +656,7 @@ def test_threshold_order_pure_check():
     assert amb_threshold_order_error("amb_tier2_threshold", "5", current) is None
     assert amb_threshold_order_error("amb_o2o_quota", "0", current) is None
     error = amb_threshold_order_error("amb_tier1_threshold", "3", current)
-    assert error and "Ступень 2" in error and "1 / 3 / 7" in error
+    assert error and "ступени 2" in error and "1 / 3 / 7" in error
     assert amb_threshold_order_error("amb_tier3_threshold", "3", current)
     assert amb_threshold_order_error("amb_tier2_threshold", "8", current)
 
@@ -669,7 +671,7 @@ def test_threshold_order_checked_on_save_bot_and_web(tmp_path):
     check = _run(settings_ops.validate_batch_item(
         "amb_tier3_threshold", "2", visible_codes=[], selected_city=None, cities_on=False,
     ))
-    assert check.error and "Ступень 3" in check.error
+    assert check.error and "ступени 3" in check.error
 
     import inspect
 
