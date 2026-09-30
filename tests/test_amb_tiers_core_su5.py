@@ -733,3 +733,34 @@ def test_deadline_minute_is_inclusive(tmp_path):
     _seed_user(201, referrer_id=100, status="approved")
     _run(amb_tiers.check_tiers([100], now=datetime(2026, 11, 14, 23, 59, 30)))
     assert _tiers(100) == [(1, None)]
+
+
+def test_ambassador_without_own_approval_gets_no_tier_until_approved(tmp_path):
+    """Решение владельца 30.09: ступени — только амбассадору с одобренной заявкой текущего
+    сезона. Приглашённые, прошедшие отбор раньше него, засчитываются, как только одобрят его
+    самого (одобрение амбассадора само запускает пересчёт)."""
+    from services import amb_tiers
+
+    _ready(tmp_path)
+    _on()
+    _seed_user(100)  # сам амбассадор ещё на рассмотрении
+    _run(db.set_ambassador_flag(100, active=True, at="2026-01-01 00:00:00"))
+    _seed_user(201, referrer_id=100, status="approved")
+    _run(amb_tiers.check_tiers_for_invitees([201]))
+    assert _sql("SELECT tier FROM ambassador_tiers WHERE telegram_id = 100") == []
+
+    _run(db.set_user_status(100, "approved"))
+    _run(amb_tiers.check_tiers_for_invitees([100]))
+    assert _sql("SELECT tier FROM ambassador_tiers WHERE telegram_id = 100") == [(1,)]
+
+
+def test_ambassador_from_past_season_gets_no_tier(tmp_path):
+    from services import amb_tiers
+
+    _ready(tmp_path)
+    _on()
+    _seed_user(100, status="approved", season="YL26")
+    _run(db.set_ambassador_flag(100, active=True, at="2026-01-01 00:00:00"))
+    _seed_user(201, referrer_id=100, status="approved")
+    _run(amb_tiers.check_tiers_for_invitees([201]))
+    assert _sql("SELECT tier FROM ambassador_tiers WHERE telegram_id = 100") == []
