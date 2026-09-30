@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import os
 import shutil
 import tempfile
@@ -89,6 +90,9 @@ def _build_template() -> str:
     from database.db import init_db
 
     template_dir = tempfile.mkdtemp(prefix="gsd_dbtpl_")
+    # Папка на процесс — без уборки каждый прогон оставлял по копии на воркер (к 30.09 во
+    # временной папке ноутбука скопилось ~6500 таких, ~21 ГБ, диск кончился посреди прогона).
+    atexit.register(shutil.rmtree, template_dir, True)
     template_path = os.path.join(template_dir, "template.db")
     original_db_path = config.DB_PATH
     try:
