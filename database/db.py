@@ -2370,6 +2370,10 @@ async def init_db():
         await _migrate_local_timestamps_to_msk(db)
         # D-29: осиротевший menu_schedule -> menu_program (см. докстринг функции).
         await _migrate_menu_schedule_into_program(db)
+        # Статус амбассадора (колонки, архив сезонов, миграция user_version = 3) живёт в своём
+        # модуле: здесь и так 12 тысяч строк, а писать статус можно только из amb_status_db.
+        from database import amb_status_db
+        await amb_status_db.ensure_schema(db)
 
         await db.commit()
 
@@ -8325,22 +8329,16 @@ async def set_ambassador_flag(telegram_id: int, *, active: bool, at: str) -> boo
     у уже активного амбассадора — не ошибка вызывающего, а нормальный итог: дата вступления
     исторический факт, трогать её нечего. Возврат ПОСЛЕ выхода (D-38, `is_ambassador = 0`)
     проходит условие как обычно и получает свежую дату — это осознанно другой случай."""
-    async with _connect() as db:
-        if active:
-            cursor = await db.execute(
-                "UPDATE users SET is_ambassador = 1, ambassador_since = ?, "
-                "ambassador_left_at = NULL WHERE telegram_id = ? "
-                "AND COALESCE(is_ambassador, 0) = 0",
-                (at, telegram_id),
-            )
-        else:
-            cursor = await db.execute(
-                "UPDATE users SET is_ambassador = 0, ambassador_left_at = ? "
-                "WHERE telegram_id = ?",
-                (at, telegram_id),
-            )
-        await db.commit()
-        return cursor.rowcount == 1
+    # Тонкая обёртка: писать статус и зеркало is_ambassador можно только в amb_status_db.
+    # `expect` без 'active' и есть условие CR-08 — у действующего амбассадора rowcount 0.
+    from database import amb_status_db
+    if active:
+        return await amb_status_db.set_status(
+            telegram_id, amb_status_db.STATUS_ACTIVE, at=at, by=None,
+            expect=(amb_status_db.STATUS_NONE, amb_status_db.STATUS_CANDIDATE,
+                    amb_status_db.STATUS_LEFT, amb_status_db.STATUS_DECLINED),
+        )
+    return await amb_status_db.set_status(telegram_id, amb_status_db.STATUS_LEFT, at=at, by=None)
 
 
 async def set_ambassador_path(telegram_id: int, path: str | None) -> bool:
@@ -10107,6 +10105,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # уходят вместе с ним. ambassador_exclusions по invitee_id не трогаем: это решение
     # менеджера о чужом зачёте, а не след удаляемого.
     ("ambassador_tiers", "telegram_id", "referral_credits"),
+    # Статусы амбассадора прошлых сезонов (database/amb_status_db.py): кем был человек в
+    # прошлом отборе — его личный след, уходит вместе с ним.
+    ("ambassador_season_archive", "telegram_id", "ambassador"),
     # Phase 12 (FORUM-CHECKIN.md): checkins.telegram_id — личная отметка «пришёл» делегата
     # (вход/сессия форума). Тот же журнал делегатского следа, что chat_activity/reg_events
     # выше — уходит вместе с человеком. by_staff_id в той же строке — id волонтёра/менеджера,
