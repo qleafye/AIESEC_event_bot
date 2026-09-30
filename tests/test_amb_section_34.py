@@ -319,7 +319,9 @@ def test_section_visible_to_moderate_game_only():
     from handlers import admin_sections as sec
     assert "amb" in [t for t, _ in sec.visible_sections({"moderate_game"}, False)]
     assert "amb" not in [t for t, _ in sec.visible_sections({"moderate_reg"}, False)]
-    assert "amb" not in [t for t, _ in sec.visible_sections({"settings"}, False)]
+    # держатель «⚙️ Настройки» видит раздел ради одной строки «Тексты и настройки» — как в «🎮 Геймификации»
+    assert "amb" in [t for t, _ in sec.visible_sections({"settings"}, False)]
+    assert sec.visible_rows("amb", {"settings"}, False) == [("group", "amb")]
 
 
 def test_every_callback_and_state_resolves_to_moderate_game():
