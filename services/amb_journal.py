@@ -109,3 +109,48 @@ async def on_invitees_approved(invitee_ids, *, changed_by: int | None = None,
         except Exception:
             logger.exception("amb_journal: проверка ступеней не прошла")
     return {"credited": credited, "coins": coins_total, "ambassadors": len(ambassadors)}
+
+
+def _stamp(delta_hours: int = 0) -> str:
+    from datetime import timedelta
+    from services.timeutil import msk_now
+    return (msk_now() - timedelta(hours=delta_hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def sync_revocations(invitee_ids=None) -> dict:
+    """Отзыв зачёта у потерявших одобрение и снятие отзыва у одобренных снова. Баллы и
+    выданные ступени не трогает. Fail-soft."""
+    revoked = cleared = 0
+    try:
+        revoked = await amb_journal_db.mark_revoked(invitee_ids, at=_stamp())
+        cleared = await amb_journal_db.clear_revoked(invitee_ids)
+        if revoked or cleared:
+            logger.info("amb_journal: отозвано %s, возвращено %s", revoked, cleared)
+    except Exception:
+        logger.exception("amb_journal: синхронизация отзывов не прошла")
+    return {"revoked": revoked, "cleared": cleared}
+
+
+RECONCILE_WINDOW_HOURS = 72
+
+
+async def reconcile() -> dict:
+    """Периодическая сверка: отзывы по факту статуса, недостающие строки журнала за последние
+    72 часа (source 'reconcile') и места амбассадоров. Каждый шаг в своём try, не бросает."""
+    result: dict = {"revoked": 0, "cleared": 0, "added": 0, "slots_released": 0}
+    result.update(await sync_revocations())
+    try:
+        season = ((await _db.get_setting("event_season")) or "").strip() or None
+        missing = await amb_journal_db.missing_recent(_stamp(RECONCILE_WINDOW_HOURS), season)
+        if missing:
+            await on_invitees_approved(missing, source="reconcile")
+            result["added"] = len(missing)
+            logger.info("amb_journal: сверка дописала %s строк", len(missing))
+    except Exception:
+        logger.exception("amb_journal: сверка не дописала недостающие строки")
+    try:
+        from services import amb_status
+        result["slots_released"] = await amb_status.reconcile_slots()
+    except Exception:
+        logger.exception("amb_journal: сверка мест не прошла")
+    return result

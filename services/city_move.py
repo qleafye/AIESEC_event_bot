@@ -362,6 +362,11 @@ async def move_user_city(
                 await amb_status.on_applications_unapproved([telegram_id])
             except Exception as e:
                 logger.error("city_move: on_applications_unapproved(%s) failed: %s", telegram_id, e)
+            try:
+                from services import amb_journal
+                await amb_journal.sync_revocations([telegram_id])
+            except Exception as e:
+                logger.error("city_move: sync_revocations(%s) failed: %s", telegram_id, e)
         else:
             logger.warning(
                 "city_move: revert_user_to_pending(%s) вернул False (статус изменился "
