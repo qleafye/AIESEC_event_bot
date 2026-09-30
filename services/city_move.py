@@ -357,6 +357,11 @@ async def move_user_city(
         if reverted:
             report["status_changed"] = True
             report["after"]["status"] = "pending"
+            try:  # место амбассадора держит только одобренная заявка
+                from services import amb_status
+                await amb_status.on_applications_unapproved([telegram_id])
+            except Exception as e:
+                logger.error("city_move: on_applications_unapproved(%s) failed: %s", telegram_id, e)
         else:
             logger.warning(
                 "city_move: revert_user_to_pending(%s) вернул False (статус изменился "
