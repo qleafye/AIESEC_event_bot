@@ -133,6 +133,10 @@ async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
     caps = await resolve_capabilities(user_id)  # D-05: одно свежее чтение на рендер, без кеша
     sections = visible_sections(caps, user_id in config.ADMIN_IDS)
+    if any(token == "amb" for token, _label in sections):
+        from services.amb_status import selection_enabled  # раздел живёт только с модулем отбора
+        if not await selection_enabled():
+            sections = [(token, label) for token, label in sections if token != "amb"]
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
         for token, label in sections

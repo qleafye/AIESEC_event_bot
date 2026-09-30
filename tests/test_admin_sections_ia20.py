@@ -555,6 +555,10 @@ def test_root_shows_at_most_ten_rows(tmp_path):
 
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
     assert len(kb.inline_keyboard) <= 10, _flat_callback_data(kb)
+    # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
+    assert len(kb.inline_keyboard) == len(sec.SECTIONS)
+    asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
     assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все девять
 
 
@@ -567,7 +571,8 @@ def test_root_rows_are_only_sections(tmp_path):
 
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
-    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS]
+    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS
+                        if token != "amb"]
 
 
 def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path):

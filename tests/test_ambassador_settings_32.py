@@ -94,6 +94,7 @@ _KNOWN_GAME_GROUP_TOGGLE_EXCEPTIONS = {
     "amb_hide_invitee_names",  # тумблер, кнопка на экране «🎓 Ступени амбассадоров»
     "amb_join_mode",  # кнопки экрана «🤝 Амбассадоры»
     "amb_slots_limit",  # кнопки экрана «🤝 Амбассадоры»
+    "amb_team_selection_enabled",  # тумблер, кнопка на экране группы «🎮 Геймификация»
 }
 
 
