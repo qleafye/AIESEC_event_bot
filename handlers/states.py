@@ -498,3 +498,9 @@ class AmbExclude(StatesGroup):
     waiting_for_person = State()
     waiting_for_reason = State()
     waiting_for_confirm = State()
+
+
+class AmbSlotsEdit(StatesGroup):
+    # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/admin_amb_section.py): менеджер
+    # вводит число мест в команде амбассадоров (0 — без лимита); после сохранения — на экран.
+    waiting_for_limit = State()
