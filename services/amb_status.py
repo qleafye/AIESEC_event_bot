@@ -6,6 +6,12 @@
 `request_join()`. Если каждая поверхность решит сама, они разъедутся — поэтому решения только
 здесь.
 
+Всё это — модуль «🤝 Отбор амбассадоров» (`amb_team_selection_enabled`, по умолчанию выключен).
+Выключен — как было до модуля: вступление сразу по кнопке, без лимита и без кандидатов; статус
+«кандидат» (в том числе перенесённый из ответа анкеты) и «отказано» ни на что не влияют, швы
+одобрения ничего не делают, значения `amb_join_mode`/`amb_slots_limit` не читаются. Ступени
+СкиллАп (`amb_qualified_program`) — отдельный тумблер, от этого не зависят.
+
 Настройки события (группа `game` реестра):
 - `amb_join_mode` — `instant` (по умолчанию, как раньше: сразу в команду) или `selection`
   (делегат становится кандидатом, в команду его берёт менеджер кнопкой «Взять» — `take`);
@@ -63,14 +69,27 @@ def _now() -> str:
 
 # ── Настройки ────────────────────────────────────────────────────────────────────────────────
 
+TOGGLE_KEY = "amb_team_selection_enabled"
+
+
+async def selection_enabled() -> bool:
+    """Включён ли модуль «🤝 Отбор амбассадоров». Всё, кроме явного `on`, — выключен."""
+    return await get_setting_typed(TOGGLE_KEY) == "on"
+
+
 async def join_mode() -> str:
-    """`selection` или `instant`; всё прочее (мусор в обход валидатора) — `instant`."""
+    """`selection` или `instant`; всё прочее (мусор в обход валидатора) — `instant`. Модуль
+    выключен — всегда `instant`, что бы ни лежало в настройке."""
+    if not await selection_enabled():
+        return MODE_INSTANT
     mode = await get_setting_typed("amb_join_mode")
     return MODE_SELECTION if mode == MODE_SELECTION else MODE_INSTANT
 
 
 async def slots_limit() -> int:
-    """Лимит мест, 0 — без лимита. Отрицательное и мусор — 0."""
+    """Лимит мест, 0 — без лимита. Отрицательное и мусор — 0. Модуль выключен — 0."""
+    if not await selection_enabled():
+        return 0
     try:
         return max(0, int(await get_setting_typed("amb_slots_limit") or 0))
     except (TypeError, ValueError):
@@ -94,6 +113,8 @@ async def slots_full() -> bool:
 # ── Показывать ли предложение ────────────────────────────────────────────────────────────────
 
 async def _offer_open(telegram_id: int | None) -> bool:
+    if not await selection_enabled():
+        return True  # как до модуля: предложение открыто всем
     if telegram_id is not None:
         st = await amb_status_db.get_status(int(telegram_id))
         status = (st or {}).get("status") or _NONE
@@ -167,6 +188,8 @@ async def _request_join(tid: int) -> JoinResult:
     status = await _status(tid)
     if status is None:
         return JoinResult("no_user")
+    if not await selection_enabled():
+        return await _join_legacy(tid, status)
     if status == _DECLINED:
         return JoinResult("declined")
     if status == _ACTIVE:
@@ -188,6 +211,18 @@ async def _request_join(tid: int) -> JoinResult:
     if not await amb_status_db.set_status(tid, _CANDIDATE, at=_now(), expect=(_NONE, _LEFT)):
         return await _after_race(tid)
     return JoinResult("candidate")
+
+
+async def _join_legacy(tid: int, status: str) -> JoinResult:
+    """Модуль выключен — как до него: любой не-амбассадор (кандидат и «отказано» тоже) сразу
+    в команде, мест нет. Ступени СкиллАп — своим тумблером, поэтому проверяются как всегда."""
+    if status == _ACTIVE:
+        return JoinResult("already_active")
+    if not await amb_status_db.set_status(tid, _ACTIVE, at=_now(),
+                                          expect=(_NONE, _CANDIDATE, _LEFT, _DECLINED)):
+        return await _after_race(tid)
+    await _check_tiers(tid)
+    return JoinResult("active")
 
 
 _RACE_OUTCOMES = {_ACTIVE: "already_active", _CANDIDATE: "already_candidate",
@@ -242,9 +277,22 @@ async def remove(telegram_id: int, *, by: int) -> bool:
 
 # ── Швы одобрения заявки ─────────────────────────────────────────────────────────────────────
 
+async def _enabled_safe() -> bool:
+    """Тумблер для швов одобрения: сбой чтения — «выключен» (шов ничего не делает, одобрение
+    уже состоялось, хвосты доберёт сверка)."""
+    try:
+        return await selection_enabled()
+    except Exception:
+        logger.exception("amb_status: тумблер отбора не прочитан — шов пропущен")
+        return False
+
+
 async def on_applications_approved(telegram_ids) -> None:
     """Собственную заявку одобрили: действующему амбассадору без места — место, если есть.
-    Не амбассадору — ничего. Никогда не бросает (одобрение уже состоялось)."""
+    Не амбассадору — ничего. Модуль выключен — ничего. Никогда не бросает (одобрение уже
+    состоялось)."""
+    if not await _enabled_safe():
+        return
     for raw in telegram_ids or ():
         try:
             st = await amb_status_db.get_status(int(raw))
@@ -257,7 +305,10 @@ async def on_applications_approved(telegram_ids) -> None:
 async def on_applications_unapproved(telegram_ids) -> None:
     """Заявка перестала быть одобренной (отмена, отказ после одобрения): место без выданного
     пакета снимается, человек остаётся в команде «без пакета». Статус заявки перечитывается —
-    повторное одобрение между событием и вызовом место не отнимет. Никогда не бросает."""
+    повторное одобрение между событием и вызовом место не отнимет. Модуль выключен — ничего.
+    Никогда не бросает."""
+    if not await _enabled_safe():
+        return
     try:
         from services import amb_tiers
         season = await amb_tiers.current_season()
@@ -280,7 +331,9 @@ async def on_applications_unapproved(telegram_ids) -> None:
 
 async def reconcile_slots() -> int:
     """Сверка: снять места у всех, чья заявка уже не одобрена в текущем сезоне (пропущенные
-    швы). Возвращает, сколько мест снято. Никогда не бросает."""
+    швы). Возвращает, сколько мест снято. Модуль выключен — 0. Никогда не бросает."""
+    if not await _enabled_safe():
+        return 0
     released = 0
     try:
         from services import amb_tiers
@@ -309,6 +362,8 @@ async def delegate_state(telegram_id: int) -> str:
     status = st.get("status") or _NONE
     if status == _ACTIVE:
         return "active_pack" if st.get("slot_at") else "active_no_pack"
+    if not await selection_enabled():
+        return "open"
     if status == _DECLINED:
         return "declined"
     if status == _CANDIDATE and await join_mode() == MODE_SELECTION:

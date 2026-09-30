@@ -376,6 +376,9 @@ _UNKEYED_HANDLERS = {
     # Форум-ночь п.8 (идея №19, SOS): реплай-детекция карточки SOS — та же форма, что
     # is_question_reply/admin_reply_to_question выше (предикат по форме сообщения, не F.data).
     "admin_reply_to_sos": "special:sos_reply",
+    # Модуль «🤝 Отбор амбассадоров» выключен: устаревшие кнопки раздела отвечают алертом.
+    # Фильтр — функция по всем callback-ам раздела (is_section_callback), не литерал F.data.
+    "amb_section_off": "admin_amb_entry",
 }
 
 
@@ -708,7 +711,11 @@ def test_menu_admin_sees_all_sections(tmp_path):
 
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     flat = _flat_callback_data(kb)
-    assert flat == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
+    # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
+    assert flat == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
+    asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
+    kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
+    assert _flat_callback_data(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
 
 
 def test_menu_reg_manager_sees_only_own_sections(tmp_path):
