@@ -116,7 +116,11 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # Ступени амбассадоров СкиллАп и статус/вход в команду амбассадоров (ветка amb-qualified-su5):
     # +25 -- тумблеры/пороги/квота/дедлайн ступеней и их тексты, режим входа, лимит мест и тексты
     # кандидату. Переезд в собственную группу раздела «🤝 Амбассадоры» — отдельным шагом.
-    assert len(keys) == 96  # +12 ключей 16-01 (RU-категории, тексты списка/карточки/баланса)
+    # Ключи амбассадорки переехали в группу amb: в game остаются только игровые, а переехавшие
+    # обязаны лежать в amb.
+    assert len(keys) == 50
+    for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
+        assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:
         assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
 
