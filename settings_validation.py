@@ -88,6 +88,12 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 f"Нужно число {minimum} или больше (например <code>{_int_example(entry)}</code>)."
                 "\n\nПришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
             )
+        maximum = entry.get("max")
+        if maximum is not None and number > int(maximum):
+            return None, (
+                f"Нужно число не больше {maximum} (например <code>{_int_example(entry)}</code>)."
+                "\n\nПришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
         return str(number), None
 
     if entry_type == "enum":
@@ -236,41 +242,37 @@ def _int_example(entry: dict) -> str:
 
 # Пороги ступеней амбассадоров: следующая ступень обязана требовать больше прошедших отбор,
 # чем предыдущая, иначе вторая ступень выдаётся раньше первой, а прогресс противоречит
-# сообщениям.
-AMB_THRESHOLD_KEYS: tuple[str, str, str] = (
-    "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold",
-)
-_AMB_TIER_NAMES = {
-    "amb_tier1_threshold": "ступень 1",
-    "amb_tier2_threshold": "ступень 2 (разбор резюме)",
-    "amb_tier3_threshold": "ступень 3 (нетворкинг)",
-}
+# сообщениям. Проверяются только первые `amb_tiers_count` ступеней.
+AMB_THRESHOLD_KEYS: tuple[str, ...] = tuple(f"amb_tier{n}_threshold" for n in range(1, 6))
 
 
-def amb_threshold_order_error(key: str, value: str, current: dict[str, int]) -> str | None:
-    """Порядок порогов «ступень 1 < ступень 2 < ступень 3» для нового значения `value` ключа
-    `key` против текущих значений двух других (`current`, их передаёт вызывающий — функция
-    остаётся без БД). `None` — порядок соблюдён или ключ не порог."""
+def amb_threshold_order_error(key: str, value: str, current: dict[str, int],
+                              count: int = 3) -> str | None:
+    """Порядок порогов «ступень 1 < ступень 2 < …» для нового значения `value` ключа `key`
+    против текущих значений остальных (`current`, их передаёт вызывающий — функция остаётся без
+    БД). `count` — сколько ступеней включено: пороги за его пределами не проверяются.
+    `None` — порядок соблюдён или ключ не порог."""
     if key not in AMB_THRESHOLD_KEYS:
         return None
     try:
         number = int(str(value).strip())
     except (TypeError, ValueError):
         return None
+    keys = AMB_THRESHOLD_KEYS[:max(1, min(count, len(AMB_THRESHOLD_KEYS)))]
+    if key not in keys:
+        return None
     values = {**current, key: number}
-    ordered = [int(values[k]) for k in AMB_THRESHOLD_KEYS]
-    pairs = zip(AMB_THRESHOLD_KEYS, AMB_THRESHOLD_KEYS[1:], ordered, ordered[1:])
-    for lower_key, upper_key, lower, upper in pairs:
+    ordered = [int(values[k]) for k in keys]
+    for index in range(len(keys) - 1):
+        lower, upper = ordered[index], ordered[index + 1]
         if lower >= upper:
-            upper_name = _AMB_TIER_NAMES[upper_key]
+            shown = " / ".join(str(current.get(k)) for k in keys)
             return (
-                f"{upper_name[0].upper()}{upper_name[1:]} должна требовать больше прошедших "
-                f"отбор, чем {_AMB_TIER_NAMES[lower_key]}, а получилось бы "
-                f"{lower} для первой из них и {upper} для второй.\n\n"
-                f"Пороги сейчас: {current.get(AMB_THRESHOLD_KEYS[0])} / "
-                f"{current.get(AMB_THRESHOLD_KEYS[1])} / {current.get(AMB_THRESHOLD_KEYS[2])}. "
+                f"Порог ступени {index + 2} должен быть больше, чем у ступени {index + 1} "
+                f"(сейчас {lower}), а получилось бы {upper}.\n\n"
+                f"Пороги сейчас: {shown}. "
                 "Пришлите число, при котором каждая следующая ступень больше предыдущей "
                 "(например 1 / 3 / 7), или «-», чтобы сбросить к значению по умолчанию. "
-                "Сдвигаете все пороги вверх — начните со ступени 3, вниз — со ступени 1."
+                "Сдвигаете все пороги вверх — начните с последней ступени, вниз — с первой."
             )
     return None
