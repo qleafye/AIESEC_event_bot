@@ -37,6 +37,7 @@ def _ready(tmp_path, name="test_amb_tiers_dash_su5.db", *, program="on"):
     fast_init_db()
     _run(db.set_setting("event_season", SEASON))
     _run(db.set_setting("amb_qualified_program", program))
+    _run(db.set_setting("amb_tier2_quota_on", "on"))  # квота ступени 2 — как на стеке СкиллАп
     return config.DB_PATH
 
 
@@ -102,6 +103,7 @@ def test_block_none_when_program_off(tmp_path):
 
 def test_block_aggregates_on_fixture(tmp_path):
     path = _ready(tmp_path)
+    _run(db.set_setting("amb_tier2_quota_on", "on"))
     _run(db.set_setting("amb_o2o_quota", "12"))
     _fixture()
     with dash_db.read_conn(path) as conn:
@@ -173,6 +175,7 @@ def test_preview_backfill_writes_nothing(tmp_path):
 
 def test_preview_quota_order_by_approval_time(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("amb_tier2_quota_on", "on"))
     _run(db.set_setting("amb_o2o_quota", "1"))
     _make_ambassador(100)
     _make_ambassador(110)
@@ -250,6 +253,7 @@ def test_cli_apply_works_silently_when_program_off(tmp_path, capsys):
 def test_block_quota_zero_is_zero_not_default(tmp_path):
     """Квота 0 = слотов нет — дашборд показывает 0 из 0, как и бот, а не «из 15»."""
     path = _ready(tmp_path)
+    _run(db.set_setting("amb_tier2_quota_on", "on"))
     _run(db.set_setting("amb_o2o_quota", "0"))
     _fixture()
     with dash_db.read_conn(path) as conn:
