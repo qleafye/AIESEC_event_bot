@@ -154,3 +154,42 @@ async def reconcile() -> dict:
     except Exception:
         logger.exception("amb_journal: сверка мест не прошла")
     return result
+
+
+async def _name_of(invitee_id: int) -> str:
+    user = await _db.get_user(int(invitee_id))
+    return ((user or {}).get("full_name") or "").strip() or "Без имени"
+
+
+def _fill(template: str, name: str) -> str:
+    return (template or "").replace("{name}", name)
+
+
+async def exclude(invitee_id: int, *, by: int | None, reason: str) -> bool:
+    """Исключение за накрутку: причина, отметка в журнале, баллы списываются обратной строкой
+    монет. Ступени не трогает («Снять ступень» — отдельная кнопка). False — уже исключён."""
+    name = await _name_of(invitee_id)
+    template = await get_setting_typed("amb_referral_reversal_reason_text")
+    result = await amb_journal_db.exclude_atomic(
+        int(invitee_id), reason=reason, by=by, at=_stamp(),
+        reversal_reason=_fill(template, name),
+    )
+    if result is None:
+        return False
+    logger.info("admin=%s amb_exclude invitee=%s referrer=%s coins=%s",
+                by, invitee_id, result["referrer_id"], result["coins"])
+    return True
+
+
+async def unexclude(invitee_id: int, *, by: int | None) -> bool:
+    """Возврат в зачёт: баллы возвращаются новой строкой. False — уже возвращён."""
+    name = await _name_of(invitee_id)
+    template = await get_setting_typed("amb_referral_restore_reason_text")
+    result = await amb_journal_db.unexclude_atomic(
+        int(invitee_id), by=by, at=_stamp(), restore_reason=_fill(template, name),
+    )
+    if result is None:
+        return False
+    logger.info("admin=%s amb_unexclude invitee=%s referrer=%s coins=%s",
+                by, invitee_id, result["referrer_id"], result["coins"])
+    return True

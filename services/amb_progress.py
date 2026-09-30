@@ -97,19 +97,23 @@ async def render_invitee_counts(user_id: int, tr_key: TrKey) -> str:
     )
 
 
+_MASKED_SOURCES = ("referral", "referral_reversal")
+
+
 async def mask_referral_coin_rows(user_id: int, rows: list[dict], tr_key: TrKey) -> list[dict]:
     """При выключенном тумблере — `rows` как есть (тот же объект). При включённом — копии строк,
     у referral-строк `reason` = «Приглашённый №N»; прочие строки не меняются."""
     if not rows or not await hide_names_on():
         return rows
-    if not any(row.get("source") == "referral" for row in rows):
+    if not any(row.get("source") in _MASKED_SOURCES for row in rows):
         return [dict(row) for row in rows]
     ordinals = await amb_tiers_db.referral_coin_ordinals(user_id)
     template = await tr_key("amb_invitee_masked_label_text")
     masked: list[dict] = []
     for row in rows:
         copy = dict(row)
-        if copy.get("source") == "referral":
+        if copy.get("source") in _MASKED_SOURCES:
+            # у обратной строки номера нет: она не входит в нумерацию начислений
             copy["reason"] = _fmt(template, n=ordinals.get(copy.get("id"), "—"))
         masked.append(copy)
     return masked

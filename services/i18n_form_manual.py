@@ -1090,6 +1090,8 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Все ступени твои": "All levels are yours",
     "Всего по твоей ссылке: {total}\nНа рассмотрении: {pending}\nПрошли отбор: {qualified}": "Total via your link: {total}\nUnder review: {pending}\nPassed selection: {qualified}",
     "Приглашённый №{n}": "Invitee #{n}",
+    "Снят с зачёта приглашённый: {name}": "Invitee removed from your count: {name}",
+    "Возвращён в зачёт приглашённый: {name}": "Invitee restored to your count: {name}",
     # Вход в команду амбассадоров: режим отбора, лимит мест, взяли / вывели / отказ.
     "Заявка в команду амбассадоров принята! Менеджер свяжется с тобой. А ссылка уже твоя — можешь делиться ею прямо сейчас.": "Your request to join the ambassador team has been received! A manager will get in touch with you. Your invite link is already yours — you can start sharing it right now.",
     "🕓 Твоя заявка в команду амбассадоров рассматривается.": "🕓 Your request to join the ambassador team is under review.",
