@@ -989,6 +989,13 @@ ADMIN_CAPS: dict[str, str] = {
     "ambc_add_cancel": "moderate_game",
     "ambc_arch_csv": "moderate_game",
     "state:AmbAppoint:*": "moderate_game",
+    # «Закрепить приглашённого» (handlers/admin_amb_journal.py): «ambj_pick:*» не ловит
+    # «ambj_go»/«ambj_cancel», поэтому каждый callback отдельной строкой.
+    "admin_amb_attach": "moderate_game",
+    "ambj_pick:*": "moderate_game",
+    "ambj_go": "moderate_game",
+    "ambj_cancel": "moderate_game",
+    "state:AmbAttach:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
