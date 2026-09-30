@@ -2016,10 +2016,14 @@ def _ambassador_wave_rating(conn, scope: Scope, wave: "dict | None") -> list[dic
         for row in conn.execute(task_sql, eligible_params + (wave["id"],)).fetchall()
     }
 
+    rc_has_excluded = any(
+        r["name"] == "excluded_at" for r in conn.execute("PRAGMA table_info(referral_credits)")
+    )
+    ref_where = ["rc.wave_id = ?"] + (["rc.excluded_at IS NULL"] if rc_has_excluded else [])
     ref_sql = (
         "SELECT rc.referrer_id AS user_id, SUM(rc.coins) AS points FROM referral_credits rc "
         "JOIN users ON users.telegram_id = rc.referrer_id "
-        f"{_where(parts + eligible + ['rc.wave_id = ?'])} GROUP BY rc.referrer_id"
+        f"{_where(_user_scoped_parts(parts) + eligible + ref_where)} GROUP BY rc.referrer_id"
     )
     for row in conn.execute(ref_sql, eligible_params + (wave["id"],)).fetchall():
         points[row["user_id"]] = points.get(row["user_id"], 0) + (row["points"] or 0)
