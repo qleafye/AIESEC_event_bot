@@ -1094,6 +1094,10 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Возвращён в зачёт приглашённый: {name}": "Invitee restored to your count: {name}",
     # Вход в команду амбассадоров: режим отбора, лимит мест, взяли / вывели / отказ.
     "Заявка в команду амбассадоров принята! Менеджер свяжется с тобой. А ссылка уже твоя — можешь делиться ею прямо сейчас.": "Your request to join the ambassador team has been received! A manager will get in touch with you. Your invite link is already yours — you can start sharing it right now.",
+    "🎁 Ты в команде амбассадоров — пакет амбассадора за тобой.": "🎁 You're on the ambassador team — the ambassador pack is yours.",
+    "Ты в команде амбассадоров. Пакет амбассадора закрепляется за теми, чья заявка на форум одобрена, пока есть места.": "You're on the ambassador team. The ambassador pack goes to those whose forum application is approved, while spots last.",
+    "💰 Баллы за приглашённых: {points}": "💰 Points for invitees: {points}",
+    "🌊 {wave}: ты на {place} месте из {total}": "🌊 {wave}: you're in place {place} of {total}",
     "🕓 Твоя заявка в команду амбассадоров рассматривается.": "🕓 Your request to join the ambassador team is under review.",
     "Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём на форуме — следи за новостями!": "All spots on the ambassador team are already taken, but we're still really looking forward to seeing you at the forum — stay tuned for news!",
     "🎉 Ты в команде амбассадоров! Вот твоя ссылка для приглашений: {link}\nВсё про задания и прогресс — в разделе «Моя ссылка».": "🎉 You're on the ambassador team! Here's your invite link: {link}\nEverything about tasks and progress is in the “My link” section.",
