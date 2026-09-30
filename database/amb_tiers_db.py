@@ -378,3 +378,41 @@ async def qualified_approval_times(season: str) -> dict[int, list[str]]:
     for times in result.values():
         times.sort()
     return result
+
+
+# ── Заморозка прежних дефолтов ступеней (миграция user_version = 4) ──────────────────────────
+
+_TIER_FREEZE_MIGRATION_USER_VERSION = 4
+
+
+async def freeze_legacy_tier_defaults(db: aiosqlite.Connection) -> None:
+    """Одноразово по `PRAGMA user_version`. Дефолты реестра ступеней стали нейтральными, а стек
+    СкиллАп жил на прежних (1/3/7, квота 15, тексты и дедлайн). Если на стеке программа ступеней
+    уже включена или сохранён любой ключ ступеней, прежние значения записываются явно для тех
+    ключей, которых в `bot_settings` ещё нет (`INSERT OR IGNORE` — сохранённое не перетирается),
+    плюс включается квота второй ступени. Стек без программы ничего не получает; сам
+    `user_version` поднимается всегда, повторный старт — no-op."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    async with db.execute("PRAGMA user_version") as cursor:
+        row = await cursor.fetchone()
+    if (row[0] if row else 0) >= _TIER_FREEZE_MIGRATION_USER_VERSION:
+        return
+    written = 0
+    async with db.execute(
+        "SELECT 1 FROM bot_settings WHERE (key = 'amb_qualified_program' AND value = 'on') "
+        "OR key LIKE 'amb!_tier%' ESCAPE '!' OR key LIKE 'amb!_o2o%' ESCAPE '!' "
+        "OR key = 'amb_count_deadline' LIMIT 1"
+    ) as cursor:
+        has_program = await cursor.fetchone() is not None
+    if has_program:
+        from reg_presets import SKILLUP_TIER_SETTINGS
+
+        for key, value in SKILLUP_TIER_SETTINGS.items():
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO bot_settings (key, value) VALUES (?, ?)", (key, value),
+            )
+            written += cursor.rowcount
+    await db.execute(f"PRAGMA user_version = {_TIER_FREEZE_MIGRATION_USER_VERSION}")
+    logger.info("freeze_legacy_tier_defaults: записано ключей %s", written)

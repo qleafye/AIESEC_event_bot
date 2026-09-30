@@ -2377,6 +2377,9 @@ async def init_db():
         # Журнал зачётов приглашённых — колонки на referral_credits.
         from database import amb_journal_db
         await amb_journal_db.ensure_schema(db)
+        # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
+        from database import amb_tiers_db
+        await amb_tiers_db.freeze_legacy_tier_defaults(db)
 
         await db.commit()
 
