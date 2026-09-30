@@ -101,6 +101,14 @@ def _coins_rows(source=None, user_id=None):
         con.close()
 
 
+def db_rows(sql):
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        return con.execute(sql).fetchall()
+    finally:
+        con.close()
+
+
 def _referral_credit_count():
     con = sqlite3.connect(config.DB_PATH)
     try:
@@ -199,7 +207,10 @@ def test_referrer_not_ambassador_no_credit(tmp_path):
 
     _approve_immediate(2005)
 
-    assert _referral_credit_count() == 0
+    # Осознанная смена по журналу зачётов: строка есть и у приглашённого обычного делегата,
+    # но баллов в ней нет (coins 0) и монет пригласившему не начислено.
+    assert _referral_credit_count() == 1
+    assert db_rows("SELECT coins, referrer_was_ambassador FROM referral_credits") == [(0, 0)]
     assert _coins_rows(source="referral") == []
 
 
@@ -217,7 +228,11 @@ def test_referrer_left_ambassadors_no_new_credit_but_old_stays(tmp_path):
     _seed_user(2007, referrer_id=1006)
     _approve_immediate(2007)
 
-    assert _referral_credit_count() == 1  # прежняя строка на месте, новой не добавилось
+    # Прежняя строка на месте; новая — журнал пишет и не-амбассадору, но без баллов.
+    assert _referral_credit_count() == 2
+    assert db_rows("SELECT coins FROM referral_credits WHERE invitee_id = 2006") == [(50,)]
+    assert db_rows("SELECT coins FROM referral_credits WHERE invitee_id = 2007") == [(0,)]
+    assert len(_coins_rows(source="referral")) == 1
 
 
 def test_zero_coins_setting_no_credit_at_all(tmp_path):
@@ -229,7 +244,8 @@ def test_zero_coins_setting_no_credit_at_all(tmp_path):
 
     _approve_immediate(2008)
 
-    assert _referral_credit_count() == 0
+    # Журнал: строка с нулём есть, монет нет.
+    assert db_rows("SELECT coins FROM referral_credits") == [(0,)]
     assert _coins_rows(source="referral") == []
 
 
