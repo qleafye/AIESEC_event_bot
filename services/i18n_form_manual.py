@@ -1075,6 +1075,13 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Все ступени твои": "All levels are yours",
     "Всего по твоей ссылке: {total}\nНа рассмотрении: {pending}\nПрошли отбор: {qualified}": "Total via your link: {total}\nUnder review: {pending}\nPassed selection: {qualified}",
     "Приглашённый №{n}": "Invitee #{n}",
+    # Вход в команду амбассадоров: режим отбора, лимит мест, взяли / вывели / отказ.
+    "Заявка в команду амбассадоров принята! Менеджер свяжется с тобой. А ссылка уже твоя — можешь делиться ею прямо сейчас.": "Your request to join the ambassador team has been received! A manager will get in touch with you. Your invite link is already yours — you can start sharing it right now.",
+    "🕓 Твоя заявка в команду амбассадоров рассматривается.": "🕓 Your request to join the ambassador team is under review.",
+    "Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём на форуме — следи за новостями!": "All spots on the ambassador team are already taken, but we're still really looking forward to seeing you at the forum — stay tuned for news!",
+    "🎉 Ты в команде амбассадоров! Вот твоя ссылка для приглашений: {link}\nВсё про задания и прогресс — в разделе «Моя ссылка».": "🎉 You're on the ambassador team! Here's your invite link: {link}\nEverything about tasks and progress is in the “My link” section.",
+    "Ты больше не в команде амбассадоров этого форума. Спасибо за помощь! Твоя ссылка для приглашений продолжает работать, а баллы остаются за тобой.": "You're no longer on this forum's ambassador team. Thank you for your help! Your invite link keeps working, and your points stay with you.",
+    "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём на форуме — следи за его развитием.": "Thank you for responding! All spots on the ambassador team are already taken, but we're still really looking forward to seeing you at the forum — stay tuned for updates.",
 }
 
 FORM_DEFAULT_EN: dict[str, str] = {

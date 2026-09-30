@@ -320,12 +320,14 @@ _GAME_FIELD_ORDER = [
     # СЮДА НЕ входит — тумблер «одной кнопкой» (D-29), правится `toggle_wave_rating_show_names`
     # ниже, не общим вводом текста (см. комментарий у ключа в settings_schema.py).
     "ambassador_referral_coins", "game_late_penalty_percent", "wave_prize_places",
-    # Ступени амбассадоров СкиллАп: пороги, квота, дедлайн, тексты (тумблер — кнопкой).
+    # Амбассадоры: ступени СкиллАп (тумблер — кнопкой) и тексты входа в команду (режим входа и
+    # лимит мест — кнопками экрана «🤝 Амбассадоры», как тумблер рейтинга волны).
     "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold", "amb_o2o_quota",
-    "amb_count_deadline", "amb_tier1_text", "amb_tier2_granted_text",
-    "amb_tier2_waitlist_text", "amb_tier3_text", "amb_progress_text",
-    "amb_next_step_o2o_text", "amb_next_step_networking_text", "amb_next_step_done_text",
-    "amb_invitees_counts_text", "amb_invitee_masked_label_text",
+    "amb_count_deadline", "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
+    "amb_tier3_text", "amb_progress_text", "amb_next_step_o2o_text", "amb_next_step_done_text",
+    "amb_next_step_networking_text", "amb_invitees_counts_text", "amb_invitee_masked_label_text",
+    "amb_candidate_ack_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
+    "amb_removed_text", "amb_decline_all_text",
     # Тексты старта волны, напоминания, итогов (D-04) — делегатские, переводятся автоматически.
     "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
     "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",

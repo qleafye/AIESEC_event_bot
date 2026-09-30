@@ -92,6 +92,8 @@ _KNOWN_GAME_GROUP_TOGGLE_EXCEPTIONS = {
     "wave_rating_show_names",  # Phase 32-02 (D-29) — тумблер, отдельная кнопка
     "amb_qualified_program",  # тумблер, кнопка на экране «🎓 Ступени амбассадоров»
     "amb_hide_invitee_names",  # тумблер, кнопка на экране «🎓 Ступени амбассадоров»
+    "amb_join_mode",  # кнопки экрана «🤝 Амбассадоры»
+    "amb_slots_limit",  # кнопки экрана «🤝 Амбассадоры»
 }
 
 

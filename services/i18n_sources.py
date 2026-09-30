@@ -127,6 +127,8 @@ _ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
     "wave_end_manager_text",
     # Дедлайн ступеней амбассадоров — дата «ГГГГ-ММ-ДД ЧЧ:ММ», не язык: переводить нечего.
     "amb_count_deadline",
+    # Режим входа и лимит мест амбассадоров — кодовое значение и число, не язык.
+    "amb_join_mode", "amb_slots_limit",
 })
 
 # Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты
