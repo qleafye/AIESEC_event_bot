@@ -32,11 +32,11 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
+from database import amb_journal_db
 from database import amb_tiers_db
 from database import db
 from reg_labels import STATUS_LABELS
 from services import amb_tiers
-from services.timeutil import msk_now
 from settings_audit import set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.states import AmbExclude
@@ -315,9 +315,22 @@ async def amb_exclude_reason_step(message: types.Message, state: FSMContext):
         InlineKeyboardButton(text="✅ Исключить", callback_data="ambt_excl_go"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="ambt_excl_cancel"),
     ]])
+    row = await amb_journal_db.get_row(int(data["invitee_id"]))
+    coins = int(row.get("coins") or 0) if row and not row.get("excluded_at") else 0
+    if coins > 0:
+        wave_part = ", очки текущей волны" if row.get("wave_id") else ""
+        removed = (
+            f"Снимется: {coins} баллов (обратной строкой в истории){wave_part}, зачёт в "
+            "прогрессе, выгрузке и рейтинге чата."
+        )
+    elif row:
+        removed = "Снимется зачёт в прогрессе, выгрузке и рейтинге чата. Баллов за него не начислялось."
+    else:
+        removed = "Баллов за него пока не начислено; при одобрении он не засчитается."
     await message.answer(
         f"Исключить {data['invitee_label']} из зачёта амбассадора {data['referrer_label']}? "
-        "Он перестанет учитываться в прогрессе и выгрузке. Уже выданные ступени останутся.\n\n"
+        f"{removed} Уже выданную ступень это не снимает — для этого есть «Снять ступень» "
+        "на экране ступеней.\n\n"
         f"Причина: {html.escape(reason)}",
         parse_mode="HTML", reply_markup=kb,
     )
@@ -343,17 +356,15 @@ async def amb_exclude_go(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Кнопка устарела — начните исключение заново", show_alert=True)
         return
     await state.clear()
-    won = await amb_tiers_db.exclude_invitee(
-        int(invitee_id), reason, callback.from_user.id, msk_now().strftime(_STAMP),
-    )
+    from services import amb_journal
+    before = await amb_journal_db.get_row(int(invitee_id))
+    won = await amb_journal.exclude(int(invitee_id), by=callback.from_user.id, reason=reason)
     if won:
-        logger.info(
-            "admin=%s amb_exclude invitee=%s referrer=%s reason=%r",
-            callback.from_user.id, invitee_id, data.get("referrer_id"), reason,
-        )
+        spent = int(before.get("coins") or 0) if before and not before.get("excluded_at") else 0
+        tail = f", списано {spent} баллов" if spent > 0 else ""
         await callback.message.answer(
-            f"Готово: {data.get('invitee_label')} исключён из зачёта. Уже выданные ступени "
-            "амбассадора остались.", parse_mode="HTML",
+            f"Готово: {data.get('invitee_label')} исключён{tail}. Уже выданная ступень "
+            "амбассадора осталась — снять её можно кнопкой «Снять ступень».", parse_mode="HTML",
         )
     else:
         await callback.message.answer("Этот человек уже исключён — ничего не изменилось.")
@@ -422,11 +433,14 @@ async def amb_unexclude_confirm(callback: types.CallbackQuery):
         InlineKeyboardButton(text="✅ Вернуть", callback_data=f"ambt_unexcl_go:{invitee_id}"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="ambt_excl_list:0"),
     ]])
+    journal = await amb_journal_db.get_row(invitee_id)
+    coins = int(journal.get("coins") or 0) if journal and journal.get("reversal_coin_id") else 0
+    back = f"Амбассадору вернутся {coins} баллов новой строкой. " if coins > 0 else ""
     await _edit_or_send(
         callback.message,
-        f"Вернуть {_person_label(user, invitee_id)} в зачёт амбассадора? Он снова будет "
-        "учитываться в прогрессе и выгрузке; если из-за этого амбассадор дотянет до следующей "
-        "ступени — он её получит. Запись об исключении удалится.",
+        f"Вернуть {_person_label(user, invitee_id)} в зачёт? {back}Он снова будет "
+        "учитываться в прогрессе, выгрузке и очках волны; если из-за этого амбассадор дотянет "
+        "до следующей ступени — он её получит. Запись об исключении удалится.",
         kb,
     )
     await callback.answer()
@@ -435,16 +449,13 @@ async def amb_unexclude_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("ambt_unexcl_go:"))
 async def amb_unexclude_go(callback: types.CallbackQuery):
     invitee_id = _parse_int_suffix(callback.data)
-    removed = await amb_tiers_db.unexclude_invitee(invitee_id) if invitee_id else None
-    if removed is None:
+    from services import amb_journal
+    won = await amb_journal.unexclude(invitee_id, by=callback.from_user.id) if invitee_id else False
+    if not won:
         await callback.answer("Этого человека уже вернули в зачёт", show_alert=True)
         return
     user = await db.get_user(invitee_id)
     referrer_id = (user or {}).get("referrer_id")
-    logger.info(
-        "admin=%s amb_unexclude invitee=%s referrer=%s",
-        callback.from_user.id, invitee_id, referrer_id,
-    )
     if referrer_id:
         try:
             await amb_tiers.check_tiers([int(referrer_id)])
