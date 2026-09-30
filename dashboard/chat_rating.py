@@ -18,11 +18,14 @@ Telegram, иначе ник из анкеты, иначе имя из Telegram (
 from __future__ import annotations
 
 import os
+import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
 import chat_score
 from chat_score import ChatRecord
+
+log = logging.getLogger(__name__)
 
 PERIODS = [
     ("all", "Всё время"),
@@ -416,18 +419,54 @@ def _users_scope_sql(conn, city, season) -> tuple[str, list]:
     return (" AND ".join(parts) or "1 = 1"), params
 
 
+def _table_cols(conn, table: str) -> set:
+    try:
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    except sqlite3.Error:
+        return set()
+
+
 def _referral_dates(conn) -> dict:
-    """Одобренные заявки текущего сезона с referrer_id, по дате одобрения. Текущий сезон —
-    как везде на дашборде: users.season пуст или равен bot_settings.event_season (сезон не
-    задан — все одобренные)."""
+    """Приведённые берутся из журнала зачётов (строка у любого пригласившего, исключённые
+    отсеяны), а приглашённый проверяется живым JOIN по users: вернули в ожидание, и он выпал.
+    Дата — users.approved_at, а не credited_at: у строк бэкафилла credited_at — день бэкафилла.
+    Пока журнал сезона неполный или схема старая, читается прежний запрос по users."""
     season = (_settings(conn, ["event_season"]).get("event_season") or "").strip()
-    sql = ("SELECT referrer_id, approved_at FROM users WHERE status = 'approved' "
-           "AND referrer_id IS NOT NULL AND approved_at IS NOT NULL")
+    season_sql = ""
     params: list = []
     if season:
-        sql += " AND (season IS NULL OR TRIM(season) = '' OR season = ?)"
+        season_sql = " AND (u.season IS NULL OR TRIM(u.season) = '' OR u.season = ?)"
         params.append(season)
-    return _date_map(_rows(conn, sql, params))
+    base_users = ("u.status = 'approved' AND u.referrer_id IS NOT NULL "
+                  "AND u.approved_at IS NOT NULL AND u.referrer_id != u.telegram_id")
+    journal_ok = "excluded_at" in _table_cols(conn, "referral_credits")
+    if journal_ok:
+        missing = _rows(
+            conn,
+            f"SELECT 1 FROM users u WHERE {base_users}{season_sql} AND NOT EXISTS "
+            "(SELECT 1 FROM referral_credits rc WHERE rc.invitee_id = u.telegram_id) LIMIT 1",
+            params,
+        )
+        if missing:
+            journal_ok = False
+            log.warning("chat_rating: журнал зачётов сезона неполный — приведённые по users")
+    if journal_ok:
+        return _date_map(_rows(
+            conn,
+            "SELECT rc.referrer_id, u.approved_at FROM referral_credits rc "
+            "JOIN users u ON u.telegram_id = rc.invitee_id "
+            f"WHERE {base_users} AND rc.excluded_at IS NULL "
+            f"AND rc.referrer_id != rc.invitee_id{season_sql}",
+            params,
+        ))
+    excl = ""
+    if _table_cols(conn, "ambassador_exclusions"):
+        excl = " AND u.telegram_id NOT IN (SELECT invitee_id FROM ambassador_exclusions)"
+    return _date_map(_rows(
+        conn,
+        f"SELECT u.referrer_id, u.approved_at FROM users u WHERE {base_users}{season_sql}{excl}",
+        params,
+    ))
 
 
 def _social_dates(conn, task_ids: set, city=None, season=None) -> dict:
