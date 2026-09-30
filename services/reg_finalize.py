@@ -673,22 +673,10 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             # записанный статус (T-32-05-05).
             if status == "approved":
                 try:
-                    from services.referrals import credit_for_approved
-                    await credit_for_approved(telegram_id)
+                    from services.amb_journal import on_invitees_approved
+                    await on_invitees_approved([telegram_id])
                 except Exception as e:
-                    logger.error(f"credit_for_approved failed for {telegram_id}: {e}")
-                # Ступени амбассадоров СкиллАп — своим try рядом с начислением.
-                try:
-                    from services.amb_tiers import check_tiers_for_invitees
-                    await check_tiers_for_invitees([telegram_id])
-                except Exception as e:
-                    logger.error(f"check_tiers_for_invitees failed for {telegram_id}: {e}")
-                # Своя заявка амбассадора одобрена — место в лимите, если есть.
-                try:
-                    from services import amb_status
-                    await amb_status.on_applications_approved([telegram_id])
-                except Exception as e:
-                    logger.error(f"on_applications_approved failed for {telegram_id}: {e}")
+                    logger.error(f"on_invitees_approved failed for {telegram_id}: {e}")
             else:
                 # Переподача одобренного делегата (новая анкета поверх строки) — одобрения
                 # больше нет, место амбассадора без пакета снимается. Новому — no-op.

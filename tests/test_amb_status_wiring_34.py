@@ -258,13 +258,10 @@ def _functions_calling(name: str) -> dict[str, set[str]]:
     return found
 
 
-def test_every_tier_check_site_also_gives_slot():
-    """Каждый путь одобрения, который проверяет ступени приглашённых, обязан рядом звать
-    `on_applications_approved` — иначе новый путь молча не выдаст место амбассадору."""
-    sites = _functions_calling("check_tiers_for_invitees")
-    assert len(sites) >= 4, sites  # сторож не пустой: record_decision, approve-all, flush, финал
-    offenders = [k for k, calls in sites.items() if "on_applications_approved" not in calls]
-    assert not offenders, "Одобрение без выдачи места амбассадору: " + ", ".join(offenders)
+# Сторож «путь одобрения обязан выдавать и место» переехал в
+# tests/test_referral_credit_32.py (test_nobody_calls_credit_or_tier_hooks_directly и
+# test_every_approval_path_calls_journal_entry_point): все пути зовут одну
+# services.amb_journal.on_invitees_approved, а она сама выдаёт место и проверяет ступени.
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
