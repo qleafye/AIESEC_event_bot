@@ -99,13 +99,20 @@ async def _migrate_ambassador_status(db: aiosqlite.Connection) -> None:
         row = await cursor.fetchone()
     if (row[0] if row else 0) >= _AMB_STATUS_MIGRATION_USER_VERSION:
         return
-    changed = {}
-    for status, where, stamp in (
+    # Колонку ответа анкеты и дату подачи init_db добавляет не всегда (их заводит реестр
+    # вопросов), поэтому на старой схеме без них шаг пропускается, а не роняет старт бота.
+    has_candidate = await _db._column_exists(db, "users", "is_ambassador_candidate")
+    reg_stamp = ("registration_date"
+                 if await _db._column_exists(db, "users", "registration_date") else "NULL")
+    steps = [
         (STATUS_ACTIVE, "is_ambassador = 1", "ambassador_since"),
         (STATUS_LEFT, "COALESCE(is_ambassador, 0) = 0 AND ambassador_left_at IS NOT NULL",
          "ambassador_left_at"),
-        (STATUS_CANDIDATE, "is_ambassador_candidate = 1", "registration_date"),
-    ):
+    ]
+    if has_candidate:
+        steps.append((STATUS_CANDIDATE, "is_ambassador_candidate = 1", reg_stamp))
+    changed = {}
+    for status, where, stamp in steps:
         cursor = await db.execute(
             f"UPDATE users SET ambassador_status = ?, ambassador_status_at = {stamp} "
             f"WHERE {where} AND ambassador_status IS NULL",
