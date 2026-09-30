@@ -263,3 +263,130 @@ def test_every_tier_check_site_also_gives_slot():
     assert len(sites) >= 4, sites  # сторож не пустой: record_decision, approve-all, flush, финал
     offenders = [k for k, calls in sites.items() if "on_applications_approved" not in calls]
     assert not offenders, "Одобрение без выдачи места амбассадору: " + ", ".join(offenders)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Предложение ссылки после анкеты в боте и «Хочу свою ссылку»
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _fakes():
+    from tests.test_skillup_referral_28 import _FakeCallback, _FakeMessage
+    return _FakeCallback, _FakeMessage
+
+
+def _schema_default(key):
+    from settings_schema import SETTINGS_SCHEMA
+    return SETTINGS_SCHEMA[key]["default"]
+
+
+def _offer(tid):
+    from handlers import reg_ambassador
+    _cb, msg_cls = _fakes()
+    msg = msg_cls(tid)
+    _run(reg_ambassador.offer_ref_link(msg, tid))
+    return msg
+
+
+def _want(tid):
+    from handlers import reg_ambassador
+    cb_cls, _msg = _fakes()
+    cb = cb_cls("regamb:want", tid)
+    _run(reg_ambassador.regamb_want(cb))
+    return cb
+
+
+def test_offer_off_and_not_candidate_sends_nothing(ready):
+    _seed(40, status="pending")
+    assert not _offer(40).sent
+
+
+def test_offer_off_selection_candidate_gets_ack(ready):
+    """Так настроен РилТолк: вопрос в анкете включён, предложение ссылки — нет."""
+    _mode("selection")
+    _finalize(41, yes=True)
+    msg = _offer(41)
+    assert len(msg.sent) == 1
+    text, markup, _ = msg.sent[0]
+    assert text == _schema_default("amb_candidate_ack_text")
+    assert markup is None
+
+
+def test_offer_on_selection_candidate_gets_only_ack(ready):
+    _run(db.set_setting("reg_offer_ref_link", "on"))
+    _mode("selection")
+    _finalize(42, yes=True)
+    msg = _offer(42)
+    assert [t for (t, _m, _p) in msg.sent] == [_schema_default("amb_candidate_ack_text")]
+    assert msg.sent[0][1] is None
+
+
+def test_offer_hidden_when_full_or_declined(ready):
+    _run(db.set_setting("reg_offer_ref_link", "on"))
+    _seed(43, status="pending")
+    _seed(44, status="pending")
+    _run(sdb.set_status(44, "declined", at=AT))
+    assert not _offer(44).sent
+    _limit(1)
+    _fill_slots(1)
+    assert not _offer(43).sent
+
+
+def test_offer_on_open_shows_buttons(ready):
+    _run(db.set_setting("reg_offer_ref_link", "on"))
+    _seed(45, status="pending")
+    msg = _offer(45)
+    assert len(msg.sent) == 1
+    datas = [b.callback_data for row in msg.sent[0][1].inline_keyboard for b in row]
+    assert datas == ["regamb:want", "regamb:later"]
+
+
+def test_want_instant_joins_and_sends_link(ready):
+    _seed(50, status="pending")
+    cb = _want(50)
+    assert _st(50)["status"] == "active"
+    texts = [t for (t, _m, _p) in cb.message.sent]
+    assert texts[0] == "https://t.me/TestBot?start=amb_50"
+    assert len(texts) == 2
+    assert cb.answers == [(None, False)]
+    assert ready == [50]  # ступени проверил сервис
+
+
+def test_want_selection_candidate_gets_ack_and_link(ready):
+    _mode("selection")
+    _seed(51, status="pending")
+    cb = _want(51)
+    assert _st(51)["status"] == "candidate"
+    user = _run(db.get_user(51))
+    assert not user["is_ambassador"]
+    texts = [t for (t, _m, _p) in cb.message.sent]
+    assert texts[0] == _schema_default("amb_candidate_ack_text")
+    assert texts[1] == "https://t.me/TestBot?start=amb_51"
+    assert len(texts) == 3
+
+
+@pytest.mark.parametrize("case", ["full", "declined"])
+def test_want_full_or_declined_alerts_without_write(ready, case):
+    _seed(52, status="pending")
+    if case == "full":
+        _limit(1)
+        _fill_slots(1)
+    else:
+        _run(sdb.set_status(52, "declined", at=AT))
+    before = _st(52)
+    cb = _want(52)
+    assert _st(52) == before
+    assert not _run(db.get_user(52))["is_ambassador"]
+    assert cb.answers == [(_schema_default("amb_slots_full_text"), True)]
+    assert not cb.message.sent
+
+
+def test_want_long_full_text_truncated_in_alert_and_sent_in_full(ready):
+    long_text = "Места заняты. " * 30
+    _run(db.set_setting("amb_slots_full_text", long_text))
+    _seed(53, status="pending")
+    _run(sdb.set_status(53, "declined", at=AT))
+    cb = _want(53)
+    (alert, show), = cb.answers
+    assert show is True
+    assert len(alert) <= 200 and alert.endswith("…")
+    assert [t for (t, _m, _p) in cb.message.sent] == [long_text]
