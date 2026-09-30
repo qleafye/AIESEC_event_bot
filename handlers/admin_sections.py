@@ -199,6 +199,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("amb", "🤝 Амбассадоры", [
         ("screen", "admin_amb_entry", "🚪 Вход и лимит"),
         ("screen", "admin_amb_candidates", "🙋 Кандидаты и команда"),
+        ("screen", "admin_amb_attach", "📎 Закрепить приглашённого"),
     ]),
     ("data", "📊 Данные", [
         ("op", "admin_stats"),

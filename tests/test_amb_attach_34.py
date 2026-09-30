@@ -95,3 +95,79 @@ def test_purge_anonymizes_journal_row_and_drops_pending(tmp_path):
     assert row["manual_note"] is None and row["manual_by"] is None
     _run(db.purge_user(21))
     assert _run(amb_journal_db.pop_manual_attach(21)) is None
+
+
+# ── экран и права ────────────────────────────────────────────────────────────────────────
+
+def _flow_ready(tmp_path):
+    from tests import test_amb_candidates_34 as c
+    c._ready(tmp_path, "test_amb_attach_34.db")
+    return c
+
+
+def test_caps_resolve_for_every_attach_callback():
+    from handlers.admin_caps import required_capability
+    for data in ("admin_amb_attach", "ambj_pick:i:5", "ambj_go", "ambj_cancel"):
+        assert required_capability(callback_data=data) == "moderate_game", data
+    assert required_capability(raw_state="AmbAttach:waiting_note") == "moderate_game"
+
+
+def test_section_has_attach_button():
+    from handlers.admin_sections import SECTIONS
+    amb = next(s for s in SECTIONS if s[0] == "amb")
+    assert ("screen", "admin_amb_attach", "📎 Закрепить приглашённого") in amb[2]
+
+
+def test_screen_flow_pending_then_already_error(tmp_path):
+    from handlers import admin_amb_journal as h
+    from tests.test_amb_bulk_34 import _cb, _person_msg
+    from tests.test_amb_candidates_34 import _new_state, _seed
+    c = _flow_ready(tmp_path)
+    _seed(10, status="approved", name="Анна Смирнова", username="anna_s")
+    _seed(20, status="pending", name="Иван Петров", username="ivan_p")
+    state = _new_state()
+    cb = _cb("admin_amb_attach")
+    _run(h.attach_start(cb, state))
+    assert "Кого привели?" in cb.message.answers[-1][0]
+
+    msg = _person_msg("@ivan_p")
+    _run(h.attach_invitee_step(msg, state))
+    assert "Кто привёл?" in msg.answers[-1][0]
+    msg = _person_msg("@anna_s")
+    _run(h.attach_referrer_step(msg, state))
+    assert "Откуда известно" in msg.answers[-1][0]
+    msg = _person_msg("скрины в чате")
+    _run(h.attach_note_step(msg, state))
+    text = msg.answers[-1][0]
+    assert "Иван Петров" in text and "Анна Смирнова" in text and "ждёт решения" in text
+
+    cb = _cb("ambj_go")
+    _run(h.attach_go(cb, state))
+    assert "закреплён" in cb.message.answers[-1][0]
+    assert _referrer_of(20) == 10
+
+    # повтор: второй раз закрепить нельзя, ошибка называет прежнего пригласившего
+    state = _new_state()
+    _run(h.attach_start(_cb("admin_amb_attach"), state))
+    msg = _person_msg("@ivan_p")
+    _run(h.attach_invitee_step(msg, state))
+    assert "уже числится за" in msg.answers[-1][0] and "Анна Смирнова" in msg.answers[-1][0]
+    assert c  # модуль подготовки БД использован
+
+
+def test_self_attach_and_command_exit(tmp_path):
+    from handlers import admin_amb_journal as h
+    from tests.test_amb_bulk_34 import _cb, _person_msg
+    from tests.test_amb_candidates_34 import _new_state, _seed
+    _flow_ready(tmp_path)
+    _seed(20, status="pending", name="Иван Петров", username="ivan_p")
+    state = _new_state()
+    _run(h.attach_start(_cb("admin_amb_attach"), state))
+    _run(h.attach_invitee_step(_person_msg("@ivan_p"), state))
+    msg = _person_msg("@ivan_p")
+    _run(h.attach_referrer_step(msg, state))
+    assert "за самим собой" in msg.answers[-1][0]
+    msg = _person_msg("/start")
+    _run(h.attach_referrer_step(msg, state))
+    assert msg.answers[-1][0] == "Отменено."
+    assert _run(state.get_state()) is None

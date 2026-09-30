@@ -779,6 +779,10 @@ admin|message|chclean_delay_value|state:ChatCleanupEdit:*
 admin|message|chpost_value|state:ChatRatingPostEdit:*
 admin|message|amb_limit_value|state:AmbSlotsEdit:*
 admin|message|appoint_person_step|state:AmbAppoint:*
+admin|message|attach_invitee_step|state:AmbAttach:*
+admin|message|attach_referrer_step|state:AmbAttach:*
+admin|message|attach_note_step|state:AmbAttach:*
+admin|message|attach_confirm_text|state:AmbAttach:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1389,6 +1393,10 @@ admin|callback_query|appoint_cancel|ambc_add_cancel
 admin|callback_query|appoint_pick|ambc_add_pick:*
 admin|callback_query|appoint_go|ambc_add_go:*
 admin|callback_query|archive_csv|ambc_arch_csv
+admin|callback_query|attach_start|admin_amb_attach
+admin|callback_query|attach_cancel|ambj_cancel
+admin|callback_query|attach_pick|ambj_pick:*
+admin|callback_query|attach_go|ambj_go
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2049,7 +2057,11 @@ def test_snapshot_total_handler_count_is_292():
     # diff'ом (difflib): две чистые вставки (1 + 8), 0 удалений, 0 реордеров (923 -> 932).
     # 30.09 (тумблер «🤝 Отбор амбассадоров»): 2 admin.callback_query (amb_section_off,
     # toggle_amb_team_selection) сразу перед show_amb_entry. Одна чистая вставка (932 -> 934).
-    assert len(GOLDEN_SNAPSHOT) == 934
+    # (закрепление приглашённого): шов handlers/admin_amb_journal.py хвостом
+    # handlers/admin_amb_bulk.py — 4 admin.message (state:AmbAttach:*) сразу после
+    # appoint_person_step и 4 admin.callback_query сразу после archive_csv. Сверено diff'ом
+    # (difflib): две чистые вставки (4 + 4), 0 удалений, 0 реордеров (934 -> 942).
+    assert len(GOLDEN_SNAPSHOT) == 942
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
