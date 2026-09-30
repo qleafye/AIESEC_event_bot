@@ -250,6 +250,20 @@ async def stale_unnotified(older_than: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def active_ambassadors_with_invitees(season: str) -> list[int]:
+    """Действующие амбассадоры, у которых есть хотя бы один приглашённый текущего сезона."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT u.telegram_id FROM users u WHERE u.is_ambassador = 1 AND EXISTS ("
+            "  SELECT 1 FROM users i WHERE i.referrer_id = u.telegram_id "
+            "  AND i.telegram_id != u.telegram_id AND COALESCE(i.season, '') = ?) "
+            "ORDER BY u.telegram_id",
+            ((season or "").strip(),),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [int(r[0]) for r in rows]
+
+
 async def has_pending_tier_event(kind: str, telegram_id: int, tier: int) -> bool:
     """Есть ли в `miniapp_outbox` необработанное событие этого вида про (амбассадор, ступень)."""
     import json
