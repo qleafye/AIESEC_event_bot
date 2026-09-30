@@ -67,10 +67,17 @@ async def _record_one(invitee_id: int, *, changed_by: int | None, source: str) -
                 wave_id = int(wave["id"])
         season = ((await _db.get_setting("event_season")) or "").strip() or None
 
+        manual = await amb_journal_db.pop_manual_attach(int(invitee_id))
+        if manual and int(manual["referrer_id"]) != referrer_id:
+            manual = None  # закрепление устарело: пригласивший в анкете другой
+        if manual:
+            source = "manual"
         outcome = await amb_journal_db.record_approval(
             int(invitee_id), referrer_id, coins=coins, wave_id=wave_id, season=season,
             referrer_was_ambassador=was_ambassador, excluded=excluded,
             reason=_invitee_reason(invitee), source=source, changed_by=changed_by,
+            manual_by=manual["by"] if manual else None,
+            manual_note=manual["note"] if manual else None,
         )
         if outcome != "new" or coins <= 0:
             return None
@@ -193,3 +200,47 @@ async def unexclude(invitee_id: int, *, by: int | None) -> bool:
     logger.info("admin=%s amb_unexclude invitee=%s referrer=%s coins=%s",
                 by, invitee_id, result["referrer_id"], result["coins"])
     return True
+
+
+async def manual_attach(invitee_id: int, referrer_id: int, *, by: int | None,
+                        note: str | None = None) -> dict:
+    """Ручное закрепление приглашённого за пригласившим (пришёл без реф-ссылки).
+
+    Возвращает `{"ok", "error": "self"|"already"|"no_user"|None, "approved", "coins",
+    "current_referrer"}`. Одобренному строка журнала пишется сразу (источник 'manual', автор
+    и заметка), ещё не одобренному закрепление сохраняется и станет такой же строкой при
+    одобрении любым путём. `users.referrer_id` ставится узкой записью с историей ответа."""
+    invitee_id, referrer_id = int(invitee_id), int(referrer_id)
+    out = {"ok": False, "error": None, "approved": False, "coins": 0, "current_referrer": None}
+    if invitee_id == referrer_id:
+        out["error"] = "self"
+        return out
+    invitee = await _db.get_user(invitee_id)
+    referrer = await _db.get_user(referrer_id)
+    if not invitee or not referrer:
+        out["error"] = "no_user"
+        return out
+    current = invitee.get("referrer_id")
+    if current and int(current) != 0:
+        out["error"] = "already"
+        out["current_referrer"] = int(current)
+        return out
+    note = (note or "").strip() or None
+    await _db.update_user_answers(
+        invitee_id, {"referrer_id": referrer_id}, allowed_columns=["referrer_id"]
+    )
+    await _db.record_answer_history(
+        invitee_id,
+        [{"column": "referrer_id", "old": current, "new": referrer_id}],
+        "admin", invitee.get("season"),
+    )
+    await amb_journal_db.save_manual_attach(
+        invitee_id, referrer_id, by=by, note=note, at=_stamp()
+    )
+    out["ok"] = True
+    if invitee.get("status") == "approved":
+        out["approved"] = True
+        summary = await on_invitees_approved([invitee_id], changed_by=by, source="manual")
+        out["coins"] = int(summary.get("coins") or 0)
+    logger.info("admin=%s amb_attach invitee=%s referrer=%s", by, invitee_id, referrer_id)
+    return out

@@ -36,6 +36,13 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_referral_credits_referrer_season "
         "ON referral_credits(referrer_id, season)"
     )
+    # Ручное закрепление ещё не одобренного приглашённого: ждёт одобрения и превращается в
+    # строку журнала с источником «manual».
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS amb_manual_attach ("
+        "invitee_id INTEGER PRIMARY KEY, referrer_id INTEGER NOT NULL, "
+        "by INTEGER, note TEXT, at TEXT NOT NULL)"
+    )
 
 
 async def record_approval(
@@ -290,3 +297,45 @@ async def unexclude_atomic(invitee_id: int, *, by: int | None, at: str,
         except Exception:
             await db.rollback()
             raise
+
+
+async def save_manual_attach(invitee_id: int, referrer_id: int, *, by: int | None,
+                             note: str | None, at: str) -> None:
+    """Запоминает закрепление ещё не одобренного приглашённого (повтор перезаписывает)."""
+    async with _db._connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO amb_manual_attach (invitee_id, referrer_id, by, note, at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (int(invitee_id), int(referrer_id), by, note, at),
+        )
+        await db.commit()
+
+
+async def pop_manual_attach(invitee_id: int) -> dict | None:
+    """Читает и удаляет сохранённое закрепление одной транзакцией."""
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT * FROM amb_manual_attach WHERE invitee_id = ?", (int(invitee_id),)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is not None:
+                await db.execute(
+                    "DELETE FROM amb_manual_attach WHERE invitee_id = ?", (int(invitee_id),)
+                )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return dict(row) if row else None
+
+
+async def set_manual_fields(invitee_id: int, *, by: int | None, note: str | None) -> None:
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE referral_credits SET manual_by = ?, manual_note = ? WHERE invitee_id = ?",
+            (by, note, int(invitee_id)),
+        )
+        await db.commit()
