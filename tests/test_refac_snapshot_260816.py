@@ -1362,6 +1362,17 @@ admin|callback_query|amb_mode_apply|ambs_mode_go:*
 admin|callback_query|amb_limit_start|ambs_limit
 admin|callback_query|amb_limit_cancel|ambs_limit_cancel
 admin|callback_query|amb_texts_menu|ambs_texts
+admin|callback_query|show_candidates|admin_amb_candidates
+admin|callback_query|candidates_page|ambc:*
+admin|callback_query|person_card|ambp:*
+admin|callback_query|take_person|ambc_take:*
+admin|callback_query|later_person|ambc_later:*
+admin|callback_query|toggle_pack|ambc_pack:*
+admin|callback_query|give_slot|ambc_slot:*
+admin|callback_query|remove_confirm|ambc_rm:*
+admin|callback_query|remove_apply|ambc_rm_go:*
+admin|callback_query|candidates_csv|ambc_csv
+admin|callback_query|show_form_card|ambc_card:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2013,7 +2024,10 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_onsite_reg.py — admin.message amb_limit_value (state:AmbSlotsEdit:*) сразу
     # после chpost_value и 6 admin.callback_query сразу после onsitereg_qr_send. Сверено
     # diff'ом (difflib): две чистые вставки (1 + 6 строк), 0 удалений, 0 реордеров (905 -> 912).
-    assert len(GOLDEN_SNAPSHOT) == 912
+    # 30.09 (экран «🙋 Кандидаты и команда»): шов handlers/admin_amb_candidates.py хвостом
+    # handlers/admin_amb_section.py — 11 admin.callback_query сразу после amb_texts_menu.
+    # Сверено diff'ом (difflib): одна чистая вставка, 0 удалений, 0 реордеров (912 -> 923).
+    assert len(GOLDEN_SNAPSHOT) == 923
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

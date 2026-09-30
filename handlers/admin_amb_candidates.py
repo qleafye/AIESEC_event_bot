@@ -21,11 +21,13 @@
 """
 from __future__ import annotations
 
+import csv
 import html
+import io
 import logging
 
 from aiogram import F, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import city_label_or_none
 from database import amb_status_db, amb_tiers_db
@@ -188,6 +190,7 @@ async def render_list(admin_id: int, flt: str = "candidates",
         nav.append(InlineKeyboardButton(text="Дальше ▶️", callback_data=f"ambc:{flt}:{offset + PAGE}"))
     if nav:
         kb_rows.append(nav)
+    kb_rows.append([InlineKeyboardButton(text="📥 Выгрузить в таблицу (CSV)", callback_data="ambc_csv")])
     kb_rows.append([back_button("admin_amb_candidates")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
@@ -455,6 +458,56 @@ async def remove_apply(callback: types.CallbackQuery):
             show_alert=True,
         )
     await _show_person(callback, tid, flt, offset)
+
+
+CSV_HEADERS = [
+    "Имя", "username", "Город", "Статус заявки", "Статус амбассадора", "Место", "Пакет выдан",
+    "Пришли по ссылке", "Прошли отбор", "Вступил", "Telegram ID",
+]
+
+
+async def export_csv(city_scope=None) -> tuple[bytes, int]:
+    """Файл «Амбассадоры и кандидаты»: все со статусом амбассадора (в городе админа), `;`,
+    utf-8-sig. Ник без «@» (ведущая «@» — триггер формулы), каждая строковая ячейка —
+    через `_csv_safe`. Возвращает (байты, число людей)."""
+    rows = await amb_status_db.export_rows(city_scope=city_scope)
+    counts = await amb_tiers_db.referral_counts_bulk(
+        [r["telegram_id"] for r in rows], await amb_tiers.current_season(),
+    )
+    safe = _db._csv_safe
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(CSV_HEADERS)
+    for row in rows:
+        tid = int(row["telegram_id"])
+        c = counts.get(tid, _ZERO)
+        writer.writerow([
+            safe(str(row.get("full_name") or "")),
+            safe(str(row.get("username") or "").strip().lstrip("@")),
+            safe(await city_label_or_none(row.get("event_city")) or ""),
+            APP_STATUS_LABELS.get(row.get("status") or "", "—"),
+            AMB_STATUS_LABELS.get(row.get("ambassador_status") or "none", "—"),
+            "да" if row.get("ambassador_slot_at") else "нет",
+            safe(str(row.get("ambassador_pack_at") or "")),
+            c["total"], c["qualified"],
+            safe(str(row.get("ambassador_since") or "")),
+            tid,
+        ])
+    return output.getvalue().encode("utf-8-sig"), len(rows)
+
+
+@router.callback_query(F.data == "ambc_csv")
+async def candidates_csv(callback: types.CallbackQuery):
+    from handlers.admin_core import _admin_city_view
+
+    scope, _city = await _admin_city_view(callback.from_user.id)
+    data, count = await export_csv(scope)
+    logger.info("admin=%s amb_team_csv rows=%s", callback.from_user.id, count)
+    await callback.message.answer_document(
+        BufferedInputFile(data, filename="ambassadors_team.csv"),
+        caption=f"Амбассадоры и кандидаты: {count} человек",
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("ambc_card:"))
