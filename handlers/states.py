@@ -514,6 +514,12 @@ class AmbTierRevoke(StatesGroup):
     waiting_for_pick = State()
 
 
+class AmbPointsEdit(StatesGroup):
+    # «Амбассадоры» - «Баллы и приватность» (handlers/admin_amb_points.py): число баллов за
+    # одобренного приглашённого вводом.
+    waiting_for_value = State()
+
+
 class AmbAttach(StatesGroup):
     # «Амбассадоры» - «Закрепить приглашённого» (handlers/admin_amb_journal.py): кто пришёл,
     # кто привёл, заметка («скрины в чате»), подтверждение кнопкой.

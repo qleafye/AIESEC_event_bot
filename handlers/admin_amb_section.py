@@ -116,8 +116,8 @@ SECTION_OFF_ALERT = (
     "⚙️ Тексты и настройки → «🤝 Отбор амбассадоров»."
 )
 
-_SECTION_CALLBACKS = ("admin_amb_entry", "admin_amb_candidates")
-_SECTION_PREFIXES = ("ambs_", "ambc", "ambp:")
+_SECTION_CALLBACKS = ("admin_amb_entry", "admin_amb_candidates", "admin_amb_points")
+_SECTION_PREFIXES = ("ambs_", "ambc", "ambp:", "ambpt_")
 
 
 def is_section_callback(data: str | None) -> bool:
