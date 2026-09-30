@@ -91,3 +91,20 @@ def test_amb_group_reachable_with_module_on_and_off(tmp_path):
     game_cbs = _callbacks(_run(st.build_settings_group_keyboard("game", ADMIN_ID)))
     assert "toggle_amb_team_selection" in game_cbs  # модуль включается оттуда же
 
+
+def test_guide_entries_for_amb_keys_point_to_ambassador_section():
+    from handlers.admin_roles import SETTINGS_GUIDE_SECTIONS
+    seen = 0
+    for _title, _hint, entries in SETTINGS_GUIDE_SECTIONS:
+        for e in entries:
+            spec = SETTINGS_SCHEMA.get(e["key"])
+            if spec and spec["group"] == "amb":
+                seen += 1
+                assert e["where"].startswith("🤝 Амбассадоры"), e["key"]
+    assert seen
+
+
+def test_guide_describes_new_phase_settings():
+    from handlers.admin_roles import SETTINGS_GUIDE_KEYS
+    for key in ("amb_join_mode", "amb_slots_limit", "amb_tiers_count", "amb_tiers_require_approved"):
+        assert key in SETTINGS_GUIDE_KEYS, key
