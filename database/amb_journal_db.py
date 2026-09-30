@@ -197,3 +197,96 @@ async def insert_backfill_rows(rows: list[dict], *, at: str) -> int:
             inserted += cursor.rowcount or 0
         await db.commit()
     return inserted
+
+
+async def exclude_atomic(invitee_id: int, *, reason: str, by: int | None, at: str,
+                         reversal_reason: str) -> dict | None:
+    """Исключение приглашённого из зачёта одной транзакцией: причина в `ambassador_exclusions`,
+    отметка в журнале, баллы списываются ОБРАТНОЙ строкой монет (история append-only).
+
+    Возвращает `{"referrer_id", "coins", "wave_id"}` (coins — сколько списано, бывает 0; строки
+    журнала может не быть — приглашённый ещё не одобрен), `None` — уже исключён (повтор)."""
+    async with _db._connect() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO ambassador_exclusions "
+                "(invitee_id, reason, excluded_by, excluded_at) VALUES (?, ?, ?, ?)",
+                (int(invitee_id), reason, by, at),
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+            result = {"referrer_id": None, "coins": 0, "wave_id": None}
+            async with db.execute(
+                "SELECT referrer_id, coins, wave_id FROM referral_credits "
+                "WHERE invitee_id = ? AND excluded_at IS NULL", (int(invitee_id),)
+            ) as cur:
+                row = await cur.fetchone()
+            if row is not None:
+                referrer_id, coins, wave_id = int(row[0]), int(row[1] or 0), row[2]
+                reversal_id = None
+                if coins > 0:
+                    cursor = await db.execute(
+                        "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, "
+                        "source, task_id) VALUES (?, ?, ?, ?, ?, 'referral_reversal', NULL)",
+                        (referrer_id, -coins, reversal_reason, by, at),
+                    )
+                    reversal_id = cursor.lastrowid
+                await db.execute(
+                    "UPDATE referral_credits SET excluded_at = ?, excluded_by = ?, "
+                    "reversal_coin_id = ? WHERE invitee_id = ? AND excluded_at IS NULL",
+                    (at, by, reversal_id, int(invitee_id)),
+                )
+                result = {"referrer_id": referrer_id, "coins": coins, "wave_id": wave_id}
+            await db.commit()
+            return result
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def unexclude_atomic(invitee_id: int, *, by: int | None, at: str,
+                           restore_reason: str) -> dict | None:
+    """Возврат в зачёт: снимает исключение, баллы возвращаются НОВОЙ строкой (обратная строка
+    остаётся в истории). `None` — приглашённого уже вернули (повтор)."""
+    async with _db._connect() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await db.execute(
+                "DELETE FROM ambassador_exclusions WHERE invitee_id = ?", (int(invitee_id),)
+            )
+            if cursor.rowcount != 1:
+                await db.rollback()
+                return None
+            result = {"referrer_id": None, "coins": 0}
+            async with db.execute(
+                "SELECT referrer_id, reversal_coin_id FROM referral_credits "
+                "WHERE invitee_id = ? AND excluded_at IS NOT NULL", (int(invitee_id),)
+            ) as cur:
+                row = await cur.fetchone()
+            if row is not None:
+                referrer_id = int(row[0])
+                coins = 0
+                if row[1] is not None:
+                    async with db.execute(
+                        "SELECT delta FROM coins WHERE id = ?", (int(row[1]),)
+                    ) as cur:
+                        coin = await cur.fetchone()
+                    coins = -int(coin[0]) if coin and int(coin[0]) < 0 else 0
+                if coins > 0:
+                    await db.execute(
+                        "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, "
+                        "source, task_id) VALUES (?, ?, ?, ?, ?, 'referral', NULL)",
+                        (referrer_id, coins, restore_reason, by, at),
+                    )
+                await db.execute(
+                    "UPDATE referral_credits SET excluded_at = NULL, excluded_by = NULL, "
+                    "reversal_coin_id = NULL WHERE invitee_id = ?", (int(invitee_id),)
+                )
+                result = {"referrer_id": referrer_id, "coins": coins}
+            await db.commit()
+            return result
+        except Exception:
+            await db.rollback()
+            raise
