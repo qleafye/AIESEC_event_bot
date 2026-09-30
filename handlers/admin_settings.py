@@ -315,32 +315,11 @@ _GAME_FIELD_ORDER = [
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
     "balance_history_header_text",
     "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
-    # Phase 32 (32-02, D-21/D-35/D-18): амбассадорский слой — числа сначала (ambassador_
-    # referral_coins/game_late_penalty_percent/wave_prize_places), `wave_rating_show_names`
-    # СЮДА НЕ входит — тумблер «одной кнопкой» (D-29), правится `toggle_wave_rating_show_names`
-    # ниже, не общим вводом текста (см. комментарий у ключа в settings_schema.py).
-    "ambassador_referral_coins", "game_late_penalty_percent", "wave_prize_places",
-    # Амбассадоры: ступени СкиллАп (тумблер — кнопкой) и тексты входа в команду (режим входа и
-    # лимит мест — кнопками экрана «🤝 Амбассадоры», как тумблер рейтинга волны).
-    "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold", "amb_o2o_quota",
-    "amb_count_deadline", "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
-    "amb_tier3_text", "amb_progress_text", "amb_next_step_o2o_text", "amb_next_step_done_text",
-    "amb_next_step_networking_text", "amb_invitees_counts_text", "amb_invitee_masked_label_text",
-    "amb_referral_reversal_reason_text", "amb_referral_restore_reason_text",
-    "amb_candidate_ack_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
-    "amb_removed_text", "amb_decline_all_text",
-    # Тексты старта волны, напоминания, итогов (D-04) — делегатские, переводятся автоматически.
-    "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
-    "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",
-    "wave_rating_header_text", "wave_rating_own_line_text", "wave_rating_closed_text",
-    # Тексты амбассадорского блока и пути (D-04) — делегатские.
-    "ambassador_block_header_text", "game_task_no_deadline_text", "game_task_penalty_hint_text",
-    "ambassador_path_prompt_text", "ambassador_path_label_invite", "ambassador_path_label_content",
-    "ambassador_path_label_none", "ambassador_leave_button_text", "ambassador_leave_confirm_text",
-    "ambassador_leave_done_text",
-    # Менеджерский текст конца волны (D-04) — НЕ переводится, см. i18n_sources._ADMIN_ONLY_GAME_KEYS.
-    "wave_end_manager_text",
+    # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
+    "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",
 ]
+
+from settings_amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
 _SYSTEM_FIELD_ORDER = [
@@ -393,6 +372,7 @@ _PAY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) fo
 _PARTY_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _PARTY_FIELD_ORDER]
 _CONSENT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CONSENT_FIELD_ORDER]
 _SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SHEETS_FIELD_ORDER]
+_AMB_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _AMB_FIELD_ORDER]
 _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
 _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
 _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CHAT_FIELD_ORDER]
@@ -403,7 +383,7 @@ _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) f
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -446,6 +426,7 @@ SETTINGS_GROUPS = [
     ("🎉 Party", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
     ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
+    ("🤝 Амбассадоры", "amb", _AMB_FIELD_ORDER),
     ("💬 Чат делегатов", "chat", _CHAT_FIELD_ORDER),  # квик 260927: веса рейтинга чата
     ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
 ]
@@ -1200,10 +1181,11 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
         buttons.extend([[b] for b in unconfigured])
     if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
         buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
-        # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
-        buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
         from handlers.admin_amb_section import selection_toggle_button  # тумблер «🤝 Отбор амбассадоров»
         buttons.append([await selection_toggle_button()])
+    if token == "amb":
+        # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
+        buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
     # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
     # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/admin_sections.py) — это
     # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового
@@ -1218,7 +1200,8 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
     # («🎪 Событие/Медиа» -> «🎪 Событие», «📋 Заявки» -> «📋 Заявки»), а не на исчезнувший
     # плоский лендинг. Цель считает `section_of` из реестра SECTIONS — второй карты нет.
     from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
-    buttons.append([back_button(f"settings_group:{token}")])
+    from handlers.admin_sections import owner_back_button  # тот же шов: «Назад» из «🤝 Амбассадоры» при выключенном модуле — в «🎮 Геймификацию»
+    buttons.append([await owner_back_button(f"settings_group:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -1584,9 +1567,9 @@ async def toggle_checkin_qr_enabled(callback: types.CallbackQuery):
 
 
 # Phase 32 (32-02, D-29): «🏅 Показывать имена в рейтинге волны» — enum on/off, дефолт "on".
-# Тот же приём, что toggle_game_submit_notify: ключ НЕ в _GAME_FIELD_ORDER (CLAUDE.md — выбор
+# Тот же приём, что toggle_game_submit_notify: ключ НЕ в _AMB_FIELD_ORDER (CLAUDE.md — выбор
 # из готового набора только кнопкой, не вводом кода "on"/"off"), кнопка добавлена отдельной
-# строкой в build_settings_group_keyboard(token == "game") выше. Алерт при переключении несёт
+# строкой в build_settings_group_keyboard(token == "amb") выше. Алерт при переключении несёт
 # совет «когда выключать» из SETTINGS_SCHEMA["wave_rating_show_names"]["prompt"] — единственное
 # место, где этот текст реально доходит до менеджера (в отличие от prompt обычного текстового
 # ключа, у этого ключа нет экрана свободного ввода).
@@ -1605,9 +1588,9 @@ async def toggle_wave_rating_show_names(callback: types.CallbackQuery):
     state = "✅ Показывать" if new_val == "on" else "❌ Скрыть"
     hint = SETTINGS_SCHEMA["wave_rating_show_names"]["prompt"]
     await callback.answer(f"{label}: {state}\n\n{hint}", show_alert=True)
-    text = await render_settings_group_text("game", callback.from_user.id)
+    text = await render_settings_group_text("amb", callback.from_user.id)
     await callback.message.edit_text(
-        text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("game", callback.from_user.id)
+        text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard("amb", callback.from_user.id)
     )
 
 
