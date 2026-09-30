@@ -190,6 +190,8 @@ async def render_list(admin_id: int, flt: str = "candidates",
         nav.append(InlineKeyboardButton(text="Дальше ▶️", callback_data=f"ambc:{flt}:{offset + PAGE}"))
     if nav:
         kb_rows.append(nav)
+    from handlers.admin_amb_bulk import bulk_buttons  # шов массовых действий, хвост этого файла
+    kb_rows += await bulk_buttons(scope)
     kb_rows.append([InlineKeyboardButton(text="📥 Выгрузить в таблицу (CSV)", callback_data="ambc_csv")])
     kb_rows.append([back_button("admin_amb_candidates")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=kb_rows)
@@ -333,22 +335,30 @@ async def _take_alert(tid: int, slot: bool) -> str:
     return "Взят без пакета."
 
 
+async def take_and_notify(bot, admin_id: int, tid: int) -> tuple[amb_status.JoinResult, bool | None]:
+    """«Взять» + сообщение `amb_taken_text` — общее для карточки и «➕ Назначить амбассадором».
+    Сообщение уходит только при outcome `taken`; второй раз «Взять» ничего не шлёт."""
+    result = await amb_status.take(tid, by=admin_id)
+    sent = None
+    if result.outcome == "taken":
+        sent = await _notify(bot, tid, "amb_taken_text")
+        logger.info("admin=%s amb_take tid=%s slot=%s notice_now=%s", admin_id, tid, result.slot, sent)
+    return result, sent
+
+
 @router.callback_query(F.data.startswith("ambc_take:"))
 async def take_person(callback: types.CallbackQuery):
     tid, flt, offset = _parse_person(callback.data)
     if tid is None:
         await callback.answer(_STALE, show_alert=True)
         return
-    admin_id = callback.from_user.id
-    result = await amb_status.take(tid, by=admin_id)
+    result, sent = await take_and_notify(callback.bot, callback.from_user.id, tid)
     if result.outcome == "already_active":
         await callback.answer("Уже в команде", show_alert=True)
     elif result.outcome != "taken":
         await callback.answer(_STALE, show_alert=True)
         return
     else:
-        sent = await _notify(callback.bot, tid, "amb_taken_text")
-        logger.info("admin=%s amb_take tid=%s slot=%s notice_now=%s", admin_id, tid, result.slot, sent)
         await callback.answer(_alert(await _take_alert(tid, result.slot) + _notice_suffix(sent)),
                               show_alert=True)
     await _show_person(callback, tid, flt, offset)
@@ -522,3 +532,8 @@ async def show_form_card(callback: types.CallbackQuery):
     card = await build_card_text(user)
     await callback.message.answer(card.text, parse_mode="HTML")
     await callback.answer()
+
+
+# Массовые действия (admin_amb_bulk: ambc_decl*, ambc_add*, ambc_arch_csv) — хвост admin.router
+# после хендлеров этого файла.
+from handlers import admin_amb_bulk  # noqa: E402,F401
