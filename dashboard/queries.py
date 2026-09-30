@@ -2131,6 +2131,43 @@ def _ambassador_wave_tasks(conn, scope: Scope, wave: "dict | None") -> list[dict
     return result[:_AMBASSADOR_ROWS_LIMIT]
 
 
+def _amb_team_stats(conn, parts: list[str], params: tuple) -> "dict | None":
+    """Команда амбассадоров по статусу (`users.ambassador_status`), только числа. `None` — модуль
+    «Отбор амбассадоров» выключен или в базе ещё нет колонок статуса (старая схема)."""
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+        if not {"ambassador_status", "ambassador_slot_at"} <= cols:
+            return None
+        row = conn.execute(
+            "SELECT value FROM bot_settings WHERE key = 'amb_team_selection_enabled'"
+        ).fetchone()
+        if row is None or row[0] != "on":
+            return None
+
+        def count(extra: str) -> int:
+            return _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts + [extra])}", params) or 0
+
+        limit_row = conn.execute(
+            "SELECT value FROM bot_settings WHERE key = 'amb_slots_limit'"
+        ).fetchone()
+        try:
+            limit = max(0, int(limit_row[0])) if limit_row is not None else 0
+        except (TypeError, ValueError):
+            limit = 0
+        with_pack = count("ambassador_status = 'active' AND ambassador_slot_at IS NOT NULL")
+        return {
+            "team": count("ambassador_status = 'active'"),
+            "candidates": count("ambassador_status = 'candidate'"),
+            "declined": count("ambassador_status = 'declined'"),
+            "with_pack": with_pack,
+            "without_pack": count("ambassador_status = 'active' AND ambassador_slot_at IS NULL"),
+            "slots_limit": limit or None,
+            "slots_taken": with_pack if limit else None,
+        }
+    except Exception:
+        return None
+
+
 def ambassador_block(conn, scope: Scope) -> "dict | None":
     """`None`, если тумблер `dashboard_block_ambassadors` выключен ИЛИ в скоупе страницы нет
     ни одного амбассадора (та же семантика «тумблер + наличие данных», что у `game_block`/
@@ -2143,7 +2180,8 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
     total = _scalar(
         conn, f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador = 1'])}", params
     ) or 0
-    if total == 0:
+    team = _amb_team_stats(conn, parts, params)
+    if total == 0 and not (team and (team["candidates"] or team["team"])):
         return None
 
     wave = _ambassador_current_wave(conn, scope)
@@ -2184,6 +2222,7 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
 
     return {
         "total": total,
+        "team": team,
         "wave": wave_view,
         "active": active,
         "activation_share": activation_share,
