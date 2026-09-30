@@ -28,7 +28,7 @@ from cities import get_setting_typed_for_city
 from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
 from payment_options import parse_options
 import reg_engine
-from services import amb_progress, applications, i18n, reg_edit_policy
+from services import amb_progress, amb_screen, applications, i18n, reg_edit_policy
 from settings_schema import get_setting_typed
 from services.text_fill import fill_collapsing
 
@@ -139,6 +139,37 @@ def _days_until(raw: str | None) -> int | None:
     return delta if delta >= 0 else None
 
 
+async def _amb_lines(telegram_id: int, lang: str, tr_map: dict) -> tuple[str | None, str | None, str | None]:
+    """Строки статуса, баллов и места в волне — из той же `amb_screen.delegate_view`, что и «Моя
+    ссылка» в боте. Сбой — все три `None`, хаб остаётся как был."""
+    try:
+        view = await amb_screen.delegate_view(telegram_id)
+        status = None
+        if view.get("status_key"):
+            status = await i18n.tr_setting(view["status_key"], lang, tr_map) or None
+        points = None
+        if view.get("referral_points") is not None:
+            tpl = await i18n.tr_setting("amb_referral_points_text", lang, tr_map)
+            points = _fill(tpl, points=view["referral_points"]) if tpl else None
+        wave_text = None
+        wp = view.get("wave_place")
+        if wp:
+            tpl = await i18n.tr_setting("amb_wave_place_text", lang, tr_map)
+            wave = i18n.tr(str(wp["wave"]), lang, tr_map)
+            wave_text = _fill(tpl, wave=wave, place=wp["place"], total=wp["total"]) if tpl else None
+        return status, points, wave_text
+    except Exception:
+        logging.getLogger(__name__).exception("hub: экран амбассадора не собран (tid=%s)", telegram_id)
+        return None, None, None
+
+
+def _fill(template: str, **subs) -> str:
+    try:
+        return template.format(**subs)
+    except (KeyError, IndexError, ValueError):
+        return template
+
+
 # ── Приёмка 17.09 (п.1): постоянное место реф-ссылки в хабе ─────────────────────────────────
 #
 # Правило видимости — ТО ЖЕ, что у кнопки чата «🔗 Моя реферальная ссылка»
@@ -175,7 +206,11 @@ async def _referral_block(
         count = len(await get_referrals(telegram_id))
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
+    status_text, points_text, wave_text = await _amb_lines(telegram_id, lang, tr_map or {})
     return {
+        "status_text": status_text,
+        "points_text": points_text,
+        "wave_text": wave_text,
         "label": await i18n.tr_setting("miniapp_hub_referral_label_text", lang, tr_map or {}),
         "link": reg_engine.build_referral_link(bot_username, telegram_id),
         "copy_button": await i18n.tr_setting("miniapp_form_ambassador_copy_button_text", lang, tr_map or {}),

@@ -241,7 +241,10 @@ export function ambassadorLinkBlock(h, res, { haptic, say } = {}) {
     res.heading ? h("h2", { text: res.heading }) : null,
     h("div", { class: "ambassador-link-box", text: res.link || "" }),
     res.note ? h("p", { text: res.note }) : null,
+    res.status_text ? h("p", { text: res.status_text }) : null,
     res.invites_text ? h("p", { text: res.invites_text }) : null,
+    res.points_text ? h("p", { text: res.points_text }) : null,
+    res.wave_text ? h("p", { text: res.wave_text }) : null,
     h("div", { class: "actions" }, copyBtn),
   );
 }
