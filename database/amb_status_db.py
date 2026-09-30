@@ -180,3 +180,262 @@ async def get_status(tid: int) -> dict | None:
         "declined_notified_at": row["ambassador_declined_notified_at"],
         "status_at": row["ambassador_status_at"],
     }
+
+
+# ── Место в лимите и пакет ───────────────────────────────────────────────────────────────────
+
+_SLOTS_TAKEN_SQL = "SELECT COUNT(*) FROM users WHERE ambassador_slot_at IS NOT NULL"
+
+
+async def slots_taken() -> int:
+    """Сколько мест занято. Сезон в счёт не входит: «🔄 Новый сезон» обнуляет места, а
+    вышедший с выданным пакетом место держит (подарок уже у него)."""
+    async with _db._connect() as conn:
+        async with conn.execute(_SLOTS_TAKEN_SQL) as cursor:
+            return int((await cursor.fetchone())[0])
+
+
+async def try_claim_slot(tid: int, *, limit: int, season: str, at: str) -> bool:
+    """Выдать место в лимите: только active-амбассадору с ОДОБРЕННОЙ заявкой текущего сезона и
+    только если места есть (`limit <= 0` — без ограничения). Одна транзакция `BEGIN IMMEDIATE`:
+    второй процесс ждёт коммита первого и считает уже с его местом — при лимите 17 и 16 занятых
+    две одновременные выдачи дают ровно одно место. Уже с местом — False, дата не меняется."""
+    async with _db._connect() as conn:
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            if int(limit) > 0:
+                async with conn.execute(_SLOTS_TAKEN_SQL) as cursor:
+                    taken = int((await cursor.fetchone())[0])
+                if taken >= int(limit):
+                    await conn.rollback()
+                    return False
+            cursor = await conn.execute(
+                "UPDATE users SET ambassador_slot_at = ? WHERE telegram_id = ? "
+                "AND ambassador_slot_at IS NULL AND ambassador_status = 'active' "
+                "AND status = 'approved' AND COALESCE(season, '') = ?",
+                (at, int(tid), (season or "").strip()),
+            )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return cursor.rowcount == 1
+
+
+async def set_pack(tid: int, given: bool, *, at: str) -> bool:
+    """Отметка «пакет выдан». Снятие отметки у того, кто уже не в команде, освобождает его
+    место: держать его было нечем, кроме пакета. True — делегат найден."""
+    if given:
+        sql = ("UPDATE users SET ambassador_pack_at = COALESCE(ambassador_pack_at, ?) "
+               "WHERE telegram_id = ?")
+        params: tuple = (at, int(tid))
+    else:
+        sql = ("UPDATE users SET ambassador_pack_at = NULL, ambassador_slot_at = CASE "
+               "WHEN COALESCE(ambassador_status, '') = 'active' THEN ambassador_slot_at "
+               "ELSE NULL END WHERE telegram_id = ?")
+        params = (int(tid),)
+    async with _db._connect() as conn:
+        cursor = await conn.execute(sql, params)
+        await conn.commit()
+        return cursor.rowcount == 1
+
+
+async def set_reserve(tid: int, *, at: str) -> bool:
+    """«Не сейчас»: кандидат остаётся в запасе, в списке уходит вниз. Только у candidate."""
+    async with _db._connect() as conn:
+        cursor = await conn.execute(
+            "UPDATE users SET ambassador_reserve_at = ? "
+            "WHERE telegram_id = ? AND ambassador_status = 'candidate'",
+            (at, int(tid)),
+        )
+        await conn.commit()
+        return cursor.rowcount == 1
+
+
+async def release_slot(tid: int) -> bool:
+    """Снять место (например, собственную заявку амбассадора больше не одобряют). Статус не
+    меняется; выданный пакет не отбирается — тогда False и место остаётся."""
+    async with _db._connect() as conn:
+        cursor = await conn.execute(
+            "UPDATE users SET ambassador_slot_at = NULL WHERE telegram_id = ? "
+            "AND ambassador_slot_at IS NOT NULL AND ambassador_pack_at IS NULL",
+            (int(tid),),
+        )
+        await conn.commit()
+        return cursor.rowcount == 1
+
+
+async def unapproved_slot_holders(season: str) -> list[int]:
+    """Кто держит место без пакета, хотя заявка уже не одобрена или не этого сезона — для
+    сверки (место только с одобренной заявкой текущего сезона). Только чтение."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT telegram_id FROM users WHERE ambassador_slot_at IS NOT NULL "
+            "AND ambassador_pack_at IS NULL AND (COALESCE(status, '') != 'approved' "
+            "OR COALESCE(season, '') != ?) ORDER BY telegram_id",
+            ((season or "").strip(),),
+        ) as cursor:
+            return [int(r[0]) for r in await cursor.fetchall()]
+
+
+# ── Списки для экранов ───────────────────────────────────────────────────────────────────────
+
+# Условие и порядок каждого списка. Кандидаты: сначала без отметки «в запасе», внутри — кто
+# раньше попросился.
+_FILTERS: dict[str, tuple[str, str]] = {
+    "candidates": ("ambassador_status = 'candidate'",
+                   "(ambassador_reserve_at IS NOT NULL), ambassador_status_at, telegram_id"),
+    "team": ("ambassador_status = 'active'",
+             "ambassador_since, ambassador_status_at, telegram_id"),
+    "no_pack": ("ambassador_status = 'active' AND ambassador_slot_at IS NULL",
+                "ambassador_since, ambassador_status_at, telegram_id"),
+    "declined": ("ambassador_status = 'declined'", "ambassador_status_at, telegram_id"),
+}
+
+
+def _filter_where(flt: str, city_scope) -> tuple[str, str, list]:
+    if flt not in _FILTERS:
+        raise ValueError(f"неизвестный список амбассадоров: {flt!r}")
+    where, order = _FILTERS[flt]
+    frag, params = _db._city_clause(city_scope, "event_city")
+    if frag:
+        where = f"{where} AND {frag}"
+    return where, order, params
+
+
+async def list_page(flt: str, *, offset: int, limit: int, city_scope=None) -> list[dict]:
+    """Страница списка `candidates` / `team` / `no_pack` / `declined`."""
+    where, order, params = _filter_where(flt, city_scope)
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            f"SELECT {_LIST_COLUMNS} FROM users WHERE {where} ORDER BY {order} "
+            "LIMIT ? OFFSET ?",
+            [*params, int(limit), int(offset)],
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def count_by_filter(flt: str, *, city_scope=None) -> int:
+    where, _order, params = _filter_where(flt, city_scope)
+    async with _db._connect() as conn:
+        async with conn.execute(f"SELECT COUNT(*) FROM users WHERE {where}", params) as cursor:
+            return int((await cursor.fetchone())[0])
+
+
+# ── Массовый отказ ───────────────────────────────────────────────────────────────────────────
+
+async def decline_remaining(*, at: str, by: int | None) -> list[int]:
+    """«Вежливо отказать всем оставшимся»: все кандидаты -> declined одной транзакцией.
+    Возвращает, кому отказали (для рассылки); повторный вызов — пустой список."""
+    async with _db._connect() as conn:
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            async with conn.execute(
+                "SELECT telegram_id FROM users WHERE ambassador_status = 'candidate' "
+                "ORDER BY telegram_id"
+            ) as cursor:
+                ids = [int(r[0]) for r in await cursor.fetchall()]
+            if ids:
+                await conn.execute(
+                    "UPDATE users SET ambassador_status = 'declined', ambassador_status_at = ?, "
+                    "ambassador_status_by = ? WHERE ambassador_status = 'candidate' "
+                    f"AND telegram_id IN ({', '.join('?' for _ in ids)})",
+                    [at, by, *ids],
+                )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return ids
+
+
+async def claim_decline_notice(tid: int, *, at: str) -> bool:
+    """Отметка «письмо об отказе отправлено» ДО отправки: True — один раз, дальше False
+    (повтор рассылки или две вкладки не шлют человеку второе письмо)."""
+    async with _db._connect() as conn:
+        cursor = await conn.execute(
+            "UPDATE users SET ambassador_declined_notified_at = ? WHERE telegram_id = ? "
+            "AND ambassador_declined_notified_at IS NULL AND ambassador_status = 'declined'",
+            (at, int(tid)),
+        )
+        await conn.commit()
+        return cursor.rowcount == 1
+
+
+# ── Новый сезон и выгрузки ───────────────────────────────────────────────────────────────────
+
+_HAS_AMB_STATE = (
+    "(ambassador_status IS NOT NULL OR ambassador_slot_at IS NOT NULL "
+    "OR ambassador_pack_at IS NOT NULL OR COALESCE(is_ambassador, 0) = 1)"
+)
+
+
+async def archive_and_reset_season(old_season: str, *, at: str) -> int:
+    """«🔄 Новый сезон»: статусы уходят в `ambassador_season_archive` (сезон — `old_season`,
+    пустой — 'legacy', как у архива заданий), у всех обнуляются статус, место, пакет, запас и
+    отметка отказа, `is_ambassador = 0`. `ambassador_since`/`ambassador_left_at` остаются —
+    это история человека. Одна транзакция; повтор с тем же сезоном перезаписывает архив.
+    Возвращает, скольким сброшено."""
+    stamp = (old_season or "").strip() or "legacy"
+    async with _db._connect() as conn:
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            await conn.execute(
+                "INSERT OR REPLACE INTO ambassador_season_archive "
+                "(telegram_id, season, status, since, slot_at, pack_at, archived_at) "
+                "SELECT telegram_id, ?, ambassador_status, ambassador_since, "
+                "ambassador_slot_at, ambassador_pack_at, ? FROM users "
+                "WHERE ambassador_status IS NOT NULL",
+                (stamp, at),
+            )
+            cursor = await conn.execute(
+                "UPDATE users SET ambassador_status = NULL, is_ambassador = 0, "
+                "ambassador_status_at = ?, ambassador_slot_at = NULL, ambassador_pack_at = NULL, "
+                f"ambassador_reserve_at = NULL, ambassador_declined_notified_at = NULL "
+                f"WHERE {_HAS_AMB_STATE}",
+                (at,),
+            )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return cursor.rowcount
+
+
+async def count_with_status() -> int:
+    """Сколько делегатов с непустым статусом — «сбросится у N человек» на экране сезона."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM users WHERE ambassador_status IS NOT NULL"
+        ) as cursor:
+            return int((await cursor.fetchone())[0])
+
+
+async def export_rows(*, city_scope=None) -> list[dict]:
+    """Все с непустым статусом — для выгрузки в таблицу."""
+    where = "ambassador_status IS NOT NULL"
+    frag, params = _db._city_clause(city_scope, "event_city")
+    if frag:
+        where = f"{where} AND {frag}"
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            f"SELECT {_EXPORT_COLUMNS} FROM users WHERE {where} "
+            "ORDER BY ambassador_status, ambassador_status_at, telegram_id",
+            params,
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def export_archive_rows() -> list[dict]:
+    """Архив прошлых сезонов с именем и ником из users (если человек ещё есть)."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT a.season, a.telegram_id, u.full_name, u.username, a.status, a.since, "
+            "a.slot_at, a.pack_at, a.archived_at FROM ambassador_season_archive a "
+            "LEFT JOIN users u ON u.telegram_id = a.telegram_id "
+            "ORDER BY a.archived_at, a.season, a.telegram_id"
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
