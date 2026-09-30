@@ -550,3 +550,25 @@ def test_archive_csv_empty_and_formula_safe(tmp_path):
     assert count == 1
     assert "'=1+1" in body and "'=HYPERLINK()" in body and "@evil" not in body
     assert ";evil;" in body
+
+
+# ── права и порядок регистрации ──────────────────────────────────────────────────────────
+
+def test_every_bulk_callback_resolves_to_moderate_game():
+    from handlers.admin_caps import required_capability
+    for data in ("ambc_decl", "ambc_decl_go:12", "ambc_decl_go:0", "ambc_decl_no", "ambc_add",
+                 "ambc_add_pick:10", "ambc_add_go:10", "ambc_add_cancel", "ambc_arch_csv"):
+        assert required_capability(callback_data=data) == "moderate_game", data
+    assert required_capability(raw_state="AmbAppoint:waiting_for_person") == "moderate_game"
+
+
+def test_bulk_seam_registered_after_candidates():
+    import handlers.admin_onsite_reg  # noqa: F401
+    from handlers.admin import router
+    names = [h.callback.__name__ for h in router.callback_query.handlers]
+    expected = ["decline_all_confirm", "decline_all_cancel", "decline_all_go", "appoint_start",
+                "appoint_cancel", "appoint_pick", "appoint_go", "archive_csv"]
+    start = names.index("show_form_card") + 1
+    assert names[start:start + len(expected)] == expected
+    messages = [h.callback.__name__ for h in router.message.handlers]
+    assert "appoint_person_step" in messages

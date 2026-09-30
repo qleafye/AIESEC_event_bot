@@ -977,6 +977,17 @@ ADMIN_CAPS: dict[str, str] = {
     "ambc_rm_go:*": "moderate_game",
     "ambc_csv": "moderate_game",
     "ambc_card:*": "moderate_reg",
+    # Массовые действия (handlers/admin_amb_bulk.py): отказ всем, назначение, архив сезонов.
+    # Префиксы: "ambc_decl" (точный) не ловит "ambc_decl_go:*"/"ambc_decl_no", "ambc_add" — "ambc_add_*".
+    "ambc_decl": "moderate_game",
+    "ambc_decl_go:*": "moderate_game",
+    "ambc_decl_no": "moderate_game",
+    "ambc_add": "moderate_game",
+    "ambc_add_pick:*": "moderate_game",
+    "ambc_add_go:*": "moderate_game",
+    "ambc_add_cancel": "moderate_game",
+    "ambc_arch_csv": "moderate_game",
+    "state:AmbAppoint:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
