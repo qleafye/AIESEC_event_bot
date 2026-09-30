@@ -1356,6 +1356,19 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_ambassador_tiers_o2o "
             "ON ambassador_tiers(tier, o2o_status, reached_at)"
         )
+        # Ступень, снятая менеджером вручную: автоматика (check_tiers, сверка раз в 10 минут,
+        # бэкафилл) её не возвращает, пока менеджер не нажмёт «Вернуть ступень». Метка
+        # привязана к сезону — новый сезон начинается с чистого листа.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS amb_tier_revocations (
+                telegram_id INTEGER NOT NULL,
+                tier INTEGER NOT NULL,
+                season TEXT NOT NULL,
+                revoked_at TEXT NOT NULL,
+                revoked_by INTEGER,
+                PRIMARY KEY (telegram_id, tier, season)
+            )
+        ''')
         # Ручное исключение приглашённого из зачёта амбассадора (накрутка). Исключённый не
         # входит ни в один счётчик; уже выданные ступени исключение НЕ удаляет.
         await db.execute('''
@@ -10118,6 +10131,8 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Ступени амбассадора СкиллАп — его личный след (как referral_credits по referrer_id выше),
     # уходят вместе с ним.
     ("ambassador_tiers", "telegram_id", "referral_credits"),
+    # Метка «ступень снята менеджером» — тот же личный след амбассадора.
+    ("amb_tier_revocations", "telegram_id", "referral_credits"),
     # Исключение из зачёта по invitee_id: причина — свободный текст менеджера о человеке (ПДн),
     # уходит вместе с исключённым. Начисленное пригласившему это не отзывает: обратная строка
     # монет и отметка в журнале остаются.

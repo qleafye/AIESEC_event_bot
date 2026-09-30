@@ -212,7 +212,7 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
             reached = [c.n for c in cfg if qualified >= c.threshold]
             if not reached:
                 continue
-            new_rows = await amb_tiers_db.claim_new_tiers(rid, reached, stamp, quotas)
+            new_rows = await amb_tiers_db.claim_new_tiers(rid, reached, stamp, quotas, season=season)
             if not new_rows:
                 continue
             for row in new_rows:
@@ -285,15 +285,31 @@ async def check_tiers_for_new_ambassador(telegram_id) -> None:
 async def revoke_tier(telegram_id: int, tier: int, *, by: int | None) -> bool:
     """Ручное «снять ступень» (решение менеджера, например за накрутку): строка ступени
     удаляется, выданное место квоты освобождается. Человеку ничего не шлётся. `False` — такой
-    ступени у него уже нет (повторное нажатие). Автоматика ступень не «запоминает» как снятую:
-    пока у амбассадора хватает прошедших отбор, сверка выдаст её снова — поэтому накрученных
-    приглашённых исключают отдельно (экран ступеней об этом предупреждает)."""
-    row = await amb_tiers_db.delete_tier_row(int(telegram_id), int(tier))
+    ступени у него уже нет (повторное нажатие).
+
+    Снятие «липкое»: в той же транзакции пишется метка `amb_tier_revocations` (сезон
+    текущий), и автоматика (`check_tiers`, сверка, бэкафилл) не выдаёт эту ступень и все
+    старшие, пока менеджер не вернёт её кнопкой (`unrevoke_tier`). Старшие блокируются
+    тоже: снятую за накрутку ступень не должна «заменять» следующая."""
+    season = await current_season()
+    row = await amb_tiers_db.revoke_tier_sticky(
+        int(telegram_id), int(tier), season, by=by, at=msk_now().strftime(_STAMP))
     if row is None:
         return False
     logger.info("admin=%s amb_tier_revoke tid=%s tier=%s status=%s",
                 by, int(telegram_id), int(tier), row.get("o2o_status"))
     return True
+
+
+async def unrevoke_tier(telegram_id: int, tier: int, *, by: int | None) -> list[dict]:
+    """«Вернуть ступень»: снимает метку и сразу прогоняет проверку ступеней человека.
+    Возвращает выданные сейчас ступени (пусто — метки уже не было или порога не хватает).
+    Уведомление уходит обычным путём."""
+    season = await current_season()
+    if not await amb_tiers_db.remove_revocation(int(telegram_id), int(tier), season):
+        return []
+    logger.info("admin=%s amb_tier_unrevoke tid=%s tier=%s", by, int(telegram_id), int(tier))
+    return await check_tiers([int(telegram_id)])
 
 
 async def promote_waitlist(tier: int, *, by: int | None) -> str:
@@ -395,6 +411,7 @@ async def preview_backfill() -> list[dict]:
     for row in await amb_tiers_db.list_tiers():
         existing.setdefault(int(row["telegram_id"]), {})[int(row["tier"])] = row
 
+    floors = await amb_tiers_db.revoked_floors(season)
     first_threshold = cfg[0].threshold
     candidates = []
     for rid, approvals in times.items():
@@ -404,7 +421,8 @@ async def preview_backfill() -> list[dict]:
         user = await _db.get_user(rid)
         if not can_earn_tiers(user, season, require_approved=require_approved):
             continue
-        reached = [c.n for c in cfg if qualified >= c.threshold]
+        floor = floors.get(rid)
+        reached = [c.n for c in cfg if qualified >= c.threshold and (floor is None or c.n < floor)]
         have = existing.get(rid, {})
         if all(t in have for t in reached):
             continue
