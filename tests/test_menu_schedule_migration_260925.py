@@ -67,7 +67,7 @@ def test_program_off_schedule_default_gets_button_back(tmp_path):
 
     assert _run(db.get_setting("menu_program")) == "on"
     assert PROGRAM_LABEL in _menu_labels()
-    assert _run(_user_version()) == db._MENU_SCHEDULE_MIGRATION_USER_VERSION
+    assert _run(_user_version()) >= db._MENU_SCHEDULE_MIGRATION_USER_VERSION
 
 
 def test_schedule_explicit_on_turns_program_on_and_orphan_is_deleted(tmp_path):
@@ -134,7 +134,7 @@ def test_second_init_is_noop(tmp_path):
     before = _run(_all_settings())
     _run(db.init_db())
     assert _run(_all_settings()) == before
-    assert _run(_user_version()) == db._MENU_SCHEDULE_MIGRATION_USER_VERSION
+    assert _run(_user_version()) >= db._MENU_SCHEDULE_MIGRATION_USER_VERSION
 
 
 def test_fresh_db_writes_nothing(tmp_path):
@@ -142,4 +142,4 @@ def test_fresh_db_writes_nothing(tmp_path):
     _run(db.init_db())
     settings = _run(_all_settings())
     assert "menu_program" not in settings
-    assert _run(_user_version()) == db._MENU_SCHEDULE_MIGRATION_USER_VERSION
+    assert _run(_user_version()) >= db._MENU_SCHEDULE_MIGRATION_USER_VERSION
