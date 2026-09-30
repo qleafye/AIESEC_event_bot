@@ -562,7 +562,13 @@ def m12_ambassadors(sc: _Schema, scope: Scope):
     ) or 0 if has_flag else None
     if has_credits:
         ids_sql, ids_params = scope.users_ids_sql()
-        cr_where = _where([f"invitee_id IN ({ids_sql})"])
+        cr_parts = [f"invitee_id IN ({ids_sql})"]
+        if sc.has("referral_credits", "referrer_was_ambassador", "excluded_at", "revoked_at"):
+            cr_parts.append(
+                "COALESCE(referrer_was_ambassador, 1) = 1 AND excluded_at IS NULL "
+                "AND revoked_at IS NULL"
+            )
+        cr_where = _where(cr_parts)
         out["referral_credits"] = _scalar(
             conn, f"SELECT COUNT(*) FROM referral_credits{cr_where}", ids_params
         ) or 0
