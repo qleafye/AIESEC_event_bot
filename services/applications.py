@@ -644,6 +644,9 @@ async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
         await check_tiers_for_invitees(ids)
     except Exception:
         logger.exception("claim_approve_all_with_credits: проверка ступеней не прошла")
+    # Своя заявка амбассадора одобрена — место в лимите, если есть (сам не бросает).
+    from services.amb_status import on_applications_approved
+    await on_applications_approved(ids)
     return ids, summary
 
 
@@ -710,6 +713,8 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
                 logger.exception(
                     "record_decision: проверка ступеней не прошла (tid=%s)", telegram_id,
                 )
+            from services.amb_status import on_applications_approved
+            await on_applications_approved([telegram_id])
         return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
@@ -793,6 +798,8 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
                 await check_tiers_for_invitees(approved_ids)
             except Exception:
                 logger.exception("flush_due_decisions: проверка ступеней не прошла")
+            from services.amb_status import on_applications_approved
+            await on_applications_approved(approved_ids)
     for row in due:
         enqueue(row["decision"], row)
     return len(due)
