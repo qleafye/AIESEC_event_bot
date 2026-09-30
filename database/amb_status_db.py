@@ -370,6 +370,17 @@ async def claim_decline_notice(tid: int, *, at: str) -> bool:
         return cursor.rowcount == 1
 
 
+async def declined_pending_notice() -> list[int]:
+    """Отказанные, кому письмо об отказе ещё не ушло (нет отметки): рассылка обходит их всех,
+    а не только отказанных этим нажатием, — повтор после рестарта досылает хвост."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT telegram_id FROM users WHERE ambassador_status = 'declined' "
+            "AND ambassador_declined_notified_at IS NULL ORDER BY telegram_id"
+        ) as cursor:
+            return [int(r[0]) for r in await cursor.fetchall()]
+
+
 # ── Новый сезон и выгрузки ───────────────────────────────────────────────────────────────────
 
 _HAS_AMB_STATE = (
@@ -440,8 +451,8 @@ async def export_archive_rows() -> list[dict]:
     async with _db._connect() as conn:
         conn.row_factory = aiosqlite.Row
         async with conn.execute(
-            "SELECT a.season, a.telegram_id, u.full_name, u.username, a.status, a.since, "
-            "a.slot_at, a.pack_at, a.archived_at FROM ambassador_season_archive a "
+            "SELECT a.season, a.telegram_id, u.full_name, u.username, u.event_city, "
+            "a.status, a.since, a.slot_at, a.pack_at, a.archived_at FROM ambassador_season_archive a "
             "LEFT JOIN users u ON u.telegram_id = a.telegram_id "
             "ORDER BY a.archived_at, a.season, a.telegram_id"
         ) as cursor:
