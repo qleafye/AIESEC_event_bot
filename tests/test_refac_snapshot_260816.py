@@ -785,6 +785,7 @@ admin|message|attach_note_step|state:AmbAttach:*
 admin|message|attach_confirm_text|state:AmbAttach:*
 admin|message|revoke_person_step|state:AmbTierRevoke:*
 admin|message|revoke_pick_hint|state:AmbTierRevoke:*
+admin|message|amb_points_value|state:AmbPointsEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1411,6 +1412,10 @@ admin|callback_query|revoke_pick|ambl_rev_pick:*
 admin|callback_query|revoke_go|ambl_rev_go:*
 admin|callback_query|promote_confirm|ambl_prom:*
 admin|callback_query|promote_go|ambl_prom_go:*
+admin|callback_query|show_amb_points|admin_amb_points
+admin|callback_query|amb_points_start|ambpt_coins
+admin|callback_query|amb_points_cancel|ambpt_coins_cancel
+admin|callback_query|amb_points_toggle|ambpt_toggle:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2079,7 +2084,11 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_amb_journal.py — 2 admin.message (state:AmbTierRevoke:*) сразу после
     # attach_confirm_text и 12 admin.callback_query сразу после attach_go. Сверено diff'ом
     # (difflib): две чистые вставки (2 + 12), 0 удалений, 0 реордеров (942 -> 956).
-    assert len(GOLDEN_SNAPSHOT) == 956
+    # 01.10 («💰 Баллы и приватность»): шов handlers/admin_amb_points.py хвостом
+    # handlers/admin_amb_tier_ladder.py — 1 admin.message (state:AmbPointsEdit:*) сразу после
+    # revoke_pick_hint и 4 admin.callback_query сразу после promote_go. Две чистые вставки
+    # (1 + 4), 0 удалений, 0 реордеров (956 -> 961).
+    assert len(GOLDEN_SNAPSHOT) == 961
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -53,8 +53,7 @@ def test_back_buttons_lead_to_owner_section():
 def test_on_section_shows_everything_and_game_has_no_waves(tmp_path):
     _ready(tmp_path, selection=True)
     text, kb = _run(sec.section_screen(ADMIN_ID, "amb"))
-    shown = _callbacks(kb)
-    assert [c for c in shown if c != "admin_amb_points"][:6] == [c for c in AMB_ROWS if c != "admin_amb_points"]
+    assert _callbacks(kb)[:len(AMB_ROWS)] == list(AMB_ROWS)
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
     cbs = _callbacks(game_kb)
     assert "admin_game_waves" not in cbs and "admin_amb_tiers" not in cbs
@@ -90,3 +89,112 @@ def test_moderate_game_holder_sees_both_sections(tmp_path):
     kb = _run(__import__("handlers.admin_core", fromlist=["x"]).build_admin_keyboard(ADMIN_ID))
     flat = _callbacks(kb)
     assert "admin_sec:game" in flat and "admin_sec:amb" in flat
+
+
+# ── экран «💰 Баллы и приватность» ───────────────────────────────────────────────────────────
+
+class _User:
+    def __init__(self, uid=ADMIN_ID):
+        self.id = uid
+
+
+class _Msg:
+    def __init__(self, text=None):
+        self.text = text
+        self.from_user = _User()
+        self.edits, self.sent = [], []
+
+    async def edit_text(self, text, **kw):
+        self.edits.append((text, kw.get("reply_markup")))
+
+    async def answer(self, text, **kw):
+        self.sent.append((text, kw.get("reply_markup")))
+
+
+class _Cb:
+    def __init__(self, data):
+        self.data = data
+        self.from_user = _User()
+        self.message = _Msg()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _state():
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+    return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=1, user_id=1))
+
+
+def test_points_caps_resolve():
+    from handlers.admin_caps import required_capability
+    for data in ("admin_amb_points", "ambpt_coins", "ambpt_coins_cancel", "ambpt_toggle:hide",
+                 "ambpt_toggle:wavenames", "state:AmbPointsEdit:waiting_for_value"):
+        assert required_capability(callback_data=data) == "moderate_game", data
+
+
+def test_points_screen_text_and_buttons(tmp_path):
+    from handlers import admin_amb_points as h
+    _ready(tmp_path, selection=True)
+    _run(db.set_setting("ambassador_referral_coins", "10"))
+    text, kb = _run(h.render_points_screen())
+    assert "Баллов за одобренного приглашённого: <b>10 (0 — выключено)</b>" in text
+    assert "и в общий зачёт, и в текущую волну" in text
+    assert "Скрывать имена приглашённых: <b>нет</b>" in text
+    assert "Имена в рейтинге волны: <b>да</b>" in text
+    assert _callbacks(kb) == ["ambpt_coins", "ambpt_toggle:hide", "ambpt_toggle:wavenames",
+                              "admin_sec:amb"]
+
+
+def test_points_input_validation_and_save(tmp_path, caplog):
+    import logging
+    from handlers import admin_amb_points as h
+    from handlers.states import AmbPointsEdit
+    _ready(tmp_path, selection=True)
+    state = _state()
+    cb = _Cb("ambpt_coins")
+    _run(h.amb_points_start(cb, state))
+    assert _run(state.get_state()) == AmbPointsEdit.waiting_for_value.state
+    assert "например <code>10</code>" in cb.message.sent[-1][0]
+
+    for body, expected in (("abc", "Не понял. Пришлите целое число, например 10, или 0."),
+                           ("-5", "Баллы не могут быть меньше нуля. Пришлите 0 или больше.")):
+        msg = _Msg(body)
+        _run(h.amb_points_value(msg, state))
+        assert msg.sent[-1][0] == expected
+        assert _run(state.get_state()) == AmbPointsEdit.waiting_for_value.state
+
+    with caplog.at_level(logging.INFO):
+        msg = _Msg("25")
+        _run(h.amb_points_value(msg, state))
+    assert _run(db.get_setting("ambassador_referral_coins")) == "25"
+    assert "admin=1 ambassador_referral_coins=25" in caplog.text
+    assert msg.sent[-1][0].startswith("✅ Сохранено")
+    assert _run(state.get_state()) is None
+
+
+def test_points_toggles_flip_shared_settings(tmp_path):
+    from handlers import admin_amb_points as h
+    _ready(tmp_path, selection=True)
+    cb = _Cb("ambpt_toggle:hide")
+    _run(h.amb_points_toggle(cb))
+    assert _run(db.get_setting("amb_hide_invitee_names")) == "on"
+    assert cb.answers[-1][1] is True and len(cb.answers[-1][0]) <= 200
+    cb = _Cb("ambpt_toggle:wavenames")
+    _run(h.amb_points_toggle(cb))
+    assert _run(db.get_setting("wave_rating_show_names")) == "off"
+    assert len(cb.answers[-1][0]) <= 200
+    cb = _Cb("ambpt_toggle:zzz")
+    _run(h.amb_points_toggle(cb))
+    assert "устарела" in cb.answers[-1][0]
+
+
+def test_points_stale_button_when_module_off(tmp_path):
+    from handlers import admin_amb_section as sect
+    _ready(tmp_path, selection=False)
+    assert sect.is_section_callback("admin_amb_points")
+    assert sect.is_section_callback("ambpt_toggle:hide")
+    assert _run(sect._section_off(_Cb("admin_amb_points"))) is True
