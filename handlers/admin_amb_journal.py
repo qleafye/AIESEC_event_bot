@@ -285,3 +285,8 @@ async def attach_go(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer(
             f"✅ {_name(invitee)} закреплён за {_name(referrer)}. {tail}", parse_mode="HTML")
     await callback.answer()
+
+
+# Экран «🪜 Лестница ступеней» (admin_amb_tier_ladder, ambl*) — хвост admin.router после
+# хендлеров этого файла.
+from handlers import admin_amb_tier_ladder  # noqa: E402,F401

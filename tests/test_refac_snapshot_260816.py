@@ -783,6 +783,8 @@ admin|message|attach_invitee_step|state:AmbAttach:*
 admin|message|attach_referrer_step|state:AmbAttach:*
 admin|message|attach_note_step|state:AmbAttach:*
 admin|message|attach_confirm_text|state:AmbAttach:*
+admin|message|revoke_person_step|state:AmbTierRevoke:*
+admin|message|revoke_pick_hint|state:AmbTierRevoke:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1397,6 +1399,18 @@ admin|callback_query|attach_start|admin_amb_attach
 admin|callback_query|attach_cancel|ambj_cancel
 admin|callback_query|attach_pick|ambj_pick:*
 admin|callback_query|attach_go|ambj_go
+admin|callback_query|show_ladder|ambl:main
+admin|callback_query|ladder_add|ambl_add
+admin|callback_query|ladder_del|ambl_del
+admin|callback_query|ladder_del_go|ambl_del_go
+admin|callback_query|ladder_quota_toggle|ambl_quota:*
+admin|callback_query|ladder_require_toggle|ambl_req
+admin|callback_query|revoke_start|ambl_rev
+admin|callback_query|revoke_cancel|ambl_rev_cancel
+admin|callback_query|revoke_pick|ambl_rev_pick:*
+admin|callback_query|revoke_go|ambl_rev_go:*
+admin|callback_query|promote_confirm|ambl_prom:*
+admin|callback_query|promote_go|ambl_prom_go:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2061,7 +2075,11 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/admin_amb_bulk.py — 4 admin.message (state:AmbAttach:*) сразу после
     # appoint_person_step и 4 admin.callback_query сразу после archive_csv. Сверено diff'ом
     # (difflib): две чистые вставки (4 + 4), 0 удалений, 0 реордеров (934 -> 942).
-    assert len(GOLDEN_SNAPSHOT) == 942
+    # 01.10 (лестница ступеней): шов handlers/admin_amb_tier_ladder.py хвостом
+    # handlers/admin_amb_journal.py — 2 admin.message (state:AmbTierRevoke:*) сразу после
+    # attach_confirm_text и 12 admin.callback_query сразу после attach_go. Сверено diff'ом
+    # (difflib): две чистые вставки (2 + 12), 0 удалений, 0 реордеров (942 -> 956).
+    assert len(GOLDEN_SNAPSHOT) == 956
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
