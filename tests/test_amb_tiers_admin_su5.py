@@ -274,7 +274,7 @@ def test_exclude_invitee_removes_from_counts_keeps_tiers(tmp_path):
 
     msg, confirm_text, cb, state = _exclude_flow("@cheater")
     assert "Пригласил" in msg.answers[-1][0] and "Амбассадор 100" in msg.answers[-1][0]
-    assert "Уже выданные ступени останутся" in confirm_text
+    assert "Снять ступень" in confirm_text
 
     counts = _run(tdb.referral_counts(100, SEASON))
     assert counts["total"] == 1 and counts["qualified"] == 1
