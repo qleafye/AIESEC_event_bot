@@ -507,6 +507,13 @@ class AmbAppoint(StatesGroup):
     waiting_for_person = State()
 
 
+class AmbTierRevoke(StatesGroup):
+    # Лестница ступеней (handlers/admin_amb_tier_ladder.py) - «Снять ступень»: кто (пересылка /
+    # @username / id), затем ступень и подтверждение кнопками (waiting_for_pick).
+    waiting_for_person = State()
+    waiting_for_pick = State()
+
+
 class AmbAttach(StatesGroup):
     # «Амбассадоры» - «Закрепить приглашённого» (handlers/admin_amb_journal.py): кто пришёл,
     # кто привёл, заметка («скрины в чате»), подтверждение кнопкой.

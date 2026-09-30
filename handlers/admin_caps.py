@@ -996,6 +996,21 @@ ADMIN_CAPS: dict[str, str] = {
     "ambj_go": "moderate_game",
     "ambj_cancel": "moderate_game",
     "state:AmbAttach:*": "moderate_game",
+    # Лестница ступеней (handlers/admin_amb_tier_ladder.py): «ambl_del» не ловит «ambl_del_go»,
+    # «ambl_rev» — «ambl_rev_pick:*»/«ambl_rev_go:*», «ambl_prom:*» — «ambl_prom_go:*».
+    "ambl:main": "moderate_game",
+    "ambl_add": "moderate_game",
+    "ambl_del": "moderate_game",
+    "ambl_del_go": "moderate_game",
+    "ambl_quota:*": "moderate_game",
+    "ambl_req": "moderate_game",
+    "ambl_rev": "moderate_game",
+    "ambl_rev_cancel": "moderate_game",
+    "ambl_rev_pick:*": "moderate_game",
+    "ambl_rev_go:*": "moderate_game",
+    "ambl_prom:*": "moderate_game",
+    "ambl_prom_go:*": "moderate_game",
+    "state:AmbTierRevoke:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы

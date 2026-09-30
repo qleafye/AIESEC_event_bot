@@ -8,8 +8,8 @@
 - ручное исключение приглашённого из зачёта (накрутка): кого → причина → подтверждение;
   список исключённых по 10 с «↩️ Вернуть в зачёт».
 
-Пороги, квота, дедлайн и тексты правятся в общей группе настроек раздела («⚙️ Тексты и
-настройки») — здесь кнопка ведёт туда. Правила подсчёта и выдачи ступеней — в
+Число ступеней, пороги, квоты и тексты собираются на экране «🪜 Лестница ступеней»
+(`handlers/admin_amb_tier_ladder.py`) — здесь кнопка ведёт туда. Правила подсчёта и выдачи ступеней — в
 `services/amb_tiers.py` (одна точка), этот модуль их не дублирует.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router` и подключается хвостовым
@@ -105,13 +105,12 @@ async def _deadline_line() -> str:
 
 
 async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import back_button, section_group_label
+    from handlers.admin_sections import back_button
 
     program = await amb_tiers.program_on()
     hide = await get_setting_typed("amb_hide_invitee_names") == "on"
-    t1, t2, t3 = await amb_tiers.thresholds()
-    quota = int(await get_setting_typed("amb_o2o_quota"))
-    o2o = await amb_tiers_db.o2o_summary()
+    cfg = await amb_tiers.tiers_config()
+    summary = await amb_tiers_db.tiers_summary()
     excluded = await amb_tiers_db.count_exclusions()
 
     lines = [
@@ -125,14 +124,15 @@ async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
             "Пока выключено, ступени не выдаются и сообщений амбассадорам нет. Выгрузка и "
             "исключения работают — можно подготовиться заранее."
         )
+    lines.append("")
+    for c in cfg:
+        stat = summary.get(c.n, {"reached": 0, "granted": 0, "waitlist": 0})
+        line = f"Ступень {c.n} — {c.threshold} прошедших отбор: получили {stat['reached']}"
+        if c.quota is not None:
+            line += f", наград выдано {stat['granted']} из {c.quota}, ждут {stat['waitlist']}"
+        lines.append(line)
     lines += [
         "",
-        f"Ступень 1 — {t1} прошедших отбор: статус подтверждён, сертификат после форума",
-        f"Ступень 2 — {t2}: гарантированный разбор резюме",
-        f"Ступень 3 — {t3}: закрытый нетворкинг",
-        "",
-        f"Разборов резюме выдано: {o2o['granted']} из {quota}",
-        f"В листе ожидания: {o2o['waitlist']}",
         f"Дедлайн подсчёта: {await _deadline_line()}",
         f"Имена приглашённых амбассадору: {'скрыты' if hide else 'видны'}",
         f"Исключено из зачёта: {excluded}",
@@ -149,10 +149,7 @@ async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="📥 Выгрузить CSV по амбассадорам", callback_data="ambt_csv")],
         [InlineKeyboardButton(text="🚫 Исключить приглашённого из зачёта", callback_data="ambt_excl")],
         [InlineKeyboardButton(text=f"📋 Исключённые ({excluded})", callback_data="ambt_excl_list:0")],
-        [InlineKeyboardButton(
-            text=f"{section_group_label('game', 'game')}: пороги и тексты",
-            callback_data="settings_group:game",
-        )],
+        [InlineKeyboardButton(text="🪜 Лестница ступеней", callback_data="ambl:main")],
         [back_button("admin_amb_tiers")],
     ]
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
