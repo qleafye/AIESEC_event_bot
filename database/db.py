@@ -10122,6 +10122,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # уходит вместе с исключённым. Начисленное пригласившему это не отзывает: обратная строка
     # монет и отметка в журнале остаются.
     ("ambassador_exclusions", "invitee_id", "referral_credits"),
+    # Сохранённое ручное закрепление ещё не одобренного приглашённого: заметка менеджера
+    # («скрины в чате») — свободный текст о человеке, уходит вместе с ним.
+    ("amb_manual_attach", "invitee_id", "referral_credits"),
     # Статусы амбассадора прошлых сезонов (database/amb_status_db.py): кем был человек в
     # прошлом отборе — его личный след, уходит вместе с ним.
     ("ambassador_season_archive", "telegram_id", "ambassador"),
@@ -10227,6 +10230,15 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
 _PURGE_RESULT_GROUPS: tuple[str, ...] = tuple(sorted({g for _, _, g in USER_PURGE_TABLES}))
 
 
+# «Обезличить, не удалять»: строка referral_credits, где удаляемый был ПРИГЛАШЁННЫМ, остаётся
+# (по ней считаются баллы и очки волны пригласившего), но заметка менеджера о нём, автор
+# закрепления и причина исключения — текст о человеке — обнуляются.
+_PURGE_ANONYMIZE_CREDIT_WHERE = (
+    "invitee_id = ? AND (manual_note IS NOT NULL OR manual_by IS NOT NULL "
+    "OR exclude_reason IS NOT NULL)"
+)
+
+
 async def count_user_footprint(telegram_id: int) -> dict[str, int]:
     """Что пропадёт при purge_user(telegram_id) — заранее, для карточки подтверждения
     (handlers/admin_purge.py). Все ключи из _PURGE_RESULT_GROUPS присутствуют в результате
@@ -10251,6 +10263,12 @@ async def count_user_footprint(telegram_id: int) -> dict[str, int]:
         ) as cursor:
             row = await cursor.fetchone()
             result["game"] += row[0] if row else 0
+        async with db.execute(
+            f"SELECT COUNT(*) FROM referral_credits WHERE {_PURGE_ANONYMIZE_CREDIT_WHERE}",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            result["referral_credits"] += row[0] if row else 0
         async with db.execute(
             "SELECT COUNT(*) FROM users WHERE referrer_id = ?", (telegram_id,)
         ) as cursor:
@@ -10302,6 +10320,12 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
             _assert_identifier(column)
             cursor = await db.execute(f"DELETE FROM {table} WHERE {column} = ?", (telegram_id,))
             result[group] += cursor.rowcount
+        cursor = await db.execute(
+            "UPDATE referral_credits SET manual_note = NULL, manual_by = NULL, "
+            f"exclude_reason = NULL WHERE {_PURGE_ANONYMIZE_CREDIT_WHERE}",
+            (telegram_id,),
+        )
+        result["referral_credits"] += cursor.rowcount
         async with db.execute(
             "SELECT COUNT(*) FROM users WHERE referrer_id = ?", (telegram_id,)
         ) as cur:
