@@ -141,6 +141,7 @@ async def render_entry_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]
     rows = [
         [InlineKeyboardButton(text=f"Способ входа: {_MODE_LABELS[mode]}", callback_data="ambs_mode")],
         [InlineKeyboardButton(text=f"🎁 Мест в команде: {_limit_text(limit)}", callback_data="ambs_limit")],
+        [InlineKeyboardButton(text=f"🙋 Кандидаты: {candidates}", callback_data="admin_amb_candidates")],
         [InlineKeyboardButton(text="✏️ Тексты для делегатов", callback_data="ambs_texts")],
         [back_button("admin_amb_entry")],
     ]
@@ -255,3 +256,8 @@ async def amb_texts_menu(callback: types.CallbackQuery):
     rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin_amb_entry")])
     await _edit_or_send(callback.message, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
     await callback.answer()
+
+
+# Экран «🙋 Кандидаты и команда» (admin_amb_candidates, ambc*/ambp:*) — хвост admin.router
+# после хендлеров этого файла.
+from handlers import admin_amb_candidates  # noqa: E402,F401

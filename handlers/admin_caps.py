@@ -964,6 +964,19 @@ ADMIN_CAPS: dict[str, str] = {
     "ambs_limit_cancel": "moderate_game",
     "ambs_texts": "moderate_game",
     "state:AmbSlotsEdit:*": "moderate_game",
+    # «🙋 Кандидаты и команда» (handlers/admin_amb_candidates.py). Анкета человека — ПДн, как в
+    # очереди заявок: moderate_reg. Префиксы: "ambc:*" не ловит "ambc_*", "ambc_rm:*" — "ambc_rm_go:*".
+    "admin_amb_candidates": "moderate_game",
+    "ambc:*": "moderate_game",
+    "ambp:*": "moderate_game",
+    "ambc_take:*": "moderate_game",
+    "ambc_later:*": "moderate_game",
+    "ambc_pack:*": "moderate_game",
+    "ambc_slot:*": "moderate_game",
+    "ambc_rm:*": "moderate_game",
+    "ambc_rm_go:*": "moderate_game",
+    "ambc_csv": "moderate_game",
+    "ambc_card:*": "moderate_reg",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы

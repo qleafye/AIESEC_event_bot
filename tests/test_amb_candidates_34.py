@@ -501,3 +501,82 @@ def test_form_card_and_button_needs_moderate_reg(tmp_path, monkeypatch):
     card = _cb("ambp:10:candidates:0")
     _run(h.person_card(card))
     assert not any(d.startswith("ambc_card:") for _, d in _buttons(_screen(card)[1]))
+
+
+# ── выгрузка, раздел, права ─────────────────────────────────────────────────────────────
+
+def test_csv_export_no_at_and_formula_safe(tmp_path):
+    import csv as csv_mod
+    import io as io_mod
+    from handlers import admin_amb_candidates as h
+    _ready(tmp_path)
+    _seed(10, amb_status="active", slot=True, pack=True, name="=1+1", username="@ivan_p")
+    _seed(11, amb_status="candidate", name="Мария", username="maria")
+    _seed(12, name="Не амбассадор")
+    _seed(20, referrer=10)
+    cb = _cb("ambc_csv")
+    _run(h.candidates_csv(cb))
+    document, caption = cb.message.documents[-1]
+    assert caption == "Амбассадоры и кандидаты: 2 человек"
+    assert document.filename == "ambassadors_team.csv"
+    raw = document.data
+    assert raw.startswith(b"\xef\xbb\xbf")
+    body = raw.decode("utf-8-sig")
+    assert "@" not in body
+    rows = list(csv_mod.reader(io_mod.StringIO(body), delimiter=";"))
+    assert rows[0] == h.CSV_HEADERS
+    by_id = {r[-1]: r for r in rows[1:]}
+    assert set(by_id) == {"10", "11"}
+    ivan = by_id["10"]
+    assert ivan[0] == "'=1+1" and ivan[1] == "ivan_p"
+    assert ivan[3] == "одобрена" and ivan[4] == "в команде" and ivan[5] == "да"
+    assert ivan[6].startswith("2026-09-03") and ivan[7] == "1" and ivan[8] == "1"
+    assert by_id["11"][4] == "кандидат" and by_id["11"][5] == "нет" and by_id["11"][6] == ""
+
+
+def test_list_has_csv_button_and_section_row():
+    from handlers import admin_sections as sec
+    rows = sec.section_rows("amb")
+    assert rows.index(("screen", "admin_amb_candidates", "🙋 Кандидаты и команда")) == \
+        rows.index(("screen", "admin_amb_entry", "🚪 Вход и лимит")) + 1
+    assert sec.back_button("admin_amb_candidates").callback_data == "admin_sec:amb"
+
+
+def test_list_screen_has_csv_button(tmp_path):
+    from handlers import admin_amb_candidates as h
+    _ready(tmp_path)
+    cb = _cb("admin_amb_candidates")
+    _run(h.show_candidates(cb))
+    buttons = _buttons(_screen(cb)[1])
+    assert ("📥 Выгрузить в таблицу (CSV)", "ambc_csv") in buttons
+    assert ("← Назад", "admin_sec:amb") in buttons
+
+
+def test_entry_screen_links_to_candidates(tmp_path):
+    from handlers import admin_amb_section as s
+    _ready(tmp_path)
+    _seed(10, amb_status="candidate")
+    _seed(11, amb_status="candidate")
+    _text, kb = _run(s.render_entry_screen(ADMIN_ID))
+    assert ("🙋 Кандидаты: 2", "admin_amb_candidates") in _buttons(kb)
+
+
+def test_every_callback_resolves_to_its_right():
+    from handlers.admin_caps import required_capability
+    game = ("admin_amb_candidates", "ambc:candidates:0", "ambc:team:10", "ambp:10:team:0",
+            "ambc_take:10:candidates:0", "ambc_later:10", "ambc_pack:10:team:0",
+            "ambc_slot:10", "ambc_rm:10:team:0", "ambc_rm_go:10:team:0", "ambc_csv")
+    for data in game:
+        assert required_capability(callback_data=data) == "moderate_game", data
+    assert required_capability(callback_data="ambc_card:10") == "moderate_reg"
+
+
+def test_seam_is_registered_on_admin_router():
+    import handlers.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
+    from handlers.admin import router
+    names = [h.callback.__name__ for h in router.callback_query.handlers]
+    expected = ["show_candidates", "candidates_page", "person_card", "take_person", "later_person",
+                "toggle_pack", "give_slot", "remove_confirm", "remove_apply", "candidates_csv",
+                "show_form_card"]
+    start = names.index("amb_texts_menu") + 1
+    assert names[start:start + len(expected)] == expected

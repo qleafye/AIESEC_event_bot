@@ -758,7 +758,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1413,
+        1426,
+        "30.09 (экран «🙋 Кандидаты и команда»): +13 строк — права на handlers/admin_amb_candidates.py: "
+        "10 callback-ов moderate_game и анкета человека (ambc_card:*) moderate_reg отдельными "
+        "строками из-за ловушки префиксов + комментарий; 1413 -> 1426. "
         "30.09 (раздел «🤝 Амбассадоры»): +10 строк — права moderate_game на экран "
         "«🚪 Вход и лимит» (handlers/admin_amb_section.py): 6 callback-ов отдельными строками из-за "
         "ловушки префиксов + state:AmbSlotsEdit:* + комментарий; 1403 -> 1413. "
