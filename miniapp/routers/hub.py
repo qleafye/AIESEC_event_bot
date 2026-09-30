@@ -139,11 +139,13 @@ def _days_until(raw: str | None) -> int | None:
     return delta if delta >= 0 else None
 
 
-async def _amb_lines(telegram_id: int, lang: str, tr_map: dict) -> tuple[str | None, str | None, str | None]:
+async def _amb_lines(
+    telegram_id: int, lang: str, tr_map: dict, user: dict | None = None,
+) -> tuple[str | None, str | None, str | None]:
     """Строки статуса, баллов и места в волне — из той же `amb_screen.delegate_view`, что и «Моя
     ссылка» в боте. Сбой — все три `None`, хаб остаётся как был."""
     try:
-        view = await amb_screen.delegate_view(telegram_id)
+        view = await amb_screen.delegate_view(telegram_id, user=user, need_state=False)
         status = None
         if view.get("status_key"):
             status = await i18n.tr_setting(view["status_key"], lang, tr_map) or None
@@ -185,7 +187,7 @@ def _fill(template: str, **subs) -> str:
 # сюда не переносится: делаем ровно то же самое, что видит делегат по кнопке меню).
 async def _referral_block(
     telegram_id: int, event_city: str | None, bot_username: str | None,
-    lang: str = "ru", tr_map: dict | None = None,
+    lang: str = "ru", tr_map: dict | None = None, user: dict | None = None,
 ) -> dict | None:
     if await get_setting_typed_for_city("menu_referral", event_city) != "on":
         return None
@@ -206,7 +208,7 @@ async def _referral_block(
         count = len(await get_referrals(telegram_id))
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
-    status_text, points_text, wave_text = await _amb_lines(telegram_id, lang, tr_map or {})
+    status_text, points_text, wave_text = await _amb_lines(telegram_id, lang, tr_map or {}, user)
     return {
         "status_text": status_text,
         "points_text": points_text,
@@ -253,7 +255,7 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
     total_participants = await count_participants()
     rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
 
-    referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username, lang, tr_map)
+    referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username, lang, tr_map, user)
 
     checkin_status_fact = await _checkin_status_fact(p.telegram_id, lang, tr_map)
 
