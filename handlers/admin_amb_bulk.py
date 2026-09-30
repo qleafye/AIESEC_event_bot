@@ -6,6 +6,11 @@
   показываем новое. Рассылка идёт фоном через тихие часы, отметка «письмо ушло» ставится ДО
   отправки (`claim_decline_notice`) — повтор досылает только тем, кому ещё не ушло. В конце
   менеджеру приходит отчёт «отправлено / отложено до утра / не доставлено».
+- «➕ Назначить амбассадором» — любого делегата, подавшего анкету: @ник, ссылка t.me,
+  Telegram ID или пересланное сообщение → подтверждение с именем, городом, статусом заявки и
+  текстом, который ему придёт → то же, что «✅ Взять» (`take_and_notify`).
+- «📥 Прошлые сезоны (CSV)» — архив статусов, который «🔄 Новый сезон» откладывает перед
+  сбросом (`season_reset_line` / `season_reset_apply` зовёт мастер сезона в admin_cities).
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
 импортом `handlers/admin_amb_candidates.py`.
@@ -13,16 +18,37 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import html
+import io
 import logging
 
 from aiogram import F, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
+from cities import city_label_or_none
 from database import amb_status_db
+from database import db as _db
 from handlers.admin import router
-from handlers.admin_amb_candidates import _edit_or_send, _notify, _now, render_list
+from handlers.admin_amb_candidates import (
+    AMB_STATUS_LABELS,
+    APP_STATUS_LABELS,
+    _alert,
+    _edit_or_send,
+    _name,
+    _nick,
+    _notice_suffix,
+    _notify,
+    _now,
+    _take_alert,
+    render_list,
+    render_person,
+    take_and_notify,
+)
 from handlers.admin_caps import has_capability
+from handlers.states import AmbAppoint
+from services import person_search
 from services.background import spawn
 from settings_schema import get_setting_typed
 
@@ -39,7 +65,9 @@ _ALL_CITIES_ONLY = (
 
 async def bulk_buttons(scope) -> list[list[InlineKeyboardButton]]:
     """Кнопки массовых действий под списком «🙋 Кандидаты и команда»."""
-    rows: list[list[InlineKeyboardButton]] = []
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="➕ Назначить амбассадором", callback_data="ambc_add")],
+    ]
     if scope is None:
         n = await amb_status_db.count_by_filter("candidates")
         if n:
@@ -50,6 +78,7 @@ async def bulk_buttons(scope) -> list[list[InlineKeyboardButton]]:
             if pending:
                 rows.append([InlineKeyboardButton(
                     text=f"🙅 Дослать отказ ({pending})", callback_data="ambc_decl")])
+    rows.append([InlineKeyboardButton(text="📥 Прошлые сезоны (CSV)", callback_data="ambc_arch_csv")])
     return rows
 
 
@@ -185,3 +214,254 @@ async def notify_declined(bot, admin_id: int) -> tuple[int, int, int]:
     except Exception:
         logger.exception("amb_decline_all: отчёт менеджеру не доставлен (admin=%s)", admin_id)
     return sent, deferred, failed
+
+
+# ── назначить любого делегата ────────────────────────────────────────────────────────────
+
+_APPOINT_PROMPT = (
+    "➕ <b>Назначить амбассадором</b>\n\n"
+    "Пришлите @ник, ссылку t.me, Telegram ID или перешлите сообщение делегата. "
+    "«❌ Отмена» — выйти."
+)
+_NOT_FOUND = (
+    "Не нашёл такого делегата. Проверьте ник или перешлите его сообщение. "
+    "Назначить можно только того, кто подал анкету."
+)
+_HIDDEN_FORWARD = (
+    "В этой пересылке не видно аккаунта человека — у него скрыт аккаунт при пересылке. "
+    "Пришлите его @ник или Telegram ID."
+)
+_ALREADY = "Он уже в команде."
+_CANCELLED = "Отменено — никого не назначили."
+_PICK_MAX = 10
+
+
+def _cancel_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отмена", callback_data="ambc_add_cancel")]])
+
+
+def _forwarded_id(message) -> tuple[int | None, bool]:
+    """(id, это была пересылка). Пересылка со скрытым аккаунтом -> (None, True).
+    `forward_origin` первым — старые поля Bot API 7.0 больше не присылает."""
+    origin = getattr(message, "forward_origin", None)
+    if origin is not None:
+        sender = getattr(origin, "sender_user", None)
+        return (sender.id if sender is not None else None), True
+    forwarded = getattr(message, "forward_from", None)
+    if forwarded is not None:
+        return forwarded.id, True
+    return None, False
+
+
+async def _find(message, scope) -> list[dict] | str:
+    """Кого можно назначить (строки users в городе админа) или текст ошибки."""
+    tid, was_forward = _forwarded_id(message)
+    if was_forward:
+        if tid is None:
+            return _HIDDEN_FORWARD
+        query = str(tid)
+    else:
+        query = (message.text or "").strip()
+        if not query:
+            return _NOT_FOUND
+    found = await person_search.search_people(query, city_scope=scope, limit=_PICK_MAX + 1,
+                                              include_started=False)
+    return found or _NOT_FOUND
+
+
+async def _appoint_confirm(tid: int, scope) -> tuple[str, InlineKeyboardMarkup] | str:
+    """Экран подтверждения назначения или текст отказа (не найден / уже в команде)."""
+    user = await _db.get_user(tid)
+    if not user or not person_search._city_matches(user.get("event_city"), scope):
+        return _NOT_FOUND
+    st = await amb_status_db.get_status(tid) or {}
+    if st.get("status") == "active":
+        return _ALREADY
+    bits = [_name(user)]
+    nick = _nick(user)
+    if nick:
+        bits.append(nick)
+    city = await city_label_or_none(user.get("event_city"))
+    if city:
+        bits.append(html.escape(city))
+    bits.append("заявка: " + APP_STATUS_LABELS.get(user.get("status") or "", "—"))
+    now = AMB_STATUS_LABELS.get(st.get("status") or "none", "—")
+    taken = html.escape((await get_setting_typed("amb_taken_text") or "")
+                        .replace("{link}", "[его ссылка для приглашений]"))
+    text = (
+        f"<b>Сделать амбассадором:</b> {' · '.join(bits)}?\n"
+        + (f"Сейчас: {now}.\n" if now != "—" else "")
+        + f"\nЕму придёт сообщение «{taken}».\n\n"
+        "Место в команде выдаётся, если заявка одобрена и места есть; иначе — «без пакета»."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Назначить", callback_data=f"ambc_add_go:{tid}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="ambc_add_cancel")],
+    ])
+    return text, kb
+
+
+@router.callback_query(F.data == "ambc_add")
+async def appoint_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(AmbAppoint.waiting_for_person)
+    await callback.message.answer(_APPOINT_PROMPT, parse_mode="HTML", reply_markup=_cancel_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ambc_add_cancel")
+async def appoint_cancel(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    text, kb = await render_list(callback.from_user.id, "candidates", 0)
+    await _edit_or_send(callback.message, text, kb)
+    await callback.answer(_CANCELLED)
+
+
+@router.message(AmbAppoint.waiting_for_person)
+async def appoint_person_step(message: types.Message, state: FSMContext):
+    body = (message.text or "").strip()
+    if body.startswith("/") or body.lower() in {"отмена", "❌ отмена"}:
+        await state.clear()
+        await message.answer(_CANCELLED)
+        return
+    scope = await _scope(message.from_user.id)
+    found = await _find(message, scope)
+    if isinstance(found, str):
+        await message.answer(found, reply_markup=_cancel_kb())
+        return
+    if len(found) == 1:
+        screen = await _appoint_confirm(int(found[0]["user_id"]), scope)
+        if isinstance(screen, str):
+            await message.answer(screen, reply_markup=_cancel_kb())
+            return
+        await message.answer(screen[0], parse_mode="HTML", reply_markup=screen[1])
+        return
+    rows = []
+    for person in found[:_PICK_MAX]:
+        label = str(person.get("full_name") or "").strip() or "без имени"
+        city = await city_label_or_none(person.get("city"))
+        if city:
+            label += f" · {city}"
+        rows.append([InlineKeyboardButton(text=label[:60],
+                                          callback_data=f"ambc_add_pick:{person['user_id']}")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="ambc_add_cancel")])
+    more = (f"\nПоказаны первые {_PICK_MAX} — уточните запрос, если нужного нет."
+            if len(found) > _PICK_MAX else "")
+    await message.answer(f"Нашлось несколько делегатов — выберите нужного.{more}",
+                         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+def _tid(data: str) -> int | None:
+    try:
+        return int(data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+
+@router.callback_query(F.data.startswith("ambc_add_pick:"))
+async def appoint_pick(callback: types.CallbackQuery):
+    tid = _tid(callback.data)
+    screen = (await _appoint_confirm(tid, await _scope(callback.from_user.id))
+              if tid is not None else _NOT_FOUND)
+    if isinstance(screen, str):
+        await callback.answer(_alert(screen), show_alert=True)
+        return
+    await _edit_or_send(callback.message, *screen)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ambc_add_go:"))
+async def appoint_go(callback: types.CallbackQuery, state: FSMContext):
+    admin_id = callback.from_user.id
+    tid = _tid(callback.data)
+    user = await _db.get_user(tid) if tid is not None else None
+    if not user or not person_search._city_matches(user.get("event_city"), await _scope(admin_id)):
+        await callback.answer(_alert(_NOT_FOUND), show_alert=True)
+        return
+    result, sent = await take_and_notify(callback.bot, admin_id, tid)
+    if result.outcome == "already_active":
+        await callback.answer(_ALREADY, show_alert=True)
+    elif result.outcome != "taken":
+        await callback.answer(_alert(_NOT_FOUND), show_alert=True)
+        return
+    else:
+        logger.info("admin=%s amb_appoint tid=%s", admin_id, tid)
+        await callback.answer(_alert(await _take_alert(tid, result.slot) + _notice_suffix(sent)),
+                              show_alert=True)
+    await state.clear()
+    screen = await render_person(admin_id, tid, "team", 0)
+    if screen is not None:
+        await _edit_or_send(callback.message, *screen)
+
+
+# ── прошлые сезоны: архив и сброс ────────────────────────────────────────────────────────
+
+ARCHIVE_HEADERS = ["Сезон", "Имя", "username", "Город", "Статус", "Вступил", "Было место",
+                   "Пакет выдан", "Telegram ID"]
+
+
+async def export_archive_csv(city_scope=None) -> tuple[bytes, int]:
+    """Архив прошлых сезонов: `;`, utf-8-sig, ник без «@», строки через `_csv_safe`."""
+    safe = _db._csv_safe
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(ARCHIVE_HEADERS)
+    count = 0
+    for row in await amb_status_db.export_archive_rows():
+        if not person_search._city_matches(row.get("event_city"), city_scope):
+            continue
+        count += 1
+        writer.writerow([
+            safe(str(row.get("season") or "")),
+            safe(str(row.get("full_name") or "")),
+            safe(str(row.get("username") or "").strip().lstrip("@")),
+            safe(await city_label_or_none(row.get("event_city")) or ""),
+            AMB_STATUS_LABELS.get(row.get("status") or "none", "—"),
+            safe(str(row.get("since") or "")),
+            "да" if row.get("slot_at") else "нет",
+            safe(str(row.get("pack_at") or "")),
+            int(row["telegram_id"]),
+        ])
+    return output.getvalue().encode("utf-8-sig"), count
+
+
+@router.callback_query(F.data == "ambc_arch_csv")
+async def archive_csv(callback: types.CallbackQuery):
+    data, count = await export_archive_csv(await _scope(callback.from_user.id))
+    if not count:
+        await callback.answer("Прошлых сезонов пока нет.", show_alert=True)
+        return
+    logger.info("admin=%s amb_archive_csv rows=%s", callback.from_user.id, count)
+    await callback.message.answer_document(
+        BufferedInputFile(data, filename="ambassadors_past_seasons.csv"),
+        caption=f"Амбассадоры прошлых сезонов: {count} записей",
+    )
+    await callback.answer()
+
+
+async def season_reset_line() -> str:
+    """Строка экрана чисел мастера «🔄 Новый сезон». Сбой чтения — пустая строка: мастер
+    сезона не должен падать из-за амбассадоров."""
+    try:
+        n = await amb_status_db.count_with_status()
+    except Exception:
+        logger.error("season_reset: не прочитал число амбассадоров", exc_info=True)
+        return ""
+    if not n:
+        return ""
+    return (f"• Сбросятся статусы амбассадоров: {n} (история останется в выгрузке "
+            "«Прошлые сезоны»).\n")
+
+
+async def season_reset_apply(old_season: str) -> str:
+    """Сброс статусов с архивом прошлого сезона; строка итога для мастера. Сбой — лог и
+    честная строка, сезон всё равно меняется."""
+    try:
+        n = await amb_status_db.archive_and_reset_season(old_season or "", at=_now())
+    except Exception:
+        logger.error("season_reset: статусы амбассадоров не сброшены (old=%r)", old_season,
+                     exc_info=True)
+        return "\n⚠️ Статусы амбассадоров сбросить не удалось — напишите разработчику."
+    logger.warning("season_reset: amb statuses archived and reset n=%s old=%r", n, old_season)
+    return f"\nСтатусы амбассадоров сброшены: {n}." if n else ""
