@@ -8602,7 +8602,7 @@ async def sum_referral_coins_for_wave(wave_id: int) -> dict[int, int]:
     async with _connect() as db:
         async with db.execute(
             "SELECT referrer_id, SUM(coins) FROM referral_credits WHERE wave_id = ? "
-            "GROUP BY referrer_id",
+            "AND excluded_at IS NULL GROUP BY referrer_id",
             (wave_id,),
         ) as cursor:
             rows = await cursor.fetchall()
@@ -10116,9 +10116,12 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # зарегистрируется заново — удаление строки открыло бы дублирующее начисление.
     ("referral_credits", "referrer_id", "referral_credits"),
     # Ступени амбассадора СкиллАп — его личный след (как referral_credits по referrer_id выше),
-    # уходят вместе с ним. ambassador_exclusions по invitee_id не трогаем: это решение
-    # менеджера о чужом зачёте, а не след удаляемого.
+    # уходят вместе с ним.
     ("ambassador_tiers", "telegram_id", "referral_credits"),
+    # Исключение из зачёта по invitee_id: причина — свободный текст менеджера о человеке (ПДн),
+    # уходит вместе с исключённым. Начисленное пригласившему это не отзывает: обратная строка
+    # монет и отметка в журнале остаются.
+    ("ambassador_exclusions", "invitee_id", "referral_credits"),
     # Статусы амбассадора прошлых сезонов (database/amb_status_db.py): кем был человек в
     # прошлом отборе — его личный след, уходит вместе с ним.
     ("ambassador_season_archive", "telegram_id", "ambassador"),

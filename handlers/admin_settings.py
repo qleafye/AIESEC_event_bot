@@ -326,6 +326,7 @@ _GAME_FIELD_ORDER = [
     "amb_count_deadline", "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
     "amb_tier3_text", "amb_progress_text", "amb_next_step_o2o_text", "amb_next_step_done_text",
     "amb_next_step_networking_text", "amb_invitees_counts_text", "amb_invitee_masked_label_text",
+    "amb_referral_reversal_reason_text", "amb_referral_restore_reason_text",
     "amb_candidate_ack_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
     "amb_removed_text", "amb_decline_all_text",
     # Тексты старта волны, напоминания, итогов (D-04) — делегатские, переводятся автоматически.
