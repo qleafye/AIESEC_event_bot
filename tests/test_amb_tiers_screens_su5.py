@@ -33,6 +33,10 @@ def _ready(tmp_path, name="test_amb_tiers_screens_su5.db"):
     config.DB_PATH = str(tmp_path / name)
     fast_init_db()
     _run(db.set_setting("event_season", SEASON))
+    # Экраны проверяются на значениях СкиллАп (общие дефолты реестра нейтральные).
+    import reg_presets
+    for key in ("amb_next_step_o2o_text", "amb_next_step_networking_text"):
+        _run(db.set_setting(key, reg_presets.SKILLUP_TIER_SETTINGS[key]))
 
 
 def _seed_user(tid, *, referrer_id=None, status="pending", full_name=None):
@@ -308,6 +312,9 @@ from tests.test_miniapp_routes import (  # noqa: E402
 def client(tmp_path):
     db_path = _use_tmp_db(tmp_path, "amb_tiers_screens_miniapp.db")
     _standard_seed()
+    import reg_presets
+    for key in ("amb_next_step_o2o_text", "amb_next_step_networking_text"):
+        _set(key, reg_presets.SKILLUP_TIER_SETTINGS[key])
     return _client(_cfg(db_path))
 
 
