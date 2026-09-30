@@ -22,7 +22,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_user
 from handlers import reg_i18n
 from reg_engine import build_referral_link
-from services import amb_progress, amb_status
+from services import amb_progress, amb_screen
+from services import i18n as i18n_service
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,41 @@ async def _tr_key(key: str, lang: str, tr_map: dict) -> str:
     return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map)
 
 
-async def _state(user_id: int) -> str:
-    """Fail-open: сбой чтения статуса показывает кнопку — `request_join` перепроверит."""
+def _fmt(template: str, **subs) -> str:
     try:
-        return await amb_status.delegate_state(user_id)
-    except Exception:
-        logger.exception("referral_screen: delegate_state не прочитан (tid=%s)", user_id)
-        return "open"
+        return template.format(**subs)
+    except (KeyError, IndexError, ValueError):
+        logger.warning("referral_screen: не подставил значения в шаблон — отдаю как есть")
+        return template
+
+
+async def _tr_line(key: str, lang: str, tr_map: dict) -> str:
+    """Строка статуса с эмодзи в начале: `reg_i18n.tr_text` отрезает ведущий символ и ищет перевод
+    по остатку, а ручной перевод лежит по хешу ПОЛНОЙ строки — сначала ищем по полной."""
+    text = await get_setting_typed(key)
+    if lang != "ru" and isinstance(text, str) and text:
+        full = i18n_service.tr(text, lang, tr_map)
+        if full != text:
+            return full
+    return reg_i18n.tr_text(text, lang, tr_map)
+
+
+async def _lines(view: dict, lang: str, tr_map: dict) -> tuple[str | None, str | None, str | None]:
+    """Строки статуса, баллов и места в волне — тексты из реестра, с переводом."""
+    status = None
+    if view["status_key"]:
+        status = await _tr_line(view["status_key"], lang, tr_map) or None
+    points = None
+    if view["referral_points"] is not None:
+        points = _fmt(await _tr_line("amb_referral_points_text", lang, tr_map),
+                      points=view["referral_points"])
+    place = None
+    wp = view["wave_place"]
+    if wp:
+        wave = f"{reg_i18n.tr_text('Волна', lang, tr_map)} {wp['number']}"
+        place = _fmt(await _tr_line("amb_wave_place_text", lang, tr_map),
+                     wave=wave, place=wp["place"], total=wp["total"])
+    return status, points, place
 
 
 async def referral_screen(
@@ -64,10 +93,17 @@ async def referral_screen(
     text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
 
     buttons: list[list[InlineKeyboardButton]] = []
+    view = await amb_screen.delegate_view(user_id)
+    status, points, place = await _lines(view, lang, tr_map)
     if user and user.get("is_ambassador"):
+        if status:
+            text += "\n\n" + status
         progress = await amb_progress.render_progress(user_id, amb_tr(lang, tr_map))
         if progress is not None:
             text += "\n\n" + progress
+        for line in (points, place):
+            if line:
+                text += "\n\n" + line
         text += "\n\n" + await _tr_key("ambassador_path_prompt_text", lang, tr_map)
         current_path = user.get("ambassador_path") or "none"  # NULL -> метка "none"
         path_row = []
@@ -79,15 +115,8 @@ async def referral_screen(
         leave_label = await _tr_key("ambassador_leave_button_text", lang, tr_map)
         buttons.append([InlineKeyboardButton(text=leave_label, callback_data="ambleave")])
     else:
-        state = await _state(user_id)
-        if state == "candidate":
-            line = await _tr_key("amb_status_candidate_text", lang, tr_map)
-            if line:
-                text += "\n\n" + line
-        elif state in ("full", "declined"):
-            line = await _tr_key("amb_slots_full_text", lang, tr_map)
-            if line:
-                text += "\n\n" + line
+        if status:
+            text += "\n\n" + status
         else:
             cta_label = await _tr_key("miniapp_form_ambassador_cta_text", lang, tr_map)
             buttons.append([InlineKeyboardButton(text=cta_label, callback_data="ambjoin")])
