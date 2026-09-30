@@ -300,24 +300,39 @@ def test_offer_off_and_not_candidate_sends_nothing(ready):
     assert not _offer(40).sent
 
 
-def test_offer_off_selection_candidate_gets_ack(ready):
-    """Так настроен РилТолк: вопрос в анкете включён, предложение ссылки — нет."""
+def test_offer_off_selection_candidate_gets_ack_and_link(ready):
+    """Так настроен РилТолк: вопрос в анкете включён, предложение ссылки — нет. Подтверждение
+    обещает, что ссылка уже твоя, — она приходит следом (приглашения до вступления засчитываются)."""
     _mode("selection")
     _finalize(41, yes=True)
     msg = _offer(41)
-    assert len(msg.sent) == 1
-    text, markup, _ = msg.sent[0]
-    assert text == _schema_default("amb_candidate_ack_text")
-    assert markup is None
+    texts = [t for (t, _m, _p) in msg.sent]
+    assert texts[0] == _schema_default("amb_candidate_ack_text")
+    assert texts[1] == "https://t.me/TestBot?start=amb_41"
+    assert msg.sent[1][2] is None  # голый URL без разметки
+    assert len(texts) == 3  # + пояснение, где найти ссылку потом
+    assert all(m is None for (_t, m, _p) in msg.sent)
 
 
-def test_offer_on_selection_candidate_gets_only_ack(ready):
+def test_offer_on_selection_candidate_gets_ack_and_link_without_offer(ready):
     _run(db.set_setting("reg_offer_ref_link", "on"))
     _mode("selection")
     _finalize(42, yes=True)
     msg = _offer(42)
+    texts = [t for (t, _m, _p) in msg.sent]
+    assert texts[:2] == [_schema_default("amb_candidate_ack_text"), "https://t.me/TestBot?start=amb_42"]
+    assert all(m is None for (_t, m, _p) in msg.sent)  # без кнопок «Хочу свою ссылку»
+    assert _st(42)["status"] == "candidate"
+
+
+def test_offer_candidate_without_bot_username_sends_only_ack(ready):
+    from handlers import reg_ambassador
+    from tests.test_skillup_referral_28 import _FakeBot, _FakeMessage
+    _mode("selection")
+    _finalize(46, yes=True)
+    msg = _FakeMessage(46, bot=_FakeBot(fail=True))
+    _run(reg_ambassador.offer_ref_link(msg, 46))
     assert [t for (t, _m, _p) in msg.sent] == [_schema_default("amb_candidate_ack_text")]
-    assert msg.sent[0][1] is None
 
 
 def test_offer_hidden_when_full_or_declined(ready):
