@@ -282,6 +282,52 @@ async def check_tiers_for_new_ambassador(telegram_id) -> None:
         logger.exception("amb_tiers: проверка ступеней при вступлении не прошла (tid=%s)", telegram_id)
 
 
+STALE_NOTIFY_MINUTES = 10
+
+
+async def reconcile_tiers() -> dict:
+    """Периодическая сверка (раз в 10 минут, второй шаг джобы сверки журнала). Никогда не бросает.
+
+    1. `check_tiers(notify=True)` по действующим амбассадорам с приглашёнными — дозаписывает
+       ступени, которые пропустил живой путь (упавший процесс, одобрение в обход).
+    2. Ступени без `notified_at`, достигнутые больше 10 минут назад, заново ставятся в
+       очередь, если необработанного события про них нет (событие могло потеряться). Очередь
+       и `claim_tier_notification` держат exactly-once: повторное событие второго
+       сообщения не даёт.
+
+    Возвращает `{"granted": сколько новых ступеней, "requeued": сколько уведомлений
+    поставлено заново}`."""
+    result = {"granted": 0, "requeued": 0}
+    try:
+        if not await program_on():
+            return result
+        season = await current_season()
+        ids = await amb_tiers_db.active_ambassadors_with_invitees(season)
+        if ids:
+            result["granted"] = len(await check_tiers(ids, notify=True))
+        stamp_now = msk_now()
+        older = (stamp_now - timedelta(minutes=STALE_NOTIFY_MINUTES)).strftime(_STAMP)
+        cfg = await tiers_config()
+        for row in await amb_tiers_db.stale_unnotified(older):
+            try:
+                rid, tier = int(row["telegram_id"]), int(row["tier"])
+                if await amb_tiers_db.has_pending_tier_event(TIER_EVENT_KIND, rid, tier):
+                    continue
+                counts = await amb_tiers_db.referral_counts(rid, season)
+                await _db.enqueue_miniapp_outbox(
+                    TIER_EVENT_KIND,
+                    {"telegram_id": rid, "tier": tier, "left": _left_to_next(cfg, counts["qualified"])},
+                    stamp_now.strftime(_STAMP),
+                )
+                result["requeued"] += 1
+            except Exception:
+                logger.warning("amb_tiers: сверка не поставила уведомление (tid=%s)",
+                               row.get("telegram_id"), exc_info=True)
+    except Exception:
+        logger.exception("amb_tiers: сверка ступеней не прошла")
+    return result
+
+
 async def preview_backfill() -> list[dict]:
     """Предпросмотр разового пересчёта «кому какая ступень» — ничего не пишет.
 
