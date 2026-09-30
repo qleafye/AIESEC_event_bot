@@ -15,7 +15,7 @@ from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 1
 AMB_ROWS = ("admin_amb_entry", "admin_amb_candidates", "admin_amb_points", "admin_amb_tiers",
-            "admin_game_waves", "ambt_excl_list:0", "admin_amb_attach")
+            "admin_game_waves", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb")
 
 
 def _run(coro):

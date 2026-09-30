@@ -186,10 +186,10 @@ def test_coverage_frozen_before_is_fully_reachable(tmp_path):
 
 def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
     """Допустимые добавления сверх старого набора групп — «📋 Заявки» и (квик 260927)
-    «💬 Чат делегатов» с весами рейтинга чата, раздел «🔧 Управление»."""
+    «💬 Чат делегатов» с весами рейтинга чата, «🤝 Амбассадоры» (настройки амбассадорки), раздел «🔧 Управление»."""
     after = _after_callbacks(tmp_path)
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
-    assert groups_after == _GROUPS_BEFORE | {"settings_group:apps", "settings_group:chat"}
+    assert groups_after == _GROUPS_BEFORE | {"settings_group:apps", "settings_group:chat", "settings_group:amb"}
 
 
 def test_coverage_regmode_reset_comes_only_from_the_render_pass(tmp_path):
@@ -304,7 +304,7 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
     # больше показать нечего (visible_rows пуст -> раздел не рисуется, docstring
     # visible_sections выше). Тумблер учёта чата теперь строка «🔧 Управление» (там уже была
     # видна держателю `settings`) — новый список короче на «comms».
-    assert tokens == ["event", "form", "apps", "pay", "game", "data", "manage"]
+    assert tokens == ["event", "form", "apps", "pay", "game", "amb", "data", "manage"]
 
 
 def test_stranger_sees_no_sections(tmp_path):
@@ -1030,7 +1030,7 @@ def test_group_button_inside_section_never_repeats_section_label(tmp_path):
                 renamed.add(token)
             else:
                 assert text == group_label, (token, row[1])
-    assert renamed == {"apps", "pay", "game"}
+    assert renamed == {"apps", "pay", "game", "amb"}
 
 
 def test_guide_and_cheatsheet_spell_group_path_with_new_label():
