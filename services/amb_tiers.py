@@ -49,6 +49,17 @@ DEADLINE_FORMAT = "%Y-%m-%d %H:%M"
 _STAMP = "%Y-%m-%d %H:%M:%S"
 
 
+def can_earn_tiers(user: dict | None, season: str) -> bool:
+    """Кто получает ступени: амбассадор (`is_ambassador = 1`) с ОДОБРЕННОЙ собственной заявкой
+    ТЕКУЩЕГО сезона (решение владельца 30.09). Кнопку «Хочу свою ссылку» может нажать любой, но
+    ступени откроются, только когда одобрят его самого, — иначе отклонённый или ещё не
+    рассмотренный делегат собирал бы награды. Приглашённые при этом считаются за весь сезон,
+    в том числе пришедшие до вступления."""
+    if not user or int(user.get("is_ambassador") or 0) != 1:
+        return False
+    return user.get("status") == "approved" and (user.get("season") or "") == (season or "")
+
+
 async def program_on() -> bool:
     return await get_setting_typed("amb_qualified_program") == "on"
 
@@ -131,7 +142,7 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
         seen.add(rid)
         try:
             referrer = await _db.get_user(rid)
-            if not referrer or int(referrer.get("is_ambassador") or 0) != 1:
+            if not can_earn_tiers(referrer, season):
                 continue
             counts = await amb_tiers_db.referral_counts(rid, season)
             qualified = counts["qualified"]
@@ -169,8 +180,8 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
 
 
 async def check_tiers_for_invitees(invitee_ids) -> None:
-    """Обёртка для путей одобрения: по id одобренных приглашённых находит их амбассадоров и
-    зовёт `check_tiers`. Никогда не бросает. При выключенной программе — одно чтение
+    """Обёртка для путей одобрения: по id одобренных находит их амбассадоров (и самих
+    одобренных, если они амбассадоры) и зовёт `check_tiers`. Никогда не бросает. При выключенной программе — одно чтение
     настройки и выход, без запросов к пользователям."""
     try:
         if not await program_on():
@@ -178,7 +189,12 @@ async def check_tiers_for_invitees(invitee_ids) -> None:
         referrers: list[int] = []
         for raw_id in invitee_ids or ():
             invitee = await _db.get_user(int(raw_id))
-            if not invitee or not invitee.get("referrer_id"):
+            if not invitee:
+                continue
+            # Одобрили самого амбассадора — его люди могли пройти отбор раньше него.
+            if int(invitee.get("is_ambassador") or 0) == 1 and int(raw_id) not in referrers:
+                referrers.append(int(raw_id))
+            if not invitee.get("referrer_id"):
                 continue
             rid = int(invitee["referrer_id"])
             if rid == int(raw_id) or rid in referrers:
@@ -231,7 +247,7 @@ async def preview_backfill() -> list[dict]:
         if qualified < t1:
             continue
         user = await _db.get_user(rid)
-        if not user or int(user.get("is_ambassador") or 0) != 1:
+        if not can_earn_tiers(user, season):
             continue
         reached = [t for t, th in ((1, t1), (2, t2), (3, t3)) if qualified >= th]
         have = existing.get(rid, {})
