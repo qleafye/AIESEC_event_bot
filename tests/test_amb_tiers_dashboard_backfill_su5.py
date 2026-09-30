@@ -108,7 +108,10 @@ def test_block_aggregates_on_fixture(tmp_path):
     _fixture()
     with dash_db.read_conn(path) as conn:
         block = amb_tiers_block(conn, Scope())
+    tiers = block.pop("tiers")
     assert block == {"active": 1, "qualified_total": 3, "o2o_granted": 1, "o2o_quota": 12, "waitlist": 0}
+    assert [(t["tier"], t["reached"]) for t in tiers] == [(1, 1), (2, 1), (3, 0)]
+    assert tiers[1]["quota"] == 12 and tiers[0]["quota"] is None
 
 
 def test_block_parity_with_bot_counts(tmp_path):
@@ -143,12 +146,13 @@ def test_dashboard_render_shows_tiers_without_invitee_names(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _run(db.set_setting("event_season", SEASON))
     _run(db.set_setting("amb_qualified_program", "on"))
+    _run(db.set_setting("amb_tier2_quota_on", "on"))
     _fixture()
     client = _stats_manager_client(db_path, extra_settings={"dashboard_block_ambassadors": "on"})
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Ступени амбассадоров" in resp.text
-    assert "Разборов резюме выдано" in resp.text
+    assert "Ступень 2: мест выдано" in resp.text
     assert "Иван Уникальный" not in resp.text
 
 
