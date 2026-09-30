@@ -31,6 +31,7 @@ Phase 27 (27-04, LANG-06): к разрешённым импортам «наве
 эту фазу не видят вообще.
 """
 import json
+import logging
 import re
 from datetime import datetime
 from urllib.parse import urlparse
@@ -593,6 +594,16 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
             continue
         if not await is_step_enabled_for_track(setting_key, participant_type, city):
             continue
+        # Лимит мест амбассадоров набран — вопрос прячется (бот и Mini App идут через этот
+        # движок). Без tid: персональные правила (отказан, уже кандидат) решает request_join.
+        # Сбой гейта не имеет права ронять анкету — тогда вопрос показывается.
+        if step_key == "ambassador":
+            try:
+                from services import amb_status
+                if not await amb_status.offer_open(None):
+                    continue
+            except Exception:
+                logging.getLogger(__name__).exception("reg_engine: гейт вопроса амбассадора упал — показываю")
         if step_key == "informal_day" and data.get("attendance_format") == "Online":
             continue
         if step_key == "source" and data.get("_source_from_tag"):
