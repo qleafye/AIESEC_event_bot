@@ -11,7 +11,8 @@ _connect`: тесты подменяют `config.DB_PATH`/атрибуты `data
 Определения (решения владельца):
 - приглашённый — `users.referrer_id = амбассадор`, сезон = текущий `event_season`, сам себя
   не приглашал (`telegram_id != referrer_id`), не исключён менеджером (`ambassador_exclusions`);
-- прошёл отбор (qualified) — `status = 'approved'` прямо сейчас И нет «живого» одобрения в
+- прошёл отбор (qualified) — есть строка журнала `referral_credits` без `excluded_at`, `status =
+  'approved'` прямо сейчас И нет «живого» одобрения в
   Mini App, у которого ещё не прошло окно отмены (строка `application_decisions` с
   `decision = 'approved'`, `effects_sent_at IS NULL`, `undone_at IS NULL`). Иначе одобрение
   другого приглашённого того же амбассадора засчитало бы ещё отменяемое решение, а ступень
@@ -28,7 +29,10 @@ _COUNTS_SELECT = """
     SELECT u.referrer_id AS referrer_id,
            COUNT(*) AS total,
            SUM(CASE WHEN u.status = 'pending' THEN 1 ELSE 0 END) AS pending,
-           SUM(CASE WHEN u.status = 'approved' AND NOT EXISTS (
+           SUM(CASE WHEN u.status = 'approved' AND EXISTS (
+                   SELECT 1 FROM referral_credits rc
+                   WHERE rc.invitee_id = u.telegram_id AND rc.excluded_at IS NULL
+               ) AND NOT EXISTS (
                    SELECT 1 FROM application_decisions d
                    WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved'
                      AND d.effects_sent_at IS NULL AND d.undone_at IS NULL
@@ -366,6 +370,8 @@ async def qualified_approval_times(season: str) -> dict[int, list[str]]:
             "WHERE u.referrer_id IS NOT NULL AND u.telegram_id != u.referrer_id "
             "AND COALESCE(u.season, '') = ? AND u.status = 'approved' "
             "AND u.telegram_id NOT IN (SELECT invitee_id FROM ambassador_exclusions) "
+            "AND EXISTS (SELECT 1 FROM referral_credits rc "
+            "  WHERE rc.invitee_id = u.telegram_id AND rc.excluded_at IS NULL) "
             "AND NOT EXISTS (SELECT 1 FROM application_decisions d "
             "  WHERE d.telegram_id = u.telegram_id AND d.decision = 'approved' "
             "  AND d.effects_sent_at IS NULL AND d.undone_at IS NULL)",
