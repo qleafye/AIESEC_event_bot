@@ -46,21 +46,22 @@ from services.applications import (
     COLUMN_TO_LABEL as _COLUMN_TO_LABEL,
     EDITED_SOURCE_LABELS as _EDITED_SOURCE_LABELS,
     format_edited_date as _format_edited_date,
-    edit_badges_for as _edit_badges_for,
-    prev_reject_line as _prev_reject_line,
-    rule_badge_lines as _rule_badge_lines,
-    auto_reject_cleared_line as _auto_reject_cleared_line,
+    edit_badges_for as _edit_badges_for,  # noqa: F401 — читает admin_modcard_render
+    prev_reject_line as _prev_reject_line,  # noqa: F401 — читает admin_modcard_render
+    rule_badge_lines as _rule_badge_lines,  # noqa: F401 — читает admin_modcard_render
+    auto_reject_cleared_line as _auto_reject_cleared_line,  # noqa: F401 — читает admin_modcard_render
     score_badge_text as _score_badge_text,
     IT_3PLUS_BADGE_TEXT as _IT_3PLUS_BADGE_TEXT,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
 from services.background import spawn as _spawn
-from services.consent import consent_card_line
+from services.consent import consent_card_line  # noqa: F401 — читает admin_modcard_render
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
 import moderation_card
 from settings_schema import get_setting_typed
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
+from handlers.admin_modcard_render import build_card_text
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from handlers.admin import router
 
@@ -89,7 +90,7 @@ def _parse_appr(data: str) -> tuple[str, int | None]:
     return data, None
 
 
-def _render_application_card(user: dict, position: int, total: int, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, rule_lines: list[str] | None = None, cleared_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True, scoring_enabled: bool = False) -> str:
+def _render_application_card(user: dict, position: int | None, total: int | None, city_label_text: str | None = None, consent_line: str | None = None, edited_line: str | None = None, resubmit_line: str | None = None, prev_reject_line: str | None = None, rule_lines: list[str] | None = None, cleared_line: str | None = None, fields: list[tuple[str, str]] | None = None, show_resume: bool = True, scoring_enabled: bool = False) -> str:
     """HTML card for one pending application; all free-text escaped. `city_label_text` (Phase
     07.2, CITY-02) appends «· 🏙 {label}» to the header when an admin city is selected; None
     keeps the header byte-identical to the pre-CITY-02 line (module off / no city chosen).
@@ -116,7 +117,7 @@ def _render_application_card(user: dict, position: int, total: int, city_label_t
     def esc(v):
         return html_module.escape(str(v)) if v not in (None, "", "-") else None
 
-    header = f"📋 <b>Заявка {position}/{total}</b>"
+    header = "📋 <b>Заявка</b>" if position is None or total is None else f"📋 <b>Заявка {position}/{total}</b>"
     if city_label_text is not None:
         header += f" · 🏙 {html_module.escape(str(city_label_text))}"
     lines = [header, ""]
@@ -294,38 +295,10 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     card_label = label
     if label == ALL_CITIES_LABEL:
         card_label = await city_label(normalize_city(current.get("event_city")))
-    # Phase 21 (21-07, D-14/D-15/D-10): одна выборка истории обслуживает и пометку карточки,
-    # и видимость кнопки «🕓 История» — см. докстринг _edit_badges_for.
-    edited_line, resubmit_line, has_history = await _edit_badges_for(current)
-    # Quick 260904-liz: «🚫 Ранее отклонена: <причина>» — escape_reason=True, карточка бота
-    # печатает готовые строки как есть (тот же контракт, что edited_line/resubmit_line).
-    prev_reject = await _prev_reject_line(current, escape_reason=True)
-    # Phase 31 (31-09, D-20/D-23): бейджи пометки/автоотказа и «сменил ответ после автоотказа»
-    # — карточка бота печатает готовые строки как есть, экранирует ТОЛЬКО вызывающий (тот же
-    # контракт, что prev_reject_line(escape_reason=True)).
-    rule_lines = [html_module.escape(line) for line in await _rule_badge_lines(current)]
-    cleared_line = await _auto_reject_cleared_line(current)
-    if cleared_line:
-        cleared_line = html_module.escape(cleared_line)
-    # Quick 260902-tzh: набор вопросов и лимит длины ответа — реестром (экран «🧾 Поля
-    # карточки заявки»), не девять захардкоженных полей. «resume» — отдельный блок карточки
-    # (файлом/текстом/нет), из fields исключается и управляет только show_resume.
-    steps = moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))
-    answer_limit = await get_setting_typed("modcard_answer_limit")
-    fields = moderation_card.card_answers(current, [s for s in steps if s != "resume"], answer_limit)
-    # Phase 28 (28-07, SU-08): резолвлен здесь (в async-контексте) и передан значением —
-    # _render_application_card остаётся чистым рендерером без похода в реестр.
-    scoring_enabled = bool(await get_setting_typed("reg_scoring_enabled"))
-    card_text, overflow = moderation_card.fit_card(
-        _render_application_card(
-            current, position, total, city_label_text=card_label,
-            consent_line=await consent_card_line(current["telegram_id"]),
-            edited_line=edited_line, resubmit_line=resubmit_line,
-            prev_reject_line=prev_reject,
-            rule_lines=rule_lines, cleared_line=cleared_line,
-            fields=fields, show_resume=("resume" in steps),
-            scoring_enabled=scoring_enabled,
-        )
+    # Сборка карточки (бейджи, поля реестра, балл, согласие, лимит Telegram) — общая с экраном
+    # кандидатов в амбассадоры: handlers/admin_modcard_render.build_card_text.
+    card_text, overflow, has_history = await build_card_text(
+        current, position=position, total=total, city_label_text=card_label,
     )
     await target.answer(
         card_text,
