@@ -62,6 +62,13 @@ def _seed_user(tid, *, referrer_id=None, status="pending", full_name=None, usern
     _run(db.set_user_status(tid, status))
     if username:
         _sql("UPDATE users SET username = ? WHERE telegram_id = ?", (username, tid))
+    if referrer_id and status == "approved":
+        # «Прошли отбор» считается из журнала зачётов, а не из users.status.
+        _sql(
+            "INSERT OR IGNORE INTO referral_credits (invitee_id, referrer_id, coins, "
+            "credited_at, source, season) VALUES (?, ?, 0, '2026-09-01 00:00:00', 'approval', ?)",
+            (tid, referrer_id, SEASON),
+        )
 
 
 def _make_ambassador(tid, *, username=None, since="2026-09-01 10:00:00"):
