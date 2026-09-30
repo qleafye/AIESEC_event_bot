@@ -35,6 +35,10 @@ except OSError:
 DECK_DIR = os.path.join(HERE, "deck")
 DECK_NOTES = os.environ.get("DECK_NOTES", "/data/deck_notes.json")
 DECK_HOST = os.environ.get("DECK_HOST", "deck.")
+# Презентация «Отбор амбассадоров» для DXP РилТолка (30.09.2026) — статичная страница на своём
+# поддомене ambassadors4marie.alekseev.info, тот же контейнер и тот же приём роутинга по Host.
+AMB_DIR = os.path.join(HERE, "amb")
+AMB_HOST = os.environ.get("AMB_HOST", "ambassadors4marie.")
 # Презентация бота для внешних команд (28.09.2026, /bot): свои комментарии в отдельном файле,
 # чтобы гости не видели заметок ОК к деке форума.
 BOT_NOTES = os.environ.get("BOT_NOTES", os.path.join(os.path.dirname(DECK_NOTES) or ".", "bot_notes.json"))
@@ -220,6 +224,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parts = urlsplit(self.path)
         query = parse_qs(parts.query)
+        if (self.headers.get("Host") or "").startswith(AMB_HOST):
+            if parts.path in ("/", "/index.html"):
+                self._send(200, _read(os.path.join(AMB_DIR, "index.html")), "text/html; charset=utf-8")
+            else:
+                self._send(404, b"not found", "text/plain")
+            return
         if self._is_deck():
             self._deck_get(parts.path)
             return
