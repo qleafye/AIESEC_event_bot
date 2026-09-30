@@ -379,6 +379,8 @@ export async function render(root, params, ctx) {
       ),
     );
     if (res.ambassador) renderAmbassadorOffer(ambassadorSlot, res.ambassador);
+    // Кандидат (режим отбора, «да» в анкете): подтверждение и сразу его ссылка — тексты с сервера.
+    else if (res.ambassador_note) renderAmbassadorLink(ambassadorSlot, { ...(res.ambassador_link || {}), status_note: res.ambassador_note });
   }
 
   // Стадия A (28-UI-SPEC.md §6): заголовок/тело + «Хочу свою ссылку» (primary accent) /
@@ -402,6 +404,12 @@ export async function render(root, params, ctx) {
   async function wantRefLink(slot) {
     try {
       const res = await api("/reg/ambassador", { method: "POST" });
+      // Места заняты или отказано: сервер ничего не записал — показываем его текст, блок убираем.
+      if (res.state === "full") {
+        say(res.message, "warn");
+        slot.replaceChildren();
+        return;
+      }
       renderAmbassadorLink(slot, res);
     } catch (err) {
       if (!isAuthError(err)) say(failText(err), "warn");
@@ -415,7 +423,14 @@ export async function render(root, params, ctx) {
   // `ui.js::ambassadorLinkBlock`, общий с постоянным местом реф-ссылки в хабе
   // (`screens/hub.js`), второй копии рендера нет.
   function renderAmbassadorLink(slot, res) {
-    slot.replaceChildren(ambassadorLinkBlock(h, res, { haptic, say }));
+    const parts = [];
+    if (res.status_note) {
+      const { el, say: sayNote } = noticeBox(h);
+      sayNote(res.status_note);
+      parts.push(el);
+    }
+    if (res.link) parts.push(ambassadorLinkBlock(h, res, { haptic, say }));
+    slot.replaceChildren(...parts);
   }
 
   let draft;
