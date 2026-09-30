@@ -90,3 +90,110 @@ async def get_row(invitee_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
     return dict(row) if row else None
+
+
+async def mark_revoked(invitee_ids=None, *, at: str) -> int:
+    """Отзыв зачёта: строки журнала тех, чья заявка сейчас не одобрена. Баллы и ступени не
+    трогает — только отметка `revoked_at`/`revoked_reason`. Возвращает число помеченных."""
+    sql = (
+        "UPDATE referral_credits SET revoked_at = ?, revoked_reason = 'status' "
+        "WHERE revoked_at IS NULL AND invitee_id IN "
+        "(SELECT telegram_id FROM users WHERE status != 'approved')"
+    )
+    params: list = [at]
+    if invitee_ids is not None:
+        ids = [int(i) for i in invitee_ids]
+        if not ids:
+            return 0
+        sql += f" AND invitee_id IN ({','.join('?' * len(ids))})"
+        params += ids
+    async with _db._connect() as db:
+        cursor = await db.execute(sql, params)
+        await db.commit()
+        return cursor.rowcount or 0
+
+
+async def clear_revoked(invitee_ids=None) -> int:
+    """Снимает отметку отзыва у снова одобренных. Монет второй раз не начисляет."""
+    sql = (
+        "UPDATE referral_credits SET revoked_at = NULL, revoked_reason = NULL "
+        "WHERE revoked_at IS NOT NULL AND invitee_id IN "
+        "(SELECT telegram_id FROM users WHERE status = 'approved')"
+    )
+    params: list = []
+    if invitee_ids is not None:
+        ids = [int(i) for i in invitee_ids]
+        if not ids:
+            return 0
+        sql += f" AND invitee_id IN ({','.join('?' * len(ids))})"
+        params += ids
+    async with _db._connect() as db:
+        cursor = await db.execute(sql, params)
+        await db.commit()
+        return cursor.rowcount or 0
+
+
+def _season_frag(season: str | None) -> tuple[str, list]:
+    if season:
+        return "AND (u.season IS NULL OR u.season = ?)", [season]
+    return "", []
+
+
+async def missing_recent(since: str, season: str | None) -> list[int]:
+    """Одобренные с `since` приглашённые без строки журнала (пропущенная врезка/сбой)."""
+    frag, params = _season_frag(season)
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT u.telegram_id FROM users u "
+            "LEFT JOIN referral_credits rc ON rc.invitee_id = u.telegram_id "
+            "WHERE rc.invitee_id IS NULL AND u.status = 'approved' "
+            "AND u.referrer_id IS NOT NULL AND u.referrer_id != 0 "
+            "AND u.referrer_id != u.telegram_id AND u.approved_at >= ? " + frag
+            + " ORDER BY u.approved_at",
+            [since, *params],
+        ) as cursor:
+            return [int(r[0]) for r in await cursor.fetchall()]
+
+
+async def backfill_candidates(season: str | None) -> list[dict]:
+    """Одобренные приглашённые (любого срока) без строки журнала: для бэкафилла."""
+    frag, params = _season_frag(season)
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT u.telegram_id AS invitee_id, u.referrer_id AS referrer_id, "
+            "u.season AS season, r.full_name AS referrer_name, COALESCE(r.is_ambassador, 0) AS was_ambassador "
+            "FROM users u "
+            "LEFT JOIN referral_credits rc ON rc.invitee_id = u.telegram_id "
+            "LEFT JOIN users r ON r.telegram_id = u.referrer_id "
+            "WHERE rc.invitee_id IS NULL AND u.status = 'approved' "
+            "AND u.referrer_id IS NOT NULL AND u.referrer_id != 0 "
+            "AND u.referrer_id != u.telegram_id " + frag + " ORDER BY u.telegram_id",
+            params,
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def has_journal_schema() -> bool:
+    async with _db._connect() as db:
+        async with db.execute("PRAGMA table_info(referral_credits)") as cursor:
+            cols = {r[1] for r in await cursor.fetchall()}
+    return {"season", "referrer_was_ambassador", "revoked_at"} <= cols
+
+
+async def insert_backfill_rows(rows: list[dict], *, at: str) -> int:
+    """Одна транзакция, INSERT OR IGNORE, coins 0, source 'backfill'. Монет, ступеней и
+    сообщений не создаёт. Возвращает число реально вставленных строк."""
+    inserted = 0
+    async with _db._connect() as db:
+        for row in rows:
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO referral_credits "
+                "(invitee_id, referrer_id, coins, wave_id, credited_at, source, season, "
+                "referrer_was_ambassador) VALUES (?, ?, 0, NULL, ?, 'backfill', ?, ?)",
+                (int(row["invitee_id"]), int(row["referrer_id"]), at, row.get("season"),
+                 1 if row.get("was_ambassador") else 0),
+            )
+            inserted += cursor.rowcount or 0
+        await db.commit()
+    return inserted

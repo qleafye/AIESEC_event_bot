@@ -129,6 +129,11 @@ async def revert_to_pending(
     if not reverted:
         return {"ok": False, "error": "Статус успели изменить параллельно — возврат отменён"}
     await _release_amb_slot(telegram_id)
+    try:
+        from services import amb_journal
+        await amb_journal.sync_revocations([telegram_id])
+    except Exception as e:
+        logger.warning(f"revert_to_pending: sync_revocations({telegram_id}) failed: {e}")
 
     report: dict = {
         "ok": True, "error": None,
