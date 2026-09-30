@@ -95,39 +95,50 @@ async def referral_counts_bulk(referrer_ids: list[int] | None, season: str) -> d
 
 
 async def claim_new_tiers(telegram_id: int, tiers: list[int], reached_at: str,
-                          o2o_quota: int, o2o_tier: int = 2) -> list[dict]:
+                          quotas: "dict[int, int | None] | int | None" = None, *,
+                          o2o_quota: int | None = None, o2o_tier: int = 2) -> list[dict]:
     """Записывает достигнутые ступени и возвращает ТОЛЬКО новые: `[{"tier", "o2o_status"}]`.
 
+    `quotas` — `{ступень: квота}` для ступеней с включённой квотой (на остальных квоты нет и
+    статус `None`). Прежний вызов с числом четвёртым аргументом или `o2o_quota=` читается как
+    `{o2o_tier: квота}`. Колонка `o2o_status` осталась под прежним именем, но значит «статус
+    квоты этой ступени»: 'granted' (место за человеком) или 'waitlist' (сверх квоты).
+
     Одна транзакция `BEGIN IMMEDIATE`: второй процесс (бот и веб) ждёт, пока первый не
-    закоммитит, и видит его строки до своего подсчёта квоты — 16-й слот O2O при квоте 15 не
-    выдаётся. Уникальность держит PRIMARY KEY (telegram_id, tier): `INSERT OR IGNORE` +
+    закоммитит, и видит его строки до своего подсчёта квоты — последнее место не достанется
+    двоим. Уникальность держит PRIMARY KEY (telegram_id, tier): `INSERT OR IGNORE` +
     `rowcount == 1`, проверки «а не выдавали ли уже» в Python нет.
 
-    Порядок раздачи O2O = порядок успешной записи строки ступени `o2o_tier`: у живых путей
-    это порядок, в котором одобрения довели амбассадоров до порога; бэкафилл зовёт функцию
-    последовательно, упорядочив амбассадоров по `users.approved_at`. Сверх квоты — 'waitlist'."""
+    Порядок раздачи = порядок успешной записи строки ступени: у живых путей это порядок, в
+    котором одобрения довели амбассадоров до порога; бэкафилл зовёт функцию последовательно,
+    упорядочив амбассадоров по `users.approved_at`. Сверх квоты — 'waitlist'."""
+    if isinstance(quotas, int) and not isinstance(quotas, bool):
+        quotas = {int(o2o_tier): int(quotas)}
+    elif quotas is None:
+        quotas = {int(o2o_tier): int(o2o_quota)} if o2o_quota is not None else {}
+    limits = {int(t): q for t, q in quotas.items() if q is not None}
     new_rows: list[dict] = []
     async with _db._connect() as conn:
         await conn.execute("BEGIN IMMEDIATE")
         try:
             for tier in sorted({int(t) for t in tiers}):
-                o2o_status = None
-                if tier == o2o_tier:
+                status = None
+                if tier in limits:
                     async with conn.execute(
                         "SELECT COUNT(*) FROM ambassador_tiers "
                         "WHERE tier = ? AND o2o_status = 'granted'",
-                        (o2o_tier,),
+                        (tier,),
                     ) as cursor:
                         granted = (await cursor.fetchone())[0]
-                    o2o_status = "granted" if granted < int(o2o_quota) else "waitlist"
+                    status = "granted" if granted < int(limits[tier]) else "waitlist"
                 cursor = await conn.execute(
                     "INSERT OR IGNORE INTO ambassador_tiers "
                     "(telegram_id, tier, reached_at, o2o_status, notified_at) "
                     "VALUES (?, ?, ?, ?, NULL)",
-                    (int(telegram_id), tier, reached_at, o2o_status),
+                    (int(telegram_id), tier, reached_at, status),
                 )
                 if cursor.rowcount == 1:
-                    new_rows.append({"tier": tier, "o2o_status": o2o_status})
+                    new_rows.append({"tier": tier, "o2o_status": status})
             await conn.commit()
         except Exception:
             await conn.rollback()
@@ -209,6 +220,54 @@ async def o2o_summary() -> dict:
     for status, count in rows:
         result[status] = int(count)
     return result
+
+
+async def quota_summary() -> dict[int, dict]:
+    """`{ступень: {"granted", "waitlist"}}` по ступеням, где хоть раз разыгрывалась квота."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT tier, o2o_status, COUNT(*) FROM ambassador_tiers "
+            "WHERE o2o_status IN ('granted', 'waitlist') GROUP BY tier, o2o_status"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result: dict[int, dict] = {}
+    for tier, status, count in rows:
+        result.setdefault(int(tier), {"granted": 0, "waitlist": 0})[status] = int(count)
+    return result
+
+
+async def stale_unnotified(older_than: str) -> list[dict]:
+    """Ступени без отметки `notified_at`, достигнутые раньше `older_than` (строка в формате
+    `YYYY-MM-DD HH:MM:SS`): уведомление потерялось или ещё в очереди."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM ambassador_tiers WHERE notified_at IS NULL AND reached_at < ? "
+            "ORDER BY telegram_id, tier",
+            (older_than,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def has_pending_tier_event(kind: str, telegram_id: int, tier: int) -> bool:
+    """Есть ли в `miniapp_outbox` необработанное событие этого вида про (амбассадор, ступень)."""
+    import json
+
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT payload FROM miniapp_outbox WHERE kind = ? AND processed_at IS NULL",
+            (kind,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    for (raw,) in rows:
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if int(payload.get("telegram_id") or 0) == int(telegram_id)                 and int(payload.get("tier") or 0) == int(tier):
+            return True
+    return False
 
 
 async def referral_coin_ordinals(user_id: int) -> dict[int, int]:
