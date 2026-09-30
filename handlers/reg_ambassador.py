@@ -56,7 +56,7 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
     чтобы функция не поднимала исключение вообще ни при каких обстоятельствах."""
     try:
         # Правила входа — services.amb_status. Кандидату (режим отбора, ответил «да» в анкете)
-        # подтверждение приходит независимо от тумблера предложения ссылки; при набранном
+        # подтверждение и ссылка приходят независимо от тумблера предложения ссылки; при набранном
         # лимите и отказанному предлагать нечего. Сбой чтения — прежнее предложение.
         try:
             state = await amb_status.delegate_state(telegram_id)
@@ -64,9 +64,11 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
             logger.error(f"offer_ref_link: delegate_state failed for {telegram_id}: {e}")
             state = "open"
         if state == "candidate":
+            # Подтверждение обещает ссылку («уже твоя») — она идёт следом, как после кнопки.
             ack = await get_setting_typed("amb_candidate_ack_text")
             if ack:
                 await reg_i18n.say(message, ack)
+            await _send_link_and_note(message, message.bot, telegram_id)
             return
         if state in ("full", "declined"):
             return
