@@ -16,7 +16,7 @@ from tests._dbtpl import fast_init_db
 ADMIN_ID = 1
 _AMB_PREFIX = re.compile(r"^(amb_|ambassador_|wave_)")
 # Число делегатских текстов корпуса перевода до переноса (группа game ∪ amb) — не должно меняться.
-DELEGATE_KEYS_BEFORE = 471
+DELEGATE_KEYS_BEFORE = 471 + 4  # +4 делегатских текста «Моя ссылка» (статус, баллы, место в волне)
 
 
 def _run(coro):

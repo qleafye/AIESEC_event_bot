@@ -95,9 +95,13 @@ def test_schema_has_no_min_max_fields():
     (30.09) — только у порогов ступеней амбассадоров, где 0 бессмыслен («с нуля прошедших»)."""
     assert SETTINGS_SCHEMA[INT_KEY]["type"] == "int"
     with_min = {key for key, entry in SETTINGS_SCHEMA.items() if "min" in entry}
-    assert with_min == {"amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold"}
-    for entry in SETTINGS_SCHEMA.values():
-        assert "max" not in entry
+    assert with_min == {
+        "amb_tier1_threshold", "amb_tier2_threshold", "amb_tier3_threshold",
+        "amb_tier4_threshold", "amb_tier5_threshold", "amb_tiers_count",
+    }
+    # `max` — только у числа ступеней амбассадоров (1–5).
+    with_max = {key for key, entry in SETTINGS_SCHEMA.items() if "max" in entry}
+    assert with_max == {"amb_tiers_count"}
 
 
 # ── int: отказ ────────────────────────────────────────────────────────────────────────────────
