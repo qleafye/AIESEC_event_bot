@@ -113,3 +113,36 @@ def test_uat_checklist_scaffold_exists_and_long_enough():
         pytest.skip(".planning/ вне git worktree — черновик приёмки живёт в основном репозитории")
     text = uat_path.read_text(encoding="utf-8")
     assert len(text.splitlines()) >= 60, "32-UAT.md короче min_lines плана"
+
+
+# ── Отбор амбассадоров с лимитом мест: раздел гайда ─────────────────────────────────────────
+
+AMB_SELECTION_HEADING = "### 🤝 Амбассадоры: отбор с лимитом мест"
+
+# Кодовые имена настроек отбора — в тексте для человека их быть не должно.
+AMB_SELECTION_CODE_NAMES = (
+    "amb_join_mode", "amb_slots_limit", "amb_candidate_ack_text", "amb_status_candidate_text",
+    "amb_slots_full_text", "amb_taken_text", "amb_removed_text", "amb_decline_all_text",
+)
+
+
+def test_guide_has_amb_selection_section_with_real_screen_labels():
+    """Раздел гайда называет экраны раздела «🤝 Амбассадоры» теми же подписями, что в SECTIONS
+    (тот же приём, что у where справки: подпись берётся из реестра разделов, а не из памяти)."""
+    text = GUIDE.read_text(encoding="utf-8")
+    assert AMB_SELECTION_HEADING in text
+    amb = next(rows for token, _label, rows in sec.SECTIONS if token == "amb")
+    section_label = next(label for token, label, _rows in sec.SECTIONS if token == "amb")
+    assert section_label in text
+    screen_labels = [row[2] for row in amb if row[0] == "screen"]
+    assert screen_labels, "в разделе amb нет экранов"
+    body = text.split(AMB_SELECTION_HEADING, 1)[1].split("\n## ", 1)[0]
+    missing = [label for label in screen_labels if label not in body]
+    assert not missing, f"раздел гайда не называет экраны {missing}"
+
+
+@pytest.mark.parametrize("doc_path", [GUIDE, CHEATSHEET])
+def test_no_amb_selection_code_names_outside_examples(doc_path: Path):
+    cleaned = _text_without_code(doc_path.read_text(encoding="utf-8"))
+    offenders = [name for name in AMB_SELECTION_CODE_NAMES if name in cleaned]
+    assert not offenders, f"{doc_path.name}: кодовые имена настроек в тексте для человека: {offenders}"
