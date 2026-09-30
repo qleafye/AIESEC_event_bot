@@ -74,7 +74,7 @@ def test_migration_clean_db_columns_and_version(tmp_path):
     _run(db.init_db())
     cols = {r[1] for r in _sql("PRAGMA table_info(users)")}
     assert set(_NEW_COLUMNS) <= cols
-    assert _sql("PRAGMA user_version")[0][0] == 3
+    assert _sql("PRAGMA user_version")[0][0] == 4
     assert _sql("SELECT name FROM sqlite_master WHERE name = 'ambassador_season_archive'")
     assert _sql("SELECT name FROM sqlite_master WHERE name = 'idx_users_amb_status'")
     assert _sql("SELECT COUNT(*) FROM users")[0][0] == 0
@@ -103,7 +103,7 @@ def test_migration_legacy_flags_to_status(tmp_path):
     assert _row(3)[0] == "candidate"
     assert _row(4)[0] == "active"
     assert {tid: _row(tid)[1:] for tid in (1, 2, 3, 4)} == before
-    assert _sql("PRAGMA user_version")[0][0] == 3
+    assert _sql("PRAGMA user_version")[0][0] == 4
 
 
 def test_migration_second_start_is_noop(tmp_path):
