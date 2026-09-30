@@ -85,23 +85,36 @@ async def _wave_place(user: dict) -> dict | None:
         return None
 
 
-async def delegate_view(telegram_id: int) -> dict:
+async def delegate_view(telegram_id: int, user: dict | None = None, need_state: bool = True) -> dict:
     """{"state", "status_key" | None, "referral_points" | None, "wave_place" | None,
-    "is_ambassador"}. Модуль отбора выключен — строки статуса, баллов и волны пусты."""
+    "is_ambassador"}. Модуль отбора выключен — строки статуса, баллов и волны пусты.
+
+    `user` — уже прочитанная строка делегата (хаб Mini App её держит): экономит соединение.
+    `need_state=False` — вызывающему не нужен `state`: при выключенном модуле статус в БД не
+    читается вовсе (`state` = None), при включённом считается как обычно."""
     tid = int(telegram_id)
-    try:
-        user = await _db.get_user(tid) or {}
-    except Exception:
-        logger.exception("amb_screen: делегат не прочитан (tid=%s)", tid)
-        user = {}
+    if user is None:
+        try:
+            user = await _db.get_user(tid) or {}
+        except Exception:
+            logger.exception("amb_screen: делегат не прочитан (tid=%s)", tid)
+            user = {}
+    else:
+        user = dict(user)
     is_amb = bool(user.get("is_ambassador"))
-    state = await _state(tid)
-    view = {"state": state, "status_key": None, "referral_points": None,
+    view = {"state": None, "status_key": None, "referral_points": None,
             "wave_place": None, "is_ambassador": is_amb}
     try:
-        if not await amb_status.selection_enabled():
+        enabled = await amb_status.selection_enabled()
+    except Exception:
+        logger.exception("amb_screen: строка статуса не собрана (tid=%s)", tid)
+        enabled = False
+    if enabled or need_state:
+        view["state"] = await _state(tid)
+    try:
+        if not enabled:
             return view
-        view["status_key"] = _status_key(state, await amb_status.slots_limit())
+        view["status_key"] = _status_key(view["state"], await amb_status.slots_limit())
     except Exception:
         logger.exception("amb_screen: строка статуса не собрана (tid=%s)", tid)
         return view
