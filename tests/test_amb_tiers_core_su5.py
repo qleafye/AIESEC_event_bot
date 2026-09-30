@@ -225,12 +225,12 @@ def test_registry_keys_defaults():
         "amb_tier3_threshold": 7, "amb_o2o_quota": 15, "amb_count_deadline": "",
     }
     for key, default in expected.items():
-        assert SETTINGS_SCHEMA[key]["group"] == "game", key
+        assert SETTINGS_SCHEMA[key]["group"] == "amb", key
         assert SETTINGS_SCHEMA[key]["default"] == default, key
     for key in ("amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
                 "amb_tier3_text"):
         default = SETTINGS_SCHEMA[key]["default"]
-        assert SETTINGS_SCHEMA[key]["group"] == "game"
+        assert SETTINGS_SCHEMA[key]["group"] == "amb"
         assert "SkillUp" not in default, key
         assert "{name}" not in default and "{username}" not in default, key
     for key in ("amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
