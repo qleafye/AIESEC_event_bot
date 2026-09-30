@@ -1011,6 +1011,13 @@ ADMIN_CAPS: dict[str, str] = {
     "ambl_prom:*": "moderate_game",
     "ambl_prom_go:*": "moderate_game",
     "state:AmbTierRevoke:*": "moderate_game",
+    # «💰 Баллы и приватность» (handlers/admin_amb_points.py): «ambpt_coins» не ловит
+    # «ambpt_coins_cancel», «ambpt_toggle:*» — префикс.
+    "admin_amb_points": "moderate_game",
+    "ambpt_coins": "moderate_game",
+    "ambpt_coins_cancel": "moderate_game",
+    "ambpt_toggle:*": "moderate_game",
+    "state:AmbPointsEdit:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы

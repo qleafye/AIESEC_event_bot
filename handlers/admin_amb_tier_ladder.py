@@ -428,3 +428,8 @@ async def promote_go(callback: types.CallbackQuery):
         }.get(result, _STALE)
         await callback.answer(note, show_alert=True)
     await _show(callback.message, callback.from_user.id)
+
+
+# Экран «💰 Баллы и приватность» (admin_amb_points, ambpt_*) — хвост admin.router после
+# хендлеров этого файла.
+from handlers import admin_amb_points  # noqa: E402,F401
