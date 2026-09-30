@@ -202,6 +202,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen", "admin_game_waves", "🌊 Волны"),
         ("screen", "ambt_excl_list:0", "🚫 Исключения из зачёта"),
         ("screen", "admin_amb_attach", "📎 Закрепить приглашённого"),
+        ("group", "amb"),
     ]),
     ("data", "📊 Данные", [
         ("op", "admin_stats"),
@@ -342,7 +343,7 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
 # Экраны раздела «🤝 Амбассадоры», у которых есть собственный тумблер и которые должны жить и
 # при выключенном «🤝 Отборе амбассадоров» (волны, ступени): раздела в корне тогда нет, а эти две
 # строки показываются в «🎮 Геймификации».
-_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers")  # порядок = порядок в «🎮 Геймификации»
+_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "settings_group:amb")  # порядок = порядок в «🎮 Геймификации»
 
 
 async def owner_back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:

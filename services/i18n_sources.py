@@ -99,7 +99,7 @@ import payment_options
 
 logger = logging.getLogger(__name__)
 
-DELEGATE_GROUPS = ("reg_prompts", "reg", "party", "event", "game", "pay")
+DELEGATE_GROUPS = ("reg_prompts", "reg", "party", "event", "game", "amb", "pay")
 
 # Правило «`admin` в имени ключа группы `reg`» найдено вычислением, не выписано руками. На
 # 06.09.2026 это ровно три ключа-метки для менеджера в карточке заявки:

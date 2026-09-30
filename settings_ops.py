@@ -440,7 +440,7 @@ EXCLUDED_KEYS: frozenset[str] = frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_so
 # литералов, меняющихся вместе с редкой перестановкой экранов бота, не риск дрейфа кода
 # ключей (в отличие от подписей/текста, которые полностью читаются из реестра).
 _GROUP_SCREEN_ORDER = (
-    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "chat", "system",
+    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "amb", "chat", "system",
 )
 
 
@@ -493,6 +493,7 @@ GROUP_LABELS: dict[str, str] = {
     "party": "🎉 Party",
     "consent": "📋 Согласия",
     "game": "🎮 Геймификация",
+    "amb": "🤝 Амбассадоры",
     "chat": "💬 Чат делегатов",
     "system": "🔧 Система",
     "reg_questions": "📋 Вопросы регистрации",
@@ -518,6 +519,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("apps", "📋 Заявки", ("apps",)),
     ("pay", "💳 Оплата", ("pay",)),
     ("game", "🎮 Геймификация", ("game",)),
+    ("amb", "🤝 Амбассадоры", ("amb",)),
     ("data", "📊 Данные", ("sheets", "dashboard")),
     ("manage", "🔧 Управление", ("miniapp", "chat", "system")),
 )
@@ -528,7 +530,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 # «Реже» (сегодня — только "manage"; список подрастёт сам, если структура SECTION_GROUPS
 # изменится, а этот список забудут поправить — тест ниже сверяет, что каждый код здесь
 # реально существует в SECTION_GROUPS).
-SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "data"})
+SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "amb", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
 # handlers.admin_sections.SECTIONS (тридцать два ключа группы "toggles" в SETTINGS_SCHEMA,
