@@ -31,7 +31,6 @@ from database.db import (
     get_reg_draft,
     has_faq_for_city,  # Quick 260906-8uq: экран «❓ Частые вопросы» + гейт формы вопроса
     list_faq_for_city,
-    set_ambassador_flag,  # Phase 32 (32-06, D-32/D-38): выход/возврат амбассадора
     set_ambassador_path,  # Phase 32 (32-06, D-24): путь меняет только порядок показа заданий
     # Форум-ночь п.6 (D-25, идея №14): ответ делегата на шаблон «Не пришёл».
     CNA_COMING,
@@ -88,6 +87,8 @@ from services.timeutil import msk_now  # Квик 260912-mcj: сравнение
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
+from services import amb_status  # правила входа/выхода амбассадора — одна точка
+from handlers.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
 from config import config
 from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
@@ -235,12 +236,6 @@ async def render_leaderboard(
         rank=rank_text, balance=requester_balance, total=total or "—",
     ))
     return "\n".join(lines)
-
-
-def _amb_tr(lang: str, tr_map: dict | None):
-    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
-        return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map or {})
-    return tr_key
 
 
 def _format_coin_entry_line(row: dict, manual_label: str, task_label: str, referral_label: str = "") -> str:
@@ -1296,51 +1291,6 @@ def _msk_now_str() -> str:
     return msk_now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-async def _referral_screen(
-    user_id: int, bot: Bot, lang: str = "ru", tr_map: dict | None = None,
-) -> tuple[str, InlineKeyboardMarkup | None]:
-    """Phase 32 (32-06, D-24/D-32/D-38): «Моя ссылка» — единственное место, где живёт
-    амбассадорское самообслуживание (отдельной кнопки в меню не заводим — отклонённая идея).
-    Амбассадору здесь же — выбор пути (меняет только ПОРЯДОК заданий, D-24) и кнопка выхода;
-    не-амбассадору — та же кнопка «Хочу свою ссылку», что и на финальном экране анкеты
-    (`miniapp_form_ambassador_cta_text`), возврат ТОЙ ЖЕ кнопкой, что требует D-38."""
-    tr_map = tr_map or {}
-    user = await get_user(user_id)
-    bot_user = await bot.get_me()
-    referral_link = build_referral_link(bot_user.username, user_id)
-    # Phase 17.1 (17.1-01): текст из реестра, ссылка подставляется в {link}.
-    tpl = await get_setting_typed("referral_link_prompt_text")
-    text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
-
-    buttons: list[list[InlineKeyboardButton]] = []
-    is_ambassador = bool(user and user.get("is_ambassador"))
-    if is_ambassador:
-        progress = await amb_progress.render_progress(user_id, _amb_tr(lang, tr_map))
-        if progress is not None:
-            text += "\n\n" + progress
-        prompt = reg_i18n.tr_text(await get_setting_typed("ambassador_path_prompt_text"), lang, tr_map)
-        text += "\n\n" + prompt
-        current_path = user.get("ambassador_path") or "none"  # IN-03: NULL -> метка "none"
-        path_row = []
-        for code, key in (
-            ("invite", "ambassador_path_label_invite"),
-            ("content", "ambassador_path_label_content"),
-            ("none", "ambassador_path_label_none"),
-        ):
-            label = reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map)
-            mark = "✅ " if current_path == code else ""
-            path_row.append(InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"ambpath:{code}"))
-        buttons.append(path_row)
-        leave_label = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_button_text"), lang, tr_map)
-        buttons.append([InlineKeyboardButton(text=leave_label, callback_data="ambleave")])
-    else:
-        cta_label = reg_i18n.tr_text(await get_setting_typed("miniapp_form_ambassador_cta_text"), lang, tr_map)
-        buttons.append([InlineKeyboardButton(text=cta_label, callback_data="ambjoin")])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
-    return text, kb
-
-
 @router.message(F.text.in_(MENU_TEXTS["menu_referral"]))
 async def my_referral_link(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
@@ -1954,11 +1904,8 @@ async def ambassador_leave_cancel(callback: types.CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data == "ambleave_go")
 async def ambassador_leave_confirm(callback: types.CallbackQuery):
-    """`set_ambassador_flag` — единственный аксессор, который пишет is_ambassador/
-    ambassador_left_at (план 32-01); строки `coins` не трогаются — баллы общего зачёта
-    остаются на месте (D-32), из рейтинга ТЕКУЩЕЙ волны человек пропадает автоматически
-    (services.ambassador_waves.wave_eligible смотрит на is_ambassador на чтении)."""
-    await set_ambassador_flag(callback.from_user.id, active=False, at=_msk_now_str())
+    """Выход из команды — `services.amb_status.leave` (место без пакета освобождается, баллы остаются)."""
+    await amb_status.leave(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_done_text"), lang, tr_map)
     await callback.message.edit_text(text)
@@ -1967,15 +1914,13 @@ async def ambassador_leave_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "ambjoin")
 async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
-    """Возврат ТОЙ ЖЕ кнопкой, что требует D-38: ссылка не меняется (строится из
-    `telegram_id`, не хранится отдельной колонкой), а `set_ambassador_flag(active=True)`
-    ставит СВЕЖИЙ `ambassador_since` — вернувшийся посреди волны в её рейтинг не попадает,
-    участвует только со следующей (то же правило `wave_eligible`, что и у только что
-    вступившего впервые, D-31)."""
-    await set_ambassador_flag(callback.from_user.id, active=True, at=_msk_now_str())
-    from services.amb_tiers import check_tiers_for_new_ambassador  # ступени до возврата
-    await check_tiers_for_new_ambassador(callback.from_user.id)
+    """Вход/возврат в команду — `services.amb_status.request_join` (лимит, отбор, отказанные, ступени)."""
+    result = await amb_status.request_join(callback.from_user.id, source="my_link")
     lang, tr_map = await reg_i18n.ctx_for(callback)
+    if result.outcome in ("full", "declined"):
+        text = reg_i18n.tr_text(await get_setting_typed("amb_slots_full_text") or "", lang, tr_map)
+        await callback.answer(text if len(text) <= 200 else text[:199].rstrip() + "…", show_alert=True)
+        return
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
