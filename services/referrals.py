@@ -46,7 +46,6 @@ from database.db import (
     get_user,
     list_applications_page,
 )
-from services.ambassador_waves import current_wave_for_city_raw, wave_eligible
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -60,93 +59,16 @@ def _invitee_reason(invitee: dict) -> str:
 
 
 async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None) -> dict | None:
-    """Единственная точка начисления. Безопасна при случайном вызове (заявка ещё не
-    `approved`, приглашённого не существует, пригласившего не существует) — во всех этих
-    случаях просто возвращает `None`, ничего не пишет.
-
-    Порядок проверок (все обязательны, D-20/D-37):
-    1. Заявка приглашённого ДЕЙСТВИТЕЛЬНО в статусе `approved` прямо сейчас (не «поданная»,
-       не «на модерации» — за поданную заявку не начисляется ничего).
-    2. У приглашённого непустой `referrer_id`.
-    3. Пригласивший существует и `is_ambassador == 1` ПРЯМО СЕЙЧАС (D-37: обычный делегат со
-       старой реф-ссылкой и человек, вышедший из амбассадоров, ничего не получают; старое поле
-       анкеты «хочу быть амбассадором» к текущему статусу отношения не имеет и здесь НЕ
-       проверяется вовсе — читается только актуальный флаг членства).
-    4. `ambassador_referral_coins` больше нуля (дефолт 0 на каждом живом событии — Rule «фича
-       выключена по умолчанию»).
-
-    Волна — `current_wave_for_city_raw(город пригласившего)` (WR-03, 32-REVIEW.md:
-    нормализует сырой `event_city`, иначе легаси-амбассадор дефолтного города теряет волну
-    своего города), но только если пригласивший в ней участвует (`wave_eligible`, D-31/D-38:
-    вступивший посреди волны в неё не попадает) — иначе `wave_id = None`, баллы идут только в
-    общий зачёт.
-
-    Запись — `claim_referral_credit_atomic` (WR-01, 32-REVIEW.md): квитанция
-    `referral_credits` и начисление в `coins` пишутся ОДНОЙ транзакцией, не двумя отдельными
-    соединениями — сбой между ними раньше навсегда терял начисление (квитанция есть, монет
-    нет, повтор её видит и молча пропускает). При проигранной гонке (`False`) вторая половина
-    не выполняется вовсе, эта функция тихо возвращает `None`.
-
-    Вся функция fail-soft (T-32-05-05): любое исключение логируется, возвращается `None` —
-    сбой начисления не имеет права отменить уже состоявшееся одобрение заявки, статус
-    приглашённого уже записан отдельной атомарной операцией ДО вызова этой функции."""
-    try:
-        invitee = await get_user(invitee_id)
-        if not invitee or invitee.get("status") != "approved":
-            return None
-
-        referrer_id_raw = invitee.get("referrer_id")
-        if not referrer_id_raw:
-            return None
-        referrer_id = int(referrer_id_raw)
-
-        referrer = await get_user(referrer_id)
-        if not referrer or int(referrer.get("is_ambassador") or 0) != 1:
-            return None
-
-        coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
-        if coins <= 0:
-            return None
-
-        wave_id: int | None = None
-        wave = await current_wave_for_city_raw(referrer.get("event_city"))
-        if wave and wave_eligible(referrer, wave):
-            wave_id = int(wave["id"])
-
-        invitee_name = (invitee.get("full_name") or "").strip() or "Без имени"
-        won = await claim_referral_credit_atomic(
-            int(invitee_id), referrer_id, coins, wave_id,
-            reason=_invitee_reason(invitee), changed_by=changed_by, source="approval",
-        )
-        if not won:
-            return None
-
-        return {
-            "referrer_id": referrer_id, "coins": coins, "wave_id": wave_id,
-            "invitee_name": invitee_name,
-        }
-    except Exception:
-        logger.exception("credit_for_approved failed for invitee_id=%s", invitee_id)
-        return None
+    """Тонкая обёртка над журналом зачётов (`services.amb_journal`): `None`, если баллы не
+    начислены (не одобрен, нет пригласившего, не амбассадор, исключён, настройка 0, повтор)."""
+    from services.amb_journal import _record_one
+    return await _record_one(int(invitee_id), changed_by=changed_by, source="approval")
 
 
 async def credit_for_approved_bulk(invitee_ids) -> dict:
-    """Цикл по списку id, только что одобренных «Принять всех» (D-20/D-22: массовый побочный
-    эффект не имеет права быть молчаливым) — сводка для текста подтверждения менеджеру:
-    `{"credited": сколько приглашённых реально начислило, "coins": сумма баллов,
-    "ambassadors": скольким РАЗНЫМ амбассадорам начислено}`. Каждый элемент идёт через ту же
-    `credit_for_approved` — устаревшая повторная «Принять всех» (пустой список `ids`) просто
-    не создаёт итераций, сводка нулевая."""
-    credited = 0
-    coins_total = 0
-    ambassadors: set[int] = set()
-    for invitee_id in invitee_ids:
-        result = await credit_for_approved(invitee_id)
-        if result:
-            credited += 1
-            coins_total += result["coins"]
-            ambassadors.add(result["referrer_id"])
-    return {"credited": credited, "coins": coins_total, "ambassadors": len(ambassadors)}
+    """Сводка `{"credited", "coins", "ambassadors"}` — см. `services.amb_journal`."""
+    from services.amb_journal import on_invitees_approved
+    return await on_invitees_approved(invitee_ids)
 
 
 async def approved_referrals_in_wave(referrer_id: int, wave_id: int | None) -> int:

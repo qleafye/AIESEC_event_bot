@@ -2374,6 +2374,9 @@ async def init_db():
         # модуле: здесь и так 12 тысяч строк, а писать статус можно только из amb_status_db.
         from database import amb_status_db
         await amb_status_db.ensure_schema(db)
+        # Журнал зачётов приглашённых — колонки на referral_credits.
+        from database import amb_journal_db
+        await amb_journal_db.ensure_schema(db)
 
         await db.commit()
 
@@ -8421,6 +8424,11 @@ async def claim_referral_credit_atomic(invitee_id: int, referrer_id: int, coins:
         return won
 
 
+_JOURNAL_COUNTED = (
+    "COALESCE(referrer_was_ambassador, 1) = 1 AND excluded_at IS NULL AND revoked_at IS NULL"
+)
+
+
 async def get_referral_credit(invitee_id: int) -> dict | None:
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
@@ -8433,7 +8441,9 @@ async def get_referral_credit(invitee_id: int) -> dict | None:
 
 async def list_referral_credits(*, referrer_id: int | None = None,
                                  wave_id: int | None = None) -> list[dict]:
-    clauses, params = [], []
+    # Журнал пишет строки и для приглашённых обычных делегатов (баллы 0) — в списке только
+    # засчитанные амбассадору. NULL = строка до журнала: тогда писали только амбассадорам.
+    clauses, params = [_JOURNAL_COUNTED], []
     if referrer_id is not None:
         clauses.append("referrer_id = ?")
         params.append(referrer_id)
@@ -8457,7 +8467,8 @@ async def count_referral_credits(referrer_id: int, wave_id: int | None) -> int:
     params = [referrer_id] if wave_id is None else [referrer_id, wave_id]
     async with _connect() as db:
         async with db.execute(
-            f"SELECT COUNT(*) FROM referral_credits WHERE referrer_id = ? AND {cond}",
+            f"SELECT COUNT(*) FROM referral_credits WHERE referrer_id = ? AND {cond} "
+            f"AND {_JOURNAL_COUNTED}",
             params,
         ) as cursor:
             row = await cursor.fetchone()
