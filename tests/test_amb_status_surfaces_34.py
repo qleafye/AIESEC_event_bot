@@ -140,7 +140,7 @@ def test_screen_full_or_declined_no_button_full_line(ready, case):
     text, kb = _screen(11)
     assert kb is None
     assert _default("amb_slots_full_text") in text
-    assert f"start=amb_11" in text  # ссылка для приглашений — всем
+    assert "start=amb_11" in text  # ссылка для приглашений — всем
 
 
 def test_screen_selection_candidate_sees_status_line(ready):
@@ -261,3 +261,148 @@ def test_ambleave_go_with_pack_keeps_slot(ready):
     _leave(holder)
     assert _st(holder)["status"] == "left"
     assert _st(holder)["slot_at"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Mini App: экран «Заявка принята» и POST /app/api/reg/ambassador
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+from tests.test_miniapp_form import _seed_draft, bot_api  # noqa: E402,F401 — фикстура bot_api
+from tests.test_miniapp_routes import (  # noqa: E402
+    DELEGATE_ID, UNREGISTERED_ID, _cfg, _client, _hdr, _set, _standard_seed,
+)
+from tests.test_miniapp_routes import _use_tmp_db as _use_tmp_http_db  # noqa: E402
+
+APP_BOT = "YouLead_test_bot"
+
+
+@pytest.fixture
+def http(tmp_path, monkeypatch):
+    path = _use_tmp_http_db(tmp_path, "test_amb_status_surfaces_34_http.db")
+    _standard_seed()
+    calls: list[int] = []
+
+    async def _fake_tiers(tid):
+        calls.append(int(tid))
+
+    monkeypatch.setattr(amb_tiers, "check_tiers_for_new_ambassador", _fake_tiers)
+    client = _client(_cfg(path))
+    client.tier_calls = calls
+    return client
+
+
+def _force_full(monkeypatch):
+    from services import amb_status
+
+    async def _full():
+        return True
+
+    monkeypatch.setattr(amb_status, "slots_full", _full)
+
+
+def _submit(client, patch=None):
+    _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов", **(patch or {})})
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+@pytest.mark.usefixtures("bot_api")
+def test_finale_open_offers_block(http):
+    _set("reg_offer_ref_link", "on")
+    body = _submit(http)
+    assert body["ambassador"]["cta"]
+    assert "ambassador_note" not in body
+
+
+@pytest.mark.usefixtures("bot_api")
+@pytest.mark.parametrize("case", ["full", "declined"])
+def test_finale_full_or_declined_no_block(http, monkeypatch, case):
+    _set("reg_offer_ref_link", "on")
+    if case == "full":
+        _force_full(monkeypatch)
+    else:
+        from services import amb_status
+
+        async def _declined(_tid):
+            return "declined"
+
+        monkeypatch.setattr(amb_status, "delegate_state", _declined)
+    body = _submit(http)
+    assert "ambassador" not in body
+    assert "ambassador_note" not in body
+
+
+@pytest.mark.usefixtures("bot_api")
+def test_finale_selection_candidate_gets_ack_and_link(http):
+    """Кандидату подтверждение обещает ссылку — она приходит тем же ответом, даже при
+    выключенном предложении (так настроен РилТолк)."""
+    _set("amb_join_mode", "selection")
+    body = _submit(http, {"is_ambassador_candidate": True})
+    assert _st(UNREGISTERED_ID)["status"] == "candidate"
+    assert "ambassador" not in body
+    assert body["ambassador_note"] == _default("amb_candidate_ack_text")
+    link = body["ambassador_link"]
+    assert link["link"] == f"https://t.me/{APP_BOT}?start=amb_{UNREGISTERED_ID}"
+    assert link["copy_button"] and link["note"]
+
+
+def _want_app(client):
+    resp = client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def test_endpoint_instant_active_with_link(http):
+    body = _want_app(http)
+    assert body["state"] == "active"
+    assert body["link"] == f"https://t.me/{APP_BOT}?start=amb_{DELEGATE_ID}"
+    assert body["heading"] and body["copy_button"] and body["copied_toast"] and body["note"]
+    assert _st(DELEGATE_ID)["status"] == "active"
+    assert http.tier_calls == [DELEGATE_ID]
+
+
+def test_endpoint_selection_candidate_with_link_and_note(http):
+    _set("amb_join_mode", "selection")
+    body = _want_app(http)
+    assert body["state"] == "candidate"
+    assert body["status_note"] == _default("amb_candidate_ack_text")
+    assert body["link"] == f"https://t.me/{APP_BOT}?start=amb_{DELEGATE_ID}"
+    assert _st(DELEGATE_ID)["status"] == "candidate"
+    assert not _run(db.get_user(DELEGATE_ID))["is_ambassador"]
+    again = _want_app(http)  # повторный тап — тот же ответ, без записи
+    assert again["state"] == "candidate"
+
+
+@pytest.mark.parametrize("case", ["full", "declined"])
+def test_endpoint_full_or_declined_writes_nothing(http, monkeypatch, case):
+    if case == "full":
+        _force_full(monkeypatch)
+    else:
+        _run(sdb.set_status(DELEGATE_ID, "declined", at=AT))
+    before = _st(DELEGATE_ID)
+    body = _want_app(http)
+    assert body == {"state": "full", "message": _default("amb_slots_full_text")}
+    assert _st(DELEGATE_ID) == before
+    assert http.tier_calls == []
+
+
+def test_endpoint_ignores_body_telegram_id(http):
+    """telegram_id — только из initData: чужой id в теле не делает амбассадором другого."""
+    resp = http.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID),
+                     json={"telegram_id": UNREGISTERED_ID})
+    assert resp.status_code == 200
+    assert _run(sdb.get_status(UNREGISTERED_ID)) is None
+
+
+def test_form_js_handles_full_state_and_notes():
+    from pathlib import Path
+
+    from tests.test_miniapp_frontend import _js_without_comments
+
+    src = _js_without_comments(Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js"
+                               / "screens" / "form.js")
+    assert 'res.state === "full"' in src
+    assert "say(res.message" in src
+    assert "res.status_note" in src
+    assert "res.ambassador_note" in src and "res.ambassador_link" in src
