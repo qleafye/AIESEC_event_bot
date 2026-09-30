@@ -282,6 +282,49 @@ async def check_tiers_for_new_ambassador(telegram_id) -> None:
         logger.exception("amb_tiers: проверка ступеней при вступлении не прошла (tid=%s)", telegram_id)
 
 
+async def revoke_tier(telegram_id: int, tier: int, *, by: int | None) -> bool:
+    """Ручное «снять ступень» (решение менеджера, например за накрутку): строка ступени
+    удаляется, выданное место квоты освобождается. Человеку ничего не шлётся. `False` — такой
+    ступени у него уже нет (повторное нажатие). Автоматика ступень не «запоминает» как снятую:
+    пока у амбассадора хватает прошедших отбор, сверка выдаст её снова — поэтому накрученных
+    приглашённых исключают отдельно (экран ступеней об этом предупреждает)."""
+    row = await amb_tiers_db.delete_tier_row(int(telegram_id), int(tier))
+    if row is None:
+        return False
+    logger.info("admin=%s amb_tier_revoke tid=%s tier=%s status=%s",
+                by, int(telegram_id), int(tier), row.get("o2o_status"))
+    return True
+
+
+async def promote_waitlist(tier: int, *, by: int | None) -> str:
+    """Ручная выдача освободившегося места ступени первому из листа ожидания (автопродвижения
+    нет). Возвращает `"promoted:<telegram_id>"`, `"no_slot"` (места нет), `"empty"` (лист пуст)
+    или `"no_quota"` (у ступени нет квоты или её нет в лестнице). После повышения в очередь
+    ставится событие `amb_tier_reached`: доставка возьмёт текст ступени по статусу `granted`."""
+    tier = int(tier)
+    cfg = next((c for c in await tiers_config() if c.n == tier), None)
+    if cfg is None or cfg.quota is None:
+        return "no_quota"
+    stamp = msk_now().strftime(_STAMP)
+    promoted = await amb_tiers_db.promote_first_waitlisted(tier, cfg.quota, at=stamp)
+    if promoted is None:
+        return "no_slot" if await amb_tiers_db.waitlist_count(tier) else "empty"
+    logger.info("admin=%s amb_tier_promote tid=%s tier=%s", by, promoted, tier)
+    try:
+        counts = await amb_tiers_db.referral_counts(promoted, await current_season())
+        await _db.enqueue_miniapp_outbox(
+            TIER_EVENT_KIND,
+            {"telegram_id": promoted, "tier": tier,
+             "left": _left_to_next(await tiers_config(), counts["qualified"])},
+            stamp,
+        )
+    except Exception:
+        # Сверка раз в 10 минут заново поставит уведомление: notified_at пуст.
+        logger.warning("amb_tiers: уведомление о выданном месте не поставлено (tid=%s)",
+                       promoted, exc_info=True)
+    return f"promoted:{promoted}"
+
+
 STALE_NOTIFY_MINUTES = 10
 
 
