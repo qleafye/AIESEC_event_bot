@@ -715,6 +715,9 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
                 )
             from services.amb_status import on_applications_approved
             await on_applications_approved([telegram_id])
+        else:
+            from services.amb_status import on_applications_unapproved
+            await on_applications_unapproved([telegram_id])
         return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
     return await record_application_decision(telegram_id, decision, reason, by, decided_at, effects_due_at)
@@ -767,6 +770,8 @@ async def undo_decision(decision_id: int) -> dict:
     reverted = await revert_user_to_pending(telegram_id, from_status)
     if not reverted:
         return {"ok": False, "reason": "already"}
+    from services.amb_status import on_applications_unapproved
+    await on_applications_unapproved([telegram_id])
     return {"ok": True, "telegram_id": telegram_id}
 
 
@@ -800,6 +805,10 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
                 logger.exception("flush_due_decisions: проверка ступеней не прошла")
             from services.amb_status import on_applications_approved
             await on_applications_approved(approved_ids)
+        rejected_ids = [row["telegram_id"] for row in due if row["decision"] != "approved"]
+        if rejected_ids:
+            from services.amb_status import on_applications_unapproved
+            await on_applications_unapproved(rejected_ids)
     for row in due:
         enqueue(row["decision"], row)
     return len(due)

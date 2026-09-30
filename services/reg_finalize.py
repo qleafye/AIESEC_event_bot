@@ -269,6 +269,16 @@ async def _amb_form_yes(telegram_id: int) -> None:
         logger.error(f"amb_status.request_join(form) failed for {telegram_id}: {e}")
 
 
+async def _amb_unapproved(telegram_id: int) -> None:
+    """Заявка перестала быть одобренной (повторная модерация после правки, автоотказ,
+    переподача) — место амбассадора без выданного пакета снимается."""
+    try:
+        from services import amb_status
+        await amb_status.on_applications_unapproved([telegram_id])
+    except Exception as e:
+        logger.error(f"on_applications_unapproved failed for {telegram_id}: {e}")
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
@@ -515,6 +525,8 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 flagged_rule_ids_out = auto_patch["flag_rule_ids"]
             # Исход 4: делегат не был автоотклонён, и правило не сработало вовсе — поведение
             # ветки `edit` байт-в-байт прежнее (auto_patch пуст, was_auto_rejected ложно).
+            if old.get("status") == "approved" and status != "approved":
+                await _amb_unapproved(telegram_id)
         else:
             answers = reg_engine.with_defaults(raw_answers)
             data = dict(answers)
@@ -677,6 +689,10 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     await amb_status.on_applications_approved([telegram_id])
                 except Exception as e:
                     logger.error(f"on_applications_approved failed for {telegram_id}: {e}")
+            else:
+                # Переподача одобренного делегата (новая анкета поверх строки) — одобрения
+                # больше нет, место амбассадора без пакета снимается. Новому — no-op.
+                await _amb_unapproved(telegram_id)
 
             try:
                 await record_reg_event(
