@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Awaitable, Callable
 
+from amb_tier_keys import tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services import amb_tiers
@@ -45,31 +46,32 @@ def _fmt(template: str | None, **subs) -> str:
         return template
 
 
+_LEGACY_KINDS = {2: "o2o", 3: "networking"}
+
+
 async def progress_view(user_id: int) -> dict | None:
-    """None, если программа выключена или человек не амбассадор. Иначе счётчики и следующая
-    ступень: `next_kind` = "o2o" | "networking" | "done", `n` — сколько ещё прошедших нужно."""
+    """None, если программа выключена или человек не амбассадор. Иначе счётчики и цель:
+    `next_tier` — ближайшая недостигнутая ступень с непустой подписью «сколько до неё»
+    (пустая подпись ступень пропускает; `None` — все взяты), `n` — сколько ещё прошедших
+    нужно до неё. `next_kind` оставлен для старых потребителей: "o2o" (ступень 2),
+    "networking" (ступень 3), "tier{N}" для остальных, "done" — все взяты."""
     if not await amb_tiers.program_on():
         return None
     user = await _db.get_user(user_id)
     if not (user and user.get("is_ambassador")):
         return None
     counts = await amb_tiers_db.referral_counts(user_id, await amb_tiers.current_season())
-    _t1, t2, t3 = await amb_tiers.thresholds()
     qualified = counts["qualified"]
-    if qualified < t2:
-        next_kind, n = "o2o", t2 - qualified
-    elif qualified < t3:
-        next_kind, n = "networking", t3 - qualified
-    else:
-        next_kind, n = "done", 0
-    return {**counts, "next_kind": next_kind, "n": n}
-
-
-_NEXT_STEP_KEYS = {
-    "o2o": "amb_next_step_o2o_text",
-    "networking": "amb_next_step_networking_text",
-    "done": "amb_next_step_done_text",
-}
+    next_tier, n = None, 0
+    for cfg in await amb_tiers.tiers_config():
+        if qualified >= cfg.threshold:
+            continue
+        if not ((await get_setting_typed(cfg.next_key)) or "").strip():
+            continue
+        next_tier, n = cfg.n, cfg.threshold - qualified
+        break
+    next_kind = "done" if next_tier is None else _LEGACY_KINDS.get(next_tier, f"tier{next_tier}")
+    return {**counts, "next_tier": next_tier, "next_kind": next_kind, "n": n}
 
 
 async def render_progress(user_id: int, tr_key: TrKey) -> str | None:
@@ -77,7 +79,8 @@ async def render_progress(user_id: int, tr_key: TrKey) -> str | None:
     view = await progress_view(user_id)
     if view is None:
         return None
-    next_step = _fmt(await tr_key(_NEXT_STEP_KEYS[view["next_kind"]]), n=view["n"])
+    key = "amb_next_step_done_text" if view["next_tier"] is None else tier_key(view["next_tier"], "next")
+    next_step = _fmt(await tr_key(key), n=view["n"])
     return _fmt(
         await tr_key("amb_progress_text"),
         total=view["total"], qualified=view["qualified"], next_step=next_step,
