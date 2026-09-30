@@ -6,6 +6,7 @@ pytest-asyncio в окружении нет — async через `asyncio.run()`
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -339,3 +340,114 @@ def test_qualified_needs_live_status_and_journal(tmp_path):
     _seed_invitee(202, 100, status="pending", season="SU26")  # строка журнала, но вернули в ожидание
     c = _run(amb_tiers_db.referral_counts(100, "SU26"))
     assert c["qualified"] == 0 and c["total"] == 2
+
+
+# ── выдача и уведомления для N ступеней ─────────────────────────────────────────────────────
+
+def _set(**kv):
+    for k, v in kv.items():
+        _run(db.set_setting(k, str(v)))
+
+
+def _five_tiers(**extra):
+    _set(amb_qualified_program="on", amb_count_deadline="", event_season="SU26",
+         amb_tiers_count=5, amb_tier1_threshold=1, amb_tier2_threshold=2, amb_tier3_threshold=4,
+         amb_tier4_threshold=6, amb_tier5_threshold=8, **extra)
+
+
+def _ambassador(tid, *, approved=True):
+    _run(db.add_user({"telegram_id": tid, "full_name": f"Amb {tid}",
+                      "registration_date": "2026-09-01 00:00:00", "season": "SU26"}))
+    _run(db.set_user_status(tid, "approved" if approved else "pending"))
+    _run(db.set_ambassador_flag(tid, active=True, at="2026-09-01 00:00:00"))
+
+
+def _invite(referrer, n, start=1000):
+    for i in range(n):
+        _seed_invitee(start + referrer * 10 + i, referrer, status="approved", season="SU26")
+
+
+def _tier_rows(tid):
+    return [(r["tier"], r["o2o_status"]) for r in _run(amb_tiers_db.list_tiers(tid))]
+
+
+def _events():
+    return [json.loads(r[0]) for r in _sql("SELECT payload FROM miniapp_outbox ORDER BY id")]
+
+
+def test_quota_on_tier_three_waitlists_over_limit(tmp_path):
+    _ready(tmp_path)
+    _five_tiers(amb_tier3_quota_on="on", amb_tier3_quota=2)
+    for tid in (1, 2, 3):
+        _ambassador(tid)
+        _invite(tid, 4)
+        _run(amb_tiers.check_tiers([tid], notify=False))
+    assert [dict(_tier_rows(t))[3] for t in (1, 2, 3)] == ["granted", "granted", "waitlist"]
+    assert dict(_tier_rows(1))[2] is None  # на ступенях без квоты статуса нет
+
+
+def test_quotas_are_counted_per_tier(tmp_path):
+    _ready(tmp_path)
+    _five_tiers(amb_tier3_quota_on="on", amb_tier3_quota=1, amb_tier5_quota_on="on",
+                amb_tier5_quota=1)
+    for tid in (1, 2):
+        _ambassador(tid)
+        _invite(tid, 8)
+        _run(amb_tiers.check_tiers([tid], notify=False))
+    assert dict(_tier_rows(1))[3] == "granted" and dict(_tier_rows(2))[3] == "waitlist"
+    assert dict(_tier_rows(1))[5] == "granted" and dict(_tier_rows(2))[5] == "waitlist"
+
+
+def test_claim_race_last_slot_goes_to_one(tmp_path):
+    _ready(tmp_path)
+    _run(amb_tiers_db.claim_new_tiers(1, [3], "2026-09-01 00:00:00", {3: 2}))
+
+    async def race():
+        return await asyncio.gather(*(
+            amb_tiers_db.claim_new_tiers(t, [3], "2026-09-01 00:00:01", {3: 2}) for t in (2, 3, 4)
+        ))
+
+    results = _run(race())
+    statuses = sorted(r[0]["o2o_status"] for r in results)
+    assert statuses == ["granted", "waitlist", "waitlist"]
+
+
+def test_jump_notifies_top_and_quota_tiers(tmp_path):
+    _ready(tmp_path)
+    _five_tiers(amb_tier2_quota_on="on", amb_o2o_quota=5)
+    _ambassador(1)
+    _invite(1, 4)
+    _run(amb_tiers.check_tiers([1]))
+    assert [(e["tier"], e["left"]) for e in _events()] == [(2, 0), (3, 0)]
+    rows = {r["tier"]: r["notified_at"] for r in _run(amb_tiers_db.list_tiers(1))}
+    assert rows[1] is not None and rows[2] is None and rows[3] is None
+
+
+def test_notify_text_key_by_tier_and_status():
+    from services import amb_tiers_notify as n
+
+    assert n._text_key(4, None) == "amb_tier4_text"
+    assert n._text_key(3, "waitlist") == tier_key(3, "waitlist")
+    assert n._text_key(2, "granted") == "amb_tier2_granted_text"
+    assert n._text_key(2, "waitlist") == "amb_tier2_waitlist_text"
+    assert n._text_key(9, None) is None
+
+
+def test_require_approved_toggle(tmp_path):
+    _ready(tmp_path)
+    _five_tiers()
+    _ambassador(1, approved=False)
+    _invite(1, 2)
+    _run(amb_tiers.check_tiers([1], notify=False))
+    assert _tier_rows(1) == []
+    _set(amb_tiers_require_approved="off")
+    _run(amb_tiers.check_tiers([1], notify=False))
+    assert [t for t, _ in _tier_rows(1)] == [1, 2]
+
+
+def test_legacy_positional_quota_still_means_tier_two(tmp_path):
+    _ready(tmp_path)
+    rows = _run(amb_tiers_db.claim_new_tiers(1, [1, 2], "2026-09-01 00:00:00", 1))
+    assert [(r["tier"], r["o2o_status"]) for r in rows] == [(1, None), (2, "granted")]
+    rows = _run(amb_tiers_db.claim_new_tiers(2, [2], "2026-09-01 00:00:00", o2o_quota=1))
+    assert rows[0]["o2o_status"] == "waitlist"

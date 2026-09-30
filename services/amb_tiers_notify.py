@@ -26,6 +26,7 @@ import html
 import logging
 import re
 
+from amb_tier_keys import tier_key
 from database import amb_tiers_db
 from services.timeutil import msk_now
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
@@ -37,13 +38,11 @@ _TAG_RE = re.compile(r"</?[A-Za-z][^<>]*>")
 
 
 def _text_key(tier: int, o2o_status: str | None) -> str | None:
-    if tier == 1:
-        return "amb_tier1_text"
-    if tier == 2:
-        return "amb_tier2_waitlist_text" if o2o_status == "waitlist" else "amb_tier2_granted_text"
-    if tier == 3:
-        return "amb_tier3_text"
-    return None
+    """Ключ текста по номеру ступени; статус 'waitlist' — текст листа ожидания."""
+    try:
+        return tier_key(tier, "waitlist" if o2o_status == "waitlist" else "text")
+    except ValueError:
+        return None
 
 
 def _is_permanent(exc: Exception) -> bool:

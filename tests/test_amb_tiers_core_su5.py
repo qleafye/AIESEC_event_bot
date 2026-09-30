@@ -269,6 +269,7 @@ from services import amb_tiers, applications  # noqa: E402
 def _on(*, deadline="2099-01-01 00:00", quota=None):
     _run(db.set_setting("amb_qualified_program", "on"))
     _run(db.set_setting("amb_count_deadline", deadline))
+    _run(db.set_setting("amb_tier2_quota_on", "on"))  # квота ступени 2 — как на стеке СкиллАп
     if quota is not None:
         _run(db.set_setting("amb_o2o_quota", str(quota)))
 
@@ -618,6 +619,7 @@ def test_zero_to_seven_notifies_o2o_slot_and_top(tmp_path):
 
 def test_zero_to_seven_waitlist_still_told(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("amb_tier2_quota_on", "on"))
     _run(db.set_setting("amb_o2o_quota", "1"))
     _run(tdb.claim_new_tiers(999, [2], "2026-09-01 00:00:00", 1))
     _jump_to_seven(quota=1)

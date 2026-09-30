@@ -146,14 +146,27 @@ async def deadline_passed(now: datetime | None = None) -> bool:
 O2O_TIER = 2
 
 
-def notify_tiers_for(new_tiers) -> list[int]:
-    """О каких из новых ступеней сообщить, по возрастанию: старшая всегда, ступень разбора
-    резюме — всегда, если она среди новых (её текст говорит, слот у человека или лист
-    ожидания). Ступень 1 при прыжке выше не сообщается."""
+def notify_tiers_for(new_tiers, quota_tiers=None) -> list[int]:
+    """О каких из новых ступеней сообщить, по возрастанию: старшая всегда, каждая ступень с
+    квотой — всегда, если она среди новых (её текст говорит, слот у человека или лист
+    ожидания). Остальные младшие ступени при прыжке выше не сообщаются. `quota_tiers` по
+    умолчанию — ступень 2 (прежнее поведение для вызовов без конфигурации)."""
     tiers = {int(t) for t in new_tiers}
     if not tiers:
         return []
-    return sorted({max(tiers)} | ({O2O_TIER} & tiers))
+    quoted = {O2O_TIER} if quota_tiers is None else {int(t) for t in quota_tiers}
+    return sorted({max(tiers)} | (quoted & tiers))
+
+
+def _left_to_next(cfg: list[TierCfg], qualified: int) -> int:
+    """`{left}` уведомления: сколько прошедших отбор нужно до «главной» награды. Если на
+    событии есть ступень с квотой — это её порог (прежнее поведение: «до разбора резюме»;
+    0, когда порог взят). Без квот — порог ближайшей недостигнутой ступени (0 — все взяты)."""
+    quoted = [c for c in cfg if c.quota is not None]
+    if quoted:
+        return max(quoted[0].threshold - qualified, 0)
+    pending = [c.threshold for c in cfg if c.threshold > qualified]
+    return (min(pending) - qualified) if pending else 0
 
 
 async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None = None,
@@ -167,14 +180,16 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
     Несколько ступеней за раз (0 -> 3 одним «Принять всех», бэкафилл): строки пишутся для
     каждой, а уведомления — для старшей и, если среди новых есть ступень разбора резюме, ещё и
     для неё (слот или лист ожидания — это обещание, которого нет в тексте старшей ступени).
-    Ступень 1 при прыжке помечается уведомлённой сразу: иначе человек получил бы «до разбора
-    резюме осталось 0» следом за «слот за тобой». Так за раз не больше двух сообщений."""
+    Так «старшая + каждая ступень с квотой среди новых»; остальные младшие ступени
+    помечаются уведомлёнными сразу, без сообщения: иначе человек получил бы «до следующей
+    осталось 0» следом за «слот за тобой»."""
     if not force and not await program_on():
         return []
     if await deadline_passed(now):
         return []
-    t1, t2, t3 = await thresholds()
-    quota = int(await get_setting_typed("amb_o2o_quota"))
+    cfg = await tiers_config()
+    quotas = {c.n: c.quota for c in cfg if c.quota is not None}
+    require_approved = await require_approved_on()
     season = await current_season()
     stamp = (now or msk_now()).strftime(_STAMP)
 
@@ -190,14 +205,14 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
         seen.add(rid)
         try:
             referrer = await _db.get_user(rid)
-            if not can_earn_tiers(referrer, season):
+            if not can_earn_tiers(referrer, season, require_approved=require_approved):
                 continue
             counts = await amb_tiers_db.referral_counts(rid, season)
             qualified = counts["qualified"]
-            reached = [t for t, th in ((1, t1), (2, t2), (3, t3)) if qualified >= th]
+            reached = [c.n for c in cfg if qualified >= c.threshold]
             if not reached:
                 continue
-            new_rows = await amb_tiers_db.claim_new_tiers(rid, reached, stamp, quota)
+            new_rows = await amb_tiers_db.claim_new_tiers(rid, reached, stamp, quotas)
             if not new_rows:
                 continue
             for row in new_rows:
@@ -206,7 +221,7 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
             if not notify:
                 await amb_tiers_db.mark_tiers_notified(rid, new_tiers, stamp)
                 continue
-            notify_tiers = notify_tiers_for(new_tiers)
+            notify_tiers = notify_tiers_for(new_tiers, quotas)
             lower = [t for t in new_tiers if t not in notify_tiers]
             if lower:
                 await amb_tiers_db.mark_tiers_notified(rid, lower, stamp)
@@ -214,7 +229,7 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
                 try:
                     await _db.enqueue_miniapp_outbox(
                         TIER_EVENT_KIND,
-                        {"telegram_id": rid, "tier": tier, "left": max(t2 - qualified, 0)},
+                        {"telegram_id": rid, "tier": tier, "left": _left_to_next(cfg, qualified)},
                         stamp,
                     )
                 except Exception:
@@ -272,40 +287,45 @@ async def preview_backfill() -> list[dict]:
 
     Список амбассадоров (сейчас `is_ambassador = 1`), которым положена хотя бы одна НОВАЯ
     ступень, в том порядке, в каком `tools/backfill_amb_tiers.py --apply` будет их
-    обрабатывать: по времени, когда амбассадор набрал порог разбора резюме (одобрение
-    `t2`-го прошедшего отбор; не дотянул — по порогу ступени 1), при равенстве — по id. Этот
-    же порядок — порядок раздачи квоты, поэтому прогноз «выдан / лист ожидания» совпадает с
-    тем, что запишет `--apply` (он зовёт тот же `check_tiers` по одному в этом порядке).
+    обрабатывать: по времени, когда амбассадор набрал порог первой достигнутой ступени с
+    квотой (одобрение N-го прошедшего отбор; квот нет или не дотянул — по порогу первой
+    ступени), при равенстве — по id. Этот же порядок — порядок раздачи квоты, поэтому прогноз
+    «выдан / лист ожидания» совпадает с тем, что запишет `--apply` (он зовёт тот же
+    `check_tiers` по одному в этом порядке).
 
     Элемент: `{"telegram_id", "username", "qualified", "tiers": [{"tier", "o2o_status",
     "exists"}]}` — `exists=True` у ступеней, которые уже выданы. Дедлайн прошёл — `[]`."""
     if await deadline_passed():
         return []
-    t1, t2, t3 = await thresholds()
-    quota = int(await get_setting_typed("amb_o2o_quota"))
+    cfg = await tiers_config()
+    quotas = {c.n: c.quota for c in cfg if c.quota is not None}
+    require_approved = await require_approved_on()
     season = await current_season()
     times = await amb_tiers_db.qualified_approval_times(season)
     existing: dict[int, dict[int, dict]] = {}
     for row in await amb_tiers_db.list_tiers():
         existing.setdefault(int(row["telegram_id"]), {})[int(row["tier"])] = row
 
+    first_threshold = cfg[0].threshold
     candidates = []
     for rid, approvals in times.items():
         qualified = len(approvals)
-        if qualified < t1:
+        if qualified < first_threshold:
             continue
         user = await _db.get_user(rid)
-        if not can_earn_tiers(user, season):
+        if not can_earn_tiers(user, season, require_approved=require_approved):
             continue
-        reached = [t for t, th in ((1, t1), (2, t2), (3, t3)) if qualified >= th]
+        reached = [c.n for c in cfg if qualified >= c.threshold]
         have = existing.get(rid, {})
         if all(t in have for t in reached):
             continue
-        key_idx = (t2 if qualified >= t2 else t1) - 1
-        candidates.append((approvals[key_idx], rid, user, qualified, reached, have))
+        quoted = [c for c in cfg if c.n in quotas and qualified >= c.threshold]
+        key_threshold = quoted[0].threshold if quoted else first_threshold
+        candidates.append((approvals[key_threshold - 1], rid, user, qualified, reached, have))
     candidates.sort(key=lambda c: (c[0], c[1]))
 
-    granted = (await amb_tiers_db.o2o_summary())["granted"]
+    summary = await amb_tiers_db.quota_summary()
+    granted = {t: summary.get(t, {}).get("granted", 0) for t in quotas}
     result = []
     for _, rid, user, qualified, reached, have in candidates:
         tiers = []
@@ -313,12 +333,12 @@ async def preview_backfill() -> list[dict]:
             if tier in have:
                 tiers.append({"tier": tier, "o2o_status": have[tier].get("o2o_status"), "exists": True})
                 continue
-            o2o_status = None
-            if tier == 2:
-                o2o_status = "granted" if granted < quota else "waitlist"
-                if o2o_status == "granted":
-                    granted += 1
-            tiers.append({"tier": tier, "o2o_status": o2o_status, "exists": False})
+            status = None
+            if tier in quotas:
+                status = "granted" if granted[tier] < quotas[tier] else "waitlist"
+                if status == "granted":
+                    granted[tier] += 1
+            tiers.append({"tier": tier, "o2o_status": status, "exists": False})
         result.append({
             "telegram_id": rid,
             "username": (user.get("username") or "").strip().lstrip("@"),
