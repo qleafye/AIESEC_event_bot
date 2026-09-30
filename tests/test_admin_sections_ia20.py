@@ -244,9 +244,10 @@ def test_every_op_row_has_a_label_and_every_label_has_a_section():
     assert not orphans, f"подписи без раздела (недостижимы из панели): {sorted(orphans)}"
 
 
-def test_sections_are_the_eight_delegate_flow_steps():
+def test_sections_are_the_nine_delegate_flow_steps():
+    # 30.09: «🤝 Амбассадоры» (amb) — сразу после «🎮 Геймификации».
     assert [t for t, _, _ in sec.SECTIONS] == [
-        "event", "form", "apps", "pay", "comms", "game", "data", "manage"]
+        "event", "form", "apps", "pay", "comms", "game", "amb", "data", "manage"]
     # обратный индекс выведен из реестра, а не из второго словаря-литерала
     assert sec.section_of("apps") == "apps"
     assert sec.section_of("sheets") == "data"
@@ -543,16 +544,18 @@ def test_toggle_rows_are_shared_with_the_settings_screen(tmp_path):
 # (5) Корень переключён на разделы (20-03, ADMIN-IA-01)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def test_root_shows_at_most_nine_rows(tmp_path):
-    """Критерий успеха №1: шапка города + не больше восьми кнопок-разделов. До фазы 20 на
-    корне было 22 строки, и менеджер искал нужную глазами."""
+def test_root_shows_at_most_ten_rows(tmp_path):
+    """Критерий успеха №1: шапка города + не больше девяти кнопок-разделов. До фазы 20 на
+    корне было 22 строки, и менеджер искал нужную глазами. 30.09: девятый раздел
+    «🤝 Амбассадоры» — у команды амбассадоров свой вход, лимит и списки, в «🎮 Геймификации»
+    они терялись среди заданий и монет."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.admin_core import admin_keyboard_for
 
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) <= 9, _flat_callback_data(kb)
-    assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все восемь
+    assert len(kb.inline_keyboard) <= 10, _flat_callback_data(kb)
+    assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все девять
 
 
 def test_root_rows_are_only_sections(tmp_path):

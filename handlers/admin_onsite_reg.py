@@ -139,3 +139,8 @@ async def onsitereg_qr_send(callback: types.CallbackQuery, bot: Bot):
     photo = BufferedInputFile(walkin_qr_png(link), filename="walkin_qr.png")
     await callback.message.answer_photo(photo, caption=caption, parse_mode=None)
     await callback.answer()
+
+
+# Раздел «🤝 Амбассадоры» (admin_amb_entry, ambs_*): вход в команду и лимит мест. Хвост
+# admin.router — после всех хендлеров этого файла, чтобы порядок остальных не сдвинулся.
+from handlers import admin_amb_section  # noqa: E402,F401

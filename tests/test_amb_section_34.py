@@ -299,3 +299,38 @@ def test_texts_menu_without_settings_right(tmp_path):
     text, kb = cb.message.edits[-1]
     assert "Тексты меняет тот, у кого есть право «⚙️ Настройки»." in text
     assert not [b for b in _buttons(kb) if b[1].startswith("settings_edit:")]
+
+
+# ── раздел и права ──────────────────────────────────────────────────────────────────────
+
+def test_section_after_game_with_entry_screen():
+    from handlers import admin_sections as sec
+    tokens = [t for t, _, _ in sec.SECTIONS]
+    assert tokens.index("amb") == tokens.index("game") + 1
+    label = dict((t, lbl) for t, lbl, _ in sec.SECTIONS)["amb"]
+    assert label == "🤝 Амбассадоры"
+    assert ("screen", "admin_amb_entry", "🚪 Вход и лимит") in sec.section_rows("amb")
+    assert sec.back_button("admin_amb_entry").callback_data == "admin_sec:amb"
+
+
+def test_section_visible_to_moderate_game_only():
+    from handlers import admin_sections as sec
+    assert "amb" in [t for t, _ in sec.visible_sections({"moderate_game"}, False)]
+    assert "amb" not in [t for t, _ in sec.visible_sections({"moderate_reg"}, False)]
+    assert "amb" not in [t for t, _ in sec.visible_sections({"settings"}, False)]
+
+
+def test_every_callback_and_state_resolves_to_moderate_game():
+    from handlers.admin_caps import required_capability
+    for data in ("admin_amb_entry", "ambs_mode", "ambs_mode_go:selection", "ambs_mode_go:instant",
+                 "ambs_limit", "ambs_limit_cancel", "ambs_texts"):
+        assert required_capability(callback_data=data) == "moderate_game", data
+    assert required_capability(raw_state="AmbSlotsEdit:waiting_for_limit") == "moderate_game"
+
+
+def test_seam_is_registered_on_admin_router():
+    import handlers.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
+    from handlers.admin import router
+    names = {h.callback.__name__ for h in router.callback_query.handlers}
+    assert {"show_amb_entry", "amb_mode_confirm", "amb_mode_apply", "amb_limit_start",
+            "amb_limit_cancel", "amb_texts_menu"} <= names
