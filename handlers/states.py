@@ -500,6 +500,13 @@ class AmbExclude(StatesGroup):
     waiting_for_confirm = State()
 
 
+class AmbAppoint(StatesGroup):
+    # «🙋 Кандидаты и команда» → «➕ Назначить амбассадором» (handlers/admin_amb_bulk.py):
+    # менеджер присылает @ник, ссылку t.me, Telegram ID или пересылку сообщения делегата;
+    # дальше — подтверждение кнопкой.
+    waiting_for_person = State()
+
+
 class AmbSlotsEdit(StatesGroup):
     # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/admin_amb_section.py): менеджер
     # вводит число мест в команде амбассадоров (0 — без лимита); после сохранения — на экран.

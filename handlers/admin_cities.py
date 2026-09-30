@@ -556,6 +556,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     old = data.get("season_old") or ""
     n = await count_current_season_users(old or None)
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.admin_amb_bulk import season_reset_line  # сбой чтения — пустая строка
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➡️ Продолжить", callback_data="season_reset_go")],
         # Цель берётся из реестра разделов: кнопка «🔄 Новый сезон» уехала из группы
@@ -568,9 +569,9 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     await message.answer(
         f"🔄 <b>Начать сезон «{html_module.escape(new)}»?</b>\n\n"
         f"• {n} делегатов текущего сезона станут «прошлыми»\n"
-        "• статусы, монеты и чеки не трогаем, база не чистится\n"
-        "• они смогут обновить анкету по /start\n\n"
-        f"{_season_sheet_reminder()}\n\n"
+        "• статусы заявок, монеты и чеки не трогаем, база не чистится\n"
+        "• они смогут обновить анкету по /start\n"
+        f"{await season_reset_line()}\n{_season_sheet_reminder()}\n\n"
         "Продолжить?",
         parse_mode="HTML",
         reply_markup=kb,
@@ -622,13 +623,15 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
     # as the old value, then flip event_season last — makes the switch atomic from a delegate's
     # point of view.
     affected = await mark_season_ended(old or None)
+    from handlers.admin_amb_bulk import season_reset_apply  # сбой — лог, сезон всё равно меняется
+    amb_note = await season_reset_apply(old)
     await set_setting_by_admin(message.from_user.id, "event_season", new)
     logger.warning(
         f"SEASON RESET by admin {message.from_user.id}: '{old}' -> '{new}', marked {affected} users"
     )
     await message.answer(
-        f"✅ Новый сезон: <b>{html_module.escape(new)}</b>\nПрошлыми отмечены: {affected}\n\n"
-        "Статусы, монеты и чеки не тронуты.\n\n"
+        f"✅ Новый сезон: <b>{html_module.escape(new)}</b>\nПрошлыми отмечены: {affected}{amb_note}\n\n"
+        "Статусы заявок, монеты и чеки не тронуты.\n\n"
         f"{_season_sheet_reminder()}",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
