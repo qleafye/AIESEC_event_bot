@@ -954,6 +954,16 @@ ADMIN_CAPS: dict[str, str] = {
     "ambt_unexcl:*": "moderate_game",
     "ambt_unexcl_go:*": "moderate_game",
     "state:AmbExclude:*": "moderate_game",
+    # Раздел «🤝 Амбассадоры» (handlers/admin_amb_section.py). Отдельного права не заводим: роли
+    # «Менеджер регистраций» ставят галочку «🎮 Модерация геймификации» в «Ролях». Ловушка
+    # префиксов: "ambs_mode" не покрывает "ambs_mode_go:*".
+    "admin_amb_entry": "moderate_game",
+    "ambs_mode": "moderate_game",
+    "ambs_mode_go:*": "moderate_game",
+    "ambs_limit": "moderate_game",
+    "ambs_limit_cancel": "moderate_game",
+    "ambs_texts": "moderate_game",
+    "state:AmbSlotsEdit:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
     # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
