@@ -711,15 +711,20 @@ def test_new_ambassador_check_is_fail_soft_and_off_noop(tmp_path, monkeypatch):
 
 
 def test_every_ambassador_join_path_checks_tiers():
-    """Сторож: каждая точка, где человек становится амбассадором, зовёт проверку ступеней."""
+    """Сторож: каждая точка, где человек становится амбассадором, зовёт проверку ступеней —
+    сама или через `services.amb_status.request_join` (он проверяет ступени при вступлении)."""
     import inspect
 
     from handlers import reg_ambassador, user_actions
     from miniapp.routers import form
+    from services import amb_status
 
+    assert "check_tiers_for_new_ambassador" in inspect.getsource(amb_status._check_tiers)
+    assert "_check_tiers(" in inspect.getsource(amb_status._request_join)
     for fn in (reg_ambassador.regamb_want, user_actions.ambassador_join, form.draft_ambassador):
         source = inspect.getsource(fn)
-        assert "set_ambassador_flag" in source and "check_tiers_for_new_ambassador" in source, fn
+        direct = "set_ambassador_flag" in source and "check_tiers_for_new_ambassador" in source
+        assert direct or "request_join(" in source, fn
 
 
 def test_deadline_minute_is_inclusive(tmp_path):
