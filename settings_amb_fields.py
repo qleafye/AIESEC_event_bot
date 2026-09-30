@@ -13,7 +13,8 @@ AMB_FIELD_ORDER = [
     "amb_tier3_text", "amb_progress_text", "amb_next_step_o2o_text", "amb_next_step_done_text",
     "amb_next_step_networking_text", "amb_invitees_counts_text", "amb_invitee_masked_label_text",
     "amb_referral_reversal_reason_text", "amb_referral_restore_reason_text",
-    "amb_candidate_ack_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
+    "amb_candidate_ack_text", "amb_status_pack_text", "amb_status_no_pack_text", "amb_referral_points_text",
+    "amb_wave_place_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
     "amb_removed_text", "amb_decline_all_text",
     # Тексты старта волны, напоминания, итогов — делегатские, переводятся автоматически.
     "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
