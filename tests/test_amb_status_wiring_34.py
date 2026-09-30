@@ -390,3 +390,116 @@ def test_want_long_full_text_truncated_in_alert_and_sent_in_full(ready):
     assert show is True
     assert len(alert) <= 200 and alert.endswith("…")
     assert [t for (t, _m, _p) in cb.message.sent] == [long_text]
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Место снимается, когда своя заявка амбассадора перестала быть одобренной
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _holder(tid, *, pack=False, city=None):
+    _run(db.add_user({
+        "telegram_id": tid, "full_name": f"Амбассадор {tid}",
+        "registration_date": "2026-09-01 00:00:00", "season": SEASON,
+        "event_city": city, "participant_type": "short" if city else None,
+    }))
+    _run(db.set_user_status(tid, "approved"))
+    _run(sdb.set_status(tid, "active", at=AT))
+    assert _run(sdb.try_claim_slot(tid, limit=0, season=SEASON, at=AT))
+    if pack:
+        _run(sdb.set_pack(tid, True, at=AT))
+
+
+def test_revert_to_pending_releases_slot_without_pack(ready):
+    from services.revert_pending import revert_to_pending
+    _limit(1)
+    _holder(60)
+    assert _run(amb_status.offer_open()) is False
+    report = _run(revert_to_pending(60, by_admin=1, notify=False))
+    assert report["ok"]
+    st = _st(60)
+    assert st["slot_at"] is None and st["status"] == "active"
+    assert _run(amb_status.offer_open()) is True
+
+
+def test_revert_to_pending_keeps_slot_with_pack(ready):
+    from services.revert_pending import revert_to_pending
+    _holder(61, pack=True)
+    assert _run(revert_to_pending(61, by_admin=1, notify=False))["ok"]
+    assert _st(61)["slot_at"]
+
+
+def test_city_move_to_moderation_releases_slot(ready, monkeypatch):
+    from services.city_move import STATUS_MODE_TO_MODERATION, move_user_city
+    from tests.test_city_move_260925 import _install_fake_sheets, _resolve_tabs
+    store = _install_fake_sheets(monkeypatch)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _holder(62, city="spb")
+    store.seed(_run(_resolve_tabs("spb", "short")), [[62, "Амбассадор 62"]])
+    store.seed(_run(_resolve_tabs("msk", "short")), [])
+    report = _run(move_user_city(62, "msk", status_mode=STATUS_MODE_TO_MODERATION, by_admin=1))
+    assert report["ok"] and report["status_changed"]
+    assert _st(62)["slot_at"] is None
+
+
+def test_edit_remoderation_releases_slot(ready):
+    from services import reg_finalize as rf
+    _run(db.set_setting("toggle_reg_edit_remoderation", "on"))
+    _holder(63)
+    result = _run(rf.finalize_data(63, "@d", {
+        "telegram_id": 63, "kind": "edit", "answers": {"full_name": "Новое Имя"},
+    }))
+    assert result["status"] == "pending"
+    assert _st(63)["slot_at"] is None
+
+
+def test_edit_without_remoderation_keeps_slot(ready):
+    from services import reg_finalize as rf
+    _holder(64)
+    _run(rf.finalize_data(64, "@d", {
+        "telegram_id": 64, "kind": "edit", "answers": {"full_name": "Новое Имя"},
+    }))
+    assert _run(db.get_user(64))["status"] == "approved"
+    assert _st(64)["slot_at"]
+
+
+def test_resubmit_new_form_of_approved_releases_slot(ready):
+    _run(db.set_setting("registration_mode", "full"))
+    _run(db.set_setting("full_approval", "manual"))
+    _holder(65)
+    _finalize(65, yes=False)
+    assert _run(db.get_user(65))["status"] == "pending"
+    assert _st(65)["slot_at"] is None
+
+
+def test_reject_decision_calls_unapproved(ready, monkeypatch):
+    seen: list = []
+
+    async def _spy(ids):
+        seen.append(list(ids))
+
+    monkeypatch.setattr(amb_status, "on_applications_unapproved", _spy)
+    _seed(66, status="pending")
+    assert _run(applications.claim_reject(66))
+    _run(applications.record_decision(66, "rejected", "-", 1, datetime.now(),
+                                      effects_already_sent=True))
+    assert seen == [[66]]
+
+
+def test_miniapp_reject_after_window_and_undo_call_unapproved(ready, monkeypatch):
+    seen: list = []
+
+    async def _spy(ids):
+        seen.append(list(ids))
+
+    monkeypatch.setattr(amb_status, "on_applications_unapproved", _spy)
+    _seed(67, status="pending")
+    _seed(68, status="pending")
+    now = datetime.now()
+    assert _run(applications.claim_web_decision(67, "rejected", None, 1, now)) is not None
+    decision_id = _run(applications.claim_web_decision(68, "approved", None, 1, now))
+    assert _run(applications.undo_decision(decision_id))["ok"]
+    assert seen == [[68]]
+    _run(applications.flush_due_decisions(
+        now + timedelta(seconds=applications.UNDO_WINDOW_SECONDS + 1), lambda *_a: None,
+    ))
+    assert seen == [[68], [67]]

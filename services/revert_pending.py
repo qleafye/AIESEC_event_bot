@@ -91,6 +91,15 @@ async def preview_revert_pending(telegram_id: int) -> dict:
     return report
 
 
+async def _release_amb_slot(telegram_id: int) -> None:
+    """Заявка больше не одобрена — место амбассадора без выданного пакета снимается."""
+    try:
+        from services import amb_status
+        await amb_status.on_applications_unapproved([telegram_id])
+    except Exception as e:
+        logger.warning(f"revert_to_pending: on_applications_unapproved({telegram_id}) failed: {e}")
+
+
 async def revert_to_pending(
     telegram_id: int, *, by_admin: int, notify: bool, bot=None, history_source: str = "admin",
     admin_name: str | None = None,
@@ -119,6 +128,7 @@ async def revert_to_pending(
     reverted = await revert_user_to_pending(telegram_id, old_status)
     if not reverted:
         return {"ok": False, "error": "Статус успели изменить параллельно — возврат отменён"}
+    await _release_amb_slot(telegram_id)
 
     report: dict = {
         "ok": True, "error": None,
