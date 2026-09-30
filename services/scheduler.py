@@ -218,6 +218,16 @@ def _add_interval_job(func, job_id: str, interval: timedelta, *,
 # (тот же довод, что у остальных целей интервальных джоб этого файла, все — функции верхнего
 # уровня). Mini App правит forum_date/тумблеры обеих функций из своего процесса, где
 # планировщика нет — тот же довод, что у `checkin_forum_reconcile` выше.
+async def _amb_journal_reconcile_job() -> None:
+    """Сверка журнала зачётов приглашённых (отзывы, пропущенные строки, места амбассадоров).
+    Модульная функция: SQLAlchemyJobStore хранит её как module:qualname."""
+    try:
+        from services.amb_journal import reconcile
+        await reconcile()
+    except Exception as e:
+        logger.error(f"_amb_journal_reconcile_job failed: {e}")
+
+
 async def _reconcile_forum_report_and_poll_job() -> None:
     try:
         from services.forum_day_report import reconcile as _reconcile_day_report
@@ -313,6 +323,13 @@ async def init_scheduler(bot):
     # 29.09: колонка «В чате» — события чата/одобрения/сверки из sheet_chat_queue пачкой. 60 с, а
     # не 30: событие чата не срочное, меньше заходов в квоту Sheets.
     _add_interval_job(sheet_chat_drain_job, "sheet_chat_drain", timedelta(seconds=60))
+
+    # Сверка журнала зачётов приглашённых: отзывы по статусу, недостающие строки за 72 часа,
+    # места амбассадоров.
+    _add_interval_job(
+        _amb_journal_reconcile_job, "amb_journal_reconcile", timedelta(minutes=10),
+        first_run_delay=timedelta(minutes=2),
+    )
 
     # Phase 27 (27-03, LANG-04): разбор очереди перевода делегатской анкеты. 30с — тот же
     # интервал, что у miniapp_outbox выше (батч ограничен services/i18n_worker.py::BATCH_SIZE,
