@@ -287,3 +287,55 @@ def test_skillup_tier_values_valid_for_registry():
         assert key in SETTINGS_SCHEMA, key
         if SETTINGS_SCHEMA[key].get("type") in ("int", "enum"):
             assert validate_setting_value(key, value) == (value, None), key
+
+
+# ── «прошли отбор» из журнала ───────────────────────────────────────────────────────────────
+
+def _seed_invitee(tid, referrer, *, status, season, journal=True, excluded=False):
+    from tests.test_amb_tiers_core_su5 import seed_journal_row
+
+    _run(db.add_user({
+        "telegram_id": tid, "full_name": f"Delegate {tid}",
+        "registration_date": "2026-09-01 00:00:00", "referrer_id": referrer, "season": season,
+    }))
+    _run(db.set_user_status(tid, status))
+    if status == "approved":
+        _sql("UPDATE users SET approved_at = '2026-09-03 10:00:00' WHERE telegram_id = ?", (tid,))
+    if journal:
+        seed_journal_row(tid, referrer, season=season, excluded=excluded)
+    if excluded:
+        _sql("INSERT INTO ambassador_exclusions (invitee_id, reason, excluded_by, excluded_at) "
+             "VALUES (?, 'test', 1, '2026-09-02 00:00:00')", (tid,))
+
+
+def test_qualified_parity_with_chat_rating(tmp_path):
+    from dashboard import chat_rating
+
+    _ready(tmp_path)
+    _run(db.set_setting("event_season", "SU26"))
+    _run(db.add_user({"telegram_id": 100, "full_name": "Amb", "registration_date": "2026-09-01 00:00:00",
+                      "season": "SU26"}))
+    _seed_invitee(201, 100, status="approved", season="SU26")
+    _seed_invitee(202, 100, status="approved", season="SU26")
+    _seed_invitee(203, 100, status="pending", season="SU26", journal=False)
+    _seed_invitee(204, 100, status="approved", season="SU26", excluded=True)
+    _seed_invitee(205, 100, status="approved", season="YL26")
+    counts = _run(amb_tiers_db.referral_counts(100, "SU26"))
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        brought = chat_rating._referral_dates(conn)
+    finally:
+        conn.close()
+    assert counts["qualified"] == 2
+    assert len(brought.get(100, [])) == counts["qualified"]
+    assert counts["total"] == 3 and counts["pending"] == 1
+
+
+def test_qualified_needs_live_status_and_journal(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("event_season", "SU26"))
+    _seed_invitee(201, 100, status="approved", season="SU26", journal=False)
+    assert _run(amb_tiers_db.referral_counts(100, "SU26"))["qualified"] == 0
+    _seed_invitee(202, 100, status="pending", season="SU26")  # строка журнала, но вернули в ожидание
+    c = _run(amb_tiers_db.referral_counts(100, "SU26"))
+    assert c["qualified"] == 0 and c["total"] == 2

@@ -19,6 +19,7 @@ from handlers import reg_i18n
 from handlers import user_actions as ua_mod
 from settings_schema import get_setting_typed
 from tests._dbtpl import fast_init_db
+from tests.test_amb_tiers_core_su5 import seed_journal_row
 
 SEASON = "SU26"
 AMB = 700
@@ -48,6 +49,8 @@ def _seed_user(tid, *, referrer_id=None, status="pending", full_name=None):
         "season": SEASON,
     }))
     _run(db.set_user_status(tid, status))
+    if referrer_id and status == "approved":
+        seed_journal_row(tid, referrer_id, season=SEASON)
 
 
 def _make_ambassador(tid=AMB):
@@ -62,9 +65,13 @@ def _seed_invitees(n=3, amb=AMB):
 
 def _approve(tid):
     _run(db.set_user_status(tid, "approved"))
+    rows = _sql("SELECT referrer_id FROM users WHERE telegram_id = ?", (tid,))
+    if rows and rows[0][0]:
+        seed_journal_row(tid, rows[0][0], season=SEASON)
 
 
 def _credit(invitee, amb=AMB):
+    _sql("DELETE FROM referral_credits WHERE invitee_id = ?", (invitee,))  # строку заведёт начисление
     _run(db.claim_referral_credit_atomic(
         invitee, amb, 5, None, reason=f"Приглашённый: {NAMES[invitee]}", changed_by=None,
     ))
@@ -328,6 +335,8 @@ def _seed_http_invitees(n=3, *, approve=0):
                 "registration_date": "2026-09-20", "referrer_id": DELEGATE_ID,
             })
             await db.set_user_status(tid, "approved" if i < approve else "pending")
+            if i < approve:
+                seed_journal_row(tid, DELEGATE_ID, season="")
     _run(seed())
 
 
