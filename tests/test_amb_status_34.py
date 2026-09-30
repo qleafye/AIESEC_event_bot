@@ -271,3 +271,213 @@ def test_writer_guard_regex_catches_samples():
     assert not _WRITE_RE.search("UPDATE users SET is_ambassador_candidate = 1 WHERE 1")
     assert not _WRITE_RE.search("UPDATE users SET ambassador_status_at = ? WHERE 1")
     assert _WRITE_RE.search("INSERT INTO users (telegram_id, is_ambassador) VALUES (?, ?)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2: место в лимите, пакет, запас, выборки, массовый отказ, архив сезона
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _active(tid, **kw):
+    _seed(tid, **kw)
+    _run(sdb.set_status(tid, "active", at=AT))
+
+
+def test_slot_claim_rules(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    assert _run(sdb.try_claim_slot(10, limit=17, season=SEASON, at=AT)) is True
+    assert _run(sdb.get_status(10))["slot_at"] == AT
+    # Уже с местом — False, дата не меняется.
+    assert _run(sdb.try_claim_slot(10, limit=17, season=SEASON, at="later")) is False
+    assert _run(sdb.get_status(10))["slot_at"] == AT
+    # Заявка не одобрена — места нет.
+    _active(11, status="pending")
+    assert _run(sdb.try_claim_slot(11, limit=17, season=SEASON, at=AT)) is False
+    # Другой сезон — места нет.
+    _active(12, season="YL 26/2")
+    assert _run(sdb.try_claim_slot(12, limit=17, season=SEASON, at=AT)) is False
+    # Не active — места нет.
+    _seed(13)
+    _run(sdb.set_status(13, "candidate", at=AT))
+    assert _run(sdb.try_claim_slot(13, limit=17, season=SEASON, at=AT)) is False
+    assert _run(sdb.slots_taken()) == 1
+
+
+def test_slot_limit_full_and_unlimited(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    _active(11)
+    assert _run(sdb.try_claim_slot(10, limit=1, season=SEASON, at=AT)) is True
+    assert _run(sdb.try_claim_slot(11, limit=1, season=SEASON, at=AT)) is False
+    assert _run(sdb.try_claim_slot(11, limit=0, season=SEASON, at=AT)) is True
+    assert _run(sdb.slots_taken()) == 2
+
+
+def test_slot_race_two_connections_one_wins(tmp_path):
+    _ready(tmp_path)
+    for tid in range(100, 116):
+        _active(tid)
+        assert _run(sdb.try_claim_slot(tid, limit=17, season=SEASON, at=AT))
+    _active(200)
+    _active(201)
+    assert _run(sdb.slots_taken()) == 16
+
+    async def race():
+        return await asyncio.gather(
+            sdb.try_claim_slot(200, limit=17, season=SEASON, at=AT),
+            sdb.try_claim_slot(201, limit=17, season=SEASON, at=AT),
+        )
+
+    assert sorted(_run(race())) == [False, True]
+    assert _run(sdb.slots_taken()) == 17
+
+
+def test_pack_keeps_slot_on_leave(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    _active(11)
+    for tid in (10, 11):
+        _run(sdb.try_claim_slot(tid, limit=17, season=SEASON, at=AT))
+    assert _run(sdb.set_pack(10, True, at=AT)) is True
+    assert _run(sdb.get_status(10))["pack_at"] == AT
+    _run(sdb.set_status(10, "left", at=AT))
+    _run(sdb.set_status(11, "declined", at=AT))
+    assert _run(sdb.get_status(10))["slot_at"] == AT
+    assert _run(sdb.get_status(11))["slot_at"] is None
+    assert _run(sdb.slots_taken()) == 1
+    # Сброс статуса (none) без пакета тоже освобождает.
+    _active(12)
+    _run(sdb.try_claim_slot(12, limit=17, season=SEASON, at=AT))
+    _run(sdb.set_status(12, None, at=AT))
+    assert _run(sdb.slots_taken()) == 1
+
+
+def test_pack_revoked_after_leave_frees_slot(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    _run(sdb.try_claim_slot(10, limit=17, season=SEASON, at=AT))
+    _run(sdb.set_pack(10, True, at=AT))
+    _run(sdb.set_status(10, "left", at=AT))
+    assert _run(sdb.set_pack(10, False, at=AT)) is True
+    st = _run(sdb.get_status(10))
+    assert st["pack_at"] is None and st["slot_at"] is None
+
+
+def test_reserve_only_for_candidate(tmp_path):
+    _ready(tmp_path)
+    _seed(10)
+    _run(sdb.set_status(10, "candidate", at=AT))
+    assert _run(sdb.set_reserve(10, at=AT)) is True
+    assert _run(sdb.get_status(10))["reserve_at"] == AT
+    _active(11)
+    assert _run(sdb.set_reserve(11, at=AT)) is False
+    # Взяли из запаса — отметка снята.
+    _run(sdb.set_status(10, "active", at=AT))
+    assert _run(sdb.get_status(10))["reserve_at"] is None
+
+
+def test_list_page_filters_order_and_city(tmp_path):
+    _ready(tmp_path)
+    _seed(1, city="msk")
+    _seed(2, city="spb")
+    _seed(3, city="msk")
+    _run(sdb.set_status(1, "candidate", at="2026-09-01 10:00:00"))
+    _run(sdb.set_status(2, "candidate", at="2026-09-02 10:00:00"))
+    _run(sdb.set_status(3, "candidate", at="2026-09-03 10:00:00"))
+    _run(sdb.set_reserve(1, at=AT))
+    ids = [r["telegram_id"] for r in _run(sdb.list_page("candidates", offset=0, limit=10))]
+    assert ids == [2, 3, 1]
+    assert [r["telegram_id"] for r in _run(sdb.list_page("candidates", offset=1, limit=1))] == [3]
+    assert _run(sdb.count_by_filter("candidates")) == 3
+    scope = ("msk", ())
+    ids = [r["telegram_id"] for r in _run(sdb.list_page("candidates", offset=0, limit=10,
+                                                        city_scope=scope))]
+    assert ids == [3, 1]
+    assert _run(sdb.count_by_filter("candidates", city_scope=scope)) == 2
+
+    _active(4)
+    _active(5)
+    _run(sdb.try_claim_slot(4, limit=17, season=SEASON, at=AT))
+    assert {r["telegram_id"] for r in _run(sdb.list_page("team", offset=0, limit=10))} == {4, 5}
+    assert [r["telegram_id"] for r in _run(sdb.list_page("no_pack", offset=0, limit=10))] == [5]
+    _run(sdb.set_status(2, "declined", at=AT))
+    assert [r["telegram_id"] for r in _run(sdb.list_page("declined", offset=0, limit=10))] == [2]
+    row = _run(sdb.list_page("team", offset=0, limit=1))[0]
+    assert {"telegram_id", "full_name", "username", "event_city", "status", "season",
+            "ambassador_status", "ambassador_slot_at", "ambassador_pack_at"} <= set(row)
+    try:
+        _run(sdb.list_page("all", offset=0, limit=1))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("неизвестный фильтр должен давать ValueError")
+
+
+def test_decline_remaining_and_notice_once(tmp_path):
+    _ready(tmp_path)
+    for tid in (1, 2):
+        _seed(tid)
+        _run(sdb.set_status(tid, "candidate", at=AT))
+    _active(3)
+    assert sorted(_run(sdb.decline_remaining(at=AT, by=77))) == [1, 2]
+    assert _run(sdb.get_status(1))["status"] == "declined"
+    assert _run(sdb.get_status(3))["status"] == "active"
+    assert _run(sdb.decline_remaining(at=AT, by=77)) == []
+    assert _run(sdb.claim_decline_notice(1, at=AT)) is True
+    assert _run(sdb.claim_decline_notice(1, at=AT)) is False
+    assert _run(sdb.claim_decline_notice(3, at=AT)) is False
+
+
+def test_release_slot_and_unapproved_holders(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    _active(11)
+    for tid in (10, 11):
+        _run(sdb.try_claim_slot(tid, limit=17, season=SEASON, at=AT))
+    _run(sdb.set_pack(11, True, at=AT))
+    _run(db.set_user_status(10, "rejected"))
+    _run(db.set_user_status(11, "rejected"))
+    assert _run(sdb.unapproved_slot_holders(SEASON)) == [10]
+    assert _run(sdb.release_slot(10)) is True
+    st = _run(sdb.get_status(10))
+    assert st["slot_at"] is None and st["status"] == "active"
+    assert _run(sdb.release_slot(11)) is False
+    assert _run(sdb.get_status(11))["slot_at"] == AT
+    assert _run(sdb.unapproved_slot_holders(SEASON)) == []
+
+
+def test_archive_and_reset_season(tmp_path):
+    _ready(tmp_path)
+    _active(10)
+    _run(sdb.try_claim_slot(10, limit=17, season=SEASON, at=AT))
+    _run(sdb.set_pack(10, True, at=AT))
+    _seed(11)
+    _run(sdb.set_status(11, "candidate", at=AT))
+    _run(sdb.set_reserve(11, at=AT))
+    _active(12)
+    _run(sdb.set_status(12, "left", at="2026-09-20 00:00:00"))
+    _seed(13)
+    assert _run(sdb.count_with_status()) == 3
+    assert len(_run(sdb.export_rows())) == 3
+
+    assert _run(sdb.archive_and_reset_season(SEASON, at="2026-10-01 00:00:00")) == 3
+    arch = _sql("SELECT telegram_id, season, status, since, slot_at, pack_at "
+                "FROM ambassador_season_archive ORDER BY telegram_id")
+    assert arch == [(10, SEASON, "active", AT, AT, AT),
+                    (11, SEASON, "candidate", None, None, None),
+                    (12, SEASON, "left", AT, None, None)]
+    rows = _sql("SELECT telegram_id, ambassador_status, is_ambassador, ambassador_slot_at, "
+                "ambassador_pack_at, ambassador_reserve_at, ambassador_since, ambassador_left_at "
+                "FROM users ORDER BY telegram_id")
+    assert rows == [(10, None, 0, None, None, None, AT, None),
+                    (11, None, 0, None, None, None, None, None),
+                    (12, None, 0, None, None, None, AT, "2026-09-20 00:00:00"),
+                    (13, None, 0, None, None, None, None, None)]
+    assert _run(sdb.count_with_status()) == 0
+    assert _run(sdb.slots_taken()) == 0
+    assert len(_run(sdb.export_archive_rows())) == 3
+    # Повтор с тем же сезоном не падает; пустое имя сезона — 'legacy'.
+    assert _run(sdb.archive_and_reset_season(SEASON, at="x")) == 0
+    _active(14)
+    _run(sdb.archive_and_reset_season("", at="x"))
+    assert _sql("SELECT season FROM ambassador_season_archive WHERE telegram_id = 14") == [("legacy",)]
