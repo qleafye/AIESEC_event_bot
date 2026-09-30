@@ -21,7 +21,7 @@ def client(tmp_path):
 
 
 def _patch_view(monkeypatch, view):
-    async def _dv(tid):
+    async def _dv(tid, user=None, need_state=True):
         if isinstance(view, Exception):
             raise view
         return view
