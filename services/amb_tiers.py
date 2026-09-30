@@ -35,8 +35,10 @@ miniapp запрещена.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from amb_tier_keys import MAX_TIERS, tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services.timeutil import msk_now
@@ -49,14 +51,20 @@ DEADLINE_FORMAT = "%Y-%m-%d %H:%M"
 _STAMP = "%Y-%m-%d %H:%M:%S"
 
 
-def can_earn_tiers(user: dict | None, season: str) -> bool:
+def can_earn_tiers(user: dict | None, season: str, *, require_approved: bool = True) -> bool:
     """Кто получает ступени: амбассадор (`is_ambassador = 1`) с ОДОБРЕННОЙ собственной заявкой
     ТЕКУЩЕГО сезона (решение владельца 30.09). Кнопку «Хочу свою ссылку» может нажать любой, но
     ступени откроются, только когда одобрят его самого, — иначе отклонённый или ещё не
     рассмотренный делегат собирал бы награды. Приглашённые при этом считаются за весь сезон,
-    в том числе пришедшие до вступления."""
+    в том числе пришедшие до вступления.
+
+    `require_approved=False` (галочка события `amb_tiers_require_approved`) снимает требование
+    одобренной собственной заявки — остаётся только «амбассадор». Значение читает вызывающий
+    (`require_approved_on()`), функция остаётся синхронной и чистой."""
     if not user or int(user.get("is_ambassador") or 0) != 1:
         return False
+    if not require_approved:
+        return True
     return user.get("status") == "approved" and (user.get("season") or "") == (season or "")
 
 
@@ -64,8 +72,48 @@ async def program_on() -> bool:
     return await get_setting_typed("amb_qualified_program") == "on"
 
 
+async def require_approved_on() -> bool:
+    """Галочка события «ступени только амбассадору с одобренной заявкой» (по умолчанию включена)."""
+    return await get_setting_typed("amb_tiers_require_approved") != "off"
+
+
+@dataclass(frozen=True)
+class TierCfg:
+    """Настройка одной ступени: порог, ключи текста/листа ожидания/«следующего шага» и квота
+    (`None` — квота на этой ступени выключена)."""
+    n: int
+    threshold: int
+    text_key: str
+    quota: int | None
+    waitlist_key: str
+    next_key: str
+
+
+async def tiers_count() -> int:
+    raw = int(await get_setting_typed("amb_tiers_count"))
+    return max(1, min(MAX_TIERS, raw))
+
+
+async def tiers_config() -> list[TierCfg]:
+    """Ступени 1..`amb_tiers_count` по возрастанию."""
+    result: list[TierCfg] = []
+    for n in range(1, await tiers_count() + 1):
+        quota_on = await get_setting_typed(tier_key(n, "quota_on")) == "on"
+        quota = int(await get_setting_typed(tier_key(n, "quota"))) if quota_on else None
+        result.append(TierCfg(
+            n=n,
+            threshold=int(await get_setting_typed(tier_key(n, "threshold"))),
+            text_key=tier_key(n, "text"),
+            quota=quota,
+            waitlist_key=tier_key(n, "waitlist"),
+            next_key=tier_key(n, "next"),
+        ))
+    return result
+
+
 async def thresholds() -> tuple[int, int, int]:
-    """Пороги ступеней 1/2/3 (int реестра: мусор и ≤0 уже дают дефолт)."""
+    """Пороги ступеней 1/2/3 (int реестра: мусор и ≤0 уже дают дефолт). Совместимость для
+    вызовов, которым нужны ровно три порога."""
     return (
         int(await get_setting_typed("amb_tier1_threshold")),
         int(await get_setting_typed("amb_tier2_threshold")),
