@@ -236,6 +236,113 @@ async def quota_summary() -> dict[int, dict]:
     return result
 
 
+async def delete_tier_row(telegram_id: int, tier: int) -> dict | None:
+    """Удаляет строку ступени амбассадора и отдаёт её (`None` — такой строки уже нет: повторное
+    нажатие). Выданное место квоты освобождается само: квота считается по строкам `granted`."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            async with conn.execute(
+                "SELECT * FROM ambassador_tiers WHERE telegram_id = ? AND tier = ?",
+                (int(telegram_id), int(tier)),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await conn.rollback()
+                return None
+            cursor = await conn.execute(
+                "DELETE FROM ambassador_tiers WHERE telegram_id = ? AND tier = ?",
+                (int(telegram_id), int(tier)),
+            )
+            won = cursor.rowcount == 1
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return dict(row) if won else None
+
+
+async def first_waitlisted(tier: int) -> dict | None:
+    """Первый в листе ожидания ступени: самый ранний `reached_at` (при равенстве — меньший id)."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM ambassador_tiers WHERE tier = ? AND o2o_status = 'waitlist' "
+            "ORDER BY reached_at, telegram_id LIMIT 1",
+            (int(tier),),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def promote_first_waitlisted(tier: int, quota: int, *, at: str) -> int | None:
+    """Отдаёт свободное место ступени первому из листа ожидания и возвращает его id.
+    `None` — места нет или лист пуст. `BEGIN IMMEDIATE` + условный `UPDATE ... WHERE
+    o2o_status = 'waitlist'` + `rowcount`: два менеджера за одно место дадут одно повышение.
+    `notified_at` сбрасывается — человеку уйдёт текст ступени (ставит вызывающий)."""
+    async with _db._connect() as conn:
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            async with conn.execute(
+                "SELECT COUNT(*) FROM ambassador_tiers WHERE tier = ? AND o2o_status = 'granted'",
+                (int(tier),),
+            ) as cursor:
+                granted = (await cursor.fetchone())[0]
+            if granted >= int(quota):
+                await conn.rollback()
+                return None
+            async with conn.execute(
+                "SELECT telegram_id FROM ambassador_tiers WHERE tier = ? "
+                "AND o2o_status = 'waitlist' ORDER BY reached_at, telegram_id LIMIT 1",
+                (int(tier),),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await conn.rollback()
+                return None
+            cursor = await conn.execute(
+                "UPDATE ambassador_tiers SET o2o_status = 'granted', notified_at = NULL "
+                "WHERE telegram_id = ? AND tier = ? "
+                "AND o2o_status = 'waitlist'",
+                (int(row[0]), int(tier)),
+            )
+            won = cursor.rowcount == 1
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return int(row[0]) if won else None
+
+
+async def waitlist_count(tier: int) -> int:
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT COUNT(*) FROM ambassador_tiers WHERE tier = ? AND o2o_status = 'waitlist'",
+            (int(tier),),
+        ) as cursor:
+            return int((await cursor.fetchone())[0])
+
+
+async def tiers_summary(season: str | None = None) -> dict[int, dict]:
+    """`{ступень: {"reached", "granted", "waitlist"}}` по ступеням, которые кто-то получил:
+    достигли всего, место выдано, ждут места. `season` не используется — `ambassador_tiers`
+    привязана к событию самой базой (один стек = одно событие); параметр оставлен для
+    единообразия с остальными счётчиками модуля."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT tier, COUNT(*), "
+            "SUM(CASE WHEN o2o_status = 'granted' THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN o2o_status = 'waitlist' THEN 1 ELSE 0 END) "
+            "FROM ambassador_tiers GROUP BY tier"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {
+        int(tier): {"reached": int(total), "granted": int(granted or 0), "waitlist": int(wait or 0)}
+        for tier, total, granted, wait in rows
+    }
+
+
 async def stale_unnotified(older_than: str) -> list[dict]:
     """Ступени без отметки `notified_at`, достигнутые раньше `older_than` (строка в формате
     `YYYY-MM-DD HH:MM:SS`): уведомление потерялось или ещё в очереди."""
