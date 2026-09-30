@@ -96,7 +96,8 @@ async def referral_counts_bulk(referrer_ids: list[int] | None, season: str) -> d
 
 async def claim_new_tiers(telegram_id: int, tiers: list[int], reached_at: str,
                           quotas: "dict[int, int | None] | int | None" = None, *,
-                          o2o_quota: int | None = None, o2o_tier: int = 2) -> list[dict]:
+                          o2o_quota: int | None = None, o2o_tier: int = 2,
+                          season: str | None = None) -> list[dict]:
     """Записывает достигнутые ступени и возвращает ТОЛЬКО новые: `[{"tier", "o2o_status"}]`.
 
     `quotas` — `{ступень: квота}` для ступеней с включённой квотой (на остальных квоты нет и
@@ -111,7 +112,11 @@ async def claim_new_tiers(telegram_id: int, tiers: list[int], reached_at: str,
 
     Порядок раздачи = порядок успешной записи строки ступени: у живых путей это порядок, в
     котором одобрения довели амбассадоров до порога; бэкафилл зовёт функцию последовательно,
-    упорядочив амбассадоров по `users.approved_at`. Сверх квоты — 'waitlist'."""
+    упорядочив амбассадоров по `users.approved_at`. Сверх квоты — 'waitlist'.
+
+    `season` задан — ступени, снятые менеджером вручную (`amb_tier_revocations`), и все старшие
+    не выдаются: это общая нижняя точка всех путей автовыдачи. Проверка внутри той же
+    транзакции, что и запись, — гонки со снятием нет."""
     if isinstance(quotas, int) and not isinstance(quotas, bool):
         quotas = {int(o2o_tier): int(quotas)}
     elif quotas is None:
@@ -121,7 +126,10 @@ async def claim_new_tiers(telegram_id: int, tiers: list[int], reached_at: str,
     async with _db._connect() as conn:
         await conn.execute("BEGIN IMMEDIATE")
         try:
+            floor = await _revoked_floor(conn, int(telegram_id), season) if season else None
             for tier in sorted({int(t) for t in tiers}):
+                if floor is not None and tier >= floor:
+                    continue
                 status = None
                 if tier in limits:
                     async with conn.execute(
@@ -144,6 +152,86 @@ async def claim_new_tiers(telegram_id: int, tiers: list[int], reached_at: str,
             await conn.rollback()
             raise
     return new_rows
+
+
+async def _revoked_floor(conn, telegram_id: int, season: str) -> int | None:
+    """Младшая из снятых вручную ступеней человека в сезоне (`None` — снятых нет)."""
+    async with conn.execute(
+        "SELECT MIN(tier) FROM amb_tier_revocations WHERE telegram_id = ? AND season = ?",
+        (int(telegram_id), season),
+    ) as cursor:
+        value = (await cursor.fetchone())[0]
+    return int(value) if value is not None else None
+
+
+async def revoked_floor(telegram_id: int, season: str) -> int | None:
+    """Ступень, с которой автовыдача человеку закрыта (снятая вручную и все старшие)."""
+    async with _db._connect() as conn:
+        return await _revoked_floor(conn, telegram_id, season)
+
+
+async def revoked_floors(season: str) -> dict[int, int]:
+    """`{telegram_id: младшая снятая ступень}` за сезон — для предпросмотра бэкафилла."""
+    async with _db._connect() as conn:
+        async with conn.execute(
+            "SELECT telegram_id, MIN(tier) FROM amb_tier_revocations WHERE season = ? "
+            "GROUP BY telegram_id", (season,),
+        ) as cursor:
+            return {int(t): int(n) for t, n in await cursor.fetchall()}
+
+
+async def list_revocations(season: str) -> list[dict]:
+    """Снятые вручную ступени сезона: по времени снятия, новые сверху."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM amb_tier_revocations WHERE season = ? "
+            "ORDER BY revoked_at DESC, telegram_id, tier", (season,),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def remove_revocation(telegram_id: int, tier: int, season: str) -> bool:
+    """Снимает метку «снята вручную». `False` — метки уже нет (повторное нажатие)."""
+    async with _db._connect() as conn:
+        cursor = await conn.execute(
+            "DELETE FROM amb_tier_revocations WHERE telegram_id = ? AND tier = ? AND season = ?",
+            (int(telegram_id), int(tier), season),
+        )
+        await conn.commit()
+        return cursor.rowcount == 1
+
+
+async def revoke_tier_sticky(telegram_id: int, tier: int, season: str, *, by: int | None,
+                             at: str) -> dict | None:
+    """Ручное снятие одной транзакцией: удаляет строку ступени и пишет метку, которая не даёт
+    автоматике выдать её снова. `None` — такой ступени у человека нет (повторное нажатие)."""
+    async with _db._connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            async with conn.execute(
+                "SELECT * FROM ambassador_tiers WHERE telegram_id = ? AND tier = ?",
+                (int(telegram_id), int(tier)),
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await conn.rollback()
+                return None
+            await conn.execute(
+                "DELETE FROM ambassador_tiers WHERE telegram_id = ? AND tier = ?",
+                (int(telegram_id), int(tier)),
+            )
+            await conn.execute(
+                "INSERT OR REPLACE INTO amb_tier_revocations "
+                "(telegram_id, tier, season, revoked_at, revoked_by) VALUES (?, ?, ?, ?, ?)",
+                (int(telegram_id), int(tier), season, at, by),
+            )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+    return dict(row)
 
 
 async def mark_tiers_notified(telegram_id: int, tiers: list[int], at: str) -> None:
