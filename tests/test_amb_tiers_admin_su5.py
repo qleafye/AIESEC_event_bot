@@ -247,7 +247,7 @@ def test_screen_off_says_disabled_and_has_buttons(tmp_path):
     assert "выключена" in text
     callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
     for expected in ("ambt_toggle:program", "ambt_toggle:hide", "ambt_csv", "ambt_excl",
-                     "ambt_excl_list:0", "settings_group:game", "admin_sec:game"):
+                     "ambt_excl_list:0", "ambl:main", "admin_sec:game"):
         assert expected in callbacks, expected
     # подписи кнопок — человеческие, без кодовых имён ключей
     labels = " ".join(b.text for row in kb.inline_keyboard for b in row)
