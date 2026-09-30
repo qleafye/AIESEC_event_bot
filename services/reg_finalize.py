@@ -255,6 +255,20 @@ async def _auto_reject_cleared_marker(old_rule_ids_raw: str | None, changes: lis
     return marker
 
 
+async def _amb_form_yes(telegram_id: int) -> None:
+    """Ответ «да» на вопрос «Хочешь стать амбассадором?». В режиме отбора делегат становится
+    кандидатом — отдельной записью статуса (`is_ambassador_candidate` остаётся ответом анкеты
+    и переподачей перезаписывается, статус кандидата — нет). В режиме «сразу» — как раньше:
+    в команду ведёт кнопка после анкеты. Отказанного/уже кандидата `request_join` не трогает.
+    Сбой не роняет уже сохранённую заявку."""
+    try:
+        from services import amb_status
+        if await amb_status.join_mode() == amb_status.MODE_SELECTION:
+            await amb_status.request_join(telegram_id, source="form")
+    except Exception as e:
+        logger.error(f"amb_status.request_join(form) failed for {telegram_id}: {e}")
+
+
 async def finalize_data(telegram_id: int, username: str | None, draft: dict) -> dict:
     """Синхронная (в смысле «сразу», не «эффекты потом») часть финала — вызывается ПОСЛЕ
     `database.db.claim_reg_draft`. `draft` — строка `reg_drafts` (или псевдо-черновик,
@@ -343,6 +357,8 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     telegram_id, patch, allowed_columns=reg_engine.answer_columns()
                 )
                 await mark_user_edited(telegram_id, source)
+                if "is_ambassador_candidate" in changed_columns and answers.get("is_ambassador_candidate"):
+                    await _amb_form_yes(telegram_id)
                 # Phase 33 (задача 3): любая РЕАЛЬНО применённая правка гасит личное исключение
                 # «✏️ Открыть правку после решения» (handlers/admin_edit_grant.py), безусловно
                 # — не только когда именно оно разрешило эту правку (обычная правка pending-
@@ -549,6 +565,9 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             # тихо поглощённым, иначе делегат уверен, что зарегистрировался, а строки нет.
             await add_user(data)
 
+            if data.get("is_ambassador_candidate"):
+                await _amb_form_yes(telegram_id)
+
             # Quick 260904-aup (D5, «Источник»): узкий UPDATE — тот же приём, которым ниже по
             # этой же функции post_finalize дописывает `resume_url` (не разрастание большого
             # INSERT в add_user). `draft["meta"]` — единственное место, где ещё жив признак
@@ -652,6 +671,12 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     await check_tiers_for_invitees([telegram_id])
                 except Exception as e:
                     logger.error(f"check_tiers_for_invitees failed for {telegram_id}: {e}")
+                # Своя заявка амбассадора одобрена — место в лимите, если есть.
+                try:
+                    from services import amb_status
+                    await amb_status.on_applications_approved([telegram_id])
+                except Exception as e:
+                    logger.error(f"on_applications_approved failed for {telegram_id}: {e}")
 
             try:
                 await record_reg_event(
