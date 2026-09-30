@@ -1010,6 +1010,8 @@ ADMIN_CAPS: dict[str, str] = {
     "ambl_rev_go:*": "moderate_game",
     "ambl_prom:*": "moderate_game",
     "ambl_prom_go:*": "moderate_game",
+    "ambl_unrev": "moderate_game",
+    "ambl_unrev_go:*": "moderate_game",
     "state:AmbTierRevoke:*": "moderate_game",
     # «💰 Баллы и приватность» (handlers/admin_amb_points.py): «ambpt_coins» не ловит
     # «ambpt_coins_cancel», «ambpt_toggle:*» — префикс.
