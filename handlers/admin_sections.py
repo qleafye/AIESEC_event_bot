@@ -183,10 +183,6 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
-        # Phase 32 (32-10, D-06/D-10): «🌊 Волны» — сразу после «Задания» (interfaces плана).
-        ("screen", "admin_game_waves", "🌊 Волны"),
-        # Ступени амбассадоров СкиллАп: тумблеры, выгрузка CSV, исключение из зачёта.
-        ("screen", "admin_amb_tiers", "🎓 Ступени амбассадоров"),
         ("op", "admin_game_review"),
         ("op", "admin_coins_manual"),
         ("op", "admin_coins_journal"),
@@ -194,11 +190,17 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_game_stats"),
         ("group", "game"),
     ]),
-    # Команда амбассадоров: как вступают, сколько мест, кандидаты. Волны и ступени пока
-    # остаются в «🎮 Геймификации».
+    # Всё амбассадорское: вход и места, кандидаты, баллы, ступени, волны, исключения, закрепление.
+    # Волны и ступени переехали сюда из «🎮 Геймификации». Пока модуль «🤝 Отбор амбассадоров»
+    # выключен, раздела в корне нет, и эти две строки показываются в «🎮 Геймификации»
+    # (`_AMB_OFF_GAME_ROWS`) — иначе волны и ступени Юлида стали бы недостижимы.
     ("amb", "🤝 Амбассадоры", [
         ("screen", "admin_amb_entry", "🚪 Вход и лимит"),
         ("screen", "admin_amb_candidates", "🙋 Кандидаты и команда"),
+        ("screen", "admin_amb_points", "💰 Баллы и приватность"),
+        ("screen", "admin_amb_tiers", "🎓 Ступени амбассадоров"),
+        ("screen", "admin_game_waves", "🌊 Волны"),
+        ("screen", "ambt_excl_list:0", "🚫 Исключения из зачёта"),
         ("screen", "admin_amb_attach", "📎 Закрепить приглашённого"),
     ]),
     ("data", "📊 Данные", [
@@ -263,7 +265,7 @@ _SECTION_HINTS = {
     "pay": "Чеки делегатов, реквизиты, сроки и напоминания об оплате.",
     "comms": "Рассылки и опросы — всё, что уходит делегатам разом.",
     "game": "Задания, проверка сдач и монеты.",
-    "amb": "Кто в команде амбассадоров: как вступают, сколько мест, кандидаты.",
+    "amb": "Команда амбассадоров: вход и места, кандидаты, баллы за приглашённых, ступени, волны, исключения.",
     "data": "Статистика, выгрузки и Google-таблица.",
     "manage": "Города, роли, оформление и запуск нового сезона.",
 }
@@ -335,6 +337,21 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
     права и фильтрует строки, а каждый реальный callback проверяет `CapabilityMiddleware`."""
     token = section_of(callback_data)
     return InlineKeyboardButton(text=text, callback_data=f"admin_sec:{token}" if token else "admin_menu")
+
+
+# Экраны раздела «🤝 Амбассадоры», у которых есть собственный тумблер и которые должны жить и
+# при выключенном «🤝 Отборе амбассадоров» (волны, ступени): раздела в корне тогда нет, а эти две
+# строки показываются в «🎮 Геймификации».
+_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers")  # порядок = порядок в «🎮 Геймификации»
+
+
+async def owner_back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
+    """`back_button`, но с учётом выключенного модуля отбора: волны и ступени при выключенном
+    модуле возвращают в «🎮 Геймификацию» (раздела «🤝 Амбассадоры» тогда нет — кнопка вела бы
+    в алерт «раздел выключен»)."""
+    if callback_data in _AMB_OFF_GAME_ROWS and not await _amb_section_on():
+        return InlineKeyboardButton(text=text, callback_data="admin_sec:game")
+    return back_button(callback_data, text)
 
 
 # Экран, на который приземляется старая кнопка «⚙️ Настройки форума» (callback `admin_settings`)
@@ -497,6 +514,14 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
     if caps is None:
         caps = await resolve_capabilities(admin_id)
     rows = visible_rows(token, caps, admin_id in config.ADMIN_IDS)
+    if token == "game" and not await _amb_section_on():
+        # Модуль отбора выключен — раздела «🤝 Амбассадоры» нет, волны и ступени живут здесь,
+        # сразу после «Задания», как до переезда.
+        extra = sorted((r for r in visible_rows("amb", caps, admin_id in config.ADMIN_IDS)
+                        if row_callback(r) in _AMB_OFF_GAME_ROWS),
+                       key=lambda r: _AMB_OFF_GAME_ROWS.index(row_callback(r)))
+        at = 1 if rows and rows[0][1] == "admin_game_tasks" else 0
+        rows = rows[:at] + extra + rows[at:]
     op_labels = {callback_data: text for text, callback_data in _ADMIN_MENU_ROWS}
     code = await admin_selected_city(admin_id)  # ЕДИНСТВЕННОЕ чтение шапки на рендер
     toggles = await settings_toggle_rows(admin_id, header_code=code) if any(r[0] == "toggle" for r in rows) else {}
