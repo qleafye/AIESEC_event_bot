@@ -105,7 +105,7 @@ async def _deadline_line() -> str:
 
 
 async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import back_button
+    from handlers.admin_sections import owner_back_button
 
     program = await amb_tiers.program_on()
     hide = await get_setting_typed("amb_hide_invitee_names") == "on"
@@ -150,7 +150,7 @@ async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="🚫 Исключить приглашённого из зачёта", callback_data="ambt_excl")],
         [InlineKeyboardButton(text=f"📋 Исключённые ({excluded})", callback_data="ambt_excl_list:0")],
         [InlineKeyboardButton(text="🪜 Лестница ступеней", callback_data="ambl:main")],
-        [back_button("admin_amb_tiers")],
+        [await owner_back_button("admin_amb_tiers")],
     ]
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
