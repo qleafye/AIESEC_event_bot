@@ -219,13 +219,20 @@ def _add_interval_job(func, job_id: str, interval: timedelta, *,
 # уровня). Mini App правит forum_date/тумблеры обеих функций из своего процесса, где
 # планировщика нет — тот же довод, что у `checkin_forum_reconcile` выше.
 async def _amb_journal_reconcile_job() -> None:
-    """Сверка журнала зачётов приглашённых (отзывы, пропущенные строки, места амбассадоров).
+    """Сверка журнала зачётов приглашённых (отзывы, пропущенные строки, места амбассадоров), вторым
+    шагом — сверка ступеней амбассадоров.
     Модульная функция: SQLAlchemyJobStore хранит её как module:qualname."""
     try:
         from services.amb_journal import reconcile
         await reconcile()
     except Exception as e:
         logger.error(f"_amb_journal_reconcile_job failed: {e}")
+    try:
+        # Ступени амбассадоров: дозапись пропущенных и повторная постановка зависших уведомлений.
+        from services.amb_tiers import reconcile_tiers
+        await reconcile_tiers()
+    except Exception as e:
+        logger.error(f"_amb_journal_reconcile_job: reconcile_tiers failed: {e}")
 
 
 async def _reconcile_forum_report_and_poll_job() -> None:

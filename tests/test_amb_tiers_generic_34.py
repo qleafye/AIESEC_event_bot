@@ -451,3 +451,101 @@ def test_legacy_positional_quota_still_means_tier_two(tmp_path):
     assert [(r["tier"], r["o2o_status"]) for r in rows] == [(1, None), (2, "granted")]
     rows = _run(amb_tiers_db.claim_new_tiers(2, [2], "2026-09-01 00:00:00", o2o_quota=1))
     assert rows[0]["o2o_status"] == "waitlist"
+
+
+# ── прогресс, дашборд, бэкафилл, сверка ─────────────────────────────────────────────────────
+
+def test_progress_targets_nearest_labelled_tier(tmp_path):
+    from services import amb_progress
+
+    _ready(tmp_path)
+    _five_tiers()
+    _set(amb_tier1_next_label="До ступени 1: {n}")
+    _ambassador(1)
+    view = _run(amb_progress.progress_view(1))
+    assert (view["next_tier"], view["n"], view["next_kind"]) == (1, 1, "tier1")
+    _invite(1, 1)
+    view = _run(amb_progress.progress_view(1))
+    assert (view["next_tier"], view["n"], view["next_kind"]) == (2, 1, "o2o")
+    _invite(1, 3, start=5000)
+    view = _run(amb_progress.progress_view(1))  # 4 прошли: следующая — ступень 4 (порог 6)
+    assert (view["next_tier"], view["n"]) == (4, 2)
+    _invite(1, 4, start=6000)
+    view = _run(amb_progress.progress_view(1))
+    assert view["next_tier"] is None and view["next_kind"] == "done" and view["n"] == 0
+
+
+def test_progress_skips_empty_label_and_renders(tmp_path):
+    from services import amb_progress
+
+    _ready(tmp_path)
+    _five_tiers()
+    _ambassador(1)
+    view = _run(amb_progress.progress_view(1))  # подпись ступени 1 пуста — цель ступень 2
+    assert view["next_tier"] == 2 and view["n"] == 2
+
+    async def tr_key(key):
+        return {"amb_progress_text": "{total}/{qualified} {next_step}",
+                "amb_next_step_o2o_text": "до 2: {n}"}[key]
+
+    assert _run(amb_progress.render_progress(1, tr_key)) == "0/0 до 2: 2"
+
+
+def test_dashboard_block_per_tier(tmp_path):
+    from dashboard.amb_tiers_block import amb_tiers_block
+
+    _ready(tmp_path)
+    _five_tiers(amb_tier3_quota_on="on", amb_tier3_quota=1)
+    for tid in (1, 2):
+        _ambassador(tid)
+        _invite(tid, 4)
+        _run(amb_tiers.check_tiers([tid], notify=False))
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        class _Scope:
+            season = None
+            city = None
+
+        block = amb_tiers_block(conn, _Scope())
+    finally:
+        conn.close()
+    by = {t["tier"]: t for t in block["tiers"]}
+    assert len(by) == 5 and by[3]["reached"] == 2 and by[4]["reached"] == 0
+    assert (by[3]["quota"], by[3]["granted"], by[3]["waitlist"]) == (1, 1, 1)
+    assert by[2]["quota"] is None
+    assert block["qualified_total"] == 8 and block["active"] == 2
+    assert (block["o2o_granted"], block["o2o_quota"], block["waitlist"]) == (1, 1, 1)
+
+
+def test_preview_backfill_five_tiers_with_quota(tmp_path):
+    _ready(tmp_path)
+    _five_tiers(amb_tier3_quota_on="on", amb_tier3_quota=1)
+    for tid in (1, 2):
+        _ambassador(tid)
+        _invite(tid, 4)
+    preview = _run(amb_tiers.preview_backfill())
+    statuses = {e["telegram_id"]: {t["tier"]: t["o2o_status"] for t in e["tiers"]} for e in preview}
+    assert sorted(st[3] for st in statuses.values()) == ["granted", "waitlist"]
+    assert all(st[1] is None and st[2] is None for st in statuses.values())
+    assert _run(amb_tiers_db.list_tiers()) == []
+
+
+def test_reconcile_grants_missed_and_requeues_stale_once(tmp_path):
+    _ready(tmp_path)
+    _five_tiers()
+    _ambassador(1)
+    _invite(1, 2)
+    out = _run(amb_tiers.reconcile_tiers())
+    assert out["granted"] == 2
+    assert [e["tier"] for e in _events()] == [2]  # старшая новая ступень
+    _sql("DELETE FROM miniapp_outbox")  # событие потерялось
+    _sql("UPDATE ambassador_tiers SET reached_at = '2000-01-01 00:00:00'")
+    out = _run(amb_tiers.reconcile_tiers())
+    assert out["requeued"] == 1 and [e["tier"] for e in _events()] == [2]
+    out = _run(amb_tiers.reconcile_tiers())  # необработанное событие уже есть
+    assert out["requeued"] == 0 and len(_events()) == 1
+
+
+def test_reconcile_program_off_and_never_raises(tmp_path):
+    _ready(tmp_path)
+    assert _run(amb_tiers.reconcile_tiers()) == {"granted": 0, "requeued": 0}
