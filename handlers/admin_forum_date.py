@@ -70,7 +70,12 @@ async def forum_date_city_picker(admin_id: int) -> tuple[str, InlineKeyboardMark
 
 
 async def show_forum_date_city_picker(callback: types.CallbackQuery, state: FSMContext) -> None:
-    await state.clear()  # ни один ввод не должен лечь в общий ключ, пока город не выбран
+    # Ни один ввод не должен лечь в общий ключ, пока город не выбран; присланная текстом дата
+    # получает ответ «сначала выберите город» (handlers/admin_settings.settings_edit_value).
+    from handlers.states import EditSetting
+    await state.clear()
+    await state.set_state(EditSetting.waiting_for_value)
+    await state.set_data({"forum_date_pick_city": True})
     text, kb = await forum_date_city_picker(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -95,3 +100,45 @@ async def switch_header_to_button_city(callback: types.CallbackQuery, raw: str) 
         await callback.answer("Не получилось переключиться на этот город.", show_alert=True)
         return None
     return key
+
+
+# ── Экран даты города: общей даты нет, «↩️ Как везде» для неё — неправда ──────────────────
+#
+# При включённых городах форумные функции читают только дату города (`forum_date_for` без
+# отката на общую). Обычный экран городской настройки писал «Как везде. Общий текст: 03.10» и
+# предлагал «↩️ Как везде» — менеджер видел дату и считал город настроенным, а кнопка на деле
+# стирала дату города и выключала ему QR, SOS и меню дня форума.
+
+NO_CITY_DATE_LINE = ("Своей даты нет — QR накануне, SOS и меню дня форума этому городу "
+                     "не включатся. Нажмите «✏️ Изменить…» и пришлите дату.")
+CLEAR_CITY_DATE_BTN = "🗑 Стереть дату города"
+
+
+def is_city_only_key(key: str) -> bool:
+    """Ключ, у которого при включённых городах нет общего значения «как везде»."""
+    return key == "forum_date"
+
+
+def reset_city_button_text(key: str) -> str:
+    return CLEAR_CITY_DATE_BTN if is_city_only_key(key) else "↩️ Как везде"
+
+
+async def clear_city_date_confirm(key: str, code: str, current: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Подтверждение «🗑 Стереть дату города» — с тем, что у города выключится."""
+    import html
+    label = html.escape(await city_label(code))
+    text = (
+        f"🗑 Стереть дату форума города {label} (<b>{html.escape(current)}</b>)?\n\n"
+        "Без даты этому городу перестанут работать: QR накануне и утренний повтор, кнопка "
+        "«🆘 SOS», меню дня форума, шпаргалка волонтёрам, отчёт дня и опрос неявившихся. "
+        "Общей даты «для всех» нет — город останется без форума, пока вы не зададите дату снова."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, стереть дату", callback_data=f"settings_reset_city_go:{key}:{code}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"settings_edit:{key}")],
+    ])
+    return text, kb
+
+
+PICK_CITY_FIRST = ("Сначала выберите город кнопкой выше — дата форума задаётся для города. "
+                   "Передумали — нажмите «❌ Отмена».")
