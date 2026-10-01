@@ -46,15 +46,19 @@ from handlers import registration, user_actions, admin, payment  # noqa: F401  -
 # валидную пустую схему и подставляем её в config.DB_PATH ДО сборки тестов; тесты, которые
 # сами вызывают fast_init_db()/init_db() со своим tmp_path, тут же перезапишут config.DB_PATH
 # и разницы не заметят.
+import atexit as _atexit
 import os as _os
+import shutil as _shutil
 import tempfile as _tempfile
 
 from config import config as _config
 from tests._dbtpl import fast_init_db as _fast_init_db
 
-_config.DB_PATH = _os.path.join(
-    _tempfile.mkdtemp(prefix="gsd_conftest_default_db_"), "default.db"
-)
+_default_db_dir = _tempfile.mkdtemp(prefix="gsd_conftest_default_db_")
+# Уборка как у шаблона в tests/_dbtpl.py: без неё каждый воркер каждого прогона оставлял
+# папку с базой (к 01.10 — ~7000 папок, ~24 ГБ во временной папке ноутбука).
+_atexit.register(_shutil.rmtree, _default_db_dir, True)
+_config.DB_PATH = _os.path.join(_default_db_dir, "default.db")
 _fast_init_db()
 
 
