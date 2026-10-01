@@ -8,16 +8,17 @@
 
 - с шапкой «🌍 Все города» правка даты не начинается сразу, а сначала просит выбрать город
   кнопками (рядом видно, у кого какая дата уже стоит);
-- кнопки светофора «🚦 Готовность» несут город светофора в callback (`fdate_city:<ключ>:<код>`),
-  а не полагаются на шапку админки: светофор Тюмени при шапке «СПб» правит Тюмень.
+- кнопки светофора «🚦 Готовность» несут город светофора в callback
+  (`settings_edit_city:<ключ>@<код>`), а не полагаются на шапку админки: светофор Тюмени при
+  шапке «СПб» правит Тюмень.
 
 Выбор города переключает шапку админки на этот город: проверка права при сохранении
 (`handlers/admin_settings.settings_edit_value`) сверяет город правки с шапкой, а менеджер видит,
-в каком городе он теперь работает. Форма шва — `from handlers.admin import router`, импорт из
-`handlers/admin_forum_ready.py`."""
+в каком городе он теперь работает. Своих хендлеров у модуля нет: кнопки ведут в
+`handlers/admin_settings.settings_edit_city` — то же право «Настройки», что у экрана настройки."""
 from __future__ import annotations
 
-from aiogram import F, types
+from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -29,7 +30,6 @@ from cities import (
     enabled_cities,
     set_admin_city,
 )
-from handlers.admin import router
 from services.reject_rules import forum_date_for
 from settings_ops import per_city_visible_codes
 
@@ -38,7 +38,9 @@ CITY_FORUM_KEYS = ("forum_date", "sos_active_days")
 
 
 def city_edit_callback(key: str, code: str) -> str:
-    return f"fdate_city:{key}:{code}"
+    """Кнопка правки `key` для города `code` — тот же `settings_edit_city`, что у экрана
+    настройки (и то же право «Настройки»), но с городом в самой кнопке."""
+    return f"settings_edit_city:{key}@{code}"
 
 
 async def forum_date_city_picker(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
@@ -74,23 +76,22 @@ async def show_forum_date_city_picker(callback: types.CallbackQuery, state: FSMC
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("fdate_city:"))
-async def forum_city_key_edit(callback: types.CallbackQuery, state: FSMContext):
-    """Правка `forum_date`/`sos_active_days` для города из callback (светофор, выбор города)."""
-    parts = callback.data.split(":")
-    if len(parts) != 3 or parts[1] not in CITY_FORUM_KEYS:
-        await callback.answer("Неизвестная кнопка", show_alert=True)
-        return
-    _, key, code = parts
+async def switch_header_to_button_city(callback: types.CallbackQuery, raw: str) -> str | None:
+    """`settings_edit_city:<ключ>@<код>` — кнопка несёт город. Переключает шапку админки на этот
+    город (проверка права при сохранении сверяет город правки с шапкой) и возвращает ключ;
+    `None` — отказ уже показан алертом."""
+    key, _, code = raw.partition("@")
     admin_id = callback.from_user.id
+    if key not in CITY_FORUM_KEYS:
+        await callback.answer("Неизвестная кнопка", show_alert=True)
+        return None
     if not await cities_module_on():  # светофор без городов шлёт обычный settings_edit:<ключ>
         await callback.answer("Города выключены", show_alert=True)
-        return
+        return None
     if code not in city_codes() or code not in await per_city_visible_codes(admin_id):
         await callback.answer("Этот город правит суперадмин.", show_alert=True)
-        return
+        return None
     if await admin_selected_city(admin_id) != code and not await set_admin_city(admin_id, code):
         await callback.answer("Не получилось переключиться на этот город.", show_alert=True)
-        return
-    from handlers.admin_settings import begin_city_edit
-    await begin_city_edit(callback, state, key)
+        return None
+    return key
