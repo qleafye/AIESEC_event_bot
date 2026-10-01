@@ -1698,3 +1698,19 @@ def test_hub_sos_button_refuses_city_of_other_manager(tmp_path):
     _run(admin_sos.asos_city_open(cb))
     assert _run(cities.admin_selected_city(MANAGER_ID)) == "msk"
     assert cb.answers and cb.answers[0][1] is True  # алерт с объяснением
+
+
+def test_escalation_dm_names_delegate_city(tmp_path, monkeypatch):
+    """Эскалация «никто не взял» в личку — с городом делегата, как карточка в чате:
+    менеджер «всех городов» должен понять, чей это SOS."""
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_add_delegate(DELEGATE_ID, event_city="tyumen"))
+    rid = _run(db.create_sos_report(DELEGATE_ID, "tyumen"))
+    bot = FakeBot()
+    import services.scheduler as scheduler_module
+    monkeypatch.setattr(scheduler_module, "get_bot", lambda: bot, raising=False)
+    _run(sos_service.escalation_job(rid))
+    label = _run(cities.city_label("tyumen"))
+    alerts = [s[1] for s in bot.sent if "без ответа" in s[1]]
+    assert alerts and all(f"🏙 {label}" in a for a in alerts)

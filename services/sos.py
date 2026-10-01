@@ -814,7 +814,9 @@ async def _send_escalation(bot, report: dict, group_text: str, *, alert_head: st
             reply_to_message_id=report.get("card_message_id") or None,
         )
     user = await get_user(report["telegram_id"])
-    alert_text = f"{alert_head}\n\n" + render_card_text(report, user)
+    # Город — как у карточки в чате: менеджер «всех городов» иначе не понял бы, чей это SOS.
+    city_label = await resolve_city_label(report.get("city"))
+    alert_text = f"{alert_head}\n\n" + render_card_text(report, user, city_label=city_label)
     await notify_by_capability(bot, "moderate_reg", alert_text, parse_mode="HTML", city=report.get("city"))
 
 
