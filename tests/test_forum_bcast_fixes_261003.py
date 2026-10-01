@@ -333,3 +333,33 @@ def test_day_report_mark_failure_sends_nothing_and_backs_off(tmp_path, monkeypat
     monkeypatch.setattr(fdr, "msk_now", lambda: datetime(2026, 10, 3, 21, 10))
     _run(fdr.schedule_city_job(None))
     assert fake.jobs[fdr.job_id(None)].next_run_time == datetime(2026, 10, 3, 21, 30)
+
+
+# ── Карточка «в цифрах»: имя экранируется, пустая подпись не уходит ──────────────────────────
+
+def _stats_card_env(tmp_path, monkeypatch, name):
+    import services.forum_stats_card as fsc
+    from tests.test_forum_stats_card_260926 import FakeBot as CardBot, _fake_render
+    _ready(tmp_path)
+    _seed(9, name=name)
+    _run(db.set_setting("forum_stats_card_enabled", "on"))
+    bot = CardBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    _fake_render(monkeypatch, [])
+    return fsc, bot
+
+
+def test_stats_card_escapes_name_in_html_caption(tmp_path, monkeypatch):
+    fsc, bot = _stats_card_env(tmp_path, monkeypatch, "Аня <Котик> & Ко")
+    _run(db.set_setting("forum_stats_card_caption_text", "🎉 {name}, вот твой Юлид!"))
+    res = _run(fsc.send_broadcast(None, only_arrived=False))
+    assert res["sent"] == 1
+    caption = bot.photos[0][1]
+    assert "&lt;Котик&gt; &amp; Ко" in caption and "<Котик>" not in caption
+
+
+def test_stats_card_empty_caption_sends_nothing(tmp_path, monkeypatch):
+    fsc, bot = _stats_card_env(tmp_path, monkeypatch, "Аня")
+    _run(db.set_setting("forum_stats_card_caption_text", "   "))
+    res = _run(fsc.send_broadcast(None, only_arrived=False))
+    assert res.get("empty_caption") is True and bot.photos == []
