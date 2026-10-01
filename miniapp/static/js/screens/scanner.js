@@ -20,8 +20,9 @@
 // заново при выборе.
 //
 // Защита от повторного скана: камера в непрерывном режиме присылает ОДИН И ТОТ ЖЕ текст QR
-// много раз за секунды, пока волонтёр не отвёл камеру — `RESCAN_GUARD_MS` глушит повторы
-// того же текста, а не блокирует скан вовсе (другой делегат сканируется сразу).
+// много раз за секунды, пока волонтёр не отвёл камеру — `scan_gate.js` глушит повторы того же
+// текста, а QR следующего делегата, пойманный во время отправки, ставит в очередь (не
+// выбрасывает). Занятость снимается сразу по ответу на скан; счётчики грузятся без ожидания.
 //
 // Регистрация на месте (D-41, 27.09) — только при включённом тумблере города стойки
 // (`onsite_enabled` из /checkin/points, D-36): на 🔴 «не одобрен / прошлый сезон» — кнопка
@@ -33,11 +34,12 @@
 import { flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
+import { createScanGate } from "../scan_gate.js";
 
 const ENTRY_POINT = "entry";
 const TRAINING_POINT = "training"; // «🧪 Тренировка» ничего не пишет — кнопок «на месте» там нет
 const SEARCH_DEBOUNCE_MS = 300;
-const RESCAN_GUARD_MS = 3000;
+const COUNTERS_DEBOUNCE_MS = 800;
 
 const NETWORK_TEXT = "Нет связи — переходите на приложение-сканер.";
 const NO_SCANNER_TEXT = "Обновите Telegram — сканер QR недоступен в этой версии. Ищите делегата по фамилии ниже.";
@@ -398,10 +400,20 @@ export async function render(root, params, ctx) {
     if (tg && typeof tg.closeScanQrPopup === "function") tg.closeScanQrPopup();
   }
 
-  let scanBusy = false;
+  // Счётчики (шапка, чипы точек) — фоном и с дебаунсом: серия сканов даёт одну пару запросов,
+  // а очередной скан не ждёт их ответа (иначе QR следующего делегата терялся).
+  let countersTimer = null;
+  function refreshCounters() {
+    if (countersTimer) clearTimeout(countersTimer);
+    countersTimer = setTimeout(() => {
+      countersTimer = null;
+      loadStats();
+      loadPoints(citySelect.value || undefined);
+    }, COUNTERS_DEBOUNCE_MS);
+  }
+
+  // Завершается по ответу на сам скан — следующий QR из очереди уходит сразу.
   async function submitScan(payloadText) {
-    if (scanBusy) return;
-    scanBusy = true;
     try {
       const res = await measured(() => api("/checkin/scan", {
         method: "POST", body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
@@ -410,28 +422,18 @@ export async function render(root, params, ctx) {
       const isSuccess = SUCCESS_STATUSES.has(res.status);
       if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
       showPlaque(res, { closeButton: !isSuccess });
-      await loadStats();
-      await loadPoints(citySelect.value || undefined);
+      refreshCounters();
     } catch (err) {
       closeScanPopup(); // сетевая/любая другая ошибка — тоже 🔴, попап закрывается
       const text = isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз.");
       showPlaque({ status: "error", reason_text: text }, { closeButton: true });
-    } finally {
-      scanBusy = false;
     }
   }
 
   // ── скан QR: непрерывный режим ────────────────────────────────────────────────────────
-  let lastText = null;
-  let lastAt = 0;
-  function onQrText(text) {
-    const now = Date.now();
-    if (text === lastText && now - lastAt < RESCAN_GUARD_MS) return false;
-    lastText = text;
-    lastAt = now;
-    submitScan(text);
-    return false; // синхронный колбэк не знает исход — попап закрывает submitScan() сам
-  }
+  // Синхронный колбэк не знает исход — попап закрывает submitScan() сам (возвращаем false).
+  const scanGate = createScanGate({ submit: submitScan });
+  const onQrText = (text) => scanGate.onText(text);
 
   const tg = window.Telegram && window.Telegram.WebApp;
   const canScan = Boolean(tg && typeof tg.showScanQrPopup === "function");
