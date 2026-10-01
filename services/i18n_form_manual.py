@@ -881,6 +881,11 @@ _REGISTRY_TEXTS_EN = {
         "The forum is tomorrow! Here's your QR code for entry. Open it now and take a "
         "screenshot — the venue may have no network."
     ),
+    # Утренний повтор QR в день форума — checkin_qr_morning_text (group "reg").
+    "Сегодня форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.": (
+        "The forum is today! Here's your QR code for entry. Open it now and take a "
+        "screenshot — the venue may have no network."
+    ),
     # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа — group
     # "reg", forum_welcome_text. Плейсхолдер `{time}` переживает перевод сентинелами глоссария
     # (services/i18n_glossary.py) — тот же приём, что у остальных плейсхолдеров этого словаря.
