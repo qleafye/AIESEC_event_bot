@@ -14,9 +14,11 @@
 
 Исходы по делегату:
 - записано -> события удаляются;
-- строки нет ни на вкладке города, ни на главном листе -> события удаляются с предупреждением в
-  лог: крутить их бессмысленно, строка сама не появится (следующая отметка поставит событие
-  заново);
+- строки нет ни на вкладке города, ни на главном листе -> событие остаётся и пробуется реже:
+  через 30 мин, 1, 2, 4 ч (потолок 6 ч). Строка появляется позже — анкету или одобрение на
+  месте дописали после обрыва прокси, менеджер пересобрал лист, — и «Пришёл» встаёт без
+  повторной отметки. Через MISSING_GIVE_UP_DAYS дней ожидания событие снимается с
+  предупреждением в лог (ячейку тогда восстанавливает ручная пересборка листа);
 - сбой листа/сети -> события остаются, attempts + 1, следующий заход через 30 с, 1, 2, 4 …
   мин (потолок 30 мин), текст ошибки без секретов. Потолка попыток нет — событие не теряется.
 """
@@ -41,6 +43,10 @@ logger = logging.getLogger(__name__)
 BATCH_LIMIT = 2000
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 30 * 60
+MISSING_BACKOFF_BASE_SECONDS = 30 * 60
+MISSING_BACKOFF_MAX_SECONDS = 6 * 60 * 60
+MISSING_GIVE_UP_DAYS = 7
+MISSING_ERROR = "строки делегата нет в листе — жду, пока она появится"
 _FMT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -60,6 +66,11 @@ def backoff_seconds(attempts: int) -> int:
     return min(BACKOFF_BASE_SECONDS * 2 ** max(attempts - 1, 0), BACKOFF_MAX_SECONDS)
 
 
+def missing_backoff_seconds(attempts: int) -> int:
+    """Пауза, пока строки делегата нет в листе (1 -> 30 мин, 2 -> 1 ч, 3 -> 2 ч …, <= 6 ч)."""
+    return min(MISSING_BACKOFF_BASE_SECONDS * 2 ** max(attempts - 1, 0), MISSING_BACKOFF_MAX_SECONDS)
+
+
 async def drain() -> dict:
     """Один проход по очереди. Возвращает счётчики {"written", "missing", "failed"} по
     делегатам (для тестов и лога)."""
@@ -71,10 +82,12 @@ async def drain() -> dict:
 
     upto: dict[int, int] = {}
     attempts: dict[int, int] = defaultdict(int)
+    oldest: dict[int, str] = {}
     for row in rows:
         tid = row["telegram_id"]
         upto[tid] = max(upto.get(tid, 0), row["id"])
         attempts[tid] = max(attempts[tid], row["attempts"])
+        oldest[tid] = min(oldest.get(tid, row["created_at"]), row["created_at"])
 
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         await drop_sheet_arrivals(upto)  # таблица не подключена — писать некуда
@@ -89,12 +102,25 @@ async def drain() -> dict:
     except Exception as e:
         result = {"written": set(), "missing": set(), "failed": {tid: str(e) for tid in upto}}
 
-    done = {tid: upto[tid] for tid in result["written"] | result["missing"] if tid in upto}
+    give_up_before = (now - timedelta(days=MISSING_GIVE_UP_DAYS)).strftime(_FMT)
+    missing = {tid for tid in result["missing"] if tid in upto}
+    expired = {tid for tid in missing if oldest[tid] < give_up_before}
+    done = {tid: upto[tid] for tid in (result["written"] & set(upto)) | expired}
     await drop_sheet_arrivals(done)
-    for tid in result["missing"]:
+    for tid in expired:
         logger.warning(
-            "sheet_arrival: telegram_id=%s нет в листе (ни вкладка города, ни главный лист) — "
-            "событие снято", tid,
+            "sheet_arrival: telegram_id=%s так и не появился в листе за %s дн. — событие снято, "
+            "«Пришёл» восстановит пересборка листа", tid, MISSING_GIVE_UP_DAYS,
+        )
+    waiting: dict[int, dict[int, int]] = defaultdict(dict)
+    for tid in missing - expired:
+        waiting[missing_backoff_seconds(attempts[tid] + 1)][tid] = upto[tid]
+    for delay, part in waiting.items():
+        await fail_sheet_arrivals(part, MISSING_ERROR, (now + timedelta(seconds=delay)).strftime(_FMT))
+    if missing - expired:
+        logger.warning(
+            "sheet_arrival: %s делегатов нет в листе (ни вкладка города, ни главный лист) — "
+            "«Пришёл» запишу, когда строка появится", len(missing - expired),
         )
 
     groups: dict[tuple[int, str], dict[int, int]] = defaultdict(dict)

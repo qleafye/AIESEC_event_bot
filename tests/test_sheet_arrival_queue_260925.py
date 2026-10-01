@@ -7,7 +7,7 @@
 - сбой batch_update -> события остались, attempts + 1, backoff, ошибка без секретов;
 - снятие отметки -> ячейка пересчитана (пусто, если входов не осталось);
 - CSV на 500 строк -> одно чтение на вкладку;
-- делегата нет в листе -> событие снято;
+- делегата нет в листе -> событие ждёт с редким повтором, через неделю снимается;
 - сторож: services/checkin.py, services/venue_log.py и miniapp/ не импортируют Google-листы."""
 from __future__ import annotations
 
@@ -274,19 +274,67 @@ def test_revoke_recomputes_cell_to_empty(tmp_path, monkeypatch):
     assert main.rows[0][2] == ""
 
 
-def test_missing_row_drops_event(tmp_path, monkeypatch):
+def test_missing_row_waits_and_is_written_when_row_appears(tmp_path, monkeypatch):
+    """Строки делегата в листе нет (append анкеты потерян при обрыве прокси) — событие не
+    выбрасывается: ждёт с редким повтором и пишется, когда строка появилась."""
+    from datetime import datetime, timedelta
+
+    from services import timeutil
     _use_tmp_db(tmp_path)
     main, _ = _two_tabs(monkeypatch)
+    t0 = datetime(2026, 10, 3, 9, 5)
+    monkeypatch.setattr(sheet_arrival_sync, "msk_now", lambda: t0)
+    monkeypatch.setattr(timeutil, "msk_now", lambda: t0)
+    monkeypatch.setattr(db, "msk_now", lambda: t0)  # created_at события — тоже «сейчас» теста
 
     async def go():
         await _setup_city_user(999, None)  # в листе такой строки нет
         await _mark(999, "2026-10-03 09:00:00")
+        first = await sheet_arrival_sync.drain()
+        queued = await _queue_rows()
+        again_soon = await sheet_arrival_sync.drain()  # до срока повтора — не трогаем
+        main.rows.append(["999", "Одобрена", ""])  # строку дописали
+        monkeypatch.setattr(sheet_arrival_sync, "msk_now", lambda: t0 + timedelta(minutes=31))
+        later = await sheet_arrival_sync.drain()
+        return first, queued, again_soon, later, await _queue_rows()
+
+    first, queued, again_soon, later, rows = _run(go())
+    assert first["missing"] == 1
+    assert len(queued) == 1 and queued[0]["attempts"] == 1
+    assert queued[0]["next_try_at"] == "2026-10-03 09:35:00"
+    assert queued[0]["last_error"] == sheet_arrival_sync.MISSING_ERROR
+    assert again_soon == {"written": 0, "missing": 0, "failed": 0}
+    assert later["written"] == 1 and rows == []
+    assert main.rows[-1][2] == "03.10 09:00"
+
+
+def test_missing_row_gives_up_after_a_week(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+
+    from services import timeutil
+    _use_tmp_db(tmp_path)
+    main, _ = _two_tabs(monkeypatch)
+    t0 = datetime(2026, 10, 3, 9, 5)
+    monkeypatch.setattr(timeutil, "msk_now", lambda: t0)
+    monkeypatch.setattr(db, "msk_now", lambda: t0)  # created_at события — тоже «сейчас» теста
+
+    async def go():
+        await _setup_city_user(999, None)
+        await _mark(999, "2026-10-03 09:00:00")
+        late = t0 + timedelta(days=sheet_arrival_sync.MISSING_GIVE_UP_DAYS, minutes=1)
+        monkeypatch.setattr(sheet_arrival_sync, "msk_now", lambda: late)
         counts = await sheet_arrival_sync.drain()
         return counts, await _queue_rows()
 
     counts, rows = _run(go())
     assert counts["missing"] == 1 and rows == []
     assert main.batch_update_calls == []
+
+
+def test_missing_backoff_grows_to_six_hours():
+    assert [sheet_arrival_sync.missing_backoff_seconds(n) for n in (1, 2, 3, 4, 5, 6)] == [
+        1800, 3600, 7200, 14400, 21600, 21600,
+    ]
 
 
 def test_csv_500_rows_one_read_per_tab(tmp_path, monkeypatch):
