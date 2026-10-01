@@ -768,7 +768,9 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1469,
+        1479,
+        "03.10 (ответ реплаем на личную копию карточки SOS): +10 строк — форма «🆘»-реплая в "
+        "CapabilityMiddleware (_is_sos_reply_shape), иначе deny-by-default; 1469 -> 1479. "
         "01.10 («↩️ Вернуть ступень»): +2 строки — права moderate_game на "
         "handlers/admin_amb_tier_ladder.py: ambl_unrev, ambl_unrev_go:* отдельными строками из-за "
         "ловушки префиксов; 1467 -> 1469. "

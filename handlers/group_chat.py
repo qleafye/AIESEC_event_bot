@@ -317,8 +317,49 @@ async def on_group_service_message(message: types.Message, bot: Bot):
         await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, code)
 
 
+async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dict | None:
+    """Заявка SOS, на карточку которой ответили В ЕЁ ЖЕ чате SOS, иначе `None`. Карточка —
+    сообщение САМОГО бота с номером заявки (`services.sos.card_report_id`), а чат реплая —
+    тот, куда эта карточка ушла (`sos_reports.chat_id`): пересланная в другую группу копия
+    ответа делегату не даёт."""
+    from database.db import get_sos_report
+    from services import sos as sos_service
+
+    replied = message.reply_to_message
+    bot = bot or getattr(message, "bot", None)
+    author = getattr(replied, "from_user", None) if replied is not None else None
+    if author is None or bot is None or author.id != bot.id:
+        return None
+    report_id = sos_service.card_report_id(replied)
+    if report_id is None:
+        return None
+    report = await get_sos_report(report_id)
+    if report is None or report.get("chat_id") != message.chat.id:
+        return None
+    return report
+
+
+async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict) -> None:
+    """Ответ делегату реплаем из чата SOS. Сразу (с неявным захватом) — держателю «📋 Модерация
+    заявок»; остальным участникам чата — после «🙋 Беру» (кнопку в привязанном чате SOS жмёт
+    любой его участник, `on_sos_card_button`): так у ответа всегда есть видимый на карточке
+    ответственный, а случайное сообщение в треде не уходит человеку в беде. Без захвата —
+    подсказка в чат, а не тишина: иначе орг уверен, что ответил."""
+    from handlers.admin_caps import has_capability
+    from services import sos as sos_service
+
+    uid = message.from_user.id
+    if report.get("claimed_by") != uid and not await has_capability(uid, "moderate_reg"):
+        await message.reply(
+            f"Чтобы ответить делегату, сначала нажмите «🙋 Беру» под карточкой SOS "
+            f"#{report['id']} — так команда увидит, кто ведёт этот SOS. Потом ответьте реплаем ещё раз."
+        )
+        return
+    await sos_service.deliver_org_reply(bot, message, report)
+
+
 @router.message()
-async def on_group_message(message: types.Message):
+async def on_group_message(message: types.Message, bot: Bot | None = None):
     """ПОСЛЕДНИЙ хендлер роутера — catch-all. Сматчился здесь -> дальше, к личным роутерам,
     апдейт не идёт (D-4). Текст/подпись сообщения нигде не читаются (D-9) — только факт
     наличия ответа/вложения по ИМЕНАМ полей, не по содержимому. Бот НИЧЕГО не отвечает в
@@ -339,6 +380,13 @@ async def on_group_message(message: types.Message):
         return
     if message.from_user is None or message.from_user.is_bot:
         return
+    # Ответ орга реплаем на карточку SOS — до учёта активности и независимо от того, ведётся
+    # ли рейтинг этого чата: чат SOS привязан отдельно (`services.sos`), не через chat_tracking.
+    # Единственное исключение из D-9: текст ответа читается, чтобы переслать его делегату, и
+    # нигде не хранится. Кто вправе ответить — `_answer_sos_card_reply`.
+    sos_report = await _sos_card_reply_report(message, bot)
+    if sos_report is not None:
+        await _answer_sos_card_reply(message, bot or message.bot, sos_report)
     if not await chat_tracking.tracking_on():
         return
     if not await _is_bound(message.chat.id):

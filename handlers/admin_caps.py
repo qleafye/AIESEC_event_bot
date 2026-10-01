@@ -1326,6 +1326,15 @@ def _is_question_reply_shape(message: Message) -> bool:
     return "🆔" in replied.text and "❓" in replied.text
 
 
+def _is_sos_reply_shape(message: Message) -> bool:
+    """Реплай на карточку SOS (🆔+🆘) — без этой формы ответ на личную копию карточки падал в
+    deny-by-default (`required=[None]`) даже у суперадмина."""
+    replied = getattr(message, "reply_to_message", None)
+    if not replied or not getattr(replied, "text", None):
+        return False
+    return "🆔" in replied.text and "🆘" in replied.text
+
+
 def _is_callback_shaped(event) -> bool:
     """Duck-typed, not `isinstance(event, CallbackQuery)`: aiogram's own `CallbackQuery` model
     defines a `data` field and no `text` field (verified: `"data" in CallbackQuery.model_fields`
@@ -1433,8 +1442,9 @@ class CapabilityMiddleware(BaseMiddleware):
             # Question-reply predicate applies only outside any wizard, to non-command text --
             # preserved from the original resolution order.
             if not raw_state and _extract_command(event.text) is None:
-                required = [required_capability(special="question_reply")
-                            if _is_question_reply_shape(event) else None]
+                shape = ("question_reply" if _is_question_reply_shape(event)
+                         else "sos_reply" if _is_sos_reply_shape(event) else None)
+                required = [required_capability(special=shape) if shape else None]
         else:
             required = [None]
 
