@@ -60,7 +60,7 @@ from services.program import (
     parse_time_range,
     point_for_session,
     sessions_for_city_day,
-    suggested_days,
+    suggested_days_for_city,
 )
 # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — джоба переставляется после
 # ЛЮБОГО создания/правки сессии, снимается после удаления; статистика — в карточке сессии.
@@ -155,8 +155,7 @@ async def prog_city_open(callback: types.CallbackQuery):
 async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, InlineKeyboardMarkup]:
     label = await city_label(code)
     existing_days = await list_program_days_for_city(code)
-    forum_dt = await own_forum_date(code)
-    combined = sorted(set(existing_days) | set(suggested_days(forum_dt)))
+    combined = sorted(set(existing_days) | set(await suggested_days_for_city(code)))  # дни окна форума
 
     lines = [f"🗓 <b>Программа форума</b> — {html_module.escape(label)}"]
     buttons: list[list[InlineKeyboardButton]] = []
@@ -380,7 +379,7 @@ async def prog_title_step(message: types.Message, state: FSMContext):
         return
     data = await state.get_data()
     if data.get("pmode") == "new":
-        await state.update_data(pw_title=title)
+        await state.update_data(pw_title=title, pw_hall_picked=False)
         await state.set_state(None)
         text, kb = await _hall_pick_screen(data.get("pw_city"), "w")
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -430,6 +429,7 @@ async def prog_hallscreen_open(callback: types.CallbackQuery, state: FSMContext)
         if not city:
             await callback.answer("Начните создание сессии заново.", show_alert=True)
             return
+        await state.update_data(pw_hall_picked=False)
     else:
         session = await get_program_session(int(ctx[1:]))
         if session is None:
@@ -453,7 +453,9 @@ async def prog_hp_pick(callback: types.CallbackQuery, state: FSMContext):
         if not city or not day or not start:
             await callback.answer("Сессия не найдена — начните заново.", show_alert=True)
             return
-        await state.update_data(pw_hall_id=hall_id)
+        if data.get("pw_hall_picked"):  # двойной тап по залу — второй вопрос «Спикер» не задаём
+            return await callback.answer()
+        await state.update_data(pw_hall_id=hall_id, pw_hall_picked=True)  # до первого await к БД
         warning = await hall_conflict_warning(city, day, hall_id, start, end)
         if warning:
             from handlers.admin_program_halls import wizard_conflict_kb
@@ -461,6 +463,10 @@ async def prog_hp_pick(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.edit_text(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=kb)
             await callback.answer()
             return
+        try:  # кнопки зала больше не нужны — второй тап по ним ничего бы не дал
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
         await _wizard_ask_speaker(callback.message, state)
         await callback.answer()
         return
@@ -497,6 +503,7 @@ async def prog_wconfirm_yes(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "prog_wconfirm_no")
 async def prog_wconfirm_no(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    await state.update_data(pw_hall_picked=False)  # снова выбор зала
     text, kb = await _hall_pick_screen(data.get("pw_city"), "w", data.get("pw_hall_id"))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
