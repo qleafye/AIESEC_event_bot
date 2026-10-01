@@ -433,7 +433,9 @@ EXPECTED_NAV = [
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},
-    {"hash": "#/stats", "section": "stats", "cap": "stats", "group": "data"},
+    # Экран — статистика геймы: маршрут требует ещё moderate_game (менеджер заявок без геймы
+    # получал «Нет доступа» на всю главную из-за счётчика этой плитки).
+    {"hash": "#/stats", "section": "stats", "cap": "stats", "alsoCap": "moderate_game", "group": "data"},
     {"hash": "#/settings", "section": "settings", "cap": "settings", "group": "manage"},
     # Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме — первая плитка группы
     # «🎪 Событие».
