@@ -2200,6 +2200,10 @@ async def init_db():
         # services.sos.CLAIMED_REMIND_DELAYS_MINUTES) — в БД, а не в аргументах джобы: рестарт
         # бота не должен начинать лесенку напоминаний заново.
         await _ensure_column(db, "sos_reports", "claimed_remind_count", "INTEGER NOT NULL DEFAULT 0")
+        # Ответ делегату реплаем на уже решённую карточку (приёмка 01.10): ответ уходит, а
+        # карточка честно показывает, кто и когда дописал после «✅ Решено».
+        await _ensure_column(db, "sos_reports", "post_resolve_reply_by_name", "TEXT")
+        await _ensure_column(db, "sos_reports", "post_resolve_reply_at", "TEXT")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -7050,6 +7054,17 @@ async def resolve_sos_report(report_id: int, admin_id: int, admin_name: str) -> 
         )
         await db.commit()
         return cursor.rowcount == 1
+
+
+async def mark_sos_post_resolve_reply(report_id: int, admin_name: str) -> None:
+    """Орг ответил делегату реплаем на уже решённую карточку — последний такой ответ."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET post_resolve_reply_by_name = ?, post_resolve_reply_at = ? "
+            "WHERE id = ?",
+            (admin_name, msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
 
 
 async def set_sos_delivery_failed(report_id: int, failed: bool) -> None:

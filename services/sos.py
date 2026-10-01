@@ -363,6 +363,10 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
         who = html_module.escape(str(report.get("resolved_by_name") or "—"))
         when = format_stamp(report.get("resolved_at"), stored_utc=False)
         lines.append(f"✅ Решено: {who} в {when[-5:] if when else '—'}")
+        if report.get("post_resolve_reply_at"):
+            who = html_module.escape(str(report.get("post_resolve_reply_by_name") or "—"))
+            when = format_stamp(report.get("post_resolve_reply_at"), stored_utc=False)
+            lines.append(f"💬 Ответ после решения: {who} в {when[-5:] if when else '—'}")
     return "\n".join(lines)
 
 
@@ -578,24 +582,24 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
     зовётся, в отличие от «❓ Задать вопрос»). Получатель — `report["telegram_id"]`, не 🆔 из
     текста карточки: номер заявки — единственное, что читается из сообщения. True — ответ
     дошёл до делегата."""
-    from database.db import claim_sos_report
+    from database.db import claim_sos_report, mark_sos_post_resolve_reply
     from secret_redact import redact_secrets
 
     report_id = report["id"]
     admin_name = message.from_user.full_name or message.from_user.username or "Орг"
     claimed = await claim_sos_report(report_id, message.from_user.id, admin_name)
+    after_resolve = False
     if not claimed:
         row = await get_sos_report(report_id)
-        same_claimant = (
-            row and row.get("claimed_by") == message.from_user.id and not row.get("resolved_at")
-        )
-        if row and row.get("resolved_at"):
-            await message.reply(
-                f"⚠️ SOS #{report_id} уже отмечен решённым — ответ не отправлен. Если нужно "
-                f"что-то добавить, свяжитесь с делегатом по телефону из карточки."
-            )
-            return False
-        if not same_claimant:
+        # Приёмка 01.10: реплай на уже решённую карточку раньше не уходил («звоните по
+        # телефону»), а дописать «забери бейдж на стойке Б» через бота проще всего. Теперь
+        # ответ уходит, а карточка помечается «ответ после решения». Переоткрывать заявку не
+        # нужно: эскалация и напоминания взявшему после решения не нужны, делегат свой ответ
+        # на это сообщение и так отправит в тред. Кто вправе — решают вызывающие (в чате SOS —
+        # только тот, кто вёл SOS).
+        after_resolve = bool(row and row.get("resolved_at"))
+        same_claimant = row and row.get("claimed_by") == message.from_user.id
+        if not after_resolve and not same_claimant:
             winner = (row or {}).get("claimed_by_name") or "коллега"
             await message.reply(
                 f"⚠️ SOS #{report_id} уже взял(а) {winner} — напишите ему(ей) или "
@@ -624,7 +628,17 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
         return False
 
     cancel_escalation(report_id)
-    await message.reply("✅ Ответ отправлен делегату.")
+    if after_resolve:
+        try:
+            await mark_sos_post_resolve_reply(report_id, admin_name)
+        except Exception as e:
+            logger.warning("sos.deliver_org_reply: пометка ответа после решения не записана: %s", e)
+        await message.reply(
+            "✅ Ответ отправлен делегату. SOS уже был решён — на карточке отмечено, что вы "
+            "ответили после решения."
+        )
+    else:
+        await message.reply("✅ Ответ отправлен делегату.")
     await refresh_card(bot, report_id)
     return True
 
