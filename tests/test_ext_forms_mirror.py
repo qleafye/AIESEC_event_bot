@@ -212,3 +212,15 @@ def test_sheets_off_skips(env, monkeypatch):
     asyncio.run(mir.drain_mirror())
     assert _state() == {"a1": "skip"}
     assert env["ws"].calls == []
+
+
+def test_narrow_existing_tab_gets_columns(env):
+    """Узкая вкладка, выбранная менеджером: сетка расширяется до записи шапки."""
+    ws = env["ws"]
+    ws.col_count = 3
+    added = []
+    ws.add_cols = lambda n: added.append(n)
+    fid = _form()
+    _answer(fid, "1", [{"q": "a", "label": "А", "value": "x"}])
+    asyncio.run(mir.drain_mirror())
+    assert added == [len(mir.FIXED_HEADERS) + 1 - 3]
