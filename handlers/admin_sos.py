@@ -404,8 +404,9 @@ async def sos_resolve(callback: types.CallbackQuery, bot: Bot, fsm_storage=None)
 async def is_sos_reply(message: types.Message) -> bool:
     """Предикат по ФОРМЕ (реплай на сообщение БОТА с маркерами 🆔+🆘 и номером заявки) + капа
     `ADMIN_CAPS["special:sos_reply"]`. Капу проверяет и `CapabilityMiddleware`
-    (`_is_sos_reply_shape`), здесь — повторно: без неё делегатский реплай на похожую по форме
-    пересылку тоже совпал бы с предикатом. Город заявки сверяется уже в хендлере — чтобы
+    (`_is_sos_reply_shape`/`_is_sos_relay_reply`), здесь — повторно: без неё делегатский реплай
+    на похожую по форме пересылку тоже совпал бы с предикатом. Реплай на копию дописки
+    делегата в личке (её текст — слова делегата, маркеров нет) находится по `sos_relay_messages`. Город заявки сверяется уже в хендлере — чтобы
     менеджер другого города получил объяснение, а не тишину."""
     cap = required_capability(special="sos_reply")
     if not cap or not await has_capability(message.from_user.id, cap):
@@ -413,7 +414,8 @@ async def is_sos_reply(message: types.Message) -> bool:
     replied = message.reply_to_message
     if replied is None or not getattr(getattr(replied, "from_user", None), "is_bot", False):
         return False
-    return sos_service.card_report_id(replied) is not None
+    # Копия дописки делегата в личке (веер без чата SOS) — тоже ответ в «треде» заявки.
+    return await sos_service.replied_report_id(message.chat.id, replied) is not None
 
 
 async def _may_answer_from_dm(user_id: int, report: dict) -> bool:
@@ -431,7 +433,7 @@ async def _may_answer_from_dm(user_id: int, report: dict) -> bool:
 
 @router.message(is_sos_reply)
 async def admin_reply_to_sos(message: types.Message, bot: Bot):
-    report_id = sos_service.card_report_id(message.reply_to_message)
+    report_id = await sos_service.replied_report_id(message.chat.id, message.reply_to_message)
     if report_id is None:
         return
     report = await get_sos_report(report_id)
