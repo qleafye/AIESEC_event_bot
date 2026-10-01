@@ -509,3 +509,22 @@ def test_group_reply_after_resolve_refusal_names_claimer_and_resolver(tmp_path):
         _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _card(GROUP, report["id"]), "молодцы!"))
     refusal = [t for t in bot.sent_to(SOS_CHAT_ID) if "уже решён" in t]
     assert refusal and "Вера Взявшая" in refusal[0] and "Рома Закрывший" in refusal[0]
+
+
+def test_group_hint_not_repeated_for_every_reply(tmp_path):
+    """Команда переговаривается реплаями на невзятую карточку — подсказка приходит один раз,
+    а не на каждую реплику."""
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _reply_update(ADMIN_ID, GROUP, card, "кто ближе?", update_id=1),
+            _reply_update(STRANGER_ID, GROUP, card, "я на втором", update_id=2),
+            _reply_update(ADMIN_ID, GROUP, card, "давай ты", update_id=3),
+        )
+    hints = [t for t in bot.sent_to(SOS_CHAT_ID) if "не отправлен" in t]
+    assert len(hints) == 1
+    assert bot.sent_to(DELEGATE_ID) == []

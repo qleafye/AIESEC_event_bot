@@ -342,6 +342,27 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     return report
 
 
+# Подсказка «⚠️ Ответ не отправлен…» в чате SOS — не чаще раза в N минут на заявку. Команда
+# переговаривается реплаями на карточку («кто ближе?»), и бот не должен отвечать на каждую
+# реплику: первый раз объяснил, дальше видно в чате. Память процесса — после рестарта
+# подсказка просто придёт ещё раз.
+SOS_HINT_EVERY_SECONDS = 5 * 60
+_sos_hint_sent: dict[tuple[int, int], float] = {}
+
+
+async def _sos_hint(message: types.Message, report_id: int, text: str) -> None:
+    import time
+
+    key = (message.chat.id, report_id)
+    now = time.monotonic()
+    last = _sos_hint_sent.get(key)
+    if last is not None and now - last < SOS_HINT_EVERY_SECONDS:
+        logger.info("group_chat: подсказка по SOS #%s в чате %s уже была недавно — молчу", report_id, message.chat.id)
+        return
+    _sos_hint_sent[key] = now
+    await message.reply(text)
+
+
 def _post_resolve_who(report: dict) -> str:
     """Кто может дописать делегату после решения: и взявший, и закрывший, если это разные
     люди, — иначе отказ называл одного, и второй не знал, что ему можно."""
@@ -377,24 +398,27 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
         # Решённый SOS: дописать делегату (ответ уйдёт с пометкой на карточке) может тот,
         # кто его вёл или закрыл, — поздравления команды на закрытой карточке не уходят.
         if uid not in (claimed_by, report.get("resolved_by")):
-            await message.reply(
+            await _sos_hint(
+                message, report["id"],
                 f"⚠️ Ответ не отправлен: SOS #{report['id']} уже решён. "
-                f"{_post_resolve_who(report)}"
+                f"{_post_resolve_who(report)}",
             )
             return
     else:
         if claimed_by is None:
-            await message.reply(
+            await _sos_hint(
+                message, report["id"],
                 f"⚠️ Ответ не отправлен: SOS #{report['id']} ещё никто не взял. Сначала нажмите "
                 f"«🙋 Беру» под карточкой, потом ответьте реплаем ещё раз — тогда ответ уйдёт "
-                f"делегату. Реплаи на невзятую карточку остаются в чате команды."
+                f"делегату. Реплаи на невзятую карточку остаются в чате команды.",
             )
             return
         if claimed_by != uid:
             who = html.escape(str(report.get("claimed_by_name") or "коллега"))
-            await message.reply(
+            await _sos_hint(
+                message, report["id"],
                 f"⚠️ Ответ не отправлен: SOS #{report['id']} ведёт {who}. Делегату пишет тот, "
-                f"кто взял SOS, — передайте ему(ей) или дождитесь «✅ Решено»."
+                f"кто взял SOS, — передайте ему(ей) или дождитесь «✅ Решено».",
             )
             return
     await sos_service.deliver_org_reply(bot, message, report)

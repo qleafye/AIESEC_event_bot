@@ -69,3 +69,16 @@ def _reset_checkin_evening_done():
     from services import checkin_broadcast as _cb
     _cb._evening_done.clear()
     yield
+
+
+@_pytest.fixture(autouse=True)
+def _reset_sos_hint_throttle():
+    """`handlers.group_chat._sos_hint_sent` — память процесса «подсказку по этой заявке в этом
+    чате уже давали». Номера заявок и чатов в тестах повторяются, поэтому между тестами одного
+    воркера она не должна переживать. Модуль не импортируем сами — только чистим, если тест
+    его уже загрузил (импорт хендлеров из фикстуры менял бы порядок импорта в чужих тестах)."""
+    import sys as _sys
+    _gc = _sys.modules.get("handlers.group_chat")
+    if _gc is not None:
+        _gc._sos_hint_sent.clear()
+    yield
