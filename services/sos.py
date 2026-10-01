@@ -1015,6 +1015,33 @@ def report_age_minutes(report: dict) -> float | None:
     return (msk_now() - stamp).total_seconds() / 60
 
 
+async def may_be_collecting(telegram_id: int) -> bool:
+    """Делегат, возможно, сейчас дописывает SOS (`SosReport.collecting`) — у него открытая
+    заявка моложе таймаута дозаписи его города. Для рассылок вне диспетчера (планировщик, у
+    него нет FSM-хранилища): прислать такому человеку сообщение с главным меню — значит
+    заменить его клавиатуру «📍 геопозиция / Готово», и выйти из дозаписи ему станет нечем.
+    Оценка по БД, с запасом: делегат, уже нажавший «Готово», тоже попадёт сюда, но меню у
+    него и так главное. Сбой чтения — `False` (меню важнее, чем риск лишней клавиатуры)."""
+    try:
+        from database.db import get_open_sos_report
+
+        report = await get_open_sos_report(telegram_id)
+        if report is None:
+            return False
+        age = report_age_minutes(report)
+        if age is None:
+            return False
+        raw = await get_setting_typed_for_city("sos_collecting_timeout_minutes", report.get("city"))
+        try:
+            timeout = float(raw) if raw else DEFAULT_COLLECTING_TIMEOUT_MINUTES
+        except (TypeError, ValueError):
+            timeout = DEFAULT_COLLECTING_TIMEOUT_MINUTES
+        return age < timeout
+    except Exception as e:
+        logger.warning("sos.may_be_collecting(%s) failed: %s", telegram_id, e)
+        return False
+
+
 def claim_status_parts(report: dict) -> tuple[str, str | None]:
     """`(шаблон, имя)` для перевода делегату (Часть А ревью 24.09: `sos_recent_followup_text`
     уходил сырой русской строкой, потому что `{claim_status}` собирался ЗДЕСЬ, ДО перевода
