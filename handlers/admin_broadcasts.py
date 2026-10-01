@@ -88,6 +88,7 @@ from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
 from services.broadcast_scope import restrict_to_sender_city, sender_city_note, split_by_sender_city
+from services.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from cities import CITIES, cities_module_on, city_label, city_scope
@@ -1492,7 +1493,7 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
                 labels[opt] = "пришли на форум" if base == CHECKIN_YES else "не пришли ни разу"
                 continue
             when = "сегодня" if day == CHECKIN_DAY_TODAY else f"{day[8:10]}.{day[5:7]}"
-            labels[opt] = f"{'пришли' if base == CHECKIN_YES else 'не пришли'} {when}"
+            labels[opt] = f"{'пришли' if base == CHECKIN_YES else 'не пришли'} {when}{await day_cities_suffix(day)}"
     elif field == "participant_type":
         # Phase 14 (CFG-02, IN-01): RU labels instead of raw codes (party_noovernight etc.);
         # fail-soft for a value not in _TRACK_LABELS — falls back to the raw code as the label
