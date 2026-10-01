@@ -539,6 +539,8 @@ def code_literals() -> list[tuple[str, str]]:
     # («SOS без категорий»): категорийные литералы (`category_bad`/`_lost`/`_item`/`_other`)
     # сняты вместе с кнопками — категорийного визарда больше нет.
     items.append(("lit:sos.location_button", "📍 Отправить геопозицию"))
+    # Ядро без «📍 » — именно его ищет `tr_kb` (ведущий эмодзи снимается до поиска).
+    items.append(("lit:sos.location_button_core", "Отправить геопозицию"))
 
     # Часть А (ревью SOS-переводов, `sos_recent_followup_text` уходил сырой русской строкой):
     # шаблоны `services.sos.claim_status_parts` + переводимый фолбэк имени «коллега» —
