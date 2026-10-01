@@ -56,3 +56,16 @@ _config.DB_PATH = _os.path.join(
     _tempfile.mkdtemp(prefix="gsd_conftest_default_db_"), "default.db"
 )
 _fast_init_db()
+
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _reset_checkin_evening_done():
+    """`services.checkin_broadcast._evening_done` — память процесса «вечерняя рассылка QR на эту
+    дату уже отработала». Между тестами одного воркера она не должна переживать: тест, где
+    вечерняя джоба сработала, иначе отключал бы догон в следующем тесте с той же датой."""
+    from services import checkin_broadcast as _cb
+    _cb._evening_done.clear()
+    yield
