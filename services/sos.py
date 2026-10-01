@@ -621,9 +621,19 @@ async def relay_delegate_message(message, report_id: int) -> None:
         return
     if report.get("chat_id") and report.get("card_message_id"):
         try:
-            await message.copy_to(
+            copied = await message.copy_to(
                 report["chat_id"], reply_to_message_id=report["card_message_id"],
             )
+            # Орг отвечает реплаем на последнее сообщение человека, а не на карточку, — без
+            # этой записи такой ответ не находил заявку и молча оставался в чате.
+            copied_id = getattr(copied, "message_id", None)
+            if copied_id is not None:
+                from database.db import add_sos_relay_message
+
+                try:
+                    await add_sos_relay_message(report_id, report["chat_id"], copied_id)
+                except Exception as e:
+                    logger.warning("sos.relay_delegate_message: копия дописки не записана: %s", e)
             return
         except Exception as e:
             logger.warning(

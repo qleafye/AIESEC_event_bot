@@ -2233,6 +2233,19 @@ async def init_db():
             )
         ''')
 
+        # Дописки делегата, скопированные ботом в тред карточки в чате SOS: орг отвечает
+        # реплаем на последнее сообщение человека, а не на карточку, — по этой таблице
+        # реплай находит свою заявку. `chat_id` — чат SOS, не делегат -> USER_PURGE_EXCLUDED;
+        # строки заявок удаляемого делегата стирает purge_user подзапросом по report_id.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sos_relay_messages (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                report_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, message_id)
+            )
+        ''')
+
         # Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером — идемпотентность
         # АВТОМАТИЧЕСКОЙ отправки по (город, день форума), `UNIQUE(city, day)`. `city` хранит
         # сентинел `"_all"` вместо NULL при выключенном модуле городов (SQLite не считает два
@@ -6987,6 +7000,28 @@ async def list_sos_card_copies(report_id: int) -> list[tuple[int, int]]:
             return [(int(r[0]), int(r[1])) for r in await cursor.fetchall()]
 
 
+async def add_sos_relay_message(report_id: int, chat_id: int, message_id: int) -> None:
+    """Копия дописки делегата в треде карточки (чат SOS) — чтобы реплай орга на неё нашёл
+    заявку (`find_sos_report_by_relay`)."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO sos_relay_messages (chat_id, message_id, report_id) "
+            "VALUES (?, ?, ?)",
+            (chat_id, message_id, report_id),
+        )
+        await db.commit()
+
+
+async def find_sos_report_by_relay(chat_id: int, message_id: int) -> int | None:
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT report_id FROM sos_relay_messages WHERE chat_id = ? AND message_id = ?",
+            (chat_id, message_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return int(row[0]) if row else None
+
+
 async def claim_sos_report(report_id: int, admin_id: int, admin_name: str) -> bool:
     """Атомарный захват «🙋 Беру» — True только у ТОГО вызова, что перевернул строку
     (rowcount==1); конкурентный второй тап того же момента получает False (та же идиома, что
@@ -10242,6 +10277,8 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "translation_queue",
     "miniapp_outbox",
     "sos_card_copies",
+    # sos_relay_messages.chat_id — чат SOS (копии дописок в треде карточки), не делегат.
+    "sos_relay_messages",
     # Идея №20 бэклога чек-ина: lost_found.chat_id — та же группа делегатов, не личный чат
     # делегата (тот же класс, что sos_card_copies.chat_id выше); posted_by/returned_by — id
     # сотрудника (волонтёра/менеджера), не удаляемого делегата.
@@ -10337,6 +10374,11 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
         # подзапрос вернёт пусто (тот же приём, что game_submission_parts выше).
         await db.execute(
             "DELETE FROM sos_card_copies WHERE report_id IN "
+            "(SELECT id FROM sos_reports WHERE telegram_id = ?)",
+            (telegram_id,),
+        )
+        await db.execute(
+            "DELETE FROM sos_relay_messages WHERE report_id IN "
             "(SELECT id FROM sos_reports WHERE telegram_id = ?)",
             (telegram_id,),
         )
