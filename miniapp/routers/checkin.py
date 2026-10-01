@@ -41,6 +41,7 @@ from cities import (
     city_scope,
     default_city_code,
     enabled_cities,
+    ensure_cities_fresh,
     normalize_city,
 )
 from database.db import (
@@ -155,7 +156,13 @@ def _can_approve(p: Principal) -> bool:
 
 async def _bound_city(request: Request, p: Principal) -> str | None:
     """Тот же приём, что `admin_tasks.py::bound_city` — суперадмин не ограничен никогда,
-    модуль городов выключен -> ограничений нет, иначе -- город, к которому привязан менеджер."""
+    модуль городов выключен -> ограничений нет, иначе -- город, к которому привязан менеджер.
+
+    Первым делом — свежий список городов из таблицы `cities` (кэш с TTL, fail-soft): процесс
+    Mini App иначе живёт холодным списком из `.env`, и при расхождении код города волонтёра или
+    делегата нормализуется в Москву — сканы на сессиях дают «другой город», точки не видны.
+    Зовут все экраны сканера (скан, отметка, поиск, точки, счётчик)."""
+    await ensure_cities_fresh()
     if p.telegram_id in (request.app.state.cfg.admin_ids or ()):
         return None
     if not await cities_module_on() or not p.city:
