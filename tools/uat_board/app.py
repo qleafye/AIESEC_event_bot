@@ -42,6 +42,9 @@ AMB_HOST = os.environ.get("AMB_HOST", "ambassadors4marie.")
 # Презентация бота для внешних команд (28.09.2026, /bot): свои комментарии в отдельном файле,
 # чтобы гости не видели заметок ОК к деке форума.
 BOT_NOTES = os.environ.get("BOT_NOTES", os.path.join(os.path.dirname(DECK_NOTES) or ".", "bot_notes.json"))
+# Приёмка региональных форумов 02.10 (/forum-uat): общие отметки десяти тестеров в своём файле,
+# доступ по тому же коду, что у доски приёмки (UAT_CODE). Ключ шага — его номер.
+FORUM_UAT_STATE = os.environ.get("FORUM_UAT_STATE", "/data/forum_uat_state.json")
 
 
 def _read(path: str) -> bytes:
@@ -55,9 +58,9 @@ _lock = threading.Lock()
 _ALLOWED = {"", "ok", "bad", "skip"}
 
 
-def _load() -> dict:
+def _load(path: str | None = None) -> dict:
     try:
-        with open(DATA, encoding="utf-8") as f:
+        with open(path or DATA, encoding="utf-8") as f:
             state = json.load(f)
         if isinstance(state, dict) and isinstance(state.get("steps"), dict):
             state.setdefault("v", 0)
@@ -67,12 +70,29 @@ def _load() -> dict:
     return {"v": 0, "steps": {}}
 
 
-def _store(state: dict) -> None:
-    os.makedirs(os.path.dirname(DATA) or ".", exist_ok=True)
-    tmp = DATA + ".tmp"
+def _store(state: dict, path: str | None = None) -> None:
+    path = path or DATA
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False)
-    os.replace(tmp, DATA)
+    os.replace(tmp, path)
+
+
+def _mark(state: dict, body: dict) -> bool:
+    """Отметка шага: пустой статус без заметки = «не проверено» (запись убирается)."""
+    key = str(body.get("key", ""))[:80]
+    s = str(body.get("s", ""))
+    note = str(body.get("note", ""))[:2000]
+    who = str(body.get("who", ""))[:60].strip()
+    if not key or s not in _ALLOWED:
+        return False
+    if not s and not note.strip():
+        state["steps"].pop(key, None)
+    else:
+        state["steps"][key] = {"s": s, "note": note, "who": who, "at": _msk_hhmm()}
+    state["v"] = int(state.get("v", 0)) + 1
+    return True
 
 
 def _msk_hhmm() -> str:
@@ -134,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
     def _is_deck(self) -> bool:
         return (self.headers.get("Host") or "").startswith(DECK_HOST)
 
-    def _deck_get(self, path: str) -> None:
+    def _deck_get(self, path: str, query: dict) -> None:
         if path in ("/", "/index.html"):
             self._send(200, _read(os.path.join(DECK_DIR, "deck.html")), "text/html; charset=utf-8")
         elif path == "/deck.pdf":
@@ -168,6 +188,18 @@ class Handler(BaseHTTPRequestHandler):
             # Чеклист приёмки форумного функционала (26.09): отметки хранятся в браузере
             # тестировщика, отчёт копируется кнопкой — серверного состояния нет.
             self._send(200, _read(os.path.join(DECK_DIR, "uat.html")), "text/html; charset=utf-8")
+        elif path in ("/forum-uat", "/forum-uat/"):
+            # Приёмка региональных форумов 02.10: отметки общие, на сервере (см. /forum-uat/api/*).
+            self._send(200, _read(os.path.join(DECK_DIR, "forum-uat.html")), "text/html; charset=utf-8")
+        elif path == "/forum-uat/api/state":
+            if not self._authed(query):
+                self._json(403, {"error": "no_access"})
+                return
+            with _lock:
+                self._json(200, _load(FORUM_UAT_STATE))
+        elif path in ("/forum-prep", "/forum-prep/"):
+            # Подготовка менеджеров к форумам 03.10: отметки — в браузере менеджера.
+            self._send(200, _read(os.path.join(DECK_DIR, "forum-prep.html")), "text/html; charset=utf-8")
         elif "/shots/" in path and path.endswith(".png"):
             name = os.path.basename(path)
             body = _read(os.path.join(DECK_DIR, "shots", name))
@@ -221,6 +253,27 @@ class Handler(BaseHTTPRequestHandler):
             _deck_store(state, notes_file)
             self._json(200, _deck_public(state, cid))
 
+    def _forum_uat_mark(self, query: dict) -> None:
+        if not self._authed(query):
+            self._json(403, {"error": "no_access"})
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 16_000:
+            self._json(413, {"error": "too_big"})
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self._json(400, {"error": "bad_json"})
+            return
+        with _lock:
+            state = _load(FORUM_UAT_STATE)
+            if not _mark(state, body):
+                self._json(400, {"error": "bad_step"})
+                return
+            _store(state, FORUM_UAT_STATE)
+            self._json(200, state)
+
     def do_GET(self) -> None:  # noqa: N802
         parts = urlsplit(self.path)
         query = parse_qs(parts.query)
@@ -231,7 +284,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b"not found", "text/plain")
             return
         if self._is_deck():
-            self._deck_get(parts.path)
+            self._deck_get(parts.path, query)
             return
         if parts.path in ("/", "/index.html"):
             self._send(200, HTML, "text/html; charset=utf-8")
@@ -256,6 +309,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         parts = urlsplit(self.path)
         query = parse_qs(parts.query)
+        if self._is_deck() and parts.path == "/forum-uat/api/mark":
+            self._forum_uat_mark(query)
+            return
         if self._is_deck():
             self._deck_post(parts.path)
             return
@@ -272,20 +328,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "bad_json"})
             return
         if parts.path == "/api/step":
-            key = str(body.get("key", ""))[:80]
-            s = str(body.get("s", ""))
-            note = str(body.get("note", ""))[:2000]
-            who = str(body.get("who", ""))[:60].strip()
-            if not key or s not in _ALLOWED:
-                self._json(400, {"error": "bad_step"})
-                return
             with _lock:
                 state = _load()
-                if not s and not note.strip():
-                    state["steps"].pop(key, None)
-                else:
-                    state["steps"][key] = {"s": s, "note": note, "who": who, "at": _msk_hhmm()}
-                state["v"] = int(state.get("v", 0)) + 1
+                if not _mark(state, body):
+                    self._json(400, {"error": "bad_step"})
+                    return
                 _store(state)
                 self._json(200, state)
         elif parts.path == "/api/reset":
