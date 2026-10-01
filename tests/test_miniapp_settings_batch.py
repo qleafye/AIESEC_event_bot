@@ -543,3 +543,17 @@ def test_batch_multi_null_resets_to_twenty_defaults(tmp_path, no_tab):
     # enabled_steps сортирует по CARD_STEPS (порядок анкеты), не по литералу DEFAULT_CARD_STEPS
     # (порядок первого экрана отбора) — набор сравниваем как множество, не как список.
     assert set(mc.enabled_steps(_run(get_setting_typed("modcard_fields")))) == set(mc.DEFAULT_CARD_STEPS)
+
+
+def test_common_forum_date_refused_with_cities_on(tmp_path, no_tab):
+    """При включённых городах общий forum_date ничего не включает — правка требует город."""
+    from cities import set_admin_city
+    client = _setup(tmp_path)
+    _set("event_city_enabled", "on")
+    _run(set_admin_city(ADMIN_ID, ALL_CITIES))
+    body = _batch(client, [("forum_date", "03.10.2026")]).json()
+    assert "forum_date" in body["errors"] and "город" in body["errors"]["forum_date"]
+    assert _raw("forum_date") is None
+    _run(set_admin_city(ADMIN_ID, "spb"))  # с городом в шапке дата города сохраняется
+    body = _batch(client, [(f"forum_date{PER_CITY_SEP}spb", "03.10.2026")]).json()
+    assert body["saved"] == [f"forum_date{PER_CITY_SEP}spb"]
