@@ -61,7 +61,8 @@ const STATUS_TONE = {
   rejected: "error",
   undone: "warn",
   undo_refused: "error",
-  // вход не в день форума делегата: ничего не записано (проба сканера накануне)
+  // вход не в день форума делегата: ничего не записано, волонтёру — проверить (проба накануне,
+  // делегат другого города у стойки без привязки)
   not_forum_day: "warn",
 };
 const STATUS_HEADING = {
@@ -392,7 +393,9 @@ export async function render(root, params, ctx) {
       h("div", { class: "checkin-plaque-dot", text: dot }),
       h("div", { class: "checkin-plaque-heading", text: heading }),
       res.full_name ? h("div", { class: "checkin-plaque-name", text: res.full_name }) : null,
-      res.city_label ? h("div", { class: "checkin-plaque-city", text: res.city_label }) : null,
+      res.city_label
+        ? h("div", { class: res.city_emphasis ? "checkin-plaque-city checkin-plaque-city-big" : "checkin-plaque-city", text: res.city_label })
+        : null,
       res.reason_text && heading !== res.reason_text
         ? h("div", { class: "checkin-plaque-reason", text: res.reason_text }) : null,
       res.hint ? h("div", { class: "checkin-plaque-reason", text: res.hint }) : null,

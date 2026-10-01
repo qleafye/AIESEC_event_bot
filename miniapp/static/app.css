@@ -2350,6 +2350,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .checkin-plaque-heading { font-size: 22px; font-weight: 700; }
 .checkin-plaque-name { font-size: 18px; margin-top: var(--sp-2); }
 .checkin-plaque-city { font-size: 14px; color: var(--text-muted); }
+/* сегодня форум в нескольких городах — город делегата крупно, видно чужого у стойки */
+.checkin-plaque-city.checkin-plaque-city-big { font-size: 22px; font-weight: 700; color: var(--text); }
 .checkin-plaque-reason { font-size: 14px; margin-top: var(--sp-2); }
 .checkin-plaque.tone-success { border-color: var(--success); background: var(--surface-alt); }
 .checkin-plaque.tone-success .checkin-plaque-heading { color: var(--success-text); }

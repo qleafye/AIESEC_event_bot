@@ -1,8 +1,10 @@
 """Вход отмечается только в день форума города делегата.
 
 Проба сканера накануне на «🚪 Вход» не ставит настоящую отметку (иначе «Пришёл» в листе =
-накануне, а утром нет приветствия). Москва — два дня форума. Выгрузка CSV отмечает, но
-предупреждает строкой отчёта. Без даты форума — как раньше."""
+накануне, а утром нет приветствия). Волонтёр без привязки к городу 03.10 в СПб не отмечает
+молча зелёным делегата Москвы (форум 30.10) — жёлтая плашка «форум не сегодня». Когда форум
+сегодня в нескольких городах — на успешной плашке город делегата крупно. Выгрузка CSV
+отмечает, но предупреждает строкой отчёта. Без даты форума — как раньше."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -72,6 +74,7 @@ def test_forum_day_marks_and_training_still_works_day_before(tmp_path, monkeypat
     _run(_insert_user(952003, city="spb"))
     body = client.post(f"{BASE}/scan", json={"payload": _qr(952003)}, headers=_hdr(BOUND_MANAGER_ID)).json()
     assert body["status"] == "new"
+    assert "city_emphasis" not in body  # волонтёр привязан к городу — не нужно
     assert _entry_rows(952003) == 1
 
 
@@ -86,12 +89,34 @@ def test_training_point_is_not_blocked_day_before(tmp_path, monkeypatch):
     assert _entry_rows(952004) == 0
 
 
+def test_unbound_volunteer_moscow_delegate_in_spb_gets_yellow_not_green(tmp_path, monkeypatch):
+    client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 0))
+    _grant_checkin_to_game_manager()  # без привязки к городу
+    _run(_insert_user(952005, city="msk"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(952005)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "not_forum_day"
+    assert "Делегат с форума в" in body["reason_text"]
+    assert "30.10" in body["reason_text"]
+    assert _entry_rows(952005) == 0
+
+
+def test_unbound_volunteer_sees_city_big_when_two_forums_today(tmp_path, monkeypatch):
+    client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 0))
+    _grant_checkin_to_game_manager()
+    _run(_insert_user(952006, city="tyumen"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(952006)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "new"
+    assert body["city_emphasis"] is True
+    assert body["city_label"]
+
+
 def test_moscow_second_day_is_forum_day(tmp_path, monkeypatch):
     client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 31, 9, 0))
     _grant_checkin_to_game_manager()
     _run(_insert_user(952007, city="msk"))
     body = client.post(f"{BASE}/scan", json={"payload": _qr(952007)}, headers=_hdr(GAME_MANAGER_ID)).json()
     assert body["status"] == "new"
+    assert "city_emphasis" not in body  # 31.10 форум только в Москве
 
 
 def test_no_forum_date_keeps_old_behaviour(tmp_path, monkeypatch):
