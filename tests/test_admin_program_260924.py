@@ -160,7 +160,7 @@ def test_render_city_program_screen_suggests_days_from_forum_date(tmp_path):
     cbs = _cbs(kb)
     assert "prog_day:msk:2026-10-30" in cbs
     assert "prog_day:msk:2026-10-31" in cbs
-    assert "prog_day:msk:2026-11-01" in cbs
+    assert "prog_day:msk:2026-11-01" not in cbs  # только дни форума (по умолчанию 2 дня)
     labels = [btn.text for row in kb.inline_keyboard for btn in row]
     assert any("30.10.2026" in t for t in labels)
 

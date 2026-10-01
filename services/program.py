@@ -142,6 +142,19 @@ def suggested_days(forum_date: datetime | None) -> list[str]:
     return [(base + timedelta(days=n)).isoformat() for n in (0, 1, 2)]
 
 
+async def suggested_days_for_city(city: str | None) -> list[str]:
+    """Подсказки дней на экране программы города — только дни его форума (дата города +
+    «сколько дней идёт»). У однодневного форума СПб раньше висели ещё 02.10 и 03.10, и сессия на
+    чужой день заводилась без предупреждения и показывалась делегатам."""
+    from services.sos import sos_active_window
+
+    window = await sos_active_window(city)
+    if window is None:
+        return []
+    start, end = window
+    return [(start + timedelta(days=n)).isoformat() for n in range((end - start).days + 1)]
+
+
 async def hall_conflict_warning(
     city: str, day: str, hall_id: int | None, start_time: str, end_time: str, *,
     exclude_id: int | None = None,
