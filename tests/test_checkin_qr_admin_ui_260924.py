@@ -476,8 +476,9 @@ def test_reschedule_hook_composite_key_touches_only_that_city(tmp_path, monkeypa
 
 
 def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
-    """Голый `forum_date` — глобальный фолбэк (CONTEXT A): и spb (свой override), и tyumen
-    (полагается на общий фолбэк) обязаны пересчитаться одним вызовом."""
+    """Голый `forum_date` пересчитывает все города одним вызовом, но при включённом модуле
+    городов общий ключ больше НЕ даёт дату городу без своей: иначе Москва получала QR за чужой
+    региональный форум. spb (своя дата) стоит, tyumen/msk (только общая) — нет."""
     from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
@@ -489,8 +490,8 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
     async def body(s):
         await _reschedule_checkin_qr_if_forum_date("forum_date")
         assert s.get_job("checkin_qr_evening:spb") is not None
-        assert s.get_job("checkin_qr_evening:tyumen") is not None
-        assert s.get_job("checkin_qr_evening:msk") is not None
+        assert s.get_job("checkin_qr_evening:tyumen") is None
+        assert s.get_job("checkin_qr_evening:msk") is None
 
     _run_scheduled(tmp_path, monkeypatch, body)
 

@@ -427,7 +427,7 @@ async def arc_op(callback: types.CallbackQuery, state: FSMContext):
         return
 
     # int / date / birth_date — только текстом, с примером формата (D-01).
-    if category == "birth_date" and op == "age_on_forum_lt" and not await forum_date_for(rule.get("city")):
+    if category == "birth_date" and op == "age_on_forum_lt" and not await forum_date_for(rule.get("city"), inherit_common=True):
         await callback.answer(
             f"Дата форума не задана — такое правило никогда не сработает. Задайте её: "
             f"{_FORUM_DATE_PATH}, потом вернитесь сюда.",
