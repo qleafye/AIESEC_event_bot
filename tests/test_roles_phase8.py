@@ -536,7 +536,10 @@ def test_required_capability_message_order_state_before_command(tmp_path):
 def test_every_capability_value_is_known(tmp_path):
     from handlers.admin_caps import ADMIN_CAPS, ALL_CAPABILITIES, ANY_CAPABILITY
 
-    bad = [k for k, v in ADMIN_CAPS.items() if v != ANY_CAPABILITY and v not in ALL_CAPABILITIES]
+    # Кортеж — «любое из»: непустой, и каждый его элемент — настоящее право.
+    bad = [k for k, v in ADMIN_CAPS.items()
+           if not (v == ANY_CAPABILITY or v in ALL_CAPABILITIES
+                   or (isinstance(v, tuple) and v and all(c in ALL_CAPABILITIES for c in v)))]
     assert not bad, bad
 
 
