@@ -1616,3 +1616,59 @@ def test_first_unhealthy_alert_fires_on_fresh_uptime(tmp_path, monkeypatch):
     bot.send_failures[CHAT_ID] = [Exception("kicked")]
     _run(sos_service.post_card(bot, rid))
     assert len([s for s in alert_bot.sent if "Чат SOS недоступен" in s[1]]) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# SOS для неодобренных в день форума (безопасность важнее статуса заявки)
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _set_status(tid, status):
+    async def go():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET status = ? WHERE telegram_id = ?", (status, tid))
+            await conn.commit()
+    _run(go())
+
+
+def _press_sos(tid):
+    state = _fresh_state(tid)
+    msg = FakeMessage(text="🆘 SOS", user_id=tid)
+    msg.bot = FakeBot()
+    _run(sos_handlers.sos_start(msg, state))
+    return msg
+
+
+def test_sos_pending_walkin_can_send_sos_on_forum_day(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _set_status(DELEGATE_ID, "pending")
+    _run(db.set_setting("forum_date", msk_now().strftime("%d.%m.%Y")))
+    msg = _press_sos(DELEGATE_ID)
+    assert _run(db.get_open_sos_report(DELEGATE_ID)) is not None
+    assert any("Сигнал отправлен оргкомитету" in a[0] for a in msg.answers)
+
+
+def test_sos_rejected_can_send_sos_on_forum_day(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _set_status(DELEGATE_ID, "rejected")
+    _run(db.set_setting("forum_date", msk_now().strftime("%d.%m.%Y")))
+    _press_sos(DELEGATE_ID)
+    assert _run(db.get_open_sos_report(DELEGATE_ID)) is not None
+
+
+def test_sos_pending_outside_forum_window_gets_regular_gate(tmp_path):
+    _ready(tmp_path)
+    _run(_add_delegate(DELEGATE_ID))
+    _set_status(DELEGATE_ID, "pending")
+    msg = _press_sos(DELEGATE_ID)  # forum_date не задана — окна нет
+    assert _run(db.get_open_sos_report(DELEGATE_ID)) is None
+    assert msg.answers  # обычный текст гейта «заявка на рассмотрении», не тишина
+
+
+def test_sos_without_profile_still_asks_for_start(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("forum_date", msk_now().strftime("%d.%m.%Y")))
+    msg = _press_sos(DELEGATE2_ID)
+    assert _run(db.get_open_sos_report(DELEGATE2_ID)) is None
+    assert any("/start" in a[0] for a in msg.answers)
