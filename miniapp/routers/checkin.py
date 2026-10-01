@@ -62,7 +62,7 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
-from services import checkin_arrival, checkin_training, i18n
+from services import checkin_arrival, checkin_forum_day, checkin_training, i18n
 from services import venue_log
 from services.onsite_reg import (
     approve_at_door,
@@ -415,7 +415,7 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
         }
 
     if not point.startswith("session:"):
-        entry_denial = await _entry_city_denial(bound, user)
+        entry_denial = await _entry_city_denial(bound, user) or await checkin_forum_day.entry_day_denial(user)
         if entry_denial is not None:
             await _log_denial(p, bound, entry_denial["status"], point=point, source="miniapp", user=user)
             return {**entry_denial, **_person_fields(user)}
@@ -470,7 +470,7 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
         }
 
     if not point.startswith("session:"):
-        entry_denial = await _entry_city_denial(bound, user)
+        entry_denial = await _entry_city_denial(bound, user) or await checkin_forum_day.entry_day_denial(user)
         if entry_denial is not None:
             await _log_denial(p, bound, entry_denial["status"], point=point, source="manual", user=user)
             return {**entry_denial, **_person_fields(user)}

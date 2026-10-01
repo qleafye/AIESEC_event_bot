@@ -10,7 +10,8 @@ from __future__ import annotations
 import html
 
 from cities import city_label_or_none, normalize_city
-from services.checkin import parse_qr_payload, record_arrival, resolve_scanned_user
+from services import checkin_forum_day
+from services.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
 from services.program import scanned_outside_session_window
 
 # Больше стольких кодов — до цикла показываем «⏳ Отмечаю…»: 500 строк — ~20 секунд.
@@ -37,7 +38,7 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
     список `flagged` [(подпись, разобранный QR)] для строк «Требуют внимания»."""
     res = {
         "new": 0, "duplicate": 0, "moved": 0, "outside": 0, "day_mismatch": 0,
-        "other_city": 0, "point_gone": 0, "untimed": 0, "flagged": [],
+        "other_city": 0, "point_gone": 0, "untimed": 0, "off_day": 0, "flagged": [],
     }
     for rec in records:
         parsed = parse_qr_payload(rec["qr"])
@@ -62,6 +63,8 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
             continue
         if approx:
             res["untimed"] += 1
+        if point == ENTRY_POINT and status == "new" and await checkin_forum_day.off_day_for_scan(user, result.get("scanned_at")):
+            res["off_day"] += 1
         if result.get("day_mismatch"):
             res["day_mismatch"] += 1
         if session is not None and rec["scanned_at"] and scanned_outside_session_window(session, rec["scanned_at"]):
@@ -103,6 +106,11 @@ async def report_lines(res: dict, *, row_limit: int) -> list[str]:
     if res["untimed"]:
         lines.append(
             f"⚠️ Без времени скана в файле: {res['untimed']} — отмечены временем загрузки (примерно)."
+        )
+    if res["off_day"]:
+        lines.append(
+            f"⚠️ Вход не в день форума делегата: {res['off_day']} (всё равно отмечено). Если это была "
+            "проба сканера — снимите лишние отметки: «📓 Журнал площадки» → «🗑 Снять отметку делегату»."
         )
     if res["outside"]:
         lines.append(f"⚠️ Время скана вне интервала сессии: {res['outside']} (всё равно отмечено)")
