@@ -14,7 +14,7 @@ from services.person_search import parse_query
 
 logger = logging.getLogger(__name__)
 
-_USERNAME_LABEL = re.compile(r"ник|телеграм|telegram|\bтг\b|\btg\b|username|юзернейм")
+_USERNAME_LABEL = re.compile(r"\bник\b|\bникнейм|телеграм|telegram|\bтг\b|\btg\b|username|юзернейм")
 _PHONE_LABEL = re.compile(r"телефон|phone|номер")
 _PHONE_EXCLUDE = re.compile(r"групп|комнат|паспорт")
 
