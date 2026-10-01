@@ -40,7 +40,9 @@ export class ApiTimeout extends Error {
 
 // timeoutMs — для запросов, которые нельзя ждать бесконечно (скан у двери): на «подвисшей»
 // сети fetch без сигнала висит минутами. Без timeoutMs поведение прежнее.
-export async function api(path, { method = "GET", body, form, timeoutMs } = {}) {
+// quiet — фоновый запрос (подсказка/плитка на главной): его 403 не уводит весь экран в
+// «Нет доступа», а только бросает ApiError — вызывающий молча рисует экран без этой строки.
+export async function api(path, { method = "GET", body, form, timeoutMs, quiet = false } = {}) {
   const headers = { "X-Requested-With": "fetch" };
   if (initData) headers["X-Telegram-Init-Data"] = initData;
   if (body !== undefined && !form) headers["Content-Type"] = "application/json";
@@ -76,7 +78,7 @@ export async function api(path, { method = "GET", body, form, timeoutMs } = {}) 
     // bad_initdata — подпись/срок: «Сессия истекла»; no_auth — нет ни initData, ни cookie:
     // «Откройте через бота». Без повторной попытки (см. шапку файла).
     authErrorHandler(reason === "bad_initdata" ? "expired" : "open-in-bot", payload);
-  } else if (response.status === 403) {
+  } else if (response.status === 403 && !quiet) {
     // staff_only / no_cap / section_off / delegate_gate / csrf — экран «Нет доступа».
     authErrorHandler("no-access", payload);
   } else if (response.status === 503 && reason === "miniapp_off") {
