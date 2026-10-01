@@ -717,8 +717,18 @@ async def checkin_stats(
     cities_out = []
     total_arrived = 0
     total_approved = 0
+    # «Сегодня» — только города, где сегодня идёт форум: Москва с форумом через месяц стояла бы
+    # в «сегодня» с нулём и подмешивалась в «Итого».
+    today_codes = None
+    if day:
+        from datetime import date
+        from services.forum_days import forum_city_codes
+        today = date.fromisoformat(day)
+        today_codes = await forum_city_codes(today, today)
     for c in await enabled_cities():
         code = c["code"]
+        if today_codes and code not in today_codes:
+            continue
         arrived, approved = await checkin_arrival.arrived_counts(city_scope(code), day)
         if approved == 0:
             continue
