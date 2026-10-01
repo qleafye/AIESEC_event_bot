@@ -167,7 +167,14 @@ async def extf_oauth(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(ExtFormOAuth), F.text == "Отмена")
 async def extf_oauth_cancel(message: types.Message, state: FSMContext):
+    at_org_step = await state.get_state() == ExtFormOAuth.org_id.state
     await state.clear()
+    if at_org_step:
+        # К этому шагу токены уже сохранены — «не менялось» было бы неправдой.
+        await message.answer(
+            "Вход выполнен без организации. Если формы лежат в организации Яндекс 360, "
+            "войдите ещё раз и укажите её ID.")
+        return
     await message.answer("Отменено. Подключение не менялось.")
 
 
@@ -192,9 +199,20 @@ async def extf_oauth_code(message: types.Message, state: FSMContext, bot: Bot):
                                  "нажмите «🔑 Войти через Яндекс» ещё раз.")
         return
     by = message.from_user.id if message.from_user else None
+    # Повторный вход не должен затирать ID организации: формы организации тогда начали бы
+    # получать 403/404, пока менеджер не введёт его заново.
+    prev = await xdb.get_yandex_connection()
+    prev_org = prev.get("org_id") if prev else None
     await xdb.upsert_yandex_connection(
-        org_id=None, org_header=_ORG_HEADER, access_token=tokens["access_token"],
-        refresh_token=tokens.get("refresh_token"), expires_at=tokens.get("expires_at"), by=by)
+        org_id=prev_org, org_header=(prev.get("org_header") if prev else None) or _ORG_HEADER,
+        access_token=tokens["access_token"], refresh_token=tokens.get("refresh_token"),
+        expires_at=tokens.get("expires_at"), by=by)
+    if prev_org:
+        await state.clear()
+        await message.answer(
+            "✅ Вход выполнен. Организация осталась прежней, формы продолжат работать.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[_back_row()]))
+        return
     await state.set_state(ExtFormOAuth.org_id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [_btn("Формы в личном аккаунте, без организации", "extf_oauth_noorg")]])

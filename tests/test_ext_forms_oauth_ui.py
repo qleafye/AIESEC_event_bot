@@ -228,3 +228,29 @@ def test_oauth_noorg_button(tmp_path, monkeypatch):
     assert res is not UNHANDLED
     assert "✅ Доступ к Яндекс Формам подключён" in _all_text(ev.message)
     assert _run(xdb.get_yandex_connection())["org_id"] is None
+
+
+def test_relogin_keeps_org_id_and_skips_org_step(tmp_path, monkeypatch):
+    _roles_ready(tmp_path)
+    _run(xdb.upsert_yandex_connection(org_id=777, org_header="X-Org-Id", access_token="OLD",
+                                       refresh_token="RT", expires_at=None, by=1))
+
+    async def fake_exchange(code):
+        return {"access_token": "NEW", "refresh_token": "RT2", "expires_at": "2027-01-01 00:00:00"}
+    monkeypatch.setattr(yx, "exchange_code", fake_exchange)
+    state = _fresh_state(ADMIN_ID)
+    _run(state.set_state("ExtFormOAuth:code"))
+    _, ev = _msg("1234567", state, st="ExtFormOAuth:code")
+    conn = _run(xdb.get_yandex_connection())
+    assert conn["access_token"] == "NEW" and str(conn["org_id"]) == "777"
+    assert _run(state.get_state()) is None
+    assert "Организация осталась прежней" in _all_text(ev)
+
+
+def test_cancel_at_org_step_is_honest(tmp_path, monkeypatch):
+    _roles_ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    _run(state.set_state("ExtFormOAuth:org_id"))
+    _, ev = _msg("Отмена", state, st="ExtFormOAuth:org_id")
+    text = _all_text(ev)
+    assert "Вход выполнен без организации" in text and "не менялось" not in text
