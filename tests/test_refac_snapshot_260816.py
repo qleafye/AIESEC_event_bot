@@ -1247,6 +1247,7 @@ admin|callback_query|venue_revoke_confirm|vrv_p:*
 admin|callback_query|venue_revoke_go|vrv_go:*
 admin|callback_query|checkin_training_sheet|checkin_training_sheet
 admin|callback_query|admin_sos|admin_sos
+admin|callback_query|asos_city_open|asos_city:*
 admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
 admin|callback_query|sos_claim|sos_claim:*
@@ -2092,7 +2093,9 @@ def test_snapshot_total_handler_count_is_292():
     # (1 + 4), 0 удалений, 0 реордеров (956 -> 961).
     # 01.10 («↩️ Вернуть ступень»): 2 admin.callback_query (unrevoke_list/unrevoke_go) сразу после
     # promote_go — одна чистая вставка, 0 удалений, 0 реордеров (961 -> 963).
-    assert len(GOLDEN_SNAPSHOT) == 963
+    # 03.10 («🆘 Настройки SOS» из хаба с городом): 1 admin.callback_query (asos_city_open)
+    # сразу после admin_sos — одна чистая вставка, 0 удалений, 0 реордеров (963 -> 964).
+    assert len(GOLDEN_SNAPSHOT) == 964
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

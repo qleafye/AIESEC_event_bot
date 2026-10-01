@@ -401,6 +401,7 @@ ADMIN_CAPS: dict[str, str] = {
     # их (и реплай) разбирает handlers/group_chat.py — там жмёт любой участник чата SOS.
     "admin_sos": "moderate_reg",
     "asos:*": "moderate_reg",
+    "asos_city:*": "moderate_reg",  # вход из «🎪 Форум: функции» с городом хаба
     "sos_claim:*": "moderate_reg",
     "sos_resolve:*": "moderate_reg",
     "special:sos_reply": "moderate_reg",
