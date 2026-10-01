@@ -533,3 +533,9 @@ class AmbSlotsEdit(StatesGroup):
     # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/admin_amb_section.py): менеджер
     # вводит число мест в команде амбассадоров (0 — без лимита); после сохранения — на экран.
     waiting_for_limit = State()
+
+
+class ProgramPhotoUpload(StatesGroup):
+    # Фото программы ДЛЯ ОДНОГО ГОРОДА (или общее) — handlers/admin_program_view.py; город и
+    # экран возврата — в state.get_data().
+    waiting = State()

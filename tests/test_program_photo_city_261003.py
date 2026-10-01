@@ -1,4 +1,6 @@
-"""Программа у делегата: чат и Mini App по одному правилу (тумблер «Таблица/Фото» города).
+"""Программа у делегата: чат и Mini App по одному правилу (тумблер «Таблица/Фото» города), фото
+программы — своё у города; общее — только городу без своего фото и без сессий; загрузка фото
+из админки — для города экрана/шапки.
 
 Конвенция соседей (`tests/test_program_view_260924.py`): Fake-объекты, БД — tmp_path
 (`fast_init_db`), `asyncio.run()`."""
@@ -10,9 +12,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
+import cities
 from cities import per_city_key
 from config import config
 from database import db
+from handlers.states import ProgramPhotoUpload
 from services import program
 from tests._dbtpl import fast_init_db
 
@@ -126,3 +130,115 @@ def test_chat_shows_own_photo_when_toggle_is_photo(tmp_path):
     _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
     _run(db.set_setting(per_city_key("program_miniapp_view", "spb"), "photo"))
     assert _show(SPB_DELEGATE).photos_sent == ["SPB_PHOTO"]
+
+
+# ── Фото своё у города; общее — только городу без своего фото и без сессий ──────────────────
+
+def test_shared_photo_does_not_cover_city_with_sessions(tmp_path):
+    _ready(tmp_path)
+    _delegate(SPB_DELEGATE, "spb")
+    _delegate(TMN_DELEGATE, "tyumen")
+    _run(db.set_setting("program_photo_file_id", "SHARED_PHOTO"))
+    _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _run(db.set_setting("program_miniapp_view", "photo"))  # даже при общем выборе «Фото»
+    spb = _show(SPB_DELEGATE)
+    assert spb.photos_sent == [] and any("Открытие" in t for t in spb.texts)
+    assert _show(TMN_DELEGATE).photos_sent == ["SHARED_PHOTO"]  # у Тюмени ни своего, ни сессий
+
+
+def test_city_photo_is_not_seen_by_other_city(tmp_path):
+    _ready(tmp_path)
+    _delegate(SPB_DELEGATE, "spb")
+    _delegate(TMN_DELEGATE, "tyumen")
+    _run(db.set_setting(per_city_key("program_photo_file_id", "spb"), "SPB_PHOTO"))
+    _run(db.create_program_session("tyumen", "2026-10-03", "10:00", "11:00", "Сессия Тюмени"))
+    assert _show(SPB_DELEGATE).photos_sent == ["SPB_PHOTO"]
+    tmn = _show(TMN_DELEGATE)
+    assert tmn.photos_sent == [] and any("Сессия Тюмени" in t for t in tmn.texts)
+
+
+def test_own_caption_goes_with_own_photo(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("program_caption", "Общая подпись"))
+    _run(db.set_setting(per_city_key("program_photo_file_id", "spb"), "SPB_PHOTO"))
+    _run(db.set_setting(per_city_key("program_caption", "spb"), "Подпись СПб"))
+    assert _run(program.program_photo_caption("spb")) == "Подпись СПб"
+    assert _run(program.program_photo_caption("tyumen")) == "Общая подпись"
+
+
+def test_cities_off_shared_photo_is_the_photo(tmp_path):
+    _ready(tmp_path, cities_on=False)
+    _delegate(SPB_DELEGATE, None)
+    _run(db.set_setting("program_photo_file_id", "ONLY_PHOTO"))
+    _run(db.set_setting("program_miniapp_view", "photo"))
+    assert _show(SPB_DELEGATE).photos_sent == ["ONLY_PHOTO"]
+
+
+# ── Загрузка — для города экрана ────────────────────────────────────────────────────────────
+
+def _upload(uid, data, file_id, caption=None):
+    from handlers import admin_program_view
+
+    state = _state(uid)
+    cb = _Callback(data, user_id=uid)
+    _run(admin_program_view.prog_photo_start(cb, state))
+    if _run(state.get_state()) != ProgramPhotoUpload.waiting.state:
+        return cb, None
+    msg = _Msg(uid, photo=[_Photo(file_id)], caption=caption)
+    _run(admin_program_view.prog_photo_receive(msg, state))
+    return cb, msg
+
+
+def test_upload_writes_city_photo_not_shared(tmp_path):
+    _ready(tmp_path)
+    _cb, msg = _upload(SUPERADMIN_ID, "prog_photo:spb:program", "NEW_SPB", caption="Программа СПб")
+    assert _run(db.get_setting(per_city_key("program_photo_file_id", "spb"))) == "NEW_SPB"
+    assert _run(db.get_setting(per_city_key("program_caption", "spb"))) == "Программа СПб"
+    assert not _run(db.get_setting("program_photo_file_id"))
+    assert any("сохранено" in t for t in msg.texts)
+
+
+def test_upload_prompt_names_the_city(tmp_path):
+    _ready(tmp_path)
+    label = _run(cities.city_label("tyumen"))
+    cb, _msg = _upload(SUPERADMIN_ID, "prog_photo:tyumen:hub", "NEW_TMN")
+    assert label in cb.message.edited
+
+
+def test_upload_warns_when_city_shows_table(tmp_path):
+    _ready(tmp_path)
+    _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _cb, msg = _upload(SUPERADMIN_ID, "prog_photo:spb:program", "NEW_SPB")
+    assert any("Переключить вид" in t for t in msg.texts)  # объясняет, почему фото не видно
+
+
+def test_bound_manager_cannot_upload_for_other_city(tmp_path):
+    _ready(tmp_path)
+    _run(db.add_staff(MANAGER_ID, "reg_manager", SUPERADMIN_ID))
+    _run(db.set_staff_city(MANAGER_ID, "msk"))
+    cb, msg = _upload(MANAGER_ID, "prog_photo:spb:program", "EVIL")
+    assert msg is None and cb.answers and cb.answers[0][1] is True
+    assert not _run(db.get_setting(per_city_key("program_photo_file_id", "spb")))
+
+
+def test_settings_photo_button_uses_header_city(tmp_path):
+    from handlers import admin_settings
+
+    _ready(tmp_path)
+    _run(cities.set_admin_city(SUPERADMIN_ID, "spb"))
+    state = _state(SUPERADMIN_ID)
+    cb = _Callback("settings_photo:program")
+    _run(admin_settings.settings_photo_start(cb, state))
+    assert _run(state.get_state()) == ProgramPhotoUpload.waiting.state
+    assert _run(state.get_data())["code"] == "spb"
+
+
+def test_city_screens_show_photo_button(tmp_path):
+    from handlers import admin_forum_functions, admin_program
+
+    _ready(tmp_path)
+    _text, kb = _run(admin_program.render_city_program_screen(SUPERADMIN_ID, "spb"))
+    assert "prog_photo:spb:program" in [b.callback_data for row in kb.inline_keyboard for b in row]
+    text, kb = _run(admin_forum_functions._render_hub(SUPERADMIN_ID, "spb"))
+    assert "prog_photo:spb:hub" in [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "🖼 Фото программы" in text
