@@ -263,7 +263,8 @@ export async function render(root, params, ctx) {
     }
     if (stats.cities) {
       const rows = stats.cities.map((c) => h("div", { text: `${c.label}: пришли ${c.arrived} из ${c.approved}` }));
-      rows.push(h("div", { class: "checkin-stats-total", text: `Итого: ${stats.arrived} из ${stats.approved}` }));
+      // «Итого» — только когда городов больше одного (один город итог лишь повторяет).
+      if (rows.length > 1) rows.push(h("div", { class: "checkin-stats-total", text: `Итого: ${stats.arrived} из ${stats.approved}` }));
       if (stats.today) rows.unshift(h("div", { text: "Сегодня:" }));
       statsBox.replaceChildren(...rows);
     } else {
@@ -454,6 +455,18 @@ export async function render(root, params, ctx) {
     haptic(HAPTIC_BY_TONE[tone] || "error");
   }
 
+  // Пока ждём ответа на скан (на медленном Wi-Fi — до нескольких секунд), на экране «проверяю»,
+  // а не плашка предыдущего человека: волонтёр не примет чужой результат за этот.
+  function showChecking() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    pendingUndo = null;
+    plaque.className = "checkin-plaque";
+    plaque.replaceChildren(
+      h("div", { class: "checkin-plaque-dot", text: "⏳" }),
+      h("div", { class: "checkin-plaque-heading", text: "Проверяю…" }),
+    );
+  }
+
   // Дата форума в настройках неверна — менеджер отмечает «всё равно» (сервер проверяет право).
   function dayOverrideButton(res) {
     const btn = h("button", { class: "btn secondary", type: "button", text: "⚠️ Отметить всё равно" });
@@ -503,6 +516,7 @@ export async function render(root, params, ctx) {
   // Завершается по ответу на сам скан — следующий QR из очереди уходит сразу. Не-🟢 исход
   // возвращает HOLD: очередь ждёт явного «Сканировать дальше», плашку отказа не затирает.
   async function submitScan(payloadText) {
+    showChecking();
     try {
       const res = await measured(() => api("/checkin/scan", {
         method: "POST", timeoutMs: SCAN_TIMEOUT_MS,

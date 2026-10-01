@@ -645,3 +645,20 @@ def test_scan_outbox_failure_still_returns_success(tmp_path, monkeypatch):
     assert resp.json()["status"] == "new"
     assert "first_entry" not in resp.json()
     assert _run(bot_db.count_checkins_by_point("entry")) == 1
+
+
+def test_stats_today_only_cities_with_forum_today(tmp_path):
+    """Волонтёр без города в день форума СПб: «Сегодня» — только СПб, Москва с форумом через
+    месяц не стоит в «сегодня» с нулём и не подмешивается в «Итого»."""
+    from services.timeutil import msk_now
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "on"))
+    _run(bot_db.set_setting("forum_date__city__spb", msk_now().strftime("%d.%m.%Y")))
+    _run(bot_db.set_setting("forum_date__city__msk", "30.10.2099"))
+    _run(_insert_user(950030, city="spb"))
+    _run(_insert_user(950031, city="msk"))
+    _run(bot_db.record_checkin(950030, "entry", source="miniapp"))
+    body = client.get(f"{BASE}/stats", headers=_hdr(ADMIN_ID)).json()
+    assert body["today"] is True
+    assert [c["code"] for c in body["cities"]] == ["spb"]
+    assert body["arrived"] == 1 and body["approved"] == 1
