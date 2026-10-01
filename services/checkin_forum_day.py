@@ -56,10 +56,20 @@ def _ddmm(d: date) -> str:
     return d.strftime("%d.%m")
 
 
-def _has_city(user: dict) -> bool:
-    """Город делегата не записан — день не проверяем: `normalize_city` превратил бы пустоту в
-    город по умолчанию (Москву), и делегат без города получал бы отказ «форум 30.10»."""
-    return bool(str(user.get("event_city") or "").strip())
+async def day_check_city(user: dict) -> tuple[bool, str | None]:
+    """`(проверять ли день, город для окна форума)`.
+
+    Город делегата записан — его город. Не записан при ВКЛЮЧЁННЫХ городах — день не проверяем:
+    `normalize_city` превратил бы пустоту в город по умолчанию (Москву), и делегат без города
+    получал бы отказ «форум 30.10». При ВЫКЛЮЧЕННЫХ городах пустой город у всех (стенд,
+    конференция) — проверяем по общей `forum_date` (`forum_window(None)` её и читает), иначе
+    проба сканера накануне снова ставила бы настоящую отметку."""
+    raw = str(user.get("event_city") or "").strip()
+    if raw:
+        return True, normalize_city(raw)
+    if await cities_module_on():
+        return False, None
+    return True, None
 
 
 async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
@@ -67,15 +77,15 @@ async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
     Иначе — отказ для плашки сканера: ничего не записано. Настройки (даты и длительность
     форума по городам) — одним снимком `bot_settings`, а не соединением на каждый ключ: это
     путь каждого скана входа."""
-    if not _has_city(user):
-        return None
     async with settings_snapshot():
-        return await _entry_day_denial(user, day)
+        check, city = await day_check_city(user)
+        if not check:
+            return None
+        return await _entry_day_denial(city, day)
 
 
-async def _entry_day_denial(user: dict, day: date | None) -> dict | None:
+async def _entry_day_denial(city: str | None, day: date | None) -> dict | None:
     day = day or _today()
-    city = normalize_city(user.get("event_city"))
     window = await forum_window(city)
     if window is None or window[0] <= day <= window[1]:
         return None
@@ -104,11 +114,12 @@ async def city_emphasis(day: date | None = None) -> bool:
 async def off_day_for_scan(user: dict, scanned_at: str | None) -> bool:
     """Для CSV: скан (или загрузка, если времени в файле нет) не в день форума города
     делегата. Дата форума не задана — `False`."""
-    if not _has_city(user):
+    check, city = await day_check_city(user)
+    if not check:
         return False
     try:
         day = datetime.strptime(scanned_at[:10], "%Y-%m-%d").date() if scanned_at else _today()
     except ValueError:
         return False
-    window = await forum_window(normalize_city(user.get("event_city")))
+    window = await forum_window(city)
     return window is not None and not (window[0] <= day <= window[1])

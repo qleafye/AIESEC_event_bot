@@ -101,9 +101,12 @@ async def _fits_event(day: str, user: dict, point: str, session: dict | None) ->
     """День «YYYY-MM-DD» — день сессии/окно форума города делегата? `None` — сверить не с чем."""
     if session is not None:
         return day == session.get("day")
-    if point != ENTRY_POINT or not str(user.get("event_city") or "").strip():
+    if point != ENTRY_POINT:
         return None
-    window = await checkin_forum_day.forum_window(normalize_city(user.get("event_city")))
+    check, city = await checkin_forum_day.day_check_city(user)
+    if not check:
+        return None
+    window = await checkin_forum_day.forum_window(city)
     if window is None:
         return None
     return f"{window[0]:%Y-%m-%d}" <= day <= f"{window[1]:%Y-%m-%d}"
@@ -124,8 +127,9 @@ async def _untimed_stamp(rec: dict, user: dict, point: str) -> tuple[str | None,
     """Время записи без времени скана и графа отчёта (см. докстринг модуля)."""
     if rec.get("day"):
         return f"{rec['day']} 12:00:00", "date_only"
-    if point == ENTRY_POINT and str(user.get("event_city") or "").strip():
-        window = await checkin_forum_day.forum_window(normalize_city(user.get("event_city")))
+    if point == ENTRY_POINT:
+        check, city = await checkin_forum_day.day_check_city(user)
+        window = await checkin_forum_day.forum_window(city) if check else None
         if window and timeutil.msk_now().date() != window[0]:
             return f"{window[0]:%Y-%m-%d} 12:00:00", "forum_day_assumed"
     return None, "untimed"
