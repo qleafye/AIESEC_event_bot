@@ -126,9 +126,8 @@ _DENIAL_LABELS = {
 
 
 async def _one_city_line(label: str, city_sc, day: str | None = None) -> tuple[str, int, int] | None:
-    """Строка «<Город>: пришли N из M» + сырые числа для итога. `None`, если в городе нет ни
-    одного одобренного текущего сезона (задача A2 просила показывать только города, где есть
-    одобренные -- пустой регион 30.10 не должен маячить строкой «0 из 0» рядом с 03.10)."""
+    """Строка «<Город>: пришли N из M» + числа для итога. `None` — в городе нет одобренных
+    текущего сезона (пустой регион не маячит строкой «0 из 0»)."""
     arrived, approved = await checkin_arrival.arrived_counts(city_sc, day)
     if approved == 0:
         return None
@@ -155,11 +154,8 @@ async def _counter_line(admin_id: int, city: str | None = None) -> str:
     Вход каждый день: в день форума (сегодня уже был хоть один вход) — «Сегодня пришли» по
     входу сегодняшнего дня, иначе — «Пришли за форум» (хоть один вход).
 
-    03.10 форумы СПб и Тюмени идут ОДНОВРЕМЕННО с ещё открытым набором в Москве -- один общий
-    счётчик на всё событие путает «пришедших в регионе» с «ещё набирающимися в Москве».
-    Три ветки: менеджер закреплён за городом (`_admin_city_scope`) -- только его город; модуль
-    городов выключен -- без городского фильтра; «Все города» -- построчно по включённым
-    городам с хотя бы одним одобренным текущего сезона, плюс «Итого»."""
+    Три ветки: город экрана -- только он; модуль городов выключен -- без фильтра; «Все города»
+    -- построчно по городам с одобренными (в день форума -- только с форумом сегодня), «Итого»."""
     day = await checkin_arrival.counter_day()
     head = "Сегодня пришли" if day else "Пришли за форум"
     own_scope = await _screen_scope(admin_id, city)
@@ -170,8 +166,11 @@ async def _counter_line(admin_id: int, city: str | None = None) -> str:
     lines: list[str] = []
     total_arrived = 0
     total_approved = 0
+    today_codes = await checkin_arrival.today_forum_codes(day)  # «Сегодня» — только города с форумом
     for c in await enabled_cities():
         code = c["code"]
+        if today_codes and code not in today_codes:
+            continue
         result = await _one_city_line(await city_label(code), city_scope(code), day)
         if result is None:
             continue
@@ -183,7 +182,8 @@ async def _counter_line(admin_id: int, city: str | None = None) -> str:
     if not lines:
         return f"{head}: 0 из 0 одобренных"
     lines.insert(0, "Сегодня:" if day else "За форум:")
-    lines.append(f"Итого: {total_arrived} из {total_approved}")
+    if len(lines) > 2:  # один город — его строка и есть итог
+        lines.append(f"Итого: {total_arrived} из {total_approved}")
     return "\n".join(lines)
 
 
