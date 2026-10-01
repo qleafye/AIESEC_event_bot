@@ -368,7 +368,9 @@ def test_checkin_point_city_pick_shows_point_picker_for_chosen_city(tmp_path, mo
     sid = asyncio.run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
 
     cb = _FakeCallback("checkin_point_city:spb", ADMIN_ID)
-    asyncio.run(admin_checkin.checkin_point_city_pick(cb))
+    state = _new_state(ADMIN_ID)
+    asyncio.run(state.update_data(checkin_records=[{"qr": "YL26·А·spb·tok", "scanned_at": None}]))
+    asyncio.run(admin_checkin.checkin_point_city_pick(cb, state))
 
     kb = cb.message.sent[-1][1]
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]

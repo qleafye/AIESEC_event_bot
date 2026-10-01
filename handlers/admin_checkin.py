@@ -85,6 +85,7 @@ from services.program import checkin_session_points, scanned_outside_session_win
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
 from services import checkin_arrival
+from services import checkin_csv_import as _csv_import
 
 logger = logging.getLogger(__name__)
 
@@ -502,119 +503,71 @@ async def _city_picker_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.callback_query(StateFilter(CheckinImport), F.data.startswith("checkin_point_city:"))
-async def checkin_point_city_pick(callback: types.CallbackQuery):
+# Без StateFilter: после перезапуска бота состояние (и записи файла в нём) пропадают — кнопка
+# выбора точки должна ответить «пришлите файл заново», а не висеть со спиннером. Записи
+# снимаются с состояния перед отметкой — повторный тап по той же кнопке попадает сюда же.
+async def _import_records_or_explain(callback: types.CallbackQuery, state: FSMContext) -> list[dict] | None:
+    records = (await state.get_data()).get("checkin_records") or []
+    if not records:
+        await callback.answer()
+        await callback.message.answer(_csv_import.LOST_FILE_TEXT)
+        return None
+    return records
+
+
+@router.callback_query(F.data.startswith("checkin_point_city:"))
+async def checkin_point_city_pick(callback: types.CallbackQuery, state: FSMContext):
+    if await _import_records_or_explain(callback, state) is None:
+        return
     code = callback.data.split(":", 1)[1]
     await callback.message.answer("Отметить точкой:", reply_markup=await _point_picker_kb(code))
     await callback.answer()
 
 
-@router.callback_query(StateFilter(CheckinImport), F.data.startswith("checkin_point:"))
+@router.callback_query(F.data.startswith("checkin_point:"))
 async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
+    records = await _import_records_or_explain(callback, state)
+    if records is None:
+        return
     point = callback.data.split(":", 1)[1]
     data = await state.get_data()
-    records = data.get("checkin_records") or []
-    await state.set_state(None)
 
     # Точка выбрана ОДНА на весь загруженный файл — сессию (если это точка сессии) и её отчётный
     # интервал времени (D-18..D-20) достаточно достать один раз, а не на каждую строку.
     session = await get_program_session(int(point.split(":", 1)[1])) if point.startswith("session:") else None
+    if point.startswith("session:") and session is None:
+        # Сессию удалили/пересоздали, пока выбирали точку: ничего не отмечаем, файл в состоянии
+        # остаётся — сразу новый выбор точки.
+        await callback.answer()
+        city = (await _resolve_checkin_screen_city(callback.from_user.id)) or default_city_code()
+        await callback.message.answer(_csv_import.SESSION_GONE_TEXT, reply_markup=await _point_picker_kb(city))
+        return
+    await state.set_state(None)
+    await state.update_data(checkin_records=None)
+    # Ответ на кнопку сразу: файл на сотни строк отмечается дольше 15 секунд, поздний ответ
+    # Telegram уже не принимает.
+    await callback.answer("Отмечаю…")
+    if len(records) > _csv_import.PROGRESS_THRESHOLD:
+        await callback.message.answer(_csv_import.progress_text(len(records)))
 
     # D-26 (24.09): волонтёр/менеджер, ПРИВЯЗАННЫЙ к городу, загружает выгрузку сканера только
-    # своей стойки — делегаты чужого города НЕ отмечаются вовсе (не вызываем record_arrival),
-    # отдельная строка отчёта ниже. Только для точки «Вход» — сессии уже ограничены своим
-    # городом на уровне выбора точки (`_point_picker_kb` строит список из `_resolve_checkin_screen_city`,
-    # которая для привязанного волонтёра отдаёт ЕГО город) и второй проверкой внутри
-    # `record_arrival` (сессия чужого города и так `wrong_city`).
+    # своей стойки — делегаты чужого города НЕ отмечаются (отдельная строка отчёта). Только для
+    # «Входа» — сессии и так ограничены своим городом выбором точки и проверкой в
+    # `record_arrival` (`wrong_city`).
     bound_city = await _volunteer_bound_city(callback.from_user.id) if point == ENTRY_POINT else None
-    other_city_n = 0
-
-    new_n = 0
-    dup_n = 0
-    moved_n = 0
-    outside_n = 0
-    # ревью (D-18, день сессии): CSV -- НЕ отказ (`record_arrival` уже отметил, несмотря на
-    # несовпадение дня сессии с днём скана/загрузки), только предупреждение в отчёте — живой
-    # скан/ручная отметка получают за то же несовпадение отказ `wrong_day` (см. docstring
-    # `services.checkin.record_arrival`), сюда он никогда не долетает как `result["status"]`.
-    day_mismatch_n = 0
-    # (reason, row) -- reason — человеческая причина из _DENIAL_LABELS/динамический текст
-    # `wrong_city`, а не жёстко закодированные категории: денайл-правило
-    # (services.checkin.checkin_denial/record_arrival) само решает допуск, отчёт только
-    # переводит код в текст (не дублирует логику допуска D-02/D-18).
-    flagged: list[tuple[str, dict]] = []
-
-    for rec in records:
-        parsed = parse_qr_payload(rec["qr"])
-        token = parsed["token"]
-        user, denial_code = await resolve_scanned_user(token, point=point, source="csv")
-        if denial_code is not None:
-            flagged.append((_DENIAL_LABELS.get(denial_code, denial_code), parsed))
-            continue
-        if bound_city is not None and normalize_city(user.get("event_city")) != bound_city:
-            other_city_n += 1
-            continue
-        approx = rec["scanned_at"] is None
-        result = await record_arrival(
-            user, point, source="csv",
-            scanned_at=rec["scanned_at"], approx=approx,
-            by_staff_id=callback.from_user.id, bot=callback.bot,
-        )
-        if result["status"] == "wrong_city":
-            flagged.append((result.get("reason_text", "другой город форума"), parsed))
-            continue
-        if result.get("day_mismatch"):
-            day_mismatch_n += 1
-        if session is not None and rec["scanned_at"] and scanned_outside_session_window(session, rec["scanned_at"]):
-            outside_n += 1
-        if result["status"] == "new":
-            new_n += 1
-        elif result["status"] == "moved":
-            moved_n += 1
-        else:
-            dup_n += 1
-
-    not_found_n = sum(1 for reason, _row in flagged if reason == _DENIAL_LABELS["no_user"])
-    replaced_n = sum(1 for reason, _row in flagged if reason == _DENIAL_LABELS["token_replaced"])
-    wrong_city_n = sum(1 for reason, _row in flagged if reason not in _DENIAL_LABELS.values())
-    not_approved_n = len(flagged) - not_found_n - replaced_n - wrong_city_n
+    res = await _csv_import.import_records(
+        records, point, session=session, bound_city=bound_city,
+        staff_id=callback.from_user.id, bot=callback.bot, labels=_DENIAL_LABELS,
+    )
     await _venue_log.log_by(  # идея №31: загрузка файла — одна строка журнала площадки
         callback.from_user, _venue_log.ACTION_CSV_UPLOAD, source="csv", point=point,
         city=(session or {}).get("city") or bound_city or await _resolve_checkin_screen_city(callback.from_user.id),
-        details={"new": new_n, "duplicate": dup_n, "moved": moved_n, "not_found": not_found_n, "not_approved": not_approved_n},
+        details={key: res[key] for key in ("new", "duplicate", "moved", "not_found", "not_approved")},
     )
 
-    lines = [
-        "✅ <b>Отметки загружены</b>",
-        "",
-        f"Отмечено новых: {new_n} · уже были: {dup_n} · "
-        f"не найдено: {not_found_n} · не одобрены: {not_approved_n} · "
-        f"QR заменён: {replaced_n}",
-    ]
+    lines = await _csv_import.report_lines(res, row_limit=_REPORT_ROW_LIMIT)
     if data.get("checkin_training_n"):
-        lines.append(_training.training_report_line(data["checkin_training_n"]))
-    if wrong_city_n:
-        lines.append(f"Другой город форума: {wrong_city_n}")
-    if other_city_n:
-        lines.append(f"Другой город: {other_city_n} (не отмечены)")
-    if moved_n:
-        lines.append(f"Перенесено с другой сессии слота: {moved_n}")
-    if outside_n:
-        lines.append(f"⚠️ Время скана вне интервала сессии: {outside_n} (всё равно отмечено)")
-    if day_mismatch_n:
-        lines.append(f"⚠️ Сессия не в день загрузки — проверьте: {day_mismatch_n} (всё равно отмечено)")
-    shown = flagged[:_REPORT_ROW_LIMIT]
-    if shown:
-        lines.append("")
-        lines.append("<b>Требуют внимания:</b>")
-        for reason, row in shown:
-            name = html.escape(row["full_name"] or "(без имени)")
-            # В QR лежит КОД города («msk») — человеку подпись, даже при выключенном модуле.
-            city = html.escape(await city_label_or_none(row["city"]) or "—")
-            lines.append(f"❔ {name} · {city} — {reason}")
-    remaining = len(flagged) - len(shown)
-    if remaining > 0:
-        lines.append(f"…и ещё {remaining}")
+        lines.insert(3, _training.training_report_line(data["checkin_training_n"]))
     lines.append("")
     lines.append(await _counter_line(callback.from_user.id))
 
@@ -623,7 +576,6 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         "\n".join(lines), parse_mode="HTML",
         reply_markup=await op_return_keyboard(callback.from_user.id, "admin_checkin"),
     )
-    await callback.answer()
 
 
 # ── Форум-ночь B1 (идея №10): перевыпуск QR ─────────────────────────────────────────────────
