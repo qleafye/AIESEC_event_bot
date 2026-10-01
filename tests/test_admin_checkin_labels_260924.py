@@ -122,6 +122,7 @@ def test_all_cities_buttons_have_words_and_city_name(tmp_path, monkeypatch):
     asyncio.run(db.set_setting("city_label__msk", "Москва"))
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
     asyncio.run(_insert_approved(1, "msk"))
+    asyncio.run(db.set_setting("forum_date__city__msk", "01.10.2026"))  # «не пришли» — в день форума
 
     _text, kb = _screen()
     by_cb = {b.callback_data: b.text for row in kb.inline_keyboard for b in row}
