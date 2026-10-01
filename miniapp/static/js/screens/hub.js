@@ -234,11 +234,17 @@ async function renderDelegateHub(root, ctx) {
     if (cls) valueEl.classList.add(cls);
   };
 
+  // Счётчики плиты и строк — фоновые: раздел, выключенный чекбоксом, отвечает 403 section_off,
+  // и без quiet ядро увело бы всю главную в «Нет доступа». Выключенный раздел не зовём вовсе.
+  // /hub — без quiet: его 403 delegate_gate (прошлый сезон) обязан показать свой экран.
+  const sec = (name) => Boolean(ctx.me.sections && ctx.me.sections[name]);
+  const skip = Promise.reject(new Error("section_off"));
+  skip.catch(() => {});
   const [balanceR, historyR, profileR, tasksR, hubR, statusR] = await Promise.allSettled([
-    api("/coins/balance"),
-    api("/coins/history?offset=0&limit=1"),
-    api("/profile"),
-    api("/tasks?offset=0&limit=2"),
+    sec("coins") ? api("/coins/balance", { quiet: true }) : skip,
+    sec("coins") ? api("/coins/history?offset=0&limit=1", { quiet: true }) : skip,
+    sec("profile") ? api("/profile", { quiet: true }) : skip,
+    sec("tasks") ? api("/tasks?offset=0&limit=2", { quiet: true }) : skip,
     api("/hub"),
     api("/hub/status"),
   ]);
@@ -439,13 +445,16 @@ async function renderTilesOnlyHub(root, ctx, items) {
 }
 
 // ── хаб менеджера (D-10, вариант C по умолчанию до голосования) ─────────────────────────
+// Счётчики плиток — фоновые запросы: `cap` — право, которое проверяет сам маршрут (может не
+// совпадать с правом видимости плитки), без него запрос не делается вовсе; quiet — страховка:
+// 403 счётчика оставляет плитку без цифры, а не уводит главную в «Нет доступа».
 const MANAGER_FETCHERS = {
-  "#/review": (api) => api("/review/next?offset=0"),
-  "#/admin-tasks": (api) => api("/admin/tasks?archived=0&offset=0&limit=1"),
-  "#/admin-coins": (api) => api("/admin/coins?offset=0&limit=1"),
-  "#/questions": (api) => api("/questions?offset=0&limit=1"),
-  "#/stats": (api) => api("/stats/game"),
-  "#/settings": (api) => api("/admin/settings"),
+  "#/review": { cap: "moderate_game", path: "/review/next?offset=0" },
+  "#/admin-tasks": { cap: "moderate_game", path: "/admin/tasks?archived=0&offset=0&limit=1" },
+  "#/admin-coins": { cap: "moderate_game", path: "/admin/coins?offset=0&limit=1" },
+  "#/questions": { cap: "moderate_reg", path: "/questions?offset=0&limit=1" },
+  "#/stats": { cap: "moderate_game", path: "/stats/game" },
+  "#/settings": { cap: "settings", path: "/admin/settings" },
 };
 
 // Плитка «📊 Дашборд» (quick 260903): открывает веб-дашборд во внешнем браузере — НЕ раздел
@@ -615,10 +624,10 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }
 
   await Promise.all(items.map(async (item) => {
-    const load = MANAGER_FETCHERS[item.hash];
-    if (!load) return;
+    const fetcher = MANAGER_FETCHERS[item.hash];
+    if (!fetcher || !(Array.isArray(me && me.caps) && me.caps.includes(fetcher.cap))) return;
     try {
-      const data = await load(api);
+      const data = await api(fetcher.path, { quiet: true });
       applyManagerTileData(item.hash, data, tileEls[item.hash], hero);
     } catch (_) {
       // Плитка без цифры, экран не падает (T-19.1-16) — сервер по-прежнему проверял право
