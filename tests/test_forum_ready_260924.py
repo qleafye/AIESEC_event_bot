@@ -74,9 +74,9 @@ def test_empty_setup_is_red_with_fix_buttons(tmp_path, monkeypatch):
     assert "⚪ Таблица не подключена" in text
     assert "🟡 Чат делегатов не привязан" in text
     cbs = _cbs(kb)
-    for cb in ("settings_edit:forum_date", "admin_forum_functions", "admin_roles", "admin_program", "admin_sos"):
+    for cb in ("settings_edit:forum_date", "forumfn_qr:msk", "admin_roles", "admin_program", "admin_sos"):
         assert cb in cbs
-    assert cbs[-2:] == ["forum_ready_re:msk", "admin_forum_functions"]
+    assert cbs[-2:] == ["forum_ready_re:msk", "forumfn_back:msk"]  # Назад — в хаб того же города
     assert sched.added == []
 
 
@@ -111,7 +111,7 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     # Зелёная строка даты несёт только «Изменить» (дата/длина форума), проблемных кнопок нет.
     assert _cbs(kb) == [
         "settings_edit:forum_date", "settings_edit:sos_active_days",
-        "forum_ready_re:msk", "admin_forum_functions",
+        "forum_ready_re:msk", "forumfn_back:msk",
     ]
 
 
