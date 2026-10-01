@@ -139,6 +139,22 @@ def test_card_is_honest_about_qr_role_and_dropped_roles():
     assert kb.inline_keyboard[0][0].callback_data == "uat_go:farr:vol:spb"
 
 
+@pytest.mark.parametrize("role_code", ["sos", "fmgr"])
+def test_card_says_reg_manager_role_also_opens_receipts(role_code):
+    """Дежурный SOS и менеджер форума — это роль «Менеджер регистраций» целиком: по умолчанию
+    с модерацией чеков оплаты. Карточка говорит об этом прямо."""
+    uat = _h()
+    text = _cb(uat.uat_pick_role, f"uat_role:fappr:{role_code}:spb").message.edits[0][0]
+    assert "даёт ещё" in text and "Модерация чеков" in text
+
+
+def test_card_has_no_extra_note_when_receipts_removed_from_role():
+    uat = _h()
+    asyncio.run(db.set_setting("role_caps_reg_manager", "moderate_reg"))
+    text = _cb(uat.uat_pick_role, "uat_role:fappr:sos:spb").message.edits[0][0]
+    assert "даёт ещё" not in text
+
+
 def test_card_warns_when_role_switched_off():
     uat = _h()
     asyncio.run(db.set_setting("role_volunteer_enabled", "off"))
