@@ -472,7 +472,7 @@ export async function render(root, params, ctx) {
     const btn = h("button", { class: "btn secondary", type: "button", text: "⚠️ Отметить всё равно" });
     btn.addEventListener("click", async () => {
       if (btn.hasAttribute("disabled")) return;
-      const ok = await askConfirm(`Отметить вход ${res.full_name || "делегата"}, хотя по настройкам сегодня не его день форума? Если дата форума указана неверно — поправьте её в админке.`);
+      const ok = await askConfirm(`Отметить вход ${res.full_name || "делегата"}, хотя по настройкам у делегата сегодня нет форума? Если дата форума указана неверно — поправьте её в админке.`);
       if (!ok) return;
       btn.setAttribute("disabled", "");
       try {
