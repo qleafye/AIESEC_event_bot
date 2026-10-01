@@ -250,3 +250,40 @@ def test_clear_city_date_go_says_date_erased_not_as_everywhere(tmp_path):
     cbq = FakeCallback("settings_reset_city_go:start_text:spb", user_id=ADMIN_ID)
     _run(settings_reset_city_go(cbq))
     assert "как везде" in cbq.answers[-1][0]
+
+
+def test_dash_on_city_date_asks_confirmation_instead_of_erasing(tmp_path):
+    """«-» на экране даты города ведёт на то же подтверждение, что «🗑 Стереть дату города»,
+    — дата остаётся на месте до «Да, стереть». У обычной городской настройки «-» — сброс."""
+    from cities import set_admin_city
+    from handlers.admin_settings import settings_edit_city, settings_edit_value
+    from tests.test_roles_phase8 import FakeMessage
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, "spb"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    state = _fresh_state(ADMIN_ID)
+    cbq = FakeCallback("settings_edit_city:forum_date", user_id=ADMIN_ID)
+    _run(settings_edit_city(cbq, state))
+    assert "Чтобы очистить поле" not in cbq.message.text and "переспросит" in cbq.message.text
+    msg = FakeMessage("-", user_id=ADMIN_ID)
+    _run(settings_edit_value(msg, state))
+    text, _mode, kb = msg.answers[-1]
+    assert "Стереть дату форума" in text
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "settings_reset_city_go:forum_date:spb" in cbs
+    assert _run(db.get_setting("forum_date__city__spb")) == "03.10.2026"
+    assert _run(state.get_state()) is None
+    # Даты нет — «-» объясняет, что стирать нечего, и ничего не пишет.
+    _run(db.delete_setting("forum_date__city__spb"))
+    state = _fresh_state(ADMIN_ID)
+    _run(settings_edit_city(FakeCallback("settings_edit_city:forum_date", user_id=ADMIN_ID), state))
+    msg = FakeMessage("-", user_id=ADMIN_ID)
+    _run(settings_edit_value(msg, state))
+    assert "стирать нечего" in msg.answers[-1][0]
+    # Обычная городская настройка: «-» по-прежнему сбрасывает сразу.
+    _run(db.set_setting("start_text__city__spb", "свой"))
+    state = _fresh_state(ADMIN_ID)
+    _run(settings_edit_city(FakeCallback("settings_edit_city:start_text", user_id=ADMIN_ID), state))
+    _run(settings_edit_value(FakeMessage("-", user_id=ADMIN_ID), state))
+    assert _run(db.get_setting("start_text__city__spb")) in (None, "")
