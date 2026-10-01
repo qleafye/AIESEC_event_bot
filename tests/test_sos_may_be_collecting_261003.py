@@ -49,3 +49,37 @@ def test_no_report_or_resolved_or_stale_is_not_collecting(tmp_path):
         return nothing, stale, resolved
 
     assert asyncio.run(go()) == (False, False, False)
+
+
+def test_reopened_old_report_counts_from_reentry(tmp_path):
+    """Старая открытая заявка, в дозапись которой делегат вернулся повторным «🆘 SOS»: таймер
+    дозаписи перезапущен, значит и утренний QR не должен заменить ему клавиатуру «Готово»."""
+    _ready(tmp_path)
+
+    async def go():
+        rid = await db.create_sos_report(DELEGATE_ID, None)
+        await _age_report(rid, sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES + 30)
+        before = await sos_service.may_be_collecting(DELEGATE_ID)
+        await db.mark_sos_collecting_started(rid)
+        after = await sos_service.may_be_collecting(DELEGATE_ID)
+        return before, after
+
+    assert asyncio.run(go()) == (False, True)
+
+
+def test_enter_collecting_records_start_in_db(tmp_path):
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from handlers import sos as sos_handlers
+
+    _ready(tmp_path)
+
+    async def go():
+        rid = await db.create_sos_report(DELEGATE_ID, None)
+        state = FSMContext(MemoryStorage(), StorageKey(bot_id=1, chat_id=DELEGATE_ID, user_id=DELEGATE_ID))
+        await sos_handlers._enter_collecting(state, rid, None)
+        return (await db.get_sos_report(rid))["collecting_started_at"]
+
+    assert asyncio.run(go())
