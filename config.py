@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Plain http:// inside a docker network ignores both (no TLS to verify).
     NEXTCLOUD_VERIFY_TLS: bool = True
     NEXTCLOUD_CA_BUNDLE: str | None = None  # path to PEM file (CA or the server cert itself)
+
+    # Яндекс OAuth (внешние формы). bootstrap: в боте перекрываются кнопкой «🔑 Ключи приложения Яндекса» (D-18)
+    YANDEX_OAUTH_CLIENT_ID: str = ""
+    YANDEX_OAUTH_CLIENT_SECRET: SecretStr | None = None
     # Ceiling for downloading a resume from Telegram before the Nextcloud PUT. Technical bound,
     # not a manager setting: Bot API getFile refuses files over 20 MB, and buffering more than
     # that in memory per upload is not wanted anyway. The registration step has its own,
