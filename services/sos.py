@@ -578,6 +578,33 @@ def card_report_id(replied) -> int | None:
     return int(match.group(1)) if match else None
 
 
+async def replied_report_id(chat_id: int, replied) -> int | None:
+    """Номер заявки, на сообщение бота про которую ответили в `chat_id`: сначала копии дописок
+    делегата (`sos_relay_messages` — их бот копирует от своего имени, и текст делегата с
+    «🆔», «🆘» и «SOS #N» иначе увёл бы реплай в чужую заявку), потом маркеры карточки."""
+    from database.db import find_sos_report_by_relay
+
+    message_id = getattr(replied, "message_id", None)
+    if message_id is not None:
+        report_id = await find_sos_report_by_relay(chat_id, message_id)
+        if report_id is not None:
+            return report_id
+    return card_report_id(replied)
+
+
+async def _record_relay(report_id: int, chat_id: int, sent) -> None:
+    """Запоминает копию дописки (или её подпись), чтобы реплай орга на неё нашёл заявку."""
+    message_id = getattr(sent, "message_id", None)
+    if message_id is None:
+        return
+    from database.db import add_sos_relay_message
+
+    try:
+        await add_sos_relay_message(report_id, chat_id, message_id)
+    except Exception as e:
+        logger.warning("sos.relay_delegate_message: копия дописки не записана: %s", e)
+
+
 async def deliver_org_reply(bot, message, report: dict) -> bool:
     """Захватывает заявку за ответившим (если её ещё никто не взял) и доставляет ответ
     делегату немедленно — тихие часы к SOS не применяются (`services/quiet_hours.py` здесь не
@@ -665,14 +692,7 @@ async def relay_delegate_message(message, report_id: int) -> None:
             )
             # Орг отвечает реплаем на последнее сообщение человека, а не на карточку, — без
             # этой записи такой ответ не находил заявку и молча оставался в чате.
-            copied_id = getattr(copied, "message_id", None)
-            if copied_id is not None:
-                from database.db import add_sos_relay_message
-
-                try:
-                    await add_sos_relay_message(report_id, report["chat_id"], copied_id)
-                except Exception as e:
-                    logger.warning("sos.relay_delegate_message: копия дописки не записана: %s", e)
+            await _record_relay(report_id, report["chat_id"], copied)
             return
         except Exception as e:
             logger.warning(
@@ -687,18 +707,24 @@ async def relay_delegate_message(message, report_id: int) -> None:
         recipients = list(config.ADMIN_IDS)
     # Приёмка 01.10: у кого в личке лежит копия карточки — дозапись идёт ОДНИМ сообщением
     # ответом на неё (как тред в чате SOS), без отдельной строки «Делегат дополнил».
+    # Каждую копию (и подпись) пишем в `sos_relay_messages` с chat_id = личка админа: реплай
+    # на неё выглядит как ответ в треде и должен дойти до делегата
+    # (`handlers/admin_sos.py::admin_reply_to_sos`), а не молча остаться у админа.
     card_copies = dict(await list_sos_card_copies(report_id))
     prefix = f"💬 Делегат дополнил SOS #{report_id}:"
     for uid in recipients:
         try:
             if uid in card_copies:
                 try:
-                    await message.copy_to(uid, reply_to_message_id=card_copies[uid])
+                    copied = await message.copy_to(uid, reply_to_message_id=card_copies[uid])
+                    await _record_relay(report_id, uid, copied)
                     continue
                 except Exception:
                     pass  # копию карточки удалили — ниже прежний путь с подписью
-            await message.bot.send_message(uid, prefix)
-            await message.copy_to(uid)
+            head = await message.bot.send_message(uid, prefix)
+            await _record_relay(report_id, uid, head)
+            copied = await message.copy_to(uid)
+            await _record_relay(report_id, uid, copied)
         except Exception as e:
             logger.info(f"sos.relay_delegate_message: не удалось написать id={uid}: {e}")
 

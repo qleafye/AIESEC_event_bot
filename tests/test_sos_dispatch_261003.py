@@ -437,3 +437,42 @@ def test_dm_reply_after_resolve_is_delivered(tmp_path):
         _feed(dp, bot, _reply_update(ADMIN_ID, dm, _card(dm, report["id"]), "забери бейдж"))
     assert any("забери бейдж" in t for t in bot.sent_to(DELEGATE_ID))
     assert asyncio.run(db.get_sos_report(report["id"]))["post_resolve_reply_by_name"]
+
+
+# ── Личка: реплай на копию дописки делегата (веер без чата SOS) ─────────────────────────────
+
+def _dm_followup_setup(tmp_path, text: str):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report(bind_chat=False))
+    bot = CopyingBot()
+
+    async def post():
+        await sos_service.post_card(bot, report["id"])
+
+    asyncio.run(post())
+    assert ADMIN_ID in dict(asyncio.run(db.list_sos_card_copies(report["id"])))
+    return report, _relay_followup(bot, report["id"], text)
+
+
+def test_dm_reply_to_relayed_followup_reaches_delegate(tmp_path):
+    """Без чата SOS дописка делегата приходит админу реплаем на копию карточки — выглядит как
+    тред. Реплай админа на неё раньше не доходил ни до кого, и бот молчал."""
+    report, copy_mid = _dm_followup_setup(tmp_path, "мне плохо, 2 этаж")
+    dm = Chat(id=ADMIN_ID, type="private")
+    bot = CopyingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(ADMIN_ID, dm, _bot_copy(dm, copy_mid, "мне плохо, 2 этаж"), "Иду"))
+    delivered = bot.sent_to(DELEGATE_ID)
+    assert delivered and "Иду" in delivered[0]
+    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] == ADMIN_ID
+
+
+def test_dm_reply_to_relayed_followup_from_stranger_is_ignored(tmp_path):
+    """Запись копии привязана к личке того, кому она ушла: чужой с тем же message_id в своей
+    личке заявку не находит."""
+    _report, copy_mid = _dm_followup_setup(tmp_path, "мне плохо")
+    dm = Chat(id=STRANGER_ID, type="private")
+    bot = CopyingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(STRANGER_ID, dm, _bot_copy(dm, copy_mid, "мне плохо"), "Иду"))
+    assert bot.sent_to(DELEGATE_ID) == []
