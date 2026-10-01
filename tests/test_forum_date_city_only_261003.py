@@ -120,7 +120,7 @@ def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
     assert _run(state.get_state()) is None  # ввод не ляжет в общий ключ
     assert "для какого города" in cbq.message.text
     cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
-    assert "fdate_city:forum_date:spb" in cbs and "fdate_city:forum_date:msk" in cbs
+    assert "settings_edit_city:forum_date@spb" in cbs and "settings_edit_city:forum_date@msk" in cbs
     labels = [b.text for row in cbq.message.markup.inline_keyboard for b in row]
     assert any("03.10.2026" in t for t in labels)
     assert EditSetting.waiting_for_value is not None
@@ -128,29 +128,29 @@ def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
 
 def test_city_pick_switches_header_and_edits_city_key(tmp_path):
     from cities import ALL_CITIES, admin_selected_city, set_admin_city
-    from handlers.admin_forum_date import forum_city_key_edit
+    from handlers.admin_settings import settings_edit_city as forum_city_key_edit
 
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, ALL_CITIES))
     state = _fresh_state(ADMIN_ID)
-    cbq = FakeCallback("fdate_city:forum_date:tyumen", user_id=ADMIN_ID)
+    cbq = FakeCallback("settings_edit_city:forum_date@tyumen", user_id=ADMIN_ID)
     _run(forum_city_key_edit(cbq, state))
     assert _run(admin_selected_city(ADMIN_ID)) == "tyumen"
     assert _run(state.get_data())["setting_key"] == "forum_date__city__tyumen"
 
 
 def test_city_pick_rejects_unknown_key_and_foreign_city(tmp_path):
-    from handlers.admin_forum_date import forum_city_key_edit
+    from handlers.admin_settings import settings_edit_city as forum_city_key_edit
 
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
-    bad = FakeCallback("fdate_city:event_season:spb", user_id=ADMIN_ID)
+    bad = FakeCallback("settings_edit_city:event_season@spb", user_id=ADMIN_ID)
     _run(forum_city_key_edit(bad, state))
     assert bad.answers and bad.answers[0][1] is True
     other = 261003999  # менеджер, привязанный к СПб, не правит Тюмень
     _run(db.add_staff(other, "manager", ADMIN_ID))
     assert _run(db.set_staff_city(other, "spb"))
-    foreign = FakeCallback("fdate_city:forum_date:tyumen", user_id=other)
+    foreign = FakeCallback("settings_edit_city:forum_date@tyumen", user_id=other)
     other_state = _fresh_state(other)
     _run(forum_city_key_edit(foreign, other_state))
     assert foreign.answers[0][1] is True
@@ -163,12 +163,18 @@ def test_ready_screen_buttons_edit_the_traffic_light_city(tmp_path):
 
     _ready(tmp_path)
     row = _run(afr._row_forum_date("tyumen"))
-    assert row["fix"][1] == "fdate_city:forum_date:tyumen"
+    assert row["fix"][1] == "settings_edit_city:forum_date@tyumen"
     _run(db.set_setting("forum_date__city__tyumen", "03.10.2099"))
     _run(db.set_setting("sos_active_days__city__tyumen", "2"))
     row = _run(afr._row_forum_date("tyumen"))
     cbs = [c for _label, c in row["fix"]]
-    assert cbs == ["fdate_city:forum_date:tyumen", "fdate_city:sos_active_days:tyumen"]
+    assert cbs == ["settings_edit_city:forum_date@tyumen", "settings_edit_city:sos_active_days@tyumen"]
     assert row["light"] == afr.YELLOW and "дольше одного дня" in row["text"]
     _run(db.set_setting("sos_active_days__city__tyumen", "1"))
     assert _run(afr._row_forum_date("tyumen"))["light"] == afr.GREEN
+
+
+def test_city_buttons_need_settings_right():
+    """Кнопки с городом идут тем же маршрутом прав, что «✏️ Изменить для города»."""
+    from handlers.admin_caps import required_capability
+    assert required_capability(callback_data="settings_edit_city:forum_date@spb") == "settings"

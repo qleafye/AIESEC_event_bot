@@ -1990,10 +1990,11 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     `EditSetting.waiting_for_value` for a per-city composite key; reuses 09.2-05's per-city
     text-entry mechanics verbatim (same FSM keys, same composed-key primitive), just reached
     from the header-aware editor screen instead of the deleted separate city picker."""
-    await begin_city_edit(callback, state, callback.data.split(":", 1)[1])
-
-
-async def begin_city_edit(callback: types.CallbackQuery, state: FSMContext, key: str):
+    key = callback.data.split(":", 1)[1]
+    if "@" in key:  # кнопка несёт город: светофор «🚦 Готовность», выбор города для даты форума
+        from handlers.admin_forum_date import switch_header_to_button_city
+        if (key := await switch_header_to_button_city(callback, key)) is None:
+            return
     admin_id = callback.from_user.id
     # Fail-closed (RESEARCH Pattern 2): module off or a non-per_city key never starts an
     # edit, even if someone forges the callback_data directly.
