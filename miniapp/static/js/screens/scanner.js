@@ -448,9 +448,33 @@ export async function render(root, params, ctx) {
       res.onsite_override && res.telegram_id && selectedPoint !== TRAINING_POINT
         ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }, { override: true }) : null,
       res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
+      res.day_override && res.telegram_id && selectedPoint !== TRAINING_POINT ? dayOverrideButton(res) : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");
+  }
+
+  // Дата форума в настройках неверна — менеджер отмечает «всё равно» (сервер проверяет право).
+  function dayOverrideButton(res) {
+    const btn = h("button", { class: "btn secondary", type: "button", text: "⚠️ Отметить всё равно" });
+    btn.addEventListener("click", async () => {
+      if (btn.hasAttribute("disabled")) return;
+      const ok = await askConfirm(`Отметить вход ${res.full_name || "делегата"}, хотя по настройкам сегодня не его день форума? Если дата форума указана неверно — поправьте её в админке.`);
+      if (!ok) return;
+      btn.setAttribute("disabled", "");
+      try {
+        const out = await api("/checkin/manual", {
+          method: "POST", timeoutMs: SCAN_TIMEOUT_MS,
+          body: { telegram_id: res.telegram_id, point: selectedPoint, city: citySelect.value || undefined, force_day: true },
+        });
+        showPlaque(out, { closeButton: true });
+        refreshCounters();
+      } catch (err) {
+        btn.removeAttribute("disabled");
+        say(failureText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
+      }
+    });
+    return btn;
   }
 
   function closeScanPopup() {

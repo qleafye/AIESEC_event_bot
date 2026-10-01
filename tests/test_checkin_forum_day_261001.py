@@ -153,3 +153,36 @@ def test_delegate_without_city_is_not_treated_as_moscow(tmp_path, monkeypatch):
     assert _entry_rows(952010) == 1
     from services import checkin_forum_day
     assert _run(checkin_forum_day.off_day_for_scan({"event_city": ""}, "2026-10-01 10:00:00")) is False
+
+
+def test_manager_can_mark_anyway_volunteer_gets_hint(tmp_path, monkeypatch):
+    """Дата форума введена неверно: менеджер регистраций видит «Отметить всё равно» и
+    отмечает с force_day; волонтёр без этого права — подсказку позвать менеджера, а force_day
+    от него игнорируется."""
+    client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 2, 18, 0))
+    _grant_checkin_to_bound_manager()  # reg_manager: moderate_reg + checkin
+    _grant_checkin_to_game_manager()  # только checkin
+    _run(_insert_user(952011, city="spb"))
+    mgr = client.post(f"{BASE}/scan", json={"payload": _qr(952011)}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert mgr["status"] == "not_forum_day" and mgr["day_override"] is True
+    vol = client.post(f"{BASE}/scan", json={"payload": _qr(952011)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert vol["status"] == "not_forum_day" and "day_override" not in vol
+    assert "позовите менеджера" in vol["hint"]
+    forced = client.post(
+        f"{BASE}/manual", json={"telegram_id": 952011, "force_day": True}, headers=_hdr(GAME_MANAGER_ID),
+    ).json()
+    assert forced["status"] == "not_forum_day"
+    assert _entry_rows(952011) == 0
+    forced = client.post(
+        f"{BASE}/manual", json={"telegram_id": 952011, "force_day": True}, headers=_hdr(BOUND_MANAGER_ID),
+    ).json()
+    assert forced["status"] == "new"
+    assert _entry_rows(952011) == 1
+
+
+def test_scanner_has_mark_anyway_button_with_confirm():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parent.parent / "miniapp/static/js/screens/scanner.js").read_text(encoding="utf-8")
+    body = js[js.index("function dayOverrideButton"):js.index("function closeScanPopup")]
+    assert "askConfirm(" in body and "force_day: true" in body
+    assert "res.day_override" in js
