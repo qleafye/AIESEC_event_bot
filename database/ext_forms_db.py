@@ -406,6 +406,23 @@ async def mark_sheet_state(ids: list[int], state: str) -> None:
     )
 
 
+async def mark_sheet_synced(items: list[tuple[int, str, int | None]]) -> None:
+    """Отмечает записанные в лист строки как synced, но только те, что за время записи
+    не изменились: (id, ожидаемое sheet_state, привязанный делегат на момент чтения).
+    Иначе привязка, пришедшая во время записи, потеряла бы своё обновление."""
+    if not items:
+        return
+    async with _db._connect() as db:
+        for row_id, expect, tid in items:
+            await db.execute(
+                "UPDATE external_form_answers SET sheet_state = 'synced', sheet_attempts = 0, "
+                "sheet_next_try_at = NULL WHERE id = ? AND sheet_state = ? "
+                "AND matched_telegram_id IS ?",
+                (row_id, expect, tid),
+            )
+        await db.commit()
+
+
 async def fail_sheet(ids: list[int], next_try_at: str) -> None:
     if not ids:
         return
