@@ -9167,12 +9167,29 @@ async def fail_sheet_chat(upto: dict[int, int], error: str, next_try_at: str) ->
         await db.commit()
 
 
-async def sheet_arrival_queue_stats() -> tuple[int, str | None]:
-    """(сколько событий в очереди, created_at самого старого) — для «🚦 Готовность к форуму»."""
+async def sheet_arrival_queue_stats(*, exclude_error: str | None = None) -> tuple[int, str | None]:
+    """(сколько событий в очереди, created_at самого старого) — для «🚦 Готовность к форуму».
+    `exclude_error` — не считать события с этой последней ошибкой (ждущие строку в листе:
+    это не затор записи, а делегат, которого ещё нет в листе)."""
+    where, params = "", []
+    if exclude_error is not None:
+        where, params = " WHERE last_error IS NULL OR last_error != ?", [exclude_error]
     async with _connect() as db:
-        async with db.execute("SELECT COUNT(*), MIN(created_at) FROM sheet_arrival_queue") as cursor:
+        async with db.execute(
+            f"SELECT COUNT(*), MIN(created_at) FROM sheet_arrival_queue{where}", params
+        ) as cursor:
             row = await cursor.fetchone()
     return (row[0] or 0, row[1]) if row else (0, None)
+
+
+async def sheet_arrival_count_with_error(error: str) -> int:
+    """Сколько делегатов в очереди «Пришёл» с этой последней ошибкой."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COUNT(DISTINCT telegram_id) FROM sheet_arrival_queue WHERE last_error = ?", (error,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row[0] or 0 if row else 0
 
 
 async def get_active_submission(task_id: int, user_id: int) -> dict | None:
