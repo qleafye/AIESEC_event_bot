@@ -80,6 +80,7 @@ DENIAL_LABELS = {
     "wrong_city": "делегат другого города",
     "wrong_city_point": "сессия другого города",
     "wrong_day": "сессия не сегодня",
+    "not_forum_day": "не день форума делегата",
     "invalid_point": "точка не найдена",
     "unknown_pass_kind": "неизвестный тип пропуска",
 }

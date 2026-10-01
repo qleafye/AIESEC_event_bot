@@ -1,0 +1,66 @@
+"""Отметка входа только в день форума города делегата.
+
+Окно форума города — `[forum_date, forum_date + sos_active_days - 1]` (тот же расчёт, что меню
+дня форума, SOS и отчёт дня: `services.forum_day_menu._forum_window_dates`). Дата форума не
+задана — проверки нет (как раньше).
+
+Зачем: накануне волонтёр получает шпаргалку (D-33), открывает сканер и пробует его на QR
+друга-делегата, не переключившись на «🧪 Тренировка». Раньше это ставило настоящий вход: в
+листе «Пришёл» — накануне, делегату уходило «ты отмечен», а утром настоящего приветствия уже
+не было (первый вход за форум прошёл). Теперь живой скан и отметка по фамилии в не-день форума
+не пишутся — волонтёр видит жёлтую плашку с подсказкой. Выгрузка офлайн-сканера (CSV) не
+отказывает — файл описывает уже случившееся, — а предупреждает строкой отчёта."""
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime
+
+from cities import normalize_city
+
+logger = logging.getLogger(__name__)
+
+STATUS = "not_forum_day"
+
+
+async def forum_window(city: str | None) -> tuple[date, date] | None:
+    from services.forum_day_menu import _forum_window_dates  # тот же расчёт окна, что меню дня
+    try:
+        return await _forum_window_dates(city)
+    except Exception:  # noqa: BLE001 — сбой чтения настройки не должен ронять отметку
+        logger.exception("checkin_forum_day: не прочитал окно форума города %r", city)
+        return None
+
+
+def _today() -> date:
+    from services import timeutil  # через модуль: тесты замораживают «сейчас»
+    return timeutil.msk_now().date()
+
+
+def _ddmm(d: date) -> str:
+    return d.strftime("%d.%m")
+
+
+async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
+    """`None` — сегодня (или `day`) день форума города делегата либо дата форума не задана.
+    Иначе — отказ для плашки сканера: ничего не записано."""
+    day = day or _today()
+    city = normalize_city(user.get("event_city"))
+    window = await forum_window(city)
+    if window is None or window[0] <= day <= window[1]:
+        return None
+    text = (
+        f"Сегодня не день форума (форум {_ddmm(window[0])}) — отметка не поставлена. "
+        "Для пробы сканера выберите точку «🧪 Тренировка»."
+    )
+    return {"status": STATUS, "reason_text": text}
+
+
+async def off_day_for_scan(user: dict, scanned_at: str | None) -> bool:
+    """Для CSV: скан (или загрузка, если времени в файле нет) не в день форума города
+    делегата. Дата форума не задана — `False`."""
+    try:
+        day = datetime.strptime(scanned_at[:10], "%Y-%m-%d").date() if scanned_at else _today()
+    except ValueError:
+        return False
+    window = await forum_window(normalize_city(user.get("event_city")))
+    return window is not None and not (window[0] <= day <= window[1])
