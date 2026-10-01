@@ -226,3 +226,35 @@ def test_csv_without_time_on_forum_day_keeps_upload_time(tmp_path, monkeypatch):
     res, stamp, _lines = _csv_untimed({}, datetime(2026, 10, 3, 15, 30), tmp_path, monkeypatch, 952014)
     assert stamp[1] == 1  # время загрузки (часы БД не заморожены), «примерное»
     assert res["untimed"] == 1 and res["forum_day_assumed"] == 0
+
+
+def test_csv_ambiguous_us_date_is_swapped_into_forum_window(tmp_path, monkeypatch):
+    """«03/10/2026 10:15 AM» разбор читает как 10 марта (AM/PM = американский м/д). В окно форума
+    СПб (03.10) попадает только перестановка — её и берём, со строкой отчёта."""
+    from services.checkin import find_checkin_records, build_payload
+    from handlers import admin_checkin
+    _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))
+    _run(_insert_user(952015, city="spb"))
+    token = _run(bot_db.get_or_create_checkin_token(952015))
+    recs = find_checkin_records(f"time,text\n03/10/2026 10:15 AM,{build_payload('YL26', 'И', 'spb', token)}\n", "YL26")
+    assert recs[0]["scanned_at"] == "2026-03-10 10:15:00" and recs[0]["alt"] == "2026-10-03 10:15:00"
+    res = _run(checkin_csv_import.import_records(
+        recs, "entry", session=None, bound_city=None, staff_id=1, bot=None, labels=admin_checkin._DENIAL_LABELS,
+    ))
+    assert res["swapped"] == 1 and res["off_day"] == 0
+
+    async def _stamp():
+        async with bot_db._connect() as conn:
+            async with conn.execute("SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = 'entry'", (952015,)) as cur:
+                return (await cur.fetchone())[0]
+    assert _run(_stamp()) == "2026-10-03 10:15:00"
+    lines = _run(checkin_csv_import.report_lines(res, row_limit=20))
+    assert any("прочитана наоборот" in line for line in lines)
+
+
+def test_csv_unambiguous_or_fitting_date_is_not_swapped(tmp_path, monkeypatch):
+    from services.checkin import find_checkin_records
+    assert "alt" not in find_checkin_records("t,x\n10/13/2026 10:15 AM,YL26·И·spb·tok1\n", "YL26")[0]
+    assert "alt" not in find_checkin_records("t,x\n03.10.2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
+    rec = find_checkin_records("t,x\n03/10/2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
+    assert rec["scanned_at"] == "2026-10-03 10:15:00"  # без AM/PM — д/м, уже в окне

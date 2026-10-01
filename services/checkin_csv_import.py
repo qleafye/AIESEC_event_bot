@@ -8,7 +8,12 @@
 День записи без времени: дата в строке есть — полдень этой даты; даты нет, а точка — вход —
 полдень первого дня форума города делегата (если загрузка не в этот же день — иначе файл,
 загруженный 04.10, клал вход на 04.10); иначе — время загрузки. Всё такое помечено
-«примерным» и отдельной строкой отчёта."""
+«примерным» и отдельной строкой отчёта.
+
+Неоднозначная дата «03/10/2026» (оба числа ≤ 12): разбор выбирает д/м, а при AM/PM — м/д
+(американская локаль). Если выбранный день не попадает в день сессии (точка — сессия) или в
+окно форума города делегата (вход), а переставленный — попадает, берётся переставленный и это
+отдельная строка отчёта. Ни один не попадает или окна нет — остаётся выбор разбора."""
 from __future__ import annotations
 
 import html
@@ -44,7 +49,7 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
     res = {
         "new": 0, "duplicate": 0, "moved": 0, "outside": 0, "day_mismatch": 0,
         "other_city": 0, "point_gone": 0, "untimed": 0, "off_day": 0, "flagged": [],
-        "date_only": 0, "forum_day_assumed": 0,
+        "date_only": 0, "forum_day_assumed": 0, "swapped": 0,
     }
     for rec in records:
         parsed = parse_qr_payload(rec["qr"])
@@ -55,6 +60,9 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
         if bound_city is not None and normalize_city(user.get("event_city")) != bound_city:
             res["other_city"] += 1
             continue
+        rec = await _pick_reading(rec, user, point, session)
+        if rec.get("swapped"):
+            res["swapped"] += 1
         approx = rec["scanned_at"] is None
         scanned_at, untimed_kind = await _untimed_stamp(rec, user, point) if approx else (rec["scanned_at"], None)
         result = await record_arrival(
@@ -87,6 +95,29 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
     res["wrong_city"] = sum(1 for reason, _row in flagged if reason not in labels.values())
     res["not_approved"] = len(flagged) - res["not_found"] - res["replaced"] - res["wrong_city"]
     return res
+
+
+async def _fits_event(day: str, user: dict, point: str, session: dict | None) -> bool | None:
+    """День «YYYY-MM-DD» — день сессии/окно форума города делегата? `None` — сверить не с чем."""
+    if session is not None:
+        return day == session.get("day")
+    if point != ENTRY_POINT or not str(user.get("event_city") or "").strip():
+        return None
+    window = await checkin_forum_day.forum_window(normalize_city(user.get("event_city")))
+    if window is None:
+        return None
+    return f"{window[0]:%Y-%m-%d}" <= day <= f"{window[1]:%Y-%m-%d}"
+
+
+async def _pick_reading(rec: dict, user: dict, point: str, session: dict | None) -> dict:
+    """Неоднозначная «a/b/гггг»: переставленная читка, если только она попадает в событие."""
+    alt = rec.get("alt")
+    field = "scanned_at" if rec.get("scanned_at") else "day" if rec.get("day") else None
+    if not alt or field is None:
+        return rec
+    if await _fits_event(rec[field][:10], user, point, session) is False and await _fits_event(alt[:10], user, point, session):
+        return {**rec, field: alt, "swapped": True}
+    return rec
 
 
 async def _untimed_stamp(rec: dict, user: dict, point: str) -> tuple[str | None, str]:
@@ -124,6 +155,11 @@ async def report_lines(res: dict, *, row_limit: int) -> list[str]:
     if res["untimed"]:
         lines.append(
             f"⚠️ Без времени скана в файле: {res['untimed']} — отмечены временем загрузки (примерно)."
+        )
+    if res.get("swapped"):
+        lines.append(
+            f"⚠️ Дата вида «03/10/2026» прочитана наоборот (день ↔ месяц), чтобы попасть в день форума: "
+            f"{res['swapped']}."
         )
     if res.get("date_only"):
         lines.append(
