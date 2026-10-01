@@ -3963,11 +3963,15 @@ async def get_incomplete_user_ids() -> list[int]:
 async def reg_started_only_ids_in_scope(scope) -> set[int]:
     """Начавшие регистрацию, которых ещё нет в `users`, — в границах `cities.city_scope(...)`
     по `reg_started.event_city` (город, выбранный в начале анкеты). Нужно менеджеру города:
-    сегмент «📝 Не завершили регистрацию» по `users` не сузить — этих людей там нет."""
+    сегмент «📝 Не завершили регистрацию» по `users` не сузить — этих людей там нет.
+
+    При сужении по городу человек без записанного города (нажал /start, до вопроса о городе
+    не дошёл) не берётся: `_city_clause` города по умолчанию взял бы `IS NULL`, и менеджеру
+    Москвы ушли бы будущие СПб и Тюмень. Такие уходят в «отсеяно» на экране подтверждения."""
     city_frag, params = _city_clause(scope, "event_city")
     where = "telegram_id NOT IN (SELECT telegram_id FROM users)"
     if city_frag:
-        where += f" AND {city_frag}"
+        where += f" AND event_city IS NOT NULL AND TRIM(event_city) != '' AND {city_frag}"
     async with _connect() as db:
         async with db.execute(f"SELECT telegram_id FROM reg_started WHERE {where}", params) as cursor:
             return {int(row[0]) for row in await cursor.fetchall()}
