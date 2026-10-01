@@ -465,8 +465,10 @@ async def cmd_find_user(message: types.Message):
             f"Email: {html_module.escape(str(user['email'] or ''))}\n"
             f"Регистрация: {user['registration_date']}"
         )
-        from services.delegate_card import status_city_season_lines  # статус/город/сезон, 01.10
+        from services.delegate_card import ext_forms_card_lines, status_city_season_lines  # 01.10
         text += await status_city_season_lines(user)
+        forms_line, has_forms = await ext_forms_card_lines(user['telegram_id'])
+        text += forms_line
         # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
         # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
         # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
@@ -479,6 +481,10 @@ async def cmd_find_user(message: types.Message):
                 text="🏙 Перевести в город", callback_data=f"citymv_start:{user['telegram_id']}",
             )],
         ]
+        if has_forms:
+            rows.append([InlineKeyboardButton(
+                text="📝 Ответы форм", callback_data=f"extf_view:{user['telegram_id']}",
+            )])
         # Phase 33: «↩️ Вернуть в ожидание» — видна только для решённой заявки (одобрена/
         # отклонена), для ожидающей возвращать не с чего (services/revert_pending.py
         # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/admin_revert_pending.py.
