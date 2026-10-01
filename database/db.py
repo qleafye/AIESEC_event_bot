@@ -2204,6 +2204,9 @@ async def init_db():
         # карточка честно показывает, кто и когда дописал после «✅ Решено».
         await _ensure_column(db, "sos_reports", "post_resolve_reply_by_name", "TEXT")
         await _ensure_column(db, "sos_reports", "post_resolve_reply_at", "TEXT")
+        # «🔁 Перехватить»: у кого перехватили взятый SOS (взявший пропал — сел телефон, ушёл со
+        # смены). Карточка показывает это рядом с новым взявшим. NULL у старых строк.
+        await _ensure_column(db, "sos_reports", "taken_over_from_name", "TEXT")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -7061,6 +7064,23 @@ async def claim_sos_report(report_id: int, admin_id: int, admin_name: str) -> bo
             "UPDATE sos_reports SET claimed_by = ?, claimed_by_name = ?, claimed_at = ? "
             "WHERE id = ? AND claimed_by IS NULL",
             (admin_id, admin_name, msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def takeover_sos_report(report_id: int, expected_claimant: int, admin_id: int,
+                              admin_name: str) -> bool:
+    """«🔁 Перехватить» — атомарно: True только если заявка всё ещё у `expected_claimant` и не
+    решена (между вопросом «перехватить?» и подтверждением её могли решить или перехватить
+    другие). Лесенка напоминаний начинается заново — уже для нового взявшего."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE sos_reports SET taken_over_from_name = claimed_by_name, claimed_by = ?, "
+            "claimed_by_name = ?, claimed_at = ?, claimed_remind_count = 0 "
+            "WHERE id = ? AND claimed_by = ? AND resolved_at IS NULL",
+            (admin_id, admin_name, msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id,
+             expected_claimant),
         )
         await db.commit()
         return cursor.rowcount == 1

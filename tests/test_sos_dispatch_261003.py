@@ -528,3 +528,115 @@ def test_group_hint_not_repeated_for_every_reply(tmp_path):
     hints = [t for t in bot.sent_to(SOS_CHAT_ID) if "не отправлен" in t]
     assert len(hints) == 1
     assert bot.sent_to(DELEGATE_ID) == []
+
+
+# ── «🔁 Перехватить» взятый SOS ─────────────────────────────────────────────────────────────
+
+def _takeover_question(bot, chat_id: int) -> SendMessage | None:
+    for m in bot.calls:
+        if isinstance(m, SendMessage) and int(m.chat_id) == chat_id and "Перехватить?" in (m.text or ""):
+            return m
+    return None
+
+
+def test_claimed_card_offers_takeover_instead_of_claim():
+    kb = sos_service.build_card_kb(7, claimed=True)
+    datas = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert datas == ["sos_takeover:7", "sos_resolve:7"]
+
+
+def test_group_takeover_asks_then_moves_sos_and_reply_reaches_delegate(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    rid = report["id"]
+    card = _card(GROUP, rid)
+    asyncio.run(db.claim_sos_report(rid, STRANGER_ID, "Пропавший Орг"))
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(ADMIN_ID, card, f"sos_takeover:{rid}", update_id=1))
+    question = _takeover_question(bot, SOS_CHAT_ID)
+    assert question is not None and "Пропавший Орг" in question.text
+    # Пока не подтвердили — SOS у прежнего взявшего.
+    assert asyncio.run(db.get_sos_report(rid))["claimed_by"] == STRANGER_ID
+    go = question.reply_markup.inline_keyboard[0][0].callback_data
+    assert go == f"sos_takeover_go:{rid}:{ADMIN_ID}:{STRANGER_ID}"
+
+    confirm_msg = _bot_copy(GROUP, 8000, question.text)
+    bot2 = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot2,
+            _button_update(ADMIN_ID, confirm_msg, go, update_id=2),
+            _reply_update(ADMIN_ID, GROUP, card, "Я на связи, иду", update_id=3),
+        )
+    row = asyncio.run(db.get_sos_report(rid))
+    assert row["claimed_by"] == ADMIN_ID and row["taken_over_from_name"] == "Пропавший Орг"
+    assert "🔁 Перехватил(а) у Пропавший Орг" in sos_service.render_card_text(row, None)
+    assert any("Я на связи" in t for t in bot2.sent_to(DELEGATE_ID))
+    assert any("перехватил" in t for t in bot2.sent_to(STRANGER_ID))  # прежнему взявшему
+
+
+def test_group_takeover_confirm_by_someone_else_is_refused(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    rid = report["id"]
+    asyncio.run(db.claim_sos_report(rid, STRANGER_ID, "Пропавший Орг"))
+    confirm_msg = _bot_copy(GROUP, 8000, "🔁 Перехватить?")
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(MANAGER_ID, confirm_msg, f"sos_takeover_go:{rid}:{ADMIN_ID}:{STRANGER_ID}"))
+    assert asyncio.run(db.get_sos_report(rid))["claimed_by"] == STRANGER_ID
+    assert any(a and "только тот, кто нажал" in a for a in bot.alerts())
+
+
+def test_takeover_after_resolve_does_nothing(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    rid = report["id"]
+    asyncio.run(db.claim_sos_report(rid, STRANGER_ID, "Пропавший Орг"))
+    asyncio.run(db.resolve_sos_report(rid, STRANGER_ID, "Пропавший Орг"))
+    confirm_msg = _bot_copy(GROUP, 8000, "🔁 Перехватить?")
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(ADMIN_ID, confirm_msg, f"sos_takeover_go:{rid}:{ADMIN_ID}:{STRANGER_ID}"))
+    assert asyncio.run(db.get_sos_report(rid))["claimed_by"] == STRANGER_ID
+    assert any(a and "уже решён" in a for a in bot.alerts())
+
+
+def test_dm_takeover_by_moderator_of_other_city_is_refused(tmp_path):
+    _ready(tmp_path)
+
+    async def seed():
+        await db.set_setting("event_city_enabled", "on")
+        await db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(MANAGER_ID, "msk")
+        await db.add_staff(STRANGER_ID, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(STRANGER_ID, "tyumen")
+        rep = await _seed_report(city="tyumen", bind_chat=False)
+        await db.claim_sos_report(rep["id"], STRANGER_ID, "Тюменский Орг")
+        return rep
+
+    report = asyncio.run(seed())
+    dm = Chat(id=MANAGER_ID, type="private")
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(MANAGER_ID, _card(dm, report["id"]), f"sos_takeover:{report['id']}"))
+    assert _takeover_question(bot, MANAGER_ID) is None
+    assert any(a and "команда города" in a for a in bot.alerts())
+
+
+def test_dm_takeover_by_superadmin_works(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report(bind_chat=False))
+    rid = report["id"]
+    asyncio.run(db.claim_sos_report(rid, MANAGER_ID, "Коллега"))
+    dm = Chat(id=ADMIN_ID, type="private")
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(ADMIN_ID, _card(dm, rid), f"sos_takeover:{rid}", update_id=1),
+            _button_update(ADMIN_ID, _bot_copy(dm, 8000, "🔁"), f"sos_takeover_go:{rid}:{ADMIN_ID}:{MANAGER_ID}", update_id=2),
+        )
+    assert _takeover_question(bot, ADMIN_ID) is not None
+    assert asyncio.run(db.get_sos_report(rid))["claimed_by"] == ADMIN_ID

@@ -24,7 +24,8 @@ def test_card_kb_drops_claim_button_after_claim(tmp_path):
     _run(db.claim_sos_report(rid, ADMIN_ID, "Админ"))
     _run(sos_service.refresh_card(bot, rid))
     kb = bot.edited[-1][3]["reply_markup"]
-    assert _cb_datas(kb) == [f"sos_resolve:{rid}"]
+    # «🙋 Беру» снят; вместо него «🔁 Перехватить» — на случай, если взявший пропал.
+    assert _cb_datas(kb) == [f"sos_takeover:{rid}", f"sos_resolve:{rid}"]
 
     _run(db.resolve_sos_report(rid, ADMIN_ID, "Админ"))
     _run(sos_service.refresh_card(bot, rid))
