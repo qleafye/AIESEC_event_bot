@@ -314,15 +314,17 @@ async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyb
     return "\n".join(lines), buttons
 
 
-@router.callback_query(F.data == "admin_checkin")
-async def show_admin_checkin(callback: types.CallbackQuery):
-    qr_line, qr_buttons = await _qr_broadcast_section(callback.from_user.id)
+async def render_admin_checkin(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран «✅ Отметки на форуме». Последняя строка — «◀️ Назад» в раздел; хаб «🎪 Форум:
+    функции» подменяет её своей (handlers/admin_forum_hub_nav.py)."""
+    from handlers.admin_sections import back_button  # ленивый шов (см. docstring модуля)
+    qr_line, qr_buttons = await _qr_broadcast_section(admin_id)
     qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
-    not_arrived_line, not_arrived_buttons = await _not_arrived_section(callback.from_user.id)
+    not_arrived_line, not_arrived_buttons = await _not_arrived_section(admin_id)
     not_arrived_block = f"\n\n🚪 <b>Не пришли</b> (сегодня)\n{not_arrived_line}"
     text = (
         "✅ <b>Отметки на форуме</b>\n\n"
-        f"{await _counter_line(callback.from_user.id)}"
+        f"{await _counter_line(admin_id)}"
         f"{qr_block}"
         f"{not_arrived_block}\n\n"
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
@@ -331,7 +333,7 @@ async def show_admin_checkin(callback: types.CallbackQuery):
     # Рассылка QR, «Написать не пришедшим», сводка прихода — менеджерские (moderate_reg):
     # волонтёру с одним правом `checkin` эти кнопки не рисуем, иначе тап отвечает «Недостаточно прав».
     from handlers.admin_caps import _holds, resolve_capabilities
-    is_manager = _holds(await resolve_capabilities(callback.from_user.id), "moderate_reg")
+    is_manager = _holds(await resolve_capabilities(admin_id), "moderate_reg")
     if not is_manager:
         qr_buttons, not_arrived_buttons = [], []
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -342,13 +344,20 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         # формат/читаемость приложения волонтёра.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
         [InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")],
-        *await _venue_entry_rows(callback.from_user.id),
+        *await _venue_entry_rows(admin_id),
+        [back_button("admin_checkin", "◀️ Назад")],
     ])
     if is_manager:  # бэклог п.10: сводка прихода
         kb.inline_keyboard.insert(0, [
             InlineKeyboardButton(text="📊 Статистика прихода", callback_data="checkin_stats"),
             InlineKeyboardButton(text="📍 Сейчас на площадке", callback_data="checkin_floor"),
         ])
+    return text, kb
+
+
+@router.callback_query(F.data == "admin_checkin")
+async def show_admin_checkin(callback: types.CallbackQuery):
+    text, kb = await render_admin_checkin(callback.from_user.id)
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
