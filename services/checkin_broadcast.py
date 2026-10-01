@@ -32,6 +32,7 @@ per_city `forum_date`, Phase 31/D-30) — второй копии чтения �
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from datetime import datetime, time, timedelta
 
@@ -489,13 +490,17 @@ async def _broadcast_text(city: str | None, *, morning: bool) -> tuple[str, bool
     return await get_setting_typed_for_city(key, city), morning
 
 
-async def _send_one(telegram_id: int, png: bytes, caption: str, kb) -> bool:
+async def _send_one(telegram_id: int, png: bytes, caption: str, kb, on_permanent_failure=None) -> bool:
     async def _factory(cid):
         return await _sched._bot.send_photo(
             cid, BufferedInputFile(png, filename="checkin_qr.png"),
             caption=caption, reply_markup=kb,
         )
-    return await _sched._safe_send(_factory, telegram_id)
+    return await _sched._safe_send(_factory, telegram_id, on_permanent_failure=on_permanent_failure)
+
+
+# Причины недоставки для отчёта менеджеру после «📤 Разослать QR сейчас».
+FAIL_BLOCKED, FAIL_BUILD, FAIL_OTHER = "blocked", "build", "other"
 
 
 # Находка ревью 260924 (п.4): «📤 Разослать QR сейчас» отвечает на callback СРАЗУ (T-12-03,
@@ -546,6 +551,8 @@ async def send_broadcast(city: str | None) -> dict:
         base_text, forum_day = await _broadcast_text(city, morning=False)
 
         sent = failed = 0
+        # Кому не дошло и почему — менеджер видит это в итоге ручной рассылки.
+        failures: list[dict] = []
         tr_maps: dict[str, dict] = {}
         for user in targets:
             tid = user["telegram_id"]
@@ -555,8 +562,14 @@ async def send_broadcast(city: str | None) -> dict:
             except Exception as e:
                 logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
                 failed += 1
+                failures.append({"user": user, "reason": FAIL_BUILD})
                 continue
-            ok = await _send_one(tid, png, caption, kb)
+            permanent: list[int] = []
+
+            async def _remember(cid, _bag=permanent):
+                _bag.append(cid)
+
+            ok = await _send_one(tid, png, caption, kb, on_permanent_failure=_remember)
             if ok:
                 await checkin_qr_mark_sent(
                     tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -564,12 +577,13 @@ async def send_broadcast(city: str | None) -> dict:
                 sent += 1
             else:
                 failed += 1
+                failures.append({"user": user, "reason": FAIL_BLOCKED if permanent else FAIL_OTHER})
             await asyncio.sleep(0.05)
         logger.info(
             f"checkin_broadcast.send_broadcast({city!r}): sent {sent}, failed {failed} "
             f"of {len(targets)} (пул {len(eligible)}, уже было {len(already)})"
         )
-        return {"sent": sent, "failed": failed, "total": len(targets)}
+        return {"sent": sent, "failed": failed, "total": len(targets), "failures": failures}
 
 
 async def send_morning_repeat(city: str | None) -> dict:
@@ -629,3 +643,32 @@ async def confirm_receipt(telegram_id: int) -> bool:
     не получал QR этой рассылкой). Оба случая отвечают делегату одинаково дружелюбно —
     хендлер (handlers/user_actions.py) не обязан различать их в тексте."""
     return await checkin_qr_confirm(telegram_id, msk_now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+_QR_FAIL_REASONS = {
+    "blocked": "заблокировали бота или удалили аккаунт — QR им не доставить; на входе их найдут "
+               "по фамилии в сканере",
+    "other": "сбой связи с Telegram — нажмите «📤 Разослать QR сейчас» ещё раз, уйдёт только им",
+    "build": "не удалось собрать QR — нажмите «📤 Разослать QR сейчас» ещё раз",
+}
+_QR_FAIL_NAMES_MAX = 15
+
+
+def qr_send_report(result: dict) -> str:
+    """Итог ручной рассылки QR: сколько дошло и, по причинам, кому не дошло (с именами)."""
+    lines = [f"✅ QR разослан: доставлено {result['sent']} из {result['total']}."]
+    by_reason: dict[str, list[dict]] = {}
+    for f in result.get("failures") or []:
+        by_reason.setdefault(f["reason"], []).append(f["user"])
+    if result.get("failed") and not by_reason:
+        lines.append(f"Не доставлено: {result['failed']}.")
+    for reason, users in by_reason.items():
+        lines.append("")
+        lines.append(f"❌ Не дошло {len(users)}: {_QR_FAIL_REASONS.get(reason, _QR_FAIL_REASONS['other'])}.")
+        for u in users[:_QR_FAIL_NAMES_MAX]:
+            uname = (u.get("username") or "").lstrip("@")
+            name = html.escape(u.get("full_name") or str(u.get("telegram_id")))
+            lines.append(f"• {name}" + (f" (@{html.escape(uname)})" if uname else ""))
+        if len(users) > _QR_FAIL_NAMES_MAX:
+            lines.append(f"…и ещё {len(users) - _QR_FAIL_NAMES_MAX}")
+    return "\n".join(lines)
