@@ -247,7 +247,7 @@ def test_reconcile_all_skips_and_isolates_errors(tmp_path, monkeypatch):
     _patch(monkeypatch, handler)
     res = asyncio.run(S.reconcile_all())
     assert res == {"enqueued": 3, "rematched": 0}
-    assert asyncio.run(ef.get_form(bad))["sync_error"] == "upstream_unavailable"
+    assert asyncio.run(ef.get_form(bad))["sync_error"] == S.sync_error_text("upstream_unavailable")
     assert _pending(paused) == []
     assert len(_pending(fid)) == 3
 
@@ -260,3 +260,15 @@ def test_reconcile_all_skips_reauth_connection(tmp_path, monkeypatch):
         raise AssertionError("API не должен вызываться")
     _patch(monkeypatch, handler)
     assert asyncio.run(S.reconcile_all()) == {"enqueued": 0, "rematched": 0}
+
+
+def test_reconcile_all_forbidden_marks_reauth_and_human_text(tmp_path, monkeypatch):
+    cid, fid = _setup(tmp_path)
+
+    def handler(r):
+        return httpx.Response(403, json={})
+    _patch(monkeypatch, handler)
+    asyncio.run(S.reconcile_all())
+    assert asyncio.run(ef.get_connection(cid))["status"] == "needs_reauth"
+    err = asyncio.run(ef.get_form(fid))["sync_error"]
+    assert "войдите заново" in err and "forbidden" not in err

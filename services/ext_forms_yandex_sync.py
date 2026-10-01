@@ -37,6 +37,25 @@ REAUTH_PAUSE = timedelta(minutes=30)
 _AUTH_REASONS = {"unauthorized", "forbidden", "bad_code", "no_app_keys"}
 
 
+_REAUTH_TEXT = "Яндекс не пускает бота — войдите заново: «🔑 Войти через Яндекс»"
+_RETRY_TEXT = "Яндекс сейчас не отвечает — бот повторит сам через 10 минут"
+_SYNC_ERROR_TEXT = {
+    "unauthorized": _REAUTH_TEXT,
+    "forbidden": _REAUTH_TEXT,
+    "bad_code": _REAUTH_TEXT,
+    "no_app_keys": "Ключи приложения Яндекса не заданы — заполните их в «📝 Внешние формы»",
+    "rate_limited": _RETRY_TEXT,
+    "upstream_unavailable": _RETRY_TEXT,
+    "bad_response": _RETRY_TEXT,
+    "reconcile_error": "Не удалось сверить ответы — бот повторит сам через 10 минут",
+}
+
+
+def sync_error_text(reason: str) -> str:
+    """Что видит менеджер вместо reason-кода: что случилось и что делать."""
+    return _SYNC_ERROR_TEXT.get(reason) or _SYNC_ERROR_TEXT["reconcile_error"]
+
+
 def _fmt(dt: datetime) -> str:
     return dt.strftime(_FMT)
 
@@ -184,12 +203,15 @@ async def reconcile_all() -> dict:
         try:
             enqueued += await reconcile_form(form)
         except YandexApiError as e:
+            if e.reason in ("unauthorized", "forbidden"):
+                # Как и drain_pending: без этого алерт «войдите заново» мог не уйти.
+                await ef.set_connection_status(raw_conn["id"], "needs_reauth", alerted_at=None)
             await ef.set_form_sync(form["id"], last_sync_at=form.get("last_sync_at"),
-                                   sync_error=e.reason)
+                                   sync_error=sync_error_text(e.reason))
             logger.warning("ext_forms: сверка формы %s не удалась (%s)", form["id"], e.reason)
         except Exception as e:  # noqa: BLE001
             await ef.set_form_sync(form["id"], last_sync_at=form.get("last_sync_at"),
-                                   sync_error="reconcile_error")
+                                   sync_error=sync_error_text("reconcile_error"))
             logger.warning("ext_forms: сверка формы %s: %s", form["id"], type(e).__name__)
     rematched = await rematch_unmatched()
     return {"enqueued": enqueued, "rematched": rematched}
