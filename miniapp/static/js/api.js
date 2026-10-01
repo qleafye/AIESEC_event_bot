@@ -29,17 +29,39 @@ export function setAuthErrorHandler(fn) {
   authErrorHandler = typeof fn === "function" ? fn : () => {};
 }
 
-export async function api(path, { method = "GET", body, form } = {}) {
+// Запрос оборван по таймауту: сервер не ответил за timeoutMs. HTTP-статуса нет — экраны,
+// различающие «сеть не ответила» по отсутствию числового `.status`, видят его как сетевую ошибку.
+export class ApiTimeout extends Error {
+  constructor(ms) {
+    super(`api timeout ${ms}ms`);
+    this.timeout = true;
+  }
+}
+
+// timeoutMs — для запросов, которые нельзя ждать бесконечно (скан у двери): на «подвисшей»
+// сети fetch без сигнала висит минутами. Без timeoutMs поведение прежнее.
+export async function api(path, { method = "GET", body, form, timeoutMs } = {}) {
   const headers = { "X-Requested-With": "fetch" };
   if (initData) headers["X-Telegram-Init-Data"] = initData;
   if (body !== undefined && !form) headers["Content-Type"] = "application/json";
 
-  const response = await fetch(`/app/api${path}`, {
-    method,
-    headers,
-    body: form || (body !== undefined ? JSON.stringify(body) : undefined),
-    credentials: "same-origin",
-  });
+  const controller = timeoutMs && typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response;
+  try {
+    response = await fetch(`/app/api${path}`, {
+      method,
+      headers,
+      body: form || (body !== undefined ? JSON.stringify(body) : undefined),
+      credentials: "same-origin",
+      signal: controller ? controller.signal : undefined,
+    });
+  } catch (err) {
+    if (controller && controller.signal.aborted) throw new ApiTimeout(timeoutMs);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   if (response.ok) {
     if (response.status === 204) return null;
