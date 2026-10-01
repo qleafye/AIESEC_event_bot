@@ -194,3 +194,30 @@ def test_show_program_chat_button_uses_delegate_city_photo(tmp_path):
     message = _PhotoTrackingMessage(text="📅 Программа форума", user_id=delegate_id)
     _run(ua_mod.show_program(message))
     assert message.photos_sent == ["MSK_FILE_ID"]
+
+
+def test_build_delegate_program_parallel_sessions_have_own_now_next(tmp_path):
+    """Приёмка 01.10: слот 03:00–06:00 из двух пересекающихся сессий идёт с 03:00, но
+    мастер-класс с 04:30 в 04:00 ещё не начался — «идёт» только у первой, вторая «следующая»."""
+    _use_tmp_db(tmp_path)
+    _run(db.create_program_session("spb", "2026-10-01", "03:00", "05:00", "Открытие"))
+    _run(db.create_program_session("spb", "2026-10-01", "04:30", "06:00", "Мастер-класс"))
+    days = _run(program.build_delegate_program("spb", at=datetime(2026, 10, 1, 4, 0)))
+    slot = days[0]["slots"][0]
+    assert slot["now"] is True
+    by_title = {s["title"]: s for s in slot["sessions"]}
+    assert by_title["Открытие"]["now"] is True and by_title["Открытие"]["next"] is False
+    assert by_title["Мастер-класс"]["now"] is False and by_title["Мастер-класс"]["next"] is True
+
+    later = _run(program.build_delegate_program("spb", at=datetime(2026, 10, 1, 4, 45)))
+    assert all(s["now"] for s in later[0]["slots"][0]["sessions"])
+
+
+def test_build_delegate_program_next_slot_marks_only_first_sessions(tmp_path):
+    _use_tmp_db(tmp_path)
+    _run(db.create_program_session("spb", "2026-10-01", "10:00", "12:00", "Первая"))
+    _run(db.create_program_session("spb", "2026-10-01", "11:00", "12:00", "Вторая"))
+    days = _run(program.build_delegate_program("spb", at=datetime(2026, 10, 1, 9, 0)))
+    by_title = {s["title"]: s for s in days[0]["slots"][0]["sessions"]}
+    assert by_title["Первая"]["next"] is True
+    assert by_title["Вторая"]["next"] is False

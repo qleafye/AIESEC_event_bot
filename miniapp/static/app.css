@@ -2180,7 +2180,15 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   border-radius: var(--radius);
   padding: var(--sp-2) var(--sp-3);
 }
-.program-session-time { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.program-session-time {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 .program-session-title { font-weight: 600; overflow-wrap: anywhere; }
 .program-session-meta { font-size: 13px; color: var(--text-muted); margin-top: var(--sp-1); overflow-wrap: anywhere; }
 .program-photo-button {

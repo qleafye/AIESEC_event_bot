@@ -40,12 +40,23 @@ function timeRange(start, end) {
   return end ? `${start}–${end}` : start;
 }
 
+function markerChip(h, flags, texts) {
+  if (flags.now) return h("span", { class: "chip danger program-marker", text: texts.now });
+  if (flags.next) return h("span", { class: "chip accent program-marker", text: texts.next });
+  return null;
+}
+
 function sessionCard(h, session, texts, { withTime }) {
   const meta = [];
   if (session.hall_name) meta.push(`${texts.hall} ${session.hall_name}`);
   if (session.speaker) meta.push(`${texts.speaker} ${session.speaker}`);
+  // Параллельная сессия несёт свою метку «идёт/следующая» (флаги сессии с сервера): слот
+  // 03:00–06:00 уже идёт, а его сессия с 04:30 — ещё нет.
   return h("div", { class: "program-session" },
-    withTime ? h("div", { class: "program-session-time", text: timeRange(session.start_time, session.end_time) }) : null,
+    withTime ? h("div", { class: "program-session-time" },
+      h("span", { text: timeRange(session.start_time, session.end_time) }),
+      markerChip(h, session, texts),
+    ) : null,
     h("div", { class: "program-session-title", text: session.title }),
     meta.length ? h("div", { class: "program-session-meta", text: meta.join(" · ") }) : null,
   );
@@ -53,9 +64,8 @@ function sessionCard(h, session, texts, { withTime }) {
 
 function slotRow(h, slot, texts) {
   const parallel = slot.sessions.length > 1;
-  const marker = slot.now
-    ? h("span", { class: "chip danger program-marker", text: texts.now })
-    : slot.next ? h("span", { class: "chip accent program-marker", text: texts.next }) : null;
+  // У параллельного слота метка — на каждой сессии (sessionCard), не на слоте целиком.
+  const marker = parallel ? null : markerChip(h, slot, texts);
   const head = h("div", { class: "program-slot-head" },
     h("span", { class: "program-slot-time", text: timeRange(slot.start_time, slot.end_time) }),
     parallel ? h("span", { class: "program-slot-parallel", text: texts.parallel }) : null,

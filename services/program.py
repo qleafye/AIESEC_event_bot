@@ -471,7 +471,8 @@ async def program_menu_visible(city: str | None) -> bool:
 async def build_delegate_program(city: str | None, at: datetime | None = None) -> list[dict]:
     """Табличный вид программы (D-29 Mini App «красивая таблица»): по дню — слоты
     (`group_parallel`, транзитивное пересечение времени), в каждом слоте — сессии с полем
-    `"now"` (сейчас идёт хотя бы одна сессия слота). Используется и API Mini App
+    `"now"` (сейчас идёт хотя бы одна сессия слота). У каждой сессии свои `now`/`next`: в
+    параллельном слоте метку рисуют по сессии, не по слоту. Используется и API Mini App
     (`miniapp/routers/program.py`), и любым будущим текстовым видом в чате — вторая копия
     группировки/сортировки не заводится нигде.
 
@@ -505,6 +506,10 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
                         "hall_name": s.get("hall_name"),
                         "start_time": s["start_time"],
                         "end_time": s["end_time"],
+                        # Приёмка 01.10: у параллельной сессии своя метка — слот 03:00–06:00
+                        # «идёт» с 03:00, а его мастер-класс 04:30 ещё нет.
+                        "now": day == today and s["start_time"] <= now_hhmm < s["end_time"],
+                        "next": False,
                     }
                     for s in group
                 ],
@@ -515,11 +520,30 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
     # ближайший будущий слот сегодня или в один из следующих дней, и только пока ни один слот
     # не «now» (сейчас идёт хоть что-то — «следующая» не нужна, слот и так виден как текущий).
     if not any(slot["now"] for day_entry in days for slot in day_entry["slots"]):
-        for day_entry in days:
-            if day_entry["day"] < today:
+        next_slot = next(
+            (
+                slot
+                for day_entry in days if day_entry["day"] >= today
+                for slot in day_entry["slots"]
+                if day_entry["day"] > today or slot["start_time"] > now_hhmm
+            ),
+            None,
+        )
+        if next_slot is not None:
+            next_slot["next"] = True
+            for session in next_slot["sessions"]:
+                session["next"] = session["start_time"] == next_slot["start_time"]
+        return days
+
+    # Внутри идущего параллельного слота «следующая» — ближайшая ещё не начавшаяся сессия
+    # (слот целиком помечен «now», но отдельная сессия в нём может стартовать позже).
+    for day_entry in days:
+        for slot in day_entry["slots"]:
+            if not slot["now"]:
                 continue
-            for slot in day_entry["slots"]:
-                if day_entry["day"] > today or slot["start_time"] > now_hhmm:
-                    slot["next"] = True
-                    return days
+            upcoming = [x["start_time"] for x in slot["sessions"] if x["start_time"] > now_hhmm]
+            if upcoming:
+                first = min(upcoming)
+                for session in slot["sessions"]:
+                    session["next"] = session["start_time"] == first
     return days

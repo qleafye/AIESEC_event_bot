@@ -269,3 +269,23 @@ def test_no_markers_on_non_forum_day(tmp_path, monkeypatch):
     text = message.answers_sent[0]
     assert "Идёт сейчас" not in text
     assert "Следующая" not in text
+
+
+def test_parallel_sessions_have_own_time_and_marker(tmp_path, monkeypatch):
+    """Приёмка 01.10: «🔴 Идёт сейчас» не накрывает весь параллельный блок — в 04:00 идёт
+    только открытие, мастер-класс (04:30) помечен «Следующая»; у каждой сессии своё время."""
+    _ready(tmp_path)
+    _seed_delegate()
+    _run(db.create_program_session("msk", "2026-10-30", "03:00", "05:00", "Открытие"))
+    _run(db.create_program_session("msk", "2026-10-30", "04:30", "06:00", "Мастер-класс"))
+    monkeypatch.setattr(program_handlers, "msk_now", lambda: datetime(2026, 10, 30, 4, 0))
+    message = _FakeMessage(text=PROGRAM_LABEL)
+    _show_program(message, monkeypatch)
+    lines = message.answers_sent[0].splitlines()
+    opening = next(i for i, line in enumerate(lines) if "Открытие" in line)
+    master = next(i for i, line in enumerate(lines) if "Мастер-класс" in line)
+    assert "03:00–05:00" in lines[opening] or "03:00-05:00" in lines[opening]
+    assert "04:30" in lines[master]
+    assert "Идёт сейчас" in lines[opening - 1]
+    assert "Следующая" in lines[master - 1]
+    assert sum("Идёт сейчас" in line for line in lines) == 1

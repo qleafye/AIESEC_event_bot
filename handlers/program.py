@@ -63,17 +63,19 @@ async def _render_day_text(code: str, day: str, *, is_today: bool, lang: str, tr
     now_hhmm = msk_now().strftime("%H:%M") if is_today else None
     next_start = _next_start(sessions, now_hhmm) if is_today else None
 
-    for group in group_parallel(sessions):
+    def marker_line(group: list[dict]) -> str | None:
         marker = _time_marker(group, now_hhmm, next_start) if is_today else None
-        marker_line = None
         if marker == "now":
-            marker_line = f"🔴 {tr('Идёт сейчас')}"
-        elif marker == "next":
-            marker_line = f"⏭ {tr('Следующая')}"
-        if marker_line:
-            lines.append(marker_line)
+            return f"🔴 {tr('Идёт сейчас')}"
+        if marker == "next":
+            return f"⏭ {tr('Следующая')}"
+        return None
 
+    for group in group_parallel(sessions):
         if len(group) == 1:
+            line = marker_line(group)
+            if line:
+                lines.append(line)
             s = group[0]
             lines.append(f"⏰ {format_time_range(s['start_time'], s['end_time'])} — {html.escape(s['title'])}")
             hall_text = html.escape(s["hall_name"]) if s.get("hall_name") else "—"
@@ -86,9 +88,18 @@ async def _render_day_text(code: str, day: str, *, is_today: bool, lang: str, tr
                 min(s["start_time"] for s in group), max(s["end_time"] for s in group),
             )
             lines.append(f"⏰ {time_span} · {tr('параллельно')}:")
+            # Приёмка 01.10: метка и время — у каждой параллельной сессии своя. Раньше блок
+            # «03:00–06:00 · параллельно» целиком шёл под «🔴 Идёт сейчас», хотя вторая
+            # сессия (04:30) ещё не началась.
             for s in group_sorted:
+                line = marker_line([s])
+                if line:
+                    lines.append(line)
                 hall_text = html.escape(s["hall_name"]) if s.get("hall_name") else "—"
-                bullet = f"• {html.escape(s['title'])} — 🏛 {hall_text}"
+                bullet = (
+                    f"• {format_time_range(s['start_time'], s['end_time'])} "
+                    f"{html.escape(s['title'])} — 🏛 {hall_text}"
+                )
                 if s.get("speaker"):
                     bullet += f" · 🎤 {html.escape(s['speaker'])}"
                 lines.append(bullet)
