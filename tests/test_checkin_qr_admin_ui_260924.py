@@ -48,6 +48,14 @@ def _db_ready(tmp_path, name="test_checkin_qr_admin_ui_260924.db"):
     config.ADMIN_IDS = [ADMIN_ID]
 
 
+def _forum_tomorrow():
+    """Ручная «📤 Разослать QR сейчас» проверяет дату форума города — завтра подходит."""
+    from datetime import timedelta
+    from services.timeutil import msk_now
+    day = (msk_now() + timedelta(days=1)).strftime("%d.%m.%Y")
+    asyncio.run(db.set_setting("forum_date", day))
+
+
 async def _insert_user(telegram_id, *, status="approved", season=None, event_city=None):
     async with _connect() as conn:
         await conn.execute(
@@ -161,6 +169,7 @@ def test_send_confirm_empty_pool_answers_alert_without_confirm_screen(tmp_path):
 
 def test_send_confirm_nonempty_pool_shows_count_and_confirm_buttons(tmp_path):
     _db_ready(tmp_path)
+    _forum_tomorrow()
     asyncio.run(_insert_user(UID))
     cb = _FakeCallback("checkinqr_send:_all", ADMIN_ID)
     asyncio.run(admin_checkin.checkinqr_send_confirm(cb))
@@ -181,6 +190,7 @@ def test_send_cancel_edits_message():
 
 def test_send_go_sends_photos_and_reports_counts(tmp_path, monkeypatch):
     _db_ready(tmp_path)
+    _forum_tomorrow()
     asyncio.run(_insert_user(UID))
     asyncio.run(_insert_user(UID + 1))
     bot = _with_bot(monkeypatch)
@@ -198,6 +208,7 @@ def test_send_go_clears_keyboard_before_sending(tmp_path, monkeypatch):
     """Находка ревью 260924 (п.4): клавиатура подтверждения убирается ДО запуска рассылки —
     повторный тап на неё физически невозможен."""
     _db_ready(tmp_path)
+    _forum_tomorrow()
     asyncio.run(_insert_user(UID))
     _with_bot(monkeypatch)
 
@@ -214,6 +225,7 @@ def test_send_go_rejects_concurrent_tap(tmp_path, monkeypatch):
     """Второй тап, пока первая рассылка того же города ещё держит лок, отвечает понятным
     текстом — не запускает вторую параллельную отправку."""
     _db_ready(tmp_path)
+    _forum_tomorrow()
     asyncio.run(_insert_user(UID))
     bot = _with_bot(monkeypatch)
 
@@ -234,6 +246,7 @@ def test_send_go_ignores_quiet_hours(tmp_path, monkeypatch):
     """D-35 (24.09): QR — служебное сообщение, тихие часы на него больше НЕ действуют (раньше
     рассылка откладывалась до конца окна — владелец 24.09 явно это отменил)."""
     _db_ready(tmp_path)
+    _forum_tomorrow()
     asyncio.run(_insert_user(UID))
     bot = _with_bot(monkeypatch)
     asyncio.run(db.set_setting("quiet_hours_enabled", "on"))

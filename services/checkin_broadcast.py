@@ -391,6 +391,33 @@ async def eligible_recipients(city: str | None) -> list[dict]:
     return eligible
 
 
+# Ручная «📤 Разослать QR сейчас» раньше форума больше чем на столько дней — отказ: QR за неделю
+# до форума теряется в переписке, а кнопка «сейчас» в чужом городе — частый промах.
+MANUAL_SEND_DAYS_AHEAD = 2
+
+
+async def manual_send_block_reason(city: str | None) -> str | None:
+    """Почему ручную рассылку QR этого города сейчас нельзя запускать (текст для менеджера),
+    или `None`. Проверяет дату форума ГОРОДА: не задана, ещё далеко или форум уже прошёл."""
+    date_str = await forum_date_for(city)
+    if date_str is None:
+        return ("У этого города не задана дата форума — QR рассылать рано. Задайте дату в "
+                "«🎪 Форум: функции» → «🚦 Готовность».")
+    try:
+        day = datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
+    except ValueError:
+        return "Дата форума этого города записана с ошибкой — поправьте её в «🚦 Готовность»."
+    today = msk_now().date()
+    if (day - today).days > MANUAL_SEND_DAYS_AHEAD:
+        return (f"Форум этого города {date_str} — рассылать QR рано. Он уйдёт сам накануне "
+                "вечером; вручную — не раньше чем за 2 дня.")
+    from services.sos import sos_active_window
+    window = await sos_active_window(city)
+    if window is not None and window[1] < today:
+        return f"Форум этого города ({date_str}) уже прошёл — QR рассылать незачем."
+    return None
+
+
 async def pending_broadcast_count(city: str | None) -> int:
     """Сколько делегатов города РЕАЛЬНО получат QR при следующей отправке (вечерней джобе или
     ручной кнопке «📤 Разослать QR сейчас») — превью для подтверждения «Уйдёт N делегатам
