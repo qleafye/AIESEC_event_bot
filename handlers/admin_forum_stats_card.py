@@ -177,6 +177,12 @@ async def forumstats_send_go(callback: types.CallbackQuery):
     if result.get("disabled"):
         await callback.message.answer("❌ Рассылка сейчас выключена — включите тумблер и повторите.")
         return
+    if result.get("empty_caption"):
+        await callback.message.answer(
+            "❌ Ничего не отправлено: подпись к карточке пуста. Заполните её в «⚙️ Настройки» → "
+            "«📋 Заявки» → «📊 Карточка «Юлид в цифрах»: подпись» и запустите рассылку снова."
+        )
+        return
     text = f"✅ Отправлено {result['sent']} из {result['total']}"
     if result["failed"]:
         text += f", не доставлено {result['failed']}"

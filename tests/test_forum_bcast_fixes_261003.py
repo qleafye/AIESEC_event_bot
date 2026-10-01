@@ -555,3 +555,22 @@ def test_city_manager_confirm_note_counts_dropped(tmp_path):
     note = _run(sender_city_note(2000, 3))
     assert "3 из выбранных" in note and "не уйдёт" in note
     assert "из выбранных" not in _run(sender_city_note(2000))
+
+
+def test_stats_card_empty_caption_explained_to_manager(tmp_path, monkeypatch):
+    """Пустая подпись — не «✅ Отправлено 0 из 0», а объяснение, что заполнить."""
+    from handlers import admin_forum_stats_card as afsc
+    from handlers.admin_checkin import _NO_CITY
+    import services.forum_stats_card as fsc
+    from tests.test_roles_phase8 import FakeCallback
+    _ready(tmp_path)
+    config.ADMIN_IDS = [1]
+
+    async def _empty(city, only_arrived=False):
+        return {"sent": 0, "failed": 0, "quiet": 0, "muted": 0, "total": 0, "empty_caption": True}
+
+    monkeypatch.setattr(fsc, "send_broadcast", _empty)
+    q = FakeCallback(f"forumstats_send_go:{_NO_CITY}:all", user_id=1)
+    _run(afsc.forumstats_send_go(q))
+    said = " ".join(a[0] for a in q.message.answers)
+    assert "подпись к карточке пуста" in said and "Отправлено 0" not in said
