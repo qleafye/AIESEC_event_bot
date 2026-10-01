@@ -487,3 +487,29 @@ def test_not_arrived_confirm_note_lists_cities(tmp_path, monkeypatch):
     note = _run(not_arrived_city_note([{"field": "checkin_entry", "value": "no"}], [2]))
     assert "По городам" in note and "— 1" in note and "идёт форум" in note
     assert _run(not_arrived_city_note([{"field": "status", "value": "approved"}], [2])) == ""
+
+
+# ── Рассылка менеджера, привязанного к городу, — только его городу ───────────────────────────
+
+def test_city_bound_manager_broadcast_limited_to_city(tmp_path):
+    from services.broadcast_scope import restrict_to_sender_city, sender_city_note
+    _cities_env(tmp_path)
+    config.ADMIN_IDS = [1000]
+    _run(db.add_staff(2000, "manager", 1000))
+    _run(db.set_staff_city(2000, "spb"))
+    assert _run(restrict_to_sender_city(2000, [1, 2, 3])) == [2]
+    assert "Только делегатам вашего города" in _run(sender_city_note(2000))
+    # Суперадмин и менеджер без города — без сужения.
+    assert _run(restrict_to_sender_city(1000, [1, 2, 3])) == [1, 2, 3]
+    _run(db.add_staff(3000, "manager", 1000))
+    assert _run(restrict_to_sender_city(3000, [1, 2, 3])) == [1, 2, 3]
+    assert _run(sender_city_note(1000)) == ""
+
+
+def test_moscow_bound_manager_gets_cityless_delegates(tmp_path):
+    from services.broadcast_scope import restrict_to_sender_city
+    _cities_env(tmp_path)
+    config.ADMIN_IDS = [1000]
+    _run(db.add_staff(2001, "manager", 1000))
+    _run(db.set_staff_city(2001, "msk"))
+    assert sorted(_run(restrict_to_sender_city(2001, [1, 2, 3]))) == [1, 3]

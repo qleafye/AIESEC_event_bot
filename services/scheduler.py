@@ -831,6 +831,10 @@ async def send_scheduled_broadcast(broadcast_id: int):
         else:
             target_ids = await get_all_users_ids()
 
+        # Менеджер, привязанный к городу, рассылает только своему городу (автор строки).
+        from services.broadcast_scope import restrict_to_sender_city
+        target_ids = await restrict_to_sender_city(row.get("created_by"), target_ids)
+
         # Форум-ночь п.7: важная рассылка идёт ВСЕМ независимо от «🔕» (D-XX); неважная —
         # минус тех, кто отключил сегодня. Считается ДО create_broadcast — total в журнале
         # отражает реально отправляемую аудиторию, mute_skipped — отдельная цифра отчёта.
