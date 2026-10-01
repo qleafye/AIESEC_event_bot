@@ -91,3 +91,48 @@ def test_morning_text_registered_like_neighbours():
     assert entry["default"] in FORM_DEFAULT_EN
     assert "checkin_qr_morning_text" in SETTINGS_SYNONYMS
     assert "checkin_qr_morning_text" in {k for k, _l, _p in SETTINGS_FIELDS}
+
+
+# ── «Написать не пришедшим»: тихие часы не мешают в день форума ──────────────────────────────
+
+class TextBot:
+    def __init__(self, fail_for=()):
+        self.sent = []
+        self.fail_for = dict(fail_for)
+
+    async def send_message(self, chat_id, text, reply_markup=None, **kw):
+        exc = self.fail_for.get(chat_id)
+        if exc is not None:
+            raise exc
+        self.sent.append((chat_id, text, reply_markup))
+        return type("Msg", (), {"message_id": 1})()
+
+
+def _quiet_all_day():
+    _run(db.set_setting("quiet_hours_enabled", "on"))
+    _run(db.set_setting("quiet_hours_start", "00:00"))
+    _run(db.set_setting("quiet_hours_end", "23:59"))
+
+
+def test_not_arrived_ignores_quiet_hours_on_forum_day(tmp_path, monkeypatch):
+    import services.checkin_not_arrived as cna
+    _ready(tmp_path)
+    _seed(1)
+    _quiet_all_day()
+    bot = TextBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cna, "msk_now", lambda: datetime(2026, 10, 3, 8, 30))
+    res = _run(cna.send(city=None, city_scope=None))
+    assert res["sent"] == 1 and res["quiet"] == 0
+
+
+def test_not_arrived_keeps_quiet_hours_on_other_days(tmp_path, monkeypatch):
+    import services.checkin_not_arrived as cna
+    _ready(tmp_path)
+    _seed(1)
+    _quiet_all_day()
+    bot = TextBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cna, "msk_now", lambda: datetime(2026, 10, 6, 8, 30))
+    res = _run(cna.send(city=None, city_scope=None))
+    assert res["sent"] == 0 and res["quiet"] == 1 and bot.sent == []
