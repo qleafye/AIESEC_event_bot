@@ -284,3 +284,44 @@ def test_stale_arrival_queue_is_yellow(tmp_path, monkeypatch):
     monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 10, 3, 9, 12))
     text, _ = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
     assert "🟡 Отметки «Пришёл» копятся: в очереди 2, старейшая 12 мин" in text
+
+
+def test_waiting_for_sheet_row_is_not_a_write_jam(tmp_path, monkeypatch):
+    """Делегата ещё нет в листе — событие ждёт строку до 7 дней. Это не «таблица не принимает
+    запись»: строка «Таблица» остаётся зелёной, ждущие — отдельной строкой."""
+    from datetime import datetime
+    from services.sheet_arrival_sync import MISSING_ERROR
+    _ready(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    monkeypatch.setattr(sheets, "_write_state", {"ok": time.time() - 120, "fail": None})
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 3, 9, 0))
+    _run(db.enqueue_sheet_arrival(1, db.SHEET_ARRIVAL_SET))
+    _run(db.fail_sheet_arrivals({1: 10**9}, MISSING_ERROR, "2026-10-03 10:00:00"))
+    monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 10, 3, 9, 30))
+    text, _ = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
+    assert "🟢 Таблица пишется" in text and "копятся" not in text
+    assert "\n⏳ «Пришёл» ждут своей строки в листе: 1" in text
+
+
+def _cities_on(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+
+
+def test_sos_button_carries_traffic_light_city(tmp_path, monkeypatch):
+    _cities_on(tmp_path)
+    _patch_sched(monkeypatch, _FakeSched())
+    row = _run(afr._row_sos("tyumen", _Bot()))
+    assert row["fix"] == ("🆘 Настройки SOS", "asos_city:tyumen")
+
+
+def test_program_row_honest_about_shared_photo(tmp_path):
+    _cities_on(tmp_path)
+    _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Открытие"))
+    _run(db.set_setting("program_photo_file_id", "shared"))
+    row = _run(afr._row_program("spb"))
+    assert "есть фото" not in row["text"] and "загрузите фото для города" in row["text"]
+    _run(db.set_setting("program_photo_file_id__city__spb", "own"))
+    assert "есть фото" in _run(afr._row_program("spb"))["text"]
