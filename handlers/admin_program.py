@@ -181,10 +181,10 @@ async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, Inl
     buttons.append([InlineKeyboardButton(text="⭐ Отзывы о сессиях", callback_data=f"prog_fbset:{code}")])
     # D-29: таблица/фото в Mini App — общий рендер handlers/admin_program_view.py (потолок
     # этого файла, кнопка нужна и хабу «🎪 Форум: функции»).
-    from handlers.admin_program_view import program_view_row
-    view_status, view_button = await program_view_row(code, "program")
+    from handlers.admin_program_view import program_rows  # + фото программы города
+    view_status, view_rows = await program_rows(code, "program")
     lines.append(f"\n{view_status}")
-    buttons.append([view_button])
+    buttons += view_rows
 
     other_cities = [c for c in city_codes() if c != code and await _city_allowed(admin_id, c)]
     if other_cities:

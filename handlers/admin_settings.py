@@ -470,8 +470,9 @@ PHOTO_FILE_GROUP = "event"
 
 PHOTO_FIELDS = [
     ("program", "📅 Программа", (
-        "Отправьте фото программы (можно с подписью) — оно появится делегату по кнопке "
-        "«📅 Программа форума»."
+        "Отправьте фото программы (можно с подписью) — делегат увидит его по кнопке «📅 Программа "
+        "форума». При включённых городах это ОБЩЕЕ фото — только для городов без своего фото и без "
+        "сессий; своё фото города загружается, когда в шапке «🔧 Управление» выбран этот город."
     )),
     ("speakers", "🗣 Спикеры", (
         "Отправьте одно фото со всеми спикерами (можно с подписью) — оно появится делегату "
@@ -2113,6 +2114,10 @@ async def settings_reset_city_go(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("settings_photo:"))
 async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext):
     prefix = callback.data.split(":", 1)[1]
+    header = await admin_selected_city(callback.from_user.id)
+    if prefix == "program" and header not in (None, ALL_CITIES):  # своё фото города шапки
+        from handlers.admin_program_view import start_program_photo
+        return await start_program_photo(callback, state, header, "program")
     prompts = {p: (label, prompt) for p, label, prompt in PHOTO_FIELDS}
     label, prompt = prompts.get(prefix, ("Фото", "Отправьте фото."))
 

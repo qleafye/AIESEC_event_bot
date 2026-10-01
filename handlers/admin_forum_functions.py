@@ -195,11 +195,10 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
     # D-29: что делегат видит по этой кнопке в Mini App — таблица сессий бота или фото. Общий
     # рендер с экраном «🗓 Программа форума» — handlers/admin_program_view.py.
-    from handlers.admin_program_view import program_view_row
-    view_status, view_button = await program_view_row(code, "hub")
+    from handlers.admin_program_view import program_rows  # + фото программы города
+    view_status, view_rows = await program_rows(code, "hub")
     lines.append(view_status)
-    if visible(view_button.callback_data):
-        buttons.append([view_button])
+    buttons += [row for row in view_rows if visible(row[0].callback_data)]
 
     # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/session_feedback.py).
     fb_on = await sf.is_enabled_for_city(code)

@@ -1192,12 +1192,14 @@ async def show_program(message: types.Message):
     logger.info(f"User {message.from_user.id} requested Program")
 
     # Что показать — ОДНО правило с Mini App (`services.program.resolve_program_content`):
-    # тумблер «Таблица/Фото» города. Раньше любое фото (даже чужое общее) перекрывало сессии и
-    # тумблер не читался. Подпись остаётся общей (Pitfall 1, 09.2-RESEARCH).
-    from services.program import resolve_program_content
-    view, source = await resolve_program_content(await _delegate_city(message.from_user.id))
+    # тумблер «Таблица/Фото» города; своё фото города; общее — только городу без своего фото и
+    # без сессий. Раньше любое фото (даже чужое общее) перекрывало сессии и тумблер не читался.
+    # Подпись — своя у своего фото города, общая у общего (`program_photo_caption`).
+    from services.program import program_photo_caption, resolve_program_content
+    city = await _delegate_city(message.from_user.id)
+    view, source = await resolve_program_content(city)
     if view == "photo":
-        program_caption = await get_setting("program_caption")
+        program_caption = await program_photo_caption(city)
         program_caption = html.escape(program_caption) if program_caption else program_caption
         photo = source.get("file_id") or FSInputFile(source["path"])
         try:
