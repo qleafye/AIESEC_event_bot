@@ -358,6 +358,25 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
     await sos_service.deliver_org_reply(bot, message, report)
 
 
+# «🙋 Беру»/«✅ Решено» под карточкой в чате SOS — здесь, мимо `CapabilityMiddleware`: в
+# привязанном чате SOS кнопки жмёт любой его участник. Чат SOS — это чат команды города, его
+# привязывает менеджер с правом «⚙️ Настройки»; в Тюмени и Москве это общий чат команды, где
+# дежурят волонтёры без ролей в боте, и выдавать каждому роль утром форума никто не будет.
+# Что карточка именно из чата этой заявки (а не пересланная в другую группу), проверяет сам
+# хендлер (`handlers/admin_sos.py::_card_origin_ok`) — с понятным алертом, не тишиной. Копии
+# карточки в личке (фоллбэк) идут мимо этого хендлера в admin.router под капой, как раньше.
+@router.callback_query(
+    F.data.regexp(r"^sos_(claim|resolve):"), F.message.chat.type.in_({"group", "supergroup"}),
+)
+async def on_sos_card_button(callback: types.CallbackQuery, bot: Bot, fsm_storage=None):
+    from handlers import admin_sos  # ленивый: домен кнопок живёт там, модуль висит на admin.router
+
+    if callback.data.startswith("sos_claim:"):
+        await admin_sos.sos_claim(callback, bot)
+    else:
+        await admin_sos.sos_resolve(callback, bot, fsm_storage=fsm_storage)
+
+
 @router.message()
 async def on_group_message(message: types.Message, bot: Bot | None = None):
     """ПОСЛЕДНИЙ хендлер роутера — catch-all. Сматчился здесь -> дальше, к личным роутерам,
