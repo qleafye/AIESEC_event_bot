@@ -536,6 +536,8 @@ def test_render_snapshot_apps(tmp_path):
         # Форум-ночь (ночная приёмка, задача 3): текст самой рассылки QR — был в реестре,
         # но не в боте (только Mini App); дописан рядом с соседями QR-чек-ина.
         "checkin_qr_broadcast_text",
+        # 01.10: утренний повтор QR в день форума — свой текст без «Завтра форум!».
+        "checkin_qr_morning_text",
         # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — новый хвост группы.
         "checkin_not_arrived_text",
         # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — тот же пропуск,
@@ -1101,12 +1103,14 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # _APPS_FIELD_ORDER, ещё один ключ; следом три сообщения делегату с карточки /find
     # (возврат в ожидание / разрешение повторной подачи / разрешение правки после решения) —
     # срез расширен до 28; задача 1 (сброс зависшей анкеты) добавляет ещё один ключ — срез
-    # расширен до 29.
-    assert admin_settings._settings_group_keys("apps")[-30:] == [
+    # расширен до 29. 01.10: checkin_qr_morning_text сразу после checkin_qr_broadcast_text —
+    # срез расширен до 31.
+    assert admin_settings._settings_group_keys("apps")[-31:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
-        "checkin_qr_broadcast_text", "checkin_not_arrived_text", "checkin_volunteer_guide_text",
+        "checkin_qr_broadcast_text", "checkin_qr_morning_text", "checkin_not_arrived_text",
+        "checkin_volunteer_guide_text",
         "forum_welcome_text", "checked_in_status_text",
         "forum_noshow_poll_question_text",
         "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
