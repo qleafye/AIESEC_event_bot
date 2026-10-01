@@ -89,3 +89,65 @@ def test_qr_set_off_returns_to_hub_and_is_idempotent(tmp_path):
     text, _kb = cb.message.edits[-1]
     assert text.startswith("🎪 <b>Форум: функции</b>")
     assert "🎟 QR для входа: ❌ Выкл" in text
+
+
+# ── Экраны, открытые из хаба: «Назад» ведёт в хаб и переживает перерисовку ─────────────────
+
+class _State:
+    async def clear(self):
+        pass
+
+
+def _open_from_hub(target, code="spb"):
+    from handlers import admin_forum_hub_nav as nav
+    cb = _CB(f"forumfn_open:{target}:{code}")
+    asyncio.run(nav.forumfn_open(cb, _State()))
+    return cb.message.edits[-1]
+
+
+def test_hub_rows_open_native_screens_with_hub_back(tmp_path):
+    _seed_spb(tmp_path)
+    cbs = _hub_cbs()
+    for target in ("chk", "app", "menu", "fb"):
+        assert f"forumfn_open:{target}:spb" in cbs
+        _text, kb = _open_from_hub(target)
+        last = kb.inline_keyboard[-1][0]
+        assert last.callback_data == "forumfn_back:spb", (target, last)
+        assert "Форум: функции" in last.text
+
+
+def test_hub_back_survives_toggle_redraw(tmp_path):
+    from handlers import admin_miniapp, admin_reg_config, session_feedback
+    _seed_spb(tmp_path)
+
+    _t, kb = _open_from_hub("menu")
+    cb = _CB("menu_toggle:menu_sos", markup=kb)
+    asyncio.run(admin_reg_config.toggle_menu_button(cb))
+    assert cb.message.edits[-1][1].inline_keyboard[-1][0].callback_data == "forumfn_back:spb"
+
+    _t, kb = _open_from_hub("app")
+    cb = _CB("miniapp_toggle_staff_only", markup=kb)
+    asyncio.run(admin_miniapp.toggle_miniapp_staff_only(cb))
+    assert cb.message.edits[-1][1].inline_keyboard[-1][0].callback_data == "forumfn_back:spb"
+
+    _t, kb = _open_from_hub("fb")
+    cb = _CB("prog_fbtoggle:spb", markup=kb)
+    asyncio.run(session_feedback.prog_fbtoggle(cb))
+    assert cb.message.edits[-1][1].inline_keyboard[-1][0].callback_data == "forumfn_back:spb"
+
+
+def test_native_entry_keeps_section_back(tmp_path):
+    from handlers import admin_reg_config
+    _seed_spb(tmp_path)
+    cb = _CB("menu_toggle:menu_sos")  # открыт из раздела — клавиатуры хаба не было
+    asyncio.run(admin_reg_config.toggle_menu_button(cb))
+    assert cb.message.edits[-1][1].inline_keyboard[-1][0].callback_data == "menu_back"
+
+
+def test_hub_back_redraws_hub_in_place(tmp_path):
+    from handlers import admin_forum_hub_nav as nav
+    _seed_spb(tmp_path)
+    cb = _CB("forumfn_back:spb")
+    asyncio.run(nav.forumfn_back(cb))
+    assert cb.message.sent == []
+    assert cb.message.edits[-1][0].startswith("🎪 <b>Форум: функции</b> — Санкт-Петербург")

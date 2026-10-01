@@ -65,10 +65,10 @@ def test_moderate_reg_only_manager_sees_only_moderate_reg_buttons(tmp_path):
 
     # Чужие капы (settings/checkin) — кнопки СКРЫТЫ, не просто недоступны.
     assert "forumfn_qr:msk" not in cbs
-    assert "admin_checkin" not in cbs
-    assert "admin_miniapp_settings" not in cbs
-    assert "admin_menu_buttons" not in cbs
-    assert "prog_fbset:msk" not in cbs
+    assert "forumfn_open:chk:msk" not in cbs
+    assert "forumfn_open:app:msk" not in cbs
+    assert "forumfn_open:menu:msk" not in cbs
+    assert "forumfn_open:fb:msk" not in cbs
 
     # Статусные строки текста — про ВСЕ функции, независимо от прав на кнопку.
     assert "🎟 QR для входа" in text
@@ -86,15 +86,15 @@ def test_settings_only_manager_sees_settings_and_checkin_denied(tmp_path):
     cbs = _cbs(kb)
 
     assert "forumfn_qr:msk" in cbs
-    assert "admin_miniapp_settings" in cbs
-    assert "admin_menu_buttons" in cbs
-    assert "prog_fbset:msk" in cbs
+    assert "forumfn_open:app:msk" in cbs
+    assert "forumfn_open:menu:msk" in cbs
+    assert "forumfn_open:fb:msk" in cbs
 
     # moderate_reg-only и checkin-only кнопки скрыты.
     assert "checkinqr_cfg:msk" not in cbs
     assert "checkinvol_cfg:msk" not in cbs
     assert "asos_city:msk" not in cbs
-    assert "admin_checkin" not in cbs
+    assert "forumfn_open:chk:msk" not in cbs
     assert "checkin_training_sheet" not in cbs
 
 
@@ -106,10 +106,10 @@ def test_checkin_only_manager_sees_only_admin_checkin(tmp_path):
     _text, kb = _run(aff._render_hub(MANAGER_ID, "msk"))
     cbs = _cbs(kb)
 
-    assert "admin_checkin" in cbs
+    assert "forumfn_open:chk:msk" in cbs
     assert "checkin_training_sheet" in cbs
-    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "admin_miniapp_settings",
-               "checkinvol_cfg:msk", "admin_menu_buttons", "prog_fbset:msk", "asos_city:msk"):
+    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "forumfn_open:app:msk",
+               "checkinvol_cfg:msk", "forumfn_open:menu:msk", "forumfn_open:fb:msk", "asos_city:msk"):
         assert cb not in cbs
 
 
@@ -119,9 +119,9 @@ def test_superadmin_sees_every_button(tmp_path):
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(SUPERADMIN_ID, "msk"))
     cbs = _cbs(kb)
-    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "admin_checkin",
-               "admin_miniapp_settings", "checkinvol_cfg:msk", "admin_menu_buttons",
-               "prog_fbset:msk", "asos_city:msk"):
+    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "forumfn_open:chk:msk",
+               "forumfn_open:app:msk", "checkinvol_cfg:msk", "forumfn_open:menu:msk",
+               "forumfn_open:fb:msk", "asos_city:msk"):
         assert cb in cbs, f"{cb} пропал у держателя всех прав"
     # «← Назад» (`back_button("admin_checkin", ...)` резолвит РАЗДЕЛ-владелец "admin_checkin",
     # т.е. "apps" -> "admin_sec:apps", не сам литерал) остаётся последней строкой при любом
