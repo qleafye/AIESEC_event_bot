@@ -34,7 +34,7 @@
 import { atUsername, flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
-import { createScanGate } from "../scan_gate.js";
+import { createScanGate, HOLD } from "../scan_gate.js";
 
 const ENTRY_POINT = "entry";
 const TRAINING_POINT = "training"; // «🧪 Тренировка» ничего не пишет — кнопок «на месте» там нет
@@ -348,6 +348,7 @@ export async function render(root, params, ctx) {
 
   function startScan() {
     if (!canScan) return;
+    scanGate.resume(); // волонтёр видел отказ и сам продолжил — очередь уходит дальше
     popupOpen = true;
     tg.showScanQrPopup({ text: SCAN_POPUP_TEXT }, onQrText);
   }
@@ -469,7 +470,14 @@ export async function render(root, params, ctx) {
     }, COUNTERS_DEBOUNCE_MS);
   }
 
-  // Завершается по ответу на сам скан — следующий QR из очереди уходит сразу.
+  // Под плашкой отказа: QR, пойманные во время отправки, ждут «Сканировать дальше».
+  function noteQueued() {
+    const n = scanGate.pending().length;
+    if (n) plaque.append(h("div", { class: "checkin-plaque-city", text: `Ещё ${n} QR в очереди — отметятся после «Сканировать дальше».` }));
+  }
+
+  // Завершается по ответу на сам скан — следующий QR из очереди уходит сразу. Не-🟢 исход
+  // возвращает HOLD: очередь ждёт явного «Сканировать дальше», плашку отказа не затирает.
   async function submitScan(payloadText) {
     try {
       const res = await measured(() => api("/checkin/scan", {
@@ -481,11 +489,14 @@ export async function render(root, params, ctx) {
       if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
       showPlaque(res, { closeButton: !isSuccess });
       refreshCounters();
+      if (isSuccess) return undefined;
     } catch (err) {
       closeScanPopup(); // сетевая ошибка, таймаут, любая другая — тоже 🔴, попап закрывается
       const text = failureText(err, "Не получилось отметить — попробуйте ещё раз.");
       showPlaque({ status: "error", reason_text: text }, { closeButton: true });
     }
+    noteQueued();
+    return HOLD;
   }
 
   // ── скан QR: непрерывный режим ────────────────────────────────────────────────────────
