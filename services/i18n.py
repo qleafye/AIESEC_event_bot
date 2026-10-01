@@ -131,6 +131,17 @@ async def context(telegram_id: int, language_code: str | None = None) -> tuple[s
     return lang, tr_map
 
 
+async def tr_for_user(telegram_id: int, text: str) -> str:
+    """Одна строка кода — на язык делегата `telegram_id`, для мест вне его апдейта (ответ орга
+    на вопрос или SOS уходит из чужого чата). Fail-soft: любой сбой — русский текст как есть."""
+    try:
+        lang, tr_map = await context(telegram_id)
+        return tr(text, lang, tr_map)
+    except Exception as e:
+        logger.warning("i18n.tr_for_user(%s) failed: %s", telegram_id, e)
+        return text
+
+
 async def context_cached(telegram_id: int, maps: dict[str, dict]) -> tuple[str, dict]:
     """`context()` для массовой рассылки: язык читается на каждого получателя, а карта
     переводов грузится один раз на язык за всю рассылку (`maps` — словарь вызывающего,

@@ -557,6 +557,9 @@ async def refresh_card(bot, report_id: int) -> None:
 
 _CARD_NUMBER_RE = re.compile(r"SOS #([0-9]+)")
 
+# Шапка ответа орга делегату (литерал корпуса перевода `lit:sos.org_reply_header`).
+SOS_REPLY_HEADER = "Ответ по SOS #{id}:"
+
 
 def card_report_id(replied) -> int | None:
     """Номер заявки из карточки SOS, на которую ответили; `None` — это не карточка (нет
@@ -601,7 +604,12 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
             return False
 
     user_id = report["telegram_id"]
-    header = f"🆘 <b>Ответ по SOS #{report_id}:</b>"
+    from services import i18n as i18n_service
+
+    # Шапка — на языке делегата («SOS #» остаётся и в переводе: по нему его реплай на ответ
+    # уходит обратно в тред, `handlers/sos.py::_is_sos_followup`).
+    title = await i18n_service.tr_for_user(user_id, SOS_REPLY_HEADER)
+    header = f"🆘 <b>{html_module.escape(title.replace('{id}', str(report_id)))}</b>"
     try:
         if message.text:
             await bot.send_message(user_id, f"{header}\n\n{message.html_text}", parse_mode="HTML")

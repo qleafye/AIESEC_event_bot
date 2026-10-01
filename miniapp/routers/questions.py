@@ -233,7 +233,12 @@ async def questions_answer(
     # кладёт строку в ТУ ЖЕ очередь `delayed_notifications`, отправит её бот своей джобой
     # (второго писателя в Bot API не появляется, D-01). `parse_mode=None`: веб и раньше слал
     # текст без разметки. `queued_until` в ответе — «доставим утром в 09:00» для интерфейса.
-    answer_text = f"💬 Ответ от организаторов:\n\n{text}"
+    # Шапка — на языке делегата (приёмка 01.10: EN-делегат получал её по-русски).
+    from services import i18n as i18n_service
+    from services.questions import ORG_REPLY_HEADER
+
+    title = await i18n_service.tr_for_user(row["user_id"], ORG_REPLY_HEADER)
+    answer_text = f"💬 {title}\n\n{text}"
     try:
         queued_until = await quiet_hours.send_or_queue_text_due(
             now_msk_naive(), row["user_id"], answer_text,

@@ -28,6 +28,10 @@ from datetime import datetime
 
 from services.timeutil import utc_naive_to_msk
 
+# Шапка ответа организаторов делегату — бот и Mini App (литерал корпуса перевода
+# `lit:questions.org_reply_header`).
+ORG_REPLY_HEADER = "Ответ от организаторов:"
+
 STATUS_NEW = "new"
 STATUS_IN_WORK = "in_work"
 STATUS_ANSWERED = "answered"
