@@ -1,0 +1,13 @@
+{
+  "_note": "синтетика по документации, заменяется real_*.json из spike",
+  "id": 1001,
+  "created": "2026-10-01T09:30:15.000Z",
+  "survey": {"id": "6a94ad5c1f1eb5c9649c12bd", "name": "Тестовая форма"},
+  "data": [
+    {"id": 111, "label": "Ваше имя", "type": "answer_short_text", "value": "Аня Петрова"},
+    {"id": 112, "label": "Интересы", "type": "answer_choices", "value": ["Спорт", "Музыка"]},
+    {"id": 113, "label": "Резюме", "type": "answer_files", "value": [{"name": "cv.pdf", "path": "/files/1"}]},
+    {"id": 114, "label": "Возраст", "type": "answer_number", "value": 21},
+    {"id": 115, "label": "Согласие", "type": "answer_boolean", "value": true}
+  ]
+}

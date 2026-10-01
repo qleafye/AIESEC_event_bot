@@ -1,0 +1,8 @@
+{
+  "_note": "синтетика по документации, заменяется real_*.json из spike",
+  "answers": [
+    {"id": 1001, "created": "2026-10-01T09:30:15.000Z"},
+    {"id": 1002, "created": "2026-10-01T09:31:15.000Z"}
+  ],
+  "next": {"next_url": "https://api.forms.yandex.net/v1/surveys/6a94ad5c1f1eb5c9649c12bd/answers?ordering=asc&page_size=2&id=1002"}
+}

@@ -1,0 +1,13 @@
+{
+  "_note": "синтетика по документации, заменяется real_*.json из spike",
+  "pages": [
+    {"id": 1, "items": [
+      {"id": 111, "label": "Ваше имя", "slug": "name"},
+      {"id": 112, "label": "Интересы", "slug": "interests"}
+    ]},
+    {"id": 2, "items": [
+      {"id": 113, "label": "Резюме", "slug": "cv"},
+      {"id": 114, "label": "Возраст", "slug": "age"}
+    ]}
+  ]
+}
