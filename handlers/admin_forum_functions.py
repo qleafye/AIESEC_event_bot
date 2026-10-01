@@ -106,8 +106,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     if visible(f"forum_ready:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(text="🚦 Готовность к форуму", callback_data=f"forum_ready:{_encode_city(code)}")])
 
-    # 1. Выпуск личного QR — мастер-тумблер, НЕ per_city (services/checkin.py::build_checkin_qr
-    # читает его глобально); правится строкой «toggle_checkin_qr_enabled» раздела «📋 Заявки».
+    # 1. Выпуск личного QR — общий тумблер, НЕ per_city; из хаба — только через подтверждение.
     qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
     lines.append(f"🎟 QR для входа: {_status(qr_on)}")
     if visible(f"forumfn_qr:{_encode_city(code)}"):  # экран с подтверждением: handlers/admin_forum_hub_nav.py
@@ -303,7 +302,8 @@ async def admin_forum_functions_entry(callback: types.CallbackQuery):
         text, kb = await _render_city_picker()
     else:
         text, kb = await _render_hub(callback.from_user.id, code)
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    from handlers.admin_forum_hub_nav import edit_or_answer  # правкой, а не новым сообщением
+    await edit_or_answer(callback, text, kb)
     await callback.answer()
 
 

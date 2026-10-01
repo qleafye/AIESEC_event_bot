@@ -56,12 +56,17 @@ def keep_hub_back(message, new_kb: InlineKeyboardMarkup) -> InlineKeyboardMarkup
     return _swap_back(new_kb, cb) if cb else new_kb
 
 
-async def _edit(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
+async def edit_or_answer(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
+    """Экран хаба — правкой того сообщения, где нажата кнопка (а не новым сообщением, иначе в
+    чате копятся «Выберите город.»); сообщение без текста (фото) или слишком старое — новым."""
     try:
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except TelegramBadRequest as e:
         if "not modified" not in str(e):
-            raise
+            await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+_edit = edit_or_answer
 
 
 async def _hub(admin_id: int, code: str | None) -> tuple[str, InlineKeyboardMarkup]:
