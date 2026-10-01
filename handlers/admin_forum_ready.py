@@ -275,7 +275,8 @@ async def forum_ready_open(callback: types.CallbackQuery):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
     text, kb = await render_ready(callback.from_user.id, code, callback.bot)
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    from handlers.admin_forum_hub_nav import edit_or_answer  # правкой хаба, а не новым сообщением
+    await edit_or_answer(callback, text, kb)
     await callback.answer()
 
 
