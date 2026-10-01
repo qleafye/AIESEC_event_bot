@@ -1664,9 +1664,11 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="filter_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
+    from services.forum_days import not_arrived_city_note  # «не пришли» — по городам форума
     await callback.message.edit_text(
         f"🎯 Условия: {_filter_summary(filters)}\n"
-        f"Под фильтр попадает <b>{len(ids)}</b> пользователей.",
+        f"Под фильтр попадает <b>{len(ids)}</b> пользователей."
+        f"{html_module.escape(await not_arrived_city_note(filters, ids))}",
         reply_markup=kb,
     )
 

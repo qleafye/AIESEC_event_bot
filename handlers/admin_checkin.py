@@ -362,8 +362,8 @@ async def cna_send_confirm(callback: types.CallbackQuery):
     n = await checkin_not_arrived_pending_count(city_scope=city_scope(code))
     if n == 0:
         await callback.answer(
-            "Отправлять некому — все одобренные текущего сезона либо отмечены на входе, "
-            "либо уже получили этот вопрос сегодня.", show_alert=True,
+            "Отправлять некому: все одобренные отмечены на входе или уже получили вопрос "
+            "сегодня, либо у города сегодня нет форума (по его дате).", show_alert=True,
         )
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[[
