@@ -32,6 +32,19 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 HUB_BACK_PREFIX = "forumfn_back:"
+QR_ALL_CITIES_ALERT = ("«🎟 Вход по QR» — общий переключатель для всех городов сразу, его меняет "
+                       "главный менеджер. Если нужно включить или выключить — напишите ему.")
+
+
+async def sees_all_cities(admin_id: int) -> bool:
+    """Общий тумблер «🎟 Вход по QR» действует во всех городах: менять его из хаба может только
+    тот, кто видит все города (суперадмин или менеджер без привязки к городу). Менеджер одного
+    города с правом «Настройки» иначе выключил бы QR и чужим городам."""
+    if not await cities_module_on():
+        return True
+    import settings_ops
+    from cities import city_codes
+    return set(city_codes()) <= set(await settings_ops.per_city_visible_codes(admin_id))
 HUB_BACK_TEXT = "◀️ К «Форум: функции»"
 
 
@@ -125,6 +138,9 @@ async def forumfn_qr_screen(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
+    if not await sees_all_cities(callback.from_user.id):
+        await callback.answer(QR_ALL_CITIES_ALERT, show_alert=True)
+        return
     text, kb = await _qr_confirm_screen(code)
     await _edit(callback, text, kb)
     await callback.answer()
@@ -136,6 +152,9 @@ async def forumfn_qr_set(callback: types.CallbackQuery):
     code = _decode_city(raw)
     if value not in ("on", "off") or not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    if not await sees_all_cities(callback.from_user.id):
+        await callback.answer(QR_ALL_CITIES_ALERT, show_alert=True)
         return
     # Значение — то, что человек увидел на экране подтверждения, а не «переключить»: двойной тап
     # или старая кнопка не щёлкнут тумблер обратно.

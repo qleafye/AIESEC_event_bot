@@ -109,7 +109,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # 1. Выпуск личного QR — общий тумблер, НЕ per_city; из хаба — только через подтверждение.
     qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
     lines.append(f"🎟 QR для входа: {_status(qr_on)}")
-    if visible(f"forumfn_qr:{_encode_city(code)}"):  # экран с подтверждением: handlers/admin_forum_hub_nav.py
+    from handlers.admin_forum_hub_nav import sees_all_cities  # тумблер общий: кнопка — только видящим все города
+    if visible(f"forumfn_qr:{_encode_city(code)}") and await sees_all_cities(admin_id):  # подтверждение: admin_forum_hub_nav.py
         buttons.append([InlineKeyboardButton(text="🎟 Вход по QR (общий для всех городов)", callback_data=f"forumfn_qr:{_encode_city(code)}")])
 
     # 2. Рассылка QR накануне + утренний повтор — per_city, родной экран уже есть.
