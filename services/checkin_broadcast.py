@@ -62,8 +62,15 @@ _MORNING_PREFIX = "checkin_qr_morning:"
 
 _DEFAULT_EVENING_TIME = "18:00"
 _DEFAULT_MORNING_TIME = "08:00"
-# Насколько утренний повтор может опоздать и всё ещё уйти (рестарт бота ровно в его время).
-_MORNING_CATCHUP = timedelta(minutes=2)
+# До какого часа утренний повтор (и утренняя шпаргалка волонтёру) ещё догоняется, если бот
+# лежал в его время: рестарт в 08:20 раньше молча терял повтор (окно было 2 минуты), а делегаты
+# идут на вход до обеда. Позже полудня QR «на вход» уже не нужен.
+MORNING_CATCHUP_UNTIL = time(12, 0)
+
+
+def morning_catchup_ok(run_at: datetime, now: datetime) -> bool:
+    """Опоздавший утренний запуск ещё уместен: тот же день и раньше `MORNING_CATCHUP_UNTIL`."""
+    return run_at.date() == now.date() and now.time() < MORNING_CATCHUP_UNTIL
 # Потолок догона накануне форума: позже 22:00 МСК «через минуту» не шлём ни QR, ни шпаргалку
 # волонтёру — ночное служебное сообщение (тихие часы на него не действуют) будит людей. QR
 # подберёт утренний повтор неподтвердившим, шпаргалка уйдёт утром дня форума в то же время.
@@ -175,13 +182,12 @@ async def schedule_city_jobs(city: str | None) -> dict:
         late = now.time() >= EVENING_CATCHUP_CUTOFF
         done = _evening_done.get(city) == date_str
         ev_at = now + timedelta(minutes=1) if forum_day > today and not late and not done else None
-    # Утренний повтор: только в день форума и только пока его время впереди. Догон — лишь для
-    # ещё не сработавшей джобы, опоздавшей не больше чем на `_MORNING_CATCHUP` (рестарт в
-    # 08:01); без проверки «джоба ещё в хранилище» реконсиляция сразу после срабатывания
-    # отправила бы повтор второй раз.
+    # Утренний повтор: только в день форума. Догон — лишь для ещё не сработавшей джобы (она
+    # всё ещё в хранилище) и до `MORNING_CATCHUP_UNTIL`; без проверки «джоба ещё в хранилище»
+    # реконсиляция сразу после срабатывания отправила бы повтор второй раз.
     if morn_at <= now:
         pending = sched.get_job(morn_id) is not None
-        if pending and now - morn_at <= _MORNING_CATCHUP:
+        if pending and morning_catchup_ok(morn_at, now):
             morn_at = now + timedelta(minutes=1)
         else:
             morn_at = None

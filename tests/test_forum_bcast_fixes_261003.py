@@ -258,3 +258,36 @@ def test_evening_catches_up_when_it_never_ran(tmp_path, monkeypatch):
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 10))
     res = _run(cb.schedule_city_jobs(None))
     assert res["evening_at"] == datetime(2026, 10, 2, 18, 11)
+
+
+# ── Рестарт после 08:02: утренний повтор догоняется до полудня, без дублей ──────────────────
+
+def test_morning_repeat_catches_up_after_late_restart(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+    _run(cb.schedule_city_jobs(None))
+    assert cb.morning_job_id(None) in fake.jobs
+    # Бот лежал с 07:59 до 09:40 — джоба осталась в хранилище несработавшей.
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 40))
+    res = _run(cb.schedule_city_jobs(None))
+    assert res["morning_at"] == datetime(2026, 10, 3, 9, 41)
+
+
+def test_morning_repeat_not_repeated_after_it_fired(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    fake = _Sched()  # джобы в хранилище нет — повтор уже отработал
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 40))
+    assert _run(cb.schedule_city_jobs(None))["morning_at"] is None
+
+
+def test_morning_repeat_not_caught_up_after_noon(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+    _run(cb.schedule_city_jobs(None))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 12, 5))
+    assert _run(cb.schedule_city_jobs(None))["morning_at"] is None
