@@ -100,7 +100,7 @@ def _job_next_run(job_id: str):
 async def _row_qr(code: str | None) -> dict:
     if await get_setting_typed("checkin_qr_enabled") != "on":
         return _row(RED, "Вход по QR выключен — делегаты не получат QR",
-                    ("🎟 Включить вход по QR", "admin_forum_functions"))
+                    ("🎟 Включить вход по QR", f"forumfn_qr:{_encode_city(code)}"))
     cfg_fix = ("🎟 Настройки рассылки QR", f"checkinqr_cfg:{_encode_city(code)}")
     if await get_setting_typed_for_city("checkin_qr_broadcast_enabled", code) == "off":
         return _row(YELLOW, "Вход по QR включён, но рассылка QR накануне выключена", cfg_fix)
