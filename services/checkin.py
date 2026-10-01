@@ -796,6 +796,23 @@ def _parse_cell_time(cell: str) -> tuple[int, int, int] | None:
     return _hour24(int(h), ampm), int(mi), int(sec or 0)
 
 
+_SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})(?!\d)")
+
+
+def _swapped_reading(text: str, stamp: str) -> str | None:
+    """Вторая читка неоднозначной даты «a/b/гггг» (оба числа ≤ 12 и не равны): «03/10/2026»
+    бывает и 3 октября (д/м, RU/EU), и 10 марта (м/д, US; с AM/PM разбор выбирает его). `stamp`
+    («YYYY-MM-DD…») — уже выбранная читка; возвращает ту же строку с переставленными месяцем и
+    днём, если в строке файла есть такая неоднозначная дата. Какую читку взять, решает загрузка
+    по окну форума/дню сессии (`services.checkin_csv_import`)."""
+    y, m, d = int(stamp[:4]), int(stamp[5:7]), int(stamp[8:10])
+    for match in _SLASH_DATE_RE.finditer(text):
+        a, b = int(match.group(1)), int(match.group(2))
+        if a <= 12 and b <= 12 and a != b and {a, b} == {m, d}:
+            return f"{y:04d}-{d:02d}-{m:02d}{stamp[10:]}"
+    return None
+
+
 def _row_date(cells: list[str]) -> str | None:
     """День скана из строки, где есть только дата без времени («YYYY-MM-DD»). Год — не дальше
     года от текущего: случайное «1.2.34» в соседней колонке не становится датой."""
@@ -862,6 +879,7 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
     `scanned_at` — время из ячеек той же строки файла (ISO / «дд.мм.гг[гг][,] чч:мм[:сс]» /
     «м/д/гггг чч:мм AM» / дата и время отдельными колонками / unix-эпоха); `None` — время
     скана в файле не нашлось. Если в строке есть хотя бы дата — она в `"day"` («YYYY-MM-DD»);
+    неоднозначная «a/b/гггг» даёт ещё `"alt"` — ту же отметку с переставленными днём и месяцем;
     день записи без даты и времени выбирает загрузка (`services.checkin_csv_import`), отметка
     помечается «примерной» (D-10). Дубли сводятся по токену: одна запись на делегата и
     день скана (самое раннее время дня), запись без времени поглощается записью с временем."""
@@ -890,13 +908,14 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
                     day = _row_date(_line_cells(rest, delim))
                     if day:
                         break
+        alt = _swapped_reading(line, scanned_at or day) if (scanned_at or day) else None
         for m in matches:
-            found.append((m.group(0), m.group(1), scanned_at, day))
+            found.append((m.group(0), m.group(1), scanned_at, day, alt))
 
-    timed_tokens = {token for _qr, token, scanned_at, _day in found if scanned_at}
+    timed_tokens = {token for _qr, token, scanned_at, _day, _alt in found if scanned_at}
     records: list[dict] = []
     by_key: dict[tuple[str, str | None], dict] = {}
-    for qr, token, scanned_at, day in found:
+    for qr, token, scanned_at, day, alt in found:
         if scanned_at is None and token in timed_tokens:
             continue
         key = (token, scanned_at[:10] if scanned_at else day)
@@ -905,6 +924,8 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
             rec = {"qr": qr, "scanned_at": scanned_at}
             if day:
                 rec["day"] = day
+            if alt:
+                rec["alt"] = alt  # вторая читка «a/b/гггг» — см. _swapped_reading
             by_key[key] = rec
             records.append(rec)
         elif scanned_at and scanned_at < rec["scanned_at"]:
