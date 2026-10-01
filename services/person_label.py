@@ -18,6 +18,8 @@ async def person_label(telegram_id: int) -> str:
         started = await get_reg_started_by_id(telegram_id)
         name, uname = None, (started or {}).get("username")
     uname = (uname or "").strip().lstrip("@")
+    if uname == "-":  # анкета без username хранит «-» (services/reg_finalize.py) — это «нет»
+        uname = ""
     name = (name or "").strip()
     if name and uname:
         return f"{name} (@{uname})"
