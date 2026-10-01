@@ -1257,6 +1257,9 @@ admin|callback_query|asos_city_open|asos_city:*
 admin|callback_query|asos_page|asos:*
 admin|callback_query|asos_bind_start|asos_bind
 admin|callback_query|sos_claim|sos_claim:*
+admin|callback_query|sos_takeover|sos_takeover:*
+admin|callback_query|sos_takeover_go|sos_takeover_go:*
+admin|callback_query|sos_takeover_no|sos_takeover_no:*
 admin|callback_query|sos_resolve|sos_resolve:*
 admin|callback_query|asos_settings_open|asos_settings
 admin|callback_query|asos_noop|asos_noop
@@ -2115,7 +2118,10 @@ def test_snapshot_total_handler_count_is_292():
     # (2 + 2), 0 удалений, 0 реордеров (964 -> 968).
     # 03.10 («🗑 Убрать фото программы»): 2 admin.callback_query (prog_photo_del_ask/
     # prog_photo_del_go) сразу после prog_photo_cancel — одна чистая вставка (973 -> 975).
-    assert len(GOLDEN_SNAPSHOT) == 975
+    # 03.10 («🔁 Перехватить» взятый SOS, handlers/admin_sos.py): 3 admin.callback_query
+    # (sos_takeover/sos_takeover_go/sos_takeover_no) сразу после sos_claim и ПЕРЕД sos_resolve —
+    # одна чистая вставка, 0 удалений, 0 реордеров (975 -> 978).
+    assert len(GOLDEN_SNAPSHOT) == 978
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

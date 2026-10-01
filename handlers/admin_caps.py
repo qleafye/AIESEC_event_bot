@@ -404,6 +404,9 @@ ADMIN_CAPS: dict[str, str] = {
     "asos_city:*": "moderate_reg",  # вход из «🎪 Форум: функции» с городом хаба
     "sos_claim:*": "moderate_reg",
     "sos_resolve:*": "moderate_reg",
+    "sos_takeover:*": "moderate_reg",  # «🔁 Перехватить»: город заявки сверяет хендлер
+    "sos_takeover_go:*": "moderate_reg",
+    "sos_takeover_no:*": "moderate_reg",
     "special:sos_reply": "moderate_reg",
     # Привязка чата SOS — интеграционная настройка, та же капа, что у остальной привязки чата
     # (services/chat_tracking.py::is_bot_admin_user требует `settings`).
@@ -1348,24 +1351,6 @@ def _is_sos_reply_shape(message: Message) -> bool:
     return "🆔" in replied.text and "🆘" in replied.text
 
 
-async def _is_sos_relay_reply(message: Message) -> bool:
-    """Реплай в личке на копию дописки делегата SOS (веер без чата SOS): текст копии — слова
-    делегата, маркеров карточки в нём нет, заявку находит только `sos_relay_messages`."""
-    replied = getattr(message, "reply_to_message", None)
-    if replied is None or not getattr(getattr(replied, "from_user", None), "is_bot", False):
-        return False
-    chat_id = getattr(getattr(message, "chat", None), "id", None)
-    if chat_id is None:
-        return False
-    try:
-        from database.db import find_sos_report_by_relay
-
-        return await find_sos_report_by_relay(chat_id, replied.message_id) is not None
-    except Exception as e:
-        logger.warning("CapabilityMiddleware: поиск дописки SOS не удался: %s", e)
-        return False
-
-
 def _is_callback_shaped(event) -> bool:
     """Duck-typed, not `isinstance(event, CallbackQuery)`: aiogram's own `CallbackQuery` model
     defines a `data` field and no `text` field (verified: `"data" in CallbackQuery.model_fields`
@@ -1475,8 +1460,9 @@ class CapabilityMiddleware(BaseMiddleware):
             if not raw_state and _extract_command(event.text) is None:
                 shape = ("question_reply" if _is_question_reply_shape(event)
                          else "sos_reply" if _is_sos_reply_shape(event) else None)
-                if shape is None and await _is_sos_relay_reply(event):
-                    shape = "sos_reply"
+                if shape is None:  # реплай в личке на копию дописки делегата SOS — без маркеров
+                    from services.sos import is_relay_reply
+                    shape = "sos_reply" if await is_relay_reply(event) else None
                 required = [required_capability(special=shape) if shape else None]
         else:
             required = [None]
