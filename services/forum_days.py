@@ -95,3 +95,23 @@ async def not_arrived_city_note(filters: list[dict], ids: list[int]) -> str:
         "«Не пришли» считается только в городах, где в этот день идёт форум (по дате форума "
         "города), — остальные города в рассылку не попадают."
     )
+
+
+async def day_cities_suffix(day_raw: str) -> str:
+    """« — СПб, Тюмень» для подписи варианта фильтра «пришли / не пришли <день>»: чей это
+    день форума. Без этого «не пришли 25.09» при форумах в разные дни не читается. `day_raw` —
+    «YYYY-MM-DD» или сентинел «сегодня» (`database.db.CHECKIN_DAY_TODAY`). Модуль городов
+    выключен или в этот день форума нет ни у кого — пустая строка."""
+    from cities import city_label
+    from database.db import CHECKIN_DAY_TODAY
+    from services.timeutil import msk_now
+
+    today = msk_now().date()
+    try:
+        day = today if day_raw == CHECKIN_DAY_TODAY else datetime.strptime(day_raw, "%Y-%m-%d").date()
+    except ValueError:
+        return ""
+    codes = await forum_city_codes(day, today)
+    if not codes:
+        return ""
+    return " — " + ", ".join([await city_label(code) for code in codes])
