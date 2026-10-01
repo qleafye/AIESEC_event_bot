@@ -133,6 +133,8 @@ async def _with_undo(result: dict, p: Principal) -> dict:
         result["undo"] = {
             "id": log_id,
             "seconds": venue_log.UNDO_WINDOW_SECONDS,
+            # сколько сервер ещё примет отмену — фронт не показывает кнопку, которая уже не сработает
+            "valid_seconds": venue_log.UNDO_ACCEPT_SECONDS,
             "label": await i18n.tr_setting("checkin_undo_button_text", lang, tr_map) or "↩️",
         }
     return result

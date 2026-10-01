@@ -93,11 +93,13 @@ SOURCE_LABELS = {
     "bot": "бот",
 }
 
-# Окно кнопки «↩️ Отменить» на плашке сканера. Сервер даёт запас на задержку сети — фронт
-# прячет кнопку через UNDO_WINDOW_SECONDS, а запрос, отправленный в последнюю секунду,
-# всё равно должен пройти.
+# Кнопка «↩️ Отменить» на плашке сканера видна UNDO_WINDOW_SECONDS секунд с момента, когда
+# волонтёр её УВИДЕЛ: при успешном скане попап камеры остаётся открытым поверх плашки, и
+# отсчёт начинается, когда попап закрыт. Сервер принимает отмену UNDO_ACCEPT_SECONDS с момента
+# отметки (запас на непрерывный скан под попапом и задержку сети); отменить можно только СВОЮ
+# ПОСЛЕДНЮЮ отметку, так что длинное окно не открывает отмену чужих или старых сканов.
 UNDO_WINDOW_SECONDS = 10
-_UNDO_SERVER_GRACE_SECONDS = 5
+UNDO_ACCEPT_SECONDS = 120
 
 ENTRY_POINT = "entry"  # тот же литерал, что services.checkin.ENTRY_POINT (импорт дал бы цикл)
 ENTRY_LABEL = "🚪 Вход"
@@ -236,7 +238,7 @@ async def undo_last_scan(staff_id: int, staff_name: str | None, log_id: int) -> 
     `database.db.undo_venue_checkin` одной транзакцией. Возвращает код:
     `"ok"` | `"not_found"` | `"not_yours"` | `"expired"` | `"not_last"` | `"gone"`."""
     not_before = (msk_now() - timedelta(
-        seconds=UNDO_WINDOW_SECONDS + _UNDO_SERVER_GRACE_SECONDS,
+        seconds=UNDO_ACCEPT_SECONDS,
     )).strftime("%Y-%m-%d %H:%M:%S")
     code, event = await undo_venue_checkin(log_id, staff_id, not_before=not_before, undo_entry={
         "action": ACTION_UNDO, "staff_id": staff_id, "staff_name": staff_name,
