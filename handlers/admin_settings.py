@@ -2128,8 +2128,8 @@ async def settings_reset_city_go(callback: types.CallbackQuery):
         return
 
     await delete_setting_by_admin(admin_id, composed)  # idempotent — safe if already absent
-    city_txt = await city_label(code)
-    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    done = "дата стёрта" if _fdate.is_city_only_key(key) else "как везде"
+    await callback.answer(f"Готово: {await city_label(code)} — {done}", show_alert=True)
     text, kb = await _settings_edit_screen(key, current)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
