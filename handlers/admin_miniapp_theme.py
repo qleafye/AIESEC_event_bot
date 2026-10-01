@@ -291,11 +291,18 @@ async def build_miniapp_theme_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _theme_kb(message) -> InlineKeyboardMarkup:
+    """Экран оформления, открытый с «📱 Настроек приложения» из хаба форума: «← К оформлению»
+    ведёт на тот же экран из хаба — иначе «Назад» оттуда вёл бы уже в раздел, а не в хаб."""
+    from handlers.admin_forum_hub_nav import hub_return
+    return hub_return(message, await build_miniapp_theme_keyboard(), "admin_miniapp_settings", "app")
+
+
 async def _rerender_theme(callback: types.CallbackQuery) -> None:
     await callback.message.edit_text(
         await render_miniapp_theme_text(),
         parse_mode="HTML",
-        reply_markup=await build_miniapp_theme_keyboard(),
+        reply_markup=await _theme_kb(callback.message),
     )
 
 
@@ -315,7 +322,7 @@ async def open_miniapp_theme(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         await render_miniapp_theme_text(),
         parse_mode="HTML",
-        reply_markup=await build_miniapp_theme_keyboard(),
+        reply_markup=await _theme_kb(callback.message),
     )
     await callback.answer()
 
