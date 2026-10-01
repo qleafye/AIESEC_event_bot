@@ -73,6 +73,7 @@ not_missing` не трогать), фильтр нуля — только в `re
 from __future__ import annotations
 
 import asyncio
+import html
 import io
 import logging
 import re
@@ -675,6 +676,11 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         logo = await _load_logo_bytes()
         accent = await _brand_colors()
         caption_base = await get_setting_typed_for_city("forum_stats_card_caption_text", city)
+        if not (caption_base or "").strip():
+            # Экран обещает менеджеру «подпись пуста — рассылка НЕ уйдёт»; без этой проверки
+            # уходило фото без подписи.
+            logger.info(f"forum_stats_card.send_broadcast({city!r}): подпись пуста — не отправляем")
+            return {"sent": 0, "failed": 0, "quiet": 0, "muted": 0, "total": 0, "empty_caption": True}
 
         now = msk_now()
         muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
@@ -706,7 +712,10 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
                     render_card_sync, stats, background, render_lang, accent,
                     logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
                 )
-                caption = reg_i18n.tr_fmt(caption_base, lang, tr_map, name=stats.get("name") or "")
+                # Подпись уходит с parse_mode=HTML: «<» или «&» в имени давали 400 этому делегату.
+                caption = reg_i18n.tr_fmt(
+                    caption_base, lang, tr_map, name=html.escape(stats.get("name") or ""),
+                )
             except Exception as e:
                 logger.error(f"forum_stats_card.send_broadcast: build for {tid} failed: {e}")
                 failed += 1
