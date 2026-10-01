@@ -141,3 +141,15 @@ def test_csv_upload_marks_but_warns_about_off_day(tmp_path, monkeypatch):
     assert res["new"] == 1 and res["off_day"] == 1
     lines = _run(checkin_csv_import.report_lines(res, row_limit=20))
     assert any("Вход не в день форума делегата: 1" in line for line in lines)
+
+
+def test_delegate_without_city_is_not_treated_as_moscow(tmp_path, monkeypatch):
+    """Пустой город делегата нормализовался бы в Москву (форум 30.10) — день не проверяем."""
+    client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 0))
+    _grant_checkin_to_game_manager()  # без привязки к городу
+    _run(_insert_user(952010, city=None))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(952010)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "new"
+    assert _entry_rows(952010) == 1
+    from services import checkin_forum_day
+    assert _run(checkin_forum_day.off_day_for_scan({"event_city": ""}, "2026-10-01 10:00:00")) is False
