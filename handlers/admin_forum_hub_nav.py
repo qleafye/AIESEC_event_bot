@@ -168,7 +168,7 @@ async def forumfn_back(callback: types.CallbackQuery):
 async def _native_screen(target: str, admin_id: int, code: str | None):
     if target == "chk":
         from handlers.admin_checkin import render_admin_checkin
-        return await render_admin_checkin(admin_id)
+        return await render_admin_checkin(admin_id, code)  # экран города хаба, не шапки
     if target == "app":
         from handlers.admin_miniapp import build_miniapp_settings_keyboard, render_miniapp_settings_text
         return await render_miniapp_settings_text(), await build_miniapp_settings_keyboard()
