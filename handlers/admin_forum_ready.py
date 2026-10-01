@@ -22,12 +22,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from config import config
-from database.db import checkin_qr_send_counts, get_staff_city, sheet_arrival_queue_stats
+from database.db import (
+    checkin_qr_send_counts, get_staff_city, sheet_arrival_count_with_error, sheet_arrival_queue_stats,
+)
 from handlers.admin import router
 from handlers.admin_caps import _holds, capability_holders, required_capability, resolve_capabilities
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.checkin_arrival import count_program_sessions
-from services.program import resolve_program_photo
+from services.program import own_program_photo, resolve_program_photo
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
@@ -148,14 +150,22 @@ async def _row_program(code: str | None) -> dict:
     sessions = await count_program_sessions(code) if code else 0
     photo = bool(await resolve_program_photo(code))
     if sessions:
-        return _row(GREEN, f"Программа заведена: сессий {sessions}" + (", есть фото" if photo else ""))
+        # При сессиях делегаты города видят только СВОЁ фото города, общее — нет.
+        if await own_program_photo(code):
+            tail = ", есть фото"
+        elif photo:
+            tail = ". Общее фото делегатам города не показывается — загрузите фото для города"
+        else:
+            tail = ""
+        return _row(GREEN, f"Программа заведена: сессий {sessions}{tail}")
     if photo:
         return _row(YELLOW, "Есть только фото программы — сессий нет, на сессиях отмечать некуда", fix)
     return _row(RED, "Программа не заведена — ни сессий, ни фото", fix)
 
 
 async def _row_sos(code: str | None, bot) -> dict:
-    fix = ("🆘 Настройки SOS", "admin_sos")
+    # Город светофора — в кнопке (светофор Тюмени при шапке «СПб» настраивает SOS Тюмени).
+    fix = ("🆘 Настройки SOS", f"asos_city:{code}" if code and await cities_module_on() else "admin_sos")
     if await get_setting_typed_for_city("menu_sos", code) == "off":
         return _row(GRAY, "SOS выключен в меню делегата — чат оргов не нужен")
     from services.sos import _bot_is_chat_member, sos_chat_for_city
@@ -176,15 +186,30 @@ def _ago(seconds: float) -> str:
 
 
 async def _row_sheet() -> dict:
+    row = await _row_sheet_write()
+    # Ждущие строку в листе (делегата ещё нет в таблице) — не затор записи: их бот держит до
+    # 7 дней, и в «таблица не принимает запись» они бы горели жёлтым всю неделю. Отдельной
+    # припиской к любой строке, цвет не меняют.
+    if row["light"] != GRAY:
+        from services.sheet_arrival_sync import MISSING_ERROR
+        no_row = await sheet_arrival_count_with_error(MISSING_ERROR)
+        if no_row:
+            row["text"] += (f"\n⏳ «Пришёл» ждут своей строки в листе: {no_row} — этих делегатов ещё "
+                            "нет в таблице, бот допишет отметку, когда строка появится")
+    return row
+
+
+async def _row_sheet_write() -> dict:
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return _row(GRAY, "Таблица не подключена")
     from services.sheets import last_write_state
+    from services.sheet_arrival_sync import MISSING_ERROR
     state = last_write_state()
     now = time.time()
     ok, fail = state.get("ok"), state.get("fail")
     # «Пришёл» пишется в лист джобой из очереди (services/sheet_arrival_sync.py) — застрявшая
     # очередь значит, что отметки входа до таблицы не доходят.
-    queued, oldest = await sheet_arrival_queue_stats()
+    queued, oldest = await sheet_arrival_queue_stats(exclude_error=MISSING_ERROR)
     age_min = int((msk_now() - datetime.strptime(oldest, "%Y-%m-%d %H:%M:%S")).total_seconds() // 60) if oldest else 0
     queue_tail = f"; «Пришёл» ждут записи: {queued}, старейшая {age_min} мин" if queued else ""
     if fail and (not ok or fail > ok):
