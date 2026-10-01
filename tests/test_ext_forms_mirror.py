@@ -15,10 +15,8 @@ class FakeWS:
         self.rows = []  # включая шапку
         self.calls = []
 
-    def acell(self, a1):
-        class C:
-            value = self.rows[0][0] if self.rows else None
-        return C()
+    def row_values(self, n):
+        return list(self.rows[n - 1]) if len(self.rows) >= n else []
 
     def update(self, rng, values, value_input_option=None):
         self.calls.append(("update", rng, value_input_option))
@@ -224,3 +222,18 @@ def test_narrow_existing_tab_gets_columns(env):
     _answer(fid, "1", [{"q": "a", "label": "А", "value": "x"}])
     asyncio.run(mir.drain_mirror())
     assert added == [len(mir.FIXED_HEADERS) + 1 - 3]
+
+
+def test_foreign_header_tab_not_written(env):
+    """Вкладка с чужой шапкой: ничего не пишем, форма получает понятную ошибку."""
+    ws = env["ws"]
+    ws.rows = [["ID", "Имя", "Город"], ["1", "Аня", "Москва"]]
+    fid = _form("Регистрации")
+    _answer(fid, "a1", [{"q": "q1", "label": "Q1", "value": "v"}])
+    res = asyncio.run(mir.drain_mirror())
+    assert res["not_found"] == 1
+    assert ws.calls == []
+    assert ws.rows == [["ID", "Имя", "Город"], ["1", "Аня", "Москва"]]
+    err = asyncio.run(ef.get_form(fid))["mirror_error"]
+    assert "«Регистрации»" in err and "чужие данные" in err
+    assert _state() == {"a1": "append"}

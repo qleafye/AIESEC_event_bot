@@ -115,6 +115,14 @@ async def create_mirror_tab(form_id: int, title: str) -> str:
     return "ok"
 
 
+class ForeignTabError(Exception):
+    """В выбранной вкладке уже лежат чужие данные (шапка не наша) — писать туда нельзя."""
+
+
+def _foreign_tab_text(tab: str) -> str:
+    return f"Во вкладке «{tab}» уже есть чужие данные — выберите пустую или создайте новую"
+
+
 def _tab_missing_text(tab: str) -> str:
     return f"Вкладка «{tab}» не найдена — выберите вкладку заново в разделе «📝 Внешние формы»"
 
@@ -134,8 +142,12 @@ def _write_form_sync(tab, columns, new_cols, appends, updates):
     if ws is None:
         return None
     raw = _raw()
+    head = [str(c).strip() for c in (ws.row_values(1) or [])]
+    blank = not any(head)
+    if not blank and head[:_FIXED] != FIXED_HEADERS:
+        raise ForeignTabError(tab)  # чужая шапка: ничего не пишем
     _ensure_cols(ws, len(_header_row(columns)))
-    if not (ws.acell("A1").value or "").strip():
+    if blank:
         ws.update("A1", [_header_row(columns)], value_input_option=raw)
     else:
         for c in new_cols:
@@ -209,6 +221,10 @@ async def drain_mirror(limit: int = 200) -> dict:
             res = await asyncio.to_thread(
                 _write_form_sync, tab, columns, new_cols, appends, updates
             )
+        except ForeignTabError:
+            await ef.set_form_mirror(form_id, tab, _foreign_tab_text(tab))
+            counts["not_found"] += len(answers)
+            continue
         except Exception as exc:
             logger.warning("ext_forms_mirror: сбой записи формы %s: %s", form_id,
                            redact_secrets(str(exc)))

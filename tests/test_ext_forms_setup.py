@@ -168,3 +168,19 @@ def test_setup_requires_settings(tmp_path, tabs):
     for data in (f"extf_tab:{fid}", f"extf_hook:{fid}", f"extf_rehook_ok:{fid}"):
         res, _ = dispatch_callback(data, STRANGER_ID)
         assert res is UNHANDLED or _run(xdb.get_form(fid))["secret"] == "sec123"
+
+
+def test_tab_picker_hides_service_and_other_form_tabs(tmp_path, tabs):
+    """Основная вкладка, служебные вкладки бота и вкладка другой формы в списке не показываются."""
+    _roles_ready(tmp_path)
+    from database.db import set_setting
+    _run(set_setting("main_sheet_tab", "Главный"))
+    other = _form(title="Другая", secret="s-other")
+    _run(xdb.set_form_mirror(other, "Лист2", None))
+    tabs["titles"] = ["Главный", "Лист2", "Пустая"]
+    fid = _form(title="Эта")
+    st = _fresh_state(ADMIN_ID)
+    dispatch_callback(f"extf_tab:{fid}", ADMIN_ID, state=st)
+    assert _run(st.get_data())["extf_tabs"] == ["Пустая"]
+    _, ev = dispatch_callback(f"extf_tabpick:{fid}:0", ADMIN_ID, state=st)
+    assert _run(xdb.get_form(fid))["mirror_tab"] == "Пустая"
