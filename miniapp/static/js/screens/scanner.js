@@ -31,7 +31,7 @@
 // «не найден» и пустом поиске — QR короткой анкеты (data URI в JSON: тег img не шлёт initData),
 // список «Ждут на стойке» — walk-in сегодняшнего дня своего города. Подписи — /checkin/net-texts.
 
-import { flatRow, errorText, noticeBox } from "../ui.js";
+import { atUsername, flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
 import { createScanGate } from "../scan_gate.js";
@@ -510,7 +510,7 @@ export async function render(root, params, ctx) {
   let searchTimer = null;
 
   function resultRow(person) {
-    const metaBase = [person.city_label, person.username ? `@${person.username}` : null, person.university]
+    const metaBase = [person.city_label, atUsername(person.username), person.university]
       .filter(Boolean).join(" · ") || "—";
     const meta = person.eligible ? metaBase : `${metaBase} — ${person.reason_text || "не допущен"}`;
     if (!person.eligible && person.onsite_approve && onsiteAllowed()) {
@@ -679,7 +679,7 @@ export async function render(root, params, ctx) {
       : null;
     return flatRow(h, {
       title: it.full_name,
-      meta: [it.university, it.username ? `@${it.username}` : null, it.registered_at].filter(Boolean).join(" · ") || "—",
+      meta: [it.university, atUsername(it.username), it.registered_at].filter(Boolean).join(" · ") || "—",
       trailing: actions,
     });
   }

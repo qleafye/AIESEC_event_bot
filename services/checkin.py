@@ -118,6 +118,34 @@ def parse_qr_payload(qr_payload: str) -> dict:
     return {"tag": tag, "full_name": full_name, "city": city, "token": token}
 
 
+def foreign_qr_code(qr_payload: str) -> str:
+    """Код отказа для QR с чужой/пустой меткой события: `"foreign_event"` — строка в НАШЕМ
+    формате пропуска (метка·ФИО·город·токен), но метка другого мероприятия/сезона;
+    `"not_our_qr"` — это вообще не пропуск (случайный QR, ссылка, мусор)."""
+    parts = (qr_payload or "").split(_QR_SEP)
+    if len(parts) == 4 and parts[0].strip() and parts[-1].strip():
+        return "foreign_event"
+    return "not_our_qr"
+
+
+async def foreign_qr_reason(code: str) -> str:
+    """Текст плашки для `foreign_qr_code`. «Не пропуск» называет мероприятие, если менеджер
+    задал название в родительном падеже (`event_name_genitive`, «форума Юлид»): «Это не
+    QR-пропуск форума Юлид». Не задано — без названия (подставлять именительный после
+    «пропуск» нельзя — падеж сломается)."""
+    if code != "not_our_qr":
+        return DENIAL_REASON_TEXT.get(code, code)
+    from settings_schema import get_setting_typed
+
+    try:
+        genitive = (await get_setting_typed("event_name_genitive") or "").strip()
+    except Exception:
+        genitive = ""
+    if not genitive:
+        return DENIAL_REASON_TEXT["not_our_qr"]
+    return f"Это не QR-пропуск {genitive} — попросите открыть «🎟 Мой QR» в боте"
+
+
 # B (FORUM-CHECKIN.md, D-08/D-12/D-13, идея №9): человеческие причины отказа — ПОЛНОЕ
 # предложение с подсказкой, что делать, для сканера Mini App (`miniapp/routers/checkin.py`).
 # Единая точка перевода машинного кода в текст — `checkin_denial` ниже отдаёт коды
@@ -138,6 +166,9 @@ DENIAL_REASON_TEXT = {
     "rejected": "Заявка отклонена менеджером",
     "past_season": "Делегат прошлого сезона",
     "foreign_event": "QR другого мероприятия",
+    # Приёмка 01.10: строка вообще не в формате пропуска (случайный QR, ссылка, текст) — не
+    # «другое мероприятие»: волонтёр иначе решит, что человек пришёл не туда.
+    "not_our_qr": "Это не QR-пропуск — попросите открыть «🎟 Мой QR» в боте",
     # Форум-ночь B1 (идея №10): менеджер перевыпустил QR (handlers/admin.py::cmd_find_user ->
     # checkin_reissue_yes) — этот код УЖЕ не откроет вход, даже если делегат ещё не успел
     # открыть новый (database.db.get_checkin_token_replacement).
@@ -564,7 +595,7 @@ async def record_arrival(
         session_label = await _cities.city_label(session["city"])
         return {
             "status": "wrong_city",
-            "reason_text": f"Делегат с форума в {delegate_label}, эта сессия — {session_label}",
+            "reason_text": f"Делегат другого города: {delegate_label}. Эта сессия — {session_label}",
         }
 
     from services.timeutil import msk_now  # ленивый импорт — см. докстринг record_arrival

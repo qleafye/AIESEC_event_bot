@@ -15,7 +15,7 @@
 // успеха остаётся — это обратная связь по нажатию, не праздничный momentum.
 
 import { icon } from "../icons.js";
-import { emptyState, fileUrl, noticeBox } from "../ui.js";
+import { atUsername, emptyState, fileUrl, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 
 const PART_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
@@ -88,7 +88,7 @@ export async function render(root, params, ctx) {
     // CR-02: сумма со штрафом (если он применится к дефолтному одобрению) — до подтверждения,
     // не только в ответе после нажатия. penalized_coins пуст, когда штрафа нет / он нулевой.
     const displayCoins = card.task.penalized_coins != null ? card.task.penalized_coins : card.task.coins;
-    const delegateMeta = [card.delegate.name || "—", card.delegate.username ? `@${card.delegate.username}` : null, card.delegate.city]
+    const delegateMeta = [card.delegate.name || "—", atUsername(card.delegate.username), card.delegate.city]
       .filter(Boolean).join(" · ");
 
     const flags = [];
