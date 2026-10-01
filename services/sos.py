@@ -287,6 +287,13 @@ async def resolve_city_label(city_code: str | None) -> str | None:
         return None
 
 
+_CARD_APP_STATUS = {
+    "approved": "✅ Заявка одобрена",
+    "pending": "⏳ Заявка на рассмотрении — QR-пропуска нет",
+    "rejected": "🚫 Заявка отклонена — QR-пропуска нет",
+}
+
+
 def render_card_text(report: dict, user: dict | None, *, city_label: str | None = None) -> str:
     """`city_label` — уже РЕЗОЛВЕННАЯ человеческая подпись города (CLAUDE.md: «Кодовые значения
     ... человеку не показываем»), не код. Функция остаётся синхронной/чистой (`cities.city_label`
@@ -314,6 +321,14 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
         f"🎓 {university}",
         f"📞 {phone}",
     ]
+    # Приёмка 01.10: SOS шлют и не одобренные (pending/rejected в окне форума города) — орг на
+    # входе должен видеть, что QR у человека нет не по ошибке. Язык — только если не русский:
+    # иначе орг ответит по-русски тому, кто читает бота на английском.
+    status_line = _CARD_APP_STATUS.get(user.get("status") or "")
+    if status_line:
+        lines.append(status_line)
+    if user.get("lang") == "en":
+        lines.append("🌐 Читает бота на английском — отвечайте по-английски")
     details = report.get("details_text")
     photo = report.get("details_photo_file_id")
     if details:
