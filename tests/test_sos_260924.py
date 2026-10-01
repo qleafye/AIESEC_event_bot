@@ -1672,3 +1672,29 @@ def test_sos_without_profile_still_asks_for_start(tmp_path):
     msg = _press_sos(DELEGATE2_ID)
     assert _run(db.get_open_sos_report(DELEGATE2_ID)) is None
     assert any("/start" in a[0] for a in msg.answers)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# «🆘 Настройки SOS» из «🎪 Форум: функции» открывает город хаба, не город шапки
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def test_hub_sos_button_switches_screen_to_hub_city(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(cities.set_admin_city(ADMIN_ID, "msk"))
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат Тюмени", "tyumen"))
+    cb = FakeCallback("asos_city:tyumen", user_id=ADMIN_ID)
+    _run(admin_sos.asos_city_open(cb))
+    assert _run(cities.admin_selected_city(ADMIN_ID)) == "tyumen"
+    assert "Чат Тюмени" in cb.message.text  # экран показал чат SOS Тюмени, а не Москвы
+
+
+def test_hub_sos_button_refuses_city_of_other_manager(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
+    _run(db.set_staff_city(MANAGER_ID, "msk"))
+    cb = FakeCallback("asos_city:tyumen", user_id=MANAGER_ID)
+    _run(admin_sos.asos_city_open(cb))
+    assert _run(cities.admin_selected_city(MANAGER_ID)) == "msk"
+    assert cb.answers and cb.answers[0][1] is True  # алерт с объяснением
