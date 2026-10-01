@@ -2008,8 +2008,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
         if (key := await switch_header_to_button_city(callback, key)) is None:
             return
     admin_id = callback.from_user.id
-    # Fail-closed (RESEARCH Pattern 2): module off or a non-per_city key never starts an
-    # edit, even if someone forges the callback_data directly.
+    # Fail-closed (RESEARCH Pattern 2): module off / non-per_city key never starts an edit.
     if not await cities_module_on() or not is_per_city(key):
         await callback.answer("Города выключены", show_alert=True)
         return
@@ -2018,15 +2017,12 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Сначала выберите город в шапке", show_alert=True)
         return
     # T-093-19/21: RIGHT re-checked here, not just via a hidden button.
-    visible = await _per_city_visible_codes(admin_id)
-    if header_code not in visible:
-        await callback.answer("Этот город правит суперадмин", show_alert=True)
-        return
+    if header_code not in await _per_city_visible_codes(admin_id):
+        return await callback.answer("Этот город правит суперадмин", show_alert=True)
     # T-093-20: composed key comes ONLY from cities.per_city_key.
     composed = per_city_key(key, header_code)
     if composed is None:
-        await callback.answer("Неизвестный город", show_alert=True)
-        return
+        return await callback.answer("Неизвестный город", show_alert=True)
 
     entry = SETTINGS_SCHEMA.get(key, {})
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
@@ -2038,8 +2034,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
         text += f"Сейчас у города:\n<b>{html_module.escape(current)}</b>\n\n"
     else:
         text += f"Сейчас у города: <i>{'даты нет' if _fdate.is_city_only_key(key) else 'как везде'}</i>\n\n"
-    text += html_module.escape(prompt)
-    text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+    text += html_module.escape(prompt) + _fdate.clear_hint(key)
 
     rows: list[list[InlineKeyboardButton]] = []
     if current:
@@ -2692,6 +2687,9 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             await state.clear()
             await message.answer("Город админки изменился — начните правку заново.")
             return
+        if value == "-" and (screen := await _fdate.dash_clear_screen(data.get("per_city_base"), key, code)):
+            await state.clear()  # «-» у даты форума = та же «🗑» с подтверждением, не тихое удаление
+            return await message.answer(screen[0], parse_mode="HTML", reply_markup=screen[1])
 
     # Quick 260819: type-aware validation (int / enum) BEFORE any write — see
     # handlers/settings_validation.py. On failure nothing is written and the FSM stays in
