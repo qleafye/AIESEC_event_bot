@@ -18,7 +18,7 @@
 // decide-кнопки ниже).
 
 import { icon } from "../icons.js";
-import { emptyState, flatRow, labelText, noticeBox } from "../ui.js";
+import { atUsername, emptyState, flatRow, labelText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { confirmBox, errorText } from "../form.js";
 import { attachSwipe } from "../swipe.js";
@@ -403,7 +403,7 @@ export async function render(root, params, ctx) {
     updateHeader(card.remaining);
 
     const app = card.application;
-    const metaText = [app.username ? `@${app.username}` : null, app.city_label].filter(Boolean).join(" · ");
+    const metaText = [atUsername(app.username), app.city_label].filter(Boolean).join(" · ");
     const badgeNodes = (card.badges || []).map((b) => h("span", {
       class: `chip ${EDITED_BADGE_KINDS.includes(b.kind) ? "accent" : ""}`.trim(),
       text: b.text,

@@ -95,7 +95,7 @@ def test_unbound_volunteer_moscow_delegate_in_spb_gets_yellow_not_green(tmp_path
     _run(_insert_user(952005, city="msk"))
     body = client.post(f"{BASE}/scan", json={"payload": _qr(952005)}, headers=_hdr(GAME_MANAGER_ID)).json()
     assert body["status"] == "not_forum_day"
-    assert "Делегат с форума в" in body["reason_text"]
+    assert "Делегат другого города:" in body["reason_text"]
     assert "30.10" in body["reason_text"]
     assert _entry_rows(952005) == 0
 

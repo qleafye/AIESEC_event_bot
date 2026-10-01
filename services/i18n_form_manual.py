@@ -977,8 +977,8 @@ _REGISTRY_TEXTS_EN = {
         "the bot. Then find them in the “Waiting at the desk” list and approve."
     ),
     "📝 Ждут на стойке": "📝 Waiting at the desk",
-    "Делегат с форума в {city} — отправьте на стойку своего города/к организаторам":
-        "Delegate of the forum in {city} — send them to their city's desk or to the organizers",
+    "Делегат другого города: {city} — отправьте на стойку своего города или к организаторам":
+        "Delegate from another city: {city} — send them to their city's desk or to the organizers",
     "Одобрен(а) на месте": "Approved on site",
     "Не получилось собрать ссылку — откройте сканер заново.":
         "Couldn't build the link — reopen the scanner.",

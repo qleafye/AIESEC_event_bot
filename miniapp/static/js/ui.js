@@ -48,6 +48,13 @@ const LEADING_EMOJI_RE = new RegExp(
 // ЕСТЬ иконка (например список настроек «⚙️ Настройки»), но на строках с отдельной Lucide-
 // иконкой слева (`flatRow({ icon, title })`) даёт дубль. Сама подпись в реестре НЕ меняется —
 // только то, что летит в DOM рядом с иконкой. Обычный текст без эмоджи — без изменений.
+// «@username» для подписи: в БД username уже хранится с «@» (database.db.store_username),
+// у старых записей — без; ведущие «@» срезаем и ставим ровно один. Пусто -> null.
+export function atUsername(name) {
+  const clean = String(name == null ? "" : name).trim().replace(/^@+/, "");
+  return clean ? `@${clean}` : null;
+}
+
 export function labelText(label) {
   return String(label || "").replace(LEADING_EMOJI_RE, "");
 }

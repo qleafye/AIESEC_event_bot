@@ -67,7 +67,7 @@ async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
     others = [c for c in await cities_with_forum_on(day) if c != city]
     if others:
         text = (
-            f"Делегат с форума в {await city_label(city)} — у него форум {_ddmm(start)}, не сегодня. "
+            f"Делегат другого города: {await city_label(city)} — у него форум {_ddmm(start)}, не сегодня. "
             "Отметка не поставлена. Проверьте, тот ли это человек; если он пришёл не на свой "
             "форум — отправьте к организаторам: перевести в другой город может менеджер."
         )

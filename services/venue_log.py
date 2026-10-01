@@ -74,6 +74,7 @@ DENIAL_LABELS = {
     "no_user": "QR не найден",
     "token_replaced": "старый QR (перевыпущен)",
     "foreign_event": "QR другого мероприятия",
+    "not_our_qr": "не QR-пропуск",
     "not_approved": "заявка не одобрена",
     "rejected": "заявка отклонена",
     "past_season": "делегат прошлого сезона",
