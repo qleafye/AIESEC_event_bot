@@ -1191,31 +1191,24 @@ async def show_program(message: types.Message):
 
     logger.info(f"User {message.from_user.id} requested Program")
 
-    # D-29 (per_city фото с фолбэком на общее): само фото может отличаться по городу
-    # (регион/Москва — разная готовность программы), подпись остаётся общей (Pitfall 1,
-    # 09.2-RESEARCH — per_city вариант подписи отложен).
-    from services.program import resolve_program_photo
-    program_file_id = await resolve_program_photo(await _delegate_city(message.from_user.id))
-    program_caption = await get_setting("program_caption")
-    program_caption = html.escape(program_caption) if program_caption else program_caption
-
-    if program_file_id:
+    # Что показать — ОДНО правило с Mini App (`services.program.resolve_program_content`):
+    # тумблер «Таблица/Фото» города. Раньше любое фото (даже чужое общее) перекрывало сессии и
+    # тумблер не читался. Подпись остаётся общей (Pitfall 1, 09.2-RESEARCH).
+    from services.program import resolve_program_content
+    view, source = await resolve_program_content(await _delegate_city(message.from_user.id))
+    if view == "photo":
+        program_caption = await get_setting("program_caption")
+        program_caption = html.escape(program_caption) if program_caption else program_caption
+        photo = source.get("file_id") or FSInputFile(source["path"])
         try:
-            await message.answer_photo(program_file_id, caption=program_caption, parse_mode="HTML")
+            await message.answer_photo(photo, caption=program_caption, parse_mode="HTML")
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"show_program: фото программы не отправилось: {e}")
 
-    try:
-        photo = FSInputFile("resources/program.jpg")
-        await message.answer_photo(photo, caption=program_caption, parse_mode="HTML")
-        return
-    except Exception:
-        pass
-
-    # D-29: фото нет — интерактивная программа сессий (handlers/program.py), если она заведена
-    # в боте для города делегата. Ленивый импорт — handlers/program.py импортирует router
-    # ИЗ этого модуля (см. его докстринг), обратный импорт на уровне модуля дал бы цикл.
+    # Ленивый импорт — handlers/program.py импортирует router ИЗ этого модуля (см. его
+    # докстринг), обратный импорт на уровне модуля дал бы цикл. Он же — запасной путь, если
+    # фото не ушло: сессии города показываем, если они есть.
     from handlers.program import send_program_schedule_text
     if await send_program_schedule_text(message):
         return

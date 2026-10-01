@@ -398,7 +398,8 @@ async def resolve_program_content(city: str | None) -> tuple[str | None, dict | 
     содержимое ручки Mini App читают именно его, поэтому «кнопка есть, а внутри пусто» не
     бывает. Выбор менеджера (`resolve_program_view`) — предпочтение: если выбранного вида нет
     (выбрано фото, а заведены только сессии, или наоборот), показываем то, что есть, — как чат,
-    который тоже переходит от фото к тексту сессий."""
+    который тоже переходит от фото к тексту сессий. Чат (`handlers/user_actions.py::show_program`)
+    показывает ровно это же — одно правило для обеих поверхностей."""
     preferred = await resolve_program_view(city)
     photo = await resolve_program_photo_source(city)
     has_sessions = await has_program_sessions_for_city(city or default_city_code())
