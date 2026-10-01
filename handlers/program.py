@@ -147,7 +147,8 @@ async def pds_day_open(callback: types.CallbackQuery):
     code = await _resolve_delegate_city(callback.from_user.id)
     days = await list_program_days_for_city(code)
     if day not in days:
-        await callback.answer("Сессий в этот день пока нет.", show_alert=True)
+        lang, tr_map = await reg_i18n.ctx_for(callback)
+        await callback.answer(reg_i18n.tr_text("Сессий в этот день пока нет.", lang, tr_map), show_alert=True)
         return
     await _send_day_screen(callback, code, day, days, edit=True)
     await callback.answer()
@@ -157,10 +158,10 @@ async def pds_day_open(callback: types.CallbackQuery):
 async def pds_days_back(callback: types.CallbackQuery):
     code = await _resolve_delegate_city(callback.from_user.id)
     days = await list_program_days_for_city(code)
-    if not days:
-        await callback.answer("Программа пока пуста.", show_alert=True)
-        return
     lang, tr_map = await reg_i18n.ctx_for(callback)
+    if not days:
+        await callback.answer(reg_i18n.tr_text("Программа пока пуста.", lang, tr_map), show_alert=True)
+        return
     header = f"🗓 <b>{reg_i18n.tr_text('Программа', lang, tr_map)}</b>\n\n{reg_i18n.tr_text('Выберите день:', lang, tr_map)}"
     await callback.message.edit_text(header, parse_mode="HTML", reply_markup=_day_picker_kb(days))
     await callback.answer()

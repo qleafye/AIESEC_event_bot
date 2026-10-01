@@ -242,3 +242,28 @@ def test_city_screens_show_photo_button(tmp_path):
     text, kb = _run(admin_forum_functions._render_hub(SUPERADMIN_ID, "spb"))
     assert "prog_photo:spb:hub" in [b.callback_data for row in kb.inline_keyboard for b in row]
     assert "🖼 Фото программы" in text
+
+
+# ── EN-делегат: всплывающие сообщения программы переведены ──────────────────────────────────
+
+def test_program_day_alerts_are_translated_for_english_delegate(tmp_path, monkeypatch):
+    """Оба алерта идут через перевод делегатского чата (словарь — services/i18n_form_manual.py,
+    корпус — services/i18n_sources.py «lit:program.*»); раньше уходили сырым русским."""
+    from handlers import program as program_handlers
+    from handlers import reg_i18n
+    from services import i18n
+    from services.i18n_form_manual import _CODE_LITERALS_EN
+
+    _ready(tmp_path)
+    _delegate(SPB_DELEGATE, "spb")
+
+    async def _en_ctx(_obj):
+        return "en", {i18n.src_hash(ru): en for ru, en in _CODE_LITERALS_EN.items()}
+
+    monkeypatch.setattr(reg_i18n, "ctx_for", _en_ctx)
+    cb = _Callback("pds_day:2026-10-03", user_id=SPB_DELEGATE)
+    _run(program_handlers.pds_day_open(cb))
+    assert cb.answers == [("No sessions for this day yet.", True)]
+    cb = _Callback("pds_days", user_id=SPB_DELEGATE)
+    _run(program_handlers.pds_days_back(cb))
+    assert cb.answers == [("The program is empty for now.", True)]
