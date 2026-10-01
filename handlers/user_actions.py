@@ -1538,10 +1538,13 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
             logger.error(f"Failed to resolve city for question from {message.from_user.id}: {e}")
             city = None
 
+    # Как в карточке SOS: делегат на английском — иначе менеджер ответит по-русски.
+    from database.db import get_stored_lang
+    en_line = "🌐 Читает бота на английском — отвечайте по-английски\n" if await get_stored_lang(message.from_user.id) == "en" else ""
     admin_text = (
         f"❓ <b>Новый вопрос от {user_info}:</b>\n"
         f"🆔 <code>{message.from_user.id}</code>\n"
-        f"🧾 Вопрос #<code>{question_id}</code>\n\n"
+        f"🧾 Вопрос #<code>{question_id}</code>\n{en_line}\n"
         f"{html.escape(question_text)}\n\n"
         f"<i>↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ.</i>"
     )
