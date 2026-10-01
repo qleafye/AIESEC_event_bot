@@ -151,3 +151,37 @@ def test_hub_back_redraws_hub_in_place(tmp_path):
     asyncio.run(nav.forumfn_back(cb))
     assert cb.message.sent == []
     assert cb.message.edits[-1][0].startswith("🎪 <b>Форум: функции</b> — Санкт-Петербург")
+
+
+# ── Хаб и «Готовность» правят сообщение, где нажата кнопка ─────────────────────────────────
+
+def test_hub_entry_and_ready_edit_in_place(tmp_path, monkeypatch):
+    from handlers import admin_forum_functions as aff
+    from handlers import admin_forum_ready as afr
+    _seed_spb(tmp_path)
+    cb = _CB("admin_forum_functions")
+    asyncio.run(aff.admin_forum_functions_entry(cb))
+    assert cb.message.sent == [] and "Форум: функции" in cb.message.edits[-1][0]
+
+    async def _fake_render(admin_id, code, bot):
+        from aiogram.types import InlineKeyboardMarkup
+        return "🚦 Готовность", InlineKeyboardMarkup(inline_keyboard=[])
+    monkeypatch.setattr(afr, "render_ready", _fake_render)
+    cb = _CB("forum_ready:spb")
+    asyncio.run(afr.forum_ready_open(cb))
+    assert cb.message.sent == [] and cb.message.edits[-1][0] == "🚦 Готовность"
+
+
+def test_edit_falls_back_to_new_message_for_photo(tmp_path):
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.types import InlineKeyboardMarkup
+    from handlers import admin_forum_hub_nav as nav
+
+    class _PhotoMsg(_EditMsg):
+        async def edit_text(self, *a, **k):
+            raise TelegramBadRequest(method=None, message="there is no text in the message to edit")
+
+    cb = _CB("x")
+    cb.message = _PhotoMsg()
+    asyncio.run(nav.edit_or_answer(cb, "t", InlineKeyboardMarkup(inline_keyboard=[])))
+    assert cb.message.sent[-1][0] == "t"
