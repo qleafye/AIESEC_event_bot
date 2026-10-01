@@ -3960,6 +3960,19 @@ async def get_incomplete_user_ids() -> list[int]:
             return [row[0] for row in await cursor.fetchall()]
 
 
+async def reg_started_only_ids_in_scope(scope) -> set[int]:
+    """Начавшие регистрацию, которых ещё нет в `users`, — в границах `cities.city_scope(...)`
+    по `reg_started.event_city` (город, выбранный в начале анкеты). Нужно менеджеру города:
+    сегмент «📝 Не завершили регистрацию» по `users` не сузить — этих людей там нет."""
+    city_frag, params = _city_clause(scope, "event_city")
+    where = "telegram_id NOT IN (SELECT telegram_id FROM users)"
+    if city_frag:
+        where += f" AND {city_frag}"
+    async with _connect() as db:
+        async with db.execute(f"SELECT telegram_id FROM reg_started WHERE {where}", params) as cursor:
+            return {int(row[0]) for row in await cursor.fetchall()}
+
+
 async def get_incomplete_rows() -> list[tuple]:
     """Full dropout rows for the «Незавершённые» sheet tab: (telegram_id, username,
     started_at, last_step, partial_data). These users hit /start but never finished.
