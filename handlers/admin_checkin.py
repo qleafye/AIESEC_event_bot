@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 
 from aiogram import F, types, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
@@ -380,12 +381,24 @@ async def cna_send_confirm(callback: types.CallbackQuery):
         InlineKeyboardButton(text="Отмена", callback_data="cna_send_no"),
     ]])
     where = f" города {html.escape(await city_label(code))}" if code and await cities_module_on() else ""
-    await callback.message.answer(
-        f"Уйдёт {n} делегатам{where} (не пришли сегодня — не отмечены на входе). "
-        "Если отметки ещё загружаются файлами "
-        "(CSV-режим) — часть пришедших получит сообщение по ошибке. Отправить?",
-        reply_markup=kb,
-    )
+    whom = "делегату" if n % 10 == 1 and n % 100 != 11 else "делегатам"
+    # Текст — тот же, что уйдёт (services/checkin_not_arrived.send), чтобы менеджер видел, что шлёт.
+    body = await get_setting_typed_for_city("checkin_not_arrived_text", code) or ""
+
+    def _confirm(preview: str) -> str:
+        return (
+            f"Уйдёт {n} {whom}{where} (не пришли сегодня — не отмечены на входе). "
+            "Если отметки ещё загружаются файлами "
+            "(CSV-режим) — часть пришедших получит сообщение по ошибке.\n\n"
+            f"<b>Текст сообщения:</b>\n<blockquote>{preview}</blockquote>\n"
+            "Под ним кнопки: «🚶 Уже еду», «😔 Не смогу прийти», «📍 Я на месте».\n"
+            "Текст правится в «⚙️ Настройки» → «📋 Заявки» → «🚪 «Не пришёл»: текст рассылки».\n\n"
+            "Отправить?"
+        )
+    try:  # текст поддерживает HTML — показываем так, как его увидит делегат
+        await callback.message.answer(_confirm(body), parse_mode="HTML", reply_markup=kb)
+    except TelegramBadRequest:
+        await callback.message.answer(_confirm(html.escape(body)), parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
