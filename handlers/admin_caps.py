@@ -414,6 +414,15 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Квик 260912 (W5, Задача 4) — «догонялка перевода».
     "admin_i18n_seed": "settings",
     "state:AdminI18nEdit:*": "settings",
+    # Фаза внешних форм (Яндекс/Google): раздел «📝 Внешние формы» — настройки, как у соседних
+    # интеграций. «Ответы форм» на карточке /find (extf_view:*) — та же капа, что cmd:find;
+    # префикс длиннее, поэтому выигрывает у extf_*.
+    "admin_ext_forms": "settings",
+    "extf_*": "settings",
+    "extf_view:*": "moderate_reg",
+    "state:ExtFormConnect:*": "settings",
+    "state:ExtFormOAuth:*": "settings",
+    "state:ExtFormAppKeys:*": "settings",
     # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал
     # вопросов выше. «Беру»/«✅ Решено» на ЛИЧНОЙ копии карточки — `moderate_reg`; в чате SOS
     # их (и реплай) разбирает handlers/group_chat.py — там жмёт любой участник чата SOS.

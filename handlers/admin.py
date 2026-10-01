@@ -1148,3 +1148,5 @@ from handlers import admin_forum_hub_nav  # noqa: E402,F401
 # Роль «📣 Маркетинг (метки)»: экран «🔗 Ссылки с метками» и мастер новой ссылки
 # (handlers/admin_source_links.py) — golden snapshot: чистое добавление в хвост admin.router.
 from handlers import admin_source_links  # noqa: E402,F401
+# Раздел «📝 Внешние формы» (подключение Яндекс/Google форм).
+from handlers import admin_ext_forms  # noqa: E402,F401

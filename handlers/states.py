@@ -544,3 +544,21 @@ class ProgramPhotoUpload(StatesGroup):
 class SourceLinkCreate(StatesGroup):
     # «🔗 Ссылки с метками» → «➕ Новая ссылка» (handlers/admin_source_links.py): название метки.
     waiting_for_tag = State()
+
+
+class ExtFormConnect(StatesGroup):
+    # «📝 Внешние формы» → «➕ Подключить форму» (handlers/admin_ext_forms_connect.py):
+    # менеджер присылает ссылку на форму.
+    link = State()
+
+
+class ExtFormOAuth(StatesGroup):
+    # «🔑 Войти через Яндекс»: код подтверждения из браузера, затем id организации.
+    code = State()
+    org_id = State()
+
+
+class ExtFormAppKeys(StatesGroup):
+    # «🔑 Ключи приложения Яндекса»: идентификатор и секрет приложения.
+    client_id = State()
+    client_secret = State()
