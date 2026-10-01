@@ -33,7 +33,6 @@ from cities import (
     cities_module_on,
     default_city_code,
     enabled_cities,
-    get_setting_typed_for_city,
 )
 from database.db import (
     count_checkins_by_point,
@@ -56,6 +55,7 @@ from services.program import (
     day_label,
     format_time_range,
     hall_conflict_warning,
+    own_forum_date,
     parse_day_input,
     parse_time_range,
     point_for_session,
@@ -155,7 +155,7 @@ async def prog_city_open(callback: types.CallbackQuery):
 async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, InlineKeyboardMarkup]:
     label = await city_label(code)
     existing_days = await list_program_days_for_city(code)
-    forum_dt = await get_setting_typed_for_city("forum_date", code)
+    forum_dt = await own_forum_date(code)
     combined = sorted(set(existing_days) | set(suggested_days(forum_dt)))
 
     lines = [f"🗓 <b>Программа форума</b> — {html_module.escape(label)}"]
@@ -226,7 +226,7 @@ async def prog_daynew_step(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("Что-то пошло не так — откройте раздел заново.", reply_markup=ReplyKeyboardRemove())
         return
-    forum_dt = await get_setting_typed_for_city("forum_date", code)
+    forum_dt = await own_forum_date(code)
     reference = forum_dt.date() if forum_dt else None
     day = parse_day_input((message.text or "").strip(), reference=reference)
     if day is None:

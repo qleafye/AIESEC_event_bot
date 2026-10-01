@@ -120,6 +120,19 @@ def day_label(day_iso: str) -> str:
         return day_iso
 
 
+async def own_forum_date(city: str | None) -> datetime | None:
+    """Дата форума ТОЛЬКО этого города (`services.reject_rules.forum_date_for`, без отката на
+    общую): общая дата под шапкой «🌍 Все города» не делает форум у города без своей даты —
+    иначе экран программы подсказывал Москве дни чужого регионального форума."""
+    from services.reject_rules import forum_date_for
+
+    raw = await forum_date_for(city)
+    try:
+        return datetime.strptime(raw.strip(), "%d.%m.%Y") if raw else None
+    except ValueError:
+        return None
+
+
 def suggested_days(forum_date: datetime | None) -> list[str]:
     """Дата форума города + 1 + 2 дня (регион — один день, Москва — два подряд) — подсказка
     кнопок дня на экране программы, ДО того как менеджер завёл хоть одну сессию."""
