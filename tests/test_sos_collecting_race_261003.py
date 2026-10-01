@@ -71,3 +71,10 @@ def test_first_text_goes_as_copy_when_card_edit_fails(tmp_path):
     _run(sos_handlers.sos_collecting_step(msg, state))
     assert _run(db.get_sos_report(rid))["details_text"] == "мне плохо"
     assert msg.copies
+
+
+def test_card_truncates_long_details():
+    report = {"id": 5, "telegram_id": DELEGATE_ID, "details_text": "а" * 3000}
+    text = sos_service.render_card_text(report, None)
+    assert "а" * sos_service.CARD_DETAILS_LIMIT + "…" in text
+    assert len(text) < 4096

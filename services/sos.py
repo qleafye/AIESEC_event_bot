@@ -294,6 +294,10 @@ _CARD_APP_STATUS = {
 }
 
 
+# Сколько символов подробностей делегата помещать в саму карточку.
+CARD_DETAILS_LIMIT = 1000
+
+
 def render_card_text(report: dict, user: dict | None, *, city_label: str | None = None) -> str:
     """`city_label` — уже РЕЗОЛВЕННАЯ человеческая подпись города (CLAUDE.md: «Кодовые значения
     ... человеку не показываем»), не код. Функция остаётся синхронной/чистой (`cities.city_label`
@@ -332,7 +336,12 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
     details = report.get("details_text")
     photo = report.get("details_photo_file_id")
     if details:
-        lines.append(f"«{html_module.escape(str(details))}»")
+        details = str(details)
+        if len(details) > CARD_DETAILS_LIMIT:
+            # Карточка с длинной дописью не влезла бы в 4096 символов, и правка упала бы
+            # целиком. Полный текст команда видит копией дописки (`handlers/sos.py`).
+            details = details[:CARD_DETAILS_LIMIT].rstrip() + "…"
+        lines.append(f"«{html_module.escape(details)}»")
         if photo:
             lines.append("📷 фото приложено")
     elif photo:
