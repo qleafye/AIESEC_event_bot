@@ -258,3 +258,21 @@ def test_csv_unambiguous_or_fitting_date_is_not_swapped(tmp_path, monkeypatch):
     assert "alt" not in find_checkin_records("t,x\n03.10.2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
     rec = find_checkin_records("t,x\n03/10/2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
     assert rec["scanned_at"] == "2026-10-03 10:15:00"  # без AM/PM — д/м, уже в окне
+
+
+def test_day_check_reads_settings_in_one_snapshot(tmp_path, monkeypatch):
+    """Проверка дня — на каждом скане входа: настройки одним снимком, а не соединением на ключ."""
+    from datetime import date
+    from services import checkin_forum_day
+    _setup(tmp_path, monkeypatch, datetime(2026, 10, 2, 18, 0))
+    reads = []
+    real = bot_db._load_settings_snapshot
+
+    async def _counting():
+        reads.append(1)
+        return await real()
+    monkeypatch.setattr(bot_db, "_load_settings_snapshot", _counting)
+    denial = _run(checkin_forum_day.entry_day_denial({"event_city": "msk"}, date(2026, 10, 3)))
+    assert denial["status"] == "not_forum_day"
+    assert _run(checkin_forum_day.city_emphasis(date(2026, 10, 3))) is True
+    assert reads == [1, 1]

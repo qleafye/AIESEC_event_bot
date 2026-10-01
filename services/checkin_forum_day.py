@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime
 
+from database.db import settings_snapshot
 from cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
 
 logger = logging.getLogger(__name__)
@@ -63,9 +64,16 @@ def _has_city(user: dict) -> bool:
 
 async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
     """`None` — сегодня (или `day`) день форума города делегата либо дата форума не задана.
-    Иначе — отказ для плашки сканера: ничего не записано."""
+    Иначе — отказ для плашки сканера: ничего не записано. Настройки (даты и длительность
+    форума по городам) — одним снимком `bot_settings`, а не соединением на каждый ключ: это
+    путь каждого скана входа."""
     if not _has_city(user):
         return None
+    async with settings_snapshot():
+        return await _entry_day_denial(user, day)
+
+
+async def _entry_day_denial(user: dict, day: date | None) -> dict | None:
     day = day or _today()
     city = normalize_city(user.get("event_city"))
     window = await forum_window(city)
@@ -89,7 +97,8 @@ async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
 
 async def city_emphasis(day: date | None = None) -> bool:
     """Сегодня форум больше чем в одном городе — город делегата на плашке крупно."""
-    return len(await cities_with_forum_on(day or _today())) > 1
+    async with settings_snapshot():
+        return len(await cities_with_forum_on(day or _today())) > 1
 
 
 async def off_day_for_scan(user: dict, scanned_at: str | None) -> bool:
