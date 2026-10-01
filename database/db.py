@@ -11346,6 +11346,17 @@ async def checkin_not_arrived_mark_sent(telegram_id: int, event_city: str | None
         return bool(cursor.rowcount)
 
 
+async def checkin_not_arrived_unmark(telegram_id: int, day: str) -> None:
+    """Снять отметку «отправлено сегодня» — отправка не удалась по временной причине, и
+    повторное «📨 Написать не пришедшим» должно взять этого делегата снова."""
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM checkin_not_arrived WHERE telegram_id = ? AND day = ? AND response IS NULL",
+            (telegram_id, day),
+        )
+        await db.commit()
+
+
 async def record_checkin_not_arrived_response(telegram_id: int, day: str, response: str, responded_at: str) -> bool:
     """Пишет ответ делегата в строку `(telegram_id, day)` — `day` приходит из `callback_data`
     (см. докстринг `handlers/user_actions.py`), не из FSM (переживает рестарт контейнера).
