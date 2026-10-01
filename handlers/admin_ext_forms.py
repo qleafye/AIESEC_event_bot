@@ -360,3 +360,6 @@ async def extf_view(callback: types.CallbackQuery):
     else:
         await msg.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+# Вход через Яндекс и ключи приложения (шов).
+from handlers import admin_ext_forms_oauth  # noqa: E402,F401
