@@ -46,6 +46,7 @@ from settings_ops import (
     per_city_visible_codes as _per_city_visible_codes,
     HTML_SETTINGS,
     base_setting_key as _base_setting_key,
+    shown_default as _shown_default,
     SHEET_TAB_WRITE_MODE as _SHEET_TAB_WRITE_MODE,
     after_tab_setting_saved as _after_tab_setting_saved,
     tab_confirm_text_html as _tab_confirm_text,
@@ -1887,8 +1888,11 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             lines.append(f"Своё значение: <b>{html_module.escape(own_value)}</b>")
         else:
             global_value = await get_setting(key)
-            global_txt = f"<b>{html_module.escape(global_value)}</b>" if global_value else "<i>по умолчанию</i>"
-            lines.append(f"Как везде. Общий текст: {global_txt}")
+            dflt = _shown_default(key)
+            global_txt = (f"<b>{html_module.escape(global_value)}</b>" if global_value
+                          else f"<i>по умолчанию — {html_module.escape(dflt)}</i>" if dflt else "<i>по умолчанию</i>")
+            noun = "Общий текст" if entry.get("type") == "text" else "Общее значение"
+            lines.append(f"Как везде. {noun}: {global_txt}")
 
         rows: list[list[InlineKeyboardButton]] = [
             [InlineKeyboardButton(
@@ -1922,6 +1926,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         )
     elif current:
         text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
+    elif dflt := _shown_default(key):
+        text = f"Сейчас: <i>по умолчанию — {html_module.escape(dflt)}</i>\n\n{text}"
     if not is_list:
         text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
