@@ -142,3 +142,25 @@ async def clear_city_date_confirm(key: str, code: str, current: str) -> tuple[st
 
 PICK_CITY_FIRST = ("Сначала выберите город кнопкой выше — дата форума задаётся для города. "
                    "Передумали — нажмите «❌ Отмена».")
+
+
+def clear_hint(key: str) -> str:
+    """Подсказка под экраном правки поля города. У даты форума «-» ведёт на то же
+    подтверждение, что «🗑 Стереть дату города», — стереть её одним символом нельзя."""
+    if is_city_only_key(key):
+        return ("\n\n<i>Пришлите новую дату сообщением. Стереть дату — «🗑 Стереть дату города» "
+                "или «-» (бот переспросит).</i>")
+    return "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
+
+
+async def dash_clear_screen(base: str | None, composed: str, code: str) -> tuple[str, InlineKeyboardMarkup] | None:
+    """«-» на экране даты города: вместо молчаливого удаления — подтверждение «🗑» (или
+    объяснение, что стирать нечего). `None` — ключ не «только у города», обычный сброс."""
+    if not base or not is_city_only_key(base):
+        return None
+    from database.db import get_setting
+    current = await get_setting(composed)
+    if not current:
+        back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"settings_edit:{base}")]])
+        return "У города и так нет своей даты форума — стирать нечего.", back
+    return await clear_city_date_confirm(base, code, current)
