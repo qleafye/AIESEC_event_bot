@@ -35,7 +35,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from cities import default_city_code, get_setting_typed_for_city
 from database.db import (
     add_sos_details, create_sos_report, get_open_sos_report, get_sos_report, get_user,
-    set_sos_location,
+    mark_sos_collecting_started, set_sos_location,
 )
 from handlers import reg_i18n
 from handlers.states import SosReport
@@ -115,6 +115,12 @@ async def _enter_collecting(state: FSMContext, report_id: int, city: str | None)
         sos_collecting_city=city,
         sos_collecting_started=msk_now().strftime("%Y-%m-%d %H:%M:%S"),
     )
+    # То же время — в БД: планировщику (утренний QR) FSM не виден, а переоткрытие старой
+    # заявки перезапускает таймер дозаписи (`services.sos.may_be_collecting`).
+    try:
+        await mark_sos_collecting_started(report_id)
+    except Exception as e:
+        logger.warning("sos._enter_collecting: время входа в дозапись не записано: %s", e)
 
 
 async def _collecting_timeout_minutes(city: str | None) -> float:
