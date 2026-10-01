@@ -1206,3 +1206,76 @@ def test_sheet_error_text_has_no_internal_codes(tmp_path, monkeypatch):
     err = report["sheet"]["error"] or ""
     assert "таблица недоступна" in err
     assert "'error'" not in err and "код" not in err
+
+
+# ── Приёмка 01.10: выключенный город — не цель перевода ─────────────────────────────────────
+
+def test_citymove_start_hides_disabled_city(tmp_path):
+    _db_ready(tmp_path)
+    cities.set_cities_for_test([dict(c) for c in _CITIES] + [
+        {"code": "tmn", "label": "Тюмень", "tab_base": "Тюмень", "enabled": 0, "sort_order": 2},
+    ])
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb")
+        cb = _FakeCallback(f"citymv_start:{DELEGATE_ID}", SUPERADMIN_ID)
+        await admin_city_move.citymove_start(cb)
+        return cb
+
+    cb = _run(scenario())
+    buttons = _cbs(cb.message.edits[0][1])
+    assert f"citymv_pick:{DELEGATE_ID}:msk" in buttons
+    assert f"citymv_pick:{DELEGATE_ID}:tmn" not in buttons
+
+
+def test_citymove_pick_refuses_forged_disabled_city(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await db.set_setting("city_enabled__msk", "off")
+        await _seed_user(DELEGATE_ID, city="spb")
+        cb = _FakeCallback(f"citymv_pick:{DELEGATE_ID}:msk", SUPERADMIN_ID)
+        await admin_city_move.citymove_pick_city(cb)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.message.edits == []
+    assert cb.answers and "выключен" in cb.answers[0][0]
+
+
+def test_find_card_shows_status_city_and_season(tmp_path):
+    _db_ready(tmp_path)
+    import handlers.admin as admin_mod
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", status="pending")
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET season = 'YL 26/2' WHERE telegram_id = ?", (DELEGATE_ID,))
+            await conn.commit()
+        captured = {}
+
+        class _M:
+            text = "/find @delegate"
+
+            async def answer(self, text, parse_mode=None, reply_markup=None):
+                captured["text"] = text
+
+        async def _by_username(_username):
+            return await db.get_user(DELEGATE_ID)
+
+        orig = admin_mod.get_user_by_username
+        admin_mod.get_user_by_username = _by_username
+        try:
+            await admin_mod.cmd_find_user(_M())
+        finally:
+            admin_mod.get_user_by_username = orig
+        return captured["text"]
+
+    text = _run(scenario())
+    assert "Статус: ⏳ На рассмотрении" in text
+    spb_label = next(c["label"] for c in _CITIES if c["code"] == "spb")
+    assert f"Город: {spb_label}" in text
+    assert "Сезон: YL 26/2" in text

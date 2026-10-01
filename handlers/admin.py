@@ -460,6 +460,8 @@ async def cmd_find_user(message: types.Message):
             f"Email: {html_module.escape(str(user['email'] or ''))}\n"
             f"Регистрация: {user['registration_date']}"
         )
+        from services.delegate_card import status_city_season_lines  # статус/город/сезон, 01.10
+        text += await status_city_season_lines(user)
         # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
         # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
         # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
