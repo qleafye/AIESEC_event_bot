@@ -26,6 +26,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
+from database.ext_forms_db import list_forms as _ext_forms_list
 from database.db import (
     get_all_users_ids,
     get_non_subscriber_ids,
@@ -1130,6 +1131,7 @@ async def sched_cancel(callback: types.CallbackQuery):
 # ── Phase 3 (COMM-01/02/03): filtered-broadcast builder ──────────────────────
 
 _FILTER_FIELD_LABELS = {
+    "ext_form": "Внешняя форма",
     "city": "Город", "university": "ВУЗ", "status": "Статус",
     "source": "Источник", "registration_date": "Дата регистрации",
     "payment_status": "Оплата",
@@ -1265,7 +1267,8 @@ def _filter_summary(filters: list[dict]) -> str:
 def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
                      show_chat: bool = False, show_auto_reject: bool = False,
-                     show_checkin: bool = False, show_sessions: bool = False) -> InlineKeyboardMarkup:
+                     show_checkin: bool = False, show_sessions: bool = False,
+                     show_ext_form: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1320,6 +1323,8 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
             InlineKeyboardButton(text="🎤 Были на сессии…", callback_data="cksf_start:attended"),
             InlineKeyboardButton(text="🚫 Не были на сессии…", callback_data="cksf_start:not_attended"),
         ])
+    if show_ext_form:
+        kb.append([InlineKeyboardButton(text="📝 Внешняя форма", callback_data="extff_start")])
     if filters:
         kb.append([InlineKeyboardButton(text="📊 Показать и отправить", callback_data="filter_count")])
     kb.append([InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")])
@@ -1363,7 +1368,8 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
                          show_chat=len(chat_options) > 1,
                          show_auto_reject=len(auto_reject_options) > 1,
                          show_checkin=bool(checkin_options),
-                         show_sessions=show_sessions)
+                         show_sessions=show_sessions,
+                         show_ext_form=bool(await _ext_forms_list()))
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1736,3 +1742,4 @@ async def cmd_refresh_allowlist(message: types.Message):
 # Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …» — свой шов, декорирует
 # тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
 from handlers import admin_broadcast_session_filter  # noqa: E402,F401
+from handlers import admin_broadcast_ext_form_filter  # noqa: E402,F401
