@@ -142,16 +142,50 @@ OTHER_GROUP = Chat(id=OTHER_CHAT_ID, type="supergroup", title="Случайны�
 
 # ── Чат SOS ──────────────────────────────────────────────────────────────────────────────────
 
-def test_group_reply_from_moderator_reaches_delegate(tmp_path):
+def test_group_reply_from_moderator_without_claim_is_not_delivered(tmp_path):
+    """Реплаем на невзятую карточку команда переговаривается («кто ближе?») — это не должно
+    долететь делегату и молча отдать заявку спросившему, даже если он держит «📋 Модерация»."""
     _ready(tmp_path)
     report = asyncio.run(_seed_report())
     bot = RecordingBot()
     with _attached() as dp:
-        _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _card(GROUP, report["id"]), "Иду, где ты?"))
+        _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _card(GROUP, report["id"]), "кто ближе?"))
+    assert bot.sent_to(DELEGATE_ID) == []
+    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] is None
+    hint = bot.sent_to(SOS_CHAT_ID)
+    assert hint and "не отправлен" in hint[0] and "🙋 Беру" in hint[0]
+
+
+def test_group_reply_from_moderator_after_claim_reaches_delegate(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(ADMIN_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _reply_update(ADMIN_ID, GROUP, card, "Иду, где ты?", update_id=2),
+        )
     delivered = bot.sent_to(DELEGATE_ID)
     assert delivered and "Иду, где ты?" in delivered[0]
-    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] == ADMIN_ID
     assert any("Ответ отправлен" in t for t in bot.sent_to(SOS_CHAT_ID))
+
+
+def test_group_reply_on_card_claimed_by_colleague_is_not_delivered(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _reply_update(ADMIN_ID, GROUP, card, "звоню в скорую", update_id=2),
+        )
+    assert bot.sent_to(DELEGATE_ID) == []
+    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] == STRANGER_ID
+    assert any("ведёт" in t for t in bot.sent_to(SOS_CHAT_ID))
 
 
 def test_group_reply_from_member_without_rights_is_not_delivered(tmp_path):
