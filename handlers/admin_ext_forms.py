@@ -363,3 +363,4 @@ async def extf_view(callback: types.CallbackQuery):
 
 # Вход через Яндекс и ключи приложения (шов).
 from handlers import admin_ext_forms_oauth  # noqa: E402,F401
+from handlers import admin_ext_forms_setup  # noqa: E402,F401
