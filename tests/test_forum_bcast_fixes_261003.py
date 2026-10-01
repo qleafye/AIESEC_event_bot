@@ -291,3 +291,45 @@ def test_morning_repeat_not_caught_up_after_noon(tmp_path, monkeypatch):
     _run(cb.schedule_city_jobs(None))
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 12, 5))
     assert _run(cb.schedule_city_jobs(None))["morning_at"] is None
+
+
+# ── Отчёт дня: отметка до отправки, сбой — пауза, а не отчёт каждую минуту ───────────────────
+
+def test_day_report_auto_send_is_claimed_once(tmp_path, monkeypatch):
+    import services.forum_day_report as fdr
+    _ready(tmp_path)
+    _run(db.set_setting("sos_chat_id", "-100500"))
+    bot = TextBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    first = _run(fdr.send_report(None, "2026-10-03", mark_sent=True))
+    assert first["chat_delivered"] is True
+    second = _run(fdr.send_report(None, "2026-10-03", mark_sent=True))
+    assert second.get("already_sent") is True
+    assert [cid for cid, _t, _k in bot.sent].count(-100500) == 1
+
+
+def test_day_report_mark_failure_sends_nothing_and_backs_off(tmp_path, monkeypatch):
+    import database.db as dbmod
+    import services.forum_day_report as fdr
+    _ready(tmp_path)
+    _run(db.set_setting("sos_chat_id", "-100500"))
+    _run(db.set_setting("forum_day_report_enabled", "on"))
+    _run(db.set_setting("sos_active_days", "1"))
+    bot = TextBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+
+    async def _locked(*a, **k):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(dbmod, "forum_day_report_mark_sent", _locked)
+    monkeypatch.setattr(fdr, "msk_now", lambda: datetime(2026, 10, 3, 21, 0))
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    _run(fdr._run_job(None))
+    assert bot.sent == []  # отметка не встала — в чат ничего не ушло
+    job = fake.jobs[fdr.job_id(None)]
+    assert job.next_run_time == datetime(2026, 10, 3, 21, 30)  # пауза, а не «через минуту»
+    # Сверка раз в 10 минут паузу не сокращает.
+    monkeypatch.setattr(fdr, "msk_now", lambda: datetime(2026, 10, 3, 21, 10))
+    _run(fdr.schedule_city_job(None))
+    assert fake.jobs[fdr.job_id(None)].next_run_time == datetime(2026, 10, 3, 21, 30)
