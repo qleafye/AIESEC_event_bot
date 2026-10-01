@@ -1071,6 +1071,11 @@ ADMIN_CAPS: dict[str, str] = {
     # же развилка «вход широкий, действие узкое», что у «⚙️ Настройки QR» на admin_checkin.
     "admin_forum_functions": "moderate_reg",
     "forumfn_city:*": "moderate_reg",
+    # Приёмка 03.10: хаб «🎪 Форум: функции» — «🎟 Вход по QR» через экран подтверждения
+    # (handlers/admin_forum_hub_nav.py), та же капа, что у самого тумблера; возврат в хаб — капа хаба.
+    "forumfn_qr:*": "settings",
+    "forumfn_qr_set:*": "settings",
+    "forumfn_back:*": "moderate_reg",
     "checkinvol_cfg:*": "moderate_reg",
     "checkinvol_toggle:*": "moderate_reg",
     "checkinvol_time:*": "moderate_reg",

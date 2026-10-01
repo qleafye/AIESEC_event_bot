@@ -110,8 +110,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # читает его глобально); правится строкой «toggle_checkin_qr_enabled» раздела «📋 Заявки».
     qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
     lines.append(f"🎟 QR для входа: {_status(qr_on)}")
-    if visible("toggle_checkin_qr_enabled"):
-        buttons.append([InlineKeyboardButton(text="🎟 Включить/выключить QR", callback_data="toggle_checkin_qr_enabled")])
+    if visible(f"forumfn_qr:{_encode_city(code)}"):  # экран с подтверждением: handlers/admin_forum_hub_nav.py
+        buttons.append([InlineKeyboardButton(text="🎟 Вход по QR (общий для всех городов)", callback_data=f"forumfn_qr:{_encode_city(code)}")])
 
     # 2. Рассылка QR накануне + утренний повтор — per_city, родной экран уже есть.
     qr_bc_on = await get_setting_typed_for_city("checkin_qr_broadcast_enabled", code) == "on"

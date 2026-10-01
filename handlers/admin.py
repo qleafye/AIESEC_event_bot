@@ -1163,3 +1163,7 @@ from handlers import admin_chat_rating_post  # noqa: E402,F401
 # (golden snapshot: чистое добавление после admin_chat_cleanup). Строка хаба —
 # handlers/admin_forum_functions.py, сразу после «🧳 Бюро находок».
 from handlers import admin_onsite_reg  # noqa: E402,F401
+# Приёмка 03.10: хаб «🎪 Форум: функции» — подтверждение общего тумблера «🎟 Вход по QR» и
+# возврат в хаб с экранов, открытых из него (handlers/admin_forum_hub_nav.py). Golden snapshot:
+# чистое добавление в хвост admin.router.
+from handlers import admin_forum_hub_nav  # noqa: E402,F401
