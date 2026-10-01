@@ -394,7 +394,8 @@ async def eligible_recipients(city: str | None) -> list[dict]:
 
 # Ручная «📤 Разослать QR сейчас» раньше форума больше чем на столько дней — отказ: QR за неделю
 # до форума теряется в переписке, а кнопка «сейчас» в чужом городе — частый промах.
-MANUAL_SEND_DAYS_AHEAD = 2
+# Накануне — самое раннее: текст ручной рассылки до форума — «Завтра форум!», за 2 дня он врёт.
+MANUAL_SEND_DAYS_AHEAD = 1
 
 
 async def manual_send_block_reason(city: str | None) -> str | None:
@@ -411,7 +412,7 @@ async def manual_send_block_reason(city: str | None) -> str | None:
     today = msk_now().date()
     if (day - today).days > MANUAL_SEND_DAYS_AHEAD:
         return (f"Форум этого города {date_str} — рассылать QR рано. Он уйдёт сам накануне "
-                "вечером; вручную — не раньше чем за 2 дня.")
+                "вечером; вручную — не раньше чем накануне форума.")
     from services.sos import sos_active_window
     window = await sos_active_window(city)
     if window is not None and window[1] < today:
@@ -479,13 +480,21 @@ async def _render_for(
     return tr_text(text, lang, tr_map), _confirm_kb(lang, tr_map)
 
 
+async def _is_inside_forum_window(city: str | None) -> bool:
+    """Сегодня — любой из дней форума города (первый, второй…), по его дате и длительности."""
+    from services.sos import sos_active_window
+    window = await sos_active_window(city)
+    return window is not None and window[0] <= msk_now().date() <= window[1]
+
+
 async def _broadcast_text(city: str | None, *, morning: bool) -> tuple[str, bool]:
     """(Текст под QR, это день форума). Утренний повтор — всегда `checkin_qr_morning_text` (без
-    «Завтра форум!»). Вечерняя/ручная рассылка в сам день форума (догон, «📤 Разослать QR
-    сейчас» утром) — тоже утренний текст: «завтра» в день форума путает делегатов."""
+    «Завтра форум!»). Вечерняя/ручная рассылка в любой день форума (догон, «📤 Разослать QR
+    сейчас» утром или во второй день) — тоже утренний текст: «завтра» в день форума путает
+    делегатов. «Завтра форум!» остаётся только накануне."""
     from cities import get_setting_typed_for_city
     if not morning:
-        morning = await is_forum_day_offset(city, 0)
+        morning = await _is_inside_forum_window(city)
     key = "checkin_qr_morning_text" if morning else "checkin_qr_broadcast_text"
     return await get_setting_typed_for_city(key, city), morning
 
@@ -604,7 +613,13 @@ async def send_morning_repeat(city: str | None) -> dict:
     scope = _cities.city_scope(city)
     eligible = await eligible_recipients(city)
     confirmed = await checkin_qr_confirmed_ids(city_scope=scope)
-    targets = [u for u in eligible if u["telegram_id"] not in confirmed]
+    # Получившие QR сегодня (ручная «Разослать сейчас» до утреннего часа, догон после рестарта)
+    # второй раз тот же QR не получают: «✅ Сохранил» в день форума им уже нечем нажать.
+    sent_today = await checkin_qr_sent_ids(
+        city_scope=scope, sent_since=msk_now().strftime("%Y-%m-%d 00:00:00"),
+    )
+    targets = [u for u in eligible
+               if u["telegram_id"] not in confirmed and u["telegram_id"] not in sent_today]
 
     base_text, forum_day = await _broadcast_text(city, morning=True)
 
