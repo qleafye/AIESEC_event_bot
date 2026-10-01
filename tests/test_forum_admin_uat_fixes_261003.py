@@ -274,3 +274,14 @@ def test_city_move_sheet_writes_mark_last_write(monkeypatch):
     monkeypatch.setattr(sheets, "_update_row_by_id_sync", lambda *a: ("updated", []))
     assert asyncio.run(sheets.update_row_by_id("СПб", 1, [1])) is True
     assert sheets.last_write_state()["ok"] is not None
+
+
+# ── «Сколько дней идёт»: видно число по умолчанию ──────────────────────────────────────────
+
+def test_days_editor_shows_default_number(tmp_path):
+    from handlers import admin_settings
+    _seed_spb(tmp_path)
+    text, _kb = asyncio.run(admin_settings._settings_edit_screen("sos_active_days", "spb"))
+    assert "Как везде. Общее значение: <i>по умолчанию — 2</i>" in text
+    text, _kb = asyncio.run(admin_settings._settings_edit_screen("sos_active_days", None))
+    assert "Сейчас: <i>по умолчанию — 2</i>" in text

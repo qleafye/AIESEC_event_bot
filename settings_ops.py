@@ -138,6 +138,19 @@ def base_setting_key(key: str) -> str:
     return key.split(PER_CITY_SEP)[0]
 
 
+def shown_default(key: str) -> str | None:
+    """Значение по умолчанию словами для экрана правки («по умолчанию — 2»), если оно короткое:
+    число, вариант выбора; длинные тексты не дублируем."""
+    entry = SETTINGS_SCHEMA.get(base_setting_key(key), {})
+    dflt = entry.get("default")
+    if dflt is None or dflt == "" or entry.get("type") == "list":
+        return None
+    if entry.get("type") == "enum":
+        return str((entry.get("option_labels") or {}).get(dflt, dflt))
+    dflt = str(dflt)
+    return dflt if entry.get("type") in ("int", "float") or len(dflt) <= 40 else None
+
+
 # ── Sheets-вкладки: режим записи + confirm-тексты (Quick 260815-3hw) ─────────────────────
 
 # Which Google Sheets tab-name keys the bot actually WRITES to, and HOW. "rewrite" = the sync
