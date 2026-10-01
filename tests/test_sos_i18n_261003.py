@@ -106,3 +106,13 @@ def test_question_reply_header_in_english(monkeypatch):
     asyncio.run(admin._deliver_question_reply(_OrgMessage("Да, можно"), _Sink(), 42, "Орг"))
     assert captured[0].startswith("💬 <b>Reply from the organizers:</b>")
 
+
+def test_rereg_button_is_translated_for_english_delegate():
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start"),
+    ]])
+    out = reg_i18n.tr_kb(kb, "en", EN_MAP)
+    assert out.inline_keyboard[0][0].text == "\U0001f680 Update my application"
+    assert out.inline_keyboard[0][0].callback_data == "rereg_start"
