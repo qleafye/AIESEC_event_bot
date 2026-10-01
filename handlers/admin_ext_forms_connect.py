@@ -385,7 +385,7 @@ async def _create_form_from_draft(platform: str, d: dict, by: int) -> int:
 async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
     d = await state.get_data()
     platform = d.get("platform")
-    if not d.get("external_id") or platform not in ("yandex", "google"):
+    if not d.get("external_id") or not d.get("title") or platform not in ("yandex", "google"):
         await state.clear()
         await _show(callback, _RESTART, _kb([_to_list()]), edit=True)
         await callback.answer()
