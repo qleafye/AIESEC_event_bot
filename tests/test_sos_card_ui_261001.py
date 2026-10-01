@@ -72,3 +72,17 @@ def test_sos_list_shows_details_and_who_when(tmp_path):
     assert "взял(а) Иван Оргов в " in text
     assert "решено: Мария Оргова в " in text
     assert "подробности ещё не прислали" not in text
+
+
+def test_card_shows_application_status_and_english_reader():
+    from services.sos import render_card_text
+
+    report = {"id": 8, "telegram_id": 1, "created_at": "2026-10-03 10:00:00"}
+    pending = render_card_text(report, {"full_name": "А", "status": "pending", "lang": "ru"})
+    assert "⏳ Заявка на рассмотрении" in pending and "английском" not in pending
+    rejected_en = render_card_text(report, {"full_name": "Б", "status": "rejected", "lang": "en"})
+    assert "🚫 Заявка отклонена" in rejected_en
+    assert "🌐 Читает бота на английском" in rejected_en
+    approved = render_card_text(report, {"full_name": "В", "status": "approved"})
+    assert "✅ Заявка одобрена" in approved
+    assert render_card_text(report, None).count("Заявка") == 0
