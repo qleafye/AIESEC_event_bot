@@ -211,8 +211,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # sos_active_days); родной экран уже есть (handlers/admin_sos.py).
     sos_on = await is_sos_active_for_city(code)
     lines.append(f"🆘 SOS активен сейчас: {_status(sos_on)}")
-    if visible("admin_sos"):
-        buttons.append([InlineKeyboardButton(text="🆘 Настройки SOS", callback_data="admin_sos")])
+    if visible(f"asos_city:{code}"):
+        buttons.append([InlineKeyboardButton(text="🆘 Настройки SOS", callback_data=f"asos_city:{code}")])
 
     # 9. «🔕 Не присылать сегодня» — D-30: доступна делегату весь сезон намеренно, без
     # мастер-тумблера (отключать самообслуживание делегата — не то, что просил владелец).

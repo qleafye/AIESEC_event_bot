@@ -171,6 +171,26 @@ async def admin_sos(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("asos_city:"))
+async def asos_city_open(callback: types.CallbackQuery):
+    """Вход из «🎪 Форум: функции» — хаб может быть открыт для города, отличного от шапки
+    (выбор из списка, старое сообщение с хабом). Экран SOS, привязка чата и тексты читают
+    город из шапки, поэтому сначала шапку ставим на город хаба — иначе менеджер видел бы
+    заявки другого города, а «🔗 Привязать чат SOS» привязал бы чат не к тому городу."""
+    from cities import set_admin_city
+
+    code = callback.data.split(":", 1)[1]
+    if await cities_module_on() and not await set_admin_city(callback.from_user.id, code):
+        await callback.answer(
+            "Этот город вам недоступен. Откройте «🎪 Форум: функции» заново — там будет ваш город.",
+            show_alert=True,
+        )
+        return
+    text, kb = await render_sos_screen(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("asos:"))
 async def asos_page(callback: types.CallbackQuery):
     parts = callback.data.split(":", 2)
