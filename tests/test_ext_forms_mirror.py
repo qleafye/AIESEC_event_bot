@@ -23,10 +23,7 @@ class FakeWS:
         self.rows = [list(values[0])] + self.rows[1:]
 
     def update_cell(self, r, c, v):
-        self.calls.append(("update_cell", r, c, v))
-        hdr = self.rows[0]
-        hdr.extend([""] * (c - len(hdr)))
-        hdr[c - 1] = v
+        self.calls.append(("update_cell", r, c, v))  # USER_ENTERED — формулы исполнились бы
 
     def append_rows(self, rows, value_input_option=None):
         self.calls.append(("append_rows", len(rows), value_input_option))
@@ -37,9 +34,18 @@ class FakeWS:
 
     def batch_update(self, data, value_input_option=None):
         self.calls.append(("batch_update", value_input_option))
+        import re
         for d in data:
-            r = int(d["range"].split(":")[0][1:])
-            self.rows[r - 1][1:3] = d["values"][0]
+            r = int(re.search(r"\d+", d["range"]).group())
+            if r == 1:  # ячейки шапки: A1-адрес одной ячейки
+                col = 0
+                for ch in re.match(r"[A-Z]+", d["range"]).group():
+                    col = col * 26 + ord(ch) - 64
+                hdr = self.rows[0]
+                hdr.extend([""] * (col - len(hdr)))
+                hdr[col - 1] = d["values"][0][0]
+            else:
+                self.rows[r - 1][1:3] = d["values"][0]
 
     def insert_cols(self, *a, **k):
         raise AssertionError("вставка колонок запрещена")
@@ -140,7 +146,8 @@ def test_append_batch_and_new_column_right(env):
     _answer(fid, "a9", [{"q": "q2", "label": "Q2", "value": "n"}])
     asyncio.run(mir.drain_mirror())
     assert ws.rows[0][5] == "Q2"
-    assert ("update_cell", 1, 6, "Q2") in ws.calls
+    assert ("batch_update", mir._raw()) in ws.calls
+    assert not any(c[0] == "update_cell" for c in ws.calls)
 
 
 def test_update_by_answer_id_after_resort(env):

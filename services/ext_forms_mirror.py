@@ -15,6 +15,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 import gspread
+from gspread.utils import rowcol_to_a1
 
 from config import config
 from database import ext_forms_db as ef
@@ -150,8 +151,14 @@ def _write_form_sync(tab, columns, new_cols, appends, updates):
     if blank:
         ws.update("A1", [_header_row(columns)], value_input_option=raw)
     else:
-        for c in new_cols:
-            ws.update_cell(1, _FIXED + int(c["position"]), str(c.get("label") or ""))
+        if new_cols:
+            # RAW, не update_cell (тот пишет USER_ENTERED): подпись вопроса чужой формы
+            # вида «=IMPORTXML(...)» не должна исполняться как формула.
+            ws.batch_update(
+                [{"range": rowcol_to_a1(1, _FIXED + int(c["position"])),
+                  "values": [[str(c.get("label") or "")]]} for c in new_cols],
+                value_input_option=raw,
+            )
     n_app = n_upd = 0
     if appends:
         ws.append_rows(
