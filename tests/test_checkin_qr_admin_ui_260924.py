@@ -200,8 +200,8 @@ def test_send_go_sends_photos_and_reports_counts(tmp_path, monkeypatch):
 
     assert len(bot.photos) == 2
     assert cb.message.edited  # «⏳ Рассылаю QR...»
-    final_text = cb.message.sent[-1][0]
-    assert "2 доставлено" in final_text
+    final_text = cb.message.edited[-1][0]  # итог — на месте «⏳ Рассылаю QR...»
+    assert "доставлено 2 из 2" in final_text
 
 
 def test_send_go_clears_keyboard_before_sending(tmp_path, monkeypatch):
@@ -238,7 +238,7 @@ def test_send_go_rejects_concurrent_tap(tmp_path, monkeypatch):
 
     cb = asyncio.run(body())
     assert bot.photos == []
-    final_text = cb.message.sent[-1][0]
+    final_text = cb.message.edited[-1][0]  # итог — на месте «⏳ Рассылаю QR...»
     assert "уже идёт" in final_text.lower()
 
 
@@ -258,9 +258,9 @@ def test_send_go_ignores_quiet_hours(tmp_path, monkeypatch):
         cb = _FakeCallback("checkinqr_send_go:_all", ADMIN_ID)
         await admin_checkin.checkinqr_send_go(cb)
         assert len(bot.photos) == 1
-        final_text = cb.message.sent[-1][0]
+        final_text = cb.message.edited[-1][0]  # итог — на месте «⏳ Рассылаю QR...»
         assert "тихие часы" not in final_text.lower()
-        assert "1 доставлено" in final_text
+        assert "доставлено 1 из 1" in final_text
 
     _run_scheduled(tmp_path, monkeypatch, body)
 

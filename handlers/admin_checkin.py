@@ -72,6 +72,7 @@ from services.checkin_broadcast import (
     _times_for,
     broadcast_enabled_for,
     manual_send_block_reason,
+    qr_send_report,
     morning_run_at,
     pending_broadcast_count,
     schedule_city_jobs,
@@ -821,12 +822,14 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
     await callback.message.edit_text("⏳ Рассылаю QR...", reply_markup=None)
     result = await send_broadcast(code)
     if result.get("already_running"):
-        await callback.message.answer("⏳ Рассылка уже идёт — дождитесь её завершения.")
-        return
-    await callback.message.answer(
-        f"✅ QR разослан: {result['sent']} доставлено, {result['failed']} не доставлено "
-        f"из {result['total']}."
-    )
+        report = "⏳ Рассылка этого города уже идёт — дождитесь её завершения."
+    else:
+        report = qr_send_report(result)
+    try:  # итог — на месте «⏳ Рассылаю QR...», чтобы оно не висело
+        await callback.message.edit_text(report, parse_mode="HTML")
+    except TelegramBadRequest:
+        await callback.message.answer(report, parse_mode="HTML")
+
 
 
 @router.callback_query(F.data == "checkinqr_send_no")
