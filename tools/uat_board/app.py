@@ -280,6 +280,9 @@ class Handler(BaseHTTPRequestHandler):
         if (self.headers.get("Host") or "").startswith(AMB_HOST):
             if parts.path in ("/", "/index.html"):
                 self._send(200, _read(os.path.join(AMB_DIR, "index.html")), "text/html; charset=utf-8")
+            elif parts.path in ("/roles", "/roles/"):
+                # Гайд «как дать доступ маркетологу» (01.10) — ссылка с титула презентации.
+                self._send(200, _read(os.path.join(AMB_DIR, "roles.html")), "text/html; charset=utf-8")
             else:
                 self._send(404, b"not found", "text/plain")
             return

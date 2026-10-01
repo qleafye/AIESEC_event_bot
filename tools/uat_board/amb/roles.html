@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Доступ для маркетолога</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700;800&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F3F4F8; --card:#FFFFFF; --ink:#1C1C1C; --muted:#52565E; --line:#DDE1E8; --blue:#7552CC; --orange:#FF8B10; --warm:#FFF3E6; --warmink:#8A4307; --chat:#0f0b1a; --bubble:#212121; --btn:#3a2d66; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; font-size:17px; line-height:1.5; }
+  header.top { background:var(--blue); color:#fff; }
+  header.top .in { max-width:760px; margin:0 auto; padding:28px 16px 26px; }
+  header.top a { color:#fff; font-size:15px; font-weight:700; }
+  header.top h1 { margin:14px 0 8px; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(28px, 7vw, 40px); line-height:1.1; }
+  header.top p { margin:0; opacity:.95; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 64px; display:flex; flex-direction:column; gap:20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  section.warn { background:var(--warm); border:2px solid var(--orange); }
+  h2 { margin:0 0 12px; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:24px; line-height:1.2; }
+  h2 .n { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; background:var(--blue); color:#fff; font-size:18px; margin-right:8px; vertical-align:2px; }
+  h3 { margin:18px 0 8px; font-size:18px; font-weight:800; }
+  p { margin:0 0 10px; }
+  ol, ul { margin:0 0 10px; padding-left:1.3em; }
+  li { margin-bottom:8px; }
+  .k { color:var(--muted); font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--blue); margin-bottom:6px; }
+  section.warn .k { color:var(--warmink); }
+  b.btn { display:inline-block; background:#EEE9FA; color:#3B2A75; border-radius:6px; padding:0 6px; font-weight:800; }
+  code { background:#F1F2F6; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:15px; word-break:break-all; }
+  .chat { background:var(--chat); border-radius:18px; padding:14px; display:flex; flex-direction:column; gap:8px; margin:12px 0; }
+  .chat .msg { background:var(--bubble); color:#fff; border-radius:14px; padding:12px 14px; font-size:15px; line-height:1.45; }
+  .chat .row { display:grid; grid-template-columns:1fr; gap:6px; }
+  .chat .b { background:var(--btn); color:#fff; border-radius:10px; padding:10px; text-align:center; font-size:14px; font-weight:700; }
+  .chat .cap { color:#b3aad1; font-size:13px; }
+  .ok, .no { display:grid; grid-template-columns:1fr; gap:12px; margin-top:6px; }
+  .ok > div, .no > div { border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .ok > div { background:#F3FBF4; border-color:#BFE3C6; }
+  .no > div { background:#FBF3F3; border-color:#EBC9C9; }
+  .opt { border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; background:#fff; }
+  .opt.best { border:2px solid var(--blue); }
+  .foot { text-align:center; color:var(--muted); font-size:14px; }
+  .foot a { color:var(--muted); }
+  @media (min-width:640px) { .ok, .no { grid-template-columns:1fr 1fr; } .chat .row.two { grid-template-columns:1fr 1fr; } }
+</style>
+</head><body>
+<header class="top"><div class="in">
+  <a href="/">← К презентации про амбассадоров</a>
+  <h1>Как дать доступ девушке из маркетинга</h1>
+  <p>Для Мари. Маркетолог сама делает ссылки с метками и видит, сколько анкет пришло по каждой. Заявки, имена и контакты делегатов ей не видны.</p>
+</div></header>
+<main>
+
+<section class="warn">
+  <div class="k">Важно</div>
+  <h2>Роль появится после обновления бота</h2>
+  <p>Роли «📣 Маркетинг (метки)» в нынешнем боте РилТолка нет: он от 22 сентября. Шаги с 1 по 4 ниже работают после обновления. Дату обновления назначает владелец бота.</p>
+  <p>Если ссылки нужны раньше, смотрите блок <a href="#now">«Пока бот не обновлён»</a> внизу страницы.</p>
+</section>
+
+<section>
+  <div class="k">Что понадобится Мари</div>
+  <p>Экран выдачи ролей открывается тем, у кого есть право <b class="btn">⚙️ Настройки</b>. Если в <b class="btn">🔧 Управление</b> нет кнопки <b class="btn">👥 Роли и доступы</b>, попросите владельца бота выдать это право.</p>
+</section>
+
+<section>
+  <h2><span class="n">1</span>Девушка нажимает /start в боте</h2>
+  <p>Пусть она откроет <a href="https://t.me/realtalk_forum_bot">@realtalk_forum_bot</a> и нажмёт <b>Старт</b>. Анкету заполнять не нужно.</p>
+  <p>Это нужно по двум причинам:</p>
+  <ul>
+    <li>Бот не может написать человеку первым. Без /start она не сможет пользоваться админкой.</li>
+    <li>По @username бот ищет только тех, кто ему уже писал. Кто не нажимал /start, по нику не найдётся.</li>
+  </ul>
+  <p>Есть способ надёжнее ника: попросите её написать вам что угодно в Telegram и перешлите это сообщение боту на шаге 2. Так бот узнает её сразу. Не сработает, только если у неё в настройках Telegram скрыт аккаунт при пересылке. Тогда бот так и скажет, и можно прислать @username.</p>
+</section>
+
+<section>
+  <h2><span class="n">2</span>Мари выдаёт роль</h2>
+  <ol>
+    <li>В боте отправьте <code>/admin</code>.</li>
+    <li>Откройте <b class="btn">🔧 Управление</b> → <b class="btn">👥 Роли и доступы</b>.</li>
+    <li>Проверьте, что роль включена. Строка должна выглядеть так: <b class="btn">📣 Маркетинг (метки): ✅ Вкл → ❌ Выкл</b>. Если там «❌ Выкл → ✅ Вкл», нажмите её один раз.</li>
+    <li>Нажмите <b class="btn">➕ Добавить менеджера</b>.</li>
+    <li>Пришлите одним сообщением одно из трёх: пересланное сообщение от неё, её @username или её числовой id.</li>
+    <li>Бот покажет «Кого назначить: имя» и список ролей. Нажмите <b class="btn">📣 Маркетинг (метки)</b>.</li>
+  </ol>
+  <div class="chat">
+    <div class="msg">👥 Кого добавить менеджером?<br><br>Пришлите одним сообщением:<br>• пересланное сообщение от этого человека,<br>• его @username,<br>• или числовой telegram id.</div>
+    <div class="msg">Кого назначить: Аня Смирнова (@anya_smm)<br><i>Нажимал(а) /start, анкету пока не подавал(а).</i></div>
+    <div class="row">
+      <div class="b">🛂 Менеджер регистраций</div><div class="b">🎮 Менеджер геймификации</div><div class="b">📊 Менеджер статистики</div>
+      <div class="b">🎗 Волонтёр форума</div><div class="b">🎗 Волонтёр регистрации</div><div class="b" style="outline:3px solid #FF8B10">📣 Маркетинг (метки)</div>
+      <div class="b">❌ Отмена</div>
+    </div>
+    <div class="cap">Имя на макете придумано. Бот ответит «Добавлен», и она появится в списке людей.</div>
+  </div>
+  <p>Если бот пишет «Пользователь @… не найден в базе бота», значит, она ещё не нажала /start. Попросите её нажать и пришлите ник снова, или перешлите её сообщение.</p>
+</section>
+
+<section>
+  <h2><span class="n">3</span>Что увидит девушка и как сделать ссылку</h2>
+  <p>Она отправляет боту <code>/admin</code>. Для неё там один раздел, <b class="btn">📊 Данные</b>, а в нём две кнопки:</p>
+  <ul>
+    <li><b class="btn">🔗 Ссылки с метками</b>: список меток и сколько анкет подано по каждой. Там же кнопка <b class="btn">➕ Новая ссылка</b>.</li>
+    <li><b class="btn">📈 Источники</b>: та же статистика по источникам, включая ответы на вопрос анкеты «Откуда узнал».</li>
+  </ul>
+  <h3>Как сделать ссылку</h3>
+  <ol>
+    <li><b class="btn">🔗 Ссылки с метками</b> → <b class="btn">➕ Новая ссылка</b>.</li>
+    <li>Прислать название метки одним словом, например <code>vk_poster</code> для афиши во ВКонтакте или <code>tg_channel</code> для поста в канале.</li>
+    <li>Бот сразу пришлёт готовую ссылку. Нажатие на неё копирует ссылку. Сохранять её в боте не нужно: она уже работает.</li>
+  </ol>
+  <div class="chat">
+    <div class="msg">🔗 Ссылка с меткой <b>vk_poster</b>:<br><br><code style="background:none;border:0;color:#fff;padding:0">https://t.me/realtalk_forum_bot?start=src_vk_poster</code><br><br>Регистрации по этой ссылке появятся в разделе «🔗 Ссылки с метками».</div>
+    <div class="row"><div class="b">➕ Ещё одна ссылка</div><div class="b">🔗 К ссылкам с метками</div></div>
+  </div>
+  <h3>Как назвать метку</h3>
+  <ul>
+    <li>Только латинские буквы, цифры, «_» и «-». Без пробелов и русских букв: метка становится частью ссылки.</li>
+    <li>Не длиннее 60 символов.</li>
+    <li>Удобно называть по месту, где висит ссылка: <code>vk_poster</code>, <code>tg_channel</code>, <code>partner_hse</code>.</li>
+    <li>Если написать неправильно, бот объяснит, что не так, и попросит другое название.</li>
+  </ul>
+  <p>Метка появится в списке, когда по ней подадут первую анкету. До этого её там не будет, и это нормально. Ещё ссылку можно сделать командой <code>/create_link vk_poster</code>.</p>
+  <h3>Что ей видно, а что нет</h3>
+  <div class="ok"><div><b>Видно</b><br>Свои и чужие метки и число анкет по каждой. Ответы «Откуда узнал» числами.</div></div>
+  <div class="no"><div><b>Не видно</b><br>Заявки, имена и контакты делегатов, выгрузки, рассылки, настройки. В приложении бота эта роль ничего не открывает.</div></div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>Как убрать роль</h2>
+  <ol>
+    <li><code>/admin</code> → <b class="btn">🔧 Управление</b> → <b class="btn">👥 Роли и доступы</b>.</li>
+    <li>В списке людей найдите кнопку <b class="btn">➖ Аня Смирнова — 📣 Маркетинг (метки)</b> с её именем.</li>
+    <li>Нажмите её. Бот уберёт роль сразу, без вопроса «вы уверены?», поэтому смотрите на имя.</li>
+  </ol>
+  <p>Ссылки, которые она уже сделала, продолжат работать, и анкеты по ним будут считаться.</p>
+  <h3>Можно выдать роль на время</h3>
+  <p>Рядом с её именем в списке есть кнопка <b class="btn">⏳ Бессрочно</b>. Через неё можно задать дату, после которой роль перестанет действовать сама.</p>
+</section>
+
+<section id="now" class="warn">
+  <div class="k">Пока бот не обновлён</div>
+  <h2>Что делать сейчас</h2>
+  <p>В нынешней версии бота отдельной роли для маркетолога нет. Есть два способа.</p>
+  <div class="opt best">
+    <h3 style="margin-top:0">Способ 1. Ссылки делает Мари (рекомендуем)</h3>
+    <ul>
+      <li>Командой в боте: <code>/create_link vk_poster</code>. Бот пришлёт готовую ссылку. Команда работает у тех, у кого есть право «📋 Модерация заявок».</li>
+      <li>Или по шаблону, без бота: <code>https://t.me/realtalk_forum_bot?start=src_vk_poster</code>. Вместо <code>vk_poster</code> подставьте свою метку по тем же правилам: латиница, цифры, «_» и «-».</li>
+      <li>Сколько анкет пришло по меткам, Мари смотрит в <b class="btn">📊 Данные</b> → <b class="btn">📈 Источники</b> и пересылает девушке скрином.</li>
+    </ul>
+  </div>
+  <div class="opt">
+    <h3 style="margin-top:0">Способ 2. Роль «📊 Менеджер статистики»</h3>
+    <p>Выдаётся так же, как в шаге 2, только в конце нужно нажать <b class="btn">📊 Менеджер статистики</b>. Она будет видеть «📈 Источники».</p>
+    <p><b>Но эта роль открывает весь раздел «📊 Данные»:</b> общую статистику, выгрузку анкет в таблицу с контактами делегатов и веб-дашборд. Если это лишнее, выбирайте способ 1.</p>
+    <p>И ещё одно отличие старой версии: по @username бот найдёт её, только если она уже подала анкету. Поэтому лучше пересылать её сообщение (шаг 1).</p>
+  </div>
+  <p style="margin-top:12px">Ссылки, сделанные сейчас, после обновления продолжат работать, и их метки появятся в «🔗 Ссылки с метками».</p>
+</section>
+
+<p class="foot">РилТолк · 1 октября 2026 · <a href="/">Презентация про амбассадоров</a></p>
+</main>
+</body></html>
