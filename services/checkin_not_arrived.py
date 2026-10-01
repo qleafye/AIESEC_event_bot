@@ -27,6 +27,7 @@ from database.db import (
     CNA_COMING,
     CNA_HERE,
     checkin_not_arrived_mark_sent,
+    checkin_not_arrived_unmark,
     checkin_not_arrived_pending_ids,
     checkin_not_arrived_summary,
     get_user,
@@ -119,10 +120,21 @@ async def send(*, city: str | None, city_scope=None) -> dict:
         lang, tr_map = await i18n_service.context_cached(tid, tr_maps)
         text = tr_text(base_text, lang, tr_map)
         kb = _response_kb(day, lang, tr_map)
-        try:
-            await _sched._bot.send_message(tid, text, reply_markup=kb)
-        except Exception as e:
-            logger.error(f"checkin_not_arrived.send: доставка {tid} упала: {e}")
+        # 429 — один ретрай внутри `_safe_send`. Временный сбой снимает отметку: иначе делегат
+        # навсегда выпадал из повторного нажатия. Заблокировавший бота остаётся отмеченным —
+        # повтор ему всё равно не дойдёт.
+        permanent: list[int] = []
+
+        async def _remember(cid):
+            permanent.append(cid)
+
+        ok = await _sched._safe_send(
+            lambda cid: _sched._bot.send_message(cid, text, reply_markup=kb), tid,
+            on_permanent_failure=_remember,
+        )
+        if not ok:
+            if not permanent:
+                await checkin_not_arrived_unmark(tid, day)
             failed += 1
             continue
         sent += 1
