@@ -108,3 +108,15 @@ async def count_program_sessions(city: str | None) -> int:
         async with db.execute(sql, params) as cur:
             row = await cur.fetchone()
     return int(row[0] or 0) if row else 0
+
+
+async def today_forum_codes(day: str | None) -> list[str] | None:
+    """Города, где идёт форум в `day` (ISO, из `counter_day`): «Сегодня» счётчика прихода
+    показывает только их — Москва с форумом через месяц не стоит в «сегодня» с нулём и не
+    подмешивается в «Итого». `None`/пусто — фильтра нет (дня нет или ни у кого форума)."""
+    if not day:
+        return None
+    from datetime import date
+    from services.forum_days import forum_city_codes
+    today = date.fromisoformat(day)
+    return await forum_city_codes(today, today)

@@ -522,3 +522,32 @@ def test_checkin_point_pick_session_moved_and_outside_time_window(tmp_path):
     assert "Время скана вне интервала сессии: 1" in report2
     assert asyncio.run(db.count_checkins_by_point(f"session:{sid1}")) == 0
     assert asyncio.run(db.count_checkins_by_point(f"session:{sid2}")) == 1
+
+
+def test_counter_all_cities_today_only_cities_with_forum_today(tmp_path):
+    """«Все города» в день форума: в «Сегодня» только города, где сегодня идёт форум (как
+    счётчик сканера Mini App); Москва с форумом в другой день не стоит строкой с нулём и не
+    подмешивается в «Итого»; один город — без отдельной строки «Итого»."""
+    from services.timeutil import msk_now
+
+    _db_ready(tmp_path)
+    asyncio.run(_set_season("YL'26"))
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("city_label__spb", "СПб"))
+    asyncio.run(db.set_setting("city_label__msk", "Москва"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
+    asyncio.run(db.set_setting("forum_date__city__spb", msk_now().strftime("%d.%m.%Y")))
+    asyncio.run(db.set_setting("forum_date__city__msk", "24.09.2020"))
+    asyncio.run(_insert_user_city(1, "spb"))
+    asyncio.run(_insert_user_city(2, "spb"))
+    asyncio.run(_insert_user_city(3, "msk"))
+    asyncio.run(db.get_or_create_checkin_token(1))
+    asyncio.run(db.record_checkin(1, "entry", source="miniapp"))
+
+    cb = _FakeCallback("admin_checkin", ADMIN_ID)
+    asyncio.run(admin_checkin.show_admin_checkin(cb))
+    text = _flat_text(cb.message)[0]
+    head = text.split("\n\n🎟")[0]
+    assert "СПб: пришли 1 из 2" in head
+    assert "Москва: пришли" not in head
+    assert "Итого" not in head
