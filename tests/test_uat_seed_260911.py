@@ -194,7 +194,7 @@ def test_purge_outbox_ignores_broken_json_payload(tmp_path):
 
 # ── Экран 1: /uat → шесть состояний + отмена ────────────────────────────────────────────────
 
-def test_uat_command_shows_six_states_and_cancel(tmp_path):
+def test_uat_command_shows_all_states_and_cancel(tmp_path):
     _ready(tmp_path)
     _open_gate()
     uat_seed = _import_handlers()
@@ -204,15 +204,16 @@ def test_uat_command_shows_six_states_and_cancel(tmp_path):
 
     text, parse_mode, kb = message.answers[0]
     buttons = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert len(buttons) == 7  # шесть состояний + отмена
-    for code, _label in uat_seed._STATES:
+    # шесть общих состояний + четыре форумных + отмена
+    assert len(buttons) == len(uat_seed._STATES) + len(uat_seed._FORUM_STATES) + 1 == 11
+    for code, _label in uat_seed._STATES + uat_seed._FORUM_STATES:
         assert f"uat_st:{code}" in buttons
     assert "uat_no" in buttons
 
 
 # ── Экран 2: выбор состояния → четыре роли + строка про админа ─────────────────────────────
 
-def test_pick_state_shows_four_roles_and_admin_note(tmp_path):
+def test_pick_state_shows_all_roles_and_admin_note(tmp_path):
     _ready(tmp_path)
     _open_gate()
     uat_seed = _import_handlers()
@@ -222,7 +223,7 @@ def test_pick_state_shows_four_roles_and_admin_note(tmp_path):
 
     text, parse_mode, kb = callback.message.edits[0]
     buttons = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert len(buttons) == 5  # четыре роли + отмена
+    assert len(buttons) == len(uat_seed._ROLES_PICK) + 1 == 8  # семь ролей + отмена
     for code, _label in uat_seed._ROLES_PICK:
         assert f"uat_role:pending:{code}" in buttons
     assert "админ" in text.lower()
