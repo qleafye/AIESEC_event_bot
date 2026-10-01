@@ -10,8 +10,6 @@
 Домен (счётчики, статус, карточка, привязка, эскалация) — целиком в `services/sos.py`; здесь
 только хендлеры и рендер экрана."""
 import html as html_module
-import re
-from secret_redact import redact_secrets
 
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
@@ -351,63 +349,59 @@ async def sos_resolve(callback: types.CallbackQuery, bot: Bot, fsm_storage=None)
 
 
 # ── Пункт 3 плана: ответ орга РЕПЛАЕМ на карточку (мимо тихих часов — «это срочное») ────────
+#
+# Здесь — только ЛИЧНАЯ копия карточки (фоллбэк-веер, чат SOS не привязан или упал). Реплай на
+# карточку в самом чате SOS сюда не доходит и не должен: групповые сообщения целиком съедает
+# `handlers/group_chat.py` (он подключён раньше `admin.router`), там же и обрабатывается ответ на
+# карточку — право в чате даёт сам привязанный чат SOS, а не капа (см. докстринг там).
 
 async def is_sos_reply(message: types.Message) -> bool:
-    """Та же форма, что `handlers.admin.is_question_reply` — предикат по ФОРМЕ сообщения
-    (реплай на карточку с маркерами "🆔"+"🆘"), право перепроверяется ВНУТРИ (та же капа,
-    что несёт `ADMIN_CAPS["special:sos_reply"]`) — без этой проверки делегатский ответ на
-    похожую по форме карточку тоже совпал бы с предикатом."""
+    """Предикат по ФОРМЕ (реплай на сообщение БОТА с маркерами 🆔+🆘 и номером заявки) + капа
+    `ADMIN_CAPS["special:sos_reply"]`. Капу проверяет и `CapabilityMiddleware`
+    (`_is_sos_reply_shape`), здесь — повторно: без неё делегатский реплай на похожую по форме
+    пересылку тоже совпал бы с предикатом. Город заявки сверяется уже в хендлере — чтобы
+    менеджер другого города получил объяснение, а не тишину."""
     cap = required_capability(special="sos_reply")
     if not cap or not await has_capability(message.from_user.id, cap):
         return False
     replied = message.reply_to_message
-    if not replied or not replied.text:
+    if replied is None or not getattr(getattr(replied, "from_user", None), "is_bot", False):
         return False
-    return "🆔" in replied.text and "🆘" in replied.text
+    return sos_service.card_report_id(replied) is not None
+
+
+async def _may_answer_from_dm(user_id: int, report: dict) -> bool:
+    """В личке ответить вправе ровно те, кому карточка ушла бы веером (`services.sos.
+    _fallback_fanout`): держатели `moderate_reg` города заявки (с тем же фолбэком на всех
+    держателей/суперадминов, если в городе никого) — менеджер другого города, у которого
+    оказалась пересланная копия, ответить делегату не может."""
+    from config import config
+    from handlers.admin_caps import capability_holders
+
+    if user_id in config.ADMIN_IDS:
+        return True
+    return user_id in await capability_holders("moderate_reg", city=report.get("city"))
 
 
 @router.message(is_sos_reply)
 async def admin_reply_to_sos(message: types.Message, bot: Bot):
-    replied = message.reply_to_message
-    id_match = re.search(r"🆔\s*(\d+)", replied.text)
-    report_match = re.search(r"SOS #([0-9]+)", replied.text)
-    if not id_match or not report_match:
+    report_id = sos_service.card_report_id(message.reply_to_message)
+    if report_id is None:
         return
-    user_id = int(id_match.group(1))
-    report_id = int(report_match.group(1))
     report = await get_sos_report(report_id)
     if report is None:
+        await message.reply(f"⚠️ SOS #{report_id} не найден — возможно, его уже удалили.")
         return
-
-    admin_name = message.from_user.full_name or message.from_user.username or "Орг"
-    claimed = await claim_sos_report(report_id, message.from_user.id, admin_name)
-    if not claimed:
-        row = await get_sos_report(report_id)
-        same_claimant = (
-            row and row.get("claimed_by") == message.from_user.id and not row.get("resolved_at")
+    chat_type = getattr(message.chat, "type", None)
+    if chat_type == "private" and not await _may_answer_from_dm(message.from_user.id, report):
+        city = await sos_service.resolve_city_label(report.get("city"))
+        where = f"из города «{html_module.escape(str(city))}»" if city else "из другого города"
+        await message.reply(
+            f"⚠️ SOS #{report_id} {where}. Ответить делегату может команда этого города — "
+            "передайте им, если видите, что никто не взял."
         )
-        if not same_claimant:
-            winner = (row or {}).get("claimed_by_name") or "коллега"
-            await message.reply(f"⚠️ SOS #{report_id} уже взял(а) {winner}.")
-            return
-
-    # Пункт 3 (правка исполнения): ответ по SOS — срочный, тихие часы (services/quiet_hours.py)
-    # здесь НЕ применяются в отличие от «❓ Задать вопрос» — доставка идёт напрямую bot.send_
-    # message/copy_to, без очереди на утро.
-    header = f"🆘 <b>Ответ по SOS #{report_id}:</b>"
-    try:
-        if message.text:
-            await bot.send_message(user_id, f"{header}\n\n{message.html_text}", parse_mode="HTML")
-        else:
-            await bot.send_message(user_id, header, parse_mode="HTML")
-            await message.copy_to(user_id)
-    except Exception as e:
-        await message.reply(f"❌ Не удалось отправить ответ пользователю: {html_module.escape(redact_secrets(e))}")
         return
-
-    sos_service.cancel_escalation(report_id)
-    await message.reply("✅ Ответ отправлен пользователю.")
-    await _refresh_card(bot, report_id)
+    await sos_service.deliver_org_reply(bot, message, report)
 
 
 # ── Ревью 24.09 (находка 1/3, аудит ключей после 8c0d8af): «⚙️ Тексты и тайминги» ───────────
