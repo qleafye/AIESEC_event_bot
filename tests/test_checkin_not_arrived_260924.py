@@ -462,3 +462,17 @@ def test_send_go_all_sent_keeps_plain_report(tmp_path):
     report = cb.message.answers[-1][0]
     assert "Отправлено 1 делегатам из 1" in report
     assert "Ушло" not in report
+
+
+def test_admin_confirm_shows_message_text_and_singular(tmp_path):
+    """Приёмка 03.10: в подтверждении — сам текст, который уйдёт, и «1 делегату»."""
+    from handlers import admin_checkin as ac
+    _ready(tmp_path)
+    _run(_add_user(1))
+    _run(db.set_setting("checkin_not_arrived_text", "Ты где? <b>Ждём</b>"))
+    cb = FakeCallback("cna_send:_all", ADMIN_ID)
+    _run(ac.cna_send_confirm(cb))
+    text, _pm, _kb = cb.message.answers[-1]
+    assert "1 делегату " in text
+    assert "Ты где? <b>Ждём</b>" in text
+    assert "Уже еду" in text
