@@ -61,6 +61,7 @@ from services import regional_noshow_move as rgnm
 from services.forum_day_report import schedule_city_job as schedule_day_report_job
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
 from services.regional_noshow_move import schedule_city_job as schedule_regional_noshow_move_job
+from services.reject_rules import forum_date_for
 from services.sos import is_sos_active_for_city
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
@@ -460,7 +461,7 @@ async def _forumdaymenu_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboa
     if on:
         active_now = await is_forum_day_menu_active_for_city(code)
         lines.append("Сейчас: 🎪 форумное меню" if active_now else "Сейчас: обычное меню")
-    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
+    forum_date_set = await forum_date_for(code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — режим не включится, даже если Вкл здесь.")
 
@@ -640,7 +641,7 @@ async def _day_report_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboard
     lines = ["📊 <b>Отчёт дня форума</b>" + (f" — {html.escape(label)}" if label else "")]
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Время (каждый день форума): {t}")
-    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
+    forum_date_set = await forum_date_for(code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — отчёт не поставится, даже если Вкл здесь.")
 
@@ -801,7 +802,7 @@ async def _noshow_poll_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboar
     lines = ["❓ <b>Опрос неявившихся «почему не пришёл»</b>" + (f" — {html.escape(label)}" if label else "")]
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Время (день после форума): {t}")
-    forum_date_set = await get_setting_typed_for_city("forum_date", code) is not None
+    forum_date_set = await forum_date_for(code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.")
 
@@ -943,7 +944,7 @@ async def _regional_noshow_cfg_text_kb(code: str | None) -> tuple[str, InlineKey
     lines.append(f"Время (день после форума): {t}")
     lines.append(f"Город назначения: {html.escape(target_label)}")
     lines.append(f"Статус после переноса: {status_label}")
-    forum_date_set = bool((await get_setting_typed_for_city("forum_date", code) or "").strip())
+    forum_date_set = await forum_date_for(code) is not None
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — предложение не поставится, даже если Вкл здесь.")
     text_set = bool((await get_setting_typed_for_city("regional_noshow_offer_text", code) or "").strip())
