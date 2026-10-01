@@ -219,6 +219,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_dedupe_sheet"),
         ("group", "sheets"),
         ("screen", "sheet_logs_open", "🕓 Журналы в таблицу"),
+        ("screen", "admin_ext_forms", "📝 Внешние формы"),
         ("screen", "admin_dashboard_settings", "📊 Дашборд"),
     ]),
     ("manage", "🔧 Управление", [
