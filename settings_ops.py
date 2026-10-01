@@ -123,6 +123,11 @@ HTML_SETTINGS = {
     "amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text", "amb_tier3_text",
     "amb_tier4_text", "amb_tier5_text", "amb_tier1_waitlist_text", "amb_tier3_waitlist_text",
     "amb_tier4_waitlist_text", "amb_tier5_waitlist_text",
+    # Форумные тексты делегатам: уходят с parse_mode=HTML, один «<» ронял рассылку всему городу.
+    # Разметку и длину подписи к фото проверяет settings_validation.FORUM_HTML_KEYS.
+    "checkin_qr_broadcast_text", "checkin_qr_morning_text", "checkin_not_arrived_text",
+    "checkin_volunteer_guide_text", "forum_welcome_text", "forum_noshow_poll_question_text",
+    "forum_stats_card_caption_text",
 }
 
 

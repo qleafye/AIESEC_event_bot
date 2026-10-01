@@ -49,6 +49,80 @@ def is_command_like(value: str | None) -> bool:
     return bool(value) and bool(_COMMAND_RE.fullmatch(value.strip()))
 
 
+# Форумные тексты делегатам уходят с parse_mode=HTML (умолчание бота). Один «<» без тега
+# («паспорт обязателен <3») — и Telegram отвечает 400 на КАЖДОГО делегата города, а видно это
+# только в логе. Из бота ввод берётся как html_text («<» экранируется сам), но из Mini App
+# текст приходит как есть — поэтому разметку проверяем здесь, на обеих поверхностях.
+FORUM_HTML_KEYS = frozenset({
+    "checkin_qr_broadcast_text", "checkin_qr_morning_text", "checkin_not_arrived_text",
+    "checkin_volunteer_guide_text", "forum_welcome_text", "forum_noshow_poll_question_text",
+    "forum_stats_card_caption_text",
+})
+# Подписи к фото: Telegram режет всё, что длиннее 1024 видимых символов, — отправка падает.
+CAPTION_KEYS = frozenset({
+    "checkin_qr_broadcast_text", "checkin_qr_morning_text", "forum_stats_card_caption_text",
+})
+CAPTION_LIMIT = 1024
+_TG_TAGS = frozenset({
+    "b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "a", "code", "pre",
+    "tg-spoiler", "span", "blockquote", "tg-emoji",
+})
+_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9-]*)(\s[^<>]*)?>")
+_ENTITY_RE = re.compile(r"&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);")
+
+
+def telegram_html_error(value: str) -> str | None:
+    """Текст ошибки, если Telegram не разберёт эту HTML-разметку, иначе `None`."""
+    if "<" in _TAG_RE.sub("", value):
+        return (
+            "В тексте есть знак «&lt;» — Telegram примет его за начало тега, и сообщение не "
+            "уйдёт ни одному делегату. Уберите его или пришлите текст в боте: бот сам "
+            "превращает такие знаки в безопасные."
+        )
+    stack: list[str] = []
+    for m in _TAG_RE.finditer(value):
+        closing, tag = m.group(1), m.group(2).lower()
+        if tag not in _TG_TAGS:
+            return (
+                f"В тексте есть тег <code>&lt;{tag}&gt;</code>, который Telegram не знает, — "
+                "сообщение не отправится. Уберите угловые скобки вокруг этого слова."
+            )
+        if not closing:
+            stack.append(tag)
+        elif not stack or stack.pop() != tag:
+            return (
+                f"Тег <code>&lt;/{tag}&gt;</code> закрыт без пары — сообщение не отправится. "
+                "Проще всего прислать текст в боте, выделив жирный или курсив кнопками Telegram."
+            )
+    if stack:
+        return (
+            f"Тег <code>&lt;{stack[-1]}&gt;</code> не закрыт — сообщение не отправится. "
+            f"Добавьте <code>&lt;/{stack[-1]}&gt;</code> в конце выделения."
+        )
+    return None
+
+
+def visible_length(value: str) -> int:
+    """Сколько символов увидит делегат: без тегов, сущность (&amp;lt; и т.п.) = один символ."""
+    return len(_ENTITY_RE.sub("x", _TAG_RE.sub("", value)))
+
+
+def _forum_text_error(base: str, value: str) -> str | None:
+    if base not in FORUM_HTML_KEYS:
+        return None
+    error = telegram_html_error(value)
+    if error:
+        return error + "\n\nПришлите текст ещё раз или «-», чтобы вернуть текст по умолчанию."
+    if base in CAPTION_KEYS and visible_length(value) > CAPTION_LIMIT:
+        return (
+            f"Текст длиннее {CAPTION_LIMIT} символов ({visible_length(value)}) — это подпись к "
+            "фото, Telegram такую не отправит. Сократите текст; перевод на английский обычно "
+            "длиннее, так что оставьте запас.\n\nПришлите текст ещё раз или «-», чтобы вернуть "
+            "текст по умолчанию."
+        )
+    return None
+
+
 def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None]:
     """Вернуть `(нормализованное_значение, None)` при успехе или `(None, текст_ошибки)`
     при отказе. Текст ошибки — готовое HTML-сообщение менеджеру: что не так и пример
@@ -63,6 +137,10 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
         return value, None
 
     entry_type = entry.get("type")
+
+    forum_error = _forum_text_error(base, value)
+    if forum_error:
+        return None, forum_error
 
     if entry_type == "int":
         stripped = value.strip()
