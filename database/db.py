@@ -6934,18 +6934,25 @@ async def create_sos_report(
 
 
 async def add_sos_details(report_id: int, *, text: str | None = None,
-                           photo_file_id: str | None = None) -> None:
+                           photo_file_id: str | None = None) -> bool:
     """Режим «дописываю SOS» (`handlers/sos.py::SosReport.collecting`, D-31) — первый текст/
     фото делегата садится в карточку (`services.sos.render_card_text` снимает пометку «подробности
     ещё не прислали»); КАЖДОЕ поле — первый непустой раз побеждает (`WHERE ... IS NULL`), дальше
     сообщения делегата всё равно уходят в тред карточки (`services.sos.relay_delegate_message`),
-    просто не переписывают уже сохранённые подробности."""
+    просто не переписывают уже сохранённые подробности.
+
+    Возвращает True, если в карточку лёг именно ЭТОТ текст (`rowcount`). Решать «встанет ли мой
+    текст» по прочитанной заранее строке нельзя: два быстрых сообщения делегата обрабатываются
+    параллельно, оба видят пустые подробности, а записывается только первое — второе без этого
+    ответа терялось целиком (ни в карточке, ни в треде)."""
+    text_landed = False
     async with _connect() as db:
         if text:
-            await db.execute(
+            cursor = await db.execute(
                 "UPDATE sos_reports SET details_text = ? WHERE id = ? AND details_text IS NULL",
                 (text, report_id),
             )
+            text_landed = cursor.rowcount == 1
         if photo_file_id:
             await db.execute(
                 "UPDATE sos_reports SET details_photo_file_id = ? WHERE id = ? "
@@ -6953,6 +6960,7 @@ async def add_sos_details(report_id: int, *, text: str | None = None,
                 (photo_file_id, report_id),
             )
         await db.commit()
+    return text_landed
 
 
 async def set_sos_location(report_id: int, latitude: float, longitude: float) -> None:

@@ -382,19 +382,6 @@ def build_card_kb(report_id: int, *, claimed: bool = False):
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
-async def card_is_posted(report_id: int) -> bool:
-    """Карточка заявки где-то лежит (в чате SOS или копиями в личке) — значит, `refresh_card`
-    показал там свежие подробности и дублировать их отдельным сообщением не нужно."""
-    from database.db import list_sos_card_copies
-
-    report = await get_sos_report(report_id)
-    if report is None:
-        return False
-    if report.get("chat_id") and report.get("card_message_id"):
-        return True
-    return bool(await list_sos_card_copies(report_id))
-
-
 # ── Ревью 24.09 (находка 1): `post_card` раньше возвращал голый `bool` («ушло в чат?»), который
 # `handlers/sos.py::_finalize_sos` даже не читал — делегат слышал «Оргкомитет получил» и тогда,
 # когда карточка не дошла НИКУДА (чат упал, фоллбэк-веер разошёлся нулю получателей, например
@@ -511,21 +498,24 @@ async def record_delivery_outcome(report_id: int, result: PostCardResult) -> Non
 # (докстринг файла). `admin_sos._refresh_card` остаётся тонкой обёрткой ради обратной
 # совместимости места вызова.
 
-async def refresh_card(bot, report_id: int) -> None:
+async def refresh_card(bot, report_id: int) -> int:
     """Перерисовывает карточку в чате (если она там есть) — fail-soft: карточка могла быть
-    удалена/устареть, это не должно ронять сам вызов (дозапись делегата/захват/решение)."""
+    удалена/устареть, это не должно ронять сам вызов (дозапись делегата/захват/решение).
+
+    Возвращает, сколько копий карточки реально отредактировано: дозапись делегата по нему
+    решает, видна ли его подробность хоть где-то, или её надо слать отдельной копией."""
     from database.db import get_user
 
     from database.db import list_sos_card_copies
 
     report = await get_sos_report(report_id)
     if report is None:
-        return
+        return 0
     targets = await list_sos_card_copies(report_id)  # копии фоллбэка в личке админов
     if report.get("chat_id") and report.get("card_message_id"):
         targets.append((report["chat_id"], report["card_message_id"]))
     if not targets:
-        return
+        return 0
     user = await get_user(report["telegram_id"])
     text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
     status = report_status(report)
@@ -535,6 +525,7 @@ async def refresh_card(bot, report_id: int) -> None:
     )
     from aiogram.exceptions import TelegramRetryAfter
 
+    edited = 0
     for chat_id, message_id in targets:
         # Флуд-лимит на веере копий — пауза и один повтор, иначе копия так и останется
         # «открытой» у этого админа. Прочие ошибки (копию удалили, бота заблокировали) —
@@ -545,6 +536,7 @@ async def refresh_card(bot, report_id: int) -> None:
                     text, chat_id=chat_id, message_id=message_id,
                     parse_mode="HTML", reply_markup=kb,
                 )
+                edited += 1
             except TelegramRetryAfter as e:
                 if attempt == 0:
                     await asyncio.sleep(e.retry_after)
@@ -552,6 +544,7 @@ async def refresh_card(bot, report_id: int) -> None:
             except Exception:
                 pass
             break
+    return edited
 
 
 # ── Ответ орга РЕПЛАЕМ на карточку — общий путь для чата SOS (`handlers/group_chat.py`) и
