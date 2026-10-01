@@ -235,7 +235,7 @@ def test_hub_js_imports_person_node_from_shared_module():
 
 def test_hub_js_calls_profile_endpoint_exactly_once():
     text = _js_without_comments(HUB_JS)
-    assert text.count('api("/profile")') == 1
+    assert text.count('api("/profile"') == 1
 
 
 def test_hub_js_person_slot_created_before_promise_all_settled():

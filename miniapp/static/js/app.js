@@ -136,7 +136,9 @@ export const NAV = [
   { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
   { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game", group: "game" },
   { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
-  { hash: "#/stats", section: "stats", cap: "stats", group: "data" },
+  // Экран — статистика ГЕЙМЫ: маршрут /stats/game требует ещё и moderate_game (alsoCap).
+  // Без него плитка вела бы в «Нет доступа» — у менеджера заявок без геймы её нет.
+  { hash: "#/stats", section: "stats", cap: "stats", alsoCap: "moderate_game", group: "data" },
   { hash: "#/settings", section: "settings", cap: "settings", group: "manage" },
   // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме — первый пункт группы
   // «🎪 Событие» (SECTION_GROUPS выше её уже несла, плиток в ней раньше не было).
@@ -422,7 +424,8 @@ export function visibleNav() {
     // остальные делегатские разделы только approved-делегату.
     if (item.delegate) return item.section === "form" ? Boolean(me.form_access) : Boolean(me.is_delegate);
     if (item.staffOnly && me.is_delegate) return false;
-    return Array.isArray(me.caps) && me.caps.includes(item.cap);
+    return Array.isArray(me.caps) && me.caps.includes(item.cap)
+      && (!item.alsoCap || me.caps.includes(item.alsoCap));
   });
 }
 
