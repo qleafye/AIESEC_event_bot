@@ -70,6 +70,7 @@ from services.checkin import (
 from services.checkin_broadcast import (
     _times_for,
     broadcast_enabled_for,
+    manual_send_block_reason,
     morning_run_at,
     pending_broadcast_count,
     schedule_city_jobs,
@@ -761,12 +762,11 @@ async def checkinqr_send_confirm(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    n = await pending_broadcast_count(code)
-    if n == 0:
-        await callback.answer(
-            "Отправлять некому — все одобренные уже получили QR (или дата форума не задана).",
-            show_alert=True,
-        )
+    blocked = await manual_send_block_reason(code)
+    n = 0 if blocked else await pending_broadcast_count(code)
+    if blocked or n == 0:
+        await callback.answer(blocked or "Отправлять некому — все одобренные уже получили QR.",
+                              show_alert=True)
         return
     label = await city_label(code) if code else None
     who = f"делегатам города {label}" if label else "делегатам"
@@ -783,6 +783,9 @@ async def checkinqr_send_go(callback: types.CallbackQuery):
     code = _decode_city(callback.data.split(":", 1)[1])
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    if blocked := await manual_send_block_reason(code):  # дату могли сменить после подтверждения
+        await callback.answer(blocked, show_alert=True)
         return
     # T-12-03 (Rule 1): рассылка может занять минуты (сотни фото) — отвечаем на callback СРАЗУ
     # и правим то же сообщение, вместо того чтобы держать колбэк «в загрузке» до конца отправки
