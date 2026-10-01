@@ -386,6 +386,8 @@ _CODE_LITERALS_EN = {
     "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже 👇": "Welcome back! You're already registered — everything you need is in the menu below 👇",
     "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — большинство ответов уже заполнено, останется только подтвердить 👇": "Welcome back! You were with us at {season}. Let's update your application — most answers are already filled in, you'll just need to confirm them 👇",
     "Отлично, начинаем регистрацию.": "Great, let's start the registration.",
+    # Кнопка «🚀 Обновить анкету» под баннером возвращенца — ядро без эмодзи (приёмка 01.10).
+    "Обновить анкету": "Update my application",
     "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.": "Great, you came by a friend's invite. Let's start the registration.",
     "У тебя есть незаконченная анкета — что дальше?": "You have an unfinished application — what's next?",
     "Изменения отменены — анкета осталась прежней.": "Changes cancelled — your application stayed the same.",

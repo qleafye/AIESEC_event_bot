@@ -301,6 +301,9 @@ def code_literals() -> list[tuple[str, str]]:
         "lit:reg_resume.offer_resume",
         "У тебя есть незаконченная анкета — что дальше?",
     ))
+    # Кнопка возвращенца под баннером `/start` (`registration.py`, `rereg_start`): перевод
+    # кнопок снимает ведущий «🚀 », ищется ядро.
+    items.append(("lit:registration.rereg_start_button", "Обновить анкету"))
     items.append((
         "lit:reg_resume.reg_resume_restart_yes",
         "Изменения отменены — анкета осталась прежней.",
