@@ -292,7 +292,3 @@ async def forum_ready_refresh(callback: types.CallbackQuery):
         if "not modified" not in str(e):
             raise
     await callback.answer("Проверено")
-
-
-# Шов: правка даты/длины форума для конкретного города (кнопки светофора и выбор города).
-from handlers import admin_forum_date  # noqa: E402,F401

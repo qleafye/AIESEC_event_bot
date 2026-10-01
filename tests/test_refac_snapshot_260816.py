@@ -1291,7 +1291,6 @@ admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
 admin|callback_query|checkin_stats_csv|checkin_stats_csv
 admin|callback_query|forum_ready_open|forum_ready:*
 admin|callback_query|forum_ready_refresh|forum_ready_re:*
-admin|callback_query|forum_city_key_edit|fdate_city:*
 admin|callback_query|citymove_start|citymv_start:*
 admin|callback_query|citymove_pick_city|citymv_pick:*
 admin|callback_query|citymove_notify_toggle|citymv_notify:*
@@ -2104,10 +2103,7 @@ def test_snapshot_total_handler_count_is_292():
     # (state:ProgramPhotoUpload:*) сразу после rgnm_time_step и 2 admin.callback_query
     # (prog_photo/prog_photo_cancel) сразу после prog_view_toggle_go. Две чистые вставки
     # (2 + 2), 0 удалений, 0 реордеров (964 -> 968).
-    # 01.10 (дата форума только своя у города): шов handlers/admin_forum_date.py хвостом
-    # handlers/admin_forum_ready.py — 1 admin.callback_query (forum_city_key_edit) сразу после
-    # forum_ready_refresh. Одна чистая вставка, 0 удалений, 0 реордеров (968 -> 969).
-    assert len(GOLDEN_SNAPSHOT) == 969
+    assert len(GOLDEN_SNAPSHOT) == 968
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
