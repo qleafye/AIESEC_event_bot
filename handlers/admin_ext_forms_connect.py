@@ -9,6 +9,7 @@
 Ход мастера лежит в FSM; после рестарта бота нажатие «✅ Верно» честно просит начать заново."""
 import logging
 import secrets
+import sqlite3
 
 from aiogram import F, types
 from aiogram.filters import StateFilter
@@ -367,6 +368,19 @@ def _next_steps_rows(form_id: int, *, yandex: bool) -> list[list[InlineKeyboardB
     return rows
 
 
+async def _create_form_from_draft(platform: str, d: dict, by: int) -> int:
+    if platform == "yandex":
+        conn = await xdb.get_yandex_connection()
+        return await xdb.create_form(
+            platform="yandex", connection_id=conn["id"] if conn else None,
+            external_id=d["external_id"], title=d["title"], secret=secrets.token_urlsafe(24),
+            key_username_q=d.get("uq"), key_phone_q=d.get("pq"), created_by=by)
+    return await xdb.create_form(
+        platform="google", external_id=d["external_id"], gsheet_gid=d.get("gid"),
+        title=d["title"], secret=None, key_username_q=d.get("uq"),
+        key_phone_q=d.get("pq"), created_by=by)
+
+
 @router.callback_query(F.data == "extf_keys_ok")
 async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
     d = await state.get_data()
@@ -376,19 +390,26 @@ async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
         await _show(callback, _RESTART, _kb([_to_list()]), edit=True)
         await callback.answer()
         return
+    # Состояние чистим ДО проверки и вставки: второй быстрый тап «Верно» увидит пустое
+    # состояние и получит «начните заново», а не создаст дубль формы.
+    await state.clear()
     existing = await xdb.get_form_by_external(platform, d["external_id"], d.get("gid"))
     if existing:
         await _open_existing(callback, existing, state)
         await callback.answer()
         return
-    await state.clear()
     by = callback.from_user.id
+    try:
+        form_id = await _create_form_from_draft(platform, d, by)
+    except sqlite3.IntegrityError:
+        # Гонка с другим нажатием: форма уже создана — показываем её карточку.
+        existing = await xdb.get_form_by_external(platform, d["external_id"], d.get("gid"))
+        if existing is None:
+            raise
+        await _open_existing(callback, existing, state)
+        await callback.answer()
+        return
     if platform == "yandex":
-        conn = await xdb.get_yandex_connection()
-        form_id = await xdb.create_form(
-            platform="yandex", connection_id=conn["id"] if conn else None,
-            external_id=d["external_id"], title=d["title"], secret=secrets.token_urlsafe(24),
-            key_username_q=d.get("uq"), key_phone_q=d.get("pq"), created_by=by)
         await _show(callback,
                     "✅ Форма подключена. Подтягиваю старые ответы — они появятся в течение пары "
                     "минут, я напишу, сколько нашлось.\n\nОсталось два шага:\n"
@@ -397,10 +418,6 @@ async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
                     _kb(_next_steps_rows(form_id, yandex=True)), edit=True)
         spawn(_backfill_and_report(callback.message, form_id))
     else:
-        form_id = await xdb.create_form(
-            platform="google", external_id=d["external_id"], gsheet_gid=d.get("gid"),
-            title=d["title"], secret=None, key_username_q=d.get("uq"),
-            key_phone_q=d.get("pq"), created_by=by)
         form = await xdb.get_form(form_id)
         try:
             added = await gg.sync_google_form(form)

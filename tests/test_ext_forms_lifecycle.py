@@ -18,7 +18,7 @@ def _run(coro):
 
 def _form(title="РилТолк'Медиа", platform="yandex", answers=0, unmatched=0):
     async def go():
-        fid = await xdb.create_form(platform=platform, external_id="x1", title=title,
+        fid = await xdb.create_form(platform=platform, external_id=f"x-{title}", title=title,
                                      secret=f"s3cret-{title}")
         for i in range(answers):
             await xdb.insert_answer(

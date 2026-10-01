@@ -25,7 +25,7 @@ def _texts(kb):
 
 
 def _form(platform="yandex", title="Анкета <b>", secret="sec123"):
-    return _run(xdb.create_form(platform=platform, external_id="x1", title=title, secret=secret))
+    return _run(xdb.create_form(platform=platform, external_id=f"x-{title}", title=title, secret=secret))
 
 
 @pytest.fixture
