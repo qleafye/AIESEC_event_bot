@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 # кнопку возврата/отмену.
 _EXEMPT_CALLBACKS = {"reg_handoff:to_bot", "reg_cancel_yes", "reg_cancel_no"}
 
+# Шаг оплаты («Загрузи чек») живёт в группе Registration, но идёт ПОСЛЕ подачи анкеты — гвард
+# черновика его не касается. Раньше любая старая инлайн-кнопка на этом шаге получала «Анкета
+# уже отправлена» и снимала состояние: присланный следом чек молча не попадал в оплату.
+_PAYMENT_STATES = {"Registration:receipt_upload"}
+
 
 def _is_exempt_callback(data: str | None) -> bool:
     if not data:
@@ -72,7 +77,7 @@ class RegHandoffGuard(BaseMiddleware):
     async def __call__(self, handler, event: TelegramObject, data: dict):
         state: FSMContext = data["state"]
         raw = await state.get_state()
-        if not raw or not raw.startswith("Registration:"):
+        if not raw or not raw.startswith("Registration:") or raw in _PAYMENT_STATES:
             return await handler(event, data)
 
         # Duck-typed, а не isinstance(event, types.CallbackQuery) — так же легко проходят

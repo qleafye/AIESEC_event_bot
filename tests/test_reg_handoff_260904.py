@@ -968,3 +968,35 @@ def test_load_context_edit_kind_when_registration_date_present(tmp_path):
     resp = client.get("/app/api/reg/draft", headers=_hdr(900100))
     assert resp.status_code == 200, resp.text
     assert resp.json()["kind"] == "edit"
+
+
+def test_guard_payment_step_keeps_state_and_passes_old_buttons(tmp_path):
+    """Шаг «Загрузи чек» (Registration.receipt_upload) идёт после подачи анкеты: старая
+    инлайн-кнопка (напр. выбор языка) проходит к своему хендлеру, состояние оплаты не
+    снимается — присланный следом чек попадёт в оплату."""
+    _ready(tmp_path)
+    from handlers.reg_handoff import RegHandoffGuard
+
+    async def go():
+        await bot_db.set_setting("event_season", "2026")
+        async with bot_db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, season, status, registration_date) "
+                "VALUES (?, 'Иван', '2026', 'approved', '2026-09-01')",
+                (USER_ID,),
+            )
+            await conn.commit()
+        state = _new_state(USER_ID)
+        await state.set_state(Registration.receipt_upload)
+        callback = _FakeCallback2("lang_pick:en:menu", USER_ID)
+        data = {"state": state}
+        await RegHandoffGuard()(_handler_stub, callback, data)
+        msg = _FakeMessage2(USER_ID, text="чек")
+        data_msg = {"state": state}
+        await RegHandoffGuard()(_handler_stub, msg, data_msg)
+        return data, callback, data_msg, await state.get_state()
+
+    data, callback, data_msg, raw_state = _run(go())
+    assert "_calls" in data and "_calls" in data_msg
+    assert callback.answers == []  # нет алерта «Анкета уже отправлена»
+    assert raw_state == "Registration:receipt_upload"
