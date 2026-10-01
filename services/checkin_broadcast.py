@@ -169,9 +169,12 @@ async def schedule_city_jobs(city: str | None) -> dict:
     # Вечер накануне: прошёл, а форум завтра или позже (менеджер поздно включил) — догоняем,
     # но не позже EVENING_CATCHUP_CUTOFF; форум уже сегодня или на часах за 22:00 — вечернюю
     # не ставим, её работу сделает утренний повтор.
+    # Отработавшую вечернюю рассылку не перевзводим: сверка каждые 10 минут иначе гоняла её до
+    # 22:00 заново, и заблокировавшим бота отправка пробовалась ~24 раза.
     if ev_at <= now:
         late = now.time() >= EVENING_CATCHUP_CUTOFF
-        ev_at = now + timedelta(minutes=1) if forum_day > today and not late else None
+        done = _evening_done.get(city) == date_str
+        ev_at = now + timedelta(minutes=1) if forum_day > today and not late and not done else None
     # Утренний повтор: только в день форума и только пока его время впереди. Догон — лишь для
     # ещё не сработавшей джобы, опоздавшей не больше чем на `_MORNING_CATCHUP` (рестарт в
     # 08:01); без проверки «джоба ещё в хранилище» реконсиляция сразу после срабатывания
@@ -199,6 +202,12 @@ async def schedule_city_jobs(city: str | None) -> dict:
         "scheduled": ev_at is not None or morn_at is not None,
         "evening_at": ev_at, "morning_at": morn_at,
     }
+
+
+# Город -> дата форума, на которую вечерняя рассылка уже отработала в этом процессе. В памяти:
+# после рестарта догон сработает ещё один раз — идемпотентно (`checkin_qr_sent_ids`), а
+# заблокировавшие бота получат одну лишнюю попытку, а не по одной каждые 10 минут.
+_evening_done: dict[str | None, str] = {}
 
 
 def cancel_city_jobs(city: str | None) -> None:
@@ -265,7 +274,12 @@ async def _run_evening_job(city: str | None) -> dict:
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
     if await _wrong_day(city, 1, "evening"):
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
-    return await send_broadcast(city)
+    result = await send_broadcast(city)
+    if not result.get("already_running"):
+        date_str = await forum_date_for(city)
+        if date_str:
+            _evening_done[city] = date_str
+    return result
 
 
 async def _run_morning_job(city: str | None) -> dict:

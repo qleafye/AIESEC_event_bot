@@ -206,3 +206,55 @@ def test_caption_longer_than_1024_rejected():
     assert validate_setting_value("checkin_qr_morning_text", ok) == (ok, None)
     # Обычное сообщение (не подпись) длинным быть может.
     assert validate_setting_value("checkin_not_arrived_text", long_text) == (long_text, None)
+
+
+# ── Вечерняя рассылка QR не перевзводится каждые 10 минут после того, как отработала ─────────
+
+class _Sched:
+    def __init__(self):
+        self.jobs = {}
+
+    def get_job(self, jid):
+        return self.jobs.get(jid)
+
+    def add_job(self, fn, trigger, run_date=None, args=None, id=None, replace_existing=False, **kw):
+        self.jobs[id] = type("Job", (), {"func": fn, "next_run_time": run_date, "args": args})()
+
+    def remove_job(self, jid):
+        self.jobs.pop(jid, None)
+
+    def get_jobs(self):
+        return list(self.jobs.values())
+
+
+def test_evening_not_rearmed_after_it_ran(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _seed(7)
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "_evening_done", {})
+    calls = []
+
+    async def _send(city):
+        calls.append(city)
+        return {"sent": 0, "failed": 1, "total": 1}
+
+    monkeypatch.setattr(cb, "send_broadcast", _send)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    _run(cb._run_evening_job(None))
+    assert calls == [None]
+    fake.jobs.clear()  # date-джоба после срабатывания из хранилища уходит
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 10))
+    res = _run(cb.schedule_city_jobs(None))
+    assert res["evening_at"] is None
+    assert cb.evening_job_id(None) not in fake.jobs
+
+
+def test_evening_catches_up_when_it_never_ran(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "_evening_done", {})
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 10))
+    res = _run(cb.schedule_city_jobs(None))
+    assert res["evening_at"] == datetime(2026, 10, 2, 18, 11)
