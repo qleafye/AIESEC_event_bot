@@ -31,13 +31,21 @@ import logging
 from datetime import datetime
 
 from config import config
-from cities import city_label, city_scope, normalize_city, get_setting_typed_for_city
+from cities import (
+    cities_module_on,
+    city_label,
+    city_scope,
+    get_setting_typed_for_city,
+    normalize_city,
+    per_city_key,
+)
 from database.db import (
     create_reject_rule,
     delete_reject_rule,
     enqueue_translation,
     get_all_users_dicts,
     get_reject_rule,
+    get_setting,
     get_staff_city,
     list_reject_rules,
     update_reject_rule,
@@ -54,7 +62,7 @@ from reg_engine import (
 )
 from services.i18n import src_hash
 from settings_ops import per_city_visible_codes
-from settings_schema import get_setting_typed
+from settings_schema import _parse_setting, get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +75,35 @@ _REG_FLOW_STEPS = {step_key for step_key, _setting_key, _t in REG_FLOW}
 # Задача 1: загрузчик активных правил и дата форума
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-async def forum_date_for(event_city: str | None) -> str | None:
+async def _city_own_forum_date(event_city: str | None):
+    """Дата форума ТОЛЬКО самого города, без отката на общий `forum_date`. Модуль городов
+    выключен -> город один, его дата и есть общий ключ."""
+    if not await cities_module_on():
+        return await get_setting_typed("forum_date")
+    composed = per_city_key("forum_date", normalize_city(event_city))
+    raw = await get_setting(composed) if composed else None
+    return _parse_setting("forum_date", raw) if raw else None
+
+
+async def forum_date_for(event_city: str | None, *, inherit_common: bool = False) -> str | None:
     """Дата начала форума этого города строкой `%d.%m.%Y` — ровно тот формат, который ждёт
-    `reg_engine.evaluate_reject_rules(forum_date=...)`. Пустое значение (настройка не задана,
-    город без переопределения и без общего значения) -> `None` — тогда возрастные условия
-    (`age_on_forum_lt`) просто не сработают (D-31: «нет данных — условие не выполнено»), а не
-    уронят финал анкеты. Собственный try/except с логом: сбой чтения даты форума не имеет
-    права уронить финал анкеты делегата."""
+    `reg_engine.evaluate_reject_rules(forum_date=...)`. Пустое значение -> `None`.
+
+    По умолчанию (форумные джобы: QR, шпаргалка, опрос неявившихся, отчёт дня, меню дня
+    форума, SOS, роли «до конца форума») при включённом модуле городов читается ТОЛЬКО своя
+    дата города: общий `forum_date`, записанный с шапкой «🌍 Все города», иначе молча
+    достаётся каждому городу без своей даты — Москве уходил QR «Завтра форум!» и опрос «мы
+    тебя не видели» за чужой региональный форум. Город без своей даты = форума нет.
+
+    `inherit_common=True` — только возрастное правило автоотказа (`age_on_forum_lt`): там общая
+    дата — законный ориентир «на какой день считать возраст», и без неё условие просто не
+    сработает (D-31: «нет данных — условие не выполнено»). Собственный try/except с логом:
+    сбой чтения даты форума не имеет права уронить финал анкеты делегата."""
     try:
-        value = await get_setting_typed_for_city("forum_date", event_city)
+        if inherit_common:
+            value = await get_setting_typed_for_city("forum_date", event_city)
+        else:
+            value = await _city_own_forum_date(event_city)
     except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (D-31)
         logger.error(
             "services.reject_rules.forum_date_for: сбой чтения даты форума города %r (%s)",
@@ -549,7 +577,7 @@ async def dry_run_count(rule: dict) -> tuple[int, int]:
         total += 1
 
         if user_city not in forum_dates:
-            forum_dates[user_city] = await forum_date_for(user_city)
+            forum_dates[user_city] = await forum_date_for(user_city, inherit_common=True)
 
         result = evaluate_reject_rules(
             row, [probe_rule],

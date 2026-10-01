@@ -87,6 +87,7 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     monkeypatch.setattr(afr, "msk_now", lambda: datetime(2026, 9, 25, 12, 0))
     _patch_sched(monkeypatch, _FakeSched({"checkin_qr_evening:all": SimpleNamespace(next_run_time=run_at)}))
     _run(db.set_setting("forum_date", "03.10.2026"))
+    _run(db.set_setting("sos_active_days", "1"))  # однодневный: двухдневный подсвечен жёлтым
     _run(db.set_setting("checkin_qr_enabled", "on"))
     _run(db.add_staff(924201, "stats_manager", ADMIN_ID))
     _run(db.set_setting(role_caps_key("stats_manager"), "checkin"))
@@ -228,7 +229,7 @@ def test_second_forum_day_is_not_past(tmp_path, monkeypatch):
     """Второй день двухдневного форума — форум ещё идёт, не «дата прошла»."""
     from datetime import datetime
     text, _kb = _date_row(tmp_path, monkeypatch, "30.10.2026", datetime(2026, 10, 31, 9, 0), days=2)
-    assert "🟢 Форум: 30.10–31.10 (2 дня) — идёт сегодня" in text.splitlines()
+    assert "🟡 Форум: 30.10–31.10 (2 дня) — идёт сегодня — ⚠️ дольше одного дня" in text
 
 
 def test_forum_today_is_green_today(tmp_path, monkeypatch):
@@ -243,20 +244,18 @@ def test_future_forum_date_is_plain_green(tmp_path, monkeypatch):
     assert "🟢 Форум: 03.10 (1 день)" in text.splitlines()
 
 
-def test_two_day_forum_is_neutral_with_edit_buttons(tmp_path, monkeypatch):
-    """Длина > 1 дня — НЕ жёлтая (у Москвы два дня законно): нейтральная строка с явным
-    диапазоном и кнопками правки даты и длины, после кнопок проблемных строк."""
+def test_two_day_forum_is_yellow_with_edit_buttons(tmp_path, monkeypatch):
+    """Длина > 1 дня — жёлтая с ⚠️ (не ошибка, у Москвы два дня законно, но однодневный
+    региональный форум с длиной 2 получает лишний «день форума»): явный диапазон и кнопки
+    правки даты и длины."""
     from datetime import datetime
     text, kb = _date_row(tmp_path, monkeypatch, "30.10.2026", datetime(2026, 10, 20, 12, 0), days=2)
-    assert "🟢 Форум: 30.10–31.10 (2 дня)" in text.splitlines()
-    assert "🟡 Форум" not in text
+    assert "🟡 Форум: 30.10–31.10 (2 дня) — ⚠️ дольше одного дня" in text
     rows = [[b.callback_data for b in row] for row in kb.inline_keyboard]
     assert ["settings_edit:forum_date", "settings_edit:sos_active_days"] in rows
     edit_idx = rows.index(["settings_edit:forum_date", "settings_edit:sos_active_days"])
-    # кнопки красных строк (QR, программа) — выше «Изменить» у зелёной строки даты
-    assert rows.index(["admin_program"]) < edit_idx
     labels = [b.text for b in kb.inline_keyboard[edit_idx]]
-    assert labels == ["🗓 Изменить дату", "🗓 Сколько дней идёт"]
+    assert labels == ["🟡 🗓 Изменить дату", "🟡 🗓 Сколько дней идёт"]
 
 
 def test_days_word():

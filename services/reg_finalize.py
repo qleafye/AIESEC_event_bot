@@ -159,7 +159,7 @@ async def _auto_reject_patch(telegram_id: int, answers: dict) -> dict:
         if not rules:
             return {}
 
-        forum_date = await forum_date_for(answers.get("event_city"))
+        forum_date = await forum_date_for(answers.get("event_city"), inherit_common=True)
         result = reg_engine.evaluate_reject_rules(
             answers, rules,
             birth_date=answers.get("birth_date"), forum_date=forum_date,
