@@ -11239,16 +11239,26 @@ async def checkin_qr_mark_sent(telegram_id: int, event_city: str | None, sent_at
         return bool(cursor.rowcount)
 
 
-async def checkin_qr_sent_ids(*, city_scope=None) -> set[int]:
+async def checkin_qr_sent_ids(*, city_scope=None, sent_since: str | None = None) -> set[int]:
     """Кому УЖЕ отправлен QR (любой источник — вечерняя джоба/ручная кнопка), в границах
     `city_scope` — по СНИМКУ `checkin_qr_sends.event_city` (город на момент отправки), не по
     текущему `users.event_city`. Вызывающий (`send_broadcast`) вычитает этот набор из
-    кандидатного пула — идемпотентность рассылки: повторный запуск/рестарт не шлёт дважды."""
+    кандидатного пула — идемпотентность рассылки: повторный запуск/рестарт не шлёт дважды.
+    `sent_since` («YYYY-MM-DD HH:MM:SS») — только получившие QR впервые не раньше этого момента
+    (утренний повтор не шлёт второй раз тем, кому QR ушёл ручной рассылкой этим же утром)."""
     city_frag, city_params = _city_clause(city_scope, "event_city")
-    where = f" WHERE {city_frag}" if city_frag else ""
+    conds: list[str] = []
+    params: list = []
+    if city_frag:
+        conds.append(city_frag)
+        params.extend(city_params)
+    if sent_since:
+        conds.append("sent_at >= ?")
+        params.append(sent_since)
+    where = f" WHERE {' AND '.join(conds)}" if conds else ""
     async with _connect() as db:
         async with db.execute(
-            f"SELECT telegram_id FROM checkin_qr_sends{where}", city_params
+            f"SELECT telegram_id FROM checkin_qr_sends{where}", params
         ) as cursor:
             rows = await cursor.fetchall()
     return {int(r[0]) for r in rows}

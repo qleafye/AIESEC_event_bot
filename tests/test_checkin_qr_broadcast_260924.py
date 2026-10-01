@@ -411,11 +411,13 @@ def test_send_morning_repeat_only_unconfirmed(tmp_path, monkeypatch):
     _seed_user(UID, status="approved")
     _seed_user(UID + 1, status="approved")
     bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))  # накануне
     _run(cb.send_broadcast(None))
     assert len(bot.photos) == 2
 
     _run(cb.confirm_receipt(UID))  # UID подтвердил, UID+1 — нет
 
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))  # утро форума
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1
     assert bot.photos[-1][0] == UID + 1  # только неподтвердивший получил повтор
@@ -444,6 +446,7 @@ def test_send_morning_repeat_includes_newly_approved_and_never_sent(tmp_path, mo
     _seed_user(UID + 1, status="pending")  # ещё не одобрен на момент вечерней рассылки
     bot = _with_bot(monkeypatch)
 
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))  # накануне
     _run(cb.send_broadcast(None))
     assert len(bot.photos) == 1  # только UID получил QR вечером
     _run(cb.confirm_receipt(UID))  # UID подтвердил — не должен получить повтор
@@ -453,6 +456,7 @@ def test_send_morning_repeat_includes_newly_approved_and_never_sent(tmp_path, mo
     conn.commit()
     conn.close()
 
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))  # утро форума
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1
     assert bot.photos[-1][0] == UID + 1
@@ -879,3 +883,28 @@ def test_schedule_city_jobs_eve_2201_no_evening_morning_stays(tmp_path, monkeypa
         assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_send_morning_repeat_skips_who_got_qr_manually_this_morning(tmp_path, monkeypatch):
+    """Ручная «Разослать QR сейчас» в 07:00 дня форума — в 08:00 утренний повтор тем же людям
+    не уходит (кнопки «✅ Сохранил» у них нет, повтор был бы чистым дублем)."""
+    _ready(tmp_path)
+    _seed_user(UID, status="approved")
+    _seed_user(UID + 1, status="approved")
+    bot = _with_bot(monkeypatch)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status = 'pending' WHERE telegram_id = ?", (UID + 1,))
+    conn.commit()
+    conn.close()
+    _run(cb.send_broadcast(None))  # накануне: только UID
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status = 'approved' WHERE telegram_id = ?", (UID + 1,))
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+    _run(cb.send_broadcast(None))  # утром вручную: UID+1
+    assert [p[0] for p in bot.photos] == [UID, UID + 1]
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    result = _run(cb.send_morning_repeat(None))
+    assert result["sent"] == 1 and bot.photos[-1][0] == UID  # вечерний неподтвердивший — да
