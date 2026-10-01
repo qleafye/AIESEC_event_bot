@@ -677,9 +677,9 @@ def _venue_log():
 _DECODE_ENCODINGS = ("utf-8-sig", "utf-8", "cp1251")
 
 _ISO_DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?")
-# дата «дд.мм.гггг», «м/д/гггг» или «гггг/мм/дд», между датой и временем — пробел, «T» или «, »;
-# в конце — необязательные AM/PM (американская локаль телефона).
-_DATE_PART = r"(\d{1,2})([./])(\d{1,2})\2(\d{4})|(\d{4})[/.](\d{1,2})[/.](\d{1,2})"
+# дата «дд.мм.гггг», «м/д/гггг» или «гггг/мм/дд» (год может быть двузначным: «03.10.26»), между
+# датой и временем — пробел, «T» или «, »; в конце — необязательные AM/PM (американская локаль).
+_DATE_PART = r"(\d{1,2})([./])(\d{1,2})\2(\d{4}|\d{2})|(\d{4})[/.](\d{1,2})[/.](\d{1,2})"
 _TIME_PART = r"(\d{1,2}):(\d{2})(?::(\d{2}))?(?:[.,]\d+)?\s*(?:([AaPp])\.?[Mm]\.?)?"
 _DMY_DT_RE = re.compile(rf"^(?:{_DATE_PART})\s*(?:,\s*|\s+|T)\s*(?:{_TIME_PART})$")
 _DATE_ONLY_RE = re.compile(rf"^(?:{_DATE_PART}|(\d{{4}})-(\d{{2}})-(\d{{2}}))$")
@@ -732,9 +732,10 @@ def _date_from_groups(g: tuple, has_ampm: bool) -> tuple[int, int, int]:
     if y2:
         return int(y2), int(m2), int(d2)
     a, b = int(a), int(b)
+    year = int(y) if len(y) == 4 else 2000 + int(y)  # «03.10.26» — двузначный год
     if sep == "/" and (has_ampm or b > 12) and a <= 12:
-        return int(y), a, b
-    return int(y), b, a
+        return year, a, b
+    return year, b, a
 
 
 def _parse_cell_datetime(cell: str) -> datetime | None:
@@ -795,6 +796,22 @@ def _parse_cell_time(cell: str) -> tuple[int, int, int] | None:
     return _hour24(int(h), ampm), int(mi), int(sec or 0)
 
 
+def _row_date(cells: list[str]) -> str | None:
+    """День скана из строки, где есть только дата без времени («YYYY-MM-DD»). Год — не дальше
+    года от текущего: случайное «1.2.34» в соседней колонке не становится датой."""
+    from services.timeutil import msk_now
+    this_year = msk_now().year
+    for cell in cells:
+        ymd = _parse_cell_date(cell)
+        if not ymd or abs(ymd[0] - this_year) > 1:
+            continue
+        try:
+            return datetime(*ymd).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
 def _row_datetime(cells: list[str]) -> datetime | None:
     """Время скана из ячеек строки: дата-время одной ячейкой или дата + время соседними."""
     for cell in cells:
@@ -842,10 +859,11 @@ def _qr_pattern(tag: str) -> re.Pattern:
 def find_checkin_records(text: str, tag: str) -> list[dict]:
     """Каждый делегат, найденный в `text` (CSV/TSV/TXT/JSON — любой экспорт
     приложения-сканера): `{"qr": <строка QR>, "scanned_at": "YYYY-MM-DD HH:MM:SS" | None}`.
-    `scanned_at` — время из ячеек той же строки файла (ISO / «дд.мм.гггг[,] чч:мм[:сс]» /
+    `scanned_at` — время из ячеек той же строки файла (ISO / «дд.мм.гг[гг][,] чч:мм[:сс]» /
     «м/д/гггг чч:мм AM» / дата и время отдельными колонками / unix-эпоха); `None` — время
-    скана в файле не нашлось, вызывающий (`handlers/admin_checkin.py`) подставляет время
-    загрузки с флагом «примерное» (D-10). Дубли сводятся по токену: одна запись на делегата и
+    скана в файле не нашлось. Если в строке есть хотя бы дата — она в `"day"` («YYYY-MM-DD»);
+    день записи без даты и времени выбирает загрузка (`services.checkin_csv_import`), отметка
+    помечается «примерной» (D-10). Дубли сводятся по токену: одна запись на делегата и
     день скана (самое раннее время дня), запись без времени поглощается записью с временем."""
     if not tag or not text:
         return []
@@ -859,7 +877,7 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
         matches = list(pattern.finditer(line))
         if not matches:
             continue
-        scanned_at = None
+        scanned_at = day = None
         if len(matches) == 1:  # несколько кодов в строке (JSON одной строкой) — время не угадать
             rest = line.replace(matches[0].group(0), "")
             for delim in delimiters:
@@ -867,19 +885,26 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
                 if dt:
                     scanned_at = dt.strftime("%Y-%m-%d %H:%M:%S")
                     break
+            if scanned_at is None:
+                for delim in delimiters:
+                    day = _row_date(_line_cells(rest, delim))
+                    if day:
+                        break
         for m in matches:
-            found.append((m.group(0), m.group(1), scanned_at))
+            found.append((m.group(0), m.group(1), scanned_at, day))
 
-    timed_tokens = {token for _qr, token, scanned_at in found if scanned_at}
+    timed_tokens = {token for _qr, token, scanned_at, _day in found if scanned_at}
     records: list[dict] = []
     by_key: dict[tuple[str, str | None], dict] = {}
-    for qr, token, scanned_at in found:
+    for qr, token, scanned_at, day in found:
         if scanned_at is None and token in timed_tokens:
             continue
-        key = (token, scanned_at[:10] if scanned_at else None)
+        key = (token, scanned_at[:10] if scanned_at else day)
         rec = by_key.get(key)
         if rec is None:
             rec = {"qr": qr, "scanned_at": scanned_at}
+            if day:
+                rec["day"] = day
             by_key[key] = rec
             records.append(rec)
         elif scanned_at and scanned_at < rec["scanned_at"]:

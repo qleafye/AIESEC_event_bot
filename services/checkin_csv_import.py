@@ -3,14 +3,19 @@
 Разбор файла — `services.checkin.find_checkin_records`; хендлер бота (выбор точки, ответ на
 кнопку) — `handlers/admin_checkin.py::checkin_point_pick`. Здесь — цикл отметки и подсчёт:
 каждая запись попадает ровно в одну графу отчёта, удалённая или пересозданная сессия не
-выдаётся за «уже были», записи без времени скана перечислены отдельно (они отмечены временем
-загрузки, и если файл грузят на следующий день — вход ляжет на день загрузки)."""
+выдаётся за «уже были», записи без времени скана перечислены отдельно.
+
+День записи без времени: дата в строке есть — полдень этой даты; даты нет, а точка — вход —
+полдень первого дня форума города делегата (если загрузка не в этот же день — иначе файл,
+загруженный 04.10, клал вход на 04.10); иначе — время загрузки. Всё такое помечено
+«примерным» и отдельной строкой отчёта."""
 from __future__ import annotations
 
 import html
 
 from cities import city_label_or_none, normalize_city
 from services import checkin_forum_day
+from services import timeutil
 from services.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
 from services.program import scanned_outside_session_window
 
@@ -39,6 +44,7 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
     res = {
         "new": 0, "duplicate": 0, "moved": 0, "outside": 0, "day_mismatch": 0,
         "other_city": 0, "point_gone": 0, "untimed": 0, "off_day": 0, "flagged": [],
+        "date_only": 0, "forum_day_assumed": 0,
     }
     for rec in records:
         parsed = parse_qr_payload(rec["qr"])
@@ -50,8 +56,9 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
             res["other_city"] += 1
             continue
         approx = rec["scanned_at"] is None
+        scanned_at, untimed_kind = await _untimed_stamp(rec, user, point) if approx else (rec["scanned_at"], None)
         result = await record_arrival(
-            user, point, source="csv", scanned_at=rec["scanned_at"], approx=approx,
+            user, point, source="csv", scanned_at=scanned_at, approx=approx,
             by_staff_id=staff_id, bot=bot,
         )
         status = result["status"]
@@ -62,7 +69,7 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
             res["point_gone"] += 1
             continue
         if approx:
-            res["untimed"] += 1
+            res[untimed_kind] += 1
         if point == ENTRY_POINT and status == "new" and await checkin_forum_day.off_day_for_scan(user, result.get("scanned_at")):
             res["off_day"] += 1
         if result.get("day_mismatch"):
@@ -80,6 +87,17 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
     res["wrong_city"] = sum(1 for reason, _row in flagged if reason not in labels.values())
     res["not_approved"] = len(flagged) - res["not_found"] - res["replaced"] - res["wrong_city"]
     return res
+
+
+async def _untimed_stamp(rec: dict, user: dict, point: str) -> tuple[str | None, str]:
+    """Время записи без времени скана и графа отчёта (см. докстринг модуля)."""
+    if rec.get("day"):
+        return f"{rec['day']} 12:00:00", "date_only"
+    if point == ENTRY_POINT and str(user.get("event_city") or "").strip():
+        window = await checkin_forum_day.forum_window(normalize_city(user.get("event_city")))
+        if window and timeutil.msk_now().date() != window[0]:
+            return f"{window[0]:%Y-%m-%d} 12:00:00", "forum_day_assumed"
+    return None, "untimed"
 
 
 async def report_lines(res: dict, *, row_limit: int) -> list[str]:
@@ -106,6 +124,16 @@ async def report_lines(res: dict, *, row_limit: int) -> list[str]:
     if res["untimed"]:
         lines.append(
             f"⚠️ Без времени скана в файле: {res['untimed']} — отмечены временем загрузки (примерно)."
+        )
+    if res.get("date_only"):
+        lines.append(
+            f"⚠️ В файле только дата, без времени: {res['date_only']} — отмечены полднем этой даты (примерно)."
+        )
+    if res.get("forum_day_assumed"):
+        lines.append(
+            f"⚠️ Без даты и времени в файле: {res['forum_day_assumed']} — вход поставлен на первый день "
+            "форума города делегата, полдень (примерно). Если сканировали в другой день — проверьте "
+            "в «📓 Журнал площадки»."
         )
     if res["off_day"]:
         lines.append(

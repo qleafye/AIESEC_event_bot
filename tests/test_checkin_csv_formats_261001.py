@@ -106,3 +106,14 @@ def test_cp1251_still_read():
     data = f"time;text\n03.10.2026 10:15;{Q1}\n".encode("cp1251", errors="replace")
     text = decode_scan_export(data)
     assert "Иванов" in text
+
+
+def test_two_digit_year_is_read():
+    assert _pairs(f"time,text\n03.10.26 10:15,{Q1}\n") == [("AbC-d_12345", "2026-10-03 10:15:00")]
+
+
+def test_date_only_row_keeps_its_day():
+    recs = find_checkin_records(f"date,text\n03.10.2026,{Q1}\n03.10.26,{Q1}\n", TAG)
+    assert [(r["scanned_at"], r.get("day")) for r in recs] == [(None, "2026-10-03")]
+    stray = find_checkin_records(f"a,text\n1.2.34,{Q1}\n", TAG)  # не похоже на дату форума
+    assert stray[0]["scanned_at"] is None and "day" not in stray[0]
