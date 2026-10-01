@@ -188,6 +188,52 @@ def test_group_reply_to_non_bot_message_with_markers_is_ignored(tmp_path):
     assert bot.sent_to(DELEGATE_ID) == []
 
 
+# ── «🙋 Беру» / «✅ Решено» в чате SOS ───────────────────────────────────────────────────────
+
+def test_claim_button_works_for_sos_chat_member_without_rights(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(STRANGER_ID, _card(GROUP, report["id"]), f"sos_claim:{report['id']}"))
+    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] == STRANGER_ID
+    assert "Взято." in bot.alerts()
+
+
+def test_member_who_claimed_can_then_reply(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _reply_update(STRANGER_ID, GROUP, card, "Бегу к тебе", update_id=2),
+        )
+    delivered = bot.sent_to(DELEGATE_ID)
+    assert delivered and "Бегу к тебе" in delivered[0]
+
+
+def test_resolve_button_works_for_sos_chat_member_without_rights(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(STRANGER_ID, _card(GROUP, report["id"]), f"sos_resolve:{report['id']}"))
+    assert asyncio.run(db.get_sos_report(report["id"]))["resolved_by"] == STRANGER_ID
+
+
+def test_claim_button_in_foreign_chat_is_refused_with_explanation(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _button_update(STRANGER_ID, _card(OTHER_GROUP, report["id"]), f"sos_claim:{report['id']}"))
+    assert asyncio.run(db.get_sos_report(report["id"]))["claimed_by"] is None
+    assert any(a and "не из чата SOS" in a for a in bot.alerts())
+
+
 # ── Личная копия карточки (фоллбэк без чата SOS) ────────────────────────────────────────────
 
 def test_dm_reply_from_superadmin_reaches_delegate(tmp_path):
