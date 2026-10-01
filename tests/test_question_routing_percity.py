@@ -396,3 +396,23 @@ def test_new_application_notification_routes_to_delegate_city_manager(tmp_path, 
     assert SPB_MANAGER_ID in recipients
     assert UNBOUND_MANAGER_ID in recipients
     assert MSK_MANAGER_ID not in recipients
+
+
+def test_question_card_marks_english_reader(tmp_path):
+    """Карточка «❓ Новый вопрос» говорит, что делегат читает бота по-английски (как карточка
+    SOS) — иначе менеджер ответит по-русски. Русскому делегату строки нет."""
+    from handlers import user_actions as ua_mod
+
+    _roles_ready(tmp_path)
+    _add_delegate(DELEGATE_ID, "spb")
+    asyncio.run(db.set_user_lang(DELEGATE_ID, "en"))
+    bot = FakeBot()
+    message = FakeMessage(text="When is the deadline?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, _fresh_state(DELEGATE_ID), bot))
+    assert bot.sent and all("Читает бота на английском" in t for _c, t in bot.sent)
+
+    asyncio.run(db.set_user_lang(DELEGATE_ID, "ru"))
+    bot = FakeBot()
+    message = FakeMessage(text="Когда дедлайн?", user_id=DELEGATE_ID)
+    asyncio.run(ua_mod.process_question(message, _fresh_state(DELEGATE_ID), bot))
+    assert bot.sent and not any("английском" in t for _c, t in bot.sent)
