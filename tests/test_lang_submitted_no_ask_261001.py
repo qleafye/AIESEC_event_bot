@@ -90,3 +90,22 @@ def test_rejected_without_lang_still_asked(tmp_path):
         assert await reg_lang.offer_language(_Msg(UID, "ru"), _state()) is True
 
     asyncio.run(go())
+
+
+def test_menu_lang_button_for_submitted_delegate_asks_bot_language(tmp_path):
+    """Кнопка «🌐 Язык / Language» у подавшего анкету — про язык бота, не анкеты."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await _enable("on")
+        newcomer = _Msg(UID, "ru")
+        await reg_lang.menu_lang_open(newcomer)
+        await db.add_user({"telegram_id": UID, "full_name": "Иванов Иван", "registration_date": "2026-03-01 10:00:00"})
+        await db.set_user_status(UID, "approved")
+        submitted = _Msg(UID, "ru")
+        await reg_lang.menu_lang_open(submitted)
+        return newcomer.sent, submitted.sent
+
+    newcomer, submitted = asyncio.run(go())
+    assert newcomer == ["Выберите язык анкеты / Choose the form language"]
+    assert submitted == ["Выберите язык / Choose language"]
