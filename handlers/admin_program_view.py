@@ -28,6 +28,7 @@ from services.program import (
     PROGRAM_PHOTO_KEY, PROGRAM_VIEW_KEY, own_program_photo, resolve_program_content,
     resolve_program_view,
 )
+from database.db import get_setting
 from settings_audit import delete_setting_by_admin, set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA
 
@@ -99,11 +100,21 @@ async def program_rows(code: str, back_to: str) -> tuple[str, list[list[InlineKe
     photo_status = f"🖼 Фото программы{where}: " + ("✅ загружено" if own else "не загружено")
     if not own and shown == "photo":
         photo_status += " (делегаты видят общее фото)"
+    elif not own and per_city and await get_setting(PROGRAM_PHOTO_KEY):
+        # Общее фото (загружено до того, как фото стало своим у города) городу с сессиями не
+        # показывается — без этой строки менеджер считал бы, что фото на месте.
+        photo_status += (" — общее фото делегатам этого города не показывается, у него есть "
+                         "сессии. Нужна картинка — загрузите фото для города")
     photo_button = InlineKeyboardButton(
         text=f"📷 {'Заменить' if own else 'Загрузить'} фото программы{where}",
         callback_data=f"prog_photo:{code}:{back_to}",
     )
-    return f"{view_status}\n{photo_status}", [[view_button], [photo_button]]
+    rows = [[view_button], [photo_button]]
+    if own:
+        rows.append([InlineKeyboardButton(
+            text=f"🗑 Убрать фото программы{where}", callback_data=f"prog_photo_del:{code}:{back_to}",
+        )])
+    return f"{view_status}\n{photo_status}", rows
 
 
 @router.callback_query(F.data.startswith("prog_photo:"))
@@ -146,6 +157,49 @@ async def prog_photo_cancel(callback: types.CallbackQuery, state: FSMContext):
     text, kb = await _back_screen(callback.from_user.id, code, back_to)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Отменено")
+
+
+def _photo_keys(code: str | None, per_city: bool) -> tuple[str | None, str | None]:
+    if per_city and code:
+        return per_city_key(PROGRAM_PHOTO_KEY, code), per_city_key("program_caption", code)
+    return PROGRAM_PHOTO_KEY, "program_caption"
+
+
+@router.callback_query(F.data.startswith("prog_photo_del:"))
+async def prog_photo_del_ask(callback: types.CallbackQuery):
+    """«🗑 Убрать фото программы» — подтверждение с тем, что увидят делегаты после."""
+    _prefix, code, back_to = callback.data.split(":", 2)
+    per_city = await cities_module_on()
+    where = f" города «{html.escape(await city_label(code))}»" if per_city else ""
+    text = (
+        f"🗑 Убрать фото программы{where}?\n\nКартинка и её подпись удалятся. Делегаты увидят "
+        "таблицу сессий, если она заведена"
+        + (", иначе — общее фото программы, если оно есть." if per_city else ".")
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, убрать фото", callback_data=f"prog_photo_delgo:{code}:{back_to}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"prog_photo_cancel:{code}:{back_to}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_photo_delgo:"))
+async def prog_photo_del_go(callback: types.CallbackQuery):
+    from handlers.admin_program import _city_allowed
+
+    _prefix, code, back_to = callback.data.split(":", 2)
+    per_city = await cities_module_on()
+    photo_key, caption_key = _photo_keys(code, per_city)
+    if photo_key is None or caption_key is None or (
+            per_city and not await _city_allowed(callback.from_user.id, code)):
+        await callback.answer("Этот город вам недоступен.", show_alert=True)
+        return
+    await delete_setting_by_admin(callback.from_user.id, photo_key)
+    await delete_setting_by_admin(callback.from_user.id, caption_key)
+    await callback.answer("Фото программы убрано.")
+    text, kb = await _back_screen(callback.from_user.id, code, back_to)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(ProgramPhotoUpload.waiting, F.photo)

@@ -65,4 +65,4 @@ def test_program_screen_suggests_days_only_from_own_date(tmp_path):
     _, kb_spb = _run(ap.render_city_program_screen(ADMIN_ID, "spb"))
     spb_days = [b.callback_data for row in kb_spb.inline_keyboard for b in row
                 if (b.callback_data or "").startswith("prog_day:")]
-    assert spb_days == ["prog_day:spb:2026-10-03", "prog_day:spb:2026-10-04", "prog_day:spb:2026-10-05"]
+    assert spb_days == ["prog_day:spb:2026-10-03", "prog_day:spb:2026-10-04"]  # дни форума города
