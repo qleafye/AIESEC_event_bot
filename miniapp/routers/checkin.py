@@ -363,6 +363,31 @@ async def _training_preview(
     return await checkin_training.as_training_point({**res, **_person_fields(user)}, lang, tr_map)
 
 
+# Дата форума введена неверно — вход отклоняется весь день. Обход только у менеджера
+# регистраций (moderate_reg) и суперадмина: кнопка «Отметить всё равно» на жёлтой плашке,
+# с подтверждением; волонтёру — подсказка позвать менеджера.
+_DAY_OVERRIDE_CAP = "moderate_reg"
+_DAY_OVERRIDE_HINT = "Если день форума указан в настройках неверно — позовите менеджера: он может отметить всё равно."
+
+
+def _can_override_day(request: Request, p: Principal) -> bool:
+    return _DAY_OVERRIDE_CAP in p.caps or p.telegram_id in (request.app.state.cfg.admin_ids or ())
+
+
+async def _entry_denial(request: Request, p: Principal, bound: str | None, user: dict, *, force_day: bool = False) -> dict | None:
+    denial = await _entry_city_denial(bound, user)
+    if denial is not None:
+        return denial
+    can_override = _can_override_day(request, p)
+    if force_day and can_override:
+        logger.info("checkin: %s отметил вход вопреки дню форума (делегат %s)", p.telegram_id, user.get("telegram_id"))
+        return None
+    denial = await checkin_forum_day.entry_day_denial(user)
+    if denial is not None:
+        denial = {**denial, "day_override": True} if can_override else {**denial, "hint": _DAY_OVERRIDE_HINT}
+    return denial
+
+
 async def _with_city_emphasis(res: dict, bound: str | None) -> dict:
     """Сегодня форум в нескольких городах, а волонтёр без привязки к городу — на успешной
     плашке город делегата крупно: так видно делегата чужого города у стойки."""
@@ -438,7 +463,7 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
         }
 
     if not point.startswith("session:"):
-        entry_denial = await _entry_city_denial(bound, user) or await checkin_forum_day.entry_day_denial(user)
+        entry_denial = await _entry_denial(request, p, bound, user)
         if entry_denial is not None:
             await _log_denial(p, bound, entry_denial["status"], point=point, source="miniapp", user=user)
             return {**entry_denial, **_person_fields(user)}
@@ -455,6 +480,7 @@ class ManualBody(BaseModel):
     telegram_id: int
     point: str = ENTRY_POINT
     city: str | None = None
+    force_day: bool = False  # «Отметить всё равно» менеджера — без права игнорируется
 
 
 @router.post("/app/api/checkin/manual")
@@ -493,7 +519,7 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
         }
 
     if not point.startswith("session:"):
-        entry_denial = await _entry_city_denial(bound, user) or await checkin_forum_day.entry_day_denial(user)
+        entry_denial = await _entry_denial(request, p, bound, user, force_day=body.force_day)
         if entry_denial is not None:
             await _log_denial(p, bound, entry_denial["status"], point=point, source="manual", user=user)
             return {**entry_denial, **_person_fields(user)}
