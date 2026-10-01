@@ -34,6 +34,7 @@ from database.db import (
     set_staff_city,
     set_staff_expiry,
 )
+from services.person_label import msk_stamp_from_utc_iso, person_label
 from services.person_search import search_people
 from services.staff_reach import mark_text, superadmin_lines, unreachable_marks
 from services.staff_expiry import (
@@ -472,12 +473,10 @@ async def render_roles_text() -> str:
     for row in staff:
         tid = row["telegram_id"]
         role_label = ROLES.get(row["role"], {}).get("label", row["role"])
-        # Manager isn't necessarily a registered delegate (Task 1 read_first note) — fall back
-        # to the bare id when `users` has no matching row.
-        user = await get_user(tid)
-        name = (user.get("full_name") or user.get("username")) if user else None
-        name = html_module.escape(str(name or tid))
-        line = f"• {name} — {role_label} (добавил {row.get('added_by')}, {row.get('added_at')})"
+        # Имя и @username вместо голого id; кто и когда выдал — тоже словами, время по Москве.
+        name = html_module.escape(await person_label(tid))
+        by = html_module.escape(await person_label(row["added_by"])) if row.get("added_by") else "—"
+        line = f"• {name} — {role_label} (выдал(а) {by}, {msk_stamp_from_utc_iso(row.get('added_at'))})"
         if show_city:
             city = row.get("city")
             city_text = await city_label(city) if city else "🌍 Все города"
@@ -489,8 +488,8 @@ async def render_roles_text() -> str:
     lines.extend(superadmin_lines(marks))
 
     lines.append("")
-    admins_text = ", ".join(str(a) for a in config.ADMIN_IDS)
-    lines.append(f"<i>Суперадмины из .env ({admins_text}) имеют все права всегда и не снимаются из бота.</i>")
+    admins_text = html_module.escape(", ".join([await person_label(a) for a in config.ADMIN_IDS]))
+    lines.append(f"<i>Суперадмины ({admins_text}) имеют все права всегда; их список задаёт разработчик, из бота не снять.</i>")
     lines.append("⚠️ Право «⚙️ Настройки» включает управление ролями — выдавайте его как равнозначное админскому.")
     return "\n".join(lines)
 
@@ -518,9 +517,7 @@ async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMa
         tid = row["telegram_id"]
         role = row["role"]
         role_label = ROLES.get(role, {}).get("label", role)
-        user = await get_user(tid)
-        name = (user.get("full_name") or user.get("username")) if user else None
-        name = str(name or tid)
+        name = await person_label(tid)
         row_buttons = [InlineKeyboardButton(
             text=f"➖ {name} — {role_label}", callback_data=f"roles_del:{tid}:{role}",
         )]
@@ -875,14 +872,11 @@ async def _render_role_assign_screen(telegram_id: int) -> tuple[str, InlineKeybo
     `roles_add_person`) и прямого входа с карточки `/find` для человека, который нажимал
     /start, но анкету не подал (Phase 33, задача 2, `roles_add_for`, `handlers/admin.py::
     cmd_find_user`), — уже известным `telegram_id`, без повторного текстового ввода."""
-    user = await get_user(telegram_id)
-    if user is not None:
-        display_name, note = user.get("full_name") or user.get("username"), ""
-    else:
-        reg_started_person = await get_reg_started_by_id(telegram_id)
-        display_name = reg_started_person.get("username") if reg_started_person else None
-        note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>" if reg_started_person else ""
-    display_name = html_module.escape(str(display_name or telegram_id))
+    # Имя + @username: при одинаковых ФИО видно, того ли человека нашли.
+    note = ""
+    if await get_user(telegram_id) is None and await get_reg_started_by_id(telegram_id):
+        note = "\n\n<i>Нажимал(а) /start, анкету пока не подавал(а).</i>"
+    display_name = html_module.escape(await person_label(telegram_id))
 
     buttons = [
         [InlineKeyboardButton(text=meta["label"], callback_data=f"roles_addrole:{telegram_id}:{role}")]

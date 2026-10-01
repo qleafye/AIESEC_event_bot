@@ -285,3 +285,38 @@ def test_days_editor_shows_default_number(tmp_path):
     assert "Как везде. Общее значение: <i>по умолчанию — 2</i>" in text
     text, _kb = asyncio.run(admin_settings._settings_edit_screen("sos_active_days", None))
     assert "Сейчас: <i>по умолчанию — 2</i>" in text
+
+
+# ── «👥 Роли и доступы»: имена вместо id, МСК вместо UTC ISO, без служебных слов ─────────────
+
+def test_roles_screen_human_names_and_msk_time(tmp_path):
+    from handlers import admin_roles
+    _seed_spb(tmp_path)
+
+    async def _setup():
+        async with db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, username, status) VALUES (?, ?, ?, ?)",
+                (555, "Иван Петров", "@ivanp", "approved"),
+            )
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, username, status) VALUES (?, ?, ?, ?)",
+                (ADMIN_ID, "Главный Админ", "boss", "approved"),
+            )
+            await conn.commit()
+        await db.add_staff(555, "volunteer", ADMIN_ID)
+        async with db._connect() as conn:
+            await conn.execute("UPDATE staff SET added_at=? WHERE telegram_id=555", ("2026-09-10T21:42:46.483078",))
+            await conn.commit()
+    asyncio.run(_setup())
+
+    text = asyncio.run(admin_roles.render_roles_text())
+    assert "Phase" not in text and ".env" not in text
+    assert "Иван Петров (@ivanp)" in text
+    assert "выдал(а) Главный Админ (@boss), 11.09.2026 00:42 МСК" in text
+    assert "2026-09-10T" not in text
+    kb = asyncio.run(admin_roles.build_roles_keyboard())
+    assert any(b.text.startswith("➖ Иван Петров (@ivanp)") for row in kb.inline_keyboard for b in row)
+
+    text, _kb = asyncio.run(admin_roles._render_role_assign_screen(555))
+    assert text.startswith("Кого назначить: Иван Петров (@ivanp)")

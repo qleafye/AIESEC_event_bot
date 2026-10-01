@@ -57,7 +57,7 @@ CAP_LABELS = {
     "broadcast": "📢 Рассылки",
     "settings": "⚙️ Настройки",
     "stats": "📊 Статистика",
-    "checkin": "✅ Чек-ин (с Phase 12)",
+    "checkin": "✅ Отметки на форуме (чек-ин)",
     "checkin_approve": "📝 Одобрение на месте",
 }
 
