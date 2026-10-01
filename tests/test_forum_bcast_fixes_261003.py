@@ -392,3 +392,48 @@ def test_manual_send_block_reasons(tmp_path, monkeypatch):
     _run(db.set_setting("sos_active_days", "1"))
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 12, 0))
     assert "прошёл" in _run(cb.manual_send_block_reason(None))
+
+
+# ── В день форума QR и приветствие приходят с главным меню (кнопка «🆘 SOS») ─────────────────
+
+def _reply_texts(markup):
+    from aiogram.types import ReplyKeyboardMarkup
+    assert isinstance(markup, ReplyKeyboardMarkup), markup
+    return [b.text for row in markup.keyboard for b in row]
+
+
+def test_morning_repeat_carries_main_menu_with_sos(tmp_path, monkeypatch):
+    import services.sos as sos_mod
+    _ready(tmp_path)
+    _run(db.set_setting("sos_chat_id", "-100500"))
+    _seed(7)
+    bot = PhotoBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    monkeypatch.setattr(sos_mod, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    _run(cb.send_morning_repeat(None))
+    texts = _reply_texts(bot.photos[0][2])
+    assert any("SOS" in t for t in texts), texts
+
+
+def test_evening_qr_keeps_confirm_button(tmp_path, monkeypatch):
+    from aiogram.types import InlineKeyboardMarkup
+    _ready(tmp_path)
+    _seed(7)
+    bot = PhotoBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    _run(cb.send_broadcast(None))
+    assert isinstance(bot.photos[0][2], InlineKeyboardMarkup)
+
+
+def test_welcome_after_checkin_carries_main_menu(tmp_path, monkeypatch):
+    import services.forum_welcome as fw
+    _ready(tmp_path)
+    _seed(7)
+    _run(db.set_setting("forum_welcome_enabled", "on"))
+    bot = TextBot()
+    _run(fw._on_first_entry(bot, 7, None, "2026-10-03", source="miniapp",
+                            scanned_at="2026-10-03 09:15:00"))
+    assert bot.sent, "приветствие не ушло"
+    _reply_texts(bot.sent[0][2])
