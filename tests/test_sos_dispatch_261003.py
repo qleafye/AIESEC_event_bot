@@ -386,3 +386,54 @@ def test_group_reply_to_unrelated_bot_message_is_ignored(tmp_path):
         _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _bot_copy(GROUP, 99999, "Всем привет"), "ок"))
     assert bot.sent_to(DELEGATE_ID) == []
     assert bot.sent_to(SOS_CHAT_ID) == []
+
+
+# ── Реплай на уже решённую карточку ─────────────────────────────────────────────────────────
+
+def test_group_reply_after_resolve_by_who_led_it_is_delivered_and_marked(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _button_update(STRANGER_ID, card, f"sos_resolve:{report['id']}", update_id=2),
+            _reply_update(STRANGER_ID, GROUP, card, "и забери бейдж на стойке Б", update_id=3),
+        )
+    delivered = [t for t in bot.sent_to(DELEGATE_ID) if "стойке Б" in t]
+    assert delivered and "SOS #" in delivered[0]
+    row = asyncio.run(db.get_sos_report(report["id"]))
+    assert row["post_resolve_reply_at"] and row["post_resolve_reply_by_name"]
+    assert any("после решения" in t for t in bot.sent_to(SOS_CHAT_ID))
+    text = sos_service.render_card_text(row, None)
+    assert "💬 Ответ после решения:" in text
+
+
+def test_group_reply_after_resolve_by_someone_else_is_not_delivered(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_resolve:{report['id']}", update_id=1),
+            _reply_update(ADMIN_ID, GROUP, card, "молодцы!", update_id=2),
+        )
+    assert not any("молодцы" in t for t in bot.sent_to(DELEGATE_ID))
+    assert asyncio.run(db.get_sos_report(report["id"]))["post_resolve_reply_at"] is None
+    assert any("уже решён" in t for t in bot.sent_to(SOS_CHAT_ID))
+
+
+def test_dm_reply_after_resolve_is_delivered(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report(bind_chat=False))
+    asyncio.run(db.resolve_sos_report(report["id"], MANAGER_ID, "Коллега"))
+    dm = Chat(id=ADMIN_ID, type="private")
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(ADMIN_ID, dm, _card(dm, report["id"]), "забери бейдж"))
+    assert any("забери бейдж" in t for t in bot.sent_to(DELEGATE_ID))
+    assert asyncio.run(db.get_sos_report(report["id"]))["post_resolve_reply_by_name"]

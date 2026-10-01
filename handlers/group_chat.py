@@ -357,7 +357,17 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
 
     uid = message.from_user.id
     claimed_by = report.get("claimed_by")
-    if not report.get("resolved_at"):
+    if report.get("resolved_at"):
+        # Решённый SOS: дописать делегату (ответ уйдёт с пометкой на карточке) может тот,
+        # кто его вёл или закрыл, — поздравления команды на закрытой карточке не уходят.
+        if uid not in (claimed_by, report.get("resolved_by")):
+            who = html.escape(str(report.get("claimed_by_name") or report.get("resolved_by_name") or "коллега"))
+            await message.reply(
+                f"⚠️ Ответ не отправлен: SOS #{report['id']} уже решён. Дописать делегату "
+                f"после решения может {who} — он(а) вёл(а) этот SOS."
+            )
+            return
+    else:
         if claimed_by is None:
             await message.reply(
                 f"⚠️ Ответ не отправлен: SOS #{report['id']} ещё никто не взял. Сначала нажмите "
