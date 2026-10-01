@@ -230,3 +230,23 @@ def test_clear_city_date_confirm_names_what_turns_off(tmp_path):
     assert "как везде" not in cbq.message.text.lower()
     cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
     assert "settings_reset_city_go:forum_date:spb" in cbs
+
+
+def test_clear_city_date_go_says_date_erased_not_as_everywhere(tmp_path):
+    """После «🗑 Да, стереть дату» ответ «дата стёрта», а не «как везде» — общей даты у
+    города нет. У обычной городской настройки — по-прежнему «как везде»."""
+    from cities import set_admin_city
+    from handlers.admin_settings import settings_reset_city_go
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, "spb"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    cbq = FakeCallback("settings_reset_city_go:forum_date:spb", user_id=ADMIN_ID)
+    _run(settings_reset_city_go(cbq))
+    answer = cbq.answers[-1][0]
+    assert "дата стёрта" in answer and "как везде" not in answer
+    assert _run(db.get_setting("forum_date__city__spb")) in (None, "")
+    _run(db.set_setting("start_text__city__spb", "свой"))
+    cbq = FakeCallback("settings_reset_city_go:start_text:spb", user_id=ADMIN_ID)
+    _run(settings_reset_city_go(cbq))
+    assert "как везде" in cbq.answers[-1][0]
