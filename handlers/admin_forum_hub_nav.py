@@ -46,14 +46,34 @@ async def sees_all_cities(admin_id: int) -> bool:
     from cities import city_codes
     return set(city_codes()) <= set(await settings_ops.per_city_visible_codes(admin_id))
 HUB_BACK_TEXT = "◀️ К «Форум: функции»"
+_OPEN_PREFIX = "forumfn_open:"
 
 
 def _hub_back_cb(markup: InlineKeyboardMarkup | None) -> str | None:
+    """Кнопка возврата в хаб на экране. Вложенный экран (подтверждение «↩️ Все как везде»,
+    «🎭 Оформление») несёт вместо неё возврат на родной экран «из хаба»
+    (`forumfn_open:<экран>:<город>`) — по нему город хаба тоже известен."""
     for row in getattr(markup, "inline_keyboard", None) or []:
         for b in row:
-            if (b.callback_data or "").startswith(HUB_BACK_PREFIX):
-                return b.callback_data
+            cb = b.callback_data or ""
+            if cb.startswith(HUB_BACK_PREFIX):
+                return cb
+            if cb.startswith(_OPEN_PREFIX) and cb.count(":") >= 2:
+                return HUB_BACK_PREFIX + cb.split(":", 2)[2]
     return None
+
+
+def hub_return(message, kb: InlineKeyboardMarkup, native_cb: str, target: str) -> InlineKeyboardMarkup:
+    """Вложенный экран родного экрана, открытого из хаба: его кнопку «назад на родной экран»
+    (`native_cb`) ведём на тот же экран «из хаба» (`forumfn_open:<target>:<город>`), иначе
+    после неё «Назад» снова вёл бы в раздел, а не в хаб."""
+    back = _hub_back_cb(getattr(message, "reply_markup", None))
+    if back is None:
+        return kb
+    new_cb = f"{_OPEN_PREFIX}{target}:{back[len(HUB_BACK_PREFIX):]}"
+    rows = [[b.model_copy(update={"callback_data": new_cb}) if b.callback_data == native_cb else b
+             for b in row] for row in kb.inline_keyboard]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _swap_back(kb: InlineKeyboardMarkup, back_cb: str) -> InlineKeyboardMarkup:
@@ -192,6 +212,11 @@ async def _native_screen(target: str, admin_id: int, code: str | None):
         from handlers.admin_miniapp import build_miniapp_settings_keyboard, render_miniapp_settings_text
         return await render_miniapp_settings_text(), await build_miniapp_settings_keyboard()
     if target == "menu":
+        # Экран кнопок меню читает город из шапки — ставим шапку на город хаба (как
+        # `asos_city`), иначе хаб Тюмени при шапке «Все города» правил бы общие кнопки.
+        if code and await cities_module_on():
+            from cities import set_admin_city
+            await set_admin_city(admin_id, code)
         from handlers.admin_reg_config import build_menu_keyboard, render_menu_text
         return await render_menu_text(admin_id), await build_menu_keyboard(admin_id)
     if target == "fb" and code:
