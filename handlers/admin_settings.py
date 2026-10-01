@@ -40,6 +40,7 @@ from services.sheets import (
     tab_row_count,
 )
 from handlers.states import EditSetting
+from handlers import admin_forum_date as _fdate  # дата форума — только своя у города
 from handlers.settings_validation import validate_setting_value, is_command_like
 from settings_ops import (
     apply_event_type_preset as _apply_event_type_preset,
@@ -1366,7 +1367,7 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
 
     await delete_setting_by_admin(admin_id, composed)  # idempotent — safe if already absent
     city_txt = await city_label(code)
-    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
+    await callback.answer(f"Готово: {city_txt} — " + ("дата стёрта" if _fdate.is_city_only_key(key) else "как везде"), show_alert=True)
     text, kb = await settings_return_screen(admin_id, callback_data="settings_toggle_reg")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1886,6 +1887,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         lines = [f"🏙 {html_module.escape(city_label_txt)}"]
         if own_value:
             lines.append(f"Своё значение: <b>{html_module.escape(own_value)}</b>")
+        elif _fdate.is_city_only_key(key):
+            lines.append(_fdate.NO_CITY_DATE_LINE)
         else:
             global_value = await get_setting(key)
             dflt = _shown_default(key)
@@ -1903,7 +1906,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         if is_list:
             rows = await admin_settings_lists.list_edit_rows(key)
         if own_value:
-            rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
+            rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=f"settings_reset_city:{key}")])
         rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
         return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -2034,13 +2037,13 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     if current:
         text += f"Сейчас у города:\n<b>{html_module.escape(current)}</b>\n\n"
     else:
-        text += "Сейчас у города: <i>как везде</i>\n\n"
+        text += f"Сейчас у города: <i>{'даты нет' if _fdate.is_city_only_key(key) else 'как везде'}</i>\n\n"
     text += html_module.escape(prompt)
     text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
     rows: list[list[InlineKeyboardButton]] = []
     if current:
-        rows.append([InlineKeyboardButton(text="↩️ Как везде", callback_data=f"settings_reset_city:{key}")])
+        rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=f"settings_reset_city:{key}")])
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_edit:{key}")])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await state.set_state(EditSetting.waiting_for_value)
@@ -2071,6 +2074,10 @@ async def settings_reset_city(callback: types.CallbackQuery):
         await callback.answer("Нет своего значения для сброса", show_alert=True)
         return
 
+    if _fdate.is_city_only_key(key):  # общей даты нет — «стереть», а не «как везде»
+        text, kb = await _fdate.clear_city_date_confirm(key, header_code, await get_setting(composed))
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return await callback.answer()
     city_txt = html_module.escape(await city_label(header_code))
     global_value = await get_setting(key)
     preview = f"<b>{html_module.escape(global_value)}</b>" if global_value else "<i>по умолчанию</i>"
@@ -2594,6 +2601,8 @@ async def _reconcile_session_feedback_if_relevant(key: str) -> None:
 @router.message(EditSetting.waiting_for_value)
 async def settings_edit_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
+    if data.get("forum_date_pick_city"):  # экран «для какого города?» — дата без города не пишется
+        return await message.answer(_fdate.PICK_CITY_FIRST)
     key = data["setting_key"]
 
     # Phase 09.2 (C, CITY-05): a per-city composite key (`{base}__city__{code}`) gets the

@@ -117,7 +117,8 @@ def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
     state = _fresh_state(ADMIN_ID)
     cbq = FakeCallback("settings_edit:forum_date", user_id=ADMIN_ID)
     _run(settings_edit_start(cbq, state))
-    assert _run(state.get_state()) is None  # ввод не ляжет в общий ключ
+    # Ввод не ляжет в общий ключ: состояние только отвечает «сначала выберите город».
+    assert _run(state.get_data()) == {"forum_date_pick_city": True}
     assert "для какого города" in cbq.message.text
     cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
     assert "settings_edit_city:forum_date@spb" in cbs and "settings_edit_city:forum_date@msk" in cbs
@@ -178,3 +179,54 @@ def test_city_buttons_need_settings_right():
     """Кнопки с городом идут тем же маршрутом прав, что «✏️ Изменить для города»."""
     from handlers.admin_caps import required_capability
     assert required_capability(callback_data="settings_edit_city:forum_date@spb") == "settings"
+
+
+def test_date_typed_instead_of_city_button_gets_hint(tmp_path):
+    from cities import ALL_CITIES, set_admin_city
+    from handlers.admin_settings import settings_edit_start, settings_edit_value
+    from tests.test_roles_phase8 import FakeMessage
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, ALL_CITIES))
+    state = _fresh_state(ADMIN_ID)
+    _run(settings_edit_start(FakeCallback("settings_edit:forum_date", user_id=ADMIN_ID), state))
+    msg = FakeMessage("05.10.2026", user_id=ADMIN_ID)
+    _run(settings_edit_value(msg, state))
+    assert "Сначала выберите город" in msg.answers[0][0]
+    assert _run(db.get_setting("forum_date")) is None
+
+
+def _screen(code, key="forum_date"):
+    from handlers.admin_settings import _settings_edit_screen
+    text, kb = _run(_settings_edit_screen(key, code))
+    return text, [b.text for row in kb.inline_keyboard for b in row]
+
+
+def test_city_screen_without_own_date_does_not_promise_common_date(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("forum_date", "03.10.2026"))  # старый общий ключ — ничего не даёт
+    text, buttons = _screen("spb")
+    assert "Как везде" not in text and "03.10.2026" not in text
+    assert "Своей даты нет" in text
+    assert not any("Как везде" in b for b in buttons)
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    _text, buttons = _screen("spb")
+    assert "🗑 Стереть дату города" in buttons and not any("Как везде" in b for b in buttons)
+    # У обычной городской настройки «↩️ Как везде» на месте.
+    _run(db.set_setting("start_text__city__spb", "свой"))
+    assert any("Как везде" in b for b in _screen("spb", "start_text")[1])
+
+
+def test_clear_city_date_confirm_names_what_turns_off(tmp_path):
+    from cities import set_admin_city
+    from handlers.admin_settings import settings_reset_city
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, "spb"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    cbq = FakeCallback("settings_reset_city:forum_date", user_id=ADMIN_ID)
+    _run(settings_reset_city(cbq))
+    assert "Стереть дату форума" in cbq.message.text and "SOS" in cbq.message.text
+    assert "как везде" not in cbq.message.text.lower()
+    cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
+    assert "settings_reset_city_go:forum_date:spb" in cbs
