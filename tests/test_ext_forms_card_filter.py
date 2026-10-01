@@ -103,3 +103,15 @@ def test_seam_pick_and_cancel(tmp_path):
     cb = FakeCallback("extff_cancel", ADMIN_ID)
     _run(ff.extff_cancel(cb, state))
     assert _run(state.get_data())["filters"] == flt
+
+
+def test_form_title_escaped_in_html_prompt(tmp_path):
+    _ready(tmp_path)
+    from handlers import admin_broadcast_ext_form_filter as ff
+
+    fid = _run(efd.create_form(platform="yandex", external_id="h", title="R&D <b>Анкета"))
+    state = _fresh_state(ADMIN_ID)
+    cb = FakeCallback(f"extff_form:{fid}", ADMIN_ID)
+    _run(ff.extff_form(cb, state))
+    shown = cb.message.text
+    assert "R&amp;D &lt;b&gt;Анкета" in shown and "<b>Анкета" not in shown
