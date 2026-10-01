@@ -34,7 +34,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from cities import default_city_code, get_setting_typed_for_city
 from database.db import (
-    add_sos_details, create_sos_report, get_open_sos_report, get_user,
+    add_sos_details, create_sos_report, get_open_sos_report, get_sos_report, get_user,
     set_sos_location,
 )
 from handlers import reg_i18n
@@ -314,18 +314,21 @@ async def sos_collecting_step(message: types.Message, state: FSMContext):
     text = message.text or message.caption
     photo_id = message.photo[-1].file_id if message.photo else None
     if text or photo_id:
-        # Приёмка 01.10: первый чистый текст делегата встаёт в саму карточку — отдельной копией
-        # «💬 Делегат дополнил SOS» он приходил оргам второй раз. Фото (в карточке только
-        # пометка «📷 фото приложено») и последующие сообщения по-прежнему идут в тред.
+        # Первый текст делегата встаёт в саму карточку. В ЧАТЕ SOS он всё равно уходит и
+        # копией в тред: правка сообщения в Telegram не даёт уведомления, и без копии суть
+        # («астма, 2 этаж») появилась бы в карточке молча. Дубль убираем только в личке
+        # (приёмка 01.10: там копия карточки и дописка — у одного человека подряд).
         #
         # «Встал ли текст» решает сама запись (`add_sos_details` -> rowcount), а не строка,
         # прочитанная заранее: два быстрых сообщения обрабатываются параллельно, и второе,
-        # решив «я тоже встану в карточку», терялось целиком. Ранний выход — только когда текст
-        # реально в карточке И карточку удалось перерисовать хоть где-то; иначе — копией.
+        # решив «я тоже встану в карточку», терялось целиком. Без копии обходимся, только
+        # когда текст реально в карточке И карточку удалось перерисовать хоть где-то.
         text_landed = await add_sos_details(report_id, text=text, photo_file_id=photo_id)
         edited = await sos_service.refresh_card(message.bot, report_id)
         if text_landed and message.text and not photo_id and edited:
-            return
+            row = await get_sos_report(report_id)
+            if row is not None and not (row.get("chat_id") and row.get("card_message_id")):
+                return
     await sos_service.relay_delegate_message(message, report_id)
 
 
