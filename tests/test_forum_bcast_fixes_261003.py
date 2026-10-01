@@ -631,3 +631,68 @@ def test_checkin_day_filter_label_names_forum_city(tmp_path, monkeypatch):
     assert _run(day_cities_suffix("today")) == spb
     assert "Москва" in _run(day_cities_suffix("2026-10-31"))  # второй день Москвы
     assert _run(day_cities_suffix("2026-10-10")) == ""  # форума ни у кого
+
+
+# ── Утренний повтор: блокировка города и догон после рестарта посреди цикла ─────────────────
+
+def test_morning_repeat_waits_for_manual_send_no_duplicates(tmp_path, monkeypatch):
+    """Ручная «📤 Разослать QR сейчас» и утренний повтор одновременно: повтор ждёт блокировку
+    города и дошлёт только тем, кто сегодня QR ещё не получил, — по одному QR на человека."""
+    _ready(tmp_path)
+    for tid in (31, 32, 33):
+        _seed(tid)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    sent: list[int] = []
+
+    async def _slow_send(tid, png, caption, kb, on_permanent_failure=None):
+        await asyncio.sleep(0.02)
+        sent.append(tid)
+        return True
+
+    monkeypatch.setattr(cb, "_send_one", _slow_send)
+    monkeypatch.setattr(cb, "_city_locks", {})
+
+    async def _both():
+        return await asyncio.gather(cb.send_broadcast(None), cb.send_morning_repeat(None))
+
+    manual, morning = _run(_both())
+    assert sorted(sent) == [31, 32, 33]
+    assert manual["sent"] == 3 and morning["total"] == 0
+
+
+def test_morning_repeat_interrupted_is_caught_up_after_restart(tmp_path, monkeypatch):
+    """Рестарт посреди утреннего повтора: страховочная джоба осталась в хранилище, сверка
+    после рестарта догоняет повтор; дошедший до конца повтор её снимает."""
+    _ready(tmp_path)
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    jid = cb.morning_job_id(None)
+    seen = {}
+
+    async def _crash(city):
+        seen["guard"] = fake.get_job(jid)
+        # Сверка посреди цикла джобу не перевзводит.
+        seen["recon"] = (await cb.schedule_city_jobs(city))["morning_at"]
+        raise RuntimeError("рестарт посреди цикла")
+
+    monkeypatch.setattr(cb, "send_morning_repeat", _crash)
+    try:
+        _run(cb._run_morning_job(None))
+    except RuntimeError:
+        pass
+    assert seen["guard"] is not None
+    assert seen["recon"] == datetime(2026, 10, 3, 8, 30)
+    assert jid in fake.jobs and None not in cb._morning_in_progress
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 0))
+    assert _run(cb.schedule_city_jobs(None))["morning_at"] == datetime(2026, 10, 3, 9, 1)
+
+    async def _ok(city):
+        return {"sent": 0, "failed": 0, "total": 0}
+
+    monkeypatch.setattr(cb, "send_morning_repeat", _ok)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 1))
+    _run(cb._run_morning_job(None))
+    assert jid not in fake.jobs
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 20))
+    assert _run(cb.schedule_city_jobs(None))["morning_at"] is None
