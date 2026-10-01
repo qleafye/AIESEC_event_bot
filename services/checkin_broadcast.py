@@ -422,6 +422,17 @@ async def _render_for(
     return tr_text(text, lang, tr_map), _confirm_kb(lang, tr_map)
 
 
+async def _broadcast_text(city: str | None, *, morning: bool) -> str:
+    """Текст под QR. Утренний повтор — всегда `checkin_qr_morning_text` (без «Завтра форум!»).
+    Вечерняя/ручная рассылка в сам день форума (догон, «📤 Разослать QR сейчас» утром) — тоже
+    утренний текст: «завтра» в день форума путает делегатов."""
+    from cities import get_setting_typed_for_city
+    if not morning:
+        morning = await is_forum_day_offset(city, 0)
+    key = "checkin_qr_morning_text" if morning else "checkin_qr_broadcast_text"
+    return await get_setting_typed_for_city(key, city)
+
+
 async def _send_one(telegram_id: int, png: bytes, caption: str, kb: InlineKeyboardMarkup) -> bool:
     async def _factory(cid):
         return await _sched._bot.send_photo(
@@ -476,8 +487,7 @@ async def send_broadcast(city: str | None) -> dict:
         already = await checkin_qr_sent_ids(city_scope=scope)
         targets = [u for u in eligible if u["telegram_id"] not in already]
 
-        from cities import get_setting_typed_for_city
-        base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
+        base_text = await _broadcast_text(city, morning=False)
 
         sent = failed = 0
         tr_maps: dict[str, dict] = {}
@@ -526,8 +536,7 @@ async def send_morning_repeat(city: str | None) -> dict:
     confirmed = await checkin_qr_confirmed_ids(city_scope=scope)
     targets = [u for u in eligible if u["telegram_id"] not in confirmed]
 
-    from cities import get_setting_typed_for_city
-    base_text = await get_setting_typed_for_city("checkin_qr_broadcast_text", city)
+    base_text = await _broadcast_text(city, morning=True)
 
     sent = failed = 0
     tr_maps: dict[str, dict] = {}
