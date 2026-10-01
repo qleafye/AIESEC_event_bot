@@ -25,6 +25,7 @@ stdout: `telegram_api._method_url` строит URL Bot API С ТОКЕНОМ В
 from __future__ import annotations
 
 import logging
+import re
 import sys
 
 from secret_redact import install_log_redaction
@@ -43,6 +44,36 @@ _QUIET_LOGGERS = ("httpx", "httpcore")
 _CONFIGURED_ATTR = "_miniapp_logging_configured"
 
 
+# Секрет вебхука внешней формы лежит в пути (`/app/hooks/yform/<secret>`) и попадал бы в
+# access-лог uvicorn — маскируем до форматирования.
+_HOOK_PATH_RE = re.compile(r'/app/hooks/yform/[^/\s"?]+')
+_HOOK_PATH_MASK = "/app/hooks/yform/***"
+
+
+class HookSecretFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            if isinstance(record.msg, str) and "/app/hooks/yform/" in record.msg:
+                record.msg = _HOOK_PATH_RE.sub(_HOOK_PATH_MASK, record.msg)
+            if isinstance(record.args, tuple):
+                record.args = tuple(
+                    _HOOK_PATH_RE.sub(_HOOK_PATH_MASK, a) if isinstance(a, str) else a
+                    for a in record.args
+                )
+        except Exception:  # noqa: BLE001 — фильтр не должен ронять логирование
+            pass
+        return True
+
+
+def _install_hook_secret_filter() -> None:
+    targets = [logging.getLogger(), logging.getLogger("uvicorn.access")]
+    targets += list(logging.getLogger().handlers)
+    targets += list(logging.getLogger("uvicorn.access").handlers)
+    for target in targets:
+        if not any(isinstance(f, HookSecretFilter) for f in target.filters):
+            target.addFilter(HookSecretFilter())
+
+
 def configure_logging(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     if not getattr(root, _CONFIGURED_ATTR, False):
@@ -59,6 +90,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     # Second line of defence behind T-19-19: any exception text that still reaches a log
     # (form.py logs `%s` of arbitrary errors) is scrubbed of the bot token -- secret_redact.py.
     install_log_redaction()
+    _install_hook_secret_filter()
 
 
-__all__ = ["LOG_FORMAT", "configure_logging"]
+__all__ = ["LOG_FORMAT", "HookSecretFilter", "configure_logging"]
