@@ -4,6 +4,8 @@
 конкретная форма (`form_id` едет внутри записи фильтра), SQL-ветка — `database/db.py`
 (`ext_form`). Форма шва — как у `admin_broadcast_session_filter.py`: `from handlers.admin
 import router`, декораторы в одну строку, импорт — хвостом `admin_broadcasts.py`."""
+import html
+
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -57,7 +59,8 @@ async def extff_form(callback: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="❌ Не заполнил", callback_data=f"extff_pick:{form_id}:not_filled")],
     ] + _CANCEL_ROW)
     await callback.answer()
-    await callback.message.edit_text(f"📝 «{_title(form)}» — кому писать?", reply_markup=kb)
+    await callback.message.edit_text(
+        f"📝 «{html.escape(_title(form), quote=False)}» — кому писать?", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("extff_pick:"), Broadcast.filter_field)
