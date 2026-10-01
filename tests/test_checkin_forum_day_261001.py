@@ -332,3 +332,28 @@ def test_csv_without_time_on_second_forum_day_keeps_upload_time(tmp_path, monkey
     assert _run(checkin_csv_import._untimed_stamp(rec, user, "entry")) == (None, "untimed")
     monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 11, 1, 10, 0))
     assert _run(checkin_csv_import._untimed_stamp(rec, user, "entry")) == ("2026-10-30 12:00:00", "forum_day_assumed")
+
+
+def test_bound_volunteer_own_city_delegate_off_day_is_not_other_city(tmp_path, monkeypatch):
+    """Волонтёр привязан к СПб, сканирует делегата СПб, а форум сегодня только в Тюмени: делегат
+    не «другого города» — у него просто сегодня нет форума."""
+    client = _setup(tmp_path, monkeypatch, datetime(2026, 10, 4, 9, 0))
+    _forum("tyumen", "04.10.2026")
+    _grant_checkin_to_bound_manager()  # привязан к spb
+    _run(_insert_user(952030, city="spb"))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(952030)}, headers=_hdr(BOUND_MANAGER_ID)).json()
+    assert body["status"] == "not_forum_day"
+    assert "другого города" not in body["reason_text"]
+    assert "Сегодня у делегата нет форума (форум 03.10)" in body["reason_text"]
+    assert _entry_rows(952030) == 0
+
+
+def test_unbound_volunteer_other_city_text_kept_via_service(tmp_path, monkeypatch):
+    from datetime import date
+    from services import checkin_forum_day
+    _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 0))
+    denial = _run(checkin_forum_day.entry_day_denial({"event_city": "msk"}, date(2026, 10, 3)))
+    assert "Делегат другого города:" in denial["reason_text"]
+    same = _run(checkin_forum_day.entry_day_denial({"event_city": "msk"}, date(2026, 10, 3), bound="msk"))
+    assert "другого города" not in same["reason_text"]
+    assert "Сегодня у делегата нет форума (форум 30.10)" in same["reason_text"]

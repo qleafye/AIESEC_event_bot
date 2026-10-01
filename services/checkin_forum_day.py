@@ -72,26 +72,36 @@ async def day_check_city(user: dict) -> tuple[bool, str | None]:
     return True, None
 
 
-async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
+async def entry_day_denial(user: dict, day: date | None = None, *, bound: str | None = None) -> dict | None:
     """`None` — сегодня (или `day`) день форума города делегата либо дата форума не задана.
     Иначе — отказ для плашки сканера: ничего не записано. Настройки (даты и длительность
     форума по городам) — одним снимком `bot_settings`, а не соединением на каждый ключ: это
-    путь каждого скана входа."""
+    путь каждого скана входа.
+
+    `bound` — город, к которому привязан волонтёр. Совпал с городом делегата — делегат не
+    «другого города», даже если сегодня форум идёт где-то ещё: у делегата просто нет форума сегодня."""
     async with settings_snapshot():
         check, city = await day_check_city(user)
         if not check:
             return None
-        return await _entry_day_denial(city, day)
+        return await _entry_day_denial(city, day, own_city=bound is not None and bound == city)
 
 
-async def _entry_day_denial(city: str | None, day: date | None) -> dict | None:
+async def _entry_day_denial(city: str | None, day: date | None, *, own_city: bool = False) -> dict | None:
     day = day or _today()
     window = await forum_window(city)
     if window is None or window[0] <= day <= window[1]:
         return None
     start = window[0]
     others = [c for c in await cities_with_forum_on(day) if c != city]
-    if others:
+    if others and own_city:
+        # Форум сегодня идёт в другом городе, но волонтёр привязан к городу делегата — делегат
+        # «свой», просто сегодня у делегата нет форума.
+        text = (
+            f"Сегодня у делегата нет форума (форум {_ddmm(start)}) — отметка не поставлена. "
+            "Для пробы сканера выберите точку «🧪 Тренировка»."
+        )
+    elif others:
         text = (
             f"Делегат другого города: {await city_label(city)} — у делегата форум {_ddmm(start)}, не сегодня. "
             "Отметка не поставлена. Проверьте, тот ли это человек; если форум у делегата другой "
