@@ -56,6 +56,17 @@ async def pending_count(*, city_scope=None) -> int:
     return len(ids)
 
 
+async def is_forum_day(city: str | None, now) -> bool:
+    """Сегодня по Москве — день форума города (окно `forum_date`..+`sos_active_days`)."""
+    from services.sos import sos_active_window
+    try:
+        window = await sos_active_window(city)
+    except Exception as e:  # noqa: BLE001 — без окна просто соблюдаем тихие часы
+        logger.error(f"checkin_not_arrived.is_forum_day({city!r}): {e}")
+        return False
+    return window is not None and window[0] <= now.date() <= window[1]
+
+
 async def send(*, city: str | None, city_scope=None) -> dict:
     """Отправляет шаблон СЕЙЧАС всем кандидатам города (пусто — все города, модуль выключен).
     `city` — СНИМОК для `checkin_not_arrived_text`/`event_city` строки (per_city резолвер),
@@ -71,7 +82,13 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     зовём `checkin_not_arrived_mark_sent`: раз ему не отправили, идемпотентность «раз в день»
     не блокирует повторный тап «Написать не пришедшим» позже (после тихих часов) — придёт как в
     первый раз. Менеджеру считаем отдельно (`quiet`), экран подтверждения показывает «N сейчас в
-    тихих часах — не отправлено, повторите позже»."""
+    тихих часах — не отправлено, повторите позже».
+
+    В ДЕНЬ ФОРУМА города тихие часы на этот шаблон не действуют. Окно тихих часов считается по
+    Москве (дефолт до 09:00), а у Тюмени это до 11:00 по-местному — ровно время, когда вопрос
+    «мы тебя не видим» и нужен. Отправка ручная и с подтверждением менеджера, а адресат
+    зарегистрировался на форум, который идёт прямо сейчас, — это служебное сообщение (как QR,
+    D-35), а не рассылка. В остальные дни тихие часы соблюдаются, как раньше."""
     from cities import get_setting_typed_for_city
     from services import quiet_hours
 
@@ -84,11 +101,12 @@ async def send(*, city: str | None, city_scope=None) -> dict:
 
     sent = quiet = failed = 0
     tr_maps: dict[str, dict] = {}
+    forum_today = await is_forum_day(city, now)
     for tid in ids:
         user = await get_user(tid)
         if user is None:
             continue
-        if await quiet_hours.defer_until(now, tid) is not None:
+        if not forum_today and await quiet_hours.defer_until(now, tid) is not None:
             quiet += 1
             continue
         # Идемпотентность СНАЧАЛА, не после отправки: двойной тап «Написать не пришедшим»,
