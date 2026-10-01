@@ -304,6 +304,7 @@ from miniapp.routers import (
     faq,
     files,
     form,
+    hooks,
     hub,
     page,
     profile,
@@ -335,6 +336,7 @@ ALL_ROUTERS = [
     faq.router,
     checkin.router,
     program.router,
+    hooks.router,
 ]
 
 __all__ = ["ALL_ROUTERS"]
