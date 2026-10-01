@@ -244,3 +244,35 @@ def test_foreign_header_tab_not_written(env):
     err = asyncio.run(ef.get_form(fid))["mirror_error"]
     assert "«Регистрации»" in err and "чужие данные" in err
     assert _state() == {"a1": "append"}
+
+
+def test_append_not_duplicated_after_crash_before_mark(env):
+    """Сбой после append_rows, но до пометки synced: повтор не дописывает вторую строку."""
+    fid = _form()
+    _answer(fid, "a1", [{"q": "q1", "label": "Q1", "value": "v"}])
+    asyncio.run(mir.drain_mirror())
+    asyncio.run(ef.mark_sheet_state([1], "append"))  # как будто пометка не дошла
+    asyncio.run(mir.drain_mirror())
+    assert [r[3] for r in env["ws"].rows[1:]] == ["a1"]
+    assert _state() == {"a1": "synced"}
+
+
+def test_match_during_write_is_not_lost(env):
+    """Привязка, пришедшая во время записи, не затирается итоговым synced."""
+    fid = _form()
+    _answer(fid, "a1", [{"q": "q1", "label": "Q1", "value": "v"}])
+    _user(5)
+    ws = env["ws"]
+    orig = ws.append_rows
+
+    def append_and_match(rows, value_input_option=None):
+        orig(rows, value_input_option=value_input_option)
+        asyncio.run(ef.set_answer_match(1, 5, "username"))  # rematch посреди записи
+    ws.append_rows = append_and_match
+    asyncio.run(mir.drain_mirror())
+    assert _state() == {"a1": "append"}  # не synced: строку ещё надо обновить
+    ws.append_rows = orig
+    asyncio.run(mir.drain_mirror())
+    assert [r[3] for r in ws.rows[1:]] == ["a1"]
+    assert ws.rows[1][1] == "Иван Петров @ivan"
+    assert _state() == {"a1": "synced"}

@@ -160,14 +160,21 @@ def _write_form_sync(tab, columns, new_cols, appends, updates):
                 value_input_option=raw,
             )
     n_app = n_upd = 0
+    index: dict[str, int] = {}
+    if appends or updates:
+        index = {v: i + 1 for i, v in enumerate(ws.col_values(4)) if v}
+    if appends:
+        # Строка могла уже попасть в лист (сбой после append_rows, привязка во время записи):
+        # такую не дописываем второй раз, а обновляем по «ID ответа».
+        already = [it for it in appends if str(it[1].get("answer_id")) in index]
+        appends = [it for it in appends if str(it[1].get("answer_id")) not in index]
+        updates = list(updates) + already
     if appends:
         ws.append_rows(
             [build_row(a, columns, u) for _, a, u in appends], value_input_option=raw,
         )
         n_app = len(appends)
     if updates:
-        ids = ws.col_values(4)
-        index = {v: i + 1 for i, v in enumerate(ids) if v}
         batch, missing = [], []
         for item in updates:
             _, a, u = item
@@ -245,7 +252,9 @@ async def drain_mirror(limit: int = 200) -> dict:
             counts["not_found"] += len(answers)
             continue
         await ef.mark_headers_written(form_id, [c["qkey"] for c in new_cols])
-        await ef.mark_sheet_state([r[0] for r in appends] + [r[0] for r in updates], "synced")
+        await ef.mark_sheet_synced(
+            [(r[0], "append", r[1].get("matched_telegram_id")) for r in appends]
+            + [(r[0], "update", r[1].get("matched_telegram_id")) for r in updates])
         counts["appended"] += res[0]
         counts["updated"] += res[1]
     return counts
