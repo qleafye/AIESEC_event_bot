@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import html as html_module
 import logging
+import re
 from datetime import date, datetime, timedelta
 
 from cities import cities_module_on, get_setting_typed_for_city, per_city_key
@@ -515,6 +516,77 @@ async def refresh_card(bot, report_id: int) -> None:
             except Exception:
                 pass
             break
+
+
+# ── Ответ орга РЕПЛАЕМ на карточку — общий путь для чата SOS (`handlers/group_chat.py`) и
+# личной копии карточки (`handlers/admin_sos.py::admin_reply_to_sos`). Кто вправе ответить,
+# решают вызывающие: в чате — сам факт, что карточка из привязанного чата SOS этой заявки, в
+# личке — капа `moderate_reg` + город заявки. Здесь только захват, доставка и отчёт.
+
+_CARD_NUMBER_RE = re.compile(r"SOS #([0-9]+)")
+
+
+def card_report_id(replied) -> int | None:
+    """Номер заявки из карточки SOS, на которую ответили; `None` — это не карточка (нет
+    маркеров 🆔+🆘 или номера). Текст реплая у Telegram плоский — HTML-разметка карточки
+    (`<b>`/`<code>`) в нём не участвует."""
+    text = getattr(replied, "text", None) or ""
+    if "🆔" not in text or "🆘" not in text:
+        return None
+    match = _CARD_NUMBER_RE.search(text)
+    return int(match.group(1)) if match else None
+
+
+async def deliver_org_reply(bot, message, report: dict) -> bool:
+    """Захватывает заявку за ответившим (если её ещё никто не взял) и доставляет ответ
+    делегату немедленно — тихие часы к SOS не применяются (`services/quiet_hours.py` здесь не
+    зовётся, в отличие от «❓ Задать вопрос»). Получатель — `report["telegram_id"]`, не 🆔 из
+    текста карточки: номер заявки — единственное, что читается из сообщения. True — ответ
+    дошёл до делегата."""
+    from database.db import claim_sos_report
+    from secret_redact import redact_secrets
+
+    report_id = report["id"]
+    admin_name = message.from_user.full_name or message.from_user.username or "Орг"
+    claimed = await claim_sos_report(report_id, message.from_user.id, admin_name)
+    if not claimed:
+        row = await get_sos_report(report_id)
+        same_claimant = (
+            row and row.get("claimed_by") == message.from_user.id and not row.get("resolved_at")
+        )
+        if row and row.get("resolved_at"):
+            await message.reply(
+                f"⚠️ SOS #{report_id} уже отмечен решённым — ответ не отправлен. Если нужно "
+                f"что-то добавить, свяжитесь с делегатом по телефону из карточки."
+            )
+            return False
+        if not same_claimant:
+            winner = (row or {}).get("claimed_by_name") or "коллега"
+            await message.reply(
+                f"⚠️ SOS #{report_id} уже взял(а) {winner} — напишите ему(ей) или "
+                f"дождитесь «✅ Решено»."
+            )
+            return False
+
+    user_id = report["telegram_id"]
+    header = f"🆘 <b>Ответ по SOS #{report_id}:</b>"
+    try:
+        if message.text:
+            await bot.send_message(user_id, f"{header}\n\n{message.html_text}", parse_mode="HTML")
+        else:
+            await bot.send_message(user_id, header, parse_mode="HTML")
+            await message.copy_to(user_id)
+    except Exception as e:
+        await message.reply(
+            "❌ Не удалось отправить ответ делегату: "
+            f"{html_module.escape(redact_secrets(e))}. Свяжитесь по телефону из карточки."
+        )
+        return False
+
+    cancel_escalation(report_id)
+    await message.reply("✅ Ответ отправлен делегату.")
+    await refresh_card(bot, report_id)
+    return True
 
 
 # ── D-31: режим «дописываю SOS» — всё, что делегат шлёт после мгновенной карточки, уходит В
