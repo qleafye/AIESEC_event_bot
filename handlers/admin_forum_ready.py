@@ -289,7 +289,8 @@ async def render_ready(admin_id: int, code: str | None, bot) -> tuple[str, Inlin
             if row_btns:
                 buttons.append(row_btns)
     buttons.append([InlineKeyboardButton(text="🔄 Проверить снова", callback_data=f"forum_ready_re:{_encode_city(code)}")])
-    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_forum_functions")])
+    # Назад — в хаб того же города (светофор открывается из хаба), а не в выбор города.
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data=f"forumfn_back:{_encode_city(code)}")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
