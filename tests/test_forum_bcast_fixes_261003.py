@@ -602,3 +602,16 @@ def test_forum_day_qr_without_collecting_check_still_sends_menu(tmp_path, monkey
     import services.sos as sos_mod
     monkeypatch.delattr(sos_mod, "may_be_collecting", raising=False)
     assert _run(cb._may_be_collecting_sos(7)) is False
+
+
+def test_checkin_day_filter_label_names_forum_city(tmp_path, monkeypatch):
+    """«не пришли 25.09» при форумах в разные дни не читается — к дню приписан город."""
+    import services.timeutil as tu
+    from services.forum_days import day_cities_suffix
+    _cities_env(tmp_path)
+    monkeypatch.setattr(tu, "msk_now", lambda: datetime(2026, 10, 3, 11, 0))
+    spb = _run(day_cities_suffix("2026-10-03"))
+    assert spb.startswith(" — ") and "Москва" not in spb
+    assert _run(day_cities_suffix("today")) == spb
+    assert "Москва" in _run(day_cities_suffix("2026-10-31"))  # второй день Москвы
+    assert _run(day_cities_suffix("2026-10-10")) == ""  # форума ни у кого
