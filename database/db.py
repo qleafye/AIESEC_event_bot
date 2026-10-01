@@ -1969,6 +1969,115 @@ async def init_db():
             "ON sheet_chat_queue(next_try_at, id)"
         )
 
+        # Внешние формы (Яндекс/Google): ответы чужих форм живут в БД бота — она источник
+        # правды, лист только зеркало. Анкета хранится целиком снимком «вопрос -> ответ»
+        # (payload JSON), чтобы правка формы потом не переписала то, что человек ответил.
+        # Секреты приложения Яндекса и токены менеджера лежат в отдельных таблицах, а не
+        # в bot_settings: set_setting логирует значение. Согласия на ПД здесь нет намеренно:
+        # чужую форму бот не ведёт.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_secrets (
+                name TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT,
+                updated_by INTEGER
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_connections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL DEFAULT 'yandex',
+                org_id TEXT,
+                org_header TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                expires_at TEXT,
+                status TEXT NOT NULL DEFAULT 'ok',
+                alerted_at TEXT,
+                created_at TEXT NOT NULL,
+                created_by INTEGER
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_forms (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                connection_id INTEGER,
+                external_id TEXT NOT NULL,
+                gsheet_gid INTEGER,
+                title TEXT NOT NULL,
+                secret TEXT UNIQUE,
+                key_username_q TEXT,
+                key_phone_q TEXT,
+                mirror_tab TEXT,
+                mirror_error TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                notify INTEGER NOT NULL DEFAULT 0,
+                notified_at TEXT,
+                last_answer_at TEXT,
+                last_sync_at TEXT,
+                sync_error TEXT,
+                created_at TEXT NOT NULL,
+                created_by INTEGER
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                form_id INTEGER NOT NULL,
+                answer_id TEXT NOT NULL,
+                answered_at TEXT,
+                received_at TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                raw TEXT,
+                matched_telegram_id INTEGER,
+                match_how TEXT,
+                sheet_state TEXT NOT NULL DEFAULT 'append',
+                sheet_attempts INTEGER NOT NULL DEFAULT 0,
+                sheet_next_try_at TEXT,
+                UNIQUE(form_id, answer_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ext_answers_tid "
+            "ON external_form_answers(matched_telegram_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ext_answers_form "
+            "ON external_form_answers(form_id, matched_telegram_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ext_answers_sheet "
+            "ON external_form_answers(sheet_state, sheet_next_try_at)"
+        )
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_columns (
+                form_id INTEGER NOT NULL,
+                qkey TEXT NOT NULL,
+                label TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                header_written INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(form_id, qkey)
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_pending (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                form_id INTEGER NOT NULL,
+                answer_id TEXT NOT NULL,
+                delivery_id TEXT,
+                received_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_try_at TEXT NOT NULL,
+                last_error TEXT,
+                UNIQUE(form_id, answer_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ext_pending_due "
+            "ON external_form_pending(next_try_at, id)"
+        )
+
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
         # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
@@ -10351,6 +10460,8 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # кому и когда ушла итоговая картинка-карточка, тот же личный след, группа общая "checkin"
     # (соседи forum_noshow_poll/regional_noshow_move выше — тот же журнал отправки делегату).
     ("forum_stats_card_sends", "telegram_id", "checkin"),
+    # Ответы внешних форм, привязанные к делегату, — его ПД (имя, телефон, ответы).
+    ("external_form_answers", "matched_telegram_id", "forms"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
@@ -10381,6 +10492,13 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     # chat_cleanup_queue.chat_id — та же группа делегатов: очередь служебных уведомлений на
     # удаление (id сообщения и тип), без автора.
     "chat_cleanup_queue",
+    # Служебные таблицы внешних форм: ключи приложения, токены менеджера, описания форм,
+    # позиции колонок и очередь дочитывания — не след делегата.
+    "external_form_secrets",
+    "external_form_connections",
+    "external_forms",
+    "external_form_columns",
+    "external_form_pending",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
