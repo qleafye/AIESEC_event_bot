@@ -66,7 +66,24 @@ async def _users_by_phone(phone10: str) -> list[int]:
     return [r[0] for r in rows if normalize_phone(r[1]) == phone10]
 
 
-async def match_answer(form: dict, items: list[dict]) -> tuple[int | None, str | None]:
+async def _phone_map() -> dict[str, list[int]]:
+    """Карта «телефон -> делегаты» одним проходом по users (для прогона rematch)."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT telegram_id, phone FROM users WHERE phone IS NOT NULL AND TRIM(phone) != ''"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result: dict[str, list[int]] = {}
+    for tid, phone in rows:
+        key = normalize_phone(phone)
+        if key:
+            result.setdefault(key, []).append(tid)
+    return result
+
+
+async def match_answer(
+    form: dict, items: list[dict], phone_map: dict[str, list[int]] | None = None,
+) -> tuple[int | None, str | None]:
     uname = username_from_value(_value_of(items, form.get("key_username_q")))
     if uname:
         user = await _db.get_user_by_username(uname)
@@ -74,7 +91,7 @@ async def match_answer(form: dict, items: list[dict]) -> tuple[int | None, str |
             return user["telegram_id"], "username"
     phone = normalize_phone(_value_of(items, form.get("key_phone_q")))
     if phone:
-        found = await _users_by_phone(phone)
+        found = phone_map.get(phone, []) if phone_map is not None else await _users_by_phone(phone)
         if len(found) == 1:
             return found[0], "phone"
     return None, None
@@ -83,6 +100,7 @@ async def match_answer(form: dict, items: list[dict]) -> tuple[int | None, str |
 async def rematch_unmatched(limit: int = 500) -> int:
     rows = await ef.list_unmatched_answers(limit)
     forms: dict[int, dict | None] = {}
+    phones = await _phone_map() if rows else None
     done = 0
     for row in rows:
         fid = row["form_id"]
@@ -91,7 +109,7 @@ async def rematch_unmatched(limit: int = 500) -> int:
         form = forms[fid]
         if not form or not (form.get("key_username_q") or form.get("key_phone_q")):
             continue
-        tid, how = await match_answer(form, row["payload"])
+        tid, how = await match_answer(form, row["payload"], phones)
         if tid is not None and await ef.set_answer_match(row["id"], tid, how):
             done += 1
     if done:
