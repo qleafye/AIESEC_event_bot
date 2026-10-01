@@ -186,3 +186,43 @@ def test_scanner_has_mark_anyway_button_with_confirm():
     body = js[js.index("function dayOverrideButton"):js.index("function closeScanPopup")]
     assert "askConfirm(" in body and "force_day: true" in body
     assert "res.day_override" in js
+
+
+def _csv_untimed(rec_extra: dict, now: datetime, tmp_path, monkeypatch, uid: int):
+    _setup(tmp_path, monkeypatch, now)
+    from services.checkin import build_payload
+    from handlers import admin_checkin
+    _run(_insert_user(uid, city="spb"))
+    token = _run(bot_db.get_or_create_checkin_token(uid))
+    res = _run(checkin_csv_import.import_records(
+        [{"qr": build_payload("YL26", "И", "spb", token), "scanned_at": None, **rec_extra}], "entry",
+        session=None, bound_city=None, staff_id=1, bot=None, labels=admin_checkin._DENIAL_LABELS,
+    ))
+
+    async def _stamp():
+        async with bot_db._connect() as conn:
+            async with conn.execute("SELECT scanned_at, approx_time FROM checkins WHERE telegram_id = ? AND point = 'entry'", (uid,)) as cur:
+                return tuple(await cur.fetchone())
+    return res, _run(_stamp()), _run(checkin_csv_import.report_lines(res, row_limit=20))
+
+
+def test_csv_without_time_next_day_lands_on_forum_day(tmp_path, monkeypatch):
+    """Файл без даты и времени загрузили 04.10 — вход ложится на день форума (03.10), а не на
+    день загрузки, и это отдельной строкой в отчёте."""
+    res, stamp, lines = _csv_untimed({}, datetime(2026, 10, 4, 11, 0), tmp_path, monkeypatch, 952012)
+    assert stamp == ("2026-10-03 12:00:00", 1)
+    assert res["forum_day_assumed"] == 1 and res["untimed"] == 0
+    assert any("первый день форума" in line for line in lines)
+
+
+def test_csv_with_date_only_uses_that_date(tmp_path, monkeypatch):
+    res, stamp, lines = _csv_untimed({"day": "2026-10-03"}, datetime(2026, 10, 5, 11, 0), tmp_path, monkeypatch, 952013)
+    assert stamp == ("2026-10-03 12:00:00", 1)
+    assert res["date_only"] == 1 and res["off_day"] == 0
+    assert any("только дата" in line for line in lines)
+
+
+def test_csv_without_time_on_forum_day_keeps_upload_time(tmp_path, monkeypatch):
+    res, stamp, _lines = _csv_untimed({}, datetime(2026, 10, 3, 15, 30), tmp_path, monkeypatch, 952014)
+    assert stamp[1] == 1  # время загрузки (часы БД не заморожены), «примерное»
+    assert res["untimed"] == 1 and res["forum_day_assumed"] == 0
