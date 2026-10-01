@@ -380,12 +380,37 @@ def default_program_photo_path() -> str | None:
     return PROGRAM_DEFAULT_PHOTO_PATH if os.path.isfile(PROGRAM_DEFAULT_PHOTO_PATH) else None
 
 
+async def own_program_photo(city: str | None) -> str | None:
+    """`file_id` фото, загруженного именно для этого города (составной per_city ключ), без
+    отката на общее. Модуль городов выключен — городов нет, общее фото и есть «своё»."""
+    if not await cities_module_on():
+        return await get_setting(PROGRAM_PHOTO_KEY)
+    composed = per_city_key(PROGRAM_PHOTO_KEY, city) if city else None
+    return (await get_setting(composed) or None) if composed else None
+
+
+async def program_photo_caption(city: str | None) -> str | None:
+    """Подпись к фото программы, которое видит делегат города: у своего фото города — своя
+    подпись (загружается вместе с ним, `handlers/admin_program_view.py`), у общего — общая."""
+    if await cities_module_on() and city and await own_program_photo(city):
+        composed = per_city_key("program_caption", city)
+        return (await get_setting(composed)) if composed else None
+    return await get_setting("program_caption")
+
+
 async def resolve_program_photo_source(city: str | None) -> dict | None:
-    """Откуда брать фото программы — порядок чата: своё/общее фото из настроек
-    (`{"file_id": …}`), затем файл на диске (`{"path": …}`), иначе `None`."""
-    file_id = await resolve_program_photo(city)
-    if file_id:
-        return {"file_id": file_id}
+    """Какое фото программы видит делегат города: своё фото города (`{"file_id": …}`); общее
+    фото из настроек или файл на диске (`{"path": …}`) — ТОЛЬКО если у города нет ни своего фото,
+    ни сессий. Иначе загруженная одним городом общая картинка перекрывала бы программу сессиями
+    других городов (раньше так и было: фото СПб видели Тюмень и Москва). `None` — фото нет."""
+    own = await own_program_photo(city)
+    if own:
+        return {"file_id": own}
+    if await has_program_sessions_for_city(city or default_city_code()):
+        return None
+    shared = await get_setting(PROGRAM_PHOTO_KEY)
+    if shared:
+        return {"file_id": shared}
     path = default_program_photo_path()
     if path:
         return {"path": path}

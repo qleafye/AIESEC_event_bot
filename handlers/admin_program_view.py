@@ -15,13 +15,20 @@
 Кнопка — ЦИКЛ (table<->photo), не чекбокс, та же идиома, что
 `handlers.admin_miniapp.cycle_miniapp_motion`. `back_to` в callback_data («program»/«hub») —
 это и есть карта «куда вернуть после нажатия», второй не заводим (D-01/D-15 инвариант)."""
-from aiogram import F, types
-from aiogram.types import InlineKeyboardButton
+import html
 
-from cities import cities_module_on, per_city_key
+from aiogram import F, types
+from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
-from services.program import PROGRAM_VIEW_KEY, resolve_program_view
-from settings_audit import set_setting_by_admin
+from handlers.states import ProgramPhotoUpload
+from services.program import (
+    PROGRAM_PHOTO_KEY, PROGRAM_VIEW_KEY, own_program_photo, resolve_program_content,
+    resolve_program_view,
+)
+from settings_audit import delete_setting_by_admin, set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA
 
 _CYCLE = {"table": "photo", "photo": "table"}
@@ -62,3 +69,123 @@ async def prog_view_toggle_go(callback: types.CallbackQuery):
         from handlers.admin_program import render_city_program_screen
         text, kb = await render_city_program_screen(callback.from_user.id, code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+async def _back_screen(admin_id: int, code: str, back_to: str):
+    # Ленивый импорт — тот же цикл-разрыв, что у prog_view_toggle_go выше.
+    if back_to == "hub":
+        from handlers.admin_forum_functions import _render_hub
+        return await _render_hub(admin_id, code)
+    from handlers.admin_program import render_city_program_screen
+    return await render_city_program_screen(admin_id, code)
+
+
+# ── Фото программы ДЛЯ ГОРОДА ───────────────────────────────────────────────────────────────
+#
+# Раньше фото программы из бота было одно на все города: загрузила его СПб — увидели Тюмень и
+# Москва, и оно перекрывало их программу сессиями. Теперь фото пишется в per_city составной
+# ключ города экрана (`services.program.own_program_photo`), а общее показывается только городу
+# без своего фото и без сессий (`resolve_program_photo_source`). Модуль городов выключен —
+# городов нет, пишется общее фото. Подпись — своя у города (`program_caption` составным ключом).
+
+async def program_rows(code: str, back_to: str) -> tuple[str, list[list[InlineKeyboardButton]]]:
+    """Строки статуса и кнопки «вид программы» + «фото программы» для экрана города — общие
+    для «🗓 Программа форума» и хаба «🎪 Форум: функции»."""
+    view_status, view_button = await program_view_row(code, back_to)
+    per_city = await cities_module_on()
+    where = f" — {html.escape(await city_label(code))}" if per_city else ""
+    own = await own_program_photo(code)
+    shown, _src = await resolve_program_content(code)
+    photo_status = f"🖼 Фото программы{where}: " + ("✅ загружено" if own else "не загружено")
+    if not own and shown == "photo":
+        photo_status += " (делегаты видят общее фото)"
+    photo_button = InlineKeyboardButton(
+        text=f"📷 {'Заменить' if own else 'Загрузить'} фото программы{where}",
+        callback_data=f"prog_photo:{code}:{back_to}",
+    )
+    return f"{view_status}\n{photo_status}", [[view_button], [photo_button]]
+
+
+@router.callback_query(F.data.startswith("prog_photo:"))
+async def prog_photo_start(callback: types.CallbackQuery, state: FSMContext):
+    _prefix, code, back_to = callback.data.split(":", 2)
+    await start_program_photo(callback, state, code, back_to)
+
+
+async def start_program_photo(callback: types.CallbackQuery, state: FSMContext, code: str, back_to: str):
+    """Вход в загрузку — и с экранов программы, и с «📷 📅 Программа» раздела «🎪 Событие»
+    (`handlers/admin_settings.py::settings_photo_start`, когда в шапке выбран город)."""
+    from handlers.admin_program import _city_allowed
+
+    per_city = await cities_module_on()
+    if per_city and (per_city_key(PROGRAM_PHOTO_KEY, code) is None
+                     or not await _city_allowed(callback.from_user.id, code)):
+        await callback.answer("Этот город вам недоступен — откройте программу своего города.", show_alert=True)
+        return
+    who = f"делегаты города «{html.escape(await city_label(code))}»" if per_city else "делегаты"
+    text = (
+        f"📷 <b>Фото программы</b>\n\nОтправьте фото (можно с подписью) — его увидят только "
+        f"{who}. Другие города продолжат видеть свою программу."
+        if per_city else
+        "📷 <b>Фото программы</b>\n\nОтправьте фото (можно с подписью) — его увидят делегаты по "
+        "кнопке «📅 Программа форума»."
+    )
+    await state.set_state(ProgramPhotoUpload.waiting)
+    await state.set_data({"code": code, "back_to": back_to})
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"prog_photo_cancel:{code}:{back_to}"),
+    ]])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_photo_cancel:"))
+async def prog_photo_cancel(callback: types.CallbackQuery, state: FSMContext):
+    _prefix, code, back_to = callback.data.split(":", 2)
+    await state.clear()
+    text, kb = await _back_screen(callback.from_user.id, code, back_to)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Отменено")
+
+
+@router.message(ProgramPhotoUpload.waiting, F.photo)
+async def prog_photo_receive(message: types.Message, state: FSMContext):
+    from handlers.admin_program import _city_allowed
+
+    data = await state.get_data()
+    code, back_to = data.get("code"), data.get("back_to", "program")
+    per_city = await cities_module_on()
+    photo_key = per_city_key(PROGRAM_PHOTO_KEY, code) if per_city and code else PROGRAM_PHOTO_KEY
+    caption_key = per_city_key("program_caption", code) if per_city and code else "program_caption"
+    if photo_key is None or caption_key is None or not await _city_allowed(message.from_user.id, code):
+        await state.clear()
+        await message.answer("Этот город вам недоступен — откройте программу своего города заново.")
+        return
+    await set_setting_by_admin(message.from_user.id, photo_key, message.photo[-1].file_id)
+    if message.caption:
+        await set_setting_by_admin(message.from_user.id, caption_key, message.html_text)
+    else:
+        await delete_setting_by_admin(message.from_user.id, caption_key)
+    await state.clear()
+
+    where = f" для города «{html.escape(await city_label(code))}»" if per_city else ""
+    reply = f"✅ Фото программы{where} сохранено."
+    if (await resolve_program_content(code))[0] == "table":
+        reply += (
+            "\n\nСейчас у делегатов вид «🗓 Таблица сессий» — фото они увидят, когда вы "
+            "переключите вид кнопкой «🔄 Переключить вид» ниже."
+        )
+    await message.answer(reply, parse_mode="HTML")
+    text, kb = await _back_screen(message.from_user.id, code, back_to)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(ProgramPhotoUpload.waiting)
+async def prog_photo_not_photo(message: types.Message, state: FSMContext):
+    if (message.text or "").strip() in ("Отмена", "/cancel"):
+        data = await state.get_data()
+        await state.clear()
+        text, kb = await _back_screen(message.from_user.id, data.get("code"), data.get("back_to", "program"))
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
+    await message.answer("Пришлите фото программы картинкой (не файлом) — или нажмите «❌ Отмена».")

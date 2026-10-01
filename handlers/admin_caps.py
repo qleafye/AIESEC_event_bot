@@ -641,6 +641,7 @@ ADMIN_CAPS: dict[str, str] = {
     "state:ProgramSessionField:*": "settings",
     "state:ProgramHallName:*": "settings",
     "state:ProgramDayCustom:*": "settings",
+    "state:ProgramPhotoUpload:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
     # раздела не рисуется вовсе); строка-вход требует `settings`, менеджер только с
