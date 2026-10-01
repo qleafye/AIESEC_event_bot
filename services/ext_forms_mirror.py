@@ -119,6 +119,14 @@ def _tab_missing_text(tab: str) -> str:
     return f"Вкладка «{tab}» не найдена — выберите вкладку заново в разделе «📝 Внешние формы»"
 
 
+def _ensure_cols(ws, need: int) -> None:
+    """Выбранная менеджером вкладка может быть уже шапки — без расширения сетки запись
+    за её пределы падает («exceeds grid limits»)."""
+    have = getattr(ws, "col_count", None)
+    if isinstance(have, int) and have < need:
+        ws.add_cols(need - have)
+
+
 def _write_form_sync(tab, columns, new_cols, appends, updates):
     """Один проход по листу. appends/updates — списки (row_id, answer, user). Возврат:
     (n_appended, n_updated) или None, если вкладки нет."""
@@ -126,6 +134,7 @@ def _write_form_sync(tab, columns, new_cols, appends, updates):
     if ws is None:
         return None
     raw = _raw()
+    _ensure_cols(ws, len(_header_row(columns)))
     if not (ws.acell("A1").value or "").strip():
         ws.update("A1", [_header_row(columns)], value_input_option=raw)
     else:
