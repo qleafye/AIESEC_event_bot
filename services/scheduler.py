@@ -331,6 +331,17 @@ async def init_scheduler(bot):
     # не 30: событие чата не срочное, меньше заходов в квоту Sheets.
     _add_interval_job(sheet_chat_drain_job, "sheet_chat_drain", timedelta(seconds=60))
 
+    # Внешние формы: дочитывание вебхуков, сверка/бэкфилл + позднее сопоставление, опрос Google,
+    # зеркало в лист, уведомления пачкой.
+    _add_interval_job(ext_forms_pending_job, "ext_forms_pending", timedelta(seconds=30))
+    _add_interval_job(
+        ext_forms_reconcile_job, "ext_forms_reconcile", timedelta(minutes=10),
+        first_run_delay=timedelta(minutes=2),
+    )
+    _add_interval_job(ext_forms_google_job, "ext_forms_google", timedelta(minutes=5))
+    _add_interval_job(ext_forms_sheet_drain_job, "ext_forms_sheet_drain", timedelta(seconds=60))
+    _add_interval_job(ext_forms_notify_job, "ext_forms_notify", timedelta(minutes=5))
+
     # Сверка журнала зачётов приглашённых: отзывы по статусу, недостающие строки за 72 часа,
     # места амбассадоров.
     _add_interval_job(
@@ -1269,6 +1280,57 @@ async def sheet_chat_drain_job():
         await drain()
     except Exception as e:
         logger.error(f"sheet_chat_drain_job failed: {e}")
+
+
+async def ext_forms_pending_job():
+    """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
+    Сбой прохода не роняет планировщик."""
+    try:
+        from services.ext_forms_yandex_sync import drain_pending
+        await drain_pending()
+    except Exception as e:
+        logger.error(f"ext_forms_pending_job failed: {e}")
+
+
+async def ext_forms_reconcile_job():
+    """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
+    Сбой прохода не роняет планировщик."""
+    try:
+        from services.ext_forms_yandex_sync import reconcile_all
+        await reconcile_all()
+    except Exception as e:
+        logger.error(f"ext_forms_reconcile_job failed: {e}")
+
+
+async def ext_forms_google_job():
+    """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
+    Сбой прохода не роняет планировщик."""
+    try:
+        from services.ext_forms_google import poll_google_forms
+        await poll_google_forms()
+    except Exception as e:
+        logger.error(f"ext_forms_google_job failed: {e}")
+
+
+async def ext_forms_sheet_drain_job():
+    """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
+    Сбой прохода не роняет планировщик."""
+    try:
+        from services.ext_forms_mirror import drain_mirror
+        await drain_mirror()
+    except Exception as e:
+        logger.error(f"ext_forms_sheet_drain_job failed: {e}")
+
+
+async def ext_forms_notify_job():
+    """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
+    Сбой прохода не роняет планировщик."""
+    try:
+        from services.ext_forms_notify import alert_reauth, notify_new_answers
+        await notify_new_answers(_bot)
+        await alert_reauth(_bot)
+    except Exception as e:
+        logger.error(f"ext_forms_notify_job failed: {e}")
 
 
 async def translation_drain_job():
