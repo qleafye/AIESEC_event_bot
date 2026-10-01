@@ -14,7 +14,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, get_city, normalize_city
+from cities import city_codes, city_label, cities_module_on, get_city, is_city_enabled, normalize_city
 from database.db import get_user
 from handlers import reg_i18n
 from handlers.admin import router
@@ -31,6 +31,7 @@ from settings_schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 _CITY_FORBIDDEN_ALERT = "Этот город вне вашей зоны ответственности."
+_CITY_DISABLED_ALERT = "Этот город выключен. Включите его в «🏙 Города» или выберите другой."
 _MODULE_OFF_ALERT = "Модуль городов выключен — переводить некуда."
 _NOT_FOUND_ALERT = "Делегат не найден — возможно, карточка устарела."
 
@@ -103,6 +104,10 @@ async def citymove_start(callback: types.CallbackQuery):
         if code == old_city:
             continue
         if not await _city_allowed(admin_id, code):
+            continue
+        # Выключенный город (его нет в анкете и меню) — не цель перевода: делегат оказался бы
+        # там, где у события нет ни программы, ни чата.
+        if not await is_city_enabled(code):
             continue
         buttons.append([InlineKeyboardButton(
             text=await city_label(code), callback_data=f"citymv_pick:{tid}:{code}",
@@ -205,6 +210,9 @@ async def citymove_pick_city(callback: types.CallbackQuery):
     if get_city(code) is None:
         await callback.answer("Такого города нет.", show_alert=True)
         return
+    if not await is_city_enabled(code):
+        await callback.answer(_CITY_DISABLED_ALERT, show_alert=True)
+        return
 
     admin_id = callback.from_user.id
     old_city = normalize_city(user.get("event_city"))
@@ -241,6 +249,9 @@ async def citymove_notify_toggle(callback: types.CallbackQuery):
     if get_city(code) is None:
         await callback.answer("Такого города нет.", show_alert=True)
         return
+    if not await is_city_enabled(code):
+        await callback.answer(_CITY_DISABLED_ALERT, show_alert=True)
+        return
 
     admin_id = callback.from_user.id
     old_city = normalize_city(user.get("event_city"))
@@ -273,6 +284,9 @@ async def citymove_apply(callback: types.CallbackQuery):
         return
     if get_city(code) is None:
         await callback.answer("Такого города нет.", show_alert=True)
+        return
+    if not await is_city_enabled(code):
+        await callback.answer(_CITY_DISABLED_ALERT, show_alert=True)
         return
 
     admin_id = callback.from_user.id
