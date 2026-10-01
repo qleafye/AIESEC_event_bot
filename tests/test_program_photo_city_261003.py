@@ -233,6 +233,27 @@ def test_settings_photo_button_uses_header_city(tmp_path):
     assert _run(state.get_data())["code"] == "spb"
 
 
+def test_event_section_program_line_reflects_header_city_photo(tmp_path):
+    """«🎪 Событие» при городе в шапке: строка «📅 Программа» — про своё фото города, а не
+    про общее (кнопка рядом грузит именно фото города); при «Всех городах» — про общее."""
+    from handlers import admin_settings
+
+    _ready(tmp_path)
+    _run(db.set_setting("program_photo_file_id", "SHARED_PHOTO"))
+    _run(cities.set_admin_city(SUPERADMIN_ID, "spb"))
+    text = _run(admin_settings.render_settings_group_text("event", SUPERADMIN_ID))
+    assert "📅 Программа: <i>— не задано</i>" in text
+
+    _run(db.set_setting(per_city_key("program_photo_file_id", "spb"), "SPB_PHOTO"))
+    _run(db.set_setting("program_photo_file_id", ""))
+    text = _run(admin_settings.render_settings_group_text("event", SUPERADMIN_ID))
+    assert "📅 Программа: ✅ загружена" in text
+
+    _run(cities.set_admin_city(SUPERADMIN_ID, cities.ALL_CITIES))
+    text = _run(admin_settings.render_settings_group_text("event", SUPERADMIN_ID))
+    assert "📅 Программа: <i>— не задано</i>" in text
+
+
 def test_city_screens_show_photo_button(tmp_path):
     from handlers import admin_forum_functions, admin_program
 
