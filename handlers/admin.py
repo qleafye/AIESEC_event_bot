@@ -101,10 +101,11 @@ from services.scheduler import (
     cancel_broadcast_job,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
+from services import source_links
 from services.background import spawn as _spawn
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders
+from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.reg_schema import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -346,6 +347,20 @@ async def _stats_keyboard_for(user_id: int, callback_data: str | None = None) ->
     return InlineKeyboardMarkup(inline_keyboard=[dashboard_row] + base.inline_keyboard)
 
 
+_ADMIN_HELP_LINES = [
+    ("stats", "/stats - Статистика регистраций"),
+    ("stats_monthly", "/stats_monthly - Регистрации по месяцам"),
+    ("create_link", "/create_link &lt;название&gt; - Создать ссылку с меткой"),
+    ("export", "/export - Скачать базу пользователей (CSV)"),
+    ("broadcast", "/broadcast - Рассылка сообщения всем"),
+    ("find", "/find @username - Найти пользователя по юзернейму"),
+    ("coins", "/coins @username +N причина - Начислить/списать монеты"),
+    ("scheduled", "/scheduled - Запланированные рассылки"),
+    ("refresh_allowlist", "/refresh_allowlist - Обновить список отобранных"),
+    ("settings_guide", "/settings_guide - 📖 Справка по всем настройкам бота"),
+]
+
+
 @router.message(Command("admin"))
 async def cmd_admin_help(message: types.Message, state: FSMContext):
     caps = await resolve_capabilities(message.from_user.id)
@@ -379,19 +394,9 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
             await handler(fake_callback)
         return
 
-    text = (
-        "👮‍♂️ <b>Панель администратора</b>\n\n"
-        "/stats - Статистика регистраций\n"
-        "/stats_monthly - Регистрации по месяцам\n"
-        "/create_link &lt;название&gt; - Создать ссылку с меткой\n"
-        "/export - Скачать базу пользователей (CSV)\n"
-        "/broadcast - Рассылка сообщения всем\n"
-        "/find @username - Найти пользователя по юзернейму\n"
-        "/coins @username +N причина - Начислить/списать монеты\n"
-        "/scheduled - Запланированные рассылки\n"
-        "/refresh_allowlist - Обновить список отобранных\n"
-        "/settings_guide - 📖 Справка по всем настройкам бота"
-    )
+    # Только команды, которые этому человеку откроются: маркетологу незачем видеть /broadcast.
+    lines = [line for cmd, line in _ADMIN_HELP_LINES if _holds(caps, required_capability(command=cmd))]
+    text = "👮‍♂️ <b>Панель администратора</b>\n\n" + "\n".join(lines)
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
@@ -587,45 +592,18 @@ async def cmd_find_user(message: types.Message):
     await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
 
 
-# Метка едет в deep-link как `?start=src_<метка>`, а Telegram разрешает в этом параметре
-# только латиницу, цифры, «_» и «-» (всего 64 символа, из них 4 занимает префикс `src_`).
-# Всё остальное молча ломает ссылку, поэтому проверяем до отправки, а не после.
-_SOURCE_TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
-
-
 @router.message(Command("create_link"))
 async def cmd_create_link(message: types.Message, bot: Bot):
     args = message.text.split(maxsplit=1)
     if len(args) < 2 or not args[1].strip():
         await message.answer("⚠️ Используйте формат: /create_link &lt;название&gt;\nПример: /create_link vk_poster", parse_mode="HTML")
         return
-
-    raw = args[1].strip()
-    # Реальный случай 14.08: менеджер скопировал формат из справки ВМЕСТЕ с угловыми скобками
-    # («/create_link <инфо ВК>»). Скобки попадали в HTML-ответ неэкранированными, Telegram видел
-    # «<инфо» как открывающий тег и отклонял ВСЁ сообщение — человек не получал ни ссылки, ни
-    # ошибки. Снимаем скобки молча (намерение очевидно), а остальное объясняем словами.
-    tag = raw[1:-1].strip() if raw.startswith("<") and raw.endswith(">") else raw
-
-    if not _SOURCE_TAG_RE.match(tag):
-        await message.answer(
-            "⚠️ Метка подставляется прямо в ссылку, поэтому в ней можно использовать только "
-            "латинские буквы, цифры, «_» и «-» — без пробелов, русских букв и знаков.\n\n"
-            f"Вы прислали: <code>{html_module.escape(raw)}</code>\n"
-            "Например, для афиши во ВКонтакте: <code>/create_link vk_poster</code>",
-            parse_mode="HTML",
-        )
+    tag = source_links.clean_tag(args[1])  # проверка и тексты — services/source_links.py
+    if not source_links.is_valid_tag(tag):
+        await message.answer(source_links.bad_tag_text(args[1], "/create_link vk_poster"), parse_mode="HTML")
         return
-
-    bot_user = await bot.get_me()
-    link = f"https://t.me/{bot_user.username}?start=src_{tag}"
-    await message.answer(
-        f"🔗 Ссылка с меткой <b>{html_module.escape(tag)}</b>:\n\n"
-        f"<code>{html_module.escape(link)}</code>\n\n"
-        f"Регистрации по этой ссылке появятся в разделе «📈 Источники».",
-        parse_mode="HTML",
-    )
-
+    link = source_links.build_link((await bot.get_me()).username, tag)
+    await message.answer(source_links.link_reply_text(tag, link), parse_mode="HTML")
 
 
 async def is_question_reply(message: types.Message) -> bool:
@@ -1167,3 +1145,6 @@ from handlers import admin_onsite_reg  # noqa: E402,F401
 # возврат в хаб с экранов, открытых из него (handlers/admin_forum_hub_nav.py). Golden snapshot:
 # чистое добавление в хвост admin.router.
 from handlers import admin_forum_hub_nav  # noqa: E402,F401
+# Роль «📣 Маркетинг (метки)»: экран «🔗 Ссылки с метками» и мастер новой ссылки
+# (handlers/admin_source_links.py) — golden snapshot: чистое добавление в хвост admin.router.
+from handlers import admin_source_links  # noqa: E402,F401

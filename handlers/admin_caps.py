@@ -48,6 +48,9 @@ ALL_CAPABILITIES = [
     # у двери зала (D-42) хватает `checkin`; решение о пропуске неодобренного — у DXP/DXR и
     # волонтёров регистрации (роль reg_volunteer ниже) и у держателей moderate_reg.
     "checkin_approve",
+    # Роль «📣 Маркетинг (метки)»: ссылки с метками и их статистика — и больше ничего. Право
+    # само по себе ни одного экрана с данными делегатов не открывает (см. ADMIN_CAPS ниже).
+    "source_links",
 ]
 
 CAP_LABELS = {
@@ -59,6 +62,7 @@ CAP_LABELS = {
     "stats": "📊 Статистика",
     "checkin": "✅ Отметки на форуме (чек-ин)",
     "checkin_approve": "📝 Одобрение на месте",
+    "source_links": "🔗 Ссылки с метками",
 }
 
 # D-07: roles fixed in code today (admin / reg_manager / game_manager), but the SHAPE is
@@ -95,6 +99,12 @@ ROLES = {
     "reg_volunteer": {
         "label": "🎗 Волонтёр регистрации",
         "default_caps": ["checkin", "checkin_approve"],
+    },
+    # Маркетолог (запрос РилТолка): ставит свои метки на ссылки и смотрит, сколько заявок
+    # пришло по каждой, — без заявок, контактов и настроек.
+    "marketing_manager": {
+        "label": "📣 Маркетинг (метки)",
+        "default_caps": ["source_links"],
     },
 }
 
@@ -302,13 +312,15 @@ async def notify_by_capability(
 #   - a predicate-filtered handler, no literal -> "special:question_reply"
 # Value "*" (ANY_CAPABILITY) means "any non-empty capability set" -- used only for the two
 # admin-panel entry points (admin_menu / cmd:admin), not a real capability.
+# Value tuple ("stats", "source_links") means «любое из»: ключ открыт держателю ХОТЯ БЫ ОДНОГО
+# из прав. Проверяет `_holds` — единственное место, где значение карты сравнивается с правами.
 #
 # T-08-12 (deny-by-default, D-02): a callback/command with no entry here resolves to None in
 # required_capability(), which the middleware treats as an outright deny -- a new button is
 # broken-by-default until someone adds its key, never silently open to everyone.
 ANY_CAPABILITY = "*"
 
-ADMIN_CAPS: dict[str, str] = {
+ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # ── "*" (any capability at all) -- navigational entry points ───────────────────────────
     "admin_menu": ANY_CAPABILITY,
     "cmd:admin": ANY_CAPABILITY,
@@ -339,8 +351,14 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_export_csv": "stats",
     "admin_export_incomplete": "stats",
     "admin_monthly_stats": "stats",
-    "admin_source_stats": "stats",
+    # Источники видны и маркетологу: та же статистика «метка -> число заявок», без людей.
+    "admin_source_stats": ("stats", "source_links"),
     "admin_stats": "stats",
+    # «🔗 Ссылки с метками» (handlers/admin_source_links.py): экран и мастер новой ссылки.
+    "admin_source_links": "source_links",
+    "srclink_new": "source_links",
+    "srclink_cancel": "source_links",
+    "state:SourceLinkCreate:*": "source_links",
     "cmd:export": "stats",
     "cmd:stats": "stats",
     "cmd:stats_monthly": "stats",
@@ -421,7 +439,7 @@ ADMIN_CAPS: dict[str, str] = {
     "asos_set_delay:*": "settings",
     "asos_delay_custom:*": "settings",
     "asos_settings_edit:*": "settings",
-    "cmd:create_link": "moderate_reg",
+    "cmd:create_link": ("moderate_reg", "source_links"),
     "cmd:find": "moderate_reg",
     "special:question_reply": "moderate_reg",
     "state:Approval:*": "moderate_reg",
@@ -1293,7 +1311,7 @@ def _extract_command(text: str | None) -> str | None:
 
 
 def required_capability(*, callback_data: str | None = None, command: str | None = None,
-                         raw_state: str | None = None, special: str | None = None) -> str | None:
+                         raw_state: str | None = None, special: str | None = None) -> str | tuple | None:
     """Deny-by-default lookup (D-02). Resolution order: special, raw_state, command,
     callback_data -- the first non-None kwarg supplied wins; no branch ever raises, an
     unresolved lookup is `None` (the caller treats that as an outright deny)."""
@@ -1366,9 +1384,14 @@ def _is_callback_shaped(event) -> bool:
     return hasattr(event, "data") and not hasattr(event, "text")
 
 
-def _holds(user_caps: set, cap: str) -> bool:
-    """ANY_CAPABILITY means 'any non-empty set'; anything else is exact membership."""
-    return bool(user_caps) if cap == ANY_CAPABILITY else cap in user_caps
+def _holds(user_caps: set, cap) -> bool:
+    """ANY_CAPABILITY means 'any non-empty set'; a tuple — «любое из»; anything else is exact
+    membership."""
+    if cap == ANY_CAPABILITY:
+        return bool(user_caps)
+    if isinstance(cap, tuple):
+        return any(c in user_caps for c in cap)
+    return cap in user_caps
 
 
 def _required_caps_for_message(text: str | None, raw_state: str | None) -> list[str | None]:

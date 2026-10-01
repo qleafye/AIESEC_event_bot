@@ -265,7 +265,8 @@ def test_flat_menu_and_sections_agree_on_who_sees_anything():
     from handlers.admin_caps import ADMIN_CAPS
     from handlers.admin_core import _visible_menu_rows
 
-    for cap in sorted(set(ADMIN_CAPS.values())):
+    single = {c for v in ADMIN_CAPS.values() for c in (v if isinstance(v, tuple) else (v,))}
+    for cap in sorted(single):
         flat = bool(_visible_menu_rows({cap}))
         sections = bool(sec.visible_sections({cap}, False))
         assert flat == sections, (
