@@ -457,30 +457,39 @@ def _confirm_kb(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardM
 
 
 async def _render_for(
-    telegram_id: int, text: str, maps: dict[str, dict],
-) -> tuple[str, InlineKeyboardMarkup]:
-    """Подпись и кнопка на языке получателя — тот же перевод, что у остальных ответов
+    telegram_id: int, text: str, maps: dict[str, dict], *, forum_day: bool = False,
+):
+    """Подпись и клавиатура на языке получателя — тот же перевод, что у остальных ответов
     делегату (`handlers.reg_i18n.tr_text`, `show_my_checkin_qr`). `maps` — карты переводов
-    на всю рассылку (`services.i18n.context_cached`), не выборка на каждого."""
-    from handlers.reg_i18n import tr_text
+    на всю рассылку (`services.i18n.context_cached`), не выборка на каждого.
+
+    В день форума вместо инлайн-кнопки «✅ Сохранил» QR приходит с главным меню делегата:
+    reply-клавиатуру сама никто не перерисовывает, и без /start у делегата не появлялась
+    кнопка «🆘 SOS» (она видна только в дни форума). У сообщения одна клавиатура — либо
+    инлайн, либо меню; в день форума подтверждение «сохранил» уже ничего не меняет (повторов
+    больше не будет), а SOS нужен."""
+    from handlers.reg_i18n import tr_kb, tr_text
     from services import i18n as i18n_service
 
     lang, tr_map = await i18n_service.context_cached(telegram_id, maps)
+    if forum_day:
+        from keyboards.builders import get_main_menu_kb
+        return tr_text(text, lang, tr_map), tr_kb(await get_main_menu_kb(telegram_id), lang, tr_map)
     return tr_text(text, lang, tr_map), _confirm_kb(lang, tr_map)
 
 
-async def _broadcast_text(city: str | None, *, morning: bool) -> str:
-    """Текст под QR. Утренний повтор — всегда `checkin_qr_morning_text` (без «Завтра форум!»).
-    Вечерняя/ручная рассылка в сам день форума (догон, «📤 Разослать QR сейчас» утром) — тоже
-    утренний текст: «завтра» в день форума путает делегатов."""
+async def _broadcast_text(city: str | None, *, morning: bool) -> tuple[str, bool]:
+    """(Текст под QR, это день форума). Утренний повтор — всегда `checkin_qr_morning_text` (без
+    «Завтра форум!»). Вечерняя/ручная рассылка в сам день форума (догон, «📤 Разослать QR
+    сейчас» утром) — тоже утренний текст: «завтра» в день форума путает делегатов."""
     from cities import get_setting_typed_for_city
     if not morning:
         morning = await is_forum_day_offset(city, 0)
     key = "checkin_qr_morning_text" if morning else "checkin_qr_broadcast_text"
-    return await get_setting_typed_for_city(key, city)
+    return await get_setting_typed_for_city(key, city), morning
 
 
-async def _send_one(telegram_id: int, png: bytes, caption: str, kb: InlineKeyboardMarkup) -> bool:
+async def _send_one(telegram_id: int, png: bytes, caption: str, kb) -> bool:
     async def _factory(cid):
         return await _sched._bot.send_photo(
             cid, BufferedInputFile(png, filename="checkin_qr.png"),
@@ -534,7 +543,7 @@ async def send_broadcast(city: str | None) -> dict:
         already = await checkin_qr_sent_ids(city_scope=scope)
         targets = [u for u in eligible if u["telegram_id"] not in already]
 
-        base_text = await _broadcast_text(city, morning=False)
+        base_text, forum_day = await _broadcast_text(city, morning=False)
 
         sent = failed = 0
         tr_maps: dict[str, dict] = {}
@@ -542,7 +551,7 @@ async def send_broadcast(city: str | None) -> dict:
             tid = user["telegram_id"]
             try:
                 png, _default_caption = await build_checkin_qr(user)
-                caption, kb = await _render_for(tid, base_text, tr_maps)
+                caption, kb = await _render_for(tid, base_text, tr_maps, forum_day=forum_day)
             except Exception as e:
                 logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
                 failed += 1
@@ -583,7 +592,7 @@ async def send_morning_repeat(city: str | None) -> dict:
     confirmed = await checkin_qr_confirmed_ids(city_scope=scope)
     targets = [u for u in eligible if u["telegram_id"] not in confirmed]
 
-    base_text = await _broadcast_text(city, morning=True)
+    base_text, forum_day = await _broadcast_text(city, morning=True)
 
     sent = failed = 0
     tr_maps: dict[str, dict] = {}
@@ -591,7 +600,7 @@ async def send_morning_repeat(city: str | None) -> dict:
         tid = user["telegram_id"]
         try:
             png, _default_caption = await build_checkin_qr(user)
-            caption, kb = await _render_for(tid, base_text, tr_maps)
+            caption, kb = await _render_for(tid, base_text, tr_maps, forum_day=forum_day)
         except Exception as e:
             logger.error(f"checkin_broadcast.send_morning_repeat: build for {tid} failed: {e}")
             failed += 1
