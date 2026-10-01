@@ -17,6 +17,7 @@ from database import ext_forms_db as xdb
 from handlers.admin import router
 from handlers.admin_ext_forms import _e, _show, render_form_card
 from services import sheets
+from services.ext_forms_google import list_tabs as google_list_tabs
 from services.ext_forms_mirror import create_mirror_tab
 
 _TAB_BTN_LIMIT = 40
@@ -46,6 +47,32 @@ def _cut(title: str) -> str:
 
 # ---------- выбор вкладки ----------
 
+async def protected_tab_titles(form: dict) -> set[str]:
+    """Вкладки, в которые зеркало писать нельзя: основная и служебные вкладки бота, вкладки
+    других форм и таблица ответов самой Google-формы (иначе зеркало читалось бы как ответы)."""
+    from services.sheet_reconcile import _known_non_delegate_tab_titles
+    from settings_ops import current_tab_titles
+
+    hidden: set[str] = {t.title for t in await current_tab_titles()}
+    try:
+        hidden |= await _known_non_delegate_tab_titles()
+    except Exception:  # noqa: BLE001 — список вкладок вторичен, выбор не должен падать
+        pass
+    for other in await xdb.list_forms():
+        if other["id"] != form["id"] and other.get("mirror_tab"):
+            hidden.add(other["mirror_tab"])
+    if form.get("platform") == "google" and form.get("external_id") == config.GOOGLE_SHEET_ID:
+        try:
+            _, tabs = await google_list_tabs(form["external_id"])
+            gid = form.get("gsheet_gid")
+            src = next((t for g, t in tabs if g == gid), None) if gid is not None else (
+                tabs[0][1] if tabs else None)
+            if src:
+                hidden.add(src)
+        except Exception:  # noqa: BLE001
+            pass
+    return hidden
+
 async def show_tab_picker(message, form_id: int, state: FSMContext, *, edit: bool = True) -> None:
     form = await xdb.get_form(form_id)
     if form is None:
@@ -59,10 +86,13 @@ async def show_tab_picker(message, form_id: int, state: FSMContext, *, edit: boo
         await state.update_data(extf_tabs=[])
         text = (f"📋 <b>Вкладка таблицы для «{_e(form['title'])}»</b>\n\n{_NO_SHEET}")
     else:
+        hidden = await protected_tab_titles(form)
+        titles = [t for t in titles if t not in hidden]
         await state.update_data(extf_tabs=list(titles))
         text = (f"📋 <b>Вкладка таблицы для «{_e(form['title'])}»</b>\n\n"
-                "Куда складывать копию ответов? Можно завести новую вкладку или выбрать "
-                "уже существующую — бот допишет в неё свои колонки справа.")
+                "Куда складывать копию ответов? Лучше завести новую вкладку. Из существующих "
+                "подойдёт только пустая — в чужую вкладку с данными бот писать не будет. "
+                "Служебные вкладки бота и таблицы ответов в списке не показываются.")
         rows.append([_btn(f"➕ Новая вкладка «{_cut(form['title'])}»", f"extf_tabnew:{form_id}")])
         for idx, title in enumerate(titles):
             rows.append([_btn(_cut(title), f"extf_tabpick:{form_id}:{idx}")])
@@ -113,6 +143,11 @@ async def extf_tabpick(callback: types.CallbackQuery, state: FSMContext):
     tabs = (await state.get_data()).get("extf_tabs") or []
     if await xdb.get_form(form_id) is None or not 0 <= idx < len(tabs):
         await callback.answer(_STALE, show_alert=True)
+        return
+    form = await xdb.get_form(form_id)
+    if tabs[idx] in await protected_tab_titles(form):
+        await callback.answer("Эта вкладка служебная — выберите другую или создайте новую",
+                              show_alert=True)
         return
     await xdb.set_form_mirror(form_id, tabs[idx], None)
     await render_form_card(callback, form_id, edit=True)
