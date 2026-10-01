@@ -201,7 +201,13 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     @app.middleware("http")
     async def _enabled_gate(request: Request, call_next):
         path = request.url.path
-        if path != HEALTH_PATH and not _miniapp_enabled(cfg.db_path):
+        # вебхуки внешних форм должны доходить и при выключенном Mini App — иначе Яндекс
+        # получает 503 и бросает интеграцию
+        if (
+            path != HEALTH_PATH
+            and not path.startswith("/app/hooks/")
+            and not _miniapp_enabled(cfg.db_path)
+        ):
             if path in SHELL_PATHS:
                 return render_disabled_page(request)
             if _is_shell_asset(path):
