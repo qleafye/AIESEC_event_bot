@@ -54,6 +54,11 @@ _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # настроек (Phase 22, D-05/T-22-05: нового транспорта для них не заводится).
 STAFF_UPLOAD_CAPS = frozenset({"moderate_game", "settings"})
 
+# Права, у которых в Mini App нет ни одного экрана: «🔗 Ссылки с метками» живут только в боте.
+# Отбрасываются в `principal`, иначе держатель одной такой роли считался бы сотрудником
+# (`is_staff`): терял бы привет-экран делегата, видел плитку дашборда и проходил cookie-вход.
+BOT_ONLY_CAPS = frozenset({"source_links"})
+
 # Разделы-чекбоксы D-06: имя раздела -> ключ реестра `miniapp_section_{section}`.
 # "form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — рядом с "profile": оба делегатские разделы.
 SECTIONS = (
@@ -215,7 +220,7 @@ def principal(
         raise HTTPException(401, {"reason": "no_auth"})
 
     with read_conn(cfg.db_path) as conn:
-        caps = frozenset(resolve_capabilities(conn, telegram_id, cfg.admin_ids))
+        caps = frozenset(resolve_capabilities(conn, telegram_id, cfg.admin_ids)) - BOT_ONLY_CAPS
         city = staff_city(conn, telegram_id)
 
     if via == "cookie" and not caps:

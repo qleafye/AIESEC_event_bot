@@ -539,3 +539,8 @@ class ProgramPhotoUpload(StatesGroup):
     # Фото программы ДЛЯ ОДНОГО ГОРОДА (или общее) — handlers/admin_program_view.py; город и
     # экран возврата — в state.get_data().
     waiting = State()
+
+
+class SourceLinkCreate(StatesGroup):
+    # «🔗 Ссылки с метками» → «➕ Новая ссылка» (handlers/admin_source_links.py): название метки.
+    waiting_for_tag = State()

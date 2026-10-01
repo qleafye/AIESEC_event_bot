@@ -3363,6 +3363,19 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "roles", "label": "🎗 Роль «Волонтёр регистрации»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
+    # Роль маркетолога: только ссылки с метками и счётчики заявок по ним (handlers/admin_caps.py).
+    "role_caps_marketing_manager": {
+        "type": "list", "group": "roles", "label": "📣 Права роли: Маркетинг (метки)",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 📣 Маркетинг (метки)»."
+        ),
+        "default": ["source_links"],
+    },
+    "role_marketing_manager_enabled": {
+        "type": "enum", "group": "roles", "label": "📣 Роль «Маркетинг (метки)»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
 
     # ── Phase 09.1 (A): "game" group ("🎮 Геймификация") ────────────────────────────────
     # Every text the free-form submission flow shows a delegate/manager, editable without

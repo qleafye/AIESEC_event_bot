@@ -27,7 +27,7 @@ from cities import (
     ALL_CITIES,
     ALL_CITIES_LABEL,
 )
-from handlers.admin_caps import required_capability, resolve_capabilities, ANY_CAPABILITY
+from handlers.admin_caps import required_capability, resolve_capabilities, _holds
 
 
 # ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows. Phase 20 (20-03,
@@ -45,6 +45,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📊 Статистика регистраций", "admin_stats"),
     ("🗓 Регистрации по месяцам", "admin_monthly_stats"),
     ("📈 Источники", "admin_source_stats"),
+    ("🔗 Ссылки с метками", "admin_source_links"),  # маркетологу: метки + новая ссылка кнопкой
     ("📄 Экспорт CSV", "admin_export_csv"),
     ("📝 Незавершённые → таблица", "admin_export_incomplete"),
     ("📋 Заявки", "admin_applications"),
@@ -107,10 +108,7 @@ def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
         cap = required_capability(callback_data=callback_data)
         if cap is None:
             continue  # deny-by-default (D-02): an unmapped row is never shown either
-        if cap == ANY_CAPABILITY:
-            if caps:
-                rows.append((text, callback_data))
-        elif cap in caps:
+        if _holds(caps, cap):  # "*" = любое право, кортеж = «любое из», иначе ровно это право
             rows.append((text, callback_data))
     return rows
 

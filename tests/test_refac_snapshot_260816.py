@@ -791,6 +791,9 @@ admin|message|attach_confirm_text|state:AmbAttach:*
 admin|message|revoke_person_step|state:AmbTierRevoke:*
 admin|message|revoke_pick_hint|state:AmbTierRevoke:*
 admin|message|amb_points_value|state:AmbPointsEdit:*
+admin|message|source_link_cancel_text|state:SourceLinkCreate:*,state:SourceLinkCreate:*
+admin|message|source_link_cancel_text|state:SourceLinkCreate:*,state:SourceLinkCreate:*
+admin|message|source_link_tag_step|state:SourceLinkCreate:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1436,6 +1439,9 @@ admin|callback_query|forumfn_qr_screen|forumfn_qr:*
 admin|callback_query|forumfn_qr_set|forumfn_qr_set:*
 admin|callback_query|forumfn_back|forumfn_back:*
 admin|callback_query|forumfn_open|forumfn_open:*
+admin|callback_query|show_source_links|admin_source_links
+admin|callback_query|source_link_new|srclink_new
+admin|callback_query|source_link_cancel|srclink_cancel
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2121,7 +2127,11 @@ def test_snapshot_total_handler_count_is_292():
     # 03.10 («🔁 Перехватить» взятый SOS, handlers/admin_sos.py): 3 admin.callback_query
     # (sos_takeover/sos_takeover_go/sos_takeover_no) сразу после sos_claim и ПЕРЕД sos_resolve —
     # одна чистая вставка, 0 удалений, 0 реордеров (975 -> 978).
-    assert len(GOLDEN_SNAPSHOT) == 978
+    # Роль «📣 Маркетинг (метки)» (handlers/admin_source_links.py, хвост handlers/admin.py):
+    # 3 admin.message (state:SourceLinkCreate:*) сразу после amb_points_value и 3
+    # admin.callback_query (show_source_links/source_link_new/source_link_cancel) сразу после
+    # forumfn_open. Сверено diff'ом: две чистые вставки (3 + 3), 0 реордеров (978 -> 984).
+    assert len(GOLDEN_SNAPSHOT) == 984
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

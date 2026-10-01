@@ -33,6 +33,7 @@ ALL_CAPABILITIES = [
     "stats",
     "checkin",
     "checkin_approve",
+    "source_links",
 ]
 
 # Дефолты `role_caps_<role>` — дублируют `settings_schema.SETTINGS_SCHEMA["role_caps_<role>"]
@@ -49,6 +50,9 @@ _ROLE_DEFAULT_CAPS: dict[str, list[str]] = {
     "volunteer": ["checkin"],
     # Ревью 28.09 (D-41): волонтёр регистрации — отметка и одобрение на месте.
     "reg_volunteer": ["checkin", "checkin_approve"],
+    # Маркетолог: право есть только в боте; Mini App его отбрасывает (miniapp/deps.py,
+    # BOT_ONLY_CAPS), дашборд пускает лишь по `stats`.
+    "marketing_manager": ["source_links"],
 }
 
 

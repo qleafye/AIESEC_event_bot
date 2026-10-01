@@ -795,7 +795,10 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1498,
+        1521,
+        "01.10 (роль «📣 Маркетинг (метки)»): +23 строки — право source_links, роль "
+        "marketing_manager, кортеж «любое из» в карте ADMIN_CAPS (admin_source_stats, "
+        "cmd:create_link) и его проверка в _holds, права экрана «🔗 Ссылки с метками»; 1498 -> 1521. "
         "03.10 (SOS: реплай в личке на дописку делегата и «🔁 Перехватить»): +6 строк — форма "
         "реплая на копию дописки в CapabilityMiddleware (сам поиск в services.sos.is_relay_reply) "
         "и три капы sos_takeover*; 1492 -> 1498. "

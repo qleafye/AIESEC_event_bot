@@ -208,6 +208,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_stats"),
         ("op", "admin_monthly_stats"),
         ("op", "admin_source_stats"),
+        # Маркетологу (право source_links) этот раздел показывает только две строки — эту и
+        # «📈 Источники» выше: обе про метки, ни одной про людей.
+        ("op", "admin_source_links"),
         ("op", "admin_export_csv"),
         ("op", "admin_export_incomplete"),
         ("op", "admin_sync_sheet"),
