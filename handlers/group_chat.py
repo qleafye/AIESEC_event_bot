@@ -342,6 +342,22 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     return report
 
 
+def _post_resolve_who(report: dict) -> str:
+    """Кто может дописать делегату после решения: и взявший, и закрывший, если это разные
+    люди, — иначе отказ называл одного, и второй не знал, что ему можно."""
+    import html
+
+    claimer = report.get("claimed_by_name")
+    resolver = report.get("resolved_by_name")
+    different = (report.get("claimed_by") is not None
+                 and report.get("claimed_by") != report.get("resolved_by"))
+    if claimer and resolver and different:
+        return (f"Дописать делегату после решения могут {html.escape(str(claimer))} "
+                f"(вёл(а) SOS) или {html.escape(str(resolver))} (отметил(а) «✅ Решено»).")
+    who = html.escape(str(claimer or resolver or "коллега"))
+    return f"Дописать делегату после решения может {who} — он(а) вёл(а) этот SOS."
+
+
 async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict) -> None:
     """Ответ делегату реплаем из чата SOS — только от того, кто взял заявку «🙋 Беру» (кнопку в
     привязанном чате SOS жмёт любой его участник, `on_sos_card_button`). Неявного захвата
@@ -361,10 +377,9 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
         # Решённый SOS: дописать делегату (ответ уйдёт с пометкой на карточке) может тот,
         # кто его вёл или закрыл, — поздравления команды на закрытой карточке не уходят.
         if uid not in (claimed_by, report.get("resolved_by")):
-            who = html.escape(str(report.get("claimed_by_name") or report.get("resolved_by_name") or "коллега"))
             await message.reply(
-                f"⚠️ Ответ не отправлен: SOS #{report['id']} уже решён. Дописать делегату "
-                f"после решения может {who} — он(а) вёл(а) этот SOS."
+                f"⚠️ Ответ не отправлен: SOS #{report['id']} уже решён. "
+                f"{_post_resolve_who(report)}"
             )
             return
     else:

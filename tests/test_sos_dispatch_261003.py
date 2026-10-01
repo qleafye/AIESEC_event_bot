@@ -497,3 +497,15 @@ def test_group_reply_to_followup_with_card_markers_stays_in_its_report(tmp_path)
         )
     assert any("Иду" in t for t in bot.sent_to(DELEGATE_ID))
     assert asyncio.run(db.get_sos_report(other_rid))["claimed_by"] is None
+
+
+def test_group_reply_after_resolve_refusal_names_claimer_and_resolver(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    asyncio.run(db.claim_sos_report(report["id"], STRANGER_ID, "Вера Взявшая"))
+    asyncio.run(db.resolve_sos_report(report["id"], MANAGER_ID, "Рома Закрывший"))
+    bot = RecordingBot()
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _card(GROUP, report["id"]), "молодцы!"))
+    refusal = [t for t in bot.sent_to(SOS_CHAT_ID) if "уже решён" in t]
+    assert refusal and "Вера Взявшая" in refusal[0] and "Рома Закрывший" in refusal[0]
