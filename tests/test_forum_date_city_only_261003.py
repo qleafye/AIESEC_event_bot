@@ -1,0 +1,174 @@
+"""Дата форума — только своя у города (форумы 03.10): общий `forum_date`, записанный с шапкой
+«🌍 Все города», больше не достаётся городам без своей даты. Иначе Москва получала QR
+«Завтра форум!» и опрос неявившихся за чужой региональный форум.
+
+async через `asyncio.run()` (конвенция проекта), БД — `tests/_dbtpl.py::fast_init_db`."""
+from __future__ import annotations
+
+import asyncio
+import sqlite3
+
+from config import config
+from database import db
+import services.checkin_broadcast as cb
+import services.scheduler as sched
+from services.reject_rules import forum_date_for
+from tests._dbtpl import fast_init_db
+from tests.test_roles_phase8 import FakeCallback, _fresh_state
+
+ADMIN_ID = 261003001
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
+
+def _ready(tmp_path, *, cities_on=True):
+    config.DB_PATH = str(tmp_path / "forum_date_city_only.db")
+    config.ADMIN_IDS = [ADMIN_ID]
+    fast_init_db()
+    if cities_on:
+        _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("checkin_qr_enabled", "on"))
+    _run(db.set_setting("event_season", "YL 26/2"))
+
+
+def _seed(tid, city):
+    _run(db.add_user({
+        "telegram_id": tid, "full_name": f"D{tid}",
+        "registration_date": "2026-09-01 00:00:00", "event_city": city,
+    }))
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status='approved', season='YL 26/2' WHERE telegram_id=?", (tid,))
+    conn.commit()
+    conn.close()
+
+
+class _Sched:
+    def __init__(self):
+        self.jobs = {}
+
+    def get_job(self, jid):
+        return self.jobs.get(jid)
+
+    def add_job(self, fn, trigger, run_date=None, args=None, id=None, replace_existing=False, **kw):
+        self.jobs[id] = (fn, run_date, args)
+
+    def remove_job(self, jid):
+        self.jobs.pop(jid, None)
+
+    def get_jobs(self):
+        return []
+
+
+def test_city_without_own_date_ignores_common_date(tmp_path):
+    _ready(tmp_path)
+    _run(db.set_setting("forum_date", "03.10.2026"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    assert _run(forum_date_for("msk")) is None
+    assert _run(forum_date_for(None)) is None  # делегат без города = город по умолчанию
+    assert _run(forum_date_for("spb")) == "03.10.2026"
+    # Возрастное правило автоотказа по-прежнему видит общую дату.
+    assert _run(forum_date_for("msk", inherit_common=True)) == "03.10.2026"
+
+
+def test_cities_off_common_date_is_the_date(tmp_path):
+    _ready(tmp_path, cities_on=False)
+    _run(db.set_setting("forum_date", "03.10.2026"))
+    assert _run(forum_date_for(None)) == "03.10.2026"
+
+
+def test_qr_broadcast_not_scheduled_for_city_without_own_date(tmp_path, monkeypatch):
+    """Город без своей даты + общая дата -> QR ему не ставится и не уходит."""
+    _ready(tmp_path)
+    _run(db.set_setting("forum_date", "03.10.2026"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    _seed(1, "msk")
+    _seed(2, "spb")
+    fake = _Sched()
+    monkeypatch.setattr(sched, "get_scheduler", lambda: fake)
+    from datetime import datetime
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 1, 12, 0))
+    res = _run(cb.schedule_city_jobs("msk"))
+    assert res == {"scheduled": False, "reason": "no_date"}
+    assert cb.evening_job_id("msk") not in fake.jobs
+    assert _run(cb.schedule_city_jobs("spb"))["scheduled"] is True
+    assert cb.evening_job_id("spb") in fake.jobs
+    # Даже если джоба Москвы каким-то образом сработает — «не тот день», ничего не уходит.
+    sent = []
+
+    async def _send(city):
+        sent.append(city)
+        return {"sent": 1}
+
+    monkeypatch.setattr(cb, "send_broadcast", _send)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    out = _run(cb._run_evening_job("msk"))
+    assert out.get("skipped") == "wrong_day" and sent == []
+
+
+def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
+    from cities import ALL_CITIES, set_admin_city
+    from handlers.admin_settings import EditSetting, settings_edit_start
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, ALL_CITIES))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    state = _fresh_state(ADMIN_ID)
+    cbq = FakeCallback("settings_edit:forum_date", user_id=ADMIN_ID)
+    _run(settings_edit_start(cbq, state))
+    assert _run(state.get_state()) is None  # ввод не ляжет в общий ключ
+    assert "для какого города" in cbq.message.text
+    cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
+    assert "fdate_city:forum_date:spb" in cbs and "fdate_city:forum_date:msk" in cbs
+    labels = [b.text for row in cbq.message.markup.inline_keyboard for b in row]
+    assert any("03.10.2026" in t for t in labels)
+    assert EditSetting.waiting_for_value is not None
+
+
+def test_city_pick_switches_header_and_edits_city_key(tmp_path):
+    from cities import ALL_CITIES, admin_selected_city, set_admin_city
+    from handlers.admin_forum_date import forum_city_key_edit
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, ALL_CITIES))
+    state = _fresh_state(ADMIN_ID)
+    cbq = FakeCallback("fdate_city:forum_date:tyumen", user_id=ADMIN_ID)
+    _run(forum_city_key_edit(cbq, state))
+    assert _run(admin_selected_city(ADMIN_ID)) == "tyumen"
+    assert _run(state.get_data())["setting_key"] == "forum_date__city__tyumen"
+
+
+def test_city_pick_rejects_unknown_key_and_foreign_city(tmp_path):
+    from handlers.admin_forum_date import forum_city_key_edit
+
+    _ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    bad = FakeCallback("fdate_city:event_season:spb", user_id=ADMIN_ID)
+    _run(forum_city_key_edit(bad, state))
+    assert bad.answers and bad.answers[0][1] is True
+    other = 261003999  # менеджер, привязанный к СПб, не правит Тюмень
+    _run(db.add_staff(other, "manager", ADMIN_ID))
+    assert _run(db.set_staff_city(other, "spb"))
+    foreign = FakeCallback("fdate_city:forum_date:tyumen", user_id=other)
+    other_state = _fresh_state(other)
+    _run(forum_city_key_edit(foreign, other_state))
+    assert foreign.answers[0][1] is True
+    assert _run(other_state.get_state()) is None
+
+
+def test_ready_screen_buttons_edit_the_traffic_light_city(tmp_path):
+    """Светофор Тюмени при шапке «СПб» правит Тюмень — город в callback, не из шапки."""
+    from handlers import admin_forum_ready as afr
+
+    _ready(tmp_path)
+    row = _run(afr._row_forum_date("tyumen"))
+    assert row["fix"][1] == "fdate_city:forum_date:tyumen"
+    _run(db.set_setting("forum_date__city__tyumen", "03.10.2099"))
+    _run(db.set_setting("sos_active_days__city__tyumen", "2"))
+    row = _run(afr._row_forum_date("tyumen"))
+    cbs = [c for _label, c in row["fix"]]
+    assert cbs == ["fdate_city:forum_date:tyumen", "fdate_city:sos_active_days:tyumen"]
+    assert row["light"] == afr.YELLOW and "дольше одного дня" in row["text"]
+    _run(db.set_setting("sos_active_days__city__tyumen", "1"))
+    assert _run(afr._row_forum_date("tyumen"))["light"] == afr.GREEN

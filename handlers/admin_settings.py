@@ -1961,6 +1961,9 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     # Phase 09.3 (06, CITY-09): WR-05 — single header read for this handler, passed into the
     # shared render helper so it never re-resolves the header itself.
     header_code = await admin_selected_city(admin_id)
+    if key == "forum_date" and header_code == ALL_CITIES:  # общая дата молча досталась бы Москве
+        from handlers.admin_forum_date import show_forum_date_city_picker
+        return await show_forum_date_city_picker(callback, state)
     text, cancel_kb = await _settings_edit_screen(key, header_code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
 
@@ -1987,7 +1990,10 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     `EditSetting.waiting_for_value` for a per-city composite key; reuses 09.2-05's per-city
     text-entry mechanics verbatim (same FSM keys, same composed-key primitive), just reached
     from the header-aware editor screen instead of the deleted separate city picker."""
-    key = callback.data.split(":", 1)[1]
+    await begin_city_edit(callback, state, callback.data.split(":", 1)[1])
+
+
+async def begin_city_edit(callback: types.CallbackQuery, state: FSMContext, key: str):
     admin_id = callback.from_user.id
     # Fail-closed (RESEARCH Pattern 2): module off or a non-per_city key never starts an
     # edit, even if someone forges the callback_data directly.

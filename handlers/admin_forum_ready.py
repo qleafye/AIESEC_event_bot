@@ -53,16 +53,25 @@ def _days_word(n: int) -> str:
     return f"{n} дней"
 
 
+async def _edit_cb(key: str, code: str | None) -> str:
+    """Правка для города СВЕТОФОРА, а не шапки админки (handlers/admin_forum_date.py)."""
+    if code and await cities_module_on():
+        from handlers.admin_forum_date import city_edit_callback
+        return city_edit_callback(key, code)
+    return f"settings_edit:{key}"
+
+
 async def _row_forum_date(code: str | None) -> dict:
     date_str = await forum_date_for(code)
+    date_cb, days_cb = await _edit_cb("forum_date", code), await _edit_cb("sos_active_days", code)
     if not date_str:
         return _row(RED, "Дата форума не задана — без неё не уйдут QR и шпаргалка",
-                    ("🗓 Задать дату форума", "settings_edit:forum_date"))
+                    ("🗓 Задать дату форума", date_cb))
     from services.sos import sos_active_window
     window = await sos_active_window(code)
     if window is None:  # дата не парсится — тот же случай, что «не задана»
         return _row(RED, f"Дата форума не читается ({html.escape(date_str)}) — задайте заново",
-                    ("🗓 Задать дату форума", "settings_edit:forum_date"))
+                    ("🗓 Задать дату форума", date_cb))
     start, end = window
     days = (end - start).days + 1
     span = start.strftime("%d.%m") if days == 1 else f"{start:%d.%m}–{end:%d.%m}"
@@ -71,12 +80,14 @@ async def _row_forum_date(code: str | None) -> dict:
         # Дата прошлого форума, которую забыли обновить, молча выключает рассылки QR и
         # шпаргалки — ловим её здесь, а не в день форума.
         return _row(YELLOW, f"Дата форума прошла ({span}) — это прошлый форум? Обновите дату",
-                    ("🗓 Обновить дату форума", "settings_edit:forum_date"))
-    # Длина форума — нейтрально, без жёлтого: у Москвы два дня законно. Диапазон виден явно,
-    # чтобы однодневный региональный форум с длиной 2 бросался в глаза.
-    edit = [("🗓 Изменить дату", "settings_edit:forum_date"),
-            ("🗓 Сколько дней идёт", "settings_edit:sos_active_days")]
+                    ("🗓 Обновить дату форума", date_cb))
+    edit = [("🗓 Изменить дату", date_cb), ("🗓 Сколько дней идёт", days_cb)]
     tail = " — идёт сегодня" if start <= today else ""
+    if days != 1:
+        # Не ошибка (у Москвы два дня законно), но жёлтым: однодневный региональный форум с
+        # длиной 2 получает второй «день форума» — отчёт «пришли 0», SOS и меню ещё сутки.
+        return _row(YELLOW, f"Форум: {span} ({_days_word(days)}){tail} — ⚠️ дольше одного дня. "
+                    "Если форум однодневный, поправьте «Сколько дней идёт»", edit)
     return _row(GREEN, f"Форум: {span} ({_days_word(days)}){tail}", edit)
 
 
@@ -281,3 +292,7 @@ async def forum_ready_refresh(callback: types.CallbackQuery):
         if "not modified" not in str(e):
             raise
     await callback.answer("Проверено")
+
+
+# Шов: правка даты/длины форума для конкретного города (кнопки светофора и выбор города).
+from handlers import admin_forum_date  # noqa: E402,F401
