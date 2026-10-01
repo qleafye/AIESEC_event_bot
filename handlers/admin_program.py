@@ -294,9 +294,10 @@ async def prog_new_start(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.set_data({"pmode": "new", "pw_city": code, "pw_day": day})
     await state.set_state(ProgramSessionField.time)
+    from handlers.admin_program_halls import wizard_cancel_kb  # инлайн-отмена: reply-клавиатуру не видно
     await callback.message.answer(
         f"➕ <b>Новая сессия</b> — {day_label(day)}\n\n{_TIME_HINT}",
-        parse_mode="HTML", reply_markup=get_cancel_kb(),
+        parse_mode="HTML", reply_markup=wizard_cancel_kb(),
     )
     await callback.answer()
 
@@ -316,9 +317,13 @@ async def prog_time_step(message: types.Message, state: FSMContext):
     start, end = parsed
     data = await state.get_data()
     if data.get("pmode") == "new":
+        from handlers.admin_program_halls import wizard_after_retime, wizard_cancel_kb
         await state.update_data(pw_start=start, pw_end=end)
+        if data.get("pw_title"):  # время заново после конфликта зала — назад к проверке зала
+            await wizard_after_retime(message, state)
+            return
         await state.set_state(ProgramSessionField.title)
-        await message.answer("Название сессии:", reply_markup=get_cancel_kb())
+        await message.answer("Название сессии:", reply_markup=wizard_cancel_kb())
         return
 
     session_id = data.get("pf_session_id")
@@ -451,10 +456,8 @@ async def prog_hp_pick(callback: types.CallbackQuery, state: FSMContext):
         await state.update_data(pw_hall_id=hall_id)
         warning = await hall_conflict_warning(city, day, hall_id, start, end)
         if warning:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Всё равно", callback_data="prog_wconfirm_yes")],
-                [InlineKeyboardButton(text="🔁 Выбрать другой зал", callback_data="prog_wconfirm_no")],
-            ])
+            from handlers.admin_program_halls import wizard_conflict_kb
+            kb = wizard_conflict_kb()
             await callback.message.edit_text(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=kb)
             await callback.answer()
             return
@@ -652,10 +655,8 @@ async def prog_hallname_step(message: types.Message, state: FSMContext):
         pw = await state.get_data()
         warning = await hall_conflict_warning(pw.get("pw_city"), pw.get("pw_day"), new_id, pw.get("pw_start"), pw.get("pw_end"))
         if warning:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Всё равно", callback_data="prog_wconfirm_yes")],
-                [InlineKeyboardButton(text="🔁 Выбрать другой зал", callback_data="prog_wconfirm_no")],
-            ])
+            from handlers.admin_program_halls import wizard_conflict_kb
+            kb = wizard_conflict_kb()
             await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=kb)
             return
         await _wizard_ask_speaker(message, state)

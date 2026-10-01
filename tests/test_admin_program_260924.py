@@ -559,3 +559,33 @@ def test_session_card_shows_checkin_count_with_hall_capacity(tmp_path):
     _run(db.record_session_checkin(1, sid, [], source="miniapp"))
     text, _kb = _run(admin_program.render_session_card(sid))
     assert "Отмечено: 1 из 120" in text
+
+
+def test_wizard_conflict_retime_and_inline_cancel(tmp_path):
+    """Приёмка 03.10: на шагах «время»/«название» — инлайн-«Отмена»; при конфликте зала —
+    «✏️ Ввести время заново», новое время проверяется на тот же зал, название не теряется."""
+    _ready(tmp_path)
+    hall_id = _run(db.create_program_hall("msk", "Большой зал"))
+    _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Уже стоит", hall_id=hall_id))
+
+    state = _new_state(SUPERADMIN_ID)
+    callback = _FakeCallback("prog_new:msk:2026-10-30", user_id=SUPERADMIN_ID)
+    _run(admin_program.prog_new_start(callback, state))
+    assert "prog_wcancel" in _cbs(callback.message.answer_markups[-1])
+    msg = _FakeMessage(text="10:30-11:30", user_id=SUPERADMIN_ID)
+    _run(admin_program.prog_time_step(msg, state))
+    assert "prog_wcancel" in _cbs(msg.answer_markups[-1])
+    _run(admin_program.prog_title_step(_FakeMessage(text="Новая сессия", user_id=SUPERADMIN_ID), state))
+    hall_cb = _FakeCallback(f"prog_hp:w:{hall_id}", user_id=SUPERADMIN_ID)
+    _run(admin_program.prog_hp_pick(hall_cb, state))
+    assert "prog_wretime" in _cbs(hall_cb.message.edit_markup)
+
+    re_cb = _FakeCallback("prog_wretime", user_id=SUPERADMIN_ID)
+    _run(admin_program_halls.prog_wretime(re_cb, state))
+    assert _run(state.get_state()) == ProgramSessionField.time.state
+    _run(admin_program.prog_time_step(_FakeMessage(text="11:00-12:00", user_id=SUPERADMIN_ID), state))
+    assert _run(state.get_state()) == ProgramSessionField.speaker.state  # конфликта больше нет
+    _run(admin_program.prog_speaker_step(_FakeMessage(text="Пропустить", user_id=SUPERADMIN_ID), state))
+    _run(admin_program.prog_description_step(_FakeMessage(text="Пропустить", user_id=SUPERADMIN_ID), state))
+    new = [s for s in _run(db.list_program_sessions_for_city_day("msk", "2026-10-30")) if s["title"] == "Новая сессия"]
+    assert new and new[0]["start_time"] == "11:00" and new[0]["hall_id"] == hall_id

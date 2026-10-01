@@ -612,6 +612,7 @@ def _build_snapshot_lines():
 # `_build_snapshot_lines()`, остальные строки не сдвинулись относительно друг друга.
 # Дрифт-нота (03.10, приёмка хаба форума): +3 хендлера admin.router — forumfn_qr_screen/forumfn_qr_set/forumfn_back (handlers/admin_forum_hub_nav.py, импорт последним в хвосте admin.py), чистая вставка (968 -> 971).
 # Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
+# Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/admin_program_halls.py), чистая вставка (972 -> 973).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -976,6 +977,7 @@ admin|callback_query|prog_copy_pick_source|prog_copy:*
 admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
+admin|callback_query|prog_wretime|prog_wretime
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -2109,7 +2111,7 @@ def test_snapshot_total_handler_count_is_292():
     # (state:ProgramPhotoUpload:*) сразу после rgnm_time_step и 2 admin.callback_query
     # (prog_photo/prog_photo_cancel) сразу после prog_view_toggle_go. Две чистые вставки
     # (2 + 2), 0 удалений, 0 реордеров (964 -> 968).
-    assert len(GOLDEN_SNAPSHOT) == 972
+    assert len(GOLDEN_SNAPSHOT) == 973
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

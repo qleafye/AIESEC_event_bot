@@ -29,9 +29,9 @@ from handlers.admin_program import (
     _short,
     render_day_screen,
 )
-from handlers.states import ProgramHallName
+from handlers.states import ProgramHallName, ProgramSessionField
 from keyboards.builders import get_cancel_kb
-from services.program import copy_program_day, day_label
+from services.program import copy_program_day, day_label, hall_conflict_warning
 
 
 async def render_halls_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
@@ -215,3 +215,50 @@ async def prog_copy_go(callback: types.CallbackQuery):
         f"{stats['halls_created']} новых залов.",
         show_alert=True,
     )
+
+
+# ── Мастер новой сессии: отмена кнопкой и «ввести время заново» при конфликте зала ──────────
+# Живёт здесь, а не в admin_program.py (тот на потолке размера); admin_program зовёт лениво.
+
+def wizard_cancel_kb() -> InlineKeyboardMarkup:
+    """Инлайн-«Отмена» на шагах «время»/«название»: reply-клавиатура «Отмена» в Telegram Web
+    свёрнута, менеджер её не видит. Набранное «Отмена» по-прежнему работает."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отменить создание", callback_data="prog_wcancel")],
+    ])
+
+
+def wizard_conflict_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Всё равно", callback_data="prog_wconfirm_yes")],
+        [InlineKeyboardButton(text="🔁 Выбрать другой зал", callback_data="prog_wconfirm_no")],
+        [InlineKeyboardButton(text="✏️ Ввести время заново", callback_data="prog_wretime")],
+        [InlineKeyboardButton(text="❌ Отменить создание", callback_data="prog_wcancel")],
+    ])
+
+
+@router.callback_query(F.data == "prog_wretime")
+async def prog_wretime(callback: types.CallbackQuery, state: FSMContext):
+    from handlers.admin_program import _TIME_HINT
+    data = await state.get_data()
+    if data.get("pmode") != "new" or not data.get("pw_city"):
+        await callback.answer("Создание сессии уже закрыто — начните заново.", show_alert=True)
+        return
+    await state.set_state(ProgramSessionField.time)
+    await callback.message.edit_text(
+        f"Пришлите время заново. {_TIME_HINT}\nНазвание и зал сохранятся.", reply_markup=wizard_cancel_kb(),
+    )
+    await callback.answer()
+
+
+async def wizard_after_retime(message: types.Message, state: FSMContext) -> None:
+    """Новое время после конфликта: тот же зал проверяется заново, дальше — спикер."""
+    from handlers.admin_program import _wizard_ask_speaker
+    data = await state.get_data()
+    warning = await hall_conflict_warning(
+        data.get("pw_city"), data.get("pw_day"), data.get("pw_hall_id"), data.get("pw_start"), data.get("pw_end"),
+    )
+    if warning:
+        await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=wizard_conflict_kb())
+        return
+    await _wizard_ask_speaker(message, state)
