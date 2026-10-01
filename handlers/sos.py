@@ -33,7 +33,9 @@ from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from cities import default_city_code, get_setting_typed_for_city
-from database.db import add_sos_details, create_sos_report, get_open_sos_report, set_sos_location
+from database.db import (
+    add_sos_details, create_sos_report, get_open_sos_report, get_user, set_sos_location,
+)
 from handlers import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
@@ -149,10 +151,24 @@ async def _expire_collecting(message: types.Message, state: FSMContext) -> None:
 _sos_start_locks: dict[int, list] = {}  # user_id -> [asyncio.Lock, держателей]
 
 
+async def _may_send_sos(message: types.Message) -> bool:
+    """SOS — про безопасность, а не про статус заявки: на площадке в день форума может
+    оказаться и тот, кого ещё не одобрили (walk-in в очереди стойки — `pending`), и
+    отклонённый, пришедший с другом. Поэтому одобренным — как раньше; ожидающим и отклонённым —
+    пока у их города открыто окно SOS (`forum_date` + `sos_active_days`, то же, что показывает
+    кнопку). Вне окна — обычный гейт (`ensure_registered`) со своим текстом; без анкеты вовсе —
+    тоже он («отправь /start»): карточке нужны хотя бы имя и телефон."""
+    user = await get_user(message.from_user.id)
+    if user is not None and user.get("status") in ("pending", "rejected"):
+        if await sos_service.is_sos_active_for_city(await _resolve_city(message.from_user.id)):
+            return True
+    return await ensure_registered(message)
+
+
 # 🆘 SOS — кнопка главного меню
 @router.message(F.text.in_(MENU_TEXTS["menu_sos"]))
 async def sos_start(message: types.Message, state: FSMContext):
-    if not await ensure_registered(message):
+    if not await _may_send_sos(message):
         return
     uid = message.from_user.id
     entry = _sos_start_locks.setdefault(uid, [asyncio.Lock(), 0])
