@@ -6,6 +6,7 @@ import asyncio
 
 from database import db
 from handlers import admin_checkin
+from services.checkin_broadcast import qr_send_report as cbc_report
 from tests.test_admin_checkin_260924 import ADMIN_ID, _db_ready, _FakeCallback, _set_season
 
 
@@ -185,3 +186,68 @@ def test_edit_falls_back_to_new_message_for_photo(tmp_path):
     cb.message = _PhotoMsg()
     asyncio.run(nav.edit_or_answer(cb, "t", InlineKeyboardMarkup(inline_keyboard=[])))
     assert cb.message.sent[-1][0] == "t"
+
+
+# ── «📤 Разослать QR сейчас»: итог на месте «⏳», кому не дошло и почему ───────────────────
+
+def test_qr_send_report_names_failures_by_reason():
+    text = cbc_report({
+        "sent": 3, "failed": 2, "total": 5,
+        "failures": [
+            {"user": {"telegram_id": 7, "full_name": "Пётр <Иванов>", "username": "@petr"}, "reason": "blocked"},
+            {"user": {"telegram_id": 8, "full_name": "Анна", "username": None}, "reason": "other"},
+        ],
+    })
+    assert "доставлено 3 из 5" in text
+    assert "Не дошло 1: заблокировали бота" in text
+    assert "• Пётр &lt;Иванов&gt; (@petr)" in text
+    assert "Не дошло 1: сбой связи" in text and "• Анна" in text
+
+
+def test_qr_send_go_replaces_progress_message(tmp_path, monkeypatch):
+    _seed_spb(tmp_path)
+
+    async def _no_block(code):
+        return None
+
+    async def _fake_send(code):
+        return {"sent": 1, "failed": 1, "total": 2, "failures": [
+            {"user": {"telegram_id": 9, "full_name": "Ольга", "username": "olga"}, "reason": "blocked"}]}
+    monkeypatch.setattr(admin_checkin, "manual_send_block_reason", _no_block)
+    monkeypatch.setattr(admin_checkin, "send_broadcast", _fake_send)
+    cb = _CB("checkinqr_send_go:spb")
+    asyncio.run(admin_checkin.checkinqr_send_go(cb))
+    assert cb.message.sent == []
+    assert cb.message.edits[0][0] == "⏳ Рассылаю QR..."
+    assert "Ольга (@olga)" in cb.message.edits[-1][0]
+
+
+def test_send_broadcast_reports_blocked_user(tmp_path, monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+    from services import checkin_broadcast as cbc
+    _seed_spb(tmp_path)
+
+    async def _users(city):
+        return [{"telegram_id": 5, "full_name": "Блок", "event_city": "spb"}]
+
+    async def _qr(user):
+        return b"png", ""
+
+    async def _render(*a, **k):
+        return "cap", None
+
+    class _Bot:
+        async def send_photo(self, *a, **k):
+            raise TelegramForbiddenError(method=None, message="bot was blocked by the user")
+
+    async def _nosleep(*_a):
+        return None
+
+    monkeypatch.setattr(cbc, "eligible_recipients", _users)
+    monkeypatch.setattr(cbc, "build_checkin_qr", _qr)
+    monkeypatch.setattr(cbc, "_render_for", _render)
+    monkeypatch.setattr(cbc._sched, "_bot", _Bot())
+    monkeypatch.setattr(cbc.asyncio, "sleep", _nosleep)
+    result = asyncio.run(cbc.send_broadcast("spb"))
+    assert result["failed"] == 1
+    assert result["failures"][0]["reason"] == "blocked"
