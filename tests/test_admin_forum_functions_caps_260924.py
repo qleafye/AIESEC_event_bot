@@ -64,7 +64,7 @@ def test_moderate_reg_only_manager_sees_only_moderate_reg_buttons(tmp_path):
     assert "checkin_training_sheet" in cbs  # бэклог №7: лист учебных QR — checkin ИЛИ moderate_reg
 
     # Чужие капы (settings/checkin) — кнопки СКРЫТЫ, не просто недоступны.
-    assert "toggle_checkin_qr_enabled" not in cbs
+    assert "forumfn_qr:msk" not in cbs
     assert "admin_checkin" not in cbs
     assert "admin_miniapp_settings" not in cbs
     assert "admin_menu_buttons" not in cbs
@@ -85,7 +85,7 @@ def test_settings_only_manager_sees_settings_and_checkin_denied(tmp_path):
     _text, kb = _run(aff._render_hub(MANAGER_ID, "msk"))
     cbs = _cbs(kb)
 
-    assert "toggle_checkin_qr_enabled" in cbs
+    assert "forumfn_qr:msk" in cbs
     assert "admin_miniapp_settings" in cbs
     assert "admin_menu_buttons" in cbs
     assert "prog_fbset:msk" in cbs
@@ -108,7 +108,7 @@ def test_checkin_only_manager_sees_only_admin_checkin(tmp_path):
 
     assert "admin_checkin" in cbs
     assert "checkin_training_sheet" in cbs
-    for cb in ("toggle_checkin_qr_enabled", "checkinqr_cfg:msk", "admin_miniapp_settings",
+    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "admin_miniapp_settings",
                "checkinvol_cfg:msk", "admin_menu_buttons", "prog_fbset:msk", "asos_city:msk"):
         assert cb not in cbs
 
@@ -119,7 +119,7 @@ def test_superadmin_sees_every_button(tmp_path):
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(SUPERADMIN_ID, "msk"))
     cbs = _cbs(kb)
-    for cb in ("toggle_checkin_qr_enabled", "checkinqr_cfg:msk", "admin_checkin",
+    for cb in ("forumfn_qr:msk", "checkinqr_cfg:msk", "admin_checkin",
                "admin_miniapp_settings", "checkinvol_cfg:msk", "admin_menu_buttons",
                "prog_fbset:msk", "asos_city:msk"):
         assert cb in cbs, f"{cb} пропал у держателя всех прав"
