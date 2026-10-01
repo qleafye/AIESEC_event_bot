@@ -315,6 +315,20 @@ def test_cities_off_csv_untimed_lands_on_common_forum_day(tmp_path, monkeypatch)
     client_with(tmp_path)
     _run(bot_db.set_setting("event_city_enabled", "off"))
     _run(bot_db.set_setting("forum_date", "03.10.2026"))
+    _run(bot_db.set_setting("sos_active_days", "1"))
     monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 4, 15, 0))
     stamp = _run(checkin_csv_import._untimed_stamp({"scanned_at": None}, {"event_city": None}, "entry"))
     assert stamp == ("2026-10-03 12:00:00", "forum_day_assumed")
+
+
+def test_csv_without_time_on_second_forum_day_keeps_upload_time(tmp_path, monkeypatch):
+    """Москва, 2 дня (30–31.10): файл без даты и времени, загруженный во 2-й день, — время
+    загрузки, а не 1-й день: иначе у вошедшего 30.10 проход 31.10 ушёл бы в «уже был»."""
+    from services import timeutil
+    _setup(tmp_path, monkeypatch, datetime(2026, 10, 30, 15, 0))
+    rec, user = {"scanned_at": None}, {"event_city": "msk"}
+    assert _run(checkin_csv_import._untimed_stamp(rec, user, "entry")) == (None, "untimed")
+    monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 31, 15, 0))
+    assert _run(checkin_csv_import._untimed_stamp(rec, user, "entry")) == (None, "untimed")
+    monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 11, 1, 10, 0))
+    assert _run(checkin_csv_import._untimed_stamp(rec, user, "entry")) == ("2026-10-30 12:00:00", "forum_day_assumed")
