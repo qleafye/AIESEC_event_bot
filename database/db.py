@@ -2021,6 +2021,12 @@ async def init_db():
                 created_by INTEGER
             )
         ''')
+        # Одна и та же форма (платформа + источник + вкладка) подключается один раз: двойное
+        # нажатие «Верно» в мастере иначе плодило дубли с разными секретами.
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_forms_source "
+            "ON external_forms(platform, external_id, IFNULL(gsheet_gid, -1))"
+        )
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -163,3 +163,18 @@ def test_deleted_answers_not_resurrected(tmp_path):
     assert asyncio.run(ef.enqueue_pending(fid, "p1", None, NOW)) is False
     assert asyncio.run(ef.count_answers(fid)) == 0
     assert asyncio.run(ef.enqueue_pending(fid, "new", None, NOW)) is True
+
+
+def test_same_source_form_cannot_be_created_twice(tmp_path):
+    import sqlite3
+
+    import pytest
+    _ready(tmp_path)
+    _form()
+    with pytest.raises(sqlite3.IntegrityError):
+        asyncio.run(ef.create_form(platform="yandex", external_id="f1", title="Дубль", secret="s2"))
+    # другая вкладка той же Google-таблицы — другая форма
+    asyncio.run(ef.create_form(platform="google", external_id="g", title="A", gsheet_gid=1))
+    asyncio.run(ef.create_form(platform="google", external_id="g", title="B", gsheet_gid=2))
+    with pytest.raises(sqlite3.IntegrityError):
+        asyncio.run(ef.create_form(platform="google", external_id="g", title="C", gsheet_gid=2))
