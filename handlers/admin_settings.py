@@ -1367,7 +1367,7 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
 
     await delete_setting_by_admin(admin_id, composed)  # idempotent — safe if already absent
     city_txt = await city_label(code)
-    await callback.answer(f"Готово: {city_txt} — " + ("дата стёрта" if _fdate.is_city_only_key(key) else "как везде"), show_alert=True)
+    await callback.answer(f"Готово: {city_txt} — как везде", show_alert=True)
     text, kb = await settings_return_screen(admin_id, callback_data="settings_toggle_reg")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
