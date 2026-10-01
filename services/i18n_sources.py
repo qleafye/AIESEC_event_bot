@@ -541,6 +541,10 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:sos.location_button", "📍 Отправить геопозицию"))
     # Ядро без «📍 » — именно его ищет `tr_kb` (ведущий эмодзи снимается до поиска).
     items.append(("lit:sos.location_button_core", "Отправить геопозицию"))
+    # Шапки ответа организаторов делегату (SOS и «❓ Задать вопрос»): уходят из чужого
+    # чата через `services.i18n.tr_for_user`, АСТ-сторож их не видит.
+    items.append(("lit:sos.org_reply_header", "Ответ по SOS #{id}:"))
+    items.append(("lit:questions.org_reply_header", "Ответ от организаторов:"))
 
     # Часть А (ревью SOS-переводов, `sos_recent_followup_text` уходил сырой русской строкой):
     # шаблоны `services.sos.claim_status_parts` + переводимый фолбэк имени «коллега» —
