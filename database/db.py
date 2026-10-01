@@ -2077,6 +2077,16 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_ext_pending_due "
             "ON external_form_pending(next_try_at, id)"
         )
+        # Надгробия удалённых анкет: источник (Яндекс/Google) помнит ответ дальше, и без метки
+        # ближайшая сверка вернула бы стёртые ПД. Здесь только id, самих данных нет.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS external_form_deleted (
+                form_id INTEGER NOT NULL,
+                answer_id TEXT NOT NULL,
+                deleted_at TEXT,
+                UNIQUE(form_id, answer_id)
+            )
+        ''')
 
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
@@ -10519,6 +10529,8 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "external_forms",
     "external_form_columns",
     "external_form_pending",
+    # Надгробия: только id удалённых анкет, без ПД; нужны, чтобы сверка не вернула стёртое.
+    "external_form_deleted",
 })
 
 # Человеческие группы, по которым считается/удаляется след — выведены из USER_PURGE_TABLES,
@@ -10617,6 +10629,13 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
         await db.execute(
             "UPDATE chat_messages SET reply_to_author_id = NULL WHERE reply_to_author_id = ?",
             (telegram_id,),
+        )
+        # Анкеты внешних форм: источник их помнит, поэтому перед стиранием оставляем надгробия,
+        # иначе ближайшая сверка вернула бы удалённые данные.
+        await db.execute(
+            "INSERT OR IGNORE INTO external_form_deleted (form_id, answer_id, deleted_at) "
+            "SELECT form_id, answer_id, ? FROM external_form_answers WHERE matched_telegram_id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), telegram_id),
         )
         for table, column, group in USER_PURGE_TABLES:
             _assert_identifier(table)

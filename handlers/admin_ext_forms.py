@@ -291,8 +291,8 @@ async def extf_purge(callback: types.CallbackQuery):
     n = await xdb.count_answers(form_id)
     text = (
         f"🗑 <b>Удалить собранное по форме «{_e(f['title'])}»?</b>\n\n"
-        f"Пропадут {n} анкет из бота. Строки во вкладке таблицы останутся. "
-        "Отменить нельзя."
+        f"Пропадут {n} анкет из бота, заново они не подтянутся. Строки во вкладке таблицы "
+        "останутся — с личными данными, удалите их там сами. Отменить нельзя."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [_btn("🗑 Да, удалить", f"extf_purge_ok:{form_id}")],

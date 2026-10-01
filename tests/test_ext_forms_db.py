@@ -143,3 +143,23 @@ def test_upsert_yandex_connection_keeps_id(tmp_path):
     assert first == second
     conn = asyncio.run(ef.get_connection(first))
     assert conn["status"] == "ok" and conn["access_token"] == "b"
+
+
+def test_deleted_answers_not_resurrected(tmp_path):
+    """Удалённые анкеты (по форме и по делегату) не возвращаются сверкой, вебхуком и приёмом."""
+    _ready(tmp_path)
+    fid = _form()
+    _answer(fid, "a1")
+    _answer(fid, "a2", tid=777)
+    _answer(fid, "a3", tid=888)
+    asyncio.run(ef.enqueue_pending(fid, "p1", None, NOW))
+    asyncio.run(db.purge_user(777))
+    assert asyncio.run(ef.known_answer_ids(fid)) >= {"a2"}
+    assert asyncio.run(ef.enqueue_pending(fid, "a2", None, NOW)) is False
+    assert _answer(fid, "a2", tid=777) is False
+    asyncio.run(ef.delete_form_answers(fid))
+    assert asyncio.run(ef.known_answer_ids(fid)) == {"a1", "a2", "a3", "p1"}
+    assert _answer(fid, "a1") is False
+    assert asyncio.run(ef.enqueue_pending(fid, "p1", None, NOW)) is False
+    assert asyncio.run(ef.count_answers(fid)) == 0
+    assert asyncio.run(ef.enqueue_pending(fid, "new", None, NOW)) is True
