@@ -69,6 +69,17 @@ def test_manual_send_on_forum_day_uses_today_text(tmp_path, monkeypatch):
     assert bot.photos[0][1].startswith("Сегодня форум!")
 
 
+def test_manual_send_on_second_forum_day_uses_today_text(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _run(db.set_setting("sos_active_days", "2"))
+    _seed(7)
+    bot = PhotoBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 9, 30))
+    _run(cb.send_broadcast(None))
+    assert bot.photos[0][1].startswith("Сегодня форум!")
+
+
 def test_evening_send_keeps_tomorrow_text(tmp_path, monkeypatch):
     _ready(tmp_path)
     _seed(7)
@@ -388,6 +399,8 @@ def test_manual_send_block_reasons(tmp_path, monkeypatch):
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 9, 25, 12, 0))
     assert "рано" in _run(cb.manual_send_block_reason(None))
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 1, 12, 0))
+    assert "рано" in _run(cb.manual_send_block_reason(None))  # за 2 дня — ещё рано
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0))
     assert _run(cb.manual_send_block_reason(None)) is None
     _run(db.set_setting("sos_active_days", "1"))
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 12, 0))
