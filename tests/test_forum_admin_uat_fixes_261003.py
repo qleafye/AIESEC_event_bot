@@ -251,3 +251,26 @@ def test_send_broadcast_reports_blocked_user(tmp_path, monkeypatch):
     result = asyncio.run(cbc.send_broadcast("spb"))
     assert result["failed"] == 1
     assert result["failures"][0]["reason"] == "blocked"
+
+
+# ── «Готовность» → «Таблица»: перевод города и точечная правка строки — тоже записи ─────────
+
+def test_city_move_sheet_writes_mark_last_write(monkeypatch):
+    from config import config
+    from services import sheets
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "x")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "y")
+    monkeypatch.setattr(sheets, "_write_state", {"ok": None, "fail": None})
+    monkeypatch.setattr(sheets, "_append_to_existing_tab_sync", lambda tab, data: "ok")
+    assert asyncio.run(sheets.append_to_existing_named_sheet("СПб", [1, "x"])) == "ok"
+    assert sheets.last_write_state()["ok"] is not None
+
+    monkeypatch.setattr(sheets, "_write_state", {"ok": None, "fail": None})
+    monkeypatch.setattr(sheets, "_delete_row_by_id_sync", lambda tab, tid: "ok")
+    assert asyncio.run(sheets.delete_row_by_id("Москва", 1)) == "ok"
+    assert sheets.last_write_state()["ok"] is not None
+
+    monkeypatch.setattr(sheets, "_write_state", {"ok": None, "fail": None})
+    monkeypatch.setattr(sheets, "_update_row_by_id_sync", lambda *a: ("updated", []))
+    assert asyncio.run(sheets.update_row_by_id("СПб", 1, [1])) is True
+    assert sheets.last_write_state()["ok"] is not None

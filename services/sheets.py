@@ -39,6 +39,8 @@ _alert_bot_warned = False
 
 # «🚦 Готовность к форуму» (бэклог №25): когда таблица последний раз приняла запись и когда
 # последний раз отказала — time.time(), в памяти процесса (после рестарта «записей ещё не было»).
+# Отмечают ВСЕ пути записи (append, точечное обновление строки, перевод города, статусы,
+# пересборка) — иначе «Готовность» писала «записей ещё не было» сразу после записи в лист.
 _write_state: dict = {"ok": None, "fail": None}
 
 
@@ -507,8 +509,11 @@ async def sync_named_worksheet(title: str, headers: list[str], rows: list[list])
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
         return -1
     try:
-        return await asyncio.to_thread(_sync_named_worksheet_sync, title, headers, rows)
+        n = await asyncio.to_thread(_sync_named_worksheet_sync, title, headers, rows)
+        _note_write(True)
+        return n
     except Exception as e:
+        _note_write(False)
         logger.error(f"sync_named_worksheet('{title}') failed: {e}")
         return -1
 
@@ -1049,6 +1054,8 @@ async def update_row_by_id(
             if code == "ambiguous":
                 await _alert_row_ambiguous(telegram_id, titles)
                 return True
+            if code == "updated":
+                _note_write(True)
             return code == "updated"
         except Exception as e:
             _reset_sheet_cache()
@@ -1060,6 +1067,7 @@ async def update_row_by_id(
             await asyncio.sleep(delay)
 
     logger.error(f"Failed to update row after {MAX_RETRIES} attempts for telegram_id={telegram_id}")
+    _note_write(False)
     await _alert_admins_sheet_failure(f"обновление строки, telegram_id={telegram_id}")
     return False
 
@@ -1184,9 +1192,12 @@ async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
                 tab_by_id[key] = None
                 continue
             tab_by_id[key] = await _resolve_status_tab(tid)
-        return await asyncio.to_thread(_bulk_update_status_sync, id_to_label, tab_by_id)
+        n = await asyncio.to_thread(_bulk_update_status_sync, id_to_label, tab_by_id)
+        _note_write(True)
+        return n
     except Exception as e:
         _reset_sheet_cache()
+        _note_write(False)
         logger.warning(f"bulk_update_status_in_sheet failed: {e}")
         return -1
 
@@ -1209,9 +1220,12 @@ async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
         logger.warning("rebuild_main_sheet refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
         return REFUSED_UNPINNED_TAB
     try:
-        return await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
+        n = await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
+        _note_write(True)
+        return n
     except Exception as e:
         _reset_sheet_cache()
+        _note_write(False)
         logger.error(f"rebuild_main_sheet failed: {e}")
         return -1
 
@@ -1385,9 +1399,11 @@ async def append_rows_to_named_sheet(tab_name: str, rows: list[list]) -> int:
         return -1
     try:
         await asyncio.to_thread(_append_rows_to_named_sheet_sync, tab_name, rows)
+        _note_write(True)
         return len(rows)
     except Exception as e:
         _reset_named_sheet_cache(tab_name)
+        _note_write(False)
         logger.warning(f"append_rows_to_named_sheet({tab_name!r}) failed: {e}")
         return -1
 
@@ -1597,8 +1613,10 @@ async def delete_row_by_id(tab_name: str | None, telegram_id: int) -> str:
         result = await asyncio.to_thread(_delete_row_by_id_sync, tab_name, telegram_id)
     except Exception as e:
         logger.error(f"delete_row_by_id({tab_name!r}, {telegram_id}) failed: {e}")
+        _note_write(False)
         return "error"
     if result == "ok":
+        _note_write(True)
         if tab_name is None:
             _reset_sheet_cache()
         else:
@@ -1645,6 +1663,7 @@ async def append_to_existing_named_sheet(tab_name: str, data: list) -> str:
             result = await asyncio.to_thread(_append_to_existing_tab_sync, tab_name, data)
             if result == "not_found_tab":
                 return result
+            _note_write(True)
             logger.info(
                 f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} "
                 f"to existing tab {tab_name!r}"
@@ -1666,5 +1685,6 @@ async def append_to_existing_named_sheet(tab_name: str, data: list) -> str:
         f"Failed to append to existing tab {tab_name!r} after {MAX_RETRIES} attempts "
         f"for telegram_id={(data[0] if data else '?')!r}"
     )
+    _note_write(False)
     await _alert_admins_sheet_failure(f"вкладка {tab_name!r} (без автосоздания), telegram_id={(data[0] if data else '?')!r}")
     return "error"
