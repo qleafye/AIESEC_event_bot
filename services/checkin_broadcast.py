@@ -186,7 +186,11 @@ async def schedule_city_jobs(city: str | None) -> dict:
     # Утренний повтор: только в день форума. Догон — лишь для ещё не сработавшей джобы (она
     # всё ещё в хранилище) и до `MORNING_CATCHUP_UNTIL`; без проверки «джоба ещё в хранилище»
     # реконсиляция сразу после срабатывания отправила бы повтор второй раз.
-    if morn_at <= now:
+    # Повтор идёт прямо сейчас — его страховочную джобу (`_run_morning_job`) не трогаем: сверка
+    # раз в 10 минут иначе перевзвела бы её «через минуту» посреди цикла.
+    if morn_at <= now and city in _morning_in_progress:
+        morn_at = _KEEP
+    elif morn_at <= now:
         pending = sched.get_job(morn_id) is not None
         if pending and morning_catchup_ok(morn_at, now):
             morn_at = now + timedelta(minutes=1)
@@ -196,6 +200,8 @@ async def schedule_city_jobs(city: str | None) -> dict:
     for jid, target, run_at in (
         (ev_id, _run_evening_job, ev_at), (morn_id, _run_morning_job, morn_at),
     ):
+        if run_at is _KEEP:
+            continue
         if run_at is None:
             try:
                 sched.remove_job(jid)
@@ -205,10 +211,22 @@ async def schedule_city_jobs(city: str | None) -> dict:
             sched.add_job(
                 target, "date", run_date=run_at, args=[city], id=jid, replace_existing=True,
             )
+    if morn_at is _KEEP:
+        morn_at = getattr(sched.get_job(morn_id), "next_run_time", None)
     return {
         "scheduled": ev_at is not None or morn_at is not None,
         "evening_at": ev_at, "morning_at": morn_at,
     }
+
+
+# Метка «утренний повтор этого города сейчас идёт» для сверки — см. `_run_morning_job`.
+_morning_in_progress: set[str | None] = set()
+_KEEP = object()  # сверка: джобу не трогать
+# Страховка утреннего повтора: date-джоба APScheduler снимается из хранилища при запуске, и
+# рестарт посреди цикла оставлял хвост без QR без догона. На время цикла джоба взводится заново
+# на этот срок и снимается только после цикла — рестарт посреди находит её «несработавшей», и
+# сверка догоняет повтор (до `MORNING_CATCHUP_UNTIL`); упавший цикл повторится сам.
+MORNING_GUARD_MINUTES = 30
 
 
 # Город -> дата форума, на которую вечерняя рассылка уже отработала в этом процессе. В памяти:
@@ -300,7 +318,27 @@ async def _run_morning_job(city: str | None) -> dict:
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
     if await _wrong_day(city, 0, "morning"):
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
-    return await send_morning_repeat(city)
+    jid = morning_job_id(city)
+    sched = None
+    _morning_in_progress.add(city)
+    try:
+        try:
+            sched = _sched.get_scheduler()
+            sched.add_job(
+                _run_morning_job, "date", run_date=msk_now() + timedelta(minutes=MORNING_GUARD_MINUTES),
+                args=[city], id=jid, replace_existing=True,
+            )
+        except Exception as e:
+            logger.error(f"checkin_broadcast: morning guard for {city!r} not armed: {e}")
+        result = await send_morning_repeat(city)
+    finally:
+        _morning_in_progress.discard(city)
+    if sched is not None:
+        try:
+            sched.remove_job(jid)  # цикл дошёл до конца — страховка не нужна
+        except Exception:
+            pass
+    return result
 
 
 def _cancel_stale_city_jobs(enabled_codes: set[str]) -> None:
@@ -625,7 +663,17 @@ async def send_morning_repeat(city: str | None) -> dict:
     отправленных заводит первую (счётчик «QR получили N» обязан их учитывать).
 
     Тихие часы делегатов НЕ действуют (D-35, 24.09) — служебное сообщение, см. докстринг
-    `send_broadcast`."""
+    `send_broadcast`.
+
+    Та же блокировка города, что у `send_broadcast`, но повтор ЖДЁТ её, а не отказывается:
+    ручная «📤 Разослать QR сейчас» утром дня форума одновременно с повтором раньше слала QR
+    дважды тем, кому отправка ещё не записана. После ручной рассылки повтор вычтет получивших
+    сегодня и дошлёт только остальным неподтвердившим."""
+    async with _get_city_lock(city):
+        return await _send_morning_repeat_locked(city)
+
+
+async def _send_morning_repeat_locked(city: str | None) -> dict:
     import cities as _cities
 
     scope = _cities.city_scope(city)
