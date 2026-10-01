@@ -164,3 +164,17 @@ async def dash_clear_screen(base: str | None, composed: str, code: str) -> tuple
         back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"settings_edit:{base}")]])
         return "У города и так нет своей даты форума — стирать нечего.", back
     return await clear_city_date_confirm(base, code, current)
+
+
+async def with_ready_button(kb: InlineKeyboardMarkup, key: str, code: str | None, admin_id: int) -> InlineKeyboardMarkup:
+    """После сохранения даты/длины форума города — кнопка «🚦 К готовности форума» этого
+    города (иначе пути назад в светофор нет). Право — то же, что у кнопки хаба (`forum_ready:*`)."""
+    if key not in CITY_FORUM_KEYS or not code:
+        return kb
+    from handlers.admin_caps import _holds, required_capability, resolve_capabilities
+    cb = f"forum_ready:{code}"
+    cap = required_capability(callback_data=cb)
+    if cap is None or not _holds(await resolve_capabilities(admin_id), cap):
+        return kb
+    btn = [InlineKeyboardButton(text="🚦 К готовности форума", callback_data=cb)]
+    return InlineKeyboardMarkup(inline_keyboard=[btn, *kb.inline_keyboard])

@@ -287,3 +287,39 @@ def test_dash_on_city_date_asks_confirmation_instead_of_erasing(tmp_path):
     _run(settings_edit_city(FakeCallback("settings_edit_city:start_text", user_id=ADMIN_ID), state))
     _run(settings_edit_value(FakeMessage("-", user_id=ADMIN_ID), state))
     assert _run(db.get_setting("start_text__city__spb")) in (None, "")
+
+
+def test_city_date_save_offers_way_back_to_readiness(tmp_path):
+    """Текст поля объясняет, что дата включает QR/SOS/меню дня форума; после сохранения —
+    «🚦 К готовности форума» этого города (только тому, у кого есть право светофора)."""
+    from cities import set_admin_city
+    from handlers.admin_caps import required_capability
+    from handlers.admin_settings import settings_edit_city, settings_edit_value
+    from tests.test_roles_phase8 import FakeMessage
+
+    _ready(tmp_path)
+    _run(set_admin_city(ADMIN_ID, "spb"))
+    state = _fresh_state(ADMIN_ID)
+    cbq = FakeCallback("settings_edit_city:forum_date", user_id=ADMIN_ID)
+    _run(settings_edit_city(cbq, state))
+    assert "QR" in cbq.message.text and "SOS" in cbq.message.text and "меню дня форума" in cbq.message.text
+    msg = FakeMessage("05.10.2099", user_id=ADMIN_ID)
+    _run(settings_edit_value(msg, state))
+    assert _run(db.get_setting("forum_date__city__spb")) == "05.10.2099"
+    kb = msg.answers[-1][2]
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert "forum_ready:spb" in cbs
+    assert required_capability(callback_data="forum_ready:spb") == "moderate_reg"
+
+    # Менеджер с правом «Настройки», но без права светофора — кнопки нет.
+    other = 261003777
+    _run(db.add_staff(other, "stats_manager", ADMIN_ID))
+    _run(db.set_setting("role_caps_stats_manager", "settings"))
+    _run(set_admin_city(other, "spb"))
+    state = _fresh_state(other)
+    _run(settings_edit_city(FakeCallback("settings_edit_city:forum_date", user_id=other), state))
+    msg = FakeMessage("06.10.2099", user_id=other)
+    _run(settings_edit_value(msg, state))
+    assert _run(db.get_setting("forum_date__city__spb")) == "06.10.2099"
+    cbs = [b.callback_data for row in msg.answers[-1][2].inline_keyboard for b in row]
+    assert "forum_ready:spb" not in cbs
