@@ -327,6 +327,12 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
         "отмечу всех, кого найду."
     )
+    # Рассылка QR, «Написать не пришедшим», сводка прихода — менеджерские (moderate_reg):
+    # волонтёру с одним правом `checkin` эти кнопки не рисуем, иначе тап отвечает «Недостаточно прав».
+    from handlers.admin_caps import _holds, resolve_capabilities
+    is_manager = _holds(await resolve_capabilities(callback.from_user.id), "moderate_reg")
+    if not is_manager:
+        qr_buttons, not_arrived_buttons = [], []
     kb = InlineKeyboardMarkup(inline_keyboard=[
         *qr_buttons,
         *not_arrived_buttons,
@@ -337,9 +343,7 @@ async def show_admin_checkin(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")],
         *await _venue_entry_rows(callback.from_user.id),
     ])
-    # Бэклог п.10: сводка прихода — менеджерская (moderate_reg), волонтёру кнопку не рисуем.
-    from handlers.admin_caps import _holds, resolve_capabilities
-    if _holds(await resolve_capabilities(callback.from_user.id), "moderate_reg"):
+    if is_manager:  # бэклог п.10: сводка прихода
         kb.inline_keyboard.insert(0, [
             InlineKeyboardButton(text="📊 Статистика прихода", callback_data="checkin_stats"),
             InlineKeyboardButton(text="📍 Сейчас на площадке", callback_data="checkin_floor"),
