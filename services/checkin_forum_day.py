@@ -8,14 +8,19 @@
 друга-делегата, не переключившись на «🧪 Тренировка». Раньше это ставило настоящий вход: в
 листе «Пришёл» — накануне, делегату уходило «ты отмечен», а утром настоящего приветствия уже
 не было (первый вход за форум прошёл). Теперь живой скан и отметка по фамилии в не-день форума
-не пишутся — волонтёр видит жёлтую плашку с подсказкой. Выгрузка офлайн-сканера (CSV) не
-отказывает — файл описывает уже случившееся, — а предупреждает строкой отчёта."""
+не пишутся — волонтёр видит жёлтую плашку с подсказкой. Та же проверка закрывает волонтёра без
+привязки к городу: 03.10 на входе в СПб одобренный делегат Москвы (форум 30.10) не отмечается
+молча зелёным — плашка говорит, что у него форум не сегодня. Выгрузка офлайн-сканера (CSV) не
+отказывает — файл описывает уже случившееся, — а предупреждает строкой отчёта.
+
+Если сегодня форум идёт в нескольких городах, успешная отметка у волонтёра без привязки
+показывает город делегата крупно (`city_emphasis`)."""
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime
 
-from cities import normalize_city
+from cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,16 @@ def _today() -> date:
     return timeutil.msk_now().date()
 
 
+async def cities_with_forum_on(day: date) -> list[str]:
+    codes = [c["code"] for c in await enabled_cities()] if await cities_module_on() else [default_city_code()]
+    out = []
+    for code in codes:
+        window = await forum_window(code)
+        if window and window[0] <= day <= window[1]:
+            out.append(code)
+    return out
+
+
 def _ddmm(d: date) -> str:
     return d.strftime("%d.%m")
 
@@ -48,11 +63,25 @@ async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
     window = await forum_window(city)
     if window is None or window[0] <= day <= window[1]:
         return None
-    text = (
-        f"Сегодня не день форума (форум {_ddmm(window[0])}) — отметка не поставлена. "
-        "Для пробы сканера выберите точку «🧪 Тренировка»."
-    )
+    start = window[0]
+    others = [c for c in await cities_with_forum_on(day) if c != city]
+    if others:
+        text = (
+            f"Делегат с форума в {await city_label(city)} — у него форум {_ddmm(start)}, не сегодня. "
+            "Отметка не поставлена. Проверьте, тот ли это человек; если он пришёл не на свой "
+            "форум — отправьте к организаторам: перевести в другой город может менеджер."
+        )
+    else:
+        text = (
+            f"Сегодня не день форума (форум {_ddmm(start)}) — отметка не поставлена. "
+            "Для пробы сканера выберите точку «🧪 Тренировка»."
+        )
     return {"status": STATUS, "reason_text": text}
+
+
+async def city_emphasis(day: date | None = None) -> bool:
+    """Сегодня форум больше чем в одном городе — город делегата на плашке крупно."""
+    return len(await cities_with_forum_on(day or _today())) > 1
 
 
 async def off_day_for_scan(user: dict, scanned_at: str | None) -> bool:

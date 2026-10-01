@@ -351,6 +351,14 @@ async def _training_preview(
     return await checkin_training.as_training_point({**res, **_person_fields(user)}, lang, tr_map)
 
 
+async def _with_city_emphasis(res: dict, bound: str | None) -> dict:
+    """Сегодня форум в нескольких городах, а волонтёр без привязки к городу — на успешной
+    плашке город делегата крупно: так видно делегата чужого города у стойки."""
+    if bound is None and res.get("status") in ("new", "moved") and await checkin_forum_day.city_emphasis():
+        res["city_emphasis"] = True
+    return res
+
+
 class ScanBody(BaseModel):
     payload: str = ""
     point: str = ENTRY_POINT
@@ -425,7 +433,7 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
     )), p)
     if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
         await _log_denial(p, bound, result["status"], point=point, source="miniapp", user=user)
-    return {**result, **_person_fields(user)}
+    return await _with_city_emphasis({**result, **_person_fields(user)}, bound)
 
 
 class ManualBody(BaseModel):
@@ -480,7 +488,7 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
     )), p)
     if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
         await _log_denial(p, bound, result["status"], point=point, source="manual", user=user)
-    return {**result, **_person_fields(user)}
+    return await _with_city_emphasis({**result, **_person_fields(user)}, bound)
 
 
 class UndoBody(BaseModel):
