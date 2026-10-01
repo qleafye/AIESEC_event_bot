@@ -5451,9 +5451,19 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 params.extend(exists_params)
             elif value == CHECKIN_NO:
                 guard_frag, guard_params = _approved_current_season_frag(f.get("event_season"))
-                clauses.append(f"({guard_frag} AND NOT {exists_frag})")
+                # Только города, где в этот день идёт форум (`forum_scopes` кладёт
+                # `_resolve_checkin_entry_season`): иначе «не пришли сегодня» в день
+                # регионального форума уходило и Москве. None — модуль городов выключен.
+                scopes = f.get("forum_scopes")
+                city_frag, city_params = "", []
+                if scopes is not None:
+                    parts = [_city_clause(tuple(sc) if sc else None) for sc in scopes]
+                    city_frag = " AND (" + (" OR ".join(p for p, _ in parts) or "0") + ")"
+                    city_params = [x for _, ps in parts for x in ps]
+                clauses.append(f"({guard_frag} AND NOT {exists_frag}{city_frag})")
                 params.extend(guard_params)
                 params.extend(exists_params)
+                params.extend(city_params)
             else:
                 # WR-01, тот же довод, что у resume/event_city/season выше: неизвестное значение
                 # — fail closed, не «всем».
@@ -5731,12 +5741,18 @@ async def _resolve_checkin_entry_season(filters: list[dict]) -> list[dict]:
     ):
         return filters
     event_season = (await get_setting("event_season") or "").strip() or None
-    return [
-        {**f, "event_season": event_season}
-        if isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO
-        else f
-        for f in filters
-    ]
+    from services.forum_days import forum_city_scopes  # ленивый: модуль читает cities
+
+    today = msk_now().date()
+    out = []
+    for f in filters:
+        if isinstance(f, dict) and f.get("field") == "checkin_entry" and f.get("value") == CHECKIN_NO:
+            day = f.get("day")
+            if day == CHECKIN_DAY_TODAY:
+                day = today.strftime("%Y-%m-%d")
+            f = {**f, "event_season": event_season, "forum_scopes": await forum_city_scopes(day, today)}
+        out.append(f)
+    return out
 
 
 async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:

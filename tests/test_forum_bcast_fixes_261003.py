@@ -437,3 +437,53 @@ def test_welcome_after_checkin_carries_main_menu(tmp_path, monkeypatch):
                             scanned_at="2026-10-03 09:15:00"))
     assert bot.sent, "приветствие не ушло"
     _reply_texts(bot.sent[0][2])
+
+
+# ── Фильтр рассылки «❌ Не пришли»: только города, где в этот день форум ───────────────────
+
+def _cities_env(tmp_path):
+    config.DB_PATH = str(tmp_path / "not_arrived_filter.db")
+    fast_init_db()
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("event_season", "YL 26/2"))
+    _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    _run(db.set_setting("sos_active_days__city__spb", "1"))
+    _run(db.set_setting("forum_date__city__msk", "30.10.2026"))
+    _seed(1, "msk")
+    _seed(2, "spb")
+    _seed(3, None)  # без города = Москва
+
+
+def test_not_arrived_today_filter_skips_city_without_forum_today(tmp_path, monkeypatch):
+    _cities_env(tmp_path)
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 3, 11, 0))
+    ids = _run(db.count_and_list_filtered([{"field": "checkin_entry", "value": "no", "day": "today"}]))
+    assert ids == [2]
+    # «Не пришли ни разу» — только города, чей форум уже начался.
+    ids_all = _run(db.count_and_list_filtered([{"field": "checkin_entry", "value": "no"}]))
+    assert ids_all == [2]
+
+
+def test_not_arrived_filter_moscow_on_its_forum_day(tmp_path, monkeypatch):
+    _cities_env(tmp_path)
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 30, 11, 0))
+    ids = _run(db.count_and_list_filtered([{"field": "checkin_entry", "value": "no", "day": "today"}]))
+    assert sorted(ids) == [1, 3]
+
+
+def test_not_arrived_filter_unchanged_without_cities_module(tmp_path, monkeypatch):
+    config.DB_PATH = str(tmp_path / "no_cities.db")
+    fast_init_db()
+    _run(db.set_setting("event_season", "YL 26/2"))
+    _seed(1)
+    monkeypatch.setattr(db, "msk_now", lambda: datetime(2026, 10, 3, 11, 0))
+    ids = _run(db.count_and_list_filtered([{"field": "checkin_entry", "value": "no", "day": "today"}]))
+    assert ids == [1]
+
+
+def test_not_arrived_confirm_note_lists_cities(tmp_path, monkeypatch):
+    from services.forum_days import not_arrived_city_note
+    _cities_env(tmp_path)
+    note = _run(not_arrived_city_note([{"field": "checkin_entry", "value": "no"}], [2]))
+    assert "По городам" in note and "— 1" in note and "идёт форум" in note
+    assert _run(not_arrived_city_note([{"field": "status", "value": "approved"}], [2])) == ""
