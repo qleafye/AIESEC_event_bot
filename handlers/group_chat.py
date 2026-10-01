@@ -340,21 +340,35 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
 
 
 async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict) -> None:
-    """Ответ делегату реплаем из чата SOS. Сразу (с неявным захватом) — держателю «📋 Модерация
-    заявок»; остальным участникам чата — после «🙋 Беру» (кнопку в привязанном чате SOS жмёт
-    любой его участник, `on_sos_card_button`): так у ответа всегда есть видимый на карточке
-    ответственный, а случайное сообщение в треде не уходит человеку в беде. Без захвата —
-    подсказка в чат, а не тишина: иначе орг уверен, что ответил."""
-    from handlers.admin_caps import has_capability
+    """Ответ делегату реплаем из чата SOS — только от того, кто взял заявку «🙋 Беру» (кнопку в
+    привязанном чате SOS жмёт любой его участник, `on_sos_card_button`). Неявного захвата
+    реплаем здесь нет ни у кого, даже у держателя «📋 Модерация заявок»: в чате SOS реплаем на
+    карточку команда и переговаривается («кто ближе?», «звоню в скорую»), и такое сообщение не
+    должно долететь человеку в беде, а заявка — молча достаться спросившему. Неявный захват
+    остался только у личной копии карточки (`handlers/admin_sos.py::admin_reply_to_sos`): там
+    реплай адресован одному делегату. Без захвата — подсказка в чат, а не тишина: иначе орг
+    уверен, что ответил."""
+    import html
+
     from services import sos as sos_service
 
     uid = message.from_user.id
-    if report.get("claimed_by") != uid and not await has_capability(uid, "moderate_reg"):
-        await message.reply(
-            f"Чтобы ответить делегату, сначала нажмите «🙋 Беру» под карточкой SOS "
-            f"#{report['id']} — так команда увидит, кто ведёт этот SOS. Потом ответьте реплаем ещё раз."
-        )
-        return
+    claimed_by = report.get("claimed_by")
+    if not report.get("resolved_at"):
+        if claimed_by is None:
+            await message.reply(
+                f"⚠️ Ответ не отправлен: SOS #{report['id']} ещё никто не взял. Сначала нажмите "
+                f"«🙋 Беру» под карточкой, потом ответьте реплаем ещё раз — тогда ответ уйдёт "
+                f"делегату. Реплаи на невзятую карточку остаются в чате команды."
+            )
+            return
+        if claimed_by != uid:
+            who = html.escape(str(report.get("claimed_by_name") or "коллега"))
+            await message.reply(
+                f"⚠️ Ответ не отправлен: SOS #{report['id']} ведёт {who}. Делегату пишет тот, "
+                f"кто взял SOS, — передайте ему(ей) или дождитесь «✅ Решено»."
+            )
+            return
     await sos_service.deliver_org_reply(bot, message, report)
 
 
