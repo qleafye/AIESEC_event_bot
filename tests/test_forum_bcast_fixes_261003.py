@@ -546,6 +546,22 @@ def test_city_manager_reaches_own_unfinished_registrations(tmp_path):
     assert sorted(kept) == [2, 200] and dropped == 2
 
 
+def test_moscow_manager_does_not_reach_unfinished_without_city(tmp_path):
+    """Нажал /start, до вопроса о городе не дошёл — город неизвестен: менеджеру Москвы (город
+    по умолчанию) такой человек не уходит, он посчитан в «отсеяно»; суперадмину — уходит."""
+    from services.broadcast_scope import split_by_sender_city
+    _cities_env(tmp_path)
+    config.ADMIN_IDS = [1000]
+    _run(db.add_staff(2001, "manager", 1000))
+    _run(db.set_staff_city(2001, "msk"))
+    _run(db.mark_reg_started(210, "x", event_city="msk"))
+    _run(db.mark_reg_started(211, "y"))
+    incomplete = _run(db.get_incomplete_user_ids())
+    kept, dropped = _run(split_by_sender_city(2001, incomplete))
+    assert sorted(kept) == [210] and dropped == 1
+    assert sorted(_run(split_by_sender_city(1000, incomplete))[0]) == [210, 211]
+
+
 def test_city_manager_confirm_note_counts_dropped(tmp_path):
     from services.broadcast_scope import sender_city_note
     _cities_env(tmp_path)
