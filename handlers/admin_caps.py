@@ -397,8 +397,8 @@ ADMIN_CAPS: dict[str, str] = {
     "admin_i18n_seed": "settings",
     "state:AdminI18nEdit:*": "settings",
     # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал
-    # вопросов выше (те же люди отвечают делегатам форума). «Беру»/«✅ Решено» под карточкой
-    # в чате оргов — тоже `moderate_reg`: не настройка, действие над конкретным обращением.
+    # вопросов выше. «Беру»/«✅ Решено» на ЛИЧНОЙ копии карточки — `moderate_reg`; в чате SOS
+    # их (и реплай) разбирает handlers/group_chat.py — там жмёт любой участник чата SOS.
     "admin_sos": "moderate_reg",
     "asos:*": "moderate_reg",
     "sos_claim:*": "moderate_reg",
