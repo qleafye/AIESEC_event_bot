@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>Подготовка к форумам 03.10</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F4F8; --card:#FFFFFF; --sunk:#EEF0F5; --ink:#1C1C1C; --muted:#52565E; --faint:#7D8590; --line:#DDE1E8;
+  --blue:#037EF3; --blue-ink:#0B5CAD; --blue-soft:#E1F0FE; --orange:#F48924; --orange-soft:#FFF1E2; --orange-ink:#A3520A;
+  --ok:#1E8A4F; --ok-soft:#E6F6EC; --bad:#D6454A; --bad-soft:#FDEBEC; --warn:#8A6A00; --warn-soft:#FFF4D6;
+  --hero:#037EF3; --tg:#E3EEDB; --tg-btn:#F4F8F1; --tg-ink:#1C1C1C; --shadow:0 1px 2px rgba(28,28,28,.05),0 4px 14px rgba(28,28,28,.05);
+  --spb:#0B5CAD; --spb-soft:#E1F0FE; --tmn:#A3520A; --tmn-soft:#FFF1E2;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151B; --card:#1A2029; --sunk:#151A22; --ink:#ECEFF4; --muted:#AAB3C0; --faint:#7F8A99; --line:#2B3340;
+  --blue:#4FA6F7; --blue-ink:#9CCBFA; --blue-soft:#162A40; --orange:#F9A44C; --orange-soft:#33240F; --orange-ink:#F9B670;
+  --ok:#55C38D; --ok-soft:#13291F; --bad:#F07378; --bad-soft:#331A1C; --warn:#F0C24B; --warn-soft:#352C11;
+  --hero:#0A4F95; --tg:#24303B; --tg-btn:#2C3A47; --tg-ink:#ECEFF4; --shadow:0 1px 2px rgba(0,0,0,.4);
+  --spb:#9CCBFA; --spb-soft:#162A40; --tmn:#F9B670; --tmn-soft:#33240F;
+}}
+:root[data-theme="dark"]{
+  --bg:#11151B; --card:#1A2029; --sunk:#151A22; --ink:#ECEFF4; --muted:#AAB3C0; --faint:#7F8A99; --line:#2B3340;
+  --blue:#4FA6F7; --blue-ink:#9CCBFA; --blue-soft:#162A40; --orange:#F9A44C; --orange-soft:#33240F; --orange-ink:#F9B670;
+  --ok:#55C38D; --ok-soft:#13291F; --bad:#F07378; --bad-soft:#331A1C; --warn:#F0C24B; --warn-soft:#352C11;
+  --hero:#0A4F95; --tg:#24303B; --tg-btn:#2C3A47; --tg-ink:#ECEFF4; --shadow:0 1px 2px rgba(0,0,0,.4);
+  --spb:#9CCBFA; --spb-soft:#162A40; --tmn:#F9B670; --tmn-soft:#33240F;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:120px}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 'Nunito Sans',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;overflow-x:hidden}
+a{color:var(--blue)}
+.wrap{max-width:900px;margin:0 auto;padding:0 16px}
+h1,h2,h3{font-family:'Raleway','Nunito Sans',Arial,sans-serif;font-weight:800;margin:0;line-height:1.15}
+code{font:700 .92em/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:1px 6px;white-space:nowrap}
+/* «плашка кнопки» как в Telegram */
+q.bt{quotes:none;display:inline;background:var(--tg-btn);color:var(--tg-ink);border:1px solid var(--line);border-bottom-width:2px;border-radius:8px;padding:1px 7px;font-weight:700;line-height:1.35}
+.path q.bt{display:inline-block;max-width:100%;padding:3px 9px;margin:2px 0;vertical-align:middle}
+.ar{color:var(--orange);font-weight:800;margin:0 1px}
+
+.hero{background:var(--hero);color:#fff;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-70px;bottom:-90px;width:280px;height:280px;border-radius:50%;border:36px solid #F48924}
+.hero .wrap{position:relative;z-index:1;padding-top:28px;padding-bottom:26px}
+.eyebrow{font:800 12px/1 'Nunito Sans',Arial,sans-serif;letter-spacing:.16em;text-transform:uppercase;opacity:.9}
+.hero h1{font-size:clamp(30px,6.6vw,52px);margin:12px 0 10px;max-width:14ch}
+.hero p{margin:0;max-width:600px;font-size:17px;opacity:.96}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.links a{color:#fff;text-decoration:none;font-weight:700;font-size:15px;border:2px solid rgba(255,255,255,.7);border-radius:99px;padding:7px 14px;min-height:40px;display:inline-flex;align-items:center}
+.deadline{margin-top:20px;display:flex;gap:14px;align-items:center;background:#fff;color:#1C1C1C;border-radius:16px;padding:14px 16px;max-width:600px;box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.deadline .big{font:800 26px/1 'Raleway',Arial,sans-serif;color:#D6454A;white-space:nowrap}
+.deadline p{font-size:15px;opacity:1;color:#1C1C1C}
+.deadline small{display:block;color:#52565E;margin-top:2px;font-size:13.5px}
+
+.bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar .wrap{padding-top:10px;padding-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:14px;padding:4px}
+.seg button{font:inherit;font-weight:800;font-size:15px;min-height:44px;border:0;border-radius:10px;background:transparent;color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.15);color:var(--blue-ink)}
+.nav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{flex:0 0 auto;text-decoration:none;font-size:13.5px;font-weight:800;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:6px 11px;display:inline-flex;gap:6px;align-items:center;min-height:36px}
+.nav a .pc{color:var(--muted);font-weight:700}
+.nav a.done{border-color:var(--ok)}
+.nav a.done .pc{color:var(--ok)}
+
+main{padding-top:20px;padding-bottom:96px;display:flex;flex-direction:column;gap:22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.legend div{display:flex;gap:10px;align-items:flex-start;font-size:14.5px}
+.legend .ic{font-size:20px;line-height:1.2}
+details.box{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+details.box>summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;align-items:center;gap:12px;min-height:58px}
+details.box>summary::-webkit-details-marker{display:none}
+details.box>summary h2{font-size:18px;flex:1}
+details.box>summary::after{content:"▾";color:var(--blue);font-size:18px;transition:transform .15s}
+details.box[open]>summary::after{transform:rotate(180deg)}
+details.box.upd{border-color:var(--blue)}
+details.box.upd>summary{background:var(--blue-soft)}
+.bb{padding:4px 18px 18px;display:flex;flex-direction:column;gap:12px}
+.bb p{margin:0}
+.bb ol,.bb ul{margin:0;padding-left:1.25em}
+.bb li{margin:6px 0}
+
+section.ph{scroll-margin-top:120px;display:flex;flex-direction:column;gap:12px}
+.ph-h{display:flex;gap:14px;align-items:flex-start}
+.ph-n{flex:0 0 auto;width:46px;height:46px;border-radius:14px;background:var(--blue);color:#fff;font:800 20px/46px 'Raleway',Arial,sans-serif;text-align:center}
+.ph-h h2{font-size:clamp(22px,4.6vw,30px)}
+.ph-h .when{color:var(--muted);font-weight:700;font-size:14.5px;margin-top:4px}
+.ph-prog{margin-left:auto;text-align:right;font-weight:800;font-size:14px;color:var(--muted);white-space:nowrap}
+.ph-prog.done{color:var(--ok)}
+.track{height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.track i{display:block;height:100%;background:var(--ok);transition:width .25s}
+h3.grp{font-size:17px;display:flex;align-items:center;gap:8px;margin-top:6px}
+.cpill{font:800 12.5px/1 'Nunito Sans',Arial,sans-serif;border-radius:99px;padding:5px 10px}
+.cpill.spb{background:var(--spb-soft);color:var(--spb)}.cpill.tmn{background:var(--tmn-soft);color:var(--tmn)}.cpill.all{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.grp-note{margin:0;color:var(--muted)}
+
+.items{display:flex;flex-direction:column;gap:10px}
+.it{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);display:grid;grid-template-columns:auto 1fr;gap:0 14px;padding:14px 16px 14px 12px;transition:background .2s,border-color .2s}
+.it.on{background:var(--ok-soft);border-color:var(--ok)}
+.it.on .ti{text-decoration:line-through;text-decoration-color:var(--ok);text-decoration-thickness:2px}
+.cb{width:44px;height:44px;border-radius:12px;border:2.5px solid var(--faint);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;color:transparent;margin-top:2px;padding:0}
+.cb:hover{border-color:var(--blue)}
+.cb:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.it.on .cb{background:var(--ok);border-color:var(--ok);color:#fff}
+.ib{min-width:0;display:flex;flex-direction:column;gap:8px}
+.ih{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.who{font-size:13px;font-weight:800;border-radius:99px;padding:2px 9px;background:var(--sunk);border:1px solid var(--line);white-space:nowrap}
+.ti{font-weight:800;font-size:17px;line-height:1.3}
+.tx{margin:0;overflow-wrap:anywhere}
+.path{background:var(--tg);border-radius:12px;padding:10px 12px;line-height:1.7;overflow-wrap:anywhere}
+.path::before{content:"Кнопки";display:block;font:800 11px/1 'Nunito Sans',Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.chk,.warn,.upd,.stop{border-radius:0 12px 12px 0;padding:10px 12px;border-left:4px solid}
+.chk{background:var(--ok-soft);border-color:var(--ok)}
+.chk::before{content:"✔ Проверка. ";font-weight:800;color:var(--ok)}
+.warn{background:var(--warn-soft);border-color:#E0A800}
+.warn::before{content:"⚠️ ";}
+.stop{background:var(--bad-soft);border-color:var(--bad);font-weight:700}
+.dec{border-radius:0 12px 12px 0;padding:10px 12px;border-left:4px solid var(--ok);background:var(--ok-soft)}
+.upd{background:var(--blue-soft);border-color:var(--blue);font-size:15px}
+.upd::before{content:"⏩ После обновления бота: ";font-weight:800;color:var(--blue-ink)}
+blockquote.say{margin:0;padding:12px 14px;border-radius:12px;background:var(--sunk);border:1px dashed var(--faint);font-style:italic}
+blockquote.say::before{content:"Текст — можно скопировать";display:block;font:800 11px/1 'Nunito Sans',Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-style:normal}
+figure.shot{margin:0}
+figure.shot summary{cursor:pointer;font-weight:800;color:var(--blue);font-size:14.5px;min-height:36px;display:flex;align-items:center}
+figure.shot img{display:block;width:min(300px,80%);border-radius:18px;border:6px solid #1C1C1C;margin-top:8px;background:#E9ECF2}
+figure.shot figcaption{font-size:13.5px;color:var(--muted);margin-top:6px}
+
+.sits{display:flex;flex-direction:column;gap:8px}
+.sit{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.sit summary{list-style:none;cursor:pointer;padding:12px 14px;font-weight:800;display:flex;gap:10px;align-items:center;min-height:52px}
+.sit summary::-webkit-details-marker{display:none}
+.sit summary::after{content:"＋";margin-left:auto;color:var(--blue)}
+.sit[open] summary::after{content:"－"}
+.sit .a{padding:0 14px 14px;display:flex;flex-direction:column;gap:8px}
+.sit .a p{margin:0}
+.dont{display:flex;flex-direction:column;gap:8px}
+.dont div{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--bad);border-left:6px solid var(--bad);border-radius:12px;padding:12px 14px}
+.dont div::before{content:"⛔";font-size:20px;line-height:1.3}
+.reset{align-self:flex-start;font:inherit;font-weight:700;font-size:14px;background:transparent;border:1px solid var(--line);border-radius:10px;padding:8px 12px;color:var(--muted);cursor:pointer;min-height:40px}
+.foot{color:var(--muted);font-size:14px;text-align:center;margin:0}
+.hide{display:none !important}
+
+@media (max-width:520px){.hero::after{width:170px;height:170px;border-width:24px;right:-80px;bottom:-100px}.deadline{flex-direction:column;align-items:flex-start;gap:6px}}
+@media print{
+  .bar,.links,.reset,.deadline{display:none !important}
+  body{background:#fff;color:#000}
+  .hero{background:#fff;color:#000}.hero::after{display:none}
+  details.box,details.sit{display:block}
+  details.box>summary::after{display:none}
+  .it{break-inside:avoid;box-shadow:none}
+  figure.shot{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">АЙСЕК · Юлид · для менеджеров</div>
+    <h1>Подготовка к форумам 3 октября</h1>
+    <p>Санкт-Петербург и Тюмень, бот <b>@YouLead2026_bot</b>. Пошагово, кнопками — так, как бот работает сейчас (на 01.10). На 01.10 для форумов в боте не настроено ничего: даты нет, вход по QR выключен, волонтёров и программы нет. Всё делается кнопками, примерно за полчаса на город.</p>
+    <div class="deadline">
+      <div class="big">02.10 · 18:00</div>
+      <p><b>Крайний срок.</b> В это время бот сам разошлёт QR делегатам: СПб — 1018 человек, Тюмень — 228.<small>Время везде московское.</small></p>
+    </div>
+    <div class="links">
+      <a href="/forum-uat">Приёмка 02.10 →</a>
+      <a href="/guide">Гайд «Бот на форуме» →</a>
+    </div>
+  </div>
+</header>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="seg" role="group" aria-label="Город">
+      <button type="button" data-city="all" aria-pressed="true">Оба города</button>
+      <button type="button" data-city="spb" aria-pressed="false">СПб</button>
+      <button type="button" data-city="tmn" aria-pressed="false">Тюмень</button>
+    </div>
+    <nav class="nav" id="nav" aria-label="Этапы"></nav>
+  </div>
+</div>
+
+<main class="wrap" id="main">
+  <section class="card" aria-label="Кто что делает">
+    <div class="legend">
+      <div><span class="ic">🔑</span><span><b>Суперадмин</b> — у кого есть право «⚙️ Настройки»: дата, тексты, программа, чат SOS, роли.</span></div>
+      <div><span class="ic">👤</span><span><b>Менеджер города</b> (право «📋 Модерация заявок») или суперадмин.</span></div>
+      <div><span class="ic">🙋</span><span><b>Волонтёр.</b></span></div>
+      <div><span class="ic">⏩</span><span><b>После обновления бота</b> можно не делать — владелец скажет, вошло ли исправление.</span></div>
+    </div>
+  </section>
+
+  <details class="box upd">
+    <summary><h2>⏩ Если владелец обновит бота до 03.10 — что изменится</h2></summary>
+    <div class="bb">
+      <p>Всё ниже уже готово и проверяется 02.10 на тестовом боте. <b>Пока владелец не сказал «обновил», работайте по инструкции как есть.</b></p>
+      <ol>
+        <li><b>Ответ на SOS реплаем дойдёт до делегата.</b> В чате SOS сначала нажать «🙋 Беру», потом ответить реплаем на карточку или на сообщение делегата в треде. Ответ без «🙋 Беру» бот не отправит и скажет об этом в чат. Ответить после «✅ Решено» тоже можно: на карточке появится пометка.</li>
+        <li><b>«🙋 Беру» и «✅ Решено» сможет нажать любой участник чата SOS.</b> Раздавать дежурным роль «🛂 Менеджер регистраций» ради кнопок больше не нужно. На карточке видно, одобрена ли заявка и читает ли человек бота на английском.</li>
+        <li><b>SOS смогут нажать и неодобренные</b> (ожидающие и отклонённые), но только в день форума своего города. Например, гость со стойки регистрации на месте.</li>
+        <li><b>Утром в день форума QR приходит с текстом «Сегодня форум!» и сразу с меню, где есть «🆘 SOS».</b> Свой текст QR без «Завтра» писать не нужно. Приветствие после отметки тоже приносит меню.</li>
+        <li><b>Дату форума можно задать только для города.</b> При шапке «🌍 Все города» бот сам спросит город, а кнопки светофора правят город светофора, а не шапки. Задеть Москву датой регионов уже нельзя. Включение и выключение QR в хабе — через экран подтверждения.</li>
+        <li><b>Фото программы своё у каждого города</b>, его можно убрать кнопкой «🗑 Убрать фото программы».</li>
+        <li><b>Сканер надёжнее.</b> Он не теряет QR, когда делегаты идут потоком. После красной плашки ждёт «📷 Сканировать дальше». Пока ждёт ответа, показывает «⏳ Проверяю…», а через 7 секунд без ответа просит отсканировать ещё раз. Проба 02.10 на «🚪 Вход» не поставит отметку: будет жёлтая плашка «Сегодня не день форума». Делегат Москвы у волонтёра без города тоже получит жёлтую плашку.</li>
+        <li><b>Рассылки и файлы.</b> «Не пришли» в фильтре рассылки и «📨 Написать не пришедшим» берут только города, где сегодня форум. Тихие часы в день форума эту кнопку не держат. Менеджер, привязанный к городу, рассылает только своему городу. Файлы офлайн-сканера читаются в любом формате (UTF-16, «03.10.2026, 10:15», AM/PM), а файл без времени уже не ставит вход на день загрузки.</li>
+      </ol>
+    </div>
+  </details>
+
+  <details class="box" open>
+    <summary><h2>🏙 Город в шапке решает, куда запишется настройка</h2></summary>
+    <div class="bb">
+      <p>Город в боте выбирается в двух местах, и это <b>разные</b> места:</p>
+      <ol>
+        <li><b>Шапка</b> — верхняя кнопка любого раздела админки: «🏙 Город: …» или «🌍 Все города».</li>
+        <li><b>Выбор города в «🎪 Форум: функции»</b> (суперадмин видит «Выберите город.»).</li>
+      </ol>
+      <p>Светофор показывает город, выбранный в «🎪 Форум: функции». А дата форума, длина форума, текст QR, чат SOS, частые вопросы и тихие часы записываются в город <b>из шапки</b>.</p>
+      <div class="stop">Перед любой правкой проверьте строку «🏙 Санкт-Петербург» (или «🏙 Тюмень») над полем ввода. Нет строки «🏙 …» — жмите «❌ Отмена»: значение уйдёт ВСЕМ городам. Тогда у Москвы тоже станет 03.10, и 02.10 в 18:00 QR со словами «форум завтра» получат 1765 делегатов Москвы.</div>
+      <div class="upd">для даты и длины форума правило отпадёт — дату без города задать будет нельзя, бот спросит город. Для текстов, тихих часов и частых вопросов правило остаётся.</div>
+      <p>Порядок для каждого города: <b>сначала шапка = нужный город, потом в «🎪 Форум: функции» тот же город.</b></p>
+    </div>
+  </details>
+
+  <details class="box" data-city="tmn">
+    <summary><h2>🕑 Время в Тюмени: бот живёт по Москве</h2></summary>
+    <div class="bb">
+      <p>Часовых поясов у городов в боте нет. Всё, что происходит по расписанию, и все часы, которые бот показывает, — московские. <b>Тюмень = МСК + 2 часа.</b> Сама дата не съезжает: весь день форума в Тюмени — это тоже 03.10 по Москве.</p>
+      <div class="dec"><b>Решение:</b> программу Тюмени вносить <b>по местному тюменскому времени</b> — так, как оно напечатано у организаторов. Делегат увидит в программе правильные часы, а это главное.</div>
+      <p><b>Что из этого следует:</b></p>
+      <ul>
+        <li>В программе делегата пометки «🔴 Идёт сейчас» / «⏭ Следующая» отстают на 2 часа. Делегатам Тюмени смотреть на время сессии, а не на пометку.</li>
+        <li>В сканере волонтёра пометка 🔴 «идёт сейчас» у сессий тоже врёт. <b>Волонтёр у двери зала выбирает сессию сам, по времени на кнопке</b>, а не верхнюю с 🔴.</li>
+        <li><b>Отзывы о сессиях в Тюмени не включать</b>: вопрос «Как тебе сессия?» пришёл бы через 2 часа после её конца.</li>
+        <li>При загрузке файла офлайн-сканера на сессию Тюмени строку «⚠️ Время скана вне интервала сессии» игнорировать — отметки всё равно ставятся.</li>
+        <li>Утренний повтор QR поставить на <b>06:00 МСК</b> (это 08:00 в Тюмени). По умолчанию стоит 08:00 МСК = 10:00 в Тюмени, когда делегаты уже стоят на входе.</li>
+        <li>Тихие часы (если включены) 00:00–09:00 МСК — это до 11:00 по Тюмени. Для Тюмени «до» поставить <b>07:00</b>, иначе «📨 Написать не пришедшим» утром не уйдёт никому. <span class="upd" style="display:block;margin-top:6px">эта кнопка в день форума тихие часы не ждёт; обычные рассылки по-прежнему ждут.</span></li>
+        <li>Отчёт дня (если включаете) для Тюмени — 19:00 МСК (= 21:00 местного).</li>
+        <li>Все часы на экранах — «Уже был в 08:15», колонка «Пришёл» в таблице, время в карточке SOS, приветствие «Ты отмечен в …» — московские, то есть на 2 часа меньше тюменских. Сказать волонтёрам и оргам Тюмени на брифинге.</li>
+        <li>Не копировать программу из СПб в Тюмень кнопкой «📋 Скопировать программу из города…»: часы скопируются как есть.</li>
+      </ul>
+    </div>
+  </details>
+
+  <div id="phases"></div>
+
+  <button class="reset" id="reset" type="button">Снять все мои отметки на этой странице</button>
+  <p class="foot">Отметки хранятся только в этом браузере. · Юлид · АЙСЕК · форумы СПб и Тюмени 03.10 · <a href="/forum-uat">приёмка</a> · <a href="/guide">гайд</a></p>
+</main>
+
+<script>
+/* Разметка текстов: «…» — плашка кнопки/экрана бота, → — стрелка, `…` — то, что прислать, **…** — жирный. */
+const SHOT = {
+  ready: ["bot_ready.png", "Светофор «🚦 Готовность к форуму» — пример со стенда (Москва). У вас будет ваш город."],
+  hub: ["bot_forum_hub.png", "Хаб «🎪 Форум: функции» — пример со стенда (Москва)."],
+  invite: ["bot_volunteer_invite.png", "Приглашение волонтёров ссылкой — пример со стенда."],
+  sos: ["bot_sos_card.png", "Карточка SOS в чате оргов — пример со стенда."],
+  train: ["app_scanner_training.png", "Сканер: точка «🧪 Тренировка» — отметка не записывается."],
+  ok: ["app_scanner_ok.png", "Зелёная плашка: делегат отмечен."],
+  deny: ["app_scanner_deny.png", "Красная плашка: причина написана на экране."],
+};
+
+const PHASES = [
+{ id:"p1", n:"1", title:"Сделать до 02.10, 18:00 МСК", when:"Настройка: дата, QR, волонтёры, SOS, программа", groups:[
+  { city:"all", title:"Общее для обоих городов (один раз)", items:[
+    { id:"g1", who:"🔑", t:"Защитить Москву",
+      b:"Сначала уточнить у DXP Москвы дату их форума (план — 30.10.2026).",
+      path:"/admin → «📋 Заявки» → кнопка шапки → «Москва» → «🎪 Форум: функции» → «Москва» → «🚦 Готовность к форуму» → «🔴 🗓 Задать дату форума» → над полем «🏙 Москва» → «✏️ Изменить для Москва» → прислать `30.10.2026`",
+      chk:"светофор Москвы — «🟢 Форум: 30.10–31.10 (2 дня)».",
+      stop:"Если там 03.10 — кто-то уже записал дату «всем городам»: срочно сообщить владельцу." },
+    { id:"g2", who:"🔑", t:"Включить вход по QR (включается сразу для всех городов)",
+      path:"«🎪 Форум: функции» → любой город → «🎟 Включить/выключить QR»",
+      chk:"в хабе строка «🎟 QR для входа: ✅ Вкл». У Москвы тоже появится «🎟 Мой QR» — это нормально, это тот же пропуск.", shot:"hub" },
+    { id:"g3", who:"🔑", t:"Проверить сканер в приложении",
+      b:"В хабе строка «🎫 Сканер в приложении: ✅ Вкл». Если ❌:",
+      path:"«📱 Настройки приложения» → включить «📱 Mini App включён» и «🎫 Сканер (чек-ин)»",
+      warn:"Без этого волонтёры смогут отмечать только офлайн-приложением и файлом." },
+    { id:"g4", who:"🔑", t:"Тихие часы",
+      path:"/admin → «📋 Заявки» → «🌙 Когда молчим: «с» и «до»»",
+      b:"Если написано «🔇 Тишина выключена» — ничего не делать. Если включены — для Тюмени см. пункт «Тихие часы» в блоке Тюмени." },
+  ]},
+  { city:"spb", title:"Санкт-Петербург", items:[
+    { id:"s1", who:"🔑", t:"Шапка → СПб",
+      path:"/admin → «📋 Заявки» → верхняя кнопка («🌍 Все города» или «🏙 Город: …») → «Санкт-Петербург»",
+      chk:"верхняя кнопка стала «🏙 Город: Санкт-Петербург…»." },
+    { id:"s2", who:"🔑", t:"Дата форума",
+      path:"«🎪 Форум: функции» → «Санкт-Петербург» → «🚦 Готовность к форуму» → «🔴 🗓 Задать дату форума» → над полем строка «🏙 Санкт-Петербург…» → «✏️ Изменить для Санкт-Петербург…» → прислать `03.10.2026`",
+      chk:"светофор → «🔄 Проверить снова» → «🟢 Форум: 03.10–04.10 (2 дня)».", shot:"ready" },
+    { id:"s3", who:"🔑", t:"Длина форума = 1 день",
+      path:"там же «🗓 Сколько дней идёт» → над полем «🏙 Санкт-Петербург…» → «✏️ Изменить для …» → `1`",
+      chk:"«🟢 Форум: 03.10 (1 день)».",
+      warn:"Если осталось «2 дня», кнопка SOS и меню форума провисят ещё и 04.10, а роли волонтёров «до конца форума» продлятся на день." },
+    { id:"s4", who:"", t:"Рассылка QR встала сама",
+      chk:"строка светофора «🟢 Вход по QR включён, рассылка QR запланирована на 02.10 18:00».",
+      b:"Если дату задали позже 18:00, QR уйдёт через минуту; после 22:00 — только утренним повтором." },
+    { id:"s5", who:"👤", t:"Утренний повтор",
+      path:"хаб → «🎟 Настройки рассылки QR» → «🌅 Утром: 08:00»",
+      b:"Оставить 08:00 или поставить за час до открытия входа. Повтор получают те, кто вечером не нажал «✅ Сохранил»." },
+    { id:"s6", who:"🔑", t:"Текст QR без слова «Завтра»",
+      b:"Один и тот же текст уходит и вечером 02.10, и утром 03.10, а стандартный начинается с «Завтра форум!».",
+      path:"/admin → «📝 Анкета» (шапка = СПб) → «📝 Регистрация» → «🎟 Текст рассылки QR перед форумом» → «🏙 Санкт-Петербург…» → «✏️ Изменить для …»",
+      say:"Юлид уже совсем скоро! Вот твой QR для входа на форум. Открой его сейчас и сделай скриншот — на площадке может не быть сети. В день форума нажми /start, и в меню появится кнопка 🆘 SOS.",
+      warn:"В тексте не использовать знаки `<`, `>`, `&` и не писать длиннее ~1000 знаков: иначе рассылка молча не уйдёт всему городу.",
+      chk:"снова открыть пункт — «Своё значение: …» с вашим текстом.",
+      upd:"в обновлении есть отдельный утренний текст «Сегодня форум!», а в день форума QR приходит сразу с меню, где есть «🆘 SOS». Бот сам обезвреживает «<», а слишком длинный текст не сохранит." },
+    { id:"s7", who:"👤", t:"Волонтёры: вход + 2 зала + запас",
+      b:"В СПб две параллельные сессии. Делать **после** даты и длины: срок «до конца форума» считается от даты.",
+      path:"хаб СПб → «🔗 Пригласить волонтёров» → «Приглашения: ❌ Выкл» (нажать → ✅ Вкл) → «🔗 Создать ссылку» → срок ссылки «🏁 До конца форума города» → срок прав «🏁 До конца форума города» → лимит «10» / «30» → «✅ Ссылка создана.»",
+      b2:"Ссылку отправить волонтёрам в личку (в СПб раздаёт Максим). Волонтёр открывает её → «Старт» → «Добро пожаловать в команду волонтёров!…». Волонтёр по ссылке **сам привязан к городу**. Для стойки регистрации на месте — «🔗 Ссылка + одобрение на месте» (только если включаете «📝 Регистрация на месте»).",
+      chk:"светофор — «🟢 С правом отметки на входе: N чел. (из них привязаны к этому городу: K)», где K — число ваших волонтёров. Суперадмины в счёт не входят. В «👥 Роли и доступы» у каждого «🎗 Волонтёр форума · 🏙 Санкт-Петербург… · до 03.10.2026».",
+      stop:"Если добавляете руками (🔑 «🔧 Управление» → «👥 Роли и доступы» → «➕ Добавить менеджера» → @username → «🎗 Волонтёр форума»): обязательно нажать у человека кнопку «🏙 🌍 Все города» и выбрать СПб. Волонтёр без города пропустит на вход делегата Москвы с зелёным «Отмечен». Кнопку города видит только суперадмин. Человек должен хотя бы раз нажать /start в боте, иначе бот его не найдёт.",
+      shot:"invite" },
+    { id:"s8a", who:"🔑", t:"SOS: карточки — в чат оргов СПб",
+      path:"шапка = СПб → «📋 Заявки» → «🆘 SOS» → проверить строку города → «🔗 Привязать чат SOS» → добавить бота в «чат оргов» СПб → переслать боту любое сообщение из этого чата → «Готово.»",
+      chk:"на экране «💬 Чат SOS: «…»»; светофор — «🟢 Чат SOS «…», бот в чате».", shot:"sos" },
+    { id:"s8b", who:"🔑", t:"Дежурные SOS: 2–3 человека",
+      b:"«🙋 Беру» и «✅ Решено» под карточкой работают только у тех, у кого есть «📋 Модерация заявок». У остальных кнопка просто крутит часики.",
+      path:"«👥 Роли и доступы» → «➕ Добавить менеджера» → «🛂 Менеджер регистраций» → кнопка «🏙 …» → СПб",
+      warn:"Эта роль также даёт одобрять и отклонять заявки СПб — выдавайте только своим оргам. Своих менеджеров регистраций у СПб сейчас нет ни одного.",
+      upd:"кнопки работают у любого участника чата SOS — роль ради них не нужна." },
+    { id:"s8c", who:"", t:"Сказать оргам дословно",
+      say:"Ответ реплаем на карточку SOS до делегата НЕ доходит — ни в чате, ни в личке, и бот об этом не скажет. Связь с делегатом — звонок по 📞 или сообщение в Telegram по 👤 @… из карточки. В боте: в течение 5 минут нажать «🙋 Беру» (иначе бот поднимет тревогу «никто не взял»), после решения — «✅ Решено» (делегату придёт уведомление).",
+      upd:"ответ реплаем дойдёт, если сначала нажать «🙋 Беру». Тогда оргам сказать: «жмёте «🙋 Беру», потом отвечаете реплаем на карточку или на сообщение делегата»." },
+    { id:"s9", who:"🔑", t:"Программа: залы и сессии в боте",
+      path:"/admin → «🎪 Событие» → «🗓 Программа форума» → «Санкт-Петербург…» → «🏛 Залы» → «➕ Новый зал» (два зала) → «← К программе» → «📅 03.10 — пусто» → «➕ Сессия» → время `10:00-11:30` → название → зал",
+      b:"Две сессии в одно время в одном зале бот не даст поставить без предупреждения. Отзывы о сессиях — по желанию: хаб → «⭐ Настройки отзывов». Придут только отмеченным на сессии.",
+      chk:"светофор — «🟢 Программа заведена: сессий N»; у делегата появилась кнопка «📅 Программа форума». Пока нет ни одной сессии, этой кнопки у делегатов нет.",
+      stop:"Не загружать фото программы через «🎪 Событие/Медиа» → «📅 Программа»: фото там одно на все города. Оно заменит программу у Тюмени и у Москвы. Картинку программы лучше выслать рассылкой по городу или закрепить в чате делегатов.",
+      upd:"фото своё у каждого города: «🗓 Программа форума» → «📷 Загрузить фото программы — <город>»." },
+    { id:"s10", who:"👤", t:"Частые вопросы",
+      path:"шапка = СПб → «📋 Заявки» → «❓ Частые вопросы»",
+      b:"Просмотреть пункты с пометкой «у всех городов»: в них не должно быть московского адреса и московских дат. Свои пункты (адрес, как пройти, гардероб) — «➕ Добавить», пометка «у делегатов города «Санкт-Петербург…»»." },
+    { id:"s11", who:"👤", t:"По желанию, в хабе",
+      b:"«📱 Настройки меню «день форума»», «👋 Настройки приветствия после отметки», «📊 Настройки отчёта дня форума», «🧳 Настройки бюро находок», «📝 Регистрация на месте».",
+      warn:"«❓ Опрос неявившихся» лучше не включать (см. «После форума»). «🚌 Перенос неявившихся на форум в Москве» оставить «❌ Выкл»." },
+    { id:"s12", who:"", t:"Итог",
+      path:"светофор СПб → «🔄 Проверить снова»",
+      chk:"«Всё готово.»; «Таблица» может быть жёлтой — это нормально. В хабе «🆘 SOS активен сейчас: ❌ Выкл» — так и должно быть до 03.10." },
+  ]},
+  { city:"tmn", title:"Тюмень", note:"Всё как у СПб, с отличиями:", items:[
+    { id:"t1", who:"🔑", t:"Шапка → «Тюмень»; в «🎪 Форум: функции» тоже «Тюмень»",
+      chk:"над каждым полем ввода — «🏙 Тюмень…»." },
+    { id:"t2", who:"🔑", t:"Дата `03.10.2026`, длина `1`",
+      b:"Как у СПб (пункты «Дата форума» и «Длина форума»).",
+      chk:"«🟢 Форум: 03.10 (1 день)»." },
+    { id:"t3", who:"👤", t:"Утренний повтор — 06:00",
+      path:"хаб Тюмени → «🎟 Настройки рассылки QR» → «🌅 Утром: 08:00» → прислать `06:00`",
+      chk:"на экране «Утром (в день форума, неподтвердившим): 06:00».",
+      b:"Вечерняя рассылка 18:00 МСК = 20:00 по Тюмени, её не трогать." },
+    { id:"t4", who:"🔑", t:"Текст QR без «Завтра» — для Тюмени отдельно",
+      b:"Как у СПб, но шапка = Тюмень.", upd:"не нужно — утром придёт отдельный текст «Сегодня форум!»." },
+    { id:"t5", who:"👤", t:"Волонтёры: вход + 1 зал + запас",
+      b:"В Тюмени один трек. Ссылку раздаёт Кристина. Порядок — как у СПб." },
+    { id:"t6", who:"🔑", t:"Тихие часы (если включены)",
+      path:"шапка = Тюмень → «📋 Заявки» → «🌙 Когда молчим: «с» и «до»» → на экране «Город: Тюмень…» → «🕓 До: 09:00» → «✏️ Изменить для Тюмень…» → `07:00`" },
+    { id:"t7", who:"🔑", t:"SOS",
+      b:"Привязать общий чат команды Тюмени; дежурным — «🛂 Менеджер регистраций» с городом Тюмень. Сейчас такой менеджер в Тюмени один. Брифинг оргов — как у СПб." },
+    { id:"t8", who:"🔑", t:"Программа — по тюменскому времени",
+      b:"Вручную, без копирования из СПб. «⭐ Отзывы о сессиях» у Тюмени оставить «❌ Выкл»." },
+    { id:"t9", who:"👤", t:"Частые вопросы и необязательные функции — как у СПб",
+      b:"Отчёт дня, если включаете, — на `19:00`." },
+    { id:"t10", who:"", t:"Итог", chk:"светофор Тюмени → «Всё готово.»" },
+  ]},
+]},
+{ id:"p2", n:"2", title:"Тренировка волонтёров 02.10", when:"Шпаргалка, сканер, учебные QR, офлайн-приложение, брифинг", groups:[
+  { city:"all", title:"", items:[
+    { id:"w1", who:"", t:"Шпаргалка",
+      b:"В 17:00 МСК 02.10 (19:00 по Тюмени) бот сам пришлёт волонтёрам «🎫 Как отмечать делегатов на входе форума…». Спросить в чате волонтёров, все ли получили. Кто не получил, скорее всего, не заходил по ссылке." },
+    { id:"w2", who:"🙋", t:"Сканер открывается",
+      path:"кнопка приложения слева от поля ввода в боте → «🎫 Сканер»",
+      b:"В списке точек первой идёт «🚪 Вход», за ней «🧪 Тренировка», потом сессии.",
+      warn:"Если сканер просит выбрать город — волонтёр не привязан к городу, исправить (пункт «Волонтёры» в подготовке)." },
+    { id:"w3", who:"👤", t:"Учебные QR",
+      path:"«📋 Заявки» → «✅ Отметки на форуме» → «🧪 Учебные QR»",
+      b:"Лист A4 с пятью кодами. Если вместо русских букв на листе квадратики — учиться с экрана, без печати. 🙋 Выбрать точку «🧪 Тренировка» и отсканировать все пять.",
+      chk:"🟢 «Отмечен», 🟡 «Уже был в ЧЧ:ММ», 🔴 «Заявка ещё на рассмотрении», 🔴 «Делегат прошлого сезона», 🔴 «QR другого мероприятия», на каждой плашке «🧪 Тренировка: отметка не записана.»", shot:"train" },
+    { id:"w4", who:"", t:"Пробовать только на «🧪 Тренировка»",
+      stop:"Скан настоящего QR на «🚪 Вход» 02.10 ставит настоящую отметку входа: в таблице «Пришёл» будет 02.10, а 03.10 приветствие делегату не придёт.",
+      b:"Если так вышло: 👤",
+      path:"«✅ Отметки на форуме» → «📓 Журнал площадки» → «🗑 Снять отметку делегату» → фамилия → отметка → «🗑 Да, снять»",
+      upd:"скан на «🚪 Вход» не в день форума отметку не ставит — жёлтая плашка «Сегодня не день форума»." },
+    { id:"w5", who:"🙋", t:"Офлайн-сканер — у каждого волонтёра заранее",
+      b:"Android: Binary Eye. iPhone: QR 2 CSV или другое приложение с историей и выгрузкой в CSV. Отсканировать им учебные QR → выгрузить историю в CSV →",
+      path:"в боте «✅ Отметки на форуме» → «🧪 Проверить приложение-сканер» → прислать файл **документом** (не фото, не архив)",
+      chk:"«✅ Приложение подходит: нашёл N QR форума, время скана читается.»",
+      warn:"Если «время скана НЕ читается» — взять другое приложение или помнить, что такой файл надо загрузить в тот же день. Если бот пишет, что не нашёл ни одного QR, — выгрузить в другом формате: не «Unicode text» и не UTF-16, а обычный CSV.",
+      upd:"бот читает больше форматов времени и UTF-16, а файл без времени не ставит вход на день загрузки." },
+    { id:"w6", who:"", t:"Брифинг волонтёров — что сказать",
+      list:[
+        "Зелёная вибрация = отмечен. Нет вибрации и зелёной плашки — человек **не** отмечен, сканировать ещё раз. Не торопиться: дождаться зелёного у одного, потом следующий.",
+        "Красная плашка — причина написана на экране. Человека отправить на стойку проблемных случаев, не спорить.",
+        "Нет QR или сел телефон — «Поиск по фамилии» → «Отметить». Тёзок различать по городу и @юзернейму.",
+        "«↩️ Отменить» ошибочный скан работает только 10 секунд. Позже — сказать менеджеру.",
+        "Кнопки «📤 Разослать QR сейчас», «⚙️ Настройки QR», «📨 Написать не пришедшим» на экране отметок не для волонтёров — нажмёте, получите «Недостаточно прав». Это нормально. (После обновления волонтёр их не видит.)",
+        "В Telegram на компьютере сканер камеру не откроет — только телефон.",
+        "Тюмень: время на экранах московское (на 2 часа меньше). На сессиях выбирать сессию по времени на кнопке, а не верхнюю с 🔴.",
+      ], shot:"ok" },
+  ]},
+]},
+{ id:"p3", n:"3", title:"Утро 03.10", when:"За час до открытия входа — каждый город", groups:[
+  { city:"all", title:"За час до открытия входа", items:[
+    { id:"m1", who:"👤", t:"Светофор", path:"светофор → «🔄 Проверить снова»", chk:"«Всё готово.», строка QR — «🟢 Вход по QR включён, QR уже разослан: N»." },
+    { id:"m2", who:"👤", t:"SOS включился", chk:"в хабе «🆘 SOS активен сейчас: ✅ Вкл»." },
+    { id:"m3", who:"👤", t:"QR дошли", path:"«✅ Отметки на форуме» → блок «🎟 Рассылка QR»", chk:"«QR получили N · подтвердили M»." },
+    { id:"m4", who:"🙋", t:"Тестовый скан",
+      b:"Каждый волонтёр сканирует учебный QR на «🧪 Тренировка» — сканер жив, сеть есть. Настоящая проба на «🚪 Вход» — только на организаторе, который сам одобренный делегат этого города: 03.10 это уже честная отметка." },
+    { id:"m5", who:"👤", t:"Тест SOS",
+      b:"Орг, который делегат этого города, нажимает /start → «🆘 SOS».",
+      chk:"карточка пришла в чат оргов этого города (не в чужой) → дежурный жмёт «🙋 Беру» → «✅ Решено»." },
+    { id:"m6", who:"🙋", t:"Запасной путь готов", b:"Офлайн-приложение открыто и проверено, телефоны заряжены, есть пауэрбанк и запасная сеть (Wi-Fi площадки или раздача)." },
+  ]},
+  { city:"all", title:"Что сказать делегатам — рассылкой по городу, сразу утром", items:[
+    { id:"m7", who:"👤", t:"Утренняя рассылка делегатам",
+      say:"Сегодня Юлид! QR для входа — кнопка «🎟 Мой QR» в меню бота, откройте его заранее. Если что-то случилось — кнопка «🆘 SOS». Нет такой кнопки в меню — нажмите /start.",
+      b:"Кнопка SOS сама у делегата не появится: меню обновляется только после /start.",
+      upd:"меню с «🆘 SOS» приходит вместе с утренним QR и с приветствием после отметки. Но просьбу «нажмите /start» в утренней рассылке оставить: кто вечером нажал «✅ Сохранил», утренний QR не получает." },
+    { id:"m8", who:"👤", t:"Рассылки в день форума — только по фильтру города",
+      path:"«📢 Общение» → «📢 Рассылка» → «🎯 По фильтру» → «🏙 Город мероприятия» = свой город, плюс «Статус» = одобренные → «📊 Показать и отправить»",
+      chk:"на экране подтверждения сверить число: у СПб около 1000, у Тюмени около 230. Если там больше 2000 — фильтр не применился, «❌ Отмена».",
+      stop:"Никогда не жать «📢 Все пользователи»: это все города и прошлые сезоны. (После обновления у менеджера, привязанного к городу, рассылка уйдёт только его городу. У суперадмина — по-прежнему всем.)",
+      warn:"Фильтр «🚪 Отметка на форуме» → «не пришли сегодня» без фильтра города заденет и Москву. В Тюмени до 11:00 местного бот может предупредить про тихие часы — жать «🌙 Всё равно отправить сейчас».",
+      upd:"«не пришли» берёт только города, где сегодня форум." },
+  ]},
+]},
+];
+
+const SITS = [
+  ["Нет сети у стойки","Сразу переходить на офлайн-приложение, копить сканы. Когда сеть появится: «✅ Отметки на форуме» → «📤 Загрузить файл сканера» → файл → «🚪 Вход» или сессия. **В тот же день.**"],
+  ["Окно сканера висит больше 5 секунд без вибрации","Закрыть окно, отсканировать ещё раз. Повторяется — офлайн-приложение.","через 7 секунд сканер сам закроет окно и попросит отсканировать ещё раз."],
+  ["После зелёного у следующего делегата нет вибрации","Он не отмечен — сканировать его ещё раз.","QR встаёт в очередь и не теряется."],
+  ["QR не читается (яркость, трещина экрана)","Попросить прибавить яркость; не помогло — «Поиск по фамилии» → «Отметить»."],
+  ["Сел телефон","«Поиск по фамилии» → «Отметить». Если нет и сети — записать от руки фамилию, город, @юзернейм и потом отметить через поиск."],
+  ["🔴 «Делегат с форума в …» (другой город)","Отметки нет. На стойку проблемных к оргам — решают они."],
+  ["🔴 «QR другого мероприятия»","Это не пропуск этого форума: чужой код, ссылка, старый скриншот. Попросить открыть «🎟 Мой QR» заново. **Если и свежий QR даёт то же самое — срочно звонить владельцу бота** (значит, поменяли сезон или метку QR)."],
+  ["🔴 «QR заменён»","QR перевыпускали — открыть новый в «🎟 Мой QR»."],
+  ["🔴 «Заявка ещё на рассмотрении» / «отклонена» / «не найден» / «прошлого сезона»","На стойку проблемных. Если включена регистрация на месте — волонтёр регистрации жмёт «✅ Пропустить и одобрить»."],
+  ["🟡 «Уже был в ЧЧ:ММ»","Сверить имя на экране с человеком. Время московское."],
+  ["Ошибочный скан","«↩️ Отменить» в течение 10 секунд. Позже — менеджер: «📓 Журнал площадки» → «🗑 Снять отметку делегату»."],
+  ["Делегат: «нет кнопки SOS»","Нажать /start."],
+  ["Пришла карточка SOS","В течение 5 минут «🙋 Беру» → звонок по 📞 или сообщение по 👤 из карточки → «✅ Решено». **Не отвечать реплаем на карточку — делегат не получит.**","«🙋 Беру», потом реплай — дойдёт."],
+  ["Нужно написать неотмеченным","«✅ Отметки на форуме» → «📨 Написать не пришедшим» (сама берёт ваш город). **Не жать, пока не загружены файлы офлайн-сканера**: иначе сообщение получат пришедшие."],
+  ["Отметка на сессии","Волонтёр у двери выбирает точку-сессию. Тюмень — по времени на кнопке, не по 🔴. Сессию в день форума не удалять: отметки на ней пропадут из учёта. Время и название исправлять кнопками «✏ Время» / «✏ Название»."],
+  ["Сколько пришло","«📊 Статистика прихода», «📍 Сейчас на площадке»."],
+  ["Бот не отвечает в чате","Сканер в приложении продолжает отмечать. Не работают «🎟 Мой QR», SOS и рассылки: делегатам показывать сохранённый скриншот, позвонить владельцу."],
+];
+
+const AFTER = [
+  { id:"a1", who:"🙋", t:"Все файлы офлайн-сканеров загрузить 03.10 до полуночи по Москве",
+    b:"Если в файле не читается время скана, бот ставит время загрузки. Файл, загруженный 04.10, запишет вход на 04.10. Если после перезапуска бота кнопки выбора точки не отвечают — прислать файл ещё раз. Большой файл обрабатывается до полуминуты, второй раз не нажимать.",
+    upd:"файл без времени ставит вход на день форума, но загрузить до 12:00 04.10 всё равно нужно — в 12:00 уходит опрос неявившихся. Бот сам скажет «пришлите файл заново», пишет «⏳ Отмечаю…», а второй тап не загружает файл дважды." },
+  { id:"a2", who:"👤", t:"Отчёт загрузки", b:"Посмотреть блок «Требуют внимания:»." },
+  { id:"a3", who:"👤", t:"Выгрузить приход",
+    path:"«✅ Отметки на форуме» → «📊 Статистика прихода» → «📥 Выгрузить CSV»",
+    warn:"Если в таблице у отмеченного делегата пустая колонка «Пришёл» — сказать владельцу (он сверит таблицу с ботом)." },
+  { id:"a4", who:"", t:"Опрос неявившихся — проще не включать",
+    stop:"Уходит в 12:00 МСК 04.10 (14:00 по Тюмени) всем, у кого нет отметки входа, и отозвать его нельзя. Включать только после загрузки всех файлов, иначе пришедшие получат «Мы не видели тебя на форуме»." },
+  { id:"a5", who:"👤", t:"«📊 Карточка «Юлид в цифрах»» — по желанию", b:"Сначала «👁 Превью себе»." },
+  { id:"a6", who:"", t:"Роли",
+    b:"Волонтёры по ссылке с «🏁 До конца форума города» отключатся сами. Добавленных руками и временных дежурных SOS убрать в «👥 Роли и доступы» кнопкой «➖ …»." },
+  { id:"a7", who:"", t:"04.10 дежурным поглядывать в чат", b:"У части делегатов в меню ещё будет старая кнопка «🆘 SOS», и она сработает." },
+  { id:"a8", who:"", t:"«🚌 Перенос неявившихся на форум в Москве» не включать" },
+];
+
+const DONT = [
+  "**«🎉 Сезон события», «🎟 Метка события в QR чек-ина», «🔄 Новый сезон»** — любая правка делает ВСЕ разосланные QR недействительными: на входе у всех будет 🔴 «QR другого мероприятия».",
+  "«🗓 Дата начала форума» и «🗓 Сколько дней идёт» после того, как QR разосланы.",
+  "«🎟 Включить/выключить QR» — не выключать.",
+  "«🚌 Настройки переноса в Москву» — держать «❌ Выкл».",
+  "Фото программы в «🎪 Событие/Медиа» — оно одно на все города. (После обновления фото своё у города.)",
+  "«📋 Скопировать программу из города…» из СПб в Тюмень.",
+  "Любые правки при шапке «🌍 Все города».",
+  "«📢 Все пользователи» в рассылке.",
+  "«🔄 Перевыпустить QR» — только точечно одному делегату: его старый QR сразу перестанет работать.",
+  "Удаление сессий в день форума.",
+  "Перезапуск и обновление бота 02–03.10 — только владелец и только в тихую минуту.",
+];
+
+/* ---------- отрисовка ---------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function md(s){
+  // верхний уровень «…» — плашка; вложенные ёлочки остаются текстом внутри плашки
+  let out = "", depth = 0, buf = "";
+  const flush = (q) => { out += q ? '<q class="bt">' + inl(buf.slice(1, -1)) + "</q>" : inl(buf); buf = ""; };
+  for (const ch of s) {
+    if (ch === "«") { if (depth === 0) flush(false); depth++; buf += ch; }
+    else if (ch === "»" && depth > 0) { depth--; buf += ch; if (depth === 0) flush(true); }
+    else buf += ch;
+  }
+  flush(false);
+  return out;
+}
+function inl(s){
+  return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/ → /g, ' <span class="ar">→</span> ');
+}
+function shot(k){
+  const [f, cap] = SHOT[k];
+  return `<figure class="shot"><details><summary>📱 Показать экран</summary><img loading="lazy" src="/shots/${f}" alt="${esc(cap)}"><figcaption>${md(cap)}</figcaption></details></figure>`;
+}
+function item(it, city){
+  const key = it.id;
+  const who = { "🔑":"🔑 суперадмин", "👤":"👤 менеджер", "🙋":"🙋 волонтёр" }[it.who];
+  let h = `<article class="it" data-key="${key}" data-city="${city}"><button class="cb" type="button" role="checkbox" aria-checked="false" aria-label="Сделано: ${esc(it.t.replace(/[«»`*]/g, ""))}">✓</button><div class="ib">`;
+  h += `<div class="ih">${who ? `<span class="who">${who}</span>` : ""}<span class="ti">${md(it.t)}</span></div>`;
+  if (it.b) h += `<p class="tx">${md(it.b)}</p>`;
+  if (it.path) h += `<div class="path">${md(it.path)}</div>`;
+  if (it.b2) h += `<p class="tx">${md(it.b2)}</p>`;
+  if (it.say) h += `<blockquote class="say">${md(it.say)}</blockquote>`;
+  if (it.list) h += `<ul class="tx">${it.list.map(x => "<li>" + md(x) + "</li>").join("")}</ul>`;
+  if (it.chk) h += `<div class="chk">${md(it.chk)}</div>`;
+  if (it.warn) h += `<div class="warn">${md(it.warn)}</div>`;
+  if (it.stop) h += `<div class="stop">⛔ ${md(it.stop)}</div>`;
+  if (it.upd) h += `<div class="upd">${md(it.upd)}</div>`;
+  if (it.shot) h += shot(it.shot);
+  return h + "</div></article>";
+}
+const CP = { all:'<span class="cpill all">оба города</span>', spb:'<span class="cpill spb">СПб</span>', tmn:'<span class="cpill tmn">Тюмень</span>' };
+function phaseHead(id, n, title, when){
+  return `<div class="ph-h"><div class="ph-n">${n}</div><div><h2>${esc(title)}</h2><div class="when">${esc(when)}</div></div><div class="ph-prog" id="pp-${id}"></div></div><div class="track"><i id="pt-${id}" style="width:0"></i></div>`;
+}
+let html = "";
+for (const p of PHASES) {
+  html += `<section class="ph" id="${p.id}">${phaseHead(p.id, p.n, p.title, p.when)}`;
+  for (const g of p.groups) {
+    html += `<div class="grp-w" data-city="${g.city}">`;
+    if (g.title) html += `<h3 class="grp">${CP[g.city]} ${esc(g.title)}</h3>`;
+    if (g.note) html += `<p class="grp-note">${esc(g.note)}</p>`;
+    html += `<div class="items">${g.items.map(it => item(it, g.city)).join("")}</div></div>`;
+  }
+  html += "</section>";
+}
+html += `<section class="ph" id="p4"><div class="ph-h"><div class="ph-n">4</div><div><h2>Во время форума: частые ситуации</h2><div class="when">Нажмите на ситуацию — откроется, что делать</div></div></div><div class="sits">${SITS.map(([s, a, u]) => `<details class="sit"><summary>${md(s)}</summary><div class="a"><p>${md(a)}</p>${u ? `<div class="upd">${md(u)}</div>` : ""}</div></details>`).join("")}</div></section>`;
+html += `<section class="ph" id="p5">${phaseHead("p5", "5", "После форума", "03.10 вечером и 04.10")}<div class="items">${AFTER.map(it => item(it, "all")).join("")}</div></section>`;
+html += `<section class="ph" id="p6"><div class="ph-h"><div class="ph-n" style="background:var(--bad)">6</div><div><h2>Не трогать</h2><div class="when">С 02.10 18:00 и до конца форума Москвы</div></div></div><div class="dont">${DONT.map(x => `<div><span>${md(x)}</span></div>`).join("")}</div></section>`;
+document.getElementById("phases").innerHTML = html;
+document.getElementById("nav").innerHTML = [["p1","1 · До 02.10 18:00"],["p2","2 · Тренировка"],["p3","3 · Утро 03.10"],["p4","4 · Во время"],["p5","5 · После"],["p6","6 · Не трогать"]]
+  .map(([id, t]) => `<a href="#${id}" id="nv-${id}">${t}<span class="pc" id="nc-${id}"></span></a>`).join("");
+
+/* ---------- отметки и фильтр города ---------- */
+const LS = "forum-prep-261003";
+let st = {};
+try { st = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (_) { st = {}; }
+const save = () => { try { localStorage.setItem(LS, JSON.stringify(st)); } catch (_) {} };
+st.done = st.done || {};
+let city = ["all","spb","tmn"].includes(st.city) ? st.city : "all";
+
+function visible(el){ const c = el.dataset.city; return city === "all" || c === "all" || c === city; }
+function paint(){
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.city === city ? "true" : "false"));
+  document.querySelectorAll("[data-city]").forEach(el => { if (el.tagName !== "BUTTON") el.classList.toggle("hide", !visible(el)); });
+  document.querySelectorAll(".it").forEach(el => { const on = !!st.done[el.dataset.key]; el.classList.toggle("on", on); el.querySelector(".cb").setAttribute("aria-checked", on ? "true" : "false"); });
+  for (const id of ["p1","p2","p3","p5"]) {
+    const items = [...document.querySelectorAll(`#${id} .it`)].filter(el => !el.closest(".hide"));
+    const done = items.filter(el => st.done[el.dataset.key]).length;
+    const pp = document.getElementById("pp-" + id);
+    pp.textContent = done + " из " + items.length; pp.classList.toggle("done", done === items.length && items.length > 0);
+    document.getElementById("pt-" + id).style.width = (items.length ? done / items.length * 100 : 0) + "%";
+    document.getElementById("nc-" + id).textContent = done + "/" + items.length;
+    document.getElementById("nv-" + id).classList.toggle("done", done === items.length && items.length > 0);
+  }
+}
+document.querySelector(".seg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; city = b.dataset.city; st.city = city; save(); paint(); });
+document.getElementById("phases").addEventListener("click", e => {
+  const cb = e.target.closest(".cb"); if (!cb) return;
+  const k = cb.closest(".it").dataset.key;
+  if (st.done[k]) delete st.done[k]; else st.done[k] = Date.now();
+  save(); paint();
+});
+document.getElementById("reset").addEventListener("click", () => {
+  if (!confirm("Снять все отметки «сделано» на этой странице? Пропадут только ваши галочки в этом браузере, в боте ничего не изменится.")) return;
+  st.done = {}; save(); paint();
+});
+window.addEventListener("beforeprint", () => document.querySelectorAll("details").forEach(d => d.open = true));
+paint();
+</script>
+</body>
+</html>
