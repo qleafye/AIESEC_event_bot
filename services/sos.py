@@ -351,13 +351,29 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
     return "\n".join(lines)
 
 
-def build_card_kb(report_id: int):
+def build_card_kb(report_id: int, *, claimed: bool = False):
+    """`claimed=True` — заявку уже взяли: «🙋 Беру» с карточки убирается (приёмка 01.10 —
+    кнопка висела и после захвата), остаётся только «✅ Решено»."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🙋 Беру", callback_data=f"sos_claim:{report_id}"),
-        InlineKeyboardButton(text="✅ Решено", callback_data=f"sos_resolve:{report_id}"),
-    ]])
+    row = []
+    if not claimed:
+        row.append(InlineKeyboardButton(text="🙋 Беру", callback_data=f"sos_claim:{report_id}"))
+    row.append(InlineKeyboardButton(text="✅ Решено", callback_data=f"sos_resolve:{report_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=[row])
+
+
+async def card_is_posted(report_id: int) -> bool:
+    """Карточка заявки где-то лежит (в чате SOS или копиями в личке) — значит, `refresh_card`
+    показал там свежие подробности и дублировать их отдельным сообщением не нужно."""
+    from database.db import list_sos_card_copies
+
+    report = await get_sos_report(report_id)
+    if report is None:
+        return False
+    if report.get("chat_id") and report.get("card_message_id"):
+        return True
+    return bool(await list_sos_card_copies(report_id))
 
 
 # ── Ревью 24.09 (находка 1): `post_card` раньше возвращал голый `bool` («ушло в чат?»), который
@@ -447,7 +463,7 @@ async def post_card(bot, report_id: int) -> PostCardResult:
         return PostCardResult()
     user = await get_user(report["telegram_id"])
     text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
-    kb = build_card_kb(report_id)
+    kb = build_card_kb(report_id, claimed=report_status(report) == STATUS_CLAIMED)
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
         msg, chat_id_used = await _send_to_bound_chat(
@@ -493,9 +509,10 @@ async def refresh_card(bot, report_id: int) -> None:
         return
     user = await get_user(report["telegram_id"])
     text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
+    status = report_status(report)
     kb = (
-        None if report_status(report) == STATUS_RESOLVED
-        else build_card_kb(report_id)
+        None if status == STATUS_RESOLVED
+        else build_card_kb(report_id, claimed=status == STATUS_CLAIMED)
     )
     from aiogram.exceptions import TelegramRetryAfter
 
@@ -613,14 +630,24 @@ async def relay_delegate_message(message, report_id: int) -> None:
                 f"sos.relay_delegate_message: не удалось отправить в чат id={report['chat_id']}: {e}",
             )
     from config import config
+    from database.db import list_sos_card_copies
     from handlers.admin_caps import capability_holders
 
     recipients = await capability_holders("moderate_reg", city=report.get("city"))
     if not recipients:
         recipients = list(config.ADMIN_IDS)
+    # Приёмка 01.10: у кого в личке лежит копия карточки — дозапись идёт ОДНИМ сообщением
+    # ответом на неё (как тред в чате SOS), без отдельной строки «Делегат дополнил».
+    card_copies = dict(await list_sos_card_copies(report_id))
     prefix = f"💬 Делегат дополнил SOS #{report_id}:"
     for uid in recipients:
         try:
+            if uid in card_copies:
+                try:
+                    await message.copy_to(uid, reply_to_message_id=card_copies[uid])
+                    continue
+                except Exception:
+                    pass  # копию карточки удалили — ниже прежний путь с подписью
             await message.bot.send_message(uid, prefix)
             await message.copy_to(uid)
         except Exception as e:

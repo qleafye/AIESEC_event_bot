@@ -477,9 +477,16 @@ def test_sos_collecting_step_first_text_sets_details_and_relays(tmp_path):
 
     updated = _run(db.get_sos_report(rid))
     assert updated["details_text"] == "Болит нога"
-    assert msg.copies == [(row["chat_id"], row["card_message_id"])]
+    # Приёмка 01.10: первый текст встал в карточку — второй копией в тред он не идёт.
+    assert msg.copies == []
     # Карточка перерисована — маркер «СРОЧНО» больше не должен остаться на новом рендере.
     assert bot.edited
+
+    # Следующее сообщение в карточку уже не встаёт — оно уходит в тред.
+    more = FakeMessage(text="И ещё рука", user_id=DELEGATE_ID)
+    more.bot = bot
+    _run(sos_handlers.sos_collecting_step(more, state))
+    assert more.copies == [(row["chat_id"], row["card_message_id"])]
     assert "подробности ещё не прислали" not in bot.edited[-1][2]
     # Режим НЕ закрывается одним сообщением (персистентный, в отличие от старого followup).
     assert _run(state.get_state()) == SosReport.collecting.state
@@ -1242,6 +1249,11 @@ def test_sos_start_recent_followup_relays_into_thread_and_stays_collecting(tmp_p
     start_msg = FakeMessage(text="🆘 SOS", user_id=DELEGATE_ID)
     _run(sos_handlers.sos_start(start_msg, state))
     assert _run(state.get_state()) == SosReport.collecting.state
+
+    first_msg = FakeMessage(text="Болит нога", user_id=DELEGATE_ID)
+    first_msg.bot = bot
+    _run(sos_handlers.sos_collecting_step(first_msg, state))
+    assert first_msg.copies == []  # встал в карточку, не дублируется в тред
 
     followup_msg = FakeMessage(text="Ещё болит голова", user_id=DELEGATE_ID)
     followup_msg.bot = bot

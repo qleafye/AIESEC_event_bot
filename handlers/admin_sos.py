@@ -48,6 +48,20 @@ FILTER_LABELS = {
 _FILTER_ORDER = ("all", "open", "claimed", "resolved")
 
 
+_DETAILS_PREVIEW = 120
+
+
+def _short(text: str) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= _DETAILS_PREVIEW else text[:_DETAILS_PREVIEW - 1].rstrip() + "…"
+
+
+def _at(raw) -> str:
+    """« в 04:02» по метке МСК (та же форма, что «Взял(а): … в HH:MM» на карточке)."""
+    stamp = format_stamp(raw, stored_utc=False) if raw else ""
+    return f" в {stamp[-5:]}" if stamp else ""
+
+
 async def _row_text(row: dict) -> str:
     status = sos_service.report_status(row)
     who = row.get("user_full_name") or row.get("user_username") or "—"
@@ -65,12 +79,24 @@ async def _row_text(row: dict) -> str:
     # D-31: карточка (и этот список) публикуется/держится МГНОВЕННО, без вопроса «что
     # случилось» — пока делегат ничего не дописал, менеджер должен видеть это в списке тем же
     # приёмом, что и сама карточка (`services.sos.render_card_text`).
-    if not row.get("details_text") and not row.get("details_photo_file_id"):
+    details = row.get("details_text")
+    if details:
+        # Приёмка 01.10: суть заявки — прямо в списке, без поиска карточки в чате.
+        lines.append(f"«{html_module.escape(_short(str(details)))}»")
+    if row.get("details_photo_file_id"):
+        lines.append("📷 фото приложено")
+    if not details and not row.get("details_photo_file_id"):
         lines.append("🆘 подробности ещё не прислали")
-    if status == "claimed":
-        lines.append(f"✍️ взял(а) {html_module.escape(str(row.get('claimed_by_name') or '—'))}")
-    elif status == "resolved":
-        lines.append(f"✅ {html_module.escape(str(row.get('resolved_by_name') or '—'))}")
+    if status in ("claimed", "resolved") and row.get("claimed_by_name"):
+        lines.append(
+            f"✍️ взял(а) {html_module.escape(str(row['claimed_by_name']))}"
+            f"{_at(row.get('claimed_at'))}"
+        )
+    if status == "resolved":
+        lines.append(
+            f"✅ решено: {html_module.escape(str(row.get('resolved_by_name') or '—'))}"
+            f"{_at(row.get('resolved_at'))}"
+        )
     # Ревью 24.09 (находка 1): карточка не дошла НИКУДА (ни в чат, ни фоллбэком в личку) —
     # у неё физически нет ни `chat_id`, ни личных копий с общим треадом, поэтому единственное
     # место, где менеджер вообще узнаёт об этом SOS, — этот список.
