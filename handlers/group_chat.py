@@ -321,8 +321,9 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     """Заявка SOS, на карточку которой ответили В ЕЁ ЖЕ чате SOS, иначе `None`. Карточка —
     сообщение САМОГО бота с номером заявки (`services.sos.card_report_id`), а чат реплая —
     тот, куда эта карточка ушла (`sos_reports.chat_id`): пересланная в другую группу копия
-    ответа делегату не даёт."""
-    from database.db import get_sos_report
+    ответа делегату не даёт. Реплай на дописку делегата в треде карточки (её копирует бот,
+    `services.sos.relay_delegate_message`) тоже находит заявку — по записанному id копии."""
+    from database.db import find_sos_report_by_relay, get_sos_report
     from services import sos as sos_service
 
     replied = message.reply_to_message
@@ -331,6 +332,8 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     if author is None or bot is None or author.id != bot.id:
         return None
     report_id = sos_service.card_report_id(replied)
+    if report_id is None:
+        report_id = await find_sos_report_by_relay(message.chat.id, replied.message_id)
     if report_id is None:
         return None
     report = await get_sos_report(report_id)

@@ -313,3 +313,76 @@ def test_dm_reply_from_moderator_of_other_city_is_refused(tmp_path):
     assert bot.sent_to(DELEGATE_ID) == []
     refusal = bot.sent_to(MANAGER_ID)
     assert refusal and "команда этого города" in refusal[0]
+
+
+# ── Реплай на дописку делегата в треде карточки ──────────────────────────────────────────────
+
+class CopyingBot(RecordingBot):
+    """Плюс CopyMessage: бот копирует дописку делегата в тред и получает id копии."""
+
+    async def __call__(self, method, request_timeout=None):
+        from aiogram.methods import CopyMessage
+        from aiogram.types import MessageId
+
+        if isinstance(method, CopyMessage):
+            self.calls.append(method)
+            self._next_mid += 1
+            return MessageId(message_id=self._next_mid)
+        return await super().__call__(method, request_timeout)
+
+
+def _relay_followup(bot, report_id: int, text: str) -> int:
+    """Дописка делегата уходит в тред (как из режима «дописываю SOS»); возвращает id копии."""
+    dm = Chat(id=DELEGATE_ID, type="private")
+    msg = Message(
+        message_id=42, date=int(time.time()), chat=dm,
+        from_user=User(id=DELEGATE_ID, is_bot=False, first_name="Тест"), text=text,
+    ).as_(bot)
+    asyncio.run(sos_service.relay_delegate_message(msg, report_id))
+    return bot._next_mid
+
+
+def _bot_copy(chat: Chat, mid: int, text: str) -> Message:
+    return Message(
+        message_id=mid, date=int(time.time()), chat=chat,
+        from_user=User(id=BOT_ID, is_bot=True, first_name="bot"), text=text,
+    )
+
+
+def test_group_reply_to_delegate_followup_reaches_delegate(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    card = _card(GROUP, report["id"])
+    bot = CopyingBot()
+    copy_mid = _relay_followup(bot, report["id"], "мне плохо, 2 этаж")
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _reply_update(STRANGER_ID, GROUP, _bot_copy(GROUP, copy_mid, "мне плохо, 2 этаж"),
+                          "Иду, жди у лифта", update_id=2),
+        )
+    delivered = bot.sent_to(DELEGATE_ID)
+    assert delivered and "Иду, жди у лифта" in delivered[0]
+
+
+def test_group_reply_to_delegate_followup_without_claim_explains(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    bot = CopyingBot()
+    copy_mid = _relay_followup(bot, report["id"], "мне плохо")
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _bot_copy(GROUP, copy_mid, "мне плохо"), "кто ближе?"))
+    assert bot.sent_to(DELEGATE_ID) == []
+    assert any("🙋 Беру" in t for t in bot.sent_to(SOS_CHAT_ID))
+
+
+def test_group_reply_to_unrelated_bot_message_is_ignored(tmp_path):
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    bot = CopyingBot()
+    _relay_followup(bot, report["id"], "мне плохо")
+    with _attached() as dp:
+        _feed(dp, bot, _reply_update(ADMIN_ID, GROUP, _bot_copy(GROUP, 99999, "Всем привет"), "ок"))
+    assert bot.sent_to(DELEGATE_ID) == []
+    assert bot.sent_to(SOS_CHAT_ID) == []
