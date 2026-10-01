@@ -826,6 +826,16 @@ async def prog_delete_confirm(callback: types.CallbackQuery):
         f"🗑 <b>Удалить сессию навсегда?</b>\n\n"
         f"«{html_module.escape(session['title'])}» {time_part} пропадёт из программы."
     )
+    # CLAUDE.md: подтверждение называет, что пропадёт. Отметки/оценки остаются в БД без сессии
+    # и выпадают из её карточки и отчёта; приглашение оценить снимается (prog_delete_go).
+    arrived = await count_checkins_by_point(point_for_session(session_id))
+    rated = (await session_feedback.session_feedback_stats(session_id)).get("rating_count", 0)
+    if arrived or rated:
+        text += f"\nПропадут из отчёта: отметок на сессии — {arrived}, оценок — {rated}."
+    if await session_feedback.is_enabled_for_city(session["city"]):
+        text += "\nДелегатам не придёт приглашение оценить эту сессию."
+    text += ("\n\nНужно поменять время или название — нажмите «← Отмена» и «✏ Время»/«✏ Название» "
+             "в карточке: отметки сохранятся.")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"prog_dgo:{session_id}")],
         [InlineKeyboardButton(text="← Отмена", callback_data=f"prog_v:{session_id}")],
