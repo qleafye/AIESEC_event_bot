@@ -382,7 +382,7 @@ async def _entry_denial(request: Request, p: Principal, bound: str | None, user:
     if force_day and can_override:
         logger.info("checkin: %s отметил вход вопреки дню форума (делегат %s)", p.telegram_id, user.get("telegram_id"))
         return None
-    denial = await checkin_forum_day.entry_day_denial(user)
+    denial = await checkin_forum_day.entry_day_denial(user, bound=bound)
     if denial is not None:
         denial = {**denial, "day_override": True} if can_override else {**denial, "hint": _DAY_OVERRIDE_HINT}
     return denial
