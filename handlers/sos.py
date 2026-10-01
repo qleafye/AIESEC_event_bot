@@ -34,7 +34,8 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from cities import default_city_code, get_setting_typed_for_city
 from database.db import (
-    add_sos_details, create_sos_report, get_open_sos_report, get_user, set_sos_location,
+    add_sos_details, create_sos_report, get_open_sos_report, get_sos_report, get_user,
+    set_sos_location,
 )
 from handlers import reg_i18n
 from handlers.states import SosReport
@@ -313,8 +314,17 @@ async def sos_collecting_step(message: types.Message, state: FSMContext):
     text = message.text or message.caption
     photo_id = message.photo[-1].file_id if message.photo else None
     if text or photo_id:
+        # Приёмка 01.10: первый чистый текст делегата встаёт в саму карточку — отдельной копией
+        # «💬 Делегат дополнил SOS» он приходил оргам второй раз. Фото (в карточке только
+        # пометка «📷 фото приложено») и последующие сообщения по-прежнему идут в тред.
+        before = await get_sos_report(report_id)
+        text_lands_in_card = bool(
+            message.text and not photo_id and before is not None and not before.get("details_text")
+        )
         await add_sos_details(report_id, text=text, photo_file_id=photo_id)
         await sos_service.refresh_card(message.bot, report_id)
+        if text_lands_in_card and await sos_service.card_is_posted(report_id):
+            return
     await sos_service.relay_delegate_message(message, report_id)
 
 
