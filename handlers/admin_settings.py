@@ -52,6 +52,7 @@ from settings_ops import (
     tab_check_failed_warning as _tab_check_failed_warning, cross_setting_error,
 )
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
+from services.program import own_program_photo  # строка «📅 Программа» при городе в шапке
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
 from handlers.reg_schema import (
@@ -1114,7 +1115,9 @@ async def _render_settings_group_text_impl(token: str, admin_id: int | None) -> 
     if token == "system": lines.append(await _chat_status_line())
     if token == PHOTO_FILE_GROUP:
         for prefix, label, _ in PHOTO_FIELDS:
-            photo = await get_setting(f"{prefix}_photo_file_id")
+            # Город в шапке: «📅 Программа» — своё фото города (его и грузит кнопка), не общее.
+            own = prefix == "program" and per_city_ctx
+            photo = await (own_program_photo(header_code) if own else get_setting(f"{prefix}_photo_file_id"))
             lines.append(f"{label}: {'✅ загружена' if photo else '<i>— не задано</i>'}")
         for prefix, label, _ in FILE_FIELDS:
             photo = await get_setting(f"{prefix}_photo_file_id")
