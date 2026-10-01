@@ -140,3 +140,13 @@ def test_rematch_skips_form_without_keys(tmp_path):
     _ingest(form, "a1", [{"q": "q2", "label": "Ник", "value": "@someone"}])
     _user(5, "@someone")
     assert asyncio.run(m.rematch_unmatched()) == 0
+
+
+def test_guess_keys_nick_is_a_word_not_a_substring():
+    """«сотрудник/школьник» — не ник в Telegram."""
+    from services.ext_forms_match import guess_key_questions
+    qs = [("a", "Вы сотрудник или школьник?"), ("b", "Ваш ник в Telegram"),
+          ("c", "Телефон")]
+    assert guess_key_questions(qs) == ("b", "c")
+    assert guess_key_questions([("x", "Никнейм")])[0] == "x"
+    assert guess_key_questions([("x", "Ник")])[0] == "x"
