@@ -633,26 +633,50 @@ def _venue_log():
 
 # ── Разбор выгрузки офлайн-сканера (D-09/D-10) ───────────────────────────────────────────────
 #
-# «Под любое приложение»: бот не полагается на конкретную структуру колонок конкретного
-# сканера — ищет строки/ячейки, начинающиеся с текущей метки события + разделителя, ЛЮБЫМ из
-# двух независимых способов (обычный CSV/TSV-разбор ловит ячейку целиком; сырой regex-скан по
-# всему тексту ловит тот же код внутри JSON/произвольного текста, где csv.reader его бы
-# токенизировал неверно) — и объединяет находки без дублей. Доступ к БД (токен делегата, запись
-# отметки, счётчики) — в `database/db.py`; здесь — только чистая логика плюс `current_event_tag`
-# выше. Хендлер бота — `handlers/admin_checkin.py`.
+# «Под любое приложение»: бот не полагается на структуру колонок конкретного сканера. Код
+# нашего события ищется регэкспом по каждой строке файла (CSV/TSV/TXT/JSON одинаково), токен —
+# хвост `·[A-Za-z0-9_-]+` (ФИО внутри QR может содержать запятую или пробел — некавыченный CSV
+# режет такую ячейку, регэксп нет). Время скана — из ячеек той же строки: дата-время одной
+# ячейкой в любом из частых форматов или дата и время соседними колонками; если строка не
+# разбирается выбранным разделителем, пробуются остальные («;» вместо «,» и наоборот). Дубли
+# сводятся по ТОКЕНУ и дню скана: повтор того же делегата в тот же день — одна запись (с самым
+# ранним временем), запись без времени поглощается записью с временем. Доступ к БД — в
+# `database/db.py`; хендлер бота — `handlers/admin_checkin.py`.
 
 _DECODE_ENCODINGS = ("utf-8-sig", "utf-8", "cp1251")
 
 _ISO_DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?")
-_DMY_DT_RE = re.compile(r"^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$")
+# дата «дд.мм.гггг», «м/д/гггг» или «гггг/мм/дд», между датой и временем — пробел, «T» или «, »;
+# в конце — необязательные AM/PM (американская локаль телефона).
+_DATE_PART = r"(\d{1,2})([./])(\d{1,2})\2(\d{4})|(\d{4})[/.](\d{1,2})[/.](\d{1,2})"
+_TIME_PART = r"(\d{1,2}):(\d{2})(?::(\d{2}))?(?:[.,]\d+)?\s*(?:([AaPp])\.?[Mm]\.?)?"
+_DMY_DT_RE = re.compile(rf"^(?:{_DATE_PART})\s*(?:,\s*|\s+|T)\s*(?:{_TIME_PART})$")
+_DATE_ONLY_RE = re.compile(rf"^(?:{_DATE_PART}|(\d{{4}})-(\d{{2}})-(\d{{2}}))$")
+_TIME_ONLY_RE = re.compile(rf"^{_TIME_PART}$")
 _EPOCH_RE = re.compile(r"^\d{9,13}$")
+_TOKEN_TAIL = r"[A-Za-z0-9_-]+"
 
 
 def decode_scan_export(data: bytes) -> str:
-    """Байты выгрузки -> текст. Перебирает кодировки по очереди (utf-8 с BOM/без, cp1251 —
+    """Байты выгрузки -> текст. UTF-16 (экспорт «Unicode text» из Excel/iPhone) узнаётся по
+    BOM или по нулевым байтам через один; дальше кодировки по очереди (utf-8 с BOM/без, cp1251 —
     частая для файлов, выгруженных на русской Windows); последний вариант заменяет
     нераспознанные байты, а не падает — лучше кривая пара символов, чем отказ разобрать файл
     целиком."""
+    utf16 = None
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        utf16 = "utf-16"
+    elif len(data) >= 4:
+        head = data[:4096]
+        even_zero = head[0::2].count(0)
+        odd_zero = head[1::2].count(0)
+        half = len(head) // 2
+        if odd_zero > half * 0.3 and even_zero < half * 0.05:
+            utf16 = "utf-16-le"
+        elif even_zero > half * 0.3 and odd_zero < half * 0.05:
+            utf16 = "utf-16-be"
+    if utf16:
+        return data.decode(utf16, errors="replace")
     for enc in _DECODE_ENCODINGS:
         try:
             return data.decode(enc)
@@ -661,10 +685,34 @@ def decode_scan_export(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _hour24(hour: int, ampm: str | None) -> int:
+    if not ampm:
+        return hour
+    if ampm in ("A", "a"):
+        return 0 if hour == 12 else hour
+    return hour if hour == 12 else hour + 12
+
+
+def _date_from_groups(g: tuple, has_ampm: bool) -> tuple[int, int, int]:
+    """(год, месяц, день) из групп `_DATE_PART`. «дд.мм.гггг» — день первым; «a/b/гггг» —
+    месяц первым при AM/PM (американская локаль) или если второе число больше 12, иначе день
+    первым (европейская «дд/мм/гггг»)."""
+    a, sep, b, y, y2, m2, d2 = g[:7]
+    if y2:
+        return int(y2), int(m2), int(d2)
+    a, b = int(a), int(b)
+    if sep == "/" and (has_ampm or b > 12) and a <= 12:
+        return int(y), a, b
+    return int(y), b, a
+
+
 def _parse_cell_datetime(cell: str) -> datetime | None:
-    cell = (cell or "").strip()
+    cell = (cell or "").strip().strip('"').strip()
     if not cell:
         return None
+    iso_comma = re.match(r"^(\d{4}-\d{2}-\d{2}),\s*(\d{1,2}:\d{2}(?::\d{2})?)$", cell)
+    if iso_comma:
+        cell = f"{iso_comma.group(1)} {iso_comma.group(2).zfill(5)}"
     if _ISO_DT_RE.match(cell):
         # Полная строка первой: `Z`/`+03:00` — это зона, её нельзя отрезать (`cell[:19]`
         # превращал «09:15Z» в «09:15 по Москве»). Aware -> МСК naive; naive — как есть
@@ -679,19 +727,60 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
                 return None
     m = _DMY_DT_RE.match(cell)
     if m:
-        d, mo, y, h, mi, s = m.groups()
+        g = m.groups()
+        h, mi, sec, ampm = g[7:11]
         try:
-            return datetime(int(y), int(mo), int(d), int(h), int(mi), int(s or 0))
-        except ValueError:
+            return datetime(*_date_from_groups(g, bool(ampm)), _hour24(int(h), ampm), int(mi), int(sec or 0))
+        except (ValueError, TypeError):
             return None
     if _EPOCH_RE.match(cell):
         try:
             n = int(cell)
             if n > 10 ** 12:  # миллисекунды
                 n //= 1000
-            return msk_from_timestamp(n)
+            dt = msk_from_timestamp(n)
         except (ValueError, OSError, OverflowError):
             return None
+        # номер телефона или id тоже бывают 9–13 цифрами — время только правдоподобное
+        return dt if 2020 <= dt.year <= 2100 else None
+    return None
+
+
+def _parse_cell_date(cell: str) -> tuple[int, int, int] | None:
+    m = _DATE_ONLY_RE.match((cell or "").strip().strip('"').strip())
+    if not m:
+        return None
+    g = m.groups()
+    if g[7]:
+        return int(g[7]), int(g[8]), int(g[9])
+    return _date_from_groups(g, False)
+
+
+def _parse_cell_time(cell: str) -> tuple[int, int, int] | None:
+    m = _TIME_ONLY_RE.match((cell or "").strip().strip('"').strip())
+    if not m:
+        return None
+    h, mi, sec, ampm = m.groups()
+    return _hour24(int(h), ampm), int(mi), int(sec or 0)
+
+
+def _row_datetime(cells: list[str]) -> datetime | None:
+    """Время скана из ячеек строки: дата-время одной ячейкой или дата + время соседними."""
+    for cell in cells:
+        dt = _parse_cell_datetime(cell)
+        if dt:
+            return dt
+    for idx, cell in enumerate(cells):
+        ymd = _parse_cell_date(cell)
+        if not ymd:
+            continue
+        for other in cells[idx + 1:idx + 3] + cells[max(0, idx - 2):idx]:
+            hms = _parse_cell_time(other)
+            if hms:
+                try:
+                    return datetime(*ymd, *hms)
+                except ValueError:
+                    return None
     return None
 
 
@@ -702,55 +791,66 @@ def _sniff_dialect(sample: str):
         return None
 
 
+def _line_cells(line: str, delimiter: str) -> list[str]:
+    try:
+        row = next(csv.reader([line], delimiter=delimiter), [])
+    except csv.Error:
+        row = line.split(delimiter)
+    return [(c or "").strip() for c in row]
+
+
+def _qr_pattern(tag: str) -> re.Pattern:
+    """Код события в произвольном тексте: метка, до двух полей (ФИО, город — внутри может быть
+    запятая и пробел, но не перенос строки, кавычка, «;» или таб и не начало следующего кода) и
+    токен последним полем."""
+    prefix = re.escape(f"{tag}{_QR_SEP}")
+    field = rf"(?:(?!{prefix})[^{_QR_SEP}\r\n\t;\"])*{_QR_SEP}"
+    return re.compile(rf"{prefix}(?:{field}){{0,2}}({_TOKEN_TAIL})")
+
+
 def find_checkin_records(text: str, tag: str) -> list[dict]:
-    """Каждая находка кода нашего события в `text` (CSV/TSV/TXT/JSON — любой экспорт
+    """Каждый делегат, найденный в `text` (CSV/TSV/TXT/JSON — любой экспорт
     приложения-сканера): `{"qr": <строка QR>, "scanned_at": "YYYY-MM-DD HH:MM:SS" | None}`.
-    `scanned_at` — время из СОСЕДНЕЙ ячейки той же строки CSV, если она похожа на дату-время
-    (ISO / «дд.мм.гггг чч:мм[:сс]» / unix-эпоха секунды-или-миллисекунды); `None` — время скана
-    в файле не нашлось, вызывающий (`handlers/admin_checkin.py`) подставляет время загрузки с
-    флагом «примерное» (D-10). Без дублей — один и тот же QR-текст входит в результат один раз,
-    даже если обе стратегии его поймали."""
+    `scanned_at` — время из ячеек той же строки файла (ISO / «дд.мм.гггг[,] чч:мм[:сс]» /
+    «м/д/гггг чч:мм AM» / дата и время отдельными колонками / unix-эпоха); `None` — время
+    скана в файле не нашлось, вызывающий (`handlers/admin_checkin.py`) подставляет время
+    загрузки с флагом «примерное» (D-10). Дубли сводятся по токену: одна запись на делегата и
+    день скана (самое раннее время дня), запись без времени поглощается записью с временем."""
     if not tag or not text:
         return []
-    prefix = f"{tag}{_QR_SEP}"
+    pattern = _qr_pattern(tag)
+    dialect = _sniff_dialect(text[:4096])
+    delimiters = [dialect.delimiter] if dialect else []
+    delimiters += [d for d in (",", ";", "\t") if d not in delimiters]
+
+    found: list[tuple[str, str, str | None]] = []  # (qr, token, scanned_at) в порядке файла
+    for line in text.splitlines():
+        matches = list(pattern.finditer(line))
+        if not matches:
+            continue
+        scanned_at = None
+        if len(matches) == 1:  # несколько кодов в строке (JSON одной строкой) — время не угадать
+            rest = line.replace(matches[0].group(0), "")
+            for delim in delimiters:
+                dt = _row_datetime(_line_cells(rest, delim))
+                if dt:
+                    scanned_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    break
+        for m in matches:
+            found.append((m.group(0), m.group(1), scanned_at))
+
+    timed_tokens = {token for _qr, token, scanned_at in found if scanned_at}
     records: list[dict] = []
-    seen: set[str] = set()
-
-    # Стратегия 1: настоящий CSV/TSV-разбор (уважает кавычки/встроенные разделители) —
-    # позволяет заодно посмотреть на СОСЕДНИЕ ячейки той же строки в поисках времени скана.
-    sample = text[:4096]
-    dialect = _sniff_dialect(sample)
-    try:
-        reader = csv.reader(io.StringIO(text), dialect) if dialect else csv.reader(io.StringIO(text))
-        for row in reader:
-            cells = [(c or "").strip() for c in row]
-            for idx, cell in enumerate(cells):
-                if not cell.startswith(prefix) or cell in seen:
-                    continue
-                seen.add(cell)
-                scanned_at = None
-                for other_idx, other in enumerate(cells):
-                    if other_idx == idx:
-                        continue
-                    dt = _parse_cell_datetime(other)
-                    if dt:
-                        scanned_at = dt.strftime("%Y-%m-%d %H:%M:%S")
-                        break
-                records.append({"qr": cell, "scanned_at": scanned_at})
-    except csv.Error:
-        pass
-
-    # Стратегия 2: сырой regex-скан всего текста — ловит код там, где построчный CSV-разбор
-    # его не токенизировал (JSON-экспорт вроде Binary Eye, произвольный текст). Без контекста
-    # строки — время скана здесь всегда None (примерное). Обрезаем ТОЛЬКО по типичным
-    # разделителям колонок/JSON/переносам строк — не по пробелу: поле ФИО внутри самого QR
-    # (D-04, «Иванов Иван») законно содержит пробел, и обрезка по \s откусила бы фамилию от
-    # имени, оставляя в `seen` не ту строку, что нашла стратегия 1 (дубль вместо дедупа).
-    pattern = re.compile(re.escape(prefix) + r'[^,;\t\r\n"\'\]}]*')
-    for m in pattern.finditer(text):
-        cell = m.group(0)
-        if cell not in seen:
-            seen.add(cell)
-            records.append({"qr": cell, "scanned_at": None})
-
+    by_key: dict[tuple[str, str | None], dict] = {}
+    for qr, token, scanned_at in found:
+        if scanned_at is None and token in timed_tokens:
+            continue
+        key = (token, scanned_at[:10] if scanned_at else None)
+        rec = by_key.get(key)
+        if rec is None:
+            rec = {"qr": qr, "scanned_at": scanned_at}
+            by_key[key] = rec
+            records.append(rec)
+        elif scanned_at and scanned_at < rec["scanned_at"]:
+            rec["scanned_at"] = scanned_at
     return records
