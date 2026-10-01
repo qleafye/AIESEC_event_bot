@@ -42,6 +42,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 const COUNTERS_DEBOUNCE_MS = 800;
 
 const NETWORK_TEXT = "Нет связи — переходите на приложение-сканер.";
+// Скан и отметка ждут ответа не дольше SCAN_TIMEOUT_MS: на «подвисшем» Wi-Fi площадки fetch
+// висит минутами, а сканер всё это время не принимал бы новые QR.
+const SCAN_TIMEOUT_MS = 7000;
+const TIMEOUT_TEXT = "Нет ответа от сервера — отсканируйте ещё раз (если отметка всё же прошла, покажет «Уже был»). Повторяется — переходите на приложение-сканер.";
 const NO_SCANNER_TEXT = "Обновите Telegram — сканер QR недоступен в этой версии. Ищите делегата по фамилии ниже.";
 
 const STATUS_TONE = {
@@ -91,6 +95,11 @@ const SUCCESS_STATUSES = new Set(["new", "moved"]);
 // (остальные экраны молча используют общий screenText("network_error") без развилки).
 function isNetworkError(err) {
   return !(err && typeof err.status === "number");
+}
+
+function failureText(err, fallback) {
+  if (err && err.timeout) return TIMEOUT_TEXT;
+  return isNetworkError(err) ? NETWORK_TEXT : errorText(err, fallback);
 }
 
 function timeOnly(stamp) {
@@ -416,7 +425,8 @@ export async function render(root, params, ctx) {
   async function submitScan(payloadText) {
     try {
       const res = await measured(() => api("/checkin/scan", {
-        method: "POST", body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
+        method: "POST", timeoutMs: SCAN_TIMEOUT_MS,
+        body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
       }));
       loadNetTexts();
       const isSuccess = SUCCESS_STATUSES.has(res.status);
@@ -424,8 +434,8 @@ export async function render(root, params, ctx) {
       showPlaque(res, { closeButton: !isSuccess });
       refreshCounters();
     } catch (err) {
-      closeScanPopup(); // сетевая/любая другая ошибка — тоже 🔴, попап закрывается
-      const text = isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз.");
+      closeScanPopup(); // сетевая ошибка, таймаут, любая другая — тоже 🔴, попап закрывается
+      const text = failureText(err, "Не получилось отметить — попробуйте ещё раз.");
       showPlaque({ status: "error", reason_text: text }, { closeButton: true });
     }
   }
@@ -466,14 +476,14 @@ export async function render(root, params, ctx) {
       btn.setAttribute("disabled", "");
       try {
         const res = await measured(() => api("/checkin/manual", {
-          method: "POST", body: { telegram_id: person.telegram_id, point: selectedPoint, city: citySelect.value || undefined },
+          method: "POST", timeoutMs: SCAN_TIMEOUT_MS, body: { telegram_id: person.telegram_id, point: selectedPoint, city: citySelect.value || undefined },
         }));
         loadNetTexts();
         showPlaque(res);
         await loadStats();
         await loadPoints(citySelect.value || undefined);
       } catch (err) {
-        say(isNetworkError(err) ? NETWORK_TEXT : errorText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
+        say(failureText(err, "Не получилось отметить — попробуйте ещё раз."), "warn");
       } finally {
         btn.removeAttribute("disabled");
       }
