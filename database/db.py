@@ -2207,6 +2207,10 @@ async def init_db():
         # «🔁 Перехватить»: у кого перехватили взятый SOS (взявший пропал — сел телефон, ушёл со
         # смены). Карточка показывает это рядом с новым взявшим. NULL у старых строк.
         await _ensure_column(db, "sos_reports", "taken_over_from_name", "TEXT")
+        # Когда делегат последний раз вошёл в режим «дописываю SOS» по этой заявке (повторный
+        # «🆘 SOS» в окне переоткрытия перезапускает таймер). `services.sos.may_be_collecting`
+        # считает возраст от него, а не от создания заявки. NULL у старых строк.
+        await _ensure_column(db, "sos_reports", "collecting_started_at", "TEXT")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_sos_reports_telegram_id ON sos_reports(telegram_id)"
         )
@@ -6965,6 +6969,16 @@ async def add_sos_details(report_id: int, *, text: str | None = None,
             )
         await db.commit()
     return text_landed
+
+
+async def mark_sos_collecting_started(report_id: int) -> None:
+    """Делегат вошёл в режим «дописываю SOS» по этой заявке (новой или переоткрытой)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE sos_reports SET collecting_started_at = ? WHERE id = ?",
+            (msk_now().strftime("%Y-%m-%d %H:%M:%S"), report_id),
+        )
+        await db.commit()
 
 
 async def set_sos_location(report_id: int, latitude: float, longitude: float) -> None:
