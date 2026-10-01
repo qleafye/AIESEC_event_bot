@@ -508,9 +508,13 @@ async function renderManagerHub(root, ctx, opts = {}) {
   // (`show_tile`/`texts`, `GET /admin/setup`), хаб только рисует. Fail-soft — тот же приём,
   // что у `/admin/settings/hints` (403 у делегата без права `settings` даёт хаб без плитки,
   // не падение экрана).
+  // Без права «settings» (волонтёр входа, модератор) оба запроса ниже не делаем вовсе: сервер
+  // ответил бы 403, а ядро нарисовало бы «Нет доступа» поверх главной. quiet — страховка на
+  // случай выключенного раздела настроек: тот же 403, но экран не трогаем.
+  const canSettings = Array.isArray(me && me.caps) && me.caps.includes("settings");
   let setup = null;
   try {
-    setup = await api("/admin/setup");
+    setup = canSettings ? await api("/admin/setup", { quiet: true }) : null;
   } catch (_) {
     setup = null;
   }
@@ -533,7 +537,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
   let countdown = null;
   let quietQueue = null;
   try {
-    const hints = await api("/admin/settings/hints");
+    const hints = canSettings ? await api("/admin/settings/hints", { quiet: true }) : null;
     countdown = hints && hints.countdown ? hints.countdown : null;
     // Quick 260904-dq1: «в очереди: N» — тот же fail-soft приём, что countdown выше; текст
     // считает сервер, hub.js только рисует строку, когда она непустая.
