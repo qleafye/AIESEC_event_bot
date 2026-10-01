@@ -113,6 +113,18 @@ function timeOnly(stamp) {
   return (spaceIdx >= 0 ? text.slice(spaceIdx + 1) : text).slice(0, 5);
 }
 
+// Подписка на закрытие попапа камеры снимается при уходе с экрана (как в form.js).
+let tgRef = null;
+let popupClosedHandler = null;
+
+export function unmount() {
+  if (tgRef && popupClosedHandler && typeof tgRef.offEvent === "function") {
+    tgRef.offEvent("scanQrPopupClosed", popupClosedHandler);
+  }
+  tgRef = null;
+  popupClosedHandler = null;
+}
+
 export async function render(root, params, ctx) {
   const { h, api } = ctx;
 
@@ -330,8 +342,13 @@ export async function render(root, params, ctx) {
 
   const SCAN_POPUP_TEXT = "Зелёная вибрация — отмечен. Иначе окно закроется";
 
+  // Попап камеры открыт: при 🟢 он остаётся поверх плашки — кнопку «↩️ Отменить» под ним не
+  // видно, поэтому её отсчёт стартует, когда попап закрыт.
+  let popupOpen = false;
+
   function startScan() {
     if (!canScan) return;
+    popupOpen = true;
     tg.showScanQrPopup({ text: SCAN_POPUP_TEXT }, onQrText);
   }
 
@@ -343,6 +360,23 @@ export async function render(root, params, ctx) {
   // `res.undo` лишь для new/moved), кнопка живёт `undo.seconds` секунд. Таймер — удобство, не
   // защита: окно, «своя» и «последняя» проверяются на сервере (/checkin/undo).
   let undoTimer = null;
+  let pendingUndo = null; // кнопка, отрисованная под открытым попапом: { btn, seconds, acceptUntil }
+
+  function startUndoCountdown(btn, seconds) {
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => { btn.remove(); undoTimer = null; }, (seconds || 10) * 1000);
+  }
+
+  function onScanPopupClosed() {
+    popupOpen = false;
+    if (!pendingUndo) return;
+    const { btn, seconds, acceptUntil } = pendingUndo;
+    pendingUndo = null;
+    if (!btn.isConnected) return;
+    if (Date.now() >= acceptUntil) { btn.remove(); return; } // сервер уже не примет
+    startUndoCountdown(btn, seconds);
+    if (typeof plaque.scrollIntoView === "function") plaque.scrollIntoView({ block: "center" });
+  }
 
   function undoButton(undo, res) {
     const btn = h("button", { class: "btn secondary checkin-plaque-undo", type: "button", text: undo.label });
@@ -350,6 +384,7 @@ export async function render(root, params, ctx) {
       if (btn.hasAttribute("disabled")) return;
       btn.setAttribute("disabled", "");
       if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+      pendingUndo = null;
       // Тренировка: отметки нет — показываем, как выглядит отмена, без запроса на сервер.
       if (undo.demo) {
         showPlaque({
@@ -368,12 +403,18 @@ export async function render(root, params, ctx) {
       await loadStats();
       await loadPoints(citySelect.value || undefined);
     });
-    undoTimer = setTimeout(() => { btn.remove(); undoTimer = null; }, (undo.seconds || 10) * 1000);
+    if (popupOpen && popupClosedHandler) { // старый клиент без события закрытия — отсчёт сразу
+      const acceptMs = (undo.valid_seconds || undo.seconds || 10) * 1000;
+      pendingUndo = { btn, seconds: undo.seconds, acceptUntil: Date.now() + acceptMs };
+    } else {
+      startUndoCountdown(btn, undo.seconds);
+    }
     return btn;
   }
 
   function showPlaque(res, { closeButton = false } = {}) {
     if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    pendingUndo = null;
     const tone = STATUS_TONE[res.status] || "error";
     plaque.className = `checkin-plaque tone-${tone}`;
     const dot = tone === "success" ? "🟢" : tone === "warn" ? "🟡" : "🔴";
@@ -412,6 +453,7 @@ export async function render(root, params, ctx) {
   }
 
   function closeScanPopup() {
+    popupOpen = false;
     if (tg && typeof tg.closeScanQrPopup === "function") tg.closeScanQrPopup();
   }
 
@@ -458,6 +500,11 @@ export async function render(root, params, ctx) {
     fallbackNote.className = "muted";
   }
   scanBtn.addEventListener("click", startScan);
+  if (tg && typeof tg.onEvent === "function") {
+    tg.onEvent("scanQrPopupClosed", onScanPopupClosed);
+    popupClosedHandler = onScanPopupClosed;
+    tgRef = tg;
+  }
 
   // ── поиск по фамилии (D-11/D-12) ──────────────────────────────────────────────────────
   let searchTimer = null;
