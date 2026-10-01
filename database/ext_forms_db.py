@@ -253,8 +253,10 @@ async def set_form_notified(form_id: int, ts: str) -> None:
 async def enqueue_pending(form_id: int, answer_id: str, delivery_id: str | None, now: str) -> bool:
     n = await _exec(
         "INSERT OR IGNORE INTO external_form_pending "
-        "(form_id, answer_id, delivery_id, received_at, next_try_at) VALUES (?, ?, ?, ?, ?)",
-        (form_id, str(answer_id), delivery_id, now, now),
+        "(form_id, answer_id, delivery_id, received_at, next_try_at) "
+        "SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS "
+        "(SELECT 1 FROM external_form_deleted WHERE form_id = ? AND answer_id = ?)",
+        (form_id, str(answer_id), delivery_id, now, now, form_id, str(answer_id)),
     )
     return n > 0
 
@@ -291,13 +293,15 @@ async def insert_answer(
     *, form_id, answer_id, answered_at, received_at, payload: list[dict], raw: str | None,
     matched_telegram_id: int | None, match_how: str | None,
 ) -> bool:
-    """False = такой ответ уже есть, ничего не изменено."""
+    """False = такой ответ уже есть или был удалён (надгробие), ничего не изменено."""
     n = await _exec(
         "INSERT OR IGNORE INTO external_form_answers (form_id, answer_id, answered_at, "
         "received_at, payload, raw, matched_telegram_id, match_how) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS "
+        "(SELECT 1 FROM external_form_deleted WHERE form_id = ? AND answer_id = ?)",
         (form_id, str(answer_id), answered_at, received_at,
-         json.dumps(payload, ensure_ascii=False), raw, matched_telegram_id, match_how),
+         json.dumps(payload, ensure_ascii=False), raw, matched_telegram_id, match_how,
+         form_id, str(answer_id)),
     )
     if n > 0:
         await _exec(
@@ -308,8 +312,11 @@ async def insert_answer(
 
 
 async def known_answer_ids(form_id: int) -> set[str]:
+    """Id, которые заново тянуть не нужно: сохранённые и удалённые (надгробия)."""
     rows = await _fetchall(
-        "SELECT answer_id FROM external_form_answers WHERE form_id = ?", (form_id,)
+        "SELECT answer_id FROM external_form_answers WHERE form_id = ? "
+        "UNION SELECT answer_id FROM external_form_deleted WHERE form_id = ?",
+        (form_id, form_id),
     )
     return {r["answer_id"] for r in rows}
 
@@ -421,6 +428,13 @@ async def delete_form_answers(form_id: int) -> int:
     """Удаляет анкеты и очередь формы. Колонки остаются: их позиции совпадают с уже
     записанной шапкой вкладки."""
     async with _db._connect() as db:
+        # Источник помнит анкеты: без надгробий ближайшая сверка вернула бы стёртое.
+        await db.execute(
+            "INSERT OR IGNORE INTO external_form_deleted (form_id, answer_id, deleted_at) "
+            "SELECT form_id, answer_id, ? FROM external_form_answers WHERE form_id = ? "
+            "UNION SELECT form_id, answer_id, ? FROM external_form_pending WHERE form_id = ?",
+            (_now(), form_id, _now(), form_id),
+        )
         cursor = await db.execute("DELETE FROM external_form_answers WHERE form_id = ?", (form_id,))
         n = cursor.rowcount
         await db.execute("DELETE FROM external_form_pending WHERE form_id = ?", (form_id,))
