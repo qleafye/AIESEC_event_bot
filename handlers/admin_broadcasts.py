@@ -87,6 +87,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
+from services.broadcast_scope import restrict_to_sender_city, sender_city_note, split_by_sender_city
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from cities import CITIES, cities_module_on, city_label, city_scope
@@ -351,8 +352,8 @@ async def _send_confirm_prompt(
     Форум-ночь п.7: строка-тумблер «❗ Отметить как важное» — читает `bc_important` из FSM
     (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
     эту же функцию заново)."""
-    from services.broadcast_scope import sender_city_note  # менеджер города — только его город
-    warning = await sender_city_note(chat_id) + await _audience_warning(state, users_ids, chat_id)
+    dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
+    warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
@@ -483,8 +484,16 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
              return
     else:
         users_ids = await get_all_users_ids()
-    from services.broadcast_scope import restrict_to_sender_city
-    users_ids = await restrict_to_sender_city(message.from_user.id, list(set(users_ids)))
+    users_ids, scope_dropped = await split_by_sender_city(message.from_user.id, list(set(users_ids)))
+    await state.update_data(bc_scope_dropped=scope_dropped)
+    if not users_ids and scope_dropped:
+        await message.answer(
+            f"Рассылать некому: все {scope_dropped} выбранных — из другого города или их нет "
+            "в базе бота, а ваши рассылки уходят только вашему городу. Рассылка отменена.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        await state.clear()
+        return
 
     mgid = message.media_group_id
     if mgid:
@@ -1659,7 +1668,8 @@ async def filter_back(callback: types.CallbackQuery, state: FSMContext):
 async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     filters = data.get("filters", [])
-    ids = await count_and_list_filtered(filters)
+    # Менеджер города — то же сужение, что у «✅ Отправить N»: числа на экранах совпадают.
+    ids = await restrict_to_sender_city(callback.from_user.id, await count_and_list_filtered(filters))
     await callback.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")],
@@ -1668,7 +1678,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     ])
     from services.forum_days import not_arrived_city_note  # «не пришли» — по городам форума
     await callback.message.edit_text(
-        f"🎯 Условия: {_filter_summary(filters)}\n"
+        f"{await sender_city_note(callback.from_user.id)}🎯 Условия: {_filter_summary(filters)}\n"
         f"Под фильтр попадает <b>{len(ids)}</b> пользователей."
         f"{html_module.escape(await not_arrived_city_note(filters, ids))}",
         reply_markup=kb,
@@ -1679,7 +1689,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
 async def filter_send_now(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     filters = data.get("filters", [])
-    ids = await count_and_list_filtered(filters)
+    ids = await restrict_to_sender_city(callback.from_user.id, await count_and_list_filtered(filters))
     await _start_segment_broadcast(
         callback, state, ids,
         f"🎯 {len(set(ids))} получателей по фильтру.\nТеперь отправьте сообщение для рассылки.",

@@ -526,3 +526,32 @@ def test_moscow_bound_manager_gets_cityless_delegates(tmp_path):
     _run(db.add_staff(2001, "manager", 1000))
     _run(db.set_staff_city(2001, "msk"))
     assert sorted(_run(restrict_to_sender_city(2001, [1, 2, 3]))) == [1, 3]
+
+
+def test_city_manager_reaches_own_unfinished_registrations(tmp_path):
+    """Сегмент «📝 Не завершили регистрацию» живёт в reg_started, а не в users: менеджер города
+    раньше рассылал ему никому. Теперь — его город по городу из начала анкеты."""
+    from services.broadcast_scope import restrict_to_sender_city, split_by_sender_city
+    _cities_env(tmp_path)
+    config.ADMIN_IDS = [1000]
+    _run(db.add_staff(2000, "manager", 1000))
+    _run(db.set_staff_city(2000, "spb"))
+    _run(db.mark_reg_started(200, "x", event_city="spb"))
+    _run(db.mark_reg_started(201, "y", event_city="msk"))
+    incomplete = _run(db.get_incomplete_user_ids())
+    assert sorted(_run(restrict_to_sender_city(2000, incomplete))) == [200]
+    assert sorted(_run(restrict_to_sender_city(1000, incomplete))) == [200, 201]
+    # Список из файла: чужой город и незнакомый id отсеяны и посчитаны.
+    kept, dropped = _run(split_by_sender_city(2000, [2, 1, 999, 200]))
+    assert sorted(kept) == [2, 200] and dropped == 2
+
+
+def test_city_manager_confirm_note_counts_dropped(tmp_path):
+    from services.broadcast_scope import sender_city_note
+    _cities_env(tmp_path)
+    config.ADMIN_IDS = [1000]
+    _run(db.add_staff(2000, "manager", 1000))
+    _run(db.set_staff_city(2000, "spb"))
+    note = _run(sender_city_note(2000, 3))
+    assert "3 из выбранных" in note and "не уйдёт" in note
+    assert "из выбранных" not in _run(sender_city_note(2000))
