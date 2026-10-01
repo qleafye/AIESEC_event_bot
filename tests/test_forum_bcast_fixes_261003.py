@@ -136,3 +136,32 @@ def test_not_arrived_keeps_quiet_hours_on_other_days(tmp_path, monkeypatch):
     monkeypatch.setattr(cna, "msk_now", lambda: datetime(2026, 10, 6, 8, 30))
     res = _run(cna.send(city=None, city_scope=None))
     assert res["sent"] == 0 and res["quiet"] == 1 and bot.sent == []
+
+
+def test_not_arrived_transient_failure_unmarks_for_retry(tmp_path, monkeypatch):
+    """Сбой отправки не исключает делегата навсегда: повторное нажатие берёт его снова."""
+    import services.checkin_not_arrived as cna
+    _ready(tmp_path)
+    _seed(1)
+    monkeypatch.setattr(cna, "msk_now", lambda: datetime.now())
+    bot = TextBot(fail_for={1: RuntimeError("network down")})
+    monkeypatch.setattr(sched, "_bot", bot)
+    res = _run(cna.send(city=None, city_scope=None))
+    assert res["failed"] == 1 and res["sent"] == 0
+    assert _run(db.checkin_not_arrived_pending_ids()) == [1]
+    bot.fail_for.clear()
+    res2 = _run(cna.send(city=None, city_scope=None))
+    assert res2["sent"] == 1
+
+
+def test_not_arrived_blocked_user_stays_marked(tmp_path, monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+    import services.checkin_not_arrived as cna
+    _ready(tmp_path)
+    _seed(1)
+    monkeypatch.setattr(cna, "msk_now", lambda: datetime.now())
+    bot = TextBot(fail_for={1: TelegramForbiddenError(method=None, message="bot was blocked")})
+    monkeypatch.setattr(sched, "_bot", bot)
+    res = _run(cna.send(city=None, city_scope=None))
+    assert res["failed"] == 1
+    assert _run(db.checkin_not_arrived_pending_ids()) == []
