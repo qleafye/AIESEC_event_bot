@@ -1,5 +1,4 @@
 import logging
-import os
 from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
@@ -397,9 +396,8 @@ async def _hidden_faq(code: str | None) -> str | None:
 
 
 async def _hidden_program(code: str | None) -> str | None:
-    if await get_setting("program_photo_file_id") or os.path.isfile("resources/program.jpg"):
-        return None
-    if await has_program_sessions_for_city(code if code is not None else default_city_code()):
+    from services.program import has_program_content  # то же правило, что у делегата
+    if await has_program_content(code):
         return None
     return "не загружено фото программы и нет ни одной сессии"
 
