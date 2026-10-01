@@ -363,3 +363,32 @@ def test_stats_card_empty_caption_sends_nothing(tmp_path, monkeypatch):
     _run(db.set_setting("forum_stats_card_caption_text", "   "))
     res = _run(fsc.send_broadcast(None, only_arrived=False))
     assert res.get("empty_caption") is True and bot.photos == []
+
+
+# ── «📤 Разослать QR сейчас» проверяет дату форума города ────────────────────────────────────
+
+def test_manual_send_refused_without_city_date(tmp_path, monkeypatch):
+    from handlers import admin_checkin
+    from tests.test_roles_phase8 import FakeCallback
+    config.ADMIN_IDS = [1]
+    config.DB_PATH = str(tmp_path / "manual_send.db")
+    fast_init_db()
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(db.set_setting("checkin_qr_enabled", "on"))
+    _run(db.set_setting("forum_date", "03.10.2026"))  # общая — Москве не в счёт
+    _seed(5, "msk")
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0))
+    q = FakeCallback("checkinqr_send:msk", user_id=1)
+    _run(admin_checkin.checkinqr_send_confirm(q))
+    assert q.answers and q.answers[0][1] is True and "не задана дата" in q.answers[0][0]
+
+
+def test_manual_send_block_reasons(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 9, 25, 12, 0))
+    assert "рано" in _run(cb.manual_send_block_reason(None))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 1, 12, 0))
+    assert _run(cb.manual_send_block_reason(None)) is None
+    _run(db.set_setting("sos_active_days", "1"))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 12, 0))
+    assert "прошёл" in _run(cb.manual_send_block_reason(None))
