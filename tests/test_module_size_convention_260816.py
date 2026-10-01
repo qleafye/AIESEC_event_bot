@@ -40,7 +40,9 @@ DEFAULT_CEILING = 850
 # edit the number + reason together, in the same commit as the growth that needs it.
 KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
     "admin_program.py": (
-        856,
+        866,
+        "03.10 (подтверждение удаления сессии называет, что пропадёт: отметки, оценки, "
+        "приглашение оценить): +10 строк; 856 -> 866. "
         "D-29 (24.09, «одна кнопка программы у делегата»): +6 строк — строка статуса + кнопка "
         "цикла «Таблица/Фото» на экране «🗓 Программа форума» (`render_city_program_screen`); "
         "сам рендер и хендлер цикла живут в новом шве `handlers/admin_program_view.py` (кнопка "
