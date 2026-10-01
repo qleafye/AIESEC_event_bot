@@ -74,6 +74,36 @@ const r = {};
   const g = m.createScanGate({ submit: async () => {} });
   r.returns = [g.onText("A"), g.onText("A"), g.onText("B")];
 }
+// 🔴 на D1 при D2 в очереди: D2 не уходит сам (плашку отказа не затирает), уходит по resume().
+{
+  const marked = [];
+  const g = m.createScanGate({ guardMs: 300, submit: async (t) => {
+    await sleep(40); marked.push(t); return t === "D1" ? m.HOLD : undefined;
+  } });
+  g.onText("D1"); g.onText("D2");
+  await sleep(150);
+  r.heldMarked = marked.slice();
+  r.heldFlag = g.isHeld();
+  r.heldPending = g.pending();
+  g.onText("D3"); // камера ещё не закрылась — в очередь, не в отправку
+  await sleep(100);
+  r.heldStill = marked.slice();
+  g.resume();
+  await sleep(200);
+  r.afterResume = marked;
+  r.resumedFlag = g.isHeld();
+}
+
+// Два QR чередуются в кадре (A уходит, B подходит): ни один не уходит второй раз.
+{
+  const marked = [];
+  const g = m.createScanGate({ guardMs: 400, submit: async (t) => { await sleep(80); marked.push(t); } });
+  const end = Date.now() + 300;
+  let i = 0;
+  while (Date.now() < end) { g.onText(i++ %% 2 ? "A" : "B"); await sleep(15); }
+  await sleep(200);
+  r.alternating = marked;
+}
 console.log(JSON.stringify(r));
 """
 
@@ -119,7 +149,21 @@ def test_scanner_wires_gate_and_does_not_await_counters_in_scan():
     text = SCANNER_JS.read_text(encoding="utf-8")
     assert 'from "../scan_gate.js"' in text
     assert "createScanGate({ submit: submitScan })" in text
+    assert "return HOLD;" in text and "scanGate.resume()" in text
     body = text[text.index("async function submitScan"):text.index("const scanGate")]
     assert "await loadStats" not in body and "await loadPoints" not in body
     assert "refreshCounters()" in body
     assert "scanBusy" not in text
+
+
+def test_refusal_holds_queue_until_volunteer_continues(result):
+    assert result["heldMarked"] == ["D1"]
+    assert result["heldFlag"] is True
+    assert result["heldPending"] == ["D2"]
+    assert result["heldStill"] == ["D1"]
+    assert result["afterResume"] == ["D1", "D2", "D3"]
+    assert result["resumedFlag"] is False
+
+
+def test_two_alternating_qrs_are_not_resent(result):
+    assert sorted(result["alternating"]) == ["A", "B"]
