@@ -322,8 +322,10 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     сообщение САМОГО бота с номером заявки (`services.sos.card_report_id`), а чат реплая —
     тот, куда эта карточка ушла (`sos_reports.chat_id`): пересланная в другую группу копия
     ответа делегату не даёт. Реплай на дописку делегата в треде карточки (её копирует бот,
-    `services.sos.relay_delegate_message`) тоже находит заявку — по записанному id копии."""
-    from database.db import find_sos_report_by_relay, get_sos_report
+    `services.sos.relay_delegate_message`) тоже находит заявку — по записанному id копии.
+    Сначала таблица дописок, потом маркеры: копию бот публикует от своего имени, и текст
+    делегата с «🆔», «🆘» и «SOS #N» иначе увёл бы ответ в чужую заявку."""
+    from database.db import get_sos_report
     from services import sos as sos_service
 
     replied = message.reply_to_message
@@ -331,9 +333,7 @@ async def _sos_card_reply_report(message: types.Message, bot: Bot | None) -> dic
     author = getattr(replied, "from_user", None) if replied is not None else None
     if author is None or bot is None or author.id != bot.id:
         return None
-    report_id = sos_service.card_report_id(replied)
-    if report_id is None:
-        report_id = await find_sos_report_by_relay(message.chat.id, replied.message_id)
+    report_id = await sos_service.replied_report_id(message.chat.id, replied)
     if report_id is None:
         return None
     report = await get_sos_report(report_id)

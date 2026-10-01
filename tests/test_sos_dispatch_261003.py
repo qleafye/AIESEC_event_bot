@@ -476,3 +476,24 @@ def test_dm_reply_to_relayed_followup_from_stranger_is_ignored(tmp_path):
     with _attached() as dp:
         _feed(dp, bot, _reply_update(STRANGER_ID, dm, _bot_copy(dm, copy_mid, "мне плохо"), "Иду"))
     assert bot.sent_to(DELEGATE_ID) == []
+
+
+def test_group_reply_to_followup_with_card_markers_stays_in_its_report(tmp_path):
+    """Дописка делегата с «🆔», «🆘» и «SOS #N» в тексте: реплай на её копию идёт в ЕГО заявку,
+    а не в заявку #N из текста."""
+    _ready(tmp_path)
+    report = asyncio.run(_seed_report())
+    other_rid = asyncio.run(db.create_sos_report(DELEGATE_ID + 1, None))
+    asyncio.run(db.set_sos_card(other_rid, SOS_CHAT_ID, 600))
+    card = _card(GROUP, report["id"])
+    bot = CopyingBot()
+    tricky = f"🆘 как в SOS #{other_rid}, 🆔 не помню"
+    copy_mid = _relay_followup(bot, report["id"], tricky)
+    with _attached() as dp:
+        _feed(
+            dp, bot,
+            _button_update(STRANGER_ID, card, f"sos_claim:{report['id']}", update_id=1),
+            _reply_update(STRANGER_ID, GROUP, _bot_copy(GROUP, copy_mid, tricky), "Иду", update_id=2),
+        )
+    assert any("Иду" in t for t in bot.sent_to(DELEGATE_ID))
+    assert asyncio.run(db.get_sos_report(other_rid))["claimed_by"] is None
