@@ -1962,6 +1962,21 @@ async def checkin_not_arrived_respond(callback: types.CallbackQuery):
         await callback.answer()
         return
     if response == CNA_HERE:
+        # Приёмка 01.10: вопрос «Мы тебя не видим» мог прийти до отметки, а «Я на месте»
+        # делегат жмёт уже после неё — тогда не гоним его снова к волонтёру, а говорим, что
+        # всё в порядке. Сбой чтения отметки — прежний экран с QR (fail-soft).
+        try:
+            entry = await get_checkin_status(callback.from_user.id)
+        except Exception as e:
+            logger.error(f"checkin_not_arrived_respond: get_checkin_status failed: {e}")
+            entry = None
+        if entry is not None and (entry.get("day") == day or entry.get("is_today")):
+            text = reg_i18n.tr_fmt(
+                "Ты уже отмечен(а) на входе в {time} — всё в порядке, приятного форума!",
+                lang, tr_map, time=entry["time_label"],
+            )
+            await callback.answer("✅ " + text, show_alert=True)
+            return
         # «Покажи QR волонтёру на входе» — сам QR НЕ отправляется автоматически, делегат жмёт
         # кнопку сам (тот же QR, что «🎟 Мой QR» главного меню — единая точка showcase_my_checkin_qr не
         # переиспользуется напрямую, там `types.Message`, здесь `CallbackQuery`; логика допуска

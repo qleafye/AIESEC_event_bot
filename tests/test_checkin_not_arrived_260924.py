@@ -341,6 +341,22 @@ def test_delegate_response_here_offers_qr_button(tmp_path):
     assert "cna_qr" in callbacks
 
 
+def test_delegate_response_here_when_already_checked_in_says_so(tmp_path):
+    """Приёмка 01.10: «Я на месте» уже отмеченного — «ты уже отмечен(а) в ЧЧ:ММ», а не
+    «покажи этот экран волонтёру»."""
+    from handlers import user_actions as ua
+    _ready(tmp_path)
+    _run(_add_user(780))
+    _run(db.checkin_not_arrived_mark_sent(780, "msk", "2026-10-30 12:00:00"))
+    _run(db.record_checkin(780, db.CHECKIN_ENTRY_POINT, source="scan", scanned_at="2026-10-30 12:40:00"))
+    cb = FakeCallback(f"cna:{db.CNA_HERE}:2026-10-30", 780)
+    cb.message = FakePhotoMessage()
+    _run(ua.checkin_not_arrived_respond(cb))
+    assert cb.message.answers == []
+    text, alert = cb.answers[-1]
+    assert alert is True and "уже отмечен" in text and "12:40" in text
+
+
 def test_delegate_response_unknown_value_is_noop(tmp_path):
     from handlers import user_actions as ua
     _ready(tmp_path)

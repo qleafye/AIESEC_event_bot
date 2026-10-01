@@ -483,6 +483,10 @@ def code_literals() -> list[tuple[str, str]]:
         "lit:user_actions.checkin_not_arrived_here_qr",
         "Покажи этот экран волонтёру на входе.",
     ))
+    items.append((
+        "lit:user_actions.checkin_not_arrived_here_already",
+        "Ты уже отмечен(а) на входе в {time} — всё в порядке, приятного форума!",
+    ))
 
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа»
     # (handlers/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
