@@ -571,6 +571,20 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                         data["event_city"] = _old_row["event_city"]
                 except Exception as e:
                     logger.error(f"event_city inherit failed for {telegram_id}: {e}")
+            # 01.10: новой подаче без города прежней строки users нет — город добираем из того,
+            # что уже известно (черновик -> reg_started -> воронка сезона). Без этого правила
+            # автоотказа видели «город не известен» = Москва и московское правило отклоняло
+            # анкеты СПб/Тюмени (прод 25.09/27.09).
+            if not data.get("event_city"):
+                try:
+                    from cities import cities_module_on
+                    if await cities_module_on():
+                        from services.known_city import known_city
+                        _known = await known_city(telegram_id)
+                        if _known:
+                            data["event_city"] = _known
+                except Exception as e:
+                    logger.error(f"event_city known_city failed for {telegram_id}: {e}")
 
             # Ночное ревью, находка #4: единственный неогороженный await во всей финализации —
             # падение здесь обязано быть видимым (пробрасывается в общий except ниже), а не

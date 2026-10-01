@@ -35,6 +35,7 @@ from cities import (
     cities_module_on,
     city_label,
     city_scope,
+    get_city,
     get_setting_typed_for_city,
     normalize_city,
     per_city_key,
@@ -143,6 +144,24 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
         return []
 
     raw_rows = await list_reject_rules(enabled_only=True)
+    # 01.10 (прод Юлид 25.09/27.09): анкета без известного города при включённом модуле
+    # городов — НЕ «город по умолчанию». `normalize_city(None)` = Москва, и московское правило
+    # отклоняло анкеты СПб/Тюмени, поданные без города. Городское правило применяется только к
+    # анкете, чей город известен; правило «все города» (city IS NULL) — как раньше. Стек без
+    # модуля городов живёт по-старому: там «без города» и есть город по умолчанию.
+    city_unknown = not get_city(event_city)
+    if city_unknown:
+        try:
+            skip_city_rules = await cities_module_on()
+        except Exception:  # noqa: BLE001 — сомнение трактуем в пользу ручной модерации
+            skip_city_rules = True
+        if skip_city_rules:
+            logger.warning(
+                "services.reject_rules.active_rules: город анкеты не известен (%r) — "
+                "правила конкретных городов не применяются", event_city,
+            )
+    else:
+        skip_city_rules = False
     rules: list[dict] = []
     for row in raw_rows:
         try:
@@ -159,6 +178,8 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
             continue
 
         rule_city = row.get("city")
+        if rule_city is not None and skip_city_rules:
+            continue
         if rule_city is not None and normalize_city(rule_city) != normalize_city(event_city):
             continue
         track_list = tracks or ["full"]
