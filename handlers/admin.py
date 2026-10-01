@@ -671,17 +671,21 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     сообщение из чата менеджеров (`copy_message`, не forward — делегат не должен видеть чат).
     Менеджер в ответ получает приписку `manager_notice` — «отправлено» без неё было бы
     полуправдой."""
+    from services import i18n as i18n_service
     from services import quiet_hours
+    from services.questions import ORG_REPLY_HEADER
     from services.scheduler import _now_moscow_naive
     now = _now_moscow_naive()
+    # Шапка — на языке делегата (приёмка 01.10: EN-делегат получал её по-русски).
+    title = html_module.escape(await i18n_service.tr_for_user(user_id, ORG_REPLY_HEADER))
     if message.text:
-        reply_text = f"💬 <b>Ответ от организаторов:</b>\n\n{message.html_text}"
+        reply_text = f"💬 <b>{title}</b>\n\n{message.html_text}"
         await quiet_hours.send_or_queue_text(
             now, user_id, reply_text,
             sender=lambda: bot.send_message(user_id, reply_text, parse_mode="HTML"),
         )
     else:
-        header = "💬 <b>Ответ от организаторов:</b>"
+        header = f"💬 <b>{title}</b>"
         await quiet_hours.send_or_queue_text(
             now, user_id, header,
             sender=lambda: bot.send_message(user_id, header, parse_mode="HTML"),
