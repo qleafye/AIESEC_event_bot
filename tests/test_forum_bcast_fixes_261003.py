@@ -574,3 +574,31 @@ def test_stats_card_empty_caption_explained_to_manager(tmp_path, monkeypatch):
     _run(afsc.forumstats_send_go(q))
     said = " ".join(a[0] for a in q.message.answers)
     assert "подпись к карточке пуста" in said and "Отправлено 0" not in said
+
+
+def test_forum_day_qr_keeps_sos_keyboard_of_collecting_delegate(tmp_path, monkeypatch):
+    """Делегат дописывает SOS — QR в день форума не заменяет его «✅ Готово»/«📍» главным
+    меню; остальным меню приходит как раньше."""
+    import services.sos as sos_mod
+    _ready(tmp_path)
+    _seed(7)
+    _seed(8)
+    bot = PhotoBot()
+    monkeypatch.setattr(sched, "_bot", bot)
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    monkeypatch.setattr(sos_mod, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+
+    async def _collecting(tid):
+        return tid == 7
+
+    monkeypatch.setattr(sos_mod, "may_be_collecting", _collecting, raising=False)
+    _run(cb.send_morning_repeat(None))
+    by_id = {p[0]: p[2] for p in bot.photos}
+    assert by_id[7] is None
+    assert any("SOS" in t for t in _reply_texts(by_id[8]))
+
+
+def test_forum_day_qr_without_collecting_check_still_sends_menu(tmp_path, monkeypatch):
+    import services.sos as sos_mod
+    monkeypatch.delattr(sos_mod, "may_be_collecting", raising=False)
+    assert _run(cb._may_be_collecting_sos(7)) is False

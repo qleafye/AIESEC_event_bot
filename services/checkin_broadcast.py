@@ -458,6 +458,21 @@ def _confirm_kb(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardM
     ]])
 
 
+async def _may_be_collecting_sos(telegram_id: int) -> bool:
+    """У делегата открыта свежая SOS-заявка, которую он, возможно, дописывает
+    (`services.sos.may_be_collecting`). Функции может не быть в старой сборке — тогда False;
+    сбой проверки тоже False: QR важнее, меню в худшем случае вернёт /start."""
+    from services import sos
+    check = getattr(sos, "may_be_collecting", None)
+    if check is None:
+        return False
+    try:
+        return bool(await check(telegram_id))
+    except Exception as e:
+        logger.warning(f"checkin_broadcast: проверка дозаписи SOS для {telegram_id} не удалась: {e}")
+        return False
+
+
 async def _render_for(
     telegram_id: int, text: str, maps: dict[str, dict], *, forum_day: bool = False,
 ):
@@ -474,6 +489,9 @@ async def _render_for(
     from services import i18n as i18n_service
 
     lang, tr_map = await i18n_service.context_cached(telegram_id, maps)
+    if forum_day and await _may_be_collecting_sos(telegram_id):
+        # Делегат дописывает SOS: главное меню заменило бы его «✅ Готово»/«📍 геопозиция».
+        return tr_text(text, lang, tr_map), None
     if forum_day:
         from keyboards.builders import get_main_menu_kb
         return tr_text(text, lang, tr_map), tr_kb(await get_main_menu_kb(telegram_id), lang, tr_map)
