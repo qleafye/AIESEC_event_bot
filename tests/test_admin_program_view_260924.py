@@ -118,7 +118,7 @@ def test_toggle_back_to_hub_redraws_forum_functions_hub(tmp_path):
     callback = _FakeCallback("prog_view_toggle:msk:hub")
     _run(admin_program_view.prog_view_toggle_go(callback))
     assert "Форум: функции" in callback.message.text_edited
-    assert "admin_checkin" in _cbs(callback.message.edit_markup)  # это хаб admin_forum_functions
+    assert "forumfn_open:chk:msk" in _cbs(callback.message.edit_markup)  # это хаб admin_forum_functions
 
 
 # ── Врезка в оба экрана-владельца ────────────────────────────────────────────────────────────

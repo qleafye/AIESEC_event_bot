@@ -179,10 +179,11 @@ async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru
 
 
 async def _rerender(callback: types.CallbackQuery):
+    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     await callback.message.edit_text(
         await render_miniapp_settings_text(),
         parse_mode="HTML",
-        reply_markup=await build_miniapp_settings_keyboard(),
+        reply_markup=keep_hub_back(callback.message, await build_miniapp_settings_keyboard()),
     )
 
 
