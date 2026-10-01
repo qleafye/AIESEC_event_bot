@@ -477,8 +477,8 @@ def test_sos_collecting_step_first_text_sets_details_and_relays(tmp_path):
 
     updated = _run(db.get_sos_report(rid))
     assert updated["details_text"] == "Болит нога"
-    # Приёмка 01.10: первый текст встал в карточку — второй копией в тред он не идёт.
-    assert msg.copies == []
+    # Первый текст встал в карточку и копией ушёл в тред: правка карточки не будит телефоны.
+    assert msg.copies == [(row["chat_id"], row["card_message_id"])]
     # Карточка перерисована — маркер «СРОЧНО» больше не должен остаться на новом рендере.
     assert bot.edited
 
@@ -1253,7 +1253,8 @@ def test_sos_start_recent_followup_relays_into_thread_and_stays_collecting(tmp_p
     first_msg = FakeMessage(text="Болит нога", user_id=DELEGATE_ID)
     first_msg.bot = bot
     _run(sos_handlers.sos_collecting_step(first_msg, state))
-    assert first_msg.copies == []  # встал в карточку, не дублируется в тред
+    # Встал в карточку и ушёл в тред: в чате SOS правка карточки без копии прошла бы молча.
+    assert first_msg.copies == [(row["chat_id"], row["card_message_id"])]
 
     followup_msg = FakeMessage(text="Ещё болит голова", user_id=DELEGATE_ID)
     followup_msg.bot = bot
