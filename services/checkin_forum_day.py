@@ -55,9 +55,17 @@ def _ddmm(d: date) -> str:
     return d.strftime("%d.%m")
 
 
+def _has_city(user: dict) -> bool:
+    """Город делегата не записан — день не проверяем: `normalize_city` превратил бы пустоту в
+    город по умолчанию (Москву), и делегат без города получал бы отказ «форум 30.10»."""
+    return bool(str(user.get("event_city") or "").strip())
+
+
 async def entry_day_denial(user: dict, day: date | None = None) -> dict | None:
     """`None` — сегодня (или `day`) день форума города делегата либо дата форума не задана.
     Иначе — отказ для плашки сканера: ничего не записано."""
+    if not _has_city(user):
+        return None
     day = day or _today()
     city = normalize_city(user.get("event_city"))
     window = await forum_window(city)
@@ -87,6 +95,8 @@ async def city_emphasis(day: date | None = None) -> bool:
 async def off_day_for_scan(user: dict, scanned_at: str | None) -> bool:
     """Для CSV: скан (или загрузка, если времени в файле нет) не в день форума города
     делегата. Дата форума не задана — `False`."""
+    if not _has_city(user):
+        return False
     try:
         day = datetime.strptime(scanned_at[:10], "%Y-%m-%d").date() if scanned_at else _today()
     except ValueError:
