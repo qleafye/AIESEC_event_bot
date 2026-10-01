@@ -265,3 +265,11 @@ def test_switch_between_city_roles_replaces_roles_and_city():
 
     assert asyncio.run(db.get_staff_roles(TESTER_ID)) == ["volunteer"]
     assert asyncio.run(db.get_staff_city(TESTER_ID)) == "tyumen"
+
+
+def test_role_prompt_has_no_service_words():
+    """Приёмка 01.10: экран роли не говорит служебного «.env»."""
+    from handlers import uat_seed
+
+    assert ".env" not in uat_seed._ROLE_PROMPT
+    assert "админ" in uat_seed._ROLE_PROMPT.lower()
