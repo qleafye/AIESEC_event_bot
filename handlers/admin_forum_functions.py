@@ -125,8 +125,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # действия под правом `checkin`, тумблера не требуют (D-36: тумблер нужен ФУНКЦИЯМ, которые
     # работают САМИ — ручная кнопка и так «выключена», пока никто не нажал).
     lines.append("✅ Отметки на форуме (загрузка CSV, «Не пришли»): ручная кнопка, без тумблера")
-    if visible("admin_checkin"):
-        buttons.append([InlineKeyboardButton(text="✅ Отметки на форуме", callback_data="admin_checkin")])
+    if visible(f"forumfn_open:chk:{_encode_city(code)}"):  # «Назад» оттуда — в хаб (admin_forum_hub_nav)
+        buttons.append([InlineKeyboardButton(text="✅ Отметки на форуме", callback_data=f"forumfn_open:chk:{_encode_city(code)}")])
     # Бэклог чек-ина №7: лист учебных QR — менеджер с одним moderate_reg готовит волонтёров.
     lines.append("🧪 Учебные QR для тренировки волонтёров: лист A4, ничего не записывают")
     if sheet_allowed(caps):
@@ -137,8 +137,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # ни при каком miniapp_section_checkin, поэтому ссылаемся на экран целиком, не дублируем).
     miniapp_on = await get_setting_typed("miniapp_section_checkin") == "on"
     lines.append(f"🎫 Сканер в приложении: {_status(miniapp_on)}")
-    if visible("admin_miniapp_settings"):
-        buttons.append([InlineKeyboardButton(text="📱 Настройки приложения", callback_data="admin_miniapp_settings")])
+    if visible(f"forumfn_open:app:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(text="📱 Настройки приложения", callback_data=f"forumfn_open:app:{_encode_city(code)}")])
 
     # 5. Шпаргалка волонтёра накануне форума — per_city, НОВЫЙ экран этого модуля (был
     # недостающим по аудиту D-36).
@@ -190,9 +190,9 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         lines.append(program_line + _status(False) + " (выключена в «Кнопках меню»)")
     else:
         lines.append(program_line + _status(False) + " (нет ни фото, ни сессий)")
-    if visible("admin_menu_buttons"):
+    if visible(f"forumfn_open:menu:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(
-            text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data="admin_menu_buttons",
+            text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data=f"forumfn_open:menu:{_encode_city(code)}",
         )])
     # D-29: что делегат видит по этой кнопке в Mini App — таблица сессий бота или фото. Общий
     # рендер с экраном «🗓 Программа форума» — handlers/admin_program_view.py.
@@ -204,8 +204,8 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/session_feedback.py).
     fb_on = await sf.is_enabled_for_city(code)
     lines.append(f"⭐ Отзывы о сессиях: {_status(fb_on)}")
-    if visible(f"prog_fbset:{code}"):
-        buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"prog_fbset:{code}")])
+    if visible(f"forumfn_open:fb:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"forumfn_open:fb:{_encode_city(code)}")])
 
     # 8. SOS — сама кнопка меню (menu_sos, см. пункт 6) + окно активности (forum_date +
     # sos_active_days); родной экран уже есть (handlers/admin_sos.py).

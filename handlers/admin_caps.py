@@ -1076,6 +1076,12 @@ ADMIN_CAPS: dict[str, str] = {
     "forumfn_qr:*": "settings",
     "forumfn_qr_set:*": "settings",
     "forumfn_back:*": "moderate_reg",
+    # Родные экраны, открытые из хаба (возврат — в хаб): капа та же, что у родного входа.
+    "forumfn_open:*": "settings",  # запасной ключ; конкретные экраны ниже — по длинному префиксу
+    "forumfn_open:chk:*": "checkin",
+    "forumfn_open:app:*": "settings",
+    "forumfn_open:menu:*": "settings",
+    "forumfn_open:fb:*": "settings",
     "checkinvol_cfg:*": "moderate_reg",
     "checkinvol_toggle:*": "moderate_reg",
     "checkinvol_time:*": "moderate_reg",

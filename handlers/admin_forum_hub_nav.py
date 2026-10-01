@@ -1,9 +1,15 @@
-"""Хаб «🎪 Форум: функции»: подтверждение общего тумблера «🎟 Вход по QR».
+"""Хаб «🎪 Форум: функции»: подтверждение общего тумблера «🎟 Вход по QR» и возврат в хаб.
 
 Раньше кнопка хаба сама щёлкала `toggle_checkin_qr_enabled` — один тап молча выключал вход по
 QR во ВСЕХ городах и выкидывал в раздел «📋 Заявки». Теперь кнопка открывает экран с текущим
 состоянием и словами, что именно произойдёт (тумблер общий — экран прямо перечисляет города и
 сколько людей уже получили QR), а после подтверждения возвращает в хаб того же города.
+
+Экраны «✅ Отметки на форуме», «📱 Настройки приложения», «🔘 Кнопки меню», «⭐ Отзывы» живут в
+своих разделах, и их «Назад» ведёт туда. Открытые из хаба (`forumfn_open:<экран>:<город>`), они
+получают вместо него «◀️ К «Форум: функции»» — кнопку хаба того же города. Признак «пришли из
+хаба» хранится в самой клавиатуре сообщения: перерисовка экрана после тумблера переносит кнопку
+(`keep_hub_back`), поэтому контекст переживает и тапы, и перезапуск бота.
 
 Форма шва — как у соседей (`handlers/admin_forum_ready.py`): своего `Router()` нет,
 `from handlers.admin import router`, импорт из хвоста `handlers/admin.py`. Право — `settings`,
@@ -13,6 +19,7 @@ import logging
 
 from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import cities_module_on, city_label, enabled_cities
@@ -23,6 +30,30 @@ from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
+
+HUB_BACK_PREFIX = "forumfn_back:"
+HUB_BACK_TEXT = "◀️ К «Форум: функции»"
+
+
+def _hub_back_cb(markup: InlineKeyboardMarkup | None) -> str | None:
+    for row in getattr(markup, "inline_keyboard", None) or []:
+        for b in row:
+            if (b.callback_data or "").startswith(HUB_BACK_PREFIX):
+                return b.callback_data
+    return None
+
+
+def _swap_back(kb: InlineKeyboardMarkup, back_cb: str) -> InlineKeyboardMarkup:
+    """Последняя строка родного экрана — его «Назад»; заменяем её возвратом в хаб."""
+    rows = list(kb.inline_keyboard)[:-1]
+    rows.append([InlineKeyboardButton(text=HUB_BACK_TEXT, callback_data=back_cb)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def keep_hub_back(message, new_kb: InlineKeyboardMarkup) -> InlineKeyboardMarkup:
+    """Перерисовка родного экрана: если он был открыт из хаба, «Назад» по-прежнему ведёт в хаб."""
+    cb = _hub_back_cb(getattr(message, "reply_markup", None))
+    return _swap_back(new_kb, cb) if cb else new_kb
 
 
 async def _edit(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
@@ -78,7 +109,7 @@ async def _qr_confirm_screen(code: str | None) -> tuple[str, InlineKeyboardMarku
         go = InlineKeyboardButton(text="✅ Да, включить во всех городах", callback_data=f"forumfn_qr_set:on:{enc}")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [go],
-        [InlineKeyboardButton(text="◀️ Не менять, назад", callback_data=f"forumfn_back:{enc}")],
+        [InlineKeyboardButton(text="◀️ Не менять, назад", callback_data=f"{HUB_BACK_PREFIX}{enc}")],
     ])
     return "\n".join(lines), kb
 
@@ -126,4 +157,39 @@ async def forumfn_back(callback: types.CallbackQuery):
         return
     text, kb = await _hub(callback.from_user.id, code)
     await _edit(callback, text, kb)
+    await callback.answer()
+
+
+async def _native_screen(target: str, admin_id: int, code: str | None):
+    if target == "chk":
+        from handlers.admin_checkin import render_admin_checkin
+        return await render_admin_checkin(admin_id)
+    if target == "app":
+        from handlers.admin_miniapp import build_miniapp_settings_keyboard, render_miniapp_settings_text
+        return await render_miniapp_settings_text(), await build_miniapp_settings_keyboard()
+    if target == "menu":
+        from handlers.admin_reg_config import build_menu_keyboard, render_menu_text
+        return await render_menu_text(admin_id), await build_menu_keyboard(admin_id)
+    if target == "fb" and code:
+        from handlers.session_feedback import render_feedback_settings_screen
+        return await render_feedback_settings_screen(code)
+    return None
+
+
+@router.callback_query(F.data.startswith("forumfn_open:"))
+async def forumfn_open(callback: types.CallbackQuery, state: FSMContext):
+    """«forumfn_open:<chk|app|menu|fb>:<город>» — родной экран функции с возвратом в хаб."""
+    _, target, raw = callback.data.split(":", 2)
+    code = _decode_city(raw)
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
+        return
+    if target == "app":  # тот же сброс, что у родного входа: зависшая правка оформления не нужна
+        await state.clear()
+    screen = await _native_screen(target, callback.from_user.id, code)
+    if screen is None:
+        await callback.answer("Эта кнопка устарела — откройте «🎪 Форум: функции» заново.", show_alert=True)
+        return
+    text, kb = screen
+    await _edit(callback, text, _swap_back(kb, f"{HUB_BACK_PREFIX}{_encode_city(code)}"))
     await callback.answer()

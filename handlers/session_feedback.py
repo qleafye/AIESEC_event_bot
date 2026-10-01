@@ -290,6 +290,8 @@ async def prog_fbtoggle(callback: types.CallbackQuery):
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
     text, kb = await render_feedback_settings_screen(code)
+    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    kb = keep_hub_back(callback.message, kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сохранено.")
 
@@ -312,6 +314,8 @@ async def prog_fbdelay(callback: types.CallbackQuery):
     await set_setting_by_admin(callback.from_user.id, key, str(value))
     await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
     text, kb = await render_feedback_settings_screen(code)
+    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    kb = keep_hub_back(callback.message, kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сохранено.")
 

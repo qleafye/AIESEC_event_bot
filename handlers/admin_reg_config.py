@@ -506,7 +506,9 @@ async def toggle_menu_button(callback: types.CallbackQuery):
         await callback.answer(f"{label}: {status}", show_alert=True)
 
     text = await render_menu_text(admin_id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_menu_keyboard(admin_id))
+    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    kb = keep_hub_back(callback.message, await build_menu_keyboard(admin_id))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "menu_back")
