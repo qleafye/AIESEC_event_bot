@@ -5322,6 +5322,9 @@ _FILTER_COLUMNS = {
     # `get_distinct_filter_values` — у него собственный UI-мастер (город → день → сессия),
     # не входит в `_PICKER_FIELDS`.
     "checkin_session",
+    # Внешние формы: двойная регистрация с handlers/admin_broadcasts.py, поле ВИРТУАЛЬНОЕ —
+    # значение (форма + заполнил/не заполнил) задаёт шов admin_broadcast_ext_form_filter.
+    "ext_form",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -5336,7 +5339,7 @@ _FILTER_COLUMNS = {
 _FILTER_VIRTUAL_FIELDS = {
     "resume", "delegate_chat", "auto_reject",
     # Форум-ночь п.6 (D-25, идея №14) — те же виртуальные поля, что резюме/чат/автоотказ выше.
-    "checkin_entry", "checkin_session",
+    "checkin_entry", "checkin_session", "ext_form",
 }
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
@@ -5528,6 +5531,23 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 )
             else:
                 clauses.append("0")
+        elif field == "ext_form":
+            # Внешние формы: форма едет внутри спеки (`form_id`), значение — белый список.
+            # Fail closed (WR-01): неизвестное значение / битый form_id -> никому.
+            value = f.get("value")
+            try:
+                form_id = int(f.get("form_id"))
+            except (TypeError, ValueError):
+                form_id = None
+            if form_id is None or value not in ("filled", "not_filled"):
+                clauses.append("0")
+            else:
+                neg = "NOT " if value == "not_filled" else ""
+                clauses.append(
+                    f"{neg}EXISTS (SELECT 1 FROM external_form_answers WHERE "
+                    "matched_telegram_id = users.telegram_id AND form_id = ?)"
+                )
+                params.append(form_id)
         elif field == "delegate_chat":
             # Квик 260914-rgr (RGR-01..07, D-5/D-6): must come BEFORE the generic
             # `_FILTER_COLUMNS` branch below — there is no `users.delegate_chat` column.
