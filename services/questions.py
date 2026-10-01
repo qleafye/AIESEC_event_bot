@@ -32,6 +32,21 @@ from services.timeutil import utc_naive_to_msk
 # `lit:questions.org_reply_header`).
 ORG_REPLY_HEADER = "Ответ от организаторов:"
 
+
+async def org_reply_title(user_id: int) -> str:
+    """«Ответ от организаторов:» на языке делегата (приёмка 01.10: EN-делегат получал
+    шапку по-русски). Ответ уходит из чата менеджера, поэтому язык — по id делегата."""
+    from services import i18n as i18n_service
+
+    return await i18n_service.tr_for_user(user_id, ORG_REPLY_HEADER)
+
+
+async def org_reply_header_html(user_id: int) -> str:
+    """Шапка ответа для бота (`parse_mode=HTML`)."""
+    import html
+
+    return f"💬 <b>{html.escape(await org_reply_title(user_id))}</b>"
+
 STATUS_NEW = "new"
 STATUS_IN_WORK = "in_work"
 STATUS_ANSWERED = "answered"
