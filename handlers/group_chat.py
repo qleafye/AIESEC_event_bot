@@ -418,7 +418,8 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
             await _sos_hint(
                 message, report["id"],
                 f"⚠️ Ответ не отправлен: SOS #{report['id']} ведёт {who}. Делегату пишет тот, "
-                f"кто взял SOS, — передайте ему(ей) или дождитесь «✅ Решено».",
+                f"кто взял SOS, — передайте ему(ей) или дождитесь «✅ Решено». Если {who} "
+                f"недоступен(на), нажмите «🔁 Перехватить» под карточкой.",
             )
             return
     await sos_service.deliver_org_reply(bot, message, report)
@@ -432,13 +433,21 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
 # хендлер (`handlers/admin_sos.py::_card_origin_ok`) — с понятным алертом, не тишиной. Копии
 # карточки в личке (фоллбэк) идут мимо этого хендлера в admin.router под капой, как раньше.
 @router.callback_query(
-    F.data.regexp(r"^sos_(claim|resolve):"), F.message.chat.type.in_({"group", "supergroup"}),
+    F.data.regexp(r"^sos_(claim|resolve|takeover|takeover_go|takeover_no):"),
+    F.message.chat.type.in_({"group", "supergroup"}),
 )
 async def on_sos_card_button(callback: types.CallbackQuery, bot: Bot, fsm_storage=None):
     from handlers import admin_sos  # ленивый: домен кнопок живёт там, модуль висит на admin.router
 
-    if callback.data.startswith("sos_claim:"):
+    data = callback.data
+    if data.startswith("sos_claim:"):
         await admin_sos.sos_claim(callback, bot)
+    elif data.startswith("sos_takeover:"):
+        await admin_sos.sos_takeover(callback, bot)
+    elif data.startswith("sos_takeover_go:"):
+        await admin_sos.sos_takeover_go(callback, bot)
+    elif data.startswith("sos_takeover_no:"):
+        await admin_sos.sos_takeover_no(callback, bot)
     else:
         await admin_sos.sos_resolve(callback, bot, fsm_storage=fsm_storage)
 

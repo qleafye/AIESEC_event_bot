@@ -10,6 +10,7 @@
 Домен (счётчики, статус, карточка, привязка, эскалация) — целиком в `services/sos.py`; здесь
 только хендлеры и рендер экрана."""
 import html as html_module
+import logging
 
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
@@ -29,6 +30,7 @@ from database.db import (
     get_sos_report,
     list_sos_reports_page,
     resolve_sos_report,
+    takeover_sos_report,
 )
 from handlers.admin import router
 from handlers.admin_caps import has_capability, required_capability
@@ -40,6 +42,8 @@ from settings_schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
 from services.timeutil import msk_now
+
+logger = logging.getLogger(__name__)
 
 PAGE = 6
 FILTER_LABELS = {
@@ -356,15 +360,156 @@ async def sos_claim(callback: types.CallbackQuery, bot: Bot):
         await callback.answer(f"Уже взял(а) {winner}.", show_alert=True)
         return
     sos_service.cancel_escalation(report_id)
-    # Ревью 24.09 (находка 3): напоминание взявшему, если за N минут не отметил «✅ Решено».
+    await _schedule_first_remind(report, callback.from_user.id)
+    await callback.answer("Взято.")
+    await _refresh_card(bot, report_id)
+
+
+async def _schedule_first_remind(report: dict, claimant_id: int) -> None:
+    """Ревью 24.09 (находка 3): напоминание взявшему, если за N минут не отметил «✅ Решено»."""
     try:
         minutes_raw = await get_setting_typed_for_city("sos_claimed_remind_minutes", report.get("city"))
         minutes = int(minutes_raw) if minutes_raw else sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
     except (TypeError, ValueError):
         minutes = sos_service.DEFAULT_CLAIMED_REMIND_MINUTES
-    sos_service.schedule_claimed_reminder(report_id, minutes, callback.from_user.id)
-    await callback.answer("Взято.")
-    await _refresh_card(bot, report_id)
+    sos_service.schedule_claimed_reminder(report["id"], minutes, claimant_id)
+
+
+# ── «🔁 Перехватить» взятый SOS ──────────────────────────────────────────────────────────────
+#
+# Взявший пропал (сел телефон, ушёл со смены) — а ответить делегату через бота может только он.
+# Кнопка на взятой карточке спрашивает «SOS ведёт X — перехватить?» отдельным сообщением
+# (правка самой карточки показала бы вопрос всему чату), подтвердить может только нажавший.
+# Право: в чате SOS — любой участник (как «Беру»), в личке — модератор города заявки или
+# суперадмин (`_may_answer_from_dm`). Перехват пишется в лог и в карточку.
+
+def _parse_takeover_data(data: str) -> tuple[int, int | None, int | None] | None:
+    """`sos_takeover_go:<id>:<нажавший>:<прежний взявший>` / `sos_takeover_no:<id>:<нажавший>`."""
+    try:
+        nums = [int(x) for x in data.split(":")[1:]] + [None, None]
+    except ValueError:
+        return None
+    return (nums[0], nums[1], nums[2]) if nums[0] is not None else None
+
+
+async def _takeover_allowed(callback: types.CallbackQuery, report: dict) -> bool:
+    if not _card_origin_ok(callback, report):
+        await callback.answer("Эта карточка не из чата SOS", show_alert=True)
+        return False
+    chat_type = getattr(callback.message.chat, "type", None) or "private"
+    if chat_type == "private" and not await _may_answer_from_dm(callback.from_user.id, report):
+        await callback.answer(
+            "Перехватить SOS может команда города этой заявки или главный менеджер.", show_alert=True,
+        )
+        return False
+    return True
+
+
+@router.callback_query(F.data.startswith("sos_takeover:"))
+async def sos_takeover(callback: types.CallbackQuery, bot: Bot):
+    parsed = _parse_takeover_data(callback.data)
+    report = await get_sos_report(parsed[0]) if parsed else None
+    if report is None:
+        await callback.answer("Некорректная карточка", show_alert=True)
+        return
+    if not await _takeover_allowed(callback, report):
+        return
+    if report.get("resolved_at"):
+        await callback.answer("SOS уже решён — перехватывать нечего.", show_alert=True)
+        return
+    holder = report.get("claimed_by")
+    if holder is None:
+        await callback.answer("SOS ещё никто не взял — нажмите «🙋 Беру».", show_alert=True)
+        return
+    if holder == callback.from_user.id:
+        await callback.answer("Этот SOS и так ведёте вы.", show_alert=True)
+        return
+    rid = report["id"]
+    who = html_module.escape(str(report.get("claimed_by_name") or "коллега"))
+    presser = callback.from_user.id
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔁 Да, перехватить",
+                             callback_data=f"sos_takeover_go:{rid}:{presser}:{holder}"),
+        InlineKeyboardButton(text="Отмена", callback_data=f"sos_takeover_no:{rid}:{presser}"),
+    ]])
+    try:
+        await bot.send_message(
+            callback.message.chat.id,
+            f"🔁 SOS #{rid} ведёт {who}. Перехватить? Отвечать делегату дальше будете вы, "
+            f"а на карточке появится отметка, что вы перехватили SOS.",
+            reply_markup=kb, reply_to_message_id=callback.message.message_id,
+        )
+    except Exception as e:
+        logger.warning("admin_sos.sos_takeover(%s): вопрос не отправлен: %s", rid, e)
+        await callback.answer("Не получилось спросить подтверждение — попробуйте ещё раз.", show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sos_takeover_go:"))
+async def sos_takeover_go(callback: types.CallbackQuery, bot: Bot):
+    parsed = _parse_takeover_data(callback.data)
+    if parsed is None or parsed[1] is None or parsed[2] is None:
+        await callback.answer("Некорректная кнопка", show_alert=True)
+        return
+    rid, presser, expected = parsed
+    if callback.from_user.id != presser:
+        await callback.answer("Подтвердить может только тот, кто нажал «🔁 Перехватить».", show_alert=True)
+        return
+    report = await get_sos_report(rid)
+    if report is None:
+        await callback.answer("Некорректная карточка", show_alert=True)
+        return
+    if not await _takeover_allowed(callback, report):
+        return
+    admin_name = callback.from_user.full_name or callback.from_user.username or "Орг"
+    if not await takeover_sos_report(rid, expected, presser, admin_name):
+        await callback.answer("Не вышло: SOS уже решён или его перехватили раньше.", show_alert=True)
+        try:
+            await callback.message.edit_text(f"SOS #{rid}: перехват не понадобился — заявку уже решили или перехватили.")
+        except Exception:
+            pass
+        return
+    old_name = report.get("claimed_by_name") or "коллега"
+    logger.info(
+        "admin_sos: SOS #%s перехватил(а) %s (id=%s) у %s (id=%s)",
+        rid, admin_name, presser, old_name, expected,
+    )
+    sos_service.cancel_claimed_reminder(rid)
+    await _schedule_first_remind(report, presser)
+    await callback.answer("Перехвачено — теперь SOS ведёте вы.")
+    try:
+        await callback.message.edit_text(
+            f"🔁 {html_module.escape(admin_name)} перехватил(а) SOS #{rid} у "
+            f"{html_module.escape(str(old_name))}."
+        )
+    except Exception:
+        pass
+    await _refresh_card(bot, rid)
+    try:
+        await bot.send_message(
+            expected,
+            f"🔁 SOS #{rid} перехватил(а) {html_module.escape(admin_name)} — делегату теперь "
+            f"отвечает он(а).",
+        )
+    except Exception as e:
+        logger.info("admin_sos.sos_takeover_go: прежнему взявшему id=%s не написать: %s", expected, e)
+
+
+@router.callback_query(F.data.startswith("sos_takeover_no:"))
+async def sos_takeover_no(callback: types.CallbackQuery, bot: Bot):
+    parsed = _parse_takeover_data(callback.data)
+    if parsed is None or parsed[1] is None:
+        await callback.answer("Некорректная кнопка", show_alert=True)
+        return
+    if callback.from_user.id != parsed[1]:
+        await callback.answer("Отменить может только тот, кто нажал «🔁 Перехватить».", show_alert=True)
+        return
+    await callback.answer("Отменено.")
+    try:
+        await callback.message.edit_text(f"SOS #{parsed[0]}: перехват отменён.")
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("sos_resolve:"))

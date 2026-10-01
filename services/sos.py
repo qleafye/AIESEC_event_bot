@@ -368,6 +368,9 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
         who = html_module.escape(str(report.get("claimed_by_name") or "—"))
         when = format_stamp(report.get("claimed_at"), stored_utc=False)
         lines.append(f"✍️ Взял(а): {who} в {when[-5:] if when else '—'}")
+        if report.get("taken_over_from_name"):
+            old = html_module.escape(str(report["taken_over_from_name"]))
+            lines.append(f"🔁 Перехватил(а) у {old}")
     elif status == STATUS_RESOLVED:
         who = html_module.escape(str(report.get("resolved_by_name") or "—"))
         when = format_stamp(report.get("resolved_at"), stored_utc=False)
@@ -381,12 +384,15 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
 
 def build_card_kb(report_id: int, *, claimed: bool = False):
     """`claimed=True` — заявку уже взяли: «🙋 Беру» с карточки убирается (приёмка 01.10 —
-    кнопка висела и после захвата), остаётся только «✅ Решено»."""
+    кнопка висела и после захвата), вместо неё «🔁 Перехватить» (с подтверждением) — на случай,
+    если взявший пропал и ответить делегату больше некому."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     row = []
     if not claimed:
         row.append(InlineKeyboardButton(text="🙋 Беру", callback_data=f"sos_claim:{report_id}"))
+    else:
+        row.append(InlineKeyboardButton(text="🔁 Перехватить", callback_data=f"sos_takeover:{report_id}"))
     row.append(InlineKeyboardButton(text="✅ Решено", callback_data=f"sos_resolve:{report_id}"))
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
@@ -592,6 +598,22 @@ async def replied_report_id(chat_id: int, replied) -> int | None:
     return card_report_id(replied)
 
 
+async def is_relay_reply(message) -> bool:
+    """Реплай на копию дописки делегата (`sos_relay_messages`) — для `CapabilityMiddleware`:
+    в личке текст копии — слова делегата, маркеров карточки в нём нет. Сбой — False."""
+    replied = getattr(message, "reply_to_message", None)
+    chat_id = getattr(getattr(message, "chat", None), "id", None)
+    if replied is None or chat_id is None or not getattr(getattr(replied, "from_user", None), "is_bot", False):
+        return False
+    try:
+        from database.db import find_sos_report_by_relay
+
+        return await find_sos_report_by_relay(chat_id, replied.message_id) is not None
+    except Exception as e:
+        logger.warning("sos.is_relay_reply: поиск дописки не удался: %s", e)
+        return False
+
+
 async def _record_relay(report_id: int, chat_id: int, sent) -> None:
     """Запоминает копию дописки (или её подпись), чтобы реплай орга на неё нашёл заявку."""
     message_id = getattr(sent, "message_id", None)
@@ -632,7 +654,8 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
             winner = (row or {}).get("claimed_by_name") or "коллега"
             await message.reply(
                 f"⚠️ SOS #{report_id} уже взял(а) {winner} — напишите ему(ей) или "
-                f"дождитесь «✅ Решено»."
+                f"дождитесь «✅ Решено». Если {winner} недоступен(на), нажмите «🔁 Перехватить» "
+                f"под карточкой."
             )
             return False
 
