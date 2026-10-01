@@ -79,8 +79,8 @@ details.box>summary::-webkit-details-marker{display:none}
 details.box>summary h2{font-size:18px;flex:1}
 details.box>summary::after{content:"▾";color:var(--blue);font-size:18px;transition:transform .15s}
 details.box[open]>summary::after{transform:rotate(180deg)}
-details.box.upd{border-color:var(--blue)}
-details.box.upd>summary{background:var(--blue-soft)}
+details.box.updbox{border-color:var(--blue)}
+details.box.updbox>summary{background:var(--blue-soft)}
 .bb{padding:4px 18px 18px;display:flex;flex-direction:column;gap:12px}
 .bb p{margin:0}
 .bb ol,.bb ul{margin:0;padding-left:1.25em}
@@ -197,7 +197,7 @@ figure.shot figcaption{font-size:13.5px;color:var(--muted);margin-top:6px}
     </div>
   </section>
 
-  <details class="box upd">
+  <details class="box updbox">
     <summary><h2>⏩ Если владелец обновит бота до 03.10 — что изменится</h2></summary>
     <div class="bb">
       <p>Всё ниже уже готово и проверяется 02.10 на тестовом боте. <b>Пока владелец не сказал «обновил», работайте по инструкции как есть.</b></p>
