@@ -391,6 +391,9 @@ def test_admin_confirm_names_city_and_today(tmp_path):
     _run(_add_user(1, city="spb"))
     _run(_add_user(2, city="spb"))
     _run(_add_user(3, city="msk"))
+    # «Не пришли» считается только в городе, где сегодня день форума.
+    from services.timeutil import msk_now
+    _run(db.set_setting("forum_date__city__spb", msk_now().strftime("%d.%m.%Y")))
     cb = FakeCallback("cna_send:spb", ADMIN_ID)
     _run(ac.cna_send_confirm(cb))
     text = cb.message.answers[-1][0]
