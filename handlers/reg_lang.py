@@ -45,6 +45,9 @@ LANG_MENU_BUTTON_TEXT = "🌐 Язык / Language"
 # известен (иначе вопроса бы не было), показывать текст на угаданном языке значило бы то самое
 # угадывание, которое D-06 запрещает.
 _LANG_PICK_TEXT = "Выберите язык анкеты / Choose the form language"
+# Кнопка «🌐 Язык» из меню у того, кто анкету уже подал: речь о языке бота, не анкеты
+# (приёмка 01.10 — одобренному делегату предлагали «язык анкеты»).
+_LANG_PICK_TEXT_SUBMITTED = "Выберите язык / Choose language"
 _LANG_CONFIRM = {"ru": "✅ Русский язык выбран.", "en": "✅ English selected."}
 
 # Транзитный ключ FSM — ТОЛЬКО raw-строка deep-link аргументов /start на время экрана выбора
@@ -186,7 +189,9 @@ async def menu_lang_open(message: types.Message) -> None:
     менеджер выключил модуль ПОСЛЕ того, как кнопка уже была отправлена делегату)."""
     if await get_setting_typed("delegate_lang_enabled") != "on":
         return
-    await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("menu"))
+    submitted = await get_user(message.from_user.id) is not None
+    text = _LANG_PICK_TEXT_SUBMITTED if submitted else _LANG_PICK_TEXT
+    await message.answer(text, reply_markup=_lang_pick_kb("menu"))
 
 
 @router.callback_query(F.data.startswith("lang_pick:"))
