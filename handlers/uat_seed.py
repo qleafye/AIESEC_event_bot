@@ -282,13 +282,35 @@ def _roles_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+# Права, ради которых форумная роль выдаётся; всё сверх этого карточка называет отдельно.
+_FORUM_CAPS = frozenset({"moderate_reg", "checkin", "checkin_approve"})
+
+
+async def _extra_caps_notes(roles: tuple[str, ...]) -> list[str]:
+    """Форумная роль — это обычная роль из «👥 Роли и доступы» целиком: у «🛂 Менеджер
+    регистраций» по умолчанию есть ещё модерация чеков оплаты. Говорим об этом прямо, по
+    текущим правам ролей (менеджер мог их поменять)."""
+    lines = []
+    for role in roles:
+        extra = [c for c in await get_setting_typed(admin_caps.role_caps_key(role)) or []
+                 if c in admin_caps.CAP_LABELS and c not in _FORUM_CAPS]
+        if extra:
+            lines.append(
+                f"Роль «{admin_caps.ROLES[role]['label']}» даёт ещё: "
+                f"{', '.join(admin_caps.CAP_LABELS[c] for c in extra)} — так настроены её права "
+                "в «👥 Роли и доступы»."
+            )
+    return lines
+
+
 async def _role_notes(tid: int, role_code: str) -> list[str]:
     """Честные строки карточки про роли: что даст форумная роль, какие роли выключены
     менеджером (тогда прав не даст) и какие из нынешних ролей человека снимутся."""
     lines: list[str] = []
+    wanted = _ROLE_CODE_TO_ROLES[role_code]
     if role_code in _CITY_ROLE_HINTS:
         lines.append(f"Что даст роль: {_CITY_ROLE_HINTS[role_code]}.")
-    wanted = _ROLE_CODE_TO_ROLES[role_code]
+        lines.extend(await _extra_caps_notes(wanted))
     for role in wanted:
         if await get_setting_typed(admin_caps.role_enabled_key(role)) != "on":
             lines.append(
