@@ -59,6 +59,8 @@ from services.checkin import (
     ENTRY_POINT_LABEL,
     checkin_denial,
     current_event_tag,
+    foreign_qr_code,
+    foreign_qr_reason,
     parse_qr_payload,
     record_arrival,
     resolve_scanned_user,
@@ -314,7 +316,7 @@ async def _entry_city_denial(bound: str | None, user: dict) -> dict | None:
     return {
         "status": "wrong_city",
         "reason_text": (
-            f"Делегат с форума в {delegate_label} — отправьте на стойку своего города/к "
+            f"Делегат другого города: {delegate_label} — отправьте на стойку своего города или к "
             "организаторам"
         ),
     }
@@ -341,7 +343,8 @@ async def _training_preview(
         tag = parsed.get("tag") or ""
         if not tag or tag != await current_event_tag():
             return await checkin_training.as_training_point({
-                "status": "foreign_event", "reason_text": DENIAL_REASON_TEXT["foreign_event"],
+                "status": "foreign_event",
+                "reason_text": await foreign_qr_reason(foreign_qr_code(parsed.get("raw") or "")),
                 "full_name": parsed.get("full_name") or None, "city": parsed.get("city") or None,
             }, lang, tr_map)
         user, denial_code = await resolve_scanned_user(
@@ -400,7 +403,7 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
         return await checkin_training.training_scan_response(training, parsed, lang, tr_map)
     bound = await _bound_city(request, p)
     if point == checkin_training.TRAINING_POINT:
-        return await _training_preview(p, bound, parsed=parsed)
+        return await _training_preview(p, bound, parsed={**parsed, "raw": body.payload})
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         await _log_denial(p, bound, point_denial["status"], point=point, source="miniapp")
@@ -408,10 +411,13 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
 
     tag = parsed.get("tag") or ""
     if not tag or tag != await current_event_tag():
-        await _log_denial(p, bound, "foreign_event", point=point, source="miniapp")
+        # Статус для экрана один («Не пропущен»), а причина различается: наш формат с чужой
+        # меткой — «QR другого мероприятия», не пропуск вовсе — «Это не QR-пропуск».
+        code = foreign_qr_code(body.payload)
+        await _log_denial(p, bound, code, point=point, source="miniapp")
         return {
             "status": "foreign_event",
-            "reason_text": DENIAL_REASON_TEXT["foreign_event"],
+            "reason_text": await foreign_qr_reason(code),
             "full_name": parsed.get("full_name") or None,
             "city": parsed.get("city") or None,
         }
