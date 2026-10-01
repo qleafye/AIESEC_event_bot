@@ -61,6 +61,8 @@ const STATUS_TONE = {
   rejected: "error",
   undone: "warn",
   undo_refused: "error",
+  // вход не в день форума делегата: ничего не записано (проба сканера накануне)
+  not_forum_day: "warn",
 };
 const STATUS_HEADING = {
   new: "Отмечен",
@@ -71,6 +73,7 @@ const STATUS_HEADING = {
   invalid_point: "Не пропущен",
   onsite_off: "Не пропущен",
   rejected: "Не пропущен",
+  not_forum_day: "Не отмечен",
 };
 // Запасные подписи регистрации на месте — только если /checkin/net-texts не дошёл.
 const ONSITE_FALLBACK = {
