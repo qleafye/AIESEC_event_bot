@@ -72,10 +72,28 @@ def _lang_pick_kb(origin: str) -> InlineKeyboardMarkup:
 async def _show_lang_picker(message: types.Message, state: FSMContext, raw_args: str | None) -> bool:
     """Общий хвост показа экрана выбора для обеих ветвей `offer_language` ("on"/"everyone") —
     сохранить deep-link атрибуцию (см. докстринг модуля) и отрисовать те же две кнопки."""
+    if await _submitted_without_lang(message.from_user.id):
+        return False
     if raw_args:
         await state.update_data(**{_DEEPLINK_RESUME_KEY: raw_args})
     await message.answer(_LANG_PICK_TEXT, reply_markup=_lang_pick_kb("start"))
     return True
+
+
+_SUBMITTED_STATUSES = ("approved", "pending")
+
+
+async def _submitted_without_lang(telegram_id: int) -> bool:
+    """Анкета подана (одобрена или ждёт решения), а `users.lang` пуст. Fail-soft: ошибка
+    чтения — `False`, поведение экрана прежнее."""
+    try:
+        user = await get_user(telegram_id)
+    except Exception:
+        logger.warning("offer_language: не прочитали анкету %s", telegram_id, exc_info=True)
+        return False
+    if not user or user.get("lang") in ("ru", "en"):
+        return False
+    return user.get("status") in _SUBMITTED_STATUSES
 
 
 async def offer_language(message: types.Message, state: FSMContext, raw_args: str | None = None) -> bool:
@@ -90,6 +108,12 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
       module on + `users.lang` ещё не сохранён -> экран ВСЕГДА, даже если `language_code`
       уже "ru"; `resolve_lang`/`delegate_lang` в этой ветке не участвуют вовсе (их ступень 3
       «клиент ru -> тихо ru» — как раз то, что этот режим обходит).
+
+    В обоих режимах экрана НЕТ, если анкета уже подана (одобрен/ждёт решения), а язык не
+    сохранён (`_submitted_without_lang`, приёмка 01.10): импортированные делегаты прошлого
+    сезона и все, кто подал до модуля языка, иначе упирались бы в «язык анкеты» перед меню на
+    каждом /start. Для них русский по умолчанию; в users.lang ничего не пишем (выбор за
+    делегатом — кнопка «🌐 Язык» в меню), рендер без lang и так русский (C1 в i18n.tr).
 
     Иначе `False` без единого сообщения, поток `cmd_start` не меняется ни на шаг.
 
