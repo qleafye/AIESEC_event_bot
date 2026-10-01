@@ -135,7 +135,21 @@ async def _one_city_line(label: str, city_sc, day: str | None = None) -> tuple[s
     return f"{label}: пришли {arrived} из {approved}", arrived, approved
 
 
-async def _counter_line(admin_id: int) -> str:
+async def _screen_scope(admin_id: int, city: str | None):
+    """Город экрана: открыт из хаба города (`city` в кнопке) — он, даже при шапке «Все города»;
+    иначе — привязка менеджера (`_admin_city_scope`)."""
+    if city is not None and await cities_module_on():
+        return city_scope(city)
+    return await _admin_city_scope(admin_id)
+
+
+async def _forum_today(code: str | None) -> bool:
+    from services.forum_days import forum_window
+    window = await forum_window(code)
+    return window is not None and window[0] <= msk_now().date() <= window[1]
+
+
+async def _counter_line(admin_id: int, city: str | None = None) -> str:
     """«Пришли N из M одобренных» (задача A2, FORUM-CHECKIN.md) — тот же запрос, что статистика
     прихода (`services.checkin_arrival.arrived_counts`: одобренные текущего сезона со входом).
     Вход каждый день: в день форума (сегодня уже был хоть один вход) — «Сегодня пришли» по
@@ -148,7 +162,7 @@ async def _counter_line(admin_id: int) -> str:
     городам с хотя бы одним одобренным текущего сезона, плюс «Итого»."""
     day = await checkin_arrival.counter_day()
     head = "Сегодня пришли" if day else "Пришли за форум"
-    own_scope = await _admin_city_scope(admin_id)
+    own_scope = await _screen_scope(admin_id, city)
     if own_scope is not None or not await cities_module_on():
         arrived, approved = await checkin_arrival.arrived_counts(own_scope, day)
         return f"{head}: {arrived} из {approved} одобренных"
@@ -224,7 +238,7 @@ async def _morning_repeat_passed_today(code: str | None) -> bool:
     return morn_at is not None and morn_at.date() == now.date() and morn_at <= now
 
 
-async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
+async def _qr_broadcast_section(admin_id: int, city: str | None = None) -> tuple[str, list[list[InlineKeyboardButton]]]:
     """Форум-ночь п.3 (D-03, идея №2): блок «🎟 Рассылка QR» экрана «✅ Отметки на форуме» —
     строка(и) «QR получили N · подтвердили M» + кнопки «📤 Разослать сейчас»/«⚙️ Настройки QR».
     Мастер-тумблер `checkin_qr_enabled` выключен -> блока нет вовсе (пустая строка, без кнопок)
@@ -235,7 +249,7 @@ async def _qr_broadcast_section(admin_id: int) -> tuple[str, list[list[InlineKey
     if await get_setting_typed("checkin_qr_enabled") != "on":
         return "", []
 
-    own_scope = await _admin_city_scope(admin_id)
+    own_scope = await _screen_scope(admin_id, city)
     if own_scope is not None:
         code = own_scope[0]
         line = await _qr_status_line(None, code)
@@ -278,16 +292,18 @@ async def _not_arrived_status_line(label: str | None, code: str | None) -> str:
     return f"{prefix}{text}"
 
 
-async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyboardButton]]]:
+async def _not_arrived_section(admin_id: int, city: str | None = None) -> tuple[str, list[list[InlineKeyboardButton]]]:
     """Блок «🚪 Не пришли» — строка(и) сводки за сегодня + кнопка(и) «📨 Написать не пришедшим».
     Три ветки — та же развилка, что у `_qr_broadcast_section`/`_counter_line` выше.
 
     «Все города»: строку (и кнопку) города показываем, только если в нём есть хоть один
     одобренный текущего сезона — тот же довод и приём, что у `_one_city_line` в `_counter_line`
     (пустой регион не должен маячить нулями рядом с городом, где форум уже идёт)."""
-    own_scope = await _admin_city_scope(admin_id)
+    own_scope = await _screen_scope(admin_id, city)
     if own_scope is not None:
         code = own_scope[0]
+        if not await _forum_today(code):  # кнопка, которая всегда отвечает «некому», путает
+            return "Сегодня у города нет форума — «не пришли» считаются в дни форума.", []
         line = await _not_arrived_status_line(None, code)
         buttons = [[InlineKeyboardButton(
             text="📨 Написать не пришедшим", callback_data=f"cna_send:{_encode_city(code)}",
@@ -306,27 +322,27 @@ async def _not_arrived_section(admin_id: int) -> tuple[str, list[list[InlineKeyb
     for c in await enabled_cities():
         code = c["code"]
         city_sc = city_scope(code)
-        if await count_approved_current_season(city_scope=city_sc) == 0:
-            continue
+        if not await _forum_today(code) or await count_approved_current_season(city_scope=city_sc) == 0:
+            continue  # «не пришли» есть только у городов, где сегодня идёт форум
         label = await city_label(code)
         lines.append(await _not_arrived_status_line(label, code))
         buttons.append([InlineKeyboardButton(
             text=f"📨 Написать не пришедшим — {label}", callback_data=f"cna_send:{_encode_city(code)}",
         )])
-    return "\n".join(lines), buttons
+    return "\n".join(lines) or "Сегодня ни в одном городе нет форума.", buttons
 
 
-async def render_admin_checkin(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
+async def render_admin_checkin(admin_id: int, city: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
     """Экран «✅ Отметки на форуме». Последняя строка — «◀️ Назад» в раздел; хаб «🎪 Форум:
     функции» подменяет её своей (handlers/admin_forum_hub_nav.py)."""
     from handlers.admin_sections import back_button  # ленивый шов (см. docstring модуля)
-    qr_line, qr_buttons = await _qr_broadcast_section(admin_id)
+    qr_line, qr_buttons = await _qr_broadcast_section(admin_id, city)
     qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
-    not_arrived_line, not_arrived_buttons = await _not_arrived_section(admin_id)
+    not_arrived_line, not_arrived_buttons = await _not_arrived_section(admin_id, city)
     not_arrived_block = f"\n\n🚪 <b>Не пришли</b> (сегодня)\n{not_arrived_line}"
     text = (
         "✅ <b>Отметки на форуме</b>\n\n"
-        f"{await _counter_line(admin_id)}"
+        f"{await _counter_line(admin_id, city)}"
         f"{qr_block}"
         f"{not_arrived_block}\n\n"
         "Выгрузите историю сканов из приложения-сканера в CSV и пришлите сюда файлом — "
@@ -535,7 +551,11 @@ async def _city_picker_kb() -> InlineKeyboardMarkup:
 # выбора точки должна ответить «пришлите файл заново», а не висеть со спиннером. Записи
 # снимаются с состояния перед отметкой — повторный тап по той же кнопке попадает сюда же.
 async def _import_records_or_explain(callback: types.CallbackQuery, state: FSMContext) -> list[dict] | None:
-    records = (await state.get_data()).get("checkin_records") or []
+    data = await state.get_data()
+    if data.get("checkin_importing"):  # двойной тап по точке: файл уже отмечается
+        await callback.answer("Уже отмечаю этот файл — дождитесь отчёта.")
+        return None
+    records = data.get("checkin_records") or []
     if not records:
         await callback.answer()
         await callback.message.answer(_csv_import.LOST_FILE_TEXT)
@@ -559,6 +579,16 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
         return
     point = callback.data.split(":", 1)[1]
     data = await state.get_data()
+    # Записи снимаются с состояния ДО первого обращения к базе: второй, параллельный колбэк
+    # двойного тапа их уже не найдёт и не импортирует файл второй раз.
+    await state.update_data(checkin_records=None, checkin_importing=True)
+    try:
+        await _checkin_point_import(callback, state, records, point, data)
+    finally:
+        await state.update_data(checkin_importing=None)
+
+
+async def _checkin_point_import(callback, state: FSMContext, records: list[dict], point: str, data: dict):
 
     # Точка выбрана ОДНА на весь загруженный файл — сессию (если это точка сессии) и её отчётный
     # интервал времени (D-18..D-20) достаточно достать один раз, а не на каждую строку.
@@ -566,12 +596,12 @@ async def checkin_point_pick(callback: types.CallbackQuery, state: FSMContext):
     if point.startswith("session:") and session is None:
         # Сессию удалили/пересоздали, пока выбирали точку: ничего не отмечаем, файл в состоянии
         # остаётся — сразу новый выбор точки.
+        await state.update_data(checkin_records=records)
         await callback.answer()
         city = (await _resolve_checkin_screen_city(callback.from_user.id)) or default_city_code()
         await callback.message.answer(_csv_import.SESSION_GONE_TEXT, reply_markup=await _point_picker_kb(city))
         return
     await state.set_state(None)
-    await state.update_data(checkin_records=None)
     # Ответ на кнопку сразу: файл на сотни строк отмечается дольше 15 секунд, поздний ответ
     # Telegram уже не принимает.
     await callback.answer("Отмечаю…")
