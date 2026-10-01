@@ -351,7 +351,8 @@ async def _send_confirm_prompt(
     Форум-ночь п.7: строка-тумблер «❗ Отметить как важное» — читает `bc_important` из FSM
     (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
     эту же функцию заново)."""
-    warning = await _audience_warning(state, users_ids, chat_id)
+    from services.broadcast_scope import sender_city_note  # менеджер города — только его город
+    warning = await sender_city_note(chat_id) + await _audience_warning(state, users_ids, chat_id)
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
@@ -482,7 +483,8 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
              return
     else:
         users_ids = await get_all_users_ids()
-    users_ids = list(set(users_ids))
+    from services.broadcast_scope import restrict_to_sender_city
+    users_ids = await restrict_to_sender_city(message.from_user.id, list(set(users_ids)))
 
     mgid = message.media_group_id
     if mgid:
