@@ -2792,6 +2792,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         # the FSM, but keep the caller on the screen they actually came from).
         header_code = await admin_selected_city(message.from_user.id)
         text, kb = await _settings_edit_screen(per_city_base, header_code)
+        kb = await _fdate.with_ready_button(kb, per_city_base, header_code, message.from_user.id)
         await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
         return
     # Phase 20 (20-04): возврат на экран ГРУППЫ, с которого менеджер и открыл правку (кнопка
