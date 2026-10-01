@@ -57,7 +57,7 @@ def test_upsert_columns_positions(tmp_path):
 
 def test_set_answer_match_once_and_synced_to_update(tmp_path):
     _ready(tmp_path)
-    fid = _form()
+    fid = _form(key_phone_q="q")
     _answer(fid, "a1")
     row = asyncio.run(ef.list_unmatched_answers(10))[0]
     assert asyncio.run(ef.set_answer_match(row["id"], 111, "username")) is True
@@ -178,3 +178,16 @@ def test_same_source_form_cannot_be_created_twice(tmp_path):
     asyncio.run(ef.create_form(platform="google", external_id="g", title="B", gsheet_gid=2))
     with pytest.raises(sqlite3.IntegrityError):
         asyncio.run(ef.create_form(platform="google", external_id="g", title="C", gsheet_gid=2))
+
+
+def test_unmatched_window_skips_forms_without_keys(tmp_path):
+    """Форма без ключевых вопросов не занимает окно сопоставления."""
+    _ready(tmp_path)
+    nokeys = _form()
+    keyed = asyncio.run(ef.create_form(
+        platform="yandex", external_id="f2", title="С ключом", secret="s2", key_phone_q="q"))
+    for i in range(5):
+        _answer(nokeys, f"n{i}")
+    _answer(keyed, "k1")
+    got = asyncio.run(ef.list_unmatched_answers(3))
+    assert [r["answer_id"] for r in got] == ["k1"]

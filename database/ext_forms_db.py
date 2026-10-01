@@ -366,7 +366,9 @@ async def list_unmatched_answers(limit: int) -> list[dict]:
     rows = await _fetchall(
         "SELECT a.* FROM external_form_answers a "
         "JOIN external_forms f ON f.id = a.form_id "
-        "WHERE a.matched_telegram_id IS NULL ORDER BY a.id LIMIT ?",
+        "WHERE a.matched_telegram_id IS NULL "
+        "AND (f.key_username_q IS NOT NULL OR f.key_phone_q IS NOT NULL) "
+        "ORDER BY a.id LIMIT ?",
         (int(limit),),
     )
     return [_with_payload(r) for r in rows]
