@@ -107,7 +107,12 @@ async def _next_pending_day(city: str | None, start: date, end: date) -> date | 
 
 # ── Планирование — self-rescheduling джоба на город (форма services.checkin_volunteer_broadcast) ──
 
-async def schedule_city_job(city: str | None) -> dict:
+# Сбой джобы (база занята, сеть) — следующая попытка не раньше чем через полчаса, а не каждую
+# минуту.
+_RETRY_AFTER_FAILURE = timedelta(minutes=30)
+
+
+async def schedule_city_job(city: str | None, *, after_failure: bool = False) -> dict:
     """(Пере)ставить джобу СЛЕДУЮЩЕГО ещё не отправленного дня форума этого города — или снять
     её (тумблер выключен / дата форума не задана / все дни окна уже отправлены / окно форума
     прошло с большим запасом). Вызывается и `reconcile()` (старт бота), и СРАЗУ после правки
@@ -143,7 +148,13 @@ async def schedule_city_job(city: str | None) -> dict:
     hh, mm = _parse_hhmm(await _time_for(city))
     run_at = datetime.combine(day, time(hh, mm))
     if run_at <= now:
-        run_at = now + timedelta(minutes=1)  # догон — бот был выключен в момент отправки
+        # догон — бот был выключен в момент отправки; после сбоя — с паузой, и сверка раз в
+        # 10 минут эту паузу не сокращает (уже стоящий догон в будущем не трогаем).
+        existing = sched.get_job(jid)
+        pending_at = getattr(existing, "next_run_time", None) if existing is not None else None
+        if pending_at is not None and pending_at.replace(tzinfo=None) > now and not after_failure:
+            return {"scheduled": True, "run_at": pending_at, "day": day.strftime("%Y-%m-%d")}
+        run_at = now + (_RETRY_AFTER_FAILURE if after_failure else timedelta(minutes=1))
 
     sched.add_job(
         _run_job, "date", run_date=run_at, args=[city], id=jid, replace_existing=True,
@@ -171,6 +182,7 @@ async def _city_still_valid(city: str | None) -> bool:
 
 
 async def _run_job(city: str | None) -> None:
+    failed = False
     try:
         if not await _city_still_valid(city):
             logger.info(f"forum_day_report: job for city={city!r} skipped — город/отчёт выключены")
@@ -183,10 +195,12 @@ async def _run_job(city: str | None) -> None:
         if day is not None:
             await send_report(city, day.strftime("%Y-%m-%d"), mark_sent=True)
     except Exception as e:
+        failed = True
         logger.error(f"forum_day_report._run_job({city!r}) failed: {e}")
     finally:
         try:
-            await schedule_city_job(city)  # переставить на следующий ещё не отправленный день
+            # переставить на следующий ещё не отправленный день
+            await schedule_city_job(city, after_failure=failed)
         except Exception as e:
             logger.error(f"forum_day_report._run_job({city!r}): reschedule failed: {e}")
 
@@ -337,6 +351,12 @@ async def send_report(city: str | None, day: str, *, mark_sent: bool) -> dict:
     from services.sos import sos_chat_for_city  # публичная функция, sos.py не правим
 
     text = await build_report_text(city, day)
+    # Отметка ДО отправки (claim): раньше она шла после, и если запись падала (база занята),
+    # джоба догоняла «через минуту» и слала тот же отчёт в чат SOS каждую минуту.
+    if mark_sent and not await forum_day_report_mark_sent(
+        city, day, msk_now().strftime("%Y-%m-%d %H:%M:%S"),
+    ):
+        return {"chat_delivered": False, "dm_delivered": 0, "text": text, "already_sent": True}
 
     chat_delivered = False
     dm_delivered = 0
@@ -358,9 +378,6 @@ async def send_report(city: str | None, day: str, *, mark_sent: bool) -> dict:
             except Exception as e:
                 logger.info(f"forum_day_report.send_report: не удалось написать id={uid}: {e}")
             await asyncio.sleep(0.05)
-
-    if mark_sent:
-        await forum_day_report_mark_sent(city, day, msk_now().strftime("%Y-%m-%d %H:%M:%S"))
 
     return {"chat_delivered": chat_delivered, "dm_delivered": dm_delivered, "text": text}
 
