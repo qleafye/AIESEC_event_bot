@@ -623,8 +623,12 @@ async def checkin_points(
 
     points = [{
         "point": ENTRY_POINT, "label": ENTRY_POINT_LABEL, "live": None,
-        # Вход каждый день: у точки «Вход» — сколько вошли СЕГОДНЯ.
-        "count": await count_checkins_by_point(ENTRY_POINT, day=msk_now().strftime("%Y-%m-%d")),
+        # Вход каждый день: у точки «Вход» — сколько вошли СЕГОДНЯ, по городу волонтёра (как
+        # строка «Пришли N из M» сверху; без города — общий счётчик).
+        "count": await count_checkins_by_point(
+            ENTRY_POINT, day=msk_now().strftime("%Y-%m-%d"),
+            city_scope=city_scope(resolved) if resolved is not None else None,
+        ),
         "capacity": None,
     }]
     # Бэклог чек-ина №7 (D-28 «Вход всегда первым»): «🧪 Тренировка» — сразу за входом.
