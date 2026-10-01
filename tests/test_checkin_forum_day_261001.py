@@ -276,3 +276,45 @@ def test_day_check_reads_settings_in_one_snapshot(tmp_path, monkeypatch):
     assert denial["status"] == "not_forum_day"
     assert _run(checkin_forum_day.city_emphasis(date(2026, 10, 3))) is True
     assert reads == [1, 1]
+
+
+def test_cities_off_day_before_forum_writes_nothing(tmp_path, monkeypatch):
+    """Модуль городов выключен (стенд, конференция): у всех пустой город, но проверка дня идёт
+    по общей `forum_date` — проба сканера накануне не ставит настоящую отметку."""
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "off"))
+    _run(bot_db.set_setting("forum_date", "03.10.2026"))
+    _run(bot_db.set_setting("sos_active_days", "1"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 2, 18, 0))
+    _grant_checkin_to_game_manager()
+    for uid, city in ((952020, None), (952021, "msk")):
+        _run(_insert_user(uid, city=city))
+        body = client.post(f"{BASE}/scan", json={"payload": _qr(uid)}, headers=_hdr(GAME_MANAGER_ID)).json()
+        assert body["status"] == "not_forum_day", city
+        assert _entry_rows(uid) == 0
+    from services import checkin_forum_day
+    assert _run(checkin_forum_day.off_day_for_scan({"event_city": None}, "2026-10-02 10:00:00")) is True
+    assert _run(checkin_forum_day.off_day_for_scan({"event_city": None}, "2026-10-03 10:00:00")) is False
+
+
+def test_cities_off_forum_day_marks_delegate_without_city(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "off"))
+    _run(bot_db.set_setting("forum_date", "03.10.2026"))
+    _freeze_now(monkeypatch, datetime(2026, 10, 3, 9, 0))
+    _grant_checkin_to_game_manager()
+    _run(_insert_user(952022, city=None))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(952022)}, headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "new"
+    assert _entry_rows(952022) == 1
+
+
+def test_cities_off_csv_untimed_lands_on_common_forum_day(tmp_path, monkeypatch):
+    """Без городов CSV без времени, загруженный на следующий день, тоже ложится на день форума."""
+    from services import timeutil
+    client_with(tmp_path)
+    _run(bot_db.set_setting("event_city_enabled", "off"))
+    _run(bot_db.set_setting("forum_date", "03.10.2026"))
+    monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 4, 15, 0))
+    stamp = _run(checkin_csv_import._untimed_stamp({"scanned_at": None}, {"event_city": None}, "entry"))
+    assert stamp == ("2026-10-03 12:00:00", "forum_day_assumed")
