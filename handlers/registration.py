@@ -2646,6 +2646,23 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
             await _safe_answer(message, _rs_text, reply_markup=await get_main_menu_kb(uid))
             return
 
+    # Закрытие регистрации на город проверялось только на старте анкеты: кто начал до
+    # закрытия, досдавал после (02.10, Питер/Тюмень). Новая подача (строки нет или она
+    # отклонена) в закрытый город не сохраняется; правка уже поданной анкеты не гейтится.
+    _city = data.get("event_city")
+    if _city and (_existing_user is None or (_existing_user.get("status") or "approved") == "rejected"):
+        try:
+            _city_open = await is_city_registration_open(_city)
+        except Exception as e:  # fail-open: сбой чтения настроек не блокирует подачу
+            logger.error(f"finalize_registration: city gate failed for {uid}: {e}")
+            _city_open = True
+        if not _city_open:
+            logger.info(f"user={uid} action=registration_blocked_city_closed city={_city}")
+            await state.clear()
+            from handlers.reg_city_gate import send_city_closed
+            await send_city_closed(message, _city)
+            return
+
     # Phase 21 (21-09, T-21-02): бот теперь САМ ведёт reg_drafts (_start_registration_flow +
     # _sync_draft_out/_stamp_reg_step, план 21-09) — claim_reg_draft обычно находит и забирает
     # ту самую строку. Псевдо-черновик из FSM-данных остаётся fallback'ом на случай, если
