@@ -72,6 +72,9 @@ services:
       # D-29: диск-фоллбэк фото программы (resources/program.jpg) — тот же каталог, что у бота,
       # иначе Mini App видел бы файл из образа, а чат — с хоста.
       - ./resources:/app/resources:ro
+      # Mini App сам пишет во вкладки «🤖 История правок»/«🤖 Вопросы» — без ключа Google
+      # эти вкладки молча не обновлялись (прод Юлида до 02.10).
+      - ./google_credentials.json:/app/google_credentials.json:ro
     networks:
       - default
       - edge
