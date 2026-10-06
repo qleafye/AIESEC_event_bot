@@ -401,6 +401,14 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_faq": "moderate_reg",
     "afaq_*": "moderate_reg",
     "state:FaqItem:*": "moderate_reg",
+    # Делегации вузов (handlers/admin_delegations.py, handlers/admin_delegations_review.py):
+    # менеджер заявок ведёт делегации сам — выбор формы и вопросов, тумблер геймы, отсечка ЦА,
+    # курсы, тексты, проверка курса и ручная привязка. Право то же, что у модерации заявок;
+    # один префиксный ключ `dlg_*` на все callback'и экрана и его подэкранов.
+    "admin_delegations": "moderate_reg",
+    "dlg_*": "moderate_reg",
+    "state:DelegationEdit:*": "moderate_reg",
+    "state:DelegationLink:*": "moderate_reg",
     # Phase 27 (27-06, LANG-05/09): экран «🌐 Английские тексты» — тот же гейт, что у соседних
     # экранов раздела «📝 Анкета» (admin_reg_prompts и т.д.), не заводим нового.
     "admin_i18n": "settings",

@@ -129,6 +129,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Phase 31 (31-08, D-09/D-15): «🚫 Правила автоотказа» — сразу после «🧮 Правила балла»,
         # два экрана «правил» читаются подряд.
         ("screen", "admin_reject_rules", "🚫 Правила автоотказа"),
+        # Делегации вузов на Москву: экран «🏫 Делегации» внутри «📋 Заявки», своего раздела
+        # не заводим — девять разделов зафиксированы (капа `moderate_reg`, как у заявок).
+        ("screen", "admin_delegations", "🏫 Делегации"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
