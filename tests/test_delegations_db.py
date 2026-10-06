@@ -272,8 +272,10 @@ def test_mirror_status_for(tmp_path):
     _checkin(1001)
     res = asyncio.run(ddb.mirror_status_for(fid, ["a1", "a2", "missing"]))
     assert set(res) == {"a1", "a2"}
-    assert res["a1"] == {"ta_status": "ok", "linked": True, "arrived": True, "decided_by": None}
-    assert res["a2"] == {"ta_status": "no", "linked": False, "arrived": False, "decided_by": None}
+    assert res["a1"] == {"ta_status": "ok", "linked": True, "arrived": True, "decided_by": None,
+                      "greyed": False}
+    assert res["a2"] == {"ta_status": "no", "linked": False, "arrived": False, "decided_by": None,
+                         "greyed": False}
     assert asyncio.run(ddb.mirror_status_for(fid, [])) == {}
 
 

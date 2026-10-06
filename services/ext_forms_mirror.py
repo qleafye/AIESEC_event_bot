@@ -258,7 +258,9 @@ async def drain_mirror(limit: int = 200) -> dict:
             rows = [(a["id"], a, statuses.get(a["answer_id"], _UNEVALUATED)) for a in answers]
         try:
             if export:
-                res = await asyncio.to_thread(delegations_mirror.write_export_sync, tab, columns, rows)
+                grey_flags: dict = {}
+                res = await asyncio.to_thread(
+                    delegations_mirror.write_export_sync, tab, columns, rows, grey_flags)
             else:
                 res = await asyncio.to_thread(
                     _write_form_sync, tab, columns, new_cols, appends, updates
@@ -291,6 +293,8 @@ async def drain_mirror(limit: int = 200) -> dict:
                 [(a["id"], a["sheet_state"], a.get("matched_telegram_id")) for a in answers])
             # Вопрос без колонки — предупреждение менеджеру, не ошибка: mirror_error остановил
             # бы очередь из-за условия, которое менеджер исправить не может (правее M не пишем).
+            if grey_flags:
+                await delegations_db.set_greyed(form_id, grey_flags)
             extra = list(res[2]) if len(res) > 2 else []
             if extra:
                 await ef.set_form_mirror_warning(form_id, _extra_questions_text(tab, extra))

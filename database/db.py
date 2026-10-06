@@ -2138,6 +2138,9 @@ async def init_db():
                 UNIQUE(form_id, answer_id)
             )
         ''')
+        # Серый фон строки UR REGS поставил сам бот (1) — только такую строку он вправе вернуть в
+        # белый; серую от руки (Настя) не трогает никогда.
+        await _ensure_column(db, "delegation_answers", "sheet_greyed", "INTEGER DEFAULT 0")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_delegation_answers_tid "
             "ON delegation_answers(linked_telegram_id)"

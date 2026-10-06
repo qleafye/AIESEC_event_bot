@@ -23,8 +23,9 @@ def _answer(aid, values=None, *, answered_at="2026-10-05 12:00:00", columns=None
     return {"answer_id": aid, "answered_at": answered_at, "payload": payload}
 
 
-def _st(ta="ok", linked=False, arrived=False):
-    return {"ta_status": ta, "linked": linked, "arrived": arrived, "decided_by": None}
+def _st(ta="ok", linked=False, arrived=False, greyed=False):
+    return {"ta_status": ta, "linked": linked, "arrived": arrived, "decided_by": None,
+            "greyed": greyed}
 
 
 @pytest.fixture
@@ -121,12 +122,14 @@ def test_m_labels():
 def test_grey_and_white(ws):
     rows = [
         (1, _answer("2516200001"), _st("no")),               # белая -> серая
-        (2, _answer("2516200002"), _st("ok")),               # серая (строка 3) -> белая
+        (2, _answer("2516200002"), _st("ok", greyed=True)),  # серая (строка 3), наша -> белая
         (3, _answer("2516200003"), _st("ok")),               # белая, ok -> без формата
         (4, _answer("2516200004"), _st("no")),               # зелёная (строка 8) -> не трогаем
         (5, _answer("2516200050"), _st("no")),               # новая строка 9 -> серая
     ]
-    dm.write_export_sync(TAB, _columns(), rows)
+    flags: dict = {}
+    dm.write_export_sync(TAB, _columns(), rows, flags)
+    assert flags == {"2516200001": 1, "2516200002": 0, "2516200050": 1}
     fmts = dict(_formats(ws))
     assert fmts["A2:M2"] == {"backgroundColor": dm.GREY}
     assert fmts["A3:M3"] == {"backgroundColor": dm.WHITE}
@@ -135,6 +138,30 @@ def test_grey_and_white(ws):
     assert ws.formats[8] == GREEN
     assert sum(1 for c in ws.calls if c[0] == "batch_format") == 1
     assert ws.rows[7][12] == "— не ЦА"  # значение M у зелёной строки всё же пишем
+
+
+def test_manual_grey_is_never_removed(ws):
+    """Серая строка, которую бот не красил (Настя), остаётся серой, даже когда ответ стал ЦА."""
+    flags: dict = {}
+    dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002"), _st("ok"))], flags)
+    assert not any(c[0] == "batch_format" for c in ws.calls)
+    assert flags == {}
+    assert ws.formats[3] == GREY
+
+
+def test_manual_grey_is_not_claimed_as_ours(ws):
+    """Строка уже серая от руки, ответ «не ЦА»: бот ничего не красит и флаг «наш» не ставит."""
+    flags: dict = {}
+    dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002"), _st("no"))], flags)
+    assert not any(c[0] == "batch_format" for c in ws.calls)
+    assert flags == {}
+
+
+def test_team_regained_white_forgets_our_flag(ws):
+    flags: dict = {}
+    dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200001"), _st("ok", greyed=True))], flags)
+    assert flags == {"2516200001": 0}
+    assert not any(c[0] == "batch_format" for c in ws.calls)
 
 
 def test_grey_constants_match_probe():
@@ -331,6 +358,7 @@ def test_drain_dispatches_export_mode(env):
     _ins(fid, "2516200102", tid=6, ta="no")                           # append, matched, не ЦА
     _ins(fid, "2516200002", tid=5, ta="ok", link_tid=5, state="update")  # уже в листе (строка 3)
     _ins(fid, "2516200103")                                           # без оценки
+    asyncio.run(ddb.set_greyed(fid, {"2516200002": 1}))               # серый поставил сам бот
     res = asyncio.run(mir.drain_mirror())
     assert res["appended"] == 3 and res["updated"] == 1 and res["not_found"] == 0
     ws = env["ws"]
@@ -340,8 +368,10 @@ def test_drain_dispatches_export_mode(env):
     assert by_id["2516200101"][12] == "⏳ не заходил"
     assert by_id["2516200102"][12] == "— не ЦА"
     assert by_id["2516200103"][12] == "❔ проверить курс"
-    assert ws.formats[3] == WHITE  # серая строка стала белой
+    assert ws.formats[3] == WHITE  # серая строка, которую красил бот, стала белой
     assert ws.formats[10] == GREY  # новая строка не-ЦА — серая
+    flags = asyncio.run(ddb.mirror_status_for(fid, ["2516200002", "2516200102"]))
+    assert flags["2516200002"]["greyed"] is False and flags["2516200102"]["greyed"] is True
     assert _states() == {"2516200101": "synced", "2516200102": "synced",
                          "2516200002": "synced", "2516200103": "synced"}
     assert not any(c[0] == "append_rows" for c in ws.calls)
@@ -359,8 +389,8 @@ def test_drain_export_keeps_state_changed_during_write(env, monkeypatch):
     _ins(fid, "2516200102", ta="ok")
     orig = dm.write_export_sync
 
-    def write_and_flip(tab, columns, rows):
-        out = orig(tab, columns, rows)
+    def write_and_flip(tab, columns, rows, greyed_out=None):
+        out = orig(tab, columns, rows, greyed_out)
         asyncio.run(ef.mark_sheet_state([rid1], "update"))  # зашёл в бота посреди записи
         return out
     monkeypatch.setattr(dm, "write_export_sync", write_and_flip)
