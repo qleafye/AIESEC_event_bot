@@ -1122,6 +1122,12 @@ async def init_db():
         # старые/нетронутые строки: вопрос «Источник» в профиле показывается как раньше.
         await _ensure_column(db, "users", "source_from_tag", "INTEGER DEFAULT 0")
 
+        # Делегации вузов на Москву: принадлежность к делегации — вуз ровно как написан в форме
+        # (delegation) и ID ответа формы делегаций (delegation_answer_id). NULL у всех, кто
+        # пришёл через анкету; строка users при этом не меняется.
+        await _ensure_column(db, "users", "delegation", "TEXT")
+        await _ensure_column(db, "users", "delegation_answer_id", "TEXT")
+
         # D-41 (FORUM-CHECKIN.md): регистрация «на месте» — 'walkin' (новый человек прошёл
         # короткую анкету у стойки) или 'door' (существующая заявка одобрена волонтёром у
         # стойки); onsite_at/onsite_by — когда и кто одобрил на месте. NULL у всех старых строк.
@@ -2027,6 +2033,14 @@ async def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_ext_forms_source "
             "ON external_forms(platform, external_id, IFNULL(gsheet_gid, -1))"
         )
+        # Режим зеркала формы во вкладку: 'bot' — своя раскладка бота («Дата | Делегат |
+        # Статус | ID | вопросы…»), 'yandex_export' — «как выгрузка Яндекса» для вкладки
+        # делегаций (UR REGS): колонки в порядке формы, строка узнаётся по ID ответа в колонке A.
+        await _ensure_column(db, "external_forms", "mirror_mode", "TEXT DEFAULT 'bot'")
+        # Предупреждение менеджеру от зеркала — например, вопрос формы без свободной колонки
+        # в листе. В отличие от mirror_error НЕ останавливает очередь листа: иначе неустранимое
+        # предупреждение зациклило бы «включить запись → снова ошибка».
+        await _ensure_column(db, "external_forms", "mirror_warning", "TEXT")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2093,6 +2107,39 @@ async def init_db():
                 UNIQUE(form_id, answer_id)
             )
         ''')
+        # Делегации вузов на Москву: оценка ответа формы делегаций (ЦА / не ЦА / проверить) и
+        # ручные решения менеджера. Источник правды по самому ответу — external_form_answers
+        # (form_id, answer_id); здесь только то, чего там нет: ta_status, вуз/курс как в форме
+        # (для сводок без разбора payload), ник для поиска по /start, привязка к Telegram и
+        # кто/когда решил. decided_by — id менеджера (ручное решение переоценкой не трогается).
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS delegation_answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                form_id INTEGER NOT NULL,
+                answer_id TEXT NOT NULL,
+                ta_status TEXT NOT NULL,
+                university TEXT,
+                course_raw TEXT,
+                course_canonical TEXT,
+                username_needle TEXT,
+                answered_at TEXT,
+                linked_telegram_id INTEGER,
+                link_how TEXT,
+                decided_by INTEGER,
+                decided_at TEXT,
+                note TEXT,
+                created_at TEXT,
+                UNIQUE(form_id, answer_id)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_delegation_answers_tid "
+            "ON delegation_answers(linked_telegram_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_delegation_answers_needle "
+            "ON delegation_answers(username_needle)"
+        )
 
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
@@ -10498,6 +10545,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("forum_stats_card_sends", "telegram_id", "checkin"),
     # Ответы внешних форм, привязанные к делегату, — его ПД (имя, телефон, ответы).
     ("external_form_answers", "matched_telegram_id", "forms"),
+    # Оценка ответа формы делегаций, привязанная к делегату, — его след (вуз, курс, ник).
+    # decided_by — id менеджера, авторская колонка: строка уходит целиком вместе с делегатом,
+    # отдельно по менеджеру не чистим.
+    ("delegation_answers", "linked_telegram_id", "forms"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({

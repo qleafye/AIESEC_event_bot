@@ -233,6 +233,24 @@ async def set_form_mirror(form_id: int, tab: str | None, error: str | None) -> N
     )
 
 
+MIRROR_MODES = ("bot", "yandex_export")
+
+
+async def set_form_mirror_mode(form_id: int, mode: str) -> None:
+    """'bot' — раскладка бота; 'yandex_export' — «как выгрузка Яндекса» (вкладка делегаций)."""
+    if mode not in MIRROR_MODES:
+        raise ValueError(f"неизвестный режим зеркала: {mode!r}")
+    await _exec("UPDATE external_forms SET mirror_mode = ? WHERE id = ?", (mode, form_id))
+
+
+async def set_form_mirror_warning(form_id: int, text: str | None) -> None:
+    """Неблокирующее предупреждение менеджеру (показывается под «📋 Лист»). В отличие от
+    mirror_error очередь листа не останавливает — `list_sheet_due` по нему не фильтрует."""
+    await _exec(
+        "UPDATE external_forms SET mirror_warning = ? WHERE id = ?", (_err(text), form_id)
+    )
+
+
 async def set_form_secret(form_id: int, secret: str) -> None:
     await _exec("UPDATE external_forms SET secret = ? WHERE id = ?", (secret, form_id))
 
@@ -311,6 +329,25 @@ async def insert_answer(
     return n > 0
 
 
+async def get_answer(form_id: int, answer_id: str) -> dict | None:
+    """Строка ответа с разобранным payload — для хуков, которым `insert_answer` id не отдаёт."""
+    row = await _fetchone(
+        "SELECT * FROM external_form_answers WHERE form_id = ? AND answer_id = ?",
+        (form_id, str(answer_id)),
+    )
+    return _with_payload(row) if row is not None else None
+
+
+async def requeue_form_answers(form_id: int) -> int:
+    """Все ответы формы снова в очередь листа как новые строки (например, после включения
+    записи в вкладку «как выгрузка Яндекса»). Возвращает число затронутых строк."""
+    return await _exec(
+        "UPDATE external_form_answers SET sheet_state = 'append', sheet_attempts = 0, "
+        "sheet_next_try_at = NULL WHERE form_id = ?",
+        (form_id,),
+    )
+
+
 async def known_answer_ids(form_id: int) -> set[str]:
     """Id, которые заново тянуть не нужно: сохранённые и удалённые (надгробия)."""
     rows = await _fetchall(
@@ -386,7 +423,7 @@ async def set_answer_match(answer_row_id: int, telegram_id: int, how: str) -> bo
 
 async def list_sheet_due(now: str, limit: int) -> list[dict]:
     rows = await _fetchall(
-        "SELECT a.*, f.mirror_tab AS mirror_tab, f.title AS title "
+        "SELECT a.*, f.mirror_tab AS mirror_tab, f.mirror_mode AS mirror_mode, f.title AS title "
         "FROM external_form_answers a JOIN external_forms f ON f.id = a.form_id "
         "WHERE a.sheet_state IN ('append', 'update') "
         "AND (a.sheet_next_try_at IS NULL OR a.sheet_next_try_at <= ?) "
