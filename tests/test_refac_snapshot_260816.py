@@ -794,6 +794,14 @@ admin|message|amb_points_value|state:AmbPointsEdit:*
 admin|message|source_link_cancel_text|state:SourceLinkCreate:*,state:SourceLinkCreate:*
 admin|message|source_link_cancel_text|state:SourceLinkCreate:*,state:SourceLinkCreate:*
 admin|message|source_link_tag_step|state:SourceLinkCreate:*
+admin|message|extf_appkeys_cancel|state:ExtFormAppKeys:*
+admin|message|extf_appkeys_client_id|state:ExtFormAppKeys:*
+admin|message|extf_appkeys_client_secret|state:ExtFormAppKeys:*
+admin|message|extf_oauth_cancel|state:ExtFormOAuth:*
+admin|message|extf_oauth_code|state:ExtFormOAuth:*
+admin|message|extf_oauth_org|state:ExtFormOAuth:*
+admin|message|extf_connect_cancel|state:ExtFormConnect:*
+admin|message|extf_connect_link|state:ExtFormConnect:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1039,6 +1047,10 @@ admin|callback_query|cksf_city_pick|cksf_city:*
 admin|callback_query|cksf_day_pick|cksf_day:*
 admin|callback_query|cksf_session_pick|cksf_pick:*
 admin|callback_query|cksf_cancel|cksf_cancel
+admin|callback_query|extff_start|extff_start
+admin|callback_query|extff_form|extff_form:*
+admin|callback_query|extff_pick|extff_pick:*
+admin|callback_query|extff_cancel|extff_cancel
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -1442,6 +1454,36 @@ admin|callback_query|forumfn_open|forumfn_open:*
 admin|callback_query|show_source_links|admin_source_links
 admin|callback_query|source_link_new|srclink_new
 admin|callback_query|source_link_cancel|srclink_cancel
+admin|callback_query|admin_ext_forms|admin_ext_forms
+admin|callback_query|extf_page|extf_p:*
+admin|callback_query|extf_card|extf_card:*
+admin|callback_query|extf_pause|extf_pause:*
+admin|callback_query|extf_resume|extf_resume:*
+admin|callback_query|extf_notify|extf_notify:*
+admin|callback_query|extf_disable|extf_disable:*
+admin|callback_query|extf_disable_ok|extf_disable_ok:*
+admin|callback_query|extf_purge|extf_purge:*
+admin|callback_query|extf_purge_ok|extf_purge_ok:*
+admin|callback_query|extf_view|extf_view:*
+admin|callback_query|extf_appkeys|extf_appkeys
+admin|callback_query|extf_appkeys_edit|extf_appkeys_edit
+admin|callback_query|extf_oauth|extf_oauth
+admin|callback_query|extf_oauth_noorg|extf_oauth_noorg
+admin|callback_query|extf_tab|extf_tab:*
+admin|callback_query|extf_tabnew|extf_tabnew:*
+admin|callback_query|extf_tabpick|extf_tabpick:*
+admin|callback_query|extf_tabnone|extf_tabnone:*
+admin|callback_query|extf_hook|extf_hook:*
+admin|callback_query|extf_rehook|extf_rehook:*
+admin|callback_query|extf_rehook_ok|extf_rehook_ok:*
+admin|callback_query|extf_add_yandex|extf_add:yandex
+admin|callback_query|extf_add_google|extf_add:google
+admin|callback_query|extf_gtab|extf_gtab:*
+admin|callback_query|extf_gwarn_ok|extf_gwarn_ok
+admin|callback_query|extf_gwarn_no|extf_gwarn_no
+admin|callback_query|extf_key|extf_key:u,extf_key:p
+admin|callback_query|extf_keyset|extf_keyset:*
+admin|callback_query|extf_keys_ok|extf_keys_ok
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2131,7 +2173,10 @@ def test_snapshot_total_handler_count_is_292():
     # 3 admin.message (state:SourceLinkCreate:*) сразу после amb_points_value и 3
     # admin.callback_query (show_source_links/source_link_new/source_link_cancel) сразу после
     # forumfn_open. Сверено diff'ом: две чистые вставки (3 + 3), 0 реордеров (978 -> 984).
-    assert len(GOLDEN_SNAPSHOT) == 984
+    # Внешние формы (Яндекс/Google): +42 хендлера admin — раздел «📝 Внешние формы», ключи
+    # приложения Яндекса (ExtFormAppKeys) и фильтр рассылки по форме (extff_*); существующий
+    # порядок не менялся, только вставки (984 -> 1026).
+    assert len(GOLDEN_SNAPSHOT) == 1026
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
