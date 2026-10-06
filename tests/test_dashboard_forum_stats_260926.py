@@ -334,7 +334,7 @@ def test_forum_page_renders_all_sections_with_data(tmp_path, monkeypatch):
     assert html_text.count('id="sessions"') == 1
     assert 'id="sos"' in html_text and 'id="decisions"' in html_text and 'id="after"' in html_text
     assert "Решено" in html_text and "Доставлено" in html_text
-    assert "Перенос регионов" in html_text and "«Юлид в цифрах»" in html_text
+    assert "Перенос регионов" in html_text and "«Мы в цифрах»" in html_text
 
 
 def test_forum_page_renders_empty_state_without_crashing(tmp_path, monkeypatch):

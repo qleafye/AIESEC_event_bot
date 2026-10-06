@@ -25,7 +25,7 @@ from tests._dbtpl import fast_init_db
 
 EXISTING_PRESETS_SNAPSHOT = {
     "forum": {
-        "label": "🏛 Форум (Юлид)",
+        "label": "🏛 Форум",
         "payment_enabled": "off",
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",
