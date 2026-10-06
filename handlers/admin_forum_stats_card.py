@@ -50,7 +50,7 @@ async def _cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     counts = await fsc.audience_counts(code)
     sent = await fsc.sent_summary(code)
 
-    lines = ["📊 <b>Карточка «Юлид в цифрах»</b>" + (f" — {html.escape(label)}" if label else "")]
+    lines = ["📊 <b>Карточка «Мы в цифрах»</b>" + (f" — {html.escape(label)}" if label else "")]
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Фон: {'✅ загружен' if bg_set else '— однотонный фон бренда'}")
     if not caption_set:
@@ -59,7 +59,7 @@ async def _cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     lines.append(f"Уже отправлено: {sent['sent']}")
     lines.append(
         "\nПодпись правится в «⚙️ Настройки» → «📋 Заявки» → "
-        "«📊 Карточка «Юлид в цифрах»: подпись»."
+        "«📊 Карточка «Мы в цифрах»: подпись»."
     )
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -180,7 +180,7 @@ async def forumstats_send_go(callback: types.CallbackQuery):
     if result.get("empty_caption"):
         await callback.message.answer(
             "❌ Ничего не отправлено: подпись к карточке пуста. Заполните её в «⚙️ Настройки» → "
-            "«📋 Заявки» → «📊 Карточка «Юлид в цифрах»: подпись» и запустите рассылку снова."
+            "«📋 Заявки» → «📊 Карточка «Мы в цифрах»: подпись» и запустите рассылку снова."
         )
         return
     text = f"✅ Отправлено {result['sent']} из {result['total']}"

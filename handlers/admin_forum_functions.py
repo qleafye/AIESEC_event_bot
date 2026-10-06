@@ -274,10 +274,10 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # per_city, свой экран этого же трека (handlers/admin_forum_stats_card.py, forumstats_cfg:*).
     # Строка добавлена аддитивно (RULES.md), номер шага соседей выше не переставляется.
     stats_card_on = await get_setting_typed_for_city("forum_stats_card_enabled", code) == "on"
-    lines.append(f"📊 Карточка «Юлид в цифрах»: {_status(stats_card_on)}")
+    lines.append(f"📊 Карточка «Мы в цифрах»: {_status(stats_card_on)}")
     if visible(f"forumstats_cfg:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(
-            text="📊 Настройки карточки «Юлид в цифрах»", callback_data=f"forumstats_cfg:{_encode_city(code)}",
+            text="📊 Настройки карточки «Мы в цифрах»", callback_data=f"forumstats_cfg:{_encode_city(code)}",
         )])
 
     if not await cities_module_on():
