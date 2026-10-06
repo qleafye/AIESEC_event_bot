@@ -1,4 +1,4 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Приёмка Юлид '26 · сессии</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Приёмка Юлид '26 · долг и новое</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Raleway:ital,wght@1,800&display=swap">
@@ -217,6 +217,35 @@ footer.end{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);col
   .plate{padding:18px 14px 14px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* два блока верхнего уровня и раскрывающиеся разделы */
+section.blk{margin-top:30px}
+.blkh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:0 12px 12px 0}
+.blkh .bi{font-size:22px;line-height:1}
+.blkh h2{font:italic 800 24px/1.1 var(--font-h);letter-spacing:-.01em;margin:0;flex:1 1 auto;color:var(--ink)}
+.blkl{color:var(--muted);font-size:14px;margin:10px 0 0}
+details.sec{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+details.sec>summary{list-style:none;cursor:pointer;display:block;padding:12px 14px}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec .bh{border-bottom:0;padding-bottom:0;flex-wrap:wrap}
+details.sec .bh h2{font-size:17px;flex:1 1 12rem}
+details.sec .chev{color:var(--faint);font-size:14px;transition:transform .15s}
+details.sec[open] .chev{transform:rotate(90deg)}
+details.sec[open]>summary{border-bottom:1px solid var(--line-soft)}
+details.sec>.bnote{padding:0 14px}
+details.sec>ol.steps{padding:0 14px;margin:0}
+.stag{display:inline-block;font:700 11.5px/1 var(--font-b);color:var(--accent-ink);background:var(--accent-soft);border:1px solid transparent;border-radius:6px;padding:4px 7px;white-space:nowrap}
+.bmeta .stag{color:var(--accent-ink);background:var(--accent-soft);border-color:transparent;padding:4px 7px}
+.stag.s-bl{color:var(--muted);background:var(--sunken)}
+.bmeta .stag.s-bl{color:var(--muted);background:var(--sunken)}
+li.subh{padding:14px 0 4px;border-bottom:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:14px}
+li.subh b{font:italic 800 15px/1.2 var(--font-h)}
+li.subh .sm{flex-basis:100%;font-size:12.5px;color:var(--faint)}
+li.subh + li.step{padding-top:8px}
+.sessinfo{margin-top:12px}
+.sessinfo .tip{margin-top:0}
+.cards{grid-template-columns:1fr}
+@media (min-width:700px){.cards{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -249,7 +278,7 @@ const ROLES = {
   A: { name: "Все", hint: "" },
 };
 const STUCK = [
-  "Напишите Андрею в Телеграм: @qleafye. Приложите скриншот экрана бота и номер шага с этой доски (например, «1.3»).",
+  "Напишите Андрею в Телеграм: @qleafye. Приложите скриншот экрана бота и номер шага с этой доски (например, «Д1.3»).",
   "Шаг, который не получается, отметьте ⏭ и идите дальше: не ждите ответа, вернётесь к нему позже.",
   "Если бот вообще молчит на /uat, значит вас ещё нет в списке тестеров: напишите Андрею свой @юзернейм.",
   "Если аккаунт делегата запутался, команда /uat ставит его заново в любое состояние: это нормально делать сколько угодно раз.",
@@ -265,7 +294,7 @@ const SESSIONS = [
     {id:"4", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start.", exp:"«✅ Готово.», после /start главное меню, в нём «🎟 Мой QR»."},
     {id:"5", who:"V", do:"Если вас трое: /uat → «🆕 Новичок — анкеты нет» → «🎗 Волонтёр входа (сканер)» → на вопрос «В каком городе?» нажать «Санкт-Петербург…» → «✅ Сбросить и засеять» → /start.", exp:"Перед сбросом карточка «⚠️ Сбросить и засеять свой аккаунт?» со строкой «Что даст роль: сканирует QR на входе …». После сброса «✅ Готово.»"},
     {id:"6", who:"M", do:"«📋 Заявки» → «🎪 Форум: функции» → «Санкт-Петербург…» → «🚦 Готовность к форуму».", exp:"Первая строка «🟢 Форум: 06.10 (1 день) — идёт сегодня». Если дата другая: «🗓 Изменить дату» → прислать 06.10.2026 → «🚦 К готовности форума». Если «(2 дня)»: «🗓 Сколько дней идёт» → 1."},
-    {id:"7", who:"M", do:"В том же светофоре посмотрите строку про вход по QR.", exp:"«🟢 Вход по QR включён …». Если строка красная, вернитесь в хаб «🎪 Форум: функции» и включите «🎟 QR для входа». Строку про чат SOS пока не трогаем: чат привяжем в разделе 6."},
+    {id:"7", who:"M", do:"В том же светофоре посмотрите строку про вход по QR.", exp:"«🟢 Вход по QR включён …». Если строка красная, вернитесь в хаб «🎪 Форум: функции» и включите «🎟 QR для входа». Строку про чат SOS пока не трогаем: чат привяжем в разделе «SOS»."},
     {id:"8", who:"M", do:"В хабе СПб посмотрите строки «👋 Приветствие после отметки на входе», «📱 Меню «день форума»» и «⭐ Отзывы о сессиях». Что выключено, включите в их настройках; у отзывов задержку поставьте «5 мин».", exp:"Все три строки «✅ Вкл». В настройках отзывов «Задержка: 5 мин»."},
     {id:"9", who:"M", do:"Создайте в Телеграме группу «Тест SOS», добавьте в неё @YouLead_test_bot и волонтёра. Делегата не добавляйте.", exp:"Бот в списке участников группы. Если вы один, в группе будете вы и бот: этого достаточно."},
     {id:"10", who:"M", do:"Приготовьте компьютер с Телеграмом (или второй телефон): на нём делегат будет показывать QR, а волонтёр сканировать его камерой телефона.", exp:"QR с экрана компьютера сканируется так же, как с телефона."},
@@ -274,7 +303,7 @@ const SESSIONS = [
   { key:"qr", title:"QR делегату", time:"7 мин", need:"менеджер + делегат", steps:[
     {id:"1", who:"D", do:"Нажмите «🎟 Мой QR».", exp:"Картинка QR и подпись «🎟 Твой QR для отметки на форуме. Сохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.»"},
     {id:"2", who:"M", do:"Хаб СПб → «✅ Отметки на форуме» → «📤 Разослать QR сейчас — Санкт-Петербург…» → «✅ Да, отправить».", exp:"Сначала вопрос «Уйдёт N … Отправить?». После подтверждения «⏳ Рассылаю QR...» меняется на «✅ QR разослан: доставлено N из N.»"},
-    {id:"3", who:"D", do:"Посмотрите пришедший QR и сделайте его скриншот: он понадобится в разделе 3.", exp:"Текст «Сегодня форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.» (именно «Сегодня», не «Завтра»). Наверху меню «🎟 Мой QR», «📅 Программа форума», «🆘 SOS»."},
+    {id:"3", who:"D", do:"Посмотрите пришедший QR и сделайте его скриншот: он понадобится в разделе «QR-пропуск и сканер на входе».", exp:"Текст «Сегодня форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.» (именно «Сегодня», не «Завтра»). Наверху меню «🎟 Мой QR», «📅 Программа форума», «🆘 SOS»."},
     {id:"4", who:"M", do:"Ещё раз «📤 Разослать QR сейчас — Санкт-Петербург…».", exp:"Всплывает «Отправлять некому — все одобренные уже получили QR.» Ничего не ушло."},
     {id:"5", who:"M", do:"Шапка «🌍 Все города» → «📋 Заявки» → «✅ Отметки на форуме» → «📤 Разослать QR сейчас — Москва…».", exp:"Всплывает «Форум этого города 30.10.2026 — рассылать QR рано. Он уйдёт сам накануне вечером; вручную — не раньше чем накануне форума.» Ничего не ушло."},
   ]},
@@ -374,7 +403,7 @@ const SESSIONS = [
     {id:"5", who:"M", do:"«📋 Заявки»: «✅ Полная форма» оставьте «👮 Ручная», «🌙 Тихие часы» выключены. «💳 Оплата» → тумблер «💳 Оплата» выключить.", exp:"При включённой оплате вместо письма об одобрении придёт экран оплаты, поэтому её выключаем. Оплату проверяем отдельно (бэклог)."},
     {id:"6", who:"M", do:"«📋 Заявки» → «❓ Частые вопросы» → «➕ Добавить»: вопрос «Где проходит форум?», ответ «Адрес пришлём за неделю».", exp:"«Пришлите текст вопроса.», потом просьба про ответ, потом карточка «❓ Пункт FAQ» с кнопками «✏️ Вопрос», «✏️ Ответ», «🚫 Скрыть от делегатов», «🗑 Удалить навсегда»."},
     {id:"7", who:"M", do:"«🔧 Управление» → «🎨 Оформление»: включите «📱 Mini App включён». «🎪 Событие» → «🔘 Кнопки меню»: включите «🌐 Язык / Language» и «❗ Важное».", exp:"Тумблеры переключаются, подписи человеческие."},
-    {id:"8", who:"M", do:"Накануне сессии: создайте Google Форму с тремя вопросами «Ник в Telegram», «Телефон», «Вуз» и включите в ней сбор ответов в таблицу («Ответы» → «Посмотреть в Таблицах»). Ссылку на таблицу держите под рукой.", exp:"Форма открывается по ссылке, таблица ответов существует. Нужна для раздела 9."},
+    {id:"8", who:"M", do:"Накануне сессии: создайте Google Форму с тремя вопросами «Ник в Telegram», «Телефон», «Вуз» и включите в ней сбор ответов в таблицу («Ответы» → «Посмотреть в Таблицах»). Ссылку на таблицу держите под рукой.", exp:"Форма открывается по ссылке, таблица ответов существует. Нужна для раздела «Внешние формы»."},
   ]},
   sections:[
   { key:"start", title:"Старт, язык, согласие, ФИО", time:"6 мин", need:"делегат; менеджер пока свободен", steps:[
@@ -395,7 +424,7 @@ const SESSIONS = [
     {id:"1", who:"D", do:"Дойдите до конца анкеты и посмотрите на сводку.", exp:"«Проверь свои ответы:» со всеми ответами строками «Вопрос: ответ», внизу две кнопки: «Всё верно» и «Изменить»."},
     {id:"2", who:"D", do:"Нажмите «Изменить». На первом вопросе напишите текст вместо кнопки, потом на каждом вопросе жмите «✅ Оставить».", exp:"Анкета НЕ начинается с нуля: каждый вопрос приходит как «Прошлый ответ: …» и «Оставить или изменить?» с кнопками «✅ Оставить» и «✏️ Изменить». На текст: «Нажми «✅ Оставить» или «✏️ Изменить».». После всех «Оставить» снова сводка с теми же ответами."},
     {id:"3", who:"D", do:"Нажмите «Всё верно».", exp:"«Поздравляем, твоя заявка принята!…» (или текст, который написал менеджер) и главное меню. Вторым сообщением «Приводи друзей в АЙСЕК» с кнопками «Хочу свою ссылку» и «Позже»."},
-    {id:"4", who:"D", do:"Нажмите «Хочу свою ссылку».", exp:"Приходит ссылка вида https://t.me/…?start=amb_ЧИСЛО. Сохраните её: пригодится в разделе 5."},
+    {id:"4", who:"D", do:"Нажмите «Хочу свою ссылку».", exp:"Приходит ссылка вида https://t.me/…?start=amb_ЧИСЛО. Сохраните её: пригодится в разделе «Меню делегата, вопрос, FAQ, язык»."},
     {id:"5", who:"D", do:"Напишите боту любой текст. Потом нажмите «❓ Задать вопрос».", exp:"На текст: «✅ Анкета уже отправлена — мы её получили. Ответ придёт сюда, в чат.». На кнопку: «⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.» Пока заявку не рассмотрели, спросить менеджера нельзя: так задумано."},
     {id:"6", who:"D", do:"Отправьте /start.", exp:"«С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже 👇» и меню. Анкета заново НЕ начинается."},
   ]},
@@ -456,8 +485,25 @@ const SESSIONS = [
     {id:"7", who:"M", do:"«📢 Рассылка» → «🎯 По фильтру» → «📝 Внешняя форма» → ваша форма → «✅ Заполнил» → «📊 Показать и отправить» → «❌ Отмена».", exp:"«📝 Какая форма? Затем выберите, кому писать — заполнившим или нет.», потом «📝 «Название» — кому писать?» с «✅ Заполнил» / «❌ Не заполнил». В сводке «Внешняя форма = Название: заполнил», под фильтр попадает 1."},
     {id:"8", who:"M", do:"Карточка формы → «⏸ Поставить на паузу», потом «⛔ Отключить» → «⛔ Да, отключить».", exp:"Карточка: «Состояние: принимает ответы», «Ответов: 1», «Вкладка таблицы: …». На паузу: «Приём ответов на паузе.». Перед отключением «⛔ Отключить форму «Название»?» и «Новые ответы перестанут приниматься. Собранные 1 анкет останутся в боте и в таблице.». После: «Форма отключена. Собранное осталось.»"},
   ]},
-  { key:"deleg", title:"Делегации вузов", time:"скоро", need:"пока никого", steps:[],
-    soon:"Функция в разработке: раздел «🏫 Делегации» в админке (сводка по вузам, проверка курса «ЦА / не ЦА», привязка не зашедших), привязка анкет из формы по @нику. Шаги появятся здесь, когда Андрей выкатит её на стенд. Пока проверять нечего." },
+  { key:"deleg", title:"Делегации вузов", time:"25 мин", need:"менеджер + два делегата (два аккаунта с @юзернеймами; можно один аккаунт по очереди через /uat); Google Форма делегаций с вопросами ФИО / вуз / курс / ник, подключённая в «📝 Внешние формы» (раздел «Внешние формы» этой сессии); в таблице стенда вкладка «UR REGS» с шапкой как у выгрузки Яндекса; у делегата открывается приложение стенда; у менеджера — веб-дашборд стенда", steps:[
+    {id:"1", who:"M", do:"«📋 Заявки» → «🏫 Делегации».", exp:"Заголовок «🏫 Делегации вузов». Если форма ещё не выбрана: «Форма делегаций не выбрана. Нажмите «📝 Выбрать форму» — список подключённых форм из «📝 Внешние формы».» и кнопка «📝 Выбрать форму». Если «Ни одна форма ещё не подключена»: сначала пройдите раздел «Внешние формы»."},
+    {id:"2", who:"M", do:"«📝 Выбрать форму» → ваша Google Форма делегаций.", exp:"«Проверьте вопросы формы — по ним бот узнаёт делегата:» и строки «ФИО — вопрос «…»», «Вуз — вопрос «…»», «Курс — вопрос «…»», «Ник в Telegram — вопрос «…» (из настроек формы)». Кнопки «✅ Верно», «✏️ Другой вопрос для ФИО», «✏️ Другой вопрос для вуза», «✏️ Другой вопрос для курса»."},
+    {id:"3", who:"M", do:"Если вопросы определены верно, нажмите «✅ Верно».", exp:"Всплывает «Вопросы сохранены, разбираю ответы формы…». Экран «🏫 Делегации вузов» со строкой «В форме: N · ЦА: N · не ЦА: N · проверить: N · зашли в бота: N · пришли: N» и кнопками «❔ Проверить курс (N)», «⏳ Не зашли (N)», «🏫 По вузам», «📋 Лист UR REGS», «🎮 Геймификация для делегатов: ☐», «📅 Отсечка ЦА: ДД.ММ.ГГГГ», «🎓 Курсы не ЦА: 1, 2», «✏️ Тексты делегату», «❓ Вопросы формы», «📝 Сменить форму»."},
+    {id:"4", who:"M", do:"«🏫 По вузам».", exp:"«🏫 По вузам», по строке на вуз: «<вуз> — ЦА N · в боте N · пришли N», внизу «Всего вузов: N». Если ответов ещё нет: «Пока ни одного ответа ЦА в форме.»"},
+    {id:"5", who:"M", do:"Вернитесь на экран делегаций → «📋 Лист UR REGS» → вкладка «UR REGS».", exp:"«🔍 Сверка с листом «UR REGS»»: «В листе строк: N», «Узнал по ID ответа: N», «Добавлю новых: N», «Шапка A–L: ✅ совпадает с вопросами формы», «Колонка M: ✅ свободна» (или «✅ уже «В боте»»). Кнопка «✅ Включить запись в «UR REGS»»."},
+    {id:"6", who:"M", do:"«✅ Включить запись в «UR REGS»» → «✅ Да, включить».", exp:"Перед включением: «Бот начнёт писать в лист «UR REGS»: • обновит N строк (колонки D–M), • добавит N новых строк после последней заполненной, • покрасит не-ЦА серым, зелёные строки и колонки P и правее не тронет. Включить?». После: всплывает «Запись включена, в очереди N строк», на экране «📋 Лист: «UR REGS» · запись включена»."},
+    {id:"7", who:"D", do:"Сначала заполните Google Форму делегаций: вуз «Тестовый университет», курс «Магистратура, 1 курс», в поле ника ваш @юзернейм. Подождите до 5 минут, потом /uat → «🆕 Новичок — анкеты нет» → /start.", exp:"Приходит «Привет! Ты в списке делегации Тестовый университет на форум Юлид в Москве 🎉 Анкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости форума.» и обычное меню одобренного делегата. Вопросов анкеты нет. «🎟 Мой QR» открывает QR, если вход по QR включён."},
+    {id:"8", who:"D", do:"Второй делегат (или тот же после /uat → «🆕 Новичок — анкеты нет»): пройдите анкету до сводки и отправьте её, заявка «на рассмотрении». Потом заполните Google Форму со своим @юзернеймом и подождите до 5 минут.", exp:"Приходит «Ты в списке делегации <вуз> — спасибо, что с нами! Заявка одобрена, меню участника ниже.» Заявка из «на рассмотрении» стала одобренной без решения менеджера."},
+    {id:"9", who:"D", do:"Третий вариант: новичок нажимает /start и доходит до первых вопросов анкеты, но не отправляет её. Тогда заполните Google Форму со своим @юзернеймом и подождите до 5 минут.", exp:"Приходит «Привет! Ты в списке делегации <вуз> на форум Юлид в Москве 🎉 …». Незаконченная анкета сбрасывается, дальше обычное меню одобренного."},
+    {id:"10", who:"M", do:"Подайте форму от тестера так, чтобы курс бот не распознал (например, курс «учусь заочно»). Подождите до 5 минут → экран «🏫 Делегации вузов» → «❔ Проверить курс (N)» → карточка человека.", exp:"Список «❔ Проверить курс (N)» и подпись «Нажмите на человека, чтобы решить.» В карточке «Вуз: …», «Курс как в форме: «учусь заочно»», «Ник: …» и кнопки «✅ ЦА», «🚫 Не ЦА». После «✅ ЦА» всплывает «Отмечено: ЦА — заявка одобрена» (если человек уже в боте) или «Отмечено: ЦА — человек ещё не заходил в бота, появится в «⏳ Не зашли»»."},
+    {id:"11", who:"M", do:"Подайте форму с опечаткой в @юзернейме делегата → «⏳ Не зашли (N)» → «🔗 <ФИО> (@ник)» → перешлите сообщение делегата или пришлите его @ник → «✅ Привязать».", exp:"«⏳ Не зашли в бота (N)»: «ЦА по форме, но бот их не узнал по нику. Нажмите, чтобы привязать вручную.» После «🔗»: «Кого это? Пришлите @ник, Telegram ID или перешлите сообщение этого человека. Привязать можно только того, кто уже открывал бота.» Подтверждение: «Привязать <ФИО> (<вуз>) к …? Заявка будет одобрена без анкеты, человек получит сообщение и доступ к QR на вход.» После «✅ Привязать» всплывает «Привязано — заявка одобрена», делегату приходит приветствие."},
+    {id:"12", who:"M", do:"«📢 Рассылка» → «🎯 По фильтру» → «🏫 Делегации» → «Делегация вуза» → «📊 Показать и отправить» → «❌ Отмена».", exp:"В выборе две кнопки «Делегация вуза» и «Не делегация»; в сводке «Делегация вуза = Делегация вуза», число получателей равно числу делегатов в боте. Кнопка «🏫 Вуз делегации» рядом отбирает один вуз из списка формы. Если делегатов в базе нет совсем: «Делегаций в базе пока нет — фильтровать не по чему.»"},
+    {id:"13", who:"D", do:"Посмотрите главное меню и нажмите любую старую кнопку игры, если она осталась в клавиатуре. Потом менеджер: «🎮 Геймификация для делегатов: ☐» → ✅, делегат: /start.", exp:"Пока тумблер выключен, в меню нет «🪙 Мои монеты» и «🎯 Задания»; старая кнопка отвечает «Задания и монеты для делегаций вузов на этом форуме выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.» После включения (всплывает «Геймификация для делегатов: включена») обе кнопки появляются в меню."},
+    {id:"14", who:"D", do:"Выключите тумблер «🎮 Геймификация для делегатов» обратно (☐) и откройте приложение стенда делегатом вуза.", exp:"Главный экран, профиль, программа и вопросы открываются как обычно. «Задания» и «Монеты» не открываются и показывают «Задания и монеты для делегаций выключены». Включите тумблер (✅) и откройте «Задания» заново: список открылся."},
+    {id:"15", who:"M", do:"В боте «📊 Данные» → «📊 Дашборд» → «🏫 Делегации» (появится ✅). Откройте веб-дашборд стенда, страница статистики.", exp:"На странице новый раздел «Делегации» в оглавлении и в списке: таблица «Вуз · ЦА в форме · В боте · Пришли», внизу строка «Всего». Тестовый вуз в таблице, ЦА ≥ 1 и «В боте» ≥ 1. Нажмите «🏫 Делегации» ещё раз (☐) и обновите страницу: раздела нет."},
+    {id:"16", who:"M", do:"Откройте в Google-таблице стенда вкладку «UR REGS».", exp:"Строка делегата: ID ответа в A, ответы формы в D–L, в колонке M «✅ зашёл»; у не зашедшего «⏳ не заходил»; у не ЦА строка серая и в M «— не ЦА». Колонки P и правее не изменились."},
+    {id:"17", who:"M", do:"В конце удалите тестовых делегатов командой /delete_user и верните «🎮 Геймификация для делегатов» в положение, как было до сессии.", exp:"Тестеры пропали из «🏫 По вузам» и из таблицы дашборда; счётчик «В форме» не меняется: ответы формы остаются в боте."},
+  ]},
   ]},
 
 { key:"s3", n:3, when:"вт 20.10 · 21:00 МСК", title:"Админка, статистика, игра", time:"≈90 мин", people:"2 человека",
@@ -634,6 +680,103 @@ const SESSIONS = [
   ]},
 ];
 
+/* ───────── верхний уровень: два блока ─────────
+   Разделы блоков собираются из разделов сессий (from: "<сессия>.<раздел>"). Ключи отметок
+   считаются от СЕССИИ и раздела исходных данных выше и от группировки не зависят: перестановка
+   разделов между блоками отметок не теряет. */
+const BLOCKS = [
+{ key:"debt", pre:"Д", icon:"🧾", title:"Долг",
+  lede:"Всё, что уже сделано в боте, но ещё ни разу не проверено на стенде: билеты и сканер, анкета и заявки, приложение, рассылки, админка, статистика, игра. Разделы собраны по функциям; у каждого написано, в какую сессию его проверяем.",
+  sections:[
+  { key:"qr", title:"QR-пропуск и сканер на входе", from:["s1.qr","s1.scan","s1.deny","bl.edge"] },
+  { key:"desk", title:"Регистрация на месте у стойки", from:["s1.desk"] },
+  { key:"prog", title:"Программа и сканер на сессиях", from:["s1.prog"] },
+  { key:"sos", title:"SOS", from:["s1.sos","bl.sos2"] },
+  { key:"vol", title:"Волонтёры по ссылке", from:["s1.vol"] },
+  { key:"nums", title:"Цифры дня и тихие часы", from:["s1.nums","bl.quiet"] },
+  { key:"noshow", title:"Не пришедшие и после форума", from:["bl.noshow","bl.after"] },
+  { key:"lost", title:"Бюро находок", from:["bl.lost"] },
+  { key:"csv", title:"Запасной путь: офлайн-сканер и файл", from:["bl.csv"] },
+  { key:"start", title:"Старт, анкета и отправка", from:["s2.start","s2.form","s2.submit"] },
+  { key:"decide", title:"Решение менеджера по заявке", from:["s2.decide"] },
+  { key:"rules", title:"Автоотказ по правилам", from:["s3.rules","bl.reject2"] },
+  { key:"menu", title:"Меню делегата, вопрос, FAQ, язык", from:["s2.menu","bl.en"] },
+  { key:"app", title:"Приложение делегата", from:["s2.app","bl.app2"] },
+  { key:"bcast", title:"Рассылки и опросы", from:["s2.bcast"] },
+  { key:"past", title:"Делегат прошлого сезона", from:["s2.past"] },
+  { key:"pay", title:"Оплата участия", from:["bl.pay"] },
+  { key:"card", title:"Карточка делегата /find", from:["s3.card"] },
+  { key:"roles", title:"Роли, доступы и границы городов", from:["s3.roles","bl.sec"] },
+  { key:"sheet", title:"Таблица: «Пришёл» и сверка с базой", from:["bl.sheet"] },
+  { key:"stats", title:"Статистика", from:["s3.stats"] },
+  { key:"chat", title:"Чат делегатов и его рейтинг", from:["bl.chat"] },
+  { key:"game", title:"Геймификация", from:["s3.game"] },
+  { key:"amb", title:"Амбассадоры и их ступени", from:["s3.amb","bl.tiers"] },
+  { key:"end", title:"Вернуть стенд", from:["s1.end","s3.end"] },
+]},
+{ key:"new", pre:"Н", icon:"✨", title:"Новое",
+  lede:"Что появилось уже после того, как эту доску переписали: делегации вузов и внешние формы. Проверяется в сессии 2.",
+  sections:[
+  { key:"deleg", title:"Делегации вузов", from:["s2.deleg"] },
+  { key:"ext", title:"Внешние формы (Google Форма)", from:["s2.ext"] },
+]},
+];
+const SESS_TAG = { s1: "Сессия 1 · 06.10", s2: "Сессия 2 · 13.10", s3: "Сессия 3 · 20.10", bl: "Без сессии" };
+const SESS_SHORT = { s1: "Сессия 1", s2: "Сессия 2", s3: "Сессия 3", bl: "Без сессии" };
+const SESS_ORDER = ["s1", "s2", "s3", "bl"];
+
+/* ───────── индексы шагов ───────── */
+const S = {};            // key -> сессия
+const SRC = {};          // "<сессия>.<раздел>" -> исходный раздел
+for (const s of SESSIONS) {
+  S[s.key] = s;
+  s.pre = s.setup.items.map(it => Object.assign(it, { key: s.key + ".pre." + it.id, sess: s.key }));
+  for (const sec of s.sections) {
+    SRC[s.key + "." + sec.key] = sec;
+    sec.sess = s.key; sec.src = s.key + "." + sec.key;
+    sec.steps.forEach(st => { st.key = s.key + "." + sec.key + "." + st.id; st.sess = s.key; st.src = sec.src; });
+  }
+}
+const STEP_INDEX = {};
+const ALL_STEPS = [];
+let N_SECTIONS = 0;
+for (const blk of BLOCKS) {
+  blk.sections.forEach((sec, i) => {
+    sec.blk = blk.key; sec.n = i + 1; sec.id = blk.key + "-" + sec.key; N_SECTIONS++;
+    sec.sources = sec.from.map(ref => { if (!SRC[ref]) throw new Error("нет раздела " + ref); return SRC[ref]; });
+    sec.merged = sec.sources.length > 1;
+    sec.steps = sec.sources.flatMap(x => x.steps);
+    sec.sessions = SESS_ORDER.filter(k => sec.sources.some(x => x.sess === k));
+    sec.opt = sec.sources.every(x => x.opt);
+    sec.note = sec.sources.map(x => x.note).filter(Boolean).join(" ");
+    if (sec.merged) {
+      const mins = sec.sources.reduce((a, x) => a + (parseInt((x.time.match(/\d+/) || ["0"])[0], 10) || 0), 0);
+      sec.time = "≈ " + mins + " мин";
+      sec.need = "";
+    } else { sec.time = sec.sources[0].time; sec.need = sec.sources[0].need || ""; }
+    sec.steps.forEach((st, j) => { st.num = blk.pre + sec.n + "." + (j + 1); st.blk = blk.key; st.sec = sec; STEP_INDEX[st.key] = st; ALL_STEPS.push(st); });
+  });
+}
+const mainSteps = () => ALL_STEPS;
+const debtBlock = BLOCKS[0];
+const RE_KEY = "re"; // динамический раздел «Повторная проверка» в «Долге»
+function cur(key){ return state.steps[key] || null; }
+function counts(steps){
+  let ok = 0, bad = 0, skip = 0;
+  for (const st of steps) { const c = cur(st.key); if (!c || !c.s) continue; if (c.s === "ok") ok++; else if (c.s === "bad") bad++; else skip++; }
+  return { ok, bad, skip, done: ok + bad + skip, total: steps.length };
+}
+/* Шаги с ❌ в «Долге» — для раздела «Повторная проверка» */
+function badSteps(){ return ALL_STEPS.filter(st => st.blk === "debt" && cur(st.key) && cur(st.key).s === "bad"); }
+function reSteps(){
+  return badSteps().map(st => ({
+    id: st.key, key: "s3." + RE_KEY + "." + st.key, sess: "s3", who: st.who, pair: st.pair,
+    num: "↻ " + st.num,
+    do: "Повторить шаг " + st.num + " (" + st.sec.title + ", " + SESS_TAG[st.sess] + "): " + st.do,
+    exp: st.exp, orig: st,
+  }));
+}
+
 /* ───────── состояние ───────── */
 const LS = "uat-sessions-261006";
 let local = {};
@@ -672,67 +815,95 @@ async function api(path, body){
 }
 function setSync(t, cls){ document.querySelectorAll(".sync").forEach(s => { s.textContent = t; s.className = "sync " + (cls || ""); }); }
 
-/* ───────── индексы шагов ───────── */
-const S = {};            // key -> сессия
-for (const s of SESSIONS) {
-  S[s.key] = s;
-  s.pre = s.setup.items.map(it => Object.assign(it, { key: s.key + ".pre." + it.id, sess: s.key }));
-  for (const sec of s.sections) {
-    sec.sess = s.key;
-    sec.steps.forEach(st => { st.key = s.key + "." + sec.key + "." + st.id; st.sess = s.key; sec_num(sec, s); st.num = sec.n + "." + st.id; });
-  }
-}
-function sec_num(sec, s){ if (!sec.n) sec.n = s.sections.indexOf(sec) + 1; }
-const RE_KEY = "re"; // динамический раздел «Повторная проверка» в сессии 3
-function mainSteps(s){ return s.sections.flatMap(sec => sec.steps); }
-function cur(key){ return state.steps[key] || null; }
-function counts(steps){
-  let ok = 0, bad = 0, skip = 0;
-  for (const st of steps) { const c = cur(st.key); if (!c || !c.s) continue; if (c.s === "ok") ok++; else if (c.s === "bad") bad++; else skip++; }
-  return { ok, bad, skip, done: ok + bad + skip, total: steps.length };
-}
-/* Шаги с ❌ в сессиях 1–2 — для раздела «Повторная проверка» сессии 3 */
-function badSteps(){
-  const out = [];
-  for (const sk of ["s1", "s2"]) for (const sec of S[sk].sections) for (const st of sec.steps) {
-    const c = cur(st.key); if (c && c.s === "bad") out.push({ st, sec, s: S[sk] });
-  }
-  return out;
-}
-function reSteps(){
-  return badSteps().map(({ st, sec, s }) => ({
-    id: st.key, key: "s3." + RE_KEY + "." + st.key, sess: "s3", who: st.who, pair: st.pair,
-    num: "С" + s.n + " · " + st.num,
-    do: "Повторить шаг " + st.num + " из сессии " + s.n + " (" + sec.title + "): " + st.do,
-    exp: st.exp, orig: st,
-  }));
-}
 
 /* ───────── отрисовка ───────── */
 const root = $("root");
-let page = null;      // {sess, nodes:{key->node}, preNodes:{}, reBox, reSig}
+let page = null;      // {nodes:{key->node}, preNodes:{}, f:{sess,role,stat}, reSig}
 const trackHtml = c => { const p = x => (c.total ? x / c.total * 100 : 0) + "%"; return `<div class="track"><i class="t-ok" style="width:${p(c.ok)}"></i><i class="t-bad" style="width:${p(c.bad)}"></i><i class="t-skip" style="width:${p(c.skip)}"></i></div>`; };
+function pl(n, a, b, c){ n = Math.abs(n) % 100; const d = n % 10; if (n > 10 && n < 20) return c; if (d > 1 && d < 5) return b; if (d === 1) return a; return c; }
+const tagHtml = k => `<span class="stag s-${k}">${esc(SESS_TAG[k])}</span>`;
 
-function renderHome(){
-  page = { sess: null, nodes: {}, preNodes: {} };
-  const cards = SESSIONS.map(s => {
-    const c = counts(mainSteps(s).concat(s.key === "s3" ? reSteps() : []));
-    const pre = counts(s.pre);
-    return `<a class="card ${s.key === "bl" ? "bl" : ""} ${c.total && c.done === c.total ? "done" : ""}" href="#${s.key}" data-card="${s.key}">
-      <div class="ey"><span class="eyebrow">${s.n ? "Сессия " + s.n : "Бэклог"}</span><span class="when">${esc(s.when)}</span></div>
-      <h2>${esc(s.title)}</h2>
-      <p>${esc(s.lede)}</p>
-      <div class="chips"><span class="chip-s">⏱ ${esc(s.time)}</span><span class="chip-s">👥 ${esc(s.people)}</span><span class="chip-s">${s.sections.length} раздел${pl(s.sections.length, "", "а", "ов")} · ${c.total} шаг${pl(c.total, "", "а", "ов")}</span></div>
-      <div class="prog"><span class="t"><b>${c.done}</b> из ${c.total} проверено${c.bad ? ` · <b style="color:var(--bad)">❌ ${c.bad}</b>` : ""}${pre.total ? ` · подготовка ${pre.ok}/${pre.total}` : ""}</span></div>
-      ${trackHtml(c)}
+function stepHtml(st, showTag){
+  const r = ROLES[st.who] || ROLES.A;
+  return `<li class="step" data-key="${esc(st.key)}" data-who="${st.who}" data-sess="${esc(st.sess)}" data-src="${esc(st.src || "")}" id="st-${esc(st.key).replace(/\./g, "-")}">
+  <div class="sh"><span class="id">${esc(st.num)}</span><span class="who ${st.who}">${esc(r.name)}</span>${st.pair ? '<span class="pair">👥 два устройства</span>' : ""}${showTag ? tagHtml(st.sess) : ""}</div>
+  <div class="txt"><p class="do">${quoteUi(st.do)}</p>${st.exp ? `<p class="exp">${quoteUi(st.exp)}</p>` : ""}</div>
+  <div class="ctl"><button class="mk ok" type="button" data-m="ok" aria-label="Шаг ${esc(st.num)}: работает">✅ <span>Работает</span></button><button class="mk bad" type="button" data-m="bad" aria-label="Шаг ${esc(st.num)}: не так">❌ <span>Не так</span></button><button class="mk skip" type="button" data-m="skip" aria-label="Шаг ${esc(st.num)}: пропуск">⏭ <span>Пропуск</span></button><button class="mk nb" type="button" data-m="note" aria-label="Шаг ${esc(st.num)}: комментарий">💬</button></div>
+  <textarea class="note" placeholder="Что увидели, своими словами" aria-label="Комментарий к шагу ${esc(st.num)}" hidden></textarea>
+  <div class="by" hidden></div></li>`;
+}
+/* Раздел блока: <details>; у собранных из нескольких частей — подзаголовок у каждой части. */
+function sectionHtml(sec, pre){
+  const meta = [`⏱ ${esc(sec.time)}`, sec.need ? `👥 ${esc(sec.need)}` : ""].filter(Boolean).map(t => `<span>${t}</span>`).join("")
+    + (sec.opt ? '<span class="opt">если останется время</span>' : "");
+  const tags = sec.sessions.map(tagHtml).join("");
+  const mixed = sec.sessions.length > 1;
+  let body = "";
+  if (sec.merged) {
+    body = sec.sources.map(src => `<ol class="steps"><li class="subh" data-src="${esc(src.src)}"><b>${esc(src.title)}</b> ${tagHtml(src.sess)}<span class="sm">⏱ ${esc(src.time)}${src.need ? " · 👥 " + esc(src.need) : ""}</span></li>${src.steps.map(st => stepHtml(st, false)).join("")}</ol>`).join("");
+  } else {
+    body = `<ol class="steps">${sec.steps.map(st => stepHtml(st, false)).join("")}</ol>`;
+  }
+  return `<details class="sec" id="sec-${esc(sec.id)}" data-sec="${esc(sec.id)}">
+  <summary><div class="bh"><span class="bn">${esc(pre)}${sec.n}</span><h2>${esc(sec.title)}</h2><span class="cnt" id="cnt-${esc(sec.id)}"></span><span class="chev" aria-hidden="true">▸</span></div>
+  <div class="bmeta">${tags}${meta}</div></summary>
+  ${sec.note ? `<p class="bnote">${quoteUi(sec.note)}</p>` : ""}
+  ${body}
+  </details>`;
+}
+function reSectionHtml(list){
+  const sec = { id: "debt-" + RE_KEY, n: debtBlock.sections.length + 1, title: "Повторная проверка", time: "10–20 мин", need: "те же роли, что у исходного шага", sessions: ["s3"], steps: list, merged: false,
+    note: list.length ? "Сюда попало всё, что в «Долге» отметили ❌. Шаг повторяется в том же месте бота: если теперь работает, ✅ здесь, старую отметку не трогаем." : "" };
+  const html = sectionHtml(sec, "Д");
+  return list.length ? html : html.replace("</details>", `<p class="bnote">Пока ни одного ❌ в «Долге». Раздел заполнится сам, как только такие отметки появятся.</p></details>`);
+}
+function blockHtml(blk){
+  const secs = blk.sections.map(sec => sectionHtml(sec, blk.pre)).join("");
+  return `<section class="blk" id="blk-${blk.key}" data-blk="${blk.key}">
+  <div class="blkh"><span class="bi">${blk.icon}</span><h2>${esc(blk.title)}</h2><span class="cnt" id="cnt-blk-${blk.key}"></span></div>
+  <p class="blkl">${esc(blk.lede)}</p>
+  <div id="secs-${blk.key}">${secs}</div>
+  ${blk.key === "debt" ? `<div id="rebox"></div>` : ""}
+  </section>`;
+}
+function preHtml(s){
+  const roleCards = s.roles.map(r => `<div class="role"><span class="who ${r}">${esc(ROLES[r].name)}</span><p>${esc(ROLES[r].hint)}</p></div>`).join("");
+  return `<div class="sessinfo" data-sess="${s.key}" hidden>
+    <div class="tip"><h2>${esc(SESS_TAG[s.key])} · ${esc(s.title)}</h2><p>${esc(s.lede)}</p><p><b>⏱ ${esc(s.time)}</b> · 👥 ${esc(s.people)}${s.n ? " · " + esc(s.when) : ""}</p></div>
+    <details class="info" id="before-${s.key}" ${counts(s.pre).ok === s.pre.length && s.pre.length ? "" : "open"}>
+      <summary><span class="ic">⏱</span><h2>Перед началом</h2><span class="tm">${esc(s.setup.time)}</span></summary>
+      <div class="ib">
+        <div class="roles">${roleCards}</div>
+        <ol class="pre">${s.pre.map(it => `<li data-key="${esc(it.key)}"><span class="box" role="checkbox" tabindex="0" aria-checked="false" aria-label="Готово">✓</span><span class="who ${it.who}">${esc(ROLES[it.who].name)}</span><div class="txt"><p class="do">${quoteUi(it.do)}</p>${it.exp ? `<p class="exp">${quoteUi(it.exp)}</p>` : ""}</div></li>`).join("")}</ol>
+      </div>
+    </details>
+  </div>`;
+}
+
+function renderBoard(){
+  const f = Object.assign({ sess: "", role: "", stat: "" }, local._f || {});
+  page = { nodes: {}, preNodes: {}, f, reSig: null };
+  const cards = BLOCKS.map(blk => {
+    const steps = blk.sections.flatMap(sec => sec.steps);
+    const nsec = blk.sections.length;
+    return `<a class="card" href="#blk-${blk.key}" data-card="${blk.key}">
+      <div class="ey"><span class="eyebrow">Блок ${blk.key === "debt" ? 1 : 2}</span><span class="when" id="bw-${blk.key}"></span></div>
+      <h2>${blk.icon} ${esc(blk.title)}</h2>
+      <p>${esc(blk.lede)}</p>
+      <div class="chips"><span class="chip-s">${nsec} раздел${pl(nsec, "", "а", "ов")} · ${steps.length} шаг${pl(steps.length, "", "а", "ов")}</span></div>
+      <div class="prog"><span class="t" id="bp-${blk.key}"></span></div>
+      <div id="bt-${blk.key}">${trackHtml({ ok: 0, bad: 0, skip: 0, total: 1 })}</div>
     </a>`;
   }).join("");
+  const sessChips = [`<button class="chip" type="button" data-f="sess" data-v="">Все сессии</button>`]
+    .concat(SESS_ORDER.map(k => `<button class="chip" type="button" data-f="sess" data-v="${k}">${esc(SESS_TAG[k])}</button>`)).join("");
+  const roleChips = ["M", "D", "V"].map(r => `<button class="chip r-${r}" type="button" data-f="role" data-v="${r}">${esc(ROLES[r].name)}</button>`).join("");
   root.innerHTML = `
   <header class="top">
     <div class="plate">
       <div class="eyebrow">Тестовый бот · @YouLead_test_bot</div>
-      <h1>Приёмка Юлид '26 · по сессиям</h1>
-      <p class="lede">Три проверки по вторникам после 21:00 МСК, по полтора часа каждая. Сначала то, без чего нельзя провести форум, потом путь делегата и рассылки, потом админка и статистика. Что не проверено к 20 октября, на московском форуме 30–31 октября не включаем.</p>
+      <h1>Приёмка Юлид '26</h1>
+      <p class="lede">Два блока. «🧾 Долг» — всё, что уже сделано в боте, но ещё не проверено. «✨ Новое» — то, что появилось позже. Проверки идут по вторникам после 21:00 МСК, по полтора часа: чтобы увидеть шаги своей сессии, нажмите её кнопку над списком, например «Сессия 1 · 06.10». Что не проверено к 20 октября, на московском форуме 30–31 октября не включаем.</p>
       <div class="meta">
         <span>Каждая сессия: <b>1,5 часа</b>, <b>2–3 человека</b>; можно и одному с двумя аккаунтами</span>
         <span>Отметки <b>общие</b>: что отметил один, видят все, с именем и временем</span>
@@ -744,101 +915,68 @@ function renderHome(){
   <div class="cards">${cards}</div>
   <div class="tip">
     <h2>Как это устроено</h2>
-    <p>Внутри сессии разделы по функциям. У каждого раздела написано, сколько минут он занимает и кто нужен. У каждого шага: что сделать и что должно получиться. Текст в плашке <q class="ui">вот так</q> дословно совпадает с кнопкой или ответом бота; на месте многоточия в <q class="ui">Санкт-Петербург…</q> бот пишет подпись города целиком; <q class="ui">ЧЧ:ММ</q> и <q class="ui">N</q> значат любое время и любое число.</p>
-    <p><b>Как отмечать.</b> ✅ Работает, если всё совпало. ❌ Не так откроет поле: напишите, что увидели, и пришлите скриншот Андрею с номером шага. ⏭ Пропуск, если проверить не получилось. 💬 добавляет комментарий к любому шагу. Повторное нажатие той же отметки снимает её.</p>
+    <p>Внутри блока разделы по функциям. У каждого раздела написано, сколько минут он занимает, кто нужен и в какую сессию его проверяем. У каждого шага: что сделать и что должно получиться. Текст в плашке <q class="ui">вот так</q> дословно совпадает с кнопкой или ответом бота; на месте многоточия в <q class="ui">Санкт-Петербург…</q> бот пишет подпись города целиком; <q class="ui">ЧЧ:ММ</q> и <q class="ui">N</q> значат любое время и любое число.</p>
+    <p><b>Как отмечать.</b> ✅ Работает, если всё совпало. ❌ Не так откроет поле: напишите, что увидели, и пришлите скриншот Андрею с номером шага (например, «Д1.3»). ⏭ Пропуск, если проверить не получилось. 💬 добавляет комментарий к любому шагу. Повторное нажатие той же отметки снимает её.</p>
     <p><b>Роли.</b> <span class="who M">Менеджер</span> ${esc(ROLES.M.hint)} <span class="who D">Делегат</span> ${esc(ROLES.D.hint)} <span class="who V">Волонтёр</span> ${esc(ROLES.V.hint)} Пометка <span class="pair">👥 два устройства</span> у шага значит, что QR делегата показывают на одном экране, а сканируют другим телефоном.</p>
   </div>
   <details class="info stuck"><summary><span class="ic">🆘</span><h2>Если застряли</h2></summary><div class="ib"><ul>${STUCK.map(t => "<li>" + esc(t) + "</li>").join("")}</ul></div></details>
-  <footer class="end">Юлид · АЙСЕК · общая доска приёмки uat.alekseev.info · <a href="#s1">сессия 1</a> · <a href="#s2">сессия 2</a> · <a href="#s3">сессия 3</a> · <a href="#bl">бэклог</a></footer>`;
-}
-function pl(n, a, b, c){ n = Math.abs(n) % 100; const d = n % 10; if (n > 10 && n < 20) return c; if (d > 1 && d < 5) return b; if (d === 1) return a; return c; }
-
-function stepHtml(st){
-  const r = ROLES[st.who] || ROLES.A;
-  return `<li class="step" data-key="${esc(st.key)}" data-who="${st.who}" id="st-${esc(st.key).replace(/\./g, "-")}">
-  <div class="sh"><span class="id">${esc(st.num)}</span><span class="who ${st.who}">${esc(r.name)}</span>${st.pair ? '<span class="pair">👥 два устройства</span>' : ""}</div>
-  <div class="txt"><p class="do">${quoteUi(st.do)}</p>${st.exp ? `<p class="exp">${quoteUi(st.exp)}</p>` : ""}</div>
-  <div class="ctl"><button class="mk ok" type="button" data-m="ok" aria-label="Шаг ${esc(st.num)}: работает">✅ <span>Работает</span></button><button class="mk bad" type="button" data-m="bad" aria-label="Шаг ${esc(st.num)}: не так">❌ <span>Не так</span></button><button class="mk skip" type="button" data-m="skip" aria-label="Шаг ${esc(st.num)}: пропуск">⏭ <span>Пропуск</span></button><button class="mk nb" type="button" data-m="note" aria-label="Шаг ${esc(st.num)}: комментарий">💬</button></div>
-  <textarea class="note" placeholder="Что увидели, своими словами" aria-label="Комментарий к шагу ${esc(st.num)}" hidden></textarea>
-  <div class="by" hidden></div></li>`;
-}
-function sectionHtml(sec, steps){
-  const meta = [`⏱ ${esc(sec.time)}`, sec.need ? `👥 ${esc(sec.need)}` : ""].filter(Boolean).map(t => `<span>${t}</span>`).join("") + (sec.opt ? '<span class="opt">если останется время</span>' : "");
-  return `<section class="block" id="sec-${esc(sec.key)}" data-sec="${esc(sec.key)}">
-  <div class="bh"><span class="bn">${sec.n ? "РАЗДЕЛ " + sec.n : ""}</span><h2>${esc(sec.title)}</h2><span class="cnt" id="cnt-${esc(sec.key)}"></span></div>
-  <div class="bmeta">${meta}</div>
-  ${sec.note ? `<p class="bnote">${quoteUi(sec.note)}</p>` : ""}
-  ${sec.soon ? `<div class="soon">${quoteUi(sec.soon)}</div>` : ""}
-  <ol class="steps">${steps.map(stepHtml).join("")}</ol>
-  </section>`;
-}
-function renderSession(s){
-  const f = local["_f_" + s.key] || { role: "", stat: "" };
-  page = { sess: s.key, nodes: {}, preNodes: {}, f, reSig: "" };
-  const roleChips = s.roles.map(r => `<button class="chip r-${r}" type="button" data-f="role" data-v="${r}" aria-pressed="${f.role === r}">${esc(ROLES[r].name)}</button>`).join("");
-  const roleCards = s.roles.map(r => `<div class="role"><span class="who ${r}">${esc(ROLES[r].name)}</span><p>${esc(ROLES[r].hint)}</p></div>`).join("");
-  root.innerHTML = `
-  <a class="back" href="#">← Все сессии</a>
-  <header class="top" style="padding-top:10px">
-    <div class="plate">
-      <div class="eyebrow">${s.n ? "Сессия " + s.n + " · " + esc(s.when) : "Бэклог · " + esc(s.when)}</div>
-      <h1>${esc(s.title)}</h1>
-      <p class="lede">${esc(s.lede)}</p>
-      <div class="meta"><span>⏱ <b>${esc(s.time)}</b></span><span>👥 <b>${esc(s.people)}</b></span><span>Тестовый бот <b>@YouLead_test_bot</b></span></div>
-    </div>
-  </header>
-  <div class="bar">
+  <div class="bar" id="bar">
     <div class="pt"><span id="ptext"></span><span id="pright"></span></div>
     <div id="ptrack">${trackHtml({ ok: 0, bad: 0, skip: 0, total: 1 })}</div>
   </div>
   <div class="under">
     <div class="filters" id="filters">
-      <button class="chip" type="button" data-f="role" data-v="" aria-pressed="${!f.role}">Все шаги</button>${roleChips}
+      ${sessChips}
       <span class="sep"></span>
-      <button class="chip" type="button" data-f="stat" data-v="" aria-pressed="${!f.stat}">Любой статус</button>
-      <button class="chip" type="button" data-f="stat" data-v="todo" aria-pressed="${f.stat === "todo"}">Не проверено</button>
-      <button class="chip" type="button" data-f="stat" data-v="bad" aria-pressed="${f.stat === "bad"}">❌ Не так</button>
+      <button class="chip" type="button" data-f="role" data-v="">Все роли</button>${roleChips}
+      <span class="sep"></span>
+      <button class="chip" type="button" data-f="stat" data-v="">Любой статус</button>
+      <button class="chip" type="button" data-f="stat" data-v="todo">Не проверено</button>
+      <button class="chip" type="button" data-f="stat" data-v="bad">❌ Не так</button>
     </div>
     <div class="sync" id="sync-s">Подключаюсь к общей доске…</div>
   </div>
   <main>
-    <details class="info" id="before" ${counts(s.pre).ok === s.pre.length && s.pre.length ? "" : "open"}>
-      <summary><span class="ic">⏱</span><h2>Перед началом</h2><span class="tm">${esc(s.setup.time)}</span></summary>
-      <div class="ib">
-        <div class="roles">${roleCards}</div>
-        <ol class="pre">${s.pre.map(it => `<li data-key="${esc(it.key)}"><span class="box" role="checkbox" tabindex="0" aria-checked="false" aria-label="Готово">✓</span><span class="who ${it.who}">${esc(ROLES[it.who].name)}</span><div class="txt"><p class="do">${quoteUi(it.do)}</p>${it.exp ? `<p class="exp">${quoteUi(it.exp)}</p>` : ""}</div></li>`).join("")}</ol>
-      </div>
-    </details>
-    <details class="info stuck"><summary><span class="ic">🆘</span><h2>Если застряли</h2></summary><div class="ib"><ul>${STUCK.map(t => "<li>" + esc(t) + "</li>").join("")}</ul></div></details>
-    <div id="secs">${s.sections.map(sec => sectionHtml(sec, sec.steps)).join("")}</div>
-    ${s.key === "s3" ? `<div id="rebox"></div>` : ""}
-    <div class="empty" id="empty" hidden>Под фильтр не попал ни один шаг. Нажмите «Все шаги» и «Любой статус».</div>
+    ${SESSIONS.map(preHtml).join("")}
+    ${BLOCKS.map(blockHtml).join("")}
+    <div class="empty" id="empty" hidden>Под фильтр не попал ни один шаг. Нажмите «Все сессии», «Все роли» и «Любой статус».</div>
   </main>
-  <footer class="end">✅ совпало с «Должно быть». ❌ не так: напишите, что увидели, и скриншот Андрею. ⏭ пропустили. Отметки общие, поэтому впишите имя внизу. В конце нажмите «Отчёт» и отправьте текст Андрею.</footer>`;
+  <footer class="end">✅ совпало с «Должно быть». ❌ не так: напишите, что увидели, и скриншот Андрею. ⏭ пропустили. Отметки общие, поэтому впишите имя внизу. В конце нажмите «Отчёт» и отправьте текст Андрею. Юлид · АЙСЕК · общая доска приёмки uat.alekseev.info · <a href="#s1">сессия 1</a> · <a href="#s2">сессия 2</a> · <a href="#s3">сессия 3</a> · <a href="#bl">без сессии</a></footer>`;
 
   for (const li of root.querySelectorAll("li.step")) page.nodes[li.dataset.key] = mkNode(li);
   for (const li of root.querySelectorAll("ol.pre li")) page.preNodes[li.dataset.key] = li;
-  if (s.key === "s3") renderRe();
-  $("filters").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; page.f[b.dataset.f] = b.dataset.v; local["_f_" + s.key] = page.f; save(); applyFilter(); });
+  renderRe();
+  setOpen(true);
+  $("filters").addEventListener("click", e => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    page.f[b.dataset.f] = b.dataset.v; local._f = page.f; save();
+    if (b.dataset.f === "sess") history.replaceState(null, "", b.dataset.v ? "#" + b.dataset.v : location.pathname + location.search);
+    setOpen(false); applyFilter(); paint();
+    if (b.dataset.f === "sess") window.scrollTo(0, Math.max(0, $("bar").getBoundingClientRect().top + window.scrollY - 4));
+  });
+}
+/* Разделы раскрыты, когда включён любой фильтр (так шаги сессии сразу на виду); без фильтра свёрнуты. */
+function setOpen(initial){
+  const any = page.f.sess || page.f.role || page.f.stat;
+  for (const d of root.querySelectorAll("details.sec")) { if (initial && d.id === "sec-debt-" + RE_KEY) continue; d.open = !!any; }
 }
 function mkNode(li){
   const st = findStep(li.dataset.key);
   return { li, st, note: li.querySelector(".note"), by: li.querySelector(".by"), nb: li.querySelector(".nb"), btns: li.querySelectorAll(".mk[data-m]:not(.nb)") };
 }
-const STEP_INDEX = {};
-for (const s of SESSIONS) for (const sec of s.sections) for (const st of sec.steps) STEP_INDEX[st.key] = st;
 function findStep(key){ return STEP_INDEX[key] || (page && page.reList || []).find(x => x.key === key) || { key, num: key, who: "A", do: key, exp: "" }; }
 
 function renderRe(){
   const list = reSteps();
   const sig = list.map(x => x.key).join("|");
   if (sig === page.reSig) return;
+  const old = $("sec-debt-" + RE_KEY);
+  const wasOpen = old ? old.open : false;
   page.reSig = sig; page.reList = list;
-  const sec = { key: RE_KEY, n: S.s3.sections.length + 1, title: "Повторная проверка", time: "10–20 мин", need: "те же роли, что у исходного шага",
-    note: list.length ? "Сюда попало всё, что в сессиях 1 и 2 отметили ❌. Шаг повторяется в том же месте бота: если теперь работает, ✅ здесь, старую отметку не трогаем." : "",
-    soon: list.length ? "" : "Пока ни одного ❌ в сессиях 1 и 2. Раздел заполнится сам, как только такие отметки появятся." };
   for (const k of Object.keys(page.nodes)) if (k.startsWith("s3." + RE_KEY + ".")) delete page.nodes[k];
-  $("rebox").innerHTML = sectionHtml(sec, list);
+  $("rebox").innerHTML = reSectionHtml(list);
+  const d = $("sec-debt-" + RE_KEY);
+  d.open = wasOpen || !!(page.f.sess || page.f.role || page.f.stat);
   for (const li of $("rebox").querySelectorAll("li.step")) page.nodes[li.dataset.key] = mkNode(li);
   applyFilter();
 }
@@ -880,11 +1018,12 @@ root.addEventListener("input", e => {
   clearTimeout(timers[key]); timers[key] = setTimeout(() => push(key, li.dataset.s || "", e.target.value), 800);
 });
 
+/* Шаги, попавшие под фильтр сессии (роль и статус на счётчики не влияют). */
+const inSess = (st, f) => !f.sess || st.sess === f.sess;
 function paint(){
   if (!page) return;
-  if (!page.sess) { renderHome(); return; }
-  const s = S[page.sess];
-  if (s.key === "s3") renderRe();
+  renderRe();
+  const f = page.f;
   for (const key of Object.keys(page.nodes)) {
     const nd = page.nodes[key]; const c = cur(key); const v = (c && c.s) || "";
     nd.li.dataset.s = v;
@@ -900,42 +1039,69 @@ function paint(){
     const li = page.preNodes[key]; const c = cur(key); const v = (c && c.s) || "";
     li.dataset.s = v; li.querySelector(".box").setAttribute("aria-checked", v === "ok" ? "true" : "false");
   }
-  const secs = s.sections.concat(s.key === "s3" ? [{ key: RE_KEY, steps: page.reList || [] }] : []);
-  let all = { ok: 0, bad: 0, skip: 0, done: 0, total: 0 };
-  for (const sec of secs) {
-    const c = counts(sec.steps); for (const k of Object.keys(all)) all[k] += c[k];
-    const el = $("cnt-" + sec.key); if (!el) continue;
-    el.textContent = c.total ? c.done + " / " + c.total + (c.bad ? " · ❌ " + c.bad : "") : "";
-    el.className = "cnt" + (c.bad ? " has-bad" : c.total && c.done === c.total ? " all" : "");
+  const cntEl = (el, c) => { if (!el) return; el.textContent = c.total ? c.done + " / " + c.total + (c.bad ? " · ❌ " + c.bad : "") : ""; el.className = "cnt" + (c.bad ? " has-bad" : c.total && c.done === c.total ? " all" : ""); };
+  const re = page.reList || [];
+  const all = { ok: 0, bad: 0, skip: 0, done: 0, total: 0 };
+  const parts = [];
+  for (const blk of BLOCKS) {
+    const bsteps = [];
+    for (const sec of blk.sections) {
+      const st = sec.steps.filter(x => inSess(x, f)); bsteps.push(...st);
+      cntEl($("cnt-" + sec.id), counts(st));
+    }
+    if (blk.key === "debt") { const rs = re.filter(x => inSess(x, f)); bsteps.push(...rs); cntEl($("cnt-debt-" + RE_KEY), counts(rs)); }
+    const c = counts(bsteps);
+    cntEl($("cnt-blk-" + blk.key), c);
+    for (const k of Object.keys(all)) all[k] += c[k];
+    parts.push(blk.title + " " + c.done + "/" + c.total);
+    const full = counts(blk.sections.flatMap(x => x.steps));
+    $("bp-" + blk.key).innerHTML = `<b>${full.done}</b> из ${full.total} проверено${full.bad ? ` · <b style="color:var(--bad)">❌ ${full.bad}</b>` : ""}`;
+    $("bt-" + blk.key).innerHTML = trackHtml(full);
+    $("bw-" + blk.key).textContent = full.total && full.done === full.total ? "всё проверено" : "";
   }
-  $("ptext").innerHTML = `Проверено <b>${all.done}</b> из ${all.total}` + (all.bad ? ` · <b class="e">❌ ${all.bad}</b>` : "") + (all.skip ? ` · ⏭ ${all.skip}` : "");
-  const pre = counts(s.pre); $("pright").textContent = pre.total ? `подготовка ${pre.ok}/${pre.total}` : "";
+  const label = f.sess ? SESS_TAG[f.sess] : "Все сессии";
+  $("ptext").innerHTML = `${esc(label)}: проверено <b>${all.done}</b> из ${all.total}` + (all.bad ? ` · <b class="e">❌ ${all.bad}</b>` : "") + (all.skip ? ` · ⏭ ${all.skip}` : "");
+  const pre = f.sess ? counts(S[f.sess].pre) : null;
+  $("pright").textContent = pre && pre.total ? `подготовка ${pre.ok}/${pre.total}` : parts.join(" · ");
   $("ptrack").innerHTML = trackHtml(all);
   applyFilter();
 }
 function applyFilter(){
-  if (!page || !page.sess) return;
+  if (!page) return;
   const f = page.f; let shown = 0;
   document.querySelectorAll("#filters .chip").forEach(b => b.setAttribute("aria-pressed", String((f[b.dataset.f] || "") === b.dataset.v)));
   for (const key of Object.keys(page.nodes)) {
     const nd = page.nodes[key]; const v = nd.li.dataset.s || "";
+    const okSess = !f.sess || nd.li.dataset.sess === f.sess;
     const okRole = !f.role || nd.li.dataset.who === f.role || nd.li.dataset.who === "A";
     const okStat = !f.stat || (f.stat === "todo" ? !v : v === f.stat);
-    nd.li.hidden = !(okRole && okStat); if (!nd.li.hidden) shown++;
+    nd.li.hidden = !(okSess && okRole && okStat); if (!nd.li.hidden) shown++;
   }
-  for (const sec of root.querySelectorAll("section.block")) {
+  for (const sub of root.querySelectorAll("li.subh")) {
+    const vis = sub.parentElement.querySelectorAll("li.step:not([hidden])");
+    sub.hidden = vis.length === 0;
+  }
+  for (const sec of root.querySelectorAll("details.sec")) {
     const steps = sec.querySelectorAll("li.step"); const vis = sec.querySelectorAll("li.step:not([hidden])");
     sec.hidden = steps.length > 0 && vis.length === 0;
   }
+  for (const blk of root.querySelectorAll("section.blk")) {
+    const secs = blk.querySelectorAll("details.sec"); const vis = blk.querySelectorAll("details.sec:not([hidden])");
+    blk.hidden = secs.length > 0 && vis.length === 0;
+  }
+  for (const si of root.querySelectorAll(".sessinfo")) si.hidden = si.dataset.sess !== f.sess;
   $("empty").hidden = shown > 0 || !Object.keys(page.nodes).length;
 }
 
 /* ───────── маршрут ───────── */
+/* #s1 / #s2 / #s3 / #bl — включить фильтр сессии (так ссылки старой доски остаются рабочими);
+   #blk-… / #sec-… — прокрутить к блоку или разделу. */
 function route(){
+  if (!page) renderBoard();
   const h = location.hash.replace("#", "");
-  const s = S[h];
-  if (s) renderSession(s); else renderHome();
-  window.scrollTo(0, 0);
+  if (S[h]) { page.f.sess = h; local._f = page.f; save(); setOpen(false); applyFilter(); paint(); window.scrollTo(0, Math.max(0, $("bar").getBoundingClientRect().top + window.scrollY - 4)); return; }
+  const el = h ? document.getElementById(h) : null;
+  if (el) { if (el.tagName === "DETAILS") el.open = true; el.scrollIntoView(); }
   paint();
 }
 window.addEventListener("hashchange", route);
@@ -958,31 +1124,40 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) pull
 
 /* ───────── отчёт ───────── */
 const LABEL = { ok: "✅ ок", bad: "❌ не так", skip: "⏭ пропуск" };
-function reportFor(s){
-  const lines = [];
-  const secs = s.sections.concat(s.key === "s3" ? [{ key: RE_KEY, n: s.sections.length + 1, title: "Повторная проверка", steps: reSteps() }] : []);
-  const c = counts(secs.flatMap(x => x.steps));
-  lines.push((s.n ? "СЕССИЯ " + s.n + " · " + s.when : "БЭКЛОГ") + " · " + s.title.toUpperCase() + " (" + c.done + " из " + c.total + ", ❌ " + c.bad + ", ⏭ " + c.skip + ")");
-  const pre = s.pre.filter(it => { const st = cur(it.key); return !(st && st.s === "ok"); });
-  if (pre.length && pre.length < s.pre.length) lines.push("  Не отмечено в подготовке: " + pre.map(it => it.id).join(", "));
-  for (const sec of secs) {
-    lines.push("Раздел " + sec.n + ". " + sec.title);
-    for (const st of sec.steps) {
-      const c2 = cur(st.key);
-      const mark = c2 && c2.s ? "[" + LABEL[c2.s] + "]" : "[не сделано]";
-      const by = c2 && c2.who ? " · " + c2.who : "";
-      lines.push("  " + st.num + " " + mark + " " + st.do + by);
-      const n = c2 && (c2.note || "").trim();
-      if (n) lines.push("      заметка: " + n.replace(/\n/g, "\n      "));
-    }
-  }
-  return lines.join("\n");
-}
 function buildReport(){
+  const f = page ? page.f : { sess: "" };
   const head = ["ПРИЁМКА ЮЛИД '26 · тестовый бот @YouLead_test_bot · общая доска uat.alekseev.info",
     "Отчёт собран: " + new Date().toLocaleString("ru-RU") + (local._who ? " · " + local._who : "")];
-  const list = page && page.sess ? [S[page.sess]] : SESSIONS;
-  return head.concat(list.map(s => "\n" + reportFor(s))).join("\n");
+  const lines = [];
+  const re = (page && page.reList) || [];
+  const scope = f.sess ? SESS_TAG[f.sess].toUpperCase() : "ВСЕ СЕССИИ";
+  const all = counts(ALL_STEPS.filter(st => inSess(st, f)).concat(re.filter(st => inSess(st, f))));
+  lines.push("\n" + scope + " (" + all.done + " из " + all.total + ", ❌ " + all.bad + ", ⏭ " + all.skip + ")");
+  const sessList = f.sess ? [S[f.sess]] : SESSIONS;
+  for (const s of sessList) {
+    const pre = s.pre.filter(it => { const st = cur(it.key); return !(st && st.s === "ok"); });
+    if (pre.length && pre.length < s.pre.length) lines.push("  Не отмечено в подготовке (" + SESS_SHORT[s.key] + "): " + pre.map(it => it.id).join(", "));
+  }
+  for (const blk of BLOCKS) {
+    const secs = blk.sections.map(sec => ({ n: blk.pre + sec.n, title: sec.title, steps: sec.steps }));
+    if (blk.key === "debt") secs.push({ n: "Д" + (blk.sections.length + 1), title: "Повторная проверка", steps: re });
+    const out = [];
+    for (const sec of secs) {
+      const steps = sec.steps.filter(st => inSess(st, f));
+      if (!steps.length) continue;
+      out.push("Раздел " + sec.n + ". " + sec.title);
+      for (const st of steps) {
+        const c2 = cur(st.key);
+        const mark = c2 && c2.s ? "[" + LABEL[c2.s] + "]" : "[не сделано]";
+        const by = c2 && c2.who ? " · " + c2.who : "";
+        out.push("  " + st.num + (f.sess ? "" : " (" + SESS_SHORT[st.sess] + ")") + " " + mark + " " + st.do + by);
+        const n = c2 && (c2.note || "").trim();
+        if (n) out.push("      заметка: " + n.replace(/\n/g, "\n      "));
+      }
+    }
+    if (out.length) { lines.push("\nБЛОК «" + blk.title.toUpperCase() + "»"); lines.push(...out); }
+  }
+  return head.concat(lines).join("\n");
 }
 const report = $("report"), reportText = $("reportText");
 $("copy").addEventListener("click", async () => {
