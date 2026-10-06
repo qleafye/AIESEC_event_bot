@@ -974,6 +974,32 @@ async def roles_remove(callback: types.CallbackQuery):
         await callback.answer("Это суперадмин из .env, снять из бота нельзя", show_alert=True)
         return
 
+    caps = _known_caps(await get_setting_typed(role_caps_key(role)))
+    access = ", ".join(CAP_LABELS.get(c, c) for c in caps) if caps else "ничему — у этой роли сейчас нет прав"
+    name = html_module.escape(await person_label(tid))
+    label = ROLES[role]["label"]
+    await callback.message.edit_text(
+        f"Снять роль «{label}» с {name}?\n\n"
+        f"Он потеряет доступ к: {access}.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Да, снять", callback_data=f"roles_del_ok:{tid}:{role}"),
+            InlineKeyboardButton(text="Отмена", callback_data="admin_roles"),
+        ]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("roles_del_ok:"))
+async def roles_remove_yes(callback: types.CallbackQuery):
+    tid, role = _parse_staff_role_callback(callback.data)
+    if tid is None or role not in ROLES:
+        await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    if tid in config.ADMIN_IDS:
+        await callback.answer("Это суперадмин из .env, снять из бота нельзя", show_alert=True)
+        return
+
     await remove_staff(tid, role)
     text = await render_roles_text()
     kb = await build_roles_keyboard(callback.from_user.id)
