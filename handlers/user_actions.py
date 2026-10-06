@@ -204,6 +204,28 @@ async def ensure_current_season(message: types.Message) -> bool:
     return False
 
 
+async def ensure_game_allowed(event) -> bool:
+    """Делегации вузов (D-08): третий гейт игровых хендлеров (после `ensure_registered` и
+    `ensure_current_season`) — делегату вуза монеты/задания закрыты, пока менеджер не включил
+    «🎮 Геймификация для делегатов». Гейт живёт ЗДЕСЬ, а не только в клавиатуре: старая
+    клавиатура у делегата всё ещё шлёт тексты кнопок и колбэки. Принимает Message или
+    CallbackQuery; не-делегат и включённый тумблер — True без единого сообщения. Рейтинг чата
+    этот гейт не трогает."""
+    user = await get_user(event.from_user.id)
+    if not (user and user.get("delegation")):
+        return True
+    if await get_setting_typed("delegation_game_enabled") == "on":
+        return True
+    lang, tr_map = await reg_i18n.ctx_for(event)
+    text = reg_i18n.tr_text(await get_setting_typed("delegation_game_off_text"), lang, tr_map)
+    # Колбэк — алерт (у него есть `.message`), сообщение — обычный ответ через reg_i18n.say.
+    if isinstance(event, types.CallbackQuery) or hasattr(event, "message"):
+        await event.answer(text, show_alert=True)
+    else:
+        await reg_i18n.say(event, text)
+    return False
+
+
 # --- Coins (COIN-03) ---
 
 async def render_leaderboard(
@@ -350,6 +372,8 @@ async def show_my_coins(message: types.Message):
         return
     if not await ensure_current_season(message):
         return
+    if not await ensure_game_allowed(message):
+        return
     lang, tr_map = await reg_i18n.ctx_for(message)
     text, kb = await _balance_screen(message.from_user.id, lang, tr_map)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -360,6 +384,8 @@ async def gbal_history(callback: types.CallbackQuery):
     """T-16-01-01: offset parsed with a try/except, clamped to >= 0 server-side (the deeper
     "beyond total" clamp lives inside `_balance_history_screen`'s own нав-row logic, same
     idiom as `coinsjrn_page`)."""
+    if not await ensure_game_allowed(callback):
+        return
     try:
         offset = int(callback.data.split(":", 1)[1])
     except (ValueError, IndexError):
@@ -374,6 +400,8 @@ async def gbal_history(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "gbal_top")
 async def gbal_top(callback: types.CallbackQuery):
+    if not await ensure_game_allowed(callback):
+        return
     rows = await get_leaderboard(10)
     rank = await get_user_rank(callback.from_user.id)
     balance = await get_balance(callback.from_user.id)
@@ -388,6 +416,8 @@ async def gbal_top(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "gbal_back")
 async def gbal_back(callback: types.CallbackQuery):
+    if not await ensure_game_allowed(callback):
+        return
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text, kb = await _balance_screen(callback.from_user.id, lang, tr_map)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -579,6 +609,8 @@ async def show_game_tasks(message: types.Message):
         return
     if not await ensure_current_season(message):
         return
+    if not await ensure_game_allowed(message):
+        return
     lang, tr_map = await reg_i18n.ctx_for(message)
     text, kb = await _game_task_list_screen(message.from_user.id, page=0, lang=lang, tr_map=tr_map)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -635,6 +667,8 @@ async def mytask_open(callback: types.CallbackQuery):
     и Mini App (`miniapp/routers/*`) — сигнатуру той функции не трогаем, чтобы не разойтись со
     вторым исполнителем на приложении; переводим только `status_line`, который СОБИРАЕТСЯ
     здесь (бот-only код) ДО передачи внутрь."""
+    if not await ensure_game_allowed(callback):
+        return
     lang, tr_map = await reg_i18n.ctx_for(callback)
     try:
         task_id = int(callback.data.split(":", 1)[1])
@@ -699,6 +733,8 @@ async def mytask_back(callback: types.CallbackQuery):
     ок" per CONTEXT.md). A no-photo card IS the (edited) list message -- "back" re-renders the
     list into the SAME message via edit_text, at the page parsed from callback_data (default 0
     on parse failure, T-16-01-01)."""
+    if not await ensure_game_allowed(callback):
+        return
     if callback.message.photo:
         try:
             await callback.message.delete()
@@ -721,6 +757,8 @@ async def gtasks_page(callback: types.CallbackQuery):
     """Phase 16 (16-01): list pagination -- edits the SAME message (T-16-01-01: page parsed
     with a try/except, clamped server-side inside `_game_task_list_screen`, never trusts the
     client-supplied page number as-is)."""
+    if not await ensure_game_allowed(callback):
+        return
     try:
         page = int(callback.data.split(":", 1)[1])
     except (ValueError, IndexError):
@@ -795,6 +833,8 @@ async def _ack_album(media_group_id: str, bot: Bot, chat_id: int, state: FSMCont
 
 @router.callback_query(F.data.startswith("mytask_submit:"))
 async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
+    if not await ensure_game_allowed(callback):
+        return
     lang, tr_map = await reg_i18n.ctx_for(callback)
     try:
         task_id = int(callback.data.split(":", 1)[1])
