@@ -352,6 +352,28 @@ def test_convert_new_user_from_reg_started(tmp_path):
     assert ("form_completed", "delegation") in [(e, s) for _, e, s in _reg_events(501)]
 
 
+def test_convert_credits_inviting_ambassador(tmp_path, monkeypatch):
+    """Одобрение делегата проходит через ту же точку «приглашённого одобрили», что обычная
+    заявка (record_decision → on_invitees_approved): амбассадор получает зачёт ровно один раз,
+    повторная обработка того же ответа второй раз не зачитывает."""
+    _env(tmp_path)
+    import services.amb_journal as amb_journal
+    calls = []
+
+    async def fake(ids, *, changed_by=None, source="approval"):
+        calls.append((list(ids), changed_by))
+        return {"credited": 0, "coins": 0, "ambassadors": set()}
+
+    monkeypatch.setattr(amb_journal, "on_invitees_approved", fake)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(503)
+    _available(fid, "a1")
+    assert calls == [([503], None)]
+    _available(fid, "a1")
+    assert calls == [([503], None)]
+
+
 def test_convert_when_city_closed(tmp_path):
     bot, _ = _env(tmp_path)
     fid = _delegation_form()
