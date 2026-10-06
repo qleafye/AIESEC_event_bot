@@ -69,3 +69,35 @@ def test_board_page_is_served_with_two_blocks(board):
     html = board.HTML.decode("utf-8") if isinstance(board.HTML, bytes) else board.HTML
     assert "Долг" in html and "Новое" in html
     assert 'key:"deleg"' in html
+
+
+def _deck_get(board, path):
+    import threading
+    from http.client import HTTPConnection
+    from http.server import ThreadingHTTPServer
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), board.Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+        conn.request("GET", path, headers={"Host": "deck.alekseev.info"})
+        resp = conn.getresponse()
+        return resp.status, resp.getheader("Content-Type"), resp.read()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_admin_guide_page_and_images_are_served(board):
+    status, ctype, body = _deck_get(board, "/admin-guide")
+    assert status == 200 and ctype.startswith("text/html")
+    page = body.decode("utf-8")
+    assert "Гайд администратора бота СкиллАп 5" in page
+    assert page.count("shots/admin/") >= 25
+
+    status, ctype, body = _deck_get(board, "/shots/admin/b_app_card.png")
+    assert status == 200 and ctype == "image/png" and body[1:4] == b"PNG"
+
+    status, _, _ = _deck_get(board, "/shots/admin/net_takoy_kartinki.png")
+    assert status == 404
