@@ -21,7 +21,8 @@
 pytest-asyncio в этом окружении нет — каждый async-хелпер гоняется через asyncio.run(), а
 config.DB_PATH указывает на файл в tmp_path; та же конвенция, что в
 tests/test_city_admin_phase72.py и tests/test_city_export_stats_phase72.py.
-"""
+"""
+from services.ru_plural import ru_plural
 import asyncio
 import inspect
 from pathlib import Path
@@ -212,7 +213,7 @@ def test_appr_all_confirm_text_equals_the_pre_phase_literal(tmp_path):
     cb = FakeCallback("appr_all")
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_moderation.appr_all_confirm(cb, state))
-    assert cb.message.text == f"Одобрить все {total} заявок?"
+    assert cb.message.text == f"Одобрить все {total} {ru_plural(total, 'заявку', 'заявки', 'заявок')}?"
 
 
 def test_appr_all_yes_approves_every_city(tmp_path):
