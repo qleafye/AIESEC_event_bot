@@ -161,3 +161,23 @@ def test_existing_user_same_season_keeps_prev_season_empty(tmp_path):
     _available(fid, "a1")
     u = _row(642)
     assert u["season"] == SEASON and not u.get("prev_season")
+
+
+# ---------- WR-03: ник в users — настоящий, не из текста формы ----------
+
+def test_manual_link_does_not_write_form_nick_into_username(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", username="@someone_else", course="3 бакалавриат")
+    _run(db.mark_reg_started(651, None))  # у человека в Telegram нет ника
+    assert _convert(fid, "a1", 651, how="manual", by=7).get("converted")
+    assert _row(651)["username"] == "-"
+
+
+def test_manual_link_keeps_real_nick_from_start(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", username="@typo_nick", course="3 бакалавриат")
+    _run(db.mark_reg_started(652, "RealNick"))
+    assert _convert(fid, "a1", 652, how="manual", by=7).get("converted")
+    assert _row(652)["username"] == "@RealNick"
