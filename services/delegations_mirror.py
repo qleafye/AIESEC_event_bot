@@ -186,10 +186,13 @@ def _row_colours(ws, tab: str, last_row: int) -> dict[int, dict]:
     return out
 
 
-def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict, dict]]):
+def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict, dict]],
+                      greyed_out: dict | None = None):
     """rows: (answer_row_id, answer, status). Возврат (appended, updated, extra_questions)
     или None, если вкладки нет. `extra_questions` — подписи вопросов формы без колонки в D..L
-    (в лист не пишутся, менеджера предупреждает drain)."""
+    (в лист не пишутся, менеджера предупреждает drain). `greyed_out` — словарь, который функция
+    заполняет {answer_id: 1|0} по строкам, где бот сам поставил или снял серый фон: вызывающий
+    сохраняет флаг, чтобы потом не снять серый, поставленный командой."""
     ws = ext_forms_mirror._open_tab_sync(tab)
     if ws is None:
         return None
@@ -244,12 +247,13 @@ def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict,
             # пустым значением поверх заполненной ячейки.
             batch.append({"range": f"{_col_letter(M_COL)}{r}", "values": [[m]]})
             updated += 1
-        targets[r] = GREY if (status or {}).get("ta_status") == "no" else WHITE
+        targets[r] = (GREY if (status or {}).get("ta_status") == "no" else WHITE, aid, status or {})
 
     if batch:
         ws.batch_update(batch, value_input_option=_raw())
 
-    # Цвет: красим только белые <-> серые; зелёные и неизвестные не трогаем.
+    # Цвет: серым бот красит только белую строку, в белый возвращает только ту, что покрасил
+    # сам (флаг `greyed`); серое от руки, зелёные и неизвестные не трогаем.
     current: dict[int, dict] = {}
     colours_ok = True
     try:
@@ -258,16 +262,28 @@ def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict,
         colours_ok = False
         logger.warning("delegations_mirror: не прочитать цвета листа «%s»: %s", tab, type(exc).__name__)
     formats: list[dict] = []
-    for r, target in sorted(targets.items()):
+    flags: dict = {}
+    for r, (target, aid, status) in sorted(targets.items()):
         if r in new_rows:
             kind = _kind(current.get(r, WHITE)) if colours_ok else "white"
         elif colours_ok:
             kind = _kind(current.get(r))
         else:
             continue
-        if kind in ("white", "grey") and kind != _kind(target):
+        ours = bool(status.get("greyed"))
+        if target is GREY:
+            if kind == "white":
+                formats.append({"range": f"A{r}:{_col_letter(M_COL)}{r}",
+                                "format": {"backgroundColor": dict(GREY)}})
+                flags[aid] = 1
+        elif kind == "grey" and ours:
             formats.append({"range": f"A{r}:{_col_letter(M_COL)}{r}",
-                            "format": {"backgroundColor": dict(target)}})
+                            "format": {"backgroundColor": dict(WHITE)}})
+            flags[aid] = 0
+        elif kind == "white" and ours:
+            flags[aid] = 0  # команда сама вернула белый — запомненный серый больше не наш
+    if greyed_out is not None:
+        greyed_out.update(flags)
     if formats:
         ws.batch_format(formats)
 

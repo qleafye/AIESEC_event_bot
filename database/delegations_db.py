@@ -259,7 +259,7 @@ async def mirror_status_for(form_id: int, answer_ids: list[str]) -> dict[str, di
         marks = ",".join("?" * len(part))
         rows = await _fetchall(
             "SELECT d.answer_id AS answer_id, d.ta_status AS ta_status, d.decided_by AS decided_by, "
-            "d.linked_telegram_id AS linked_telegram_id, "
+            "d.linked_telegram_id AS linked_telegram_id, d.sheet_greyed AS sheet_greyed, "
             "CASE WHEN d.linked_telegram_id IS NOT NULL AND " + _ARRIVED_SQL + " "
             "THEN 1 ELSE 0 END AS arrived "
             f"FROM delegation_answers d WHERE d.form_id = ? AND d.answer_id IN ({marks})",
@@ -271,5 +271,15 @@ async def mirror_status_for(form_id: int, answer_ids: list[str]) -> dict[str, di
                 "linked": r["linked_telegram_id"] is not None,
                 "arrived": bool(r["arrived"]),
                 "decided_by": r["decided_by"],
+                "greyed": bool(r["sheet_greyed"]),
             }
     return out
+
+
+async def set_greyed(form_id: int, flags: dict[str, int]) -> None:
+    """Запомнить, какие строки листа бот покрасил серым сам: {answer_id: 1 | 0}."""
+    for answer_id, flag in flags.items():
+        await _exec(
+            "UPDATE delegation_answers SET sheet_greyed = ? WHERE form_id = ? AND answer_id = ?",
+            (1 if flag else 0, form_id, str(answer_id)),
+        )
