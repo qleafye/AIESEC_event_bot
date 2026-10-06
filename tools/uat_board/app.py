@@ -211,6 +211,9 @@ class Handler(BaseHTTPRequestHandler):
             # Гайд «Бот на форуме: что сделано и как работать» (26.09) — отдельная страница,
             # дека для ОК на «/» не меняется.
             self._send(200, _read(os.path.join(DECK_DIR, "guide.html")), "text/html; charset=utf-8")
+        elif path in ("/admin-guide", "/admin-guide/"):
+            # Гайд администратора бота СкиллАп 5 (06.10): картинки лежат в deck/shots/admin/.
+            self._send(200, _read(os.path.join(DECK_DIR, "admin-guide.html")), "text/html; charset=utf-8")
         elif path in ("/uat", "/uat/"):
             # Чеклист приёмки форумного функционала (26.09): отметки хранятся в браузере
             # тестировщика, отчёт копируется кнопкой — серверного состояния нет.
@@ -229,7 +232,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, _read(os.path.join(DECK_DIR, "forum-prep.html")), "text/html; charset=utf-8")
         elif "/shots/" in path and path.endswith(".png"):
             name = os.path.basename(path)
-            body = _read(os.path.join(DECK_DIR, "shots", name))
+            sub = "admin" if "/shots/admin/" in path else ""
+            body = _read(os.path.join(DECK_DIR, "shots", sub, name))
             if body:
                 self._send(200, body, "image/png")
             else:
