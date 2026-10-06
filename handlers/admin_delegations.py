@@ -591,5 +591,7 @@ async def dlg_text_input(message: types.Message, state: FSMContext):
 
 
 # Соседние швы экрана регистрируются после всех хендлеров этого модуля (чистая вставка в хвост
-# общего роутера): лист UR REGS — выбор вкладки, сверка, включение записи.
+# общего роутера): лист UR REGS — выбор вкладки, сверка, включение записи; «❔ Проверить курс»,
+# «⏳ Не зашли» и ручная привязка делегата.
 from handlers import admin_delegations_sheet  # noqa: E402,F401
+from handlers import admin_delegations_review  # noqa: E402,F401

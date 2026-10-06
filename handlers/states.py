@@ -566,6 +566,14 @@ class DelegationEdit(StatesGroup):
     waiting_text = State()
 
 
+class DelegationLink(StatesGroup):
+    # «🏫 Делегации → ⏳ Не зашли → 🔗 Привязать вручную» (handlers/admin_delegations_review.py):
+    # менеджер присылает @ник / Telegram ID / пересланное сообщение делегата, затем подтверждает
+    # привязку. В state.get_data(): dlg_link_row (id строки ответа), dlg_link_tid (кого нашли).
+    waiting_person = State()
+    waiting_confirm = State()
+
+
 class ExtFormAppKeys(StatesGroup):
     # «🔑 Ключи приложения Яндекса»: идентификатор и секрет приложения.
     client_id = State()
