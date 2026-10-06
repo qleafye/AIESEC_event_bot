@@ -91,7 +91,7 @@ SKILLUP_TIER_SETTINGS: dict[str, str] = {
 
 REG_PRESETS = {
     "forum": {
-        "label": "🏛 Форум (Юлид)",
+        "label": "🏛 Форум",
         "payment_enabled": "off",
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_source", "reg_q_education",

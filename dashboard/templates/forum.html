@@ -281,7 +281,7 @@
     {% endif %}
   </section>
 
-  {# ═══ После форума: опрос неявившихся, перенос регионов, «Юлид в цифрах» ═══ #}
+  {# ═══ После форума: опрос неявившихся, перенос регионов, «Мы в цифрах» ═══ #}
   <section class="page-section" id="after" aria-labelledby="after-title">
     <h2 class="section-title" id="after-title">После форума</h2>
     {% if not (noshow_poll or regional_move or stats_card) %}
@@ -319,7 +319,7 @@
     {% endif %}
     {% if stats_card %}
     <section class="block">
-      <h2 class="block-title">«Юлид в цифрах»</h2>
+      <h2 class="block-title">«Мы в цифрах»</h2>
       <div class="card">
         <p class="cut-title">Отправлено {{ stats_card.sent | thousands }}</p>
       </div>
