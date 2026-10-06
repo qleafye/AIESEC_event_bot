@@ -5388,6 +5388,12 @@ _FILTER_COLUMNS = {
     # Внешние формы: двойная регистрация с handlers/admin_broadcasts.py, поле ВИРТУАЛЬНОЕ —
     # значение (форма + заполнил/не заполнил) задаёт шов admin_broadcast_ext_form_filter.
     "ext_form",
+    # Делегации вузов (D-07): `delegation` — вуз делегации ИЗ ФОРМЫ (users.delegation), не
+    # путать с `university` анкеты выше; обычная колонка, общая ветка `{field} = ?`.
+    # `delegation_any` — ВИРТУАЛЬНОЕ «делегация вуза / не делегация» по той же колонке,
+    # собственная ветка `_build_filter_clause`. Та же двойная регистрация с
+    # `handlers.admin_broadcasts._PICKER_FIELDS`, тот же прецедент D-19.
+    "delegation", "delegation_any",
 }
 
 # Квик 260911-0fh (RESUME-FILTER-01): поля whitelist'а `_FILTER_COLUMNS`, у которых НЕТ
@@ -5403,6 +5409,8 @@ _FILTER_VIRTUAL_FIELDS = {
     "resume", "delegate_chat", "auto_reject",
     # Форум-ночь п.6 (D-25, идея №14) — те же виртуальные поля, что резюме/чат/автоотказ выше.
     "checkin_entry", "checkin_session", "ext_form",
+    # Делегации вузов (D-07): колонки `users.delegation_any` нет, условие — по `delegation`.
+    "delegation_any",
 }
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
@@ -5443,6 +5451,11 @@ RESUME_MISSING = "none"
 # не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
 AUTO_REJECT_YES = "yes"
 AUTO_REJECT_NO = "no"
+
+# Сентинелы значений поля фильтра «Делегация вуза» (делегации вузов, D-07) — та же причина
+# строки, не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
+DELEGATION_YES = "yes"
+DELEGATION_NO = "no"
 
 # Сентинелы значений поля фильтра «Чат делегатов» (квик 260914-rgr) — та же причина строки,
 # не булева: спека фильтра переживает `json.dumps`/`json.loads` отложенной рассылки.
@@ -5592,6 +5605,17 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 clauses.append(
                     "(auto_reject_rule_ids IS NULL OR TRIM(auto_reject_rule_ids) IN ('', '[]'))"
                 )
+            else:
+                clauses.append("0")
+        elif field == "delegation_any":
+            # Делегации вузов (D-07): must come BEFORE the generic `_FILTER_COLUMNS` branch
+            # below — there is no `users.delegation_any` column, the condition is built on
+            # `users.delegation`. Same fail-closed shape as `auto_reject` above (WR-01).
+            value = f.get("value")
+            if value == DELEGATION_YES:
+                clauses.append("(delegation IS NOT NULL AND TRIM(delegation) != '')")
+            elif value == DELEGATION_NO:
+                clauses.append("(delegation IS NULL OR TRIM(delegation) = '')")
             else:
                 clauses.append("0")
         elif field == "ext_form":
@@ -5842,6 +5866,25 @@ async def get_auto_reject_filter_options() -> list[str]:
         options.append(AUTO_REJECT_YES)
     if row and row[1]:
         options.append(AUTO_REJECT_NO)
+    return options
+
+
+async def get_delegation_filter_options() -> list[str]:
+    """Значения для пикера поля «Делегация вуза» (делегации вузов, D-07) — та же роль порога
+    показа кнопки, что у `get_auto_reject_filter_options`: оба сентинела только если в базе
+    реально есть обе стороны, `[]` на пустой базе (фильтровать не по чему)."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE delegation IS NOT NULL AND "
+            "TRIM(delegation) != ''), "
+            "EXISTS(SELECT 1 FROM users WHERE delegation IS NULL OR TRIM(delegation) = '')"
+        ) as cursor:
+            row = await cursor.fetchone()
+    options: list[str] = []
+    if row and row[0]:
+        options.append(DELEGATION_YES)
+    if row and row[1]:
+        options.append(DELEGATION_NO)
     return options
 
 
