@@ -680,6 +680,12 @@ _ENGINE_DYNAMIC_EN = {
 # ── Голые ключи реестра (group=event/reg/game/pay) — хаб/статус/оплата/задания за пределами
 # готовых списков выше: подписи Mini App-анкеты, экрана статуса заявки, оплаты, монет, FAQ. ──
 _REGISTRY_TEXTS_EN = {
+    # Делегации вузов — тексты делегату, группа reg (delegation_welcome_text /
+    # delegation_welcome_existing_text / delegation_game_off_text). RU-ключ — дефолт из
+    # settings_schema.py байт-в-байт; меняется дефолт — меняются оба места одним коммитом.
+    "Привет! Ты в списке делегации {university} на форум Юлид в Москве 🎉\n\nАнкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости форума.": "Hi! You're on the {university} delegation list for the YouLead forum in Moscow 🎉\n\nNo need to fill in the questionnaire — your application is already approved. Below is the participant menu: your entry QR and all forum news will be there.",
+    "Ты в списке делегации {university} — спасибо, что с нами! Заявка одобрена, меню участника ниже.": "You're on the {university} delegation list — thanks for being with us! Your application is approved, the participant menu is below.",
+    "Задания и монеты для делегаций вузов на этом форуме выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.": "Tasks and coins for university delegations are switched off at this forum. Everything else — the programme, the entry QR, the news — works as usual.",
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): дефолт подписи к фото карточки-итога
     # (group "reg", `forum_stats_card_caption_text`) — сами цифры остаются на картинке (её
     # подписи — код-литералы `services/forum_stats_card.py`, читаются ПРЯМО по языку делегата,
