@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Как работают делегации вузов в боте</title>
+<meta name="description" content="Как делегаты вузов попадают на московский форум Юлида через бота: форма, ЦА, лист UR REGS, экран менеджера.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,700;0,800;1,400&family=Raleway:ital,wght@0,700;0,800;1,800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#F3F4F8; --card:#FFFFFF; --ink:#1C1C1C; --muted:#52565E; --line:#DDE1E8; --blue:#037EF3; --blue-deep:#0B3D91; --orange:#F48924; --tint:#EAF3FE; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; }
+  header.top { background:var(--blue); color:#fff; }
+  header.top .in { max-width:1200px; margin:0 auto; padding:28px 16px 24px; display:flex; flex-wrap:wrap; gap:16px 32px; align-items:end; justify-content:space-between; }
+  header.top h1 { margin:0; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(26px, 4vw, 40px); line-height:1.1; }
+  header.top p { margin:6px 0 0; font-size:16px; line-height:1.45; opacity:.95; max-width:640px; }
+  .who { display:flex; flex-direction:column; gap:6px; font-size:14px; font-weight:700; }
+  .who input { font:inherit; font-weight:400; font-size:16px; padding:10px 12px; border-radius:8px; border:0; width:240px; max-width:100%; color:var(--ink); }
+  .who a.pdf { align-self:flex-start; margin-top:6px; padding:10px 16px; border-radius:8px; background:#fff; color:var(--blue); font-size:15px; font-weight:800; text-decoration:none; }
+  .who a.pdf:hover { background:var(--tint); }
+  .who a.pdf:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+  main { max-width:1200px; margin:0 auto; padding:24px 16px 80px; display:flex; flex-direction:column; gap:40px; }
+  .unit { display:flex; flex-direction:column; scroll-margin-top:16px; }
+  .frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:12px 12px 0 0; border:1px solid var(--line); border-bottom:0; background:#fff; }
+  .stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+  .meta { background:var(--card); border:1px solid var(--line); border-top:3px solid var(--blue); border-radius:0 0 12px 12px; padding:16px 20px 20px; display:flex; flex-direction:column; gap:12px; }
+  .num { font-size:14px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .ncount { color:var(--blue); }
+  .notes { display:flex; flex-direction:column; gap:8px; }
+  .note { background:#F7F8FB; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:15px; line-height:1.45; }
+  .note .by { font-size:13px; color:var(--muted); margin-bottom:4px; display:flex; gap:12px; }
+  .note .by button { border:0; background:none; color:#9F2F2D; font:inherit; cursor:pointer; padding:0; text-decoration:underline; }
+  .note .txt { white-space:pre-wrap; word-break:break-word; }
+  .compose { display:flex; gap:8px; align-items:stretch; }
+  .compose textarea { flex:1; font:inherit; font-size:16px; line-height:1.4; padding:10px 12px; border:1px solid var(--line); border-radius:8px; resize:vertical; min-height:46px; }
+  .compose textarea:focus, .who input:focus { outline:2px solid var(--blue); outline-offset:1px; }
+  .compose button { font:inherit; font-weight:800; font-size:15px; padding:0 18px; border:0; border-radius:8px; background:var(--ink); color:#fff; cursor:pointer; }
+  .compose button:disabled { opacity:.5; cursor:default; }
+  .compose button:active { transform:translateY(1px); }
+  @media (max-width:600px) { .compose { flex-direction:column; } .compose button { padding:12px; } }
+
+  /* ---------- слайды 1920×1080 ---------- */
+  .s { width:1920px; height:1080px; position:relative; overflow:hidden; padding:112px 128px; display:flex; flex-direction:column; gap:48px; background:var(--bg); color:var(--ink); }
+  .s * { box-sizing:border-box; margin:0; }
+  .s h2 { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:72px; line-height:1.08; letter-spacing:-.01em; max-width:1664px; }
+  .s h3 { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:40px; line-height:1.15; }
+  .s p, .s li { font-size:31px; line-height:1.42; }
+  .s .lead { font-size:32px; line-height:1.4; color:var(--muted); max-width:1300px; }
+  .s .mut { color:var(--muted); }
+  .s ul { padding:0; list-style:none; display:flex; flex-direction:column; gap:22px; }
+  .s ul li { padding-left:32px; position:relative; }
+  .s ul li::before { content:""; position:absolute; left:0; top:.62em; width:14px; height:3px; background:var(--blue); }
+  .s .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:48px 48px; display:flex; flex-direction:column; gap:24px; }
+  .s .card.hl { background:#FFF6EC; border:2px solid var(--orange); }
+  .s .card.bl { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .s .card.bl p, .s .card.bl li { color:#fff; }
+  .s .card.bl ul li::before { background:#fff; }
+  .s .phone { border-radius:36px; border:10px solid #1C1C1C; overflow:hidden; background:#1C1C1C; flex:none; }
+  .s .phone img { display:block; width:100%; height:100%; object-fit:cover; object-position:top; }
+  .s .cap { font-size:22px; color:var(--muted); line-height:1.35; }
+  .s .foot { position:absolute; left:128px; right:128px; bottom:56px; display:flex; justify-content:space-between; font-size:20px; font-weight:700; color:var(--muted); }
+  .s.dark .foot { color:rgba(255,255,255,.75); }
+  .s .big { font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:104px; line-height:1; color:var(--blue); letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .s .tag { display:inline-block; padding:10px 20px; border-radius:8px; font-size:24px; font-weight:800; }
+
+  @media print {
+    @page { size:1920px 1080px; margin:0; }
+    header.top, .meta { display:none !important; }
+    body, main { background:#fff; }
+    main { padding:0; gap:0; max-width:none; }
+    .unit { break-after:page; page-break-after:always; }
+    .frame { width:1920px; height:1080px; aspect-ratio:auto; border:0; border-radius:0; }
+    .stage { transform:none !important; }
+  }
+  .aside { margin:0; font-size:15px; line-height:1.5; color:var(--muted); }
+  .toc { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; font-size:15px; line-height:1.6; }
+  .toc ol { margin:8px 0 0; padding-left:1.6em; columns:2; column-gap:32px; }
+  .toc a { color:var(--ink); }
+  .foot2 { font-size:14px; color:var(--muted); text-align:center; margin:0; }
+  header.top .links { display:flex; flex-direction:column; gap:8px; }
+  header.top a.pdf { align-self:flex-start; padding:10px 16px; border-radius:8px; background:#fff; color:var(--blue); font-size:15px; font-weight:800; text-decoration:none; }
+  @media (max-width:700px) { .toc ol { columns:1; } }
+  @media print { .toc, .foot2 { display:none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="in">
+    <div>
+      <h1>Как работают делегации вузов в боте</h1>
+      <p>Для команды Юлида. Что происходит с делегатом, что делает менеджер и что нужно для запуска. Под каждым слайдом короткое пояснение.</p>
+    </div>
+    <div class="links"><a class="pdf" href="/delegations.pdf">Скачать PDF</a></div>
+  </div>
+</header>
+<main>
+<nav class="toc"><b>Слайды</b><ol>
+<li><a href="#u-cover">Обложка</a></li><li><a href="#u-why">Зачем</a></li><li><a href="#u-flow">Путь в двух словах</a></li><li><a href="#u-ta">Кто целевая аудитория</a></li><li><a href="#u-course">Курс написан как угодно</a></li><li><a href="#u-notta">Не ЦА</a></li><li><a href="#u-delegate">Что видит делегат</a></li><li><a href="#u-ways">Открыл бота раньше или позже</a></li><li><a href="#u-game">Игра для делегатов</a></li><li><a href="#u-screen">Экран менеджера</a></li><li><a href="#u-univ">Сводка по вузам</a></li><li><a href="#u-manual">Не зашли в бота</a></li><li><a href="#u-sheet">Лист UR REGS</a></li><li><a href="#u-safe">Что бот в листе не трогает</a></li><li><a href="#u-dry">Сухая сверка</a></li><li><a href="#u-bc">Рассылки и дашборд</a></li><li><a href="#u-guard">Защиты</a></li><li><a href="#u-launch">Что нужно для запуска</a></li><li><a href="#u-faq1">Частые вопросы, 1</a></li><li><a href="#u-faq2">Частые вопросы, 2</a></li><li><a href="#u-end">Итого</a></li></ol></nav>
+<div class="unit" id="u-cover"><div class="frame"><div class="stage">
+<section class="s dark" style="background:var(--blue); color:#fff; justify-content:space-between; padding:128px">
+  <p style="font-size:28px; font-weight:800; letter-spacing:4px; text-transform:uppercase">АЙСЕК · Юлид'26 · Москва</p>
+  <div style="display:flex; flex-direction:column; gap:40px">
+    <h1 style="font-family:Raleway, Arial, sans-serif; font-size:128px; font-weight:800; line-height:1.04; letter-spacing:-.02em">Как работают делегации вузов в боте</h1>
+    <p style="width:1300px; font-size:40px; line-height:1.35">Делегат заполняет форму Насти, бот сам узнаёт его по нику и одобряет. Менеджер видит всё в одном экране и разбирает спорное кнопками.</p>
+  </div>
+  <div style="display:flex; gap:20px; flex-wrap:wrap">
+    <span class="tag" style="color:var(--blue); background:#fff">Московский форум 30–31 октября</span>
+    <span class="tag" style="border:2px solid #fff">Для команды Юлида</span>
+  </div>
+</section></div></div><div class="meta"><div class="num">1 / 21 · Обложка</div><p class="aside">Презентация для DXP, менеджеров, Насти, Кристины и Юлии. Без программирования: что происходит с делегатом и что делает менеджер. Приёмку проводим 13 октября.</p></div></div>
+<div class="unit" id="u-why"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Делегациям не нужна анкета бота</h2>
+  <div style="display:grid; grid-template-columns:1fr 1.25fr; gap:40px; flex:1">
+    <div class="card">
+      <h3>Как было</h3>
+      <ul class="mut">
+        <li>Делегат заполняет форму Насти</li>
+        <li>Настя вручную выгружает ответы в таблицу</li>
+        <li>Потом человек проходит ещё и анкету бота</li>
+        <li>Два списка, которые приходится сверять</li>
+      </ul>
+    </div>
+    <div class="card bl">
+      <h3>Как теперь</h3>
+      <ul>
+        <li>Делегат заполняет только форму Насти</li>
+        <li>Бот сам забирает ответы и ведёт лист</li>
+        <li>Открыл бота: он уже одобрен участником Москвы</li>
+        <li>QR на вход, статистика прихода и рассылки работают как у всех</li>
+      </ul>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">2 / 21 · Зачем</div><p class="aside">Москва принимает делегации вузов. У делегатов своя форма, которую ведёт Настя из DXP. Раньше её ответы выгружали руками, а анкета бота дублировала те же вопросы. Теперь анкету делегату не показываем: всё нужное мы уже знаем из формы.</p></div></div>
+<div class="unit" id="u-flow"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>От формы до входа на форум</h2>
+  <div style="display:flex; align-items:stretch; justify-content:space-between; gap:12px; flex:1; max-height:460px"><!--row-->
+    <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Форма Насти</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Делегат заполняет её на Яндексе</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Бот забирает</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Сам, в течение 5 минут</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Узнаёт по @нику</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Ник из формы совпал с ником в Telegram</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="card bl" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Одобрен</h3><p style="font-size:29px; line-height:1.35; ">Участник Москвы, анкета не нужна</p></div>
+  </div>
+  <div class="card" style="gap:16px; padding:36px 48px; justify-content:center">
+    <h3>Дальше всё как у обычного участника</h3>
+    <p class="mut" style="font-size:30px">QR на вход, отметка прихода в общей статистике, обычные рассылки. Отдельной кнопки «Делегация» в меню нет.</p>
+  </div>
+</section></div></div><div class="meta"><div class="num">3 / 21 · Путь в двух словах</div><p class="aside">Цепочка одна на всех. Ответ формы подхватывается автоматически, до 5 минут после отправки. Если человек уже открыл бота, он получит сообщение сразу, как только бот его узнает; если нет, одобрение ждёт его первого /start.</p></div></div>
+<div class="unit" id="u-ta"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Делегатом становится только ЦА</h2>
+    <p class="lead">Правило то же, что у автоотказа: на форум не берём 1–2 курс бакалавриата, если форму подали после 22 сентября.</p>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; flex:1">
+    <div class="card bl">
+      <h3>ЦА, одобряем</h3>
+      <ul>
+        <li>Магистратура любого курса</li>
+        <li>Специалитет с 3 курса, аспирантура</li>
+        <li>Бакалавриат с 3 курса</li>
+        <li>Любой курс, если форму подали до конца 22 сентября</li>
+      </ul>
+    </div>
+    <div class="card hl">
+      <h3>Не ЦА, не трогаем</h3>
+      <ul>
+        <li>1 и 2 курс бакалавриата, форма подана после 22 сентября</li>
+        <li>Бот им ничего не пишет и не одобряет</li>
+      </ul>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">4 / 21 · Кто целевая аудитория</div><p class="aside">Дата отсечки и список курсов не ЦА лежат на экране «🏫 Делегации»: кнопки «📅 Отсечка ЦА» и «🎓 Курсы не ЦА». Сейчас стоят 22 сентября и курсы 1 и 2. Перед применением новой даты бот показывает, сколько человек сменит статус, и ждёт подтверждения.</p></div></div>
+<div class="unit" id="u-course"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Не понял курс: спрашиваю менеджера</h2>
+    <p class="lead">В форме курс пишут свободным текстом. Бот разбирает «1 бакалавриат», «первый курс магистратуры» и похожее. Если не уверен, молча в одну из сторон не относит.</p>
+  </div>
+  <div style="display:flex; align-items:center; gap:24px">
+    <div class="card" style="flex:1; gap:14px"><p class="mut" style="font-size:26px">В форме написано</p><h3>«учусь заочно»</h3></div><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="card hl" style="flex:1; gap:14px"><p class="mut" style="font-size:26px">Статус в боте</p><h3>❔ Проверить курс</h3></div><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="card" style="flex:1.1; gap:18px"><p class="mut" style="font-size:26px">Менеджер нажимает</p><div style="display:flex; gap:14px; flex-wrap:wrap"><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">✅ ЦА</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🚫 Не ЦА</span></div></div>
+  </div>
+  <div style="flex:1"></div>
+</section></div></div><div class="meta"><div class="num">5 / 21 · Курс написан как угодно</div><p class="aside">Карточка человека показывает вуз, курс как в форме и ник. После «✅ ЦА» заявка одобряется сразу, если человек уже в боте. Если ещё не заходил, он появляется в списке «⏳ Не зашли». Решение менеджера бот потом сам не меняет.</p></div></div>
+<div class="unit" id="u-notta"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Тех, кто не ЦА, бот не трогает</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:28px">
+    <div class="card"><h3>В боте</h3><p class="mut">Ничего не пишет и не одобряет. Если человек сам открыл бота, он обычный новичок и идёт по обычной анкете.</p></div>
+    <div class="card"><h3>В листе</h3><p class="mut">Строка серая, в колонке M «— не ЦА». Так Настя видит, кого бот отложил.</p></div>
+    <div class="card"><h3>В сводке</h3><p class="mut">Считаются отдельно от ЦА: «не ЦА: N».</p></div>
+  </div>
+  <div style="flex:1"></div>
+  <div class="card hl" style="padding:36px 48px"><p style="font-size:32px">Ошиблись с оценкой? Менеджер открывает карточку в «❔ Проверить курс» и меняет решение кнопкой.</p></div>
+</section></div></div><div class="meta"><div class="num">6 / 21 · Не ЦА</div><p class="aside">Для не ЦА специально ничего не отправляем: человек не должен получить отказ от бота, которого он ещё не просил. Они могут пройти обычную регистрацию, как любой другой желающий.</p></div></div>
+<div class="unit" id="u-delegate"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Одно сообщение и меню участника</h2>
+  <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:48px; flex:1">
+    <div class="card" style="background:#EAF3FE; border-color:#037EF3; gap:20px; justify-content:center">
+      <p class="mut" style="font-size:24px; font-weight:800; letter-spacing:.06em; text-transform:uppercase">Сообщение в Telegram</p>
+      <p style="font-size:34px; line-height:1.42">Привет! Ты в списке делегации <b>Тестовый университет</b> на форум Юлид в Москве 🎉</p>
+      <p style="font-size:34px; line-height:1.42">Анкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости форума.</p>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:22px; justify-content:center">
+      <div class="card" style="padding:28px 32px"><p style="font-size:30px">Вопросов анкеты нет</p></div>
+      <div class="card" style="padding:28px 32px"><p style="font-size:30px">Меню как у обычного одобренного участника</p></div>
+      <div class="card" style="padding:28px 32px"><p style="font-size:30px">«🎟 Мой QR» открывает вход, если он включён</p></div>
+      <div class="card" style="padding:28px 32px"><p style="font-size:30px">Шага оплаты нет никогда</p></div>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">7 / 21 · Что видит делегат</div><p class="aside">Текст меняется кнопкой «✏️ Тексты делегату» на экране делегаций. Вуз в нём подставляется так, как его написали в форме. Шага оплаты у делегатов нет, даже если на событии оплата включена: напоминания об оплате им не приходят.</p></div></div>
+<div class="unit" id="u-ways"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Три случая, итог один</h2>
+    <p class="lead">Как бы человек ни пришёл, делегат из ЦА оказывается одобренным без хлопот.</p>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:28px; flex:1">
+    <div class="card"><p style="font-size:26px; font-weight:800; color:var(--blue)">1</p><h3>Форма, потом бот</h3><p class="mut">Нажал /start, бот нашёл его по нику и сразу показал сообщение с меню.</p></div>
+    <div class="card"><p style="font-size:26px; font-weight:800; color:var(--blue)">2</p><h3>Бот, потом форма</h3><p class="mut">Анкету не закончил. Когда форма подтянулась, анкета сбросилась, пришло то же сообщение.</p></div>
+    <div class="card"><p style="font-size:26px; font-weight:800; color:var(--blue)">3</p><h3>Анкета отправлена</h3><p class="mut">Была «на рассмотрении». Теперь одобрена без решения менеджера, пришло короткое «спасибо, что с нами».</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">8 / 21 · Открыл бота раньше или позже</div><p class="aside">Проверка идёт и при каждом /start, и при каждом заборе ответов формы. Если ответ формы пришёл второй раз от того же человека, бот тихо привязывает его и повторное сообщение не шлёт.</p></div></div>
+<div class="unit" id="u-game"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Игра для делегатов выключена</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; flex:1">
+    <div class="card">
+      <h3>Пока тумблер выключен</h3>
+      <ul class="mut">
+        <li>В меню нет «🪙 Мои монеты» и «🎯 Задания»</li>
+        <li>В приложении «Задания» и «Монеты» закрыты</li>
+        <li>Старая кнопка отвечает, что для делегаций игра выключена</li>
+        <li>Программа, QR и новости работают как обычно</li>
+      </ul>
+    </div>
+    <div class="card bl">
+      <h3>Как включить</h3>
+      <p style="font-size:32px">Менеджер нажимает «🎮 Геймификация для делегатов» на экране «🏫 Делегации».</p>
+      <p style="font-size:32px">Кнопки в меню появятся после следующего /start.</p>
+      <p style="font-size:28px; opacity:.9">Рейтинг чата от тумблера не зависит.</p>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">9 / 21 · Игра для делегатов</div><p class="aside">Так просила Кристина: в боте у делегаций пока без игры. Если решите вернуть, это один тумблер. Остальным участникам игра работает как раньше.</p></div></div>
+<div class="unit" id="u-screen"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Все делегации в одном экране</h2>
+    <p class="lead">«📋 Заявки» → «🏫 Делегации». Нужны права менеджера заявок, права на настройки не нужны.</p>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:36px; flex:1">
+    <div class="card" style="gap:20px">
+      <p class="mut" style="font-size:24px; font-weight:800; letter-spacing:.06em; text-transform:uppercase">Разбор людей</p>
+      <div style="display:flex; flex-direction:column; gap:14px; align-items:flex-start"><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#FFF6EC; color:#7A3E00; border:2px solid #F48924">❔ Проверить курс (N)</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#FFF6EC; color:#7A3E00; border:2px solid #F48924">⏳ Не зашли (N)</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🏫 По вузам</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">📋 Лист UR REGS</span></div>
+    </div>
+    <div class="card" style="gap:20px">
+      <p class="mut" style="font-size:24px; font-weight:800; letter-spacing:.06em; text-transform:uppercase">Настройки</p>
+      <div style="display:flex; flex-direction:column; gap:14px; align-items:flex-start"><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🎮 Геймификация для делегатов</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">📅 Отсечка ЦА</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🎓 Курсы не ЦА</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">✏️ Тексты делегату</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">❓ Вопросы формы</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">📝 Сменить форму</span></div>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">10 / 21 · Экран менеджера</div><p class="aside">Над кнопками стоит строка итогов: «В форме: N · ЦА: N · не ЦА: N · проверить: N · зашли в бота: N · пришли: N». Оранжевые кнопки показывают, что ждёт решения. Если форма ещё не выбрана, экран так и скажет и предложит «📝 Выбрать форму».</p></div></div>
+<div class="unit" id="u-univ"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Сколько человек от каждого вуза</h2>
+  <div class="card" style="padding:40px 48px; gap:0">
+    <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:12px; font-size:26px; font-weight:800; color:var(--muted); padding-bottom:16px; border-bottom:2px solid var(--line)"><span>Вуз</span><span>ЦА в форме</span><span>В боте</span><span>Пришли</span></div>
+    <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:12px; font-size:32px; padding:20px 0; border-bottom:1px solid var(--line)"><span>Вуз 1</span><span>18</span><span>14</span><span>0</span></div>
+    <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:12px; font-size:32px; padding:20px 0; border-bottom:1px solid var(--line)"><span>Вуз 2</span><span>11</span><span>11</span><span>0</span></div>
+    <div style="display:grid; grid-template-columns:1.6fr 1fr 1fr 1fr; gap:12px; font-size:32px; padding:20px 0"><span>Вуз 3</span><span>7</span><span>3</span><span>0</span></div>
+  </div>
+  <p class="cap" style="font-size:24px">Цифры выдуманные, только чтобы показать вид экрана.</p>
+  <div class="card hl" style="padding:30px 48px"><p style="font-size:30px">Разница между «ЦА в форме» и «В боте» это люди, которые ещё не зашли. Их разбирает кнопка «⏳ Не зашли».</p></div>
+</section></div></div><div class="meta"><div class="num">11 / 21 · Сводка по вузам</div><p class="aside">Такая же таблица есть в веб-дашборде. «Пришли» заполняется на форуме по отметкам входа. Вузы считаются по тому, как их написали в форме, без различия регистра и лишних пробелов.</p></div></div>
+<div class="unit" id="u-manual"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Ошибка в нике? Привязываем вручную</h2>
+    <p class="lead">«⏳ Не зашли»: ЦА по форме, но бот не узнал их по нику.</p>
+  </div>
+  <div style="display:flex; gap:20px; align-items:stretch">
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">1</p><h3 style="font-size:34px">Выбрать</h3><p class="mut" style="font-size:26px; line-height:1.38">Нажать «🔗» у нужного человека в списке.</p></div>
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">2</p><h3 style="font-size:34px">Показать, кто это</h3><p class="mut" style="font-size:26px; line-height:1.38">Прислать @ник, Telegram ID или переслать сообщение человека.</p></div>
+    <div class="card hl" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">3</p><h3 style="font-size:34px">Подтвердить</h3><p class="mut" style="font-size:26px; line-height:1.38">Бот напишет, кого и к кому привязывает. Нажать «✅ Привязать».</p></div>
+  </div>
+  <div style="flex:1"></div>
+  <p class="mut" style="font-size:28px">Привязать можно только того, кто уже открывал бота.</p>
+</section></div></div><div class="meta"><div class="num">12 / 21 · Не зашли в бота</div><p class="aside">Самопоиска по ФИО нет специально: иначе любой мог бы назваться чужим именем и получить одобрение. Менеджер сам выбирает человека, бот только просит подтвердить. После привязки делегату приходит то же приветствие.</p></div></div>
+<div class="unit" id="u-sheet"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Лист UR REGS бот ведёт сам</h2>
+    <p class="lead">Раскладка та же, что у выгрузки Яндекса. Настя ничего не перестраивает.</p>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1.9fr 1.3fr .9fr 1.3fr; gap:0">
+    <div style="padding:14px 10px; border:1px solid var(--line); background:#EAF3FE; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">A</div><div style="padding:14px 10px; border:1px solid var(--line); background:#EAF3FE; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">B</div><div style="padding:14px 10px; border:1px solid var(--line); background:#EAF3FE; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">C</div><div style="padding:14px 10px; border:1px solid var(--line); background:#EAF3FE; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">D–L</div><div style="padding:14px 10px; border:1px solid var(--line); background:#FFF6EC; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">M</div><div style="padding:14px 10px; border:1px solid var(--line); background:#F3F4F8; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">N, O</div><div style="padding:14px 10px; border:1px solid var(--line); background:#F3F4F8; font-size:22px; font-weight:800; text-align:center; overflow:hidden; white-space:nowrap">P и правее</div>
+    <div style="padding:14px 10px; border:1px solid var(--line); background:#fff; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">ID ответа</div><div style="padding:14px 10px; border:1px solid var(--line); background:#fff; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">Начало</div><div style="padding:14px 10px; border:1px solid var(--line); background:#fff; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">Создано</div><div style="padding:14px 10px; border:1px solid var(--line); background:#fff; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">ФИО, вуз, курс, ник…</div><div style="padding:14px 10px; border:1px solid var(--line); background:#FFF6EC; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">✅ зашёл</div><div style="padding:14px 10px; border:1px solid var(--line); background:#F3F4F8; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">пусто</div><div style="padding:14px 10px; border:1px solid var(--line); background:#F3F4F8; font-size:22px;  text-align:center; overflow:hidden; white-space:nowrap">расчёты Насти</div>
+  </div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; flex:1">
+    <div class="card" style="gap:14px"><h3>Колонка M «В боте»</h3><p class="mut" style="font-size:28px">✅ зашёл · ⏳ не заходил · 🎟 пришёл · — не ЦА · ❔ проверить курс</p></div>
+    <div class="card" style="gap:14px"><h3>Серый цвет</h3><p class="mut" style="font-size:28px">Строки не ЦА. Если менеджер решил «ЦА», серый снимается.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">13 / 21 · Лист UR REGS</div><p class="aside">Строку лист находит по колонке A: это ID ответа в Яндексе. Ответ, который уже есть в листе, не дублируется, а обновляется на месте. Колонки D–L идут в порядке вопросов формы.</p></div></div>
+<div class="unit" id="u-safe"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Ручную работу Насти бот не ломает</h2>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:28px; flex:1">
+    <div class="card"><h3>Ручные пометки</h3><p class="mut">В готовых строках бот пишет только в колонку M. Ответы в D–L не перезаписывает.</p></div>
+    <div class="card"><h3>Серый, который поставила Настя</h3><p class="mut">Бот снимает серый только с тех строк, которые покрасил сам.</p></div>
+    <div class="card"><h3>Зелёные строки</h3><p class="mut">Не меняет ни цвет, ни содержимое.</p></div>
+    <div class="card"><h3>Колонки P и правее</h3><p class="mut">Формулы и подсчёт ЦА остаются как есть. Новый вопрос формы бот ставит только в свободную колонку.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">14 / 21 · Что бот в листе не трогает</div><p class="aside">Колонка, вставленная в середину листа, сдвигает чужие строки и формулы, поэтому бот так не делает. Если справа от последнего вопроса формы уже есть данные Насти, бот туда не пишет, а предупреждает менеджера.</p></div></div>
+<div class="unit" id="u-dry"><div class="frame"><div class="stage">
+<section class="s">
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <h2>Первая запись только после сверки</h2>
+    <p class="lead">В листе уже около 200 строк. Прежде чем что-то писать, бот показывает, как он их понял.</p>
+  </div>
+  <div style="display:flex; gap:20px; align-items:stretch">
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">1</p><h3 style="font-size:34px">Сверка</h3><p class="mut" style="font-size:26px; line-height:1.38">«📋 Лист UR REGS» → вкладка «UR REGS». Бот ничего не записывает.</p></div>
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">2</p><h3 style="font-size:34px">Цифры</h3><p class="mut" style="font-size:26px; line-height:1.38">Сколько строк в листе, сколько узнал по ID, сколько добавит новых.</p></div>
+    <div class="card hl" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">3</p><h3 style="font-size:34px">Включить</h3><p class="mut" style="font-size:26px; line-height:1.38">«✅ Включить запись в «UR REGS»» → «✅ Да, включить».</p></div>
+  </div>
+  <div class="card hl" style="padding:30px 48px"><p style="font-size:30px">Если бот не узнал ни одной строки или шапка не совпала с вопросами формы, он просит дополнительное подтверждение.</p></div>
+</section></div></div><div class="meta"><div class="num">15 / 21 · Сухая сверка</div><p class="aside">Защита от двойного листа: если ID в выгрузке отличается от ID ответа в Яндексе, бот покажет это цифрами, а не создаст 200 дублей. Перед самой записью он перечитывает лист ещё раз.</p></div></div>
+<div class="unit" id="u-bc"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Рассылка и дашборд знают о делегациях</h2>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; flex:1">
+    <div class="card" style="gap:22px">
+      <h3>«📢 Рассылка» → «🎯 По фильтру»</h3>
+      <div style="display:flex; flex-direction:column; gap:14px; align-items:flex-start"><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🏫 Делегации</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">Делегация вуза</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">Не делегация</span><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🏫 Вуз делегации</span></div>
+      <p class="mut" style="font-size:26px">Можно написать всем делегатам или одному вузу.</p>
+    </div>
+    <div class="card" style="gap:22px">
+      <h3>«📊 Данные» → «📊 Дашборд»</h3>
+      <div style="display:flex; flex-direction:column; gap:14px; align-items:flex-start"><span style="display:inline-block; padding:12px 22px; border-radius:10px; font-size:28px; font-weight:700; background:#EAF3FE; color:#0B3D91; border:2px solid #037EF3">🏫 Делегации</span></div>
+      <p class="mut" style="font-size:26px">Включает блок «Делегации» на странице статистики: вуз, ЦА в форме, в боте, пришли и строка «Всего».</p>
+    </div>
+  </div>
+</section></div></div><div class="meta"><div class="num">16 / 21 · Рассылки и дашборд</div><p class="aside">Обычные рассылки («Всем», по городу) делегатам тоже приходят: они одобренные участники Москвы. Фильтр «Делегации» нужен, когда сообщение только для вузов.</p></div></div>
+<div class="unit" id="u-guard"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Что бот проверяет, прежде чем одобрить</h2>
+  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:24px; flex:1">
+    <div class="card" style="gap:12px; padding:36px 40px"><h3>Только по нику самого человека</h3><p class="mut" style="font-size:28px">По телефону или имени бот не одобряет.</p></div>
+    <div class="card" style="gap:12px; padding:36px 40px"><h3>Один ник у двух людей</h3><p class="mut" style="font-size:28px">Не одобряет, ставит «проверить»: решает менеджер.</p></div>
+    <div class="card" style="gap:12px; padding:36px 40px"><h3>Раньше был отказ</h3><p class="mut" style="font-size:28px">Ставит «проверить». Если менеджер жмёт «✅ ЦА», бот просит второе подтверждение и пишет, что будет отменено.</p></div>
+    <div class="card" style="gap:12px; padding:36px 40px"><h3>Нет шага оплаты</h3><p class="mut" style="font-size:28px">Делегат не видит оплату и не попадает в списки неоплативших.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">17 / 21 · Защиты</div><p class="aside">Форма открыта всем, у кого есть ссылка, поэтому доверять можно только нику, который сверяется с живым Telegram-аккаунтом. Смена настроек, которая могла бы разом одобрить много людей, сначала показывает, сколько их, и ждёт подтверждения.</p></div></div>
+<div class="unit" id="u-launch"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Шесть шагов до включения</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:24px; flex:1">
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">1</p><h3 style="font-size:34px">Приложение Яндекс OAuth</h3><p class="mut" style="font-size:26px; line-height:1.38">Андрей регистрирует приложение для бота.</p></div>
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">2</p><h3 style="font-size:34px">Настя входит через Яндекс</h3><p class="mut" style="font-size:26px; line-height:1.38">Один раз, чтобы бот получил доступ к форме.</p></div>
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">3</p><h3 style="font-size:34px">Выбрать форму</h3><p class="mut" style="font-size:26px; line-height:1.38">«📝 Выбрать форму» на экране «🏫 Делегации».</p></div>
+    <div class="card" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">4</p><h3 style="font-size:34px">Подтвердить вопросы</h3><p class="mut" style="font-size:26px; line-height:1.38">Бот угадывает ФИО, вуз, курс и ник. Проверьте и нажмите «✅ Верно».</p></div>
+    <div class="card hl" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">5</p><h3 style="font-size:34px">Сухая сверка листа</h3><p class="mut" style="font-size:26px; line-height:1.38">Посмотреть цифры, потом «✅ Включить запись».</p></div>
+    <div class="card hl" style="padding:32px 28px; gap:14px; flex:1"><p style="font-size:26px; font-weight:800; color:var(--blue)">6</p><h3 style="font-size:34px">Приёмка 13 октября</h3><p class="mut" style="font-size:26px; line-height:1.38">Проверяем с тестовыми делегатами. Что не проверено, на форуме не включаем.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">18 / 21 · Что нужно для запуска</div><p class="aside">Первые два шага делают один раз Андрей и Настя. Дальше менеджер проходит экран «🏫 Делегации» сверху вниз. Приёмка идёт по разделу «Делегации вузов» на доске приёмки.</p></div></div>
+<div class="unit" id="u-faq1"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Частые вопросы</h2>
+  <div style="display:flex; flex-direction:column; gap:24px; flex:1">
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">В нике опечатка</h3><p class="mut" style="font-size:29px; line-height:1.4">Бот человека не найдёт. Он появится в «⏳ Не зашли», менеджер привязывает его вручную.</p></div>
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Человек сменил ник</h3><p class="mut" style="font-size:29px; line-height:1.4">То же самое: ручная привязка. По фамилии бот ник не ищет.</p></div>
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Открыл бота раньше, чем пришёл ответ формы</h3><p class="mut" style="font-size:29px; line-height:1.4">Ничего страшного. Как только форма подтянется (до 5 минут), бот сам сделает его делегатом и пришлёт сообщение.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">19 / 21 · Частые вопросы, 1</div><p class="aside">Все три случая решаются без разработчика.</p></div></div>
+<div class="unit" id="u-faq2"><div class="frame"><div class="stage">
+<section class="s">
+  <h2>Частые вопросы</h2>
+  <div style="display:flex; flex-direction:column; gap:24px; flex:1">
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Заполнил и анкету, и форму</h3><p class="mut" style="font-size:29px; line-height:1.4">Заявка из «на рассмотрении» станет одобренной сама. Решение менеджера не нужно.</p></div>
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Отправил форму дважды</h3><p class="mut" style="font-size:29px; line-height:1.4">Второй ответ бот тихо привязывает к тому же человеку. Повторного сообщения и двойного счёта нет.</p></div>
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Человека раньше отклонили</h3><p class="mut" style="font-size:29px; line-height:1.4">Бот не одобряет его молча. Менеджер увидит предупреждение и подтвердит решение второй раз.</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">20 / 21 · Частые вопросы, 2</div><p class="aside">Если вашего случая здесь нет, напишите владельцу бота.</p></div></div>
+<div class="unit" id="u-end"><div class="frame"><div class="stage">
+<section class="s dark" style="background:var(--blue); color:#fff; justify-content:space-between; padding:128px">
+  <h2 style="font-size:104px">Делегат заполняет форму. Остальное делает бот.</h2>
+  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:28px">
+    <div class="card" style="background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.4)"><p style="font-size:30px; color:#fff">Менеджер разбирает только спорные случаи</p></div>
+    <div class="card" style="background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.4)"><p style="font-size:30px; color:#fff">Лист UR REGS обновляется сам</p></div>
+    <div class="card" style="background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.4)"><p style="font-size:30px; color:#fff">Настины пометки остаются нетронутыми</p></div>
+  </div>
+</section></div></div><div class="meta"><div class="num">21 / 21 · Итого</div><p class="aside">Вопросы и замечания к презентации можно присылать владельцу бота.</p></div></div>
+<p class="foot2">Юлид'26 · Москва · презентация для команды</p>
+</main>
+<script>
+(function () {
+  var stages = document.querySelectorAll('.stage');
+  function fit() { stages.forEach(function (s) { s.style.transform = 'scale(' + (s.parentElement.clientWidth / 1920) + ')'; }); }
+  window.addEventListener('resize', fit); fit();
+})();
+</script>
+</body>
+</html>

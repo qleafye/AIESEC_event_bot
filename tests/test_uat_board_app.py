@@ -101,3 +101,14 @@ def test_admin_guide_page_and_images_are_served(board):
 
     status, _, _ = _deck_get(board, "/shots/admin/net_takoy_kartinki.png")
     assert status == 404
+
+
+def test_delegations_deck_is_served(board):
+    status, ctype, body = _deck_get(board, "/delegations")
+    assert status == 200 and ctype.startswith("text/html")
+    page = body.decode("utf-8")
+    assert "Как работают делегации вузов в боте" in page
+    assert page.count('class="unit"') >= 20
+
+    status, ctype, body = _deck_get(board, "/delegations.pdf")
+    assert status == 200 and ctype == "application/pdf" and body[:4] == b"%PDF"
