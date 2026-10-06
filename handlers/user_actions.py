@@ -204,6 +204,9 @@ async def ensure_current_season(message: types.Message) -> bool:
     return False
 
 
+_ALERT_MAX = 200  # предел текста всплывающего окна Telegram (answerCallbackQuery)
+
+
 async def ensure_game_allowed(event) -> bool:
     """Делегации вузов (D-08): третий гейт игровых хендлеров (после `ensure_registered` и
     `ensure_current_season`) — делегату вуза монеты/задания закрыты, пока менеджер не включил
@@ -219,8 +222,14 @@ async def ensure_game_allowed(event) -> bool:
     lang, tr_map = await reg_i18n.ctx_for(event)
     text = reg_i18n.tr_text(await get_setting_typed("delegation_game_off_text"), lang, tr_map)
     # Колбэк — алерт (у него есть `.message`), сообщение — обычный ответ через reg_i18n.say.
+    # Алерт Telegram держит до 200 символов, текст менеджер правит сам и до 3500: длинный идёт
+    # обычным сообщением, а колбэк закрывается пустым ответом (иначе кнопка «крутится» и падает).
     if isinstance(event, types.CallbackQuery) or hasattr(event, "message"):
-        await event.answer(text, show_alert=True)
+        if len(text) <= _ALERT_MAX:
+            await event.answer(text, show_alert=True)
+        else:
+            await event.answer()
+            await reg_i18n.say(event.message, text)
     else:
         await reg_i18n.say(event, text)
     return False
