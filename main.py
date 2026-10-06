@@ -15,6 +15,7 @@ from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn, cancel_all as cancel_background_tasks
 import services.miniapp_outbox as miniapp_outbox
+import services.delegations as delegations
 from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
 import services.sheets as sheets_service
 import services.proxy_session as proxy_session
@@ -296,6 +297,10 @@ async def main():
     # старта поллинга. Синхронный вызов (список в памяти, без сети/БД) — try/except не нужен.
     from services.forum_welcome import register as register_forum_welcome
     register_forum_welcome()
+    # Делегации вузов: после первого входа делегата из формы — отметка «🎟 пришёл» в колонке M
+    # листа UR REGS (строка ответа уходит на перезапись зеркалом).
+    from services.checkin import register_first_entry_listener
+    register_first_entry_listener(delegations.on_first_entry)
 
     # Phase 14 (CITY-07): one-time .env -> `cities` table seed, then load the in-memory cache
     # from the DB. MUST run before active_sheet_headers()/_maybe_ensure_city_sheet_headers()
@@ -437,6 +442,9 @@ async def main():
     # Quick 260904-3vm (эстафета): MemoryStorage бота никто извне не сбрасывает — это
     # единственный путь веб-процесса (miniapp_outbox::reg_fsm_reset) к FSM бота.
     miniapp_outbox.init_fsm_storage(dp.storage)
+    # Делегации вузов: бот и хранилище FSM для превращения делегата из джобы синка формы
+    # (сообщение с меню, сброс незаконченной анкеты) — тот же приём, что строкой выше.
+    delegations.init(bot, dp.storage)
     # Квик 260911-mx6: свой роутер сеялки приёмки — ПЕРВЫМ, раньше admin.router. Он не висит
     # на CapabilityMiddleware (deny-by-default admin_caps отрезал бы тестера-делегата без
     # ролей навсегда) и перехватывает /uat раньше state-хендлеров registration.router — иначе

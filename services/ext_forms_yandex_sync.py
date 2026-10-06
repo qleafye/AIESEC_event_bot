@@ -214,4 +214,11 @@ async def reconcile_all() -> dict:
                                    sync_error=sync_error_text("reconcile_error"))
             logger.warning("ext_forms: сверка формы %s: %s", form["id"], type(e).__name__)
     rematched = await rematch_unmatched()
-    return {"enqueued": enqueued, "rematched": rematched}
+    # Делегации вузов: страховка хука приёма — оценить ответы без оценки и снова поискать людей.
+    swept: dict = {}
+    try:
+        from services.delegations import sweep_pending
+        swept = await sweep_pending()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("delegations: sweep после сверки: %s", type(e).__name__)
+    return {"enqueued": enqueued, "rematched": rematched, "swept": swept}
