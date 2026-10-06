@@ -449,7 +449,17 @@ EXCLUDED_GROUPS = ("roles",)
 # Квик 260927: задания для «упоминаний в соцсетях» рейтинга чата хранятся id заданий игры — это
 # коды; в вебе их пришлось бы набирать руками. Правятся только экраном-галочками бота «🏆 Рейтинг
 # чата» (handlers/admin_chat_rating.py), где видны названия заданий.
-EXCLUDED_KEYS: frozenset[str] = frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks"}
+# Делегации вузов: id подключённой формы и qkey её ключевых вопросов — коды, которые менеджер
+# в вебе набирал бы руками. Правятся только кнопками экрана «🏫 Делегации» бота (выбор формы и
+# вопросов по подписям). Остальные ключи модуля (дата отсечки, курсы не ЦА, тумблер, тексты)
+# в вебе остаются — у них человеческие типы.
+_DELEGATION_SERVICE_KEYS = frozenset({
+    "delegation_form_id", "delegation_q_fullname", "delegation_q_university",
+    "delegation_q_course", "delegation_q_email",
+})
+EXCLUDED_KEYS: frozenset[str] = (
+    frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks"} | _DELEGATION_SERVICE_KEYS
+)
 
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
 # литерал, а не импорт: admin_settings.py тянет aiogram, settings_ops.py — нет (D-12), а
