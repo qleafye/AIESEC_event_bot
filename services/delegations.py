@@ -53,7 +53,8 @@ SOURCE_TAG = "delegation"
 LINK_HOW_USERNAME = "username"
 LINK_HOW_MANUAL = "manual"
 LINK_HOW_DUPLICATE = "duplicate"
-NOTE_REJECTED_IN_BOT = "rejected_in_bot"
+NOTE_REJECTED_IN_BOT = ddb.NOTE_REJECTED_IN_BOT
+NOTE_AMBIGUOUS_NICK = ddb.NOTE_AMBIGUOUS_NICK
 # Что пишем в `users.delegation`, когда вуз в ответе пуст: все гейты геймы, меню и фильтр рассылки
 # проверяют «delegation не пусто» — пустое значение сделало бы делегата обычным участником.
 UNIVERSITY_UNKNOWN = "вуз не указан"
@@ -174,6 +175,10 @@ async def find_person(needle: str | None) -> tuple[int | None, str | None]:
     кто только нажал /start. Пустой ник — (None, None) без запроса."""
     if not needle:
         return None, None
+    if len(await ddb.people_by_username(needle)) > 1:
+        # Ник числится за несколькими людьми (прежний владелец ещё лежит в базе): кого
+        # одобрять, бот не знает — решает менеджер.
+        return None, "ambiguous"
     user = await get_user_by_username(needle)
     if user:
         return user["telegram_id"], "users"
@@ -488,7 +493,13 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
         # Только по нику из формы, свежим поиском: `matched_telegram_id` мог встать по
         # телефону (кто владеет номером, тот и «делегат») или устареть после смены ника.
         tid, _where = await find_person(fields["username_needle"])
-        if tid is None:
+        if _where == "ambiguous":
+            result["waiting"] = "ambiguous_nick"
+            if row.get("decided_by") is None:
+                await ddb.set_decision(row["id"], "check", None, note=NOTE_AMBIGUOUS_NICK)
+                result["ta"] = "check"
+                changed = True
+        elif tid is None:
             result["waiting"] = "no_person"
         else:
             user = await get_user(tid)

@@ -23,6 +23,11 @@ _FMT = "%Y-%m-%d %H:%M:%S"
 
 TA_STATUSES = ("ok", "no", "check")
 
+# Пометки автоматического «проверить»: автоматика сама отправила ответ менеджеру, и очередная
+# переоценка не должна вернуть его в «ЦА» (иначе каждый sweep гонял бы строку листа туда-сюда).
+NOTE_REJECTED_IN_BOT = "rejected_in_bot"
+NOTE_AMBIGUOUS_NICK = "ambiguous_nick"
+
 # Точка «Вход» в `checkins` — тот же литерал, что `services.checkin.ENTRY_POINT`. Сам модуль
 # checkin тянет aiogram и бота, слой БД его не импортирует; равенство держит тест
 # `tests/test_delegations_db.py::test_entry_point_literal_matches_checkin`.
@@ -93,8 +98,11 @@ async def upsert_eval(
             "university = excluded.university, course_raw = excluded.course_raw, "
             "course_canonical = excluded.course_canonical, "
             "username_needle = excluded.username_needle, answered_at = excluded.answered_at, "
-            "ta_status = CASE WHEN delegation_answers.decided_by IS NULL "
-            "THEN excluded.ta_status ELSE delegation_answers.ta_status END",
+            "ta_status = CASE WHEN delegation_answers.decided_by IS NOT NULL "
+            "THEN delegation_answers.ta_status "
+            "WHEN delegation_answers.ta_status = 'check' AND excluded.ta_status = 'ok' "
+            "AND delegation_answers.note IN ('rejected_in_bot', 'ambiguous_nick') "
+            "THEN 'check' ELSE excluded.ta_status END",
             (form_id, str(answer_id), ta_status, university, course_raw, course_canonical,
              username_needle, answered_at, _now()),
         )
@@ -156,6 +164,19 @@ async def unlink(row_id: int, telegram_id: int) -> None:
         "WHERE id = ? AND linked_telegram_id = ?",
         (row_id, telegram_id),
     )
+
+
+async def people_by_username(needle: str | None) -> list[int]:
+    """telegram_id всех, у кого в боте (анкета или только /start) такой ник; без учёта регистра."""
+    key = _db.username_needle(needle)
+    if key is None:
+        return []
+    rows = await _fetchall(
+        "SELECT telegram_id FROM users WHERE ltrim(username, '@') = ? COLLATE NOCASE "
+        "UNION SELECT telegram_id FROM reg_started WHERE ltrim(username, '@') = ? COLLATE NOCASE",
+        (key, key),
+    )
+    return [int(r["telegram_id"]) for r in rows]
 
 
 async def find_pending_by_username(needle: str | None) -> list[dict]:
