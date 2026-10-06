@@ -38,7 +38,8 @@ from services import i18n
 
 import web_theme
 from miniapp.deps import (
-    SECTIONS, Principal, delegate_denial, form_access_denial, form_status, principal, read_setting,
+    SECTIONS, Principal, delegate_denial, form_access_denial, form_status, game_denial, principal,
+    read_setting,
 )
 from miniapp.file_tokens import mint_file_token
 from miniapp.routers.program import program_section_visible
@@ -319,6 +320,11 @@ async def me(request: Request, p: Principal = Depends(principal)) -> dict:
         event_name = read_setting(conn, "event_name")
         logo_file_id = read_setting(conn, "miniapp_logo")
         is_delegate = delegate_denial(conn, p) is None
+        if game_denial(conn, p) is not None:
+            # Делегация вуза при выключенной геме: плитки заданий, монет и рейтинга не рисуем —
+            # по тапу они отвечали бы 403.
+            for game_section in ("tasks", "coins", "leaderboard"):
+                sections[game_section] = False
         # D-24/D-08: сервер решает, «открывать ли приложение на анкете» — JS только исполняет.
         # form_access считается той же функцией, что и form_gate (T-21-34).
         status = form_status(conn, p.telegram_id)

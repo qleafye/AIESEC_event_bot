@@ -99,3 +99,22 @@ def test_delegate_gate_refusal_wins_over_game_gate(client):
     resp = client.get("/app/api/tasks", headers=_hdr(PENDING_ID))
     assert resp.status_code == 403
     assert resp.json()["reason"] == "delegate_gate"
+
+
+def test_hub_hides_game_facts_for_delegate_when_game_off(client):
+    h = _hdr(DELEGATE_ID)
+    body = client.get("/app/api/hub", headers=h).json()
+    assert body["tasks_fact"] is None and body["rank_unit"] is None
+    _set("delegation_game_enabled", "on")
+    body = client.get("/app/api/hub", headers=h).json()
+    assert body["tasks_fact"] is not None and body["rank_unit"] is not None
+    regular = client.get("/app/api/hub", headers=_hdr(REGULAR_ID)).json()
+    assert regular["tasks_fact"] is not None
+
+
+def test_me_drops_game_sections_for_delegate_when_game_off(client):
+    sections = client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()["sections"]
+    assert not any(sections[s] for s in ("tasks", "coins", "leaderboard"))
+    _set("delegation_game_enabled", "on")
+    sections = client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).json()["sections"]
+    assert sections["tasks"] and sections["coins"]

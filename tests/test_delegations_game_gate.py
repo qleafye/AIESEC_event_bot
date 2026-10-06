@@ -236,3 +236,17 @@ def test_chat_rating_untouched():
     for p in Path("services").glob("chat_*.py"):
         src = p.read_text(encoding="utf-8")
         assert "ensure_game_allowed" not in src and "delegation_game" not in src, p
+
+
+def test_leaderboard_command_is_gated_for_delegate(tmp_path):
+    """`/рейтинг` — игровой вход, как монеты и задания: делегату при выключенной геме — текст
+    «геймы нет», а не таблица рейтинга."""
+    _db_ready(tmp_path)
+    _seed(DELEGATE_ID, delegation="МГУ")
+    msg = FakeMessage("/рейтинг")
+    asyncio.run(ua_mod.show_leaderboard(msg))
+    assert len(msg.answers) == 1 and msg.answers[0][0] == _off_text()
+    _seed(REGULAR_ID)
+    reg = FakeMessage("/рейтинг", user_id=REGULAR_ID)
+    asyncio.run(ua_mod.show_leaderboard(reg))
+    assert len(reg.answers) == 1 and reg.answers[0][0] != _off_text()
