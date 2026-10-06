@@ -446,6 +446,15 @@ async def cmd_coins(message: types.Message, bot: Bot):
         parse_mode="HTML",
     )
 
+def _find_email_line(user) -> str:
+    """Строка «Email» карточки /find — только когда он есть: прочерк «-» (заглушка финала анкеты
+    на событиях без вопроса про почту) и пустое значение не показываем."""
+    email = str(user['email'] or '').strip()
+    if email in ('', '-'):
+        return ""
+    return f"Email: {html_module.escape(email)}\n"
+
+
 @router.message(Command("find"))
 async def cmd_find_user(message: types.Message):
     args = message.text.split()
@@ -462,7 +471,7 @@ async def cmd_find_user(message: types.Message):
             f"ID: <code>{user['telegram_id']}</code>\n"
             f"Имя: {html_module.escape(str(user['full_name'] or ''))}\n"
             f"Username: {html_module.escape(str(user['username'] or ''))}\n"
-            f"Email: {html_module.escape(str(user['email'] or ''))}\n"
+            f"{_find_email_line(user)}"
             f"Регистрация: {user['registration_date']}"
         )
         from services.delegate_card import ext_forms_card_lines, status_city_season_lines  # 01.10
