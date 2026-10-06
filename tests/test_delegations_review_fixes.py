@@ -262,3 +262,21 @@ def test_card_and_ok_confirm_for_rejected_person_without_note(tmp_path):
     cb = _FakeCallback(f"dlg_ta:{row_id}:okc")
     _run(mod.dlg_ta(cb))
     assert _row(681)["status"] == "approved"
+
+
+# ---------- WR-10: устаревшая карточка не меняет статус уже привязанного ответа ----------
+
+def test_stale_card_cannot_mark_linked_answer_not_ta(tmp_path):
+    from handlers import admin_delegations_review as mod
+    from tests.test_delegations_admin import _FakeCallback
+    from tests.test_delegations_admin_review import _check_row
+    _env(tmp_path)
+    fid = _delegation_form()
+    row_id = _check_row(fid, "a1")
+    _user(691, "approved")
+    _run(ddb.link(row_id, 691, "username"))
+    cb = _FakeCallback(f"dlg_ta:{row_id}:no")
+    _run(mod.dlg_ta(cb))
+    assert cb.answer_calls == [(mod._ALREADY_LINKED_ALERT, True)]
+    row = _run(ddb.get_by_id(row_id))
+    assert row["ta_status"] == "check" and row["decided_by"] is None
