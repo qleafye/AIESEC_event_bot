@@ -47,6 +47,7 @@ _SETTING_DEFAULTS = {
     "dashboard_block_months": "on",
     "dashboard_block_game": "off",
     "dashboard_block_referrals": "on",
+    "dashboard_block_delegations": "off",
     # Phase 32 (32-09, D-33/D-34): срез амбассадоров и волн — по умолчанию выключен, как и
     # dashboard_block_game, чтобы прод любого события, ещё не дошедшего до этой фазы, не
     # менялся ни на бит.
@@ -1281,6 +1282,48 @@ def _avg_question_answer_minutes(conn, parts: list[str], params: tuple) -> float
     )
     value = _scalar(conn, sql, params)
     return round(value, 1) if value is not None else None
+
+
+def delegations_block(conn, scope: Scope) -> dict | None:
+    """Блок «Делегации»: по вузам — ЦА в форме / в боте / пришли.
+
+    `None`, пока таблицы `delegation_answers` нет или она пуста (гейт по данным, как у
+    `arrival_block`). Город/сезон сужают «в боте» и «пришли» через `users` делегата; «ЦА в
+    форме» — это ответы формы, у них города нет, поэтому скоуп их не трогает. «Пришли» —
+    есть отметка входа (`checkins.point = 'entry'`)."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delegation_answers'"
+    ).fetchone()
+    if has_table is None or not _scalar(conn, "SELECT EXISTS(SELECT 1 FROM delegation_answers)"):
+        return None
+    parts, params = _scope_sql(conn, scope)
+    in_scope = " AND ".join(parts) if parts else "1"
+    has_checkins = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'checkins'"
+    ).fetchone()
+    arrived_expr = (
+        "EXISTS(SELECT 1 FROM checkins c WHERE c.telegram_id = d.linked_telegram_id "
+        "AND c.point = 'entry')" if has_checkins else "0"
+    )
+    sql = (
+        "SELECT COALESCE(NULLIF(TRIM(d.university), ''), 'Без вуза') AS university, "
+        "COALESCE(SUM(d.ta_status = 'ok'), 0) AS ta, "
+        f"COALESCE(SUM(d.linked_telegram_id IS NOT NULL AND u.telegram_id IS NOT NULL AND {in_scope}), 0) AS in_bot, "
+        f"COALESCE(SUM(d.linked_telegram_id IS NOT NULL AND u.telegram_id IS NOT NULL AND {in_scope} AND {arrived_expr}), 0) AS arrived "
+        "FROM delegation_answers d LEFT JOIN users u ON u.telegram_id = d.linked_telegram_id "
+        "GROUP BY 1"
+    )
+    rows = [
+        {"university": r["university"], "ta": r["ta"], "in_bot": r["in_bot"], "arrived": r["arrived"]}
+        for r in conn.execute(sql, tuple(params) + tuple(params)).fetchall()
+    ]
+    rows.sort(key=lambda r: (-r["ta"], r["university"]))
+    return {
+        "rows": rows,
+        "total_ta": sum(r["ta"] for r in rows),
+        "total_in_bot": sum(r["in_bot"] for r in rows),
+        "total_arrived": sum(r["arrived"] for r in rows),
+    }
 
 
 def arrival_block(conn, scope: Scope) -> dict | None:
