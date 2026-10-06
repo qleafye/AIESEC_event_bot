@@ -54,6 +54,10 @@ from database.db import (
     AUTO_REJECT_YES,
     AUTO_REJECT_NO,
     get_auto_reject_filter_options,
+    # Делегации вузов (D-07): поле фильтра «🏫 Делегации» — «делегация вуза»/«не делегация».
+    DELEGATION_YES,
+    DELEGATION_NO,
+    get_delegation_filter_options,
     # Форум-ночь п.6 (D-25, идея №14): поле фильтра «Отметка на форуме» — выбор
     # «пришли»/«не пришли».
     CHECKIN_YES,
@@ -1161,6 +1165,8 @@ _FILTER_FIELD_LABELS = {
     # Форум-ночь п.6 (D-25, идея №14): отметка «Вход» в `checkins` — пришёл ли делегат на
     # форум (не «одобрен», это отдельное поле «Статус» выше).
     "checkin_entry": "Отметка на форуме",
+    # Делегации вузов (D-07): «вуз делегации» — из ФОРМЫ (users.delegation), не «ВУЗ» анкеты выше.
+    "delegation_any": "Делегация вуза", "delegation": "Вуз делегации",
 }
 
 # Fields whose value is chosen from a DB-distinct picker (buttons pulled from real data).
@@ -1199,6 +1205,9 @@ _PICKER_FIELDS = {
     # `db._FILTER_COLUMNS`/`db._FILTER_VIRTUAL_FIELDS` (see there). No separate handler
     # needed for the same reason as the fields above.
     "checkin_entry",
+    # Делегации вузов (D-07) — та же двойная регистрация с `db._FILTER_COLUMNS` (там
+    # `delegation_any` виртуальное, `delegation` — обычная колонка через общий DISTINCT-пикер).
+    "delegation_any", "delegation",
 }
 
 # How many value buttons per picker page (long cyrillic values → 1 per row).
@@ -1268,7 +1277,7 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
                      show_chat: bool = False, show_auto_reject: bool = False,
                      show_checkin: bool = False, show_sessions: bool = False,
-                     show_ext_form: bool = False) -> InlineKeyboardMarkup:
+                     show_ext_form: bool = False, show_delegations: bool = False) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1311,6 +1320,11 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # «Резюме»/«Чата делегатов»/«Сезона»). Дефолт False держит клавиатуру байт-в-байт прежней.
     if show_auto_reject:
         kb.append([InlineKeyboardButton(text="🤖 Автоотказ по правилу", callback_data="filter_f_auto_reject")])
+    # Делегации вузов (D-07): кнопка только когда в базе есть и делегаты вузов, и остальные —
+    # тот же довод, что у соседей выше. Вуз конкретный — вторая кнопка того же ряда.
+    if show_delegations:
+        kb.append([InlineKeyboardButton(text="🏫 Делегации", callback_data="filter_f_delegation_any"),
+                   InlineKeyboardButton(text="🏫 Вуз делегации", callback_data="filter_f_delegation")])
     # Форум-ночь п.6 (D-25, идея №14): кнопка только когда в `checkins` реально есть и
     # пришедшие, и (approved текущего сезона) не пришедшие — тот же довод, что у соседей выше.
     if show_checkin:
@@ -1358,6 +1372,7 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Phase 31 (31-02/31-07, D-28): порог считается ТЕМ ЖЕ списком, который потом покажет
     # пикер (get_auto_reject_filter_options) — второй карты значений нет.
     auto_reject_options = await get_auto_reject_filter_options()
+    delegation_options = await get_delegation_filter_options()  # делегации вузов (D-07), тот же порог
     # Форум-ночь п.6 (D-25, идея №14): та же роль порога, что у auto_reject/chat выше.
     # Вход каждый день: порог — хоть один вариант (за форум / сегодня / день) с людьми.
     checkin_options = await get_checkin_entry_picker_options()
@@ -1369,7 +1384,8 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
                          show_auto_reject=len(auto_reject_options) > 1,
                          show_checkin=bool(checkin_options),
                          show_sessions=show_sessions,
-                         show_ext_form=bool(await _ext_forms_list()))
+                         show_ext_form=bool(await _ext_forms_list()),
+                         show_delegations=len(delegation_options) > 1)
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1477,6 +1493,14 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         # Человеку показываем только эти два слова — коды (yes/no) не показываем (правило
         # «бот для людей»).
         labels = {AUTO_REJECT_YES: "Отклонён правилом", AUTO_REJECT_NO: "Не отклонён правилом"}
+    elif field == "delegation_any":
+        # Делегации вузов (D-07): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у соседей
+        # выше (инлайн-кнопки не истекают). Человеку — слова, коды yes/no не показываем.
+        options = await get_delegation_filter_options()
+        if len(options) < 2:
+            await callback.answer("Делегаций в базе пока нет — фильтровать не по чему.", show_alert=True)
+            return
+        labels = {DELEGATION_YES: "Делегация вуза", DELEGATION_NO: "Не делегация"}
     elif field == "checkin_entry":
         # Форум-ночь п.6 (D-25, идея №14): гейт живёт В ХЭНДЛЕРЕ — тот же довод WR-04, что у
         # соседей выше: инлайн-кнопки не истекают, вчерашнее меню с кнопкой «Отметка на
@@ -1635,9 +1659,10 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
             "field": field, "value": value, "label": labels.get(value, value),
             "chats": chats_payload,
         })
-    elif field == "auto_reject":
+    elif field in ("auto_reject", "delegation_any"):
         # Phase 31 (31-02/31-07, D-28): `label` есть ВСЕГДА — оба значения (AUTO_REJECT_YES/
         # AUTO_REJECT_NO) сентинелы, та же причина, что у «Резюме»/«Чата делегатов» выше.
+        # Делегации вузов (D-07): `delegation_any` — те же два сентинела, та же запись.
         labels = data.get("filter_option_labels") or {}
         filters.append({"field": field, "value": value, "label": labels.get(value, value)})
     elif field == "checkin_entry":
