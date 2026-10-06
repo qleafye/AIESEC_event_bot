@@ -1502,6 +1502,13 @@ admin|callback_query|dlg_course|dlg_course:*
 admin|callback_query|dlg_courses_done|dlg_courses_done
 admin|callback_query|dlg_text|dlg_text
 admin|callback_query|dlg_text_pick|dlg_text:*
+admin|callback_query|dlg_sheet|dlg_sheet
+admin|callback_query|dlg_tab|dlg_tab:*
+admin|callback_query|dlg_check|dlg_check
+admin|callback_query|dlg_write_on|dlg_write_on
+admin|callback_query|dlg_write_yes|dlg_write_yes
+admin|callback_query|dlg_write_off|dlg_write_off
+admin|callback_query|dlg_write_off_yes|dlg_write_off_yes
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2201,7 +2208,11 @@ def test_snapshot_total_handler_count_is_292():
     # отсечки и текста делегату) в хвост message и +8 admin.callback_query (dlg_cancel/dlg_game/
     # dlg_cutoff/dlg_courses/dlg_course/dlg_courses_done/dlg_text/dlg_text_pick) сразу после
     # dlg_keys_ok; только вставки (1034 -> 1044).
-    assert len(GOLDEN_SNAPSHOT) == 1044
+    # Делегации вузов, лист UR REGS (handlers/admin_delegations_sheet.py, импорт из хвоста
+    # admin_delegations.py): +7 admin.callback_query (dlg_sheet/dlg_tab/dlg_check/dlg_write_on/
+    # dlg_write_yes/dlg_write_off/dlg_write_off_yes) сразу после dlg_text_pick; одна чистая
+    # вставка, сверено SequenceMatcher'ом (1044 -> 1051).
+    assert len(GOLDEN_SNAPSHOT) == 1051
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

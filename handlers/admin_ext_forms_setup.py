@@ -80,6 +80,17 @@ async def show_tab_picker(message, form_id: int, state: FSMContext, *, edit: boo
                     InlineKeyboardMarkup(inline_keyboard=[[_btn("⬅️ К списку", "admin_ext_forms")]]),
                     edit=edit)
         return
+    from services import delegations  # ленивый шов: модуль делегаций тянет БД и aiogram
+    if form_id == await delegations.delegation_form_id():
+        # Форма делегаций пишет в вкладку выгрузки Яндекса по ID ответа — отсюда её выбирать
+        # нельзя: раскладка бота в той же вкладке дала бы «чужую шапку» и задвоила строки.
+        text = ("📋 <b>Лист для формы делегаций</b>\n\n"
+                "Лист для формы делегаций выбирается в «📋 Заявки → 🏫 Делегации → "
+                "📋 Лист UR REGS» — там перед первой записью бот сверяет строки по ID ответа, "
+                "чтобы не задвоить строки, уже выгруженные в лист из Яндекса.")
+        rows = [[_btn("🏫 Открыть Делегации", "admin_delegations")], _back_row(form_id)]
+        await _show(message, text, InlineKeyboardMarkup(inline_keyboard=rows), edit=edit)
+        return
     titles = await sheets.list_worksheet_titles()
     rows: list[list[InlineKeyboardButton]] = []
     if titles is None:
