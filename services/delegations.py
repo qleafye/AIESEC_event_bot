@@ -52,6 +52,9 @@ SOURCE_TAG = "delegation"
 LINK_HOW_USERNAME = "username"
 LINK_HOW_MANUAL = "manual"
 NOTE_REJECTED_IN_BOT = "rejected_in_bot"
+# Что пишем в `users.delegation`, когда вуз в ответе пуст: все гейты геймы, меню и фильтр рассылки
+# проверяют «delegation не пусто» — пустое значение сделало бы делегата обычным участником.
+UNIVERSITY_UNKNOWN = "вуз не указан"
 # Автор журнала решений при автоматическом одобрении — тот же сентинел, что у автоотказа
 # анкеты (`services.reject_journal.AUTO_DECIDED_BY`): списки заявок уже умеют показывать его
 # как «автоматически». Когда одобрение авторизовал менеджер, автором становится он.
@@ -361,7 +364,8 @@ async def convert_to_delegate(
         flipped = await approve_user_atomic(tid)
 
     await update_user_answers(
-        tid, {"delegation": university, "delegation_answer_id": answer_id},
+        tid, {"delegation": (university or "").strip() or UNIVERSITY_UNKNOWN,
+              "delegation_answer_id": answer_id},
         allowed_columns=_ALLOWED_DELEGATION_COLUMNS,
     )
     if not await ddb.link(row["id"], tid, how):

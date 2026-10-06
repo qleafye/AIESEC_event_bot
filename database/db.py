@@ -1127,6 +1127,12 @@ async def init_db():
         # пришёл через анкету; строка users при этом не меняется.
         await _ensure_column(db, "users", "delegation", "TEXT")
         await _ensure_column(db, "users", "delegation_answer_id", "TEXT")
+        # Делегат без названия вуза в ответе остаётся делегатом: все гейты и фильтры смотрят на
+        # непустой `delegation`.
+        await db.execute(
+            "UPDATE users SET delegation = 'вуз не указан' WHERE delegation_answer_id IS NOT NULL "
+            "AND (delegation IS NULL OR TRIM(delegation) = '')"
+        )
 
         # D-41 (FORUM-CHECKIN.md): регистрация «на месте» — 'walkin' (новый человек прошёл
         # короткую анкету у стойки) или 'door' (существующая заявка одобрена волонтёром у
