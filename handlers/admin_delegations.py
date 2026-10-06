@@ -3,7 +3,8 @@
 Менеджер заявок выбирает форму делегаций из подключённых внешних форм, подтверждает ключевые
 вопросы (ФИО, вуз, курс, почта) по их подписям, видит счётчики и сводку по вузам и правит все
 настройки модуля (тумблер геймификации, дата отсечки ЦА, курсы не ЦА, тексты делегату)
-собственными кнопками — без права «⚙️ Настройки» и без общего редактора `settings_edit:*`.
+собственными кнопками — без права «⚙️ Настройки» и без общего редактора настроек: ввод даты
+и текстов идёт через состояния `DelegationEdit`, привязанные только к этому экрану.
 
 Шов на общий `handlers.admin.router`: своего Router нет, каждый декоратор — в одну строку
 (инвариант cap-теста), `admin_sections` импортируется лениво (цикл на уровне модуля).
@@ -20,13 +21,19 @@
 """
 import html as html_module
 import logging
+from datetime import datetime
 
 from aiogram import F, types
+from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+import reg_engine
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from handlers.admin import router
+from handlers.states import DelegationEdit
+from moderation_card import EMPTY_SENTINEL
 from services import delegations
 from services.background import spawn
 from settings_audit import set_setting_by_admin
@@ -141,7 +148,6 @@ async def _cutoff_label() -> str:
 
 def _chosen(raw) -> list[str]:
     """Значение list-ключа без сентинела пустого набора (как в handlers/admin_reg_scoring)."""
-    from moderation_card import EMPTY_SENTINEL
     if not raw or list(raw) == [EMPTY_SENTINEL]:
         return []
     return [str(v) for v in raw]
@@ -394,3 +400,190 @@ async def dlg_keys_ok(callback: types.CallbackQuery):
     spawn(delegations.sweep_pending(reevaluate=True))
     await callback.answer(_KEYS_SAVED)
     await render_screen(callback)
+
+
+# ── настройки с экрана ────────────────────────────────────────────────────────────────────
+# Все ключи модуля правятся здесь, своими кнопками под `moderate_reg`; общий редактор настроек
+# (право `settings`) не используется — менеджер заявок делает всё сам.
+
+_TEXT_KEYS = {
+    "welcome": ("delegation_welcome_text", "🏫 Новому делегату"),
+    "existing": ("delegation_welcome_existing_text", "🏫 Делегату с анкетой"),
+    "gameoff": ("delegation_game_off_text", "🎮 Когда игра выключена"),
+}
+_TEXT_MAX = 3500
+_CANCELLED = "Отменено"
+_STALE_EDIT = "Этот ввод устарел — откройте экран ещё раз."
+_BAD_DATE = "Не понял дату. Нужен формат ДД.ММ.ГГГГ, например 23.09.2026."
+_EMPTY_COURSES_TOAST = "Список пуст — все курсы считаются ЦА"
+_STALE_COURSE = "Варианта больше нет — откройте список ещё раз"
+_COURSES_TEXT = (
+    "🎓 <b>Курсы не ЦА</b>\n\n"
+    "Отмеченные курсы после даты отсечки — не целевая аудитория. Магистратура и аспирантура — "
+    "всегда ЦА, поэтому их в списке нет."
+)
+
+
+def _cancel_kb() -> InlineKeyboardMarkup:
+    return _kb([[_btn("❌ Отмена", "dlg_cancel")]])
+
+
+def _is_cancel(message) -> bool:
+    body = (message.text or "").strip()
+    return body.startswith("/") or body.lower() in {"отмена", "❌ отмена"}
+
+
+async def _cancel_input(message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(_CANCELLED + ".")
+    await render_screen(message, edit=False)
+
+
+@router.callback_query(F.data == "dlg_cancel")
+async def dlg_cancel(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer(_CANCELLED)
+    await render_screen(callback)
+
+
+# тумблер геймификации
+
+@router.callback_query(F.data == "dlg_game")
+async def dlg_game(callback: types.CallbackQuery):
+    new_val = "off" if await _game_on() else "on"
+    await set_setting_by_admin(_admin_id(callback), "delegation_game_enabled", new_val)
+    await callback.answer("Геймификация для делегатов: "
+                          + ("включена" if new_val == "on" else "выключена"))
+    await render_screen(callback)
+
+
+# дата отсечки ЦА
+
+@router.callback_query(F.data == "dlg_cutoff")
+async def dlg_cutoff(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(DelegationEdit.waiting_cutoff)
+    text = (f"📅 <b>Дата отсечки ЦА</b>\n\nСейчас: {await _cutoff_label()}.\n"
+            "Кто заполнил форму до этой даты — целевая аудитория при любом курсе; кто после — "
+            "по списку курсов не ЦА.\n\n"
+            "Пришлите новую дату в формате ДД.ММ.ГГГГ, например 23.09.2026.")
+    await _show(callback, text, _cancel_kb())
+    await callback.answer()
+
+
+@router.message(StateFilter(DelegationEdit.waiting_cutoff))
+async def dlg_cutoff_input(message: types.Message, state: FSMContext):
+    if _is_cancel(message):
+        await _cancel_input(message, state)
+        return
+    try:
+        dt = datetime.strptime((message.text or "").strip(), "%d.%m.%Y")
+    except ValueError:
+        await message.answer(_BAD_DATE, reply_markup=_cancel_kb())
+        return
+    value = dt.strftime("%d.%m.%Y")
+    await set_setting_by_admin(message.from_user.id, "delegation_ta_cutoff", value)
+    await state.clear()
+    spawn(delegations.sweep_pending(reevaluate=True))
+    await message.answer(f"Отсечка: {value}. Пересчитываю ЦА по ответам формы…")
+    await render_screen(message, edit=False)
+
+
+# курсы не ЦА (чекбоксы из вариантов вопроса анкеты «Курс»)
+
+async def _course_variants() -> list[str]:
+    # Магистратура/аспирантура — ЦА при любой настройке (services/delegations_course), галочка
+    # на них ничего бы не меняла — не показываем.
+    return [v for v in await reg_engine.options("course") if "магистр" not in v.lower()]
+
+
+async def _courses_screen(target) -> None:
+    variants = await _course_variants()
+    chosen = set(await _not_ta_courses())
+    rows = [[_btn(("✅ " if v in chosen else "☐ ") + v, f"dlg_course:{i}")]
+            for i, v in enumerate(variants)]
+    rows.append([_btn("✅ Готово", "dlg_courses_done")])
+    await _show(target, _COURSES_TEXT, _kb(rows))
+
+
+@router.callback_query(F.data == "dlg_courses")
+async def dlg_courses(callback: types.CallbackQuery):
+    await _courses_screen(callback)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("dlg_course:"))
+async def dlg_course(callback: types.CallbackQuery):
+    variants = await _course_variants()
+    idx = _tail_int(callback.data)
+    if idx is None or not 0 <= idx < len(variants):
+        await callback.answer(_STALE_COURSE, show_alert=True)
+        return
+    raw = await _not_ta_courses()
+    chosen = set(raw) ^ {variants[idx]}
+    # порядок — как у вариантов анкеты; значения, которых в вопросе больше нет, сохраняем
+    new_value = [v for v in variants if v in chosen] + [v for v in raw if v not in variants]
+    await set_setting_by_admin(_admin_id(callback), "delegation_not_ta_courses",
+                               "\n".join(new_value) if new_value else EMPTY_SENTINEL)
+    await _courses_screen(callback)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "dlg_courses_done")
+async def dlg_courses_done(callback: types.CallbackQuery):
+    chosen = await _not_ta_courses()
+    spawn(delegations.sweep_pending(reevaluate=True))
+    toast = (_EMPTY_COURSES_TOAST if not chosen
+             else f"Курсы не ЦА: {', '.join(chosen)}. Пересчитываю ЦА…")
+    await callback.answer(toast)
+    await render_screen(callback)
+
+
+# тексты делегату
+
+@router.callback_query(F.data == "dlg_text")
+async def dlg_text(callback: types.CallbackQuery):
+    rows = [[_btn(label, f"dlg_text:{which}")] for which, (_key, label) in _TEXT_KEYS.items()]
+    rows.append([_to_screen()])
+    await _show(callback, "✏️ <b>Тексты делегату</b>\n\nКакой текст поменять?", _kb(rows))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("dlg_text:"))
+async def dlg_text_pick(callback: types.CallbackQuery, state: FSMContext):
+    which = _tail(callback.data)
+    if which not in _TEXT_KEYS:
+        await callback.answer(_STALE_EDIT, show_alert=True)
+        return
+    key, label = _TEXT_KEYS[which]
+    await state.set_state(DelegationEdit.waiting_text)
+    await state.update_data(dlg_text_key=key)
+    current = await get_setting_typed(key) or ""
+    hint = "Пришлите новый текст."
+    if which != "gameoff":
+        hint += " {university} в тексте заменится на название вуза из формы."
+    await _show(callback, f"✏️ <b>{label}</b>\n\nСейчас:\n{_e(current)}\n\n{hint}", _cancel_kb())
+    await callback.answer()
+
+
+@router.message(StateFilter(DelegationEdit.waiting_text))
+async def dlg_text_input(message: types.Message, state: FSMContext):
+    if _is_cancel(message):
+        await _cancel_input(message, state)
+        return
+    key = (await state.get_data()).get("dlg_text_key")
+    if key not in {k for k, _label in _TEXT_KEYS.values()}:
+        await state.clear()
+        await message.answer(_STALE_EDIT)
+        return
+    body = (message.text or "").strip()
+    if not body:
+        await message.answer("Пришлите текст сообщения.", reply_markup=_cancel_kb())
+        return
+    if len(body) > _TEXT_MAX:
+        await message.answer(f"Слишком длинно — до {_TEXT_MAX} символов, сейчас {len(body)}.",
+                             reply_markup=_cancel_kb())
+        return
+    await set_setting_by_admin(message.from_user.id, key, body)
+    await state.clear()
+    await message.answer("Текст сохранён.")
+    await render_screen(message, edit=False)

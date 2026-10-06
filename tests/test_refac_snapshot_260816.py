@@ -802,6 +802,8 @@ admin|message|extf_oauth_code|state:ExtFormOAuth:*
 admin|message|extf_oauth_org|state:ExtFormOAuth:*
 admin|message|extf_connect_cancel|state:ExtFormConnect:*
 admin|message|extf_connect_link|state:ExtFormConnect:*
+admin|message|dlg_cutoff_input|state:DelegationEdit:*
+admin|message|dlg_text_input|state:DelegationEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1492,6 +1494,14 @@ admin|callback_query|dlg_keys|dlg_keys
 admin|callback_query|dlg_key|dlg_key:*
 admin|callback_query|dlg_keyset|dlg_keyset:*
 admin|callback_query|dlg_keys_ok|dlg_keys_ok
+admin|callback_query|dlg_cancel|dlg_cancel
+admin|callback_query|dlg_game|dlg_game
+admin|callback_query|dlg_cutoff|dlg_cutoff
+admin|callback_query|dlg_courses|dlg_courses
+admin|callback_query|dlg_course|dlg_course:*
+admin|callback_query|dlg_courses_done|dlg_courses_done
+admin|callback_query|dlg_text|dlg_text
+admin|callback_query|dlg_text_pick|dlg_text:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2187,7 +2197,11 @@ def test_snapshot_total_handler_count_is_292():
     # Делегации вузов: +8 хендлеров admin — экран «🏫 Делегации» (handlers/admin_delegations.py,
     # импорт последним в хвосте admin.py): admin_delegations/dlg_univ/dlg_form_pick/dlg_form/
     # dlg_keys/dlg_key/dlg_keyset/dlg_keys_ok; только вставки в хвост (1026 -> 1034).
-    assert len(GOLDEN_SNAPSHOT) == 1034
+    # Делегации вузов, настройки с экрана: +2 admin.message (state:DelegationEdit:* — ввод даты
+    # отсечки и текста делегату) в хвост message и +8 admin.callback_query (dlg_cancel/dlg_game/
+    # dlg_cutoff/dlg_courses/dlg_course/dlg_courses_done/dlg_text/dlg_text_pick) сразу после
+    # dlg_keys_ok; только вставки (1034 -> 1044).
+    assert len(GOLDEN_SNAPSHOT) == 1044
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
