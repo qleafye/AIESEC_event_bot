@@ -3149,7 +3149,10 @@ def summary_fields(answers: dict) -> list:
         )
         for label, column in _SUMMARY_FIELD_LABELS
     ]
-    fields.append(("Работа", "Да" if answers.get("work_status") else "Нет"))
+    # Строка «Работа» — только если вопрос задавали: ответ «Нет» хранится как False, а на событиях
+    # без шага reg_q_work ключа нет вовсе (None) — иначе у каждого делегата стояло бы «Работа: Нет».
+    work_answer = answers.get("work_status")
+    fields.append(("Работа", None if work_answer is None else ("Да" if work_answer else "Нет")))
     fields.append(("Амбассадор", "Да" if answers.get("is_ambassador_candidate") else None))
     out = [(label, value) for label, value in fields if not (value is None or str(value) == "")]
     if answers.get("resume_file_id"):
