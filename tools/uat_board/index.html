@@ -1,4 +1,4 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Приёмка Юлид '26 · 16.09</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Приёмка Юлид '26 · сессии</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Raleway:ital,wght@1,800&display=swap">
@@ -10,6 +10,7 @@
   --accent:#037EF3; --accent-ink:#0163C0; --accent-soft:#E3F0FE;
   --warm:#F48924; --warm-soft:#FDEBD9;
   --ok:#12855A; --ok-soft:#E1F3EA; --bad:#CF3A24; --bad-soft:#FBE7E3; --skip:#8A6A00; --skip-soft:#FFF3CC;
+  --role-m:#0163C0; --role-m-soft:#E3F0FE; --role-d:#B85C00; --role-d-soft:#FDEBD9; --role-v:#5B3FB8; --role-v-soft:#ECE6FA;
   --shadow:0 1px 2px rgba(21,26,33,.06);
   --font-h:"Raleway","Segoe UI",system-ui,sans-serif;
   --font-b:"Lato","Segoe UI",system-ui,sans-serif;
@@ -21,6 +22,7 @@
   --accent:#4FA6F7; --accent-ink:#8CC5FA; --accent-soft:#16283C;
   --warm:#F9A44C; --warm-soft:#3A2812;
   --ok:#4FBF8E; --ok-soft:#142A22; --bad:#F0705A; --bad-soft:#2E1A17; --skip:#F0C24B; --skip-soft:#3A3114;
+  --role-m:#8CC5FA; --role-m-soft:#16283C; --role-d:#F9A44C; --role-d-soft:#3A2812; --role-v:#B9A6F0; --role-v-soft:#261D3F;
   --shadow:0 1px 2px rgba(0,0,0,.35);
 }}
 :root[data-theme="dark"]{
@@ -30,189 +32,195 @@
   --accent:#4FA6F7; --accent-ink:#8CC5FA; --accent-soft:#16283C;
   --warm:#F9A44C; --warm-soft:#3A2812;
   --ok:#4FBF8E; --ok-soft:#142A22; --bad:#F0705A; --bad-soft:#2E1A17; --skip:#F0C24B; --skip-soft:#3A3114;
+  --role-m:#8CC5FA; --role-m-soft:#16283C; --role-d:#F9A44C; --role-d-soft:#3A2812; --role-v:#B9A6F0; --role-v-soft:#261D3F;
   --shadow:0 1px 2px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
+html{overflow-x:hidden}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-b);font-size:15px;line-height:1.5;
-     -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;padding:0 0 96px}
+     -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;padding:0 0 96px;overflow-wrap:anywhere}
 .wrap{max-width:52rem;margin:0 auto;padding:0 16px}
+a{color:var(--accent-ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font-family:inherit}
+[hidden]{display:none!important}
 
-header.top{padding:16px 0 12px}
+/* шапка */
+header.top{padding:16px 0 0}
+.plate{position:relative;overflow:hidden;background:var(--accent) url("/pattern.webp") -162px -324px / 1368px auto no-repeat;color:#fff;border-radius:18px;padding:22px 18px 18px}
+.plate .eyebrow{color:#FFE1C2}
 .eyebrow{font:700 11px/1 var(--font-b);letter-spacing:.14em;text-transform:uppercase;color:var(--warm)}
-h1{font:italic 800 clamp(28px,7vw,40px)/1.04 var(--font-h);letter-spacing:-.02em;margin:10px 0 8px;text-wrap:balance}
-.lede{color:var(--muted);max-width:44rem;margin:0}
-.meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:14px;color:var(--muted)}
-.meta b{color:var(--ink);font-weight:700}
-.warn{display:flex;gap:12px;align-items:flex-start;margin:16px 0 0;padding:12px 14px;
+h1{font:italic 800 clamp(26px,7vw,40px)/1.04 var(--font-h);letter-spacing:-.02em;margin:10px 0 8px;text-wrap:balance;color:#fff}
+.plate .lede{color:rgba(255,255,255,.9);margin:0;max-width:44rem}
+.plate .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:14px;color:rgba(255,255,255,.85)}
+.plate .meta b{color:#fff;font-weight:700}
+.back{display:inline-block;margin:14px 0 0;font:700 13px/1 var(--font-b);color:var(--accent-ink);text-decoration:none}
+.back:hover{text-decoration:underline}
+.warn{display:flex;gap:12px;align-items:flex-start;margin:14px 0 0;padding:12px 14px;
       background:var(--bad-soft);border-left:3px solid var(--bad);border-radius:0 6px 6px 0}
 .warn p{margin:0;font-size:14px}
 .warn b{color:var(--bad)}
-
 .tip{margin:12px 0 0;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
-.tip h2{font:italic 800 15px/1.2 var(--font-h);margin:0 0 6px;color:var(--accent-text)}
+.tip h2,.info summary h2{font:italic 800 15px/1.2 var(--font-h);margin:0 0 6px;color:var(--ink)}
 .tip p{margin:0;font-size:14px;color:var(--muted)}
 .tip p + p{margin-top:6px}
 .tip b{color:var(--ink)}
-.tip code{font:700 13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);
-     background:var(--sunken);border-radius:5px;padding:1px 5px}
-.tip .small{font-size:13px;color:var(--faint)}
+code,.tip code{font:700 13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:var(--sunken);border-radius:5px;padding:1px 5px}
+.tip ul{margin:6px 0 0;padding-left:20px;font-size:14px;color:var(--muted)}
+.tip li + li{margin-top:4px}
 
-.tabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px;border-bottom:1px solid var(--line)}
-.tabs .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);
-     border-radius:12px;padding:5px}
-.tab{min-height:44px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);
-     font:700 13px/1.15 var(--font-b);padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;
-     align-items:center;justify-content:center;gap:3px;text-align:center}
-.tab small{font-weight:400;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
-.tab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
-.tab[aria-selected="true"] small{color:var(--accent-ink)}
-.progress{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
-.track{flex:1;height:6px;background:var(--sunken);border-radius:99px;overflow:hidden}
-.track i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* карточки сессий */
+.cards{display:grid;gap:12px;margin-top:16px}
+.card{display:block;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.card:hover{border-color:var(--accent)}
+.card .ey{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.card .ey .eyebrow{color:var(--accent)}
+.card .ey .when{font-size:13px;color:var(--faint);font-variant-numeric:tabular-nums}
+.card h2{font:italic 800 20px/1.15 var(--font-h);margin:6px 0 4px;letter-spacing:-.01em;text-wrap:balance}
+.card p{margin:0;color:var(--muted);font-size:14px}
+.card .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip-s{font-size:12px;font-weight:700;color:var(--muted);background:var(--sunken);border-radius:6px;padding:3px 8px}
+.card .prog{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.card .prog .t{flex:1}
+.card.bl{border-style:dashed}
+.card.done{border-color:var(--ok)}
+.track{display:flex;height:6px;background:var(--sunken);border-radius:99px;overflow:hidden}
+.track i{display:block;height:100%;width:0;transition:width .25s ease}
+.track .t-ok{background:var(--ok)}.track .t-bad{background:var(--bad)}.track .t-skip{background:var(--skip)}
 
-.panel[hidden]{display:none}
-.intro{margin:16px 0 0;padding:12px 14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;font-size:14px}
-.intro p{margin:0}
-.intro p + p{margin-top:6px}
+/* полоса прогресса сессии + фильтры */
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 6px;border-bottom:1px solid var(--line)}
+.bar .pt{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;margin-bottom:6px}
+.bar .pt b{color:var(--ink)}
+.bar .pt .e{color:var(--bad)}
+.sync{font-size:12px;color:var(--faint);margin-top:6px}
+.sync.ok{color:var(--ok)}
+.sync.bad{color:var(--bad)}
+.under{padding-top:8px}
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.chip{min-height:30px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:99px;
+      font:700 12.5px/1 var(--font-b);padding:7px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.chip.r-M[aria-pressed="true"]{background:var(--role-m-soft);border-color:var(--role-m);color:var(--role-m)}
+.chip.r-D[aria-pressed="true"]{background:var(--role-d-soft);border-color:var(--role-d);color:var(--role-d)}
+.chip.r-V[aria-pressed="true"]{background:var(--role-v-soft);border-color:var(--role-v);color:var(--role-v)}
+.filters .sep{flex-basis:100%;height:0}
 
-section.block{margin-top:30px}
+/* блоки */
+.info{margin:14px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.info summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.info summary::-webkit-details-marker{display:none}
+.info summary .ic{font-size:18px;line-height:1}
+.info summary h2{margin:0;flex:1}
+.info summary .tm{font-size:12.5px;color:var(--faint);white-space:nowrap}
+.info summary::after{content:"▸";color:var(--faint);font-size:14px;transition:transform .15s}
+.info[open] summary::after{transform:rotate(90deg)}
+.info .ib{padding:0 14px 12px;font-size:14px;color:var(--muted)}
+.info .ib p{margin:0 0 8px}
+.info .ib b{color:var(--ink)}
+.info.stuck{border-color:var(--warm)}
+.info.stuck summary .ic{color:var(--warm)}
+.roles{display:grid;gap:8px;margin:4px 0 10px}
+.role{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:start;padding:10px 12px;background:var(--sunken);border-radius:10px}
+.role p{margin:0;font-size:13.5px;color:var(--muted)}
+.role p b{color:var(--ink)}
+.who{display:inline-block;font:700 11px/1 var(--font-b);letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:4px 7px;white-space:nowrap}
+.who.M{color:var(--role-m);background:var(--role-m-soft)}
+.who.D{color:var(--role-d);background:var(--role-d-soft)}
+.who.V{color:var(--role-v);background:var(--role-v-soft)}
+.who.A{color:var(--muted);background:var(--sunken)}
+
+/* чек-лист «Перед началом» */
+ol.pre{list-style:none;margin:0;padding:0}
+ol.pre li{display:grid;grid-template-columns:auto auto 1fr;gap:6px 10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+ol.pre li:last-child{border-bottom:0}
+.box{width:24px;height:24px;border:1.5px solid var(--line);border-radius:7px;cursor:pointer;display:grid;place-items:center;
+     font:700 13px/1 var(--font-b);color:transparent;margin-top:1px;background:var(--surface)}
+ol.pre li[data-s="ok"] .box{background:var(--ok);border-color:var(--ok);color:#fff}
+ol.pre li[data-s="ok"] .do{color:var(--muted)}
+ol.pre .txt p{margin:0}
+ol.pre .do{font-weight:700;color:var(--ink);font-size:14px}
+ol.pre .exp{color:var(--muted);font-size:13.5px;margin-top:2px}
+
+/* разделы и шаги */
+section.block{margin-top:28px}
 .bh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:2px solid var(--ink)}
 .bn{font:italic 800 13px/1 var(--font-h);letter-spacing:.06em;color:var(--accent);font-variant-numeric:tabular-nums}
 .bh h2{font:italic 800 20px/1.15 var(--font-h);letter-spacing:-.01em;margin:0;flex:1 1 auto;text-wrap:balance}
 .bt{font-size:13px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cnt{font:700 12px/1 var(--font-b);color:var(--muted);background:var(--sunken);border-radius:6px;padding:5px 8px;font-variant-numeric:tabular-nums}
+.cnt.all{color:var(--ok);background:var(--ok-soft)}
+.cnt.has-bad{color:var(--bad);background:var(--bad-soft)}
+.bmeta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:12.5px}
+.bmeta span{color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.bmeta span.opt{color:var(--skip);border-color:var(--skip);background:var(--skip-soft)}
 .bnote{color:var(--muted);font-size:14px;margin:10px 0 0}
 .bnote b{color:var(--ink)}
+.soon{margin-top:10px;padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:14px;background:var(--surface)}
 
 ol.steps{list-style:none;margin:6px 0 0;padding:0}
-li.step{display:grid;grid-template-columns:auto 1fr auto;gap:8px 12px;align-items:start;
-        padding:14px 0;border-bottom:1px solid var(--line-soft)}
+li.step{padding:14px 0;border-bottom:1px solid var(--line-soft)}
 li.step:last-child{border-bottom:0}
-.id{font:700 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint);
-    font-variant-numeric:tabular-nums;padding-top:2px}
+.sh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.id{font:700 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint);font-variant-numeric:tabular-nums}
+.pair{font-size:11.5px;font-weight:700;color:var(--warm);background:var(--warm-soft);border-radius:6px;padding:3px 7px}
 .txt p{margin:0}
 .txt .do{font-weight:700}
-.txt .exp{color:var(--muted);font-size:14px;margin-top:3px}
-.needs{display:inline-block;font-size:12px;font-weight:700;color:var(--warm);background:var(--warm-soft);border-radius:6px;padding:3px 8px;margin:5px 0 2px}
-.plate{position:relative;overflow:hidden;background:var(--accent) url("/pattern.webp") -162px -324px / 1368px auto no-repeat;color:#fff;border-radius:18px;padding:22px 18px 18px;margin-top:14px}
-.plate .eyebrow{color:#FFE1C2}
-.plate h1{color:#fff;margin-top:8px}
-.plate .lede{color:rgba(255,255,255,.88)}
-.plate .meta{color:rgba(255,255,255,.82)}
-.plate .meta b{color:#fff}
-.who-mark{display:block;font-size:12px;color:var(--faint);margin-top:4px;font-variant-numeric:tabular-nums}
-.who-mark[hidden]{display:none}
-.sync{font-size:12px;color:var(--faint);margin-top:6px}
-.sync.ok{color:var(--ok)}
-.sync.bad{color:var(--bad)}
+.txt .exp{color:var(--muted);font-size:14px;margin-top:4px}
 .txt .exp::before{content:"Должно быть: ";color:var(--faint);font-weight:700}
-.marks{display:flex;gap:6px}
-.mark{width:42px;height:42px;border:1px solid var(--line);background:var(--surface);border-radius:9px;
-      cursor:pointer;font:700 16px/1 var(--font-b);color:var(--faint);display:grid;place-items:center}
-.mark:hover{border-color:var(--accent)}
-li.step[data-s="ok"] .mark.ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
-li.step[data-s="bad"] .mark.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
-li.step[data-s="skip"] .mark.skip{background:var(--skip-soft);border-color:var(--skip);color:var(--skip)}
-li.step[data-s="ok"] .txt .do{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
-.note-btn{grid-column:2/-1;justify-self:start;min-height:30px;background:transparent;border:0;padding:0;
-      color:var(--accent-ink);font:700 12.5px/1 var(--font-b);cursor:pointer}
-.note{grid-column:2/-1;width:100%;font:400 14px/1.45 var(--font-b);color:var(--ink);background:var(--sunken);
+li.step[data-s="ok"] .txt .do{color:var(--muted)}
+q.ui{quotes:none;display:inline;background:var(--sunken);border-radius:5px;padding:1px 5px;font-weight:700;color:var(--ink);font-size:.95em}
+.exp q.ui{font-weight:700;color:var(--ink)}
+.ar{color:var(--faint)}
+.ctl{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.mk{min-height:40px;border:1px solid var(--line);background:var(--surface);border-radius:9px;cursor:pointer;
+    font:700 13px/1 var(--font-b);color:var(--muted);padding:0 11px;display:inline-flex;align-items:center;gap:5px}
+.mk:hover{border-color:var(--accent)}
+.mk.nb{width:40px;justify-content:center;padding:0;font-size:16px}
+.mk.nb.has{border-color:var(--accent);background:var(--accent-soft)}
+li.step[data-s="ok"] .mk.ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+li.step[data-s="bad"] .mk.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+li.step[data-s="skip"] .mk.skip{background:var(--skip-soft);border-color:var(--skip);color:var(--skip)}
+.note{width:100%;margin-top:8px;font:400 14px/1.45 var(--font-b);color:var(--ink);background:var(--sunken);
       border:1px solid var(--line);border-radius:8px;padding:9px 10px;resize:vertical;min-height:62px}
 .note::placeholder{color:var(--faint)}
-.note[hidden]{display:none}
-
-.pre{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 14px;box-shadow:var(--shadow);margin-top:10px}
-.pre li.step{grid-template-columns:auto auto 1fr;grid-template-areas:"box id txt"}
-.pre .box{grid-area:box}
-.pre .id{grid-area:id}
-.pre .txt{grid-area:txt}
-.pre .marks,.pre .note-btn,.pre .note{display:none}
-.pre .box{width:22px;height:22px;border:1.5px solid var(--line);border-radius:6px;cursor:pointer;
-     display:grid;place-items:center;font:700 13px/1 var(--font-b);color:transparent;margin-top:2px;background:var(--surface)}
-.pre li.step[data-s="ok"] .box{background:var(--ok);border-color:var(--ok);color:#fff}
-.pre .txt .exp::before{content:""}
+.by{font-size:12px;color:var(--faint);margin-top:5px;font-variant-numeric:tabular-nums}
+.empty{margin:20px 0;padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
 
 footer.end{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
 
+/* низ: имя + отчёт */
 .dock{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
       padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:6;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
 .dock .row{max-width:52rem;margin:0 auto;display:flex;gap:8px;align-items:center}
-.who{flex:1 1 120px;min-width:0;font:400 14px/1 var(--font-b);color:var(--ink);background:var(--bg);
+.whoin{flex:1 1 120px;min-width:0;font:400 14px/1 var(--font-b);color:var(--ink);background:var(--bg);
      border:1px solid var(--line);border-radius:9px;padding:12px 10px}
 .btn{font:700 14px/1 var(--font-b);color:#fff;background:var(--accent);border:1px solid var(--accent);
      border-radius:9px;padding:13px 14px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--accent-ink)}
-
 .report{position:fixed;left:0;right:0;bottom:66px;max-height:62vh;background:var(--surface);border-top:1px solid var(--line);
         box-shadow:0 -6px 18px rgba(0,0,0,.1);z-index:5;padding:12px 16px}
-.report[hidden]{display:none}
 .report .in{max-width:52rem;margin:0 auto;display:flex;flex-direction:column;gap:8px}
 .report .hd{display:flex;justify-content:space-between;align-items:center}
 .report h2{font:italic 800 15px/1 var(--font-h);margin:0}
 .report .x{min-height:32px;min-width:32px;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:8px;cursor:pointer}
 .report p{font-size:12.5px;color:var(--faint);margin:0}
 .report p b{color:var(--ok)}
-#reportText{width:100%;min-height:180px;max-height:40vh;border:1px solid var(--line);border-radius:10px;background:var(--bg);
+#reportText{width:100%;min-height:160px;max-height:40vh;border:1px solid var(--line);border-radius:10px;background:var(--bg);
         color:var(--ink);font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;padding:10px;resize:vertical}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--bg);
+       font-size:13px;padding:9px 14px;border-radius:9px;opacity:0;pointer-events:none;transition:all .2s;z-index:7;max-width:90vw}
+.toast.on{opacity:1;transform:translateX(-50%)}
 
 @media (max-width:520px){
-  .tabs .row{grid-template-columns:repeat(2,1fr)}
-  li.step{grid-template-columns:auto 1fr;grid-template-areas:"id txt" ". marks" ". nb" ". note"}
-  .id{grid-area:id}.txt{grid-area:txt}.marks{grid-area:marks}.note-btn{grid-area:nb}.note{grid-area:note}
-  .pre li.step{grid-template-columns:auto auto 1fr;grid-template-areas:"box id txt"}
+  .mk{padding:0 9px;font-size:12.5px}
+  .plate{padding:18px 14px 14px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<div class="wrap">
-<header class="top">
-  <div class="plate">
-  <div class="eyebrow">Тестовый бот · @YouLead_test_bot</div>
-  <h1>Приёмка Юлид '26 · 16.09</h1>
-  <p class="lede">Четыре трека, в центре — путь делегата: два трека делегата (в чате и в приложении) идут от первого /start до оплаты, «Партнёр» — менеджер, который по их ходу нажимает свои кнопки, «Владелец» — короткая проверка перед выкатом. Каждый шаг говорит, что нажать и что должно появиться на экране. Где нужен второй человек, у шага стоит оранжевая пометка «Нужен: …» с номером его шага.</p>
-  <div class="meta">
-    <span><b>12–35 минут</b> на трек; делегат и партнёр идут параллельно, в одно время</span>
-    <span>Всё в <b>тестовом боте</b>, состояние аккаунта ставишь себе сам командой <b>/uat</b></span>
-    <span>Отметки <b>общие</b>: что отметил один, видят все, с именем и временем</span>
-  </div>
-  </div>
-  <div class="warn">
-    <p><b>Боевого бота @YouLead2026_bot не трогаем.</b> Всё только в тестовом @YouLead_test_bot. Рассылки тем более только там: у тестового бота своя маленькая база, до настоящих делегатов ничего не дойдёт.</p>
-  </div>
-
-  <div class="tip">
-    <h2>Если что-то пошло не так — верни аккаунт в нужное состояние</h2>
-    <p>Команда <code>/uat</code> ставит твой собственный аккаунт в любое из шести состояний (новичок, черновик, заявка отправлена, одобрен, отклонён, короткая форма) или в одно из четырёх форумных — «одобрен на форум с QR-пропуском», «пришёл на форум (вход отмечен сегодня)», «заявка на форум ждёт проверки», «заявка на форум отклонена»; у форумных бот следом спрашивает город кнопками (СПб, Тюмень…). Потом выдаёт роль: менеджер заявок / геймификации / оба, а для форума — «🎗 Волонтёр входа (сканер)», «🆘 Дежурный SOS» или «🎪 Менеджер форума» с привязкой к городу. Пройти трек второй раз можно сколько угодно: снова <code>/uat</code>, то же состояние, «✅ Сбросить и засеять», потом <code>/start</code>.</p>
-    <p>Чужой аккаунт чистит владелец бота командой <code>/delete_user @юзернейм</code> (или по номеру): бот покажет карточку с тем, что именно пропадёт, и попросит нажать «Удалить навсегда».</p>
-    <p class="small">Обе команды скрытые: их нет ни в меню, ни в разделах <code>/admin</code>. Строка в Google-таблице после сброса остаётся, её при желании удаляем руками.</p>
-  </div>
-
-  <div class="tip">
-    <h2>Доска статистики — только стендовая</h2>
-    <p><b>test.alekseev.info</b> это доска стенда, её и открываем в треке «Владелец». Считает ваши тестовые заявки и сдачи, поэтому цифры появятся только после того, как вы что-то сделаете в боте.</p>
-    <p><b>yl26.alekseev.info</b> и <b>all.alekseev.info</b> — боевые доски по живым делегатам Юлид, РилТолк и СкиллАп. В приёмке они не нужны, там ничего не меняем.</p>
-    <p class="small">Вход через Телеграм и только тем аккаунтом, у которого есть права. Если доска пишет, что нет доступа, значит роль этому аккаунту не выдана — скажи Андрею.</p>
-  </div>
-</header>
-
-<div class="tabs" role="tablist" aria-label="Роль">
-  <div class="row">
-    <button class="tab" role="tab" data-tab="chat" aria-selected="true">Делегат · чат<small id="c-chat"></small></button>
-    <button class="tab" role="tab" data-tab="app" aria-selected="false">Делегат · приложение<small id="c-app"></small></button>
-    <button class="tab" role="tab" data-tab="partner" aria-selected="false">Партнёр (менеджер)<small id="c-partner"></small></button>
-    <button class="tab" role="tab" data-tab="owner" aria-selected="false">Владелец<small id="c-owner"></small></button>
-  </div>
-  <div class="progress"><span id="ptext">0 из 0</span><div class="track"><i id="pfill"></i></div></div>
-  <div class="sync" id="sync">Подключаюсь к общей доске…</div>
-</div>
-
-<main id="app"></main>
-
-<footer class="end">
-  ✓ совпало с тем, что написано в «Должно быть». ✕ не так, откроется поле для заметки: напиши своими словами, что увидел вместо этого, и брось скрин в чат. ⏭ пропустил, не было возможности проверить. Отметки общие для всех, поэтому впиши имя внизу: будет видно, кто что проверил. В конце нажми «Скопировать отчёт» и брось текст в чат.
-</footer>
-</div>
+<div class="wrap" id="root"></div>
 
 <div class="report" id="report" hidden>
   <div class="in">
@@ -224,431 +232,767 @@ footer.end{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);col
 
 <div class="dock">
   <div class="row">
-    <input type="text" class="who" id="who" placeholder="Кто проверяет" autocomplete="name">
-    <button class="btn" id="copy" type="button">Скопировать отчёт</button>
+    <input type="text" class="whoin" id="who" placeholder="Кто проверяет (имя)" autocomplete="name" maxlength="60">
+    <button class="btn" id="copy" type="button">Отчёт</button>
   </div>
 </div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
-const TABS = { chat: "Делегат · чат", app: "Делегат · приложение", partner: "Партнёр (менеджер)", owner: "Владелец" };
-const DATA = {
-chat: {
-  intro: ["Ты делегат. Идёшь по всему пути в чате с тестовым ботом @YouLead_test_bot: первый /start, анкета, ожидание, отказ, одобрение, оплата, меню, вопрос, рассылка. Роль себе не выдаёшь.",
-          "Трек на 35 минут. Шаги с пометкой «Нужен: партнёр» делает второй человек по вкладке «Партнёр (менеджер)» — договорись с ним заранее или будь партнёром сам себе со второго аккаунта. Партнёр должен пройти свой блок «Перед стартом» ДО твоего первого /start.",
-          "По ходу трека ты дважды сбрасываешь себя командой /uat — так задумано. Отмечай честно: ✕ + что увидел, скрин — в чат."],
-  blocks: [
-  {n:"0", title:"Перед стартом", time:"2 мин", pre:true, note:"Партнёр уже включил на стенде: язык «Всем при первом /start», согласия, оплату с одним тарифом, пункт FAQ, ссылку друга после анкеты.",
-   steps:[
-    {id:"0.1", do:"Напиши боту /uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять»", exp:"бот перечисляет, что стёр, последняя строка — «Отправьте /start.»"},
-    {id:"0.2", do:"Спроси партнёра, выполнен ли его блок «Перед стартом»", exp:"да. Если нет — подожди, иначе половина шагов ниже не сойдётся"},
-  ]},
-
-  {n:"1", title:"Старт, язык, согласие, ФИО", time:"4 мин", steps:[
-    {id:"1.1", do:"Отправь /start", exp:"первым приходит экран «Выберите язык анкеты / Choose the form language» с кнопками «🇷🇺 Русский» и «🇬🇧 English» — даже если твой Телеграм на русском"},
-    {id:"1.2", do:"Нажми «🇷🇺 Русский»", exp:"всплывает «✅ Русский язык выбран.», следом приветствие с картинкой и ОДНОЙ кнопкой под ним «📱 Заполнить в приложении». Если у события несколько городов — вопрос «Выбери город мероприятия:» с кнопками городов, выбери любой. Дальше строка «Отлично, начинаем регистрацию.»"},
-    {id:"1.3", do:"Смотри на карточку согласия. Вместо кнопки напиши боту любой текст", exp:"карточка «Согласие на обработку персональных данных» (текстом или PDF-файлом с подписью) и кнопка «Согласен(-на)». На текст бот отвечает «Нажми кнопку «Согласен(-на)» для продолжения.» и никуда не двигается"},
-    {id:"1.4", do:"Нажми «Согласен(-на)»", exp:"всплывает «✅ Принято», кнопка с карточки исчезает, приходит «Напиши свои ФИО (Фамилия Имя Отчество):» с кнопкой «Отмена» внизу"},
-    {id:"1.5", do:"Напиши одно слово «Иван», потом «Иванов Иван Тестовый»", exp:"на одно слово — «Укажи ФИО полностью (минимум фамилию и имя).». На полное ФИО — следующий вопрос анкеты"},
-  ]},
-
-  {n:"2", title:"Анкета в чате: ошибки, кнопки, отмена", time:"8 мин", steps:[
-    {id:"2.1", do:"На вопросе про возраст напиши 5, потом 19", exp:"на 5 — «Укажи корректный возраст числом от 10 до 120.», вопрос остаётся. На 19 — следующий вопрос"},
-    {id:"2.2", do:"На вопросе про телефон напиши «abc», потом нажми «Пропустить»", exp:"внизу две кнопки: «📱 Поделиться контактом» и «Пропустить». На «abc» — «Укажи корректный номер телефона или нажми «Пропустить».». «Пропустить» уводит дальше"},
-    {id:"2.3", do:"На вопросе с кнопками-вариантами (город, ВУЗ, позиция) нажми «Другое» и напиши свой вариант", exp:"после «Другое» бот просит «Напиши свой вариант:» (или «Напиши название своего города:» / «…своего ВУЗа:») и оставляет внизу только «Отмена». Твой текст принимается, анкета идёт дальше"},
-    {id:"2.4", do:"На вопросе, где можно отметить несколько вариантов, напиши текст вместо тапа. Потом отметь два варианта и нажми «Готово»", exp:"на текст — «Отмечай варианты кнопками выше и нажми «Готово».». После «Готово» всплывает «Сохранено» и приходит следующий вопрос. Если такого вопроса в анкете нет — ставь ⏭"},
-    {id:"2.5", do:"На любом вопросе нажми «Отмена», затем «Нет, продолжить»", exp:"бот спрашивает «Точно отменить регистрацию? Все введённые ответы сотрутся.» с кнопками «Да, отменить» и «Нет, продолжить». После «Нет, продолжить» всплывает «Продолжаем 👍» и анкета стоит на том же вопросе"},
-    {id:"2.6", do:"Не отвечая, отправь /start. Нажми «🔄 Начать заново», потом «Нет, продолжить», потом «▶️ Продолжить с шага …»", exp:"на /start — «У тебя есть незаконченная анкета — что дальше?» с кнопками «▶️ Продолжить с шага N из M» и «🔄 Начать заново». На «Начать заново» — «Пропадут уже введённые ответы (N). Начать анкету заново?» с «Да, начать заново» / «Нет, продолжить». После «Продолжить» анкета возвращается на тот же вопрос, ответы целы"},
-    {id:"2.7", do:"Дойди до вопроса «Резюме». Напиши текст вместо кнопки, потом нажми «📎 Загрузить файл» и пришли файл .txt, потом пришли PDF", exp:"три кнопки: «📎 Загрузить файл», «🔗 Дать ссылку», «🙅 У меня нет резюме». На текст — «Выбери способ кнопкой выше ⬆️». На .txt — «Принимаются только PDF или DOCX. Прикрепи файл ещё раз.». PDF принят, анкета идёт дальше. Если вместо трёх кнопок сразу вопрос «Прикрепи резюме файлом (PDF или DOCX) или напиши его текстом.» — у партнёра другой режим резюме, тогда просто пришли PDF"},
-  ]},
-
-  {n:"3", title:"Проверка, «Изменить», отправка, ожидание", time:"5 мин", steps:[
-    {id:"3.1", do:"Дойди до конца анкеты и посмотри на сводку", exp:"сообщение «Проверь свои ответы:» со всеми ответами строками «Вопрос: ответ», внизу две кнопки: «Всё верно» и «Изменить»"},
-    {id:"3.2", do:"Нажми «Изменить». На первом вопросе напиши текст вместо кнопки, потом на каждом вопросе жми «✅ Оставить»", exp:"анкета НЕ начинается с нуля: каждый вопрос приходит как «Прошлый ответ: …» и «Оставить или изменить?» с кнопками «✅ Оставить» и «✏️ Изменить». На текст — «Нажми «✅ Оставить» или «✏️ Изменить».». После всех «Оставить» снова сводка «Проверь свои ответы:» с теми же ответами"},
-    {id:"3.3", do:"Нажми «Всё верно»", exp:"сообщение «Поздравляем, твоя заявка принята!…» (или текст, который написал владелец) и главное меню кнопками. Вторым сообщением — «Приводи друзей в АЙСЕК» с кнопками «Хочу свою ссылку» и «Позже»"},
-    {id:"3.4", do:"Нажми «Хочу свою ссылку»", exp:"третьим сообщением приходит голая ссылка вида https://t.me/…?start=amb_ЧИСЛО — без текста вокруг. Сохрани её: пригодится в 7.3"},
-    {id:"3.5", do:"Напиши боту любой текст. Потом нажми кнопку меню «❓ Задать вопрос», потом «ℹ️ Информация о форуме»", exp:"на текст — «✅ Анкета уже отправлена — мы её получили. Ответ придёт сюда, в чат.». На ОБЕ кнопки — «⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.» (да, пока ждёшь, спросить менеджера нельзя — запиши в заметку, если считаешь это ошибкой)"},
-    {id:"3.6", do:"Отправь /start", exp:"«С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже 👇» и меню. Анкета заново НЕ начинается"},
-  ]},
-
-  {n:"4", title:"Отказ, повторная подача, одобрение", time:"4 мин", steps:[
-    {id:"4.1", needs:"партнёр — шаг П1.3 (отклонить с причиной «тест отказа»)", do:"Ничего не нажимай, жди сообщения", exp:"«К сожалению, твоя заявка отклонена.», пустая строка, «тест отказа». После этого любая кнопка меню отвечает тем же текстом отказа"},
-    {id:"4.2", do:"Сбрось себя в ожидание: /uat → «📨 Заявка отправлена — ждёт проверки» → «Делегат — без ролей» → «✅ Сбросить и засеять», затем /start. Скажи партнёру, что заявка снова в очереди", exp:"«Отправьте /start.», после /start — «С возвращением! Ты уже зарегистрирован(а)…»"},
-    {id:"4.3", needs:"партнёр — шаг П1.4 (одобрить)", do:"Жди сообщения", exp:"НЕ «Твоя заявка одобрена!», а сразу экран оплаты: «💰 Оплата участия», строки «Вариант: …», «Сумма: … ₽», «📋 Реквизиты:», «📅 Дедлайн: …», внизу «📎 Загрузи чек оплаты (PDF-документ или скриншот).» и кнопка «⏭ Оплачу позже». Если у партнёра два тарифа — сначала «💳 Выбери вариант участия:» с кнопками «Название — цена ₽», выбери любой"},
-  ]},
-
-  {n:"5", title:"Оплата: позже, чек, отказ по чеку, подтверждение", time:"5 мин", steps:[
-    {id:"5.1", do:"Нажми «⏭ Оплачу позже»", exp:"«Ок! Оплатишь позже.», ниже реквизиты и строка «Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.». В меню появилась кнопка «💳 Оплата»"},
-    {id:"5.2", do:"Нажми «💳 Оплата», пришли файл .txt, потом пришли любое фото", exp:"снова экран «💰 Оплата участия». На .txt — «❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото.». На фото — «✅ Чек получен! Менеджер проверит его в ближайшее время.» и кнопка «💳 Оплата» из меню пропала"},
-    {id:"5.3", needs:"партнёр — шаг П2.1 (отклонить чек с причиной «не видно суммы»)", do:"Жди сообщения, потом снова пришли фото", exp:"«❌ Чек отклонён. Причина: не видно суммы», строкой ниже «Загрузи чек повторно через бота.». Кнопка «💳 Оплата» вернулась в меню. На новое фото — снова «✅ Чек получен!…»"},
-    {id:"5.4", needs:"партнёр — шаг П2.2 (подтвердить чек)", do:"Жди сообщения", exp:"«✅ Оплата подтверждена!» и «Спасибо, ваш взнос получен.», а СЛЕДОМ отдельным сообщением «Твоя заявка одобрена! Добро пожаловать 🎉» (или текст владельца) с полным меню. Кнопки «💳 Оплата» в меню нет"},
-  ]},
-
-  {n:"6", title:"Меню одобренного", time:"4 мин", steps:[
-    {id:"6.1", do:"Нажми по очереди «ℹ️ Информация о форуме», «📅 Программа форума», «🗣 Спикеры», «📞 Контакты»", exp:"«Информация о мероприятии» со строками 🗓 / ⌚ / 📍 и кнопками «Дата и время», «Место проведения». Программа и спикеры — картинка либо «Программа форума ещё не загружена.» / «Список спикеров формируется и скоро появится здесь.». Контакты — текст с кнопками «Группа в Telegram» / «Группа во ВКонтакте» либо «Контакты пока не указаны. Обратитесь к организаторам.». Ни одна кнопка не молчит"},
-    {id:"6.2", do:"Нажми «🪙 Мои монеты», «🎯 Задания», «📱 Приложение»", exp:"экран баланса; список заданий (партнёр создал одно) или «Активных заданий сейчас нет. Загляни попозже!»; «Задания, монеты и рейтинг — в одном экране. Открывай приложение 👇» с кнопкой «📱 Открыть приложение»"},
-    {id:"6.3", do:"Нажми «🌐 Язык / Language» → «🇬🇧 English». Посмотри на меню. Верни «🇷🇺 Русский»", exp:"«✅ English selected.», кнопки меню по-английски: «🎯 Tasks», «❓ Ask a question», «📞 Contacts», «📱 App». После «Русский» — «✅ Русский язык выбран.» и русское меню. Если кнопки языка в меню нет — партнёр не включил её в «🔘 Кнопки меню», ставь ⏭"},
-  ]},
-
-  {n:"7", title:"Вопрос менеджеру, FAQ, ссылка друга", time:"5 мин", steps:[
-    {id:"7.1", do:"Нажми «❓ Задать вопрос»", exp:"сначала НЕ форма, а список: «Собрали ответы на частые вопросы — может, твой уже здесь:», кнопка с вопросом партнёра и внизу «Не нашёл ответ — спросить менеджера». Тап по вопросу открывает «❓ вопрос», ответ и кнопку «← К вопросам»"},
-    {id:"7.2", do:"Нажми «Не нашёл ответ — спросить менеджера», пришли стикер, потом напиши «Тестовый вопрос: во сколько сбор?»", exp:"«Напиши свой вопрос, и мы передадим его организаторам.» с кнопкой «Отмена». На стикер — «Пожалуйста, отправь вопрос текстом.». На текст — «Твой вопрос отправлен!» и меню"},
-    {id:"7.3", needs:"партнёр — шаг П3.1 (ответить на вопрос)", do:"Жди сообщения", exp:"«💬 Ответ от организаторов:» и под ним текст партнёра. Если партнёр ответил голосовым — заголовок, а голосовое вторым сообщением"},
-    {id:"7.4", do:"Нажми «🔗 Моя реферальная ссылка», потом «👥 Мои приглашённые»", exp:"«Отправь эту ссылку друзьям, чтобы пригласить их на форум!» и ссылка https://t.me/…?start=ЧИСЛО. Приглашённые: «Пока никто не зарегистрировался по твоей ссылке.» и та же ссылка"},
-    {id:"7.5", needs:"второй аккаунт (или партнёр)", do:"Со второго аккаунта: /uat → «🆕 Новичок — анкеты нет» → «✅ Сбросить и засеять», затем открой ссылку из 3.4 или 7.4 и пройди анкету до «Всё верно». Потом на первом аккаунте нажми «👥 Мои приглашённые»", exp:"у второго после старта по ссылке — «Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.». У первого — «👥 Твои приглашённые (1):» и «• Имя второго». Отдельного сообщения «у тебя новый приглашённый» первому НЕ приходит — это норма"},
-  ]},
-
-  {n:"8", title:"Рассылка, опрос, тихие часы", time:"5 мин", steps:[
-    {id:"8.1", needs:"партнёр — шаг П3.2 (рассылка, потом «Удалить у получателей»)", do:"Жди сообщения, потом жди, пока партнёр его удалит", exp:"приходит ровно текст партнёра — без шапки «Рассылка», без подписи. После удаления сообщение исчезает из чата молча, уведомления об удалении нет"},
-    {id:"8.2", needs:"партнёр — шаг П3.3 (опрос)", do:"Проголосуй в опросе", exp:"приходит обычный телеграм-опрос (перед ним может быть вводный текст, а может и не быть). После голоса бот НИЧЕГО не пишет — это норма. Партнёр видит твой голос в счётчике"},
-    {id:"8.3", needs:"партнёр — шаг П3.4 (тихие часы, ответ, сдвиг окна)", do:"Заново задай вопрос через «❓ Задать вопрос» → «Не нашёл ответ — спросить менеджера». Партнёр ответит внутри тихих часов. Жди", exp:"пока окно тишины открыто, ответа НЕТ. Как только партнёр сдвинет «🕓 До» на минуту вперёд — в течение двух минут приходит «💬 Ответ от организаторов:» без всякой пометки о переносе"},
-  ]},
-
-  {n:"9", title:"Делегат прошлого сезона", time:"3 мин", note:"Последний блок: владелец меняет сезон всего стенда. Делай только после блоков 1–8.", steps:[
-    {id:"9.1", needs:"владелец — шаг 1.3 его вкладки (сменить «🎉 Сезон события»)", do:"Отправь /start", exp:"«С возвращением! Ты уже был(а) с нами на …» с обещанием «большинство ответов уже заполнено, останется только подтвердить 👇», следом «Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.» и кнопка «🚀 Обновить анкету»"},
-    {id:"9.2", do:"Нажми «🚀 Обновить анкету», на первом вопросе «✏️ Изменить» и впиши новый ответ, на остальных «✅ Оставить»", exp:"каждый вопрос приходит с «Прошлый ответ: …» и кнопками «✅ Оставить» / «✏️ Изменить». Резюме — «У нас есть твоё резюме с прошлой регистрации. Оставить его или прислать новое?» с «📎 Оставить прошлое резюме» / «📤 Загрузить новое». В сводке первый ответ новый, остальные старые"},
-  ]},
-  ]},
-
-app: {
-  intro: ["Ты делегат и всё делаешь в приложении: оно открывается кнопкой меню слева от поля ввода в чате с ботом @YouLead_test_bot (или кнопкой «📱 Заполнить в приложении» под приветствием). Роль себе не выдаёшь.",
-          "Важно знать заранее: в приложении НЕТ нижних вкладок — главный экран собран из плиток. Пока заявка не одобрена, плитка одна: «Анкета». Остальные (Задания, Монеты, Рейтинг, Профиль, Частые вопросы) появляются после одобрения — это не ошибка.",
-          "Трек на 30 минут. Шаги «Нужен: партнёр» делает второй человек по вкладке «Партнёр (менеджер)». Партнёр включает приложение и «📶 Экран статуса заявки» в своём блоке «Перед стартом»."],
-  blocks: [
-  {n:"0", title:"Перед стартом", time:"2 мин", pre:true, note:"Отмечай честно: ✕ + что увидел. Скрин — в чат.",
-   steps:[
-    {id:"0.1", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять», потом /start", exp:"последняя строка ответа — «Отправьте /start.», после /start — приветствие с кнопкой «📱 Заполнить в приложении»"},
-    {id:"0.2", do:"Открой приложение", exp:"при первом запуске — экран «Привет!» со слоганом «Делаешь задания — получаешь монеты.», заголовком «Как это работает», тремя шагами и кнопкой «Погнали». После него (или сразу, если запускал раньше) — главный экран с ОДНОЙ плиткой «Анкета», либо сразу первый вопрос анкеты"},
-  ]},
-
-  {n:"1", title:"Анкета: первые вопросы", time:"6 мин", steps:[
-    {id:"1.1", do:"Нажми «Анкета» (если не открылась сама)", exp:"первый вопрос — ФИО (если включены согласия — сначала экран согласий, ФИО сразу после). Наверху «Шаг 1 из M» и крупный номер шага. Мастер не открывается с середины и не показывает чужие ответы"},
-    {id:"1.2", do:"Ответь на первый вопрос и посмотри на строку у полосы прогресса", exp:"появилась пометка «Черновик сохранён»"},
-    {id:"1.3", do:"На возрасте впиши 5, нажми «Дальше». Потом 17", exp:"под вопросом подсказка «Число от 10 до 120, например «19».». С 5 мастер стоит и показывает «Укажи корректный возраст числом от 10 до 120.». С 17 уходит дальше"},
-    {id:"1.4", do:"На вопросе с плитками-вариантами (например «Откуда узнал») нажми «Другое»", exp:"прямо под плитками раскрывается текстовое поле. Впиши свой вариант, нажми «Дальше» — принято. Не должно быть просьбы «напиши свой вариант» без места, куда писать"},
-    {id:"1.5", do:"На вопросе про город напечатай «зззз», потом сотри и напечатай начало настоящего города, нажми подсказку. То же на ВУЗе", exp:"под полем подсказка «Начни вводить — подскажем. Например: «спб», «вшэ», «политех».». На «зззз» — «Ничего не нашли по запросу «зззз»». Один тап по подсказке — и мастер сразу на следующем вопросе, второй раз подтверждать не надо"},
-    {id:"1.6", do:"Найди необязательный вопрос (например «Ожидания») и не заполняй его", exp:"прямо под полем — кнопка «Пропустить» (не в самом низу экрана). Тап уводит дальше"},
-  ]},
-
-  {n:"2", title:"Карточка «Образование», резюме, черновик", time:"6 мин", steps:[
-    {id:"2.1", do:"На карточке «Образование» выключи тумблер наверху", exp:"тумблер «Сейчас учусь здесь» — ПЕРВЫЙ элемент карточки. После выключения подпись «Уже не учусь здесь» и две плитки: «Нет, завершил(а) обучение» и «Нет, не получал(а) образование». Пока ни одна не выбрана, «Дальше» не нажимается"},
-    {id:"2.2", do:"Выбери плитку и нажми «Дальше». Вернись «Назад», включи тумблер обратно", exp:"с плиткой мастер уходит дальше, не спрашивая ВУЗ, курс, программу. С включённым тумблером ВУЗ, курс и программа появляются ВНУТРИ карточки, и следующий вопрос — не «ВУЗ» и не «Курс»"},
-    {id:"2.3", do:"Смотри на «Шаг N из M», идя дальше", exp:"M от шага к шагу не прыгает. Если строки нет — прогресс выключен, ставь ⏭ и напиши это в заметке"},
-    {id:"2.4", do:"На вопросе «Резюме» нажми «📎 Загрузить файл», выбери .txt; потом PDF; потом нажми «×» у файла; потом выбери «🔗 Дать ссылку» и вставь ссылку на любой сайт", exp:"три кнопки: «📎 Загрузить файл», «🔗 Дать ссылку», «🙅 У меня нет резюме» — тап сам переводит дальше, «Дальше» на этом экране нет. На .txt — «Резюме принимается как PDF или DOCX — другой формат не подойдёт.». PDF грузится сразу, «×» очищает без вопросов. У ссылки подсказка «Подойдёт любая открытая ссылка: резюме, портфолио, профиль на сайте вакансий.». Красной плашки «Не дошло до сервера…» нигде нет"},
-    {id:"2.5", do:"Закрой приложение крестиком посреди анкеты. Открой снова", exp:"мастер открывается на том же шаге с теми же ответами, наверху «Черновик сохранён»"},
-    {id:"2.6", do:"Включи авиарежим, нажми «Дальше». Выключи авиарежим, нажми снова", exp:"без сети — красная плашка «Не дошло до сервера. Проверьте связь и попробуйте ещё раз.», ответ не потерян. С сетью — шаг проходит"},
-  ]},
-
-  {n:"3", title:"Обзор, отправка, ожидание", time:"4 мин", steps:[
-    {id:"3.1", do:"Дойди до обзора", exp:"«Почти всё» / «Проверь перед отправкой» / строка «N из M заполнено, K необязательных пропущено.». Ответы сгруппированы: «О тебе», «Учёба и опыт», «Форум». Строка про амбассадора — «Да» или «Нет», не «true/false» и не пусто"},
-    {id:"3.2", do:"Раскрой «Пропущено необязательное: …» и нажми «Заполнить»", exp:"мастер прыгает на первый пропущенный вопрос; после ответа можно вернуться в обзор"},
-    {id:"3.3", do:"Нажми «Отправить заявку»", exp:"экран «Заявка принята» с текстом «Спасибо! Мы всё получили — подробности пришли в чат с ботом.» и кнопкой «На главную». В чат с ботом пришло «Поздравляем, твоя заявка принята!…» (или текст владельца)"},
-    {id:"3.4", do:"Нажми «На главную»", exp:"плита «⏳ Анкета на проверке» с текстом «Заявку получили. Ответ придёт сюда же, в чат с ботом, обычно за 3 дн.». Плитка «Анкета» со значением «Новая». Плиток «Задания», «Монеты», «Рейтинг» пока НЕТ — норма"},
-    {id:"3.5", do:"Нажми на плиту «⏳ Анкета на проверке»", exp:"экран статуса: бейдж «Заявка на проверке», заголовок «Мы получили твою заявку», текст «Обычно отвечаем за день…», список «Что дальше» из трёх шагов («Менеджер читает анкету», «Придёт ответ в чат», «После одобрения — оплата»), кнопка «Изменить анкету». Если плита не нажимается — партнёр не включил «📶 Экран статуса заявки», ставь ⏭"},
-  ]},
-
-  {n:"4", title:"Отказ и подача заново", time:"3 мин", steps:[
-    {id:"4.1", needs:"партнёр — шаг П1.3 (отклонить с причиной «тест отказа»)", do:"Дождись сообщения в чате, открой приложение", exp:"в чате «К сожалению, твоя заявка отклонена.» + «тест отказа». В приложении плита «❌ Заявка отклонена», текст «Решение организаторов пришло в чат с ботом. Анкету можно поправить и подать заново.» и строка «Причина: тест отказа»"},
-    {id:"4.2", do:"Нажми на плиту (или «Подать заново»)", exp:"экран статуса: «Заявка отклонена» / «В этот раз не получилось» / «Это не навсегда: можно поправить анкету и подать её заново.», карточка «Причина» с текстом и датой, строка «Остальные ответы сохранены», кнопка «Поправить и подать заново»"},
-    {id:"4.3", do:"Нажми «Поправить и подать заново», поменяй один ответ, нажми «💾 Отправить изменения»", exp:"обзор анкеты с тапом по строкам, старые ответы на месте. После отправки — экран «Заявка отправлена заново». Партнёру в чат пришло «🔁 Повторная подача анкеты!» (спроси его)"},
-  ]},
-
-  {n:"5", title:"Одобрение: главный экран, статус", time:"3 мин", steps:[
-    {id:"5.1", needs:"партнёр — шаг П1.4 (одобрить)", do:"Дождись сообщения в чате (экран оплаты — см. трек «чат» 4.3), нажми «⏭ Оплачу позже», открой приложение", exp:"главный экран одобренного: плита «Твой баланс» с числом и словом «монет», чип места «N-й из M», строка «0 из K заданий сдано», раздел «Следующее» с карточкой задания партнёра, раздел «Разделы» с шестью строками, у «Анкета» значение «Одобрена». Если партнёр задал дедлайн — плитка «Одобрена · оплати до …»"},
-    {id:"5.2", do:"Нажми на плитку статуса (или «Анкета»)", exp:"«Заявка одобрена» / «Ты в деле, Имя!» / «Осталось оплатить участие — и увидимся … в …». Конфетти (если анимации не выключены). Карточка «Оплата до …», сумма «… ₽», «Напомним за 3 дня и за день до срока.». Кнопка «Оплатить участие» ведёт в анкету, а не в оплату — это известное ограничение, чек шлётся в чате; ✕ не ставь"},
-  ]},
-
-  {n:"6", title:"Задания, монеты, рейтинг", time:"4 мин", steps:[
-    {id:"6.1", do:"Нажми «Задания», потом на задание партнёра, потом «Сдать». Добавь фото и текст, нажми «Готово»", exp:"список: «Активные задания» со счётчиком, строка «Категория · до ДД.ММ» и монеты справа. Карточка: «Что сделать», «Нужно прислать», «Статус», «Проверка — менеджер, обычно за день», кнопка «Сдать». Экран сдачи: «Добавить фото или файл», «Добавить текст», «Убрать последнее», «Готово». После — «Принято! Менеджер проверит и начислит монеты.» с конфетти и кнопкой «К заданиям»"},
-    {id:"6.2", do:"Открой то же задание ещё раз", exp:"в списке у него «· на проверке». В карточке вместо «Сдать» — «Задание уже отправлено и ждёт проверки — решение придёт в бот.»"},
-    {id:"6.3", needs:"партнёр — шаг П4.1 (принять сдачу)", do:"Дождись сообщения в чате, открой «Задания» и «Монеты»", exp:"в чате «✅ Задание «…» одобрено! +10🪙». В списке «· принято». В «Монеты»: «Твой баланс» 10, ниже «История» со строкой «+10» и датой"},
-    {id:"6.4", do:"Нажми «Рейтинг»", exp:"«Твоё место» с номером и «из N»; подиум из трёх; своя строка подсвечена; внизу закреплено «Ты N-й» и «ещё K монет до M-го места» (или «Лидер рейтинга»). Не белый экран и не вечный скелетон"},
-  ]},
-
-  {n:"7", title:"Профиль, FAQ, эстафета с чатом, язык", time:"5 мин", steps:[
-    {id:"7.1", do:"Нажми «Профиль»", exp:"имя, строка «@ник · Город», чипы «Одобрена» и статус оплаты («Не оплатил» / «Чек на проверке» / «Оплатил»). Блоки «Контакты» и «Анкета» с «N из M вопросов». Замок с текстом «Анкету видит только менеджер АЙСЕК. Город и трек после одобрения не меняются.». Кнопка «Изменить анкету» открывает обзор с правкой по строкам"},
-    {id:"7.2", do:"Нажми «Частые вопросы», раскрой вопрос партнёра, потом другой", exp:"аккордеон: тап раскрывает ответ, открыт только один вопрос за раз. Пусто — «Пока здесь пусто. Напиши свой вопрос — ответим и добавим сюда.»"},
-    {id:"7.3", do:"Сбрось себя: /uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять». Отправь /start и ответь на первый вопрос В ЧАТЕ. Открой приложение и быстро нажми «📱 Забрать сюда» три раза", exp:"в приложении плита «💬 Анкета сейчас открыта в чате с ботом. Можно продолжить там или забрать её сюда.» с кнопками «Продолжить в чате» и «📱 Забрать сюда». После тапов мастер открывается, в чат приходит РОВНО ОДНО «📱 Анкета открыта в приложении — заполняй там…»"},
-    {id:"7.4", do:"Вернись в чат и напиши боту любой текст. Нажми «✍️ Продолжить в чате», ответь на вопрос в чате. Снова открой приложение", exp:"на текст — «📱 Анкета сейчас открыта в приложении. Продолжить здесь, в чате?» с кнопкой «✍️ Продолжить в чате», после неё «✍️ Возвращаемся в чат. Вот твой вопрос:». В приложении у изменённого поля пометка «обновлено в чате» или баннер «Ответы обновились из чата — некоторые поля мы обновили автоматически.»"},
-    {id:"7.5", do:"В шапке мастера нажми шестерёнку → «Язык анкеты» → EN. Дойди до возраста, впиши 5. Верни RU", exp:"кнопка пропуска стала «Skip», ошибка «Enter a valid age as a number from 10 to 120.». Главный экран и «Задания» остаются русскими — переводится только анкета, ✕ не ставь. Если шестерёнки нет — партнёр не включил «🌐 Английский язык анкеты», ставь ⏭"},
-  ]},
-  ]},
-
-partner: {
-  intro: ["Ты партнёр двух делегатов: одного из трека «Делегат · чат», другого из «Делегат · приложение». Твои шаги — триггеры для них: они ждут, ты нажимаешь. Номера в скобках — какой шаг делегата ты запускаешь.",
-          "Аккаунт — тот, которому /uat выдал «Оба менеджера». Блок «Перед стартом» пройди ДО первого /start делегатов: он включает модули, без которых их ожидания не сойдутся.",
-          "Трек на 30 минут, но растянут по времени: между твоими шагами делегат идёт по анкете. Держи вкладку открытой и отвечай, когда пишут."],
-  blocks: [
-  {n:"0", title:"Перед стартом: включить модули", time:"8 мин", pre:true, note:"Всё — кнопками в /admin. Если чего-то не находишь — так и напиши в заметку, это тоже результат.",
-   steps:[
-    {id:"П0.1", do:"/uat → «✅ Одобрен» → «Оба менеджера» → «✅ Сбросить и засеять», потом /start, потом /admin", exp:"меню разделов: «🎪 Событие», «📝 Анкета», «📋 Заявки», «💳 Оплата», «📢 Общение», «🎮 Геймификация», «📊 Данные», «🔧 Управление»"},
-    {id:"П0.2", do:"«📝 Анкета»: доведи «🌐 Спрашивать язык при старте» до «Всем при первом /start»; включи «🌐 Английский язык анкеты», «📋 Согласия», «🎁 Предлагать свою ссылку после анкеты», «📶 Экран статуса заявки во всю ширину»", exp:"каждая кнопка читается как «текущее → следующее» и после тапа показывает новое положение. У языка три положения по кругу: «Не спрашивать» → «Только нерусским клиентам» → «Всем при первом /start»"},
-    {id:"П0.3", do:"«📝 Анкета» → «📋 Вопросы регистрации» → строка «📄 Резюме: …» — доведи до «спросить способ»", exp:"всплывает «📄 Резюме: спросить способ» и приписка «Строки до этого момента не сдвинутся — нажми ♻️ Пересобрать таблицу»"},
-    {id:"П0.4", do:"«💳 Оплата»: включи «💳 Оплата», затем «⚙️ Тексты и настройки» → «💳 Варианты оплаты» впиши «Стандарт|3000», «💰 Реквизиты оплаты» впиши «Карта 0000 0000 0000 0000», «📅 Дедлайн оплаты» — дата через 5 дней в формате ДД.ММ.ГГГГ ЧЧ:ММ", exp:"каждое поле подтверждает новое значение; на неверный формат даты — понятная ошибка с примером, а не «invalid»"},
-    {id:"П0.5", do:"«📋 Заявки» → «❓ Частые вопросы» → «➕ Добавить»: вопрос «Где проходит форум?», ответ «Адрес пришлём за неделю»", exp:"«Пришлите текст вопроса.», потом просьба про ответ, потом карточка «❓ Пункт FAQ» с кнопками «✏️ Вопрос», «✏️ Ответ», «🚫 Скрыть от делегатов», «🗑 Удалить навсегда»"},
-    {id:"П0.6", do:"«🔧 Управление» → «🎨 Оформление»: включи «📱 Mini App включён». «🎪 Событие» → «🔘 Кнопки меню»: включи «🌐 Язык / Language»", exp:"тумблеры переключаются, подписи человеческие"},
-    {id:"П0.7", do:"«🎮 Геймификация» → «🎯 Задания» → «➕ Новое задание»: название, текст, фото «⏭ Пропустить», категория кнопкой, 10 монет, тип подтверждения → «Готово», дедлайн «+3 дня», «✅ Опубликовать»", exp:"перед публикацией «👁 Так увидит делегат» и карточка. После — «Задание создано» и строка «1. Название» / «Категория · 10🪙 · до ДД.ММ ЧЧ:ММ»"},
-    {id:"П0.8", do:"«📋 Заявки»: «🌙 Тихие часы» оставь ВЫКЛ, «✅ Полная форма» оставь «👮 Ручная». Скажи делегатам «можно стартовать»", exp:""},
-  ]},
-
-  {n:"1", title:"Заявка: уведомление, отказ, одобрение, список", time:"6 мин", steps:[
-    {id:"П1.1", do:"Жди, пока делегат из трека «чат» отправит анкету (его шаг 3.3)", exp:"тебе приходит «🆕 Новая регистрация!», «👤 Имя (@ник)», «⏳ Ожидает одобрения (/admin → Заявки)». Если включён дайджест — вместо этого через окно тишины «📥 Новые заявки: 1 — Фамилия → 📋 Заявки»"},
-    {id:"П1.2", do:"«📋 Заявки» → «📋 Заявки»", exp:"карточка «📋 Заявка 1/N · 🏙 Город», «👤 Имя (@ник)», ответы анкеты, строка «📎 Резюме: файлом (кнопка ниже)». Кнопки: «✅ Одобрить», «❌ Отклонить», «📎 Резюме», «🕓 История», «⏭ Пропустить», «✅ Одобрить все (N)»"},
-    {id:"П1.3", do:"На карточке КАЖДОГО из двух делегатов нажми «❌ Отклонить», напиши «тест отказа» (→ чат 4.1, приложение 4.1)", exp:"«Укажи причину отклонения:», после текста — «Заявка отклонена.» и следующая карточка"},
-    {id:"П1.4", do:"Когда делегат скажет, что заявка снова в очереди (чат — после /uat, приложение — после «Отправить изменения»): «📋 Заявки» → «📋 Заявки» → «✅ Одобрить» — для каждого из двух (→ чат 4.3, приложение 5.1)", exp:"всплывает «Одобрено», открывается следующая карточка или «✅ Заявок нет.»"},
-    {id:"П1.5", do:"«📋 Заявки» → «📇 Список заявок». Нажми «❌ Отклонённые», потом «✅ Одобренные», потом напиши /find @ник делегата", exp:"шапка «📇 Список заявок» и счётчики «✅ N · ❌ N · ⏳ N», у выбранного фильтра точка «•». Строка отклонённого: «1. Имя — @ник — ДД.ММ ЧЧ:ММ · отклонил(а) Твоё Имя». Строка одобренного: «… · принял(а) Твоё Имя». Внизу «Найти конкретного делегата: /find @ник». /find показывает «👤 Пользователь найден:» с ID, именем, ником"},
-  ]},
-
-  {n:"2", title:"Чек: отклонить, подтвердить", time:"3 мин", steps:[
-    {id:"П2.1", do:"Дождись «🧾 Новый чек оплаты от Имя.» → «💳 Оплата» → «🧾 Чеки» → «❌ Отклонить», причина «не видно суммы» (→ чат 5.3)", exp:"карточка «🧾 Чек 1/N · 🏙 Город», «👤 Имя», «💳 Вариант: Стандарт», «📎 Чек: загружен», кнопки «✅ Подтвердить», «❌ Отклонить», «🧾 Чек», «⏭ Следующий». На отклонение — «Укажи причину отклонения (или «-» без объяснений):», после текста «Готово.»"},
-    {id:"П2.2", do:"Дождись второго «🧾 Новый чек оплаты…» → «🧾 Чеки» → «🧾 Чек» (посмотреть фото) → «✅ Подтвердить» (→ чат 5.4)", exp:"фото чека приходит отдельным сообщением. На подтверждение — «Оплата подтверждена»"},
-  ]},
-
-  {n:"3", title:"Общение: ответ, рассылка, опрос, тихие часы", time:"8 мин", steps:[
-    {id:"П3.1", do:"Дождись «❓ Новый вопрос от Имя:». «📋 Заявки» → «❓ Вопросы делегатов» → «✉️ Ответить #…» → напиши «Сбор в 9:00 у главного входа» (→ чат 7.3)", exp:"в уведомлении есть «🧾 Вопрос #N» и подсказка «↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ.». В журнале фильтры «Все / без ответа / в работе / отвечено». После «✉️ Ответить» — «Напишите ответ делегату одним сообщением.», после текста — «Готово.» и у вопроса появляется «❓ В FAQ #N»"},
-    {id:"П3.2", do:"«📢 Общение» → «📢 Рассылка» → «📢 Все пользователи», текст «тест приёмки», «✅ Отправить N пользователям». Потом «📢 Рассылка» → «🗒 Последние рассылки» → карточка → «🗑 Удалить у получателей» → «🗑 Да, удалить» (→ чат 8.1)", exp:"перед отправкой копия сообщения и «Отправить это N пользователям?»; после — «📨 Отправлено 0 из N…» с кнопкой «⛔ Остановить», цифра растёт. Перед удалением «Сообщение удалится у N человек. Вернуть нельзя. Удалить?»; после — карточка «🗑 Удалена у получателей.»"},
-    {id:"П3.3", do:"«📢 Общение» → «📊 Опросы» → «➕ Новый опрос»: вопрос «Пиццу или суши?», варианты «Пиццу; Суши», «✅ Готово», «Дальше ➡️», «✅ Только одобренные», «🚀 Отправить сейчас». После голоса делегата открой опрос в списке (→ чат 8.2)", exp:"шаги подписаны «Шаг 1 из 4» … «Шаг 4 из 4», перед отправкой превью опроса и «Кому: … — N чел.». Отчёт «📊 Опрос #N отправлен. ✅ Доставлено …». В карточке опроса счётчик голосов 1 и кнопки «⏹ Закрыть опрос», «📄 В таблицу»"},
-    {id:"П3.4", do:"«📋 Заявки» → «🌙 Тихие часы» включи → «🌙 Когда молчим» → «🕓 С» = час назад, «🕓 До» = час вперёд. Когда делегат задаст второй вопрос — ответь на него. Посмотри шапку «📋 Заявки». Затем «🕓 До» = текущее время + 1 минута. Через 2 минуты выключи тихие часы (→ чат 8.3)", exp:"экран: «🌙 Тихие часы», «✅ Окно: ЧЧ:ММ–ЧЧ:ММ», «В очереди уведомлений: 0». После ответа — «✅ Ответ отправлен пользователю. 🌙 делегат узнает в ЧЧ:ММ». В шапке «📋 Заявки» строка «🌙 Тихие часы: в очереди 1». После сдвига «До» очередь через минуту-две пустеет, делегат получил ответ"},
-  ]},
-
-  {n:"4", title:"Геймификация: сдача, монеты вручную", time:"3 мин", steps:[
-    {id:"П4.1", do:"Дождись уведомления о сдаче → «🎮 Геймификация» → «🎮 Проверка заданий» → «✅ Принять» (→ приложение 6.3)", exp:"карточка «🎮 Сдача 1 из 1» с именем, заданием и фото/текстом. После — «Одобрено»"},
-    {id:"П4.2", do:"«🎮 Геймификация» → «🪙 Монеты вручную», перешли сообщение делегата, «➕ Начислить», 5, причина «за приёмку», «✅ Подтвердить»", exp:"«Кому меняем баланс? Перешлите сюда любое сообщение этого человека или пришлите его @username.», карточка «🪙 Подтвердите операцию» со строкой «Баланс сейчас: 10🪙 → станет: 15🪙 (+5)». Делегату уходит сообщение с суммой, причиной и новым балансом"},
-  ]},
-
-  {n:"5", title:"Свои экраны в приложении", time:"3 мин", note:"Не триггеры — проверка менеджерской части приложения.", steps:[
-    {id:"П5.1", do:"Открой приложение → «Настройки» → в поиске набери «резюме» и нажми найденную настройку", exp:"открывается её раздел, экран прокручивается к ЭТОЙ строке и подсвечивает её"},
-    {id:"П5.2", do:"«Анкета» → «Вопросы регистрации»; посмотри подпись под заголовком свёрнутой группы", exp:"таблица с колонками «Полная», «Вечеринка», «Короткая», в «Полная» стоят галочки. Счётчик вида «7 здесь · 23 в разделе»"},
-    {id:"П5.3", do:"Переключи две настройки подряд без паузы", exp:"каждая строка перекрашивается сразу, экран не замирает и не перезагружает список"},
-  ]},
-  ]},
-
-owner: {
-  intro: ["Ты владелец бота: полные права и доступ к доске статистики стенда. Заходишь со своего обычного аккаунта, /uat себе не применяешь.",
-          "Это короткая проверка перед выкатом: то, что должно работать вместе. 12 минут. Шаг 1.3 запускает последний блок трека «Делегат · чат» — делай его, когда делегат дошёл до блока 9.",
-          "Для первого шага нужна тестовая группа в Телеграме, куда можно добавить бота администратором."],
-  blocks: [
-  {n:"0", title:"Перед стартом", time:"1 мин", pre:true, note:"Отмечай честно: ✕ + что увидел. Скрин — в чат.",
-   steps:[
-    {id:"0.1", do:"Отправь тестовому боту /admin", exp:"меню разделов целиком: «🎪 Событие», «📝 Анкета», «📋 Заявки», «💳 Оплата», «📢 Общение», «🎮 Геймификация», «📊 Данные», «🔧 Управление»"},
-    {id:"0.2", do:"Приготовь тестовую группу в Телеграме, куда можно добавить бота", exp:""},
-  ]},
-
-  {n:"1", title:"Проверка перед выкатом", time:"11 мин", steps:[
-    {id:"1.1", do:"Добавь бота в группу администратором. Открой ЛИЧКУ с ботом. Потом «🔧 Управление» → включи «💬 Учёт чата делегатов»", exp:"в личку: при нескольких городах — «Бот добавлен в чат «Название». К какому городу относится?» с кнопками городов и после выбора «Чат «Название» привязан к городу «…»…»; при одном городе — сразу «Бот добавлен в чат «Название» и подключён к событию.». В самой группе бот молчит. Затем «Сверяю состав чата, это несколько минут.» и через минуту-другую «Готово: N в чате, M нет, K не найдены.»"},
-    {id:"1.2", do:"Открой test.alekseev.info, войди через Телеграм, нажми «💬 Чат»", exp:"карточка группы: плитки «Одобрено», «В чате», «Не в чате», «В чате, но не зарегистрированы». «В чате» = N из личного сообщения, «Последняя сверка» — не «ещё не было»"},
-    {id:"1.3", do:"Когда делегат трека «чат» дойдёт до блока 9: «🎪 Событие» → «🎪 Событие/Медиа» → «🎉 Сезон события» → впиши новое значение, например «Тест 26/3» (→ чат 9.1)", exp:"поле подтверждает новое значение. Делегат при следующем /start получает «С возвращением! Ты уже был(а) с нами на …»"},
-    {id:"1.4", do:"«🔧 Управление» → включи «📊 Итоги дня менеджерам», в «🔧 Система» посмотри «📊 Итоги дня: во сколько»", exp:"тумблер «📊 Итоги дня менеджерам: ❌ Выкл → ✅ Вкл», время по умолчанию 21:00 с пометкой, что нужен перезапуск. В назначенное время менеджерам приходит «📊 Итоги дня, ДД.ММ — Город» со строками «📋 Заявки: новых … · одобрено … · отклонено … · ждут …» и по менеджеру «Имя — N ✅ / M ❌». Если ждать не можешь — ⏭ и заметка"},
-    {id:"1.5", do:"Открой доску test.alekseev.info и пролистай до «Геймификация»", exp:"плитки «Участников», «На проверке», «Одобрено», «Отклонено», «Сдач всего», «Коинов начислено», «Ждут проверки». Цифры совпадают с тем, что сделали партнёр и делегат приложения"},
-    {id:"1.6", do:"Реши: выкатываем на прод или нет. ✓ = выкатываем, ✕ = нет. В заметке одной строкой почему", exp:"это твоё решение, а не проверка бота — правильного ответа здесь нет"},
-  ]},
-  ]},
+/* ───────── данные ─────────
+   Ключ отметки: <сессия>.<раздел>.<шаг>, например s1.scan.4. Ключи стабильные: новые шаги
+   добавлять в конец раздела с новым номером, старые номера не переиспользовать. */
+const ROLES = {
+  M: { name: "Менеджер", hint: "аккаунт с полной админкой тестового бота. Это вы, если вы тимлид: Андрей выдал права заранее. /uat этому аккаунту не нужен." },
+  D: { name: "Делегат", hint: "второй аккаунт: второй человек или ваш второй аккаунт (другой телефон, Телеграм на компьютере). Состояние ставит себе командой /uat." },
+  V: { name: "Волонтёр", hint: "третий аккаунт со сканером. Если третьего человека нет, его шаги делает менеджер: у менеджера сканер тоже есть, только сначала просит выбрать город." },
+  A: { name: "Все", hint: "" },
 };
+const STUCK = [
+  "Напишите Андрею в Телеграм: @qleafye. Приложите скриншот экрана бота и номер шага с этой доски (например, «1.3»).",
+  "Шаг, который не получается, отметьте ⏭ и идите дальше: не ждите ответа, вернётесь к нему позже.",
+  "Если бот вообще молчит на /uat, значит вас ещё нет в списке тестеров: напишите Андрею свой @юзернейм.",
+  "Если аккаунт делегата запутался, команда /uat ставит его заново в любое состояние: это нормально делать сколько угодно раз.",
+];
+const SESSIONS = [
+{ key:"s1", n:1, when:"вт 06.10 · 21:00 МСК", title:"День форума", time:"≈90 мин", people:"2–3 человека (можно одному с двумя аккаунтами)",
+  lede:"Всё, что понадобится на площадке: QR-пропуск делегату, сканер у волонтёра на входе и на сессиях, отказы и предупреждения, регистрация на месте у стойки, SOS, программа и приглашение волонтёров ссылкой. Город проверки — Санкт-Петербург, его форум на стенде «идёт сегодня».",
+  roles:["M","D","V"],
+  setup:{ time:"10 мин", items:[
+    {id:"1", who:"A", do:"Откройте эту доску по ссылке с кодом и впишите своё имя внизу в поле «Кто проверяет».", exp:"Под шапкой строка «Общая доска · обновлено …». Имя будет стоять рядом с каждой вашей отметкой."},
+    {id:"2", who:"A", do:"За 10 минут до начала пришлите Андрею (@qleafye) свои @юзернеймы в Телеграме: он добавит вас в список тех, кому отвечает /uat.", exp:"Андрей ответил, что добавил. До этого бот на /uat молчит."},
+    {id:"3", who:"M", do:"Откройте тестового бота @YouLead_test_bot и напишите /admin.", exp:"Восемь разделов: «🎪 Событие», «📝 Анкета», «📋 Заявки», «💳 Оплата», «📢 Общение», «🎮 Геймификация», «📊 Данные», «🔧 Управление». Если разделов нет или их меньше, напишите Андрею: нужны права."},
+    {id:"4", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start.", exp:"«✅ Готово.», после /start главное меню, в нём «🎟 Мой QR»."},
+    {id:"5", who:"V", do:"Если вас трое: /uat → «🆕 Новичок — анкеты нет» → «🎗 Волонтёр входа (сканер)» → на вопрос «В каком городе?» нажать «Санкт-Петербург…» → «✅ Сбросить и засеять» → /start.", exp:"Перед сбросом карточка «⚠️ Сбросить и засеять свой аккаунт?» со строкой «Что даст роль: сканирует QR на входе …». После сброса «✅ Готово.»"},
+    {id:"6", who:"M", do:"«📋 Заявки» → «🎪 Форум: функции» → «Санкт-Петербург…» → «🚦 Готовность к форуму».", exp:"Первая строка «🟢 Форум: 06.10 (1 день) — идёт сегодня». Если дата другая: «🗓 Изменить дату» → прислать 06.10.2026 → «🚦 К готовности форума». Если «(2 дня)»: «🗓 Сколько дней идёт» → 1."},
+    {id:"7", who:"M", do:"В том же светофоре посмотрите строку про вход по QR.", exp:"«🟢 Вход по QR включён …». Если строка красная, вернитесь в хаб «🎪 Форум: функции» и включите «🎟 QR для входа». Строку про чат SOS пока не трогаем: чат привяжем в разделе 6."},
+    {id:"8", who:"M", do:"В хабе СПб посмотрите строки «👋 Приветствие после отметки на входе», «📱 Меню «день форума»» и «⭐ Отзывы о сессиях». Что выключено, включите в их настройках; у отзывов задержку поставьте «5 мин».", exp:"Все три строки «✅ Вкл». В настройках отзывов «Задержка: 5 мин»."},
+    {id:"9", who:"M", do:"Создайте в Телеграме группу «Тест SOS», добавьте в неё @YouLead_test_bot и волонтёра. Делегата не добавляйте.", exp:"Бот в списке участников группы. Если вы один, в группе будете вы и бот: этого достаточно."},
+    {id:"10", who:"M", do:"Приготовьте компьютер с Телеграмом (или второй телефон): на нём делегат будет показывать QR, а волонтёр сканировать его камерой телефона.", exp:"QR с экрана компьютера сканируется так же, как с телефона."},
+  ]},
+  sections:[
+  { key:"qr", title:"QR делегату", time:"7 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"D", do:"Нажмите «🎟 Мой QR».", exp:"Картинка QR и подпись «🎟 Твой QR для отметки на форуме. Сохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.»"},
+    {id:"2", who:"M", do:"Хаб СПб → «✅ Отметки на форуме» → «📤 Разослать QR сейчас — Санкт-Петербург…» → «✅ Да, отправить».", exp:"Сначала вопрос «Уйдёт N … Отправить?». После подтверждения «⏳ Рассылаю QR...» меняется на «✅ QR разослан: доставлено N из N.»"},
+    {id:"3", who:"D", do:"Посмотрите пришедший QR и сделайте его скриншот: он понадобится в разделе 3.", exp:"Текст «Сегодня форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.» (именно «Сегодня», не «Завтра»). Наверху меню «🎟 Мой QR», «📅 Программа форума», «🆘 SOS»."},
+    {id:"4", who:"M", do:"Ещё раз «📤 Разослать QR сейчас — Санкт-Петербург…».", exp:"Всплывает «Отправлять некому — все одобренные уже получили QR.» Ничего не ушло."},
+    {id:"5", who:"M", do:"Шапка «🌍 Все города» → «📋 Заявки» → «✅ Отметки на форуме» → «📤 Разослать QR сейчас — Москва…».", exp:"Всплывает «Форум этого города 30.10.2026 — рассылать QR рано. Он уйдёт сам накануне вечером; вручную — не раньше чем накануне форума.» Ничего не ушло."},
+  ]},
+  { key:"scan", title:"Сканер на входе", time:"12 мин", need:"волонтёр (или менеджер) с телефоном + делегат на другом экране", steps:[
+    {id:"1", who:"V", do:"«✅ Отметки на форуме» → «🧪 Учебные QR». Откройте лист на компьютере или на втором экране.", exp:"Лист A4 с пятью учебными QR и подписью-инструкцией. Русские буквы читаются, квадратиков нет."},
+    {id:"2", who:"V", do:"Кнопка приложения слева от поля ввода → «🎫 Сканер». Посмотрите экран до первого скана.", exp:"Строка «Сегодня пришли: N из M одобренных», поле «Точка»: первой «🚪 Вход», за ней «🧪 Тренировка», потом сессии СПб на сегодня. У волонтёра выбора города нет. У менеджера сначала выбор города: нажмите «Санкт-Петербург…»."},
+    {id:"3", who:"V", do:"Точка «🧪 Тренировка» → отсканируйте пять учебных QR по очереди.", exp:"🟢 «Отмечен», 🟡 «Уже был в ЧЧ:ММ», 🔴 «Заявка ещё на рассмотрении», 🔴 «Делегат прошлого сезона», 🔴 «QR другого мероприятия». На каждой плашке «🧪 Тренировка: отметка не записана.» Счётчики не меняются."},
+    {id:"4", who:"V", pair:true, do:"Точка «🚪 Вход» → отсканируйте QR делегата с его экрана.", exp:"Пока ждём ответ, на экране «⏳ Проверяю…». Плашка 🟢 «Отмечен», имя делегата, «Санкт-Петербург…». «Сегодня пришли» выросло на 1."},
+    {id:"5", who:"D", do:"Сразу после скана посмотрите чат с ботом.", exp:"«Ты отмечен на входе в ЧЧ:ММ ✅ Добро пожаловать на Юлид!» (время московское) и главное меню с «🆘 SOS»."},
+    {id:"6", who:"V", pair:true, do:"Закройте камеру, откройте снова и отсканируйте тот же QR ещё раз.", exp:"🟡 «Уже был в ЧЧ:ММ» и кнопка «📷 Сканировать дальше». Второй отметки нет."},
+    {id:"7", who:"D", do:"Нажмите «🎟 Мой QR».", exp:"Над QR строка «Отмечен на входе в ЧЧ:ММ · сессий: 0»."},
+    {id:"8", who:"V", do:"Отсканируйте любой посторонний QR: ссылку на сайт, QR с упаковки.", exp:"🔴 «Не пропущен», «Это не QR-пропуск — попросите открыть «🎟 Мой QR» в боте» (если задано название форума, «Это не QR-пропуск форума Юлид — …»)."},
+    {id:"9", who:"V", do:"«Поиск по фамилии» → «Тестовый». Потом фамилия, которой точно нет: «Несуществующий».", exp:"В выдаче делегат: имя, город, @юзернейм с одной «@», вуз. На второй запрос «Никого не нашли — проверьте написание.»"},
+    {id:"10", who:"V", pair:true, do:"Включите на телефоне авиарежим и отсканируйте QR делегата. Потом выключите авиарежим.", exp:"«Нет связи — переходите на приложение-сканер.» Если Wi-Fi есть, а интернета нет: не дольше 7 секунд, затем 🔴 «Нет ответа от сервера — отсканируйте ещё раз …»."},
+    {id:"11", who:"M", do:"Откройте сканер в Телеграме на компьютере (кнопка приложения в чате бота).", exp:"«Обновите Telegram — сканер QR недоступен в этой версии. Ищите делегата по фамилии ниже.» Поиск по фамилии работает."},
+  ]},
+  { key:"deny", title:"Отказы и предупреждения на входе", time:"12 мин", need:"менеджер + волонтёр + делегат; делегат трижды меняет состояние через /uat", steps:[
+    {id:"1", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Москва…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → «🎟 Мой QR».", exp:"Новый QR на экране. Теперь вы делегат Москвы: её форум 30.10."},
+    {id:"2", who:"V", pair:true, do:"«🚪 Вход» → QR делегата Москвы.", exp:"🔴 «Не пропущен», «Делегат другого города: Москва… — отправьте на стойку своего города или к организаторам». Отметки нет, делегату ничего не пришло."},
+    {id:"3", who:"M", pair:true, do:"Сканер, город «Санкт-Петербург…» → «🚪 Вход» → тот же QR.", exp:"🟡 «Не отмечен», «Делегат другого города: Москва… — у делегата форум 30.10, не сегодня. Отметка не поставлена. Проверьте, тот ли это человек; …» и кнопка «⚠️ Отметить всё равно». У менеджера право шире, чем у волонтёра."},
+    {id:"4", who:"M", do:"«⚠️ Отметить всё равно» → подтвердить. На зелёной плашке в течение 10 секунд нажать «↩️ Отменить».", exp:"Вопрос «Отметить вход Тестовый Делегат (приёмка), хотя по настройкам у делегата сегодня нет форума? Если дата форума указана неверно — поправьте её в админке.» После подтверждения 🟢 «Отмечен». После отмены «Отметка снята — делегат снова не отмечен на этой точке.»"},
+    {id:"5", who:"D", do:"/uat → «📨 Заявка на форум — ждёт проверки» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start → «🎟 Мой QR».", exp:"«⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.» QR не выдан. В меню при этом есть «🆘 SOS»: у СПб сегодня форум."},
+    {id:"6", who:"V", do:"«🚪 Вход» → «Поиск по фамилии» → «Тестовый» → у делегата «Отметить».", exp:"🔴 «Не пропущен», «Заявка ещё на рассмотрении». Кнопки «✅ Пропустить и одобрить» нет: у волонтёра нет права одобрять."},
+    {id:"7", who:"M", do:"Сканер → «🚪 Вход» → поиск «Тестовый» → «Отметить» → «✅ Пропустить и одобрить» → подтвердить.", exp:"Сначала 🔴 «Заявка ещё на рассмотрении» с кнопкой «✅ Пропустить и одобрить». Вопрос «Одобрить Тестовый Делегат (приёмка) на месте и отметить вход? Решение запишется на вас.» После подтверждения 🟢."},
+    {id:"8", who:"D", do:"Посмотрите чат.", exp:"«Добро пожаловать на форум! Тебя зарегистрировали на месте. Ниже — твой QR…» и QR."},
+    {id:"9", who:"D", do:"/uat → «🚫 Заявка на форум — отклонена» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять».", exp:"«✅ Готово.»"},
+    {id:"10", who:"M", do:"Сканер, поиск «Тестовый» → «Отметить» → «⚠️ Пропустить вопреки отказу» → «Отмена».", exp:"Сначала 🔴 «Заявка отклонена менеджером» и кнопка «⚠️ Пропустить вопреки отказу». Вопрос «Заявку Тестовый Делегат (приёмка) отклонил менеджер. Пропустить вопреки отказу и отметить вход? Отказ будет отменён, решение запишется на вас и попадёт в журнал.» После «Отмена» ничего не изменилось."},
+    {id:"11", who:"V", do:"Отсканируйте скриншот QR из шага 1.3 (аккаунт делегата с тех пор пересоздан).", exp:"🔴 «QR не найден — отправьте на стойку проблемных случаев» и кнопка «📝 Зарегистрировать на месте»."},
+  ]},
+  { key:"desk", title:"Регистрация на месте у стойки", time:"10 мин", need:"менеджер + делегат (гость без анкеты)", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «📝 Регистрация на месте» → нажмите «Регистрация на месте: ❌ Выкл».", exp:"Экран «📝 Регистрация на месте — Санкт-Петербург…» с объяснением «Для тех, кого нет в базе или чья заявка не одобрена, — прямо на площадке. …». После нажатия всплывает «✅ Вкл», строка «Сейчас: ✅ Вкл»."},
+    {id:"2", who:"M", do:"«📎 QR для стойки». Перешлите картинку делегату.", exp:"Картинка QR, подпись «📎 QR регистрации на месте — Санкт-Петербург…», ссылка вида «…?start=walkin_spb» и «Распечатайте и поставьте на стойку…»."},
+    {id:"3", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять». Откройте ссылку регистрации на месте из картинки.", exp:"«Привет! Это короткая регистрация на форум прямо на площадке — всего 3 вопроса: имя, телефон и вуз. …» и кнопка «✅ Согласен(на), начать»."},
+    {id:"4", who:"D", do:"Напишите любой текст вместо кнопки, потом нажмите «✅ Согласен(на), начать».", exp:"На текст бот ещё раз показывает приветствие с кнопкой. После кнопки «Как тебя зовут? Напиши фамилию и имя, например: Иванова Мария»."},
+    {id:"5", who:"D", do:"Пришлите «123», потом «Тестов Гость».", exp:"На «123»: «Не понял имя. Напиши фамилию и имя буквами через пробел…». На имя: «Твой номер телефона? Нажми кнопку ниже или напиши номер…»."},
+    {id:"6", who:"D", do:"Пришлите «abc», потом нажмите кнопку «Отправить номер». На вопрос про вуз нажмите «Пропустить».", exp:"На «abc»: «Не понял номер. …». В конце «Готово, Тестов! Подойди к волонтёру на стойке регистрации и назови свою фамилию — он пропустит тебя на форум.»"},
+    {id:"7", who:"M", do:"Сканер → блок «📝 Ждут на стойке» → «🔄 Обновить» → у гостя «✅ Пропустить и одобрить» → подтвердить.", exp:"«Тестов Гость» в списке, «Всего: 1». После одобрения гость пропал из списка, счётчик входа вырос на 1."},
+    {id:"8", who:"D", do:"Посмотрите чат. Потом ещё раз откройте ссылку регистрации на месте.", exp:"Пришло «Добро пожаловать на форум! …» и QR. На повторную ссылку: «Твоя заявка уже одобрена! Открой «🎟 Мой QR» в меню и покажи его волонтёру на входе.»"},
+  ]},
+  { key:"prog", title:"Программа и сканер на сессиях", time:"12 мин + 5 мин ожидания", need:"менеджер заводит сессии, волонтёр отмечает, делегат смотрит программу", steps:[
+    {id:"1", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start.", exp:"Меню с «🎟 Мой QR», «📅 Программа форума», «🆘 SOS». На входе вы пока не отмечены."},
+    {id:"2", who:"M", do:"Шапка СПб → «🎪 Событие» → «🗓 Программа форума».", exp:"«🗓 Программа форума — Санкт-Петербург…», кнопка дня «📅 06.10 — …» (только день форума СПб), «📷 Загрузить фото программы — Санкт-Петербург…»."},
+    {id:"3", who:"M", do:"«📅 06.10» → «➕ Сессия» → пришлите «11:00-10:00». Потом время «сейчас минус 5 минут — сейчас плюс 10 минут» (например, 21:25-21:40) → название «Тестовая сессия А» → «➕ Новый зал» → «Зал 1» → спикера и описание пропустите.", exp:"Под вопросом о времени есть «❌ Отменить создание». На «11:00-10:00» бот просит формат «ЧЧ:ММ-ЧЧ:ММ», где конец позже начала. В конце «✅ Сессия добавлена в программу.»"},
+    {id:"4", who:"M", do:"Ещё одна сессия на то же время и в «Зал 1», название «Тестовая сессия Б» → «🔁 Выбрать другой зал» → «➕ Новый зал» → «Зал 2».", exp:"«⚠️ В зале «Зал 1» в это время уже «Тестовая сессия А». Сохранить всё равно?» и кнопки «✅ Всё равно», «🔁 Выбрать другой зал», «✏️ Ввести время заново», «❌ Отменить создание». После выбора зала «✅ Сессия добавлена в программу.»"},
+    {id:"5", who:"D", do:"«📅 Программа форума» в чате, потом кнопка приложения → плитка «📅 Программа».", exp:"Сессии СПб на сегодня; у «Тестовая сессия А» и «Тестовая сессия Б» своё время и пометка «🔴 Идёт сейчас». В приложении та же таблица сессий, «Сейчас идёт» у тестовых."},
+    {id:"6", who:"V", do:"Закройте сканер и откройте снова. Посмотрите список точек.", exp:"Сначала «🚪 Вход» и «🧪 Тренировка», потом сессии. Идущие сейчас стоят первыми и с 🔴, у каждой счётчик. Обе тестовые сессии на месте."},
+    {id:"7", who:"V", pair:true, do:"Точка «Тестовая сессия Б» → QR делегата.", exp:"🟢 на сессии. Счётчик «🚪 Вход» тоже вырос: вход поставился сам."},
+    {id:"8", who:"V", pair:true, do:"Точка «Тестовая сессия А» → тот же QR.", exp:"🟢 «Перенесено с «Тестовая сессия Б»»."},
+    {id:"9", who:"D", do:"Нажмите «🎟 Мой QR».", exp:"Над QR строка «Отмечен на входе в ЧЧ:ММ · сессий: 1»."},
+    {id:"10", who:"D", do:"Через 5 минут после конца «Тестовая сессия А» посмотрите чат (идите дальше по разделам и вернитесь). Поставьте оценку → «✍️ Написать» → «Всё понятно».", exp:"«Как тебе «Тестовая сессия А»?» и пять кнопок со звёздами. Про сессию Б вопроса нет: итоговая отметка стоит на А. После оценки «Спасибо! Хочешь добавить пару слов?», после текста «Спасибо, записал!»"},
+  ]},
+  { key:"sos", title:"SOS", time:"12 мин", need:"менеджер привязывает чат, делегат шлёт сигнал, волонтёр (или менеджер) отвечает в группе «Тест SOS»", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «🆘 Настройки SOS» → «🔗 Привязать чат SOS» (или «🔗 Перепривязать чат SOS») → перешлите боту любое сообщение из группы «Тест SOS».", exp:"Сначала инструкция «Добавьте бота в чат оргов этого города … Заявка активна 15 минут.» После пересылки «Готово.» и экран SOS со строкой «💬 Чат SOS: «Тест SOS»»."},
+    {id:"2", who:"D", do:"Нажмите «🆘 SOS».", exp:"Без вопросов сразу «🆘 Сигнал отправлен оргкомитету — с тобой свяжутся. Напиши, что случилось, пришли фото или геопозицию — всё уйдёт им.», кнопки «📍 Отправить геопозицию» и «Готово»."},
+    {id:"3", who:"V", do:"Посмотрите группу «Тест SOS».", exp:"Карточка «🆘 SOS #N»: имя, @юзернейм, «🏙 Санкт-Петербург…», вуз, телефон, «✅ Заявка одобрена», «🆘 СРОЧНО — подробности ещё не прислали», кнопки «🙋 Беру» и «✅ Решено»."},
+    {id:"4", who:"D", do:"Напишите «Потерял бейдж», потом пришлите любое фото.", exp:"В карточке вместо «СРОЧНО» появилось «Потерял бейдж» и «📷 фото приложено». Текст и фото пришли в группу ответом на карточку."},
+    {id:"5", who:"V", do:"Ответьте в группе реплаем на карточку, НЕ нажимая «🙋 Беру»: «Иду к тебе».", exp:"Бот в группе: «⚠️ Ответ не отправлен: SOS #N ещё никто не взял. Сначала нажмите «🙋 Беру» под карточкой, потом ответьте реплаем ещё раз — тогда ответ уйдёт делегату. …». Делегат ничего не получил."},
+    {id:"6", who:"V", do:"Нажмите «🙋 Беру», потом снова ответьте реплаем на карточку: «Иду к тебе».", exp:"Всплывает «Взято.», в карточке «✍️ Взял(а): Имя в ЧЧ:ММ», вместо «🙋 Беру» теперь «🔁 Перехватить». После реплая «✅ Ответ отправлен делегату.»"},
+    {id:"7", who:"D", do:"Посмотрите чат, ответьте реплаем на ответ: «Спасибо». Потом нажмите «Готово».", exp:"«🆘 Ответ по SOS #N:» и «Иду к тебе». Ваше «Спасибо» пришло в группу к карточке. После «Готово»: «Принято. Если понадобится снова — жми «🆘 SOS».»"},
+    {id:"8", who:"D", do:"Сразу снова нажмите «🆘 SOS», потом «Готово».", exp:"Новой карточки в группе нет. Бот отвечает «Сигнал уже у оргкомитета (взял(а) Имя). Напиши, что случилось — дополню.»"},
+    {id:"9", who:"V", do:"Нажмите «✅ Решено».", exp:"Всплывает «Отмечено решённым.», в карточке «✅ Решено: Имя в ЧЧ:ММ», кнопок больше нет. Делегату пришло «Оргкомитет отметил вопрос решённым. Снова нужна помощь — жми «🆘 SOS».»"},
+    {id:"10", who:"M", do:"/admin → «📋 Заявки» → «🆘 SOS» (шапка СПб) → фильтры «Все» / «Открыто» / «Взято» / «Решено сегодня».", exp:"Счётчики «открыто: N · взято: M · решено сегодня: K». В строке заявки «Потерял бейдж», «📷 фото приложено», кто взял и кто решил."},
+  ]},
+  { key:"vol", title:"Волонтёры по ссылке", time:"7 мин", need:"менеджер + делегат (станет волонтёром)", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «🔗 Пригласить волонтёров» → нажмите «Приглашения: ❌ Выкл».", exp:"Экран «🔗 Приглашение волонтёров ссылкой — Санкт-Петербург…». После нажатия «Приглашения: ✅ Вкл», появились кнопки «🔗 Создать ссылку» и «🔗 Ссылка + одобрение на месте», строка «Ссылок пока нет.»"},
+    {id:"2", who:"M", do:"«🔗 Создать ссылку» → «🏁 До конца форума города» → «🏁 До конца форума города» → «10».", exp:"Три вопроса кнопками: «На сколько ССЫЛКА остаётся рабочей?», «На какой срок волонтёр получает ПРАВА …?», «Сколько человек могут перейти по ссылке?». В конце «✅ Ссылка создана.», ссылка вида https://t.me/YouLead_test_bot?start=vol_…, строки «Ссылка действует: …», «Права волонтёра: …», «Лимит переходов: 10»."},
+    {id:"3", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять». Откройте ссылку из шага 2, нажмите «Start». Откройте ту же ссылку ещё раз.", exp:"«Добро пожаловать в команду волонтёров! Тебе выдан доступ к сканеру отметок.» Анкета делегата не начинается. Второй переход отвечает тем же и слот не тратит."},
+    {id:"4", who:"M", do:"Посмотрите личку с ботом.", exp:"«👤 Имя (@ник) зашёл по ссылке волонтёров «Санкт-Петербург…», 1 из 10.»"},
+    {id:"5", who:"D", do:"Напишите /admin, потом откройте приложение.", exp:"В /admin только «✅ Отметки на форуме» и «🧳 Нашли вещь»; нет «🆘 SOS» и «🎪 Форум: функции». В приложении есть плитка «🎫 Сканер», город выбирать не нужно."},
+    {id:"6", who:"M", do:"«🔧 Управление» → «👥 Роли и доступы» → найдите делегата.", exp:"Роль «🎗 Волонтёр форума», привязка «🏙 Санкт-Петербург…» (не «🌍 Все города»), срок до конца форума города."},
+    {id:"7", who:"M", do:"Вернитесь в «🔗 Пригласить волонтёров» → у ссылки «⛔ Отозвать» → «✅ Да, отозвать». Делегат открывает ссылку ещё раз.", exp:"Перед отзывом «Ссылка перестанет работать, выданные права останутся — снять их можно в списке ниже.» У делегата на ссылку: «Ссылка устарела, попроси у организатора новую.» Сканер у него остался."},
+  ]},
+  { key:"nums", title:"Цифры дня", time:"5 мин", opt:true, need:"только менеджер; если времени нет, перенесём в сессию 3", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «✅ Отметки на форуме».", exp:"«Сегодня пришли: N из M одобренных» только по СПб. Блоки «🎟 Рассылка QR» и «🚪 Не пришли (сегодня)», кнопки «📊 Статистика прихода» и «📍 Сейчас на площадке», внизу «◀️ К «Форум: функции»»."},
+    {id:"2", who:"M", do:"«📍 Сейчас на площадке».", exp:"«Сегодня ДД.ММ, обновлено ЧЧ:ММ:СС МСК», «🚪 Сегодня пришли N из M одобренных», «За последние 15 мин: +K», «Идут сейчас:» с сессиями, «Стойки входа — отметили за день:» со сканировавшими."},
+    {id:"3", who:"M", do:"«📊 Статистика прихода» → «📥 Выгрузить CSV» → откройте файл.", exp:"«🚪 Вход: пришли N из M…», «Сессии — отметились:» с «Тестовая сессия А». В файле русские буквы читаются, время московское."},
+    {id:"4", who:"M", do:"«📓 Журнал площадки».", exp:"«Событий: N · страница 1 из K». Видны отметки, отмены и отказы: «другой город», «не QR-пропуск», одобрение на месте. «⬅️ Новее» / «Старше ➡️» листают."},
+    {id:"5", who:"M", do:"«🗑 Снять отметку делегату» → пришлите «Тестовый» → выберите делегата → отметка входа → «🗑 Да, снять».", exp:"«Кому снять отметку? Пришлите фамилию делегата…», потом «✅ Отметки делегата» со списком. Перед снятием «🗑 Снять отметку?», «Что изменится:», «• делегат снова считается не пришедшим …». После «✅ Отметка снята.»"},
+    {id:"6", who:"M", do:"Хаб СПб → «📊 Настройки отчёта дня форума» → «📊 Отчёт дня сейчас».", exp:"«Отправлено: чат ✅, лично N держателям.» Отчёт пришёл в «Тест SOS» и в личку, пустых строк в нём нет."},
+  ]},
+  { key:"end", title:"Вернуть стенд", time:"3 мин", need:"менеджер и делегат", steps:[
+    {id:"1", who:"M", do:"«🗓 Программа форума» СПб → «Тестовая сессия А» → «🗑 Удалить» → подтвердить. Так же «Тестовая сессия Б».", exp:"Подтверждение «🗑 Удалить сессию навсегда?» с «Пропадут из отчёта: отметок на сессии — N, оценок — …». После удаления в программе СПб остались только прежние сессии."},
+    {id:"2", who:"M", do:"Хаб СПб → «📝 Регистрация на месте» → выключите. «🔗 Пригласить волонтёров» → «👥 1 вошли» → «➖ Снять Имя».", exp:"Регистрация на месте «❌ Выкл». У делегата пропали сканер и «✅ Отметки на форуме»."},
+    {id:"3", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять».", exp:"«✅ Готово.»"},
+    {id:"4", who:"A", do:"Нажмите «Отчёт» внизу этой страницы и отправьте текст Андрею. Напишите в заметках всё, что показалось странным, даже если шаг прошёл.", exp:"Отчёт ушёл Андрею."},
+  ]},
+  ]},
 
-const KEY = "uat-delegate-260916";
+{ key:"s2", n:2, when:"вт 13.10 · 21:00 МСК", title:"Путь делегата и рассылки", time:"≈90 мин", people:"2 человека (или один с двумя аккаунтами)",
+  lede:"От первого /start до письма об одобрении: анкета в чате и в приложении, решение менеджера, меню, вопрос организаторам, рассылки и опросы. Плюс место под новое: «Делегации вузов» и «Внешние формы».",
+  roles:["M","D"],
+  setup:{ time:"10 мин (+ Google Форма накануне)", items:[
+    {id:"1", who:"A", do:"Откройте доску по ссылке с кодом, впишите имя внизу. За 10 минут до начала пришлите Андрею (@qleafye) свои @юзернеймы для /uat.", exp:"Андрей ответил, что добавил."},
+    {id:"2", who:"M", do:"@YouLead_test_bot → /admin.", exp:"Восемь разделов. Если нет, напишите Андрею: нужны права."},
+    {id:"3", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять». /start пока НЕ нажимайте.", exp:"Бот перечисляет, что стёр, последняя строка «Отправьте /start.»"},
+    {id:"4", who:"M", do:"«📝 Анкета»: доведите «🌐 Спрашивать язык при старте» до «Всем при первом /start»; включите «📋 Согласия», «🎁 Предлагать свою ссылку после анкеты» и «📶 Экран статуса заявки во всю ширину».", exp:"Каждая кнопка читается как «текущее → следующее» и после нажатия показывает новое положение."},
+    {id:"5", who:"M", do:"«📋 Заявки»: «✅ Полная форма» оставьте «👮 Ручная», «🌙 Тихие часы» выключены. «💳 Оплата» → тумблер «💳 Оплата» выключить.", exp:"При включённой оплате вместо письма об одобрении придёт экран оплаты, поэтому её выключаем. Оплату проверяем отдельно (бэклог)."},
+    {id:"6", who:"M", do:"«📋 Заявки» → «❓ Частые вопросы» → «➕ Добавить»: вопрос «Где проходит форум?», ответ «Адрес пришлём за неделю».", exp:"«Пришлите текст вопроса.», потом просьба про ответ, потом карточка «❓ Пункт FAQ» с кнопками «✏️ Вопрос», «✏️ Ответ», «🚫 Скрыть от делегатов», «🗑 Удалить навсегда»."},
+    {id:"7", who:"M", do:"«🔧 Управление» → «🎨 Оформление»: включите «📱 Mini App включён». «🎪 Событие» → «🔘 Кнопки меню»: включите «🌐 Язык / Language» и «❗ Важное».", exp:"Тумблеры переключаются, подписи человеческие."},
+    {id:"8", who:"M", do:"Накануне сессии: создайте Google Форму с тремя вопросами «Ник в Telegram», «Телефон», «Вуз» и включите в ней сбор ответов в таблицу («Ответы» → «Посмотреть в Таблицах»). Ссылку на таблицу держите под рукой.", exp:"Форма открывается по ссылке, таблица ответов существует. Нужна для раздела 9."},
+  ]},
+  sections:[
+  { key:"start", title:"Старт, язык, согласие, ФИО", time:"6 мин", need:"делегат; менеджер пока свободен", steps:[
+    {id:"1", who:"D", do:"Отправьте /start.", exp:"Первым приходит экран «Выберите язык анкеты / Choose the form language» с кнопками «🇷🇺 Русский» и «🇬🇧 English», даже если ваш Телеграм на русском."},
+    {id:"2", who:"D", do:"Нажмите «🇷🇺 Русский».", exp:"Всплывает «✅ Русский язык выбран.», следом приветствие с картинкой и кнопкой «📱 Заполнить в приложении». Если городов несколько, вопрос «Выбери город мероприятия:» с кнопками городов: выберите Санкт-Петербург. Дальше «Отлично, начинаем регистрацию.»"},
+    {id:"3", who:"D", do:"На карточке согласия напишите боту любой текст вместо кнопки, потом нажмите «Согласен(-на)».", exp:"Карточка «Согласие на обработку персональных данных» с кнопкой «Согласен(-на)». На текст: «Нажми кнопку «Согласен(-на)» для продолжения.» После кнопки всплывает «✅ Принято» и приходит «Напиши свои ФИО (Фамилия Имя Отчество):» с кнопкой «Отмена» внизу."},
+    {id:"4", who:"D", do:"Напишите одно слово «Иван», потом «Иванов Иван Тестовый».", exp:"На одно слово: «Укажи ФИО полностью (минимум фамилию и имя).». На полное ФИО следующий вопрос анкеты."},
+  ]},
+  { key:"form", title:"Анкета в чате: ошибки, кнопки, отмена", time:"8 мин", need:"делегат", steps:[
+    {id:"1", who:"D", do:"На вопросе про возраст напишите 5, потом 19.", exp:"На 5: «Укажи корректный возраст числом от 10 до 120.», вопрос остаётся. На 19 следующий вопрос."},
+    {id:"2", who:"D", do:"На вопросе про телефон напишите «abc», потом нажмите «Пропустить».", exp:"Внизу две кнопки: «📱 Поделиться контактом» и «Пропустить». На «abc»: «Укажи корректный номер телефона или нажми «Пропустить».». «Пропустить» уводит дальше."},
+    {id:"3", who:"D", do:"На вопросе с кнопками-вариантами (город, вуз, позиция) нажмите «Другое» и напишите свой вариант.", exp:"После «Другое» бот просит «Напиши свой вариант:» (или «Напиши название своего города:» / «…своего ВУЗа:») и оставляет внизу только «Отмена». Ваш текст принимается, анкета идёт дальше."},
+    {id:"4", who:"D", do:"На любом вопросе нажмите «Отмена», затем «Нет, продолжить».", exp:"«Точно отменить регистрацию? Все введённые ответы сотрутся.» с кнопками «Да, отменить» и «Нет, продолжить». После «Нет, продолжить» всплывает «Продолжаем 👍», анкета стоит на том же вопросе."},
+    {id:"5", who:"D", do:"Не отвечая, отправьте /start. Нажмите «🔄 Начать заново», потом «Нет, продолжить», потом «▶️ Продолжить с шага …».", exp:"На /start: «У тебя есть незаконченная анкета — что дальше?» с кнопками «▶️ Продолжить с шага N из M» и «🔄 Начать заново». На «Начать заново»: «Пропадут уже введённые ответы (N). Начать анкету заново?» с «Да, начать заново» / «Нет, продолжить». После «Продолжить» анкета на том же вопросе, ответы целы."},
+    {id:"6", who:"D", do:"Дойдите до вопроса «Резюме». Напишите текст вместо кнопки, потом «📎 Загрузить файл» и пришлите файл .txt, потом пришлите PDF.", exp:"Три кнопки: «📎 Загрузить файл», «🔗 Дать ссылку», «🙅 У меня нет резюме». На текст: «Выбери способ кнопкой выше ⬆️». На .txt: «Принимаются только PDF или DOCX. Прикрепи файл ещё раз.». PDF принят. Если вместо трёх кнопок сразу просьба прикрепить файл, просто пришлите PDF и напишите об этом в заметке."},
+  ]},
+  { key:"submit", title:"Сводка, отправка, ожидание", time:"5 мин", need:"делегат", steps:[
+    {id:"1", who:"D", do:"Дойдите до конца анкеты и посмотрите на сводку.", exp:"«Проверь свои ответы:» со всеми ответами строками «Вопрос: ответ», внизу две кнопки: «Всё верно» и «Изменить»."},
+    {id:"2", who:"D", do:"Нажмите «Изменить». На первом вопросе напишите текст вместо кнопки, потом на каждом вопросе жмите «✅ Оставить».", exp:"Анкета НЕ начинается с нуля: каждый вопрос приходит как «Прошлый ответ: …» и «Оставить или изменить?» с кнопками «✅ Оставить» и «✏️ Изменить». На текст: «Нажми «✅ Оставить» или «✏️ Изменить».». После всех «Оставить» снова сводка с теми же ответами."},
+    {id:"3", who:"D", do:"Нажмите «Всё верно».", exp:"«Поздравляем, твоя заявка принята!…» (или текст, который написал менеджер) и главное меню. Вторым сообщением «Приводи друзей в АЙСЕК» с кнопками «Хочу свою ссылку» и «Позже»."},
+    {id:"4", who:"D", do:"Нажмите «Хочу свою ссылку».", exp:"Приходит ссылка вида https://t.me/…?start=amb_ЧИСЛО. Сохраните её: пригодится в разделе 5."},
+    {id:"5", who:"D", do:"Напишите боту любой текст. Потом нажмите «❓ Задать вопрос».", exp:"На текст: «✅ Анкета уже отправлена — мы её получили. Ответ придёт сюда, в чат.». На кнопку: «⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.» Пока заявку не рассмотрели, спросить менеджера нельзя: так задумано."},
+    {id:"6", who:"D", do:"Отправьте /start.", exp:"«С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже 👇» и меню. Анкета заново НЕ начинается."},
+  ]},
+  { key:"decide", title:"Решение менеджера: отказ, повторная подача, одобрение", time:"8 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"Посмотрите личку с ботом.", exp:"Пришло «🆕 Новая регистрация!», «👤 Имя (@ник)», «⏳ Ожидает одобрения (/admin → Заявки)». Если включён дайджест, вместо этого «📥 Новые заявки: 1 — Фамилия → 📋 Заявки»."},
+    {id:"2", who:"M", do:"«📋 Заявки» → «📋 Заявки».", exp:"Карточка «📋 Заявка 1/N · 🏙 Город», «👤 Имя (@ник)», ответы анкеты, строка «📎 Резюме: файлом (кнопка ниже)». Кнопки: «✅ Одобрить», «❌ Отклонить», «📎 Резюме», «🕓 История», «⏭ Пропустить», «✅ Одобрить все (N)»."},
+    {id:"3", who:"M", do:"«❌ Отклонить» → выберите причину кнопкой или напишите «тест отказа».", exp:"Бот просит причину (кнопками готовых причин или текстом), после неё «Заявка отклонена.» и следующая карточка либо «✅ Заявок нет.»"},
+    {id:"4", who:"D", do:"Посмотрите чат, потом нажмите любую кнопку меню.", exp:"«К сожалению, твоя заявка отклонена.», пустая строка, «тест отказа». На кнопку меню бот повторяет отказ понятными словами."},
+    {id:"5", who:"D", do:"/uat → «📨 Заявка отправлена — ждёт проверки» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start. Скажите менеджеру, что заявка снова в очереди.", exp:"«Отправьте /start.», после /start «С возвращением! Ты уже зарегистрирован(а)…»."},
+    {id:"6", who:"M", do:"«📋 Заявки» → «📋 Заявки» → «✅ Одобрить».", exp:"Всплывает «Одобрено», открывается следующая карточка или «✅ Заявок нет.»"},
+    {id:"7", who:"D", do:"Посмотрите чат.", exp:"«Твоя заявка одобрена! Добро пожаловать 🎉» (или текст города / менеджера) и полное меню. Экрана оплаты нет: оплата выключена."},
+    {id:"8", who:"M", do:"«📋 Заявки» → «📇 Список заявок» → «✅ Одобренные». Потом /find @ник делегата.", exp:"Шапка «📇 Список заявок» и счётчики «✅ N · ❌ N · ⏳ N». Строка «1. Имя — @ник — ДД.ММ ЧЧ:ММ · принял(а) Ваше Имя». Внизу «Найти конкретного делегата: /find @ник». /find показывает карточку со строками «Статус: ✅ Одобрена», «Город: …», «Сезон: …»."},
+  ]},
+  { key:"menu", title:"Меню одобренного, вопрос, FAQ, язык", time:"7 мин", need:"делегат + менеджер (ответ на вопрос)", steps:[
+    {id:"1", who:"D", do:"Нажмите по очереди «ℹ️ Информация о форуме», «📅 Программа форума», «🗣 Спикеры», «📞 Контакты».", exp:"Информация со строками 🗓 / ⌚ / 📍 и кнопками «Дата и время», «Место проведения». Программа и спикеры: картинка или таблица либо «Программа форума ещё не загружена.» / «Список спикеров формируется и скоро появится здесь.». Контакты: текст с кнопками либо «Контакты пока не указаны. Обратитесь к организаторам.». Ни одна кнопка не молчит. Если какой-то кнопки в меню нет, напишите в заметке."},
+    {id:"2", who:"D", do:"Нажмите «❓ Задать вопрос», потом на вопрос из списка, потом «← К вопросам».", exp:"Сначала не форма, а список: «Собрали ответы на частые вопросы — может, твой уже здесь:», кнопка с вопросом менеджера и внизу «Не нашёл ответ — спросить менеджера». Тап по вопросу открывает «❓ вопрос», ответ и кнопку «← К вопросам»."},
+    {id:"3", who:"D", do:"«Не нашёл ответ — спросить менеджера» → пришлите стикер → напишите «Тестовый вопрос: во сколько сбор?».", exp:"«Напиши свой вопрос, и мы передадим его организаторам.» с кнопкой «Отмена». На стикер: «Пожалуйста, отправь вопрос текстом.». На текст: «Твой вопрос отправлен!» и меню."},
+    {id:"4", who:"M", do:"В личке найдите «❓ Новый вопрос от …» и ответьте на него реплаем: «Сбор в 9:00 у главного входа».", exp:"В карточке «🧾 Вопрос #N» и подсказка «↩️ Ответьте reply'ем на это сообщение, чтобы отправить ответ.». Ответ ушёл без ошибки."},
+    {id:"5", who:"D", do:"Дождитесь ответа.", exp:"«💬 Ответ от организаторов:» и текст «Сбор в 9:00 у главного входа»."},
+    {id:"6", who:"D", do:"Нажмите «🔗 Моя реферальная ссылка», потом «👥 Мои приглашённые».", exp:"«Отправь эту ссылку друзьям, чтобы пригласить их на форум!» и ссылка. Приглашённые: «Пока никто не зарегистрировался по твоей ссылке.» и та же ссылка."},
+    {id:"7", who:"D", do:"«🌐 Язык / Language» → «🇬🇧 English». Посмотрите меню. Верните «🇷🇺 Русский».", exp:"«✅ English selected.», кнопки меню по-английски: «❓ Ask a question», «📞 Contacts». После «Русский»: «✅ Русский язык выбран.» и русское меню. Если кнопки языка нет, менеджер не включил её в «🔘 Кнопки меню», ставьте ⏭."},
+  ]},
+  { key:"app", title:"Приложение: анкета и главный экран", time:"12 мин", need:"делегат + менеджер (одобрить)", steps:[
+    {id:"1", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start → «🇷🇺 Русский» → кнопка «📱 Заполнить в приложении».", exp:"При первом запуске экран «Привет!» со слоганом «Делаешь задания — получаешь монеты.», заголовком «Как это работает» и кнопкой «Погнали». После него главный экран с ОДНОЙ плиткой «Анкета» либо сразу первый вопрос анкеты. Нижних вкладок в приложении нет: так задумано."},
+    {id:"2", who:"D", do:"Откройте «Анкета» (если не открылась сама), ответьте на первый вопрос.", exp:"Наверху «Шаг 1 из M». После ответа у полосы прогресса пометка «Черновик сохранён»."},
+    {id:"3", who:"D", do:"На возрасте впишите 5 и нажмите «Дальше». Потом 17.", exp:"Под вопросом подсказка «Число от 10 до 120, например «19».». С 5 мастер стоит и показывает «Укажи корректный возраст числом от 10 до 120.». С 17 уходит дальше."},
+    {id:"4", who:"D", do:"На вопросе про город напечатайте «зззз», потом сотрите и напечатайте начало настоящего города, нажмите подсказку.", exp:"Под полем «Начни вводить — подскажем. Например: «спб», «вшэ», «политех».». На «зззз»: «Ничего не нашли по запросу «зззз»». Один тап по подсказке переводит на следующий вопрос."},
+    {id:"5", who:"D", do:"На карточке «Образование» выключите тумблер наверху, выберите плитку, нажмите «Дальше». Вернитесь «Назад», включите тумблер обратно.", exp:"Тумблер «Сейчас учусь здесь» первый элемент карточки. После выключения две плитки: «Нет, завершил(а) обучение» и «Нет, не получал(а) образование»; пока ни одна не выбрана, «Дальше» не нажимается. С включённым тумблером вуз, курс и программа появляются внутри карточки."},
+    {id:"6", who:"D", do:"На вопросе «Резюме» нажмите «📎 Загрузить файл» и выберите .txt, потом PDF.", exp:"Три кнопки: «📎 Загрузить файл», «🔗 Дать ссылку», «🙅 У меня нет резюме». На .txt: «Резюме принимается как PDF или DOCX — другой формат не подойдёт.». PDF грузится сразу и переводит дальше."},
+    {id:"7", who:"D", do:"Закройте приложение крестиком посреди анкеты. Откройте снова.", exp:"Мастер открывается на том же шаге с теми же ответами, наверху «Черновик сохранён»."},
+    {id:"8", who:"D", do:"Дойдите до обзора и нажмите «Отправить заявку», потом «На главную».", exp:"Обзор «Почти всё» / «Проверь перед отправкой» со строкой «N из M заполнено, K необязательных пропущено.». После отправки экран «Заявка принята»: «Спасибо! Мы всё получили — подробности пришли в чат с ботом.». В чат пришло «Поздравляем, твоя заявка принята!…». На главной плита «⏳ Анкета на проверке», плитка «Анкета» со значением «Новая», плиток «Задания» и «Монеты» пока нет."},
+    {id:"9", who:"M", do:"«📋 Заявки» → «📋 Заявки» → «✅ Одобрить».", exp:"Всплывает «Одобрено». Делегату в чат пришло письмо об одобрении."},
+    {id:"10", who:"D", do:"Откройте приложение, нажмите на плитку статуса (или «Анкета»).", exp:"Главный экран одобренного: плита «Твой баланс», раздел «Разделы», у «Анкета» значение «Одобрена». Экран статуса: «Заявка одобрена» / «Ты в деле, Имя!», при выключенной оплате «Ждём тебя <дата> в <город>.» и шаги «Следи за новостями в боте», «Позови друзей». Нет обрывков вроде «в .»."},
+  ]},
+  { key:"bcast", title:"Рассылки и опросы", time:"15 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"«📢 Общение» → «📢 Рассылка».", exp:"«Выберите целевую аудиторию рассылки:» и кнопки «📢 Все пользователи», «📄 По файлу в проекте», «🚫 Не подписаны на канал», «📝 Не завершили регистрацию», «🎯 По фильтру», «🕓 Запланировать», «🗒 Последние рассылки», «⏰ Запланированные», «❌ Отмена»."},
+    {id:"2", who:"M", do:"«📢 Все пользователи» → текст «Проверка: обычная» → «✅ Отправить N пользователям».", exp:"Перед отправкой копия сообщения и «Отправить это N пользователям?» с кнопками «✅ Отправить N пользователям», «❗ Отметить как важное», «❌ Отмена». После: «📨 Отправлено X из N…» с «⛔ Остановить», потом «Рассылка завершена. ✅ Отправлено …»."},
+    {id:"3", who:"D", do:"Посмотрите рассылку и нажмите под ней «🔕 Не присылать сегодня».", exp:"Пришёл ровно текст менеджера, без шапки «Рассылка». Под ним кнопка «🔕 Не присылать сегодня». После нажатия всплывает «🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».», кнопка стала «🔔 Присылать всё», текст рассылки на месте."},
+    {id:"4", who:"M", do:"Ещё две рассылки всем: обычная «Проверка: обычная 2» и важная «Проверка: важное» (на подтверждении нажмите «❗ Отметить как важное»).", exp:"Кнопка стала «✅ Отмечено как важное». В отчёте обычной рассылки строка «🔕 Не отправлено (выключили уведомления на сегодня): 1»."},
+    {id:"5", who:"D", do:"Посмотрите чат, отправьте /start, нажмите «❗ Важное». Потом под первой рассылкой нажмите «🔔 Присылать всё».", exp:"Пришла только «Проверка: важное», первая строка «❗ Важно», кнопки 🔕 под ней нет. В меню «❗ Важное» → «❗ Важные рассылки за сегодня:», время и текст. После «🔔 Присылать всё»: «🔔 Хорошо, снова присылаю все рассылки.»"},
+    {id:"6", who:"M", do:"«📢 Рассылка» → «🎯 По фильтру» → «🏙 Город мероприятия» → «Санкт-Петербург…» → «📊 Показать и отправить» → «🕓 Запланировать» → время через 3 минуты в формате ДД.ММ.ГГГГ ЧЧ:ММ → текст «Проверка: по расписанию» → «🗓 Запланировать».", exp:"«🎯 Рассылка по фильтру», потом «Под фильтр попадает N пользователей.» с кнопками «📨 Отправить сейчас» / «🕓 Запланировать». На прошедшее время: «❌ Это время уже прошло. Введите будущую дату.». В конце «✅ Рассылка #N запланирована на … (по фильтру). Управление: /scheduled». В «⏰ Запланированные» она есть с кнопкой «❌ Отменить»."},
+    {id:"7", who:"D", do:"В назначенную минуту посмотрите чат.", exp:"Пришла «Проверка: по расписанию»."},
+    {id:"8", who:"M", do:"«📢 Рассылка» → «🗒 Последние рассылки» → карточка «Проверка: обычная 2» → «🗑 Удалить у получателей» → подтвердить.", exp:"«Сообщение удалится у N человек. Вернуть нельзя. Удалить?». После: карточка «🗑 Удалена у получателей.». У делегата сообщение исчезло молча."},
+    {id:"9", who:"M", do:"«📢 Общение» → «📊 Опросы» → «➕ Новый опрос»: вопрос «Пиццу или суши?», варианты «Пиццу; Суши», «✅ Готово», «Дальше ➡️», «✅ Только одобренные», «🚀 Отправить сейчас». Делегат голосует; откройте опрос в списке.", exp:"Шаги подписаны «Шаг 1 из 4» … «Шаг 4 из 4», перед отправкой превью и «Кому: … — N чел.». Отчёт «📊 Опрос #N отправлен. ✅ Доставлено …». Делегату приходит обычный опрос, после голоса бот ничего не пишет. В карточке опроса счётчик голосов 1 и кнопки «⏹ Закрыть опрос», «📄 В таблицу»."},
+  ]},
+  { key:"past", title:"Делегат прошлого сезона", time:"5 мин", need:"менеджер меняет сезон стенда, делегат проверяет; в конце вернуть как было", steps:[
+    {id:"1", who:"M", do:"«🎪 Событие» → «🎪 Событие/Медиа» → «🎉 Сезон события»: запишите текущее значение в 💬 и впишите новое, например «Тест 26/3».", exp:"Поле подтверждает новое значение."},
+    {id:"2", who:"D", do:"Отправьте /start, нажмите «🚀 Обновить анкету». На первом вопросе «✏️ Изменить» и новый ответ, на остальных «✅ Оставить».", exp:"«С возвращением! Ты уже был(а) с нами на …», следом «Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.» и кнопка «🚀 Обновить анкету». Каждый вопрос с «Прошлый ответ: …». Резюме: «У нас есть твоё резюме с прошлой регистрации. Оставить его или прислать новое?» с «📎 Оставить прошлое резюме» / «📤 Загрузить новое». В сводке первый ответ новый, остальные старые."},
+    {id:"3", who:"M", do:"Верните «🎉 Сезон события» к записанному значению.", exp:"Поле снова показывает прежний сезон. Без этого следующие сессии пойдут по чужому сезону."},
+  ]},
+  { key:"ext", title:"Внешние формы (Google Форма)", time:"10 мин", need:"менеджер + делегат; Google Форма из подготовки. Вход через Яндекс пока не настроен, его проверяем позже", steps:[
+    {id:"1", who:"M", do:"«📊 Данные» → «📝 Внешние формы».", exp:"Заголовок «📝 Внешние формы», строка «Доступ к Яндекс Формам не подключён», текст «Пока ни одной формы. Подключите форму — ответы будут сами попадать в карточки делегатов.», кнопки «➕ Подключить Яндекс Форму», «➕ Подключить Google Форму», «🔑 Войти через Яндекс», «🔑 Ключи приложения Яндекса»."},
+    {id:"2", who:"M", do:"«➕ Подключить Яндекс Форму».", exp:"«Сначала подключите доступ: «🔑 Войти через Яндекс».» Это ожидаемо: ключи Яндекса ещё не заведены."},
+    {id:"3", who:"M", do:"«➕ Подключить Google Форму». Дайте указанному в инструкции адресу доступ «Читатель» к таблице ответов вашей формы и пришлите ссылку на таблицу.", exp:"Инструкция «Как подключить Google Форму: 1. … 2. «Настройки доступа» → добавьте адрес … с ролью «Читатель». 3. Пришлите сюда ссылку на эту таблицу.» и «Жду ссылку. Передумали — нажмите «Отмена».». После ссылки «Ссылка принята.» и экран «📋 Название формы / Как найти человека среди делегатов: / Ник в Telegram — вопрос «…» / Телефон — …» с кнопками «✅ Верно», «✏️ Другой вопрос для ника», «✏️ Другой вопрос для телефона». Если доступ не дан: «Дайте доступ к таблице ответов для … с ролью «Читатель» и пришлите ссылку ещё раз»."},
+    {id:"4", who:"M", do:"«✅ Верно» → «📋 Выбрать вкладку» → «➕ Новая вкладка «…»».", exp:"«✅ Форма подключена, подтянуто ответов: N.» и «Осталось выбрать вкладку для копии.». Экран «Куда складывать копию ответов? Лучше завести новую вкладку. …». После выбора «Вкладка создана». В таблице стенда появилась вкладка."},
+    {id:"5", who:"D", do:"Заполните Google Форму, в поле ника впишите свой @юзернейм. Подождите до 5 минут.", exp:"Менеджеру пришло «📝 +1 ответ в «Название формы»»."},
+    {id:"6", who:"M", do:"/find @ник делегата → «📝 Ответы форм».", exp:"В карточке строка «📝 Формы: Название ✓» и кнопка «📝 Ответы форм». Ответы приходят отдельным сообщением «📝 Название · дата / Анкета 1 из 1»."},
+    {id:"7", who:"M", do:"«📢 Рассылка» → «🎯 По фильтру» → «📝 Внешняя форма» → ваша форма → «✅ Заполнил» → «📊 Показать и отправить» → «❌ Отмена».", exp:"«📝 Какая форма? Затем выберите, кому писать — заполнившим или нет.», потом «📝 «Название» — кому писать?» с «✅ Заполнил» / «❌ Не заполнил». В сводке «Внешняя форма = Название: заполнил», под фильтр попадает 1."},
+    {id:"8", who:"M", do:"Карточка формы → «⏸ Поставить на паузу», потом «⛔ Отключить» → «⛔ Да, отключить».", exp:"Карточка: «Состояние: принимает ответы», «Ответов: 1», «Вкладка таблицы: …». На паузу: «Приём ответов на паузе.». Перед отключением «⛔ Отключить форму «Название»?» и «Новые ответы перестанут приниматься. Собранные 1 анкет останутся в боте и в таблице.». После: «Форма отключена. Собранное осталось.»"},
+  ]},
+  { key:"deleg", title:"Делегации вузов", time:"скоро", need:"пока никого", steps:[],
+    soon:"Функция в разработке: раздел «🏫 Делегации» в админке (сводка по вузам, проверка курса «ЦА / не ЦА», привязка не зашедших), привязка анкет из формы по @нику. Шаги появятся здесь, когда Андрей выкатит её на стенд. Пока проверять нечего." },
+  ]},
+
+{ key:"s3", n:3, when:"вт 20.10 · 21:00 МСК", title:"Админка, статистика, игра", time:"≈90 мин", people:"2 человека",
+  lede:"Разделы менеджера, карточка делегата, роли и доступы, доска статистики, геймификация и амбассадоры. В конце повторная проверка всего, что в первых двух сессиях было отмечено ❌: этот раздел собирается сам.",
+  roles:["M","D"],
+  setup:{ time:"10 мин", items:[
+    {id:"1", who:"A", do:"Откройте доску по ссылке с кодом, впишите имя внизу. За 10 минут до начала пришлите Андрею (@qleafye) свои @юзернеймы для /uat.", exp:"Андрей ответил, что добавил."},
+    {id:"2", who:"M", do:"@YouLead_test_bot → /admin.", exp:"Разделы «🎪 Событие», «📝 Анкета», «📋 Заявки», «💳 Оплата», «📢 Общение», «🎮 Геймификация», «📊 Данные», «🔧 Управление». Если нет, напишите Андрею: нужны права."},
+    {id:"3", who:"D", do:"/uat → «✅ Одобрен» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start.", exp:"«✅ Готово.», после /start меню одобренного делегата."},
+    {id:"4", who:"M", do:"Откройте в телефоне раздел «Повторная проверка» внизу этой страницы и посмотрите, сколько там шагов: это ❌ из сессий 1 и 2. Оставьте на них последние 15 минут.", exp:"Раздел собрался сам. Если он пуст, значит ❌ не было."},
+    {id:"5", who:"M", do:"Приготовьте PDF-файл (любой) для замены резюме и компьютер с браузером для доски статистики test.alekseev.info.", exp:""},
+  ]},
+  sections:[
+  { key:"card", title:"Карточка делегата /find", time:"10 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"/find @ник делегата.", exp:"Карточка: ID, Имя, Username, «Статус: ✅ Одобрена», «Город: …», «Сезон: …». Кнопки «🔄 Перевыпустить QR», «🏙 Перевести в город», «↩️ Вернуть в ожидание», «✏️ Открыть правку после решения», «📎 Заменить резюме»."},
+    {id:"2", who:"M", do:"«✏️ Открыть правку после решения» → оставьте «🔔 Сообщить делегату: ВКЛ» → «✅ Открыть правку».", exp:"«✏️ Открыть правку после решения?» и «Разрешение одноразовое — погаснет после первой применённой правки.». Делегату пришло сообщение, что анкету можно поправить."},
+    {id:"3", who:"D", do:"По сообщению бота откройте правку, поменяйте один ответ, остальные оставьте, сохраните.", exp:"Каждый вопрос с «Прошлый ответ: …» и кнопками «✅ Оставить» / «✏️ Изменить». После сохранения бот подтверждает, что ответы обновлены. В /find у менеджера снова «✏️ Открыть правку после решения»: разрешение погасло."},
+    {id:"4", who:"M", do:"/find → «↩️ Вернуть в ожидание» → «✅ Вернуть в ожидание». Потом «📋 Заявки» → «📋 Заявки» → «✅ Одобрить».", exp:"«↩️ Вернуть в ожидание модерации?», «Статус: … → ⏳ Ожидает модерации», «Что изменится: снимутся напоминания об оплате…, строка в таблице станет «Новая»…, QR-пропуск на форум перестанет пускать.». После возврата делегат на кнопку меню получает «⏳ Твоя заявка на рассмотрении…», заявка снова в очереди. После одобрения делегату письмо об одобрении."},
+    {id:"5", who:"M", do:"«🏙 Перевести в город» → «Тюмень…» → «✅ Оставить статус (…)». Потом так же вернуть в «Санкт-Петербург…».", exp:"«🏙 В какой город перевести?» (только включённые города), экран «🏙 Перевод в другой город» со строками «Город: A → B», «Статус сейчас: …» и кнопками «✅ Оставить статус (…)» / «↩️ Вернуть на модерацию». Итог «✅ … переведён(а): город — …». В /find строка «Город» поменялась."},
+    {id:"6", who:"M", do:"«📎 Заменить резюме» → пришлите PDF.", exp:"«📎 Заменить резюме» … «Пришлите новый файл резюме (PDF или DOCX) одним сообщением… Передумали — /cancel.» После файла «✅ Резюме делегата … заменено.»"},
+    {id:"7", who:"D", do:"/uat → «🚫 Отклонён» → «Делегат — без ролей» → «✅ Сбросить и засеять». Менеджер: /find → «🔁 Разрешить повторную подачу» → «✅ Разрешить». Делегат подаёт анкету заново по сообщению бота.", exp:"У отклонённого в карточке «🔁 Разрешить повторную подачу». Текст «🔁 Разрешить повторную подачу?» и «Разрешение одноразовое — погаснет сразу после того, как делегат подаст анкету.». После подачи менеджеру приходит «🔁 Повторная подача анкеты!», в /find кнопка стала «🔁 Отозвать разрешение» или пропала."},
+  ]},
+  { key:"rules", title:"Правила автоотказа", time:"10 мин", need:"менеджер + делегат (новая анкета)", steps:[
+    {id:"1", who:"M", do:"«📋 Заявки» → «🚫 Правила автоотказа».", exp:"Строка «Сейчас все правила выключены…» или «Сейчас правила работают.». Кнопки «➕ Новое правило», «✅ Включить все правила» / «🚫 Выключить все правила», «🤖 Автоотказы», «📊 Отчётность»."},
+    {id:"2", who:"M", do:"«➕ Новое правило» → «🧩 Курс из списка».", exp:"Заготовки «🧩 Младше 18 на дату форума», «🧩 Курс из списка», «🧩 Нет резюме», «✏️ Своё правило». После выбора «Правило создано и выключено — включите его, когда проверите условия.» Карточка правила: «➕ условие в группу 1», «➕ новая группа (ИЛИ)», «↔ Действие: 🚫 Отклонять», «🏙 Город: …», треки, «✏ Имя правила», «✏ Текст отказа», «🔢 Сколько заявок попадёт», «✅ Включить», «📋 Скопировать в другой город», «🗑 Удалить»."},
+    {id:"3", who:"M", do:"Откройте условие правила и оставьте в нём курсы 1 и 2. Нажмите «✏ Текст отказа» и впишите «Пока берём только старшие курсы, попробуй в следующем сезоне».", exp:"Условие собирается кнопками: «🧩 Условие — выберите вопрос анкеты» → «Выберите условие:» → «Отметьте варианты:» → «✅ Готово». Текст отказа сохранён, в нём нет слова «автоматически»."},
+    {id:"4", who:"M", do:"«✅ Включить» → «✅ Всё равно включить». Если правила выключены разом, нажмите «✅ Включить все правила».", exp:"«✅ Включить правило?», «Под это правило сейчас попали бы N из M заявок. Это превью — уже поданные заявки не изменятся…», кнопки «✅ Всё равно включить» / «← Назад». После включения в карточке «🚫 Выключить»."},
+    {id:"5", who:"D", do:"/uat → «🆕 Новичок — анкеты нет» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start → пройдите анкету, на вопросе про курс выберите 1.", exp:"Сразу после «Всё верно» приходит отказ с вашим текстом «Пока берём только старшие курсы…», без слова «автоматически». Менеджеру заявка в очередь не попадает."},
+    {id:"6", who:"M", do:"«🚫 Правила автоотказа» → «🤖 Автоотказы» → «↩️ Вернуть: Имя» → «↩️ Да, вернуть».", exp:"В журнале строки «Всего / Страница» и заявка делегата. После возврата «Заявка возвращена на модерацию — делегат уведомлён.», делегату пришло «Ваша заявка возвращена на обычную модерацию — её пересмотрит менеджер.», заявка в очереди «📋 Заявки»."},
+    {id:"7", who:"M", do:"Откройте правило → «🗑 Удалить» → подтвердить.", exp:"Правила нет в списке. Журнал «🤖 Автоотказы» при этом не пропал."},
+  ]},
+  { key:"roles", title:"Роли и доступы", time:"8 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"«🔧 Управление» → «👥 Роли и доступы».", exp:"Для каждой роли «{роль}: ✅ Вкл → ❌ Выкл» и «✏️ Права роли: …». Для каждого сотрудника «➖ Имя — роль», «🏙 город», «⏳ срок». Внизу «➕ Добавить менеджера», «🔗 Пригласить волонтёров». В строках имена и @username, а не числа; время «ДД.ММ.ГГГГ ЧЧ:ММ МСК»."},
+    {id:"2", who:"M", do:"«➕ Добавить менеджера» → перешлите боту любое сообщение делегата → «📊 Менеджер статистики» → город → «♾ Бессрочно».", exp:"«👥 Кого добавить менеджером? Пришлите одним сообщением: • пересланное сообщение от этого человека, • его @username, • или числовой telegram id.» → «Кого назначить: Имя (@ник)» → роль → «🌍 Все города» или город → «⏳ Срок действия роли». В списке появилась строка «➖ Имя — 📊 Менеджер статистики»."},
+    {id:"3", who:"D", do:"Напишите /admin. Потом откройте test.alekseev.info в браузере и войдите через Телеграм.", exp:"В /admin только раздел «📊 Данные» (ни заявок, ни рассылок). Доска статистики открывается: право «📊 Статистика» есть."},
+    {id:"4", who:"M", do:"В «👥 Роли и доступы» нажмите «➖ Имя — 📊 Менеджер статистики» и подтвердите.", exp:"Строка пропала. У делегата /admin больше не открывается, на доске после «Проверить доступ ещё раз» экран «Нет доступа» с кнопками «Открыть бота» и «Проверить доступ ещё раз»."},
+    {id:"5", who:"M", do:"«✏️ Права роли: 🛂 Менеджер регистраций». Ничего не меняйте.", exp:"Галочки с человеческими подписями: «📋 Модерация заявок», «🧾 Модерация чеков», «🎮 Модерация геймификации», «📢 Рассылки», «⚙️ Настройки», «📊 Статистика», «✅ Отметки на форуме (чек-ин)», «📝 Одобрение на месте», «🔗 Ссылки с метками». Предупреждение «⚠️ Право «⚙️ Настройки» включает управление ролями — выдавайте его как равнозначное админскому.»"},
+  ]},
+  { key:"stats", title:"Статистика", time:"8 мин", need:"менеджер с компьютером", steps:[
+    {id:"1", who:"M", do:"Откройте test.alekseev.info, войдите через Телеграм.", exp:"Сверху переключатели «Город:» и «Сезон:». Разделы «Сейчас» (плитки «Всего заявок», «Сегодня», «За 7 дней», «На модерации»), «Поток заявок» («Динамика регистраций», «Воронка регистрации», «Где бросают»), «Модерация и ответы», «Откуда приходят», «Кто подаёт», «Вовлечение»."},
+    {id:"2", who:"M", do:"Найдите блок «Вопросы делегатов» и блок «Геймификация».", exp:"«Всего вопросов / Ждут ответа / Отвечено / Среднее время ответа», «Кто отвечает». В «Геймификация»: «Участников», «Ждут проверки», «Одобрено», «Отклонено», «Сдач всего», «Коинов начислено». Цифры похожи на правду по тому, что вы делали на стенде."},
+    {id:"3", who:"M", do:"Внизу ссылка «🎪 Статистика форума».", exp:"Разделы «Приход», «Сессии», «После форума», «SOS», «Решения по заявкам». Если стенд с сессии 1 не чистили, видны те отметки и SOS."},
+    {id:"4", who:"M", do:"В боте «📊 Данные» → «📊 Дашборд» → выключите «🪜 Воронка». Обновите доску. Включите обратно.", exp:"Тумблеры: «🪜 Воронка», «📈 Динамика по дням», «🏫 ВУЗы», «📢 Источники», «📖 Курсы», «🎯 Направления», «🚪 Где бросают», «🔗 Метки кампаний (UTM)», «📅 По месяцам», «🎮 Гейма», «🏅 Амбассадоры», «🔗 Рефералы». После выключения блока воронки на доске нет, после включения вернулся."},
+    {id:"5", who:"M", do:"«📊 Данные» → «📊 Статистика регистраций», потом «🔍 Сверить с БД».", exp:"Сводка по заявкам в боте: статусы, города. Сверка: отчёт о расхождениях базы и таблицы (разделы только если есть что показать) и «📥 Полный список (CSV)». Сама ничего не меняет."},
+  ]},
+  { key:"game", title:"Геймификация", time:"15 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"«🎮 Геймификация» → «🎯 Задания» → «➕ Новое задание»: название, текст, фото «⏭ Пропустить», категория, 10 монет, тип «📷 Скриншот/фото» → «Готово», город (если спросит), волна «🚫 Вне волн», «Всем делегатам», дедлайн «+3 дня», «✅ Опубликовать».", exp:"Вопросы по порядку: «Название задания (коротко, до 60 символов):», «Введите текст задания:», «📷 Пришли фото-обложку или нажми ⏭ Пропустить.», «Выберите категорию:», «Сколько монет за это задание?», «Что должен прислать делегат? …», «К какой волне относится задание?», «Кому это задание?», дедлайн. Перед публикацией «Так увидит делегат» со строками «Волна», «Аудитория». После: «Задание создано»."},
+    {id:"2", who:"D", do:"Откройте приложение → «Задания» → задание менеджера → «Сдать» → добавьте фото и текст → «Готово».", exp:"Список «Активные задания», строка «Категория · до ДД.ММ» и монеты справа. Карточка: «Что сделать», «Нужно прислать», «Проверка — менеджер, обычно за день», кнопка «Сдать». После: «Принято! Менеджер проверит и начислит монеты.» и «К заданиям». В списке у задания «· на проверке»."},
+    {id:"3", who:"M", do:"Дождитесь уведомления о сдаче → «🎮 Геймификация» → «🎮 Проверка заданий» → «✅ Принять».", exp:"Карточка «🎮 Сдача 1 из 1» с именем, заданием и фото/текстом; кнопки «✅ Принять», «✏️ Другая сумма», «❌ Отклонить», «⏭ Пропустить». После: «Одобрено»."},
+    {id:"4", who:"D", do:"Посмотрите чат, потом в приложении «Монеты» и «Рейтинг».", exp:"«✅ Задание «…» одобрено! +10🪙». «Монеты»: «Твой баланс» 10, ниже «История» со строкой «+10». «Рейтинг»: «Твоё место» и подиум, не белый экран."},
+    {id:"5", who:"M", do:"«🪙 Монеты вручную» → перешлите сообщение делегата → «➕ Начислить» → 5 → причина «за приёмку» → «✅ Подтвердить».", exp:"«Кому меняем баланс? Перешлите…», потом «➕ Начислить» / «➖ Списать», «Сколько монет? Пришлите число, например 5.», «За что? Напишите причину коротко…», карточка подтверждения с «Баланс сейчас: 10🪙 → станет: 15🪙 (+5)». Делегату пришло сообщение с суммой, причиной и новым балансом."},
+    {id:"6", who:"M", do:"«📜 Журнал монет» и «📊 Статистика геймы».", exp:"В журнале строки +10 (задание) и +5 (вручную, «за приёмку») с именем делегата. Статистика показывает участников, сдачи и начисленные монеты."},
+  ]},
+  { key:"amb", title:"Амбассадоры", time:"12 мин", need:"менеджер + делегат; для приглашённого нужен третий аккаунт", steps:[
+    {id:"1", who:"M", do:"«🎮 Геймификация» → «⚙️ Тексты и настройки» → «🤝 Отбор амбассадоров». Запишите в 💬, был ли он включён, и включите.", exp:"Всплывает «🤝 Отбор амбассадоров: ✅ включён. Раздел «🤝 Амбассадоры» — в корне /admin: способ входа, лимит мест, кандидаты.» В /admin появился раздел «🤝 Амбассадоры»."},
+    {id:"2", who:"M", do:"«🤝 Амбассадоры» → «🚪 Вход и лимит» → переключите способ входа на «🗳 Отбор менеджером» через «✅ Переключить: …» → «🎁 Мест в команде» → 2.", exp:"В разделе кнопки «🚪 Вход и лимит», «🙋 Кандидаты и команда», «💰 Баллы и приватность», «🎓 Ступени амбассадоров», «🌊 Волны», «🚫 Исключения из зачёта», «📎 Закрепить приглашённого», «⚙️ Тексты и настройки». На лимит: «Пришлите число мест, например 17. 0 — без лимита.», после: «🎁 Мест в команде: 2»."},
+    {id:"3", who:"D", do:"«🔗 Моя реферальная ссылка» → «Хочу свою ссылку».", exp:"Ссылка вида …?start=amb_… и строка «🕓 Твоя заявка в команду амбассадоров рассматривается.»"},
+    {id:"4", who:"M", do:"«🙋 Кандидаты и команда» → фильтр «🙋 Кандидаты» → карточка делегата → «✅ Взять».", exp:"В карточке «Ник», «Город», «Заявка на форум», «Амбассадор: кандидат», «Привёл по ссылке: 0 · прошли отбор: 0»; кнопки «✅ Взять», «⏸ Не сейчас», «🧾 Анкета», «← К списку». После: «Взят. Место за ним — 1 из 2.»"},
+    {id:"5", who:"D", do:"Снова «🔗 Моя реферальная ссылка».", exp:"«🎁 Ты в команде амбассадоров — пакет амбассадора за тобой.» и «💰 Баллы за приглашённых: 0». Внизу кнопка «Перестать быть амбассадором» (не нажимать)."},
+    {id:"6", who:"V", pair:true, do:"С третьего аккаунта: /uat → «🆕 Новичок — анкеты нет» → «✅ Сбросить и засеять», открыть ссылку amb_ делегата, пройти анкету до «Всё верно». Менеджер одобряет заявку. Делегат снова открывает «🔗 Моя реферальная ссылка».", exp:"У третьего: «Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.». После одобрения у делегата «💰 Баллы за приглашённых» выросли на число из «💰 Баллы и приватность», в истории монет строка «за приглашённого». Нет третьего аккаунта: ⏭."},
+    {id:"7", who:"M", do:"«🌊 Волны» → «➕ Новая волна» → даты «сегодня; через 14 дней» в формате ДД.ММ.ГГГГ через «;» → «⏭ Без текста» → «✅ Создать» → в карточке «▶️ Запустить волну» → потом «🗑 Удалить» → «🗑 Да, удалить».", exp:"«Пришлите даты волны в формате ДД.ММ.ГГГГ. Можно одной строкой через «;»…». Сводка «Волна N, даты (дн.), Вводный текст, Город» с «✅ Создать», «✏️ Изменить даты», «❌ Отмена». Карточка: «📅 Даты», «📝 Вводный текст», «🏅 Призовых мест», «▶️ Запустить волну», «🏁 Итоги волны», «📋 Скопировать эту волну», «🗑 Удалить». На запуск без заданий: «Сначала добавьте задания: «🎯 Задания» → «➕ Новое» → Волна N». После удаления волны нет."},
+    {id:"8", who:"M", do:"Верните «🤝 Отбор амбассадоров» в положение, записанное в шаге 1.", exp:"Если выключили: «…❌ выключен. Амбассадором снова становятся сразу по кнопке, без лимита. Кандидаты и настройки сохранены до включения.» Раздел «🤝 Амбассадоры» из корня пропал."},
+  ]},
+  { key:"end", title:"Вернуть стенд", time:"2 мин", need:"менеджер и делегат", steps:[
+    {id:"1", who:"M", do:"Убедитесь, что правило автоотказа удалено, роль статистики снята, отбор амбассадоров как был.", exp:"Стенд как до сессии."},
+    {id:"2", who:"A", do:"Нажмите «Отчёт» внизу и отправьте текст Андрею. Добавьте, что хотелось бы видеть на московском форуме, чего в боте нет.", exp:"Отчёт ушёл."},
+  ]},
+  ]},
+
+{ key:"bl", n:0, when:"без даты", title:"Всё остальное", time:"по желанию", people:"кто угодно, в любое время",
+  lede:"Что не влезло в три сессии. Проверяется по желанию между сессиями или если осталось время. Сюда же будем складывать новое.",
+  roles:["M","D","V"],
+  setup:{ time:"5 мин", items:[
+    {id:"1", who:"A", do:"Те же правила: только тестовый бот @YouLead_test_bot, состояние делегата через /uat, отметки общие. Перед началом напишите Андрею, что идёте в бэклог: он скажет, не занят ли стенд.", exp:""},
+  ]},
+  sections:[
+  { key:"pay", title:"Оплата участия", time:"15 мин", need:"менеджер + делегат; для Юлида оплата выключена, проверяем на будущее", steps:[
+    {id:"1", who:"M", do:"«💳 Оплата»: включите «💳 Оплата», затем «⚙️ Тексты и настройки» → «💳 Варианты оплаты» впишите «Стандарт|3000», «💰 Реквизиты оплаты» впишите «Карта 0000 0000 0000 0000», «📅 Дедлайн оплаты» через 5 дней в формате ДД.ММ.ГГГГ ЧЧ:ММ.", exp:"Каждое поле подтверждает новое значение; на неверный формат даты понятная ошибка с примером."},
+    {id:"2", who:"D", do:"/uat → «📨 Заявка отправлена — ждёт проверки» → «Делегат — без ролей» → «✅ Сбросить и засеять». Менеджер одобряет заявку в «📋 Заявки».", exp:"Вместо письма об одобрении сразу экран оплаты: «💰 Оплата участия», строки «Вариант: …», «Сумма: … ₽», «📋 Реквизиты:», «📅 Дедлайн: …», внизу «📎 Загрузи чек оплаты (PDF-документ или скриншот).» и кнопка «⏭ Оплачу позже»."},
+    {id:"3", who:"D", do:"Нажмите «⏭ Оплачу позже». Потом в меню «💳 Оплата», пришлите файл .txt, потом любое фото.", exp:"«Ок! Оплатишь позже.», ниже реквизиты и «Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.». На .txt: «❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото.». На фото: «✅ Чек получен! Менеджер проверит его в ближайшее время.», кнопка «💳 Оплата» из меню пропала."},
+    {id:"4", who:"M", do:"Дождитесь «🧾 Новый чек оплаты от Имя.» → «💳 Оплата» → «🧾 Чеки» → «❌ Отклонить», причина «не видно суммы».", exp:"Карточка «🧾 Чек 1/N · 🏙 Город», «💳 Вариант: Стандарт», «📎 Чек: загружен», кнопки «✅ Подтвердить», «❌ Отклонить», «🧾 Чек», «⏭ Следующий». На отклонение: «Укажи причину отклонения (или «-» без объяснений):», после текста «Готово.»"},
+    {id:"5", who:"D", do:"Посмотрите чат, пришлите фото ещё раз.", exp:"«❌ Чек отклонён. Причина: не видно суммы», строкой ниже «Загрузи чек повторно через бота.». Кнопка «💳 Оплата» вернулась в меню. На новое фото снова «✅ Чек получен!…»."},
+    {id:"6", who:"M", do:"«🧾 Чеки» → «🧾 Чек» (посмотреть фото) → «✅ Подтвердить».", exp:"Фото чека приходит отдельным сообщением. На подтверждение «Оплата подтверждена»."},
+    {id:"7", who:"D", do:"Посмотрите чат.", exp:"«✅ Оплата подтверждена!» и «Спасибо, ваш взнос получен.», следом отдельным сообщением письмо об одобрении с полным меню. Кнопки «💳 Оплата» в меню нет."},
+    {id:"8", who:"M", do:"Выключите «💳 Оплата» обратно.", exp:"Тумблер «❌ Выкл»."},
+  ]},
+  { key:"csv", title:"Запасной путь: офлайн-сканер и файл", time:"15 мин", need:"менеджер с офлайн-приложением сканера (Android: Binary Eye; iPhone: QR 2 CSV или похожее) + делегат", steps:[
+    {id:"1", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → «🎟 Мой QR».", exp:"Новый QR на экране."},
+    {id:"2", who:"M", do:"«✅ Отметки на форуме» → «🧪 Проверить приложение-сканер». Пришлите в ответ фото, а не файл.", exp:"Инструкция, в ней «…Ничего не отмечу — только проверю, подходит ли формат.», и тестовый код. На фото: «Пришли файл выгрузки документом (не фото и не архив).»"},
+    {id:"3", who:"M", do:"Офлайн-приложением отсканируйте тестовый код, QR делегата и один учебный QR. Выгрузите историю в CSV и пришлите файлом.", exp:"«✅ Приложение подходит: нашёл N QR форума, время скана читается.» Если «…время скана НЕ читается — …», впишите название приложения в 💬."},
+    {id:"4", who:"M", do:"«📤 Загрузить файл сканера» → тот же CSV → «🚪 Вход» и сразу второй раз «🚪 Вход».", exp:"«Выгрузите историю из приложения-сканера в CSV и пришлите сюда файлом. Размер — до 20 МБ.» Потом «Нашёл кодов: N.» и «Отметить точкой:». Первое нажатие: «Отмечаю…». Второе: «Уже отмечаю этот файл — дождитесь отчёта.» Отчёт один: «✅ Отметки загружены», «Отмечено новых: 1 · …», учебный код отдельно и не отмечен."},
+    {id:"5", who:"M", do:"Пришлите тот же файл ещё раз → «🚪 Вход».", exp:"Новых 0, делегат в «уже были»."},
+  ]},
+  { key:"edge", title:"Сканер: пограничные случаи", time:"15 мин", need:"менеджер + волонтёр + делегат", steps:[
+    {id:"1", who:"M", pair:true, do:"Снимите отметку делегата («🗑 Снять отметку делегату»). Потом менеджер и волонтёр сканируют QR делегата одновременно, по команде «три-два-раз».", exp:"У одного 🟢 «Отмечен», у другого 🟡 «Уже был в ЧЧ:ММ». В «✅ Отметки на форуме» «Сегодня пришли» выросло на 1, а не на 2."},
+    {id:"2", who:"M", do:"/find @ник делегата → «🔄 Перевыпустить QR» → «🔄 Да, перевыпустить». Волонтёр сканирует СТАРЫЙ QR (прежнее сообщение делегата).", exp:"«⚠️ Старый QR перестанет работать — … Перевыпустить?», потом «✅ QR перевыпущен. Новый QR отправлен делегату.» На старый QR: 🔴 «QR заменён — попросите делегата открыть новый в «🎟 Мой QR»»."},
+    {id:"3", who:"M", do:"«📋 Заявки» → «⚙️ Тексты и настройки» → «🎟 Метка события в QR чек-ина»: запишите текущее значение в 💬, пришлите «TEST». Волонтёр сканирует новый QR. Верните прежнее значение (если было пусто, пришлите «-»).", exp:"С меткой «TEST»: 🔴 «QR другого мероприятия». После возврата снова 🟢 или 🟡 «Уже был …»."},
+    {id:"4", who:"D", do:"Откройте приложение и поищите плитку «🎫 Сканер». Потом откройте test.alekseev.info/app в обычном браузере телефона.", exp:"Плитки нет: у делегата нет роли. В браузере страница просит открыть приложение через бота, данных нет."},
+    {id:"5", who:"V", do:"Сканер → «Поиск по фамилии» делегата другого города (менеджер заранее сеет делегата Тюмени).", exp:"В выдаче его нет либо отметка 🔴 «Делегат другого города»: волонтёр привязан к СПб."},
+  ]},
+  { key:"sos2", title:"SOS: напоминания, перехват, без чата", time:"20 мин", need:"менеджер + волонтёр (дежурный SOS) + делегат", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «🆘 Настройки SOS» → «⚙️ Тексты и тайминги». Запишите в 💬 «⏱ Напоминание взявшему» и «⏱ Сколько ждать дозапись». Под «⏱ Напоминание взявшему:» нажмите «✏️ Другое» → 2.", exp:"«⏱ Напоминание взявшему: через 2 мин, …». Кнопки 5/10/15/30 и «✏️ Другое»."},
+    {id:"2", who:"D", do:"«🆘 SOS» → «Готово». Волонтёр нажимает «🙋 Беру» и 2 минуты ничего не делает.", exp:"В личку волонтёру: «⏰ SOS #N у тебя в работе 2 мин. без отметки «✅ Решено» — если уже разобрался(лась), не забудь нажать её под карточкой.»"},
+    {id:"3", who:"V", do:"Ответьте реплаем на решённую карточку: «Бейдж на стойке Б» (сначала нажмите «✅ Решено»).", exp:"«✅ Ответ отправлен делегату. SOS уже был решён — на карточке отмечено, что вы ответили после решения.» На карточке «💬 Ответ после решения: Имя в ЧЧ:ММ». Делегат получил ответ."},
+    {id:"4", who:"D", do:"«🆘 SOS» → «Готово». Волонтёр 5 минут не трогает карточку.", exp:"В группе «⏰ Никто не взял SOS #N за 5 мин.» В личку менеджеру и волонтёру карточка, в ней «🏙 Санкт-Петербург…», а не «🏙 —»."},
+    {id:"5", who:"M", do:"Волонтёр нажимает «🙋 Беру». Менеджер отвечает реплаем на карточку: «Я рядом». Потом «🔁 Перехватить» → «🔁 Да, перехватить» → реплай «Я рядом» → «✅ Решено».", exp:"На первый реплай: «⚠️ Ответ не отправлен: SOS #N ведёт Имя. Делегату пишет тот, кто взял SOS, …». На перехват: вопрос «🔁 SOS #N ведёт Имя. Перехватить? …», после «Перехвачено — теперь SOS ведёте вы.», в карточке «🔁 Перехватил(а) у Имя». Волонтёру в личку «🔁 SOS #N перехватил(а) Имя — делегату теперь отвечает он(а).» Делегат получил «Я рядом»."},
+    {id:"6", who:"M", do:"Удалите @YouLead_test_bot из «Тест SOS». Светофор СПб → «🔄 Проверить снова». Делегат: «🆘 SOS» → «Нужна вода». Волонтёр в личке отвечает реплаем на свою копию карточки: «Несу» → «✅ Решено».", exp:"В светофоре «🔴 Бота нет в чате SOS «Тест SOS» — верните бота в чат». Карточка пришла в личку менеджеру и волонтёру. «✅ Ответ отправлен делегату.», делегат получил «Несу», после «✅ Решено»: «Оргкомитет отметил вопрос решённым. …»."},
+    {id:"7", who:"M", do:"Верните бота в «Тест SOS» → «🔗 Перепривязать чат SOS». «⚙️ Тексты и тайминги» → «⏱ Сколько ждать дозапись» → «✏️ Другое» → 1. Делегат: «🆘 SOS», полторы минуты молчит, потом пишет «ау».", exp:"«Готово.», в светофоре «🟢 Чат SOS «Тест SOS», бот в чате». Делегату: «Сессия SOS закрыта по времени. Если всё ещё нужна помощь — нажми «🆘 SOS» снова.»"},
+    {id:"8", who:"M", do:"Перешлите любую карточку SOS себе в «Избранное» и нажмите там «🙋 Беру». Верните тайминги из шага 1.", exp:"Всплывает «Эта карточка не из чата SOS». Ничего не изменилось. Тайминги как были."},
+  ]},
+  { key:"en", title:"Делегат читает бота по-английски", time:"15 мин", need:"менеджер + волонтёр + делегат", steps:[
+    {id:"1", who:"D", do:"/uat → «🎟 Одобрен на форум — с QR-пропуском» → «Санкт-Петербург…» → «Делегат — без ролей» → «✅ Сбросить и засеять» → /start → «🌐 Язык / Language» → English → «🎟 My QR».", exp:"Меню по-английски: «🎟 My QR», «📅 Forum schedule», «🆘 SOS». Подпись QR «🎟 Your QR code for check-in at the forum…»."},
+    {id:"2", who:"M", pair:true, do:"Сканер, город СПб, «🚪 Вход» → QR делегата.", exp:"🟢 «Отмечен». Делегату: «You're checked in at ЧЧ:ММ ✅ Welcome to YouLead!»"},
+    {id:"3", who:"D", do:"«🆘 SOS». Волонтёр: «🙋 Беру» → реплай «Coming». Делегат смотрит чат, нажимает «Done».", exp:"«🆘 The signal has been sent to the organizers…», кнопки «📍 Send location» и «Done». В карточке строка «🌐 Читает бота на английском — отвечайте по-английски». Делегату «🆘 Reply to SOS #N:» и «Coming»."},
+    {id:"4", who:"D", do:"Задайте вопрос через меню: «Where is the cloakroom?». Менеджер отвечает реплаем «Floor 2».", exp:"В карточке вопроса «🌐 Читает бота на английском — отвечайте по-английски». Делегату «💬 Reply from the organizers:» и «Floor 2»."},
+    {id:"5", who:"M", do:"Рассылка по фильтру СПб из двух абзацев с @упоминанием.", exp:"У делегата перевод на английский, абзацы не склеились, @упоминание не изменилось. Под рассылкой «🔕 Don't send today» → «🔕 Okay, sending only important messages today…» и «🔔 Send everything»."},
+  ]},
+  { key:"noshow", title:"День форума: не пришедшие", time:"10 мин", need:"менеджер + делегат (не отмечен на входе) + волонтёр", steps:[
+    {id:"1", who:"M", do:"«📢 Рассылка» → «🎯 По фильтру» → «🚪 Отметка на форуме» → «не пришли сегодня — …» → «📊 Показать и отправить» → «❌ Отмена».", exp:"Варианты «пришли на форум», «не пришли ни разу», «пришли сегодня — Санкт-Петербург…», «не пришли сегодня — Санкт-Петербург…». «Под фильтр попадает N пользователей.», «🏙 По городам: Санкт-Петербург… — N.» и пояснение ««Не пришли» считается только в городах, где в этот день идёт форум …»."},
+    {id:"2", who:"M", do:"Хаб СПб → «✅ Отметки на форуме» → «📨 Написать не пришедшим» → «Отмена», потом снова и «✅ Да, отправить».", exp:"«Уйдёт N делегатам города Санкт-Петербург… (не пришли сегодня — не отмечены на входе). …», цитата «Мы тебя не видим на форуме 👀 Всё в порядке?». После «Отмена»: «Отменено. Ничего не отправлено.» После отправки «⏳ Отправляю «Не пришёл»...» и отчёт."},
+    {id:"3", who:"D", do:"Нажмите «📍 Я на месте». Волонтёр сканирует QR. Нажмите «📍 Я на месте» ещё раз.", exp:"Сообщение с кнопками «🚶 Уже еду», «😔 Не смогу прийти», «📍 Я на месте». На «Я на месте»: QR и «Покажи этот экран волонтёру на входе.» После скана 🟢. Повторно: «Ты уже отмечен(а) на входе в ЧЧ:ММ — всё в порядке, приятного форума!»"},
+    {id:"4", who:"M", do:"Третий раз «📨 Написать не пришедшим».", exp:"«Отправлять некому: все одобренные отмечены на входе или уже получили вопрос сегодня, либо у города сегодня нет форума (по его дате).»"},
+  ]},
+  { key:"app2", title:"Приложение: подробности", time:"15 мин", need:"делегат (+ менеджер включает «🌐 Английский язык анкеты»)", steps:[
+    {id:"1", who:"D", do:"В анкете найдите необязательный вопрос и не заполняйте его.", exp:"Прямо под полем кнопка «Пропустить» (не в самом низу экрана). Тап уводит дальше."},
+    {id:"2", who:"D", do:"На вопросе «Резюме» нажмите «×» у загруженного файла, потом «🔗 Дать ссылку» и вставьте ссылку на любой сайт.", exp:"«×» очищает без вопросов. У ссылки подсказка «Подойдёт любая открытая ссылка: резюме, портфолио, профиль на сайте вакансий.». Красной плашки «Не дошло до сервера…» нигде нет."},
+    {id:"3", who:"D", do:"Включите авиарежим, нажмите «Дальше». Выключите, нажмите снова.", exp:"Без сети красная плашка «Не дошло до сервера. Проверьте связь и попробуйте ещё раз.», ответ не потерян. С сетью шаг проходит."},
+    {id:"4", who:"D", do:"В обзоре раскройте «Пропущено необязательное: …» и нажмите «Заполнить».", exp:"Мастер прыгает на первый пропущенный вопрос; после ответа можно вернуться в обзор."},
+    {id:"5", who:"D", do:"Сбросьте себя новичком, ответьте на первый вопрос В ЧАТЕ, откройте приложение и быстро нажмите «📱 Забрать сюда» три раза. Потом в чате напишите любой текст и нажмите «✍️ Продолжить в чате».", exp:"Плита «💬 Анкета сейчас открыта в чате с ботом. Можно продолжить там или забрать её сюда.» с «Продолжить в чате» и «📱 Забрать сюда». В чат приходит РОВНО ОДНО «📱 Анкета открыта в приложении — заполняй там…». На текст в чате: «📱 Анкета сейчас открыта в приложении. Продолжить здесь, в чате?» и после кнопки «✍️ Возвращаемся в чат. Вот твой вопрос:»."},
+    {id:"6", who:"D", do:"В шапке мастера шестерёнка → «Язык анкеты» → EN. На возрасте впишите 5. Верните RU.", exp:"Кнопка пропуска стала «Skip», ошибка «Enter a valid age as a number from 10 to 120.». Главный экран остаётся русским: переводится только анкета. Нет шестерёнки: менеджер не включил «🌐 Английский язык анкеты», ⏭."},
+    {id:"7", who:"D", do:"Одобренным откройте «Профиль» и «Частые вопросы».", exp:"Профиль: имя, «@ник · Город», чипы «Одобрена» и статус оплаты, блоки «Контакты» и «Анкета» с «N из M вопросов», кнопка «Изменить анкету». Частые вопросы: аккордеон, открыт один вопрос за раз; пусто: «Пока здесь пусто. Напиши свой вопрос — ответим и добавим сюда.»"},
+    {id:"8", who:"D", do:"После отказа менеджера откройте приложение → плита «❌ Заявка отклонена» → «Поправить и подать заново» → поменяйте один ответ → «💾 Отправить изменения».", exp:"Плита с текстом «Решение организаторов пришло в чат с ботом. Анкету можно поправить и подать заново.» и «Причина: …». Экран «Заявка отклонена» / «В этот раз не получилось», карточка «Причина», «Остальные ответы сохранены». После отправки «Заявка отправлена заново», менеджеру «🔁 Повторная подача анкеты!»."},
+  ]},
+  { key:"after", title:"После форума: опрос, перенос в Москву, «Юлид в цифрах»", time:"10 мин", need:"менеджер; сами рассылки уходят по расписанию через сутки, здесь только экраны", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «❓ Настройки опроса неявившихся».", exp:"«Рассылка: ✅/❌», время 12:00 (день после форума), сводка ответов по причинам. Без даты форума предупреждение «⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.»"},
+    {id:"2", who:"M", do:"Хаб регионального города → «🚌 Настройки переноса в Москву» → «🏙 Город назначения: …» → нажмите «Статус после переноса: …» два раза.", exp:"«Рассылка: ❌ Выкл», «Время (день после форума): 12:00», «Город назначения: Москва», «Статус после переноса: Сохранить одобрение». Город выбирается кнопками. Статус переключается «Сохранить одобрение» ↔ «Вернуть на модерацию»."},
+    {id:"3", who:"M", do:"Хаб → «📊 Настройки карточки «Юлид в цифрах»» → «👁 Превью себе». Потом при выключенной рассылке «📤 Разослать пришедшим хотя бы раз (N)» → «✅ Да, отправить».", exp:"Кнопки «🖼 Фон», «👁 Превью себе», «📤 Разослать пришедшим хотя бы раз (N)», «📤 Разослать всем одобренным (N)». Превью приходит только менеджеру с подписью «👁 Превью с представительными данными — не твоя личная статистика.». При выключенной рассылке: «❌ Рассылка сейчас выключена — включите тумблер и повторите.»"},
+  ]},
+  { key:"lost", title:"Бюро находок", time:"10 мин", need:"менеджер + волонтёр + привязанный чат делегатов", steps:[
+    {id:"1", who:"M", do:"Хаб СПб → «🧳 Настройки бюро находок» → «Приём находок: ❌ Выкл».", exp:"«✅ Вкл». Если чат делегатов не привязан или текст поста пуст, предупреждение об этом."},
+    {id:"2", who:"V", do:"/admin → «🧳 Нашли вещь» (или /found) → фото → «Нашли у зала А, забрать на стойке 1» → «📢 Опубликовать».", exp:"Предпросмотр «так увидят делегаты», кнопки «📢 Опубликовать» и «✖️ Отмена». После: «✅ Опубликовано в чат делегатов.» В чате пост с фото и кнопкой «✅ Нашёлся хозяин»."},
+    {id:"3", who:"D", do:"В чате делегатов нажмите «✅ Нашёлся хозяин». Потом то же делает волонтёр, и ещё раз.", exp:"У делегата отказ, пост не меняется. У волонтёра пост меняется на «✅ Вещь вернули владельцу», кнопка пропадает. Повторно: «Уже отмечено как возвращено»."},
+  ]},
+  { key:"sheet", title:"Таблица: «Пришёл» и сверка с базой", time:"10 мин", need:"менеджер с доступом к Google-таблице стенда", steps:[
+    {id:"1", who:"M", do:"Отметьте делегата на входе и откройте таблицу стенда.", exp:"Не позже чем через 30 секунд в колонке «Пришёл» время в формате «25.09 05:23». Делегаты из /uat строки в таблице не имеют: нужен делегат, прошедший анкету."},
+    {id:"2", who:"M", do:"«📊 Данные» → «♻️ Пересобрать таблицу» → «♻️ Да, пересобрать», потом «🔄 Синхронизация таблицы».", exp:"Подтверждение «♻️ Пересобрать таблицу?… Лист очищается целиком… ручные правки… пропадут безвозвратно». После обоих действий у пришедших время в «Пришёл» на месте."},
+    {id:"3", who:"M", do:"Удалите в таблице строку одного делегата → «🔍 Сверить с БД» → «➕ Дописать недостающие строки» → «✅ Да, дописать».", exp:"Подтверждение называет вкладки и число строк. Строка вернулась. Вкладки сами не создаются."},
+    {id:"4", who:"M", do:"Поменяйте статус делегата в таблице руками → «🔍 Сверить с БД» → «🔄 Выправить статусы» → «✅ Да, выправить».", exp:"Статус в таблице снова как в базе."},
+  ]},
+  { key:"sec", title:"Права и границы городов", time:"10 мин", need:"менеджер города (роль через /uat «🎪 Менеджер форума» с городом) + делегат другого города", steps:[
+    {id:"1", who:"M", do:"Со второго аккаунта: /uat → «✅ Одобрен» → «🎪 Менеджер форума» → «Санкт-Петербург…». Откройте экраны Тюмени старой кнопкой или пересланным сообщением.", exp:"«Этот город правит суперадмин.» Ничего не меняется."},
+    {id:"2", who:"M", do:"Тем же аккаунтом «🗑 Снять отметку делегату» → делегат Тюмени. Потом /find @делегата Тюмени → «🏙 Перевести в город».", exp:"«Этот делегат из другого города — переключите город в шапке.» и «Этот город вне вашей зоны ответственности.»"},
+    {id:"3", who:"D", do:"Делегат прошлого сезона (менеджер меняет «🎉 Сезон события»): «🎟 Мой QR». Волонтёр сканирует его старый QR.", exp:"QR не выдаётся, текст для делегата прошлого сезона. Скан: 🔴 «Делегат прошлого сезона»."},
+  ]},
+  { key:"chat", title:"Учёт чата делегатов и рейтинг", time:"10 мин", need:"менеджер + тестовая группа, куда можно добавить бота администратором", steps:[
+    {id:"1", who:"M", do:"Добавьте бота в группу администратором. В личке «🔧 Управление» → включите «💬 Учёт чата делегатов».", exp:"В личку: при нескольких городах «Бот добавлен в чат «Название». К какому городу относится?» с кнопками городов и после выбора «Чат «Название» привязан к городу «…»…». В группе бот молчит. Затем «Сверяю состав чата, это несколько минут.» и «Готово: N в чате, M нет, K не найдены.»"},
+    {id:"2", who:"M", do:"«🔧 Управление» → «🏆 Рейтинг чата» → режим «🪙 По правилам города» → «📣 Когда и что публиковать» → предпросмотр.", exp:"Режимы «📈 По формуле активности» / «🪙 По правилам города». В режиме правил суммы: «🪙 Комментарий под постом», «🪙 Ценный комментарий», «🪙 Привёл друга» и другие. Предпросмотр: «Так пост будет выглядеть в чате.» Публикация спрашивает «Опубликовать рейтинг в чат «…»?»."},
+    {id:"3", who:"M", do:"Откройте test.alekseev.info → «💬 Чат».", exp:"Плитки «Одобрено», «В чате», «Не в чате», «В чате, но не зарегистрированы»; блоки «Вступления по дням», «Сообщений по дням», «Рейтинг по правилам города», «Рейтинг активности». «Последняя сверка» не «ещё не было»."},
+  ]},
+  { key:"quiet", title:"Тихие часы и итоги дня", time:"10 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"«📋 Заявки» → «🌙 Тихие часы» включите → «🌙 Когда молчим» → «🕓 С» = час назад, «🕓 До» = час вперёд. Делегат задаёт вопрос, вы отвечаете. Посмотрите шапку «📋 Заявки». Затем «🕓 До» = текущее время + 1 минута.", exp:"«🌙 Тихие часы», «✅ Окно: ЧЧ:ММ–ЧЧ:ММ», «В очереди уведомлений: 0». После ответа «✅ Ответ отправлен пользователю. 🌙 делегат узнает в ЧЧ:ММ». В шапке «🌙 Тихие часы: в очереди 1». После сдвига «До» очередь через минуту-две пустеет, делегат получил «💬 Ответ от организаторов:» без пометки о переносе. Выключите тихие часы."},
+    {id:"2", who:"M", do:"«🔧 Управление» → включите «📊 Итоги дня менеджерам», в «🔧 Система» посмотрите «📊 Итоги дня: во сколько».", exp:"Тумблер «📊 Итоги дня менеджерам: ❌ Выкл → ✅ Вкл», время по умолчанию 21:00. В назначенное время менеджерам «📊 Итоги дня, ДД.ММ — Город» со строками «📋 Заявки: новых … · одобрено … · отклонено … · ждут …». Ждать не обязательно: ⏭ и заметка."},
+  ]},
+  { key:"reject2", title:"Автоотказ: пометить вместо отклонить, отчётность", time:"10 мин", need:"менеджер + делегат", steps:[
+    {id:"1", who:"M", do:"В карточке правила «↔ Действие» переключите на «⚠️ Помечать для модератора», включите правило. Делегат подаёт анкету под правило.", exp:"Заявка приходит в очередь «📋 Заявки» с пометкой правила, отказа делегату нет."},
+    {id:"2", who:"M", do:"«🚫 Правила автоотказа» → «📊 Отчётность».", exp:"«📄 Вкладка в таблице», «⏱ Пачка заявок», «🔄 Обновить вкладку сейчас». На доске статистики ступень «🤖 Автоотказ»."},
+    {id:"3", who:"M", do:"«📋 Скопировать в другой город» → Тюмень.", exp:"В Тюмени появилось правило с теми же условиями, выключенное."},
+  ]},
+  { key:"tiers", title:"Ступени амбассадоров", time:"10 мин", need:"менеджер", steps:[
+    {id:"1", who:"M", do:"«🤝 Амбассадоры» (или «🎮 Геймификация») → «🎓 Ступени амбассадоров».", exp:"«🎓 Программа: включена/выключена», «🙈 Имена приглашённых», «📥 Выгрузить CSV по амбассадорам», «🚫 Исключить приглашённого из зачёта», «📋 Исключённые (N)», «🪜 Лестница ступеней»."},
+    {id:"2", who:"M", do:"«🪜 Лестница ступеней» → «✏️ Порог 1» → 2 → «📝 Текст 1».", exp:"На лестнице у каждой ступени «✏️ Порог N», «📝 Текст N», «🎁 Ограничить награды N», «📝 Лист ожидания N»; внизу «➕ Добавить ступень», «➖ Убрать последнюю», «🚫 Снять ступень у амбассадора». Порог сохранён, текст запрашивается с примером."},
+    {id:"3", who:"M", do:"«💰 Баллы и приватность» → «🙈 Скрывать имена приглашённых» переключите и верните.", exp:"Кнопки «💰 Баллов за приглашённого: N», «🙈 Скрывать имена приглашённых: да/нет», «🏅 Имена в рейтинге волны: да/нет». У делегата в «👥 Мои приглашённые» имена скрыты или показаны соответственно."},
+  ]},
+  ]},
+];
+
+/* ───────── состояние ───────── */
+const LS = "uat-sessions-261006";
 let local = {};
-try { local = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (_) { local = {}; }
-const saveLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(local)); } catch (_) {} };
+try { local = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (_) { local = {}; }
+const save = () => { try { localStorage.setItem(LS, JSON.stringify(local)); } catch (_) {} };
 const qk = new URLSearchParams(location.search).get("k");
-if (qk) { local._k = qk; saveLocal(); }
+if (qk) { local._k = qk; save(); }
 const CODE = local._k || "";
-let state = { v: 0, steps: {} };
+let state = { v: -1, steps: {} };
 
-const el = (t, a = {}, ...kids) => {
-  const n = document.createElement(t);
-  for (const [k, v] of Object.entries(a)) {
-    if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const quoteUi = s => {
+  let out = "", depth = 0, buf = "";
+  for (const ch of String(s)) {
+    if (ch === "«") { if (depth === 0) { out += esc(buf); buf = ""; } else buf += ch; depth++; }
+    else if (ch === "»" && depth > 0) { depth--; if (depth === 0) { out += '<q class="ui">' + esc(buf) + "</q>"; buf = ""; } else buf += ch; }
+    else buf += ch;
   }
-  kids.filter(Boolean).forEach(c => n.append(c));
-  return n;
+  out += esc(depth ? "«" + buf : buf);
+  return out.replace(/ → /g, ' <span class="ar">→</span> ');
 };
-const sid = (tab, id) => tab + ":" + id;
-const app = document.getElementById("app");
-const panels = {};
-const rows = {};
+const hhmm = () => new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+let toastT;
+function toast(t){ const e = $("toast"); e.textContent = t; e.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove("on"), 2400); }
 
 async function api(path, body){
   const r = await fetch(path, {
     method: body ? "POST" : "GET",
     headers: Object.assign({ "X-Code": CODE }, body ? { "Content-Type": "application/json" } : {}),
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? JSON.stringify(body) : undefined, cache: "no-store",
   });
-  if (r.status === 403) { showAccess(); throw new Error("no_access"); }
+  if (r.status === 403) { setSync("Нет доступа: откройте доску по ссылке из чата, в ней код.", "bad"); throw new Error("no_access"); }
   if (!r.ok) throw new Error("http " + r.status);
   return r.json();
 }
-function setSync(text, cls){
-  const s = document.getElementById("sync");
-  s.textContent = text; s.className = "sync " + (cls || "");
-}
-function showAccess(){ setSync("Нет доступа: открой доску по ссылке из чата (в ней код).", "bad"); }
+function setSync(t, cls){ document.querySelectorAll(".sync").forEach(s => { s.textContent = t; s.className = "sync " + (cls || ""); }); }
 
-function counts(tab){
-  const steps = DATA[tab].blocks.filter(b => !b.pre).flatMap(b => b.steps);
-  const done = steps.filter(s => state.steps[sid(tab, s.id)] && state.steps[sid(tab, s.id)].s).length;
-  return { done, total: steps.length };
-}
-function refresh(){
-  for (const tab of Object.keys(DATA)) {
-    const c = counts(tab);
-    document.getElementById("c-" + tab).textContent = c.done + " из " + c.total;
+/* ───────── индексы шагов ───────── */
+const S = {};            // key -> сессия
+for (const s of SESSIONS) {
+  S[s.key] = s;
+  s.pre = s.setup.items.map(it => Object.assign(it, { key: s.key + ".pre." + it.id, sess: s.key }));
+  for (const sec of s.sections) {
+    sec.sess = s.key;
+    sec.steps.forEach(st => { st.key = s.key + "." + sec.key + "." + st.id; st.sess = s.key; sec_num(sec, s); st.num = sec.n + "." + st.id; });
   }
-  const tab = DATA[local._tab] ? local._tab : "chat";
-  const c = counts(tab);
-  document.getElementById("ptext").textContent = c.done + " из " + c.total + " · " + TABS[tab];
-  document.getElementById("pfill").style.width = (c.total ? c.done / c.total * 100 : 0) + "%";
 }
-function setTab(tab){
-  local._tab = tab; saveLocal();
-  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"));
-  Object.keys(panels).forEach(k => { panels[k].hidden = k !== tab; });
-  refresh();
+function sec_num(sec, s){ if (!sec.n) sec.n = s.sections.indexOf(sec) + 1; }
+const RE_KEY = "re"; // динамический раздел «Повторная проверка» в сессии 3
+function mainSteps(s){ return s.sections.flatMap(sec => sec.steps); }
+function cur(key){ return state.steps[key] || null; }
+function counts(steps){
+  let ok = 0, bad = 0, skip = 0;
+  for (const st of steps) { const c = cur(st.key); if (!c || !c.s) continue; if (c.s === "ok") ok++; else if (c.s === "bad") bad++; else skip++; }
+  return { ok, bad, skip, done: ok + bad + skip, total: steps.length };
 }
-document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-
-function applyState(){
-  for (const key of Object.keys(rows)) {
-    const r = rows[key];
-    const st = state.steps[key];
-    const s = (st && st.s) || "";
-    r.li.dataset.s = s;
-    if (r.box) r.box.setAttribute("aria-checked", s === "ok" ? "true" : "false");
-    if (document.activeElement !== r.note) {
-      r.note.value = (st && st.note) || "";
-      if (r.note.value || s === "bad") r.showNote(true);
-    }
-    r.who.textContent = st && st.who ? st.who + " · " + st.at : (st && st.at ? st.at : "");
-    r.who.hidden = !r.who.textContent;
+/* Шаги с ❌ в сессиях 1–2 — для раздела «Повторная проверка» сессии 3 */
+function badSteps(){
+  const out = [];
+  for (const sk of ["s1", "s2"]) for (const sec of S[sk].sections) for (const st of sec.steps) {
+    const c = cur(st.key); if (c && c.s === "bad") out.push({ st, sec, s: S[sk] });
   }
-  refresh();
+  return out;
+}
+function reSteps(){
+  return badSteps().map(({ st, sec, s }) => ({
+    id: st.key, key: "s3." + RE_KEY + "." + st.key, sess: "s3", who: st.who, pair: st.pair,
+    num: "С" + s.n + " · " + st.num,
+    do: "Повторить шаг " + st.num + " из сессии " + s.n + " (" + sec.title + "): " + st.do,
+    exp: st.exp, orig: st,
+  }));
 }
 
-for (const tab of Object.keys(DATA)) {
-  const panel = el("div", { class: "panel", id: "panel-" + tab });
-  panel.hidden = true;
-  panels[tab] = panel;
-  const intro = el("div", { class: "intro" });
-  DATA[tab].intro.forEach(t => intro.append(el("p", { text: t })));
-  panel.append(intro);
+/* ───────── отрисовка ───────── */
+const root = $("root");
+let page = null;      // {sess, nodes:{key->node}, preNodes:{}, reBox, reSig}
+const trackHtml = c => { const p = x => (c.total ? x / c.total * 100 : 0) + "%"; return `<div class="track"><i class="t-ok" style="width:${p(c.ok)}"></i><i class="t-bad" style="width:${p(c.bad)}"></i><i class="t-skip" style="width:${p(c.skip)}"></i></div>`; };
 
-  for (const b of DATA[tab].blocks) {
-    const sec = el("section", { class: "block" });
-    sec.append(el("div", { class: "bh" },
-      el("span", { class: "bn", text: b.pre ? "ДО" : "БЛОК " + b.n }),
-      el("h2", { text: b.title }),
-      el("span", { class: "bt", text: b.time })));
-    if (b.note) sec.append(el("p", { class: "bnote", text: b.note }));
-    const list = el("ol", { class: "steps" });
-    for (const s of b.steps) {
-      const key = sid(tab, s.id);
-      const li = el("li", { class: "step" });
-      li.append(el("span", { class: "id", text: s.id }));
-      const who = el("span", { class: "who-mark" });
-      who.hidden = true;
-      li.append(el("div", { class: "txt" },
-        el("p", { class: "do", text: s.do }),
-        s.needs ? el("span", { class: "needs", text: "Нужен: " + s.needs }) : null,
-        s.exp ? el("p", { class: "exp", text: s.exp }) : null,
-        who));
+function renderHome(){
+  page = { sess: null, nodes: {}, preNodes: {} };
+  const cards = SESSIONS.map(s => {
+    const c = counts(mainSteps(s).concat(s.key === "s3" ? reSteps() : []));
+    const pre = counts(s.pre);
+    return `<a class="card ${s.key === "bl" ? "bl" : ""} ${c.total && c.done === c.total ? "done" : ""}" href="#${s.key}" data-card="${s.key}">
+      <div class="ey"><span class="eyebrow">${s.n ? "Сессия " + s.n : "Бэклог"}</span><span class="when">${esc(s.when)}</span></div>
+      <h2>${esc(s.title)}</h2>
+      <p>${esc(s.lede)}</p>
+      <div class="chips"><span class="chip-s">⏱ ${esc(s.time)}</span><span class="chip-s">👥 ${esc(s.people)}</span><span class="chip-s">${s.sections.length} раздел${pl(s.sections.length, "", "а", "ов")} · ${c.total} шаг${pl(c.total, "", "а", "ов")}</span></div>
+      <div class="prog"><span class="t"><b>${c.done}</b> из ${c.total} проверено${c.bad ? ` · <b style="color:var(--bad)">❌ ${c.bad}</b>` : ""}${pre.total ? ` · подготовка ${pre.ok}/${pre.total}` : ""}</span></div>
+      ${trackHtml(c)}
+    </a>`;
+  }).join("");
+  root.innerHTML = `
+  <header class="top">
+    <div class="plate">
+      <div class="eyebrow">Тестовый бот · @YouLead_test_bot</div>
+      <h1>Приёмка Юлид '26 · по сессиям</h1>
+      <p class="lede">Три проверки по вторникам после 21:00 МСК, по полтора часа каждая. Сначала то, без чего нельзя провести форум, потом путь делегата и рассылки, потом админка и статистика. Что не проверено к 20 октября, на московском форуме 30–31 октября не включаем.</p>
+      <div class="meta">
+        <span>Каждая сессия: <b>1,5 часа</b>, <b>2–3 человека</b>; можно и одному с двумя аккаунтами</span>
+        <span>Отметки <b>общие</b>: что отметил один, видят все, с именем и временем</span>
+      </div>
+    </div>
+    <div class="warn"><p><b>Боевого бота @YouLead2026_bot не трогаем.</b> Всё только в тестовом @YouLead_test_bot: у него своя маленькая база, до настоящих делегатов ничего не дойдёт.</p></div>
+    <div class="sync" id="sync-home">Подключаюсь к общей доске…</div>
+  </header>
+  <div class="cards">${cards}</div>
+  <div class="tip">
+    <h2>Как это устроено</h2>
+    <p>Внутри сессии разделы по функциям. У каждого раздела написано, сколько минут он занимает и кто нужен. У каждого шага: что сделать и что должно получиться. Текст в плашке <q class="ui">вот так</q> дословно совпадает с кнопкой или ответом бота; на месте многоточия в <q class="ui">Санкт-Петербург…</q> бот пишет подпись города целиком; <q class="ui">ЧЧ:ММ</q> и <q class="ui">N</q> значат любое время и любое число.</p>
+    <p><b>Как отмечать.</b> ✅ Работает, если всё совпало. ❌ Не так откроет поле: напишите, что увидели, и пришлите скриншот Андрею с номером шага. ⏭ Пропуск, если проверить не получилось. 💬 добавляет комментарий к любому шагу. Повторное нажатие той же отметки снимает её.</p>
+    <p><b>Роли.</b> <span class="who M">Менеджер</span> ${esc(ROLES.M.hint)} <span class="who D">Делегат</span> ${esc(ROLES.D.hint)} <span class="who V">Волонтёр</span> ${esc(ROLES.V.hint)} Пометка <span class="pair">👥 два устройства</span> у шага значит, что QR делегата показывают на одном экране, а сканируют другим телефоном.</p>
+  </div>
+  <details class="info stuck"><summary><span class="ic">🆘</span><h2>Если застряли</h2></summary><div class="ib"><ul>${STUCK.map(t => "<li>" + esc(t) + "</li>").join("")}</ul></div></details>
+  <footer class="end">Юлид · АЙСЕК · общая доска приёмки uat.alekseev.info · <a href="#s1">сессия 1</a> · <a href="#s2">сессия 2</a> · <a href="#s3">сессия 3</a> · <a href="#bl">бэклог</a></footer>`;
+}
+function pl(n, a, b, c){ n = Math.abs(n) % 100; const d = n % 10; if (n > 10 && n < 20) return c; if (d > 1 && d < 5) return b; if (d === 1) return a; return c; }
 
-      const note = el("textarea", { class: "note", placeholder: "Что увидел, своими словами" });
-      note.hidden = true;
-      const noteBtn = el("button", { class: "note-btn", type: "button", text: "+ заметка" });
-      const showNote = v => { note.hidden = !v; noteBtn.textContent = v ? "− заметка" : "+ заметка"; };
-      noteBtn.addEventListener("click", () => showNote(note.hidden));
+function stepHtml(st){
+  const r = ROLES[st.who] || ROLES.A;
+  return `<li class="step" data-key="${esc(st.key)}" data-who="${st.who}" id="st-${esc(st.key).replace(/\./g, "-")}">
+  <div class="sh"><span class="id">${esc(st.num)}</span><span class="who ${st.who}">${esc(r.name)}</span>${st.pair ? '<span class="pair">👥 два устройства</span>' : ""}</div>
+  <div class="txt"><p class="do">${quoteUi(st.do)}</p>${st.exp ? `<p class="exp">${quoteUi(st.exp)}</p>` : ""}</div>
+  <div class="ctl"><button class="mk ok" type="button" data-m="ok" aria-label="Шаг ${esc(st.num)}: работает">✅ <span>Работает</span></button><button class="mk bad" type="button" data-m="bad" aria-label="Шаг ${esc(st.num)}: не так">❌ <span>Не так</span></button><button class="mk skip" type="button" data-m="skip" aria-label="Шаг ${esc(st.num)}: пропуск">⏭ <span>Пропуск</span></button><button class="mk nb" type="button" data-m="note" aria-label="Шаг ${esc(st.num)}: комментарий">💬</button></div>
+  <textarea class="note" placeholder="Что увидели, своими словами" aria-label="Комментарий к шагу ${esc(st.num)}" hidden></textarea>
+  <div class="by" hidden></div></li>`;
+}
+function sectionHtml(sec, steps){
+  const meta = [`⏱ ${esc(sec.time)}`, sec.need ? `👥 ${esc(sec.need)}` : ""].filter(Boolean).map(t => `<span>${t}</span>`).join("") + (sec.opt ? '<span class="opt">если останется время</span>' : "");
+  return `<section class="block" id="sec-${esc(sec.key)}" data-sec="${esc(sec.key)}">
+  <div class="bh"><span class="bn">${sec.n ? "РАЗДЕЛ " + sec.n : ""}</span><h2>${esc(sec.title)}</h2><span class="cnt" id="cnt-${esc(sec.key)}"></span></div>
+  <div class="bmeta">${meta}</div>
+  ${sec.note ? `<p class="bnote">${quoteUi(sec.note)}</p>` : ""}
+  ${sec.soon ? `<div class="soon">${quoteUi(sec.soon)}</div>` : ""}
+  <ol class="steps">${steps.map(stepHtml).join("")}</ol>
+  </section>`;
+}
+function renderSession(s){
+  const f = local["_f_" + s.key] || { role: "", stat: "" };
+  page = { sess: s.key, nodes: {}, preNodes: {}, f, reSig: "" };
+  const roleChips = s.roles.map(r => `<button class="chip r-${r}" type="button" data-f="role" data-v="${r}" aria-pressed="${f.role === r}">${esc(ROLES[r].name)}</button>`).join("");
+  const roleCards = s.roles.map(r => `<div class="role"><span class="who ${r}">${esc(ROLES[r].name)}</span><p>${esc(ROLES[r].hint)}</p></div>`).join("");
+  root.innerHTML = `
+  <a class="back" href="#">← Все сессии</a>
+  <header class="top" style="padding-top:10px">
+    <div class="plate">
+      <div class="eyebrow">${s.n ? "Сессия " + s.n + " · " + esc(s.when) : "Бэклог · " + esc(s.when)}</div>
+      <h1>${esc(s.title)}</h1>
+      <p class="lede">${esc(s.lede)}</p>
+      <div class="meta"><span>⏱ <b>${esc(s.time)}</b></span><span>👥 <b>${esc(s.people)}</b></span><span>Тестовый бот <b>@YouLead_test_bot</b></span></div>
+    </div>
+  </header>
+  <div class="bar">
+    <div class="pt"><span id="ptext"></span><span id="pright"></span></div>
+    <div id="ptrack">${trackHtml({ ok: 0, bad: 0, skip: 0, total: 1 })}</div>
+  </div>
+  <div class="under">
+    <div class="filters" id="filters">
+      <button class="chip" type="button" data-f="role" data-v="" aria-pressed="${!f.role}">Все шаги</button>${roleChips}
+      <span class="sep"></span>
+      <button class="chip" type="button" data-f="stat" data-v="" aria-pressed="${!f.stat}">Любой статус</button>
+      <button class="chip" type="button" data-f="stat" data-v="todo" aria-pressed="${f.stat === "todo"}">Не проверено</button>
+      <button class="chip" type="button" data-f="stat" data-v="bad" aria-pressed="${f.stat === "bad"}">❌ Не так</button>
+    </div>
+    <div class="sync" id="sync-s">Подключаюсь к общей доске…</div>
+  </div>
+  <main>
+    <details class="info" id="before" ${counts(s.pre).ok === s.pre.length && s.pre.length ? "" : "open"}>
+      <summary><span class="ic">⏱</span><h2>Перед началом</h2><span class="tm">${esc(s.setup.time)}</span></summary>
+      <div class="ib">
+        <div class="roles">${roleCards}</div>
+        <ol class="pre">${s.pre.map(it => `<li data-key="${esc(it.key)}"><span class="box" role="checkbox" tabindex="0" aria-checked="false" aria-label="Готово">✓</span><span class="who ${it.who}">${esc(ROLES[it.who].name)}</span><div class="txt"><p class="do">${quoteUi(it.do)}</p>${it.exp ? `<p class="exp">${quoteUi(it.exp)}</p>` : ""}</div></li>`).join("")}</ol>
+      </div>
+    </details>
+    <details class="info stuck"><summary><span class="ic">🆘</span><h2>Если застряли</h2></summary><div class="ib"><ul>${STUCK.map(t => "<li>" + esc(t) + "</li>").join("")}</ul></div></details>
+    <div id="secs">${s.sections.map(sec => sectionHtml(sec, sec.steps)).join("")}</div>
+    ${s.key === "s3" ? `<div id="rebox"></div>` : ""}
+    <div class="empty" id="empty" hidden>Под фильтр не попал ни один шаг. Нажмите «Все шаги» и «Любой статус».</div>
+  </main>
+  <footer class="end">✅ совпало с «Должно быть». ❌ не так: напишите, что увидели, и скриншот Андрею. ⏭ пропустили. Отметки общие, поэтому впишите имя внизу. В конце нажмите «Отчёт» и отправьте текст Андрею.</footer>`;
 
-      const push = () => {
-        const body = { key, s: li.dataset.s, note: note.value, who: local._who || "" };
-        api("/api/step", body).then(st => { state = st; applyState(); setSync("Общая доска · сохранено", "ok"); })
-          .catch(e => { if (e.message !== "no_access") setSync("Нет связи с доской, отметка не сохранена, попробуй ещё раз", "bad"); });
-      };
-      let timer = null;
-      note.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(push, 700); });
+  for (const li of root.querySelectorAll("li.step")) page.nodes[li.dataset.key] = mkNode(li);
+  for (const li of root.querySelectorAll("ol.pre li")) page.preNodes[li.dataset.key] = li;
+  if (s.key === "s3") renderRe();
+  $("filters").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; page.f[b.dataset.f] = b.dataset.v; local["_f_" + s.key] = page.f; save(); applyFilter(); });
+}
+function mkNode(li){
+  const st = findStep(li.dataset.key);
+  return { li, st, note: li.querySelector(".note"), by: li.querySelector(".by"), nb: li.querySelector(".nb"), btns: li.querySelectorAll(".mk[data-m]:not(.nb)") };
+}
+const STEP_INDEX = {};
+for (const s of SESSIONS) for (const sec of s.sections) for (const st of sec.steps) STEP_INDEX[st.key] = st;
+function findStep(key){ return STEP_INDEX[key] || (page && page.reList || []).find(x => x.key === key) || { key, num: key, who: "A", do: key, exp: "" }; }
 
-      const set = v => {
-        li.dataset.s = li.dataset.s === v ? "" : v;
-        if (li.dataset.s === "bad") { showNote(true); note.focus(); }
-        state.steps[key] = { s: li.dataset.s, note: note.value, who: local._who || "", at: "…" };
-        refresh();
-        push();
-      };
+function renderRe(){
+  const list = reSteps();
+  const sig = list.map(x => x.key).join("|");
+  if (sig === page.reSig) return;
+  page.reSig = sig; page.reList = list;
+  const sec = { key: RE_KEY, n: S.s3.sections.length + 1, title: "Повторная проверка", time: "10–20 мин", need: "те же роли, что у исходного шага",
+    note: list.length ? "Сюда попало всё, что в сессиях 1 и 2 отметили ❌. Шаг повторяется в том же месте бота: если теперь работает, ✅ здесь, старую отметку не трогаем." : "",
+    soon: list.length ? "" : "Пока ни одного ❌ в сессиях 1 и 2. Раздел заполнится сам, как только такие отметки появятся." };
+  for (const k of Object.keys(page.nodes)) if (k.startsWith("s3." + RE_KEY + ".")) delete page.nodes[k];
+  $("rebox").innerHTML = sectionHtml(sec, list);
+  for (const li of $("rebox").querySelectorAll("li.step")) page.nodes[li.dataset.key] = mkNode(li);
+  applyFilter();
+}
 
-      const row = { li, note, who, showNote };
-      if (b.pre) {
-        const box = el("span", { class: "box", role: "checkbox", tabindex: "0", "aria-checked": "false", "aria-label": "Готово: " + s.do, text: "✓" });
-        box.addEventListener("click", () => set("ok"));
-        box.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); set("ok"); } });
-        li.prepend(box);
-        row.box = box;
-      } else {
-        const ok = el("button", { class: "mark ok", type: "button", "aria-label": "Совпало: " + s.do, text: "✓" });
-        const bad = el("button", { class: "mark bad", type: "button", "aria-label": "Не так: " + s.do, text: "✕" });
-        const skip = el("button", { class: "mark skip", type: "button", "aria-label": "Пропустил: " + s.do, text: "⏭" });
-        ok.addEventListener("click", () => set("ok"));
-        bad.addEventListener("click", () => set("bad"));
-        skip.addEventListener("click", () => set("skip"));
-        li.append(el("div", { class: "marks" }, ok, bad, skip));
-        li.append(noteBtn);
-      }
-      li.append(note);
-      rows[key] = row;
-      list.append(li);
-    }
-    if (b.pre) sec.append(el("div", { class: "pre" }, list)); else sec.append(list);
-    panel.append(sec);
+/* ───────── отметки ───────── */
+function push(key, s, note){
+  const body = { key, s: s || "", note: note || "", who: (local._who || "").trim() };
+  setSync("Сохраняю…", "");
+  api("/api/step", body).then(st => { state = st; paint(); setSync("Общая доска · сохранено " + hhmm(), "ok"); })
+    .catch(e => { if (e.message !== "no_access") { setSync("Нет связи: отметка не сохранилась, нажмите ещё раз", "bad"); toast("Не сохранилось: нет связи"); } });
+}
+const timers = {};
+root.addEventListener("click", e => {
+  const box = e.target.closest(".box");
+  if (box) { togglePre(box.closest("li")); return; }
+  const b = e.target.closest(".mk"); if (!b) return;
+  const li = b.closest("li.step"); const key = li.dataset.key; const nd = page.nodes[key];
+  const m = b.dataset.m;
+  if (m === "note") { nd.note.hidden = !nd.note.hidden; if (!nd.note.hidden) nd.note.focus(); return; }
+  if (!(local._who || "").trim()) toast("Впишите имя внизу в «Кто проверяет»: оно встанет рядом с отметкой");
+  const v = (li.dataset.s === m) ? "" : m;
+  li.dataset.s = v;
+  if (v === "bad") { nd.note.hidden = false; nd.note.focus(); }
+  state.steps[key] = { s: v, note: nd.note.value, who: local._who || "", at: "…" };
+  paint(); push(key, v, nd.note.value);
+});
+root.addEventListener("keydown", e => {
+  const box = e.target.closest(".box"); if (!box) return;
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); togglePre(box.closest("li")); }
+});
+function togglePre(li){
+  const key = li.dataset.key; const v = li.dataset.s === "ok" ? "" : "ok";
+  li.dataset.s = v; state.steps[key] = { s: v, note: "", who: local._who || "", at: "…" };
+  paint(); push(key, v, "");
+}
+root.addEventListener("input", e => {
+  if (!e.target.classList.contains("note")) return;
+  const li = e.target.closest("li.step"); const key = li.dataset.key;
+  clearTimeout(timers[key]); timers[key] = setTimeout(() => push(key, li.dataset.s || "", e.target.value), 800);
+});
+
+function paint(){
+  if (!page) return;
+  if (!page.sess) { renderHome(); return; }
+  const s = S[page.sess];
+  if (s.key === "s3") renderRe();
+  for (const key of Object.keys(page.nodes)) {
+    const nd = page.nodes[key]; const c = cur(key); const v = (c && c.s) || "";
+    nd.li.dataset.s = v;
+    nd.btns.forEach(b => b.setAttribute("aria-pressed", b.dataset.m === v ? "true" : "false"));
+    const note = (c && c.note) || "";
+    if (document.activeElement !== nd.note) { nd.note.value = note; if (note || v === "bad") nd.note.hidden = false; }
+    nd.nb.classList.toggle("has", !!note.trim());
+    const by = c ? [c.who, c.at && c.at !== "…" ? c.at + " МСК" : ""].filter(Boolean).join(" · ") : "";
+    nd.by.textContent = by ? (v === "ok" ? "✅ " : v === "bad" ? "❌ " : v === "skip" ? "⏭ " : "💬 ") + by : "";
+    nd.by.hidden = !by;
   }
-  app.append(panel);
+  for (const key of Object.keys(page.preNodes)) {
+    const li = page.preNodes[key]; const c = cur(key); const v = (c && c.s) || "";
+    li.dataset.s = v; li.querySelector(".box").setAttribute("aria-checked", v === "ok" ? "true" : "false");
+  }
+  const secs = s.sections.concat(s.key === "s3" ? [{ key: RE_KEY, steps: page.reList || [] }] : []);
+  let all = { ok: 0, bad: 0, skip: 0, done: 0, total: 0 };
+  for (const sec of secs) {
+    const c = counts(sec.steps); for (const k of Object.keys(all)) all[k] += c[k];
+    const el = $("cnt-" + sec.key); if (!el) continue;
+    el.textContent = c.total ? c.done + " / " + c.total + (c.bad ? " · ❌ " + c.bad : "") : "";
+    el.className = "cnt" + (c.bad ? " has-bad" : c.total && c.done === c.total ? " all" : "");
+  }
+  $("ptext").innerHTML = `Проверено <b>${all.done}</b> из ${all.total}` + (all.bad ? ` · <b class="e">❌ ${all.bad}</b>` : "") + (all.skip ? ` · ⏭ ${all.skip}` : "");
+  const pre = counts(s.pre); $("pright").textContent = pre.total ? `подготовка ${pre.ok}/${pre.total}` : "";
+  $("ptrack").innerHTML = trackHtml(all);
+  applyFilter();
+}
+function applyFilter(){
+  if (!page || !page.sess) return;
+  const f = page.f; let shown = 0;
+  document.querySelectorAll("#filters .chip").forEach(b => b.setAttribute("aria-pressed", String((f[b.dataset.f] || "") === b.dataset.v)));
+  for (const key of Object.keys(page.nodes)) {
+    const nd = page.nodes[key]; const v = nd.li.dataset.s || "";
+    const okRole = !f.role || nd.li.dataset.who === f.role || nd.li.dataset.who === "A";
+    const okStat = !f.stat || (f.stat === "todo" ? !v : v === f.stat);
+    nd.li.hidden = !(okRole && okStat); if (!nd.li.hidden) shown++;
+  }
+  for (const sec of root.querySelectorAll("section.block")) {
+    const steps = sec.querySelectorAll("li.step"); const vis = sec.querySelectorAll("li.step:not([hidden])");
+    sec.hidden = steps.length > 0 && vis.length === 0;
+  }
+  $("empty").hidden = shown > 0 || !Object.keys(page.nodes).length;
 }
 
-const who = document.getElementById("who");
+/* ───────── маршрут ───────── */
+function route(){
+  const h = location.hash.replace("#", "");
+  const s = S[h];
+  if (s) renderSession(s); else renderHome();
+  window.scrollTo(0, 0);
+  paint();
+}
+window.addEventListener("hashchange", route);
+
+const who = $("who");
 who.value = local._who || "";
-who.addEventListener("input", () => { local._who = who.value; saveLocal(); });
+who.addEventListener("input", () => { local._who = who.value; save(); });
 
 async function pull(){
   try {
     const st = await api("/api/state");
-    if (st.v !== state.v) { state = st; applyState(); }
-    setSync("Общая доска · обновлено " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }), "ok");
-  } catch (e) {
-    if (e.message !== "no_access") setSync("Нет связи с доской, показываю последнее известное", "bad");
-  }
+    if (st.v !== state.v) { state = st; paint(); }
+    setSync("Общая доска · обновлено " + hhmm(), "ok");
+  } catch (e) { if (e.message !== "no_access") setSync("Нет связи с доской, показываю последнее известное", "bad"); }
 }
-setTab(DATA[local._tab] ? local._tab : "chat");
+route();
 pull();
 setInterval(pull, 5000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pull(); });
 
-const LABEL = { ok: "✅ ок", bad: "❌ не так", skip: "⏭ пропустил" };
-function buildReport(){
-  const lines = ["ПРИЁМКА ЮЛИД '26 · 16.09 · тестовый бот @YouLead_test_bot · общая доска uat.alekseev.info"];
-  lines.push("Отчёт собран: " + new Date().toLocaleString("ru-RU") + (local._who ? " · " + local._who : ""));
-  for (const tab of Object.keys(DATA)) {
-    const c = counts(tab);
-    lines.push(""); lines.push(TABS[tab].toUpperCase() + " (" + c.done + " из " + c.total + " пройдено)");
-    for (const b of DATA[tab].blocks) {
-      lines.push((b.pre ? "Перед стартом" : "Блок " + b.n + ". " + b.title));
-      for (const s of b.steps) {
-        const st = state.steps[sid(tab, s.id)];
-        const mark = st && st.s ? (b.pre ? (st.s === "ok" ? "[x]" : "[ ]") : "[" + LABEL[st.s] + "]") : (b.pre ? "[ ]" : "[не сделано]");
-        const by = st && st.who ? " · " + st.who : "";
-        lines.push("  " + s.id + " " + mark + " " + s.do + by);
-        const n = st && (st.note || "").trim();
-        if (n) lines.push("      заметка: " + n.replace(/\n/g, "\n      "));
-      }
+/* ───────── отчёт ───────── */
+const LABEL = { ok: "✅ ок", bad: "❌ не так", skip: "⏭ пропуск" };
+function reportFor(s){
+  const lines = [];
+  const secs = s.sections.concat(s.key === "s3" ? [{ key: RE_KEY, n: s.sections.length + 1, title: "Повторная проверка", steps: reSteps() }] : []);
+  const c = counts(secs.flatMap(x => x.steps));
+  lines.push((s.n ? "СЕССИЯ " + s.n + " · " + s.when : "БЭКЛОГ") + " · " + s.title.toUpperCase() + " (" + c.done + " из " + c.total + ", ❌ " + c.bad + ", ⏭ " + c.skip + ")");
+  const pre = s.pre.filter(it => { const st = cur(it.key); return !(st && st.s === "ok"); });
+  if (pre.length && pre.length < s.pre.length) lines.push("  Не отмечено в подготовке: " + pre.map(it => it.id).join(", "));
+  for (const sec of secs) {
+    lines.push("Раздел " + sec.n + ". " + sec.title);
+    for (const st of sec.steps) {
+      const c2 = cur(st.key);
+      const mark = c2 && c2.s ? "[" + LABEL[c2.s] + "]" : "[не сделано]";
+      const by = c2 && c2.who ? " · " + c2.who : "";
+      lines.push("  " + st.num + " " + mark + " " + st.do + by);
+      const n = c2 && (c2.note || "").trim();
+      if (n) lines.push("      заметка: " + n.replace(/\n/g, "\n      "));
     }
   }
   return lines.join("\n");
 }
-const report = document.getElementById("report");
-const reportText = document.getElementById("reportText");
-document.getElementById("copy").addEventListener("click", async () => {
+function buildReport(){
+  const head = ["ПРИЁМКА ЮЛИД '26 · тестовый бот @YouLead_test_bot · общая доска uat.alekseev.info",
+    "Отчёт собран: " + new Date().toLocaleString("ru-RU") + (local._who ? " · " + local._who : "")];
+  const list = page && page.sess ? [S[page.sess]] : SESSIONS;
+  return head.concat(list.map(s => "\n" + reportFor(s))).join("\n");
+}
+const report = $("report"), reportText = $("reportText");
+$("copy").addEventListener("click", async () => {
   const text = buildReport();
-  reportText.value = text;
-  report.hidden = false;
-  const hint = document.getElementById("reportHint");
-  try { await navigator.clipboard.writeText(text); hint.innerHTML = "<b>Скопировано.</b> Вставь в чат. Если не вставляется, выдели текст ниже и копируй вручную."; }
-  catch (_) { hint.textContent = "Выдели текст ниже, зажми и «Копировать», потом вставь в чат."; }
+  reportText.value = text; report.hidden = false;
+  const hint = $("reportHint");
+  try { await navigator.clipboard.writeText(text); hint.innerHTML = "<b>Скопировано.</b> Вставьте в чат Андрею. Если не вставляется, выделите текст ниже и копируйте вручную."; }
+  catch (_) { hint.textContent = "Выделите текст ниже, зажмите и «Копировать», потом вставьте в чат."; }
   reportText.focus(); reportText.select();
 });
-document.getElementById("reportClose").addEventListener("click", () => { report.hidden = true; });
+$("reportClose").addEventListener("click", () => { report.hidden = true; });
 </script>
 </body></html>
