@@ -15,6 +15,10 @@ from tests.test_delegations_core import (  # noqa: F401
 )
 
 
+USERNAME_X = NEEDLE
+MANAGER_ID = 7
+
+
 # ---------- CR-01: оплата делегату вуза не предлагается ----------
 
 def test_delegate_never_offered_payment(tmp_path):
@@ -193,3 +197,45 @@ def test_stale_matched_telegram_id_is_ignored(tmp_path):
     res = _available(fid, "a1")
     assert res.get("waiting") == "no_person"
     assert _row(661) is None and bot.sent == []
+
+
+# ---------- WR-02: ник у нескольких людей — не одобряем сами ----------
+
+def test_ambiguous_nick_goes_to_check_and_stays_there(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(671, "approved", username=USERNAME_X)      # прежний владелец ника, ещё в базе
+    _reg_started(672, USERNAME_X)                    # нынешний владелец только нажал /start
+    res = _available(fid, "a1")
+    assert res["waiting"] == "ambiguous_nick" and res["ta"] == "check"
+    row = _drow(fid, "a1")
+    assert row["ta_status"] == "check" and row["note"] == dlg.NOTE_AMBIGUOUS_NICK
+    assert row["linked_telegram_id"] is None and bot.sent == []
+    assert _row(671)["delegation_answer_id"] is None
+    _available(fid, "a1", reason="sweep")  # переоценка не возвращает в «ЦА»
+    assert _drow(fid, "a1")["ta_status"] == "check"
+
+
+def test_ambiguous_nick_manager_ok_does_not_autoconvert(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(671, "approved", username=USERNAME_X)
+    _reg_started(672, USERNAME_X)
+    _available(fid, "a1")
+    _run(ddb.set_decision(_drow(fid, "a1")["id"], "ok", MANAGER_ID))
+    res = _available(fid, "a1", reason="manual")
+    assert res["waiting"] == "ambiguous_nick"
+    row = _drow(fid, "a1")
+    assert row["ta_status"] == "ok" and row["linked_telegram_id"] is None and bot.sent == []
+    # привязать нужного менеджер может вручную
+    assert _convert(fid, "a1", 672, how="manual", by=MANAGER_ID).get("converted")
+
+
+def test_unique_nick_still_converts(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(673, USERNAME_X)
+    assert _available(fid, "a1")["converted"]["converted"] is True
