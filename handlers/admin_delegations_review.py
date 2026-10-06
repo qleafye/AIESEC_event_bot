@@ -49,6 +49,8 @@ _ROW_GONE = "Ответ не найден — обновите список"
 _REVIEW_EMPTY = "❔ <b>Проверить курс</b>\n\nВсе ответы разобраны — проверять нечего."
 _ABSENT_EMPTY = "⏳ <b>Не зашли в бота</b>\n\nВсе делегаты ЦА уже в боте."
 _REJECTED_MARK = "⚠️ В боте у этого человека отказ — одобряйте только если уверены."
+_AMBIGUOUS_MARK = ("⚠️ Этот ник числится за несколькими людьми в боте — бот не знает, кого "
+                   "одобрять. Нажмите «✅ ЦА» и привяжите нужного вручную в «⏳ Не зашли».")
 _ALREADY_LINKED = "✅ Уже делегат в боте"
 _NOT_FOUND = ("Не нашёл такого человека в боте. Проверьте ник или попросите его нажать /start "
               "и пришлите ещё раз.")
@@ -172,6 +174,8 @@ async def dlg_card(callback: types.CallbackQuery):
         lines.append(f"Сейчас: {_STATUS_WORDS.get(row.get('ta_status'), '—')}")
     if row.get("note") == delegations.NOTE_REJECTED_IN_BOT:
         lines.append(f"\n{_REJECTED_MARK}")
+    if row.get("note") == delegations.NOTE_AMBIGUOUS_NICK:
+        lines.append(f"\n{_AMBIGUOUS_MARK}")
     if linked:
         lines.append(f"\n{_ALREADY_LINKED}")
     rows: list[list[InlineKeyboardButton]] = []
@@ -204,6 +208,8 @@ async def dlg_ta(callback: types.CallbackQuery):
         toast = "Отмечено: не ЦА"
     elif res.get("converted") or res.get("verdict") == "already":
         toast = "Отмечено: ЦА — заявка одобрена"
+    elif res.get("waiting") == "ambiguous_nick":
+        toast = "Отмечено: ЦА — ник у нескольких людей, привяжите нужного в «⏳ Не зашли»"
     else:
         toast = "Отмечено: ЦА — человек ещё не заходил в бота, появится в «⏳ Не зашли»"
     await callback.answer(toast)
