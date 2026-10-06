@@ -44,3 +44,21 @@ def test_payment_filter_excludes_delegates(tmp_path):
     ids = {r[0] for r in conn.execute(f"SELECT telegram_id FROM users{where}", params)}
     conn.close()
     assert ids == {602}
+
+
+# ---------- CR-02: делегат без вуза в ответе всё равно помечен ----------
+
+def test_delegate_without_university_is_still_marked(tmp_path):
+    from miniapp.deps import game_denial  # noqa: F401  (гейт читает ту же колонку)
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат", university="")
+    _reg_started(611)
+    _available(fid, "a1")
+    u = _row(611)
+    assert u["status"] == "approved" and u["delegation_answer_id"] == "a1"
+    assert u["delegation"] == dlg.UNIVERSITY_UNKNOWN
+    where, params = db._build_filter_clause([{"field": "delegation_any", "value": db.DELEGATION_YES}])
+    conn = sqlite3.connect(config.DB_PATH)
+    assert [r[0] for r in conn.execute(f"SELECT telegram_id FROM users{where}", params)] == [611]
+    conn.close()
