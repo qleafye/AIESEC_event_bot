@@ -108,11 +108,14 @@ logger = logging.getLogger(__name__)
 pending_albums = {}
 
 
-@router.callback_query(F.data == "admin_broadcast")
-async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+BROADCAST_TARGET_FILE = "data/broadcast_target.txt"
+
+
+def build_broadcast_menu_kb() -> InlineKeyboardMarkup:
+    """Меню аудитории рассылки. «По файлу в проекте» показываем только когда файл лежит на месте:
+    кнопка, которая заведомо отвечает ошибкой, менеджера только пугает."""
+    rows = [
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
-        [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
         [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
         [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
         [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
@@ -122,7 +125,15 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
         # кнопка открывает тот же список (_render_scheduled_list), без второго рендера.
         [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
-    ])
+    ]
+    if os.path.exists(BROADCAST_TARGET_FILE):
+        rows.insert(1, [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "admin_broadcast")
+async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
+    kb = build_broadcast_menu_kb()
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
     await state.set_state(Broadcast.target_selection)
     await callback.answer()
@@ -144,17 +155,7 @@ async def cmd_export(message: types.Message):
 
 @router.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
-        [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")],
-        [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
-        [InlineKeyboardButton(text="📝 Не завершили регистрацию", callback_data="broadcast_incomplete")],
-        [InlineKeyboardButton(text="🎯 По фильтру", callback_data="broadcast_filter")],
-        [InlineKeyboardButton(text="🕓 Запланировать", callback_data="broadcast_schedule")],
-        [InlineKeyboardButton(text="🗒 Последние рассылки", callback_data="admin_broadcast_log")],
-        [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
-    ])
+    kb = build_broadcast_menu_kb()
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
     await state.set_state(Broadcast.target_selection)
 
@@ -174,7 +175,7 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
-    file_path = "data/broadcast_target.txt"
+    file_path = BROADCAST_TARGET_FILE
 
     if not os.path.exists(file_path):
         await callback.message.edit_text(f"❌ Файл {file_path} не найден! Создайте его и добавьте ID пользователей.")
