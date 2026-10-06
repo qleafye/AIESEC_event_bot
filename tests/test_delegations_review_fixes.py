@@ -239,3 +239,26 @@ def test_unique_nick_still_converts(tmp_path):
     _answer_from_fixture(fid, "a1", course="3 бакалавриат")
     _reg_started(673, USERNAME_X)
     assert _available(fid, "a1")["converted"]["converted"] is True
+
+
+# ---------- CR-04: отказ в боте виден менеджеру и не снимается одним нажатием ----------
+
+def test_card_and_ok_confirm_for_rejected_person_without_note(tmp_path):
+    from handlers import admin_delegations_review as mod
+    from tests.test_delegations_admin import _FakeCallback, _callbacks, _last_edit
+    from tests.test_delegations_admin_review import _check_row
+    _env(tmp_path)
+    fid = _delegation_form()
+    _user(681, "rejected")  # отказ не по курсу: пометки в ответе нет
+    row_id = _check_row(fid, "a1")  # «проверить» по курсу, note пуст
+    cb = _FakeCallback(f"dlg_card:{row_id}")
+    _run(mod.dlg_card(cb))
+    assert "В боте у этого человека отказ" in _last_edit(cb)[0]
+    cb = _FakeCallback(f"dlg_ta:{row_id}:ok")
+    _run(mod.dlg_ta(cb))
+    text, _, kb = _last_edit(cb)
+    assert "отказ будет снят" in text and f"dlg_ta:{row_id}:okc" in _callbacks(kb)
+    assert _row(681)["status"] == "rejected" and _drow(fid, "a1")["decided_by"] is None
+    cb = _FakeCallback(f"dlg_ta:{row_id}:okc")
+    _run(mod.dlg_ta(cb))
+    assert _row(681)["status"] == "approved"

@@ -171,6 +171,9 @@ def test_ta_ok_converts_person_rejected_in_bot(tmp_path):
     row_id = _check_row(fid, "a1", note=dlg.NOTE_REJECTED_IN_BOT, sheet_state="synced")
     cb = _FakeCallback(f"dlg_ta:{row_id}:ok")
     _run(mod.dlg_ta(cb))
+    assert _row(501)["status"] == "rejected"  # первое нажатие только просит подтверждения
+    cb = _FakeCallback(f"dlg_ta:{row_id}:okc")
+    _run(mod.dlg_ta(cb))
     u = _row(501)
     assert u["status"] == "approved" and u["approved_at"]
     assert u["delegation_answer_id"] == "a1"

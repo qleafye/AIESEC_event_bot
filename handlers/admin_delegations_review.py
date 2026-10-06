@@ -49,6 +49,10 @@ _ROW_GONE = "Ответ не найден — обновите список"
 _REVIEW_EMPTY = "❔ <b>Проверить курс</b>\n\nВсе ответы разобраны — проверять нечего."
 _ABSENT_EMPTY = "⏳ <b>Не зашли в бота</b>\n\nВсе делегаты ЦА уже в боте."
 _REJECTED_MARK = "⚠️ В боте у этого человека отказ — одобряйте только если уверены."
+_REJECT_CONFIRM = (
+    "⚠️ <b>В боте у этого человека отказ</b>\n\n"
+    "Если подтвердить: отказ будет снят, заявка одобрена без анкеты, человек получит сообщение "
+    "и доступ к QR на вход. Одобрить?")
 _AMBIGUOUS_MARK = ("⚠️ Этот ник числится за несколькими людьми в боте — бот не знает, кого "
                    "одобрять. Нажмите «✅ ЦА» и привяжите нужного вручную в «⏳ Не зашли».")
 _ALREADY_LINKED = "✅ Уже делегат в боте"
@@ -153,6 +157,20 @@ async def dlg_review(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def _rejected_in_bot_now(row: dict) -> bool:
+    """Отказ в боте — по живому статусу человека, а не по пометке: пометка ставится только на
+    одном из путей, а менеджер мог и сам отклонить, и автоотказ сработать позже."""
+    if row.get("linked_telegram_id") is not None:
+        return False
+    if row.get("note") == delegations.NOTE_REJECTED_IN_BOT:
+        return True
+    tid, _where = await delegations.find_person(row.get("username_needle"))
+    if tid is None:
+        return False
+    user = await get_user(tid)
+    return bool(user and user.get("status") == "rejected")
+
+
 @router.callback_query(F.data.startswith("dlg_card:"))
 async def dlg_card(callback: types.CallbackQuery):
     form, keys = await _form_and_keys()
@@ -172,7 +190,7 @@ async def dlg_card(callback: types.CallbackQuery):
     ]
     if row.get("ta_status") != "check":
         lines.append(f"Сейчас: {_STATUS_WORDS.get(row.get('ta_status'), '—')}")
-    if row.get("note") == delegations.NOTE_REJECTED_IN_BOT:
+    if await _rejected_in_bot_now(row):
         lines.append(f"\n{_REJECTED_MARK}")
     if row.get("note") == delegations.NOTE_AMBIGUOUS_NICK:
         lines.append(f"\n{_AMBIGUOUS_MARK}")
@@ -194,9 +212,19 @@ async def dlg_ta(callback: types.CallbackQuery):
     except (IndexError, ValueError):
         row_id, status = None, ""
     row = await _row_of_form(row_id)
-    if row is None or status not in ("ok", "no"):
+    if row is None or status not in ("ok", "okc", "no"):
         await callback.answer(_ROW_GONE, show_alert=True)
         return
+    if status == "ok" and await _rejected_in_bot_now(row):
+        # Одобрение отклонённого — второй кнопкой и с названием того, что отменяется.
+        await _show(callback, _REJECT_CONFIRM, _kb([
+            [_btn("✅ Да, одобрить", f"dlg_ta:{row['id']}:okc")],
+            [_btn("← Назад", f"dlg_card:{row['id']}")],
+        ]))
+        await callback.answer()
+        return
+    if status == "okc":
+        status = "ok"
     admin = _admin_id(callback)
     await ddb.set_decision(row["id"], status, admin)
     # Единственная точка последствий: поиск по нику, превращение, отметка колонки «В боте».
