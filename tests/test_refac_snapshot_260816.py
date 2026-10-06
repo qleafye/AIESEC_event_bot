@@ -1501,6 +1501,7 @@ admin|callback_query|dlg_cutoff|dlg_cutoff
 admin|callback_query|dlg_courses|dlg_courses
 admin|callback_query|dlg_course|dlg_course:*
 admin|callback_query|dlg_courses_done|dlg_courses_done
+admin|callback_query|dlg_apply|dlg_apply
 admin|callback_query|dlg_text|dlg_text
 admin|callback_query|dlg_text_pick|dlg_text:*
 admin|callback_query|dlg_sheet|dlg_sheet
@@ -2225,7 +2226,10 @@ def test_snapshot_total_handler_count_is_292():
     # (state:DelegationLink:* — кого привязать) сразу после dlg_text_input и +7
     # admin.callback_query (dlg_review/dlg_card/dlg_ta/dlg_absent/dlg_link/dlg_pick/dlg_link_yes)
     # сразу после dlg_write_off_yes; две чистые вставки, SequenceMatcher (1051 -> 1059).
-    assert len(GOLDEN_SNAPSHOT) == 1059
+    # Делегации вузов, ревью: +1 admin.callback_query (dlg_apply — подтверждение пересчёта уже
+    # пришедших ответов после смены вопросов/отсечки/курсов) сразу после dlg_courses_done;
+    # одна чистая вставка (1059 -> 1060).
+    assert len(GOLDEN_SNAPSHOT) == 1060
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

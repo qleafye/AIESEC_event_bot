@@ -452,7 +452,7 @@ def test_cutoff_flow_bad_input_keeps_state_good_input_saves_and_sweeps(tmp_path,
         return good
     good = _run(go())
     assert calls == [True]
-    assert good.answers[0][0] == "Отсечка: 15.09.2026. Пересчитываю ЦА по ответам формы…"
+    assert good.answers[0][0] == "Отсечка: 15.09.2026."
     assert "📅 Отсечка ЦА: 15.09.2026" in _button_texts(good.answers[-1][2])
     dt = dlg.cutoff_dt(_run(get_setting_typed("delegation_ta_cutoff")))
     assert (dt.year, dt.month, dt.day) == (2026, 9, 15)
@@ -504,7 +504,7 @@ def test_courses_checkboxes_toggle_and_done_sweeps(tmp_path, monkeypatch):
         return cb
     cb = _run(go())
     assert calls == [True]
-    assert cb.answer_calls == [("Курсы не ЦА: 1, 2, 3. Пересчитываю ЦА…", False)]
+    assert cb.answer_calls == [("Курсы не ЦА: 1, 2, 3.", False)]
     assert "🎓 Курсы не ЦА: 1, 2, 3" in _button_texts(_last_edit(cb)[2])
 
 
