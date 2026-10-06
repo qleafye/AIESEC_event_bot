@@ -167,16 +167,28 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: cities_module_on resolve failed: {e}")
         cities_on = False
 
-    # Один `get_user` на ОБА резолва ниже (город + язык) — не два отдельных чтения. Модуль
-    # off (или нет telegram_id, как у legacy-тестов, зовущих get_main_menu_kb() голым) —
-    # `get_user` не зовётся вовсе, ни одного лишнего чтения БД сверх сегодняшнего.
+    # Один `get_user` на ВСЕ резолвы ниже (город + язык + делегация вуза) — не три отдельных
+    # чтения. Нет telegram_id (legacy-тесты, зовущие get_main_menu_kb() голым) — `get_user`
+    # не зовётся вовсе. Делегации вузов (D-08): раньше чтение шло только при включённых
+    # городах/языке; теперь всегда при telegram_id — иначе гейт игры ниже не узнал бы делегата.
     user = None
-    if telegram_id is not None and (cities_on or lang_module_on):
+    if telegram_id is not None:
         try:
             user = await get_user(telegram_id)
         except Exception as e:
             logger.error(f"get_main_menu_kb: get_user failed for {telegram_id}: {e}")
             user = None
+
+    # Делегации вузов (D-08): по умолчанию без игры — у делегата вуза кнопки монет/заданий
+    # прячутся, пока менеджер не включил «🎮 Геймификация для делегатов». Рейтинг чата не
+    # трогаем. Fail-soft: сбой чтения = кнопки на месте, меню важнее гейта.
+    game_hidden = False
+    try:
+        if user and user.get("delegation"):
+            game_hidden = (await get_setting_typed("delegation_game_enabled")) != "on"
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: delegation game gate resolve failed: {e}")
+        game_hidden = False
 
     # Phase 09.2 (B): city resolve failure must not break the menu -- buttons matter more than
     # the city, so it fails soft to code=None (global values), same idiom as
@@ -317,6 +329,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # своего города) — кнопки нет; появляется сама, как только менеджер завёл первый
             # пункт (has_faq_for_city).
             if key == "menu_faq" and not faq_on:
+                continue
+            # Делегации вузов (D-08): по умолчанию без игры — делегат вуза не видит монеты и
+            # задания, пока тумблер выключен; рейтинг чата не трогаем (см. game_hidden выше).
+            if key in ("menu_coins", "menu_game_tasks") and game_hidden:
                 continue
             # D-29: вторая половина гейта — сама кнопка value=="on" (уже проверено выше)
             # недостаточна, пока нет ни фото программы, ни хотя бы одной сессии в ней.
