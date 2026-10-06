@@ -74,7 +74,7 @@ _NO_FORMS_ALERT = (
 _FORM_NOT_FOUND = "Форма не найдена — обновите список."
 _STALE_QUESTIONS = "Список вопросов устарел — откройте выбор ещё раз"
 _KEYS_MISSING = "Без вопросов ФИО, вуз и курс бот не сможет узнать делегата — выберите их."
-_KEYS_SAVED = "Вопросы сохранены, разбираю ответы формы…"
+_KEYS_SAVED = "Вопросы сохранены"
 
 
 def _e(value) -> str:
@@ -392,15 +392,32 @@ async def dlg_keyset(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def _offer_reevaluate(target, lead: str, *, edit: bool = True) -> bool:
+    """Пересчёт уже пришедших ответов может одобрить людей и написать им — без подтверждения
+    он не стартует. Некого одобрять — пересчёт идёт сразу (False), иначе показан экран с числом
+    и вопросом (True)."""
+    n = await delegations.preview_reevaluate()
+    if n == 0:
+        spawn(delegations.sweep_pending(reevaluate=True))
+        return False
+    text = (f"{lead}\n\nЕсли применить к уже пришедшим ответам, станут ЦА: {n} — они будут "
+            "одобрены и получат сообщение. Применить?")
+    await _show(target, text, _kb([
+        [_btn("✅ Применить", "dlg_apply")],
+        [_btn("Не применять к старым ответам", "admin_delegations")],
+    ]), edit=edit)
+    return True
+
+
 @router.callback_query(F.data == "dlg_keys_ok")
 async def dlg_keys_ok(callback: types.CallbackQuery):
     keys = await delegations.field_keys()
     if any(not keys.get(w) for w in _REQUIRED_KEYS):
         await callback.answer(_KEYS_MISSING, show_alert=True)
         return
-    spawn(delegations.sweep_pending(reevaluate=True))
     await callback.answer(_KEYS_SAVED)
-    await render_screen(callback)
+    if not await _offer_reevaluate(callback, "Вопросы формы сохранены."):
+        await render_screen(callback)
 
 
 # ── настройки с экрана ────────────────────────────────────────────────────────────────────
@@ -484,9 +501,9 @@ async def dlg_cutoff_input(message: types.Message, state: FSMContext):
     value = dt.strftime("%d.%m.%Y")
     await set_setting_by_admin(message.from_user.id, "delegation_ta_cutoff", value)
     await state.clear()
-    spawn(delegations.sweep_pending(reevaluate=True))
-    await message.answer(f"Отсечка: {value}. Пересчитываю ЦА по ответам формы…")
-    await render_screen(message, edit=False)
+    await message.answer(f"Отсечка: {value}.")
+    if not await _offer_reevaluate(message, "Дата отсечки сохранена.", edit=False):
+        await render_screen(message, edit=False)
 
 
 # курсы не ЦА (чекбоксы из вариантов вопроса анкеты «Курс»)
@@ -532,10 +549,17 @@ async def dlg_course(callback: types.CallbackQuery):
 @router.callback_query(F.data == "dlg_courses_done")
 async def dlg_courses_done(callback: types.CallbackQuery):
     chosen = await _not_ta_courses()
-    spawn(delegations.sweep_pending(reevaluate=True))
     toast = (_EMPTY_COURSES_TOAST if not chosen
-             else f"Курсы не ЦА: {', '.join(chosen)}. Пересчитываю ЦА…")
+             else f"Курсы не ЦА: {', '.join(chosen)}.")
     await callback.answer(toast)
+    if not await _offer_reevaluate(callback, "Список курсов не ЦА сохранён."):
+        await render_screen(callback)
+
+
+@router.callback_query(F.data == "dlg_apply")
+async def dlg_apply(callback: types.CallbackQuery):
+    spawn(delegations.sweep_pending(reevaluate=True))
+    await callback.answer("Пересчитываю ЦА по ответам формы…")
     await render_screen(callback)
 
 

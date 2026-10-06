@@ -2,6 +2,7 @@
 дубли, гейты геймы, карточки менеджера, зеркало листа. Фикстуры — из `test_delegations_core`."""
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 
 from config import config
@@ -280,3 +281,59 @@ def test_stale_card_cannot_mark_linked_answer_not_ta(tmp_path):
     assert cb.answer_calls == [(mod._ALREADY_LINKED_ALERT, True)]
     row = _run(ddb.get_by_id(row_id))
     assert row["ta_status"] == "check" and row["decided_by"] is None
+
+
+# ---------- WR-08: настройки не одобряют людей молча ----------
+
+def _setup_would_become_ta(tmp_path):
+    """Ответ «1 бакалавриат» после отсечки = не ЦА; человек в боте есть. Сдвиг отсечки
+    на дату после ответа сделает его ЦА."""
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _run(set_setting_by_admin(None, "delegation_ta_cutoff", "23.09.2026"))
+    _run(set_setting_by_admin(None, "delegation_not_ta_courses", "1\n2"))
+    _answer_from_fixture(fid, "a1", course="1 бакалавриат", answered_at="2026-10-01 12:00:00")
+    _reg_started(701)
+    _available(fid, "a1")
+    assert _drow(fid, "a1")["ta_status"] == "no" and _row(701) is None
+    return bot, fid
+
+
+def test_cutoff_change_asks_confirmation_with_count(tmp_path, monkeypatch):
+    from handlers import admin_delegations as mod
+    from tests.test_delegations_admin import (
+        _FakeCallback, _FakeMessage, _callbacks, _spy_sweep, _state,
+    )
+    _setup_would_become_ta(tmp_path)
+    calls = _spy_sweep(monkeypatch)
+    _run(set_setting_by_admin(None, "delegation_ta_cutoff", "23.09.2026"))
+
+    async def go():
+        state = _state()
+        await mod.dlg_cutoff(_FakeCallback("dlg_cutoff"), state)
+        msg = _FakeMessage("20.10.2026")
+        await mod.dlg_cutoff_input(msg, state)
+        return msg
+    msg = _run(go())
+    text, _, kb = msg.answers[-1]
+    assert "станут ЦА: 1" in text and "будут одобрены и получат сообщение" in text
+    assert "dlg_apply" in _callbacks(kb)
+    assert calls == []  # пока не подтвердили — пересчёта нет
+    assert _row(701) is None
+
+
+def test_apply_runs_sweep_and_preview_counts_zero_when_nobody(tmp_path, monkeypatch):
+    from handlers import admin_delegations as mod
+    from tests.test_delegations_admin import _FakeCallback, _spy_sweep
+    _setup_would_become_ta(tmp_path)
+    assert _run(dlg.preview_reevaluate()) == 0  # настройки прежние — никто не изменится
+    _run(set_setting_by_admin(None, "delegation_ta_cutoff", "20.10.2026"))
+    assert _run(dlg.preview_reevaluate()) == 1
+    calls = _spy_sweep(monkeypatch)
+
+    async def go():
+        cb = _FakeCallback("dlg_apply")
+        await mod.dlg_apply(cb)
+        await asyncio.sleep(0)
+    _run(go())
+    assert calls == [True]
