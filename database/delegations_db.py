@@ -212,8 +212,9 @@ async def list_by_status(
 
 async def count_by_status(form_id: int, ta_status: str, *, linked: bool | None) -> int:
     row = await _fetchone(
-        "SELECT COUNT(*) AS n FROM delegation_answers d WHERE d.form_id = ? AND d.ta_status = ?"
-        + _linked_sql(linked),
+        "SELECT COUNT(*) AS n FROM delegation_answers d "
+        "JOIN external_form_answers a ON a.form_id = d.form_id AND a.answer_id = d.answer_id "
+        "WHERE d.form_id = ? AND d.ta_status = ?" + _linked_sql(linked),
         (form_id, ta_status),
     )
     return int(row["n"]) if row else 0
@@ -221,17 +222,31 @@ async def count_by_status(form_id: int, ta_status: str, *, linked: bool | None) 
 
 async def summary_by_university(form_id: int) -> list[dict]:
     """Строки {university, total, ta, in_bot, arrived}: всего ответов, из них ЦА, привязано
-    к боту, отмечено на входе форума. Сортировка — по числу ЦА, затем по вузу."""
-    return await _fetchall(
-        "SELECT d.university AS university, COUNT(*) AS total, "
-        "SUM(CASE WHEN d.ta_status = 'ok' THEN 1 ELSE 0 END) AS ta, "
-        "COUNT(DISTINCT d.linked_telegram_id) AS in_bot, "
-        "COUNT(DISTINCT CASE WHEN d.linked_telegram_id IS NOT NULL AND " + _ARRIVED_SQL + " "
-        "THEN d.linked_telegram_id END) AS arrived "
-        "FROM delegation_answers d WHERE d.form_id = ? "
-        "GROUP BY d.university ORDER BY ta DESC, d.university",
+    к боту, отмечено на входе форума. Один вуз, написанный по-разному («МГУ», « мгу »), — одна
+    строка (SQLite не понижает регистр кириллицы, поэтому группировка здесь). Человек с
+    несколькими ответами считается один раз. Сортировка — по числу ЦА, затем по вузу."""
+    rows = await _fetchall(
+        "SELECT d.university AS university, d.ta_status AS ta_status, "
+        "d.linked_telegram_id AS linked, "
+        "CASE WHEN d.linked_telegram_id IS NOT NULL AND " + _ARRIVED_SQL + " "
+        "THEN 1 ELSE 0 END AS arrived FROM delegation_answers d WHERE d.form_id = ?",
         (ENTRY_POINT, form_id),
     )
+    groups: dict[str, dict] = {}
+    for r in rows:
+        name = " ".join(str(r["university"] or "").split())
+        g = groups.setdefault(name.casefold(), {
+            "university": name or None, "total": 0, "ta": 0, "_in_bot": set(), "_arrived": set()})
+        g["total"] += 1
+        g["ta"] += 1 if r["ta_status"] == "ok" else 0
+        if r["linked"] is not None:
+            g["_in_bot"].add(r["linked"])
+            if r["arrived"]:
+                g["_arrived"].add(r["linked"])
+    out = [{"university": g["university"], "total": g["total"], "ta": g["ta"],
+            "in_bot": len(g["_in_bot"]), "arrived": len(g["_arrived"])} for g in groups.values()]
+    out.sort(key=lambda g: (-g["ta"], (g["university"] or "").casefold()))
+    return out
 
 
 async def list_unevaluated(form_id: int, limit: int = 500) -> list[dict]:
