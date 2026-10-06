@@ -590,6 +590,47 @@ async def sweep_pending(limit: int = 200, *, reevaluate: bool = False) -> dict:
     return {"evaluated": evaluated, "linked": linked, "rechecked": rechecked}
 
 
+async def preview_reevaluate() -> int:
+    """Сухой прогон `sweep_pending(reevaluate=True)`: сколько человек станут делегатами —
+    будут одобрены и получат сообщение, — если пересчитать все ответы формы по действующим
+    настройкам. Ничего не пишет и никому не отправляет."""
+    dfid = await delegation_form_id()
+    if dfid is None:
+        return 0
+    form = await ef.get_form(dfid)
+    if not form:
+        return 0
+    keys = await field_keys()
+    cutoff = cutoff_dt(await get_setting_typed("delegation_ta_cutoff"))
+    not_ta = await get_setting_typed("delegation_not_ta_courses") or []
+    would = 0
+    for aid in sorted(await ef.known_answer_ids(dfid)):
+        answer = await ef.get_answer(dfid, aid)
+        if not answer:
+            continue
+        row = await ddb.get_by_answer(dfid, aid)
+        if row is not None and row.get("linked_telegram_id") is not None:
+            continue
+        fields = extract_fields(form, answer.get("payload") or [], keys)
+        if row is not None and row.get("decided_by") is not None:
+            ta = row["ta_status"]  # решение менеджера переоценка не трогает
+        else:
+            ta = evaluate_ta(parse_course(fields["course_raw"]), answer.get("answered_at"),
+                             cutoff, not_ta)
+        if ta != "ok":
+            continue
+        tid, _where = await find_person(fields["username_needle"])
+        if tid is None:
+            continue
+        user = await get_user(tid)
+        if user and user.get("delegation_answer_id"):
+            continue
+        probe = row or {"linked_telegram_id": None, "decided_by": None}
+        if decide_link(probe, user, tid, how=LINK_HOW_USERNAME) == "convert":
+            would += 1
+    return would
+
+
 async def on_first_entry(bot, user_id: int, city, day, **kwargs) -> None:
     """Слушатель первой отметки входа (`services.checkin.register_first_entry_listener`):
     у делегата из формы строка UR REGS уходит на перезапись — колонка «В боте» покажет «пришёл»."""
