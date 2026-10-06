@@ -400,3 +400,197 @@ def test_univ_summary_renders_lines_and_pages(tmp_path):
     text, _, kb = _last_edit(cb)
     assert "Вуз 09" in text and "Вуз 00" not in text
     assert "dlg_univ:0" in _callbacks(kb)
+
+
+# ── настройки с экрана (тумблер, отсечка, курсы, тексты) ─────────────────────────────────
+
+def _screen_button(text_prefix: str) -> str:
+    cb = _FakeCallback("admin_delegations")
+    _run(mod.admin_delegations(cb))
+    return next(t for t in _button_texts(_last_edit(cb)[2]) if t.startswith(text_prefix))
+
+
+def test_game_toggle_flips_setting_and_button(tmp_path):
+    _env(tmp_path)
+    _select(_form())
+    assert _screen_button("🎮") == "🎮 Геймификация для делегатов: ☐"
+    cb = _FakeCallback("dlg_game")
+    _run(mod.dlg_game(cb))
+    assert _run(get_setting_typed("delegation_game_enabled")) == "on"
+    assert cb.answer_calls == [("Геймификация для делегатов: включена", False)]
+    assert "🎮 Геймификация для делегатов: ✅" in _button_texts(_last_edit(cb)[2])
+    cb = _FakeCallback("dlg_game")
+    _run(mod.dlg_game(cb))
+    assert _run(get_setting_typed("delegation_game_enabled")) == "off"
+    assert cb.answer_calls == [("Геймификация для делегатов: выключена", False)]
+
+
+def test_cutoff_flow_bad_input_keeps_state_good_input_saves_and_sweeps(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _select(_form())
+    calls = _spy_sweep(monkeypatch)
+    assert _screen_button("📅") == "📅 Отсечка ЦА: 23.09.2026"
+
+    async def go():
+        state = _state()
+        cb = _FakeCallback("dlg_cutoff")
+        await mod.dlg_cutoff(cb, state)
+        assert await state.get_state() == "DelegationEdit:waiting_cutoff"
+        text, _, kb = cb.message.edits[-1]
+        assert "Сейчас: 23.09.2026." in text
+        assert "например 23.09.2026" in text
+        assert _callbacks(kb) == ["dlg_cancel"]
+        bad = _FakeMessage("23 сентября")
+        await mod.dlg_cutoff_input(bad, state)
+        assert bad.answers[0][0] == mod._BAD_DATE
+        assert await state.get_state() == "DelegationEdit:waiting_cutoff"
+        assert calls == []
+        good = _FakeMessage(" 15.09.2026 ")
+        await mod.dlg_cutoff_input(good, state)
+        await asyncio.sleep(0)
+        assert await state.get_state() is None
+        return good
+    good = _run(go())
+    assert calls == [True]
+    assert good.answers[0][0] == "Отсечка: 15.09.2026. Пересчитываю ЦА по ответам формы…"
+    assert "📅 Отсечка ЦА: 15.09.2026" in _button_texts(good.answers[-1][2])
+    dt = dlg.cutoff_dt(_run(get_setting_typed("delegation_ta_cutoff")))
+    assert (dt.year, dt.month, dt.day) == (2026, 9, 15)
+
+
+def test_cutoff_cancel_by_text_clears_state(tmp_path):
+    _env(tmp_path)
+    _select(_form())
+
+    async def go():
+        state = _state()
+        await mod.dlg_cutoff(_FakeCallback("dlg_cutoff"), state)
+        msg = _FakeMessage("отмена")
+        await mod.dlg_cutoff_input(msg, state)
+        assert await state.get_state() is None
+        return msg
+    msg = _run(go())
+    assert msg.answers[0][0] == "Отменено."
+    assert "🏫 <b>Делегации вузов</b>" in msg.answers[-1][0]
+    dt = dlg.cutoff_dt(_run(get_setting_typed("delegation_ta_cutoff")))
+    assert (dt.day, dt.month) == (23, 9)
+
+
+def test_courses_checkboxes_toggle_and_done_sweeps(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _select(_form())
+    calls = _spy_sweep(monkeypatch)
+    assert _screen_button("🎓") == "🎓 Курсы не ЦА: 1, 2"
+    cb = _FakeCallback("dlg_courses")
+    _run(mod.dlg_courses(cb))
+    text, _, kb = _last_edit(cb)
+    assert "Магистратура и аспирантура — всегда ЦА" in text
+    texts = _button_texts(kb)
+    assert texts[:5] == ["✅ 1", "✅ 2", "☐ 3", "☐ 4", "☐ 5+"]
+    assert not any("Магистратура" in t for t in texts)  # галочка на них ничего не меняла бы
+    assert "dlg_courses_done" in _callbacks(kb)
+    cb = _FakeCallback("dlg_course:2")
+    _run(mod.dlg_course(cb))
+    assert _run(get_setting_typed("delegation_not_ta_courses")) == ["1", "2", "3"]
+    assert "✅ 3" in _button_texts(_last_edit(cb)[2])
+    cb = _FakeCallback("dlg_course:42")
+    _run(mod.dlg_course(cb))
+    assert cb.answer_calls == [(mod._STALE_COURSE, True)]
+
+    async def go():
+        cb = _FakeCallback("dlg_courses_done")
+        await mod.dlg_courses_done(cb)
+        await asyncio.sleep(0)
+        return cb
+    cb = _run(go())
+    assert calls == [True]
+    assert cb.answer_calls == [("Курсы не ЦА: 1, 2, 3. Пересчитываю ЦА…", False)]
+    assert "🎓 Курсы не ЦА: 1, 2, 3" in _button_texts(_last_edit(cb)[2])
+
+
+def test_courses_empty_selection_allowed_with_explicit_toast(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _select(_form())
+    calls = _spy_sweep(monkeypatch)
+    for idx in (0, 1):
+        _run(mod.dlg_course(_FakeCallback(f"dlg_course:{idx}")))
+    assert mod._chosen(_run(get_setting_typed("delegation_not_ta_courses"))) == []
+
+    async def go():
+        cb = _FakeCallback("dlg_courses_done")
+        await mod.dlg_courses_done(cb)
+        await asyncio.sleep(0)
+        return cb
+    cb = _run(go())
+    assert cb.answer_calls == [(mod._EMPTY_COURSES_TOAST, False)]
+    assert calls == [True]
+    assert "🎓 Курсы не ЦА: нет" in _button_texts(_last_edit(cb)[2])
+
+
+def test_text_flow_saves_welcome_and_keeps_placeholder(tmp_path):
+    _env(tmp_path)
+    _select(_form())
+    cb = _FakeCallback("dlg_text")
+    _run(mod.dlg_text(cb))
+    assert _callbacks(_last_edit(cb)[2]) == [
+        "dlg_text:welcome", "dlg_text:existing", "dlg_text:gameoff", "admin_delegations"]
+
+    async def go():
+        state = _state()
+        cb = _FakeCallback("dlg_text:welcome")
+        await mod.dlg_text_pick(cb, state)
+        assert await state.get_state() == "DelegationEdit:waiting_text"
+        text, _, kb = cb.message.edits[-1]
+        assert "Сейчас:\nПривет! Ты в списке делегации {university}" in text
+        assert "{university} в тексте заменится на название вуза из формы." in text
+        assert _callbacks(kb) == ["dlg_cancel"]
+        long = _FakeMessage("x" * 3501)
+        await mod.dlg_text_input(long, state)
+        assert long.answers[0][0].startswith("Слишком длинно — до 3500 символов")
+        assert await state.get_state() == "DelegationEdit:waiting_text"
+        msg = _FakeMessage("  Привет, {university}! Ты в делегации <3  ")
+        await mod.dlg_text_input(msg, state)
+        assert await state.get_state() is None
+        return msg
+    msg = _run(go())
+    assert msg.answers[0][0] == "Текст сохранён."
+    assert _run(get_setting_typed("delegation_welcome_text")) == "Привет, {university}! Ты в делегации <3"
+    assert "🏫 <b>Делегации вузов</b>" in msg.answers[-1][0]
+
+
+def test_gameoff_text_prompt_has_no_placeholder_hint_and_stale_key_is_refused(tmp_path):
+    _env(tmp_path)
+    _select(_form())
+
+    async def go():
+        state = _state()
+        cb = _FakeCallback("dlg_text:gameoff")
+        await mod.dlg_text_pick(cb, state)
+        assert "{university}" not in cb.message.edits[-1][0]
+        cb = _FakeCallback("dlg_text:phone")
+        await mod.dlg_text_pick(cb, state)
+        assert cb.answer_calls == [(mod._STALE_EDIT, True)]
+        # состояние есть, ключа нет или чужой (например, после рестарта в середине ввода)
+        await state.update_data(dlg_text_key="event_season")
+        msg = _FakeMessage("взлом")
+        await mod.dlg_text_input(msg, state)
+        assert msg.answers[0][0] == mod._STALE_EDIT
+        assert await state.get_state() is None
+    _run(go())
+    assert _run(get_setting_typed("event_season")) != "взлом"
+
+
+def test_cancel_button_clears_state_and_returns_to_screen(tmp_path):
+    _env(tmp_path)
+    _select(_form())
+
+    async def go():
+        state = _state()
+        await mod.dlg_cutoff(_FakeCallback("dlg_cutoff"), state)
+        cb = _FakeCallback("dlg_cancel")
+        await mod.dlg_cancel(cb, state)
+        assert await state.get_state() is None
+        return cb
+    cb = _run(go())
+    assert cb.answer_calls == [("Отменено", False)]
+    assert "🏫 <b>Делегации вузов</b>" in _last_edit(cb)[0]

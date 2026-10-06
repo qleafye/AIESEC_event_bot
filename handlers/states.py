@@ -558,6 +558,14 @@ class ExtFormOAuth(StatesGroup):
     org_id = State()
 
 
+class DelegationEdit(StatesGroup):
+    # Экран «🏫 Делегации» (handlers/admin_delegations.py): ввод даты отсечки ЦА и текстов
+    # делегату своими кнопками экрана под правом модерации заявок (не через общий редактор
+    # настроек). Ключ редактируемого текста — в state.get_data()["dlg_text_key"].
+    waiting_cutoff = State()
+    waiting_text = State()
+
+
 class ExtFormAppKeys(StatesGroup):
     # «🔑 Ключи приложения Яндекса»: идентификатор и секрет приложения.
     client_id = State()
