@@ -51,23 +51,23 @@ def test_add_staff_default_expiry_is_unlimited(tmp_path):
 
 def test_add_staff_with_expiry(tmp_path):
     _ready(tmp_path)
-    _run(db.add_staff(MANAGER_ID, "volunteer", ADMIN_ID, expires_at="2026-10-04"))
+    _run(db.add_staff(MANAGER_ID, "volunteer", ADMIN_ID, expires_at="2037-10-04"))
     staff = _run(db.list_staff())
-    assert staff[0]["expires_at"] == "2026-10-04"
+    assert staff[0]["expires_at"] == "2037-10-04"
 
 
 def test_set_staff_expiry_changes_existing_role(tmp_path):
     _ready(tmp_path)
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
-    ok = _run(db.set_staff_expiry(MANAGER_ID, "reg_manager", "2026-10-04"))
+    ok = _run(db.set_staff_expiry(MANAGER_ID, "reg_manager", "2037-10-04"))
     assert ok is True
     staff = _run(db.list_staff())
-    assert staff[0]["expires_at"] == "2026-10-04"
+    assert staff[0]["expires_at"] == "2037-10-04"
 
 
 def test_set_staff_expiry_can_remove_expiry(tmp_path):
     _ready(tmp_path)
-    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2026-10-04"))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2037-10-04"))
     ok = _run(db.set_staff_expiry(MANAGER_ID, "reg_manager", None))
     assert ok is True
     staff = _run(db.list_staff())
@@ -76,7 +76,7 @@ def test_set_staff_expiry_can_remove_expiry(tmp_path):
 
 def test_set_staff_expiry_returns_false_for_missing_role(tmp_path):
     _ready(tmp_path)
-    ok = _run(db.set_staff_expiry(MANAGER_ID, "reg_manager", "2026-10-04"))
+    ok = _run(db.set_staff_expiry(MANAGER_ID, "reg_manager", "2037-10-04"))
     assert ok is False
 
 
@@ -88,11 +88,11 @@ def test_add_staff_no_op_does_not_touch_existing_expiry():
         config.DB_PATH = f"{tmp}/staff_expiry_noop.db"
         fast_init_db()
         config.ADMIN_IDS = [ADMIN_ID]
-        _run(db.add_staff(MANAGER_ID, "volunteer", ADMIN_ID, expires_at="2026-10-04"))
+        _run(db.add_staff(MANAGER_ID, "volunteer", ADMIN_ID, expires_at="2037-10-04"))
         created = _run(db.add_staff(MANAGER_ID, "volunteer", ADMIN_ID, expires_at="2099-01-01"))
         assert created is False
         staff = _run(db.list_staff())
-        assert staff[0]["expires_at"] == "2026-10-04"
+        assert staff[0]["expires_at"] == "2037-10-04"
 
 
 def test_get_staff_roles_excludes_expired_role(tmp_path):
@@ -212,9 +212,9 @@ def test_roles_text_shows_unlimited_by_default(tmp_path):
 
 def test_roles_text_shows_active_expiry_date(tmp_path):
     _ready(tmp_path)
-    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2026-10-04"))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2037-10-04"))
     text = _run(admin_roles.render_roles_text())
-    assert "⏳ до 04.10.2026" in text
+    assert "⏳ до 04.10.2037" in text
 
 
 def test_roles_text_shows_expired_marker(tmp_path):
@@ -226,7 +226,7 @@ def test_roles_text_shows_expired_marker(tmp_path):
 
 def test_roles_keyboard_has_expiry_button_per_row(tmp_path):
     _ready(tmp_path)
-    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2026-10-04"))
+    _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID, expires_at="2037-10-04"))
     kb = _run(admin_roles.build_roles_keyboard(ADMIN_ID))
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert f"rexp:{MANAGER_ID}:reg_manager" in cbs
@@ -240,9 +240,9 @@ def _grant(uid, role, *, by=ADMIN_ID, expires_at=None):
 
 def test_rexp_screen_shows_current_expiry(tmp_path):
     _ready(tmp_path)
-    _grant(MANAGER_ID, "reg_manager", expires_at="2026-10-04")
+    _grant(MANAGER_ID, "reg_manager", expires_at="2037-10-04")
     result, event = dispatch_callback(f"rexp:{MANAGER_ID}:reg_manager", ADMIN_ID)
-    assert "до 04.10.2026" in event.message.text
+    assert "до 04.10.2037" in event.message.text
 
 
 def test_rexp_screen_hides_forum_button_without_forum_date(tmp_path):
@@ -255,11 +255,11 @@ def test_rexp_screen_hides_forum_button_without_forum_date(tmp_path):
 
 def test_rexp_go_forum_sets_expiry_from_forum_date(tmp_path):
     _ready(tmp_path)
-    _run(db.set_setting("forum_date", "03.10.2026"))
+    _run(db.set_setting("forum_date", "03.10.2037"))
     _run(db.set_setting("sos_active_days", "1"))
     _grant(MANAGER_ID, "reg_manager")
     expected = _run(forum_end_date_iso(None))
-    assert expected == "2026-10-04"  # 03.10 однодневный форум -> истекает с 05.10 -> ISO 04.10 включительно
+    assert expected == "2037-10-04"  # 03.10 однодневный форум -> истекает с 05.10 -> ISO 04.10 включительно
 
     result, event = dispatch_callback(f"rexp_go:{MANAGER_ID}:reg_manager:forum", ADMIN_ID)
     staff = _run(db.list_staff())
@@ -268,7 +268,7 @@ def test_rexp_go_forum_sets_expiry_from_forum_date(tmp_path):
 
 def test_rexp_go_none_clears_expiry(tmp_path):
     _ready(tmp_path)
-    _grant(MANAGER_ID, "reg_manager", expires_at="2026-10-04")
+    _grant(MANAGER_ID, "reg_manager", expires_at="2037-10-04")
     dispatch_callback(f"rexp_go:{MANAGER_ID}:reg_manager:none", ADMIN_ID)
     staff = _run(db.list_staff())
     assert staff[0]["expires_at"] is None
@@ -279,9 +279,9 @@ def test_rexp_custom_date_step_sets_expiry(tmp_path):
     _grant(MANAGER_ID, "reg_manager")
     state = _fresh_state(ADMIN_ID)
     dispatch_callback(f"rexp_custom:{MANAGER_ID}:reg_manager", ADMIN_ID, state=state)
-    dispatch_message("04.10.2026", ADMIN_ID, raw_state="RolesExpiryEdit:waiting_date", state=state)
+    dispatch_message("04.10.2037", ADMIN_ID, raw_state="RolesExpiryEdit:waiting_date", state=state)
     staff = _run(db.list_staff())
-    assert staff[0]["expires_at"] == "2026-10-04"
+    assert staff[0]["expires_at"] == "2037-10-04"
 
 
 def test_rexp_custom_date_step_rejects_bad_format(tmp_path):
@@ -311,11 +311,11 @@ def test_rexp_requires_settings_capability(tmp_path):
 # ── services/staff_expiry.py: разбор дат, парность строк ────────────────────────────────────
 
 def test_parse_ddmmyyyy_valid():
-    assert parse_ddmmyyyy("04.10.2026") == "2026-10-04"
+    assert parse_ddmmyyyy("04.10.2037") == "2037-10-04"
 
 
 def test_parse_ddmmyyyy_invalid_returns_none():
-    assert parse_ddmmyyyy("31.02.2026") is None
+    assert parse_ddmmyyyy("31.02.2037") is None
     assert parse_ddmmyyyy("не дата") is None
 
 

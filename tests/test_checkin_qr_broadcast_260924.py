@@ -34,7 +34,7 @@ def _seed_user(tid, *, event_city=None, full_name=None, status="approved", seaso
     _run(db.add_user({
         "telegram_id": tid,
         "full_name": full_name or f"Delegate {tid}",
-        "registration_date": "2026-01-01 00:00:00",
+        "registration_date": "2037-01-01 00:00:00",
         "event_city": event_city,
     }))
     conn = sqlite3.connect(config.DB_PATH)
@@ -103,13 +103,13 @@ def test_job_ids_default_to_all_without_city():
 
 
 def test_evening_run_at_is_day_before_at_given_time():
-    dt = cb.evening_run_at("03.10.2026", "18:00")
-    assert dt == datetime(2026, 10, 2, 18, 0, 0)
+    dt = cb.evening_run_at("03.10.2037", "18:00")
+    assert dt == datetime(2037, 10, 2, 18, 0, 0)
 
 
 def test_morning_run_at_is_same_day_at_given_time():
-    dt = cb.morning_run_at("03.10.2026", "08:00")
-    assert dt == datetime(2026, 10, 3, 8, 0, 0)
+    dt = cb.morning_run_at("03.10.2037", "08:00")
+    assert dt == datetime(2037, 10, 3, 8, 0, 0)
 
 
 def test_run_at_none_without_forum_date():
@@ -141,7 +141,7 @@ def test_schedule_city_jobs_skipped_without_forum_date(tmp_path, monkeypatch):
 def test_schedule_city_jobs_creates_both_jobs_with_forum_date(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("forum_date", "03.10.2037"))
     _run(_set_setting("checkin_qr_broadcast_time", "18:00"))
     _run(_set_setting("checkin_qr_morning_repeat_time", "08:00"))
 
@@ -151,8 +151,8 @@ def test_schedule_city_jobs_creates_both_jobs_with_forum_date(tmp_path, monkeypa
         ev_job = s.get_job(cb.evening_job_id(None))
         morn_job = s.get_job(cb.morning_job_id(None))
         assert ev_job is not None and morn_job is not None
-        assert ev_job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 2, 18, 0, 0)
-        assert morn_job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+        assert ev_job.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 2, 18, 0, 0)
+        assert morn_job.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 8, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -160,7 +160,7 @@ def test_schedule_city_jobs_creates_both_jobs_with_forum_date(tmp_path, monkeypa
 def test_schedule_city_jobs_removed_when_master_toggle_off(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "off"))
-    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         result = await cb.schedule_city_jobs(None)
@@ -175,15 +175,15 @@ def test_schedule_city_jobs_reschedules_on_forum_date_change(tmp_path, monkeypat
     прежнюю (тот же replace_existing=True приём, что у wave_start)."""
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         await cb.schedule_city_jobs(None)
-        await _set_setting("forum_date", "10.10.2026")
+        await _set_setting("forum_date", "10.10.2037")
         await cb.schedule_city_jobs(None)
         jobs = [j for j in s.get_jobs() if j.id == cb.evening_job_id(None)]
         assert len(jobs) == 1
-        assert jobs[0].next_run_time.replace(tzinfo=None) == datetime(2026, 10, 9, 18, 0, 0)
+        assert jobs[0].next_run_time.replace(tzinfo=None) == datetime(2037, 10, 9, 18, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -191,7 +191,7 @@ def test_schedule_city_jobs_reschedules_on_forum_date_change(tmp_path, monkeypat
 def test_schedule_city_jobs_removed_when_forum_date_cleared(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         await cb.schedule_city_jobs(None)
@@ -217,7 +217,7 @@ def test_reconcile_cancels_jobs_of_city_disabled_after_scheduling(tmp_path, monk
     _ready(tmp_path)
     _run(_set_setting("event_city_enabled", "on"))
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date__city__spb", "03.10.2026"))
+    _run(_set_setting("forum_date__city__spb", "03.10.2037"))
 
     async def body(s):
         await cb.schedule_city_jobs("spb")
@@ -239,7 +239,7 @@ def test_reconcile_leaves_all_city_sentinel_jobs_alone(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(_set_setting("event_city_enabled", "off"))
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date", "03.10.2026"))
+    _run(_set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         await cb.schedule_city_jobs(None)
@@ -286,8 +286,8 @@ def test_evening_job_sends_normally_when_city_still_enabled(tmp_path, monkeypatc
     рассылка по-прежнему включены."""
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
-    _run(_set_setting("forum_date", "03.10.2026"))
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0, 0))
+    _run(_set_setting("forum_date", "03.10.2037"))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 18, 0, 0))
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
 
@@ -350,9 +350,9 @@ def test_send_broadcast_ignores_mute_today(tmp_path, monkeypatch):
     заглушку не проверяет вовсе, замьюченный делегат получает QR как обычно."""
     _ready(tmp_path)
     _seed_user(UID, status="approved")
-    _run(db.set_broadcast_mute(UID, "2026-10-02"))
+    _run(db.set_broadcast_mute(UID, "2037-10-02"))
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 12, 0, 0))
 
     result = _run(cb.send_broadcast(None))
     assert result["sent"] == 1
@@ -411,13 +411,13 @@ def test_send_morning_repeat_only_unconfirmed(tmp_path, monkeypatch):
     _seed_user(UID, status="approved")
     _seed_user(UID + 1, status="approved")
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))  # накануне
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 18, 0))  # накануне
     _run(cb.send_broadcast(None))
     assert len(bot.photos) == 2
 
     _run(cb.confirm_receipt(UID))  # UID подтвердил, UID+1 — нет
 
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))  # утро форума
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 8, 0))  # утро форума
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1
     assert bot.photos[-1][0] == UID + 1  # только неподтвердивший получил повтор
@@ -446,7 +446,7 @@ def test_send_morning_repeat_includes_newly_approved_and_never_sent(tmp_path, mo
     _seed_user(UID + 1, status="pending")  # ещё не одобрен на момент вечерней рассылки
     bot = _with_bot(monkeypatch)
 
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))  # накануне
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 18, 0))  # накануне
     _run(cb.send_broadcast(None))
     assert len(bot.photos) == 1  # только UID получил QR вечером
     _run(cb.confirm_receipt(UID))  # UID подтвердил — не должен получить повтор
@@ -456,7 +456,7 @@ def test_send_morning_repeat_includes_newly_approved_and_never_sent(tmp_path, mo
     conn.commit()
     conn.close()
 
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))  # утро форума
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 8, 0))  # утро форума
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1
     assert bot.photos[-1][0] == UID + 1
@@ -549,8 +549,8 @@ def test_send_broadcast_translates_caption_for_english_delegate(tmp_path, monkey
 def test_checkin_qr_mark_sent_is_idempotent(tmp_path):
     _ready(tmp_path)
     _seed_user(UID, status="approved")
-    first = _run(db.checkin_qr_mark_sent(UID, "spb", "2026-10-02 18:00:00"))
-    second = _run(db.checkin_qr_mark_sent(UID, "spb", "2026-10-02 18:05:00"))
+    first = _run(db.checkin_qr_mark_sent(UID, "spb", "2037-10-02 18:00:00"))
+    second = _run(db.checkin_qr_mark_sent(UID, "spb", "2037-10-02 18:05:00"))
     assert first is True
     assert second is False
     got, _confirmed = _run(db.checkin_qr_send_counts())
@@ -577,7 +577,7 @@ def test_send_broadcast_ignores_quiet_hours_when_inside_window(tmp_path, monkeyp
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
     _set_quiet_hours()
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 23, 0, 0))
 
     result = _run(cb.send_broadcast(None))
     assert result["sent"] == 1
@@ -590,7 +590,7 @@ def test_send_morning_repeat_ignores_quiet_hours_when_inside_window(tmp_path, mo
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
     _set_quiet_hours()
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 8, 0, 0))
 
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1
@@ -604,7 +604,7 @@ def test_send_broadcast_sends_normally_outside_quiet_hours(tmp_path, monkeypatch
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
     _set_quiet_hours()
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 12, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 12, 0, 0))
 
     result = _run(cb.send_broadcast(None))
     assert result["sent"] == 1
@@ -617,7 +617,7 @@ def test_send_broadcast_ignores_quiet_hours_when_disabled(tmp_path, monkeypatch)
     _ready(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 23, 0, 0))
 
     result = _run(cb.send_broadcast(None))
     assert result["sent"] == 1
@@ -682,7 +682,7 @@ def test_send_broadcast_lock_released_after_completion(tmp_path, monkeypatch):
 # рестарт бота слал QR неподтвердившим через минуту)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def _forum_setup(tmp_path, forum_date="03.10.2026"):
+def _forum_setup(tmp_path, forum_date="03.10.2037"):
     _ready(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "on"))
     _run(_set_setting("forum_date", forum_date))
@@ -695,7 +695,7 @@ def test_schedule_city_jobs_past_forum_date_leaves_no_jobs(tmp_path, monkeypatch
 
     async def body(s):
         await cb.schedule_city_jobs(None)  # поставлены заранее, до форума
-        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 3, 0, 0))
+        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 4, 3, 0, 0))
         result = await cb.schedule_city_jobs(None)
         assert result == {"scheduled": False, "reason": "past"}
         assert s.get_job(cb.evening_job_id(None)) is None
@@ -706,7 +706,7 @@ def test_schedule_city_jobs_past_forum_date_leaves_no_jobs(tmp_path, monkeypatch
 
 def test_schedule_city_jobs_forum_today_morning_ahead_evening_skipped(tmp_path, monkeypatch):
     _forum_setup(tmp_path)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 7, 0, 0))
 
     async def body(s):
         result = await cb.schedule_city_jobs(None)
@@ -714,7 +714,7 @@ def test_schedule_city_jobs_forum_today_morning_ahead_evening_skipped(tmp_path, 
         assert result["evening_at"] is None
         assert s.get_job(cb.evening_job_id(None)) is None
         morn = s.get_job(cb.morning_job_id(None))
-        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 8, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -722,7 +722,7 @@ def test_schedule_city_jobs_forum_today_morning_ahead_evening_skipped(tmp_path, 
 def test_schedule_city_jobs_evening_passed_forum_tomorrow_catches_up(tmp_path, monkeypatch):
     """Менеджер включил рассылку в 20:00 накануне — вечерняя уходит через минуту."""
     _forum_setup(tmp_path)
-    now = datetime(2026, 10, 2, 20, 0, 0)
+    now = datetime(2037, 10, 2, 20, 0, 0)
     monkeypatch.setattr(cb, "msk_now", lambda: now)
 
     async def body(s):
@@ -731,7 +731,7 @@ def test_schedule_city_jobs_evening_passed_forum_tomorrow_catches_up(tmp_path, m
         ev = s.get_job(cb.evening_job_id(None))
         assert ev.next_run_time.replace(tzinfo=None) == now + timedelta(minutes=1)
         morn = s.get_job(cb.morning_job_id(None))
-        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 8, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -741,7 +741,7 @@ def test_schedule_city_jobs_forum_today_morning_long_passed_no_jobs(tmp_path, mo
 
     async def body(s):
         await cb.schedule_city_jobs(None)
-        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 12, 0, 0))
+        monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 12, 0, 0))
         result = await cb.schedule_city_jobs(None)
         assert result["scheduled"] is False
         assert s.get_job(cb.evening_job_id(None)) is None
@@ -754,7 +754,7 @@ def test_schedule_city_jobs_morning_catchup_only_for_pending_job(tmp_path, monke
     """Рестарт в 08:01 — не сработавшая утренняя джоба догоняется; а если она уже сработала
     (в хранилище её нет), повторная сверка второй повтор не ставит."""
     _forum_setup(tmp_path)
-    now = datetime(2026, 10, 3, 8, 1, 0)
+    now = datetime(2037, 10, 3, 8, 1, 0)
 
     async def body(s):
         await cb.schedule_city_jobs(None)
@@ -781,16 +781,16 @@ def test_evening_job_wrong_day_skips_and_reschedules(tmp_path, monkeypatch):
     _forum_setup(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 18, 0, 0))
 
     async def body(s):
-        await _set_setting("forum_date", "10.10.2026")
+        await _set_setting("forum_date", "10.10.2037")
         result = await cb._run_evening_job(None)
         assert result.get("skipped") == "wrong_day"
         assert bot.photos == []
         assert await db.checkin_qr_sent_ids() == set()
         ev = s.get_job(cb.evening_job_id(None))
-        assert ev.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 9, 18, 0, 0)
+        assert ev.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 9, 18, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -799,15 +799,15 @@ def test_morning_job_only_on_forum_day(tmp_path, monkeypatch):
     _forum_setup(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 8, 0, 0))
 
     async def body(s):
-        await _set_setting("forum_date", "10.10.2026")
+        await _set_setting("forum_date", "10.10.2037")
         result = await cb._run_morning_job(None)
         assert result.get("skipped") == "wrong_day"
         assert bot.photos == []
 
-        await _set_setting("forum_date", "03.10.2026")
+        await _set_setting("forum_date", "03.10.2037")
         result = await cb._run_morning_job(None)
         assert result["sent"] == 1
 
@@ -819,7 +819,7 @@ def test_reconcile_forum_jobs_picks_up_miniapp_edit(tmp_path, monkeypatch):
     джобы; повторный проход ничего не дублирует."""
     _forum_setup(tmp_path)
     _run(_set_setting("checkin_qr_enabled", "off"))
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 9, 24, 12, 0, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 9, 24, 12, 0, 0))
 
     async def body(s):
         await cb.reconcile_forum_jobs()
@@ -861,7 +861,7 @@ def test_init_scheduler_registers_forum_reconcile_interval(tmp_path, monkeypatch
 
 def test_schedule_city_jobs_eve_2159_catches_up(tmp_path, monkeypatch):
     _forum_setup(tmp_path)
-    now = datetime(2026, 10, 2, 21, 59, 0)
+    now = datetime(2037, 10, 2, 21, 59, 0)
     monkeypatch.setattr(cb, "msk_now", lambda: now)
 
     async def body(s):
@@ -873,14 +873,14 @@ def test_schedule_city_jobs_eve_2159_catches_up(tmp_path, monkeypatch):
 
 def test_schedule_city_jobs_eve_2201_no_evening_morning_stays(tmp_path, monkeypatch):
     _forum_setup(tmp_path)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 22, 1, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 22, 1, 0))
 
     async def body(s):
         result = await cb.schedule_city_jobs(None)
         assert result["evening_at"] is None
         assert s.get_job(cb.evening_job_id(None)) is None
         morn = s.get_job(cb.morning_job_id(None))
-        assert morn.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 3, 8, 0, 0)
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 8, 0, 0)
 
     _run_scheduled(tmp_path, monkeypatch, body)
 
@@ -892,7 +892,7 @@ def test_send_morning_repeat_skips_who_got_qr_manually_this_morning(tmp_path, mo
     _seed_user(UID, status="approved")
     _seed_user(UID + 1, status="approved")
     bot = _with_bot(monkeypatch)
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 18, 0))
     conn = sqlite3.connect(config.DB_PATH)
     conn.execute("UPDATE users SET status = 'pending' WHERE telegram_id = ?", (UID + 1,))
     conn.commit()
@@ -902,9 +902,9 @@ def test_send_morning_repeat_skips_who_got_qr_manually_this_morning(tmp_path, mo
     conn.execute("UPDATE users SET status = 'approved' WHERE telegram_id = ?", (UID + 1,))
     conn.commit()
     conn.close()
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 7, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 7, 0))
     _run(cb.send_broadcast(None))  # утром вручную: UID+1
     assert [p[0] for p in bot.photos] == [UID, UID + 1]
-    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 3, 8, 0))
     result = _run(cb.send_morning_repeat(None))
     assert result["sent"] == 1 and bot.photos[-1][0] == UID  # вечерний неподтвердивший — да

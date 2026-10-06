@@ -213,7 +213,7 @@ def test_extract_volunteer_invite_code():
 def test_cmd_start_grants_volunteer_role_and_stops_before_registration_flow(tmp_path):
     _ready(tmp_path)
     _run(db.set_setting("volunteer_invite_enabled", "on"))
-    _run(db.create_volunteer_invite("c1", None, ADMIN_ID, None, "2026-10-04", None))
+    _run(db.create_volunteer_invite("c1", None, ADMIN_ID, None, "2037-10-04", None))
     bot = FakeBot()
     msg = _FakeMessage(VOLUNTEER_ID, username="vol1", full_name="Волонтёр Один")
     _run(reg.cmd_start(msg, _new_state(VOLUNTEER_ID), bot=bot, command=_FakeCommand("vol_c1")))
@@ -221,7 +221,7 @@ def test_cmd_start_grants_volunteer_role_and_stops_before_registration_flow(tmp_
     roles = _run(db.get_staff_roles(VOLUNTEER_ID))
     assert roles == ["volunteer"]
     staff = _run(db.list_staff())
-    assert staff[0]["expires_at"] == "2026-10-04"
+    assert staff[0]["expires_at"] == "2037-10-04"
     # welcome text + шпаргалка волонтёра -- ДВА сообщения, ни одного текста анкеты/меню.
     assert any("волонт" in a.lower() or "welcome" in a.lower() or a for a in msg.answers)
 
@@ -467,12 +467,12 @@ def test_create_link_wizard_custom_date_step(tmp_path):
 
     dispatch_callback("volinvite_new:_all", ADMIN_ID, state=state)
     dispatch_callback("volinv_le:custom", ADMIN_ID, state=state)
-    dispatch_message("04.10.2026", ADMIN_ID, raw_state="VolunteerInviteWizard:waiting_link_date", state=state)
+    dispatch_message("04.10.2037", ADMIN_ID, raw_state="VolunteerInviteWizard:waiting_link_date", state=state)
     dispatch_callback("volinv_re:forum", ADMIN_ID, state=state)  # без forum_date -> откажет
     dispatch_callback("volinv_lim:0", ADMIN_ID, state=state)
 
     invites = _run(db.list_volunteer_invites())
-    assert invites[0]["link_expires_at"] == "2026-10-04"
+    assert invites[0]["link_expires_at"] == "2037-10-04"
     assert invites[0]["max_uses"] is None  # "без лимита"
 
 
@@ -554,15 +554,15 @@ def test_invite_list_shows_link_not_code(tmp_path):
 
 def test_invite_list_expiry_phrasing_no_do_bessrochno(tmp_path):
     """«права волонтёра до бессрочно» — сломанный падеж; правильно «бессрочно» без «до»,
-    и «до 04.10.2026», когда срок задан."""
+    и «до 04.10.2037», когда срок задан."""
     _ready(tmp_path)
     _run(db.set_setting("volunteer_invite_enabled", "on"))
-    _run(db.create_volunteer_invite("expc1", None, ADMIN_ID, "2026-10-04", None, None))
+    _run(db.create_volunteer_invite("expc1", None, ADMIN_ID, "2037-10-04", None, None))
 
     result, event = dispatch_callback("volinvite_cfg:_all", ADMIN_ID)
     text, _parse_mode, _kb = event.message.answers[-1]
     assert "до бессрочно" not in text
-    assert "ссылка: до 04.10.2026" in text
+    assert "ссылка: до 04.10.2037" in text
     assert "права волонтёра: бессрочно" in text
 
 
