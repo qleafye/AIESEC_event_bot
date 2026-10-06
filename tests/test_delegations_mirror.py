@@ -57,12 +57,20 @@ def test_update_existing_by_id(ws):
     res = dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002", {"q1": "Новое ФИО"}), _st())])
     assert res == (0, 1, [])
     row = ws.rows[2]
-    assert row[:3] == before[2][:3]  # A/B/C не тронуты
-    assert row[3] == "Новое ФИО"
+    assert row[:12] == before[2][:12]  # A..L (в т.ч. ручные правки команды) не тронуты
     assert row[12] == "⏳ не заходил"
     assert len(ws.rows) == len(before)
     assert not any(c[0] == "append_rows" for c in ws.calls)
-    assert all(r.startswith(("D3:", "M1")) for r in _ranges(ws))
+    assert all(r.startswith(("M3", "M1")) for r in _ranges(ws))
+
+
+def test_update_never_blanks_manual_edits(ws):
+    """Ответ из формы с пустыми значениями не затирает то, что в D..L написали руками."""
+    before = [list(r) for r in ws.rows]
+    empty = _answer("2516200002", {f"q{i}": "" for i in range(1, 10)})
+    dm.write_export_sync(TAB, _columns(), [(1, empty, _st("ok", linked=True))])
+    assert ws.rows[2][:12] == before[2][:12]
+    assert ws.rows[2][12] == "✅ зашёл"
 
 
 def test_new_row_after_last_nonempty(ws):
@@ -180,11 +188,11 @@ def test_column_map_by_header_labels(ws):
     assert cmap["q3"] == 10  # J по подписи, не по позиции
     assert cmap["q1"] == 4 and cmap["q9"] == 12
     assert "q10" not in cmap and extra == ["Любимый цвет"]
-    ans = _answer("2516200001", {"q3": "@nick", "q10": "синий"}, columns=columns)
+    ans = _answer("2516200077", {"q3": "@nick", "q10": "синий"}, columns=columns)
     res = dm.write_export_sync(TAB, columns, [(1, ans, _st())])
-    assert res == (0, 1, ["Любимый цвет"])
-    assert ws.rows[1][9] == "@nick"
-    assert "синий" not in ws.rows[1]
+    assert res == (1, 0, ["Любимый цвет"])
+    assert ws.rows[8][9] == "@nick"  # новая строка пишется по подписям шапки
+    assert "синий" not in ws.rows[8]
     # все вопросы с колонкой -> третий элемент пуст
     assert dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200001"), _st())])[2] == []
 
@@ -201,18 +209,18 @@ def test_column_map_label_normalisation_and_positional_fallback():
 def test_duplicate_ids_in_sheet(ws, caplog):
     ws.rows[6][0] = "2516200002"  # строка 7 дублирует ID строки 3
     with caplog.at_level(logging.WARNING, logger="services.delegations_mirror"):
-        dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002", {"q1": "X"}), _st())])
-    assert ws.rows[2][3] == "X" and ws.rows[6][3] != "X"
+        dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002", {"q1": "X"}), _st("no"))])
+    assert ws.rows[2][12] == "— не ЦА" and (len(ws.rows[6]) < 13 or ws.rows[6][12] != "— не ЦА")
     dup_logs = [r for r in caplog.records if "дубл" in r.getMessage().lower()]
     assert len(dup_logs) == 1
     assert "Тест Тестов" not in dup_logs[0].getMessage()
 
 
 def test_cell_safety(ws):
-    dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200001", {"q1": "=1+1", "q7": "@nick"}), _st())])
+    dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200088", {"q1": "=1+1", "q7": "@nick"}), _st())])
     from database.db import _sheet_safe
-    assert ws.rows[1][3] == _sheet_safe("=1+1")
-    assert ws.rows[1][9] == _sheet_safe("@nick")
+    assert ws.rows[8][3] == _sheet_safe("=1+1")
+    assert ws.rows[8][9] == _sheet_safe("@nick")
     for c in ws.calls:
         if c[0] == "batch_update":
             assert c[2] == mir._raw()
