@@ -149,6 +149,15 @@ async def link(row_id: int, telegram_id: int, how: str) -> bool:
     return n > 0
 
 
+async def unlink(row_id: int, telegram_id: int) -> None:
+    """Снять привязку, которую только что поставил этот же tid (откат неудавшегося одобрения)."""
+    await _exec(
+        "UPDATE delegation_answers SET linked_telegram_id = NULL, link_how = NULL "
+        "WHERE id = ? AND linked_telegram_id = ?",
+        (row_id, telegram_id),
+    )
+
+
 async def find_pending_by_username(needle: str | None) -> list[dict]:
     """ЦА-ответы без привязки с таким ником (без учёта регистра и ведущего «@»).
     Пустой ник — пустой список без запроса (см. `database.db.username_needle`)."""

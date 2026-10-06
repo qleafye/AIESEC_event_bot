@@ -62,3 +62,45 @@ def test_delegate_without_university_is_still_marked(tmp_path):
     conn = sqlite3.connect(config.DB_PATH)
     assert [r[0] for r in conn.execute(f"SELECT telegram_id FROM users{where}", params)] == [611]
     conn.close()
+
+
+# ---------- CR-06: ответ заявляется до одобрения ----------
+
+def _convert(fid, aid, tid, how="username", by=None):
+    form = _run(dlg.ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(dlg.ef.get_answer(fid, aid)), form,
+                                       _run(dlg.field_keys())))
+    return _run(dlg.convert_to_delegate(tid, row, fields, how=how, by=by))
+
+
+def test_link_conflict_means_no_approval_no_welcome(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(621)
+    _reg_started(622, "other_one")
+    assert _convert(fid, "a1", 621).get("converted")
+    sent = len(bot.sent)
+    res = _convert(fid, "a1", 622)
+    assert res == {"conflict": True}
+    assert _row(622) is None  # анкеты не было и одобрения не будет
+    assert len(bot.sent) == sent
+    assert _drow(fid, "a1")["linked_telegram_id"] == 621
+
+
+def test_failed_approval_releases_claim(tmp_path, monkeypatch):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(623)
+
+    async def boom(tid):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(dlg, "approve_user_atomic", boom)
+    try:
+        _convert(fid, "a1", 623)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("ожидали исключение")
+    assert _drow(fid, "a1")["linked_telegram_id"] is None

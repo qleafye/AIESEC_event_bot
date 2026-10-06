@@ -327,50 +327,64 @@ async def convert_to_delegate(
         # Защита: decide_link обязан был отправить такого в «проверить».
         return {"refused": "rejected_in_bot"}
 
+    # Сначала заявляем ответ за этим человеком: два параллельных пути (синк, /start, ручная
+    # привязка) не должны оба одобрить и оба написать — проигравший уходит с конфликтом.
+    if not await ddb.link(row["id"], tid, how):
+        logger.warning("delegations: ответ %s уже привязан к другому человеку (tid=%s)",
+                       row["id"], tid)
+        return {"conflict": True}
+
     season = (await get_setting("event_season") or "").strip() or None
     city = default_city_code()
     university = fields.get("university")
     needle = fields.get("username_needle")
 
-    if user is None:
-        started = await get_reg_started_by_username(needle) if needle else None
-        username = (started or {}).get("username") or (store_username("@" + needle) if needle else "-")
-        data = reg_engine.with_defaults({
-            "full_name": fields.get("full_name") or "-",
-            "email": fields.get("email") or "-",
-            "university": university or "-",
-            "course": fields.get("course_canonical"),
-            "source": SOURCE_TAG,
-            "event_city": city,
-            "season": season,
-            "participant_type": "full",
-        })
-        data["telegram_id"] = tid
-        data["username"] = username
-        data["registration_date"] = msk_now().strftime(_FMT)
-        await add_user(data)
-        await update_user_answers(tid, {"source_from_tag": 1}, allowed_columns=["source_from_tag"])
-        await set_user_status(tid, "pending")
-        current = "pending"
-    elif prev_status == "rejected":
-        # approve_user_atomic переворачивает только pending — отклонённого иначе не одобрить.
-        await set_user_status(tid, "pending")
-        current = "pending"
-    else:
-        current = prev_status
+    try:
+        if user is None:
+            started = await get_reg_started_by_username(needle) if needle else None
+            username = (started or {}).get("username") or (
+                store_username("@" + needle) if needle else "-")
+            data = reg_engine.with_defaults({
+                "full_name": fields.get("full_name") or "-",
+                "email": fields.get("email") or "-",
+                "university": university or "-",
+                "course": fields.get("course_canonical"),
+                "source": SOURCE_TAG,
+                "event_city": city,
+                "season": season,
+                "participant_type": "full",
+            })
+            data["telegram_id"] = tid
+            data["username"] = username
+            data["registration_date"] = msk_now().strftime(_FMT)
+            await add_user(data)
+            await update_user_answers(tid, {"source_from_tag": 1},
+                                      allowed_columns=["source_from_tag"])
+            await set_user_status(tid, "pending")
+            current = "pending"
+        elif prev_status == "rejected":
+            # approve_user_atomic переворачивает только pending — отклонённого иначе не одобрить.
+            await set_user_status(tid, "pending")
+            current = "pending"
+        else:
+            current = prev_status
 
-    flipped = False
-    if current != "approved":
-        flipped = await approve_user_atomic(tid)
+        flipped = False
+        if current != "approved":
+            flipped = await approve_user_atomic(tid)
 
-    await update_user_answers(
-        tid, {"delegation": (university or "").strip() or UNIVERSITY_UNKNOWN,
-              "delegation_answer_id": answer_id},
-        allowed_columns=_ALLOWED_DELEGATION_COLUMNS,
-    )
-    if not await ddb.link(row["id"], tid, how):
-        logger.warning("delegations: ответ %s уже привязан к другому человеку (tid=%s)",
-                       row["id"], tid)
+        await update_user_answers(
+            tid, {"delegation": (university or "").strip() or UNIVERSITY_UNKNOWN,
+                  "delegation_answer_id": answer_id},
+            allowed_columns=_ALLOWED_DELEGATION_COLUMNS,
+        )
+    except Exception:
+        # Не оставляем ответ «занятым» за человеком, которого так и не одобрили.
+        try:
+            await ddb.unlink(row["id"], tid)
+        except Exception:
+            logger.exception("delegations: привязка не снята после сбоя (tid=%s)", tid)
+        raise
     # Колонка «В боте» листа: единственная точка для всех путей (синк, /start, вручную).
     await _mark_update_fail_soft(row["form_id"], answer_id)
 
@@ -460,10 +474,14 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
                 result["ta"] = "check"
                 changed = True
             elif verdict == "convert":
-                result["converted"] = await convert_to_delegate(
+                conv = await convert_to_delegate(
                     tid, row, fields, how=LINK_HOW_USERNAME, by=row.get("decided_by"),
                 )
-                converted = True
+                if conv.get("conflict"):
+                    result["verdict"] = "conflict"
+                else:
+                    result["converted"] = conv
+                    converted = True
             elif verdict == "conflict":
                 logger.warning("delegations: ответ %s формы %s привязан к другому (tid=%s)",
                                answer_id, form_id, tid)
@@ -504,9 +522,9 @@ async def try_delegate_start(message, state, bot) -> bool:
         return False
     fields = extract_fields(form, answer.get("payload") or [], await field_keys())
     fields["course_canonical"] = row.get("course_canonical")
-    await convert_to_delegate(tid, row, fields, how=LINK_HOW_USERNAME,
-                              by=row.get("decided_by"), bot=bot)
-    return True
+    res = await convert_to_delegate(tid, row, fields, how=LINK_HOW_USERNAME,
+                                    by=row.get("decided_by"), bot=bot)
+    return bool(res.get("converted"))
 
 
 async def sweep_pending(limit: int = 200, *, reevaluate: bool = False) -> dict:
