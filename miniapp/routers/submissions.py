@@ -65,7 +65,7 @@ from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
 from miniapp.config import MAX_PARTS, MAX_TEXT_PART, MAX_UPLOAD_BYTES, MULTIPART_SLACK, PHOTO_MAX_BYTES
-from miniapp.deps import Principal, UploadActor, delegate_gate, require_section, upload_actor
+from miniapp.deps import Principal, UploadActor, game_gate, require_section, upload_actor
 from miniapp.outbox import enqueue
 from miniapp.routers.tasks import submission_state
 from miniapp.telegram_api import TelegramApiError
@@ -386,7 +386,7 @@ def _normalize_part(p: PartIn) -> dict:
 @router.post("/app/api/submissions")
 async def create_submission_route(
     body: SubmissionIn, request: Request,
-    p: Principal = Depends(delegate_gate),
+    p: Principal = Depends(game_gate),
     _: Principal = Depends(require_section("tasks")),
 ) -> dict:
     cfg = request.app.state.cfg
