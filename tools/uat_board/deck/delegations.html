@@ -139,7 +139,7 @@
   <h2>От формы до входа на форум</h2>
   <div style="display:flex; align-items:stretch; justify-content:space-between; gap:12px; flex:1; max-height:460px"><!--row-->
     <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Форма Насти</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Делегат заполняет её на Яндексе</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-    <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Бот забирает</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Сам, в течение 5 минут</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Бот забирает</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Сам: обычно сразу, максимум через 10 минут</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div class="card" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Узнаёт по @нику</h3><p style="font-size:29px; line-height:1.35; color:var(--muted)">Ник из формы совпал с ником в Telegram</p></div><div style="display:flex; align-items:center"><svg width="64" height="40" viewBox="0 0 64 40" style="flex:none" aria-hidden="true"><path d="M4 20h50M40 6l16 14-16 14" fill="none" stroke="#037EF3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div class="card bl" style="padding:36px 28px; gap:16px; width:300px; flex:none; justify-content:center"><h3 style="font-size:38px">Одобрен</h3><p style="font-size:29px; line-height:1.35; ">Участник Москвы, анкета не нужна</p></div>
   </div>
@@ -147,7 +147,7 @@
     <h3>Дальше всё как у обычного участника</h3>
     <p class="mut" style="font-size:30px">QR на вход, отметка прихода в общей статистике, обычные рассылки. Отдельной кнопки «Делегация» в меню нет.</p>
   </div>
-</section></div></div><div class="meta"><div class="num">3 / 21 · Путь в двух словах</div><p class="aside">Цепочка одна на всех. Ответ формы подхватывается автоматически, до 5 минут после отправки. Если человек уже открыл бота, он получит сообщение сразу, как только бот его узнает; если нет, одобрение ждёт его первого /start.</p></div></div>
+</section></div></div><div class="meta"><div class="num">3 / 21 · Путь в двух словах</div><p class="aside">Цепочка одна на всех. Ответ формы подхватывается автоматически: обычно сразу после отправки, а если Яндекс не прислал сигнал, бот сам доберёт его в течение 10 минут. Если человек уже открыл бота, он получит сообщение сразу, как только бот его узнает; если нет, одобрение ждёт его первого /start.</p></div></div>
 <div class="unit" id="u-ta"><div class="frame"><div class="stage">
 <section class="s">
   <div style="display:flex; flex-direction:column; gap:16px">
@@ -372,7 +372,7 @@
   <div style="display:flex; flex-direction:column; gap:24px; flex:1">
     <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">В нике опечатка</h3><p class="mut" style="font-size:29px; line-height:1.4">Бот человека не найдёт. Он появится в «⏳ Не зашли», менеджер привязывает его вручную.</p></div>
     <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Человек сменил ник</h3><p class="mut" style="font-size:29px; line-height:1.4">То же самое: ручная привязка. По фамилии бот ник не ищет.</p></div>
-    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Открыл бота раньше, чем пришёл ответ формы</h3><p class="mut" style="font-size:29px; line-height:1.4">Ничего страшного. Как только форма подтянется (до 5 минут), бот сам сделает его делегатом и пришлёт сообщение.</p></div>
+    <div class="card" style="padding:32px 40px; gap:14px"><h3 style="font-size:36px">Открыл бота раньше, чем пришёл ответ формы</h3><p class="mut" style="font-size:29px; line-height:1.4">Ничего страшного. Как только ответ формы подтянется (обычно сразу, максимум через 10 минут), бот сам сделает его делегатом и пришлёт сообщение.</p></div>
   </div>
 </section></div></div><div class="meta"><div class="num">19 / 21 · Частые вопросы, 1</div><p class="aside">Все три случая решаются без разработчика.</p></div></div>
 <div class="unit" id="u-faq2"><div class="frame"><div class="stage">
