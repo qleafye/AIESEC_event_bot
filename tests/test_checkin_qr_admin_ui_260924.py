@@ -252,7 +252,11 @@ def test_send_go_ignores_quiet_hours(tmp_path, monkeypatch):
     asyncio.run(db.set_setting("quiet_hours_enabled", "on"))
     asyncio.run(db.set_setting("quiet_hours_start", "22:00"))
     asyncio.run(db.set_setting("quiet_hours_end", "09:00"))
-    monkeypatch.setattr(broadcast_svc, "msk_now", lambda: datetime(2026, 10, 2, 23, 0, 0))
+    # 23:00 накануне форума: дата форума выше берётся от реального «сегодня», поэтому и «сейчас»
+    # считаем от него, а не фиксированной датой (иначе тест протухает, как только дата прошла).
+    from services.timeutil import msk_now as real_msk_now
+    evening = real_msk_now().replace(hour=23, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(broadcast_svc, "msk_now", lambda: evening)
 
     async def body(s):
         cb = _FakeCallback("checkinqr_send_go:_all", ADMIN_ID)
@@ -292,7 +296,7 @@ def test_cfg_screen_shows_forum_date_warning_when_unset(tmp_path):
 def test_cfg_screen_no_warning_when_forum_date_set(tmp_path):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2037"))
     cb = _FakeCallback("checkinqr_cfg:_all", ADMIN_ID)
     asyncio.run(admin_checkin.checkinqr_cfg_screen(cb))
     text = cb.message.sent[0][0]
@@ -305,7 +309,7 @@ def test_cfg_screen_no_quiet_hours_warning_at_all(tmp_path):
     сообщение, время не может «увести» отправку."""
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2037"))
     asyncio.run(db.set_setting("quiet_hours_enabled", "on"))
     asyncio.run(db.set_setting("quiet_hours_start", "22:00"))
     asyncio.run(db.set_setting("quiet_hours_end", "09:00"))
@@ -319,7 +323,7 @@ def test_cfg_screen_no_quiet_hours_warning_at_all(tmp_path):
 def test_toggle_go_flips_setting_and_reschedules_without_crashing(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         # Дефолт "on" (без явной настройки) -> первый тап выключает per_city рассылку и снимает
@@ -374,7 +378,7 @@ def test_time_step_rejects_bad_format_and_stays_helpful(tmp_path):
 def test_time_step_saves_valid_value_and_reschedules(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2037"))
 
     async def body(s):
         state = _new_state(ADMIN_ID)
@@ -399,7 +403,7 @@ def test_time_step_scoped_to_city_when_cities_module_on(tmp_path, monkeypatch):
     # ничего дополнительно заводить не нужно, только включить модуль.
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2037"))
 
     async def body(s):
         state = _new_state(ADMIN_ID)
@@ -478,7 +482,7 @@ def test_reschedule_hook_composite_key_touches_only_that_city(tmp_path, monkeypa
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2037"))
 
     async def body(s):
         await _reschedule_checkin_qr_if_forum_date("forum_date__city__spb")
@@ -497,8 +501,8 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
-    asyncio.run(db.set_setting("forum_date", "10.10.2026"))  # общий фолбэк — держит tyumen/msk
-    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2026"))  # свой override
+    asyncio.run(db.set_setting("forum_date", "10.10.2037"))  # общий фолбэк — держит tyumen/msk
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2037"))  # свой override
 
     async def body(s):
         await _reschedule_checkin_qr_if_forum_date("forum_date")
@@ -527,11 +531,11 @@ def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, mon
     from handlers import admin_settings
 
     _db_ready(tmp_path)
-    asyncio.run(db.set_setting("forum_date", "03.10.2026"))
+    asyncio.run(db.set_setting("forum_date", "03.10.2037"))
     asyncio.run(db.set_setting("checkin_volunteer_guide_text", "🎫 Шпаргалка"))
-    monkeypatch.setattr(broadcast_svc, "msk_now", lambda: datetime(2026, 9, 24, 12, 0))
+    monkeypatch.setattr(broadcast_svc, "msk_now", lambda: datetime(2037, 9, 24, 12, 0))
     import services.checkin_volunteer_broadcast as vb
-    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2026, 9, 24, 12, 0))
+    monkeypatch.setattr(vb, "msk_now", lambda: datetime(2037, 9, 24, 12, 0))
 
     async def body(s):
         assert s.get_jobs() == []
