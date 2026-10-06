@@ -430,6 +430,8 @@ async def show_leaderboard(message: types.Message):
         return
     if not await ensure_current_season(message):
         return
+    if not await ensure_game_allowed(message):
+        return
     rows = await get_leaderboard(10)
     rank = await get_user_rank(message.from_user.id)
     balance = await get_balance(message.from_user.id)

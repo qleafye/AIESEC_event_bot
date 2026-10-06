@@ -32,7 +32,8 @@ from services import amb_progress, amb_screen, applications, i18n, reg_edit_poli
 from settings_schema import get_setting_typed
 from services.text_fill import fill_collapsing
 
-from miniapp.deps import Principal, delegate_gate, form_gate
+from dashboard.db import read_conn
+from miniapp.deps import Principal, delegate_gate, form_gate, game_denial
 from miniapp.routers.coins import count_participants
 from miniapp.routers.tasks import delegate_city_scope, tasks_progress
 from miniapp.timeutil import today_msk
@@ -236,9 +237,16 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
 
-    done, total = await tasks_progress(p.telegram_id, await delegate_city_scope(p.telegram_id))
-    tasks_fact_text = await i18n.tr_setting("miniapp_hub_tasks_fact_text", lang, tr_map)
-    tasks_fact = tasks_fact_text.format(done=done, total=total) if tasks_fact_text else None
+    # Делегация вуза при выключенной геме: ни числа заданий, ни числа участников рейтинга хаб
+    # не отдаёт — иначе плиты показывали бы игру, которой для этого человека нет.
+    with read_conn(request.app.state.cfg.db_path) as conn:
+        game_off = game_denial(conn, p) is not None
+
+    tasks_fact = None
+    if not game_off:
+        done, total = await tasks_progress(p.telegram_id, await delegate_city_scope(p.telegram_id))
+        tasks_fact_text = await i18n.tr_setting("miniapp_hub_tasks_fact_text", lang, tr_map)
+        tasks_fact = tasks_fact_text.format(done=done, total=total) if tasks_fact_text else None
 
     countdown_date = await get_setting_typed_for_city("miniapp_hub_countdown_date", event_city)
     days = _days_until(countdown_date)
@@ -251,9 +259,11 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
     # Плита списочного экрана «Рейтинг» (план 23.1-06): «из {total}» подставляется здесь —
     # число участников известно ручке (тот же count_participants, что у /coins/balance и
     # /leaderboard), отдавать шаблон с недоставленной подстановкой нельзя.
-    rank_unit_text = await i18n.tr_setting("miniapp_leaderboard_plate_unit", lang, tr_map)
-    total_participants = await count_participants()
-    rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
+    rank_unit = None
+    if not game_off:
+        rank_unit_text = await i18n.tr_setting("miniapp_leaderboard_plate_unit", lang, tr_map)
+        total_participants = await count_participants()
+        rank_unit = rank_unit_text.format(total=total_participants) if rank_unit_text else None
 
     referral = await _referral_block(p.telegram_id, event_city, request.app.state.cfg.bot_username, lang, tr_map, user)
 
