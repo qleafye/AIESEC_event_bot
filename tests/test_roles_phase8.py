@@ -336,7 +336,7 @@ def test_staff_crud_assign_and_remove(tmp_path):
     dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
     assert asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID)) == {"moderate_reg", "moderate_receipts"}
 
-    dispatch_callback(f"roles_del:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    dispatch_callback(f"roles_del_ok:{MANAGER_ID}:reg_manager", ADMIN_ID)
     assert asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID)) == set()
 
 
@@ -1565,3 +1565,19 @@ def test_gate_validation_map_is_covered():
         if not any(expected in actual for actual in all_test_names)
     ]
     assert not missing, f"08-VALIDATION.md map names with no matching test function: {missing}"
+
+
+def test_staff_remove_asks_for_confirmation_first(tmp_path):
+    _roles_ready(tmp_path)
+    dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
+
+    _result, event = dispatch_callback(f"roles_del:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    assert "Снять роль" in event.message.text and "потеряет доступ" in event.message.text
+    assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == ["reg_manager"]
+    markup = event.message.markup
+    buttons = {b.text: b.callback_data for row in markup.inline_keyboard for b in row}
+    assert buttons["Да, снять"] == f"roles_del_ok:{MANAGER_ID}:reg_manager"
+    assert buttons["Отмена"] == "admin_roles"
+
+    dispatch_callback(f"roles_del_ok:{MANAGER_ID}:reg_manager", ADMIN_ID)
+    assert asyncio.run(db.get_staff_roles(MANAGER_ID)) == []

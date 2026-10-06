@@ -1146,6 +1146,7 @@ admin|callback_query|roles_add_start|roles_add
 admin|callback_query|roles_add_for|roles_addfor:*
 admin|callback_query|roles_assign|roles_addrole:*
 admin|callback_query|roles_remove|roles_del:*
+admin|callback_query|roles_remove_yes|roles_del_ok:*
 admin|callback_query|roles_expiry_start|rexp:*
 admin|callback_query|roles_expiry_go|rexp_go:*
 admin|callback_query|roles_expiry_custom_start|rexp_custom:*
@@ -2229,7 +2230,9 @@ def test_snapshot_total_handler_count_is_292():
     # Делегации вузов, ревью: +1 admin.callback_query (dlg_apply — подтверждение пересчёта уже
     # пришедших ответов после смены вопросов/отсечки/курсов) сразу после dlg_courses_done;
     # одна чистая вставка (1059 -> 1060).
-    assert len(GOLDEN_SNAPSHOT) == 1060
+    # Снятие роли с подтверждением: +1 admin.callback_query (roles_remove_yes) сразу после
+    # roles_remove; одна чистая вставка (1060 -> 1061).
+    assert len(GOLDEN_SNAPSHOT) == 1061
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

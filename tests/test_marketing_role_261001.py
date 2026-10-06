@@ -129,7 +129,7 @@ def test_role_is_assigned_and_removed_from_roles_screen(tmp_path):
     assert f"roles_toggle:{ROLE}" in kb and f"roles_caps:{ROLE}" in kb
     assert f"roles_del:{MKT_ID}:{ROLE}" in kb
 
-    result, _ = dispatch_callback(f"roles_del:{MKT_ID}:{ROLE}", ADMIN_ID)
+    result, _ = dispatch_callback(f"roles_del_ok:{MKT_ID}:{ROLE}", ADMIN_ID)
     assert result is not UNHANDLED
     assert ROLE not in asyncio.run(db.get_staff_roles(MKT_ID))
 
