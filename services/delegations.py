@@ -35,7 +35,8 @@ from datetime import datetime
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from database.db import (
-    add_user, approve_user_atomic, clear_reg_started, delete_reg_draft, get_reg_started_by_username,
+    add_user, approve_user_atomic, clear_reg_started, delete_reg_draft, get_reg_started_by_id,
+    get_reg_started_by_username,
     get_setting, get_user, get_user_by_username, record_reg_event, set_user_status, store_username,
     update_user_answers, username_needle,
 )
@@ -304,6 +305,7 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
 
 async def convert_to_delegate(
     tid: int, row: dict, fields: dict, *, how: str, by: int | None, bot=None,
+    tg_username: str | None = None,
 ) -> dict:
     """Превратить человека `tid` в одобренного делегата по ответу `row` (строка
     `delegation_answers`) с полями `fields` (см. `extract_fields` + `course_canonical`).
@@ -346,13 +348,14 @@ async def convert_to_delegate(
     season = (await get_setting("event_season") or "").strip() or None
     city = default_city_code()
     university = fields.get("university")
-    needle = fields.get("username_needle")
-
     try:
         if user is None:
-            started = await get_reg_started_by_username(needle) if needle else None
-            username = (started or {}).get("username") or (
-                store_username("@" + needle) if needle else "-")
+            # Настоящий ник человека — из его же /start (или переданный вызывающим), а не из
+            # текста чужой формы: форму заполнял кто угодно.
+            started = await get_reg_started_by_id(tid)
+            real = (started or {}).get("username") or tg_username
+            username = (store_username("@" + username_needle(real))
+                        if username_needle(real) else "-")
             data = reg_engine.with_defaults({
                 "full_name": fields.get("full_name") or "-",
                 "email": fields.get("email") or "-",
@@ -545,7 +548,8 @@ async def try_delegate_start(message, state, bot) -> bool:
     fields = extract_fields(form, answer.get("payload") or [], await field_keys())
     fields["course_canonical"] = row.get("course_canonical")
     res = await convert_to_delegate(tid, row, fields, how=LINK_HOW_USERNAME,
-                                    by=row.get("decided_by"), bot=bot)
+                                    by=row.get("decided_by"), bot=bot,
+                                    tg_username=getattr(from_user, "username", None))
     return bool(res.get("converted"))
 
 
