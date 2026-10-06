@@ -294,3 +294,410 @@ def test_decide_link_regular():
                            how="username") == "already"
     assert dlg.decide_link({"linked_telegram_id": 6}, {"status": "approved"}, 5,
                            how="username") == "conflict"
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 2 — слой превращения
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _available(fid, aid, **kw):
+    return _run(dlg.on_answer_available(fid, aid, **kw))
+
+
+def _drow(fid, aid):
+    return _run(ddb.get_by_answer(fid, aid))
+
+
+def _assert_approved_delegate(tid: int, aid: str, *, course="1"):
+    from services.checkin import checkin_denial
+    u = _row(tid)
+    assert u is not None and u["status"] == "approved" and u["approved_at"]
+    assert u["event_city"] == cities_mod.default_city_code()
+    assert u["season"] == SEASON
+    assert u["delegation"] == UNIVERSITY and u["delegation_answer_id"] == aid
+    assert _run(checkin_denial(u)) is None
+    return u
+
+
+def test_noop_for_other_form(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form(select=False)
+    _answer_from_fixture(fid, "a1", answered_at="2026-09-01 12:00:00")
+    _reg_started(501)
+    assert _available(fid, "a1") == {"skipped": "not_delegation_form"}
+    other = _run(ef.create_form(platform="google", external_id="other", title="Другая"))
+    _run(set_setting_by_admin(None, "delegation_form_id", str(other)))
+    assert _available(fid, "a1") == {"skipped": "not_delegation_form"}
+    assert _drow(fid, "a1") is None and bot.sent == []
+
+
+def test_convert_new_user_from_reg_started(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(501)
+    res = _available(fid, "a1")
+    assert res.get("converted", {}).get("flipped") is True
+    u = _assert_approved_delegate(501, "a1")
+    assert u["source"] == "delegation" and u["source_from_tag"] == 1
+    assert u["participant_type"] == "full" and u["course"] == "3"
+    assert u["full_name"] == "Тест Делегат Тестович" and u["university"] == UNIVERSITY
+    assert u["email"] == "test-delegate@example.com" and u["username"] == "@" + USERNAME
+    assert _run(db.get_reg_started_by_username(USERNAME)) is None
+    assert len(bot.sent) == 1
+    chat_id, text, kb = bot.sent[0]
+    assert chat_id == 501 and UNIVERSITY in text and kb is not None
+    assert _drow(fid, "a1")["linked_telegram_id"] == 501
+    assert _journal(501) == [("approved", dlg.DELEGATION_DECIDED_BY)]
+    assert ("form_completed", "delegation") in [(e, s) for _, e, s in _reg_events(501)]
+
+
+def test_convert_when_city_closed(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    code = cities_mod.default_city_code()
+    _run(set_setting_by_admin(None, "event_city_enabled", "on"))
+    _run(set_setting_by_admin(None, cities_mod.per_city_key("city_reg_close_date", code),
+                              "01.01.2020"))
+    assert _run(cities_mod.is_city_registration_open(code)) is False
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(502)
+    _available(fid, "a1")
+    _assert_approved_delegate(502, "a1")
+    assert len(bot.sent) == 1
+
+
+def test_existing_pending_keeps_answers(tmp_path, monkeypatch):
+    bot, _ = _env(tmp_path)
+    import services.sheets as sheets
+    calls = []
+
+    async def fake_update(tid, label):
+        calls.append((tid, label))
+    monkeypatch.setattr(sheets, "update_status_in_sheet", fake_update)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(503, "pending")
+    _available(fid, "a1")
+    u = _assert_approved_delegate(503, "a1")
+    assert u["full_name"] == "Старое Имя" and u["email"] == "old@example.com"
+    assert len(bot.sent) == 1 and UNIVERSITY in bot.sent[0][1]
+    assert "одобрена" in bot.sent[0][1]
+    assert calls == [(503, "Одобрена")]
+    assert len(_journal(503)) == 1
+
+
+def test_existing_approved_short_text(tmp_path, monkeypatch):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(504, "approved")
+    before = _row(504)
+    _available(fid, "a1")
+    u = _row(504)
+    assert u["status"] == "approved" and u["approved_at"] == before["approved_at"]
+    assert u["delegation"] == UNIVERSITY and u["delegation_answer_id"] == "a1"
+    assert _journal(504) == []
+    assert len(bot.sent) == 1
+    existing = _run(dlg.get_setting_typed("delegation_welcome_existing_text"))
+    assert bot.sent[0][1] == existing.replace("{university}", UNIVERSITY)
+
+
+def test_rejected_goes_to_check(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(505, "rejected")
+    res = _available(fid, "a1")
+    assert res.get("verdict") == "check_rejected"
+    assert _row(505)["status"] == "rejected" and bot.sent == []
+    row = _drow(fid, "a1")
+    assert row["ta_status"] == "check" and row["note"] == dlg.NOTE_REJECTED_IN_BOT
+    assert row["linked_telegram_id"] is None
+
+
+def test_rejected_manual_ok_converts(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(506, "rejected")
+    _available(fid, "a1")
+    row = _drow(fid, "a1")
+    _run(ddb.set_decision(row["id"], "ok", MANAGER))
+    _available(fid, "a1", reason="manual")
+    _assert_approved_delegate(506, "a1")
+    assert _journal(506) == [("approved", MANAGER)]
+    assert len(bot.sent) == 1
+    assert _drow(fid, "a1")["linked_telegram_id"] == 506
+
+    # Прямая ручная привязка отклонённого — тот же результат, автор — менеджер.
+    _answer_from_fixture(fid, "a2", username="@second", course="3 бакалавриат")
+    _user(507, "rejected", username="second")
+    form = _run(ef.get_form(fid))
+    row2, fields2, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a2")), form,
+                                         _run(dlg.field_keys())))
+    res = _run(dlg.convert_to_delegate(507, row2, fields2, how="manual", by=MANAGER))
+    assert res.get("flipped") is True
+    assert _row(507)["status"] == "approved" and _journal(507) == [("approved", MANAGER)]
+
+
+def test_rejected_unauthorised_direct_convert_refused(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(508, "rejected")
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form,
+                                       _run(dlg.field_keys())))
+    res = _run(dlg.convert_to_delegate(508, row, fields, how="username", by=None))
+    assert res == {"refused": "rejected_in_bot"}
+    assert _row(508)["status"] == "rejected" and bot.sent == []
+
+
+def test_not_ta_silent(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="1 бакалавриат", answered_at="2026-10-01 12:00:00")
+    _reg_started(509)
+    res = _available(fid, "a1")
+    assert res["ta"] == "no"
+    assert _row(509) is None and bot.sent == []
+    assert _drow(fid, "a1")["ta_status"] == "no"
+
+
+def test_check_waits(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="2")
+    _reg_started(510)
+    res = _available(fid, "a1")
+    assert res["ta"] == "check"
+    assert _row(510) is None and bot.sent == []
+    assert _drow(fid, "a1")["linked_telegram_id"] is None
+
+
+def test_unmatched_waits(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    res = _available(fid, "a1")
+    assert res["ta"] == "ok" and res.get("waiting") == "no_person"
+    assert _drow(fid, "a1")["linked_telegram_id"] is None and bot.sent == []
+    found = _run(ddb.find_pending_by_username(USERNAME))
+    assert [r["answer_id"] for r in found] == ["a1"]
+
+
+def test_idempotent(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(511)
+    _available(fid, "a1")
+    second = _available(fid, "a1")
+    assert second.get("verdict") == "already"
+    assert len(bot.sent) == 1 and len(_journal(511)) == 1
+
+
+def test_conversion_cleans_registration_fsm(tmp_path):
+    from handlers.states import Registration
+    bot, storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(512)
+    _reg_started(513, "someone_else")
+    _run(_fsm(storage, 512).set_state(Registration.full_name))
+    _run(_fsm(storage, 513).set_state("Payment:waiting_receipt"))
+    _run(db.upsert_reg_draft(512, kind="new", source="bot", step="full_name",
+                             patch={"full_name": "Черновик"}))
+    assert _run(db.get_reg_draft(512)) is not None
+    _available(fid, "a1")
+    assert _run(_fsm(storage, 512).get_state()) is None
+    assert _run(_fsm(storage, 513).get_state()) == "Payment:waiting_receipt"
+    assert _run(db.get_reg_draft(512)) is None
+    assert _run(db.get_reg_started_by_username("someone_else")) is not None
+
+
+def test_no_payment_step(tmp_path, monkeypatch):
+    import handlers.payment as payment
+    import handlers.reg_schema as reg_schema
+    bot, storage = _env(tmp_path)
+    _run(set_setting_by_admin(None, "payment_enabled", "on"))
+    touched = []
+
+    async def sentinel(*a, **k):
+        touched.append(a)
+    monkeypatch.setattr(reg_schema, "approve_user", sentinel)
+    monkeypatch.setattr(payment, "start_payment_step", sentinel)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(514)
+    _available(fid, "a1")
+    u = _assert_approved_delegate(514, "a1")
+    assert touched == []
+    assert _run(_fsm(storage, 514).get_state()) is None
+    assert u["payment_status"] == "not_paid"
+
+
+def test_convert_marks_sheet_update(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    form = _run(ef.get_form(fid))
+    keys = _run(dlg.field_keys())
+
+    _answer_from_fixture(fid, "synced", course="3 бакалавриат", sheet_state="synced")
+    _reg_started(515)
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "synced")), form, keys))
+    _run(dlg.convert_to_delegate(515, row, fields, how="username", by=None))
+    assert _sheet_state("synced") == "update"
+
+    _answer_from_fixture(fid, "fresh", username="@fresh_one", course="3 бакалавриат")
+    _reg_started(516, "fresh_one")
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "fresh")), form, keys))
+    _run(dlg.convert_to_delegate(516, row, fields, how="username", by=None))
+    assert _sheet_state("fresh") == "append"
+
+    # Повтор по уже привязанному — ни второй отметки, ни второго письма.
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE external_form_answers SET sheet_state = 'synced' WHERE answer_id = 'synced'")
+    conn.commit()
+    conn.close()
+    row = _drow(fid, "synced")
+    res = _run(dlg.convert_to_delegate(515, row, fields, how="username", by=None))
+    assert res == {"already": True}
+    assert _sheet_state("synced") == "synced" and len(bot.sent) == 2
+
+
+def test_evaluation_only_marks_sheet_when_status_changes(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="2", sheet_state="synced")
+    _available(fid, "a1")
+    assert _sheet_state("a1") == "update"
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE external_form_answers SET sheet_state = 'synced'")
+    conn.commit()
+    conn.close()
+    _available(fid, "a1")
+    assert _sheet_state("a1") == "synced"
+
+
+def test_sweep_pending(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "n1", username="@n_one", course="3 бакалавриат")
+    _answer_from_fixture(fid, "n2", username="@n_two", course="2")
+    _answer_from_fixture(fid, "later", username="@late_one", course="3 бакалавриат")
+    _available(fid, "later")
+    assert _drow(fid, "later")["linked_telegram_id"] is None
+    _reg_started(517, "late_one")
+    res = _run(dlg.sweep_pending())
+    assert res["evaluated"] == 2 and res["linked"] == 1
+    assert _drow(fid, "n1")["ta_status"] == "ok" and _drow(fid, "n2")["ta_status"] == "check"
+    assert _row(517)["status"] == "approved" and len(bot.sent) == 1
+    again = _run(dlg.sweep_pending())
+    assert again["evaluated"] == 0 and again["linked"] == 0 and len(bot.sent) == 1
+
+
+def test_manual_decision_reevaluated(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="2")
+    _reg_started(518)
+    _available(fid, "a1")
+    row = _drow(fid, "a1")
+    assert row["ta_status"] == "check" and _row(518) is None
+    _run(ddb.set_decision(row["id"], "ok", MANAGER))
+    _available(fid, "a1", reason="manual")
+    _assert_approved_delegate(518, "a1")
+    after = _drow(fid, "a1")
+    assert after["ta_status"] == "ok" and after["decided_by"] == MANAGER
+    assert _journal(518) == [("approved", MANAGER)]
+
+
+def test_on_first_entry_marks_update(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(519)
+    _available(fid, "a1")
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE external_form_answers SET sheet_state = 'synced'")
+    conn.commit()
+    conn.close()
+    _run(dlg.on_first_entry(bot, 519, "msk", "2026-10-30", source="miniapp", first_of_forum=True))
+    assert _sheet_state("a1") == "update"
+    _user(520, "approved", username="plain")
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE external_form_answers SET sheet_state = 'synced'")
+    conn.commit()
+    conn.close()
+    _run(dlg.on_first_entry(bot, 520, "msk", "2026-10-30", source="miniapp"))
+    assert _sheet_state("a1") == "synced"
+
+
+class _FakeFrom:
+    def __init__(self, uid, username):
+        self.id = uid
+        self.username = username
+
+
+class _FakeMessage:
+    def __init__(self, uid, username):
+        self.from_user = _FakeFrom(uid, username)
+        self.chat = _FakeFrom(uid, None)
+        self.answers = []
+
+    async def answer(self, text=None, reply_markup=None, **kw):
+        self.answers.append((text, reply_markup))
+
+
+def test_try_delegate_start(tmp_path, monkeypatch):
+    bot, storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат", sheet_state="synced")
+    _available(fid, "a1")
+    assert _row(521) is None
+    msg = _FakeMessage(521, USERNAME)
+    assert _run(dlg.try_delegate_start(msg, _fsm(storage, 521), bot)) is True
+    _assert_approved_delegate(521, "a1")
+    assert _sheet_state("a1") == "update" and len(bot.sent) == 1
+
+    assert _run(dlg.try_delegate_start(_FakeMessage(522, "stranger"), _fsm(storage, 522),
+                                       bot)) is False
+    assert _row(522) is None and len(bot.sent) == 1
+
+    queried = []
+    orig = ddb.find_pending_by_username
+
+    async def spy(needle):
+        queried.append(needle)
+        return await orig(needle)
+    monkeypatch.setattr(ddb, "find_pending_by_username", spy)
+    assert _run(dlg.try_delegate_start(_FakeMessage(523, None), _fsm(storage, 523), bot)) is False
+    assert queried == []
+
+
+def test_try_delegate_start_rejected_goes_check(tmp_path):
+    bot, storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(524, "rejected")
+    # Синк уже прошёл и отправил ответ в «проверить»; менеджер пока не решал — для чистоты
+    # вернём строку в ok без автора, как если бы человек нажал /start раньше синка.
+    _available(fid, "a1")
+    row = _drow(fid, "a1")
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE delegation_answers SET ta_status = 'ok', note = NULL WHERE id = ?",
+                 (row["id"],))
+    conn.commit()
+    conn.close()
+    msg = _FakeMessage(524, USERNAME)
+    assert _run(dlg.try_delegate_start(msg, _fsm(storage, 524), bot)) is False
+    assert _row(524)["status"] == "rejected" and bot.sent == []
+    row = _drow(fid, "a1")
+    assert row["ta_status"] == "check" and row["note"] == dlg.NOTE_REJECTED_IN_BOT
+
+    _run(ddb.set_decision(row["id"], "ok", MANAGER))
+    assert _run(dlg.try_delegate_start(msg, _fsm(storage, 524), bot)) is True
+    assert _row(524)["status"] == "approved" and _journal(524) == [("approved", MANAGER)]
+    assert len(bot.sent) == 1
