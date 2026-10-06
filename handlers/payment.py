@@ -117,6 +117,9 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     user = await get_user(telegram_id)
     if not user:
         return False
+    if user.get("delegation_answer_id"):
+        # Делегат вуза платит не здесь: оплаты у него нет никогда, даже при включённом модуле.
+        return False
     if (user.get("payment_status") or "not_paid") not in ("not_paid", "overdue"):
         return False
     requisites = await _resolve_requisites(telegram_id)

@@ -5756,6 +5756,11 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 clauses.append(f"({guard_frag} AND {presence_frag})")
                 params.extend(guard_params)
                 params.append(f"session:{session_id}")
+        elif field == "payment_status" and f.get("value") in ("not_paid", "overdue"):
+            # Делегаты вузов оплаты не имеют (у них payment_status остаётся дефолтным
+            # not_paid) — в «не оплатили» им не место, напоминание об оплате им не уйдёт.
+            clauses.append("(payment_status = ? AND delegation_answer_id IS NULL)")
+            params.append(f.get("value"))
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
