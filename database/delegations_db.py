@@ -204,9 +204,9 @@ async def summary_by_university(form_id: int) -> list[dict]:
     return await _fetchall(
         "SELECT d.university AS university, COUNT(*) AS total, "
         "SUM(CASE WHEN d.ta_status = 'ok' THEN 1 ELSE 0 END) AS ta, "
-        "SUM(CASE WHEN d.linked_telegram_id IS NOT NULL THEN 1 ELSE 0 END) AS in_bot, "
-        "SUM(CASE WHEN d.linked_telegram_id IS NOT NULL AND " + _ARRIVED_SQL + " "
-        "THEN 1 ELSE 0 END) AS arrived "
+        "COUNT(DISTINCT d.linked_telegram_id) AS in_bot, "
+        "COUNT(DISTINCT CASE WHEN d.linked_telegram_id IS NOT NULL AND " + _ARRIVED_SQL + " "
+        "THEN d.linked_telegram_id END) AS arrived "
         "FROM delegation_answers d WHERE d.form_id = ? "
         "GROUP BY d.university ORDER BY ta DESC, d.university",
         (ENTRY_POINT, form_id),

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 SOURCE_TAG = "delegation"
 LINK_HOW_USERNAME = "username"
 LINK_HOW_MANUAL = "manual"
+LINK_HOW_DUPLICATE = "duplicate"
 NOTE_REJECTED_IN_BOT = "rejected_in_bot"
 # Что пишем в `users.delegation`, когда вуз в ответе пуст: все гейты геймы, меню и фильтр рассылки
 # проверяют «delegation не пусто» — пустое значение сделало бы делегата обычным участником.
@@ -321,6 +322,14 @@ async def convert_to_delegate(
     user = await get_user(tid)
     if user and str(user.get("delegation_answer_id") or "") == answer_id:
         return {"already": True}
+    bound = str((user or {}).get("delegation_answer_id") or "")
+    if bound and bound != answer_id:
+        # Второй ответ того же человека: делегат уже в боте по первому. Привязываем ответ тихо —
+        # ни второго письма, ни перезаписи вуза, ни второго зачёта в сводках.
+        if not await ddb.link(row["id"], tid, LINK_HOW_DUPLICATE):
+            return {"conflict": True}
+        await _mark_update_fail_soft(row["form_id"], answer_id)
+        return {"duplicate": True}
     prev_status = user.get("status") if user else None
     authorised = how == LINK_HOW_MANUAL or row.get("decided_by") is not None
     if prev_status == "rejected" and not authorised:

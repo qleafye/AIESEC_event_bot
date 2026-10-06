@@ -104,3 +104,34 @@ def test_failed_approval_releases_claim(tmp_path, monkeypatch):
     else:
         raise AssertionError("ожидали исключение")
     assert _drow(fid, "a1")["linked_telegram_id"] is None
+
+
+# ---------- WR-07: второй ответ того же человека ----------
+
+def test_second_answer_of_same_person_is_quiet(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат", university="Первый вуз")
+    _answer_from_fixture(fid, "a2", course="3 бакалавриат", university="Второй вуз")
+    _reg_started(631)
+    _available(fid, "a1")
+    sent = len(bot.sent)
+    res = _available(fid, "a2")
+    assert res["converted"] == {"duplicate": True}
+    assert len(bot.sent) == sent
+    u = _row(631)
+    assert u["delegation"] == "Первый вуз" and u["delegation_answer_id"] == "a1"
+    assert _drow(fid, "a2")["linked_telegram_id"] == 631
+    assert _drow(fid, "a2")["link_how"] == dlg.LINK_HOW_DUPLICATE
+
+
+def test_summary_counts_one_person_once_per_university(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _answer_from_fixture(fid, "a2", course="3 бакалавриат")
+    _reg_started(632)
+    _available(fid, "a1")
+    _available(fid, "a2")
+    rows = _run(ddb.summary_by_university(fid))
+    assert len(rows) == 1 and rows[0]["total"] == 2 and rows[0]["in_bot"] == 1
