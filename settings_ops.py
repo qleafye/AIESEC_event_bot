@@ -1031,6 +1031,8 @@ PREVIEW_ADDRESSEE_PLACEHOLDERS: frozenset[str] = frozenset({
 
 PREVIEW_SAMPLES: dict[str, str] = {
     "name": "Иван",
+    # Делегации вузов: приветствие делегата подставляет вуз из формы.
+    "university": "МГУ",
     # Квик 260927: пост рейтинга в чат — даты недели и название баллов города.
     "week": "21.09–27.09",
     "currency": "коины",
