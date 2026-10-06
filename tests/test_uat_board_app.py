@@ -63,3 +63,9 @@ def test_reset_without_file_creates_empty_state(board):
     assert not os.path.exists(board.DATA)
     assert board._reset() == {"v": 1, "steps": {}}
     assert not [p for p in Path(board.DATA).parent.iterdir() if ".bak-" in p.name]
+
+
+def test_board_page_is_served_with_two_blocks(board):
+    html = board.HTML.decode("utf-8") if isinstance(board.HTML, bytes) else board.HTML
+    assert "Долг" in html and "Новое" in html
+    assert 'key:"deleg"' in html
