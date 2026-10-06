@@ -215,6 +215,10 @@ async def dlg_ta(callback: types.CallbackQuery):
     if row is None or status not in ("ok", "okc", "no"):
         await callback.answer(_ROW_GONE, show_alert=True)
         return
+    if row.get("linked_telegram_id") is not None:
+        # Карточка устарела: человек уже делегат, «не ЦА» не должен перекрашивать его строку.
+        await callback.answer(_ALREADY_LINKED_ALERT, show_alert=True)
+        return
     if status == "ok" and await _rejected_in_bot_now(row):
         # Одобрение отклонённого — второй кнопкой и с названием того, что отменяется.
         await _show(callback, _REJECT_CONFIRM, _kb([
@@ -415,6 +419,10 @@ async def dlg_link_yes(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Не получилось привязать — человек отклонён в боте", show_alert=True)
     elif res.get("already"):
         await callback.answer("Уже привязан")
+    elif res.get("conflict"):
+        await callback.answer(_ROW_TAKEN, show_alert=True)
+    elif res.get("duplicate"):
+        await callback.answer("Этот человек уже делегат по другому ответу — ответ привязан тихо")
     else:
         await callback.answer("Привязано — заявка одобрена")
     await _absent_screen(callback, 0)
