@@ -387,6 +387,19 @@ async def convert_to_delegate(
                   "delegation_answer_id": answer_id},
             allowed_columns=_ALLOWED_DELEGATION_COLUMNS,
         )
+        if user is not None:
+            # Существующая анкета едет на форум Москвы текущего сезона: иначе возвращенец
+            # прошлого сезона остаётся «прошлым» (нет игры, монет, QR), а делегат из другого
+            # города — в чужом городе. Старый сезон уходит в prev_season, как при одобрении
+            # у стойки.
+            patch: dict = {"event_city": city}
+            if season:
+                patch["season"] = season
+                old_season = (user.get("season") or "").strip()
+                if old_season and old_season != season:
+                    patch["prev_season"] = old_season
+            await update_user_answers(tid, patch,
+                                      allowed_columns=["event_city", "season", "prev_season"])
     except Exception:
         # Не оставляем ответ «занятым» за человеком, которого так и не одобрили.
         try:

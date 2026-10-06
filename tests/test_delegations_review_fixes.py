@@ -135,3 +135,29 @@ def test_summary_counts_one_person_once_per_university(tmp_path):
     _available(fid, "a2")
     rows = _run(ddb.summary_by_university(fid))
     assert len(rows) == 1 and rows[0]["total"] == 2 and rows[0]["in_bot"] == 1
+
+
+# ---------- CR-05: существующая анкета переезжает в текущий сезон и город делегации ----------
+
+def test_existing_user_moves_to_current_season_and_city(tmp_path):
+    import cities as cities_mod
+    from services.checkin import checkin_denial
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(641, "approved", season="YL 26/1", city="spb")
+    _available(fid, "a1")
+    u = _row(641)
+    assert u["season"] == SEASON and u["prev_season"] == "YL 26/1"
+    assert u["event_city"] == cities_mod.default_city_code()
+    assert _run(checkin_denial(u)) is None
+
+
+def test_existing_user_same_season_keeps_prev_season_empty(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(642, "pending", season=SEASON, city="spb")
+    _available(fid, "a1")
+    u = _row(642)
+    assert u["season"] == SEASON and not u.get("prev_season")
