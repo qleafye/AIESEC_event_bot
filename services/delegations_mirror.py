@@ -6,7 +6,8 @@ D..L = девять вопросов формы в порядке шапки л�
 M «В боте» и ничего правее не трогает (в P:Q у Насти счётчик по вузам).
 
 Правила записи (D-13/D-14):
-- строка ищется по ID в колонке A; известный ID обновляется на месте, дубликатов не бывает;
+- строка ищется по ID в колонке A; у известного ID обновляется ТОЛЬКО колонка M (D..L, A..C
+  правит команда руками — перезапись затёрла бы её правки), дубликатов не бывает;
 - новая строка пишется ПОСЛЕ последней непустой A явным диапазоном `A{r}:M{r}`, а не
   дописыванием «в конец» средствами gspread (у листа пустые строки 9–15 внутри данных,
   такое дописывание село бы не туда);
@@ -185,17 +186,6 @@ def _row_colours(ws, tab: str, last_row: int) -> dict[int, dict]:
     return out
 
 
-def _segments(cells: list[tuple[int, str]]) -> list[tuple[int, list[str]]]:
-    """[(col, value)] по возрастанию -> непрерывные отрезки [(первая колонка, значения)]."""
-    segs: list[tuple[int, list[str]]] = []
-    for col, val in sorted(cells):
-        if segs and segs[-1][0] + len(segs[-1][1]) == col:
-            segs[-1][1].append(val)
-        else:
-            segs.append((col, [val]))
-    return segs
-
-
 def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict, dict]]):
     """rows: (answer_row_id, answer, status). Возврат (appended, updated, extra_questions)
     или None, если вкладки нет. `extra_questions` — подписи вопросов формы без колонки в D..L
@@ -218,7 +208,6 @@ def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict,
         logger.warning("delegations_mirror: в листе «%s» %d дублей ID в колонке A — обновляю "
                        "первое вхождение", tab, dups)
     cmap, extra, _ = _map_columns(columns, header)
-    mapped_cols = sorted(set(cmap.values()))
 
     new_ids = {str(a.get("answer_id") or "").strip() for _, a, _ in rows} - set(index)
     next_row = last_nonempty + 1
@@ -250,11 +239,10 @@ def write_export_sync(tab: str, columns: list[dict], rows: list[tuple[int, dict,
             batch.append({"range": f"A{r}:{_col_letter(M_COL)}{r}", "values": [full]})
             appended += 1
         else:
-            cells = [(c, values.get(c, "")) for c in mapped_cols] + [(M_COL, m)]
-            for start, vals in _segments(cells):
-                end = start + len(vals) - 1
-                batch.append({"range": f"{_col_letter(start)}{r}:{_col_letter(end)}{r}",
-                              "values": [vals]})
+            # Известная строка: только колонка M. D..L Настя правит руками (исправленное ФИО,
+            # допечатанный ник), пересыл ответа из формы затёр бы эти правки — в том числе
+            # пустым значением поверх заполненной ячейки.
+            batch.append({"range": f"{_col_letter(M_COL)}{r}", "values": [[m]]})
             updated += 1
         targets[r] = GREY if (status or {}).get("ta_status") == "no" else WHITE
 
