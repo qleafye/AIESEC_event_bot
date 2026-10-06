@@ -181,3 +181,15 @@ def test_manual_link_keeps_real_nick_from_start(tmp_path):
     _run(db.mark_reg_started(652, "RealNick"))
     assert _convert(fid, "a1", 652, how="manual", by=7).get("converted")
     assert _row(652)["username"] == "@RealNick"
+
+
+# ---------- WR-01: человека ищем по нику, а не по сохранённому совпадению ----------
+
+def test_stale_matched_telegram_id_is_ignored(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат", tid=661)  # совпадение по телефону
+    _reg_started(661, "not_the_form_nick")
+    res = _available(fid, "a1")
+    assert res.get("waiting") == "no_person"
+    assert _row(661) is None and bot.sent == []

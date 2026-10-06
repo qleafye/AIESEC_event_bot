@@ -485,9 +485,9 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
     converted = False
 
     if ta == "ok" and row.get("linked_telegram_id") is None:
-        tid = answer.get("matched_telegram_id")
-        if tid is None:
-            tid, _where = await find_person(fields["username_needle"])
+        # Только по нику из формы, свежим поиском: `matched_telegram_id` мог встать по
+        # телефону (кто владеет номером, тот и «делегат») или устареть после смены ника.
+        tid, _where = await find_person(fields["username_needle"])
         if tid is None:
             result["waiting"] = "no_person"
         else:
