@@ -112,6 +112,13 @@ async def rematch_unmatched(limit: int = 500) -> int:
         tid, how = await match_answer(form, row["payload"], phones)
         if tid is not None and await ef.set_answer_match(row["id"], tid, how):
             done += 1
+            # Делегации вузов: человек появился позже ответа — тот же хук, что при приёме.
+            try:
+                from services.delegations import on_answer_available
+                await on_answer_available(row["form_id"], row["answer_id"], reason="rematch")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("delegations: хук ответа %s формы %s: %s",
+                               row["answer_id"], row["form_id"], type(e).__name__)
     if done:
         logger.info("ext_forms: привязано анкет %d из %d", done, len(rows))
     return done

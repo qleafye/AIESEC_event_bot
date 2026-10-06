@@ -246,7 +246,7 @@ def test_reconcile_all_skips_and_isolates_errors(tmp_path, monkeypatch):
         return _list_handler(r)
     _patch(monkeypatch, handler)
     res = asyncio.run(S.reconcile_all())
-    assert res == {"enqueued": 3, "rematched": 0}
+    assert (res["enqueued"], res["rematched"]) == (3, 0) and "swept" in res
     assert asyncio.run(ef.get_form(bad))["sync_error"] == S.sync_error_text("upstream_unavailable")
     assert _pending(paused) == []
     assert len(_pending(fid)) == 3
@@ -259,7 +259,9 @@ def test_reconcile_all_skips_reauth_connection(tmp_path, monkeypatch):
     def handler(r):
         raise AssertionError("API не должен вызываться")
     _patch(monkeypatch, handler)
-    assert asyncio.run(S.reconcile_all()) == {"enqueued": 0, "rematched": 0}
+    res = asyncio.run(S.reconcile_all())
+    # Делегации вузов: хвост сверки возвращает ещё и `swept` (форма делегаций не выбрана — no-op).
+    assert (res["enqueued"], res["rematched"]) == (0, 0) and "swept" in res
 
 
 def test_reconcile_all_forbidden_marks_reauth_and_human_text(tmp_path, monkeypatch):

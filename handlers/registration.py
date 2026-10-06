@@ -2074,6 +2074,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     except Exception as e:
         logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
+    # Делегации вузов: человек из формы, нажавший /start раньше синка, — одобряем сразу,
+    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations.py.
+    from services.delegations import try_delegate_start
+    if await try_delegate_start(message, state, bot):
+        return
+
     # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
     # HG-02: normalize the stored contact_tg link (t.me/foo) to a @username get_chat_member accepts.
     # HG-01: set_user_subscribed only persists for an EXISTING row; a first-touch registrant has no

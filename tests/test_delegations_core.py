@@ -701,3 +701,122 @@ def test_try_delegate_start_rejected_goes_check(tmp_path):
     assert _run(dlg.try_delegate_start(msg, _fsm(storage, 524), bot)) is True
     assert _row(524)["status"] == "approved" and _journal(524) == [("approved", MANAGER)]
     assert len(bot.sent) == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Задача 3 — хуки фазы внешних форм, точка в cmd_start, хвост сверки
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _ingest(fid, aid, items=None, answered_at="2026-10-01 12:00:00"):
+    from services.ext_forms_ingest import ingest_answer
+
+    async def go():
+        form = await ef.get_form(fid)
+        return await ingest_answer(form, answer_id=aid, answered_at=answered_at,
+                                   items=items or _fixture_items(), raw=None)
+    return _run(go())
+
+
+def test_hook_on_ingest(tmp_path):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    items = _fixture_items()
+    for it in items:
+        if it["q"] == "q6":
+            it["value"] = "3 бакалавриат"
+    _reg_started(601)
+    assert _ingest(fid, "a1", items) is True
+    assert _drow(fid, "a1")["ta_status"] == "ok"
+    assert _row(601)["status"] == "approved" and len(bot.sent) == 1
+    assert _ingest(fid, "a1", items) is False
+    assert _run(ddb.count_by_status(fid, "ok", linked=None)) == 1 and len(bot.sent) == 1
+
+
+def test_hook_survives_delegation_error(tmp_path, monkeypatch):
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+
+    async def boom(*a, **k):
+        raise RuntimeError("делегации упали")
+    monkeypatch.setattr(dlg, "on_answer_available", boom)
+    assert _ingest(fid, "a1") is True
+    assert _run(ef.get_answer(fid, "a1")) is not None
+    assert _drow(fid, "a1") is None and bot.sent == []
+
+
+def test_rematch_hook(tmp_path):
+    from services.ext_forms_match import rematch_unmatched
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _available(fid, "a1")
+    assert _drow(fid, "a1")["linked_telegram_id"] is None
+    _user(602, "pending")
+    assert _run(rematch_unmatched()) == 1
+    assert _run(ef.get_answer(fid, "a1"))["matched_telegram_id"] == 602
+    assert _drow(fid, "a1")["linked_telegram_id"] == 602
+    assert _row(602)["status"] == "approved" and len(bot.sent) == 1
+
+
+class _StartMessage(_FakeMessage):
+    async def answer_photo(self, *a, reply_markup=None, **k):
+        self.answers.append(("<photo>", reply_markup))
+
+    async def edit_reply_markup(self, reply_markup=None):
+        return None
+
+    def model_copy(self, update=None):
+        new = _StartMessage(self.from_user.id, self.from_user.username)
+        new.answers = self.answers
+        return new
+
+
+def test_cmd_start_late_entry(tmp_path, monkeypatch):
+    from handlers import registration as reg
+    bot, storage = _env(tmp_path)
+    _run(set_setting_by_admin(None, "contact_tg", "@test_channel"))
+    sub_calls = []
+
+    async def fake_is_subscribed(bot_, channel, user_id):
+        sub_calls.append(user_id)
+        return True
+    monkeypatch.setattr(reg, "is_subscribed", fake_is_subscribed)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат", sheet_state="synced")
+    _available(fid, "a1")
+    msg = _StartMessage(603, USERNAME)
+    _run(reg.cmd_start(msg, _fsm(storage, 603), bot=bot, command=None))
+    _assert_approved_delegate(603, "a1")
+    assert _sheet_state("a1") == "update"
+    events = _reg_events(603)
+    kinds = [e for _, e, _ in events]
+    assert kinds.index("start") < kinds.index("form_completed")
+    assert sub_calls == []
+    assert len(bot.sent) == 1
+
+
+def test_cmd_start_order_guard():
+    path = os.path.join(os.path.dirname(__file__), "..", "handlers", "registration.py")
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    funnel = next(i for i, l in enumerate(lines) if '"start", event_city=dl_event_city' in l)
+    entry = next(i for i, l in enumerate(lines) if "try_delegate_start(message" in l)
+    subscription = next(i for i, l in enumerate(lines)
+                        if '_normalize_channel_ref(await get_setting("contact_tg"))' in l)
+    assert funnel < entry < subscription
+    assert sum("try_delegate_start" in l for l in lines) == 2
+
+
+def test_reconcile_all_calls_sweep(tmp_path, monkeypatch):
+    from services import ext_forms_yandex_sync as sync
+    bot, _ = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+
+    async def no_forms(platform):
+        return []
+    monkeypatch.setattr(sync.ef, "list_active_forms", no_forms)
+    res = _run(sync.reconcile_all())
+    assert res["enqueued"] == 0 and res["rematched"] == 0
+    assert res["swept"]["evaluated"] == 1
+    assert _drow(fid, "a1")["ta_status"] == "ok"
