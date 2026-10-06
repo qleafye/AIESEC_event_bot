@@ -1,0 +1,1143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Гайд администратора СкиллАп 5</title>
+<meta name="description" content="Подробный гайд для новых менеджеров бота СкиллАп 5: роли, заявки, рассылки, опросы, таблица, дашборд, приложение, частые проблемы.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700;800&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#F3F4F7; --card:#FFFFFF; --ink:#1C1C1C; --muted:#555B66; --line:#DDE1E8;
+    --accent:#009153; --accent-ink:#00663B; --accent-soft:#E3F5EC; --warm:#F85A40; --warm-soft:#FFF0EC;
+    --warn:#B25E00; --warn-soft:#FFF5E0; --code:#EEF1F5; --btn:#E9EDF3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#111513; --card:#1A201D; --ink:#E9EEEB; --muted:#A3ADA8; --line:#2F3833;
+      --accent:#3DCB8B; --accent-ink:#7FE0B3; --accent-soft:#17352A; --warm:#FF8A73; --warm-soft:#3A2420;
+      --warn:#F2B35C; --warn-soft:#38301B; --code:#232B27; --btn:#27302B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#111513; --card:#1A201D; --ink:#E9EEEB; --muted:#A3ADA8; --line:#2F3833;
+    --accent:#3DCB8B; --accent-ink:#7FE0B3; --accent-soft:#17352A; --warm:#FF8A73; --warm-soft:#3A2420;
+    --warn:#F2B35C; --warn-soft:#38301B; --code:#232B27; --btn:#27302B;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; scroll-padding-top:76px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito Sans', Arial, sans-serif; font-size:17px; line-height:1.6; -webkit-text-size-adjust:100%; }
+  a { color:var(--accent-ink); }
+  header.top { background:var(--accent); color:#fff; }
+  :root[data-theme="dark"] header.top { background:#0B3D2A; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header.top { background:#0B3D2A; } }
+  header.top .in { max-width:1180px; margin:0 auto; padding:30px 16px 26px; }
+  header.top h1 { margin:0; font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:clamp(28px, 5vw, 44px); line-height:1.1; }
+  header.top p { margin:10px 0 0; max-width:760px; font-size:18px; line-height:1.5; opacity:.96; }
+  header.top .meta { margin-top:14px; font-size:14px; opacity:.85; }
+  .bar { position:sticky; top:0; z-index:30; background:var(--card); border-bottom:1px solid var(--line); }
+  .bar .in { max-width:1180px; margin:0 auto; padding:8px 16px; display:flex; gap:10px; align-items:center; }
+  .bar input[type=search] { flex:1; min-width:0; font:inherit; font-size:16px; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); }
+  .bar .count { font-size:14px; color:var(--muted); white-space:nowrap; }
+  .bar button { font:inherit; font-size:15px; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); cursor:pointer; }
+  .wrap { max-width:1180px; margin:0 auto; padding:20px 16px 90px; display:grid; grid-template-columns:260px minmax(0,1fr); gap:32px; }
+  nav.toc { position:sticky; top:72px; align-self:start; max-height:calc(100vh - 90px); overflow:auto; font-size:15px; padding-right:6px; }
+  nav.toc ol { margin:0; padding:0; list-style:none; }
+  nav.toc li { margin:0; }
+  nav.toc a { display:block; padding:6px 10px; border-radius:8px; color:var(--ink); text-decoration:none; line-height:1.35; }
+  nav.toc a:hover, nav.toc a.on { background:var(--accent-soft); color:var(--accent-ink); }
+  nav.toc .n { display:inline-block; min-width:1.7em; color:var(--muted); font-weight:700; }
+  details.toc-m { display:none; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:16px; }
+  details.toc-m summary { font-weight:800; cursor:pointer; }
+  details.toc-m ol { margin:8px 0 0; padding:0; list-style:none; }
+  details.toc-m a { display:block; padding:7px 0; text-decoration:none; color:var(--ink); border-top:1px solid var(--line); }
+  main { min-width:0; counter-reset:fig; }
+  section.sec { margin:0 0 44px; }
+  section.sec > h2 { font-family:'Raleway', Arial, sans-serif; font-size:clamp(26px, 3.4vw, 34px); line-height:1.15; margin:0 0 14px; padding-bottom:10px; border-bottom:3px solid var(--accent); }
+  h3 { font-family:'Raleway', Arial, sans-serif; font-size:22px; line-height:1.25; margin:30px 0 10px; }
+  h4 { font-size:17px; margin:18px 0 6px; }
+  p { margin:0 0 12px; } ul, ol { margin:0 0 14px; padding-left:1.3em; } li { margin:0 0 6px; }
+  .lead { font-size:19px; color:var(--muted); }
+  kbd, code { font-family:Consolas, 'SFMono-Regular', Menlo, monospace; font-size:.9em; background:var(--code); padding:1px 6px; border-radius:6px; }
+  .btn { display:inline-block; background:var(--btn); border:1px solid var(--line); border-radius:8px; padding:0 8px; font-weight:700; font-size:.94em; white-space:normal; }
+  .tbl { overflow-x:auto; margin:0 0 16px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
+  table { border-collapse:collapse; width:100%; font-size:15.5px; line-height:1.45; }
+  th, td { text-align:left; vertical-align:top; padding:9px 12px; border-bottom:1px solid var(--line); }
+  th { background:var(--accent-soft); color:var(--accent-ink); font-weight:800; }
+  tr:last-child td { border-bottom:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:0 0 16px; }
+  .note, .warn, .ok, .danger { border-radius:12px; padding:12px 16px; margin:0 0 16px; border-left:6px solid var(--accent); background:var(--accent-soft); }
+  .warn { border-left-color:#E0A800; background:var(--warn-soft); }
+  .danger { border-left-color:var(--warm); background:var(--warm-soft); }
+  .note > :last-child, .warn > :last-child, .danger > :last-child, .ok > :last-child { margin-bottom:0; }
+  .note b.t, .warn b.t, .danger b.t, .ok b.t { display:block; margin-bottom:2px; }
+  .steps { counter-reset:st; list-style:none; padding:0; }
+  .steps > li { counter-increment:st; position:relative; padding:2px 0 2px 46px; margin:0 0 14px; }
+  .steps > li::before { content:counter(st); position:absolute; left:0; top:0; width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff; font-weight:800; display:grid; place-items:center; font-size:16px; }
+  :root[data-theme="dark"] .steps > li::before { color:#08241A; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .steps > li::before { color:#08241A; } }
+  .path { font-weight:700; background:var(--accent-soft); border-radius:8px; padding:3px 9px; display:inline-block; }
+  .split { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:24px; align-items:start; margin:0 0 16px; }
+  .split.rev { grid-template-columns:400px minmax(0,1fr); }
+  .split.rev > :first-child { order:2; }
+  .pair { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; margin:0 0 16px; }
+  .pair figure { flex:0 0 auto; }
+  .pair figure.wide { flex:1 1 340px; min-width:0; width:auto; }
+  figure.shot { margin:0 0 16px; counter-increment:fig; }
+  figure.shot a.zoom { display:block; position:relative; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 6px 22px rgba(0,0,0,.08); }
+  figure.shot img { display:block; width:100%; height:auto; }
+  figure.shot.phone { max-width:390px; width:100%; }
+  figure.shot.tall a.zoom { max-height:600px; }
+  figure.shot.tall a.zoom img { object-fit:cover; object-position:top; }
+  figure.shot.tall a.zoom::after { content:'Нажмите, чтобы увидеть целиком'; position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; text-align:center; font-size:13.5px; font-weight:700; color:#fff; background:linear-gradient(transparent, rgba(0,0,0,.72)); }
+  figure.shot.wide { width:100%; }
+  figcaption { font-size:14.5px; color:var(--muted); margin-top:7px; line-height:1.4; }
+  figcaption::before { content:'Рис. ' counter(fig) '. '; font-weight:800; color:var(--ink); }
+  .lb { position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:100; overflow:auto; display:none; padding:20px 10px; }
+  .lb.on { display:block; }
+  .lb img { display:block; margin:0 auto; max-width:min(100%, 820px); height:auto; background:#fff; border-radius:8px; }
+  .lb .x { position:fixed; right:14px; top:10px; font:inherit; font-size:28px; width:46px; height:46px; border-radius:50%; border:0; background:#fff; color:#111; cursor:pointer; }
+  details.q { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:0 0 10px; }
+  details.q > summary { cursor:pointer; padding:12px 16px; font-weight:800; list-style:none; }
+  details.q > summary::-webkit-details-marker { display:none; }
+  details.q > summary::before { content:'+'; display:inline-block; width:1.3em; color:var(--accent-ink); font-weight:800; }
+  details.q[open] > summary::before { content:'−'; }
+  details.q > .body { padding:0 16px 8px; }
+  dl.gl { margin:0; } dl.gl dt { font-weight:800; margin-top:14px; } dl.gl dd { margin:2px 0 0; color:var(--ink); }
+  .gone { display:none !important; }
+  .empty { display:none; text-align:center; color:var(--muted); padding:40px 0; font-size:18px; }
+  .pill { display:inline-block; font-size:13px; font-weight:800; padding:1px 9px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); vertical-align:middle; }
+  .pill.off { background:var(--btn); color:var(--muted); }
+  footer { max-width:1180px; margin:0 auto; padding:0 16px 60px; color:var(--muted); font-size:14.5px; }
+  @media (max-width: 980px) {
+    .wrap { grid-template-columns:minmax(0,1fr); gap:0; }
+    nav.toc { display:none; }
+    details.toc-m { display:block; }
+    .split, .split.rev { grid-template-columns:minmax(0,1fr); }
+    .split.rev > :first-child { order:0; }
+  }
+  @media (max-width: 520px) {
+    body { font-size:16.5px; }
+    .bar .count { display:none; }
+    .steps > li { padding-left:42px; }
+  }
+  @media (max-width: 640px) {
+    .tbl { overflow:visible; border:0; background:transparent; }
+    table, tbody, tr, td { display:block; width:100%; min-width:0; }
+    thead { display:none; }
+    tr { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:0 0 10px; padding:6px 0; }
+    td { border:0; padding:5px 14px; }
+    td:first-child { font-weight:800; }
+    td[data-l]:not(:first-child)::before { content:attr(data-l); display:block; font-size:12.5px; font-weight:800; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.03em; }
+  }
+  @media print { .bar, nav.toc, details.toc-m, .lb { display:none !important; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="in">
+  <h1>Гайд администратора бота СкиллАп 5</h1>
+  <p>Для тех, кто только начал работать с ботом. Что нажимать, что вы увидите в ответ и чего лучше не делать. Всё написано по настоящему коду бота и проверено на его экранах.</p>
+  <div class="meta">Версия бота: обновление от 6 октября 2026. Приложение и дашборд: тот же релиз. Картинки сняты на вымышленных данных.</div>
+</div></header>
+<div class="bar"><div class="in">
+  <input id="q" type="search" placeholder="Поиск по гайду: например, «рассылка», «роль», «таблица»" aria-label="Поиск по гайду" autocomplete="off">
+  <span class="count" id="cnt"></span>
+  <button id="th" type="button" aria-label="Сменить тему">Тема</button>
+</div></div>
+<div class="wrap">
+<nav class="toc" aria-label="Оглавление"><ol>
+<li><a href="#start"><span class="n">1.</span>С чего начать за 5 минут</a></li>
+<li><a href="#check"><span class="n">2.</span>Проверьте в первую очередь</a></li>
+<li><a href="#roles"><span class="n">3.</span>Вход и роли</a></li>
+<li><a href="#map"><span class="n">4.</span>Карта админки по разделам</a></li>
+<li><a href="#apps"><span class="n">5.</span>Разбор заявок и письма делегату</a></li>
+<li><a href="#find"><span class="n">6.</span>Поиск делегата: <code>/find</code></a></li>
+<li><a href="#broadcast"><span class="n">7.</span>Рассылки</a></li>
+<li><a href="#polls"><span class="n">8.</span>Опросы</a></li>
+<li><a href="#faq"><span class="n">9.</span>Вопросы делегатов и частые вопросы</a></li>
+<li><a href="#form"><span class="n">10.</span>Настройка анкеты и текстов</a></li>
+<li><a href="#sheet"><span class="n">11.</span>Таблица Google: что можно и нельзя</a></li>
+<li><a href="#stats"><span class="n">12.</span>Статистика и дашборд</a></li>
+<li><a href="#miniapp"><span class="n">13.</span>Приложение менеджера (Mini App)</a></li>
+<li><a href="#now"><span class="n">14.</span>Что включено на СкиллАп сейчас и что можно включить</a></li>
+<li><a href="#problems"><span class="n">15.</span>Частые проблемы</a></li>
+<li><a href="#glossary"><span class="n">16.</span>Глоссарий</a></li>
+</ol></nav>
+<main>
+<details class="toc-m"><summary>Оглавление</summary><ol>
+<li><a href="#start"><span class="n">1.</span>С чего начать за 5 минут</a></li>
+<li><a href="#check"><span class="n">2.</span>Проверьте в первую очередь</a></li>
+<li><a href="#roles"><span class="n">3.</span>Вход и роли</a></li>
+<li><a href="#map"><span class="n">4.</span>Карта админки по разделам</a></li>
+<li><a href="#apps"><span class="n">5.</span>Разбор заявок и письма делегату</a></li>
+<li><a href="#find"><span class="n">6.</span>Поиск делегата: <code>/find</code></a></li>
+<li><a href="#broadcast"><span class="n">7.</span>Рассылки</a></li>
+<li><a href="#polls"><span class="n">8.</span>Опросы</a></li>
+<li><a href="#faq"><span class="n">9.</span>Вопросы делегатов и частые вопросы</a></li>
+<li><a href="#form"><span class="n">10.</span>Настройка анкеты и текстов</a></li>
+<li><a href="#sheet"><span class="n">11.</span>Таблица Google: что можно и нельзя</a></li>
+<li><a href="#stats"><span class="n">12.</span>Статистика и дашборд</a></li>
+<li><a href="#miniapp"><span class="n">13.</span>Приложение менеджера (Mini App)</a></li>
+<li><a href="#now"><span class="n">14.</span>Что включено на СкиллАп сейчас и что можно включить</a></li>
+<li><a href="#problems"><span class="n">15.</span>Частые проблемы</a></li>
+<li><a href="#glossary"><span class="n">16.</span>Глоссарий</a></li>
+</ol></details>
+<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово или посмотрите оглавление слева.</div>
+
+<section class="sec" id="start"><h2>С чего начать за 5 минут</h2>
+<div class="blk">
+<p class="lead">Бот СкиллАп 5 принимает заявки на форум 21 ноября в Санкт-Петербурге. Вы будете разбирать заявки, отвечать делегатам и писать им. Всё это делается в личной переписке с ботом, командой <code>/admin</code>. Ниже минимум, без которого не обойтись.</p>
+<ol class="steps">
+<li><b>Нажмите «Начать» у бота.</b> Откройте бота и отправьте <code>/start</code>. Это нужно один раз. Пока вы этого не сделали, бот не может вам писать: вы не получите ни сводки о заявках, ни вопросы делегатов. Подробнее: <a href="#roles">раздел про роли</a>.</li>
+<li><b>Убедитесь, что у вас есть роль.</b> Роль выдаёт суперадмин (или менеджер с правом «⚙️ Настройки»). Без роли <code>/admin</code> молчит: ни ошибки, ни подсказки. Это нормально, так задумано.</li>
+<li><b>Отправьте боту <code>/admin</code>.</b> Появится «👮‍♂️ Панель администратора» и кнопки разделов. Вы видите только те разделы, на которые у вас есть права.</li>
+<li><b>Откройте «📋 Заявки» и нажмите ещё раз «📋 Заявки».</b> Бот покажет одну заявку: сверху самую сильную по баллу. Нажмите «✅ Одобрить» или «❌ Отклонить». Разбор заявок подробно: <a href="#apps">здесь</a>.</li>
+<li><b>Прочитайте блок «Проверьте в первую очередь».</b> В нём то, что сейчас настроено не так, как вы, скорее всего, ожидаете. Он занимает три минуты и сэкономит часы: <a href="#check">перейти</a>.</li>
+</ol>
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/b_admin_root.png"><img src="shots/admin/b_admin_root.png" width="780" height="1512" alt="Так выглядит ответ на /admin у менеджера с ролью «🛂 Менеджер регистраций». Над кнопками команды, которые вам доступны." loading="lazy"></a><figcaption>Так выглядит ответ на <code>/admin</code> у менеджера с ролью «🛂 Менеджер регистраций». Над кнопками команды, которые вам доступны.</figcaption></figure>
+<div class="danger"><b class="t">Три правила, которые защищают от больших ошибок</b>
+<ul>
+<li><b>Не проверяйте рассылку на «📢 Все пользователи».</b> Один тест «Привет» ушёл 951 человеку, остановить его было нельзя. Теперь есть предпросмотр и кнопка «⛔ Остановить», но привычка важнее. Тестируйте на фильтре из 1–3 человек. <a href="#broadcast">Правила рассылки</a>.</li>
+<li><b>«✅ Одобрить все» нельзя откатить.</b> Всем сразу уходят письма об одобрении. Нажимайте, только если вы прочитали очередь.</li>
+<li><b>Не переименовывайте вкладки в Google-таблице.</b> Бот ищет вкладки по имени. Переименовали: бот создаст новую пустую, а старая перестанет обновляться. <a href="#sheet">Что можно и нельзя в таблице</a>.</li>
+</ul></div>
+<p>Если что-то пошло не так, загляните в <a href="#problems">«Частые проблемы»</a>: там для каждого случая сказано, что делать самому и когда писать разработчику.</p>
+</div>
+</section>
+
+<section class="sec" id="check"><h2>Проверьте в первую очередь</h2>
+<div class="blk">
+<p class="lead">Это подсказки о том, что в боте сейчас устроено не так очевидно. Ничего не сломано, но с каждым пунктом лучше разобраться до того, как придёт поток заявок. Пункты идут по важности.</p>
+<div class="tbl"><table>
+<thead><tr><th style="width:30%">Что вы увидите</th><th>Что с этим сделать</th></tr></thead>
+<tbody>
+<tr><td><b>В карточке заявки нет части ответов.</b> Нет телефона, ВК, стека, опыта, готовности, направления, проектов, портфолио и кейс-чемпионата.</td>
+<td>Карточка показывает набор полей, подготовленный для другого события, и 11 вопросов анкеты СкиллАп в него не попали. Откройте <span class="path">«📋 Заявки» → «🧾 Поля карточки заявки»</span> (нужно право «⚙️ Настройки»). Наверху будет строка «⚠️ Спрашиваем в анкете, но не показываем в карточке: 11». Нажмите кнопку «⚠️ Показать всё, что спрашиваем»: все 11 включатся сразу. Кнопка только добавляет поля, ничего не убирает. <a href="#apps-fields">Подробнее</a>.</td></tr>
+<tr><td><b>В рассылке есть кнопка «📄 По файлу в проекте».</b></td>
+<td>Не нажимайте её: она берёт список людей из служебного файла на сервере, а файла на СкиллАп нет. Вы получите «❌ Файл data/broadcast_target.txt не найден!». Вреда нет, но и пользы тоже. Для выбора людей используйте «🎯 По фильтру».</td></tr>
+<tr><td><b>В экране «🏙 Города мероприятия» лежат чужие города.</b></td>
+<td>Там три города от другого события: «Москва, 30-31 октября», «Санкт-Петербург, 3 октября», «Тюмень, 3 октября». Пока модуль выключен (сейчас так), они ни на что не влияют. Если включите «🏙 Выбор города», делегаты увидят именно их. Сначала переименуйте или выключите лишние (кнопка ⛔). Отдельный совет: для одного форума модуль городов, скорее всего, не нужен. Тот же «город по умолчанию» подставляется в заголовок «🗓 Программа форума — Москва, 30-31 октября»: это не ошибка, но сбивает с толку.</td></tr>
+<tr><td><b>Настроенные тексты «Отвечаем в течение 5 дней…» не видны делегату в приложении.</b></td>
+<td>Тексты экрана статуса заявки показываются только при включённом тумблере «📶 Экран статуса заявки во всю ширину» (раздел «📝 Анкета»). Пока он выключен, в приложении написано «обычно за 3 дн.», а в чате бот обещает «в течение 5 дней». Решите, какой срок честный, и либо включите тумблер, либо поправьте текст в приложении («⚙️ Настройки», поиск по слову «статус»).</td></tr>
+<tr><td><b>Менеджеру или делегату «ничего не приходит».</b></td>
+<td>Телеграм не разрешает боту писать первым. Если человек не нажимал «Начать» или заблокировал бота, ему не дойдут ни сводки, ни ответы на вопросы, ни письмо об одобрении, при этом сам бот скажет «Одобрено». Бот ставит пометку «⚠️ не получает уведомления» на экране «👥 Роли и доступы», но только после первой неудачной отправки. Попросите каждого нового менеджера нажать «Начать» заранее. <a href="#roles-unreach">Как это выглядит</a>.</td></tr>
+<tr><td><b>Роль снимается одним нажатием.</b></td>
+<td>На экране «👥 Роли и доступы» кнопка «➖ имя, роль» снимает роль сразу, без вопроса «Вы уверены?». Вернуть можно, выдав роль заново, но срок действия придётся поставить снова. Нажимайте её внимательно.</td></tr>
+<tr><td><b>Делегат из приложения и из чата получает разные «спасибо».</b></td>
+<td>Из чата приходит текст «Анкета отправлена. Каждую читаем вручную, ответ придёт сюда в течение 5 дней…». Из приложения приходит «Заявка принята. Спасибо! Мы всё получили…». Тексты правятся в разных местах (второй только в приложении, «⚙️ Настройки», поиск «заявка принята»). Если срок меняется, правьте оба.</td></tr>
+<tr><td><b>У некоторых заявок нет балла за опыт и готовность.</b></td>
+<td>Вопросы «Опыт работы» и «Готовность» принимают и напечатанное слово («Другое»). Такой ответ не совпадёт со списками в «🧮 Правилах балла» и баллов не даст. Резюме «текстом» тоже не даёт балл за резюме (балл за файл или ссылку).</td></tr>
+<tr><td><b>Слово «Юлид» на экранах СкиллАп.</b></td>
+<td>В нескольких подсказках осталось название прошлого события: «📊 Фон карточки «Юлид в цифрах»» в «🎪 Событие/Медиа», пример в подсказке «💬 Приветствие», кнопка пресета «🏛 Форум (Юлид)» и оформление «ЮЛид» в приложении. Это видите только вы, делегаты нет. Просто не пугайтесь.</td></tr>
+<tr><td><b>Кнопка «🎓 Форум СкиллАп» в «🎛 Тип события (пресет)».</b></td>
+<td>Не нажимайте её «для проверки». Пресет перезаписывает набор вопросов и молча меняет ещё настройки (резюме, предложение личной ссылки, ступени амбассадоров). Всё нужное для СкиллАп уже выставлено.</td></tr>
+<tr><td><b>У делегата нет кнопки «❓ Частые вопросы».</b></td>
+<td>Кнопка появляется, когда есть хотя бы один видимый пункт, а сейчас пунктов нет. Заведите 5–10 пунктов, это снимет часть вопросов к вам. <a href="#faq">Как вести частые вопросы</a>.</td></tr>
+<tr><td><b>Бот работает без тихих часов и без вечерней сводки.</b></td>
+<td>Тихие часы выключены: решения и ответы уходят делегатам сразу, в том числе ночью. «📊 Итоги дня менеджерам» тоже выключены. Включайте по желанию: <a href="#now">что можно включить</a>.</td></tr>
+<tr><td><b>Вкладка «Лист1» в Google-таблице пустая.</b></td>
+<td>Осталась с создания таблицы, боту не нужна. В «🔍 Сверить с БД» она попадёт в «неизвестные вкладки». Можно удалить.</td></tr>
+<tr><td><b>Форум однодневный, а в программе предлагаются два дня.</b></td>
+<td>«🗓 Сколько дней идёт форум» по умолчанию равно 2. Для 21 ноября поставьте <code>1</code> в «🎪 Событие» → «🎪 Событие/Медиа».</td></tr>
+</tbody></table></div>
+<p>Мелочи, которые вы можете заметить: в сообщении «Одобрить все 3 заявок?» окончание не склоняется; в сводке анкеты, которую видит делегат, всегда есть строка «Работа: Нет», а в карточке <code>/find</code> строка «Email: -» (таких вопросов в анкете СкиллАп нет). На работу бота это не влияет.</p>
+</div>
+</section>
+
+<section class="sec" id="roles"><h2>Вход и роли</h2>
+<div class="blk">
+<h3>Как попасть в админку</h3>
+<p>Админка открывается командой <code>/admin</code> в личной переписке с ботом. Отдельной кнопки у делегатов нет, а сама админка состоит из кнопок под сообщениями.</p>
+<ul>
+<li>Если у вас есть роль, вы увидите «👮‍♂️ Панель администратора», список ваших команд и кнопки разделов.</li>
+<li>Если роли нет или она истекла, бот молчит. Не пишет ошибку, не подсказывает. Если вы уверены, что роль выдана, нажмите <code>/start</code> и повторите <code>/admin</code>, а затем проверьте экран «👥 Роли и доступы» (его откроет тот, кто выдавал роль).</li>
+<li>Если у вас ровно один доступный экран (например, только очередь чеков), бот откроет его сразу, минуя меню.</li>
+<li>Если в какой-то момент вы видите «Недостаточно прав»: у вас есть роль, но не на эту кнопку.</li>
+</ul>
+</div>
+<div class="blk">
+<h3>Кто что видит: девять прав</h3>
+<p>Право это одна возможность в админке. Роль это набор прав, который выдаётся человеку целиком. У человека может быть несколько ролей, права складываются. Названия прав в таблице совпадают с теми, что вы увидите на экране «✏️ Права роли».</p>
+<div class="tbl"><table>
+<thead><tr><th>Право</th><th>Что открывает</th></tr></thead>
+<tbody>
+<tr><td>«📋 Модерация заявок»</td><td>Раздел «📋 Заявки»: очередь, список, вопросы делегатов, частые вопросы, «🆘 SOS», «🎪 Форум: функции». Команды <code>/find</code>, <code>/create_link</code>. В приложении: «Отбор заявок», «Вопросы делегатов», «Частые вопросы».</td></tr>
+<tr><td>«🧾 Модерация чеков»</td><td>Раздел «💳 Оплата» → «🧾 Чеки». На СкиллАп оплата выключена.</td></tr>
+<tr><td>«🎮 Модерация геймификации»</td><td>Задания, проверка сдач, монеты, волны, ступени амбассадоров. Команда <code>/coins</code>. На СкиллАп геймификация для делегатов выключена.</td></tr>
+<tr><td>«📢 Рассылки»</td><td>Раздел «📢 Общение»: «📢 Рассылка» и «📊 Опросы». Команды <code>/broadcast</code>, <code>/broadcasts</code>, <code>/scheduled</code>.</td></tr>
+<tr><td>«⚙️ Настройки»</td><td>Все настройки: тексты, тумблеры, вопросы анкеты, кнопки меню, программа, оформление, вкладки таблицы, синхронизация и сверка таблицы, «👥 Роли и доступы». <b>Фактически это права администратора</b>: с ним можно выдать любую роль кому угодно, в том числе себе.</td></tr>
+<tr><td>«📊 Статистика»</td><td>Раздел «📊 Данные»: статистика, по месяцам, источники, «📄 Экспорт CSV», «📝 Незавершённые → таблица». Вход на веб-дашборд. Команды <code>/stats</code>, <code>/stats_monthly</code>, <code>/export</code>.</td></tr>
+<tr><td>«✅ Отметки на форуме (чек-ин)»</td><td>Отметки на входе форума и «🧳 Нашли вещь»; сканер в приложении.</td></tr>
+<tr><td>«📝 Одобрение на месте»</td><td>Одобрить делегата прямо у стойки регистрации на форуме (внутри экранов чек-ина).</td></tr>
+<tr><td>«🔗 Ссылки с метками»</td><td>Только «📈 Источники» и «🔗 Ссылки с метками». Ни заявок, ни контактов, ни настроек.</td></tr>
+</tbody></table></div>
+<div class="note"><b class="t">Суперадмины</b>Это люди из служебного списка, который ведёт разработчик. У них все права всегда, и снять их из бота нельзя. Только суперадмин видит кнопку «🔄 Новый сезон» и может привязывать менеджеров к городу. Всё остальное, включая выдачу ролей, может любой человек с правом «⚙️ Настройки».</div>
+<h4>Шесть ролей</h4>
+<div class="tbl"><table>
+<thead><tr><th>Роль</th><th>Что в ней сейчас</th></tr></thead>
+<tbody>
+<tr><td>«🛂 Менеджер регистраций»</td><td>На СкиллАп расширена вручную: «📋 Модерация заявок», «🧾 Модерация чеков», «📢 Рассылки», «⚙️ Настройки», «📊 Статистика». Это единственная роль, которая сейчас выдана людям. Такой менеджер видит почти всё, кроме отметок на форуме, геймификации, кнопки «🔄 Новый сезон» и команды удаления делегата.</td></tr>
+<tr><td>«🎮 Менеджер геймификации»</td><td>«🎮 Модерация геймификации».</td></tr>
+<tr><td>«📊 Менеджер статистики»</td><td>«📊 Статистика»: раздел «📊 Данные» без таблицы и настроек, плюс дашборд.</td></tr>
+<tr><td>«🎗 Волонтёр форума»</td><td>«✅ Отметки на форуме (чек-ин)».</td></tr>
+<tr><td>«🎗 Волонтёр регистрации»</td><td>«✅ Отметки на форуме (чек-ин)» и «📝 Одобрение на месте».</td></tr>
+<tr><td>«📣 Маркетинг (метки)»</td><td>«🔗 Ссылки с метками».</td></tr>
+</tbody></table></div>
+</div>
+<div class="blk" id="roles-add">
+<h3>Как выдать роль, шаг за шагом</h3>
+<p>Нужно право «⚙️ Настройки». Заранее попросите человека открыть бота и нажать «Начать»: иначе вы сможете выдать роль только по числовому номеру, а уведомления до него не дойдут.</p>
+<div class="split rev"><div><p>Так выглядит экран, который вы откроете на первом шаге. Сверху шесть ролей с правами и переключателями, ниже список людей с их ролями и сроком, затем суперадмины. Под сообщением кнопки: по паре на каждую роль, по кнопке «➖» и «⏳» на каждого человека, «➕ Добавить менеджера» и «🔗 Пригласить волонтёров».</p></div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_roles.png"><img src="shots/admin/b_roles.png" width="780" height="2806" alt="Экран «👥 Роли и доступы»: шесть ролей, люди и суперадмины. Имена на картинке вымышленные." loading="lazy"></a><figcaption>Экран «👥 Роли и доступы»: шесть ролей, люди и суперадмины. Имена на картинке вымышленные.</figcaption></figure></div>
+<div class="split"><div>
+<ol class="steps">
+<li>Отправьте <code>/admin</code> и откройте <span class="path">«🔧 Управление» → «👥 Роли и доступы»</span>. На экране шесть ролей с правами, список «Люди» и суперадмины.</li>
+<li>Нажмите «➕ Добавить менеджера». Бот спросит, кого добавить.</li>
+<li>Пришлите <b>одним сообщением</b> одно из трёх: пересланное сообщение человека, его <code>@ник</code> или числовой Телеграм-номер. Пересылка работает, только если у человека разрешено показывать аккаунт при пересылке. Номер человек узнаёт сам (например, у сторонних ботов); у делегата, подавшего анкету, его видно в карточке <code>/find</code>.</li>
+<li>Выберите роль кнопкой. Бот ответит «Добавлен» или «Уже был в этой роли». Одному человеку можно выдать несколько ролей.</li>
+<li><b>Скажите человеку лично</b>, что роль выдана: бот ему ничего не напишет (исключение: волонтёру приходит шпаргалка). Права читаются при каждом нажатии, перезапуск не нужен.</li>
+</ol>
+</div>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_roles_add.png"><img src="shots/admin/b_roles_add.png" width="780" height="562" alt="Шаг 2: бот просит прислать человека. Вместо кнопки можно написать слово «Отмена» или /cancel." loading="lazy"></a><figcaption>Шаг 2: бот просит прислать человека. Вместо кнопки можно написать слово «Отмена» или <code>/cancel</code>.</figcaption></figure>
+</div>
+<div class="pair">
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_roles_assign.png"><img src="shots/admin/b_roles_assign.png" width="780" height="902" alt="Шаг 4: выбор роли. Над кнопками написано, кого вы назначаете." loading="lazy"></a><figcaption>Шаг 4: выбор роли. Над кнопками написано, кого вы назначаете.</figcaption></figure>
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/b_role_caps.png"><img src="shots/admin/b_role_caps.png" width="780" height="1518" alt="Права роли отмечаются галочками. Нажатие сохраняется сразу." loading="lazy"></a><figcaption>Права роли отмечаются галочками. Нажатие сохраняется сразу.</figcaption></figure>
+</div>
+<h4>Если бот отвечает «Не понял, кого добавить»</h4>
+<ul>
+<li>«Не понял, кого добавить. Пришлите пересланное сообщение от человека, @username или числовой id.»: вы прислали что-то другое.</li>
+<li>«В этой пересылке нет аккаунта человека…»: у человека скрыта пересылка, попросите ник или номер.</li>
+<li>«Пользователь @имя не найден в базе бота — попросите числовой id.»: человек ни разу не нажимал «Начать». Попросите нажать и повторите.</li>
+</ul>
+<h4>Права роли и срок</h4>
+<ul>
+<li><b>Права роли.</b> Кнопка «✏️ Права роли: …» открывает галочки (✅ разрешено, ☐ нет). Нажатие сразу сохраняется и действует на всех людей этой роли. Если снять все галочки, роль временно ничего не может, а люди остаются в списке.</li>
+<li><b>Выключить роль целиком.</b> Верхняя кнопка пары: «🛂 Менеджер регистраций: ✅ Вкл → ❌ Выкл». Подпись показывает, что произойдёт при нажатии.</li>
+<li><b>Срок.</b> Кнопка «⏳ Бессрочно» в строке человека. Можно выбрать «♾ Бессрочно» или «✏️ Ввести дату» в формате <code>04.10.2026</code> (роль действует по этот день включительно). После срока роль не даёт прав, а строка остаётся с пометкой «⌛ истекла».</li>
+<li><b>Снять роль.</b> Кнопка «➖ имя — роль». Срабатывает сразу, без подтверждения.</li>
+</ul>
+</div>
+<div class="blk" id="roles-unreach">
+<h3>Отметка «не получает уведомления»</h3>
+<p>Если боту не удалось написать человеку из списка (не нажимал «Начать» или заблокировал бота), в его строке появляется «⚠️ не получает уведомления с ДД.ММ — заблокировал бота или не нажал /start». Отметка снимается сама, когда человек напишет боту или ему удастся доставить сообщение. Суперадминам при этом приходит отдельное сообщение (не чаще раза в сутки на человека).</p>
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/b_roles_unreachable.png"><img src="shots/admin/b_roles_unreachable.png" width="780" height="3230" alt="Второй менеджер ещё не открывал бота: в его строке «⚠️ не получает уведомления». Отметка появляется только после первой неудачной отправки, то есть отсутствие метки ничего не гарантирует." loading="lazy"></a><figcaption>Второй менеджер ещё не открывал бота: в его строке «⚠️ не получает уведомления». Отметка появляется только после первой неудачной отправки, то есть отсутствие метки ничего не гарантирует.</figcaption></figure>
+<div class="note"><b class="t">Что сказать новому менеджеру</b>Прежде чем выдать роль, попросите человека открыть бота и нажать «Начать». Иначе он не получит сводки о заявках и вопросы делегатов, а вы узнаете об этом позже.</div>
+<h4>Как посмотреть бота глазами делегата</h4>
+<p>Отдельного режима «смотреть как делегат» нет. Меню делегата вы видите, когда нажимаете <code>/start</code> в своём аккаунте. Суперадмин, у которого уже есть анкета, получает кнопку «🔄 Пройти регистрацию заново» для проверки. Что видит одобренный делегат сейчас: ссылку, приглашённых, информацию, вопрос и приложение.</p>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_delegate_menu.png"><img src="shots/admin/b_delegate_menu.png" width="780" height="610" alt="Нижнее меню одобренного делегата СкиллАп. Кнопок монет и заданий нет: геймификация выключена. «Частые вопросы» появятся, когда в них будет хотя бы один пункт." loading="lazy"></a><figcaption>Нижнее меню одобренного делегата СкиллАп. Кнопок монет и заданий нет: геймификация выключена. «Частые вопросы» появятся, когда в них будет хотя бы один пункт.</figcaption></figure>
+</div>
+</section>
+
+<section class="sec" id="map"><h2>Карта админки по разделам</h2>
+<div class="blk">
+<p class="lead">В корне <code>/admin</code> восемь кнопок. Они идут в порядке пути делегата: узнал о событии, заполнил анкету, ждёт решения, платит, получает рассылки, играет. «Данные» и «Управление» нужны вам самим. Раздел, в котором для вас нет ни одной кнопки, вы не увидите вообще.</p>
+<div class="note"><b class="t">Как читать подписи тумблеров</b>Тумблер это кнопка, которая переключает настройку на месте. Подпись всегда читается «сейчас → станет». Например, «🌙 Тихие часы: ❌ Выкл → ✅ Вкл» значит: сейчас выключено, нажатие включит. После нажатия вверху всплывает окно, его нужно закрыть кнопкой «ОК». Подтверждения у тумблеров нет, исключение одно: перевод модерации заявок из «Ручной» в «Авто».</div>
+<p>Ниже для каждого раздела: зачем он нужен, что на СкиллАп включено и как он выглядит у менеджера с ролью «🛂 Менеджер регистраций». Раздел «📋 Заявки» и все остальные подробно разобраны в следующих главах.</p>
+</div>
+
+<div class="blk"><h3>🎪 Событие</h3>
+<div class="split"><div>
+<p>Всё, что делегат видит до регистрации: название, даты, место, контакты, приветствие, фото, программа. Четыре кнопки: «🎪 Событие/Медиа» (экран с полями), «🔘 Кнопки меню» (какие кнопки есть у делегата), «🎁 Бонус» (файл за регистрацию, сейчас выключен) и «🗓 Программа форума» (залы и сессии).</p>
+<p>Правка любого поля: нажимаете «✏️ поле», присылаете значение сообщением. Чтобы очистить поле, пришлите «-». Подробнее: <a href="#form">раздел про настройку анкеты и текстов</a>.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_event_section.png"><img src="shots/admin/b_event_section.png" width="780" height="776" alt="Раздел «🎪 Событие»." loading="lazy"></a><figcaption>Раздел «🎪 Событие».</figcaption></figure></div></div>
+
+<div class="blk"><h3>📝 Анкета</h3>
+<div class="split"><div>
+<p>Какие вопросы задаём при регистрации и как они выглядят: включение вопросов, тексты вопросов, согласие на обработку данных, английский язык, переключатели новой анкеты. Раздел длинный (31 строка), но ежедневно вам понадобятся две-три: «📋 Вопросы регистрации», «✏️ Тексты вопросов», «📋 Согласия». На картинке показаны первые и последние кнопки.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_form_section.png"><img src="shots/admin/b_form_section.png" width="780" height="2032" alt="Раздел «📝 Анкета». Середина списка скрыта." loading="lazy"></a><figcaption>Раздел «📝 Анкета». Середина списка скрыта.</figcaption></figure></div></div>
+
+<div class="blk"><h3>📋 Заявки</h3>
+<div class="split"><div>
+<p>Главный рабочий раздел. Сверху действия: очередь, список, вопросы делегатов, частые вопросы, «🆘 SOS», «🎪 Форум: функции». Ниже настройки: поля карточки, правила балла, правила автоотказа, режимы одобрения, тихие часы. Волонтёрам форума здесь доступны только «✅ Отметки на форуме» и «🧳 Нашли вещь». Разобран в <a href="#apps">главе про заявки</a>.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_apps_section.png"><img src="shots/admin/b_apps_section.png" width="780" height="2032" alt="Раздел «📋 Заявки». Середина списка скрыта." loading="lazy"></a><figcaption>Раздел «📋 Заявки». Середина списка скрыта.</figcaption></figure></div></div>
+
+<div class="blk"><h3>💳 Оплата</h3>
+<div class="split"><div>
+<p>Чеки делегатов, реквизиты, сроки и напоминания. <span class="pill off">на СкиллАп выключено</span> Участие бесплатное: после одобрения делегат получает обычное письмо, а не выбор тарифа. Если оплату включат, одобренному делегату придёт «💳 Выбери вариант участия:», а менеджеры будут проверять чеки в «🧾 Чеки».</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_pay_section.png"><img src="shots/admin/b_pay_section.png" width="780" height="734" alt="Раздел «💳 Оплата». Тумблер «💳 Оплата» выключен." loading="lazy"></a><figcaption>Раздел «💳 Оплата». Тумблер «💳 Оплата» выключен.</figcaption></figure></div></div>
+
+<div class="blk"><h3>📢 Общение</h3>
+<div class="split"><div>
+<p>Всё, что уходит делегатам разом: «📢 Рассылка» и «📊 Опросы». Нужно право «📢 Рассылки». Разобрано в главах про <a href="#broadcast">рассылки</a> и <a href="#polls">опросы</a>.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_comms_section.png"><img src="shots/admin/b_comms_section.png" width="780" height="586" alt="Раздел «📢 Общение»." loading="lazy"></a><figcaption>Раздел «📢 Общение».</figcaption></figure></div></div>
+
+<div class="blk"><h3>🎮 Геймификация</h3>
+<div class="split"><div>
+<p>Задания, проверка сдач, монеты. <span class="pill off">для делегатов выключена</span> Кнопок «🪙 Мои монеты» и «🎯 Задания» у делегатов нет, разделы «Задания», «Монеты», «Рейтинг» в приложении выключены. Менеджеру без права «🎮 Модерация геймификации» раздел показывает только «🤝 Амбассадоры» (тексты для амбассадоров) и «⚙️ Тексты и настройки». Суперадмин видит все кнопки. Общего выключателя нет: чтобы включить геймификацию, нужно завести задания и включить кнопки меню и разделы приложения, а затем попросить делегатов нажать <code>/start</code>.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_game_section.png"><img src="shots/admin/b_game_section.png" width="780" height="546" alt="Раздел «🎮 Геймификация» у менеджера регистраций." loading="lazy"></a><figcaption>Раздел «🎮 Геймификация» у менеджера регистраций.</figcaption></figure></div></div>
+
+<div class="blk"><h3>📊 Данные</h3>
+<div class="split"><div>
+<p>Статистика, выгрузки и Google-таблица. Разобран в главах про <a href="#sheet">таблицу</a> и <a href="#stats">статистику и дашборд</a>.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_data_section.png"><img src="shots/admin/b_data_section.png" width="780" height="1360" alt="Раздел «📊 Данные»." loading="lazy"></a><figcaption>Раздел «📊 Данные».</figcaption></figure></div></div>
+
+<div class="blk"><h3>🔧 Управление</h3>
+<div class="split"><div>
+<p>Города, роли, оформление приложения, новый сезон, чат делегатов, справка. Здесь вы чаще всего бываете ради «👥 Роли и доступы» и «🎨 Оформление». Кнопка «📖 Справка по настройкам» присылает короткую справку о том, что где настраивается (то же даёт команда <code>/settings_guide</code>). Кнопку «🔄 Новый сезон» видит только суперадмин. Группа «🔧 Система» нужна разработчику, новому менеджеру заходить туда не нужно.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_manage_section.png"><img src="shots/admin/b_manage_section.png" width="780" height="1326" alt="Раздел «🔧 Управление» у менеджера регистраций (без «🔄 Новый сезон»)." loading="lazy"></a><figcaption>Раздел «🔧 Управление» у менеджера регистраций (без «🔄 Новый сезон»).</figcaption></figure></div></div>
+</section>
+
+<section class="sec" id="apps"><h2>Разбор заявок и письма делегату</h2>
+<div class="blk">
+<p class="lead">Заявка это анкета, которую человек отправил и которая ждёт вашего решения. Решение, которое вы принимаете, превращается в письмо делегату в чате с ботом.</p>
+<h3>Как вы узнаёте о новых заявках</h3>
+<p>Отдельного сообщения на каждую заявку сейчас нет. Бот работает в режиме «🔔 Уведомление: 🕒 Пачкой»: раз в 3 часа все, у кого есть право «📋 Модерация заявок», получают сообщение «📋 Заявок в ожидании: N. Открой /admin → Заявки.». Если заявок нет, сообщения нет. Переключить на сообщение по каждой заявке можно кнопкой «🔔 Уведомление: 🕒 Пачкой → 📨 Сразу» в разделе «📋 Заявки». Сводку можно совсем выключить тумблером «📋 Сводка о заявках». Тот, кто заблокировал бота, сводку не получит.</p>
+</div>
+<div class="blk" id="apps-card">
+<h3>Очередь: карточка за карточкой</h3>
+<div class="split"><div>
+<ol class="steps">
+<li>Откройте <span class="path">«📋 Заявки» → «📋 Заявки»</span>. На экране всегда <b>одна</b> заявка, это не список.</li>
+<li>Порядок такой: сначала заявки с самым высоким баллом, внутри балла более ранние. Заявки без балла идут в конец.</li>
+<li>Прочитайте карточку. Сверху «📋 Заявка 1/4»: номер в очереди и сколько всего ждёт. Дальше ФИО и ник, балл, ответы анкеты, блок про резюме и пометки.</li>
+<li>Примите решение кнопкой. Решённая карточка исчезает, приходит следующая. Когда очередь пуста, бот пишет «✅ Заявок нет.».</li>
+</ol>
+<h4>Что значит балл</h4>
+<p>«🧮 Балл: 7/7 · IT 3+»: бот сам считает баллы по ответам анкеты, чтобы сильные заявки вы разбирали раньше. Максимум 7: 2 балла за IT (направление обучения из списка или не меньше двух пунктов стека), 2 за старший курс (3 курс и старше, магистратура, выпускник), 1 за резюме файлом или ссылкой, 1 за готовность выйти на работу сейчас или через 3–6 месяцев, 1 за опыт (пет-проекты, стажировка, коммерческий). «IT 3+» стоит, когда выполнены обе «двойки». Балл подсказка, а не решение: решаете вы.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_app_card.png"><img src="shots/admin/b_app_card.png" width="780" height="958" alt="Карточка заявки. Все имена на картинках вымышленные." loading="lazy"></a><figcaption>Карточка заявки. Все имена на картинках вымышленные.</figcaption></figure></div>
+<h4>Кнопки под карточкой</h4>
+<div class="tbl"><table>
+<thead><tr><th>Кнопка</th><th>Что делает</th></tr></thead>
+<tbody>
+<tr><td>«✅ Одобрить»</td><td>Заявка становится одобренной, делегату сразу уходит письмо об одобрении, в таблице статус меняется на «Одобрена». Вам всплывает «Одобрено», приходит следующая карточка.</td></tr>
+<tr><td>«❌ Отклонить»</td><td>Бот попросит причину (см. ниже). Заявка отклоняется после того, как вы её пришлёте.</td></tr>
+<tr><td>«📎 Резюме»</td><td>Только если резюме есть. Присылает файл документом или текст резюме. Ссылку и мини-профиль карточка показывает прямо в тексте.</td></tr>
+<tr><td>«🕓 История»</td><td>Только если делегат правил анкету после отправки. Показывает последние правки: «поле: было → стало».</td></tr>
+<tr><td>«📄 Полная анкета»</td><td>Только если карточка не влезла в лимит Телеграм. Присылает все ответы целиком.</td></tr>
+<tr><td>«⏭ Пропустить»</td><td>Прячет карточку до конца вашей сессии, ничего не решая. В следующий раз, когда вы откроете «📋 Заявки», она вернётся.</td></tr>
+<tr><td>«✅ Одобрить все (N)»</td><td>Одобряет сразу всю очередь. См. ниже, это самая опасная кнопка.</td></tr>
+</tbody></table></div>
+</div>
+
+<div class="blk" id="apps-approve">
+<h3>Одобрить: что получит делегат</h3>
+<p>Делегат получает сообщение вместе с главным меню. Текст сейчас такой:</p>
+<blockquote class="card" style="margin-top:0"><p>Ты прошёл(а) отбор на СкиллАп 5.</p><p>Ждём тебя 21 ноября в Петербурге. Адрес и тайминг пришлём сюда за неделю до форума.</p><p>Ссылку на чат делегатов пришлём сюда в октябре.</p><p>Если отметил(а) кейс-чемпионат, в конце октября позовём на короткое интервью, минут на семь.</p></blockquote>
+<p>Правится в <span class="path">«📋 Заявки» → «⚙️ Тексты и настройки» → «✏️ 🎉 После одобрения»</span>. Бот записывает, дошло ли письмо. Если делегат не открывал бота или заблокировал его, письмо не дойдёт, хотя вы увидите «Одобрено». Как найти таких людей: <a href="#problems">«Делегат пишет, что ему не пришло одобрение»</a>.</p>
+</div>
+
+<div class="blk" id="apps-reject">
+<h3>Отклонить: причина и письмо</h3>
+<div class="split"><div>
+<ol class="steps">
+<li>Нажмите «❌ Отклонить».</li>
+<li>Бот напишет «Укажи причину отклонения:» и напомнит, что причину увидит делегат. Внизу появится кнопка «Отмена».</li>
+<li>Напишите причину <b>обычным сообщением</b>. Готовых вариантов в чате нет (они есть только в приложении).</li>
+<li>Бот ответит «Заявка отклонена.», делегату уйдёт общий текст отказа и ваша причина отдельным абзацем.</li>
+</ol>
+<p>Если вы передумали, нажмите «Отмена» или отправьте любую команду на «/»: бот ответит «Отклонение отменено.» и покажет заявку снова.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_reject_prompt.png"><img src="shots/admin/b_reject_prompt.png" width="780" height="412" alt="Бот ждёт причину отказа. Её увидит делегат." loading="lazy"></a><figcaption>Бот ждёт причину отказа. Её увидит делегат.</figcaption></figure></div>
+<p>Делегат получит: «Спасибо, что заполнил(а) анкету. В этот раз позвать тебя на СкиллАп 5 не получится.» и ниже ваш текст. Общий текст правится в «✏️ 🚫 При отклонении» (форматирование в нём не работает). Пишите причину так, чтобы человеку было понятно, что делать дальше: отказанный делегат может подать анкету заново, и точная формулировка подскажет ему, что поправить. Без грубостей и личных данных.</p>
+<p>В приложении («🗂 Отбор заявок») есть три готовых причины: «На площадке ограниченное число мест, и приоритет получили студенты IT-направлений с 3 курса и выпускники.», «В анкете не хватило информации о проектах или опыте. Допиши и подай заново, посмотрим ещё раз.», «Анкета заполнена не полностью или с ошибкой в контактах.» и поле «Своя причина».</p>
+<div class="warn"><b class="t">Если письмо об отказе не дошло</b>Решение не откатывается. Менеджеру бот об этом не пишет, но факт недоставки записывается: смотрите «📊 Данные» → «🔍 Сверить с БД» → «Решения не доставлены».</div>
+</div>
+
+<div class="blk" id="apps-all">
+<h3>«✅ Одобрить все»: когда и как</h3>
+<div class="split"><div>
+<p>Кнопка спрашивает «Одобрить все N заявок?» и предлагает «✅ Да» или «❌ Отмена». После «Да» все заявки в очереди одобряются разом и каждому уходит письмо. <b>Откатить нельзя</b> (можно только по одной вернуть заявку в ожидание через <code>/find</code>, и письмо уже будет отправлено).</p>
+<p>Пользуйтесь ею, только когда вы заранее прочитали очередь и все заявки подходят. Был случай на другом событии: включённый режим «Авто» молча одобрил 38 заявок без письма.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_approve_all.png"><img src="shots/admin/b_approve_all.png" width="780" height="314" alt="Подтверждение. Число и склонение «3 заявок» бот ставит как есть." loading="lazy"></a><figcaption>Подтверждение. Число и склонение «3 заявок» бот ставит как есть.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="apps-list">
+<h3>«📇 Список заявок»</h3>
+<div class="split"><div>
+<p>Обзор уже принятых и ожидающих решений. Три фильтра: «✅ Одобренные», «❌ Отклонённые», «⏳ Ожидают». Строка: номер, имя ссылкой, ник, дата и время, кто принял («приняла Мария Иванова» или «отклонил(а) …»). Страницы по 15. Здесь удобно проверить, что вы или коллеги уже разобрали. Конкретного человека ищите через <code>/find @ник</code>.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_app_list.png"><img src="shots/admin/b_app_list.png" width="780" height="1496" alt="Список заявок." loading="lazy"></a><figcaption>Список заявок.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="apps-fields">
+<h3>Что показывает карточка: «🧾 Поля карточки заявки»</h3>
+<div class="split"><div>
+<p>Нужно право «⚙️ Настройки». Экран показывает все вопросы анкеты. У каждого свой значок: ✅ показываем в карточке, ☐ не показываем, ⚠️ анкета спрашивает, а карточка не показывает.</p>
+<ol class="steps">
+<li>Откройте <span class="path">«📋 Заявки» → «🧾 Поля карточки заявки»</span>.</li>
+<li>Если вверху есть строка «⚠️ Спрашиваем в анкете, но не показываем в карточке: 11», нажмите «⚠️ Показать всё, что спрашиваем». Бот добавит все вопросы с значком ⚠️ и скажет «Добавили в карточку: 11».</li>
+<li>Каждый вопрос можно включать и выключать отдельным нажатием, изменения сохраняются сразу.</li>
+<li>Внизу выберите длину ответа: «200 символов», «300 символов», «500 символов», «1000 символов» или «не обрезать». Сейчас стоит 300.</li>
+</ol>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_modcard.png"><img src="shots/admin/b_modcard.png" width="780" height="4008" alt="Сейчас горит ⚠️ у телефона, ВК, направления, стека, опыта, готовности, резюме ссылкой, проектов, портфолио, направления развития и кейс-чемпионата. Середина списка скрыта." loading="lazy"></a><figcaption>Сейчас горит ⚠️ у телефона, ВК, направления, стека, опыта, готовности, резюме ссылкой, проектов, портфолио, направления развития и кейс-чемпионата. Середина списка скрыта.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="apps-score">
+<h3>Правила балла</h3>
+<div class="split"><div>
+<p>Нужно право «⚙️ Настройки». Экран «🧮 Правила балла» показывает, какие ответы дают баллы. Нажатие на вариант (✅ или ☐) включает или выключает его. Внизу порог для курса («🎓 Курс от: 3») и для стека («🧰 Стек от (пунктов): 2»). Сейчас считаются: IT-направления (Разработка ПО и программная инженерия; Информационные системы и безопасность; Прикладная математика и анализ данных; Электроника и приборостроение), старшие статусы («Да, магистратура или аспирантура», «Нет, уже закончил(а) вуз»), готовность («Готов(а) выйти сейчас», «Через 3–6 месяцев»), опыт (пет-проекты, стажировка, коммерческий опыт). Тумблеры «🧮 Автоматический балл заявки» и «🧮 Очередь заявок: сначала с высоким баллом» включены. Менять правила посреди набора лучше осторожно: балл считается при отправке анкеты и при её правке, поэтому у уже поданных заявок он остаётся прежним, пока делегат не поправит анкету.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_scoring.png"><img src="shots/admin/b_scoring.png" width="780" height="2992" alt="Правила балла. Середина экрана скрыта." loading="lazy"></a><figcaption>Правила балла. Середина экрана скрыта.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="apps-modes">
+<h3>Режимы одобрения и тихие часы</h3>
+<ul>
+<li><b>«✅ Полная форма: 👮 Ручная → ⚡ Авто».</b> Сейчас «Ручная»: каждую заявку решаете вы. Если переключить на «Авто», все новые заявки будут одобряться сами, без очереди и без письма «прошёл отбор». Бот попросит подтверждение: «⚠️ Выключить модерацию полной формы?» и после «Да, выключить модерацию» разошлёт всем менеджерам сообщение с вашим именем. Обратное переключение «Авто → Ручная» срабатывает сразу.</li>
+<li><b>«🌙 Тихие часы».</b> Выключены. Если включить, решения по заявкам и ответы на вопросы откладываются до конца окна (по умолчанию 22:00–09:00 по Москве), а менеджеру бот пишет «🌙 делегат узнает в ЧЧ:ММ». Мгновенная рассылка тихие часы не ждёт. Время правится на экране «🌙 Когда молчим: «с» и «до»».</li>
+<li><b>«✏️ Правка анкеты делегатом» и «🔁 Повторная подача после отказа».</b> Сейчас делегат может править анкету всегда, а отказанный может подать заново. Исключение для одного человека выдаётся из <code>/find</code>.</li>
+</ul>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_quiet.png"><img src="shots/admin/b_quiet.png" width="780" height="1106" alt="Экран «🌙 Тихие часы». Сейчас тишина выключена." loading="lazy"></a><figcaption>Экран «🌙 Тихие часы». Сейчас тишина выключена.</figcaption></figure>
+</div>
+
+<div class="blk" id="apps-app">
+<h3>То же самое в приложении</h3>
+<p>В приложении («🗂 Отбор заявок», см. <a href="#miniapp">главу про приложение</a>) заявки идут «карточками» с кнопками принять или отклонить. У принятия или отказа есть 5 секунд на «Отменить»: пока они не прошли, письмо делегату не уходит. Есть кнопка «Принять всех N», она тоже необратима. Порядок и поля карточки те же, что в чате.</p>
+</div>
+</section>
+
+<section class="sec" id="find"><h2>Поиск делегата: <code>/find</code></h2>
+<div class="blk">
+<p class="lead">Команда <code>/find @ник</code> находит человека и показывает его карточку с действиями. Нужно право «📋 Модерация заявок».</p>
+<div class="split"><div>
+<ul>
+<li>Искать можно <b>только по нику</b> (с @ или без, регистр не важен). По имени и номеру команда не ищет. Если ника нет, найдите человека в «📇 Списке заявок».</li>
+<li>Без ника бот скажет «⚠️ Используйте формат: /find @username», а если не нашёл: «❌ Пользователь @ник не найден в базе данных.»</li>
+<li>Если человек нажимал «Начать», но анкету не отправил, бот пишет «Пользователь найден (анкету не подавал(а))» и показывает кнопки «👥 Выдать роль» (только при праве «⚙️ Настройки») и «🧹 Сбросить зависшую анкету».</li>
+</ul>
+<p>В карточке: номер, имя, ник, e-mail (на СкиллАп всегда «-», такого вопроса нет), дата регистрации, статус («⏳ На рассмотрении», «✅ Одобрена», «❌ Отклонена») и сезон. Кнопки зависят от статуса.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_find.png"><img src="shots/admin/b_find.png" width="780" height="1002" alt="Карточка одобренного делегата и кнопки." loading="lazy"></a><figcaption>Карточка одобренного делегата и кнопки.</figcaption></figure></div>
+<div class="tbl"><table>
+<thead><tr><th>Кнопка</th><th>Когда видна</th><th>Что произойдёт</th></tr></thead>
+<tbody>
+<tr><td>«↩️ Вернуть в ожидание»</td><td>Заявка одобрена или отклонена</td><td>Заявка снова попадает в очередь. Бот покажет, что изменится (в таблице статус станет «Новая», напоминания об оплате снимутся). Тумблер «🔔 Сообщить делегату» по умолчанию выключен. Монеты и оплата не меняются.</td></tr>
+<tr><td>«🔁 Разрешить повторную подачу»</td><td>Заявка отклонена</td><td>Отказанный делегат сможет заново пройти <code>/start</code> и заполнить анкету, даже если общий переключатель стоит на «нельзя». Разрешение одноразовое. Если оно уже выдано, вместо кнопки строка «🔁 Разрешена повторная подача — выдал …» и кнопка «🔁 Отозвать разрешение».</td></tr>
+<tr><td>«✏️ Открыть правку после решения»</td><td>Заявка одобрена</td><td>Делегат один раз сможет отредактировать одобренную анкету. Будет ли заявка снова на модерации после правки, зависит от тумблера «🔁 Изменённая анкета — снова на модерацию» (экран подтверждения скажет, как сейчас). Отозвать: «✏️ Отозвать разрешение».</td></tr>
+<tr><td>«🧹 Сбросить зависшую анкету»</td><td>Есть незавершённый черновик</td><td>Удаляет черновик (для новой анкеты ещё и отметку «начал регистрацию»), следующий <code>/start</code> начнётся с чистого листа. Уже отправленная анкета не затрагивается. Бот предупредит, если человек был активен несколько минут назад.</td></tr>
+<tr><td>«📎 Заменить резюме»</td><td>У делегата есть анкета</td><td>Покажет, что сейчас, и попросит прислать новый файл PDF или DOCX одним сообщением. Ссылка в таблице обновится.</td></tr>
+<tr><td>«🔄 Перевыпустить QR», «🏙 Перевести в город», «📝 Ответы форм»</td><td>Всегда (последняя при наличии ответов)</td><td>На СкиллАп не нужны: вход по QR выключен, модуль городов выключен (бот ответит «Модуль городов выключен — переводить некуда.»), внешних форм нет.</td></tr>
+</tbody></table></div>
+<p>Каждое действие из этой таблицы показывает отдельный экран с описанием того, что изменится, и кнопками «✅ …» и «✖️ Отмена». Читайте его: он называет последствия словами. Тексты уведомлений делегату правятся в «📋 Заявки» → «⚙️ Тексты и настройки» (поля «↩️ Возврат в ожидание: текст делегату», «🔁 Разрешена повторная подача: текст делегату», «✏️ Открыта правка после решения: текст делегату», «🧹 Сброс зависшей анкеты: текст делегату»).</p>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_find_pending.png"><img src="shots/admin/b_find_pending.png" width="780" height="854" alt="Для заявки «на рассмотрении» кнопок меньше: возвращать пока не из чего." loading="lazy"></a><figcaption>Для заявки «на рассмотрении» кнопок меньше: возвращать пока не из чего.</figcaption></figure>
+</div>
+</section>
+
+<section class="sec" id="broadcast"><h2>Рассылки</h2>
+<div class="blk">
+<p class="lead">Рассылка это одно сообщение, которое бот отправляет многим делегатам. Нужно право «📢 Рассылки». Путь: <span class="path">«📢 Общение» → «📢 Рассылка»</span> или команда <code>/broadcast</code>.</p>
+<div class="danger"><b class="t">Правила безопасности. Прочитайте до первой рассылки</b>
+<p>9 сентября на другом событии менеджер отправил тестовое «Привет» 951 человеку одним касанием. Остановить рассылку было нельзя: кнопка «Отмена» очищала только диалог, а сама отправка шла. После этого в бот добавили предпросмотр, число получателей на кнопке, «⛔ Остановить», журнал и отзыв. Эти защиты работают, если вы им пользуетесь.</p>
+<ol>
+<li><b>Не тестируйте на «📢 Все пользователи».</b> Тестовую рассылку делайте через «🎯 По фильтру» на 1–3 человека или просто напишите себе вручную.</li>
+<li><b>Перед «✅ Отправить» прочитайте число на кнопке.</b> «✅ Отправить 8 пользователям»: восемь человек получат это сообщение.</li>
+<li><b>Ошиблись? Сразу «⛔ Остановить»</b> в сообщении с прогрессом. Уже доставленное останется, остальным не уйдёт. Потом «🗒 Последние рассылки» → «🗑 Удалить у получателей» (работает 48 часов).</li>
+<li><b>«📢 Все пользователи» включает и отклонённых.</b> Если нужно только одобренным, используйте фильтр по статусу.</li>
+<li><b>Время отложенной рассылки московское.</b> Если указать время, которое уже прошло, бот ответит «Это время уже прошло».</li>
+<li>У отложенной рассылки на экране подтверждения <b>нет числа получателей</b>. Заранее посмотрите число через «🎯 По фильтру» → «📊 Показать и отправить».</li>
+<li>Не отправляйте видео, файлы и альбомы через «🕓 Запланировать»: отложенная рассылка умеет только текст и одно фото.</li>
+</ol></div>
+</div>
+
+<div class="blk" id="bc-audience">
+<h3>Шаг 1. Кому отправить</h3>
+<div class="split"><div>
+<p>Бот просит выбрать целевую аудиторию. «Пользователь» для бота это человек, который <b>отправил анкету</b> (на рассмотрении, одобрен или отклонён). Те, кто только нажал «Начать», сюда не входят.</p>
+<div class="tbl"><table>
+<thead><tr><th>Кнопка</th><th>Кому уйдёт</th></tr></thead>
+<tbody>
+<tr><td>«📢 Все пользователи»</td><td>Все, кто отправил анкету, включая отклонённых.</td></tr>
+<tr><td>«📄 По файлу в проекте»</td><td>Служебный инструмент разработчика. На СкиллАп файла нет, кнопка даст ошибку. Не нажимайте.</td></tr>
+<tr><td>«🚫 Не подписаны на канал»</td><td>Те, кого бот при проверке не нашёл среди подписчиков канала. Сейчас у всех записей отметка пустая, поэтому сегмент пустой («В этом сегменте сейчас нет пользователей.»).</td></tr>
+<tr><td>«📝 Не завершили регистрацию»</td><td>Нажали «Начать», но не отправили анкету. Удобно для напоминания.</td></tr>
+<tr><td>«🎯 По фильтру»</td><td>Конструктор условий: статус, вуз, курс, источник, дата регистрации и другие. Самая безопасная кнопка.</td></tr>
+<tr><td>«🕓 Запланировать»</td><td>Отложенная рассылка всем.</td></tr>
+<tr><td>«🗒 Последние рассылки», «⏰ Запланированные»</td><td>Журнал и список отложенных.</td></tr>
+</tbody></table></div>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_bc_audience.png"><img src="shots/admin/b_bc_audience.png" width="780" height="1008" alt="Первый экран рассылки. Он же открывается командой /broadcast." loading="lazy"></a><figcaption>Первый экран рассылки. Он же открывается командой <code>/broadcast</code>.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="bc-filter">
+<h3>«🎯 По фильтру»: выбор кнопками</h3>
+<div class="split rev"><figure class="shot phone"><a class="zoom" href="shots/admin/b_bc_filter_empty.png"><img src="shots/admin/b_bc_filter_empty.png" width="780" height="1188" alt="Меню фильтра. Всегда открывается пустым, чтобы вы сами выбрали условия." loading="lazy"></a><figcaption>Меню фильтра. Всегда открывается пустым, чтобы вы сами выбрали условия.</figcaption></figure>
+<div>
+<ol class="steps">
+<li>Нажмите «🎯 По фильтру».</li>
+<li>Выберите поле, например «Статус». Бот покажет значения кнопками (по 8 на страницу, листайте «◀» «▶»). Вводить текстом нельзя, значения берутся из базы.</li>
+<li>Для статуса кнопки показывают слова <code>pending</code> (на модерации), <code>approved</code> (одобрена) и <code>rejected</code> (отклонена): так они подписаны в боте.</li>
+<li>Условия складываются через «И»: можно выбрать несколько полей.</li>
+<li>Нажмите «📊 Показать и отправить»: бот скажет, сколько человек попадает под фильтр. Дальше «📨 Отправить сейчас» или «🕓 Запланировать».</li>
+</ol>
+</div></div>
+<div class="split"><div>
+<p>Фильтр по дате регистрации: «После» или «До» выбранной даты. Некоторые кнопки появляются только когда есть по чему фильтровать («📄 Резюме», «🚪 Отметка на форуме», «🎤 Были на сессии…» и другие). Если выбранное значение исчезло, бот не расширяет аудиторию, а даёт пустой список.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_bc_filter_count.png"><img src="shots/admin/b_bc_filter_count.png" width="780" height="504" alt="Бот показал, сколько человек попадёт под условие. Только после этого можно отправлять." loading="lazy"></a><figcaption>Бот показал, сколько человек попадёт под условие. Только после этого можно отправлять.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="bc-send">
+<h3>Шаги 2–3. Сообщение, предпросмотр, отправка</h3>
+<div class="split"><div>
+<ol class="steps">
+<li>После выбора аудитории бот просит прислать <b>само сообщение</b>: текст, фото с подписью, видео, файл, пересланный пост, альбом. Форматирование сохраняется. Конструктора кнопок в боте нет.</li>
+<li>Бот сразу присылает вам <b>точную копию</b> того, что получит делегат, и экран подтверждения «Отправить это N пользователям?».</li>
+<li>Если сообщение важное, нажмите «❗ Отметить как важное» (кнопка станет «✅ Отмечено как важное»). К тексту добавится пометка «❗ Важно», сообщение дойдёт и до тех, кто нажал «🔕 Не присылать сегодня», а у делегата в этот день появится кнопка меню «❗ Важное».</li>
+<li>Нажмите «✅ Отправить N пользователям». Бот покажет «📨 Отправлено 25 из N…» с кнопкой «⛔ Остановить».</li>
+<li>В конце: «Рассылка завершена. ✅ Отправлено X, ❌ недоступно Y».</li>
+</ol>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_bc_confirm.png"><img src="shots/admin/b_bc_confirm.png" width="780" height="688" alt="Экран подтверждения. Число N на кнопке и есть число получателей." loading="lazy"></a><figcaption>Экран подтверждения. Число N на кнопке и есть число получателей.</figcaption></figure></div>
+<div class="warn"><b class="t">Что такое «❌ недоступно»</b>Сюда попадают все, кому Телеграм не дал написать: заблокировал бота, удалил аккаунт или никогда не открывал бота. Кто именно, бот не показывает. Если отправили по «📢 Все пользователи» и недоступных много, проверьте, не стоит ли им написать другим способом.</div>
+<p>Под каждой неважной рассылкой у делегата есть кнопка «🔕 Не присылать сегодня»: до конца суток по Москве он не получает необязательное. Это отдельная строка в отчёте: «🔕 Не отправлено (выключили уведомления на сегодня): N». У альбомов кнопку прислать нельзя, поэтому бот отправляет её отдельным сообщением.</p>
+</div>
+
+<div class="blk" id="bc-sched">
+<h3>Отложенная рассылка</h3>
+<ol class="steps">
+<li>«📢 Рассылка» → «🕓 Запланировать» (всем) или через фильтр «📊 Показать и отправить» → «🕓 Запланировать».</li>
+<li>Введите дату и время по Москве в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>, например <code>07.10.2026 10:00</code>. Если формат другой, бот скажет «❌ Не понял дату. Формат: ДД.ММ.ГГГГ ЧЧ:ММ…».</li>
+<li>Пришлите текст или <b>одно</b> фото с подписью. Видео, файлы и альбомы не поддерживаются.</li>
+<li>Бот покажет копию и «Запланировать эту рассылку на …?». Нажмите «🗓 Запланировать» (можно сначала «❗ Отметить как важное»).</li>
+<li>Готово: «✅ Рассылка #N запланирована на …». Отменить до отправки: «⏰ Запланированные» → «❌ Отменить». После старта остановить её нельзя, только отозвать.</li>
+</ol>
+<p>Отложенные рассылки хранятся в базе и переживают перезапуск бота. Отчёта менеджеру после отправки нет, итог смотрите в «🗒 Последние рассылки».</p>
+<h4>Отозвать отправленное</h4>
+<p>«🗒 Последние рассылки» (последние 10, каждая отдельным сообщением) → «🗑 Удалить у получателей» → «🗑 Да, удалить». Работает 48 часов после отправки (предел Телеграм). Дальше бот скажет «Удалить нельзя: прошло больше 48 часов».</p>
+<h4>Тихие часы и рассылки</h4>
+<p>Сейчас тихие часы выключены. Если их включат, мгновенная рассылка всё равно уйдёт сразу, но бот предупредит на экране подтверждения и предложит кнопку «🌙 Всё равно отправить сейчас». Для отложенной бот спросит, переносить ли отправку на конец окна.</p>
+</div>
+
+<div class="blk" id="bc-cases">
+<h3>Готовые сценарии</h3>
+<div class="card"><b>А. Всем одобренным прямо сейчас.</b> «📢 Рассылка» → «🎯 По фильтру» → «Статус» → <code>approved</code> → «📊 Показать и отправить» → смотрим число → «📨 Отправить сейчас» → присылаем сообщение → читаем копию → «✅ Отправить N пользователям».</div>
+<div class="card"><b>Б. Всем завтра в 10:00.</b> «📢 Рассылка» → «🕓 Запланировать» → <code>07.10.2026 10:00</code> → сообщение → «🗓 Запланировать». Передумали: «⏰ Запланированные» → «❌ Отменить».</div>
+<div class="card"><b>В. Важное сообщение.</b> На экране подтверждения нажмите «❗ Отметить как важное», затем «✅ Отправить N пользователям».</div>
+<div class="card"><b>Г. Отозвать ошибочное.</b> «⛔ Остановить», затем «🗒 Последние рассылки» → карточка → «🗑 Удалить у получателей» → «🗑 Да, удалить».</div>
+<div class="card"><b>Д. Напомнить тем, кто не дописал анкету.</b> «📢 Рассылка» → «📝 Не завершили регистрацию» → сообщение → отправить.</div>
+</div>
+<div class="blk"><h4>Ограничения</h4>
+<ul>
+<li>Кастомные эмодзи Телеграм Премиум бот не отправляет: они превращаются в обычные. Это ограничение Телеграм.</li>
+<li>Длина сообщения до 4096 символов, подписи под фото до 1024.</li>
+<li>Текст рассылки на английский автоматически не переводится.</li>
+<li>Нижнее меню делегата обновляется только после его <code>/start</code>: если вы включили новую кнопку, попросите делегатов нажать <code>/start</code>.</li>
+</ul></div>
+</section>
+
+<section class="sec" id="polls"><h2>Опросы</h2>
+<div class="blk">
+<p class="lead">Опрос это настоящий опрос Телеграм, он отправляется той же аудитории и тем же каналом, что рассылка. Нужно право «📢 Рассылки». Путь: <span class="path">«📢 Общение» → «📊 Опросы»</span>.</p>
+<div class="split"><div>
+<ol class="steps">
+<li>Нажмите «➕ Новый опрос». <b>Шаг 1 из 4.</b> Напишите вопрос (до 300 символов), например «Во сколько тебе удобнее начать первый день?».</li>
+<li><b>Шаг 2.</b> Пришлите варианты ответа: по одному сообщением или сразу несколько через «;» (например: <code>10:00; 11:00; 12:00</code>). От 2 до 10 вариантов, каждый до 100 символов. Закончили: «✅ Готово».</li>
+<li><b>Настройки.</b> «⚪/🟢 Анонимный опрос»: делегаты не видят, кто как голосовал, а вы получите только итоги по вариантам, без имён. «⚪/🟢 Несколько вариантов»: можно выбрать больше одного. Затем «Дальше ➡️».</li>
+<li><b>Шаг 3.</b> Кому: «👥 Все делегаты» или «✅ Только одобренные», либо по треку.</li>
+<li><b>Шаг 4.</b> Бот присылает закрытую копию опроса (голосовать в ней нельзя) и спрашивает: «🚀 Отправить сейчас» или «🕒 Запланировать» (дата в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>, по Москве). Число получателей написано на этом же экране.</li>
+</ol>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_poll_step1.png"><img src="shots/admin/b_poll_step1.png" width="780" height="536" alt="Шаг 1 мастера опроса. Отмена: кнопка «Отмена» или /cancel." loading="lazy"></a><figcaption>Шаг 1 мастера опроса. Отмена: кнопка «Отмена» или <code>/cancel</code>.</figcaption></figure></div>
+<p>После отправки бот напишет: «📊 Опрос #N отправлен. ✅ Доставлено: X ❌ Недоступно: Y». Идущую отправку опроса остановить нельзя, поэтому внимательно читайте шаг 4.</p>
+<div class="split"><div>
+<h4>Результаты и закрытие</h4>
+<p>Нажмите на опрос в списке: бот покажет полоски по вариантам и «Ответили: X из Y получивших». Кнопки: «⏹ Закрыть опрос», «📄 В таблицу» (перезаписывает вкладку «Опросы» целиком), «🗑 Удалить» (с подтверждением: пропадут все ответы), для запланированного «❌ Отменить отправку». Типов «викторина» и «оценка» нет, только один или несколько вариантов, анонимно или по людям.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_polls_list.png"><img src="shots/admin/b_polls_list.png" width="780" height="568" alt="Список опросов. «🕒» значит «запланирован». Здесь пример запланированного опроса." loading="lazy"></a><figcaption>Список опросов. «🕒» значит «запланирован». Здесь пример запланированного опроса.</figcaption></figure></div>
+</div>
+</section>
+
+<section class="sec" id="faq"><h2>Вопросы делегатов и частые вопросы</h2>
+<div class="blk" id="q-flow">
+<h3>Как делегат задаёт вопрос и как вы отвечаете</h3>
+<p>У делегата в нижнем меню есть кнопка «❓ Задать вопрос». Он пишет вопрос текстом, и бот отвечает «Твой вопрос отправлен!». Если в частых вопросах есть хотя бы один пункт, делегат сначала увидит их и сможет нажать «Не нашёл ответ — спросить менеджера».</p>
+<div class="split"><div>
+<p>Каждый, у кого есть право «📋 Модерация заявок» (все менеджеры регистраций и суперадмины), получает личное сообщение «❓ Новый вопрос от @ник:» с номером вопроса.</p>
+<h4>Способ А: ответить реплаем</h4>
+<ol class="steps">
+<li>Нажмите на сообщение с вопросом и выберите «Ответить» (reply).</li>
+<li>Напишите ответ: текст, фото, голосовое, видео-кружок.</li>
+<li>Делегат получит «💬 Ответ от организаторов:» и ваше сообщение. Вам придёт «✅ Ответ отправлен пользователю.», остальным менеджерам «✅ Имя ответил(а) на вопрос от пользователя …».</li>
+</ol>
+<p>Отвечает тот, кто успел первым. Остальные увидят «⚠️ На этот вопрос уже ответил(а) …».</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_question_notify.png"><img src="shots/admin/b_question_notify.png" width="780" height="856" alt="Вопрос приходит менеджерам, ответ уходит делегату. Ответ на картинке написан менеджером в ответ на сообщение." loading="lazy"></a><figcaption>Вопрос приходит менеджерам, ответ уходит делегату. Ответ на картинке написан менеджером в ответ на сообщение.</figcaption></figure></div>
+<h4>Способ Б: из журнала</h4>
+<div class="split"><div>
+<p><span class="path">«📋 Заявки» → «❓ Вопросы делегатов»</span>. Вверху счётчики «без ответа · в работе · отвечено». Фильтры «Все», «Без ответа», «В работе», «Отвечены». Под вопросом без ответа есть «✉️ Ответить #N»: бот просит «Напишите ответ делегату одним сообщением.». Под отвеченным есть «❓ В FAQ #N» (превращает пару в пункт частых вопросов).</p>
+<p>Значки: «🆕 без ответа», «✍️ в работе» (кто-то взял, но ответ не доставлен; «🔒 залип», если больше 30 минут), «✅ отвечен». Ваши ответы идут и во вкладку «Вопросы» в таблице.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_questions.png"><img src="shots/admin/b_questions.png" width="780" height="1116" alt="Журнал вопросов: один без ответа, один отвечен." loading="lazy"></a><figcaption>Журнал вопросов: один без ответа, один отвечен.</figcaption></figure></div>
+<div class="warn"><b class="t">Если ответ не дошёл</b>«❌ Доставить ответ невозможно: делегат заблокировал бота или чат недоступен. Повтор не поможет — свяжитесь с делегатом другим способом.» Значит, человек не открывал бота или заблокировал его: найдите его ник и напишите лично. Другое сообщение, «❌ Не удалось отправить ответ пользователю (временная ошибка). Можно попробовать ещё раз.», значит, что стоит повторить.</div>
+</div>
+
+<div class="blk" id="faq-edit">
+<h3>Частые вопросы (FAQ)</h3>
+<div class="split"><div>
+<p>Путь: <span class="path">«📋 Заявки» → «❓ Частые вопросы»</span>. Сейчас пунктов нет, поэтому у делегатов нет и кнопки «❓ Частые вопросы». Как только появится хотя бы один видимый пункт, кнопка появится сама.</p>
+<ol class="steps">
+<li>Нажмите «➕ Добавить».</li>
+<li>Пришлите текст вопроса, затем текст ответа. Бот скажет «✅ Пункт добавлен в FAQ.».</li>
+<li>Нажмите на пункт в списке, чтобы открыть карточку: «✏️ Вопрос», «✏️ Ответ», «⬆️» и «⬇️» (порядок), «🚫 Скрыть от делегатов» или «✅ Показать делегатам».</li>
+</ol>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_faq_list.png"><img src="shots/admin/b_faq_list.png" width="780" height="610" alt="Список частых вопросов. Здесь два демонстрационных пункта." loading="lazy"></a><figcaption>Список частых вопросов. Здесь два демонстрационных пункта.</figcaption></figure></div>
+<div class="split rev"><figure class="shot phone"><a class="zoom" href="shots/admin/b_faq_card.png"><img src="shots/admin/b_faq_card.png" width="780" height="1140" alt="Карточка пункта." loading="lazy"></a><figcaption>Карточка пункта.</figcaption></figure>
+<div>
+<div class="warn"><b class="t">Скрыть или удалить</b>«🚫 Скрыть от делегатов» оставляет пункт у вас в списке (его можно снова показать). «🗑 Удалить навсегда» стирает его, бот просит подтверждение и сам предлагает «🚫 Скрыть вместо удаления». Если не уверены, скрывайте.</div>
+<p><b>Быстрый способ.</b> Когда ответили на хороший вопрос, откройте журнал вопросов и нажмите «❓ В FAQ #N»: бот соберёт черновик из вопроса и вашего ответа, его можно поправить кнопками «✏️ Вопрос» и «✏️ Ответ» и сохранить. Дубль бот не даст создать («Такой вопрос уже в FAQ»).</p>
+<p>Вступительный текст экрана и подпись кнопки «Не нашёл ответ — спросить менеджера» правятся в «🎪 Событие» → «🎪 Событие/Медиа». Пункты вручную на английский не переводятся.</p>
+</div></div>
+</div>
+</section>
+
+<section class="sec" id="form"><h2>Настройка анкеты и текстов</h2>
+<div class="blk">
+<p class="lead">Всё, что делегат видит и читает, настраивается кнопками. Нужно право «⚙️ Настройки». Писать код не нужно: список настроек выбирается кнопками, значение присылается сообщением.</p>
+<h3>Как править любое значение</h3>
+<div class="split"><div>
+<ol class="steps">
+<li>Откройте раздел, например <span class="path">«🎪 Событие» → «🎪 Событие/Медиа»</span>. Бот покажет список полей. У каждого стоит статус: «✏️ задано», «по умолчанию» или «— не задано». Само значение на экране не показано.</li>
+<li>Нажмите «✏️ поле». Бот покажет «Сейчас задано: …», подсказку (часто с примером) и попросит прислать новое значение сообщением.</li>
+<li>Пришлите значение. Чтобы очистить поле и вернуть стандартное, пришлите «-».</li>
+<li>Бот вернёт вас на список. Подтверждения вроде «Сохранено» нет: смотрите на статус поля.</li>
+</ol>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_event_group.png"><img src="shots/admin/b_event_group.png" width="780" height="3890" alt="Группа «🎪 Событие/Медиа». Сначала настроенные поля, потом «── не настроено ──». Середина скрыта." loading="lazy"></a><figcaption>Группа «🎪 Событие/Медиа». Сначала настроенные поля, потом «── не настроено ──». Середина скрыта.</figcaption></figure></div>
+<div class="warn"><b class="t">Бот отвергнет неправильное значение и объяснит почему</b>
+<ul>
+<li>Команду вида <code>/start</code> бот не сохранит: «это команда, а не значение настройки».</li>
+<li>Число должно быть целым и не отрицательным, дата в формате <code>ДД.ММ.ГГГГ</code> (например <code>15.10.2026</code>, без времени), время в формате <code>ЧЧ:ММ</code>. Бот скажет, как надо, и подождёт ещё одну попытку.</li>
+<li>Нельзя прислать стикер, фото или пересланное сообщение туда, где нужен текст.</li>
+</ul></div>
+<div class="danger"><b class="t">Ловушка «Enter отправляет сообщение»</b>В мобильном Телеграм перенос строки отправляет сообщение. Если вы вставляете список из нескольких строк, бот получит только первую. Пишите пункты <b>одной строкой через «;»</b> (точка с запятой): бот понимает это в списках, согласиях, вариантах опроса, правах роли. Многострочные тексты (приветствие, «После одобрения») удобнее набрать в заметках и вставить одним сообщением, а с компьютера всё проще.</div>
+<p>Тексты с форматированием (приветствия, «После регистрации», «После одобрения», «Заявка на рассмотрении») сохраняют жирный шрифт и ссылки. Текст отказа форматирования не поддерживает. На экране правки уже заданный текст с форматированием может выглядеть с символами <code>&lt;b&gt;</code>, это нормально.</p>
+</div>
+
+<div class="blk" id="form-questions">
+<h3>Какие вопросы задаём: «📋 Вопросы регистрации»</h3>
+<div class="split"><div>
+<p><span class="path">«📝 Анкета» → «📋 Вопросы регистрации»</span>. Вопросы сгруппированы: «👥 Общие», «🏛 Форум», «🎤 Конфа», «➕ Экстра», «📦 Прочие». Каждая строка это кнопка: «✅ спрашиваем», «❌ не спрашиваем». Нажатие сохраняется сразу. Сверху переключатель, для какой формы вы правите: «Полный» (рабочий на СкиллАп), «Party», «⚡ Краткая».</p>
+<h4>Что можно и нельзя</h4>
+<ul>
+<li>Можно включать и выключать вопросы из готового набора (около 50).</li>
+<li><b>Нельзя</b> менять порядок вопросов, добавлять свой вопрос и делать вопрос необязательным. Обязательны все, кроме телефона (и портфолио в мини-профиле).</li>
+<li>«Фамилия и имя» спрашивается всегда, выключить его нельзя.</li>
+<li>Для вопросов «ВУЗ», «Курс», «Направление обучения» есть правило «🎓 ВУЗ/курс только у студентов»: тем, кто не учится, эти вопросы не задаются.</li>
+</ul>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_reg_questions.png"><img src="shots/admin/b_reg_questions.png" width="780" height="4364" alt="Экран «📋 Вопросы регистрации». Середина скрыта." loading="lazy"></a><figcaption>Экран «📋 Вопросы регистрации». Середина скрыта.</figcaption></figure></div>
+<div class="danger"><b class="t">Не включайте и не выключайте вопросы в разгар приёма</b>Таблица Google строится по набору вопросов. Если включить вопрос посреди набора, новые строки сдвинутся относительно старых. Бот предупреждает об этом при каждом нажатии: «Строки до этого момента не сдвинутся — нажми ♻️ Пересобрать таблицу.». Лучше менять набор до открытия приёма. Если уже изменили, нажмите «♻️ Пересобрать таблицу» (<a href="#sheet">как это работает</a>).</div>
+<p>Тот, кто уже начал анкету, дописывает её по новому списку: если вопрос выключили, он пропускается.</p>
+<h4>Тексты вопросов и подсказки</h4>
+<p><span class="path">«📝 Анкета» → «✏️ Тексты вопросов»</span>. Выберите вопрос и пришлите свой текст («-» вернёт стандартный). Значок ✅ значит «текст переопределён», ✏️ «стандартный». Рядом у некоторых вопросов есть «💡 Подсказка»: серая строка под вопросом, <b>видна только в приложении</b>, в чате её нет. Подсказка должна описывать то, что бот <i>принимает</i>: иначе делегат будет получать ошибку, делая всё по подсказке.</p>
+<p class="note">После сохранения текста вопроса бот возвращает вас не на список вопросов, а на главный экран с надписью «⚙️ Настройки форума: Настройки переехали внутрь разделов…». Это нормально, просто откройте «✏️ Тексты вопросов» заново.</p>
+<h4>Варианты ответов: списки</h4>
+<p>Варианты кнопок (источники, города, направления, стек, цели, вузы, статусы образования) лежат в группе <span class="path">«📝 Анкета» → «📝 Регистрация»</span>. Нажмите на список. Бот покажет его целиком и три кнопки:</p>
+<ul>
+<li>«➕ Добавить пункт»: один пункт за сообщение, ставится в конец. Нельзя присылать несколько строк или «;» в одном сообщении, дубль бот не пропустит.</li>
+<li>«🗑 Удалить пункт»: нажмите на пункт, он удалится <b>сразу, без подтверждения</b>. Вернуть: «➕ Добавить пункт».</li>
+<li>«✏️ Заменить список целиком»: пришлите ВЕСЬ список заново, пункты с новой строки или через «;». Старый список заменится полностью.</li>
+</ul>
+<p>Слова «Отмена», «Другое» и «Пропустить» бот использует сам: если вы добавили их в список, бот предупредит, что они будут недоступны для выбора.</p>
+<p>Варианты курса, «Да/Нет» у кейс-чемпионата и кнопки резюме (кроме подписей) кнопками не меняются.</p>
+</div>
+
+<div class="blk" id="form-texts">
+<h3>Где менять какой текст</h3>
+<div class="tbl"><table>
+<thead><tr><th>Что видит делегат</th><th>Где править</th></tr></thead>
+<tbody>
+<tr><td>Приветствие при первом <code>/start</code> (фото и текст одним сообщением)</td><td>«🎪 Событие» → «🎪 Событие/Медиа» → «✏️ 💬 Приветствие» и «📷 💬 Фото приветствия». Подпись к фото до 1024 символов</td></tr>
+<tr><td>Приветствие тем, у кого анкета уже есть; тем, кто был в прошлом сезоне</td><td>там же: «🔁 Приветствие вернувшимся», «🔄 Приветствие делегату прошлого сезона»</td></tr>
+<tr><td>«Анкета отправлена…»</td><td>«📋 Заявки» → «⚙️ Тексты и настройки» → «✏️ ✅ После регистрации»</td></tr>
+<tr><td>Одобрение и отказ</td><td>там же: «✏️ 🎉 После одобрения», «✏️ 🚫 При отклонении»</td></tr>
+<tr><td>«Твоя заявка на рассмотрении…» при нажатии кнопок меню до решения</td><td>там же: «✏️ ⏳ Заявка на рассмотрении»</td></tr>
+<tr><td>Напоминание тому, кто бросил анкету (через сутки, один раз)</td><td>там же: «⏰ Догонялка: текст напоминания» и «⏰ Догонялка: через сколько минут»</td></tr>
+<tr><td>Название, дата, место, контакты, канал</td><td>«🎪 Событие» → «🎪 Событие/Медиа» («🎪 Название мероприятия», «🗓 Дата», «🗓 Дата начала форума», «📍 Место», «🔹 TG»)</td></tr>
+<tr><td>Тексты «Задать вопрос» и частых вопросов</td><td>«🎪 Событие/Медиа»: «❓ Задать вопрос: приглашение», «❓ Частые вопросы: вступление» и соседние</td></tr>
+<tr><td>Текст и кнопка согласия, версия, PDF</td><td>«📝 Анкета» → «📋 Согласия» и «🧾 PDF согласий»</td></tr>
+<tr><td>Тексты экранов приложения (подтверждение «Заявка принята», статус заявки)</td><td>Только в приложении: «⚙️ Настройки» с поиском по слову</td></tr>
+</tbody></table></div>
+<p>Поле «🗓 Дата начала форума» включает форумные функции (QR, «🆘 SOS», меню дня форума) и используется для возраста в правилах автоотказа. Если вы её меняете, бот сам перепланирует связанные задачи.</p>
+<div class="warn"><b class="t">Поле «🎭 Тип события» принимает слово</b>Это единственное место, где нужно набрать код (<code>forum</code>, <code>conference</code>, <code>custom</code>, <code>skillup</code>). Не трогайте его: набор вопросов СкиллАп уже выставлен. Если нужен другой набор, пользуйтесь кнопкой «🎛 Тип события (пресет)», она показывает подтверждение.</div>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_preset.png"><img src="shots/admin/b_preset.png" width="780" height="1056" alt="«🎛 Тип события (пресет)». Нажатие на пресет сперва покажет подтверждение, но не всё, что он поменяет (резюме, ссылка амбассадора, ступени). Для СкиллАп всё уже настроено, повторно жать не нужно." loading="lazy"></a><figcaption>«🎛 Тип события (пресет)». Нажатие на пресет сперва покажет подтверждение, но не всё, что он поменяет (резюме, ссылка амбассадора, ступени). Для СкиллАп всё уже настроено, повторно жать не нужно.</figcaption></figure>
+</div>
+
+<div class="blk" id="form-menu">
+<h3>Кнопки меню делегата: «🔘 Кнопки меню»</h3>
+<div class="split"><div>
+<p><span class="path">«🎪 Событие» → «🔘 Кнопки меню»</span>. Каждая кнопка нижнего меню делегата включается тумблером «✅ подпись» или «❌ подпись» (нажатие сразу сохраняется). У некоторых кнопок есть второе условие, и экран пишет об этом: если кнопка включена, но делегат её не видит, после неё стоит «(сейчас скрыта: …)» и причина. Это главный ответ на вопрос «я включил, а у делегата нет».</p>
+<p>Например: «📅 Программа форума» скрыта, пока не загружено фото программы или нет ни одной сессии; «❓ Частые вопросы» скрыта, пока нет включённых пунктов; «🆘 SOS» видна только в дни форума. Меню обновляется у делегата после его <code>/start</code>.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_menu_buttons.png"><img src="shots/admin/b_menu_buttons.png" width="780" height="2418" alt="Экран «🔘 Кнопки меню». Пометки «(сейчас скрыта: …)» объясняют, почему кнопки нет." loading="lazy"></a><figcaption>Экран «🔘 Кнопки меню». Пометки «(сейчас скрыта: …)» объясняют, почему кнопки нет.</figcaption></figure></div>
+<h4>Программа форума</h4>
+<p><span class="path">«🎪 Событие» → «🗓 Программа форума»</span>. Здесь заводятся дни, залы и сессии (время <code>10:00-11:30</code>, название, зал, спикер, описание) или загружается фото программы. Переключатель «🔄 Переключить вид» решает, что увидит делегат: таблицу сессий или фото. Удаление сессии, зала и фото с подтверждением, которое называет последствия. В заголовках пока написано «Москва, 30-31 октября» (город по умолчанию, см. выше).</p>
+</div>
+</section>
+
+<section class="sec" id="sheet"><h2>Таблица Google: что можно и нельзя</h2>
+<div class="blk">
+<p class="lead">Бот сам пишет в таблицу «SkillUP5» каждую заявку и обновляет статус. Таблица удобна для просмотра, фильтров и совместной работы, но по умолчанию она «ведомая»: главная копия данных хранится в боте.</p>
+<h3>Какие вкладки есть</h3>
+<div class="tbl"><table>
+<thead><tr><th>Вкладка</th><th>Что в ней</th></tr></thead>
+<tbody>
+<tr><td><b>Регистрации</b></td><td>Основная: по строке на делегата. Колонки: ID Телеграм, Username, Дата регистрации, Статус, ФИО, Детали, Балл, IT 3+, Телефон, ВК, Город, Образование, Курс, ВУЗ, Направление обучения, Стек, Опыт работы, Готовность, Цель участия, Источник, резюме (текст, ссылка, способ, проверка, ссылка на профиль), Проекты, Портфолио, Направление развития, Кейс-чемпионат, Пришёл, В чате.</td></tr>
+<tr><td><b>Незавершённые</b></td><td>Кто начал анкету и бросил: на каком вопросе остановился, что успел ответить. Переписывается целиком каждые 2 часа и по кнопке «📝 Незавершённые → таблица».</td></tr>
+<tr><td><b>История правок</b>, <b>Вопросы</b></td><td>Журнал правок анкет и вопросы делегатов. Обновляются сами, ручное обновление: «🕓 Журналы в таблицу».</td></tr>
+<tr><td><b>Лист1</b></td><td>Пустая, осталась с создания. Можно удалить.</td></tr>
+</tbody></table></div>
+<p>Колонка «Статус» принимает «Новая» (жёлтая), «Одобрена» (зелёная), «Отклонена» (красная). <b>Статус, поправленный в таблице руками, в бота не возвращается.</b> Решения принимайте в боте.</p>
+<div class="split"><div>
+<h3>Что можно делать руками</h3>
+<ul>
+<li>Смотреть, фильтровать, сортировать (строки находятся по ID в колонке A, а не по номеру строки).</li>
+<li>Добавлять <b>свои колонки правее</b> последней колонки бота.</li>
+<li>Красить, закреплять строки, делать копии таблицы и ссылаться на неё из других таблиц.</li>
+</ul>
+<h3>Чего делать нельзя</h3>
+<ul>
+<li><b>Переименовывать вкладки.</b> Бот ищет вкладку по имени. Если переименовать, он создаст новую пустую вкладку с прежним названием, а старая перестанет обновляться. Нужно новое имя? Меняйте в боте: «📊 Данные» → «📄 Вкладки таблицы». Бот предложит «✏️ Переименовать вкладку» с сохранением данных.</li>
+<li>Вставлять, удалять и переставлять колонки среди колонок бота, менять заголовки в первой строке, удалять шапку. Заголовки «Статус», «Пришёл» и «В чате» бот находит по тексту, остальное пишет по позиции: вставленная посреди колонка сдвинет все новые записи.</li>
+<li>Править ID Телеграм и ставить текст в колонку A.</li>
+<li>Хранить свои заметки в колонках бота и на вкладках, которые бот перезаписывает («Незавершённые», «История правок», «Вопросы»): при перезаписи они пропадут.</li>
+</ul>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_sheet_tabs.png"><img src="shots/admin/b_sheet_tabs.png" width="780" height="2244" alt="Экран «📄 Вкладки таблицы». Какая вкладка для чего задаётся здесь." loading="lazy"></a><figcaption>Экран «📄 Вкладки таблицы». Какая вкладка для чего задаётся здесь.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="sheet-ops">
+<h3>Кнопки раздела «📊 Данные» для таблицы</h3>
+<div class="tbl"><table>
+<thead><tr><th>Кнопка</th><th>Что делает</th><th>Опасность</th></tr></thead>
+<tbody>
+<tr><td>«🔄 Синхронизация таблицы»</td><td>Дописывает в таблицу делегатов, которых там нет по ID. Ничего не стирает. Итог: «✅ Синхронизация завершена! Добавлено записей: N» или «✅ Таблица синхронизирована, пропущенных записей нет.».</td><td>Безопасна</td></tr>
+<tr><td>«🔍 Сверить с БД»</td><td>Сравнивает таблицу и базу. В отчёте: вкладки, которых нет; делегаты без строки; строки не на своей вкладке; дубли; расхождение статуса; «📨 Решения не доставлены». Сама ничего не меняет, пока не нажмёте одну из кнопок действий: «➕ Дописать недостающие строки», «🔄 Выправить статусы», «📨 Переотправить решения» (каждая с подтверждением), «📥 Полный список (CSV)».</td><td>Безопасна. Каждое действие называет число строк</td></tr>
+<tr><td>«♻️ Пересобрать таблицу»</td><td>Очищает основную вкладку целиком и заполняет заново из базы: правильный порядок колонок, выпадающий список статуса, цвета. Нужна после смены набора вопросов.</td><td><b>Стирает ручные правки и заметки.</b> Бот просит подтверждение. Сначала сделайте копию: «Файл» → «Создать копию»</td></tr>
+<tr><td>«🧹 Убрать дубли из таблицы»</td><td>Удаляет повторные строки с одним ID, оставляет самую свежую.</td><td>Удаляет целые строки вместе с заметками на старой. Просит подтверждение</td></tr>
+<tr><td>«📝 Незавершённые → таблица»</td><td>Обновляет вкладку «Незавершённые» и пишет «📊 Где отваливаются» (на каких вопросах бросают).</td><td>Очищает вкладку «Незавершённые» и пишет заново</td></tr>
+<tr><td>«📄 Вкладки таблицы», «🕓 Журналы в таблицу»</td><td>Имена вкладок и автообновление журналов. Если переименуете вкладку, бот предложит либо переименовать её в таблице (данные останутся), либо создать новую пустую.</td><td>Читайте экран, он объясняет последствия</td></tr>
+</tbody></table></div>
+<div class="split"><div>
+<p>Подтверждение у «♻️ Пересобрать таблицу» начинается словами «Перезапишу на основной вкладке шапку и все строки из базы бота…» и честно предупреждает: «Любые ручные правки и заметки, которых нет в базе бота, пропадут безвозвратно». Если менеджеры что-то дописывали руками, сохраните копию.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_rebuild.png"><img src="shots/admin/b_rebuild.png" width="780" height="926" alt="Подтверждение пересборки. Кнопка «← Отмена» ведёт в главное меню админки." loading="lazy"></a><figcaption>Подтверждение пересборки. Кнопка «← Отмена» ведёт в главное меню админки.</figcaption></figure></div>
+<div class="pair">
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_dedupe.png"><img src="shots/admin/b_dedupe.png" width="780" height="802" alt="Подтверждение «🧹 Убрать дубли из таблицы»." loading="lazy"></a><figcaption>Подтверждение «🧹 Убрать дубли из таблицы».</figcaption></figure>
+<figure class="shot phone"><a class="zoom" href="shots/admin/b_sheet_logs.png"><img src="shots/admin/b_sheet_logs.png" width="780" height="1106" alt="Экран «🕓 Журналы в таблицу»." loading="lazy"></a><figcaption>Экран «🕓 Журналы в таблицу».</figcaption></figure>
+</div>
+<h4>Если строка делегата не попала в таблицу</h4>
+<p>Иногда связь обрывается в момент записи, и строка в таблице пропадает. В базе при этом всё есть. Запустите «🔍 Сверить с БД» и нажмите «➕ Дописать недостающие строки». Если вместо этого бот сказал «⚠️ Google Sheets: основная вкладка не задана» или «Основная вкладка Google-таблицы не задана», задайте её: «📊 Данные» → «📄 Вкладки таблицы» → «📄 Основная (регистрации)» (сейчас там «Регистрации»).</p>
+<h4>Резюме</h4>
+<p>Файл резюме хранится в Телеграм (получить: «📎 Резюме» в карточке заявки) и в облаке; в таблице лежит ссылка на файл в колонке «Резюме (ссылка)». Облако при открытии один раз просит пароль общей папки: его знает владелец бота. Если облако не отвечает, заявка всё равно сохраняется, а ссылка появится позже сама.</p>
+</div>
+</section>
+
+<section class="sec" id="stats"><h2>Статистика и дашборд</h2>
+<div class="blk">
+<h3>Статистика в боте</h3>
+<p>Нужно право «📊 Статистика». Раздел «📊 Данные», либо команды.</p>
+<div class="split"><div>
+<ul>
+<li>«📊 Статистика регистраций» (<code>/stats</code>): всего регистраций (все статусы, включая отклонённых), топ-3 вуза, «🔁 Повторных» (были на прошлом событии). Сверху кнопка «🌐 Открыть дашборд».</li>
+<li>«🗓 Регистрации по месяцам» (<code>/stats_monthly</code>): по датам подачи.</li>
+<li>«📈 Источники»: откуда пришли заявки (ответы на «Откуда узнал» и метки ссылок).</li>
+<li>«📄 Экспорт CSV» (<code>/export</code>): файл <code>users.csv</code> со всеми данными делегатов. Разделитель «;», кодировка для Excel. <b>В файле личные данные</b> (телефон, ВК): не пересылайте его в открытые чаты.</li>
+</ul>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_stats.png"><img src="shots/admin/b_stats.png" width="780" height="1700" alt="Статистика регистраций на вымышленных данных." loading="lazy"></a><figcaption>Статистика регистраций на вымышленных данных.</figcaption></figure></div>
+<h4>Ссылки с метками</h4>
+<div class="split"><div>
+<p>Чтобы понять, какая реклама приводит людей, сделайте отдельную ссылку на каждую площадку. «📊 Данные» → «🔗 Ссылки с метками» (право «🔗 Ссылки с метками») или команда <code>/create_link vk_poster</code>. Метка: латинские буквы, цифры, «_» и «-», без пробелов. Бот даст ссылку вида <code>https://t.me/бот?start=src_vk_poster</code>, регистрации по ней появятся в «📈 Источники». Тем, кто пришёл по такой ссылке, вопрос «Откуда узнал» не задаётся. Метка в списке появляется после первой поданной по ней анкеты.</p>
+</div><figure class="shot phone"><a class="zoom" href="shots/admin/b_source_links.png"><img src="shots/admin/b_source_links.png" width="780" height="926" alt="Экран «🔗 Ссылки с метками»." loading="lazy"></a><figcaption>Экран «🔗 Ссылки с метками».</figcaption></figure></div>
+<h4>Сводки, которые бот присылает сам</h4>
+<ul>
+<li>«📋 Заявок в ожидании: N…» раз в 3 часа менеджерам заявок (включена).</li>
+<li>«📊 Итоги дня»: вечерняя сводка по заявкам, одобрениям и отказам. Тумблер «📊 Итоги дня менеджерам» в «🔧 Управление» (сейчас выключен). Не отправляется, если день пуст.</li>
+</ul>
+</div>
+
+<div class="blk" id="dash">
+<h3>Веб-дашборд</h3>
+<p>Это страница со статистикой по всему событию: воронка, динамика по дням, вузы, источники. Адрес <code>su26.alekseev.info</code>. Данные считаются при открытии страницы, чтобы увидеть свежие цифры, перезагрузите её.</p>
+<div class="note"><b class="t">Кто может войти</b>Только тот, у кого есть право «📊 Статистика» (суперадмины входят всегда). Другие права дашборд не открывают. На дашборде нет личных данных, только агрегаты.</div>
+<div class="pair">
+<figure class="shot phone"><a class="zoom" href="shots/admin/w_dash_login.png"><img src="shots/admin/w_dash_login.png" width="498" height="316" alt="Страница входа. В этой съёмке виджет Telegram заблокирован, поэтому под текстом пусто: у вас здесь будет кнопка входа, если Telegram доступен из вашей сети (в России может понадобиться VPN)." loading="lazy"></a><figcaption>Страница входа. В этой съёмке виджет Телеграм заблокирован, поэтому под текстом пусто: у вас здесь будет кнопка входа, если Телеграм доступен из вашей сети (в России может понадобиться VPN).</figcaption></figure>
+<figure class="shot phone"><a class="zoom" href="shots/admin/w_dash_noaccess.png"><img src="shots/admin/w_dash_noaccess.png" width="498" height="398" alt="Если права «📊 Статистика» нет, показывается «Нет доступа». Суперадмины получают уведомление о вашем запросе." loading="lazy"></a><figcaption>Если права «📊 Статистика» нет, показывается «Нет доступа». Суперадмины получают уведомление о вашем запросе.</figcaption></figure>
+</div>
+<ol class="steps">
+<li>Откройте адрес дашборда или кнопку «🌐 Открыть дашборд» под статистикой в боте (в приложении плитка «📊 Дашборд»).</li>
+<li>На странице входа нажмите кнопку Телеграм и подтвердите вход. Сессия живёт 30 дней.</li>
+<li>Если бот пишет «Нет доступа»: попросите выдать вам право «📊 Статистика» и нажмите «Проверить доступ ещё раз».</li>
+</ol>
+<figure class="shot wide"><a class="zoom" href="shots/admin/w_dash_home.png"><img src="shots/admin/w_dash_home.png" width="1280" height="900" alt="Дашборд: шапка, быстрое оглавление и плитки «Сейчас»." loading="lazy"></a><figcaption>Дашборд: шапка, быстрое оглавление и плитки «Сейчас».</figcaption></figure>
+<h4>Разделы страницы</h4>
+<div class="tbl"><table>
+<thead><tr><th>Раздел</th><th>Что показывает</th></tr></thead>
+<tbody>
+<tr><td>«Сейчас»</td><td>«Всего заявок», «Сегодня», «За 7 дней» (с сравнением с прошлой неделей), «На модерации» и сколько ждёт самая старая.</td></tr>
+<tr><td>«Поток заявок»</td><td>«Динамика регистраций», «Воронка регистрации» (от «Зашли» до «Одобрено»), «Где бросают» (на каких вопросах уходят), таблица по месяцам.</td></tr>
+<tr><td>«Модерация и ответы»</td><td>«Среднее время обработки» (от подачи до решения) и «Вопросы делегатов».</td></tr>
+<tr><td>«Откуда приходят»</td><td>«Метки кампаний», «Каналы» (источники), «Рефералы».</td></tr>
+<tr><td>«Кто подаёт»</td><td>Срезы по вузу, курсу, направлению обучения.</td></tr>
+</tbody></table></div>
+<figure class="shot wide"><a class="zoom" href="shots/admin/w_dash_flow.png"><img src="shots/admin/w_dash_flow.png" width="1280" height="979" alt="«Поток заявок»: динамика и воронка. Цифры на картинке демонстрационные." loading="lazy"></a><figcaption>«Поток заявок»: динамика и воронка. Цифры на картинке демонстрационные.</figcaption></figure>
+<figure class="shot wide"><a class="zoom" href="shots/admin/w_dash_mod.png"><img src="shots/admin/w_dash_mod.png" width="1280" height="415" alt="«Модерация и ответы»." loading="lazy"></a><figcaption>«Модерация и ответы».</figcaption></figure>
+<figure class="shot wide"><a class="zoom" href="shots/admin/w_dash_who.png"><img src="shots/admin/w_dash_who.png" width="1280" height="801" alt="«Кто подаёт»: срезы по вузам, курсам и направлениям." loading="lazy"></a><figcaption>«Кто подаёт»: срезы по вузам, курсам и направлениям.</figcaption></figure>
+<p>Блоки «Гейма» и «Амбассадоры» на СкиллАп выключены и на странице не рисуются. Блок выключенного модуля не показывается вовсе, а не пустой.</p>
+<h4>Какие блоки показывать</h4>
+<div class="split"><div>
+<p><span class="path">«📊 Данные» → «📊 Дашборд»</span>. Галочки блоков: «🪜 Воронка», «📈 Динамика по дням», «🏫 ВУЗы», «📢 Источники», «📖 Курсы», «🎯 Направления», «🚪 Где бросают», «🔗 Метки кампаний (UTM)», «📅 По месяцам», «🎮 Гейма», «🏅 Амбассадоры», «🔗 Рефералы». Выключенный блок просто не рисуется, данные не пропадают.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_dash_settings.png"><img src="shots/admin/b_dash_settings.png" width="780" height="1616" alt="Выбор блоков дашборда." loading="lazy"></a><figcaption>Выбор блоков дашборда.</figcaption></figure></div>
+<div class="split"><div>
+<p>Дашборд открывается и с телефона: оглавление уезжает в горизонтальную полосу сверху, плитки встают по две.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/w_dash_mobile.png"><img src="shots/admin/w_dash_mobile.png" width="780" height="1688" alt="Дашборд на телефоне." loading="lazy"></a><figcaption>Дашборд на телефоне.</figcaption></figure></div>
+</div>
+</section>
+
+<section class="sec" id="miniapp"><h2>Приложение менеджера (Mini App)</h2>
+<div class="blk">
+<p class="lead">Приложение это веб-страница, которая открывается внутри Телеграм. У делегата там анкета, профиль и частые вопросы. У менеджера есть рабочие экраны: отбор заявок, вопросы делегатов, частые вопросы, настройки. Всё то же самое есть и в боте, приложение лишь удобнее на телефоне.</p>
+<h3>Как открыть</h3>
+<ol class="steps">
+<li><b>Кнопка в меню чата</b> слева от поля ввода: «📱 Открыть приложение». Она появляется, когда приложение включено.</li>
+<li><b>Кнопка «📱 Приложение»</b> в нижнем меню. Бот отвечает «Задания, монеты и рейтинг — в одном экране. Открывай приложение 👇» и кнопкой «📱 Открыть приложение». Именно через эту кнопку Телеграм передаёт приложению, кто вы.</li>
+<li><b>Запасной вход в обычном браузере</b> (только для менеджеров): адрес <code>su26.alekseev.info/app</code>. Откроется экран «Откройте через бота»: нажмите «Войти через Telegram» (вход тот же, что у дашборда, а после входа браузер вернёт на дашборд, поэтому откройте адрес приложения ещё раз).</li>
+</ol>
+<div class="split"><div>
+<p>Если приложение открыто не из бота, вы увидите именно этот экран. Он не сломан: приложение просто не знает, кто вы.</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/w_open_in_bot.png"><img src="shots/admin/w_open_in_bot.png" width="780" height="1688" alt="Экран «Откройте через бота». «Открыть в Telegram» ведёт в бота, «Войти через Telegram» открывает вход для менеджеров." loading="lazy"></a><figcaption>Экран «Откройте через бота». «Открыть в Telegram» ведёт в бота, «Войти через Telegram» открывает вход для менеджеров.</figcaption></figure></div>
+</div>
+
+<div class="blk" id="mini-hub">
+<h3>Что вы увидите: главный экран менеджера</h3>
+<div class="split"><div>
+<p>Плитки зависят от ваших прав и от галочек в «🎨 Оформление». Заголовки групп рисуются, только если в группе есть хотя бы одна плитка.</p>
+<div class="tbl"><table>
+<thead><tr><th>Плитка</th><th>Право</th></tr></thead>
+<tbody>
+<tr><td>«Отбор заявок»</td><td>«📋 Модерация заявок»</td></tr>
+<tr><td>«Вопросы делегатов», «Частые вопросы»</td><td>«📋 Модерация заявок»</td></tr>
+<tr><td>«Настройки», «Первая настройка»</td><td>«⚙️ Настройки»</td></tr>
+<tr><td>«Дашборд»</td><td>любое право (открывает дашборд в браузере)</td></tr>
+<tr><td>«Сканер (чек-ин)»</td><td>«✅ Отметки на форуме (чек-ин)»</td></tr>
+<tr><td>«Статистика»</td><td>одновременно «📊 Статистика» и «🎮 Модерация геймификации» (это статистика заданий). У менеджера регистраций плитки нет, статистику смотрите на дашборде</td></tr>
+</tbody></table></div>
+<p>Под плиткой может быть счётчик: «N без ответа», «15 настроек». Если вы одновременно и менеджер, и делегат с анкетой, вверху есть переключатель «Делегат | Менеджер».</p>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/w_hub_manager.png"><img src="shots/admin/w_hub_manager.png" width="780" height="1688" alt="Главный экран менеджера регистраций. «Первая настройка» это мастер для тех, у кого есть право «⚙️ Настройки»." loading="lazy"></a><figcaption>Главный экран менеджера регистраций. «Первая настройка» это мастер для тех, у кого есть право «⚙️ Настройки».</figcaption></figure></div>
+</div>
+
+<div class="blk" id="mini-apps">
+<h3>Отбор заявок, вопросы, частые вопросы, настройки</h3>
+<div class="pair">
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/w_apps.png"><img src="shots/admin/w_apps.png" width="780" height="1688" alt="«Отбор заявок»: карточка-«тиндер» с кнопками «отклонить» (крестик) и «принять» (галочка). «Показать всё» раскрывает остальные ответы." loading="lazy"></a><figcaption>«Отбор заявок»: карточка-«тиндер» с кнопками «отклонить» (крестик) и «принять» (галочка). «Показать всё» раскрывает остальные ответы.</figcaption></figure>
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/w_questions.png"><img src="shots/admin/w_questions.png" width="780" height="1688" alt="«Вопросы делегатов» с фильтрами и кнопкой ответа." loading="lazy"></a><figcaption>«Вопросы делегатов» с фильтрами и кнопкой ответа.</figcaption></figure>
+</div>
+<ul>
+<li><b>Отбор заявок.</b> Вверху фильтры по форме («Все», «Полный», «Вечеринка», «Краткая», «Изменённые», «Помечены правилом») и «Принять всех N». На карточке виден балл, ответы, резюме. После принятия или отказа 5 секунд можно нажать «Отменить», пока письмо не ушло. Для отказа есть три готовых причины и поле «Своя причина». Порядок и поля карточки те же, что в боте: чтобы видеть все ответы, сначала поправьте «🧾 Поля карточки заявки».</li>
+<li><b>Вопросы делегатов.</b> Журнал вопросов с фильтрами «Все», «Без ответа», «В работе», «Отвечены» и кнопкой ответа.</li>
+<li><b>Частые вопросы.</b> Те же пункты, что в боте: добавить, править, скрыть.</li>
+<li><b>Настройки.</b> Тематические плитки («Событие», «Анкета», «Заявки», «Данные» и другие) и строка «Найти настройку…». Здесь же те тексты экранов приложения, которых нет в боте (подтверждение «Заявка принята», статус заявки): ищите их по слову.</li>
+</ul>
+<div class="pair">
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/w_settings.png"><img src="shots/admin/w_settings.png" width="780" height="1688" alt="Экран «Настройки» в приложении. Количество настроек в плитках дано для демонстрации." loading="lazy"></a><figcaption>Экран «Настройки» в приложении. Количество настроек в плитках дано для демонстрации.</figcaption></figure>
+<figure class="shot phone tall"><a class="zoom" href="shots/admin/w_faq_admin.png"><img src="shots/admin/w_faq_admin.png" width="780" height="1688" alt="Ведение частых вопросов в приложении." loading="lazy"></a><figcaption>Ведение частых вопросов в приложении.</figcaption></figure>
+</div>
+</div>
+
+<div class="blk" id="mini-control">
+<h3>Включить, выключить и оформить приложение</h3>
+<div class="split"><div>
+<p>Путь: <span class="path">«🔧 Управление» → «🎨 Оформление»</span> (право «⚙️ Настройки»). Экран «🎨 Оформление приложения» показывает:</p>
+<ul>
+<li>«Mini App включён»: выключатель всего приложения. Действует сразу. При выключении бот предупредит: «Выключить Mini App? Приложение исчезнет у всех делегатов и менеджеров, включая вас — включить обратно получится только из бота.»</li>
+<li>«Только менеджерам»: делегаты кнопку не увидят, у менеджеров есть запасной вход.</li>
+<li>Галочки разделов: что видно в приложении («Профиль», «Анкета», «Частые вопросы», «Отбор заявок», «Вопросы делегатов», «Настройки», «Сканер (чек-ин)» и другие). «Задания», «Монеты» и «Рейтинг» на СкиллАп выключены.</li>
+<li>«✨ Анимации» и «🎭 Пресеты и ручки оформления»: цвета, шрифт заголовков, лого, обложка. Картинки принимаются только фото (не файлом).</li>
+</ul>
+<div class="warn"><b class="t">Пресеты перезаписывают цвета</b>Выбор пресета («АЙСЕК — классика», «ЮЛид», «РилТолк») меняет акцентный, вторичный цвет и фон, в том числе зелёный цвет СкиллАп. Подтверждение значений не называет. Если вы случайно применили, настройте цвета заново (акцент <code>#009153</code>, вторичный <code>#F85A40</code>, фон <code>#F3F4F7</code>).</div>
+</div><figure class="shot phone tall"><a class="zoom" href="shots/admin/b_miniapp_settings.png"><img src="shots/admin/b_miniapp_settings.png" width="780" height="2648" alt="Экран «🎨 Оформление приложения» в боте." loading="lazy"></a><figcaption>Экран «🎨 Оформление приложения» в боте.</figcaption></figure></div>
+<p>Приложение и дашборд работают отдельно от бота. Если после обновления в приложении «всё по-старому», закройте его полностью (смахните) и откройте заново: обновление бота не обновляет приложение автоматически, это делает разработчик.</p>
+</div>
+</section>
+
+<section class="sec" id="now"><h2>Что включено на СкиллАп сейчас и что можно включить</h2>
+<div class="blk">
+<p class="lead">Состояние на 6 октября 2026. Если вы включаете что-то из правого столбца, сначала прочитайте, к чему это приведёт.</p>
+<div class="tbl"><table>
+<thead><tr><th style="width:23%">Тема</th><th style="width:30%">Сейчас</th><th>Что можно включить и где</th></tr></thead>
+<tbody>
+<tr><td>Форма регистрации</td><td><span class="pill">Полная</span> анкета: ФИО и 18 вопросов, согласие на обработку данных с PDF</td><td>Вопросы: «📝 Анкета» → «📋 Вопросы регистрации». Краткая форма и вечеринка не используются</td></tr>
+<tr><td>Одобрение</td><td><span class="pill">Ручное</span> менеджером</td><td>«Авто» включит одобрение без очереди и письма (с подтверждением)</td></tr>
+<tr><td>Балл заявки и сортировка по баллу</td><td><span class="pill">Включено</span></td><td>«📋 Заявки» → «🧮 Правила балла»</td></tr>
+<tr><td>Автоотказ по правилам</td><td><span class="pill off">Выключен</span>, правил нет</td><td>«📋 Заявки» → «🚫 Правила автоотказа». Правило создаётся выключенным, перед включением бот показывает, сколько заявок под него попадёт. Правило не умеет одобрять</td></tr>
+<tr><td>Уведомления о заявках</td><td>Сводка раз в 3 часа</td><td>«🔔 Уведомление: 🕒 Пачкой → 📨 Сразу» даст сообщение на каждую заявку</td></tr>
+<tr><td>Напоминание тем, кто бросил анкету</td><td><span class="pill">Включено</span>, через сутки, один раз</td><td>«⏰ Догонялка анкет»</td></tr>
+<tr><td>Тихие часы</td><td><span class="pill off">Выключены</span> (окно по умолчанию 22:00–09:00)</td><td>«📋 Заявки» → «🌙 Тихие часы»</td></tr>
+<tr><td>Рассылки и опросы</td><td><span class="pill">Работают</span></td><td>«📢 Общение»</td></tr>
+<tr><td>Вопросы делегатов</td><td><span class="pill">Работают</span></td><td>Журнал и ответы в «📋 Заявки»</td></tr>
+<tr><td>Частые вопросы</td><td>Пунктов нет, кнопки у делегатов нет</td><td>«📋 Заявки» → «❓ Частые вопросы» → «➕ Добавить»</td></tr>
+<tr><td>Реферальная ссылка и «Мои приглашённые»</td><td><span class="pill">Включены</span>. Предложения «Хочу свою ссылку» после анкеты нет. Баллы за приглашённых не начисляются</td><td>«📝 Анкета» → «🎁 Предлагать свою ссылку после анкеты»</td></tr>
+<tr><td>Геймификация (задания, монеты, рейтинг)</td><td><span class="pill off">Выключена</span> для делегатов, заданий нет</td><td>Завести задания, включить «🪙 Мои монеты», «🎯 Задания» в «🔘 Кнопки меню» и разделы в «🎨 Оформление», попросить делегатов нажать <code>/start</code></td></tr>
+<tr><td>Отбор амбассадоров, ступени, волны</td><td><span class="pill off">Выключены</span>. Вступить по кнопке можно сразу, без отбора</td><td>«🎮 Геймификация» → «⚙️ Тексты и настройки» → «🤝 Отбор амбассадоров»</td></tr>
+<tr><td>Оплата</td><td><span class="pill off">Выключена</span></td><td>«💳 Оплата» → «💳 Оплата». Появятся тарифы, реквизиты, чеки</td></tr>
+<tr><td>Города</td><td><span class="pill off">Выключены</span>, все заявки в одну вкладку</td><td>«🔧 Управление» → «🏙 Города мероприятия». Сначала поправьте чужие города (<a href="#check">см. выше</a>)</td></tr>
+<tr><td>Английская версия анкеты</td><td><span class="pill off">Выключена</span></td><td>«📝 Анкета» → «🌐 Английский язык анкеты». Тексты бота переведутся машиной, правятся в «🌐 Английские тексты»</td></tr>
+<tr><td>Приложение</td><td><span class="pill">Включено</span> для всех</td><td>«🔧 Управление» → «🎨 Оформление»</td></tr>
+<tr><td>Дашборд</td><td><span class="pill">Работает</span> (без «Гейма» и «Амбассадоры»)</td><td>«📊 Данные» → «📊 Дашборд»</td></tr>
+<tr><td>Итоги дня менеджерам</td><td><span class="pill off">Выключены</span></td><td>«🔧 Управление» → «📊 Итоги дня менеджерам»</td></tr>
+<tr><td>Учёт и рейтинг чата делегатов</td><td><span class="pill off">Выключены</span>, чат не привязан</td><td>Добавьте бота администратором в чат делегатов, затем «💬 Учёт чата делегатов». Привязка идёт через личное сообщение тому, кто сделал бота администратором</td></tr>
+<tr><td>Форум: QR, отметки, SOS, бюро находок</td><td>В основном <span class="pill off">выключены</span></td><td>«📋 Заявки» → «🎪 Форум: функции» (единый экран статусов). Многое работает только при заданной «🗓 Дате начала форума»</td></tr>
+<tr><td>Внешние формы (Яндекс, Google)</td><td>Не подключены</td><td>«📊 Данные» → «📝 Внешние формы»</td></tr>
+</tbody></table></div>
+</div>
+</section>
+
+<section class="sec" id="problems"><h2>Частые проблемы</h2>
+<div class="blk">
+<p class="lead">Для каждого случая: что вы видите, почему так, что сделать самому и когда писать разработчику. Сначала проверьте очевидное на стороне человека (нажимал ли «Начать», есть ли роль, правильно ли набрано).</p>
+
+<details class="q"><summary>Я пишу <code>/admin</code>, а бот молчит или пишет «Недостаточно прав»</summary><div class="body">
+<p><b>Почему.</b> У вас нет роли, она выключена или истекла. Молчание это штатное поведение для человека без прав. «Недостаточно прав» значит, что роль есть, но не на эту кнопку.</p>
+<p><b>Что сделать.</b> Попросите того, у кого есть «⚙️ Настройки», открыть «🔧 Управление» → «👥 Роли и доступы» и проверить: вы в списке, роль включена, у роли отмечены нужные права, срок не истёк («⌛ истекла»). Потом нажмите <code>/start</code> и повторите.</p>
+<p><b>Писать разработчику, если</b> всё верно, а доступа нет и после перезапуска Телеграм.</p>
+</div></details>
+
+<details class="q"><summary>Не получается выдать роль: «Не понял, кого добавить» или «не найден в базе бота»</summary><div class="body">
+<p><b>Почему.</b> Человек ни разу не нажимал «Начать» у бота либо скрыл аккаунт при пересылке.</p>
+<p><b>Что сделать.</b> Попросите нажать «Начать» (одного раза достаточно) и повторите с <code>@ником</code>. При скрытой пересылке пришлите ник или числовой номер. Если ник менялся, используйте номер (он виден в карточке <code>/find</code>).</p>
+<p><b>Писать разработчику,</b> если человек нажал «Начать», а бот всё равно не находит ни по нику, ни по номеру.</p>
+</div></details>
+
+<details class="q"><summary>Менеджер не получает сводки и вопросы делегатов</summary><div class="body">
+<p><b>Почему.</b> Он не нажимал «Начать» или заблокировал бота. Телеграм не даёт боту писать первым.</p>
+<p><b>Что сделать.</b> Посмотрите «👥 Роли и доступы»: у такого человека будет «⚠️ не получает уведомления…» (но только после первой неудачной отправки). Попросите его открыть бота и нажать «Начать». Отметка снимется сама. Суперадмины получают отдельное сообщение об этом не чаще раза в сутки на человека.</p>
+<p><b>Писать разработчику,</b> если человек нажал «Начать», а уведомления всё равно не идут.</p>
+</div></details>
+
+<details class="q"><summary>Делегат пишет «мне не пришло одобрение» или «не отвечают на вопрос»</summary><div class="body">
+<p><b>Почему.</b> Скорее всего, он заблокировал бота или не открывал его. Вам при этом бот показал «Одобрено» или «Ответ отправлен»: письмо уходит фоном.</p>
+<p><b>Что сделать.</b> Откройте «📊 Данные» → «🔍 Сверить с БД» и найдите блок «📨 Решения не доставлены», там названа причина («бот заблокирован делегатом», «пользователь удалён», «чат не найден»). Если бот не заблокирован, нажмите «📨 Переотправить решения». Если заблокирован, бот ему не напишет: пошлите ссылку или ответ лично. Ответ на вопрос в таких случаях бот сам подсвечивает: «❌ Доставить ответ невозможно…».</p>
+<p><b>Писать разработчику:</b> нет.</p>
+</div></details>
+
+<details class="q"><summary>Рассылка дошла не всем («❌ недоступно»)</summary><div class="body">
+<p><b>Почему.</b> Часть людей заблокировала бота или не открывала его. Телеграм даёт одну и ту же ошибку для обоих случаев.</p>
+<p><b>Что сделать.</b> Попросите их разблокировать бота и нажать «Начать», для важного напишите лично. Поимённого списка бот не показывает.</p>
+<p><b>Писать разработчику:</b> нет.</p>
+</div></details>
+
+<details class="q"><summary>Бот говорит «❌ Не понял дату»</summary><div class="body">
+<p><b>Почему.</b> Дата введена не в том формате.</p>
+<p><b>Что сделать.</b> Вводите точно так: <code>31.10.2026 14:30</code> (день.месяц.год, пробел, часы:минуты, московское время). Для даты без времени: <code>15.10.2026</code>. В программе форума дни вводятся как <code>31.10</code> или <code>31.10.2026</code>, а время сессии как <code>10:00-11:30</code>.</p>
+</div></details>
+
+<details class="q"><summary>Я вставил список в несколько строк, а сохранилась только первая</summary><div class="body">
+<p><b>Почему.</b> В мобильном Телеграм Enter отправляет сообщение, а бот обрабатывает одно сообщение за раз.</p>
+<p><b>Что сделать.</b> Пишите пункты одной строкой через «;» (в списках вариантов, согласиях, вариантах опроса, правах роли) или добавляйте пункты по одному кнопкой «➕ Добавить пункт». Либо вводите с компьютера.</p>
+</div></details>
+
+<details class="q"><summary>Новые заявки не появляются в таблице, или в таблице появилась вторая вкладка, или колонок не хватает</summary><div class="body">
+<p><b>Почему (по убыванию вероятности).</b> (1) Вкладку переименовали или переставили, и бот создал новую вкладку с прежним именем. (2) Не задана основная вкладка. (3) Оборвалась связь в момент записи, строка в базе есть, в таблице нет. (4) Скрытые колонки или фильтр в таблице.</p>
+<p><b>Что сделать.</b> Верните прежнее имя вкладки или задайте новое в «📊 Данные» → «📄 Вкладки таблицы». Для пропавших строк: «🔍 Сверить с БД» → «➕ Дописать недостающие строки» (или «🔄 Синхронизация таблицы»). Прежде чем звать разработчика, проверьте глазами: нет ли скрытых столбцов, фильтра, открытой копии таблицы.</p>
+<p><b>Писать разработчику,</b> если после сверки строки не появились и вкладка названа верно.</p>
+</div></details>
+
+<details class="q"><summary>Дашборд пишет «Нет доступа», «Вход временно недоступен» или не показывает кнопку входа</summary><div class="body">
+<p><b>«Нет доступа».</b> Нет права «📊 Статистика». Выдайте роль с этим правом и нажмите «Проверить доступ ещё раз».</p>
+<p><b>Кнопки Телеграм не видно.</b> Телеграм бывает недоступен из сети человека. Включите VPN, обновите страницу, проверьте с другого устройства. Если нет ни у кого и с VPN, возможно, не настроен домен входа у бота (его задаёт владелец бота).</p>
+<p><b>«Не удалось подтвердить вход через Telegram».</b> Подпись входа просрочена (старше суток) или время на телефоне неверное. Откройте страницу входа заново и сразу нажмите кнопку.</p>
+<p><b>«Вход временно недоступен — не задан адрес дашборда или бот этого стека».</b> Это настройка сервера: пишите разработчику.</p>
+</div></details>
+
+<details class="q"><summary>Нет блока «Гейма», «Амбассадоры» или подписи «реальных N» на дашборде</summary><div class="body">
+<p><b>Почему.</b> Модуль выключен, и его блок не рисуется. Либо выбран другой «Город» или «Сезон» в шапке.</p>
+<p><b>Что сделать.</b> «📊 Данные» → «📊 Дашборд» (тумблеры блоков), проверьте переключатели в шапке страницы.</p>
+<p><b>Писать разработчику,</b> если модуль включён, данные есть, а блока нет.</p>
+</div></details>
+
+<details class="q"><summary>Приложение: «Откройте через бота», «Сессия истекла», «Приложение выключено», нет кнопки приложения</summary><div class="body">
+<p><b>«Откройте через бота».</b> Приложение открыто не из бота. Откройте его кнопкой бота или «Войти через Telegram» (для менеджеров).</p>
+<p><b>«Сессия истекла — откройте приложение заново.»</b> Закройте и откройте снова из бота.</p>
+<p><b>«Приложение временно недоступно».</b> Приложение выключено: включите «Mini App включён» в «🎨 Оформление» в боте.</p>
+<p><b>Нет кнопки.</b> Проверьте тумблеры на экране «🎨 Оформление» (включено ли приложение, не стоит ли «Только менеджерам»), кнопку «📱 Приложение» в «🔘 Кнопки меню», закройте и откройте чат, нажмите <code>/start</code>. Если на экране «🎨 Оформление» написано «⚠️ Адрес приложения не задан», пишите разработчику.</p>
+<p><b>Карточка «Нет доступа» на главном экране.</b> Откройте раздел по «На главную» и проверьте, есть ли у вашей роли нужное право и включена ли галочка раздела. Если карточка появляется сразу при открытии, пишите разработчику: возможно, приложение не обновили.</p>
+<p><b>Картинка не грузится.</b> Загрузите её заново в «🎭 Пресеты и ручки оформления» именно как фото.</p>
+</div></details>
+
+<details class="q"><summary>Делегат пишет, что «анкета не работает» или «бот молчит», хотя бот онлайн</summary><div class="body">
+<p><b>Почему.</b> Состояние диалога хранится в памяти бота и сбрасывается при каждом его перезапуске. Черновик анкеты при этом в базе цел.</p>
+<p><b>Что сделать.</b> Попросите нажать <code>/start</code> и выбрать «Продолжить». Если человек просто написал боту любое сообщение, бот сам спросит «🔄 Бот перезапускался, но твоя анкета сохранена — продолжим?». Если анкета зависла по-настоящему, найдите человека через <code>/find</code> и нажмите «🧹 Сбросить зависшую анкету».</p>
+<p><b>Писать разработчику,</b> если после <code>/start</code> «Продолжить» не работает.</p>
+</div></details>
+
+<details class="q"><summary>«Исправили, а в приложении или дашборде по-старому»</summary><div class="body">
+<p><b>Почему.</b> Приложение и дашборд работают отдельно от бота и обновляются отдельно. Кроме того, Телеграм может держать старую версию в памяти.</p>
+<p><b>Что сделать.</b> Закройте приложение полностью и откройте заново. Дашборд обновите (Ctrl+F5).</p>
+<p><b>Писать разработчику,</b> если после этого всё равно старое: нужно обновить контейнеры.</p>
+</div></details>
+
+<details class="q"><summary>Бот не отвечает совсем</summary><div class="body">
+<p><b>Почему.</b> Бот работает через прокси, и при сбое сети может не получать сообщения, хотя сервер «жив».</p>
+<p><b>Что сделать.</b> Подождите 5–10 минут и проверьте, отвечают ли другие боты АЙСЕК (если нет, дело в сети). Админ сам перезапустить бота не может.</p>
+<p><b>Писать разработчику:</b> всегда, указав время и симптом («не отвечает с 14:20»).</p>
+</div></details>
+</div>
+</section>
+
+<section class="sec" id="glossary"><h2>Глоссарий</h2>
+<div class="blk">
+<p>Слова в том виде, в каком они называются в боте. Одно и то же состояние в разных местах называется по-разному, это нормально.</p>
+<dl class="gl">
+<dt>Делегат</dt><dd>Участник события. В базе человек появляется, когда отправляет анкету. Тот, кто нажал «Начать» и не дописал, хранится отдельно, это «Незавершённые».</dd>
+<dt>Анкета и заявка</dt><dd>Анкета это опросник, который заполняет человек. Заявка это отправленная анкета, ждущая решения.</dd>
+<dt>Статус заявки</dt><dd>Ожидает решения: «Новая» (в таблице), «⏳ Ожидают» (в списке), «на модерации» (в статистике). Одобрена и Отклонена пишутся одинаково везде.</dd>
+<dt>Ручная и Авто</dt><dd>Режим одобрения. Ручная: решает менеджер. Авто: заявка одобряется сама, без очереди и письма «прошёл отбор».</dd>
+<dt>Балл и «IT 3+»</dt><dd>Автоматическая оценка заявки по ответам, до 7. «IT 3+» значит: IT-направление (или стек) и старший курс.</dd>
+<dt>Автоотказ</dt><dd>Правило, которое отклоняет или помечает заявку по условию. Сейчас выключен.</dd>
+<dt>Пачкой и Сразу</dt><dd>Режим уведомлений менеджерам: одной сводкой раз в несколько часов или сообщением на каждую заявку.</dd>
+<dt>Догонялка</dt><dd>Одно напоминание тому, кто бросил анкету.</dd>
+<dt>Тихие часы</dt><dd>Окно ночью, когда бот откладывает сообщения делегатам до утра.</dd>
+<dt>Тумблер</dt><dd>Кнопка-переключатель. Подпись «Выкл → Вкл» означает «сейчас выключено, нажатие включит».</dd>
+<dt>Право и роль</dt><dd>Право это одна возможность в админке (девять штук). Роль это набор прав, выдаётся человеку.</dd>
+<dt>Суперадмин</dt><dd>Человек со всеми правами, которого назначает разработчик. Из бота его нельзя снять.</dd>
+<dt>Рассылка</dt><dd>Сообщение выбранной аудитории (все, по фильтру, не завершившим регистрацию), сразу или по расписанию. «❗ Важное» доходит и до тех, кто выключил рассылки на сегодня.</dd>
+<dt>Опрос</dt><dd>Настоящий опрос Телеграм с вариантами, отправляется как рассылка.</dd>
+<dt>FAQ</dt><dd>Частые вопросы: готовые ответы для делегатов.</dd>
+<dt>Вкладка</dt><dd>Лист Google-таблицы. Бот находит вкладку по имени, поэтому переименовывать её нельзя.</dd>
+<dt>Дашборд</dt><dd>Веб-страница со статистикой, доступна с правом «📊 Статистика».</dd>
+<dt>Приложение (Mini App)</dt><dd>Страница внутри Телеграм: у делегата анкета и профиль, у менеджера отбор заявок, вопросы, настройки.</dd>
+<dt>Сезон</dt><dd>Одно событие (сейчас «СкиллАп 5»). «🔁 Повторных» это те, кто был в прошлом сезоне.</dd>
+<dt>Метка (ссылка с меткой)</dt><dd>Ссылка на бота, по которой видно, откуда пришёл человек.</dd>
+<dt>Недоступно</dt><dd>В отчёте рассылки: сообщение не дошло (заблокировал бота, удалил аккаунт или не открывал бота).</dd>
+<dt>Пресет</dt><dd>Готовый набор вопросов и настроек под тип события. Применять нужно осознанно: он перезаписывает вопросы.</dd>
+</dl>
+</div>
+</section>
+</main>
+</div>
+<footer>Гайд написан по коду бота СкиллАп 5 (обновление от 6 октября 2026) и проверен на его экранах. Экраны чата показаны макетом «как в Telegram»: тексты и кнопки взяты из бота дословно, внешний вид зависит от вашего клиента. Если что-то в боте расходится с этим гайдом, прав бот: сообщите об этом разработчику.</footer>
+<div class="lb" id="lb" role="dialog" aria-label="Увеличенная картинка"><button class="x" type="button" aria-label="Закрыть">×</button><img alt=""></div>
+<script>
+(function () {
+  [].slice.call(document.querySelectorAll('table')).forEach(function (t) { var hs = [].slice.call(t.querySelectorAll('thead th')).map(function (h) { return h.textContent; }); [].slice.call(t.querySelectorAll('tbody tr')).forEach(function (r) { [].slice.call(r.children).forEach(function (c, i) { if (hs[i]) c.setAttribute('data-l', hs[i]); }); }); });
+  var q = document.getElementById('q'), cnt = document.getElementById('cnt'), empty = document.getElementById('empty');
+  var secs = [].slice.call(document.querySelectorAll('section.sec'));
+  var tocLinks = [].slice.call(document.querySelectorAll('nav.toc a, details.toc-m a'));
+  secs.forEach(function (s) { s._t = s.textContent.toLowerCase(); [].slice.call(s.querySelectorAll('.blk')).forEach(function (b) { b._t = b.textContent.toLowerCase(); }); });
+  function run() {
+    var v = q.value.trim().toLowerCase(), shown = 0, hits = 0;
+    secs.forEach(function (s) {
+      var blks = [].slice.call(s.querySelectorAll('.blk')), ok = !v || s._t.indexOf(v) > -1;
+      if (v && ok) { blks.forEach(function (b) { var m = b._t.indexOf(v) > -1; b.classList.toggle('gone', !m); if (m) hits++; }); }
+      else { blks.forEach(function (b) { b.classList.remove('gone'); }); }
+      [].slice.call(s.querySelectorAll('details.q')).forEach(function (d) { var m = !!v && d.textContent.toLowerCase().indexOf(v) > -1; d.open = m; });
+      s.classList.toggle('gone', !ok); if (ok) shown++;
+      tocLinks.forEach(function (a) { if (a.getAttribute('href') === '#' + s.id) a.parentNode.classList.toggle('gone', !ok); });
+    });
+    empty.style.display = shown ? 'none' : 'block';
+    cnt.textContent = v ? ('Найдено разделов: ' + shown) : '';
+  }
+  q.addEventListener('input', run);
+  var th = document.getElementById('th');
+  try { var sv = localStorage.getItem('ag-theme'); if (sv) document.documentElement.setAttribute('data-theme', sv); } catch (e) {}
+  th.addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var dark = cur ? cur === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var nx = dark ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', nx);
+    try { localStorage.setItem('ag-theme', nx); } catch (e) {}
+  });
+  var heads = secs.map(function (s) { return s; });
+  function spy() {
+    var y = window.scrollY + 120, cur = null;
+    heads.forEach(function (s) { if (!s.classList.contains('gone') && s.offsetTop <= y) cur = s.id; });
+    document.querySelectorAll('nav.toc a').forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + cur); });
+  }
+  window.addEventListener('scroll', spy, { passive: true }); spy();
+  var lb = document.getElementById('lb'), lbi = lb.querySelector('img');
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.zoom');
+    if (a) { e.preventDefault(); lbi.src = a.getAttribute('href'); lbi.alt = a.querySelector('img').alt; lb.classList.add('on'); lb.scrollTop = 0; return; }
+    if (e.target === lb || e.target.className === 'x') lb.classList.remove('on');
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('on'); });
+  if (location.hash) { var t = document.querySelector(location.hash); if (t && t.scrollIntoView) setTimeout(function () { t.scrollIntoView(); }, 50); }
+})();
+</script>
+</body>
+</html>
