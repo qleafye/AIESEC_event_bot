@@ -44,7 +44,7 @@ from services import i18n
 from services.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from settings_schema import get_setting_typed
 
-from miniapp.deps import Principal, delegate_gate, require_section
+from miniapp.deps import Principal, game_gate, require_section
 from miniapp.timeutil import today_msk
 
 router = APIRouter()
@@ -171,7 +171,7 @@ async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
 
 @router.get("/app/api/tasks")
 async def tasks_list(offset: str | None = None, limit: str | None = None,
-                     p: Principal = Depends(delegate_gate),
+                     p: Principal = Depends(game_gate),
                      _: Principal = Depends(require_section("tasks"))) -> dict:
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
@@ -222,7 +222,7 @@ def _deadline_days_left(task: dict, overdue: bool) -> int | None:
 
 
 @router.get("/app/api/tasks/{task_id}")
-async def task_card(task_id: int, p: Principal = Depends(delegate_gate),
+async def task_card(task_id: int, p: Principal = Depends(game_gate),
                     _: Principal = Depends(require_section("tasks"))) -> dict:
     task = await get_task(task_id)
     if task is None or task.get("archived_at"):

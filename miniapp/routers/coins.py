@@ -20,7 +20,7 @@ from database.db import (
 from services import amb_progress, i18n
 from settings_schema import get_setting_typed
 
-from miniapp.deps import Principal, delegate_gate, require_section
+from miniapp.deps import Principal, game_gate, require_section
 from miniapp.routers.tasks import parse_page
 
 router = APIRouter()
@@ -42,7 +42,7 @@ def display_name(row: dict) -> str:
 
 
 @router.get("/app/api/coins/balance")
-async def balance(p: Principal = Depends(delegate_gate),
+async def balance(p: Principal = Depends(game_gate),
                   _: Principal = Depends(require_section("coins"))) -> dict:
     return {
         "balance": await get_balance(p.telegram_id),
@@ -53,7 +53,7 @@ async def balance(p: Principal = Depends(delegate_gate),
 
 @router.get("/app/api/coins/history")
 async def history(offset: str | None = None, limit: str | None = None,
-                  p: Principal = Depends(delegate_gate),
+                  p: Principal = Depends(game_gate),
                   _: Principal = Depends(require_section("coins"))) -> dict:
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
@@ -99,7 +99,7 @@ async def history(offset: str | None = None, limit: str | None = None,
 
 
 @router.get("/app/api/leaderboard")
-async def leaderboard(limit: str | None = None, p: Principal = Depends(delegate_gate),
+async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate),
                       _: Principal = Depends(require_section("leaderboard"))) -> dict:
     _, lim = parse_page(0, limit, default_limit=LEADERBOARD_MAX, max_limit=LEADERBOARD_MAX)
     lang, tr_map = await i18n.context(p.telegram_id)
