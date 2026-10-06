@@ -20,6 +20,7 @@ from gspread.utils import rowcol_to_a1
 from config import config
 from database import ext_forms_db as ef
 from secret_redact import redact_secrets
+from services import delegations_mirror  # режим «как выгрузка Яндекса» (вкладка делегаций)
 from services.sheet_arrival_sync import backoff_seconds
 from services.timeutil import msk_now
 
@@ -128,6 +129,21 @@ def _tab_missing_text(tab: str) -> str:
     return f"Вкладка «{tab}» не найдена — выберите вкладку заново в разделе «📝 Внешние формы»"
 
 
+def _column_occupied_text(tab: str) -> str:
+    return (f"Колонка M листа «{tab}» занята — освободите её (бот пишет туда отметку «В боте») "
+            f"и выберите лист заново в «🏫 Делегации»")
+
+
+def _extra_questions_text(tab: str, extra: list[str]) -> str:
+    return (f"В форме есть вопросы без колонки в листе «{tab}»: {', '.join(extra)}. "
+            f"Бот их в лист не пишет (колонки D–L заняты вопросами Насти, правее M бот не трогает); "
+            f"остальные ответы пишутся как обычно.")
+
+
+# Ответ формы делегаций, который ещё не оценён, в колонке M показывается как «❔ проверить курс».
+_UNEVALUATED = {"ta_status": "check", "linked": False, "arrived": False}
+
+
 def _ensure_cols(ws, need: int) -> None:
     """Выбранная менеджером вкладка может быть уже шапки — без расширения сетки запись
     за её пределы падает («exceeds grid limits»)."""
@@ -231,12 +247,28 @@ async def drain_mirror(limit: int = 200) -> dict:
                    if a["sheet_state"] == "append"]
         updates = [(a["id"], a, users.get(a.get("matched_telegram_id"))) for a in answers
                    if a["sheet_state"] == "update"]
+        # Режим «как выгрузка Яндекса»: лист ведёт Настя, бот пишет по её шапке и колонку M.
+        # Шапку формы туда не пишем, но header_written всё равно помечаем — иначе учёт зациклится.
+        export = (answers[0].get("mirror_mode") or "bot") == "yandex_export"
+        rows: list[tuple] = []
+        if export:
+            from database import delegations_db
+            statuses = await delegations_db.mirror_status_for(
+                form_id, [a["answer_id"] for a in answers])
+            rows = [(a["id"], a, statuses.get(a["answer_id"], _UNEVALUATED)) for a in answers]
         try:
-            res = await asyncio.to_thread(
-                _write_form_sync, tab, columns, new_cols, appends, updates
-            )
+            if export:
+                res = await asyncio.to_thread(delegations_mirror.write_export_sync, tab, columns, rows)
+            else:
+                res = await asyncio.to_thread(
+                    _write_form_sync, tab, columns, new_cols, appends, updates
+                )
         except ForeignTabError:
             await ef.set_form_mirror(form_id, tab, _foreign_tab_text(tab))
+            counts["not_found"] += len(answers)
+            continue
+        except delegations_mirror.ColumnOccupiedError:
+            await ef.set_form_mirror(form_id, tab, _column_occupied_text(tab))
             counts["not_found"] += len(answers)
             continue
         except Exception as exc:
@@ -252,9 +284,22 @@ async def drain_mirror(limit: int = 200) -> dict:
             counts["not_found"] += len(answers)
             continue
         await ef.mark_headers_written(form_id, [c["qkey"] for c in new_cols])
-        await ef.mark_sheet_synced(
-            [(r[0], "append", r[1].get("matched_telegram_id")) for r in appends]
-            + [(r[0], "update", r[1].get("matched_telegram_id")) for r in updates])
+        if export:
+            # Тот же сторож, что в режиме бота: состояние и привязка — какими их прочитал
+            # list_sheet_due; ответ, изменившийся во время записи, остаётся в очереди.
+            await ef.mark_sheet_synced(
+                [(a["id"], a["sheet_state"], a.get("matched_telegram_id")) for a in answers])
+            # Вопрос без колонки — предупреждение менеджеру, не ошибка: mirror_error остановил
+            # бы очередь из-за условия, которое менеджер исправить не может (правее M не пишем).
+            extra = list(res[2]) if len(res) > 2 else []
+            if extra:
+                await ef.set_form_mirror_warning(form_id, _extra_questions_text(tab, extra))
+            else:
+                await ef.set_form_mirror_warning(form_id, None)
+        else:
+            await ef.mark_sheet_synced(
+                [(r[0], "append", r[1].get("matched_telegram_id")) for r in appends]
+                + [(r[0], "update", r[1].get("matched_telegram_id")) for r in updates])
         counts["appended"] += res[0]
         counts["updated"] += res[1]
     return counts

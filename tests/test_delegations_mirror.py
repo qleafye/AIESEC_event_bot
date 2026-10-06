@@ -260,3 +260,168 @@ def test_fake_ws_guards():
         sheet.append_rows([["x"]])
     with pytest.raises(AssertionError):
         sheet.insert_cols(1)
+
+
+# ---------- ветка drain_mirror ----------
+
+import asyncio  # noqa: E402
+
+from config import config  # noqa: E402
+from database import db  # noqa: E402
+from database import delegations_db as ddb  # noqa: E402
+from database import ext_forms_db as ef  # noqa: E402
+from tests._dbtpl import fast_init_db  # noqa: E402
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    config.DB_PATH = str(tmp_path / "mirror.db")
+    fast_init_db()
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sid")
+    monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
+    state = {"ws": probe_sheet(), "exists": True}
+    monkeypatch.setattr(mir, "_open_tab_sync", lambda tab: state["ws"] if state["exists"] else None)
+    return state
+
+
+def _form(tab=TAB, mode="yandex_export", columns=None):
+    fid = asyncio.run(ef.create_form(platform="yandex", external_id="f", title="Делегации", mirror_tab=tab))
+    asyncio.run(ef.set_form_mirror_mode(fid, mode))
+    asyncio.run(ef.upsert_columns(fid, [(c["qkey"], c["label"]) for c in (columns or _columns())]))
+    return fid
+
+
+def _ins(fid, aid, *, tid=None, values=None, columns=None, ta=None, link_tid=None, state=None):
+    ans = _answer(aid, values, columns=columns)
+    assert asyncio.run(ef.insert_answer(
+        form_id=fid, answer_id=aid, answered_at=ans["answered_at"], received_at=ans["answered_at"],
+        payload=ans["payload"], raw=None, matched_telegram_id=tid, match_how="username" if tid else None,
+    ))
+    row = asyncio.run(ef.get_answer(fid, aid))
+    if ta:
+        rid = asyncio.run(ddb.upsert_eval(fid, aid, ta_status=ta, university="Вуз", course_raw="2",
+                                          course_canonical="2", username_needle=None,
+                                          answered_at=ans["answered_at"]))
+        if link_tid:
+            assert asyncio.run(ddb.link(rid, link_tid, "username"))
+    if state:
+        asyncio.run(ef.mark_sheet_state([row["id"]], state))
+    return row["id"]
+
+
+def _states():
+    async def go():
+        async with db._connect() as c:
+            async with c.execute("SELECT answer_id, sheet_state FROM external_form_answers") as cur:
+                return {r[0]: r[1] for r in await cur.fetchall()}
+    return asyncio.run(go())
+
+
+def test_drain_dispatches_export_mode(env):
+    fid = _form()
+    _ins(fid, "2516200101", ta="ok")                                  # append, не привязан
+    _ins(fid, "2516200102", tid=6, ta="no")                           # append, matched, не ЦА
+    _ins(fid, "2516200002", tid=5, ta="ok", link_tid=5, state="update")  # уже в листе (строка 3)
+    _ins(fid, "2516200103")                                           # без оценки
+    res = asyncio.run(mir.drain_mirror())
+    assert res["appended"] == 3 and res["updated"] == 1 and res["not_found"] == 0
+    ws = env["ws"]
+    assert ws.rows[0][12] == "В боте"
+    assert ws.rows[2][12] == "✅ зашёл" and ws.rows[2][0] == "2516200002"
+    by_id = {r[0]: r for r in ws.rows[8:]}
+    assert by_id["2516200101"][12] == "⏳ не заходил"
+    assert by_id["2516200102"][12] == "— не ЦА"
+    assert by_id["2516200103"][12] == "❔ проверить курс"
+    assert ws.formats[3] == WHITE  # серая строка стала белой
+    assert ws.formats[10] == GREY  # новая строка не-ЦА — серая
+    assert _states() == {"2516200101": "synced", "2516200102": "synced",
+                         "2516200002": "synced", "2516200103": "synced"}
+    assert not any(c[0] == "append_rows" for c in ws.calls)
+    form = asyncio.run(ef.get_form(fid))
+    assert form["mirror_error"] is None and form["mirror_warning"] is None
+    # повторный проход — очередь пуста, лист не трогаем
+    ws.calls.clear()
+    assert asyncio.run(mir.drain_mirror()) == {"appended": 0, "updated": 0, "failed": 0, "not_found": 0}
+    assert ws.calls == []
+
+
+def test_drain_export_keeps_state_changed_during_write(env, monkeypatch):
+    fid = _form()
+    rid1 = _ins(fid, "2516200101", ta="ok")
+    _ins(fid, "2516200102", ta="ok")
+    orig = dm.write_export_sync
+
+    def write_and_flip(tab, columns, rows):
+        out = orig(tab, columns, rows)
+        asyncio.run(ef.mark_sheet_state([rid1], "update"))  # зашёл в бота посреди записи
+        return out
+    monkeypatch.setattr(dm, "write_export_sync", write_and_flip)
+    asyncio.run(mir.drain_mirror())
+    assert _states() == {"2516200101": "update", "2516200102": "synced"}
+
+
+def test_drain_bot_mode_unchanged(env, monkeypatch):
+    from tests.test_ext_forms_mirror import FakeWS as BotFakeWS
+    bot_ws = BotFakeWS()
+    monkeypatch.setattr(mir, "_open_tab_sync", lambda tab: bot_ws)
+    fid = _form(tab="Вкладка", mode="bot", columns=[{"qkey": "q1", "label": "Q1", "position": 1}])
+    _ins(fid, "a1", columns=[{"qkey": "q1", "label": "Q1", "position": 1}])
+    res = asyncio.run(mir.drain_mirror())
+    assert res["appended"] == 1
+    assert bot_ws.rows[0] == mir.FIXED_HEADERS + ["Q1"]
+    assert bot_ws.rows[1][3] == "a1" and bot_ws.rows[1][1] == "не найден"
+    assert ("append_rows", 1, mir._raw()) in bot_ws.calls
+    assert _states() == {"a1": "synced"}
+    assert asyncio.run(ef.get_form(fid))["mirror_warning"] is None
+
+
+def test_drain_column_occupied_sets_mirror_error(env):
+    env["ws"].rows[0][12] = "Чужое"
+    fid = _form()
+    _ins(fid, "2516200101", ta="ok")
+    _ins(fid, "2516200102", ta="ok")
+    res = asyncio.run(mir.drain_mirror())
+    assert res["not_found"] == 2 and res["appended"] == 0
+    err = asyncio.run(ef.get_form(fid))["mirror_error"]
+    assert "Колонка M" in err and "UR REGS" in err and "🏫 Делегации" in err
+    assert _states() == {"2516200101": "append", "2516200102": "append"}
+    assert len(env["ws"].rows) == 8
+    assert asyncio.run(ef.list_sheet_due("2099-01-01 00:00:00", 10)) == []  # очередь на паузе
+
+
+def test_drain_extra_question_sets_warning_not_error(env):
+    cols10 = _columns() + [{"qkey": "q10", "label": "Любимый цвет", "position": 10}]
+    fid = _form(columns=cols10)
+    _ins(fid, "2516200101", ta="ok", columns=cols10, values={"q10": "синий"})
+    _ins(fid, "2516200102", ta="no", columns=cols10)
+    asyncio.run(mir.drain_mirror())
+    form = asyncio.run(ef.get_form(fid))
+    assert "Любимый цвет" in form["mirror_warning"] and "без колонки" in form["mirror_warning"]
+    assert "UR REGS" in form["mirror_warning"]
+    assert form["mirror_error"] is None
+    assert _states() == {"2516200101": "synced", "2516200102": "synced"}
+    assert "синий" not in env["ws"].rows[8]
+    # очередь не остановлена: новый ответ формы по-прежнему берётся в работу
+    _ins(fid, "2516200103", ta="ok", columns=cols10)
+    due = asyncio.run(ef.list_sheet_due("2099-01-01 00:00:00", 10))
+    assert [a["answer_id"] for a in due] == ["2516200103"]
+
+    async def drop_q10():
+        async with db._connect() as c:
+            await c.execute("DELETE FROM external_form_columns WHERE form_id = ? AND qkey = 'q10'", (fid,))
+            await c.commit()
+    asyncio.run(drop_q10())
+    asyncio.run(mir.drain_mirror())
+    form = asyncio.run(ef.get_form(fid))
+    assert form["mirror_warning"] is None and form["mirror_error"] is None
+    assert _states()["2516200103"] == "synced"
+
+
+def test_drain_tab_missing_export_mode(env):
+    env["exists"] = False
+    fid = _form()
+    _ins(fid, "2516200101", ta="ok")
+    res = asyncio.run(mir.drain_mirror())
+    assert res["not_found"] == 1
+    assert "не найдена" in asyncio.run(ef.get_form(fid))["mirror_error"]
+    assert _states() == {"2516200101": "append"}
