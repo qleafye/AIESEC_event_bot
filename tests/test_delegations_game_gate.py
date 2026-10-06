@@ -250,3 +250,15 @@ def test_leaderboard_command_is_gated_for_delegate(tmp_path):
     reg = FakeMessage("/рейтинг", user_id=REGULAR_ID)
     asyncio.run(ua_mod.show_leaderboard(reg))
     assert len(reg.answers) == 1 and reg.answers[0][0] != _off_text()
+
+
+def test_long_off_text_goes_as_message_not_alert(tmp_path):
+    """Всплывающее окно Telegram держит 200 символов; текст правит менеджер (до 3500)."""
+    _db_ready(tmp_path)
+    _seed(DELEGATE_ID, delegation="МГУ")
+    long_text = "Игра выключена. " * 40
+    asyncio.run(db.set_setting("delegation_game_off_text", long_text))
+    cb = FakeCallback("gbal_top")
+    assert asyncio.run(ua_mod.ensure_game_allowed(cb)) is False
+    assert cb.answers == [(None, False)]
+    assert [a[0] for a in cb.message.answers] == [long_text]
