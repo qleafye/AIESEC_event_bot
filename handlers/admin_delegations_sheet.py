@@ -54,9 +54,20 @@ _READ_FAILED = (
     "Попробуйте «🔁 Сверить ещё раз» через минуту."
 )
 _ZERO_MATCHED = (
-    "⚠️ Ни одна строка не узнана по ID — похоже, ID в листе и в ответах формы разные. "
-    "Запись добавит {new} новых строк рядом со старыми. Лучше сначала спросить разработчика."
+    "⚠️ Ни одна строка не узнана по ID — похоже, в листе и в ответах формы разные ID. "
+    "Запись добавит {new} новых строк рядом со старыми, и каждый делегат окажется в листе "
+    "дважды. Проверьте, что выбрана вкладка, куда выгружали ответы; если вкладка верная — "
+    "запись лучше не включать."
 )
+_RISK_ZERO = (
+    "⚠️ Ни одна из {rows} строк листа не узнана по ID: бот добавит {new} новых строк рядом со "
+    "старыми, и каждый делегат окажется в листе дважды."
+)
+_RISK_HEADER = (
+    "⚠️ Шапка листа отличается от вопросов формы: новые строки лягут в колонки по порядку, и "
+    "ответы могут оказаться не под своими заголовками."
+)
+_CHANGED = "Лист за это время изменился — проверьте цифры ещё раз"
 
 
 def _form_enabled(form: dict) -> bool:
@@ -188,6 +199,8 @@ async def _show_check(callback, state: FSMContext, form: dict, tab: str) -> None
         return
     dry = None if res is None else {"matched": int(res.get("matched") or 0),
                                     "new": int(res.get("new") or 0),
+                                    "rows": int(res.get("sheet_rows") or 0),
+                                    "header_diff": bool(res.get("header_diff")),
                                     "m_free": bool(res.get("m_free"))}
     await state.update_data(dlg_tab=tab, dlg_dry=dry)
     text, kb = _check_screen(res, tab, form)
@@ -250,12 +263,23 @@ async def dlg_write_on(callback: types.CallbackQuery, state: FSMContext):
         return
     text = (
         f"Бот начнёт писать в лист «{_e(tab)}»:\n"
-        f"• обновит {dry['matched']} строк (колонки D–M),\n"
+        f"• у {dry['matched']} уже выгруженных строк обновит только колонку M «В боте»,\n"
         f"• добавит {dry['new']} новых строк после последней заполненной,\n"
-        "• покрасит не-ЦА серым, зелёные строки и колонки P и правее не тронет.\n"
-        "Включить?"
+        "• покрасит не-ЦА серым; серые и зелёные строки, которые вы красили сами, и колонки "
+        "P и правее не тронет.\n"
     )
-    await _show(callback, text, _kb([[_btn("✅ Да, включить", "dlg_write_yes")],
+    risks = []
+    if dry["matched"] == 0 and dry.get("rows", 0) > 0:
+        risks.append(_RISK_ZERO.format(rows=dry["rows"], new=dry["new"]))
+    if dry.get("header_diff"):
+        risks.append(_RISK_HEADER)
+    confirm = "✅ Да, включить"
+    if risks:
+        text += "\n" + "\n".join(risks) + "\n\nВсё равно включить?"
+        confirm = "⚠️ Понимаю, всё равно включить"
+    else:
+        text += "Включить?"
+    await _show(callback, text, _kb([[_btn(confirm, "dlg_write_yes")],
                                      [_btn("❌ Отмена", "dlg_check")]]))
     await callback.answer()
 
@@ -268,9 +292,27 @@ async def dlg_write_yes(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(_STALE_TAB, show_alert=True)
         return
     fid = int(form["id"])
-    await ef.set_form_mirror(fid, tab, None)
+    dry = (await state.get_data()).get("dlg_dry")
+    # Лист мог измениться между сверкой и «Да»: цифры, на которые согласился менеджер, пере-
+    # считываются прямо сейчас. Не сошлись — запись не включается, экран сверки покажет новые.
+    try:
+        fresh = await _dry_run(form, tab)
+    except Exception as exc:  # noqa: BLE001 — сбой API листа объясняем, не роняем экран
+        logger.warning("delegations: пересверка листа «%s» не удалась: %s", tab, type(exc).__name__)
+        await _show_check(callback, state, form, tab)
+        await callback.answer()
+        return
+    if (not dry or fresh is None or not fresh.get("m_free")
+            or int(fresh.get("matched") or 0) != dry.get("matched")
+            or int(fresh.get("new") or 0) != dry.get("new")):
+        await _show_check(callback, state, form, tab)
+        await callback.answer(_CHANGED, show_alert=True)
+        return
+    # Режим — раньше вкладки: писатель берёт форму по mirror_tab, и с уже выбранной вкладкой
+    # при режиме «bot» успел бы записать ответы в лист раскладкой бота.
     await ef.set_form_mirror_mode(fid, "yandex_export")
     n = await ef.requeue_form_answers(fid)
+    await ef.set_form_mirror(fid, tab, None)
     logger.info("delegations: запись в лист включена (form=%s, rows=%s)", fid, n)
     await callback.answer(f"Запись включена, в очереди {n} строк")
     await render_screen(callback)
