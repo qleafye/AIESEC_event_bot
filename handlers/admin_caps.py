@@ -765,6 +765,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # мастера выше.
     "roles_addfor:*": "settings",
     "roles_del:*": "settings",
+    "roles_del_ok:*": "settings",
     # Phase 09.1 (C, ROLE-03): manager <-> city binding. "roles_city:*" does not swallow
     # "roles_city_pick:*" -- the prefixes diverge at the char right after "roles_city"
     # (":" vs "_"), same shape already documented for "roles_cap:*"/"roles_caps:*" above.
