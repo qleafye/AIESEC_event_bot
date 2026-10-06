@@ -337,7 +337,8 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     payment_status = user.get("payment_status") or "not_paid"
     # Тумблер «💳 Модуль оплаты» выключен -> статус оплаты не существует как понятие:
     # «Не оплатил» на профиле пугал бы делегата счётом, которого нет (вопрос владельца 02.09).
-    payment_on = await get_setting_typed("payment_enabled") == "on"
+    payment_on = (await get_setting_typed("payment_enabled") == "on"
+                  and not user.get("delegation_answer_id"))
 
     enabled_label_keys = await _enabled_label_keys(user)
     fields = profile_fields(user, enabled_label_keys, lang, tr_map)

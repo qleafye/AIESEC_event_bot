@@ -1080,6 +1080,8 @@ async def send_payment_reminder(user_id: int):
         user = await get_user(user_id)
         if not user or user.get("payment_status") in ("paid", "receipt_sent", None):
             return
+        if user.get("delegation_answer_id"):
+            return  # делегату вуза оплата не нужна — напоминание ему не уходит
         from services import quiet_hours
         now = _now_moscow_naive()
         due = await quiet_hours.defer_until(now, user_id)
