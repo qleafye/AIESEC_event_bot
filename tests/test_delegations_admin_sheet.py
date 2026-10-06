@@ -185,7 +185,7 @@ def test_zero_matched_warns_about_different_ids(tmp_path, sheet):
     text = _last_edit(cb)[0]
     assert "Ни одна строка не узнана по ID" in text
     assert "добавит 7 новых строк" in text
-    assert "спросить разработчика" in text
+    assert "разработчик" not in text and "запись лучше не включать" in text
 
 
 def test_occupied_column_m_hides_enable_button(tmp_path, sheet):
@@ -282,7 +282,7 @@ def test_write_on_confirmation_names_what_changes(tmp_path, sheet):
     _run(mod.dlg_write_on(cb, st))
     text, _, kb = _last_edit(cb)
     assert "Бот начнёт писать в лист «UR REGS»" in text
-    assert "обновит 3 строк (колонки D–M)" in text
+    assert "у 3 уже выгруженных строк обновит только колонку M" in text
     assert "добавит 2 новых строк после последней заполненной" in text
     assert "колонки P и правее не тронет" in text
     assert text.endswith("Включить?")
@@ -397,3 +397,56 @@ def test_phase35_picker_redirects_delegation_form(tmp_path, sheet):
     assert f"extf_tabnew:{other}" in datas and f"extf_tabnone:{other}" in datas
     assert f"extf_tabpick:{other}:0" in datas
     assert "Делегации" not in text
+
+
+# ── ревью: рискованные включения, пересверка, порядок записи ────────────────────────────────
+
+def test_write_on_zero_match_and_header_diff_name_consequence(tmp_path, sheet):
+    _env(tmp_path)
+    fid = _form()
+    _select(fid)
+    sheet["dry"] = _dry(matched=0, new=7, sheet_rows=200, header_diff=[("D", "Имя", "ФИО")])
+    _, st = _pick(fid)
+    cb = _FakeCallback("dlg_write_on")
+    _run(mod.dlg_write_on(cb, st))
+    text, _, kb = _last_edit(cb)
+    assert "каждый делегат окажется в листе дважды" in text
+    assert "не под своими заголовками" in text
+    assert "Всё равно включить?" in text and "разработчик" not in text
+    assert "⚠️ Понимаю, всё равно включить" in _button_texts(kb)
+
+
+def test_write_yes_rechecks_and_refuses_when_sheet_changed(tmp_path, sheet):
+    _env(tmp_path)
+    fid = _form()
+    _select(fid)
+    _answer(fid, "a1", sheet_state="synced")
+    _, st = _pick(fid)
+    sheet["dry"] = _dry(matched=0, new=9)  # лист поменяли после сверки
+    cb = _FakeCallback("dlg_write_yes")
+    _run(mod.dlg_write_yes(cb, st))
+    assert cb.answer_calls == [(mod._CHANGED, True)]
+    f = _run(ef.get_form(fid))
+    assert f["mirror_tab"] is None and f["mirror_mode"] == "bot"
+    assert _sheet_states(fid) == ["synced"]
+
+
+def test_write_yes_sets_mode_before_tab(tmp_path, sheet, monkeypatch):
+    _env(tmp_path)
+    fid = _form()
+    _select(fid)
+    _, st = _pick(fid)
+    order = []
+    orig_mode, orig_tab = ef.set_form_mirror_mode, ef.set_form_mirror
+
+    async def mode(*a, **k):
+        order.append("mode")
+        return await orig_mode(*a, **k)
+
+    async def tab(*a, **k):
+        order.append("tab")
+        return await orig_tab(*a, **k)
+    monkeypatch.setattr(ef, "set_form_mirror_mode", mode)
+    monkeypatch.setattr(ef, "set_form_mirror", tab)
+    _run(mod.dlg_write_yes(_FakeCallback("dlg_write_yes"), st))
+    assert order == ["mode", "tab"]
