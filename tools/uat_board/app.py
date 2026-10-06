@@ -214,6 +214,18 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/admin-guide", "/admin-guide/"):
             # Гайд администратора бота СкиллАп 5 (06.10): картинки лежат в deck/shots/admin/.
             self._send(200, _read(os.path.join(DECK_DIR, "admin-guide.html")), "text/html; charset=utf-8")
+        elif path in ("/delegations", "/delegations/"):
+            # Презентация «Как работают делегации вузов в боте» (06.10).
+            self._send(200, _read(os.path.join(DECK_DIR, "delegations.html")), "text/html; charset=utf-8")
+        elif path == "/delegations.pdf":
+            body = _read(os.path.join(DECK_DIR, "delegations.pdf"))
+            self.send_response(200 if body else 404)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''delegacii-vuzov.pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif path in ("/uat", "/uat/"):
             # Чеклист приёмки форумного функционала (26.09): отметки хранятся в браузере
             # тестировщика, отчёт копируется кнопкой — серверного состояния нет.
