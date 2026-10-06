@@ -337,3 +337,21 @@ def test_apply_runs_sweep_and_preview_counts_zero_when_nobody(tmp_path, monkeypa
         await asyncio.sleep(0)
     _run(go())
     assert calls == [True]
+
+
+# ---------- IN-02: счётчики и списки считают одно и то же, вуз группируется без учёта регистра ----------
+
+def test_summary_groups_university_case_insensitively_and_counts_match_lists(tmp_path):
+    _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", username="@u1", course="3 бакалавриат", university="МГУ")
+    _answer_from_fixture(fid, "a2", username="@u2", course="3 бакалавриат", university=" мгу ")
+    _available(fid, "a1")
+    _available(fid, "a2")
+    rows = _run(ddb.summary_by_university(fid))
+    assert len(rows) == 1 and rows[0]["total"] == 2 and rows[0]["ta"] == 2
+    # ответ без строки в таблице ответов формы не попадает ни в счётчик, ни в список
+    _run(ddb.upsert_eval(fid, "ghost", ta_status="ok", university="Призрак", course_raw="3",
+                         course_canonical="3", username_needle=None, answered_at=None))
+    assert _run(ddb.count_by_status(fid, "ok", linked=None)) == len(
+        _run(ddb.list_by_status(fid, "ok", linked=None, offset=0, limit=50)))
