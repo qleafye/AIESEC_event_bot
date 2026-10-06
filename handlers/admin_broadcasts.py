@@ -1234,7 +1234,7 @@ def _value_picker_kb(field: str, options: list[str], page: int,
         if labels:
             label = str(labels.get(v, v))
         else:
-            label = _PAYMENT_STATUS_LABELS.get(v, v) if field == "payment_status" else v
+            label = _FILTER_VALUE_LABELS.get(field, {}).get(v, v)
         rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"filter_opt:{i}")])
     nav = []
     if page > 0:
@@ -1249,7 +1249,10 @@ def _value_picker_kb(field: str, options: list[str], page: int,
 # Human labels for payment_status values (shown in the filter summary / value picker).
 # Phase 19 (Mini App): словарь переехал в корневой `reg_labels.py` — профиль Mini App
 # показывает тот же статус оплаты теми же словами.
-from reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS  # noqa: E402
+from reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS, STATUS_LABELS as _APP_STATUS_LABELS  # noqa: E402
+
+# Поля фильтра, у которых в базе лежит служебный код, а менеджеру нужны слова (pending -> «Новая»).
+_FILTER_VALUE_LABELS = {"payment_status": _PAYMENT_STATUS_LABELS, "status": _APP_STATUS_LABELS}
 
 
 def _filter_summary(filters: list[dict]) -> str:
@@ -1262,8 +1265,8 @@ def _filter_summary(filters: list[dict]) -> str:
         if f["field"] == "registration_date":
             opl = "после" if f.get("op") == "after" else "до"
             parts.append(f"{label} {opl} {val}")
-        elif f["field"] == "payment_status":
-            parts.append(f"{label} = {_PAYMENT_STATUS_LABELS.get(f.get('value'), val)}")
+        elif f["field"] in _FILTER_VALUE_LABELS:
+            parts.append(f"{label} = {_FILTER_VALUE_LABELS[f['field']].get(f.get('value'), val)}")
         elif f.get("label"):
             # Phase 07.2 (CITY-02) / квик 260910-vfl: a filter may carry its own human display
             # text (a city code / the SEASON_NONE sentinel is unreadable in the summary).
