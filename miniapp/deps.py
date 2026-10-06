@@ -261,6 +261,39 @@ def delegate_gate(request: Request, p: Principal = Depends(principal)) -> Princi
     return p
 
 
+def game_denial(conn, p: Principal) -> str | None:
+    """Правило гейма для делегаций вузов в веб-процессе — то же, что `ensure_game_allowed`
+    в боте: у делегата (`users.delegation` не пусто) задания, монеты и сдачи закрыты, пока
+    менеджер не включил `delegation_game_enabled`. Остальные разделы (хаб, профиль, программа,
+    чек-ин, FAQ) этим правилом не закрываются — делегату нужны QR и программа. Не делегат
+    правилом не затрагивается."""
+    row = conn.execute(
+        "SELECT delegation FROM users WHERE telegram_id = ?", (p.telegram_id,)
+    ).fetchone()
+    if row is None or not str(row["delegation"] or "").strip():
+        return None
+    if read_setting(conn, "delegation_game_enabled") == "on":
+        return None
+    return "game_off_for_delegation"
+
+
+def game_gate(request: Request, p: Principal = Depends(principal)) -> Principal:
+    """`delegate_gate` + правило гейма делегаций (`game_denial`). Только для ручек заданий,
+    монет и сдач. Сначала общий делегатский гейт, чтобы его отказы не маскировались."""
+    with read_conn(request.app.state.cfg.db_path) as conn:
+        kind = delegate_denial(conn, p)
+        if kind is not None:
+            raise HTTPException(403, {"reason": "delegate_gate", "kind": kind})
+        code = game_denial(conn, p)
+    if code is not None:
+        raise HTTPException(403, {
+            "reason": "game_gate",
+            "code": code,
+            "message": "Задания и монеты для делегаций выключены",
+        })
+    return p
+
+
 def form_access_denial(conn, p: Principal) -> str | None:
     """Причина отказа в доступе к анкете или `None`. Одна логика для `form_gate` и для
     `/app/api/me.form_access` (T-21-34: видимость плитки — не право, каждый маршрут анкеты
@@ -358,6 +391,8 @@ __all__ = [
     "delegate_denial",
     "delegate_gate",
     "form_gate",
+    "game_denial",
+    "game_gate",
     "principal",
     "read_setting",
     "require_cap",
