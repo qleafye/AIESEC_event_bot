@@ -327,10 +327,13 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     # "admin_checkin" (та НЕ входит в этот список — гейтится капой `checkin`, не `moderate_reg`).
     # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — та же капа `moderate_reg`,
     # встал сразу после "admin_sos" (последний форумный экран раздела).
+    # 06.10 (делегации вузов): «🏫 Делегации» — та же капа `moderate_reg`, в SECTIONS стоит
+    # после «🚫 Правила автоотказа» (та и два экрана правил перед ней гейтятся `settings` и в
+    # этом списке отсутствуют) — для менеджера заявок это последняя строка раздела.
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
     assert [sec.row_callback(r) for r in rows] == [
         "admin_applications", "admin_app_list", "admin_questions", "admin_faq", "admin_sos",
-        "admin_forum_functions",
+        "admin_forum_functions", "admin_delegations",
     ]
     assert not [r for r in rows if r[0] in ("toggle", "group")]
 

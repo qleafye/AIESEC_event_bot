@@ -1484,6 +1484,14 @@ admin|callback_query|extf_gwarn_no|extf_gwarn_no
 admin|callback_query|extf_key|extf_key:u,extf_key:p
 admin|callback_query|extf_keyset|extf_keyset:*
 admin|callback_query|extf_keys_ok|extf_keys_ok
+admin|callback_query|admin_delegations|admin_delegations
+admin|callback_query|dlg_univ|dlg_univ:*
+admin|callback_query|dlg_form_pick|dlg_form_pick
+admin|callback_query|dlg_form|dlg_form:*
+admin|callback_query|dlg_keys|dlg_keys
+admin|callback_query|dlg_key|dlg_key:*
+admin|callback_query|dlg_keyset|dlg_keyset:*
+admin|callback_query|dlg_keys_ok|dlg_keys_ok
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2176,7 +2184,10 @@ def test_snapshot_total_handler_count_is_292():
     # Внешние формы (Яндекс/Google): +42 хендлера admin — раздел «📝 Внешние формы», ключи
     # приложения Яндекса (ExtFormAppKeys) и фильтр рассылки по форме (extff_*); существующий
     # порядок не менялся, только вставки (984 -> 1026).
-    assert len(GOLDEN_SNAPSHOT) == 1026
+    # Делегации вузов: +8 хендлеров admin — экран «🏫 Делегации» (handlers/admin_delegations.py,
+    # импорт последним в хвосте admin.py): admin_delegations/dlg_univ/dlg_form_pick/dlg_form/
+    # dlg_keys/dlg_key/dlg_keyset/dlg_keys_ok; только вставки в хвост (1026 -> 1034).
+    assert len(GOLDEN_SNAPSHOT) == 1034
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
