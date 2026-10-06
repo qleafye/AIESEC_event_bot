@@ -100,6 +100,33 @@ def _msk_hhmm() -> str:
     return time.strftime("%d.%m %H:%M", time.gmtime(time.time() + 3 * 3600))
 
 
+def _backup(path: str) -> str | None:
+    """Копия файла состояния рядом с ним, `state.json.bak-ГГММДД-ЧЧММ` (МСК). Нет файла — нет копии.
+    Нужна перед `/api/reset`: отметки прошлой приёмки стираются одним запросом, а читать их потом
+    хочется (кто что проверил, заметки к ❌)."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    stamp = time.strftime("%y%m%d-%H%M", time.gmtime(time.time() + 3 * 3600))
+    dst = f"{path}.bak-{stamp}"
+    with open(dst, "wb") as f:
+        f.write(data)
+    return dst
+
+
+def _reset(path: str | None = None) -> dict:
+    """Сброс всех отметок с бэкапом прежнего файла. Версия растёт, чтобы открытые страницы
+    перечитали пустое состояние."""
+    path = path or DATA
+    _backup(path)
+    state = _load(path)
+    state = {"v": int(state.get("v", 0)) + 1, "steps": {}}
+    _store(state, path)
+    return state
+
+
 def _deck_load(path: str = DECK_NOTES) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
@@ -343,10 +370,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "confirm"})
                 return
             with _lock:
-                state = _load()
-                state = {"v": int(state.get("v", 0)) + 1, "steps": {}}
-                _store(state)
-                self._json(200, state)
+                self._json(200, _reset())
         else:
             self._send(404, b"not found", "text/plain")
 
