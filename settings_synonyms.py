@@ -402,6 +402,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "dashboard_block_months": ["помесячно", "статистика по месяцам"],
     "dashboard_block_game": ["гейма дашборд", "геймификация блок"],
     "dashboard_block_referrals": ["рефералка дашборд", "кто кого привёл", "амбассадоры блок"],
+    "dashboard_block_delegations": ["делегации дашборд", "делегации по вузам", "вузы ЦА статистика"],
     "dashboard_block_ambassadors": ["амбассадоры дашборд", "срез по амбассадорам"],
     "dashboard_favicon": ["фавикон", "иконка вкладки", "иконка вкладки браузера"],
 

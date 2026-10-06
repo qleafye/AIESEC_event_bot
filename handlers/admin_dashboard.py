@@ -33,6 +33,7 @@ DASHBOARD_BLOCKS = [
     "dashboard_block_game",
     "dashboard_block_ambassadors",
     "dashboard_block_referrals",
+    "dashboard_block_delegations",
 ]
 
 
