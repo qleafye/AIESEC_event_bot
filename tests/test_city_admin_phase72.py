@@ -327,7 +327,7 @@ def test_appr_all_confirm_module_off_equals_todays_literal(tmp_path):
     cb = FakeCallback("appr_all")
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_moderation.appr_all_confirm(cb, state))
-    assert cb.message.text == "Одобрить все 1 заявок?"
+    assert cb.message.text == "Одобрить все 1 заявку?"
 
 
 def test_appr_all_confirm_binds_the_city_into_the_callback_data(tmp_path):

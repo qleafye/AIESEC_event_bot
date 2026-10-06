@@ -63,6 +63,7 @@ from settings_schema import get_setting_typed
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_modcard_render import build_card_text
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
+from services.ru_plural import ru_plural
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)
@@ -485,6 +486,10 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     await _show_current_card(message, state)
 
 
+def _applications_word(n: int) -> str:
+    return ru_plural(n, "заявку", "заявки", "заявок")
+
+
 @router.callback_query(F.data == "appr_all")
 async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     # T-072-07 (Repudiation): the confirmation text must name BOTH the city and the count —
@@ -514,15 +519,15 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     # cross-city mass approval. The ALL_CITIES branch must honestly say "по всем городам" —
     # this IS the irreversible-scope disclosure T-093-10/T-093-11 rely on.
     if label is None:
-        text = f"Одобрить все {total} заявок?"
+        text = f"Одобрить все {total} {_applications_word(total)}?"
     elif label == ALL_CITIES_LABEL:
         text = (
-            f"Одобрить все {total} заявок по всем городам? "
+            f"Одобрить все {total} {_applications_word(total)} по всем городам? "
             "Будут затронуты заявки всех городов."
         )
     else:
         text = (
-            f"Одобрить все {total} заявок в городе «{html_module.escape(str(label))}»? "
+            f"Одобрить все {total} {_applications_word(total)} в городе «{html_module.escape(str(label))}»? "
             "Заявки других городов не будут затронуты."
         )
     await callback.message.edit_text(text, reply_markup=kb)
