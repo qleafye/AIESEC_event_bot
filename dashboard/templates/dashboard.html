@@ -615,6 +615,43 @@
   </section>
   {% endif %}
 
+  {# ═══ Делегации вузов (тумблер dashboard_block_delegations) ═══ #}
+  {% if 'delegations' in section_ids %}
+  <section class="page-section" id="delegations" aria-labelledby="delegations-title">
+    <h2 class="section-title" id="delegations-title">Делегации</h2>
+    <section class="block">
+      <h2 class="visually-hidden">Делегации по вузам</h2>
+      {% if delegations.rows %}
+      <div class="card">
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Вуз</th><th class="num">ЦА в форме</th><th class="num">В боте</th><th class="num">Пришли</th></tr></thead>
+          <tbody>
+            {% for row in delegations.rows %}
+            <tr>
+              <td data-label="Вуз">{{ row.university }}</td>
+              <td class="num" data-label="ЦА в форме">{{ row.ta | thousands }}</td>
+              <td class="num" data-label="В боте">{{ row.in_bot | thousands }}</td>
+              <td class="num" data-label="Пришли">{{ row.arrived | thousands }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <td data-label="Вуз"><b>Всего</b></td>
+              <td class="num" data-label="ЦА в форме"><b>{{ delegations.total_ta | thousands }}</b></td>
+              <td class="num" data-label="В боте"><b>{{ delegations.total_in_bot | thousands }}</b></td>
+              <td class="num" data-label="Пришли"><b>{{ delegations.total_arrived | thousands }}</b></td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+      {% else %}
+      <p class="empty-note">Пока нет ответов формы делегаций.</p>
+      {% endif %}
+    </section>
+  </section>
+  {% endif %}
+
   {# ═══ Раздел 6: Вовлечение ═══ #}
   {% if 'engagement' in section_ids %}
   <section class="page-section" id="engagement" aria-labelledby="engagement-title">

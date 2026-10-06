@@ -257,6 +257,8 @@ def _page_sections(ctx: dict) -> list[dict]:
         sections.append({"id": "sources", "title": "Откуда приходят"})
     if ctx["cuts"]:
         sections.append({"id": "who", "title": "Кто подаёт"})
+    if ctx.get("delegations"):
+        sections.append({"id": "delegations", "title": "Делегации"})
     if ctx["game"] or ctx["ambassadors"] or ctx["chat_bindings"]:
         sections.append({"id": "engagement", "title": "Вовлечение"})
     return sections
@@ -352,6 +354,11 @@ def build_page_context(
         if flags.get("dashboard_block_referrals") == "on"
         else None
     )
+    delegations = (
+        queries.delegations_block(conn, scope)
+        if flags.get("dashboard_block_delegations") == "on"
+        else None
+    )
     referrals_daily_chart = None
     if referrals is not None:
         if referrals["daily"]:
@@ -439,6 +446,7 @@ def build_page_context(
         "game": game_stats,
         "ambassadors": ambassadors,
         "referrals": referrals,
+        "delegations": delegations,
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
     }

@@ -4904,6 +4904,12 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "dashboard", "label": "🔗 Рефералы",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
+    # Делегации вузов: таблица «вуз → ЦА в форме / в боте / пришли». По умолчанию выключен —
+    # блок нужен только на событии, где подключена форма делегаций.
+    "dashboard_block_delegations": {
+        "type": "enum", "group": "dashboard", "label": "🏫 Делегации",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
     # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
     # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
     # НЕ фото — Telegram пережимает фото в JPEG) с экрана «🎭 Пресеты и ручки оформления»

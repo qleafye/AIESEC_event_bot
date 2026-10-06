@@ -41,6 +41,7 @@ DASHBOARD_KEYS_EXPECTED = [
     "dashboard_block_game",
     "dashboard_block_ambassadors",
     "dashboard_block_referrals",
+    "dashboard_block_delegations",
 ]
 
 
@@ -75,7 +76,7 @@ def test_dashboard_block_defaults_on_empty_db(tmp_path):
 
     values = asyncio.run(_read_all())
     for key, value in values.items():
-        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors") else "on"
+        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors", "dashboard_block_delegations") else "on"
         assert value == expected, key
 
 
@@ -152,7 +153,7 @@ def test_dashboard_block_toggle_flips_only_its_own_key(tmp_path):
     for key in DASHBOARD_KEYS_EXPECTED:
         if key == "dashboard_block_funnel":
             continue
-        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors") else "on"
+        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors", "dashboard_block_delegations") else "on"
         assert values[key] == expected, key
     assert callback.message.edit_calls == 1
     assert callback.answers, "тост не отправлен"
@@ -173,7 +174,7 @@ def test_dashboard_block_toggle_unknown_suffix_does_not_write(tmp_path):
 
     values = asyncio.run(_read_all())
     for key in DASHBOARD_KEYS_EXPECTED:
-        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors") else "on"
+        expected = "off" if key in ("dashboard_block_game", "dashboard_block_ambassadors", "dashboard_block_delegations") else "on"
         assert values[key] == expected, key
 
 
