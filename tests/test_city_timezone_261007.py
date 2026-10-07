@@ -159,3 +159,23 @@ def test_delegate_program_tyumen_plus2_now_and_next(tmp_path, monkeypatch):
     by_title = {s["title"]: s for s in sessions}
     assert by_title["Открытие"]["now"] is True
     assert by_title["Вторая"]["now"] is False
+
+
+# ── отзыв о сессии: момент отправки в МСК ────────────────────────────────────────────────────
+
+def test_feedback_run_at_tyumen_plus2_and_default(tmp_path):
+    _db(tmp_path)
+    from services.session_feedback import _run_at_for_session
+
+    async def scenario():
+        session = {"city": "tyumen", "day": "2026-10-03", "end_time": "11:00"}
+        before = await _run_at_for_session(session)  # настройки нет — как раньше
+        await _tyumen_plus2()
+        after = await _run_at_for_session(session)
+        assert (before - after).total_seconds() == 2 * 3600
+        # 11:00 местного + задержка (по умолчанию) - 2 ч
+        assert after.hour == 9 and after.day == 3
+        other = await _run_at_for_session({**session, "city": "spb"})
+        assert other == before
+
+    _run(scenario())
