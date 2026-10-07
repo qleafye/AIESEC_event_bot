@@ -77,7 +77,11 @@ async def _run_at_for_session(session: dict) -> datetime | None:
     if end_dt is None:
         return None
     delay = await _delay_minutes_for_city(session.get("city"))
-    return end_dt + timedelta(minutes=delay)
+    # Время сессии — местное время города, а планировщик живёт по Москве: переводим момент
+    # отправки в МСК (Тюмень МСК+2: конец 11:00 местного = 09:00 МСК).
+    from services.timeutil import city_offset_hours
+    offset = await city_offset_hours(session.get("city"))
+    return end_dt + timedelta(minutes=delay) - timedelta(hours=offset)
 
 
 def cancel_for_session(session_id: int) -> None:
