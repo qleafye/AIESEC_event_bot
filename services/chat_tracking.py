@@ -42,6 +42,9 @@ from settings_audit import delete_setting_by_admin, set_setting_by_admin
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
+# Итог сверки состава чата: отдельный именованный логгер, который `main._configure_logging`
+# выводит на INFO даже там, где корень держит только WARNING (прод).
+RECON_LOGGER = logging.getLogger("chat_recon")
 
 CHAT_ID_KEY = "delegate_chat_id"
 CHAT_TITLE_KEY = "delegate_chat_title"
@@ -341,7 +344,7 @@ def moderates(member) -> bool:
                 or getattr(member, "can_restrict_members", False))
 
 
-async def refresh_chat_admins(bot, chat_id: int) -> None:
+async def refresh_chat_admins(bot, chat_id: int) -> bool:
     """Квик 260927: один вызов getChatAdministrators — и админы группы с правами модерации
     (`moderates`; команда, которую дашборд держит вне рейтинга), и состояние САМОГО бота (`chat_bot_state`: статус и право
     «Удаление сообщений») на случай, если апдейт my_chat_member потерялся. Бота нет среди
@@ -351,7 +354,7 @@ async def refresh_chat_admins(bot, chat_id: int) -> None:
         admins = await bot.get_chat_administrators(chat_id)
     except Exception as e:
         logger.info("chat_tracking.refresh_chat_admins: чат id=%s: %s: %s", chat_id, type(e).__name__, e)
-        return
+        return False
     people = [a.user.id for a in admins if not a.user.is_bot and moderates(a)]
     await replace_chat_admins(chat_id, people)
     own = next((a for a in admins if a.user.id == getattr(bot, "id", None)), None)
@@ -359,6 +362,7 @@ async def refresh_chat_admins(bot, chat_id: int) -> None:
         await set_chat_bot_state(chat_id, "member", False)
     else:
         await set_chat_bot_state(chat_id, getattr(own, "status", None), can_delete_from(own))
+    return True
 
 
 async def _cleanup_enabled() -> bool:
@@ -427,7 +431,7 @@ async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
         for entry in await bound_chats():
             chat_id, city = entry["chat_id"], entry["city"]
             report = await refresh_chat(bot, chat_id, city)
-            await refresh_chat_admins(bot, chat_id)
+            admins_ok = await refresh_chat_admins(bot, chat_id)
             approved = await _approved_ids_for_city(city)
             statuses = await chat_member_statuses(chat_id, approved)
             in_chat = sum(1 for s in statuses.values() if s in CHAT_PRESENT_STATUSES)
@@ -436,10 +440,47 @@ async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
                 "city_label": (await city_label(city)) if city else None,
                 "in_chat": in_chat, "not_in_chat": len(statuses) - in_chat,
                 "unknown": len(approved) - len(statuses),
+                "approved": len(approved), "admins_ok": admins_ok,
             })
+            log_reconcile_summary(reports[-1])
+        if not reports:
+            RECON_LOGGER.warning("chat_recon: сверка пустая — ни один чат делегатов не привязан")
         return reports
     finally:
         release_reconcile()
+
+
+def reconcile_problem(rep: dict) -> str | None:
+    """Почему итог сверки пустой или ошибочный, одной фразой без PII; `None` — всё в порядке."""
+    if not rep.get("approved"):
+        return "нет одобренных делегатов города — сверять некого"
+    if rep.get("errors"):
+        return (f"ошибки getChatMember: {rep['errors']} — проверьте, что бот админ чата "
+                "и видит участников")
+    if rep.get("admins_ok") is False:
+        return "не удалось прочитать админов чата — у бота нет прав или его убрали из чата"
+    if not rep.get("in_chat") and not rep.get("checked"):
+        return "никто не проверен и в чате не найдено ни одного делегата"
+    if not rep.get("in_chat"):
+        return "в чате не найдено ни одного одобренного делегата"
+    return None
+
+
+def log_reconcile_summary(rep: dict) -> None:
+    """Одна строка на чат: WARNING с причиной, если сверка пустая/ошибочная, иначе INFO с
+    итогом. Только счётчики и код города — никаких имён, юзернеймов и телефонов."""
+    base = (
+        f"chat_recon: chat_id={rep['chat_id']} city={rep.get('city') or '-'} "
+        f"approved={rep.get('approved', 0)} checked={rep.get('checked', 0)} "
+        f"in_chat={rep.get('in_chat', 0)} not_in_chat={rep.get('not_in_chat', 0)} "
+        f"unknown={rep.get('unknown', 0)} not_found={rep.get('not_found', 0)} "
+        f"errors={rep.get('errors', 0)} sheet_queued={rep.get('approved', 0)}"
+    )
+    problem = reconcile_problem(rep)
+    if problem:
+        RECON_LOGGER.warning("%s — %s", base, problem)
+    else:
+        RECON_LOGGER.info("%s — ok", base)
 
 
 def reconcile_report_text(reports: list[dict]) -> str:

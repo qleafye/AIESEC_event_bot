@@ -184,3 +184,30 @@ def test_button_in_manage_section_with_settings_cap():
     rows = section_rows("manage")
     assert ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата") in rows
     assert required_capability(callback_data="admin_chat_reconcile") == "settings"
+
+
+def test_reconcile_summary_logged_warning_on_problem_info_on_ok(tmp_path, caplog):
+    """Итог сверки — одна строка именованного логгера chat_recon: WARNING с причиной, когда
+    пусто/ошибки/нет чата, INFO когда всё хорошо. Без имён, юзернеймов и телефонов."""
+    import logging
+
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("chat_tracking_enabled", "off")
+        # чата нет -> WARNING «ни один чат не привязан»
+        await chat_tracking.reconcile_all_now(_Bot())
+        await chat_tracking.bind_chat(None, CHAT_ID, "Форум «Секретное имя»", None)
+        # одобренных нет -> WARNING с причиной
+        await chat_tracking.reconcile_all_now(_Bot())
+        await _seed_approved(3)
+        # все присутствуют -> INFO
+        await chat_tracking.reconcile_all_now(_Bot())
+
+    with caplog.at_level(logging.INFO, logger="chat_recon"):
+        _run(go())
+    recs = [r for r in caplog.records if r.name == "chat_recon"]
+    assert recs[0].levelno == logging.WARNING and "не привязан" in recs[0].getMessage()
+    assert recs[1].levelno == logging.WARNING and "нет одобренных" in recs[1].getMessage()
+    assert recs[2].levelno == logging.INFO and "in_chat=3" in recs[2].getMessage()
+    assert all("Секретное" not in r.getMessage() for r in recs)
