@@ -24,7 +24,7 @@ from database.db import list_program_days_for_city
 from handlers import reg_i18n
 from handlers.user_actions import _delegate_city, router
 from services.program import day_label, format_time_range, group_parallel, sessions_for_city_day
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now, shift_hours
 
 
 async def _resolve_delegate_city(telegram_id: int) -> str:
@@ -60,7 +60,10 @@ async def _render_day_text(code: str, day: str, *, is_today: bool, lang: str, tr
         lines.append(tr("Сессий в этот день пока нет."))
         return "\n".join(lines)
 
-    now_hhmm = msk_now().strftime("%H:%M") if is_today else None
+    # Время сессий менеджер города вводит по-местному — «сейчас» считаем по часам города.
+    now_hhmm = (
+        shift_hours(msk_now(), await city_offset_hours(code)).strftime("%H:%M") if is_today else None
+    )
     next_start = _next_start(sessions, now_hhmm) if is_today else None
 
     def marker_line(group: list[dict]) -> str | None:
@@ -118,7 +121,7 @@ def _day_picker_kb(days: list[str]) -> InlineKeyboardMarkup:
 
 async def _send_day_screen(message_or_callback, code: str, day: str, days: list[str], *, edit: bool) -> None:
     lang, tr_map = await reg_i18n.ctx_for(message_or_callback)
-    today = msk_now().strftime("%Y-%m-%d")
+    today = shift_hours(msk_now(), await city_offset_hours(code)).strftime("%Y-%m-%d")
     text = await _render_day_text(code, day, is_today=(day == today), lang=lang, tr_map=tr_map)
 
     kb = None

@@ -106,3 +106,56 @@ def test_tz_screen_has_buttons_and_marks_current(tmp_path):
         assert "МСК+2" in text
 
     _run(scenario())
+
+
+# ── программа: «идёт сейчас» по часам города ─────────────────────────────────────────────────
+
+def _freeze(monkeypatch, dt):
+    monkeypatch.setattr(timeutil, "msk_now", lambda: dt)
+
+
+def _seed_tyumen_sessions():
+    async def seed():
+        await db.create_program_session("tyumen", "2026-10-03", "10:00", "11:00", "Открытие")
+        await db.create_program_session("tyumen", "2026-10-03", "12:00", "13:00", "Вторая")
+    _run(seed())
+
+
+def test_checkin_points_zero_offset_unchanged(tmp_path, monkeypatch):
+    """Без настройки Тюмень считается по МСК, как раньше: 10:30 МСК -> «Открытие» живая."""
+    _db(tmp_path)
+    from services.program import checkin_session_points
+    _seed_tyumen_sessions()
+    _freeze(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    points = _run(checkin_session_points("tyumen"))
+    assert [p["live"] for p in points] == [True, False]
+
+
+def test_checkin_points_tyumen_plus2_uses_local_clock(tmp_path, monkeypatch):
+    """08:30 МСК = 10:30 в Тюмени: живая «Открытие». 10:30 МСК = 12:30 в Тюмени: живая «Вторая»."""
+    _db(tmp_path)
+    from services.program import checkin_session_points
+    _run(_tyumen_plus2())
+    _seed_tyumen_sessions()
+    _freeze(monkeypatch, datetime(2026, 10, 3, 8, 30))
+    points = _run(checkin_session_points("tyumen"))
+    assert points[0]["live"] and "Открытие" in points[0]["label"]
+    _freeze(monkeypatch, datetime(2026, 10, 3, 10, 30))
+    points = _run(checkin_session_points("tyumen"))
+    assert points[0]["live"] and "Вторая" in points[0]["label"]
+    # другой город без настройки не сдвигается
+    _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "СПб"))
+    assert _run(checkin_session_points("spb"))[0]["live"] is True
+
+
+def test_delegate_program_tyumen_plus2_now_and_next(tmp_path, monkeypatch):
+    _db(tmp_path)
+    from services.program import build_delegate_program
+    _run(_tyumen_plus2())
+    _seed_tyumen_sessions()
+    _freeze(monkeypatch, datetime(2026, 10, 3, 8, 30))  # 10:30 в Тюмени
+    days = _run(build_delegate_program("tyumen"))
+    sessions = [s for d in days for slot in d["slots"] for s in slot["sessions"]]
+    by_title = {s["title"]: s for s in sessions}
+    assert by_title["Открытие"]["now"] is True
+    assert by_title["Вторая"]["now"] is False
