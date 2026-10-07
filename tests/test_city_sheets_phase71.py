@@ -393,3 +393,32 @@ def test_maybe_ensure_city_sheet_headers_fail_soft_per_tab(tmp_path, monkeypatch
     tabs = {tab for tab, _headers in calls}
     assert "Тюмень" in tabs
     assert "СПб" not in tabs
+
+
+def test_maybe_ensure_city_sheet_headers_disabled_city_reconciles_only_existing_tab(tmp_path, monkeypatch):
+    """Выключенный город пишет строки на свою вкладку (маршрут от флага не зависит), значит
+    шапка (с «В чате» в конце) нужна и там — но только если вкладка уже есть: новую вкладку
+    выключенному городу не заводим."""
+    _use_tmp_db(tmp_path)
+    import main
+
+    calls = _patch_ensure_named(monkeypatch, main)
+    existing = {"Тюмень"}
+
+    async def fake_exists(name):
+        return name in existing
+
+    monkeypatch.setattr(main.sheets_service, "named_sheet_exists", fake_exists)
+
+    async def go():
+        fast_init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("registration_mode", "full")
+        await db.set_setting("city_enabled__tyumen", "off")
+        await db.set_setting("city_enabled__spb", "off")
+        await main._maybe_ensure_city_sheet_headers()
+
+    asyncio.run(go())
+    by_tab = dict(calls)
+    assert set(by_tab) == {"Тюмень"}
+    assert by_tab["Тюмень"][-1] == "В чате"
