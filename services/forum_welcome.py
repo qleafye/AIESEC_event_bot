@@ -29,9 +29,10 @@ deliver_feedback_prompts`)."""
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from cities import get_setting_typed_for_city
+from services.timeutil import city_offset_hours
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +65,19 @@ def _should_send(source: str, scanned_at: str | None, approx: bool) -> bool:
     return True  # miniapp/manual/auto_session — живой скан, время всегда «сейчас»/точное
 
 
-def _format_time(scanned_at: str | None) -> str:
+def _format_time(scanned_at: str | None, offset_hours: int = 0) -> str:
     """«YYYY-MM-DD HH:MM:SS» -> «ЧЧ:ММ»; пустое/кривое значение (не должно случаться на живом
     источнике, но парсер CSV может отдать что угодно до фильтра `_is_fresh_csv_scan` выше) ->
     «сейчас» — плейсхолдер `{time}` подставляется всегда, текст не ломается ни при какой
     кривизне."""
     if scanned_at and len(scanned_at) >= 16:
+        if offset_hours:
+            # В базе время МСК, делегату показываем часы его города.
+            try:
+                local = datetime.strptime(scanned_at[:16], "%Y-%m-%d %H:%M") + timedelta(hours=offset_hours)
+                return local.strftime("%H:%M")
+            except ValueError:
+                pass
         return scanned_at[11:16]
     return "сейчас"
 
@@ -104,7 +112,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         from handlers import reg_i18n
 
         lang, tr_map = await i18n_service.context(user_id)
-        text = reg_i18n.tr_fmt(template, lang, tr_map, time=_format_time(scanned_at))
+        text = reg_i18n.tr_fmt(template, lang, tr_map, time=_format_time(scanned_at, await city_offset_hours(city)))
         # С приветствием приходит и главное меню: reply-клавиатуру никто не перерисовывает, а
         # кнопка «🆘 SOS» появляется только в дни форума — без этого её не было до /start.
         from keyboards.builders import get_main_menu_kb
