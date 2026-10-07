@@ -1167,3 +1167,5 @@ from handlers import admin_source_links  # noqa: E402,F401
 from handlers import admin_ext_forms  # noqa: E402,F401
 # Экран «🏫 Делегации» в «📋 Заявки» (handlers/admin_delegations.py) — golden append в хвост.
 from handlers import admin_delegations  # noqa: E402,F401
+# Экран «🕐 Часовой пояс» города (handlers/admin_forum_tz.py) — golden append в хвост.
+from handlers import admin_forum_tz  # noqa: E402,F401

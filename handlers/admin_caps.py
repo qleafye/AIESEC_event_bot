@@ -1131,6 +1131,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # «moderate_reg», что и у остального хаба «🎪 Форум: функции» выше — своего родного экрана
     # раньше не было вовсе (ключи `forum_day_menu_enabled`/`forum_day_menu_start_time` жили
     # только в реестре), заведён этим же квиком.
+    # Часовой пояс города (экран хаба «🎪 Форум: функции»): та же капа, что у соседних экранов.
+    "forumtz_cfg:*": "moderate_reg",
+    "forumtz_set:*": "moderate_reg",
     "forumdaymenu_cfg:*": "moderate_reg",
     "forumdaymenu_toggle:*": "moderate_reg",
     "forumdaymenu_time:*": "moderate_reg",

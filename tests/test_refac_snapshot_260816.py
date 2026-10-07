@@ -1519,6 +1519,8 @@ admin|callback_query|dlg_absent|dlg_absent:*
 admin|callback_query|dlg_link|dlg_link:*
 admin|callback_query|dlg_pick|dlg_pick:*
 admin|callback_query|dlg_link_yes|dlg_link_yes
+admin|callback_query|forumtz_cfg_screen|forumtz_cfg:*
+admin|callback_query|forumtz_set_go|forumtz_set:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2232,7 +2234,8 @@ def test_snapshot_total_handler_count_is_292():
     # одна чистая вставка (1059 -> 1060).
     # Снятие роли с подтверждением: +1 admin.callback_query (roles_remove_yes) сразу после
     # roles_remove; одна чистая вставка (1060 -> 1061).
-    assert len(GOLDEN_SNAPSHOT) == 1061
+    # Часовой пояс города: forumtz_cfg_screen/forumtz_set_go перед prog_fbday_open (1061 -> 1063).
+    assert len(GOLDEN_SNAPSHOT) == 1063
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
