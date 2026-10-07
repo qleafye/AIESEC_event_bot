@@ -286,7 +286,9 @@ async def checkin_session_points(city: str, at: datetime | None = None) -> list[
     ]
 
 
-def scanned_outside_session_window(session: dict, scanned_at: str | None, *, slack_minutes: int = 30) -> bool:
+def scanned_outside_session_window(
+    session: dict, scanned_at: str | None, *, slack_minutes: int = 30, offset_hours: int = 0,
+) -> bool:
     """Форум-ночь п.5 (D-18..D-20): время скана из CSV-выгрузки лежит вне интервала сессии
     `[start - slack, end + slack]` того же дня — предупреждение в отчёте («вне времени сессии»,
     `handlers/admin_checkin.py`), НЕ запрет (отметка всё равно ставится — волонтёр мог
@@ -298,6 +300,8 @@ def scanned_outside_session_window(session: dict, scanned_at: str | None, *, sla
         dt = datetime.strptime(scanned_at[:19], "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return False
+    if offset_hours:
+        dt = dt + timedelta(hours=offset_hours)  # метка МСК -> местное время города сессии
     if dt.strftime("%Y-%m-%d") != session["day"]:
         return False
     try:

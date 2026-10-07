@@ -77,6 +77,18 @@ async def floor_report(city_sc, session_city: str | None, now) -> dict:
         for name in ("sessions", "stands"):
             async with db.execute(*queries[name]) as cur:
                 rows[name] = await cur.fetchall()
+    # «Идут сейчас»: время сессий — местное время их города, поэтому флаг (последняя колонка)
+    # пересчитываем по часам КАЖДОГО города строки, а не по московским из SQL.
+    from services.timeutil import city_offset_hours, shift_hours
+    hm_by_city: dict = {}
+    fixed = []
+    for row in rows["sessions"]:
+        city = row[1]
+        if city not in hm_by_city:
+            hm_by_city[city] = shift_hours(now, await city_offset_hours(city)).strftime("%H:%M")
+        hm = hm_by_city[city]
+        fixed.append((*tuple(row)[:-1], 1 if row[2] <= hm < row[3] else 0))
+    rows["sessions"] = fixed
     return arrival_stats.build_floor(
         rows["approved"], rows["present"], rows["recent"], rows["sessions"], rows["stands"], now=now,
     )
