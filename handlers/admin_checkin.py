@@ -86,9 +86,15 @@ from services.checkin_not_arrived import (
 )
 from services.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now, shift_hours
 from services import checkin_arrival
 from services import checkin_csv_import as _csv_import
+
+
+async def _city_now(city: str | None):
+    """Местное «сейчас» города (МСК + «🕐 Часовой пояс»); `msk_now` берётся из этого модуля."""
+    return shift_hours(msk_now(), await city_offset_hours(city))
+
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +151,7 @@ async def _screen_scope(admin_id: int, city: str | None):
 async def _forum_today(code: str | None) -> bool:
     from services.forum_days import forum_window
     window = await forum_window(code)
-    return window is not None and window[0] <= msk_now().date() <= window[1]
+    return window is not None and window[0] <= (await _city_now(code)).date() <= window[1]
 
 
 async def _counter_line(admin_id: int, city: str | None = None) -> str:
@@ -210,7 +216,7 @@ async def _qr_not_scheduled_reason(code: str | None) -> str | None:
         day = datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
     except (TypeError, ValueError, AttributeError):
         return "bad_date"
-    if day < msk_now().date():
+    if day < (await _city_now(code)).date():
         return "past"
     return None
 
@@ -234,7 +240,7 @@ async def _morning_repeat_passed_today(code: str | None) -> bool:
     date_str = await forum_date_for(code)
     _evening, morning = await _times_for(code)
     morn_at = morning_run_at(date_str, morning)
-    now = msk_now()
+    now = await _city_now(code)  # время рассылки — по часам города
     return morn_at is not None and morn_at.date() == now.date() and morn_at <= now
 
 
@@ -967,7 +973,7 @@ async def checkinqr_time_start(callback: types.CallbackQuery, state: FSMContext)
     await state.set_state(CheckinQrTimeEdit.waiting_value)
     example = "18:00" if which == "evening" else "08:00"
     await callback.message.answer(
-        f"Во сколько (московское время)? Формат <code>ЧЧ:ММ</code>, например "
+        f"Во сколько (по времени города: «🕐 Часовой пояс», без него — московское)? Формат <code>ЧЧ:ММ</code>, например "
         f"<code>{example}</code>.",
         parse_mode="HTML",
         reply_markup=get_cancel_kb(),

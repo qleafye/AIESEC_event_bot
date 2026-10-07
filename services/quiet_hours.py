@@ -181,9 +181,14 @@ async def defer_until(now: datetime, user_id: int) -> datetime | None:
     if window is None:
         return None
     start, end = window
-    if not is_quiet(now, start, end):
+    # Окно тишины — по часам города делегата («🕐 Часовой пояс»; без настройки МСК, как раньше):
+    # `now` приходит московским и возвращается московский момент, сдвиг — только внутри.
+    from services.timeutil import city_offset_hours, shift_hours
+    offset = await city_offset_hours(city_code)
+    local_now = shift_hours(now, offset)
+    if not is_quiet(local_now, start, end):
         return None
-    return next_window_end(now, start, end)
+    return next_window_end(local_now, start, end) - timedelta(hours=offset)
 
 
 async def enqueue(user_id: int, kind: str, payload: dict, due_at: datetime, now: datetime) -> int:

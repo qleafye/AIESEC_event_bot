@@ -49,10 +49,16 @@ from services import scheduler as _sched
 from services.checkin import build_checkin_qr, checkin_denial
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now, shift_hours
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
+
+
+async def _city_now(city: str | None):
+    """Местное «сейчас» города (МСК + «🕐 Часовой пояс»); `msk_now` берётся из этого модуля."""
+    return shift_hours(msk_now(), await city_offset_hours(city))
+
 
 # Кнопка-подтверждение на самой рассылке — фиксированный callback_data без embed'а telegram_id
 # (aiogram отдаёт его в callback.from_user.id, второй параметр в data не нужен).
@@ -158,7 +164,11 @@ async def schedule_city_jobs(city: str | None) -> dict:
         return {"scheduled": False, "reason": "disabled"}
 
     ev_time, morn_time = await _times_for(city)
-    now = msk_now()
+    # Часы рассылки (18:00 накануне, 08:00 утром) — по местному времени города (настройка
+    # «🕐 Часовой пояс»): вся логика ниже в местной шкале, в планировщик (он живёт по Москве)
+    # момент переводится при постановке. Смещение 0 -> шкалы совпадают, как раньше.
+    offset = await city_offset_hours(city)
+    now = await _city_now(city)
     ev_at = evening_run_at(date_str, ev_time)
     morn_at = morning_run_at(date_str, morn_time)
     if ev_at is None or morn_at is None:
@@ -209,10 +219,13 @@ async def schedule_city_jobs(city: str | None) -> dict:
                 pass
         else:
             sched.add_job(
-                target, "date", run_date=run_at, args=[city], id=jid, replace_existing=True,
+                target, "date", run_date=run_at - timedelta(hours=offset), args=[city],
+                id=jid, replace_existing=True,
             )
     if morn_at is _KEEP:
-        morn_at = getattr(sched.get_job(morn_id), "next_run_time", None)
+        # `next_run_time` у джобы — МСК (aware); экран/возврат живут в местной шкале города.
+        nrt = getattr(sched.get_job(morn_id), "next_run_time", None)
+        morn_at = nrt.replace(tzinfo=None) + timedelta(hours=offset) if nrt is not None else None
     return {
         "scheduled": ev_at is not None or morn_at is not None,
         "evening_at": ev_at, "morning_at": morn_at,
@@ -272,7 +285,7 @@ async def is_forum_day_offset(city: str | None, days_before: int) -> bool:
         day = datetime.strptime((date_str or "").strip(), "%d.%m.%Y").date()
     except (TypeError, ValueError, AttributeError):
         return False
-    return msk_now().date() == day - timedelta(days=days_before)
+    return (await _city_now(city)).date() == day - timedelta(days=days_before)
 
 
 async def _wrong_day(city: str | None, days_before: int, what: str) -> bool:
@@ -447,7 +460,7 @@ async def manual_send_block_reason(city: str | None) -> str | None:
         day = datetime.strptime(date_str.strip(), "%d.%m.%Y").date()
     except ValueError:
         return "Дата форума этого города записана с ошибкой — поправьте её в «🚦 Готовность»."
-    today = msk_now().date()
+    today = (await _city_now(city)).date()
     if (day - today).days > MANUAL_SEND_DAYS_AHEAD:
         return (f"Форум этого города {date_str} — рассылать QR рано. Он уйдёт сам накануне "
                 "вечером; вручную — не раньше чем накануне форума.")
@@ -540,7 +553,7 @@ async def _is_inside_forum_window(city: str | None) -> bool:
     """Сегодня — любой из дней форума города (первый, второй…), по его дате и длительности."""
     from services.sos import sos_active_window
     window = await sos_active_window(city)
-    return window is not None and window[0] <= msk_now().date() <= window[1]
+    return window is not None and window[0] <= (await _city_now(city)).date() <= window[1]
 
 
 async def _broadcast_text(city: str | None, *, morning: bool) -> tuple[str, bool]:

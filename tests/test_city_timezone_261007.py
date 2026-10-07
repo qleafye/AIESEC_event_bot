@@ -27,6 +27,12 @@ async def _tyumen_plus2():
     await db.set_setting(cities.per_city_key("city_tz_offset", "tyumen"), "2")
 
 
+async def _forum_dates_2037():
+    """Модуль городов включён — у каждого города своя дата форума (общая не наследуется)."""
+    for code in ("tyumen", "spb"):
+        await db.set_setting(cities.per_city_key("forum_date", code), "03.10.2037")
+
+
 # ── чистые помощники ─────────────────────────────────────────────────────────────────────────
 
 def test_clamp_offset_and_labels():
@@ -179,3 +185,117 @@ def test_feedback_run_at_tyumen_plus2_and_default(tmp_path):
         assert other == before
 
     _run(scenario())
+
+
+# ── тихие часы: окно считается по часам города делегата ──────────────────────────────────────
+
+async def _seed_delegate(uid, city):
+    await db.add_user({
+        "telegram_id": uid, "full_name": "Иванов Иван", "registration_date": "2026-01-01 00:00:00",
+        "event_city": city,
+    })
+    async with db._connect() as conn:
+        await conn.execute("UPDATE users SET status = 'approved', season = NULL WHERE telegram_id = ?", (uid,))
+        await conn.commit()
+
+
+def test_quiet_hours_tyumen_uses_local_window(tmp_path):
+    _db(tmp_path)
+    from services import quiet_hours
+
+    async def scenario():
+        await _tyumen_plus2()
+        await db.set_setting("quiet_hours_enabled", "on")
+        await _seed_delegate(7001, "tyumen")
+        await _seed_delegate(7002, "spb")
+        # 07:30 МСК: в Тюмени уже 09:30 (тишина кончилась), в СПб ещё 07:30 (тишина).
+        now = datetime(2026, 10, 3, 7, 30)
+        assert await quiet_hours.defer_until(now, 7001) is None
+        assert await quiet_hours.defer_until(now, 7002) == datetime(2026, 10, 3, 9, 0)
+        # 21:00 МСК: в Тюмени 23:00 (тишина) -> конец в 09:00 местного = 07:00 МСК следующего дня.
+        evening = datetime(2026, 10, 3, 21, 0)
+        assert await quiet_hours.defer_until(evening, 7001) == datetime(2026, 10, 4, 7, 0)
+        assert await quiet_hours.defer_until(evening, 7002) is None
+
+    _run(scenario())
+
+
+def test_not_arrived_send_quiet_hours_tyumen(tmp_path, monkeypatch):
+    """В Тюмени 09:30 местного (07:30 МСК) делегат вне тихих часов — шаблон уходит."""
+    _db(tmp_path)
+    from services import checkin_not_arrived as cna
+
+    class FakeBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, reply_markup=None):
+            self.sent.append(chat_id)
+            return type("Msg", (), {"message_id": 1})()
+
+    bot = FakeBot()
+    sent = bot.sent
+
+    async def scenario():
+        await _tyumen_plus2()
+        await db.set_setting("quiet_hours_enabled", "on")
+        # Форум города идёт «сегодня» по настоящим часам (фильтр «не пришли» смотрит туда),
+        # а часы шаблона заморожены на другой день — окно тихих часов проверяется как обычно.
+        await db.set_setting(
+            cities.per_city_key("forum_date", "tyumen"), timeutil.msk_now().strftime("%d.%m.%Y"),
+        )
+        await _seed_delegate(7003, "tyumen")
+        monkeypatch.setattr(cna, "msk_now", lambda: datetime(2026, 10, 3, 7, 30))
+        monkeypatch.setattr(cna._sched, "_bot", bot)
+        return await cna.send(city="tyumen", city_scope=None)
+
+    result = _run(scenario())
+    assert result == {"sent": 1, "quiet": 0, "failed": 0, "total": 1}, result
+    assert sent == [7003]
+
+
+# ── рассылка QR: часы города ─────────────────────────────────────────────────────────────────
+
+def test_qr_jobs_fire_at_local_clock_of_city(tmp_path, monkeypatch):
+    """Утренний повтор 08:00 в Тюмени (МСК+2) — джоба на 06:00 МСК; вечерний 18:00 — на 16:00 МСК;
+    СПб без настройки — как раньше, 08:00/18:00 МСК."""
+    from services import checkin_broadcast as cb
+    from tests.test_checkin_qr_broadcast_260924 import _forum_setup, _run_scheduled
+
+    _forum_setup(tmp_path)
+    _run(_tyumen_plus2())
+    _run(_forum_dates_2037())
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 1, 12, 0))
+
+    async def body(s):
+        result = await cb.schedule_city_jobs("tyumen")
+        assert result["scheduled"] is True
+        ev = s.get_job(cb.evening_job_id("tyumen"))
+        morn = s.get_job(cb.morning_job_id("tyumen"))
+        assert ev.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 2, 16, 0)
+        assert morn.next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 6, 0)
+        await cb.schedule_city_jobs("spb")
+        assert s.get_job(cb.evening_job_id("spb")).next_run_time.replace(tzinfo=None) == datetime(2037, 10, 2, 18, 0)
+        assert s.get_job(cb.morning_job_id("spb")).next_run_time.replace(tzinfo=None) == datetime(2037, 10, 3, 8, 0)
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_qr_job_wrong_day_uses_city_calendar(tmp_path, monkeypatch):
+    """23:30 МСК накануне форума — в Тюмени уже день форума (01:30), вечерняя «канун» не тот день."""
+    from services import checkin_broadcast as cb
+    from tests.test_checkin_qr_broadcast_260924 import _forum_setup
+
+    _forum_setup(tmp_path)
+    _run(_tyumen_plus2())
+    _run(_forum_dates_2037())
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2037, 10, 2, 23, 30))
+
+    async def scenario():
+        return (
+            await cb.is_forum_day_offset("tyumen", 0),   # в Тюмени уже день форума
+            await cb.is_forum_day_offset("spb", 0),      # в СПб ещё канун
+        )
+
+    tyumen_today, spb_today = _run(scenario())
+    assert tyumen_today is True and spb_today is False

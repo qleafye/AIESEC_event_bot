@@ -33,7 +33,7 @@ from database.db import (
     get_user,
 )
 from services import scheduler as _sched
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now, shift_hours
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ async def pending_count(*, city_scope=None) -> int:
 
 
 async def is_forum_day(city: str | None, now) -> bool:
-    """Сегодня по Москве — день форума города (окно `forum_date`..+`sos_active_days`)."""
+    """Сегодня (по календарю города — `now` вызывающий передаёт уже местным) — день форума города (окно `forum_date`..+`sos_active_days`)."""
     from services.sos import sos_active_window
     try:
         window = await sos_active_window(city)
@@ -102,7 +102,8 @@ async def send(*, city: str | None, city_scope=None) -> dict:
 
     sent = quiet = failed = 0
     tr_maps: dict[str, dict] = {}
-    forum_today = await is_forum_day(city, now)
+    # День форума — по календарю города (Тюмень МСК+2 уже на следующих сутках в 22:00 МСК).
+    forum_today = await is_forum_day(city, shift_hours(now, await city_offset_hours(city)))
     for tid in ids:
         user = await get_user(tid)
         if user is None:
