@@ -165,6 +165,8 @@ EXPECTED_PER_CITY_KEYS = {
     "checkin_qr_morning_repeat_time", "checkin_qr_broadcast_text",
     # Утренний повтор QR в день форума — свой текст (без «Завтра форум!»), та же ось.
     "checkin_qr_morning_text",
+    # Часовой пояс города (смещение от МСК, кнопки): у каждого города свой.
+    "city_tz_offset",
     # D-33 (решение владельца 24.09): шпаргалка волонтёра накануне форума — per_city, тот же
     # довод, что у checkin_qr_broadcast_* выше (регионы/Москва в разные даты).
     "checkin_volunteer_guide_broadcast_enabled", "checkin_volunteer_guide_broadcast_time",
