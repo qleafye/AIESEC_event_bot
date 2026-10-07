@@ -86,7 +86,7 @@ class RedactSecretsFilter(logging.Filter):
         return True
 
 
-_EXTRA_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+_EXTRA_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access", "chat_recon")
 
 
 def _attach(target) -> None:
