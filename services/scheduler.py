@@ -1128,7 +1128,10 @@ async def sweep_payment_overdue():
             return
         select_where = (
             "payment_status='not_paid' "
-            "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL)"
+            "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL) "
+            # Делегат вуза оплаты не имеет (тариф мог выбрать до того, как стал делегатом) —
+            # ни в «просрочено», ни в финальное напоминание ему не попадать.
+            "AND delegation_answer_id IS NULL"
         )
         async with _connect() as db:
             cursor = await db.execute(
