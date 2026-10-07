@@ -925,7 +925,7 @@ admin|callback_query|sheet_tabs_prefix_add_go|sheet_tabs_prefix_add_go
 admin|callback_query|sheet_tabs_prefix_del_go|sheet_tabs_prefix_del_go
 admin|callback_query|admin_reject_rules|admin_reject_rules
 admin|callback_query|arr_page|arr_p:*
-admin|callback_query|arr_master_toggle|arr_master
+admin|callback_query|arr_master_toggle|arr_master,arr_master:go
 admin|callback_query|arr_toggle_enabled|arr_t:*
 admin|callback_query|arr_new_start|arr_new
 admin|callback_query|arr_preset_pick|arr_preset:*
