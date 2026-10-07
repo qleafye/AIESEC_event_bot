@@ -53,14 +53,15 @@ def _configure_logging():
     root.addHandler(stdout_handler)
 
     # Итог сверки состава чата (`services.chat_tracking.RECON_LOGGER`) виден и на проде, где
-    # файл и docker logs держат только WARNING: свой логгер с уровнем INFO и своими хендлерами,
+    # файл и docker logs держат только WARNING: свой логгер с уровнем INFO и своими хендлерами (отдельный файл `logs/chat_recon.log` со своей
+    # ротацией — два ротируемых хендлера на одном `bot.log` ломают друг друга),
     # без propagate — остальной INFO-шум в stdout по-прежнему не попадает. Только счётчики и
     # коды городов, без имён и контактов.
     recon = logging.getLogger("chat_recon")
     recon.setLevel(logging.INFO)
     recon.propagate = False
     recon.handlers.clear()
-    for target in (RotatingFileHandler("logs/bot.log", maxBytes=10 * 1024 * 1024, backupCount=5,
+    for target in (RotatingFileHandler("logs/chat_recon.log", maxBytes=2 * 1024 * 1024, backupCount=3,
                                        encoding="utf-8"),
                    logging.StreamHandler(sys.stdout)):
         target.setLevel(logging.INFO)
