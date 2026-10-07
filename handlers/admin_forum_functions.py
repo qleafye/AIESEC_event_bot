@@ -121,6 +121,11 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🎟 Настройки рассылки QR", callback_data=f"checkinqr_cfg:{_encode_city(code)}",
         )])
 
+    from services.timeutil import city_offset_hours, offset_label  # «🕐 Часовой пояс» города
+    lines.append(f"🕐 Часовой пояс: {offset_label(await city_offset_hours(code))}")
+    if visible(f"forumtz_cfg:{_encode_city(code)}"):
+        buttons.append([InlineKeyboardButton(text="🕐 Часовой пояс", callback_data=f"forumtz_cfg:{_encode_city(code)}")])
+
     # 3. Отметки на форуме — загрузка CSV офлайн-сканера + «📨 Написать не пришедшим». Ручные
     # действия под правом `checkin`, тумблера не требуют (D-36: тумблер нужен ФУНКЦИЯМ, которые
     # работают САМИ — ручная кнопка и так «выключена», пока никто не нажал).

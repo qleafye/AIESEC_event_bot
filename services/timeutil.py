@@ -20,7 +20,7 @@ tests/test_timezone_fix_260816.py, tests/test_polls_260822.py) продолжа�
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
@@ -79,3 +79,57 @@ def process_clock_is_utc() -> bool:
     часов машины, на которой запускаются.
     """
     return abs((datetime.now() - datetime.utcnow()).total_seconds()) < 60
+
+
+# ── Часовой пояс города (смещение от Москвы, настройка `city_tz_offset`) ─────────────────────
+# Метки в БД остаются московскими. Смещение нужно в двух случаях: сравнить «сейчас» со временем,
+# которое менеджер города ввёл по-местному (`city_now`), и показать человеку московскую метку из
+# БД в местном времени (`to_city_time`). Чистые функции ниже без БД; чтение настройки — в
+# `city_offset_hours` (импорт `cities` внутри функции: файл остаётся листом для всех, кто
+# импортирует его на верхнем уровне, в том числе из миграций и miniapp).
+
+TZ_OFFSET_MIN = -1
+TZ_OFFSET_MAX = 9
+
+
+def clamp_offset(value) -> int:
+    """Сырое значение настройки -> целое смещение в [-1; 9]; мусор/пусто -> 0 (МСК)."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
+    return n if TZ_OFFSET_MIN <= n <= TZ_OFFSET_MAX else 0
+
+
+def shift_hours(dt: datetime, hours: int) -> datetime:
+    return dt + timedelta(hours=hours) if hours else dt
+
+
+def offset_label(hours: int) -> str:
+    """0 -> «МСК», 2 -> «МСК+2», -1 -> «МСК−1» (та же подпись, что у кнопок выбора)."""
+    if hours == 0:
+        return "МСК"
+    return f"МСК+{hours}" if hours > 0 else f"МСК−{-hours}"
+
+
+async def city_offset_hours(city: str | None) -> int:
+    """Смещение города от Москвы в часах. Город неизвестен/настройка не задана/сбой чтения -> 0,
+    то есть поведение «как раньше» (fail-soft: время не должно ронять экран и джобу)."""
+    if not city:
+        return 0
+    try:
+        from cities import get_setting_typed_for_city
+        return clamp_offset(await get_setting_typed_for_city("city_tz_offset", city))
+    except Exception:
+        return 0
+
+
+async def city_now(city: str | None) -> datetime:
+    """Naive местное «сейчас» города = `msk_now()` + смещение. Сравнивать с временем, которое
+    менеджер города ввёл по-местному (сессии программы, окна, расписания)."""
+    return shift_hours(msk_now(), await city_offset_hours(city))
+
+
+async def to_city_time(dt_msk: datetime, city: str | None) -> datetime:
+    """Московскую метку из БД -> местное время города (для показа человеку)."""
+    return shift_hours(dt_msk, await city_offset_hours(city))
