@@ -315,3 +315,43 @@ def test_nudge_cutoff_uses_moscow_clock():
         sched_mod._nudge_cutoff = orig_cutoff
         sched_mod.get_setting = orig_get_setting
         db.get_nudge_candidates = orig_get_candidates
+
+
+def test_payment_sweep_skips_delegation_delegate(tmp_path):
+    """Выбрал тариф, потом стал делегатом вуза: не «просрочено» и финального напоминания нет."""
+    _db_ready(tmp_path)
+    plain, deleg = 260816101, 260816102
+    for tid in (plain, deleg):
+        asyncio.run(add_user({"telegram_id": tid, "full_name": "P", "registration_date": "x"}))
+    asyncio.run(set_setting("payment_deadline", "01.07.2026 12:30"))
+    asyncio.run(set_setting("payment_reminders_enabled", "on"))
+    sent = []
+
+    class _FakeBot:
+        async def send_message(self, chat_id, *args, **kwargs):
+            sent.append(chat_id)
+
+    async def _prep():
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            await conn.execute("UPDATE users SET payment_status='not_paid', payment_option='A'")
+            await conn.execute("UPDATE users SET delegation_answer_id='a1', delegation='МГУ' "
+                               "WHERE telegram_id=?", (deleg,))
+            await conn.commit()
+
+    async def _status(tid):
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            cur = await conn.execute("SELECT payment_status FROM users WHERE telegram_id=?", (tid,))
+            return (await cur.fetchone())[0]
+
+    sched_mod._bot = _FakeBot()
+    orig = sched_mod._now_moscow_naive
+    try:
+        asyncio.run(_prep())
+        sched_mod._now_moscow_naive = lambda: datetime(2026, 7, 1, 14, 0)
+        asyncio.run(sched_mod.sweep_payment_overdue())
+        assert asyncio.run(_status(plain)) == "overdue"
+        assert asyncio.run(_status(deleg)) == "not_paid"
+        assert deleg not in sent
+    finally:
+        sched_mod._now_moscow_naive = orig
+        sched_mod._bot = None
