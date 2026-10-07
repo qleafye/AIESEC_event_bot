@@ -182,14 +182,33 @@ def _remove_condition(conditions: list[list[dict]], group: int, idx: int) -> lis
     return groups
 
 
+_STALE_RULE = "Правило уже изменили — вот актуальное, выберите заново."
+_STALE_ERROR = "stale_rule"
+
+
+async def _show_stale_rule(callback: types.CallbackQuery, rule_id: int, hint: str = "") -> None:
+    """Правило поменялось, пока менеджер собирал условие: ничего не сохраняем, показываем
+    актуальную карточку (на ней уже свежие кнопки «➕ условие»)."""
+    screen = await render_rule_card(callback.from_user.id, rule_id)
+    if screen is not None:
+        text, kb = screen
+        await callback.message.edit_text(
+            f"⚠️ {_STALE_RULE}{hint}" + chr(10) * 2 + text, parse_mode="HTML", reply_markup=kb,
+        )
+    await callback.answer(_STALE_RULE, show_alert=True)
+
+
 async def _add_condition(
     admin_id: int, rule_id: int, group: int, step: str, op: str, values: list,
+    fp: str | None = None,
 ) -> tuple[int | None, str | None]:
     """Перечитывает правило, перепроверяет право (T-31-10-01), валидирует условие через
     `validate_condition` (T-31-10-02/03 — единственная дверь проверки) и сохраняет."""
     rule = await _load_rule(rule_id)
     if rule is None or not await can_edit_city(admin_id, rule.get("city")):
         return None, "Правило недоступно — обновите список."
+    if fp is None or fp != _conditions_fp(rule.get("conditions") or []):
+        return None, _STALE_ERROR
     cond, error = await validate_condition(step, op, values, event_city=rule.get("city"))
     if error:
         return None, error
@@ -205,8 +224,12 @@ async def _finish_condition(
     rule_id: int, group: int, step: str, op: str, values: list,
 ) -> None:
     await state.set_state(None)
+    fp = (await state.get_data()).get("arc_fp")
     await state.update_data(arc_step=None, arc_op=None, arc_checked=[])
-    _, error = await _add_condition(callback.from_user.id, rule_id, group, step, op, values)
+    _, error = await _add_condition(callback.from_user.id, rule_id, group, step, op, values, fp)
+    if error == _STALE_ERROR:
+        await _show_stale_rule(callback, rule_id, " Добавьте условие заново.")
+        return
     if error:
         await callback.answer(error, show_alert=True)
         return
@@ -221,8 +244,16 @@ async def _finish_condition(
 
 async def _finish_condition_msg(
     message: types.Message, rule_id: int, group: int, step: str, op: str, values: list,
+    fp: str | None = None,
 ) -> None:
-    _, error = await _add_condition(message.from_user.id, rule_id, group, step, op, values)
+    _, error = await _add_condition(message.from_user.id, rule_id, group, step, op, values, fp)
+    if error == _STALE_ERROR:
+        await message.answer(f"Не сохранено. {_STALE_RULE} Добавьте условие заново.", reply_markup=ReplyKeyboardRemove())
+        screen = await render_rule_card(message.from_user.id, rule_id)
+        if screen is not None:
+            text, kb = screen
+            await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
     if error:
         await message.answer(f"Не сохранено: {error}", reply_markup=ReplyKeyboardRemove())
         return
@@ -289,8 +320,14 @@ async def arc_add(callback: types.CallbackQuery, state: FSMContext):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
+    fp = _conditions_fp(rule.get("conditions") or [])
+    if len(parts) < 4 or parts[3] != fp:
+        # Номер группы мог сдвинуться (или кнопка старая, без отпечатка) — условие
+        # попало бы не в ту группу. Ничего не начинаем, показываем актуальное правило.
+        await _show_stale_rule(callback, rule_id)
+        return
     await state.set_state(None)
-    await state.update_data(arc_rule=rule_id, arc_group=group, arc_step=None, arc_op=None, arc_checked=[], arc_voff=0)
+    await state.update_data(arc_fp=fp, arc_rule=rule_id, arc_group=group, arc_step=None, arc_op=None, arc_checked=[], arc_voff=0)
     screen = await render_step_screen(callback.from_user.id, rule_id, group)
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -591,7 +628,7 @@ async def arc_num_step(message: types.Message, state: FSMContext):
     else:
         values = [raw]
     await state.set_state(None)
-    await _finish_condition_msg(message, rule_id, group, step, op, values)
+    await _finish_condition_msg(message, rule_id, group, step, op, values, data.get("arc_fp"))
 
 
 # ── Удаление условия ─────────────────────────────────────────────────────────────────────────
