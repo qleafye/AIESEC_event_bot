@@ -163,7 +163,7 @@ def test_valdone_empty_values_alerts_and_does_not_save(tmp_path, monkeypatch):
 
     monkeypatch.setattr(arc, "save_rule", _fake_save_rule)
     state = _new_state(SUPERADMIN_ID)
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[]))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[]))
     callback = _FakeCallback(f"arc_valdone:{rule_id}:-1", user_id=SUPERADMIN_ID)
     _run(arc.arc_valdone(callback, state))
     assert callback.answers and callback.answers[0][1] is True
@@ -175,7 +175,7 @@ def test_valdone_saves_labels_not_indices(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk"))
     state = _new_state(SUPERADMIN_ID)
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0, 1]))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0, 1]))
     callback = _FakeCallback(f"arc_valdone:{rule_id}:-1", user_id=SUPERADMIN_ID)
     _run(arc.arc_valdone(callback, state))
     row = _run(db.get_reject_rule(rule_id))
@@ -187,7 +187,7 @@ def test_between_input_produces_two_numbers(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk"))
     state = _new_state(SUPERADMIN_ID)
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="age", arc_op="between"))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="age", arc_op="between"))
     _run(state.set_state(RejectCond.num))
     message = _FakeMessage(text="18;21", user_id=SUPERADMIN_ID)
     _run(arc.arc_num_step(message, state))
@@ -229,15 +229,15 @@ def test_group_structure_after_three_adds(tmp_path):
     rule_id = _run(_create_rule(city="msk"))
 
     state = _new_state(SUPERADMIN_ID)
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0]))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0]))
     cb1 = _FakeCallback(f"arc_valdone:{rule_id}:-1", user_id=SUPERADMIN_ID)
     _run(arc.arc_valdone(cb1, state))
 
-    _run(state.update_data(arc_rule=rule_id, arc_group=0, arc_step="resume", arc_op="no_file"))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=0, arc_step="resume", arc_op="no_file"))
     cb2 = _FakeCallback(f"arc_op:{rule_id}:0:no_file", user_id=SUPERADMIN_ID)
     _run(arc._finish_condition(cb2, state, rule_id, 0, "resume", "no_file", []))
 
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="expectations", arc_op="filled"))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="expectations", arc_op="filled"))
     cb3 = _FakeCallback(f"arc_op:{rule_id}:-1:filled", user_id=SUPERADMIN_ID)
     _run(arc._finish_condition(cb3, state, rule_id, -1, "expectations", "filled", []))
 
@@ -246,6 +246,11 @@ def test_group_structure_after_three_adds(tmp_path):
     assert len(conditions) == 2
     assert len(conditions[0]) == 2
     assert len(conditions[1]) == 1
+
+
+def _fp(rule_id):
+    row = _run(db.get_reject_rule(rule_id))
+    return arc._conditions_fp(json.loads(row["conditions"]))
 
 
 def _del_cb(rule_id, group, idx):
@@ -318,10 +323,10 @@ def test_card_shows_group_layout_after_building_via_handlers(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk", reject_text="Причина"))
     state = _new_state(SUPERADMIN_ID)
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0]))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[0]))
     cb1 = _FakeCallback(f"arc_valdone:{rule_id}:-1", user_id=SUPERADMIN_ID)
     _run(arc.arc_valdone(cb1, state))
-    _run(state.update_data(arc_rule=rule_id, arc_group=-1))
+    _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1))
     cb2 = _FakeCallback(f"arc_op:{rule_id}:-1:no_file", user_id=SUPERADMIN_ID)
     _run(arc._finish_condition(cb2, state, rule_id, -1, "resume", "no_file", []))
     from handlers.admin_reject_rules import render_rule_card
@@ -402,3 +407,84 @@ def test_arc_dry_go_enables_after_gate_confirm(tmp_path):
     _run(arc.arc_dry_go(callback))
     row = _run(db.get_reject_rule(rule_id))
     assert row["enabled"] == 1
+
+
+# ── Отпечаток на «➕ условие»: гонка на нажатии и на сохранении ───────────────────────────────
+
+_TWO_GROUPS = [[{"step": "resume", "op": "no_file", "values": []}],
+               [{"step": "expectations", "op": "filled", "values": []}]]
+
+
+def _conds(rule_id):
+    return json.loads(_run(db.get_reject_rule(rule_id))["conditions"])
+
+
+def test_add_button_carries_fingerprint_within_64_bytes(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", reject_text="x", conditions=json.dumps(_TWO_GROUPS)))
+    from handlers.admin_reject_rules import render_rule_card
+    _text, kb = _run(render_rule_card(SUPERADMIN_ID, rule_id))
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row
+           if b.callback_data and b.callback_data.startswith("arc_add:")]
+    assert cbs
+    fp = _fp(rule_id)
+    for cb in cbs:
+        assert cb.endswith(f":{fp}") and len(cb.encode("utf-8")) <= 64
+
+
+def test_add_press_with_actual_fingerprint_starts_flow(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", conditions=json.dumps(_TWO_GROUPS)))
+    state = _new_state(SUPERADMIN_ID)
+    cb = _FakeCallback(f"arc_add:{rule_id}:1:{_fp(rule_id)}", user_id=SUPERADMIN_ID)
+    _run(arc.arc_add(cb, state))
+    data = _run(state.get_data())
+    assert data["arc_group"] == 1 and data["arc_fp"] == _fp(rule_id)
+
+
+def test_add_press_race_changed_rule_is_refused(tmp_path):
+    """Кнопка нарисована до того, как другой менеджер поменял правило: группа 2 уже не та."""
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", conditions=json.dumps(_TWO_GROUPS)))
+    old_fp = _fp(rule_id)
+    _run(db.update_reject_rule(rule_id, conditions=json.dumps(_TWO_GROUPS[:1])))
+    state = _new_state(SUPERADMIN_ID)
+    cb = _FakeCallback(f"arc_add:{rule_id}:1:{old_fp}", user_id=SUPERADMIN_ID)
+    _run(arc.arc_add(cb, state))
+    assert _run(state.get_data()).get("arc_rule") is None
+    assert cb.answers and cb.answers[0][1] is True and "уже изменили" in cb.answers[0][0]
+    assert _conds(rule_id) == _TWO_GROUPS[:1]
+
+
+def test_add_press_old_button_without_fingerprint_is_refused(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", conditions=json.dumps(_TWO_GROUPS)))
+    state = _new_state(SUPERADMIN_ID)
+    cb = _FakeCallback(f"arc_add:{rule_id}:1", user_id=SUPERADMIN_ID)
+    _run(arc.arc_add(cb, state))
+    assert _run(state.get_data()).get("arc_rule") is None
+    assert cb.answers and "уже изменили" in cb.answers[0][0]
+
+
+def test_save_race_changed_rule_is_not_saved(tmp_path):
+    """Между «➕» и сохранением правило поменяли: условие НЕ пишем, показываем актуальное."""
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", conditions=json.dumps(_TWO_GROUPS)))
+    state = _new_state(SUPERADMIN_ID)
+    _run(arc.arc_add(_FakeCallback(f"arc_add:{rule_id}:1:{_fp(rule_id)}", user_id=SUPERADMIN_ID), state))
+    _run(db.update_reject_rule(rule_id, conditions=json.dumps(_TWO_GROUPS[:1])))
+    cb = _FakeCallback(f"arc_op:{rule_id}:1:no_file", user_id=SUPERADMIN_ID)
+    _run(arc._finish_condition(cb, state, rule_id, 1, "resume", "no_file", []))
+    assert _conds(rule_id) == _TWO_GROUPS[:1]
+    assert cb.answers and "уже изменили" in cb.answers[0][0]
+
+
+def test_save_message_race_changed_rule_is_not_saved(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(city="msk", conditions=json.dumps(_TWO_GROUPS)))
+    old_fp = _fp(rule_id)
+    _run(db.update_reject_rule(rule_id, conditions=json.dumps(_TWO_GROUPS[:1])))
+    msg = _FakeMessage("18", user_id=SUPERADMIN_ID)
+    _run(arc._finish_condition_msg(msg, rule_id, 1, "resume", "no_file", [], old_fp))
+    assert _conds(rule_id) == _TWO_GROUPS[:1]
+    assert any("уже изменили" in t for t in msg.answers_sent)

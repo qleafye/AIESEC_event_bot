@@ -415,12 +415,14 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
 
     buttons: list[list[InlineKeyboardButton]] = []
     groups = rule.get("conditions") or []
+    from handlers.admin_reject_cond import _conditions_fp
+    fp = _conditions_fp(groups)
     if not groups:
-        buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data=f"arc_add:{rule_id}:-1")])
+        buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data=f"arc_add:{rule_id}:-1:{fp}")])
     else:
         for idx in range(1, len(groups) + 1):
-            buttons.append([InlineKeyboardButton(text=f"➕ условие в группу {idx}", callback_data=f"arc_add:{rule_id}:{idx - 1}")])
-    buttons.append([InlineKeyboardButton(text="➕ новая группа (ИЛИ)", callback_data=f"arc_add:{rule_id}:-1")])
+            buttons.append([InlineKeyboardButton(text=f"➕ условие в группу {idx}", callback_data=f"arc_add:{rule_id}:{idx - 1}:{fp}")])
+    buttons.append([InlineKeyboardButton(text="➕ новая группа (ИЛИ)", callback_data=f"arc_add:{rule_id}:-1:{fp}")])
     if groups:
         buttons.append([InlineKeyboardButton(text="🗑 Удалить условие", callback_data=f"arc_dellist:{rule_id}")])
 
