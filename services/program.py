@@ -268,8 +268,8 @@ async def checkin_session_points(city: str, at: datetime | None = None) -> list[
     модуль отметок не знает вовсе, только программу). Пустой список — на сегодня в городе нет
     ни одной сессии (или программы вообще нет) — вызывающий тогда предлагает только «Вход»."""
     if at is None:
-        from services.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
-        at = msk_now()
+        from services.timeutil import city_now  # ленивый импорт — см. докстринг модуля
+        at = await city_now(city)  # время сессий — местное время города
     day = at.strftime("%Y-%m-%d")
     hhmm = at.strftime("%H:%M")
     sessions = await sessions_for_city_day(city, day)
@@ -493,8 +493,8 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
     `keyboards.builders.get_main_menu_kb`/`handlers.admin_program._resolve_city_for_screen`) —
     у сессий программы «нет города» не бывает, только конкретный код."""
     if at is None:
-        from services.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
-        at = msk_now()
+        from services.timeutil import city_now  # ленивый импорт — см. докстринг модуля
+        at = await city_now(city or default_city_code())  # время сессий — местное время города
 
     resolved_city = city or default_city_code()
     today = at.strftime("%Y-%m-%d")
