@@ -40,7 +40,7 @@ from datetime import date, datetime, timedelta
 from cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now, shift_hours
 from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 
@@ -1053,8 +1053,10 @@ async def claimed_reminder_job(report_id: int, _legacy_minutes: int | None = Non
             return  # форум города закончился (или дата не задана) — не шлём и не ставим
 
         quiet = await quiet_hours.window_for_city(city)
-        if quiet is not None and quiet_hours.is_quiet(now, *quiet):
-            wake = quiet_hours.next_window_end(now, *quiet)
+        # Окно тишины — по часам города («🕐 Часовой пояс»); `wake` возвращаем в МСК.
+        city_off = await city_offset_hours(city)
+        if quiet is not None and quiet_hours.is_quiet(shift_hours(now, city_off), *quiet):
+            wake = quiet_hours.next_window_end(shift_hours(now, city_off), *quiet) - timedelta(hours=city_off)
             if wake.date() <= window[1]:
                 _schedule_claimed_reminder_at(report_id, holder, wake)
             return
