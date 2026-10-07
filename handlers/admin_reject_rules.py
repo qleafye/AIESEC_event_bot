@@ -223,8 +223,10 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
         buttons.append(nav_row)
 
     buttons.append([InlineKeyboardButton(text="➕ Новое правило", callback_data="arr_new")])
-    master_label = "🚫 Выключить все правила" if kill_switch_on else "✅ Включить все правила"
-    buttons.append([InlineKeyboardButton(text=master_label, callback_data="arr_master")])
+    # Рубильник общий на всё событие: привязанному к городу менеджеру кнопку не показываем.
+    if await can_edit_city(admin_id, None):
+        master_label = "🚫 Выключить все правила" if kill_switch_on else "✅ Включить все правила"
+        buttons.append([InlineKeyboardButton(text=master_label, callback_data="arr_master")])
     # План 31-11: журнал живёт отдельным швом (handlers/admin_reject_journal.py) — вход отсюда,
     # где менеджер только что настраивал правила.
     buttons.append([InlineKeyboardButton(text="🤖 Автоотказы", callback_data="admin_reject_journal")])
@@ -255,11 +257,32 @@ async def arr_page(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "arr_master")
+MASTER_DENIED_TEXT = "Выключить правила всех городов может только руководитель без привязки к городу."
+
+
+@router.callback_query(F.data.in_({"arr_master", "arr_master:go"}))
 async def arr_master_toggle(callback: types.CallbackQuery):
     """D-15: пишет ТОЛЬКО `reject_rules_enabled` (глобальная, не city-scoped настройка);
-    `enabled` каждого правила не трогается — состояние каждого сохраняется."""
+    `enabled` каждого правила не трогается — состояние каждого сохраняется. Рубильник один на
+    всё событие, поэтому переключают его только суперадмин и менеджер без привязки к городу;
+    выключение — через подтверждение с числом включённых правил."""
+    if not await can_edit_city(callback.from_user.id, None):
+        await callback.answer(MASTER_DENIED_TEXT, show_alert=True)
+        return
     current_on = await get_setting_typed("reject_rules_enabled")
+    if current_on and callback.data == "arr_master":
+        enabled_count = sum(1 for r in await rules_for_admin(callback.from_user.id) if r.get("enabled"))
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, выключить", callback_data="arr_master:go")],
+            [InlineKeyboardButton(text="← Отмена", callback_data="admin_reject_rules")],
+        ])
+        await callback.message.edit_text(
+            f"Перестанут работать {enabled_count} включённых правил во всех городах. Выключить?"
+            "\n\nСостояние каждого правила сохранится — включить всё обратно можно этой же кнопкой.",
+            reply_markup=kb,
+        )
+        await callback.answer()
+        return
     new_val = "off" if current_on else "on"
     await set_setting_by_admin(callback.from_user.id, "reject_rules_enabled", new_val)
     text, kb = await render_rules_screen(callback.from_user.id)
