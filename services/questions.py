@@ -24,7 +24,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from services.timeutil import utc_naive_to_msk
 
@@ -131,7 +131,7 @@ def waiting_days(row: dict, now: datetime | None = None) -> int | None:
     return days if days >= 1 else None
 
 
-def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
+def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int = 0) -> str:
     """ПЕРЕЕЗД `services/sheet_logs.py::_fmt_dt` — оба формата времени в проекте разобраны
     одинаково, что для листа «Вопросы», что для экранов бота/приложения. Неразобранное
     отдаётся как есть (fail-soft, форма `polls._fmt_date`); пустое -> ''.
@@ -167,4 +167,7 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True) -> str:
         return str(raw)
     if stored_utc:
         stamp = utc_naive_to_msk(stamp)
+    if offset_hours:
+        # Показ в местном времени города (смещение от МСК, «🕐 Часовой пояс»); в БД метка МСК.
+        stamp = stamp + timedelta(hours=offset_hours)
     return stamp.strftime("%d.%m.%Y %H:%M")

@@ -279,6 +279,11 @@ async def build_report_text(city: str | None, day: str) -> str:
     peak = await checkin_peak_hour_for_city_day(day, city_scope=scope)
     if peak is not None:
         hh, n = peak
+        # Метки в базе — МСК; час пика показываем по часам города (Тюмень МСК+2: 08 -> 10).
+        from services.timeutil import city_offset_hours
+        offset = await city_offset_hours(city)
+        if offset and str(hh).isdigit():
+            hh = f"{(int(hh) + offset) % 24:02d}"
         lines.append(f"⏱ Пик прихода: {_hour_label(hh)} ({n} отметок)")
 
     try:

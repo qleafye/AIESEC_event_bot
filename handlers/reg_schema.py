@@ -320,9 +320,11 @@ async def arrived_cells_map() -> dict[int, str]:
     """{telegram_id: значение ячейки «Пришёл»} для всех, у кого есть вход, — ОДИН запрос к базе
     на массовую пересборку/синхронизацию листа."""
     from database.db import first_entry_scanned_at_map
-    from services.sheet_arrival_sync import arrival_cell_value
+    from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
 
-    return {tid: arrival_cell_value(at) for tid, at in (await first_entry_scanned_at_map()).items()}
+    stamps = await first_entry_scanned_at_map()
+    offsets = await city_offsets_by_user(stamps)
+    return {tid: arrival_cell_value(at, offsets.get(tid, 0)) for tid, at in stamps.items()}
 
 
 async def with_arrived_cell(data: dict) -> dict:
@@ -331,10 +333,12 @@ async def with_arrived_cell(data: dict) -> dict:
     if ARRIVED_CELL_KEY in data or not data.get("telegram_id"):
         return data
     from database.db import first_entry_scanned_at
-    from services.sheet_arrival_sync import arrival_cell_value
+    from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
 
-    at = await first_entry_scanned_at(int(data["telegram_id"]))
-    return {**data, ARRIVED_CELL_KEY: arrival_cell_value(at)}
+    tid = int(data["telegram_id"])
+    at = await first_entry_scanned_at(tid)
+    offsets = await city_offsets_by_user([tid])
+    return {**data, ARRIVED_CELL_KEY: arrival_cell_value(at, offsets.get(tid, 0))}
 
 
 async def with_chat_cell(data: dict) -> dict:
