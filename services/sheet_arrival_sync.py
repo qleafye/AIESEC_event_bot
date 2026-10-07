@@ -33,10 +33,11 @@ from database.db import (
     drop_sheet_arrivals,
     fail_sheet_arrivals,
     first_entry_scanned_at,
+    get_user,
     list_due_sheet_arrivals,
 )
 from secret_redact import redact_secrets
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +51,36 @@ MISSING_ERROR = "строки делегата нет в листе — жду, 
 _FMT = "%Y-%m-%d %H:%M:%S"
 
 
-def arrival_cell_value(scanned_at: str | None) -> str:
+def arrival_cell_value(scanned_at: str | None, offset_hours: int = 0) -> str:
     """Значение ячейки «Пришёл» для людей: «2026-09-25 05:23:33» -> «25.09 05:23». Входа нет ->
-    пусто; нераспознанная строка уходит как есть (лучше сырое время, чем пустая ячейка)."""
+    пусто; нераспознанная строка уходит как есть (лучше сырое время, чем пустая ячейка).
+    `offset_hours` — смещение города делегата от МСК: в базе метка московская, в листе — по
+    часам города («🕐 Часовой пояс»); 0 — как раньше."""
     if not scanned_at:
         return ""
     try:
-        return datetime.strptime(scanned_at.strip(), _FMT).strftime("%d.%m %H:%M")
+        stamp = datetime.strptime(scanned_at.strip(), _FMT)
     except ValueError:
         return scanned_at
+    if offset_hours:
+        stamp += timedelta(hours=offset_hours)
+    return stamp.strftime("%d.%m %H:%M")
+
+
+async def city_offsets_by_user(telegram_ids) -> dict[int, int]:
+    """{telegram_id: смещение города делегата}. Ни у одного города нет своего пояса (общий
+    случай, дефолт МСК) -> пустой словарь БЕЗ чтения пользователей: лишних запросов к базе у
+    массовой пересборки листа нет."""
+    from cities import city_codes
+    city_offsets = {code: await city_offset_hours(code) for code in city_codes()}
+    if not any(city_offsets.values()):
+        return {}
+    out: dict[int, int] = {}
+    for tid in telegram_ids:
+        user = await get_user(tid)
+        city = (user or {}).get("event_city")
+        out[tid] = city_offsets.get(city) if city in city_offsets else await city_offset_hours(city)
+    return out
 
 
 def backoff_seconds(attempts: int) -> int:
@@ -93,7 +115,10 @@ async def drain() -> dict:
         await drop_sheet_arrivals(upto)  # таблица не подключена — писать некуда
         return counts
 
-    values = {tid: arrival_cell_value(await first_entry_scanned_at(tid)) for tid in upto}
+    offsets = await city_offsets_by_user(upto)
+    values = {
+        tid: arrival_cell_value(await first_entry_scanned_at(tid), offsets.get(tid, 0)) for tid in upto
+    }
 
     from services.sheets import write_arrivals_batch  # процесс бота; Mini App сюда не ходит
 

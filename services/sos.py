@@ -298,7 +298,9 @@ _CARD_APP_STATUS = {
 CARD_DETAILS_LIMIT = 1000
 
 
-def render_card_text(report: dict, user: dict | None, *, city_label: str | None = None) -> str:
+def render_card_text(
+    report: dict, user: dict | None, *, city_label: str | None = None, tz_offset: int = 0,
+) -> str:
     """`city_label` — уже РЕЗОЛВЕННАЯ человеческая подпись города (CLAUDE.md: «Кодовые значения
     ... человеку не показываем»), не код. Функция остаётся синхронной/чистой (`cities.city_label`
     — async, резолвится ОДИН раз в вызывающем коде — `post_card`/`refresh_card`, оба уже в
@@ -351,7 +353,7 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
     lat, lon = report.get("latitude"), report.get("longitude")
     if lat is not None and lon is not None:
         lines.append(f"📍 https://maps.google.com/?q={lat},{lon}")
-    lines.append(f"🕓 {format_stamp(report.get('created_at'), stored_utc=False)}")
+    lines.append(f"🕓 {format_stamp(report.get('created_at'), stored_utc=False, offset_hours=tz_offset)}")
 
     # Ревью 24.09 (находка 3): «старое» открытое SOS того же делегата разрешено (окно
     # `sos_reopen_window_minutes` истекло) — карточка НОВОГО SOS честно ссылается на прежний,
@@ -366,18 +368,18 @@ def render_card_text(report: dict, user: dict | None, *, city_label: str | None 
     status = report_status(report)
     if status == STATUS_CLAIMED:
         who = html_module.escape(str(report.get("claimed_by_name") or "—"))
-        when = format_stamp(report.get("claimed_at"), stored_utc=False)
+        when = format_stamp(report.get("claimed_at"), stored_utc=False, offset_hours=tz_offset)
         lines.append(f"✍️ Взял(а): {who} в {when[-5:] if when else '—'}")
         if report.get("taken_over_from_name"):
             old = html_module.escape(str(report["taken_over_from_name"]))
             lines.append(f"🔁 Перехватил(а) у {old}")
     elif status == STATUS_RESOLVED:
         who = html_module.escape(str(report.get("resolved_by_name") or "—"))
-        when = format_stamp(report.get("resolved_at"), stored_utc=False)
+        when = format_stamp(report.get("resolved_at"), stored_utc=False, offset_hours=tz_offset)
         lines.append(f"✅ Решено: {who} в {when[-5:] if when else '—'}")
         if report.get("post_resolve_reply_at"):
             who = html_module.escape(str(report.get("post_resolve_reply_by_name") or "—"))
-            when = format_stamp(report.get("post_resolve_reply_at"), stored_utc=False)
+            when = format_stamp(report.get("post_resolve_reply_at"), stored_utc=False, offset_hours=tz_offset)
             lines.append(f"💬 Ответ после решения: {who} в {when[-5:] if when else '—'}")
     return "\n".join(lines)
 
@@ -483,7 +485,10 @@ async def post_card(bot, report_id: int) -> PostCardResult:
     if report is None:
         return PostCardResult()
     user = await get_user(report["telegram_id"])
-    text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
+    text = render_card_text(
+        report, user, city_label=await resolve_city_label(report.get("city")),
+        tz_offset=await city_offset_hours(report.get("city")),
+    )
     kb = build_card_kb(report_id, claimed=report_status(report) == STATUS_CLAIMED)
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:
@@ -532,7 +537,10 @@ async def refresh_card(bot, report_id: int) -> int:
     if not targets:
         return 0
     user = await get_user(report["telegram_id"])
-    text = render_card_text(report, user, city_label=await resolve_city_label(report.get("city")))
+    text = render_card_text(
+        report, user, city_label=await resolve_city_label(report.get("city")),
+        tz_offset=await city_offset_hours(report.get("city")),
+    )
     status = report_status(report)
     kb = (
         None if status == STATUS_RESOLVED
@@ -941,7 +949,9 @@ async def _send_escalation(bot, report: dict, group_text: str, *, alert_head: st
     user = await get_user(report["telegram_id"])
     # Город — как у карточки в чате: менеджер «всех городов» иначе не понял бы, чей это SOS.
     city_label = await resolve_city_label(report.get("city"))
-    alert_text = f"{alert_head}\n\n" + render_card_text(report, user, city_label=city_label)
+    alert_text = f"{alert_head}\n\n" + render_card_text(
+        report, user, city_label=city_label, tz_offset=await city_offset_hours(report.get("city")),
+    )
     await notify_by_capability(bot, "moderate_reg", alert_text, parse_mode="HTML", city=report.get("city"))
 
 

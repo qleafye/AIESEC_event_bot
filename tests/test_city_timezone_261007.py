@@ -299,3 +299,140 @@ def test_qr_job_wrong_day_uses_city_calendar(tmp_path, monkeypatch):
 
     tyumen_today, spb_today = _run(scenario())
     assert tyumen_today is True and spb_today is False
+
+
+# ── показ времени: SOS, приветствие, лист, отчёт дня ─────────────────────────────────────────
+
+def test_sos_card_shows_city_local_time():
+    from services.sos import render_card_text
+    report = {"id": 5, "telegram_id": 1, "created_at": "2026-10-03 08:05:00", "city": "tyumen"}
+    user = {"full_name": "Иванов"}
+    assert "08:05" in render_card_text(report, user, city_label="Тюмень")
+    local = render_card_text(report, user, city_label="Тюмень", tz_offset=2)
+    assert "03.10.2026 10:05" in local and "08:05" not in local
+
+
+def test_welcome_time_is_city_local():
+    from services.forum_welcome import _format_time
+    assert _format_time("2026-10-03 08:05:00") == "08:05"
+    assert _format_time("2026-10-03 08:05:00", 2) == "10:05"
+    assert _format_time(None, 2) == "сейчас"
+
+
+def test_sheet_arrival_cell_is_city_local():
+    from services.sheet_arrival_sync import arrival_cell_value
+    assert arrival_cell_value("2026-10-03 08:05:00") == "03.10 08:05"
+    assert arrival_cell_value("2026-10-03 08:05:00", 2) == "03.10 10:05"
+    assert arrival_cell_value("2026-10-03 23:30:00", 2) == "04.10 01:30"
+    assert arrival_cell_value(None, 2) == ""
+
+
+def test_sheet_offsets_skip_user_reads_when_no_city_has_offset(tmp_path):
+    _db(tmp_path)
+    from services.sheet_arrival_sync import city_offsets_by_user
+
+    async def scenario():
+        await _seed_delegate(8001, "tyumen")
+        assert await city_offsets_by_user([8001]) == {}
+        await _tyumen_plus2()
+        assert await city_offsets_by_user([8001]) == {8001: 2}
+
+    _run(scenario())
+
+
+def test_day_report_peak_hour_in_city_time(tmp_path, monkeypatch):
+    _db(tmp_path)
+    from services import forum_day_report as fdr
+    import database.db as dbmod
+
+    async def fake_peak(day, city_scope=None):
+        return ("08", 12)
+
+    monkeypatch.setattr(dbmod, "checkin_peak_hour_for_city_day", fake_peak)
+
+    async def scenario():
+        await _tyumen_plus2()
+        tyumen = await fdr.build_report_text("tyumen", "2026-10-03")
+        spb = await fdr.build_report_text("spb", "2026-10-03")
+        return tyumen, spb
+
+    tyumen, spb = _run(scenario())
+    assert "10:00–10:59" in tyumen
+    assert "08:00–08:59" in spb
+
+
+# ── CSV сканера: время телефона = местное ────────────────────────────────────────────────────
+
+def test_csv_parser_marks_naive_times_only():
+    from services.checkin import build_payload, find_checkin_records
+    qr = build_payload("YL26", "И", "tyumen", "tok1")
+    qr2 = build_payload("YL26", "И", "tyumen", "tok2")
+    qr3 = build_payload("YL26", "И", "tyumen", "tok3")
+    text = (
+        f"time,text\n2026-10-03 10:00:00,{qr}\n"
+        f"2026-10-03T08:00:00Z,{qr2}\n"
+        f"1759478400,{qr3}\n"
+    )
+    recs = {r["qr"]: r for r in find_checkin_records(text, "YL26")}
+    assert recs[qr].get("naive") is True
+    assert "naive" not in recs[qr2] and "naive" not in recs[qr3]
+    assert recs[qr2]["scanned_at"] == "2026-10-03 11:00:00"  # Z -> МСК, как раньше
+
+
+def test_session_window_check_in_city_local_time():
+    from services.program import scanned_outside_session_window
+    session = {"day": "2026-10-03", "start_time": "10:00", "end_time": "11:00"}
+    # метка МСК 08:15 = 10:15 в Тюмени -> внутри сессии; без смещения — вне окна
+    assert scanned_outside_session_window(session, "2026-10-03 08:15:00", offset_hours=2) is False
+    assert scanned_outside_session_window(session, "2026-10-03 08:15:00") is True
+
+
+def test_csv_import_converts_naive_local_stamp_to_msk(tmp_path, monkeypatch):
+    from services import checkin_csv_import
+    from services.checkin import build_payload
+    from handlers import admin_checkin
+    from tests.test_checkin_forum_day_261001 import _forum, _insert_user, _setup
+
+    _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))
+    _run(_tyumen_plus2())
+    _forum("tyumen", "03.10.2026")
+    _run(_insert_user(952101, city="tyumen"))
+    _run(_insert_user(952102, city="tyumen"))
+    t1 = _run(db.get_or_create_checkin_token(952101))
+    t2 = _run(db.get_or_create_checkin_token(952102))
+    records = [
+        {"qr": build_payload("YL26", "И", "tyumen", t1), "scanned_at": "2026-10-03 10:00:00", "naive": True},
+        {"qr": build_payload("YL26", "И", "tyumen", t2), "scanned_at": "2026-10-03 08:00:00"},  # абсолютное, уже МСК
+    ]
+    res = _run(checkin_csv_import.import_records(
+        records, "entry", session=None, bound_city=None, staff_id=1, bot=None,
+        labels=admin_checkin._DENIAL_LABELS,
+    ))
+    assert res["new"] == 2
+
+    async def stamp(uid):
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT scanned_at FROM checkins WHERE telegram_id = ? AND point = 'entry'", (uid,),
+            ) as cur:
+                return (await cur.fetchone())[0]
+
+    assert _run(stamp(952101)) == "2026-10-03 08:00:00"
+    assert _run(stamp(952102)) == "2026-10-03 08:00:00"
+
+
+def test_floor_report_live_flag_uses_each_sessions_city_clock(tmp_path):
+    """«Сейчас на площадке»: в 08:30 МСК у Тюмени (МСК+2) идёт сессия 10:00–11:00, у СПб — нет."""
+    _db(tmp_path)
+    from services import checkin_arrival
+
+    async def scenario():
+        await _tyumen_plus2()
+        await db.create_program_session("tyumen", "2026-10-03", "10:00", "11:00", "Тюменская")
+        await db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Питерская")
+        report = await checkin_arrival.floor_report(None, None, datetime(2026, 10, 3, 8, 30))
+        return report
+
+    report = _run(scenario())
+    live = {s["title"]: s["live"] for s in report["sessions"]}
+    assert live == {"Тюменская": True, "Питерская": False}

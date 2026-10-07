@@ -41,7 +41,7 @@ from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
-from services.timeutil import msk_now
+from services.timeutil import city_offset_hours, msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,9 @@ def _short(text: str) -> str:
     return text if len(text) <= _DETAILS_PREVIEW else text[:_DETAILS_PREVIEW - 1].rstrip() + "…"
 
 
-def _at(raw) -> str:
+def _at(raw, offset: int = 0) -> str:
     """« в 04:02» по метке МСК (та же форма, что «Взял(а): … в HH:MM» на карточке)."""
-    stamp = format_stamp(raw, stored_utc=False) if raw else ""
+    stamp = format_stamp(raw, stored_utc=False, offset_hours=offset) if raw else ""
     return f" в {stamp[-5:]}" if stamp else ""
 
 
@@ -74,11 +74,12 @@ async def _row_text(row: dict) -> str:
     # экран уже отфильтрован ПО городу (`_admin_city_view`), но при выбранном «Все города»
     # строки смешивают разные города — код в списке был бы нарушением.
     city_label = await sos_service.resolve_city_label(row.get("city"))
+    offset = await city_offset_hours(row.get("city"))  # время — по часам города SOS
     lines = [
         f"#{row['id']} · {sos_service.STATUS_LABELS[status]}",
         f"🆔 <code>{row['telegram_id']}</code> {html_module.escape(str(who))}"
         + (f" · {html_module.escape(str(city_label))}" if city_label else ""),
-        f"🕓 {format_stamp(row.get('created_at'), stored_utc=False)}",
+        f"🕓 {format_stamp(row.get('created_at'), stored_utc=False, offset_hours=offset)}",
     ]
     # D-31: карточка (и этот список) публикуется/держится МГНОВЕННО, без вопроса «что
     # случилось» — пока делегат ничего не дописал, менеджер должен видеть это в списке тем же
@@ -94,12 +95,12 @@ async def _row_text(row: dict) -> str:
     if status in ("claimed", "resolved") and row.get("claimed_by_name"):
         lines.append(
             f"✍️ взял(а) {html_module.escape(str(row['claimed_by_name']))}"
-            f"{_at(row.get('claimed_at'))}"
+            f"{_at(row.get('claimed_at'), offset)}"
         )
     if status == "resolved":
         lines.append(
             f"✅ решено: {html_module.escape(str(row.get('resolved_by_name') or '—'))}"
-            f"{_at(row.get('resolved_at'))}"
+            f"{_at(row.get('resolved_at'), offset)}"
         )
     # Ревью 24.09 (находка 1): карточка не дошла НИКУДА (ни в чат, ни фоллбэком в личку) —
     # у неё физически нет ни `chat_id`, ни личных копий с общим треадом, поэтому единственное
