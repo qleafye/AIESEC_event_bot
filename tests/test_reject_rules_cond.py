@@ -212,7 +212,7 @@ def test_required_capability_covers_every_arc_prefix():
     samples = [
         "arc_add:1:0", "arc_steppage:1:0:0", "arc_step:1:0:course", "arc_op:1:0:in",
         "arc_val:1:0:2", "arc_valpage:1:0:0", "arc_valdone:1:0", "arc_num:1:0",
-        "arc_del:1:0:0", "arc_dellist:1", "arc_cancel:1", "arc_presetlist:1",
+        "arc_del:1:0:0:abcd1234", "arc_dellist:1", "arc_cancel:1", "arc_presetlist:1",
         "arc_preset:new:0", "arc_dry:1", "arc_gate:1", "arc_dry_go:1",
     ]
     for cb in samples:
@@ -248,6 +248,41 @@ def test_group_structure_after_three_adds(tmp_path):
     assert len(conditions[1]) == 1
 
 
+def _del_cb(rule_id, group, idx):
+    row = _run(db.get_reject_rule(rule_id))
+    fp = arc._conditions_fp(json.loads(row["conditions"]))
+    return f"arc_del:{rule_id}:{group}:{idx}:{fp}"
+
+
+def test_delete_with_stale_fingerprint_does_not_delete_and_redraws(tmp_path):
+    """Правило изменили между показом списка и нажатием: удаляется НЕ то условие — нельзя."""
+    _ready(tmp_path)
+    conds = [[{"step": "resume", "op": "no_file", "values": []},
+              {"step": "expectations", "op": "filled", "values": []}]]
+    rule_id = _run(_create_rule(city="msk", enabled=0, conditions=json.dumps(conds)))
+    stale_cb = _del_cb(rule_id, 0, 1)  # кнопка «expectations» с экрана до чужой правки
+    # другой менеджер удалил первое условие: expectations теперь на месте 0
+    rule = _run(arc._load_rule(rule_id))
+    _run(arc._save_patch(SUPERADMIN_ID, rule, conditions=[conds[0][1:]]))
+    callback = _FakeCallback(stale_cb, user_id=SUPERADMIN_ID)
+    _run(arc.arc_del(callback))
+    after = json.loads(_run(db.get_reject_rule(rule_id))["conditions"])
+    assert after == [conds[0][1:]]  # ничего не удалено
+    assert callback.answers and "уже изменили" in callback.answers[0][0]
+
+
+def test_delete_old_button_without_fingerprint_is_refused(tmp_path):
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(
+        city="msk", enabled=0,
+        conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
+    ))
+    callback = _FakeCallback(f"arc_del:{rule_id}:0:0", user_id=SUPERADMIN_ID)
+    _run(arc.arc_del(callback))
+    assert json.loads(_run(db.get_reject_rule(rule_id))["conditions"])
+    assert callback.answers and "уже изменили" in callback.answers[0][0]
+
+
 def test_delete_last_condition_of_group_removes_group(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(
@@ -257,7 +292,7 @@ def test_delete_last_condition_of_group_removes_group(tmp_path):
             [{"step": "expectations", "op": "filled", "values": []}],
         ]),
     ))
-    callback = _FakeCallback(f"arc_del:{rule_id}:0:0", user_id=SUPERADMIN_ID)
+    callback = _FakeCallback(_del_cb(rule_id, 0, 0), user_id=SUPERADMIN_ID)
     _run(arc.arc_del(callback))
     row = _run(db.get_reject_rule(rule_id))
     conditions = json.loads(row["conditions"])
@@ -271,7 +306,7 @@ def test_delete_last_condition_of_rule_disables_it(tmp_path):
         city="msk", enabled=1, reject_text="x",
         conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
     ))
-    callback = _FakeCallback(f"arc_del:{rule_id}:0:0", user_id=SUPERADMIN_ID)
+    callback = _FakeCallback(_del_cb(rule_id, 0, 0), user_id=SUPERADMIN_ID)
     _run(arc.arc_del(callback))
     row = _run(db.get_reject_rule(rule_id))
     assert json.loads(row["conditions"]) == []

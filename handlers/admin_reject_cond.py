@@ -24,6 +24,7 @@
 одну строку. `render_rule_card` импортируется оттуда (публичная функция); `_load_rule`/
 `_save_patch` — свои копии той же формы (приватные имена соседнего модуля не импортируются)."""
 import html as html_module
+import hashlib
 import json
 
 from aiogram import F, types
@@ -161,6 +162,14 @@ def _insert_condition(conditions: list[list[dict]], group: int, cond: dict) -> l
     else:
         groups[group].append(cond)
     return groups
+
+
+def _conditions_fp(conditions: list[list[dict]] | None) -> str:
+    """Короткий отпечаток ВСЕХ условий правила (8 hex): кнопка «удалить» держится на номерах
+    группы и строки, и если правило успели поменять (второй менеджер, второе устройство),
+    номер указывает уже на другое условие. Отпечаток в callback_data это ловит."""
+    raw = json.dumps(conditions or [], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
 
 
 def _remove_condition(conditions: list[list[dict]], group: int, idx: int) -> list[list[dict]]:
@@ -592,13 +601,14 @@ async def render_delete_screen(admin_id: int, rule_id: int) -> tuple[str, Inline
     if rule is None or not await can_edit_city(admin_id, rule.get("city")):
         return None
     groups = rule.get("conditions") or []
+    fp = _conditions_fp(groups)
     lines = ["🗑 <b>Удалить условие</b>", ""]
     buttons: list[list[InlineKeyboardButton]] = []
     for gi, group in enumerate(groups):
         for ci, cond in enumerate(group):
             step_label = label_for(cond.get("step")) if cond.get("step") else "?"
             buttons.append([InlineKeyboardButton(
-                text=_short(f"Группа {gi + 1}: {step_label}", 60), callback_data=f"arc_del:{rule_id}:{gi}:{ci}",
+                text=_short(f"Группа {gi + 1}: {step_label}", 60), callback_data=f"arc_del:{rule_id}:{gi}:{ci}:{fp}",
             )])
     if not buttons:
         lines.append("Условий больше нет.")
@@ -634,6 +644,18 @@ async def arc_del(callback: types.CallbackQuery):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
     groups = rule.get("conditions") or []
+    if len(parts) < 5 or parts[4] != _conditions_fp(groups):
+        # Правило изменили между показом и нажатием (или кнопка со старого экрана без
+        # отпечатка): ничего не удаляем, показываем актуальный список условий.
+        screen = await render_delete_screen(callback.from_user.id, rule_id)
+        if screen is not None:
+            text, kb = screen
+            await callback.message.edit_text(
+                "⚠️ Правило уже изменили — вот актуальное, выберите заново.\n\n" + text,
+                parse_mode="HTML", reply_markup=kb,
+            )
+        await callback.answer("Правило уже изменили — вот актуальное, выберите заново.", show_alert=True)
+        return
     if not (0 <= group < len(groups) and 0 <= idx < len(groups[group])):
         await callback.answer("Условие уже удалено — обновите экран.", show_alert=True)
         return
