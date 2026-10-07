@@ -1970,6 +1970,11 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
 async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
     admin_id = callback.from_user.id
+    if key == "reject_rules_enabled":  # общий рубильник автоотказа — только без привязки к городу
+        from handlers.admin_reject_rules import MASTER_DENIED_TEXT
+        from services.reject_rules import can_edit_city
+        if not await can_edit_city(admin_id, None):
+            return await callback.answer(MASTER_DENIED_TEXT, show_alert=True)
     # Phase 09.3 (06, CITY-09): WR-05 — single header read for this handler, passed into the
     # shared render helper so it never re-resolves the header itself.
     header_code = await admin_selected_city(admin_id)
@@ -2599,6 +2604,12 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if data.get("forum_date_pick_city"):  # экран «для какого города?» — дата без города не пишется
         return await message.answer(_fdate.PICK_CITY_FIRST)
     key = data["setting_key"]
+    if key == "reject_rules_enabled":  # то же правило, что в settings_edit_start
+        from handlers.admin_reject_rules import MASTER_DENIED_TEXT
+        from services.reject_rules import can_edit_city
+        if not await can_edit_city(message.from_user.id, None):
+            await state.clear()
+            return await message.answer(MASTER_DENIED_TEXT)
 
     # Phase 09.2 (C, CITY-05): a per-city composite key (`{base}__city__{code}`) gets the
     # SAME HTML-parsing treatment as its base key — the check is against the base, not the

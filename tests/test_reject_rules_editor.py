@@ -27,6 +27,7 @@ from database import db
 from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
 from handlers.states import RejectRuleEdit
+from settings_audit import set_setting_by_admin
 from settings_schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 
@@ -181,6 +182,9 @@ def test_arr_master_toggles_only_global_setting_not_rule_enabled(tmp_path):
 
     callback2 = _FakeCallback("arr_master", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_master_toggle(callback2))
+    assert _run(get_setting_typed("reject_rules_enabled")) is True  # выключение ждёт подтверждения
+    callback2 = _FakeCallback("arr_master:go", user_id=SUPERADMIN_ID)
+    _run(admin_reject_rules.arr_master_toggle(callback2))
     assert _run(get_setting_typed("reject_rules_enabled")) is False
     row2 = _run(db.get_reject_rule(rule_id))
     assert row2["enabled"] == 1
@@ -188,7 +192,7 @@ def test_arr_master_toggles_only_global_setting_not_rule_enabled(tmp_path):
 
 def test_required_capability_covers_every_new_callback_prefix():
     samples = [
-        "admin_reject_rules", "arr_p:0", "arr_v:1", "arr_t:1", "arr_master", "arr_act:1",
+        "admin_reject_rules", "arr_p:0", "arr_v:1", "arr_t:1", "arr_master", "arr_master:go", "arr_act:1",
         "arr_city:1", "arr_citypick:1:msk", "arr_track:1:full", "arr_name:1", "arr_text:1",
         "arr_copy:1", "arr_copygo:1:msk", "arr_new", "arr_preset:0", "arr_d:1", "arr_dgo:1",
         "arr_noop",
@@ -450,3 +454,55 @@ def test_delete_go_does_not_touch_journal_or_delegate_status(tmp_path):
     assert len(journal_rows) == 1
     user = _run(db.get_user(telegram_id))
     assert user["status"] == "rejected"
+
+
+def _master_buttons(admin_id):
+    _t, kb = _run(admin_reject_rules.render_rules_screen(admin_id))
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_master_switch_hidden_and_denied_for_city_bound(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    _run(set_setting_by_admin(SUPERADMIN_ID, "reject_rules_enabled", "on"))
+    assert "arr_master" not in _master_buttons(BOUND_MSK_ID)
+    for data in ("arr_master", "arr_master:go"):
+        cb = _FakeCallback(data, user_id=BOUND_MSK_ID)
+        _run(admin_reject_rules.arr_master_toggle(cb))
+        assert cb.answers and cb.answers[0][1] is True
+        assert "без привязки к городу" in cb.answers[0][0]
+        assert _run(get_setting_typed("reject_rules_enabled")) is True
+
+
+def test_master_switch_unbound_manager_gets_confirmation_with_count(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    _run(_create_rule(reject_text="x", enabled=1))
+    _run(_create_rule(reject_text="y", enabled=1))
+    _run(_create_rule(reject_text="z", enabled=0))
+    _run(set_setting_by_admin(SUPERADMIN_ID, "reject_rules_enabled", "on"))
+    assert "arr_master" in _master_buttons(UNBOUND_ID)
+    cb = _FakeCallback("arr_master", user_id=UNBOUND_ID)
+    _run(admin_reject_rules.arr_master_toggle(cb))
+    assert _run(get_setting_typed("reject_rules_enabled")) is True
+    assert "Перестанут работать 2 включённых правил во всех городах. Выключить?" in cb.message.text_edited
+    cb2 = _FakeCallback("arr_master:go", user_id=UNBOUND_ID)
+    _run(admin_reject_rules.arr_master_toggle(cb2))
+    assert _run(get_setting_typed("reject_rules_enabled")) is False
+
+
+def test_master_switch_turn_on_needs_no_confirmation(tmp_path):
+    _ready(tmp_path)
+    _run(_setup_staff())
+    cb = _FakeCallback("arr_master", user_id=UNBOUND_ID)
+    _run(admin_reject_rules.arr_master_toggle(cb))
+    assert _run(get_setting_typed("reject_rules_enabled")) is True
+
+
+def test_master_switch_generic_settings_edit_closed_for_bound(tmp_path):
+    from handlers import admin_settings
+    _ready(tmp_path)
+    _run(_setup_staff())
+    cb = _FakeCallback("settings_edit:reject_rules_enabled", user_id=BOUND_MSK_ID)
+    _run(admin_settings.settings_edit_start(cb, _new_state(BOUND_MSK_ID)))
+    assert cb.answers and "без привязки к городу" in cb.answers[0][0]
