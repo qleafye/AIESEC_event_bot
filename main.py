@@ -52,6 +52,21 @@ def _configure_logging():
     stdout_handler.setFormatter(fmt)
     root.addHandler(stdout_handler)
 
+    # Итог сверки состава чата (`services.chat_tracking.RECON_LOGGER`) виден и на проде, где
+    # файл и docker logs держат только WARNING: свой логгер с уровнем INFO и своими хендлерами,
+    # без propagate — остальной INFO-шум в stdout по-прежнему не попадает. Только счётчики и
+    # коды городов, без имён и контактов.
+    recon = logging.getLogger("chat_recon")
+    recon.setLevel(logging.INFO)
+    recon.propagate = False
+    recon.handlers.clear()
+    for target in (RotatingFileHandler("logs/bot.log", maxBytes=10 * 1024 * 1024, backupCount=5,
+                                       encoding="utf-8"),
+                   logging.StreamHandler(sys.stdout)):
+        target.setLevel(logging.INFO)
+        target.setFormatter(fmt)
+        recon.addHandler(target)
+
     # Tame chatty third-party loggers so the file isn't drowned in framework noise.
     for noisy in ("aiogram.event", "apscheduler", "urllib3", "gspread", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
