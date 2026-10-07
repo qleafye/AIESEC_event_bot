@@ -1335,6 +1335,18 @@ def _ensure_named_header_sync(tab_name: str, headers: list[str]):
         sheet.update(values=[headers], range_name=f"A1:{end}", value_input_option=_RAW)
 
 
+async def named_sheet_exists(tab_name: str | None) -> bool:
+    """Есть ли вкладка среди реальных (НИКОГДА не создаёт). Fail-soft: нет таблицы/ключей или
+    сбой API -> False (вызывающий тогда просто не трогает вкладку)."""
+    if not tab_name or not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+        return False
+    try:
+        return await asyncio.to_thread(_open_named_or_main_sync, tab_name) is not None
+    except Exception as e:
+        logger.warning(f"named_sheet_exists({tab_name!r}) failed: {e}")
+        return False
+
+
 async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
     """Fail-soft, mirrors ensure_sheet_header but targets a named tab."""
     if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:

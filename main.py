@@ -21,7 +21,7 @@ import services.sheets as sheets_service
 import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
-from cities import enabled_cities, is_default_city, seed_cities_if_empty, reload_cities
+from cities import CITIES, is_city_enabled, is_default_city, seed_cities_if_empty, reload_cities
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -110,42 +110,55 @@ async def _maybe_ensure_city_sheet_headers():
     if await get_setting_typed("event_city_enabled") != "on":
         return
     logger = logging.getLogger(__name__)
-    for city in await enabled_cities():
+    for city in list(CITIES):
         code = city["code"]
         if is_default_city(code):
             continue
         base = city.get("tab_base") or ""
         if not base:
             continue
+        # Выключенный город строки по-прежнему пишет на свои вкладки (`city_row_tab` от флага не
+        # зависит), поэтому шапку (и колонку «В чате» в конце) сверяем и у него — но только у
+        # уже существующих вкладок: заводить новые вкладки выключенному городу нельзя.
+        enabled = await is_city_enabled(code)
+
+        async def _tab_ok(name: str) -> bool:
+            return enabled or await sheets_service.named_sheet_exists(name)
 
         # Main tab — always materialized for an enabled non-default city. Phase 25 (CITYQ-03):
         # headers are computed for THIS city's own question set (not the global snapshot), and
         # the per-city snapshot is frozen BEFORE the physical header write — the snapshot and
         # the physical header must appear together, otherwise the very first append after
         # deploy would align to a snapshot that doesn't match the just-written header.
+        tab = None
         try:
             tab = await city_row_tab(code, None)
-            headers = await active_sheet_headers(code)
-            await set_sheet_schema(headers, code)
-            await sheets_service.ensure_named_sheet_header(tab, headers)
+            if await _tab_ok(tab):
+                headers = await active_sheet_headers(code)
+                await set_sheet_schema(headers, code)
+                await sheets_service.ensure_named_sheet_header(tab, headers)
         except Exception as e:
             logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
 
         # Party tab — only while the party track itself is enabled.
         if await get_setting_typed("party_enabled") == "on":
+            tab = None
             try:
                 tab = await city_row_tab(code, "party_overnight")
-                headers = await party_sheet_headers(code)
-                await sheets_service.ensure_named_sheet_header(tab, headers)
+                if await _tab_ok(tab):
+                    headers = await party_sheet_headers(code)
+                    await sheets_service.ensure_named_sheet_header(tab, headers)
             except Exception as e:
                 logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
 
         # Short tab — only while the short/promo track itself is enabled.
         if await get_setting_typed("registration_mode") == "short":
+            tab = None
             try:
                 tab = await city_row_tab(code, "short")
-                headers = await short_sheet_headers(code)
-                await sheets_service.ensure_named_sheet_header(tab, headers)
+                if await _tab_ok(tab):
+                    headers = await short_sheet_headers(code)
+                    await sheets_service.ensure_named_sheet_header(tab, headers)
             except Exception as e:
                 logger.warning(f"Failed to ensure city sheet header (tab={tab!r}): {e}")
 
