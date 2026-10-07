@@ -18,10 +18,12 @@
 from __future__ import annotations
 
 import html
+from datetime import datetime, timedelta
 
 from cities import city_label_or_none, normalize_city
 from services import checkin_forum_day
 from services import timeutil
+from services.timeutil import city_offset_hours
 from services.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
 from services.program import scanned_outside_session_window
 
@@ -66,6 +68,13 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
             res["swapped"] += 1
         approx = rec["scanned_at"] is None
         scanned_at, untimed_kind = await _untimed_stamp(rec, user, point) if approx else (rec["scanned_at"], None)
+        city_offset = await city_offset_hours(user.get("event_city"))
+        if rec.get("naive") and not approx and city_offset:
+            # Время без зоны — часы телефона на площадке, то есть местные часы города: в базе
+            # метки московские, переводим (Тюмень МСК+2: 10:00 на телефоне = 08:00 МСК).
+            scanned_at = (
+                datetime.strptime(scanned_at[:19], "%Y-%m-%d %H:%M:%S") - timedelta(hours=city_offset)
+            ).strftime("%Y-%m-%d %H:%M:%S")
         result = await record_arrival(
             user, point, source="csv", scanned_at=scanned_at, approx=approx,
             by_staff_id=staff_id, bot=bot,
@@ -83,7 +92,9 @@ async def import_records(records: list[dict], point: str, *, session: dict | Non
             res["off_day"] += 1
         if result.get("day_mismatch"):
             res["day_mismatch"] += 1
-        if session is not None and rec["scanned_at"] and scanned_outside_session_window(session, rec["scanned_at"]):
+        if session is not None and not approx and scanned_outside_session_window(
+            session, scanned_at, offset_hours=city_offset,
+        ):
             res["outside"] += 1
         if status in ("new", "moved"):
             res[status] += 1
