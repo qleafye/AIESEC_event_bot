@@ -739,9 +739,15 @@ def _date_from_groups(g: tuple, has_ampm: bool) -> tuple[int, int, int]:
 
 
 def _parse_cell_datetime(cell: str) -> datetime | None:
+    return _parse_cell_datetime_ex(cell)[0]
+
+
+def _parse_cell_datetime_ex(cell: str) -> tuple[datetime | None, bool]:
+    """Время ячейки + признак «наивное» (без зоны: время телефона сканера на площадке — местное
+    время города). Со смещением/`Z` и unix-эпоха однозначны и уже переведены в МСК -> `False`."""
     cell = (cell or "").strip().strip('"').strip()
     if not cell:
-        return None
+        return None, False
     iso_comma = re.match(r"^(\d{4}-\d{2}-\d{2}),\s*(\d{1,2}:\d{2}(?::\d{2})?)$", cell)
     if iso_comma:
         cell = f"{iso_comma.group(1)} {iso_comma.group(2).zfill(5)}"
@@ -751,20 +757,21 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
         # (время телефона сканера на площадке).
         full = cell[:-1] + "+00:00" if cell[-1:] in ("Z", "z") else cell
         try:
-            return aware_to_msk(datetime.fromisoformat(full))
+            parsed = datetime.fromisoformat(full)
+            return aware_to_msk(parsed), parsed.tzinfo is None
         except ValueError:
             try:
-                return datetime.fromisoformat(cell[:19])
+                return datetime.fromisoformat(cell[:19]), True
             except ValueError:
-                return None
+                return None, False
     m = _DMY_DT_RE.match(cell)
     if m:
         g = m.groups()
         h, mi, sec, ampm = g[7:11]
         try:
-            return datetime(*_date_from_groups(g, bool(ampm)), _hour24(int(h), ampm), int(mi), int(sec or 0))
+            return datetime(*_date_from_groups(g, bool(ampm)), _hour24(int(h), ampm), int(mi), int(sec or 0)), True
         except (ValueError, TypeError):
-            return None
+            return None, False
     if _EPOCH_RE.match(cell):
         try:
             n = int(cell)
@@ -772,10 +779,10 @@ def _parse_cell_datetime(cell: str) -> datetime | None:
                 n //= 1000
             dt = msk_from_timestamp(n)
         except (ValueError, OSError, OverflowError):
-            return None
+            return None, False
         # номер телефона или id тоже бывают 9–13 цифрами — время только правдоподобное
-        return dt if 2020 <= dt.year <= 2100 else None
-    return None
+        return (dt, False) if 2020 <= dt.year <= 2100 else (None, False)
+    return None, False
 
 
 def _parse_cell_date(cell: str) -> tuple[int, int, int] | None:
@@ -830,11 +837,16 @@ def _row_date(cells: list[str]) -> str | None:
 
 
 def _row_datetime(cells: list[str]) -> datetime | None:
-    """Время скана из ячеек строки: дата-время одной ячейкой или дата + время соседними."""
+    return _row_datetime_ex(cells)[0]
+
+
+def _row_datetime_ex(cells: list[str]) -> tuple[datetime | None, bool]:
+    """Время скана из ячеек строки: дата-время одной ячейкой или дата + время соседними;
+    второй элемент — «наивное» (местное время телефона), см. `_parse_cell_datetime_ex`."""
     for cell in cells:
-        dt = _parse_cell_datetime(cell)
+        dt, naive = _parse_cell_datetime_ex(cell)
         if dt:
-            return dt
+            return dt, naive
     for idx, cell in enumerate(cells):
         ymd = _parse_cell_date(cell)
         if not ymd:
@@ -843,10 +855,10 @@ def _row_datetime(cells: list[str]) -> datetime | None:
             hms = _parse_cell_time(other)
             if hms:
                 try:
-                    return datetime(*ymd, *hms)
+                    return datetime(*ymd, *hms), True
                 except ValueError:
-                    return None
-    return None
+                    return None, False
+    return None, False
 
 
 def _sniff_dialect(sample: str):
@@ -891,6 +903,7 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
     delimiters += [d for d in (",", ";", "\t") if d not in delimiters]
 
     found: list[tuple[str, str, str | None]] = []  # (qr, token, scanned_at) в порядке файла
+    naive_stamps: set[str] = set()  # метки из ячеек без зоны — местное время телефона
     for line in text.splitlines():
         matches = list(pattern.finditer(line))
         if not matches:
@@ -899,9 +912,11 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
         if len(matches) == 1:  # несколько кодов в строке (JSON одной строкой) — время не угадать
             rest = line.replace(matches[0].group(0), "")
             for delim in delimiters:
-                dt = _row_datetime(_line_cells(rest, delim))
+                dt, naive = _row_datetime_ex(_line_cells(rest, delim))
                 if dt:
                     scanned_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    if naive:
+                        naive_stamps.add(scanned_at)
                     break
             if scanned_at is None:
                 for delim in delimiters:
@@ -930,4 +945,7 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
             records.append(rec)
         elif scanned_at and scanned_at < rec["scanned_at"]:
             rec["scanned_at"] = scanned_at
+    for rec in records:
+        if rec["scanned_at"] in naive_stamps:
+            rec["naive"] = True  # время — местное (часы города); в МСК его переводит загрузка
     return records
