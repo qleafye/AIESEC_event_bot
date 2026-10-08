@@ -80,7 +80,7 @@
   :root[data-theme="dark"] figure.shot img, :root[data-theme="dark"] .lb img { filter:brightness(.85); }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) figure.shot img, :root:not([data-theme="light"]) .lb img { filter:brightness(.85); } }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .steps > li::before { color:#08241A; } }
-  .path { font-weight:700; background:var(--accent-soft); border-radius:8px; padding:3px 9px; display:inline-block; }
+  .path { font-weight:700; background:var(--accent-soft); border-radius:8px; padding:2px 7px; display:inline; -webkit-box-decoration-break:clone; box-decoration-break:clone; }
   .split { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:24px; align-items:start; margin:0 0 16px; }
   .split.rev { grid-template-columns:400px minmax(0,1fr); }
   .split.rev > :first-child { order:2; }
@@ -230,7 +230,16 @@
     details.q > summary { padding:14px 16px; }
     details.q > .body { padding:0 16px 12px; }
   }
-
+  /* «В этой главе» */
+  p.inch { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; max-width:none; margin:-8px 0 26px; font-size:15px; line-height:1.3; }
+  p.inch > span { color:var(--muted); font-weight:800; margin-right:2px; }
+  p.inch a { display:inline-block; padding:5px 11px; border:1px solid var(--line); border-radius:999px; background:var(--card); color:var(--accent-ink); text-decoration:none; font-weight:700; }
+  p.inch a:hover { background:var(--accent-soft); }
+  @media (max-width: 520px) {
+    #up { width:40px; height:40px; right:10px; bottom:12px; font-size:19px; }
+    #up.on { opacity:.78; }
+    main { padding-bottom:40px; }
+  }
 </style>
 </head>
 <body>
@@ -318,7 +327,7 @@
 <p>Пройдите по порядку, прежде чем публиковать ссылку на бота. Подробности по каждому пункту ниже и в главах гайда.</p>
 <div class="note"><b class="t">Нужно право «⚙️ Настройки»</b>Почти все пункты чек-листа требуют этого права. Если его у вас нет, чек-лист проходит руководитель события.</div>
 <ol class="steps">
-<li><b>Название, даты, место, описание бота.</b> <span class="path">«🎪 Событие» → «🎪 Событие/Медиа»</span>: «🎪 Название мероприятия», «🗓 Дата», «📍 Место», «🪪 Описание бота (до /start)».</li>
+<li><b>Название, даты, место, описание бота:</b> «🎪 Название мероприятия», «🗓 Дата», «📍 Место», «🪪 Описание бота (до /start)». Путь: <span class="path">«🎪 Событие» → «🎪 Событие/Медиа»</span>.</li>
 <li><b>Вопросы анкеты.</b> Один раз пресет в <span class="path">«📝 Анкета» → «🎛 Тип события (пресет)»</span>, потом точная настройка в «📋 Вопросы регистрации» (<a href="#form-questions">как</a>).</li>
 <li><b>Карточка заявки.</b> <span class="path">«📋 Заявки» → «🧾 Поля карточки заявки»</span> → «⚠️ Показать всё, что спрашиваем», если такая кнопка есть.</li>
 <li><b>Тексты одобрения и отказа.</b> «✏️ 🎉 После одобрения» и «✏️ 🚫 При отклонении» в <span class="path">«📋 Заявки» → «⚙️ Тексты и настройки»</span>. Образцы в гайде взяты с другого события, их нужно переписать.</li>
@@ -376,10 +385,11 @@
 <div class="part" id="part-daily">Каждый день</div>
 
 <section class="sec" id="apps"><h2>Разбор заявок и письма делегату</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#apps-notify">Как узнать о заявках</a> <a href="#apps-card">Очередь</a> <a href="#apps-approve">Одобрить</a> <a href="#apps-reject">Отклонить</a> <a href="#apps-all">«Одобрить все»</a> <a href="#apps-undo">Одобрили не того</a> <a href="#apps-list">Список заявок</a> <a href="#apps-fields">Поля карточки</a> <a href="#apps-score">Правила балла</a> <a href="#apps-autoreject">Автоотказ</a> <a href="#apps-modes">Режимы и тихие часы</a> <a href="#apps-app">В приложении</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы принять решение по каждой заявке и сообщить его делегату.</p>
 <p class="lead">Заявка это анкета, которую человек отправил и которая ждёт вашего решения. Ваше решение превращается в письмо делегату в чате с ботом.</p>
-<h3>Как вы узнаёте о новых заявках</h3>
+<h3 id="apps-notify">Как вы узнаёте о новых заявках</h3>
 <p>По умолчанию бот работает в режиме «🔔 Уведомление: 🕒 Пачкой»: все, у кого есть право «📋 Модерация заявок», периодически получают сводку «📋 Заявок в ожидании: N. Открой /admin → Заявки.». Если заявок нет, сообщения нет.</p>
 <ul>
 <li>Как часто приходит сводка, задаёт «🕒 Тайминг батчей заявок» в <span class="path">«📋 Заявки» → «⚙️ Тексты и настройки»</span>. Значение в секундах: 1800 это 30 минут (так по умолчанию), 10800 это 3 часа.</li>
@@ -661,6 +671,7 @@
 </section>
 
 <section class="sec" id="broadcast"><h2>Рассылки</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#bc-audience">Кому</a> <a href="#bc-filter">По фильтру</a> <a href="#bc-send">Сообщение и отправка</a> <a href="#bc-sched">Отложенная</a> <a href="#bc-cases">Готовые сценарии</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы отправить одно сообщение многим делегатам и никого не напугать лишним.</p>
 <p class="lead">Рассылка это одно сообщение, которое бот отправляет многим делегатам. Нужно право «📢 Рассылки». Путь: <span class="path">«📢 Общение» → «📢 Рассылка»</span> или команда <code>/broadcast</code>.</p>
@@ -802,10 +813,11 @@
 </section>
 
 <section class="sec" id="sheet"><h2>Таблица Google: что можно и нельзя</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#sheet-open">Как открыть</a> <a href="#sheet-ops">Кнопки «📊 Данные»</a> <a href="#sheet-missing">Строка не попала</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы пользоваться таблицей и не сломать то, что бот пишет в неё сам.</p>
 <p class="lead">У каждого события своя Google-таблица. Бот сам пишет в неё каждую заявку и обновляет статус. Главная копия данных хранится в самом боте, а таблица её повторяет. Для просмотра, фильтров и совместной работы она удобна.</p>
-<h3>Как открыть таблицу</h3>
+<h3 id="sheet-open">Как открыть таблицу</h3>
 <p>Ссылки на таблицу в админке бота нет. Попросите ссылку и доступ у руководителя события или у владельца бота <a href="https://t.me/qleafye">@qleafye</a>. Чтобы только смотреть, хватит доступа «Читатель»; чтобы красить строки и писать свои колонки, нужен «Редактор».</p>
 <p>С компьютера таблица открывается в браузере, с телефона удобнее приложение «Google Таблицы». Сохраните ссылку в закладки.</p>
 <p>Статус, поправленный в таблице руками, в бота не возвращается. Решения принимайте в боте.</p>
@@ -868,7 +880,7 @@
 </div>
 
 <div class="blk">
-<h3>Если строка делегата не попала в таблицу</h3>
+<h3 id="sheet-missing">Если строка делегата не попала в таблицу</h3>
 <p>Иногда связь обрывается в момент записи, и строка в таблице пропадает. В базе при этом всё есть. Запустите «🔍 Сверить с БД» и нажмите «➕ Дописать недостающие строки».</p>
 <p>Если вместо этого бот сказал «⚠️ Google Sheets: основная вкладка не задана» или «Основная вкладка Google-таблицы не задана», задайте её: «📊 Данные» → «📄 Вкладки таблицы» → «📄 Основная (регистрации)».</p>
 <details class="more"><summary>Подробнее: где лежит резюме</summary><div class="in">
@@ -953,6 +965,7 @@
 </section>
 
 <section class="sec" id="problems"><h2>Частые проблемы</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#problems-answers">Готовые ответы</a> <a href="#problems-admin">/admin молчит</a> <a href="#problems-undelivered">Делегату не пришло</a> <a href="#problems-dash">Дашборд</a> <a href="#problems-stuck">Анкета зависла</a> <a href="#problems-down">Бот не отвечает</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы за минуту понять, что делать, когда что-то не работает.</p>
 <p class="lead">Нажмите на симптом, который видите. Внутри причина, что сделать самому и когда писать владельцу бота. Сначала проверьте очевидное на стороне человека: нажимал ли он «Начать», есть ли у него роль, правильно ли набрано.</p>
@@ -972,7 +985,7 @@
 <p>Образец есть в разделе <a href="#apps-undo">«Случайно одобрили или отклонили не того»</a>.</p></div>
 </div>
 
-<details class="q"><summary>Я пишу <code>/admin</code>, а бот молчит или пишет «Недостаточно прав»</summary><div class="body">
+<details class="q" id="problems-admin"><summary>Я пишу <code>/admin</code>, а бот молчит или пишет «Недостаточно прав»</summary><div class="body">
 <p><span class="k">Причина</span> У вас нет роли, она выключена или истекла. Молчание это штатное поведение для человека без прав. «Недостаточно прав» значит, что роль есть, но не на эту кнопку.</p>
 <p><span class="k">Что сделать</span> Попросите того, у кого есть «⚙️ Настройки», открыть «🔧 Управление» → «👥 Роли и доступы» и проверить: вы в списке, роль включена, у роли отмечены нужные права, срок не истёк («⌛ истекла»). Потом нажмите <code>/start</code> и повторите.</p>
 <p><span class="k">Когда писать @qleafye</span> Пишите, если всё верно, а доступа нет и после перезапуска Телеграм.</p>
@@ -1053,7 +1066,7 @@
 <p><span class="k">Картинка не грузится</span> Загрузите её заново в «🎭 Пресеты и ручки оформления» именно как фото.</p>
 </div></details>
 
-<details class="q"><summary>Делегат пишет, что «анкета не работает» или «бот молчит», хотя бот онлайн</summary><div class="body">
+<details class="q" id="problems-stuck"><summary>Делегат пишет, что «анкета не работает» или «бот молчит», хотя бот онлайн</summary><div class="body">
 <p><span class="k">Причина</span> Бот иногда перезапускается. В этот момент он забывает, на каком вопросе остановился человек, и перестаёт реагировать на кнопки анкеты. Ответы, которые человек уже дал, при этом сохранены.</p>
 <p><span class="k">Что сделать</span> Попросите нажать <code>/start</code>: бот покажет кнопку «▶️ Продолжить с шага N из M», и человек продолжит с того же места. Если человек просто написал боту любое сообщение, бот сам ответит «🔄 Бот перезапускался, но твоя анкета сохранена — продолжим?».</p>
 <p>Если и после <code>/start</code> анкета не идёт, найдите человека через <code>/find</code> и нажмите «🧹 Сбросить зависшую анкету». Начатое удалится, и он заполнит анкету с начала.</p>
@@ -1094,7 +1107,7 @@
 <p><span class="k">Что сделать</span> Если отбор нужен, включите его: «🎮 Геймификация» → «⚙️ Тексты и настройки» → «🤝 Отбор амбассадоров».</p>
 </div></details>
 
-<details class="q"><summary>Бот не отвечает совсем</summary><div class="body">
+<details class="q" id="problems-down"><summary>Бот не отвечает совсем</summary><div class="body">
 <p><span class="k">Причина</span> Чаще всего это сбой связи между ботом и Телеграм: бот работает, но не получает сообщения.</p>
 <p><span class="k">Что сделать</span> Подождите от 5 до 10 минут. Потом отправьте <code>/start</code> другому боту АЙСЕК: <a href="https://t.me/YouLead2026_bot">@YouLead2026_bot</a> (Юлид), <a href="https://t.me/realtalk_forum_bot">@realtalk_forum_bot</a> (РилТолк) или <a href="https://t.me/SkillUp2026_bot">@SkillUp2026_bot</a> (СкиллАп). Если молчат все, дело в сети, а не в вашем боте. Запуск, обновление и подключение бота делает @qleafye — напишите ему.</p>
 <p><span class="k">Когда писать @qleafye</span> Пишите всегда, указав время и симптом («не отвечает с 14:20»).</p>
@@ -1105,9 +1118,10 @@
 <div class="part" id="part-setup">Настройка события</div>
 
 <section class="sec" id="roles"><h2>Вход и роли</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#roles-login">Как попасть</a> <a href="#roles-add">Выдать роль</a> <a href="#roles-rights">Кто что видит</a> <a href="#roles-unreach">«Не получает уведомления»</a> <a href="#roles-view">Глазами делегата</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы попасть в админку и выдать доступ новому менеджеру.</p>
-<h3>Как попасть в админку</h3>
+<h3 id="roles-login">Как попасть в админку</h3>
 <p>Админка открывается командой <code>/admin</code> в личной переписке с ботом. Отдельной кнопки у делегатов нет, а сама админка состоит из кнопок под сообщениями.</p>
 <ul>
 <li>Если роль есть, вы увидите «👮‍♂️ Панель администратора», список ваших команд и кнопки разделов.</li>
@@ -1195,7 +1209,7 @@
 </div>
 
 <div class="blk">
-<h3>Как посмотреть бота глазами делегата</h3>
+<h3 id="roles-view">Как посмотреть бота глазами делегата</h3>
 <p>Отдельного режима «смотреть как делегат» нет. Меню делегата вы видите, когда нажимаете <code>/start</code> в своём аккаунте. Суперадмин, у которого уже есть анкета, получает кнопку «🔄 Пройти регистрацию заново» для проверки.</p>
 <p>Какие кнопки видит делегат, решаете вы в «🎪 Событие» → «🔘 Кнопки меню» (<a href="#form-menu">подробнее</a>). Ниже пример: одобренный делегат СкиллАп 5 видит ссылку, приглашённых, информацию, вопрос и приложение.</p>
 <figure class="shot phone"><a class="zoom" href="shots/admin/b_delegate_menu.png"><img src="shots/admin/b_delegate_menu.png" width="780" height="610" alt="Нижнее меню одобренного делегата на примере СкиллАп 5. Кнопок монет и заданий нет: там геймификация выключена. «Частые вопросы» появятся, когда в них будет хотя бы один пункт." loading="lazy"></a><figcaption>Нижнее меню одобренного делегата на примере СкиллАп 5. Кнопок монет и заданий нет: там геймификация выключена. «Частые вопросы» появятся, когда в них будет хотя бы один пункт.</figcaption></figure>
@@ -1203,10 +1217,11 @@
 </section>
 
 <section class="sec" id="form"><h2>Настройка анкеты и текстов</h2>
+<p class="inch"><span>В этой главе:</span> <a href="#form-edit">Как править</a> <a href="#form-questions">Вопросы</a> <a href="#form-qtexts">Тексты вопросов</a> <a href="#form-lists">Списки</a> <a href="#form-lang">Английский</a> <a href="#form-texts">Где какой текст</a> <a href="#form-menu">Кнопки меню</a> <a href="#form-program">Программа</a></p>
 <div class="blk">
 <p class="why"><b>Зачем это.</b> Чтобы поменять вопросы анкеты и тексты, которые видит делегат, без разработчика.</p>
 <p class="lead">Всё, что делегат видит и читает, настраивается кнопками. Нужно право «⚙️ Настройки». Писать код не нужно: настройку выбираете кнопкой, значение присылаете сообщением.</p>
-<h3>Как править любое значение</h3>
+<h3 id="form-edit">Как править любое значение</h3>
 <ol class="steps">
 <li>Откройте раздел, например <span class="path">«🎪 Событие» → «🎪 Событие/Медиа»</span>. Бот покажет список полей. У каждого стоит статус: «✏️ задано», «по умолчанию» или «— не задано». Само значение на экране не показано.
 <figure class="shot phone tall"><a class="zoom" href="shots/admin/b_event_group.png"><img src="shots/admin/b_event_group.png" width="780" height="3890" alt="Группа «🎪 Событие/Медиа». Сначала настроенные поля, потом «── не настроено ──». Середина скрыта." loading="lazy"></a><figcaption>Группа «🎪 Событие/Медиа». Сначала настроенные поля, потом «── не настроено ──». Середина скрыта.</figcaption></figure></li>
@@ -1991,7 +2006,19 @@
     up.classList.toggle('on', window.scrollY > 700);
   }
   window.addEventListener('scroll', spy, { passive: true }); spy();
-  up.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  // Далёкий прыжок (больше трёх экранов) — мгновенно: плавная прокрутка на телефоне даёт пустые кадры.
+  var rootEl = document.documentElement;
+  function jumpBehavior(top) { return Math.abs(top - window.scrollY) > 3 * window.innerHeight ? 'auto' : 'smooth'; }
+  function withBehavior(b, fn) { rootEl.style.scrollBehavior = b; fn(); if (b === 'auto') setTimeout(function () { rootEl.style.scrollBehavior = ''; }, 60); }
+  up.addEventListener('click', function () { var b = jumpBehavior(0); withBehavior(b, function () { window.scrollTo({ top: 0, behavior: b === 'auto' ? 'instant' : 'smooth' }); }); });
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (!a || a.classList.contains('zoom')) return;
+    var t = document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));
+    if (!t) return;
+    var top = t.getBoundingClientRect().top + window.scrollY;
+    if (jumpBehavior(top) === 'auto') { rootEl.style.scrollBehavior = 'auto'; setTimeout(function () { rootEl.style.scrollBehavior = ''; }, 120); }
+  }, true);
 
   // Просмотр картинки: своя запись в истории, «Назад» закрывает картинку, а не страницу.
   var lb = document.getElementById('lb'), lbi = lb.querySelector('img'), fitb = lb.querySelector('.fitb');
