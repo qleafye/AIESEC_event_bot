@@ -1569,6 +1569,10 @@ admin|callback_query|admin_coins_transfer|admin_coins_transfer
 admin|callback_query|cointr_cancel|cointr_cancel
 admin|callback_query|cointr_tab|cointr_tab:*
 admin|callback_query|cointr_go|cointr_go:*
+admin|callback_query|prog_tmok|prog_tmok:*
+admin|callback_query|prog_tmno|prog_tmno
+admin|callback_query|prog_lmok|prog_lmok:*
+admin|callback_query|prog_lmno|prog_lmno
 admin|callback_query|prog_trkl|prog_trkl:*
 admin|callback_query|prog_trkn|prog_trkn:*
 admin|callback_query|prog_trko|prog_trko:*
@@ -2377,7 +2381,8 @@ def test_snapshot_total_handler_count_is_292():
     # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
     # вставки (1076 -> 1083).
     # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1083 -> 1187).
-    assert len(GOLDEN_SNAPSHOT) == 1187
+    # Запись на сессии: подтверждение смены времени и лимита при существующих записях (admin_enroll_guard prog_tmok/tmno/lmok/lmno); чистая вставка, SequenceMatcher (1187 -> 1191).
+    assert len(GOLDEN_SNAPSHOT) == 1191
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
