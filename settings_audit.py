@@ -44,6 +44,8 @@ async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> No
     try:
         from services import reject_rules_notify as _rrn
         await _rrn.on_setting_written(key)
+        from services import bot_profile as _bp
+        await _bp.on_setting_written(key)
     except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
         logger.error("settings_audit.set_setting_by_admin: реакция на %r сорвалась: %s", key, exc)
 
@@ -54,5 +56,7 @@ async def delete_setting_by_admin(admin_id: int | None, key: str) -> None:
     try:
         from services import reject_rules_notify as _rrn
         await _rrn.on_setting_written(key)
+        from services import bot_profile as _bp
+        await _bp.on_setting_written(key)
     except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
         logger.error("settings_audit.delete_setting_by_admin: реакция на %r сорвалась: %s", key, exc)
