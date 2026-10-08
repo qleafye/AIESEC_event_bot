@@ -1870,6 +1870,31 @@ def cancel_task_deadline_reminder(task_id: int) -> None:
         pass
 
 
+async def _game_open_filter():
+    """Тот же гейт, что пускает делегата в задания (`handlers.user_actions`:
+    `ensure_registered` + `ensure_current_season` + `ensure_game_allowed`): заявка не
+    pending/rejected, строка текущего сезона, делегации вуза — только при включённой игре.
+    Жалоба 08.10: напоминание о дедлайне «Задания 15» ушло всем делегатам города, включая
+    ~1000 отклонённых и только что подавших — им задания закрыты, а письмо «не сдано» пришло."""
+    from reg_engine import is_past_season_row
+
+    event_season = await get_setting_typed("event_season") or None
+    delegation_on = await get_setting_typed("delegation_game_enabled") == "on"
+
+    def allowed(u: dict) -> bool:
+        if not u:
+            return False
+        if (u.get("status") or "approved") in ("pending", "rejected"):
+            return False
+        if is_past_season_row(u, event_season):
+            return False
+        if u.get("delegation") and not delegation_on:
+            return False
+        return True
+
+    return allowed
+
+
 async def _task_out_of_wave_recipients(task: dict) -> list[int]:
     """Круг получателей задания ВНЕ волн (D-26, task.wave_id пуст): `audience == 'ambassadors'`
     — амбассадоры города задания, иначе — все делегаты этого города (`event_city` пуст —
@@ -1911,7 +1936,9 @@ async def send_task_deadline_reminder(task_id: int) -> None:
     до него снова больше суток — переставляем джобу на новый момент (та же id, `replace_
     existing=True` не удваивает) и выходим, не рассылая рано."""
     try:
-        from database.db import get_task, get_active_submission, list_ambassadors, get_wave, task_title
+        from database.db import (
+            get_task, get_active_submission, get_user, list_ambassadors, get_wave, task_title,
+        )
         from services.ambassador_waves import wave_eligible, wave_open
         from services import quiet_hours, i18n
         import game_labels
@@ -1951,6 +1978,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             recipients = await _task_out_of_wave_recipients(task)
 
         template_raw = await get_setting_typed("wave_deadline_reminder_text")
+        game_open = await _game_open_filter()
         title = task_title(task)
         deadline_txt = await game_labels.task_deadline_text(task)
 
@@ -1958,6 +1986,8 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
             # обрывать напоминание остальным несдавшим — тот же приём, что в `send_wave_results`.
             try:
+                if not game_open(await get_user(uid) or {}):
+                    continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
                 lang, tr_map = await i18n.context(uid)
