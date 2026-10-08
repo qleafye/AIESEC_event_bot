@@ -79,7 +79,7 @@ from keyboards.builders import (
     MENU_TEXTS,
 )
 from handlers.states import Question, GameSubmit
-from settings_schema import get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
@@ -124,7 +124,7 @@ async def ensure_registered(message: types.Message) -> bool:
     elif not await _say_auto_reject_again(message, user):  # rejected
         await reg_i18n.say(
             message,
-            await get_setting("reject_text") or "К сожалению, твоя заявка отклонена.",
+            await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"],
         )
     return False
 
