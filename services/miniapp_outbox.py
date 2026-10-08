@@ -261,6 +261,12 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             bot, payload.get("telegram_id"), payload.get("tier"), payload.get("left"),
         )
         return
+    if kind == "bot_profile_changed":
+        # 08.10: описание бота правят в приложении, а ставить его в Telegram может только бот.
+        from services.bot_profile import sync_bot_profile  # ленивый, как выше
+
+        await sync_bot_profile(bot)
+        return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
 

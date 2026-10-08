@@ -109,6 +109,9 @@ _EVENT_FIELD_ORDER = [
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
     "poll_intro_text",
     "event_name", "event_name_genitive", "event_season", "event_type",
+    # 08.10: описание бота до /start и строка «О боте» — без них в чате настройки не было вовсе
+    # (только в приложении), а у РилТолка, который их и просил, приложение выключено.
+    "bot_description", "bot_short_description",
 ]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
