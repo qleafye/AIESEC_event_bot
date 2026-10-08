@@ -18,6 +18,7 @@ from database import session_enroll_db as edb
 from database.db import get_program_session, update_program_session
 from handlers.admin import router
 from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
+from handlers.admin_enroll_guard import confirm_limit
 from handlers.states import ProgramCompetencyEdit, ProgramEnrollLimit, ProgramTrackEdit
 from services.session_enroll import session_open_state
 
@@ -562,12 +563,14 @@ async def prog_enrlim_step(message: types.Message, state: FSMContext):
         return
     if raw == "-":
         limit = None
-    elif raw.isdigit() and int(raw) >= 1:
+    elif raw.isascii() and raw.isdigit() and 1 <= int(raw) <= 100000:
         limit = int(raw)
     else:
         await message.answer("Нужно целое число мест, например 30", reply_markup=_cancel_kb())
         return
     await state.clear()
+    if await confirm_limit(message, session, limit):  # лимит ниже числа записанных — спросить
+        return
     await update_program_session(session["id"], enroll_limit=limit)
     fresh = await get_program_session(session["id"])
     text, kb = await render_enroll_card(fresh)

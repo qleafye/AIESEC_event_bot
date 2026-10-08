@@ -100,3 +100,53 @@ def test_staff_enroll_validates_delegate(tmp_path):
         assert await se_db.user_enrollment_ids(999) == set()
 
     run(go())
+
+
+def test_limit_below_enrolled_and_time_change_ask_confirmation(tmp_path):
+    from handlers import admin_enroll, admin_enroll_guard as g, admin_program
+    from handlers.states import ProgramEnrollLimit, ProgramSessionField
+    from tests.test_admin_enroll_38 import FakeCallback, FakeMessage, new_state
+
+    ready(tmp_path)
+
+    async def go():
+        p = await seed_msk_program()
+        d = await seed_delegates()
+        await se_db.enroll_tx(d["cur1"], p["A"])
+        await se_db.enroll_tx(d["cur2"], p["A"])
+        # лимит 1 при двух записанных — вопрос, значение пока не пишется
+        state = new_state()
+        await state.set_state(ProgramEnrollLimit.value)
+        await state.update_data(enr_sid=p["A"])
+        msg = FakeMessage("1")
+        await admin_enroll.prog_enrlim_step(msg, state)
+        assert "Записано 2 человека, а лимит 1" in msg.answers_sent[0]
+        assert (await db.get_program_session(p["A"]))["enroll_limit"] is None
+        cb = FakeCallback(f"prog_lmok:{p['A']}:1")
+        await g.prog_lmok(cb)
+        assert (await db.get_program_session(p["A"]))["enroll_limit"] == 1
+        # лимит не ниже числа записанных — применяется сразу
+        state2 = new_state()
+        await state2.set_state(ProgramEnrollLimit.value)
+        await state2.update_data(enr_sid=p["A"])
+        await admin_enroll.prog_enrlim_step(FakeMessage("5"), state2)
+        assert (await db.get_program_session(p["A"]))["enroll_limit"] == 5
+        # «²» — не число
+        state3 = new_state()
+        await state3.set_state(ProgramEnrollLimit.value)
+        await state3.update_data(enr_sid=p["A"])
+        bad = FakeMessage("²")
+        await admin_enroll.prog_enrlim_step(bad, state3)
+        assert "Нужно целое число" in bad.answers_sent[0]
+        # время
+        state4 = new_state()
+        await state4.set_state(ProgramSessionField.time)
+        await state4.update_data(pmode="edit", pf_session_id=p["A"])
+        tm = FakeMessage("12:00-13:00")
+        await admin_program.prog_time_step(tm, state4)
+        assert "Записано 2 человека" in tm.answers_sent[0] and "время изменится" in tm.answers_sent[0]
+        assert (await db.get_program_session(p["A"]))["start_time"] == "10:00"
+        await g.prog_tmok(FakeCallback(f"prog_tmok:{p['A']}"), state4)
+        assert (await db.get_program_session(p["A"]))["start_time"] == "12:00"
+
+    run(go())
