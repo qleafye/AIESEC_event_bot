@@ -153,14 +153,15 @@ async def list_connections_to_alert() -> list[dict]:
 async def create_form(
     *, platform, external_id, title, connection_id=None, gsheet_gid=None, secret=None,
     key_username_q=None, key_phone_q=None, mirror_tab=None, created_by=None,
+    ingest_mode="api",
 ) -> int:
     async with _db._connect() as db:
         cursor = await db.execute(
             "INSERT INTO external_forms (platform, connection_id, external_id, gsheet_gid, title, "
-            "secret, key_username_q, key_phone_q, mirror_tab, created_at, created_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "secret, key_username_q, key_phone_q, mirror_tab, created_at, created_by, ingest_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (platform, connection_id, external_id, gsheet_gid, title, secret,
-             key_username_q, key_phone_q, mirror_tab, _now(), created_by),
+             key_username_q, key_phone_q, mirror_tab, _now(), created_by, ingest_mode),
         )
         await db.commit()
         return cursor.lastrowid
@@ -195,6 +196,7 @@ async def list_forms() -> list[dict]:
         "SELECT f.id, f.platform, f.connection_id, f.external_id, f.gsheet_gid, f.title, "
         "f.secret, f.key_username_q, f.key_phone_q, f.mirror_tab, f.mirror_error, f.status, "
         "f.notify, f.notified_at, f.last_sync_at, f.sync_error, f.created_at, f.created_by, "
+        "f.ingest_mode, f.push_warning, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id) AS total, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id "
         "   AND a.matched_telegram_id IS NULL) AS unmatched, "
@@ -268,13 +270,21 @@ async def set_form_notified(form_id: int, ts: str) -> None:
 
 # ---------- очередь дочитывания ----------
 
-async def enqueue_pending(form_id: int, answer_id: str, delivery_id: str | None, now: str) -> bool:
+async def set_form_push_warning(form_id: int, text: str | None) -> None:
+    """Проблема приёма push-формы для карточки; None снимает."""
+    await _exec("UPDATE external_forms SET push_warning = ? WHERE id = ?", (_err(text), form_id))
+
+
+async def enqueue_pending(
+    form_id: int, answer_id: str, delivery_id: str | None, now: str, payload: str | None = None,
+) -> bool:
+    """`payload` — тело запроса интеграции push-формы (у api-форм None)."""
     n = await _exec(
         "INSERT OR IGNORE INTO external_form_pending "
-        "(form_id, answer_id, delivery_id, received_at, next_try_at) "
-        "SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS "
+        "(form_id, answer_id, delivery_id, received_at, next_try_at, payload) "
+        "SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS "
         "(SELECT 1 FROM external_form_deleted WHERE form_id = ? AND answer_id = ?)",
-        (form_id, str(answer_id), delivery_id, now, now, form_id, str(answer_id)),
+        (form_id, str(answer_id), delivery_id, now, now, payload, form_id, str(answer_id)),
     )
     return n > 0
 

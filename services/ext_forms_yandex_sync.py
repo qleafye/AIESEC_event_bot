@@ -5,6 +5,10 @@
 `reconcile_form` / `backfill_form` ставят в ту же очередь id, которых в базе ещё нет, —
 вебхук, сверка и бэкфилл сходятся в один путь.
 
+Личные формы (`ingest_mode = 'push'`) в API не ходят: ответ лежит в `payload` строки очереди
+(его положил приёмник вебхука), `drain_pending` разбирает его тем же `ingest_answer`; сверка и
+бэкфилл такие формы пропускают.
+
 Исходы строки очереди:
 - сохранена -> строка удалена;
 - сеть / 5xx / 429 -> строка остаётся, attempts + 1, пауза `backoff_seconds`;
@@ -24,7 +28,7 @@ from database import ext_forms_db as ef
 from services import ext_forms_yandex as yx
 from services.ext_forms_ingest import ingest_answer
 from services.ext_forms_match import rematch_unmatched
-from services.ext_forms_parse import parse_yandex_answer
+from services.ext_forms_parse import parse_push_body, parse_yandex_answer
 from services.sheet_arrival_sync import backoff_seconds
 from services.timeutil import msk_now
 from services.ext_forms_yandex import YandexApiError
@@ -97,6 +101,40 @@ async def _postpone(row_id: int, until: datetime) -> None:
                    (_fmt(until), row_id))
 
 
+async def _drain_push_row(row: dict, form: dict, now: datetime, counts: dict) -> None:
+    """Строка очереди личной формы: ответ уже лежит в payload, API Яндекса не нужен."""
+    aid = row["answer_id"]
+    payload = row.get("payload")
+    if not payload:
+        await ef.drop_pending(row["id"])
+        counts["dropped"] += 1
+        logger.info("ext_forms: push-строка %s формы %s без тела, снята (push_no_payload)",
+                    aid, form["id"])
+        return
+    try:
+        parsed = parse_push_body(json.loads(payload), header_answer_id=aid)
+        if parsed["items"] is None:
+            await ef.drop_pending(row["id"])
+            counts["dropped"] += 1
+            logger.info("ext_forms: push-строка %s формы %s без ответов, снята", aid, form["id"])
+            return
+        await ingest_answer(form, answer_id=aid, answered_at=parsed["created"],
+                            items=parsed["items"], raw=payload)
+        if form.get("push_warning"):
+            await ef.set_form_push_warning(form["id"], None)
+            form["push_warning"] = None
+    except Exception as e:  # noqa: BLE001 — строка не должна теряться из-за одного разбора
+        await ef.fail_pending(
+            row["id"], "ingest_error",
+            _fmt(now + timedelta(seconds=backoff_seconds(row["attempts"] + 1))))
+        counts["retry"] += 1
+        logger.warning("ext_forms: push-ответ %s формы %s не сохранён (%s)",
+                       aid, form["id"], type(e).__name__)
+        return
+    await ef.drop_pending(row["id"])
+    counts["done"] += 1
+
+
 async def drain_pending(limit: int = 50) -> dict:
     counts = {"done": 0, "retry": 0, "dropped": 0, "reauth": 0}
     now = msk_now().replace(tzinfo=None)
@@ -112,6 +150,10 @@ async def drain_pending(limit: int = 50) -> dict:
         if form is None:
             await ef.drop_pending(row["id"])
             counts["dropped"] += 1
+            continue
+
+        if form.get("ingest_mode") == "push":
+            await _drain_push_row(row, form, now, counts)
             continue
 
         cid = form.get("connection_id")
@@ -169,6 +211,8 @@ async def drain_pending(limit: int = 50) -> dict:
 
 async def reconcile_form(form: dict) -> int:
     """Недостающие в базе answer_id формы -> очередь. Возвращает число новых строк очереди."""
+    if form.get("ingest_mode") == "push":
+        return 0  # личная форма: API Яндекса её не читает, ответы приходят телом вебхука
     raw_conn = await ef.get_connection(form["connection_id"]) if form.get("connection_id") else None
     conn = await ensure_fresh_token(raw_conn) if raw_conn else None
     if conn is None:
@@ -197,6 +241,8 @@ async def backfill_form(form_id: int) -> int:
 async def reconcile_all() -> dict:
     enqueued = 0
     for form in await ef.list_active_forms("yandex"):
+        if form.get("ingest_mode") == "push":
+            continue
         raw_conn = await ef.get_connection(form["connection_id"]) if form.get("connection_id") else None
         if raw_conn is None or raw_conn.get("status") == "needs_reauth":
             continue
