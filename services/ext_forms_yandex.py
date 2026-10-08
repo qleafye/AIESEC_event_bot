@@ -92,6 +92,15 @@ def _reason_for(status: int) -> str:
     return "bad_response"
 
 
+def _org_required(response: httpx.Response) -> bool:
+    """Яндекс шлёт detail с \\uXXXX-экранированием — в сыром тексте кириллицы нет, читаем JSON."""
+    try:
+        detail = str((response.json() or {}).get("detail") or "")
+    except (ValueError, AttributeError):
+        detail = response.text
+    return "организац" in detail.lower()
+
+
 async def _request(method: str, url: str, *, headers: dict | None = None,
                    data: dict | None = None) -> dict:
     path = urlsplit(url).path
@@ -102,7 +111,7 @@ async def _request(method: str, url: str, *, headers: dict | None = None,
         logger.warning("yandex %s %s: сеть недоступна", method, path)
         raise YandexApiError("upstream_unavailable") from None
     logger.info("yandex %s %s -> %s", method, path, response.status_code)
-    if response.status_code == 400 and "организац" in response.text.lower():
+    if response.status_code == 400 and _org_required(response):
         # «Требуется организация»: API Форм отдаёт только формы организации (Яндекс 360 или
         # Yandex Cloud); форма личного аккаунта и вход без ID организации так не читаются.
         raise YandexApiError("org_required", 400)
