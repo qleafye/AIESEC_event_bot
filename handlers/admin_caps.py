@@ -524,6 +524,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "cksf_day:*": "broadcast",
     "cksf_pick:*": "broadcast",
     "cksf_cancel": "broadcast",
+    # Фильтры рассылки «Записан на сессию / Не записался / Не прошёл тест» и сезон в рассылке.
+    "enrf_*": "broadcast",
+    "bcseason_*": "broadcast",
     "extff_*": "broadcast",
     "sched_cancel_*": "broadcast",
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
@@ -681,6 +684,12 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:ProgramSessionField:*": "settings",
     "state:ProgramHallName:*": "settings",
     "state:ProgramDayCustom:*": "settings",
+    # Запись на сессии и тест компетенций: треки, компетенции, лимит мест, правка и импорт теста.
+    "state:ProgramTrackEdit:*": "settings",
+    "state:ProgramCompetencyEdit:*": "settings",
+    "state:ProgramEnrollLimit:*": "settings",
+    "state:QuizEdit:*": "settings",
+    "state:QuizImport:*": "settings",
     "state:ProgramPhotoUpload:*": "settings",
     # Quick 260911-805 (W4-03): «🌙 Тихие часы» — тот же класс экрана настроек, что «🧾 Поля
     # карточки заявки»/«🧮 Правила балла» выше (D-02: deny-by-default — без записи строка
@@ -803,6 +812,8 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Quick 260815-3hw (Task 3): confirm-gate on overwriting an existing Google Sheets tab.
     "sheets_tab_confirm": "settings",
     "sheets_tab_cancel": "settings",
+    # Подтверждение «пропала подстановка» при правке текста настройки.
+    "phchk_*": "settings",
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» —
     # переименовать / писать в существующую / завести новую пустую (отмена — sheets_tab_cancel
     # выше, тот же гейт).

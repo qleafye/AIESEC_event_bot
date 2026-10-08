@@ -57,6 +57,7 @@ from services.game_digest import game_submit_notify_button_text  # Quick 260822:
 from services.program import own_program_photo  # строка «📅 Программа» при городе в шапке
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
+from keyboards.menu_dynamic import is_dynamic_menu_text
 from handlers.reg_schema import (
     REG_FLOW,
     dropout_step_label,
@@ -2656,7 +2657,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # СРАБОТАТЬ: чистим FSM и уходим через SkipHandler, admin.router подключён первым
     # (main.py), поэтому событие продолжит путь к user_actions.router, где живёт реальный
     # обработчик этой подписи.
-    if value in all_menu_button_texts():
+    # Подписи динамических кнопок (запись на сессии, тест) настраиваются — тоже не значение.
+    if value in all_menu_button_texts() or await is_dynamic_menu_text(value):
         await state.clear()
         logger.info(
             f"admin {message.from_user.id}: подпись кнопки меню «{value}» пришла как "
