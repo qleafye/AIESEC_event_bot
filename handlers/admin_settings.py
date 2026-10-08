@@ -1875,6 +1875,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # SETTINGS_FIELDS (D-18) — fall back to the registry itself for the prompt (Phase 6
     # D-13, registry-as-source) before the last-resort literal.
     prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
+    prompt += ph.hint_line(key)
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
     # Quick 260822: списочный ключ правится по пунктам (handlers/admin_settings_lists.py) —
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
@@ -2033,6 +2034,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     entry = SETTINGS_SCHEMA.get(key, {})
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
     prompt = prompts.get(key) or entry.get("prompt") or "Введите значение"
+    prompt += ph.hint_line(key)
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"
@@ -2619,6 +2621,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         value = (message.html_text or message.text or "").strip()
     else:
         value = (message.text or "").strip()
+    value = data.get("ph_ack") or value  # подтверждённый текст с подстановками (шов admin_settings_placeholders)
 
     # Guard: a non-text message (sticker/photo/voice/forwarded media) or a whitespace-only
     # send yields value == "" here. Storing "" is never a meaningful value — the registry's
@@ -2713,6 +2716,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         if error:
             await message.answer(error, parse_mode="HTML")
             return
+        if await ph.gate(message, state, key, value):  # пропавшая/опечатанная {подстановка}
+            return
 
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
     # ДО гейта 260815-3hw ниже (тот смотрит только на НОВОЕ имя, про брошенную старую не
@@ -2799,6 +2804,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
 
     per_city_base = data.get("per_city_base")
     await state.clear()
+    if value != "-":
+        await ph.send_preview(message, key, value)
     if per_city_base:
         # Phase 09.3 (06, CITY-09): a per-city save/clear returns to the SAME header-aware
         # editor screen, not the general settings landing (RESEARCH Pattern 3 lineage — reuse
@@ -2958,3 +2965,4 @@ from handlers import admin_miniapp_theme  # noqa: E402,F401
 # after admin_miniapp_theme, so its handler lands right after every handler above at any
 # module import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_sections  # noqa: E402,F401
+from handlers import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
