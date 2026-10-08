@@ -79,3 +79,18 @@ def test_dashboard_switcher_and_age_cut_render(tmp_path):
     resp = client.get("/", params={"who": "'; DROP TABLE users"})
     assert resp.status_code == 200
     assert "Кто подаёт</h2>" in resp.text
+
+
+def test_city_switcher_keeps_approved_mode(tmp_path):
+    db_path = render._use_tmp_db(tmp_path)
+    render._seed(
+        cities=[("msk", "Москва", 1, 0), ("spb", "СПб", 1, 1)],
+        settings={"event_city_enabled": "on"},
+        users=_users(),
+    )
+    client = render._stats_manager_client(db_path)
+    text = client.get("/", params={"who": "approved"}).text
+    assert 'href="?city=spb&who=approved"' in text
+    assert 'href="?who=approved">Все города' in text
+    text = client.get("/").text
+    assert 'href="?city=spb"' in text
