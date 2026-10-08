@@ -163,7 +163,9 @@ def test_active_quiz_for_city(tmp_path):
         assert await qz.active_quiz_for_city(CITY) is None
         await qz.update_quiz(q["id"], enabled=1)
         assert await qz.active_quiz_for_city(CITY) is None  # нет вопросов
-        await qz.create_question(q["id"], "В")
+        qid = await qz.create_question(q["id"], "В")
+        assert await qz.active_quiz_for_city(CITY) is None  # вопрос без вариантов
+        await qz.create_option(qid, "Да")
         assert (await qz.active_quiz_for_city(CITY))["id"] == q["id"]
         await qz.update_quiz(q["id"], enabled=0)
         assert await qz.active_quiz_for_city(CITY) is None
