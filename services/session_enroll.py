@@ -51,6 +51,8 @@ ENROLL_TEXT_KEYS: tuple[str, ...] = (
     "session_enroll_not_approved_text",
     "session_enroll_disabled_text",
     "session_enroll_no_sessions_text",
+    "session_enroll_unavailable_text",
+    "session_enroll_scan_error_text",
     "session_enroll_scan_other_text",
     "session_enroll_scan_none_text",
     "session_enroll_scan_rebook_button",
@@ -59,6 +61,10 @@ ENROLL_TEXT_KEYS: tuple[str, ...] = (
 )
 
 _DEADLINE_FMT = "%d.%m.%Y %H:%M"
+
+
+# сессия удалена, без трека или чужого города — для человека это «сессия недоступна»
+_UNAVAILABLE_STATUSES = frozenset({"wrong_city", "not_enrollable", "no_session"})
 
 
 @dataclass
@@ -72,6 +78,10 @@ class EnrollOutcome:
     replaced: list[dict] = field(default_factory=list)
     text_key: str | None = None
     denial: str | None = None
+
+    def __post_init__(self):
+        if self.text_key is None and self.status in _UNAVAILABLE_STATUSES:
+            self.text_key = "session_enroll_unavailable_text"
 
 
 def overlaps(a: dict, b: dict) -> bool:
@@ -298,8 +308,9 @@ async def scan_hint(user: dict, session_id: int) -> dict | None:
             hint = await get_setting_typed_for_city("session_enroll_scan_none_text", city)
             action, label_key = "book", "session_enroll_scan_book_button"
         label = await get_setting_typed_for_city(label_key, city)
+        error = await get_setting_typed_for_city("session_enroll_scan_error_text", city)
         return {"hint": hint, "enroll": {"action": action, "session_id": session["id"],
-                                         "label": label}}
+                                         "label": label, "error": error}}
     except Exception:
         logger.exception("scan_hint(%s) не отработал", session_id)
         return None

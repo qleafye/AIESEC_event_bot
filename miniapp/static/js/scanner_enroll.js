@@ -8,7 +8,7 @@ export function enrollButton(res, { h, api, say, failureText, refreshCounters, t
   btn.addEventListener("click", async () => {
     if (btn.hasAttribute("disabled")) return;
     btn.setAttribute("disabled", "");
-    const fallback = "Не получилось записать — попробуйте ещё раз";
+    const fallback = res.enroll.error || ""; // текст приходит с сервера (реестр настроек)
     try {
       const out = await api("/checkin/enroll", {
         method: "POST", timeoutMs,
