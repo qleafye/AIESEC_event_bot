@@ -5,7 +5,7 @@ App (тумблеры/разделы) — точка входа в блок пр
 импортируется из ХВОСТА `handlers/admin_settings.py`, ПОСЛЕДНЕЙ строкой (после
 `admin_dashboard`), как и остальные швы Phase 13/15.
 
-Что здесь: два тумблера («Mini App включён», «Только менеджерам»), восемь чекбоксов разделов
+Что здесь: два тумблера («Приложение включено», «Только менеджерам»), восемь чекбоксов разделов
 приложения (`miniapp_section_*`, подписи из SETTINGS_SCHEMA — код ключа менеджеру никогда не
 показывается, CLAUDE.md «бот для людей») и кнопка входа в пресеты/ручки кастома. Сама правка
 цвета/шрифта/лого/обложки/стикеров (D-04/D-20) — ВТОРОЙ шов, `handlers/admin_miniapp_theme.py`
@@ -104,7 +104,7 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
 
     buttons = [
         [InlineKeyboardButton(
-            text=("✅ " if enabled else "☐ ") + "Mini App включён",
+            text=("✅ " if enabled else "☐ ") + "Приложение включено",
             callback_data="miniapp_toggle_enabled",
         )],
         [InlineKeyboardButton(

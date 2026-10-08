@@ -426,7 +426,7 @@ SETTINGS_GROUPS = [
     # near the registration settings, not buried at the tail of the settings list.
     ("📄 Вкладки таблицы", "sheets", _SHEETS_FIELD_ORDER),
     ("💳 Оплата", "pay", _PAY_FIELD_ORDER),
-    ("🎉 Party", "party", _PARTY_FIELD_ORDER),
+    ("🎉 Вечеринка", "party", _PARTY_FIELD_ORDER),
     ("📋 Согласия", "consent", _CONSENT_FIELD_ORDER),
     ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
     ("🤝 Амбассадоры", "amb", _AMB_FIELD_ORDER),

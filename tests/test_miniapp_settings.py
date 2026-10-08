@@ -378,7 +378,7 @@ def test_preset_pick_sends_text_fallback_when_preview_missing(tmp_path, monkeypa
     assert callback.message.photo_calls == []
     assert callback.message.answers_sent  # fail-soft: тот же вопрос текстом
     text = callback.message.answers_sent[-1]
-    assert "ЮЛид" in text
+    assert "Юлид" in text
 
 
 def test_preset_pick_unknown_name_rejected(tmp_path):
@@ -412,7 +412,7 @@ def test_preset_apply_writes_all_handles_at_once(tmp_path):
     expected = dict(web_theme.PRESETS["youlead"])
     expected["preset"] = "youlead"
     assert values == expected
-    assert callback.answers and "ЮЛид" in callback.answers[0][0]
+    assert callback.answers and "Юлид" in callback.answers[0][0]
     # применение шлёт свежий экран отдельным сообщением
     assert callback.message.answers_sent
 

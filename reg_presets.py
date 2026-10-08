@@ -100,7 +100,7 @@ REG_PRESETS = {
         ],
     },
     "conf": {
-        "label": "🎤 Конференция (RusCo)",
+        "label": "🎤 Конференция",
         "payment_enabled": "on",
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
@@ -111,7 +111,7 @@ REG_PRESETS = {
         ],
     },
     "party": {
-        "label": "🎉 Party",
+        "label": "🎉 Вечеринка",
         # Phase 5 (D-07): NO "payment_enabled" key here — the party preset must never touch
         # the payment module (party pricing is D-16/D-17 in plan 05-05, a separate concern).
         # setting_key spellings (not step_keys) — the shared confirm dialog in admin.py
