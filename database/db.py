@@ -2047,6 +2047,12 @@ async def init_db():
         # в листе. В отличие от mirror_error НЕ останавливает очередь листа: иначе неустранимое
         # предупреждение зациклило бы «включить запись → снова ошибка».
         await _ensure_column(db, "external_forms", "mirror_warning", "TEXT")
+        # Как форма получает ответы: 'api' — бот читает их из API Яндекса (формы организации),
+        # 'push' — личная форма, ответы приходят телом запроса интеграции. Старые формы — 'api'.
+        await _ensure_column(db, "external_forms", "ingest_mode", "TEXT DEFAULT 'api'")
+        # Последняя проблема приёма push-формы (запрос пришёл без ответов); снимается первым
+        # нормальным ответом. Показывается в карточке формы.
+        await _ensure_column(db, "external_forms", "push_warning", "TEXT")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2099,6 +2105,9 @@ async def init_db():
                 UNIQUE(form_id, answer_id)
             )
         ''')
+        # Тело запроса интеграции push-формы: приёмник живёт в процессе Mini App и только
+        # складывает его сюда, разбирает и сохраняет процесс бота.
+        await _ensure_column(db, "external_form_pending", "payload", "TEXT")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_ext_pending_due "
             "ON external_form_pending(next_try_at, id)"
