@@ -57,7 +57,7 @@ def test_every_non_on_off_enum_has_option_labels():
 
 
 def test_option_labels_youlead_is_cyrillic_brand():
-    assert option_labels("miniapp_theme_preset")["youlead"] == "ЮЛид"
+    assert option_labels("miniapp_theme_preset")["youlead"] == "Юлид"
 
 
 def test_option_label_known_and_unknown_code():
@@ -100,7 +100,7 @@ def test_theme_preset_spec_has_all_four_option_labels_and_coded_options(tmp_path
     body = client.get("/app/api/admin/settings/all", headers=_hdr(ADMIN_ID)).json()
     item = _item(body, "miniapp_theme_preset")
     assert set(item["options"]) == {"bluebook", "youlead", "realtalk", "custom"}
-    assert item["option_labels"]["youlead"] == "ЮЛид"
+    assert item["option_labels"]["youlead"] == "Юлид"
     assert len(item["option_labels"]) == 4
 
 
@@ -110,7 +110,7 @@ def test_theme_preset_display_is_label_not_code(tmp_path):
     _set("miniapp_theme_preset", "youlead")
     body = client.get("/app/api/admin/settings/all", headers=_hdr(ADMIN_ID)).json()
     item = _item(body, "miniapp_theme_preset")
-    assert item["display"] == "ЮЛид"
+    assert item["display"] == "Юлид"
 
 
 def test_on_off_key_has_no_option_labels_and_unchanged_display(tmp_path):

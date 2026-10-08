@@ -340,7 +340,7 @@ export function showState(state, detail) {
     card.append(h("p", { text: ds.openInBotText }));
     const actions = h("div", { class: "actions" });
     if (ds.deepLink) {
-      actions.append(h("a", { class: "btn", href: ds.deepLink, text: "Открыть в Telegram" }));
+      actions.append(h("a", { class: "btn", href: ds.deepLink, text: "Открыть в Телеграме" }));
     }
     // Запасной вход менеджера (D-05): Login Widget дашборда. Показывается всегда — браузер
     // не знает, кто перед ним. Адрес относительный и не берётся из данных (T-19-75).
