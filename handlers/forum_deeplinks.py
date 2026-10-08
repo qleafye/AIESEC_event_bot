@@ -1,4 +1,4 @@
-"""Deep-link'и форумных модулей: `/start sessions` (запись на сессии), позже `/start quiz`.
+"""Deep-link'и форумных модулей: `/start sessions` (запись на сессии), `/start quiz` (тест компетенций).
 
 Закрытый словарь литералов -> «модуль:функция»: произвольная строка из `/start` ничего не
 импортирует и не исполняет. Функция получает (message, state) и возвращает True, если
@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 DEEPLINKS: dict[str, str] = {
     "sessions": "handlers.session_enroll:open_from_deeplink",
+    "quiz": "handlers.quiz:open_from_deeplink",
 }
 
 
