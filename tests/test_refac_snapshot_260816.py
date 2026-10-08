@@ -1000,6 +1000,9 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|phchk_save|phchk_save
+admin|callback_query|phchk_fix|phchk_fix
+admin|callback_query|phchk_retry|phchk_retry
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1062,6 +1065,15 @@ admin|callback_query|extff_start|extff_start
 admin|callback_query|extff_form|extff_form:*
 admin|callback_query|extff_pick|extff_pick:*
 admin|callback_query|extff_cancel|extff_cancel
+admin|callback_query|bcseason_all|bcseason_all
+admin|callback_query|bcseason_cur|bcseason_cur
+admin|callback_query|bcseason_only|bcseason_only
+admin|callback_query|bcseason_sched|bcseason_sched
+admin|callback_query|enrf_start|enrf_start:*
+admin|callback_query|enrf_city_pick|enrf_city:*
+admin|callback_query|enrf_day_pick|enrf_day:*
+admin|callback_query|enrf_session_pick|enrf_pick:*
+admin|callback_query|enrf_cancel|enrf_cancel
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2257,7 +2269,8 @@ def test_snapshot_total_handler_count_is_292():
     # (extf_push_title, ExtFormConnect.push_title) сразу после extf_connect_link и +2
     # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
     # две чистые вставки (1070 -> 1073).
-    assert len(GOLDEN_SNAPSHOT) == 1073
+    # Запись на сессии и тест: сезон и фильтры записи/теста в рассылке, подтверждение подстановок (admin_broadcast_season, admin_broadcast_enroll_filter, admin_settings_placeholders); чистые вставки, SequenceMatcher (1073 -> 1085).
+    assert len(GOLDEN_SNAPSHOT) == 1085
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

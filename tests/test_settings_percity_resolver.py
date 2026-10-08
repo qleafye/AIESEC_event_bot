@@ -36,7 +36,7 @@ EXPECTED_PER_CITY_KEYS = {
     "start_text", "start_text_registered", "reg_complete_text", "approve_text",
     "contact_person", "contact_vk", "contact_tg", "event_date", "event_time",
     "event_place_name", "event_place_address", "registration_mode",
-    "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_speakers",
+    "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_session_enroll", "menu_quiz", "menu_speakers",
     "menu_contacts", "menu_question", "menu_faq", "menu_coins", "menu_game_tasks",
     "menu_miniapp",
     # Запись на сессии и тест компетенций: тумблер, дедлайн и тексты — свои у города.
