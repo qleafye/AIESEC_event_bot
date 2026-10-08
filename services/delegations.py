@@ -2,7 +2,8 @@
 превращение его в одобренного участника без анкеты.
 
 Источник — Яндекс Форма делегаций, подключённая через внешние формы (`services/ext_forms_*`).
-Каждый новый ответ формы из настройки `delegation_form_id` проходит три шага:
+Каждый новый ответ формы из настройки `delegation_form_id` проходит три шага
+(одобряет и пишет людям модуль только после «✅ Включить делегации» — `is_armed()`):
 
 1. **Вердикт ЦА** (`evaluate`): курс из свободного текста разбирает
    `services.delegations_course`, отсечка и список курсов «не ЦА» берутся из реестра. Исходов
@@ -108,6 +109,23 @@ async def delegation_form_id() -> int | None:
         return int(str(raw).strip())
     except (TypeError, ValueError):
         return None
+
+
+async def armed_form_id() -> int | None:
+    """id формы, для которой менеджер нажал «✅ Включить делегации»; пусто или мусор — None."""
+    try:
+        raw = await get_setting_typed("delegation_armed_form_id")
+        if raw is None or str(raw).strip() == "":
+            return None
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+async def is_armed() -> bool:
+    """Модуль включён: форма выбрана и включение нажато именно для неё (смена формы выключает)."""
+    dfid = await delegation_form_id()
+    return dfid is not None and await armed_form_id() == dfid
 
 
 def cutoff_dt(value) -> datetime | None:
@@ -488,8 +506,12 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
     result: dict = {"ta": ta, "row_id": row["id"], "reason": reason}
     changed = before is None or before.get("ta_status") != ta
     converted = False
+    armed = await is_armed()
 
-    if ta == "ok" and row.get("linked_telegram_id") is None:
+    if ta == "ok" and row.get("linked_telegram_id") is None and not armed:
+        # Делегации не включены: ответ оценён, но человека не ищем, не одобряем, не пишем.
+        result["waiting"] = "not_armed"
+    elif ta == "ok" and row.get("linked_telegram_id") is None:
         # Только по нику из формы, свежим поиском: `matched_telegram_id` мог встать по
         # телефону (кто владеет номером, тот и «делегат») или устареть после смены ника.
         tid, _where = await find_person(fields["username_needle"])
@@ -533,6 +555,8 @@ async def try_delegate_start(message, state, bot) -> bool:
     """Поздний вход из `cmd_start`: ответ делегата уже пришёл, человек только что нажал /start.
     Один SELECT по нику; промах — False без побочных эффектов. Решение — через `decide_link`,
     как у синка: отклонённого в боте не превращаем молча и не отбрасываем без следа."""
+    if not await is_armed():
+        return False
     from_user = getattr(message, "from_user", None)
     needle = username_needle(getattr(from_user, "username", None))
     if needle is None:
@@ -541,6 +565,8 @@ async def try_delegate_start(message, state, bot) -> bool:
     if not rows:
         return False
     row = rows[0]
+    if int(row["form_id"]) != await delegation_form_id():
+        return False
     tid = from_user.id
     user = await get_user(tid)
     verdict = decide_link(row, user, tid, how=LINK_HOW_USERNAME)
@@ -577,10 +603,11 @@ async def sweep_pending(limit: int = 200, *, reevaluate: bool = False) -> dict:
         evaluated += 1
         if res.get("converted"):
             linked += 1
-    for r in await ddb.list_by_status(dfid, "ok", linked=False, offset=0, limit=limit):
-        res = await on_answer_available(dfid, r["answer_id"], reason="sweep")
-        if res.get("converted"):
-            linked += 1
+    if await is_armed():
+        for r in await ddb.list_by_status(dfid, "ok", linked=False, offset=0, limit=limit):
+            res = await on_answer_available(dfid, r["answer_id"], reason="sweep")
+            if res.get("converted"):
+                linked += 1
     if reevaluate:
         for aid in sorted(await ef.known_answer_ids(dfid)):
             res = await on_answer_available(dfid, aid, reason="reevaluate")

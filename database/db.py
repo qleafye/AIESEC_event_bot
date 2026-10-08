@@ -2609,6 +2609,15 @@ async def init_db():
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
 
+        # Делегации вузов включаются кнопкой менеджера. Стенды/РилТолк, где форма уже выбрана и
+        # модуль работал до гейта, остаются включёнными; прод без формы — выключен. Выключение
+        # пишет '' (строка существует), поэтому повторный старт модуль обратно не включит.
+        await db.execute(
+            "INSERT OR IGNORE INTO bot_settings (key, value) "
+            "SELECT 'delegation_armed_form_id', value FROM bot_settings "
+            "WHERE key = 'delegation_form_id' AND trim(value) != ''"
+        )
+
         await db.commit()
 
 # Perf (стенд 17.09: `/app/api/admin/settings/all` — 4.65 с / 2239 отдельных SQLite-
