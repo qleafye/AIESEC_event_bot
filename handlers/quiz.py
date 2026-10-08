@@ -66,7 +66,7 @@ async def _question_screen(target: types.Message, ctx: _Ctx, attempt: dict, *,
 
 async def _result_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, edit: bool) -> None:
     lines = await svc.result_lines(ctx.user["telegram_id"], quiz)
-    if lines is None:
+    if not lines:  # результата нет или нет оцениваемых компетенций — показываем заглушку
         await _show(target, await ctx.t("quiz_no_result_text"), None, edit=edit)
         return
     no_level = await ctx.t("quiz_no_level_label")

@@ -160,7 +160,18 @@ async def active_quiz_for_city(city: str) -> dict | None:
     quiz = await get_quiz_for_city(city)
     if not quiz or not quiz["enabled"] or not await count_questions(quiz["id"]):
         return None
+    if await first_question_without_options(quiz["id"]) is not None:
+        return None  # вопрос без вариантов нельзя ни пройти, ни пропустить
     return quiz
+
+
+async def first_question_without_options(quiz_id: int) -> tuple[int, dict] | None:
+    """(номер, вопрос) первого вопроса без единого варианта ответа; None — все с вариантами."""
+    options = await list_options_for_quiz(quiz_id)
+    for number, question in enumerate(await list_questions(quiz_id), start=1):
+        if not options.get(question["id"]):
+            return number, question
+    return None
 
 
 # ── Вопросы ──────────────────────────────────────────────────────────────────────────────────
