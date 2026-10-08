@@ -150,3 +150,18 @@ def test_limit_below_enrolled_and_time_change_ask_confirmation(tmp_path):
         assert (await db.get_program_session(p["A"]))["start_time"] == "12:00"
 
     run(go())
+
+
+def test_parallel_start_gives_single_open_attempt(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        quiz = await qz.get_or_create_quiz(CITY)
+        a = await qz.create_attempt(7, quiz["id"], quiz["content_version"])
+        b = await qz.create_attempt(7, quiz["id"], quiz["content_version"])
+        assert a == b and await qz.count_open_attempts(quiz["id"]) == 1
+        await qz.finish_attempt(a, {})
+        c = await qz.create_attempt(7, quiz["id"], quiz["content_version"])
+        assert c != a
+
+    run(go())
