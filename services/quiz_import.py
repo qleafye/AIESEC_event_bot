@@ -121,6 +121,12 @@ def parse_csv(raw: bytes, competency_ids_by_name: dict[str, int], points_max: in
                 parsed.unknown_competencies.append(comp)
             continue
         last_option["points"][cid] = value
+    for number, question in enumerate(parsed.questions, start=1):
+        if not question["options"] and not parsed.errors:
+            parsed.errors.append(
+                f"Вопрос {number} «{question['text'][:60]}» без вариантов ответа. "
+                "Добавьте хотя бы один вариант во вторую колонку."
+            )
     if not parsed.questions and not parsed.errors:
         parsed.errors.append("В файле не нашлось ни одного вопроса.")
     return parsed

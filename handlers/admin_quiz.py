@@ -139,6 +139,15 @@ async def prog_qzsw(callback: types.CallbackQuery):
     if await deny(callback, code):
         return
     quiz = await quiz_by_code(code)
+    if not quiz["enabled"]:
+        broken = await qdb.first_question_without_options(quiz["id"])
+        if broken:
+            await callback.answer(
+                f"Нельзя включить: у вопроса {broken[0]} «{broken[1]['text'][:60]}» нет вариантов "
+                "ответа. Добавьте хотя бы один вариант или удалите вопрос.",
+                show_alert=True,
+            )
+            return
     await qdb.update_quiz(quiz["id"], enabled=0 if quiz["enabled"] else 1)
     await _show_quiz(callback, code, "Сохранено.")
 

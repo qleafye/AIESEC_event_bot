@@ -122,8 +122,11 @@ async def current_question(attempt: dict) -> tuple[dict, list[dict], int, int] |
     questions = await quiz_db.list_questions(attempt["quiz_id"])
     answers = attempt.get("answers") or {}
     for index, question in enumerate(questions, start=1):
-        if question["id"] not in answers:
-            return question, await quiz_db.list_options(question["id"]), index, len(questions)
+        if question["id"] in answers:
+            continue
+        options = await quiz_db.list_options(question["id"])
+        if options:  # вопрос без вариантов не показываем: ответить на него нельзя
+            return question, options, index, len(questions)
     return None
 
 
