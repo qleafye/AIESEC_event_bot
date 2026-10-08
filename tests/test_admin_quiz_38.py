@@ -267,7 +267,7 @@ def test_stats_screen(tmp_path):
     pro = run(qdb.create_level(quiz["id"], "Продвинутый", 60))
     for tid, level in ((1, base), (2, pro)):
         att = run(qdb.create_attempt(tid, quiz["id"], quiz["content_version"]))
-        run(qdb.finish_attempt(att, {cid: {"points": 3, "max": 5, "level_id": level}}))
+        run(qdb.finish_attempt(att, {cid: {"points": 1 if tid == 1 else 3, "max": 5, "level_id": level}}))
     run(qdb.create_attempt(3, quiz["id"], quiz["content_version"]))
     cb = FakeCallback("prog_qzst:msk")
     run(lv.prog_qzst(cb))

@@ -138,6 +138,9 @@ async def answer(telegram_id: int, attempt_id: int, question_id: int, option_id:
     if attempt["finished_at"]:
         return "finished"
     quiz_id = attempt["quiz_id"]
+    current_quiz = await quiz_db.get_quiz(quiz_id)
+    if not current_quiz or attempt["content_version"] != current_quiz["content_version"]:
+        return "restarted"  # вопросы или баллы поменяли — попытка по смеси версий недопустима
     options_by_question = await quiz_db.list_options_for_quiz(quiz_id)
     if not any(o["id"] == int(option_id) for o in options_by_question.get(int(question_id), [])):
         return "bad_option"
@@ -159,6 +162,14 @@ async def answer(telegram_id: int, attempt_id: int, question_id: int, option_id:
     return "done"
 
 
+def _current_level(item: dict, levels: list[dict], quiz: dict) -> dict | None:
+    """Уровень по СОХРАНЁННЫМ баллам и максимуму, но по ТЕКУЩИМ порогам и режиму теста: правка
+    порогов менеджером применяется и к уже прошедшим. Нет сохранённых баллов — старый level_id."""
+    if "points" in item and "max" in item:
+        return level_for(int(item["points"]), int(item["max"]), levels, quiz["score_mode"])
+    return next((lv for lv in levels if lv["id"] == item.get("level_id")), None)
+
+
 async def result_lines(telegram_id: int, quiz: dict) -> list[dict] | None:
     """[{competency, level_name, level_description}] по последней законченной попытке; None —
     результата нет."""
@@ -166,13 +177,13 @@ async def result_lines(telegram_id: int, quiz: dict) -> list[dict] | None:
     if not attempt:
         return None
     scores = attempt.get("scores") or {}
-    levels = {lv["id"]: lv for lv in await quiz_db.list_levels(quiz["id"])}
+    level_list = await quiz_db.list_levels(quiz["id"])
     lines = []
     for comp in await session_enroll_db.list_competencies(quiz["city"]):
         item = scores.get(comp["id"])
         if not isinstance(item, dict):
             continue
-        level = levels.get(item.get("level_id"))
+        level = _current_level(item, level_list, quiz)
         lines.append({
             "competency": comp["name"],
             "level_name": level["name"] if level else None,
@@ -193,7 +204,7 @@ async def retake(telegram_id: int, quiz: dict) -> dict | None:
 async def stats(quiz: dict) -> dict:
     """{started, finished, by_competency: {название: {уровень | None: людей}}}."""
     counts = await quiz_db.attempt_counts(quiz["id"])
-    levels = {lv["id"]: lv["name"] for lv in await quiz_db.list_levels(quiz["id"])}
+    level_list = await quiz_db.list_levels(quiz["id"])
     names = {c["id"]: c["name"] for c in await session_enroll_db.list_competencies(quiz["city"])}
     by_comp: dict[str, dict] = {}
     for row in await quiz_db.list_finished_scores(quiz["id"]):
@@ -201,6 +212,7 @@ async def stats(quiz: dict) -> dict:
             if cid not in names or not isinstance(item, dict):
                 continue
             bucket = by_comp.setdefault(names[cid], {})
-            level_name = levels.get(item.get("level_id"))
+            level = _current_level(item, level_list, quiz)
+            level_name = level["name"] if level else None
             bucket[level_name] = bucket.get(level_name, 0) + 1
     return {"started": counts["started"], "finished": counts["finished"], "by_competency": by_comp}
