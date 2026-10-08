@@ -148,6 +148,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "event_name_genitive",
         # 25.09: «🗓 Сколько дней идёт форум» (ключ sos_active_days) — под датой начала форума.
         "sos_active_days",
+        # 08.10: описание бота до /start и строка «О боте».
+        "bot_description", "bot_short_description",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
