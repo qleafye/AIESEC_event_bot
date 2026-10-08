@@ -166,6 +166,8 @@ async def enroll(telegram_id: int, session_id: int, *, confirm_replace: bool = F
         return EnrollOutcome("not_enrollable", session=session)
     if await deadline_passed(city):
         return EnrollOutcome("deadline", session=session, text_key="session_enroll_err_deadline")
+    if session_id in await _edb.user_enrollment_ids(telegram_id):
+        return EnrollOutcome("already", session=session)  # занял последнее место — не «мест нет»
     state = await session_open_state(session)
     if state == "closed":
         return EnrollOutcome("closed", session=session, text_key="session_enroll_err_closed")
@@ -222,6 +224,7 @@ async def unenroll(telegram_id: int, session_id: int) -> EnrollOutcome:
     if await deadline_passed(city):
         return EnrollOutcome("deadline", session=session, text_key="session_enroll_err_deadline")
     if session.get("enroll_closed"):
+        # задумано: менеджер закрыл запись на сессию — состав зафиксирован, самому не выйти
         return EnrollOutcome("closed", session=session, text_key="session_enroll_err_closed")
     await _edb.unenroll(telegram_id, session_id)
     return EnrollOutcome("ok", session=session)

@@ -165,3 +165,22 @@ def test_parallel_start_gives_single_open_attempt(tmp_path):
         assert c != a
 
     run(go())
+
+
+def test_already_enrolled_on_full_session_is_not_full(tmp_path):
+    from cities import per_city_key
+    from services import session_enroll as svc
+
+    ready(tmp_path)
+
+    async def go():
+        p = await seed_msk_program()
+        d = await seed_delegates()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(per_city_key("session_enroll_enabled", CITY), "on")
+        await db.update_program_session(p["A"], enroll_limit=1)
+        assert (await svc.enroll(d["cur1"], p["A"])).status == "ok"
+        assert (await svc.enroll(d["cur1"], p["A"])).status == "already"
+        assert (await svc.enroll(d["cur2"], p["A"])).status == "full"
+
+    run(go())
