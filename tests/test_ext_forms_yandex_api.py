@@ -198,3 +198,13 @@ def test_detect_org_header(monkeypatch, accepts, expected):
         return httpx.Response(400, json={"detail": "Требуется организация"})
     _patch(monkeypatch, handler)
     assert asyncio.run(Y.detect_org_header(CONN, "bpf1a2b3c4d5e6f7g8h9")) == expected
+
+
+def test_org_required_reason_on_real_escaped_body(monkeypatch):
+    # Настоящий ответ прода: кириллица в detail приходит \uXXXX-экранированной.
+    body = b'{"detail": "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u043e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f"}'
+    _patch(monkeypatch, lambda req: httpx.Response(
+        400, content=body, headers={"content-type": "application/json"}))
+    with pytest.raises(Y.YandexApiError) as ei:
+        asyncio.run(Y.get_survey(CONN, "6aa022f0068ff027eaba0bcb"))
+    assert ei.value.reason == "org_required"
