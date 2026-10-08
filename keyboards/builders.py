@@ -11,6 +11,7 @@ from cities import default_city_code, get_setting_typed_for_city, cities_module_
 # докстринг), тоже без цикла.
 from i18n_ui_en import MENU_EN
 from services.i18n import resolve_lang
+from keyboards.menu_dynamic import DYNAMIC_MENU_LABEL_KEYS, caption_for
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
 # aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
@@ -46,6 +47,11 @@ MENU_BUTTONS = [
     # (program_on = фото ЕСТЬ или у города есть хоть одна сессия) — тот же приём, что раньше
     # был только у menu_schedule (`has_program_sessions_for_city`).
     ("menu_program", "📅 Программа форума"),
+    # Запись на сессии и тест компетенций: подпись настраивается по городу
+    # (keyboards.menu_dynamic.caption_for), здесь — дефолт для входного матчинга и реестра.
+    # Вторые гейты: модуль записи включён / у города есть активный тест.
+    ("menu_session_enroll", "📅 Запись на сессии"),
+    ("menu_quiz", "🧭 Тест"),
     ("menu_speakers", "🗣 Спикеры"),
     ("menu_contacts", "📞 Контакты"),
     ("menu_question", "❓ Задать вопрос"),
@@ -308,6 +314,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: is_forum_day_menu_active_for_city resolve failed for {telegram_id}: {e}")
         forum_day_on = False
 
+    # Запись на сессии / тест: вторые гейты, одно чтение до цикла, fail-soft к «скрыть».
+    enroll_on = False
+    quiz_on = False
+    try:
+        enroll_city = code if code is not None else default_city_code()
+        from services.session_enroll import module_enabled as _enroll_enabled
+        enroll_on = await _enroll_enabled(enroll_city)
+        from database.quiz_db import active_quiz_for_city
+        quiz_on = await active_quiz_for_city(enroll_city) is not None
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: enroll/quiz gates resolve failed for {telegram_id}: {e}")
+
     collected: list[tuple[str, str]] = []
     for key, text in MENU_BUTTONS:
         if conference:
@@ -353,6 +371,14 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             # Форум-ночь п.8 (SOS): вторая половина гейта — сама кнопка value=="on"
             # недостаточна вне дней форума города.
             if key == "menu_sos" and not sos_on:
+                continue
+            if key == "menu_session_enroll" and not enroll_on:
+                continue
+            if key == "menu_quiz" and not quiz_on:
+                continue
+            if key in DYNAMIC_MENU_LABEL_KEYS:
+                collected.append((key, await caption_for(
+                    key, code if code is not None else default_city_code(), lang)))
                 continue
             # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
             # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
@@ -449,7 +475,23 @@ async def _hidden_sos(code: str | None) -> str | None:
     return f"видна только в дни форума, начало {date_str}"
 
 
+async def _hidden_session_enroll(code: str | None) -> str | None:
+    from services.session_enroll import module_enabled
+    if await module_enabled(code if code is not None else default_city_code()):
+        return None
+    return "модуль записи на сессии выключен"
+
+
+async def _hidden_quiz(code: str | None) -> str | None:
+    from database.quiz_db import active_quiz_for_city
+    if await active_quiz_for_city(code if code is not None else default_city_code()):
+        return None
+    return "тест не включён или в нём нет вопросов"
+
+
 MENU_HIDDEN_REASONS = {
+    "menu_session_enroll": _hidden_session_enroll,
+    "menu_quiz": _hidden_quiz,
     "menu_miniapp": _hidden_miniapp,
     "menu_faq": _hidden_faq,
     "menu_program": _hidden_program,
