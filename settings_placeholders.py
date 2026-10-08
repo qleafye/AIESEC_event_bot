@@ -105,6 +105,9 @@ def check(key: str, value, previous) -> PlaceholderCheck:
         if n not in expected:
             close = difflib.get_close_matches(n, list(expected), n=1, cutoff=0.6)
             res.unknown.append((n, close[0] if close else None))
+    # «{dedline}» вместо «{deadline}» — это опечатка, а не две проблемы: пропажу не дублируем
+    fixed = {sug for _n, sug in res.unknown if sug}
+    res.missing = [(n, lbl) for n, lbl in res.missing if n not in fixed]
     return res
 
 

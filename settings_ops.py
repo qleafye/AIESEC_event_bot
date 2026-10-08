@@ -46,6 +46,7 @@ from cities import (
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
+import settings_placeholders
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
 from settings_validation import (
     AMB_THRESHOLD_KEYS, amb_threshold_order_error, is_command_like, validate_setting_value,
@@ -837,7 +838,7 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         "label": entry.get("label", key),
         "type": entry.get("type"),
         "options": options,
-        "help": entry.get("prompt"),
+        "help": ((entry.get("prompt") or "") + ("\n\n" + h if (h := settings_placeholders.hint(key)) else "")) or None,
         "default": default,
         "value": value,
         "raw": raw,
@@ -978,6 +979,15 @@ async def validate_batch_item(
 
     if confirmed:
         return BatchCheck(value)
+
+    if value is not None:  # пропавшая/опечатанная {подстановка} — то же подтверждение, что в боте
+        previous = await get_setting(key) or await get_setting(base_setting_key(key))
+        if previous is None:
+            default = SETTINGS_SCHEMA.get(base_setting_key(key), {}).get("default")
+            previous = default if isinstance(default, str) else None
+        found = settings_placeholders.check(key, value, previous)
+        if not found.ok:
+            return BatchCheck(value, needs_confirm=settings_placeholders.problem_text(key, found) + " Сохранить всё равно?")
 
     if key in SHEET_TAB_WRITE_MODE:
         if value is None:
