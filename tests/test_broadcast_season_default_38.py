@@ -200,3 +200,15 @@ def test_no_past_no_noise(tmp_path):
     _confirm(state, bot, [1])
     assert bot.sent[-1][1] == "Отправить это 1 пользователям?"
     assert "bcseason_only" not in _flat(bot.markups[-1])
+
+
+def test_picking_concrete_season_replaces_current_sentinel(tmp_path):
+    ready(tmp_path)
+    run(seed_delegates())
+    state = _fresh_state(ADMIN_ID)
+    run(ab.broadcast_filter_start(FakeCallback("broadcast_filter", ADMIN_ID), state))
+    run(state.update_data(filter_pending_field="season", filter_options=["YL 26/1"]))
+    run(ab.filter_pick_value(FakeCallback("filter_opt:0", ADMIN_ID), state))
+    filters = run(state.get_data())["filters"]
+    assert [(f["field"], f["value"]) for f in filters] == [("season", "YL 26/1")]
+    assert run(db.count_and_list_filtered(filters)) == [105]
