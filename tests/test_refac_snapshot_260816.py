@@ -813,6 +813,9 @@ admin|message|extf_import_not_file|state:ExtFormImport:*
 admin|message|dlg_cutoff_input|state:DelegationEdit:*
 admin|message|dlg_text_input|state:DelegationEdit:*
 admin|message|dlg_link_person|state:DelegationLink:*
+admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
+admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
+admin|message|cointr_link|state:CoinsTransfer:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1538,6 +1541,10 @@ admin|callback_query|dlg_pick|dlg_pick:*
 admin|callback_query|dlg_link_yes|dlg_link_yes
 admin|callback_query|forumtz_cfg_screen|forumtz_cfg:*
 admin|callback_query|forumtz_set_go|forumtz_set:*
+admin|callback_query|admin_coins_transfer|admin_coins_transfer
+admin|callback_query|cointr_cancel|cointr_cancel
+admin|callback_query|cointr_tab|cointr_tab:*
+admin|callback_query|cointr_go|cointr_go:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2262,7 +2269,10 @@ def test_snapshot_total_handler_count_is_292():
     # две чистые вставки (1070 -> 1073).
     # 2026-10-09, квик 261009-1v0: делегации «✅ Включить делегации» — +3 admin.callback_query
     # (dlg_arm/dlg_arm_yes/dlg_disarm) сразу после dlg_apply; одна чистая вставка (1073 -> 1076).
-    assert len(GOLDEN_SNAPSHOT) == 1076
+    # Перенос баллов из таблицы (handlers/admin_coins_transfer.py, хвост admin.py): +3 admin.message
+    # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
+    # вставки (1076 -> 1083).
+    assert len(GOLDEN_SNAPSHOT) == 1083
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

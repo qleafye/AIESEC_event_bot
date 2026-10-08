@@ -959,7 +959,9 @@ async def admin_coins_manual(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(CoinsManual.person)
     await callback.message.answer(
         "Кому меняем баланс? Перешлите сюда любое сообщение этого человека или пришлите его "
-        "@username.",
+        "@username.\n\n"
+        "Быстрее за активность в чате: ответьте там на сообщение делегата «+5 за мем» — бот "
+        "начислит сам и поставит реакцию.",
         reply_markup=get_cancel_kb(),
     )
     await callback.answer()

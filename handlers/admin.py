@@ -1169,3 +1169,5 @@ from handlers import admin_ext_forms  # noqa: E402,F401
 from handlers import admin_delegations  # noqa: E402,F401
 # Экран «🕐 Часовой пояс» города (handlers/admin_forum_tz.py) — golden append в хвост.
 from handlers import admin_forum_tz  # noqa: E402,F401
+# «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/admin_coins_transfer.py) — golden append в хвост.
+from handlers import admin_coins_transfer  # noqa: E402,F401
