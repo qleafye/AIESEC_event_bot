@@ -114,9 +114,11 @@ async def _drain_push_row(row: dict, form: dict, now: datetime, counts: dict) ->
     try:
         parsed = parse_push_body(json.loads(payload), header_answer_id=aid)
         if parsed["items"] is None:
-            await ef.drop_pending(row["id"])
-            counts["dropped"] += 1
-            logger.info("ext_forms: push-строка %s формы %s без ответов, снята", aid, form["id"])
+            # Тело не разобрали — не выбрасываем: после правки разбора строка дойдёт сама.
+            await _postpone(row["id"], now + timedelta(minutes=10))
+            counts["retry"] += 1
+            logger.info("ext_forms: push-строка %s формы %s без разобранных ответов, отложена",
+                        aid, form["id"])
             return
         await ingest_answer(form, answer_id=aid, answered_at=parsed["created"],
                             items=parsed["items"], raw=payload)

@@ -69,11 +69,29 @@ def _push_answer_id(value) -> str | None:
     return text if _PUSH_ANSWER_ID_RE.match(text) else None
 
 
+def _decode_answers(text: str):
+    """Значение «Ответы на вопросы» Яндекс кладёт строкой, иногда экранированной повторно:
+    внутри `{\\"\\u0424\\u0418\\u041e\\": ...}` (прод 09.10). Снимаем слои, пока не получим объект."""
+    value = text
+    for _ in range(3):
+        if not isinstance(value, str):
+            return value
+        try:
+            value = json.loads(value)
+            continue
+        except ValueError:
+            pass
+        try:
+            value = json.loads('"' + value + '"')  # снять один слой \" и \uXXXX
+        except ValueError:
+            return None
+    return value if not isinstance(value, str) else None
+
+
 def _push_items(answers) -> list[dict] | None:
     if isinstance(answers, str):
-        try:
-            answers = json.loads(answers)
-        except ValueError:
+        answers = _decode_answers(answers)
+        if answers is None:
             return None
     items: list[dict] = []
     if isinstance(answers, dict):

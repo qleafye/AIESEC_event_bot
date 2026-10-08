@@ -110,10 +110,10 @@ async def _push_hook(form: dict, request: Request) -> JSONResponse:
                     form["id"], len(raw), _body_keys(data))
         return _rpc("ok", rpc_id)
     if parsed["items"] is None:
+        # Тело всё равно кладём в очередь: разбор можно поправить, а запрос Яндекс не повторит.
         await ext_forms_db.set_form_push_warning(form["id"], _PUSH_NO_ANSWERS)
         logger.info("yform push без ответов: form_id=%s длина=%s ключи=%s",
                     form["id"], len(raw), _body_keys(data))
-        return _rpc("ok", rpc_id)
 
     delivery_id = (request.headers.get("X-Delivery-Id") or "").strip()[:_DELIVERY_ID_MAX] or None
     now = now_msk_naive().strftime("%Y-%m-%d %H:%M:%S")
