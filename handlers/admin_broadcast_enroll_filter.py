@@ -12,7 +12,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, default_city_code, enabled_cities
+from cities import cities_module_on, city_label, city_scope, default_city_code, enabled_cities
 from database.db import QUIZ_NOT_PASSED, SESSION_ENROLL_IN, SESSION_ENROLL_NONE
 from database.quiz_db import get_quiz_for_city
 from database.session_enroll_db import list_trackable_sessions
@@ -70,12 +70,14 @@ async def _after_city(callback: types.CallbackQuery, state: FSMContext, kind: st
     """Город выбран: для «записан» — к выбору дня, для остальных — условие готово."""
     if kind != SESSION_ENROLL_IN:
         label = await city_label(code)
+        scope = city_scope(code)
+        exclude = list(scope[1]) if scope else []
         if kind == "quiz":
-            cond = {"field": "quiz", "value": QUIZ_NOT_PASSED, "city": code,
+            cond = {"field": "quiz", "value": QUIZ_NOT_PASSED, "city": code, "exclude": exclude,
                     "label": f"🧭 Не прошёл тест ({label})"}
         else:
             cond = {"field": "session_enroll", "value": SESSION_ENROLL_NONE, "city": code,
-                    "label": f"🚫 Не записался ни на одну сессию ({label})"}
+                    "exclude": exclude, "label": f"🚫 Не записался ни на одну сессию ({label})"}
         await _finish(callback, state, cond)
         return
     await state.update_data(enrf_city=code)
