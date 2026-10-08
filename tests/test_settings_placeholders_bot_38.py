@@ -205,3 +205,19 @@ def test_miniapp_needs_confirm(tmp_path):
 def test_miniapp_help_contains_hint():
     spec = settings_ops.item_spec(KEY, raw=None, value="", is_default=True)
     assert "Скобки бот заменит сам" in (spec["help"] or "")
+
+
+def test_ack_is_one_shot(tmp_path):
+    """Подтверждённый текст расходуется один раз: в FSM он не остаётся и не подменит следующий."""
+    _ready(tmp_path)
+
+    async def go():
+        state = _state()
+        await _start(state)
+        await state.update_data(ph_ack="Подтверждённый текст без подстановок")
+        await admin_settings.settings_edit_value(_Msg("Другой текст"), state)
+        return await db.get_setting(KEY), (await state.get_data()).get("ph_ack")
+
+    saved, ack = _run(go())
+    assert ack is None
+    assert saved == "Подтверждённый текст без подстановок"

@@ -2621,7 +2621,10 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         value = (message.html_text or message.text or "").strip()
     else:
         value = (message.text or "").strip()
-    value = data.get("ph_ack") or value  # подтверждённый текст с подстановками (шов admin_settings_placeholders)
+    ack = data.get("ph_ack")  # подтверждённый текст с подстановками (шов admin_settings_placeholders)
+    if ack:
+        await state.update_data(ph_ack=None)  # одноразовый: следующая правка не должна его унаследовать
+        value = ack
 
     # Guard: a non-text message (sticker/photo/voice/forwarded media) or a whitespace-only
     # send yields value == "" here. Storing "" is never a meaningful value — the registry's
@@ -2716,7 +2719,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         if error:
             await message.answer(error, parse_mode="HTML")
             return
-        if await ph.gate(message, state, key, value):  # пропавшая/опечатанная {подстановка}
+        if await ph.gate(message, state, key, value, ack=ack):  # пропавшая/опечатанная {подстановка}
             return
 
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
