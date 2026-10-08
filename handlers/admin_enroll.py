@@ -352,3 +352,223 @@ async def prog_trk_name_step(message: types.Message, state: FSMContext):
 @router.message(ProgramCompetencyEdit.name)
 async def prog_cmp_name_step(message: types.Message, state: FSMContext):
     await _name_step(message, state)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Экран записи у сессии: трек, компетенции, закрытие, лимит мест
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+_STATE_WORDS = {"open": "открыта", "closed": "закрыта", "full": "мест нет"}
+
+
+async def enroll_card_lines(session: dict) -> list[str]:
+    """Строки карточки сессии: трек, компетенции, состояние записи."""
+    track = await edb.get_track(session["track_id"]) if session.get("track_id") else None
+    names = (await edb.competency_names_for_sessions([session["id"]]))[session["id"]]
+    count = await edb.count_enrollments(session["id"])
+    state = _STATE_WORDS[await session_open_state(session, count)]
+    limit = session.get("enroll_limit")
+    limit_text = f"лимит {limit}" if limit is not None else "без лимита"
+    return [
+        f"🧭 Трек: {html_module.escape(track['name']) if track else 'общая сессия'}",
+        f"🎯 Компетенции: {html_module.escape(', '.join(names)) if names else '—'}",
+        f"📅 Запись: {state} · {limit_text} · записано {count}",
+    ]
+
+
+async def render_enroll_card(session: dict) -> tuple[str, InlineKeyboardMarkup]:
+    sid, code = session["id"], session["city"]
+    lines = [f"🧭 <b>Запись и треки</b> — {html_module.escape(session['title'])}", ""]
+    lines += await enroll_card_lines(session)
+    lines.append("")
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    tracks = await edb.list_tracks(code)
+    if tracks:
+        lines.append("Трек определяет, на какие сессии можно записаться. Без трека сессия общая "
+                     "(пленарка) — записи на неё нет.")
+        for t in tracks:
+            mark = "✅ " if t["id"] == session.get("track_id") else ""
+            buttons.append([InlineKeyboardButton(
+                text=f"{mark}{_short(t['name'], 40)}", callback_data=f"prog_enrtrk:{sid}:{t['id']}",
+            )])
+        mark = "✅ " if not session.get("track_id") else ""
+        buttons.append([InlineKeyboardButton(
+            text=f"{mark}Без трека — общая сессия", callback_data=f"prog_enrtrk:{sid}:0",
+        )])
+    else:
+        lines.append("Треков в этом городе пока нет — заведите их в «🧭 Треки», например «Карьера».")
+        buttons.append([InlineKeyboardButton(text="🧭 Завести треки", callback_data=f"prog_trkl:{code}")])
+
+    comps = await edb.list_competencies(code)
+    if comps:
+        chosen = set(await edb.get_session_competency_ids(sid))
+        lines.append("Компетенции сессии — отметьте галочками:")
+        for c in comps:
+            mark = "☑" if c["id"] in chosen else "☐"
+            buttons.append([InlineKeyboardButton(
+                text=f"{mark} {_short(c['name'], 40)}", callback_data=f"prog_enrcmp:{sid}:{c['id']}",
+            )])
+    else:
+        lines.append("Компетенций пока нет — заведите их в «🎯 Компетенции».")
+        buttons.append([InlineKeyboardButton(text="🎯 Завести компетенции", callback_data=f"prog_cmpl:{code}")])
+
+    closed = bool(session.get("enroll_closed"))
+    buttons.append([InlineKeyboardButton(
+        text=f"🔒 Запись закрыта: {'да' if closed else 'нет'}", callback_data=f"prog_enrcl:{sid}",
+    )])
+    limit = session.get("enroll_limit")
+    buttons.append([InlineKeyboardButton(
+        text=f"👥 Лимит мест: {limit if limit is not None else 'без лимита'}",
+        callback_data=f"prog_enrlim:{sid}",
+    )])
+    if limit is not None:
+        buttons.append([InlineKeyboardButton(text="♾ Без лимита", callback_data=f"prog_enrlim0:{sid}")])
+    buttons.append([InlineKeyboardButton(text="← К сессии", callback_data=f"prog_v:{sid}")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def _load_session(callback: types.CallbackQuery, session_id: int) -> dict | None:
+    session = await get_program_session(session_id)
+    if session is None:
+        await callback.answer("Сессия больше недоступна.", show_alert=True)
+        return None
+    if await _deny_city(callback, session["city"]):
+        return None
+    return session
+
+
+async def _show_card(callback: types.CallbackQuery, session_id: int, note: str | None = None) -> None:
+    session = await get_program_session(session_id)
+    if session is None:
+        await callback.message.edit_text("Сессия больше недоступна.")
+        await callback.answer()
+        return
+    text, kb = await render_enroll_card(session)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer(note)
+
+
+@router.callback_query(F.data.startswith("prog_enrcard:"))
+async def prog_enrcard(callback: types.CallbackQuery):
+    session = await _load_session(callback, int(callback.data.split(":", 1)[1]))
+    if session is not None:
+        await _show_card(callback, session["id"])
+
+
+async def _drop_session_enrollments(session_id: int) -> int:
+    users = await edb.list_enrolled_users(session_id)
+    for u in users:
+        await edb.unenroll(u["telegram_id"], session_id)
+    return len(users)
+
+
+@router.callback_query(F.data.startswith("prog_enrtrk:"))
+async def prog_enrtrk(callback: types.CallbackQuery):
+    _, sid_s, tid_s = callback.data.split(":", 2)
+    session = await _load_session(callback, int(sid_s))
+    if session is None:
+        return
+    tid = int(tid_s)
+    if tid:
+        track = await edb.get_track(tid)
+        if track is None or track["city"] != session["city"]:
+            await callback.answer("Этого трека нет в городе сессии — обновите экран.", show_alert=True)
+            return
+        await update_program_session(session["id"], track_id=tid)
+        await _show_card(callback, session["id"])
+        return
+    count = await edb.count_enrollments(session["id"]) if session.get("track_id") else 0
+    if count:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 Да, сделать общей", callback_data=f"prog_enrtrkgo:{session['id']}:0")],
+            [InlineKeyboardButton(text="← Отмена", callback_data=f"prog_enrcard:{session['id']}")],
+        ])
+        await callback.message.edit_text(
+            f"Сессия «{html_module.escape(session['title'])}» станет общей (без записи), "
+            f"записи на эту сессию удалятся: {count}.\n\nСделать общей?",
+            parse_mode="HTML", reply_markup=kb,
+        )
+        await callback.answer()
+        return
+    await update_program_session(session["id"], track_id=None)
+    await _show_card(callback, session["id"])
+
+
+@router.callback_query(F.data.startswith("prog_enrtrkgo:"))
+async def prog_enrtrkgo(callback: types.CallbackQuery):
+    _, sid_s, _tid = callback.data.split(":", 2)
+    session = await _load_session(callback, int(sid_s))
+    if session is None:
+        return
+    await _drop_session_enrollments(session["id"])
+    await update_program_session(session["id"], track_id=None)
+    await _show_card(callback, session["id"], "Сессия стала общей.")
+
+
+@router.callback_query(F.data.startswith("prog_enrcmp:"))
+async def prog_enrcmp(callback: types.CallbackQuery):
+    _, sid_s, cid_s = callback.data.split(":", 2)
+    session = await _load_session(callback, int(sid_s))
+    if session is None:
+        return
+    comp = await edb.get_competency(int(cid_s))
+    if comp is None or comp["city"] != session["city"]:
+        await callback.answer("Этой компетенции нет в городе сессии — обновите экран.", show_alert=True)
+        return
+    await edb.toggle_session_competency(session["id"], comp["id"])
+    await _show_card(callback, session["id"])
+
+
+@router.callback_query(F.data.startswith("prog_enrcl:"))
+async def prog_enrcl(callback: types.CallbackQuery):
+    session = await _load_session(callback, int(callback.data.split(":", 1)[1]))
+    if session is None:
+        return
+    await update_program_session(session["id"], enroll_closed=0 if session.get("enroll_closed") else 1)
+    await _show_card(callback, session["id"])
+
+
+@router.callback_query(F.data.startswith("prog_enrlim0:"))
+async def prog_enrlim0(callback: types.CallbackQuery):
+    session = await _load_session(callback, int(callback.data.split(":", 1)[1]))
+    if session is None:
+        return
+    await update_program_session(session["id"], enroll_limit=None)
+    await _show_card(callback, session["id"], "Лимит снят.")
+
+
+@router.callback_query(F.data.startswith("prog_enrlim:"))
+async def prog_enrlim(callback: types.CallbackQuery, state: FSMContext):
+    session = await _load_session(callback, int(callback.data.split(":", 1)[1]))
+    if session is None:
+        return
+    await state.set_data({"enr_sid": session["id"]})
+    await state.set_state(ProgramEnrollLimit.value)
+    await callback.message.answer(
+        "Сколько мест на этой сессии? Пришлите число.\nНапример: 30", reply_markup=_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(ProgramEnrollLimit.value)
+async def prog_enrlim_step(message: types.Message, state: FSMContext):
+    raw = (message.text or "").strip()
+    data = await state.get_data()
+    session = await get_program_session(data.get("enr_sid", 0))
+    if session is None or not await _city_allowed(message.from_user.id, session["city"]):
+        await state.clear()
+        await message.answer("Сессия больше недоступна.")
+        return
+    if raw == "-":
+        limit = None
+    elif raw.isdigit() and int(raw) >= 1:
+        limit = int(raw)
+    else:
+        await message.answer("Нужно целое число мест, например 30", reply_markup=_cancel_kb())
+        return
+    await state.clear()
+    await update_program_session(session["id"], enroll_limit=limit)
+    fresh = await get_program_session(session["id"])
+    text, kb = await render_enroll_card(fresh)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
