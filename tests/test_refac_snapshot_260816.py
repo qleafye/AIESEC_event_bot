@@ -819,6 +819,12 @@ admin|message|prog_lim_cancel_word|state:ProgramEnrollLimit:*
 admin|message|prog_trk_name_step|state:ProgramTrackEdit:*
 admin|message|prog_cmp_name_step|state:ProgramCompetencyEdit:*
 admin|message|prog_enrlim_step|state:ProgramEnrollLimit:*
+admin|message|prog_qz_cancel_word|state:QuizEdit:*
+admin|message|prog_qz_value|state:QuizEdit:*
+admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
+admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
+admin|message|prog_qzimp_file|state:QuizImport:*
+admin|message|prog_qzimp_not_file|state:QuizImport:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1583,6 +1589,40 @@ admin|callback_query|prog_enrsw|prog_enrsw:*
 admin|callback_query|prog_enrdl|prog_enrdl:*
 admin|callback_query|prog_enrtx|prog_enrtx:*
 admin|callback_query|prog_enrte|prog_enrte:*
+admin|callback_query|prog_qz|prog_qz:*
+admin|callback_query|prog_qzcancel|prog_qzcancel
+admin|callback_query|prog_qzsw|prog_qzsw:*
+admin|callback_query|prog_qzrt|prog_qzrt:*
+admin|callback_query|prog_qzmode|prog_qzmode:*
+admin|callback_query|prog_qzf|prog_qzf:*
+admin|callback_query|prog_qzql|prog_qzql:*
+admin|callback_query|prog_qzqn|prog_qzqn:*
+admin|callback_query|prog_qzq|prog_qzq:*
+admin|callback_query|prog_qzqe|prog_qzqe:*
+admin|callback_query|prog_qzqm|prog_qzqm:*
+admin|callback_query|prog_qzqx|prog_qzqx:*
+admin|callback_query|prog_qzqxgo|prog_qzqxgo:*
+admin|callback_query|prog_qzon|prog_qzon:*
+admin|callback_query|prog_qzo|prog_qzo:*
+admin|callback_query|prog_qzoe|prog_qzoe:*
+admin|callback_query|prog_qzoc|prog_qzoc:*
+admin|callback_query|prog_qzop|prog_qzop:*
+admin|callback_query|prog_qzox|prog_qzox:*
+admin|callback_query|prog_qzoxgo|prog_qzoxgo:*
+admin|callback_query|prog_qzl|prog_qzl:*
+admin|callback_query|prog_qzln|prog_qzln:*
+admin|callback_query|prog_qzlo|prog_qzlo:*
+admin|callback_query|prog_qzle|prog_qzle:*
+admin|callback_query|prog_qzlx|prog_qzlx:*
+admin|callback_query|prog_qzlxgo|prog_qzlxgo:*
+admin|callback_query|prog_qzst|prog_qzst:*
+admin|callback_query|prog_qzlink|prog_qzlink:*
+admin|callback_query|prog_qztx|prog_qztx:*
+admin|callback_query|prog_qzte|prog_qzte:*
+admin|callback_query|prog_qzimp|prog_qzimp:*
+admin|callback_query|prog_qztpl|prog_qztpl:*
+admin|callback_query|prog_qzapply|prog_qzapply:*
+admin|callback_query|prog_qzimpno|prog_qzimpno:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1704,6 +1744,7 @@ user_actions|message|sos_delegate_followup|
 user_actions|message|sfb_comment_step|
 user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
 user_actions|message|session_enroll_menu|
+user_actions|message|quiz_menu|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1736,6 +1777,10 @@ user_actions|callback_query|se_clear|se:c:*
 user_actions|callback_query|se_my|se:my
 user_actions|callback_query|se_edit|se:ed
 user_actions|callback_query|se_confirm|se:ok
+user_actions|callback_query|quiz_go|qz:go
+user_actions|callback_query|quiz_answer|qz:a:*
+user_actions|callback_query|quiz_result|qz:res
+user_actions|callback_query|quiz_retake|qz:re
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2318,7 +2363,8 @@ def test_snapshot_total_handler_count_is_292():
     # две чистые вставки (1070 -> 1073).
     # Запись на сессии и тест: сезон и фильтры записи/теста в рассылке, подтверждение подстановок (admin_broadcast_season, admin_broadcast_enroll_filter, admin_settings_placeholders); чистые вставки, SequenceMatcher (1073 -> 1085).
     # Запись на сессии: админка треков/компетенций/записей (admin_enroll, admin_enroll_list) и поток делегата (session_enroll, до catch-all); чистые вставки, SequenceMatcher (1085 -> 1132).
-    assert len(GOLDEN_SNAPSHOT) == 1132
+    # Тест компетенций: админка (admin_quiz, admin_quiz_levels, admin_quiz_import) и прохождение делегатом (quiz, до catch-all); чистые вставки, SequenceMatcher (1132 -> 1177).
+    assert len(GOLDEN_SNAPSHOT) == 1177
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
