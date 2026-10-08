@@ -1875,7 +1875,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # SETTINGS_FIELDS (D-18) — fall back to the registry itself for the prompt (Phase 6
     # D-13, registry-as-source) before the last-resort literal.
     prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
-    prompt += ph.hint_line(key)
+    prompt += ph.hint_line(key, prompt)
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
     # Quick 260822: списочный ключ правится по пунктам (handlers/admin_settings_lists.py) —
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
@@ -2034,7 +2034,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     entry = SETTINGS_SCHEMA.get(key, {})
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
     prompt = prompts.get(key) or entry.get("prompt") or "Введите значение"
-    prompt += ph.hint_line(key)
+    prompt += ph.hint_line(key, prompt)
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"

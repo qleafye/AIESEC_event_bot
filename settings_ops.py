@@ -839,7 +839,7 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         "label": entry.get("label", key),
         "type": entry.get("type"),
         "options": options,
-        "help": ((entry.get("prompt") or "") + ("\n\n" + h if (h := settings_placeholders.hint(key)) else "")) or None,
+        "help": ((entry.get("prompt") or "") + ("\n\n" + h if (h := settings_placeholders.hint(key, entry.get("prompt"))) else "")) or None,
         "default": default,
         "value": value,
         "raw": raw,

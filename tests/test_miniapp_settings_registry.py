@@ -11,6 +11,7 @@ import asyncio
 import pytest
 
 import settings_ops
+import settings_placeholders
 from cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed
@@ -142,7 +143,8 @@ def test_item_shape_and_registry_sourced_fields(tmp_path):
         assert set(item.keys()) == ITEM_FIELDS, item["key"]
         meta = SETTINGS_SCHEMA[item["base_key"]]
         assert item["label"] == meta["label"]
-        assert item["help"] == meta.get("prompt")
+        hint = settings_placeholders.hint(item["key"], meta.get("prompt"))
+        assert item["help"] == ((meta.get("prompt") or "") + (chr(10) * 2 + hint if hint else "") or None)
         assert item["type"] == meta["type"]
         if meta["type"] == "multi":
             # Quick 260906-6xe: закрытый набор `multi` — options в реестре хранит КОДЫ
