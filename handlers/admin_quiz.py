@@ -504,3 +504,5 @@ async def prog_qzoxgo(callback: types.CallbackQuery):
 
 # Уровни, статистика, ссылка, тексты (handlers/admin_quiz_levels.py) — хвостовой импорт.
 from handlers import admin_quiz_levels  # noqa: E402,F401
+# Импорт из таблицы (handlers/admin_quiz_import.py) — хвостовой импорт.
+from handlers import admin_quiz_import  # noqa: E402,F401
