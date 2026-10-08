@@ -178,6 +178,11 @@ async def quiz_answer(callback: types.CallbackQuery):
     uid = callback.from_user.id
     status = await svc.answer(uid, attempt_id, question_id, option_id)
     await callback.answer()
+    if status == "restarted":  # тест обновили посреди прохождения — начинаем заново
+        attempt, status = await svc.start_or_resume(uid, quiz)
+        if attempt is not None and status != "finished":
+            await _show_attempt(callback, ctx, quiz, attempt, "restarted")
+        return
     if status == "done":
         await _result_screen(callback.message, ctx, quiz, edit=True)
     elif status in ("ok", "stale"):
