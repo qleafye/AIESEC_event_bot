@@ -180,3 +180,116 @@ def test_foreign_city_denied(tmp_path):
     cb = FakeCallback(f"prog_trkx:{tid}", user_id=SPB_MANAGER)
     run(admin_enroll.prog_trkx(cb))
     assert cb.answers[0][1] is True and cb.message.text_edited is None
+
+
+# ── Экран записи у сессии ─────────────────────────────────────────────────────────────────────
+
+def test_card_shows_enroll_status(tmp_path):
+    ready(tmp_path)
+    ids = run(seed_msk_program())
+    text, kb = run(admin_program.render_session_card(ids["A"]))
+    assert "Трек: Карьера" in text
+    assert "Компетенции: —" in text
+    assert "Запись: открыта · без лимита · записано 0" in text
+    assert f"prog_enrcard:{ids['A']}" in cbs(kb)
+
+
+def test_pick_track_and_general(tmp_path):
+    ready(tmp_path)
+    ids = run(_seed_two_enrolls())
+    sid = ids["A"]
+    cb = FakeCallback(f"prog_enrtrk:{sid}:{ids['business']}")
+    run(admin_enroll.prog_enrtrk(cb))
+    assert run(get_session(sid))["track_id"] == ids["business"]
+    assert run(edb.count_enrollments(sid)) == 2  # смена трека записи не трогает
+    cb = FakeCallback(f"prog_enrtrk:{sid}:0")
+    run(admin_enroll.prog_enrtrk(cb))
+    assert run(get_session(sid))["track_id"] == ids["business"]  # ждёт подтверждения
+    assert "записи на эту сессию удалятся: 2" in cb.message.text_edited
+    run(admin_enroll.prog_enrtrkgo(FakeCallback(f"prog_enrtrkgo:{sid}:0")))
+    assert run(get_session(sid))["track_id"] is None
+    assert run(edb.count_enrollments(sid)) == 0
+
+
+async def get_session(sid):
+    return await admin_enroll.get_program_session(sid)
+
+
+def test_pick_track_from_other_city_refused(tmp_path):
+    ready(tmp_path)
+    ids = run(seed_msk_program())
+    other = run(edb.create_track("spb", "Чужой"))
+    cb = FakeCallback(f"prog_enrtrk:{ids['A']}:{other}")
+    run(admin_enroll.prog_enrtrk(cb))
+    assert run(get_session(ids["A"]))["track_id"] == ids["career"]
+
+
+def test_competency_toggle_and_empty_hint(tmp_path):
+    ready(tmp_path)
+    ids = run(seed_msk_program())
+    cb = FakeCallback(f"prog_enrcard:{ids['P']}")
+    run(admin_enroll.prog_enrcard(cb))
+    assert "Компетенций пока нет" in cb.message.text_edited
+    assert "prog_cmpl:msk" in cbs(cb.message.edit_markup)
+    cid = run(edb.create_competency(CITY, "Лидерство"))
+    run(admin_enroll.prog_enrcmp(FakeCallback(f"prog_enrcmp:{ids['A']}:{cid}")))
+    assert run(edb.get_session_competency_ids(ids["A"])) == [cid]
+    text, _ = run(admin_program.render_session_card(ids["A"]))
+    assert "Компетенции: Лидерство" in text
+    run(admin_enroll.prog_enrcmp(FakeCallback(f"prog_enrcmp:{ids['A']}:{cid}")))
+    assert run(edb.get_session_competency_ids(ids["A"])) == []
+
+
+def test_closed_toggle(tmp_path):
+    ready(tmp_path)
+    ids = run(seed_msk_program())
+    cb = FakeCallback(f"prog_enrcl:{ids['A']}")
+    run(admin_enroll.prog_enrcl(cb))
+    assert run(get_session(ids["A"]))["enroll_closed"]
+    assert "Запись: закрыта" in cb.message.text_edited
+
+
+def test_limit_input(tmp_path):
+    ready(tmp_path)
+    ids = run(seed_msk_program())
+    state = new_state()
+    run(admin_enroll.prog_enrlim(FakeCallback(f"prog_enrlim:{ids['A']}"), state))
+    assert run(state.get_state()) == ProgramEnrollLimit.value.state
+    for bad in ("abc", "-5", "0"):
+        msg = FakeMessage(bad)
+        run(admin_enroll.prog_enrlim_step(msg, state))
+        assert "Нужно целое число мест, например 30" in msg.answers_sent[0]
+    msg = FakeMessage("30")
+    run(admin_enroll.prog_enrlim_step(msg, state))
+    assert run(get_session(ids["A"]))["enroll_limit"] == 30
+    assert run(state.get_state()) is None
+    run(admin_enroll.prog_enrlim0(FakeCallback(f"prog_enrlim0:{ids['A']}")))
+    assert run(get_session(ids["A"]))["enroll_limit"] is None
+
+
+def test_delete_confirm_mentions_enrollments(tmp_path):
+    ready(tmp_path)
+    ids = run(_seed_two_enrolls())
+    cb = FakeCallback(f"prog_d:{ids['A']}")
+    run(admin_program.prog_delete_confirm(cb))
+    assert "Пропадут записи: 2" in cb.message.text_edited
+
+
+def test_copy_day_maps_tracks(tmp_path):
+    ready(tmp_path)
+    from services.program import copy_program_day
+    from tests._enroll38 import DAY
+    ids = run(seed_msk_program())
+    spb_career = run(edb.create_track("spb", "Карьера"))
+    run(update_closed(ids["A"]))
+    run(copy_program_day(CITY, "spb", DAY))
+    sessions = run(db.list_program_sessions_for_city_day("spb", DAY))
+    by_title = {s["title"]: s for s in sessions}
+    assert by_title["Сессия A"]["track_id"] == spb_career
+    assert by_title["Сессия B"]["track_id"] is None  # «Бизнеса» в spb нет
+    assert by_title["Пленарка"]["track_id"] is None
+    assert not by_title["Сессия A"]["enroll_closed"]
+
+
+async def update_closed(sid):
+    await db.update_program_session(sid, enroll_closed=1, enroll_limit=5)
