@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from cities import get_setting_typed_for_city
+from settings_schema import SETTINGS_SCHEMA
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.routers.checkin import _CAP, _SECTION, _bound_city, _point_city_denial
 from services.session_enroll import enroll_by_staff, scan_hint
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _MARKED = frozenset({"new", "duplicate", "moved"})
-_FALLBACK_ERROR = "Не получилось записать — попробуйте ещё раз"
 
 
 async def with_enroll_hint(result: dict, user: dict | None, point: str, bound: str | None) -> dict:
@@ -55,7 +55,8 @@ async def _text(key: str | None, city: str | None, title: str = "") -> str | Non
         raw = await get_setting_typed_for_city(key, city)
     except Exception:  # noqa: BLE001
         return None
-    return (raw or "").replace("{title}", title) or None
+    text = (raw or "").replace("{title}", title)
+    return text or str(SETTINGS_SCHEMA.get(key, {}).get("default") or "").replace("{title}", title) or None
 
 
 @router.post("/app/api/checkin/enroll")
@@ -73,6 +74,7 @@ async def checkin_enroll(
     city = session.get("city")
     if outcome.status in ("ok", "already"):
         message = await _text("session_enroll_scan_done_text", city, session.get("title") or "")
-        return {"status": "ok", "message": message or f"Записали на «{session.get('title') or ''}»"}
-    message = await _text(outcome.text_key, city) or _FALLBACK_ERROR
+        return {"status": "ok", "message": message or ""}
+    message = (await _text(outcome.text_key, city)
+               or await _text("session_enroll_scan_error_text", city) or "")
     return {"status": outcome.status, "message": message}

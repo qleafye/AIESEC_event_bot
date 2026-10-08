@@ -339,10 +339,8 @@ async def _alert_refusal(callback: types.CallbackQuery, ctx: _Ctx, out) -> None:
         text = await ctx.with_deadline("session_enroll_err_deadline")
     elif out.status in ("closed", "full"):
         text = await ctx.t(out.text_key, title=title)
-    elif out.text_key:
-        text = await ctx.t(out.text_key)
-    else:  # чужой город, сессия без трека, сессия удалена: человеческое объяснение
-        text = await ctx.t("session_enroll_disabled_text")
+    else:  # чужой город, сессия без трека, сессия удалена тоже несут свой ключ реестра
+        text = await ctx.t(out.text_key or "session_enroll_unavailable_text")
     await callback.answer(text, show_alert=True)
 
 

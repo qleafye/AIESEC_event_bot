@@ -65,6 +65,8 @@ EXPECTED_PER_CITY_KEYS = {
     "session_enroll_not_approved_text",
     "session_enroll_disabled_text",
     "session_enroll_no_sessions_text",
+    "session_enroll_unavailable_text",
+    "session_enroll_scan_error_text",
     "session_enroll_scan_other_text",
     "session_enroll_scan_none_text",
     "session_enroll_scan_rebook_button",
