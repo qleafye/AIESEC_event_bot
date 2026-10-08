@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 from services.timeutil import MOSCOW_TZ
@@ -56,6 +57,67 @@ def parse_yandex_answer(raw: dict) -> tuple[str | None, list[dict]]:
             "value": _flat(entry.get("value")),
         })
     return _to_msk((raw or {}).get("created")), items
+
+
+_PUSH_ANSWER_ID_RE = re.compile(r"^[0-9A-Za-z_-]{1,40}$")
+
+
+def _push_answer_id(value) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    text = str(value).strip()
+    return text if _PUSH_ANSWER_ID_RE.match(text) else None
+
+
+def _push_items(answers) -> list[dict] | None:
+    if isinstance(answers, str):
+        try:
+            answers = json.loads(answers)
+        except ValueError:
+            return None
+    items: list[dict] = []
+    if isinstance(answers, dict):
+        if isinstance(answers.get("data"), list):
+            return parse_yandex_answer(answers)[1] or None
+        for key, value in answers.items():
+            items.append({"q": str(key), "label": str(key), "value": _flat(value)})
+    elif isinstance(answers, list):
+        for entry in answers:
+            if not isinstance(entry, dict):
+                continue
+            q = next((entry[k] for k in ("id", "key", "name") if entry.get(k) is not None), None)
+            label = next((entry[k] for k in ("label", "question", "text") if entry.get(k)), None)
+            if q is None:
+                q = label
+            if q is None:
+                continue
+            value = entry.get("value", entry.get("answer"))
+            items.append({"q": str(q), "label": str(label if label is not None else q),
+                          "value": _flat(value)})
+    return items or None
+
+
+def parse_push_body(body, *, header_answer_id: str | None = None) -> dict:
+    """Тело запроса интеграции личной формы -> answer_id / form_id / created (МСК) / items.
+    Терпимый разбор: JSON-RPC params или плоский JSON; на любом входе не бросает исключений."""
+    result = {"answer_id": None, "form_id": None, "created": None, "items": None}
+    try:
+        params = body
+        if isinstance(body, dict) and isinstance(body.get("params"), dict):
+            params = body["params"]
+        if not isinstance(params, dict):
+            result["answer_id"] = _push_answer_id(header_answer_id)
+            return result
+        result["answer_id"] = _push_answer_id(params.get("answer_id")) or _push_answer_id(
+            header_answer_id)
+        fid = params.get("form_id")
+        if isinstance(fid, (str, int)) and not isinstance(fid, bool) and str(fid).strip():
+            result["form_id"] = str(fid).strip()
+        result["created"] = _to_msk(params.get("created"))
+        result["items"] = _push_items(params.get("answers"))
+    except Exception:  # noqa: BLE001 — разбор чужого тела не должен ронять приёмник
+        pass
+    return result
 
 
 def parse_yandex_questions(raw: dict) -> list[tuple[str, str]]:
