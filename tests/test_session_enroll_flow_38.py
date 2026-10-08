@@ -204,3 +204,21 @@ def test_schedule_empty_text(tmp_path):
         cb = await press("se:my")
         assert "Ты пока не выбрал ни одной сессии." in cb.message.last[0]
     run(go())
+
+
+def test_slot_with_chain_shows_all_chosen_and_clears_all(tmp_path):
+    """A/C/D в одном слоте: A и D совместимы — обе помечены, «Снять выбор» снимает обе."""
+    ready(tmp_path)
+
+    async def go():
+        ids = await setup_world()
+        await press(f"se:p:0:0:{ids['A']}")
+        await press(f"se:p:0:0:{ids['D']}")
+        assert await chosen() == ["Сессия A", "Сессия D"]
+        cb = await press(f"se:s:0:0")
+        marks = [t for t, _ in buttons(cb.message.last[1]) if t.startswith("✅")]
+        assert marks == ["✅ Сессия A", "✅ Сессия D"]
+        cb = await press(f"se:c:0:0:{ids['A']}")
+        assert await chosen() == []
+        assert not [t for t, _ in buttons(cb.message.last[1]) if t.startswith("✅")]
+    run(go())
