@@ -17,6 +17,7 @@ admin_settings.py упирается в потолок test_module_size_conventi
   prompt (game_resubmit_limit, proxy_connect_timeout).
 - `enum` — одно из `options`; сравнение без учёта регистра, сохраняется каноническое
   написание из схемы.
+- `format: datetime` — «ДД.ММ.ГГГГ ЧЧ:ММ», реальный `strptime`, нормализация к ведущим нулям.
 - `date_only` — маска `ДД.ММ.ГГГГ`, проверяется реальным `strptime` (Phase 31, 31-03,
   D-30) — не regex, `31.02.2026` отбрасывается. Нормализуется к ведущим нулям.
 - `format: "number"` (квик 260927) — число >= 0, дробь через запятую, нормализуется `:g`.
@@ -247,6 +248,19 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 "Пришлите ещё раз или «-», чтобы сбросить значение."
             )
         return parsed.strftime("%d.%m.%Y"), None
+
+    if entry.get("format") == "datetime":
+        # Дата и время «ДД.ММ.ГГГГ ЧЧ:ММ» (дедлайн записи на сессии): реальный strptime,
+        # нормализуем к ведущим нулям, чтобы в базе не копились «1.9.2026 9:05».
+        try:
+            parsed = datetime.strptime(value.strip(), "%d.%m.%Y %H:%M")
+        except ValueError:
+            return None, (
+                "Нужны дата и время в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>, например "
+                "<code>28.10.2026 23:59</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы убрать дату."
+            )
+        return parsed.strftime("%d.%m.%Y %H:%M"), None
 
     if entry.get("format") == "time":
         match = _TIME_RE.fullmatch(value.strip())
