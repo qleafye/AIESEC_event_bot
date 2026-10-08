@@ -550,6 +550,15 @@ class ExtFormConnect(StatesGroup):
     # «📝 Внешние формы» → «➕ Подключить форму» (handlers/admin_ext_forms_connect.py):
     # менеджер присылает ссылку на форму.
     link = State()
+    # Личная форма (без организации): ссылка принята, ждём название для карточки
+    # («📮 Это личная форма — ответы пришлёт интеграция»).
+    push_title = State()
+
+
+class ExtFormImport(StatesGroup):
+    # «📝 Внешние формы» → карточка личной формы → «📥 Загрузить старые ответы»
+    # (handlers/admin_ext_forms_push.py): менеджер присылает файл выгрузки XLSX или CSV.
+    waiting_file = State()
 
 
 class ExtFormOAuth(StatesGroup):
