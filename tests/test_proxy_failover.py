@@ -1229,3 +1229,59 @@ def test_probe_return_to_primary_still_works_with_storm_guard(monkeypatch):
     session = asyncio.run(go())
     assert session.active_index == 0
     assert session._last_rotate_at == clock.now  # probe's return-to-primary re-stamps dwell
+
+
+# ── Incident 2026-10-07: dead SOCKS backup raises a non-Telegram error ───────
+
+def test_socks_proxy_error_on_backup_rotates_back_to_primary(monkeypatch):
+    """Мёртвый резерв отвечает `ProxyConnectionError` от aiohttp_socks — aiogram не оборачивает
+    её в TelegramNetworkError. Раньше сессия на этом застревала на резерве до фоновой пробы
+    (10 минут глухого бота); теперь это такая же причина ротации, как сетевая ошибка."""
+    import aiohttp_socks
+
+    calls = []
+
+    async def fake(self, bot, method, timeout=None):
+        idx = self._index
+        calls.append(idx)
+        if idx == 1:
+            raise aiohttp_socks.ProxyConnectionError("Couldn't connect to proxy backup:8080")
+        return f"result-{idx}"
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP])
+        session._apply(1)  # как после блипа основного: стоим на резерве, он ни разу не ответил
+        result = await session.make_request(object(), object())
+        await _drain_background()
+        return session, result
+
+    session, result = asyncio.run(go())
+
+    assert result == "result-0"
+    assert calls == [1, 0]
+    assert session.active_index == 0
+
+
+def test_all_dead_with_socks_error_first_reraises_it(monkeypatch):
+    import python_socks
+
+    err = python_socks.ProxyConnectionError("dead")
+
+    async def fake(self, bot, method, timeout=None):
+        if self._index == 0:
+            raise err
+        raise TelegramNetworkError(method=method, message="simulated")
+
+    monkeypatch.setattr(AiohttpSession, "make_request", fake)
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY, BACKUP])
+        try:
+            await session.make_request(object(), object())
+        except Exception as e:  # noqa: BLE001
+            await _drain_background()
+            return e
+
+    assert asyncio.run(go()) is err
