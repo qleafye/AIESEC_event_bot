@@ -195,14 +195,18 @@ def test_oauth_success_then_org_and_relogin_keeps_row(tmp_path, monkeypatch, cap
     _, ev = _msg("12 34 567", state, bot=bot, st="ExtFormOAuth:code")
     assert calls == ["1234567"]
     assert bot.deleted
-    assert "Администрировании" in _all_text(ev)
+    assert "Администрирование" in _all_text(ev)
     assert all("AT-secret-1" not in a[0] for a in ev.answers)
     assert _run(state.get_state()) == "ExtFormOAuth:org_id"
     first = _run(xdb.get_yandex_connection())
     assert first["access_token"] == "AT-secret-1" and first["org_id"] is None
 
     _, ev = _msg("не число", state, st="ExtFormOAuth:org_id")
-    assert "ID организации числом" in _all_text(ev)
+    assert "пришлите ID организации" in _all_text(ev)
+
+    async def fake_detect(conn, org_id):
+        return "X-Org-Id"
+    monkeypatch.setattr(yx, "detect_org_header", fake_detect)
 
     _, ev = _msg("7654321", state, st="ExtFormOAuth:org_id")
     assert "✅ Доступ к Яндекс Формам подключён" in _all_text(ev)
@@ -254,3 +258,25 @@ def test_cancel_at_org_step_is_honest(tmp_path, monkeypatch):
     _, ev = _msg("Отмена", state, st="ExtFormOAuth:org_id")
     text = _all_text(ev)
     assert "Вход выполнен без организации" in text and "не менялось" not in text
+
+
+def test_cloud_org_id_saved_with_detected_header(tmp_path, monkeypatch):
+    _roles_ready(tmp_path)
+    _run(xdb.upsert_yandex_connection(org_id=None, org_header="X-Org-Id", access_token="AT",
+                                      refresh_token=None, expires_at=None, by=ADMIN_ID))
+
+    async def fake_detect(conn, org_id):
+        return "X-Cloud-Org-Id" if org_id == "bpf1a2b3c4d5e6f7g8h9" else None
+    monkeypatch.setattr(yx, "detect_org_header", fake_detect)
+    state = _fresh_state(ADMIN_ID)
+    _run(state.set_state("ExtFormOAuth:org_id"))
+
+    _, ev = _msg("1234567", state, st="ExtFormOAuth:org_id")
+    assert "не узнал эту организацию" in _all_text(ev)
+    assert _run(state.get_state()) == "ExtFormOAuth:org_id"
+
+    _, ev = _msg("BPF1A2B3C4D5E6F7G8H9", state, st="ExtFormOAuth:org_id")
+    assert "✅ Доступ к Яндекс Формам подключён" in _all_text(ev)
+    conn = _run(xdb.get_yandex_connection())
+    assert conn["org_id"] == "bpf1a2b3c4d5e6f7g8h9" and conn["org_header"] == "X-Cloud-Org-Id"
+    assert _run(state.get_state()) is None
