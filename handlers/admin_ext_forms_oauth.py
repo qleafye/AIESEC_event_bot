@@ -29,8 +29,10 @@ _REDIRECT_URI = "https://oauth.yandex.ru/verification_code"
 
 _BAD_CLIENT_ID = ("Не похоже на ClientID — это 32 символа из цифр и букв a–f, "
                   "например 0123456789abcdef0123456789abcdef")
-_BAD_CODE_FORMAT = ("Не понял — пришлите только цифры кода со страницы Яндекса, "
-                    "например 1234567")
+_BAD_CODE_FORMAT = ("Не понял — пришлите только код со страницы Яндекса, без других слов, "
+                    "например jpfsigsxfj3nyrof или 1234567")
+# Яндекс выдавал 7 цифр, теперь — 16 букв и цифр; принимаем оба вида, регистр не трогаем.
+_CODE_RE = re.compile(r"[A-Za-z0-9]{6,32}")
 _CODE_REJECTED = "Код не подошёл или устарел — нажмите «🔑 Войти через Яндекс» ещё раз"
 _BAD_ORG = ("Не понял — пришлите ID организации числом, например 1234567, "
             "или нажмите «Формы в личном аккаунте, без организации»")
@@ -138,6 +140,11 @@ async def extf_appkeys_client_secret(message: types.Message, state: FSMContext, 
 
 # ---------- вход через Яндекс ----------
 
+def normalize_code(text: str | None) -> str | None:
+    code = re.sub(r"\s+", "", text or "")
+    return code if _CODE_RE.fullmatch(code) else None
+
+
 @router.callback_query(F.data == "extf_oauth")
 async def extf_oauth(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -158,7 +165,7 @@ async def extf_oauth(callback: types.CallbackQuery, state: FSMContext):
         "Вход через Яндекс — три шага:\n"
         "1. Нажмите «Открыть Яндекс» и войдите под аккаунтом бота (не личным).\n"
         "2. Нажмите «Разрешить».\n"
-        "3. Яндекс покажет код из цифр — пришлите его сюда. Я удалю сообщение с кодом.",
+        "3. Яндекс покажет код подтверждения — пришлите его сюда. Я удалю сообщение с кодом.",
         reply_markup=kb)
     await callback.message.answer("Жду код. Передумали — нажмите «Отмена».",
                                   reply_markup=get_cancel_kb())
@@ -180,8 +187,8 @@ async def extf_oauth_cancel(message: types.Message, state: FSMContext):
 
 @router.message(ExtFormOAuth.code, F.text)
 async def extf_oauth_code(message: types.Message, state: FSMContext, bot: Bot):
-    code = re.sub(r"\s+", "", message.text or "")
-    if not re.fullmatch(r"\d{6,8}", code):
+    code = normalize_code(message.text)
+    if code is None:
         await message.answer(_BAD_CODE_FORMAT)
         return
     await _delete_quietly(bot, message)

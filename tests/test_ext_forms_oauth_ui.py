@@ -162,7 +162,7 @@ def test_oauth_bad_code_format(tmp_path, monkeypatch):
     state = _fresh_state(ADMIN_ID)
     _run(state.set_state("ExtFormOAuth:code"))
     _, ev = _msg("abc", state, st="ExtFormOAuth:code")
-    assert "пришлите только цифры кода" in _all_text(ev)
+    assert "пришлите только код со страницы Яндекса" in _all_text(ev)
     assert _run(state.get_state()) == "ExtFormOAuth:code"
 
 
