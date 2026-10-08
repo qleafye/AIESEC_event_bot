@@ -877,6 +877,18 @@ a.legend-item { color: var(--accent-text); }
   .sources-table tbody tr:hover th { background: var(--surface-alt); }
 }
 
+/* Хвост чипов под «Показать все N» и перечень каналов: подпись переносится, а не схлопывается
+   в столбик; матрица «канал × день» скроллится внутри .table-wrap. */
+.chips-more { flex-basis: 100%; margin-top: var(--sp-2); }
+.chips-more summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
+.chips-more-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.channels-table th[scope="row"] {
+  min-width: 8em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.channels-table thead th { min-width: 56px; }
+
 /* ── Reduced motion ─────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {

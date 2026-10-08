@@ -118,3 +118,67 @@ def test_sources_template_mobile_rules_present():
     css = tdr.APP_CSS.read_text(encoding="utf-8")
     assert ".sources-table-wrap" in css
     assert "position: sticky" in css.split(".sources-table-wrap", 1)[1]
+
+
+# ── периоды, хвост чипов, «Все каналы за период» ──────────────────────────────────────────
+
+def _recent_users():
+    from dashboard.timeutil import msk_now
+
+    day = msk_now().date().isoformat()
+    users = [
+        {"telegram_id": 7000 + i, "full_name": f"Тестовый Человек {i}", "registration_date": f"{day} 10:00:00",
+         "source": f"Канал {i}", "event_city": "spb", "status": "approved"}
+        for i in range(7) for _ in (0,)
+    ]
+    users += [
+        {"telegram_id": 7100 + i, "full_name": f"Дубль {i}", "registration_date": f"{day} 11:00:00",
+         "source": f"Канал {i}", "event_city": "spb", "status": "approved"}
+        for i in range(7)
+    ]
+    users += [
+        {"telegram_id": 7200, "full_name": "Хвост Один", "registration_date": f"{day} 12:00:00",
+         "source": "<b>x</b>", "event_city": "spb", "status": "approved"},
+        {"telegram_id": 7201, "full_name": "Хвост Два", "registration_date": f"{day} 12:30:00",
+         "source": "vk_post", "event_city": "spb", "status": "approved", "source_from_tag": 1},
+    ]
+    return users
+
+
+def _setup_recent(tmp_path):
+    db_path = tdr._use_tmp_db(tmp_path, "sources_page_recent.db")
+    tdr._seed(cities=_CITIES, settings={"event_city_enabled": "on"}, users=_recent_users())
+    return tdr._stats_manager_client(db_path), db_path
+
+
+def test_period_today_yesterday_links(tmp_path):
+    client, _ = _setup(tmp_path)
+    page = client.get("/sources", params={"period": "today"}).text
+    assert "Сегодня" in page and "Вчера" in page
+    assert "period=today" in page and "period=yesterday" in page
+    assert re.search(r'class="switch-link active" aria-current="page" href="[^"]*period=today"', page)
+
+
+def test_tail_details_and_channels_block(tmp_path):
+    client, _ = _setup_recent(tmp_path)
+    page = client.get("/sources", params={"period": "7"}).text
+    assert "Показать все" in page and "<details" in page
+    assert "<details class=\"chips-more\" open" not in page
+    assert "Все каналы за период" in page
+    assert "&lt;b&gt;x&lt;/b&gt;" in page and "<b>x</b>" not in page
+    assert "🔗 vk_post" in page
+    assert "Кто пришёл по ссылке с меткой, вопрос «Откуда узнал» не получает — его канал = метка ссылки" in page
+    assert "Канал (метка ссылки или ответ в анкете)" in page
+    assert re.search(r'<table class="sources-table channels-table">.*?Итого.*?Доля', page, re.S)
+    # матрица: у периода 7 дней в заголовке таблицы каналов 7 колонок дней
+    block = page.split("channels-table", 1)[1].split("</thead>", 1)[0]
+    assert block.count('class="num">') >= 7
+    text = _csv_text(page)
+    assert "Все каналы за период" in text
+
+
+def test_selected_tail_chip_opens_details(tmp_path):
+    client, _ = _setup_recent(tmp_path)
+    page = client.get("/sources", params={"period": "7", "src": "<b>x</b>"}).text
+    assert re.search(r'<details class="chips-more" open>', page)
+    assert "(выбрано)" in page
