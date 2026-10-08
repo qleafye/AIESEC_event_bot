@@ -1517,6 +1517,9 @@ admin|callback_query|dlg_courses|dlg_courses
 admin|callback_query|dlg_course|dlg_course:*
 admin|callback_query|dlg_courses_done|dlg_courses_done
 admin|callback_query|dlg_apply|dlg_apply
+admin|callback_query|dlg_arm|dlg_arm
+admin|callback_query|dlg_arm_yes|dlg_arm_yes
+admin|callback_query|dlg_disarm|dlg_disarm
 admin|callback_query|dlg_text|dlg_text
 admin|callback_query|dlg_text_pick|dlg_text:*
 admin|callback_query|dlg_sheet|dlg_sheet
@@ -2257,7 +2260,9 @@ def test_snapshot_total_handler_count_is_292():
     # (extf_push_title, ExtFormConnect.push_title) сразу после extf_connect_link и +2
     # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
     # две чистые вставки (1070 -> 1073).
-    assert len(GOLDEN_SNAPSHOT) == 1073
+    # 2026-10-09, квик 261009-1v0: делегации «✅ Включить делегации» — +3 admin.callback_query
+    # (dlg_arm/dlg_arm_yes/dlg_disarm) сразу после dlg_apply; одна чистая вставка (1073 -> 1076).
+    assert len(GOLDEN_SNAPSHOT) == 1076
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
