@@ -50,13 +50,9 @@
   nav.toc li { margin:0; }
   nav.toc a { display:block; padding:6px 10px; border-radius:8px; color:var(--ink); text-decoration:none; line-height:1.35; }
   nav.toc a:hover, nav.toc a.on { background:var(--accent-soft); color:var(--accent-ink); }
-  nav.toc .n { display:inline-block; min-width:1.7em; color:var(--muted); font-weight:700; }
-  nav.toc li.grp, details.toc-m li.grp { margin:14px 0 4px; padding:0 10px; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  nav.toc .n, .tocov .n { display:inline-block; min-width:1.9em; margin-right:.3em; color:var(--muted); font-weight:700; }
+  nav.toc li.grp, .tocov li.grp { margin:14px 0 4px; padding:0 10px; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   .part { margin:0 0 30px; padding:14px 0 0; border-top:1px solid var(--line); font-family:'Raleway', Arial, sans-serif; font-weight:800; font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent-ink); }
-  details.toc-m { display:none; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:16px; }
-  details.toc-m summary { font-weight:800; cursor:pointer; }
-  details.toc-m ol { margin:8px 0 0; padding:0; list-style:none; }
-  details.toc-m a { display:block; padding:7px 0; text-decoration:none; color:var(--ink); border-top:1px solid var(--line); }
   main { min-width:0; counter-reset:fig; }
   section.sec { margin:0 0 44px; }
   section.sec > h2 { font-family:'Raleway', Arial, sans-serif; font-size:clamp(26px, 3.4vw, 34px); line-height:1.15; margin:0 0 14px; padding-bottom:10px; border-bottom:3px solid var(--accent); }
@@ -81,6 +77,8 @@
   .steps > li { counter-increment:st; position:relative; padding:2px 0 2px 46px; margin:0 0 14px; }
   .steps > li::before { content:counter(st); position:absolute; left:0; top:0; width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff; font-weight:800; display:grid; place-items:center; font-size:16px; }
   :root[data-theme="dark"] .steps > li::before { color:#08241A; }
+  :root[data-theme="dark"] figure.shot img, :root[data-theme="dark"] .lb img { filter:brightness(.85); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) figure.shot img, :root:not([data-theme="light"]) .lb img { filter:brightness(.85); } }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .steps > li::before { color:#08241A; } }
   .path { font-weight:700; background:var(--accent-soft); border-radius:8px; padding:3px 9px; display:inline-block; }
   .split { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:24px; align-items:start; margin:0 0 16px; }
@@ -99,10 +97,28 @@
   figure.shot.wide { width:100%; }
   figcaption { font-size:14.5px; color:var(--muted); margin-top:7px; line-height:1.4; }
   figcaption::before { content:'Рис. ' counter(fig) '. '; font-weight:800; color:var(--ink); }
-  .lb { position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:100; overflow:auto; display:none; padding:20px 10px; }
+  .lb { position:fixed; inset:0; background:rgba(0,0,0,.86); z-index:100; overflow:auto; display:none; padding:66px 10px 20px; -webkit-overflow-scrolling:touch; }
   .lb.on { display:block; }
-  .lb img { display:block; margin:0 auto; max-width:min(100%, 820px); height:auto; background:#fff; border-radius:8px; }
-  .lb .x { position:fixed; right:14px; top:10px; font:inherit; font-size:28px; width:46px; height:46px; border-radius:50%; border:0; background:#fff; color:#111; cursor:pointer; }
+  .lb img { display:block; margin:0 auto; max-width:none; width:auto; height:auto; background:#fff; border-radius:8px; cursor:zoom-out; }
+  .lb.fit img { max-width:min(100%, 820px); cursor:zoom-in; }
+  .lbbar { position:fixed; left:0; right:0; top:0; display:flex; justify-content:flex-end; gap:10px; padding:10px 14px; background:rgba(0,0,0,.55); z-index:2; }
+  .lb .fitb { font:inherit; font-size:15px; font-weight:700; padding:0 14px; height:46px; border-radius:23px; border:0; background:#fff; color:#111; cursor:pointer; }
+  .lb .x { font:inherit; font-size:28px; width:46px; height:46px; border-radius:50%; border:0; background:#fff; color:#111; cursor:pointer; }
+  figure.shot a.zoom::before { content:'⤢ увеличить'; position:absolute; right:8px; top:8px; z-index:1; padding:3px 9px; border-radius:999px; background:rgba(0,0,0,.62); color:#fff; font-size:12.5px; font-weight:700; line-height:1.4; }
+  #tocbtn { display:none; align-items:center; white-space:nowrap; font-weight:800; }
+  .tocov { position:fixed; inset:0; z-index:90; background:rgba(0,0,0,.45); }
+  .tocov[hidden] { display:none; }
+  .tocpanel { position:absolute; left:0; top:0; bottom:0; width:min(88vw, 360px); background:var(--card); overflow:auto; padding:0 12px 24px; box-shadow:4px 0 24px rgba(0,0,0,.25); }
+  .tochead { position:sticky; top:0; display:flex; align-items:center; justify-content:space-between; background:var(--card); padding:12px 4px 10px; border-bottom:1px solid var(--line); font-size:18px; }
+  .tocx { font:inherit; font-size:26px; width:42px; height:42px; border-radius:50%; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
+  .tocov ol { margin:6px 0 0; padding:0; list-style:none; }
+  .tocov li { margin:0; }
+  .tocov a { display:block; padding:10px; border-radius:8px; color:var(--ink); text-decoration:none; line-height:1.35; }
+  .tocov a.on { background:var(--accent-soft); color:var(--accent-ink); }
+  #up { position:fixed; right:16px; bottom:18px; z-index:40; width:48px; height:48px; border-radius:50%; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:22px; font-weight:800; box-shadow:0 4px 16px rgba(0,0,0,.18); cursor:pointer; opacity:0; pointer-events:none; transition:opacity .2s; }
+  #up.on { opacity:1; pointer-events:auto; }
+  mark.hit { background:#FFE58A; color:#1C1C1C; border-radius:3px; padding:0 1px; }
+  mark.hit.cur { background:#FFB020; outline:2px solid #B25E00; }
   details.q { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:0 0 10px; }
   details.q > summary { cursor:pointer; padding:12px 16px; font-weight:800; list-style:none; }
   details.q > summary::-webkit-details-marker { display:none; }
@@ -111,6 +127,7 @@
   details.q > .body { padding:0 16px 8px; }
   dl.gl { margin:0; } dl.gl dt { font-weight:800; margin-top:14px; } dl.gl dd { margin:2px 0 0; color:var(--ink); }
   .gone { display:none !important; }
+  body.searching .part { display:none; }
   .empty { display:none; text-align:center; color:var(--muted); padding:40px 0; font-size:18px; }
   .pill { display:inline-block; font-size:13px; font-weight:800; padding:1px 9px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); vertical-align:middle; }
   .pill.off { background:var(--btn); color:var(--muted); }
@@ -118,13 +135,18 @@
   @media (max-width: 980px) {
     .wrap { grid-template-columns:minmax(0,1fr); gap:0; }
     nav.toc { display:none; }
-    details.toc-m { display:block; }
+    #tocbtn { display:inline-flex; }
     .split, .split.rev { grid-template-columns:minmax(0,1fr); }
     .split.rev > :first-child { order:0; }
   }
   @media (max-width: 520px) {
     body { font-size:16.5px; }
-    .bar .count { display:none; }
+    .bar .in { flex-wrap:wrap; row-gap:4px; gap:8px; padding:8px 12px; }
+    .bar .thl { display:none; }
+    .bar button { padding:8px 10px; }
+    .bar input[type=search] { padding:9px 8px; }
+    .bar .count { order:5; flex-basis:100%; font-size:13.5px; }
+    .bar .count:empty { display:none; }
     .steps > li { padding-left:42px; }
   }
   @media (max-width: 640px) {
@@ -136,7 +158,7 @@
     td:first-child { font-weight:800; }
     td[data-l]:not(:first-child)::before { content:attr(data-l); display:block; font-size:12.5px; font-weight:800; color:var(--accent-ink); text-transform:uppercase; letter-spacing:.03em; }
   }
-  @media print { .bar, nav.toc, details.toc-m, .lb { display:none !important; } }
+  @media print { .bar, nav.toc, .tocov, .lb, #up { display:none !important; } }
   /* Более воздушная вёрстка */
   body { font-size:17.5px; line-height:1.7; }
   main p, main ul, main ol, main dl, main blockquote { max-width:70ch; }
@@ -188,6 +210,10 @@
   details.more > .in { padding:6px 18px 14px; }
   details.more > .in > :last-child { margin-bottom:0; }
   details.more .tip { box-shadow:none; }
+  details.more.imp { border:1px solid var(--warm); border-left-width:6px; background:var(--warm-soft); }
+  details.more.imp > summary { color:var(--ink); }
+  details.more.imp > summary::after { content:'важно'; margin-left:8px; padding:1px 8px; border-radius:999px; background:var(--warm); color:#fff; font-size:12px; font-weight:800; vertical-align:middle; }
+  details.more.imp[open] { background:var(--card); }
   details.q { border-left:6px solid var(--warm); border-radius:14px; margin:0 0 16px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
   details.q > summary { padding:16px 20px; font-size:17.5px; line-height:1.45; }
   details.q > .body { padding:0 20px 14px; }
@@ -215,9 +241,10 @@
   <div class="meta">Версия бота: обновление от 8 октября 2026. Картинки сняты на боте СкиллАп 5 на вымышленных данных: у вашего события набор кнопок может отличаться, потому что часть модулей включается отдельно.</div>
 </div></header>
 <div class="bar"><div class="in">
-  <input id="q" type="search" placeholder="Поиск по гайду: например, «рассылка», «роль», «таблица»" aria-label="Поиск по гайду" autocomplete="off">
+  <button id="tocbtn" type="button" aria-label="Открыть оглавление" aria-controls="tocov" aria-expanded="false">☰ Разделы</button>
+  <input id="q" type="search" placeholder="Поиск: рассылка, роль…" aria-label="Поиск по гайду" autocomplete="off">
   <span class="count" id="cnt"></span>
-  <button id="th" type="button" aria-label="Сменить тему">Тема</button>
+  <button id="th" type="button" aria-label="Сменить тему" title="Сменить тему">◐<span class="thl"> Тема</span></button>
 </div></div>
 <div class="wrap">
 <nav class="toc" aria-label="Оглавление"><ol>
@@ -249,35 +276,7 @@
 <li><a href="#glossary"><span class="n">23.</span>Глоссарий</a></li>
 </ol></nav>
 <main>
-<details class="toc-m"><summary>Оглавление</summary><ol>
-<li><a href="#start"><span class="n">1.</span>С чего начать за 5 минут</a></li>
-<li><a href="#check"><span class="n">2.</span>Проверьте в первую очередь</a></li>
-<li class="grp">Каждый день</li>
-<li><a href="#apps"><span class="n">3.</span>Разбор заявок и письма делегату</a></li>
-<li><a href="#find"><span class="n">4.</span>Поиск делегата: <code>/find</code></a></li>
-<li><a href="#faq"><span class="n">5.</span>Вопросы делегатов и частые вопросы</a></li>
-<li><a href="#broadcast"><span class="n">6.</span>Рассылки</a></li>
-<li><a href="#polls"><span class="n">7.</span>Опросы</a></li>
-<li><a href="#sheet"><span class="n">8.</span>Таблица Google: что можно и нельзя</a></li>
-<li><a href="#stats"><span class="n">9.</span>Статистика и дашборд</a></li>
-<li><a href="#problems"><span class="n">10.</span>Частые проблемы</a></li>
-<li class="grp">Настройка события</li>
-<li><a href="#roles"><span class="n">11.</span>Вход и роли</a></li>
-<li><a href="#form"><span class="n">12.</span>Настройка анкеты и текстов</a></li>
-<li><a href="#now"><span class="n">13.</span>Что можно включить под своё событие</a></li>
-<li><a href="#pay"><span class="n">14.</span>Оплата и чеки</a></li>
-<li><a href="#cities"><span class="n">15.</span>Несколько городов</a></li>
-<li><a href="#forum"><span class="n">16.</span>День форума: QR, отметки, SOS</a></li>
-<li><a href="#game"><span class="n">17.</span>Геймификация и амбассадоры</a></li>
-<li><a href="#delegations"><span class="n">18.</span>Делегации вузов и внешние формы</a></li>
-<li><a href="#chat"><span class="n">19.</span>Чат делегатов</a></li>
-<li><a href="#miniapp"><span class="n">20.</span>Приложение менеджера (Mini App)</a></li>
-<li><a href="#season"><span class="n">21.</span>Новый сезон и прошлые делегаты</a></li>
-<li class="grp">Справка</li>
-<li><a href="#map"><span class="n">22.</span>Карта админки по разделам</a></li>
-<li><a href="#glossary"><span class="n">23.</span>Глоссарий</a></li>
-</ol></details>
-<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово или посмотрите оглавление слева.</div>
+<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово или откройте оглавление.</div>
 
 <section class="sec" id="start"><h2>С чего начать за 5 минут</h2>
 <div class="blk">
@@ -562,7 +561,7 @@
 <li>«✏️ Правка анкеты делегатом» и «🔁 Повторная подача после отказа». По умолчанию делегат может править анкету всегда, а отказанный может подать заново. Исключение для одного человека выдаётся из <code>/find</code>.</li>
 </ul>
 <figure class="shot phone"><a class="zoom" href="shots/admin/b_quiet.png"><img src="shots/admin/b_quiet.png" width="780" height="1106" alt="Экран «🌙 Тихие часы». На снимке тишина выключена." loading="lazy"></a><figcaption>Экран «🌙 Тихие часы». На снимке тишина выключена.</figcaption></figure>
-<details class="more"><summary>Подробнее: «Авто» и тихие часы</summary><div class="in">
+<details class="more imp"><summary>Подробнее: «Авто» и тихие часы</summary><div class="in">
 <ul>
 <li>Когда «Авто» уместен: отбора нет совсем, например открытое событие или акция с краткой формой. Если отбор есть, не включайте «Авто» даже ненадолго. На одном из событий режим простоял пять часов, и за это время 38 заявок одобрились без проверки.</li>
 <li>Переключение на «Авто» бот подтверждает: «⚠️ Выключить модерацию полной формы?». После «Да, выключить модерацию» всем менеджерам уходит сообщение с вашим именем. Обратное переключение «Авто → Ручная» срабатывает сразу.</li>
@@ -595,7 +594,7 @@
 </div><figure class="shot phone"><a class="zoom" href="shots/admin/b_find.png"><img src="shots/admin/b_find.png" width="780" height="1002" alt="Карточка одобренного делегата и кнопки." loading="lazy"></a><figcaption>Карточка одобренного делегата и кнопки.</figcaption></figure></div>
 <p>Каждое действие показывает отдельный экран с описанием того, что изменится, и кнопками «✅ …» и «✖️ Отмена». Читайте его: он называет последствия словами.</p>
 <figure class="shot phone"><a class="zoom" href="shots/admin/b_find_pending.png"><img src="shots/admin/b_find_pending.png" width="780" height="854" alt="Для заявки «на рассмотрении» кнопок меньше: возвращать пока не из чего." loading="lazy"></a><figcaption>Для заявки «на рассмотрении» кнопок меньше: возвращать пока не из чего.</figcaption></figure>
-<details class="more"><summary>Подробнее: все кнопки карточки</summary><div class="in">
+<details class="more imp"><summary>Подробнее: все кнопки карточки</summary><div class="in">
 <div class="tbl"><table>
 <thead><tr><th>Кнопка</th><th>Когда видна</th><th>Что произойдёт</th></tr></thead>
 <tbody>
@@ -673,7 +672,7 @@
 <li>Ошиблись? Сразу нажмите «⛔ Остановить» в сообщении с прогрессом. Уже доставленное останется, остальным не уйдёт. Потом «🗒 Последние рассылки» → «🗑 Удалить у получателей» (работает 48 часов).</li>
 <li>«📢 Все пользователи» включает и отклонённых. Если нужно только одобренным, используйте фильтр по статусу.</li>
 </ol>
-<details class="more"><summary>Подробнее: правила для отложенной рассылки</summary><div class="in"><ol start="5">
+<details class="more imp"><summary>Подробнее: правила для отложенной рассылки</summary><div class="in"><ol start="5">
 <li>Время отложенной рассылки московское. Если указать время, которое уже прошло, бот ответит «Это время уже прошло».</li>
 <li>На экране подтверждения отложенной рассылки нет числа получателей. Заранее посмотрите число через «🎯 По фильтру» → «📊 Показать и отправить».</li>
 <li>Не отправляйте видео, файлы и альбомы через «🕓 Запланировать»: отложенная рассылка умеет только текст и одно фото.</li>
@@ -847,7 +846,7 @@
 <div class="blk" id="sheet-ops">
 <h3>Кнопки раздела «📊 Данные» для таблицы</h3>
 <p>Три кнопки безопасны, две стирают данные и просят подтверждение. Перед «♻️ Пересобрать таблицу» сделайте копию: «Файл» → «Создать копию».</p>
-<details class="more"><summary>Подробнее: что делает каждая кнопка</summary><div class="in">
+<details class="more imp"><summary>Подробнее: что делает каждая кнопка</summary><div class="in">
 <div class="tbl"><table>
 <thead><tr><th>Кнопка</th><th>Что делает</th><th>Опасность</th></tr></thead>
 <tbody>
@@ -1141,7 +1140,7 @@
 <li>«Пользователь @имя не найден в базе бота — попросите числовой id.»: человек ни разу не нажимал «Начать». Попросите нажать и повторите.</li>
 </ul>
 </div></details>
-<details class="more"><summary>Подробнее: права роли, срок и как снять роль</summary><div class="in">
+<details class="more imp"><summary>Подробнее: права роли, срок и как снять роль</summary><div class="in">
 <ul>
 <li>Права роли. Кнопка «✏️ Права роли: …» открывает галочки (✅ разрешено, ☐ нет). Нажатие сохраняется сразу и действует на всех людей этой роли. Если снять все галочки, роль временно ничего не может, а люди остаются в списке.</li>
 <li>Выключить роль целиком. Верхняя кнопка пары: «🛂 Менеджер регистраций: ✅ Вкл → ❌ Выкл». Подпись показывает, что произойдёт при нажатии.</li>
@@ -1316,7 +1315,7 @@
 </div></details>
 <div class="warn"><b class="t">Поле «🎭 Тип события» лучше не трогать</b>Его ставят один раз при запуске бота, и бот просит набрать служебное слово латиницей из подсказки на экране. Если нужен другой набор вопросов, пользуйтесь кнопкой «🎛 Тип события (пресет)» в разделе «📝 Анкета»: там выбор кнопками и подтверждение.</div>
 <figure class="shot phone"><a class="zoom" href="shots/admin/b_preset.png"><img src="shots/admin/b_preset.png" width="780" height="1056" alt="«🎛 Тип события (пресет)». Нажатие на пресет сперва покажет подтверждение, но не всё, что он поменяет." loading="lazy"></a><figcaption>«🎛 Тип события (пресет)». Нажатие на пресет сперва покажет подтверждение, но не всё, что он поменяет. Пресет применяют один раз, при запуске события.</figcaption></figure>
-<details class="more"><summary>Подробнее: какие пресеты есть и что они включают</summary><div class="in">
+<details class="more imp"><summary>Подробнее: какие пресеты есть и что они включают</summary><div class="in">
 <p>Пресет одним нажатием включает нужные вопросы и выключает остальные. Текущие тумблеры вопросов он перезаписывает. Если в шапке выбран один город, пресет не применится: бот попросит переключиться на «🌍 Все города».</p>
 <div class="tbl"><table>
 <thead><tr><th>Пресет</th><th>Что включает</th><th>Оплата</th></tr></thead>
@@ -1892,28 +1891,89 @@
 </main>
 </div>
 <footer>Гайд написан по коду бота (обновление от 8 октября 2026). Картинки сняты на боте СкиллАп 5. Экраны чата показаны макетом «как в Telegram»: тексты и кнопки взяты из бота дословно, внешний вид зависит от вашего клиента. Если что-то в боте расходится с этим гайдом, прав бот: напишите об этом владельцу и разработчику бота @qleafye.</footer>
-<div class="lb" id="lb" role="dialog" aria-label="Увеличенная картинка"><button class="x" type="button" aria-label="Закрыть">×</button><img alt=""></div>
+<div class="tocov" id="tocov" hidden><div class="tocpanel" role="dialog" aria-label="Оглавление"><div class="tochead"><b>Разделы</b><button type="button" class="tocx" aria-label="Закрыть оглавление">×</button></div><ol></ol></div></div>
+<button id="up" type="button" aria-label="Наверх">↑</button>
+<div class="lb" id="lb" role="dialog" aria-label="Увеличенная картинка"><div class="lbbar"><button class="fitb" type="button">Вписать в экран</button><button class="x" type="button" aria-label="Закрыть">×</button></div><img alt=""></div>
 <script>
 (function () {
-  [].slice.call(document.querySelectorAll('table')).forEach(function (t) { var hs = [].slice.call(t.querySelectorAll('thead th')).map(function (h) { return h.textContent; }); [].slice.call(t.querySelectorAll('tbody tr')).forEach(function (r) { [].slice.call(r.children).forEach(function (c, i) { if (hs[i]) c.setAttribute('data-l', hs[i]); }); }); });
+  var $$ = function (sel, root) { return [].slice.call((root || document).querySelectorAll(sel)); };
+  $$('table').forEach(function (t) { var hs = $$('thead th', t).map(function (h) { return h.textContent; }); $$('tbody tr', t).forEach(function (r) { [].slice.call(r.children).forEach(function (c, i) { if (hs[i]) c.setAttribute('data-l', hs[i]); }); }); });
+  function norm(t) { return t.toLowerCase().replace(/ё/g, 'е'); }
   var q = document.getElementById('q'), cnt = document.getElementById('cnt'), empty = document.getElementById('empty');
-  var secs = [].slice.call(document.querySelectorAll('section.sec'));
-  var tocLinks = [].slice.call(document.querySelectorAll('nav.toc a, details.toc-m a'));
-  secs.forEach(function (s) { s._t = s.textContent.toLowerCase(); [].slice.call(s.querySelectorAll('.blk')).forEach(function (b) { b._t = b.textContent.toLowerCase(); }); });
+  var main = document.querySelector('main');
+  var secs = $$('section.sec');
+
+  // Оглавление на телефоне: «☰ Разделы» открывает панель поверх страницы.
+  var tocov = document.getElementById('tocov'), tocbtn = document.getElementById('tocbtn');
+  tocov.querySelector('ol').innerHTML = document.querySelector('nav.toc ol').innerHTML;
+  function tocOpen(on) {
+    tocov.hidden = !on; tocbtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) { var cur = tocov.querySelector('a.on'); if (cur) cur.scrollIntoView({ block: 'center' }); }
+  }
+  tocbtn.addEventListener('click', function () { tocOpen(tocov.hidden); });
+  tocov.addEventListener('click', function (e) {
+    if (e.target === tocov || e.target.closest('.tocx') || e.target.closest('a')) tocOpen(false);
+  });
+  var tocLinks = $$('nav.toc a, .tocov a');
+
+  // Поиск: ё = е, подсветка, счётчик, прокрутка к первому совпадению.
+  secs.forEach(function (s) { s._t = norm(s.textContent); $$('.blk', s).forEach(function (b) { b._t = norm(b.textContent); }); });
+  var marks = [], curMark = -1, scrollTimer = null;
+  function clearMarks() {
+    $$('mark.hit', main).forEach(function (m) { var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); });
+    marks = []; curMark = -1;
+  }
+  function visible(node) { for (var el = node.parentNode; el && el !== main; el = el.parentNode) { if (el.classList && el.classList.contains('gone')) return false; } return true; }
+  function addMarks(v) {
+    var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+    while ((n = w.nextNode())) { if (n.nodeValue.trim() && norm(n.nodeValue).indexOf(v) > -1 && visible(n)) nodes.push(n); }
+    nodes.forEach(function (node) {
+      var text = node.nodeValue, low = norm(text), i = 0, j, frag = document.createDocumentFragment();
+      while ((j = low.indexOf(v, i)) > -1 && marks.length < 400) {
+        if (j > i) frag.appendChild(document.createTextNode(text.slice(i, j)));
+        var m = document.createElement('mark'); m.className = 'hit'; m.textContent = text.slice(j, j + v.length);
+        frag.appendChild(m); marks.push(m); i = j + v.length;
+      }
+      if (i < text.length) frag.appendChild(document.createTextNode(text.slice(i)));
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
+  function goMark(k) {
+    if (!marks.length) return;
+    if (curMark > -1 && marks[curMark]) marks[curMark].classList.remove('cur');
+    curMark = (k + marks.length) % marks.length;
+    var m = marks[curMark]; m.classList.add('cur');
+    var d = m.closest('details'); while (d) { d.open = true; d = d.parentNode.closest && d.parentNode.closest('details'); }
+    m.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    cnt.textContent = 'Совпадение ' + (curMark + 1) + ' из ' + marks.length + (marks.length > 1 ? ' · Enter — следующее' : '');
+  }
   function run() {
-    var v = q.value.trim().toLowerCase(), shown = 0, hits = 0;
+    var v = norm(q.value.trim()), shown = 0;
+    clearMarks();
+    document.body.classList.toggle('searching', !!v);
     secs.forEach(function (s) {
-      var blks = [].slice.call(s.querySelectorAll('.blk')), ok = !v || s._t.indexOf(v) > -1;
-      if (v && ok) { blks.forEach(function (b) { var m = b._t.indexOf(v) > -1; b.classList.toggle('gone', !m); if (m) hits++; }); }
+      var blks = $$('.blk', s), ok = !v || s._t.indexOf(v) > -1;
+      if (v && ok) { blks.forEach(function (b) { b.classList.toggle('gone', b._t.indexOf(v) < 0); }); }
       else { blks.forEach(function (b) { b.classList.remove('gone'); }); }
-      [].slice.call(s.querySelectorAll('details.q, details.more')).forEach(function (d) { var m = !!v && d.textContent.toLowerCase().indexOf(v) > -1; d.open = m; });
+      $$('details.q, details.more', s).forEach(function (d) { d.open = !!v && norm(d.textContent).indexOf(v) > -1; });
       s.classList.toggle('gone', !ok); if (ok) shown++;
       tocLinks.forEach(function (a) { if (a.getAttribute('href') === '#' + s.id) a.parentNode.classList.toggle('gone', !ok); });
     });
+    $$('li.grp').forEach(function (g) { g.classList.toggle('gone', !!v); });
     empty.style.display = shown ? 'none' : 'block';
-    cnt.textContent = v ? ('Найдено разделов: ' + shown) : '';
+    if (v.length >= 2) addMarks(v);
+    cnt.textContent = !v ? '' : (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
+    clearTimeout(scrollTimer);
+    if (marks.length) scrollTimer = setTimeout(function () { goMark(0); }, 700);
   }
-  q.addEventListener('input', run);
+  var runTimer = null;
+  q.addEventListener('input', function () { clearTimeout(runTimer); runTimer = setTimeout(run, 180); });
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(scrollTimer); clearTimeout(runTimer); if (!marks.length) run(); goMark(curMark + 1); }
+    if (e.key === 'Escape') { q.value = ''; run(); }
+  });
+
+  // Тема.
   var th = document.getElementById('th');
   try { var sv = localStorage.getItem('ag-theme'); if (sv) document.documentElement.setAttribute('data-theme', sv); } catch (e) {}
   th.addEventListener('click', function () {
@@ -1922,21 +1982,52 @@
     var nx = dark ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', nx);
     try { localStorage.setItem('ag-theme', nx); } catch (e) {}
   });
-  var heads = secs.map(function (s) { return s; });
+
+  // Подсветка текущего раздела в оглавлении и кнопка «↑».
+  var up = document.getElementById('up');
   function spy() {
     var y = window.scrollY + 120, cur = null;
-    heads.forEach(function (s) { if (!s.classList.contains('gone') && s.offsetTop <= y) cur = s.id; });
-    document.querySelectorAll('nav.toc a').forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + cur); });
+    secs.forEach(function (s) { if (!s.classList.contains('gone') && s.offsetTop <= y) cur = s.id; });
+    tocLinks.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + cur); });
+    up.classList.toggle('on', window.scrollY > 700);
   }
   window.addEventListener('scroll', spy, { passive: true }); spy();
-  var lb = document.getElementById('lb'), lbi = lb.querySelector('img');
+  up.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+  // Просмотр картинки: своя запись в истории, «Назад» закрывает картинку, а не страницу.
+  var lb = document.getElementById('lb'), lbi = lb.querySelector('img'), fitb = lb.querySelector('.fitb');
+  function setFit(on) { lb.classList.toggle('fit', on); fitb.textContent = on ? 'Крупнее' : 'Вписать в экран'; }
+  function lbOpen(src, alt) {
+    lbi.src = src; lbi.alt = alt; setFit(false); lb.classList.add('on'); lb.scrollTop = 0; lb.scrollLeft = 0;
+    document.documentElement.style.overflow = 'hidden';
+    try { history.pushState({ lb: 1 }, ''); } catch (e) {}
+  }
+  function lbHide() { lb.classList.remove('on'); document.documentElement.style.overflow = ''; }
+  function lbClose() { if (!lb.classList.contains('on')) return; if (history.state && history.state.lb) history.back(); else lbHide(); }
+  window.addEventListener('popstate', function () { if (lb.classList.contains('on')) lbHide(); });
+  fitb.addEventListener('click', function () { setFit(!lb.classList.contains('fit')); });
+  lbi.addEventListener('click', function () { setFit(!lb.classList.contains('fit')); });
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a.zoom');
-    if (a) { e.preventDefault(); lbi.src = a.getAttribute('href'); lbi.alt = a.querySelector('img').alt; lb.classList.add('on'); lb.scrollTop = 0; return; }
-    if (e.target === lb || e.target.className === 'x') lb.classList.remove('on');
+    if (a) { e.preventDefault(); lbOpen(a.getAttribute('href'), a.querySelector('img').alt); return; }
+    if (e.target === lb || (e.target.closest && e.target.closest('.x'))) lbClose();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('on'); });
-  if (location.hash) { var t = document.querySelector(location.hash); if (t && t.scrollIntoView) setTimeout(function () { t.scrollIntoView(); }, 50); }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (lb.classList.contains('on')) lbClose(); else if (!tocov.hidden) tocOpen(false);
+  });
+
+  // Ссылка на раскрывашку (#id у details) раскрывает её.
+  function openHash() {
+    if (!location.hash) return;
+    var t = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!t) return;
+    var d = t.tagName === 'DETAILS' ? t : t.closest('details');
+    while (d) { d.open = true; d = d.parentNode.closest && d.parentNode.closest('details'); }
+    setTimeout(function () { t.scrollIntoView(); }, 50);
+  }
+  window.addEventListener('hashchange', openHash);
+  openHash();
 })();
 </script>
 </body>
