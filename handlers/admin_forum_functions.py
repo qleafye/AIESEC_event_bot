@@ -216,6 +216,11 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     lines.append(f"📅 Запись на сессии: {_status(await _enroll_on(code))}")
     if visible(f"prog_enrset:{code}"):
         buttons.append([InlineKeyboardButton(text="📅 Настройки записи", callback_data=f"prog_enrset:{code}")])
+    from database import quiz_db as _qdb  # тест компетенций (admin_quiz)
+    _quiz = await _qdb.get_quiz_for_city(code)
+    lines.append(f"🧭 Тест компетенций: {_status(bool(_quiz and _quiz['enabled']))}")
+    if visible(f"prog_qz:{code}"):
+        buttons.append([InlineKeyboardButton(text="🧭 Тест компетенций", callback_data=f"prog_qz:{code}")])
 
     # 8. SOS — сама кнопка меню (menu_sos, см. пункт 6) + окно активности (forum_date +
     # sos_active_days); родной экран уже есть (handlers/admin_sos.py).
