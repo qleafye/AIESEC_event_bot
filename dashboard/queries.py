@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -794,7 +795,11 @@ ALLOWED_BREAKDOWNS = (
 )
 
 
-def breakdown(conn, column: str, *, scope: Scope, limit: int | None = None) -> list[tuple[str, int]]:
+def breakdown(
+    conn, column: str, *, scope: Scope, limit: int | None = None, approved_only: bool = False,
+) -> list[tuple[str, int]]:
+    """`approved_only` — разрез только по одобренным (запрос DXP 08.10: «разбивка среди
+    отобранных»), иначе по всем заявкам в скоупе."""
     if column not in ALLOWED_BREAKDOWNS:
         raise ValueError(f"Unknown breakdown column: {column!r}")
 
@@ -805,6 +810,8 @@ def breakdown(conn, column: str, *, scope: Scope, limit: int | None = None) -> l
         return []
 
     parts, params = _scope_sql(conn, scope)
+    if approved_only:
+        parts = parts + ["status = 'approved'"]
     parts = parts + [f"{column} IS NOT NULL", f"TRIM({column}) != ''", f"{column} != '-'"]
     sql = (
         f"SELECT {column} AS value, COUNT(*) AS cnt FROM users"
@@ -815,6 +822,67 @@ def breakdown(conn, column: str, *, scope: Scope, limit: int | None = None) -> l
         params = params + (limit,)
     rows = conn.execute(sql, params).fetchall()
     return [(row["value"], row["cnt"]) for row in rows]
+
+
+# Корзины возраста: (верхняя граница включительно | None, подпись). Порядок — по возрасту,
+# а не по числу: разрез читается как шкала.
+AGE_BUCKETS: tuple[tuple["int | None", str], ...] = (
+    (17, "до 18"),
+    (20, "18–20"),
+    (23, "21–23"),
+    (26, "24–26"),
+    (None, "27+"),
+)
+
+
+def _parse_age(age_raw, birth_raw, today) -> "int | None":
+    """Возраст из ответа «Возраст» (свободный текст: «19», «19 лет»), а если его нет —
+    из «Даты рождения» (ДД.ММ.ГГГГ) на сегодня. Неразборчивое и неправдоподобное — None."""
+    match = re.search(r"\d+", str(age_raw)) if age_raw else None
+    if match:
+        value = int(match.group())
+        return value if 10 <= value <= 99 else None
+    if birth_raw:
+        try:
+            born = datetime.strptime(str(birth_raw).strip(), "%d.%m.%Y").date()
+        except ValueError:
+            return None
+        value = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        return value if 10 <= value <= 99 else None
+    return None
+
+
+def age_breakdown(conn, *, scope: Scope, approved_only: bool = False) -> list[tuple[str, int]]:
+    """Разрез «Возраст» корзинами `AGE_BUCKETS`. Пустые корзины и неразборчивые ответы не
+    показываются. На старой схеме без `birth_date` считается только по `age`."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "age" not in cols:
+        return []
+    birth_col = "birth_date" if "birth_date" in cols else "NULL"
+    parts, params = _scope_sql(conn, scope)
+    if approved_only:
+        parts = parts + ["status = 'approved'"]
+    rows = conn.execute(
+        f"SELECT age, {birth_col} AS birth_date FROM users{_where(parts)}", params,
+    ).fetchall()
+    today = msk_now().date()
+    counts = {label: 0 for _limit, label in AGE_BUCKETS}
+    for row in rows:
+        age = _parse_age(row["age"], row["birth_date"], today)
+        if age is None:
+            continue
+        for limit, label in AGE_BUCKETS:
+            if limit is None or age <= limit:
+                counts[label] += 1
+                break
+    return [(label, counts[label]) for _limit, label in AGE_BUCKETS if counts[label]]
+
+
+def approved_count(conn, scope: Scope) -> int:
+    parts, params = _scope_sql(conn, scope)
+    return _scalar(
+        conn, f"SELECT COUNT(*) FROM users{_where(parts + ['status = ?'])}", params + ("approved",),
+    ) or 0
 
 
 # ── сравнение городов (D-10/D-15) ────────────────────────────────────────────────────────
