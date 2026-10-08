@@ -137,7 +137,9 @@ async def _slot_screen(target: types.Message, ctx: _Ctx, tid: int, gi: int, *, e
     for s in ordered:
         mark = ""
         if s["id"] in mine:
-            mark, chosen_id = "✅ ", s["id"]
+            # слот строится транзитивно, запись проверяется попарно: в слоте может быть
+            # несколько совместимых записей — отмечаем все, «Снять выбор» снимет их все
+            mark, chosen_id = "✅ ", chosen_id if chosen_id is not None else s["id"]
         elif tid and s.get("track_id") == tid:
             mark = "⭐ "
         label = f"{mark}{s['title']}"
@@ -373,10 +375,15 @@ async def se_clear(callback: types.CallbackQuery):
         await _schedule_screen(callback.message, ctx, edit=True)
         return
     tid, gi, sid = args
-    out = await svc.unenroll(callback.from_user.id, sid)
-    if out.status != "ok":
-        await _alert_refusal(callback, ctx, out)
-        return
+    flat = await _flat_slots(ctx.city)
+    slot_ids = {s["id"] for s in flat[gi][1]} if 0 <= gi < len(flat) else {sid}
+    mine = {s["id"] for s in await edb.list_user_enrollments(ctx.user["telegram_id"], ctx.city)}
+    # снимаем ВСЕ записи делегата внутри показанного слота, а не только одну
+    for session_id in sorted((slot_ids & mine) or {sid}):
+        out = await svc.unenroll(callback.from_user.id, session_id)
+        if out.status != "ok":
+            await _alert_refusal(callback, ctx, out)
+            return
     await callback.answer()
     await _slot_screen(callback.message, ctx, tid, gi)
 
