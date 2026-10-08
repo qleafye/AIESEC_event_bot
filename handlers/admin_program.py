@@ -344,6 +344,9 @@ async def prog_time_step(message: types.Message, state: FSMContext):
         await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=ReplyKeyboardRemove())
         await message.answer("Выберите:", reply_markup=kb)
         return
+    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    if await confirm_time(message, state, session_id, start, end):
+        return
     await state.clear()
     await update_program_session(session_id, start_time=start, end_time=end)
     await _send_card(message, session_id, intro="✅ Время обновлено.")
@@ -357,6 +360,10 @@ async def prog_ftyes(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     if start is None or end is None:
         await callback.answer("Действие устарело — откройте карточку заново.", show_alert=True)
+        return
+    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    if await confirm_time(callback.message, state, session_id, start, end):
+        await callback.answer()
         return
     await update_program_session(session_id, start_time=start, end_time=end)
     await _edit_to_card(callback, session_id)
