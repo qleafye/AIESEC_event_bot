@@ -429,6 +429,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "extf_*": "settings",
     "extf_view:*": "moderate_reg",
     "state:ExtFormConnect:*": "settings",
+    "state:ExtFormImport:*": "settings",
     "state:ExtFormOAuth:*": "settings",
     "state:ExtFormAppKeys:*": "settings",
     # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал

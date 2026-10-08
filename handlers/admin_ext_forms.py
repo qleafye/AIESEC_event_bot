@@ -147,7 +147,15 @@ def _card_text(f: dict) -> str:
         f"Не сопоставлено с делегатом: {f['unmatched']}",
         f"Последний ответ: {_e(f.get('last_answer_at') or 'ещё не было')}",
     ]
-    if f.get("last_sync_at"):
+    push = f.get("ingest_mode") == "push"
+    if push:
+        lines.append("Режим: личная форма — ответы присылает интеграция формы")
+        if f["total"] == 0:
+            lines.append("⏳ Ждёт первый ответ: настройте интеграцию («🔗 Адрес и инструкция») "
+                         "или загрузите старые ответы файлом")
+        if f.get("push_warning"):
+            lines.append(f"⚠️ {_e(f['push_warning'])}")
+    elif f.get("last_sync_at"):
         lines.append(f"Последняя сверка: {_e(f['last_sync_at'])}")
     if f.get("sync_error"):
         lines.append(f"⚠️ Ошибка сверки: {_e(f['sync_error'])}")
@@ -167,6 +175,9 @@ def _card_kb(f: dict) -> InlineKeyboardMarkup:
         rows.append([_btn("▶️ Возобновить", f"extf_resume:{fid}")])
     notify_text = "🔔 Уведомления о новых ответах: " + ("вкл" if f.get("notify") else "выкл")
     rows.append([_btn(notify_text, f"extf_notify:{fid}")])
+    if f.get("ingest_mode") == "push":
+        rows.append([_btn("📥 Загрузить старые ответы", f"extf_import:{fid}")])
+        rows.append([_btn("🔑 Вопросы ника и телефона", f"extf_pkeys:{fid}")])
     rows.append([_btn("📋 Вкладка таблицы", f"extf_tab:{fid}")])
     if f["platform"] == "yandex":
         rows.append([_btn("🔗 Адрес и инструкция", f"extf_hook:{fid}")])
@@ -365,3 +376,4 @@ async def extf_view(callback: types.CallbackQuery):
 from handlers import admin_ext_forms_oauth  # noqa: E402,F401
 from handlers import admin_ext_forms_setup  # noqa: E402,F401
 from handlers import admin_ext_forms_connect  # noqa: E402,F401
+from handlers import admin_ext_forms_push  # noqa: E402,F401
