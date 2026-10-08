@@ -2605,6 +2605,9 @@ async def init_db():
         # Журнал зачётов приглашённых — колонки на referral_credits.
         from database import amb_journal_db
         await amb_journal_db.ensure_schema(db)
+        # Запись на сессии программы: треки, компетенции, записи, подтверждение расписания.
+        from database import session_enroll_db
+        await session_enroll_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
@@ -10489,6 +10492,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("reg_submit_digest_queue", "telegram_id", "queue"),
     ("delayed_notifications", "user_id", "queue"),
     ("application_decisions", "telegram_id", "decisions"),
+    # Запись на сессии программы и подтверждение расписания — личный след делегата.
+    ("session_enrollments", "telegram_id", "enrollments"),
+    ("session_schedule_confirms", "telegram_id", "enrollments"),
     ("poll_answers", "user_id", "deliveries"),
     ("poll_messages", "chat_id", "deliveries"),
     ("broadcast_deliveries", "chat_id", "deliveries"),
@@ -11948,6 +11954,7 @@ async def get_program_session(session_id: int) -> dict | None:
 # list колонок у любой другой PATCH-функции в этом файле (не SET из произвольных kwargs).
 _PROGRAM_SESSION_PATCH_FIELDS = (
     "day", "start_time", "end_time", "title", "speaker", "hall_id", "description",
+    "track_id", "enroll_closed", "enroll_limit",
 )
 
 
@@ -11973,6 +11980,11 @@ async def update_program_session(session_id: int, **fields) -> bool:
 
 async def delete_program_session(session_id: int) -> bool:
     async with _connect() as db:
+        # Записи на сессию и её компетенции уходят вместе с ней — иначе сироты.
+        await db.execute("DELETE FROM session_enrollments WHERE session_id = ?", (session_id,))
+        await db.execute(
+            "DELETE FROM program_session_competencies WHERE session_id = ?", (session_id,),
+        )
         cursor = await db.execute("DELETE FROM program_sessions WHERE id = ?", (session_id,))
         await db.commit()
         return bool(cursor.rowcount)
