@@ -452,6 +452,34 @@ def build(conn, scope: queries.Scope, q: SourcesQuery, *, today: "date | None" =
         "total": sum(totals_counts),
     }
 
+    # «Все каналы за период»: полный перечень на ключе канала, без хвоста «Остальные».
+    # Считаем только заявки внутри отображаемого календаря — иначе после обрезки
+    # _MAX_SPAN_DAYS сумма разошлась бы с итогом таблицы.
+    day_index = {r["key"]: i for i, r in enumerate(rows_out)}
+    matrix = step == "day" and 0 < len(rows_out) <= _MATRIX_MAX_DAYS
+    per_channel: dict[str, list[int]] = {}
+    for r in filtered:
+        idx = day_index.get(bucket_of(r["day"]).isoformat())
+        if idx is None:
+            continue
+        cells = per_channel.setdefault(r["answer"], [0] * len(rows_out))
+        cells[idx] += 1
+    total_all = totals["total"]
+    channels = [
+        {
+            "label": label,
+            "count": sum(cells),
+            "share": round(sum(cells) * 100 / total_all, 1) if total_all else 0.0,
+            "per_day": cells if matrix else None,
+        }
+        for label, cells in per_channel.items()
+    ]
+    channels.sort(key=lambda c: (-c["count"], c["label"]))
+    channel_days = (
+        [{"key": r["key"], "label": r["short_label"], "date": r["date"]} for r in rows_out]
+        if matrix else None
+    )
+
     chronological = list(reversed(rows_out))
     chart = {
         "labels": [r["short_label"] for r in chronological],
@@ -506,6 +534,8 @@ def build(conn, scope: queries.Scope, q: SourcesQuery, *, today: "date | None" =
         "rows": rows_out,
         "totals": totals,
         "chart": chart,
+        "channels": channels,
+        "channel_days": channel_days,
         "options": options,
         "city_labels": city_labels,
         "range": (date_from, date_to),
@@ -553,7 +583,8 @@ def _csv_period_cell(row: dict, step: str) -> str:
 def csv_bytes(result: dict, description: str) -> bytes:
     """CSV текущего среза: «;», UTF-8 с BOM (Excel открывает кириллицу без мастера импорта) —
     тот же формат, что у выгрузок бота (`arrival_stats.csv_bytes`). Подписи категорий
-    вводят люди — через `_sheet_safe`, чтобы Excel не принял их за формулу."""
+    вводят люди — через `_sheet_safe`, чтобы Excel не принял их за формулу. После «Итого» —
+    отдельная секция «Все каналы за период» (матрица канал × день или итог и доля)."""
     week = result["step"] == "week"
     out = io.StringIO()
     raw = csv.writer(out, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
@@ -574,6 +605,21 @@ def csv_bytes(result: dict, description: str) -> bytes:
         w([_csv_period_cell(row, result["step"]), *row["counts"], row["ambassador"], row["total"]])
     totals = result["totals"]
     w(["Итого", *totals["counts"], totals["ambassador"], totals["total"]])
+    w([])
+    w(["Все каналы за период"])
+    days = result.get("channel_days")
+
+    def share(c):
+        return f"{c['share']:.1f}".replace(".", ",")
+
+    if days:
+        w(["Канал", *[d["date"].strftime("%d.%m.%Y") for d in days], "Итого", "Доля, %"])
+        for c in result["channels"]:
+            w([c["label"], *c["per_day"], c["count"], share(c)])
+    else:
+        w(["Канал", "Заявок", "Доля, %"])
+        for c in result["channels"]:
+            w([c["label"], c["count"], share(c)])
     return b"\xef\xbb\xbf" + out.getvalue().encode("utf-8")
 
 
