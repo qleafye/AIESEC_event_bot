@@ -93,7 +93,7 @@ def test_admin_guide_page_and_images_are_served(board):
     status, ctype, body = _deck_get(board, "/admin-guide")
     assert status == 200 and ctype.startswith("text/html")
     page = body.decode("utf-8")
-    assert "Гайд администратора бота СкиллАп 5" in page
+    assert "Гайд менеджера бота мероприятий АЙСЕК" in page
     assert page.count("shots/admin/") >= 25
 
     status, ctype, body = _deck_get(board, "/shots/admin/b_app_card.png")
