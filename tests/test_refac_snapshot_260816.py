@@ -813,6 +813,12 @@ admin|message|extf_import_not_file|state:ExtFormImport:*
 admin|message|dlg_cutoff_input|state:DelegationEdit:*
 admin|message|dlg_text_input|state:DelegationEdit:*
 admin|message|dlg_link_person|state:DelegationLink:*
+admin|message|prog_trk_cancel_word|state:ProgramTrackEdit:*
+admin|message|prog_cmp_cancel_word|state:ProgramCompetencyEdit:*
+admin|message|prog_lim_cancel_word|state:ProgramEnrollLimit:*
+admin|message|prog_trk_name_step|state:ProgramTrackEdit:*
+admin|message|prog_cmp_name_step|state:ProgramCompetencyEdit:*
+admin|message|prog_enrlim_step|state:ProgramEnrollLimit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1547,6 +1553,36 @@ admin|callback_query|dlg_pick|dlg_pick:*
 admin|callback_query|dlg_link_yes|dlg_link_yes
 admin|callback_query|forumtz_cfg_screen|forumtz_cfg:*
 admin|callback_query|forumtz_set_go|forumtz_set:*
+admin|callback_query|prog_trkl|prog_trkl:*
+admin|callback_query|prog_trkn|prog_trkn:*
+admin|callback_query|prog_trko|prog_trko:*
+admin|callback_query|prog_trkr|prog_trkr:*
+admin|callback_query|prog_trkm|prog_trkm:*
+admin|callback_query|prog_trkx|prog_trkx:*
+admin|callback_query|prog_trkxgo|prog_trkxgo:*
+admin|callback_query|prog_cmpl|prog_cmpl:*
+admin|callback_query|prog_cmpn|prog_cmpn:*
+admin|callback_query|prog_cmpo|prog_cmpo:*
+admin|callback_query|prog_cmpr|prog_cmpr:*
+admin|callback_query|prog_cmpm|prog_cmpm:*
+admin|callback_query|prog_cmpx|prog_cmpx:*
+admin|callback_query|prog_cmpxgo|prog_cmpxgo:*
+admin|callback_query|prog_enrcancel|prog_enrcancel
+admin|callback_query|prog_enrcard|prog_enrcard:*
+admin|callback_query|prog_enrtrk|prog_enrtrk:*
+admin|callback_query|prog_enrtrkgo|prog_enrtrkgo:*
+admin|callback_query|prog_enrcmp|prog_enrcmp:*
+admin|callback_query|prog_enrcl|prog_enrcl:*
+admin|callback_query|prog_enrlim0|prog_enrlim0:*
+admin|callback_query|prog_enrlim|prog_enrlim:*
+admin|callback_query|prog_enrl|prog_enrl:*
+admin|callback_query|prog_enrlt|prog_enrlt:*
+admin|callback_query|prog_enrx|prog_enrx:*
+admin|callback_query|prog_enrset|prog_enrset:*
+admin|callback_query|prog_enrsw|prog_enrsw:*
+admin|callback_query|prog_enrdl|prog_enrdl:*
+admin|callback_query|prog_enrtx|prog_enrtx:*
+admin|callback_query|prog_enrte|prog_enrte:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1667,6 +1703,7 @@ user_actions|message|sos_collecting_step|state:SosReport:*
 user_actions|message|sos_delegate_followup|
 user_actions|message|sfb_comment_step|
 user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
+user_actions|message|session_enroll_menu|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1689,6 +1726,16 @@ user_actions|callback_query|pds_days_back|pds_days
 user_actions|callback_query|sfb_rate|
 user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|fnsp_answer|fnsp:*
+user_actions|callback_query|se_open|se:open
+user_actions|callback_query|se_track|se:t:*
+user_actions|callback_query|se_slot|se:s:*
+user_actions|callback_query|se_pick|se:p:*
+user_actions|callback_query|se_replace|se:r:*
+user_actions|callback_query|se_keep|se:k:*
+user_actions|callback_query|se_clear|se:c:*
+user_actions|callback_query|se_my|se:my
+user_actions|callback_query|se_edit|se:ed
+user_actions|callback_query|se_confirm|se:ok
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2270,7 +2317,8 @@ def test_snapshot_total_handler_count_is_292():
     # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
     # две чистые вставки (1070 -> 1073).
     # Запись на сессии и тест: сезон и фильтры записи/теста в рассылке, подтверждение подстановок (admin_broadcast_season, admin_broadcast_enroll_filter, admin_settings_placeholders); чистые вставки, SequenceMatcher (1073 -> 1085).
-    assert len(GOLDEN_SNAPSHOT) == 1085
+    # Запись на сессии: админка треков/компетенций/записей (admin_enroll, admin_enroll_list) и поток делегата (session_enroll, до catch-all); чистые вставки, SequenceMatcher (1085 -> 1132).
+    assert len(GOLDEN_SNAPSHOT) == 1132
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
