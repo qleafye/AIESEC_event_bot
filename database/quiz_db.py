@@ -444,7 +444,7 @@ def _int_keys(raw: str | None) -> dict:
     out: dict[int, int] = {}
     for k, v in (data or {}).items():
         try:
-            out[int(k)] = v if isinstance(v, (int, float)) else int(v)
+            out[int(k)] = v if isinstance(v, (int, float, dict)) else int(v)
         except (TypeError, ValueError):
             continue
     return out
