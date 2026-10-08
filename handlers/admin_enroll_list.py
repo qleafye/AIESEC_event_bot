@@ -130,7 +130,7 @@ async def prog_enrx(callback: types.CallbackQuery):
         writer.writerow([_csv_safe(cell) for cell in row])
     document = BufferedInputFile(out.getvalue().encode("utf-8-sig"), filename=f"enroll_{session['id']}.csv")
     await callback.message.answer_document(
-        document, caption=f"Записанные на «{session['title']}»: {len(users)} чел.",
+        document, caption=f"Записанные на «{html_module.escape(session['title'] or '')}»: {len(users)} чел.",
     )
     await callback.answer()
 
