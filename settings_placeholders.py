@@ -55,6 +55,8 @@ PROMPT_ONLY_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
     "miniapp_hub_pending_days": ("days",),
     "chat_rating_post_total_title": ("week", "currency"),
     "chat_rating_post_footer": ("week", "currency"),
+    "leaderboard_rank_line_text": ("total",),
+    "chat_rating_post_title_rules": ("currency",),
 }
 
 
