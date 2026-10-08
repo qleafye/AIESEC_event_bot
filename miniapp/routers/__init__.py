@@ -263,6 +263,8 @@
                                        point по умолчанию — «Вход» (services.checkin.ENTRY_POINT)
   POST /app/api/checkin/manual {telegram_id, point?} -> тот же контракт, что /scan (без QR —
                                        после поиска по фамилии, D-11/D-12)
+  POST /app/api/checkin/enroll {telegram_id, session_id} -> {status, message} — волонтёр записывает
+                                       делегата на сессию (checkin_enroll.py)
   GET  /app/api/checkin/search?q=  -> {items[{telegram_id,full_name,city,university,username,
                                        eligible,reason_text|null}]} — одобренные текущего сезона
                                        (eligible) первыми; q короче 2 не отфильтровывается — тот
@@ -299,6 +301,7 @@ from miniapp.routers import (
     admin_tasks,
     applications,
     checkin,
+    checkin_enroll,
     coins,
     coins_admin,
     faq,
@@ -335,6 +338,7 @@ ALL_ROUTERS = [
     questions.router,
     faq.router,
     checkin.router,
+    checkin_enroll.router,
     program.router,
     hooks.router,
 ]
