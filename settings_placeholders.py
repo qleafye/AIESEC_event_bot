@@ -121,10 +121,11 @@ def problem_text(key: str, result: PlaceholderCheck) -> str:
     return "\n".join(lines)
 
 
-def hint(key: str) -> str:
-    """«Подстановки: {x} — подпись; … Скобки бот заменит сам.» или пустая строка."""
+def hint(key: str, prompt: str | None = None) -> str:
+    """«Подстановки: {x} — подпись; … Скобки бот заменит сам.» или пустая строка. Если в
+    подсказке ключа (`prompt`) подстановки уже перечислены, строка не дублируется."""
     expected = expected_placeholders(key)
-    if not expected:
+    if not expected or (prompt and "Подстановки:" in prompt):
         return ""
     parts = "; ".join(f"{{{n}}} — {lbl or n}" for n, lbl in expected.items())
     return f"Подстановки: {parts}. Скобки бот заменит сам."

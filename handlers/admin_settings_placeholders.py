@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 _QUESTION = "\n\nСохранить всё равно?"
 
 
-def hint_line(key: str) -> str:
+def hint_line(key: str, prompt: str | None = None) -> str:
     """Строка-подсказка для экрана правки (с переводом строки) или пустая."""
-    h = hint(key)
+    h = hint(key, prompt)
     return f"\n\n{h}" if h else ""
 
 

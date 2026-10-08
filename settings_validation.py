@@ -139,6 +139,20 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
 
     entry_type = entry.get("type")
 
+    if base.endswith("_menu_label") and value.strip() != "-":
+        # подпись динамической кнопки меню не должна совпадать с подписью другой кнопки:
+        # хендлер, зарегистрированный раньше, перехватил бы нажатие
+        from keyboards.builders import MENU_TEXTS
+        from keyboards.menu_dynamic import DYNAMIC_MENU_LABEL_KEYS
+        own = {mk for mk, lk in DYNAMIC_MENU_LABEL_KEYS.items() if lk == base}
+        taken = set().union(*(texts for mk, texts in MENU_TEXTS.items() if mk not in own))
+        if value.strip() in taken:
+            return None, (
+                "Такая подпись уже есть у другой кнопки меню — нажатия перепутаются. "
+                "Придумайте другую, например <code>📅 Мои сессии</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
+
     forum_error = _forum_text_error(base, value)
     if forum_error:
         return None, forum_error

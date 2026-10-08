@@ -194,3 +194,21 @@ def test_unavailable_session_has_own_text(tmp_path):
         assert svc.EnrollOutcome(status).text_key == "session_enroll_unavailable_text"
     assert svc.EnrollOutcome("ok").text_key is None
     assert "session_enroll_scan_error_text" in svc.ENROLL_TEXT_KEYS
+
+
+def test_hint_not_duplicated_when_prompt_lists_placeholders():
+    import settings_placeholders as sp
+    from settings_schema import SETTINGS_SCHEMA
+
+    prompt = SETTINGS_SCHEMA["session_enroll_slot_text"]["prompt"]
+    assert "Подстановки:" in prompt and sp.hint("session_enroll_slot_text", prompt) == ""
+    assert sp.hint("session_enroll_slot_text") != ""
+
+
+def test_menu_label_cannot_equal_other_button():
+    from settings_validation import validate_setting_value
+
+    value, error = validate_setting_value("quiz_menu_label", "📞 Контакты")
+    assert value is None and "другой кнопки" in error
+    assert validate_setting_value("quiz_menu_label", "🧭 Тест")[1] is None  # собственная подпись
+    assert validate_setting_value("quiz_menu_label", "🧭 Проверка навыков")[1] is None
