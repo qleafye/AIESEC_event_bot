@@ -155,9 +155,13 @@ _NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
     "sos_fallback_contact_text",
 })
 
+# 08.10: описание бота ставится в Telegram одно на всех (`services.bot_profile`), без
+# языковых версий — перевод в корпусе был бы мёртвым, его никто не показывает.
+_BOT_PROFILE_KEYS: frozenset[str] = frozenset({"bot_description", "bot_short_description"})
+
 _NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
     ADMIN_KEYS_IN_DELEGATE_GROUPS | _ADMIN_ONLY_GAME_KEYS | _NON_LANGUAGE_PAY_KEYS
-    | _NON_LANGUAGE_EVENT_KEYS
+    | _NON_LANGUAGE_EVENT_KEYS | _BOT_PROFILE_KEYS
 )
 
 # Динамические ключи вне SETTINGS_SCHEMA — только эти два префикса (help_text/prompt
