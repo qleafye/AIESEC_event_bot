@@ -5666,15 +5666,16 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             if value == SEASON_NONE:
                 clauses.append("(season IS NULL OR TRIM(season) = '')")
             elif value == SEASON_CURRENT:
-                # Сезон приходит снимком от `_resolve_enroll_and_season`; без него (настройка
-                # не задана) сезон не фильтруется — тот же fail-soft, что у
-                # `_approved_current_season_frag`.
+                # Сезон приходит снимком от `_resolve_enroll_and_season`. Настройка пуста —
+                # понятия «прошлый сезон» нет, но и «всем подряд» нельзя: условие
+                # «только текущий» не должно молча открываться на делегатов с проставленным
+                # сезоном. Остаются строки без сезона; если сезонов в базе нет, это все строки.
                 snapshot = f.get("event_season")
                 if snapshot:
                     clauses.append("(season IS NULL OR TRIM(season) = '' OR season = ?)")
                     params.append(snapshot)
                 else:
-                    clauses.append("1=1")
+                    clauses.append("(season IS NULL OR TRIM(season) = '')")
             elif not value:
                 # WR-01, same reasoning as event_city above: an empty value must NOT drop the
                 # condition (that would fan out to the whole base) — emit a false clause.

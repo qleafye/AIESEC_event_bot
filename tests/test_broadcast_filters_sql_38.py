@@ -96,7 +96,8 @@ def test_season_current_without_event_season(tmp_path):
         d = await seed_delegates()
         await db.set_setting("event_season", "")
         got = await _ids([{"field": "season", "value": db.SEASON_CURRENT}])
-        assert d["past"] in got  # сезон не задан — не фильтруем
+        assert d["past"] not in got and d["cur1"] not in got  # сезон не задан — не «всем подряд»
+        assert d["empty"] in got
 
     run(go())
 
