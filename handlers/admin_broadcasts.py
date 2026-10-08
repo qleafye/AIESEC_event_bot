@@ -39,6 +39,7 @@ from database.db import (
     cancel_scheduled_broadcast,
     count_and_list_filtered,
     get_distinct_filter_values,
+    SEASON_CURRENT,
     SEASON_NONE,
     get_season_filter_options,
     # Квик 260911-0fh (RESUME-FILTER-02): поле фильтра «Резюме» — выбор «есть»/«нет».
@@ -1644,6 +1645,9 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # настоящих сезонов подписи нет (значение и есть подпись, «YL 26/2»). Сводку уже
         # рисует существующая ветка `f.get("label")` в `_filter_summary`.
         entry = {"field": field, "value": value}
+        # конкретный сезон заменяет «Текущий сезон» по умолчанию, иначе AND даёт 0 получателей
+        filters[:] = [f for f in filters
+                      if not (f.get("field") == "season" and f.get("value") == SEASON_CURRENT)]
         labels = data.get("filter_option_labels") or {}
         if value in labels:
             entry["label"] = labels[value]
