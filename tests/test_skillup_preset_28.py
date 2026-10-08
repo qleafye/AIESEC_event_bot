@@ -34,7 +34,7 @@ EXISTING_PRESETS_SNAPSHOT = {
         ],
     },
     "conf": {
-        "label": "🎤 Конференция (RusCo)",
+        "label": "🎤 Конференция",
         "payment_enabled": "on",
         "on": [
             "reg_q_age", "reg_q_vk", "reg_q_phone", "reg_q_lc", "reg_q_work",
@@ -45,7 +45,7 @@ EXISTING_PRESETS_SNAPSHOT = {
         ],
     },
     "party": {
-        "label": "🎉 Party",
+        "label": "🎉 Вечеринка",
         "on": [
             "reg_q_age", "reg_q_phone", "reg_q_alumni_status", "reg_q_vk", "reg_q_city",
             "reg_q_allergies", "reg_q_food",

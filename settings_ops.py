@@ -520,7 +520,7 @@ GROUP_LABELS: dict[str, str] = {
     "apps": "📋 Заявки",
     "sheets": "📄 Вкладки таблицы",
     "pay": "💳 Оплата",
-    "party": "🎉 Party",
+    "party": "🎉 Вечеринка",
     "consent": "📋 Согласия",
     "game": "🎮 Геймификация",
     "amb": "🤝 Амбассадоры",
@@ -530,7 +530,7 @@ GROUP_LABELS: dict[str, str] = {
     "reg_prompts": "✏️ Тексты вопросов",
     "menu": "🔘 Кнопки меню",
     "dashboard": "📊 Дашборд",
-    "miniapp": "🎨 Mini App",
+    "miniapp": "🎨 Приложение",
 }
 
 # (section_token, section_label, (group_token, ...)) — в порядке разделов
