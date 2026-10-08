@@ -2059,6 +2059,10 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     from handlers.onsite_reg import try_walkin_start
     if await try_walkin_start(message, state, args):
         return
+    # `?start=sessions` и другие форумные deep-link'и; не обработан — идёт обычный /start.
+    from handlers.forum_deeplinks import try_forum_deeplink
+    if await try_forum_deeplink(message, state, args):
+        return
 
     # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
     # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
