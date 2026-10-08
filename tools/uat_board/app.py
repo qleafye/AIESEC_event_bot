@@ -226,6 +226,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif path in ("/update-0910", "/update-0910/"):
+            # «Что нового в боте Юлида» 8–9 октября (09.10): обновление, что сделать в боте, приёмка.
+            self._send(200, _read(os.path.join(DECK_DIR, "update-0910.html")), "text/html; charset=utf-8")
+        elif path == "/update-0910.pdf":
+            body = _read(os.path.join(DECK_DIR, "update-0910.pdf"))
+            self.send_response(200 if body else 404)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''chto-novogo-0910.pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif path in ("/uat", "/uat/"):
             # Чеклист приёмки форумного функционала (26.09): отметки хранятся в браузере
             # тестировщика, отчёт копируется кнопкой — серверного состояния нет.

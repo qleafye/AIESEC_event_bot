@@ -98,7 +98,10 @@ def _push_items(answers) -> list[dict] | None:
         if isinstance(answers.get("data"), list):
             return parse_yandex_answer(answers)[1] or None
         for key, value in answers.items():
-            items.append({"q": str(key), "label": str(key), "value": _flat(value)})
+            # Пробелы по краям срезаем, как у шапки выгрузки (rows_to_answers): иначе «Вуз » из
+            # интеграции и «Вуз» из файла становятся двумя колонками (прод 09.10).
+            key = str(key).strip()
+            items.append({"q": key, "label": key, "value": _flat(value)})
     elif isinstance(answers, list):
         for entry in answers:
             if not isinstance(entry, dict):
@@ -110,7 +113,7 @@ def _push_items(answers) -> list[dict] | None:
             if q is None:
                 continue
             value = entry.get("value", entry.get("answer"))
-            items.append({"q": str(q), "label": str(label if label is not None else q),
+            items.append({"q": str(q).strip(), "label": str(label if label is not None else q).strip(),
                           "value": _flat(value)})
     return items or None
 

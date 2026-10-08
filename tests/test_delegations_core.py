@@ -77,6 +77,7 @@ def _delegation_form(*, select: bool = True, username_q: str = "q7") -> int:
                                    key_username_q=username_q)
         if select:
             await set_setting_by_admin(None, "delegation_form_id", str(fid))
+            await set_setting_by_admin(None, "delegation_armed_form_id", str(fid))
         await set_setting_by_admin(None, "delegation_q_fullname", "q1")
         await set_setting_by_admin(None, "delegation_q_university", "q4")
         await set_setting_by_admin(None, "delegation_q_course", "q6")
