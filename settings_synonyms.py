@@ -101,6 +101,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "session_enroll_not_approved_text": ["запись на сессии заявка не одобрена", "запись на сессии текст"],
     "session_enroll_disabled_text": ["запись на сессии запись выключена", "запись на сессии текст"],
     "session_enroll_no_sessions_text": ["запись на сессии сессий нет", "запись на сессии текст"],
+    "session_enroll_unavailable_text": ["запись на сессии сессия недоступна", "запись на сессии текст"],
+    "session_enroll_scan_error_text": ["запись на сессии сканер, не получилось", "запись на сессии текст"],
     "session_enroll_scan_other_text": ["запись на сессии сканер, записан на другую", "запись на сессии текст"],
     "session_enroll_scan_none_text": ["запись на сессии сканер, не записан", "запись на сессии текст"],
     "session_enroll_scan_rebook_button": ["запись на сессии сканер, перезаписать", "запись на сессии кнопка"],

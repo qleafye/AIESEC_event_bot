@@ -23,7 +23,7 @@ function h(tag, attrs) {
   el.removeAttribute = () => { el.disabled = false; };
   return el;
 }
-const res = { telegram_id: 7, enroll: { action: "rebook", session_id: 5, label: "Перезаписать на эту" } };
+const res = { telegram_id: 7, enroll: { action: "rebook", session_id: 5, label: "Перезаписать на эту", error: "Не получилось записать — попробуйте ещё раз" } };
 const out = { type: typeof m.enrollButton };
 {
   const calls = [], said = []; let refreshed = 0;

@@ -184,3 +184,13 @@ def test_already_enrolled_on_full_session_is_not_full(tmp_path):
         assert (await svc.enroll(d["cur2"], p["A"])).status == "full"
 
     run(go())
+
+
+def test_unavailable_session_has_own_text(tmp_path):
+    from services import session_enroll as svc
+
+    ready(tmp_path)
+    for status in ("wrong_city", "not_enrollable", "no_session"):
+        assert svc.EnrollOutcome(status).text_key == "session_enroll_unavailable_text"
+    assert svc.EnrollOutcome("ok").text_key is None
+    assert "session_enroll_scan_error_text" in svc.ENROLL_TEXT_KEYS
