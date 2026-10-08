@@ -34,7 +34,7 @@ _FORM_ID_RE = re.compile(r"\b([0-9a-f]{24})\b", re.I)
 
 class YandexApiError(Exception):
     """`reason`: unauthorized | forbidden | not_found | rate_limited | upstream_unavailable |
-    bad_response | no_app_keys | bad_code. Без URL, токена и тела ответа."""
+    bad_response | no_app_keys | bad_code | org_required. Без URL, токена и тела ответа."""
 
     def __init__(self, reason: str, status: int | None = None):
         super().__init__(reason)
@@ -102,6 +102,10 @@ async def _request(method: str, url: str, *, headers: dict | None = None,
         logger.warning("yandex %s %s: сеть недоступна", method, path)
         raise YandexApiError("upstream_unavailable") from None
     logger.info("yandex %s %s -> %s", method, path, response.status_code)
+    if response.status_code == 400 and "организац" in response.text.lower():
+        # «Требуется организация»: API Форм отдаёт только формы организации (Яндекс 360 или
+        # Yandex Cloud); форма личного аккаунта и вход без ID организации так не читаются.
+        raise YandexApiError("org_required", 400)
     if response.status_code >= 400:
         raise YandexApiError(_reason_for(response.status_code), response.status_code)
     try:
@@ -154,6 +158,23 @@ async def refresh_token(conn: dict) -> dict:
 async def _get(conn: dict, url: str) -> dict:
     register_secret(conn.get("access_token"))
     return await _request("GET", url, headers=_headers(conn))
+
+
+ORG_HEADERS = ("X-Org-Id", "X-Cloud-Org-Id")  # Яндекс 360 для бизнеса | Yandex Cloud (Identity Hub)
+
+
+async def detect_org_header(conn: dict, org_id: str) -> str | None:
+    """Какой из двух заголовков принимает организация: менеджер знает ID, но не её вид.
+    None — ни один не подошёл (чужая организация или опечатка в ID)."""
+    for header in ORG_HEADERS:
+        try:
+            await _get({**conn, "org_id": org_id, "org_header": header}, f"{BASE}/surveys")
+        except YandexApiError as e:
+            if e.reason in ("unauthorized", "upstream_unavailable"):
+                raise
+            continue
+        return header
+    return None
 
 
 async def get_survey(conn: dict, survey_id: str) -> dict:
