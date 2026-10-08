@@ -92,7 +92,9 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
-from services.broadcast_scope import restrict_to_sender_city, sender_city_note, split_by_sender_city
+from services.broadcast_scope import (
+    past_season_note, restrict_to_sender_city, season_default_filter, sender_city_note, split_by_sender_city,
+)
 from services.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
@@ -361,6 +363,9 @@ async def _send_confirm_prompt(
     эту же функцию заново)."""
     dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
     warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
+    from handlers.admin_broadcast_season import season_confirm_extra
+    season_text, season_rows = await season_confirm_extra(state, users_ids)
+    warning += season_text
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
@@ -381,7 +386,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
-            [important_btn],
+            *season_rows, [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -389,7 +394,7 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
-        [important_btn],
+        *season_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
@@ -1013,13 +1018,15 @@ async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="sched_important_toggle",
     )
+    from handlers.admin_broadcast_season import schedule_season_extra
+    season_text, season_rows = await schedule_season_extra(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
-        [important_btn],
+        *season_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="sched_no")],
     ])
     await target.answer(
-        f"Запланировать эту рассылку на {when.strftime('%d.%m.%Y %H:%M')}?", reply_markup=kb,
+        f"{season_text}Запланировать эту рассылку на {when.strftime('%d.%m.%Y %H:%M')}?", reply_markup=kb,
     )
     await state.set_state(Broadcast.schedule_confirm)
 
@@ -1137,6 +1144,7 @@ async def sched_cancel(callback: types.CallbackQuery):
 
 _FILTER_FIELD_LABELS = {
     "ext_form": "Внешняя форма",
+    "session_enroll": "Запись на сессии", "quiz": "Тест",
     "city": "Город", "university": "ВУЗ", "status": "Статус",
     "source": "Источник", "registration_date": "Дата регистрации",
     "payment_status": "Оплата",
@@ -1281,7 +1289,8 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
                      show_season: bool = False, show_resume: bool = False,
                      show_chat: bool = False, show_auto_reject: bool = False,
                      show_checkin: bool = False, show_sessions: bool = False,
-                     show_ext_form: bool = False, show_delegations: bool = False) -> InlineKeyboardMarkup:
+                     show_ext_form: bool = False, show_delegations: bool = False,
+                     extra_rows: list | None = None) -> InlineKeyboardMarkup:
     kb = [
         [InlineKeyboardButton(text="Комитет АЙСЕК", callback_data="filter_f_local_committee"),
          InlineKeyboardButton(text="Департамент", callback_data="filter_f_department")],
@@ -1341,6 +1350,7 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
             InlineKeyboardButton(text="🎤 Были на сессии…", callback_data="cksf_start:attended"),
             InlineKeyboardButton(text="🚫 Не были на сессии…", callback_data="cksf_start:not_attended"),
         ])
+    kb.extend(extra_rows or [])  # сезон + запись на сессии/тест (шов admin_broadcast_season)
     if show_ext_form:
         kb.append([InlineKeyboardButton(text="📝 Внешняя форма", callback_data="extff_start")])
     if filters:
@@ -1381,6 +1391,7 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Вход каждый день: порог — хоть один вариант (за форум / сегодня / день) с людьми.
     checkin_options = await get_checkin_entry_picker_options()
     show_sessions = await any_program_sessions_exist()
+    from handlers.admin_broadcast_season import menu_extra_rows
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
@@ -1389,7 +1400,8 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
                          show_checkin=bool(checkin_options),
                          show_sessions=show_sessions,
                          show_ext_form=bool(await _ext_forms_list()),
-                         show_delegations=len(delegation_options) > 1)
+                         show_delegations=len(delegation_options) > 1,
+                         extra_rows=await menu_extra_rows(filters))
     if edit:
         await target.edit_text(text, reply_markup=kb)
     else:
@@ -1398,9 +1410,10 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
 
 @router.callback_query(F.data == "broadcast_filter", Broadcast.target_selection)
 async def broadcast_filter_start(callback: types.CallbackQuery, state: FSMContext):
-    await state.update_data(filters=[])
+    filters = [f] if (f := await season_default_filter()) else []  # по умолчанию — текущий сезон
+    await state.update_data(filters=filters)
     await callback.answer()
-    await _render_filter_menu(callback.message, [], edit=True)
+    await _render_filter_menu(callback.message, filters, edit=True)
     await state.set_state(Broadcast.filter_field)
 
 
@@ -1715,7 +1728,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     from services.forum_days import not_arrived_city_note  # «не пришли» — по городам форума
     await callback.message.edit_text(
         f"{await sender_city_note(callback.from_user.id)}🎯 Условия: {_filter_summary(filters)}\n"
-        f"Под фильтр попадает <b>{len(ids)}</b> пользователей."
+        f"Под фильтр попадает <b>{len(ids)}</b> пользователей.{await past_season_note(ids)}"
         f"{html_module.escape(await not_arrived_city_note(filters, ids))}",
         reply_markup=kb,
     )
@@ -1772,3 +1785,5 @@ async def cmd_refresh_allowlist(message: types.Message):
 # тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
 from handlers import admin_broadcast_session_filter  # noqa: E402,F401
 from handlers import admin_broadcast_ext_form_filter  # noqa: E402,F401
+from handlers import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
+from handlers import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
