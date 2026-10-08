@@ -397,7 +397,7 @@
 
 <section class="sec" id="start"><h2>С чего начать за 5 минут</h2>
 <div class="blk">
-<p class="why"><b>Зачем это.</b> Чтобы за пять минут начать разбирать заявки.</p>
+<p class="why"><b>Зачем это.</b> Первый день в команде? Здесь всё, чтобы за пять минут начать разбирать заявки.</p>
 <p class="lead">У каждого события свой бот: свой у Юлида, свой у РилТолка, свой у СкиллАпа. Устроены они одинаково, а отличаются тем, какие модули включены. Модуль это часть бота, которую включают под событие отдельно: оплата, города, задания и другие. Вы разбираете заявки и отвечаете делегатам в личной переписке с ботом. Всё начинается с команды <code>/admin</code>: она открывает <b>админку</b>, меню для организаторов внутри того же бота. Делегаты его не видят.</p>
 <p>Кроме переписки, у бота есть ещё два места для работы. <b>Приложение</b> (в Телеграм оно называется Mini App) это страница, которая открывается прямо внутри Телеграм: там заявки удобно листать карточками (<a href="#miniapp">про приложение</a>). <b>Дашборд</b> это сайт со статистикой события: графики и цифры без личных данных (<a href="#stats">про дашборд</a>).</p>
 <ol class="steps">
@@ -2134,7 +2134,7 @@
   function visible(node) { for (var el = node.parentNode; el && el !== main; el = el.parentNode) { if (el === empty || (el.classList && el.classList.contains('gone'))) return false; } return true; }
   function addMarks(v) {
     var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, null), nodes = [], n;
-    while ((n = w.nextNode())) { if (n.nodeValue.trim() && norm(n.nodeValue).indexOf(v) > -1 && visible(n)) nodes.push(n); }
+    while ((n = w.nextNode())) { if (n.nodeValue.trim() && n.parentNode.nodeName !== 'MARK' && norm(n.nodeValue).indexOf(v) > -1 && visible(n)) nodes.push(n); }
     nodes.forEach(function (node) {
       var text = node.nodeValue, low = norm(text), i = 0, j, frag = document.createDocumentFragment();
       while ((j = low.indexOf(v, i)) > -1 && marks.length < 400) {
@@ -2158,11 +2158,15 @@
   // Словарь новичка: если по словам запроса ничего не нашлось, ищем то, как это названо в гайде.
   // k — куски запроса (уже в нижнем регистре, ё = е), t — что искать, at — куда прокрутить.
   var SYN = [
+    { k: ['первый день', 'с чего начать', 'новичок', 'я новый', 'новеньк', 'только пришел'], t: 'с чего начать', at: 'start' },
+    { k: ['кто может одобр', 'кто одобряет', 'кто может принима', 'право одобр', 'права на одобр', 'право на одобр', 'доступ к заявк'], t: 'модерация заявок', at: 'roles-rights' },
+    { k: ['письмо после одобрения', 'поменять письмо', 'изменить письмо', 'исправить письмо', 'переписать письмо', 'текст письма'], t: 'после одобрения', at: 'form-texts' },
+    { k: ['сбор', 'завтра', 'напомнить всем', 'напомнить одобренным'], t: 'всем одобренным', at: 'bc-cases' },
     { k: ['коллег', 'добавить человека', 'дать доступ', 'выдать доступ', 'дать права', 'выдать права', 'новый менеджер', 'нового менеджера', 'добавить админ', 'сделать админ', 'помощник'], t: 'добавить менеджера', at: 'roles-add' },
     { k: ['написать всем', 'сообщение всем', 'отправить всем', 'всем сообщение', 'написать делегатам', 'написать участникам', 'сообщение делегатам', 'сообщение участникам', 'написать одобренным', 'разослат', 'оповест', 'массов'], t: 'рассылк', l: 'рассылка', at: 'broadcast' },
     { k: ['текст одобрения', 'письмо одобрения', 'письмо об одобрении', 'сообщение об одобрении', 'текст после одобрения', 'сообщение после одобрения', 'поздравлени'], t: 'после одобрения', at: 'form-texts' },
     { k: ['письмо отказа', 'письмо об отказе', 'сообщение об отказе', 'текст отклонения', 'текст при отказе'], t: 'при отклонении', at: 'form-texts' },
-    { k: ['одобрить заявк', 'принять заявк', 'одобрить участник', 'принять участник', 'принять делегат', 'разобрать заявк', 'посмотреть заявк', 'одобрени заявк', 'одобрить человек'], t: '✅ одобрить', l: 'одобрить', at: 'apps' },
+    { k: ['одобрить заявк', 'принять заявк', 'одобрить участник', 'принять участник', 'принять делегат', 'разобрать заявк', 'посмотреть заявк', 'одобрени заявк', 'одобрить человек', 'принять человек', 'принять люд', 'как принять'], t: '✅ одобрить', l: 'одобрить', at: 'apps' },
     { k: ['отклонить заявк', 'отказать', 'отказ участник', 'отказ делегат'], t: '❌ отклонить', l: 'отклонить', at: 'apps-reject' },
     { k: ['найти делегат', 'найти человек', 'найти участник', 'найти заявк', 'найти анкет'], t: '/find', at: 'find' },
     { k: ['бот не работает', 'бот сломал', 'бот завис', 'бот лежит', 'бот упал', 'не работает бот'], t: 'бот не отвечает', at: 'problems' },
@@ -2177,28 +2181,53 @@
     for (var i = 0; i < SYN.length; i++) { for (var j = 0; j < SYN[i].k.length; j++) { if (v.indexOf(SYN[i].k[j]) > -1) return SYN[i]; } }
     return null;
   }
-  function filter(v) {
-    var shown = 0;
+  // Запасной путь: если по фразе и по словарю пусто, ищем по отдельным словам запроса.
+  // Служебные слова выкидываем, у длинных слов берём начало, чтобы «одобрения» нашло «одобрить».
+  var STOP = ' как что где кто когда куда зачем почему мне меня мой моя мое мои наш ваш это этот эта эти для при без про над под или если чтобы тоже уже еще все всех можно может могу нужно надо хочу сделать делать там тут вот есть нет был была быть через после перед нибудь его они она мы вы ли же бы '.split(' ');
+  function stems(v, labels) {
+    var out = [];
+    v.split(/[^a-zа-я0-9\/]+/).forEach(function (w) {
+      if (w.length < 3 || STOP.indexOf(w) > -1) return;
+      var st = w.length >= 6 ? w.slice(0, 5) : (w.length === 5 ? w.slice(0, 4) : w);
+      if (out.indexOf(st) < 0) { out.push(st); if (labels) labels.push(w); }
+    });
+    return out;
+  }
+  function has(t, terms, any) {
+    for (var i = 0; i < terms.length; i++) { var hit = t.indexOf(terms[i]) > -1; if (any && hit) return true; if (!any && !hit) return false; }
+    return !any;
+  }
+  function filter(terms, any) {
+    var shown = 0, on = terms.length > 0;
     secs.forEach(function (s) {
-      var blks = $$('.blk', s), ok = !v || s._t.indexOf(v) > -1;
-      if (v && ok) { blks.forEach(function (b) { b.classList.toggle('gone', b._t.indexOf(v) < 0); }); }
+      var blks = $$('.blk', s), ok = !on || has(s._t, terms, any);
+      if (on && ok) { blks.forEach(function (b) { b.classList.toggle('gone', !has(b._t, terms, any)); }); }
       else { blks.forEach(function (b) { b.classList.remove('gone'); }); }
-      $$('details.q, details.more', s).forEach(function (d) { d.open = !!v && norm(d.textContent).indexOf(v) > -1; });
+      $$('details.q, details.more', s).forEach(function (d) { d.open = on && has(norm(d.textContent), terms, any); });
       s.classList.toggle('gone', !ok); if (ok) shown++;
       tocLinks.forEach(function (a) { if (a.getAttribute('href') === '#' + s.id) a.parentNode.classList.toggle('gone', !ok); });
     });
     return shown;
   }
   function run() {
-    var v = norm(q.value.trim()), syn = null;
+    var v = norm(q.value.trim()), syn = null, words = null, terms = v ? [v] : [];
     clearMarks();
     document.body.classList.toggle('searching', !!v);
-    var shown = filter(v);
-    if (v && !shown && (syn = synFor(v))) { v = syn.t; shown = filter(v); }
+    var shown = filter(terms);
+    if (v && !shown && (syn = synFor(v))) { terms = [syn.t]; shown = filter(terms); }
+    if (v && !shown) {
+      var lbl = [], ws = stems(v, lbl);
+      if (ws.length && !(ws.length === 1 && ws[0] === v)) {
+        shown = filter(ws);
+        if (!shown && ws.length > 1) shown = filter(ws, true);
+        if (shown) { words = lbl; terms = ws; syn = null; } else { terms = [v]; filter(terms); }
+      }
+    }
     $$('li.grp').forEach(function (g) { g.classList.toggle('gone', !!q.value.trim()); });
     empty.style.display = shown ? 'none' : 'block';
-    if (v.length >= 2) addMarks(v);
-    var pre = synPre = syn ? 'Ищу «' + (syn.l || syn.t) + '» · ' : '';
+    terms.forEach(function (t) { if (t.length >= 2) addMarks(t); });
+    if (terms.length > 1) marks.sort(function (a, b) { return a.compareDocumentPosition(b) & 4 ? -1 : 1; });
+    var pre = synPre = syn ? 'Ищу «' + (syn.l || syn.t) + '» · ' : (words ? 'Ищу по словам: ' + words.join(', ') + ' · ' : '');
     cnt.textContent = !v ? '' : pre + (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
     var first = 0;
     if (syn && syn.at) {
