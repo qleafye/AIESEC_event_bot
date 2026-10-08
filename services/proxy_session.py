@@ -48,6 +48,8 @@ from aiohttp import ClientTimeout
 from aiogram.client.session.aiohttp import AiohttpSession, _prepare_connector
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
+import aiohttp_socks
+import python_socks
 
 from config import config
 from secret_redact import redact_secrets
@@ -248,6 +250,22 @@ def build_proxy_chain(*values) -> list:
         if item not in chain:
             chain.append(item)
     return chain or [None]
+
+
+# Incident 2026-10-07 (RealTalk26): a dead SOCKS/HTTP backup answers with python_socks'/
+# aiohttp_socks' own ProxyError family, which aiogram does NOT wrap into TelegramNetworkError.
+# Catching only TelegramNetworkError left the session stuck on the dead backup until the
+# background probe (`recheck_seconds`, 10 min) brought it back -- the bot was deaf for ~10
+# minutes on every primary blip, twice a day.
+# The two libraries keep separate, unrelated hierarchies (aiohttp_socks' three errors don't
+# share a base), so every class is listed explicitly.
+_ROTATE_ON = (
+    TelegramNetworkError,
+    python_socks._errors.ProxyException,
+    aiohttp_socks.ProxyError,
+    aiohttp_socks.ProxyConnectionError,
+    aiohttp_socks.ProxyTimeoutError,
+)
 
 
 class FailoverAiohttpSession(AiohttpSession):
@@ -683,7 +701,7 @@ class FailoverAiohttpSession(AiohttpSession):
             current = self._index
             try:
                 result = await super().make_request(bot, method, timeout=effective)
-            except TelegramNetworkError as e:
+            except _ROTATE_ON as e:
                 if first_error is None:
                     first_error = e
                 attempts += 1
