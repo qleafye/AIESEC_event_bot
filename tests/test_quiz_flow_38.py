@@ -2,6 +2,7 @@
 from cities import per_city_key
 from database import db, quiz_db as qz, session_enroll_db as se
 from handlers import forum_deeplinks, quiz as h
+from services import quiz as svc
 from keyboards.menu_dynamic import DynamicMenuText
 from tests._enroll38 import CITY, add_user, ready, run
 from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, make_state, setup_world
@@ -251,4 +252,42 @@ def test_html_in_quiz_content_is_escaped(tmp_path):
         cb = await tap(h.quiz_go, "qz:go")
         text = cb.message.last[0]
         assert "A&lt;B &amp; C?" in text
+    run(go())
+
+
+def test_answer_after_content_change_restarts_attempt(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        quiz_row, oids = await seed_quiz()
+        cb = await tap(h.quiz_go, "qz:go")
+        attempt = await qz.get_open_attempt(U, quiz_row["id"])
+        qid, hi, lo = oids[1]
+        await qz.bump_content_version(quiz_row["id"])  # менеджер поправил тест
+        assert await svc.answer(U, attempt["id"], qid, hi) == "restarted"
+        assert (await qz.get_attempt(attempt["id"]))["answers"] == {}
+        cb = await tap(h.quiz_answer, f"qz:a:{attempt['id']}:{qid}:{hi}", message=cb.message)
+        text = cb.message.last[0]
+        assert "Вопрос 1 из 3" in text
+        fresh = await qz.get_open_attempt(U, quiz_row["id"])
+        assert fresh["id"] != attempt["id"]
+    run(go())
+
+
+def test_finished_result_uses_current_thresholds(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        quiz_row, oids = await seed_quiz()
+        await answer_all(oids, pick=1)  # 6 из 6 = 100%
+        levels = await qz.list_levels(quiz_row["id"])
+        top = max(levels, key=lambda lv: lv["threshold"])
+        low = min(levels, key=lambda lv: lv["threshold"])
+        lines = await svc.result_lines(U, quiz_row)
+        assert lines[0]["level_name"] == top["name"]
+        await qz.update_level(top["id"], threshold=101)  # недостижимый порог
+        lines = await svc.result_lines(U, quiz_row)
+        assert lines[0]["level_name"] == low["name"]
+        stats = await svc.stats(quiz_row)
+        assert stats["by_competency"]["Лидерство"] == {low["name"]: 1}
     run(go())
