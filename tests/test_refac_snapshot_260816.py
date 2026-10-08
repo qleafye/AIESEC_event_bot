@@ -614,7 +614,9 @@ def _build_snapshot_lines():
 # Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
 # Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/admin_program_halls.py), чистая вставка (972 -> 973).
 # Дрифт-нота (09.10, личные Яндекс Формы): +7 хендлеров admin.router (3 message + 4 callback_query,
-# handlers/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070).
+# handlers/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070);
+# мастер подключения личной формы (admin_ext_forms_connect.py): +3 хендлера (extf_push_title, extf_push,
+# extf_push_title_default), чистые вставки рядом с extf_connect_link и extf_add_google (1070 -> 1073).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -804,6 +806,7 @@ admin|message|extf_oauth_code|state:ExtFormOAuth:*
 admin|message|extf_oauth_org|state:ExtFormOAuth:*
 admin|message|extf_connect_cancel|state:ExtFormConnect:*
 admin|message|extf_connect_link|state:ExtFormConnect:*
+admin|message|extf_push_title|state:ExtFormConnect:*
 admin|message|extf_import_cancel|state:ExtFormImport:*
 admin|message|extf_import_file|state:ExtFormImport:*
 admin|message|extf_import_not_file|state:ExtFormImport:*
@@ -1487,6 +1490,8 @@ admin|callback_query|extf_rehook|extf_rehook:*
 admin|callback_query|extf_rehook_ok|extf_rehook_ok:*
 admin|callback_query|extf_add_yandex|extf_add:yandex
 admin|callback_query|extf_add_google|extf_add:google
+admin|callback_query|extf_push|extf_push
+admin|callback_query|extf_push_title_default|extf_push_title_default
 admin|callback_query|extf_gtab|extf_gtab:*
 admin|callback_query|extf_gwarn_ok|extf_gwarn_ok
 admin|callback_query|extf_gwarn_no|extf_gwarn_no
@@ -2248,7 +2253,11 @@ def test_snapshot_total_handler_count_is_292():
     # +3 admin.message (state:ExtFormImport:* — отмена/файл/не файл) сразу после
     # extf_connect_link и +4 admin.callback_query (extf_import_start/extf_pkeys/extf_pkey/
     # extf_pkeyset) сразу после extf_keys_ok; две чистые вставки (1063 -> 1070).
-    assert len(GOLDEN_SNAPSHOT) == 1070
+    # Мастер личной Яндекс Формы (handlers/admin_ext_forms_connect.py): +1 admin.message
+    # (extf_push_title, ExtFormConnect.push_title) сразу после extf_connect_link и +2
+    # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
+    # две чистые вставки (1070 -> 1073).
+    assert len(GOLDEN_SNAPSHOT) == 1073
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
