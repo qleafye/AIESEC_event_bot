@@ -73,6 +73,16 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
         "finished_at TEXT, answers_json TEXT NOT NULL DEFAULT '{}', scores_json TEXT)"
     )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz ON quiz_attempts(quiz_id)")
+    # не больше одной открытой попытки на делегата и тест (двойной тап «Начать тест»);
+    # лишние открытые, если они уже есть, убираем — остаётся самая свежая
+    await db.execute(
+        "DELETE FROM quiz_attempts WHERE finished_at IS NULL AND id NOT IN "
+        "(SELECT MAX(id) FROM quiz_attempts WHERE finished_at IS NULL GROUP BY telegram_id, quiz_id)"
+    )
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_attempts_open "
+        "ON quiz_attempts(telegram_id, quiz_id) WHERE finished_at IS NULL"
+    )
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user ON quiz_attempts(telegram_id, quiz_id)"
     )
@@ -474,11 +484,15 @@ def _attempt(row: dict | None) -> dict | None:
 async def create_attempt(telegram_id: int, quiz_id: int, content_version: int) -> int:
     async with _db._connect() as db:
         cursor = await db.execute(
-            "INSERT INTO quiz_attempts (telegram_id, quiz_id, content_version, started_at) "
+            "INSERT OR IGNORE INTO quiz_attempts (telegram_id, quiz_id, content_version, started_at) "
             "VALUES (?, ?, ?, ?)", (int(telegram_id), int(quiz_id), int(content_version), _stamp()),
         )
         await db.commit()
-        return int(cursor.lastrowid)
+        if cursor.rowcount:
+            return int(cursor.lastrowid)
+    # параллельный старт: открытая попытка уже есть — отдаём её, а не создаём вторую
+    existing = await get_open_attempt(telegram_id, quiz_id)
+    return int(existing["id"]) if existing else 0
 
 
 async def get_attempt(attempt_id: int) -> dict | None:
