@@ -126,3 +126,13 @@ def test_text_instead_of_file_and_cancel(tmp_path):
     assert "Пришлите файл CSV — тот, что получили по кнопке «📥 Шаблон»" in msg.answers_sent[0]
     run(qi.prog_qzimp_cancel_word(FakeMessage("Отмена"), state))
     assert run(state.get_state()) is None
+
+
+def test_unknown_size_is_checked_after_download(tmp_path):
+    ready(tmp_path)
+    state = new_state()
+    big = b"x" * (2 * 1024 * 1024 + 10)
+    run(qi.prog_qzimp(FakeCallback("prog_qzimp:msk"), state))
+    msg = DocMessage(None)
+    run(qi.prog_qzimp_file(msg, state, FakeBot(big)))
+    assert "Файл больше 2 МБ" in msg.answers_sent[0]

@@ -84,8 +84,13 @@ async def prog_qzimp_file(message: types.Message, state: FSMContext, bot: Bot):
         return
     buf = await bot.download(message.document.file_id)
     buf.seek(0)
+    raw = buf.read(_MAX_BYTES + 1)  # размер в сообщении мог быть неизвестен — сверяем по факту
+    if len(raw) > _MAX_BYTES:
+        await message.answer("Файл больше 2 МБ — в таблице не может быть столько вопросов. "
+                             "Пришлите файл поменьше.")
+        return
     names = {c["name"].lower(): c["id"] for c in await edb.list_competencies(code)}
-    parsed = quiz_import.parse_csv(buf.read(), names, await points_max(code))
+    parsed = quiz_import.parse_csv(raw, names, await points_max(code))
     quiz = await quiz_by_code(code)
     options_now = sum(len(v) for v in (await qdb.list_options_for_quiz(quiz["id"])).values())
     preview = quiz_import.preview_text(
