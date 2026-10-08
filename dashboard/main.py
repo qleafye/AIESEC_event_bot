@@ -657,22 +657,34 @@ def build_sources_context(
                 "label": item["label"],
                 "count": item.get("count"),
                 "color": item.get("color") if colored else None,
-                "active": item["value"] in selected,
+                "active": item.get("selected", item["value"] in selected),
+                "tail": item.get("tail", False),
                 "href": href(toggle=(group, item["value"])),
             }
             for item in items
         ]
 
+    def group_of(title: str, group: str, items: list[dict], selected: tuple) -> dict:
+        # Хвост (всё за топ-7) прячем под «Показать все N», но каждое значение в нём
+        # выбирается; если выбрано что-то из хвоста — раскрываем сразу.
+        built = chips(group, items, selected)
+        main = [c for c in built if not c["tail"]]
+        tail = [c for c in built if c["tail"]]
+        return {
+            "title": title, "items": main, "tail": tail,
+            "tail_open": any(c["active"] for c in tail),
+        }
+
     options = result["options"]
     groups: list[dict] = [
-        {"title": "Статус заявки", "items": chips("status", options["status"], q.statuses)},
-        {"title": "Ответ в анкете «Откуда узнал»", "items": chips("src", options["answer"], q.answers)},
+        group_of("Статус заявки", "status", options["status"], q.statuses),
+        group_of(sources_daily.BY_LABELS["answer"], "src", options["answer"], q.answers),
     ]
     if len(options["tag"]) > 1 or q.tags:
-        groups.append({"title": "Ссылка, по которой пришёл", "items": chips("tag", options["tag"], q.tags)})
+        groups.append(group_of("Ссылка, по которой пришёл", "tag", options["tag"], q.tags))
     if len(options["track"]) > 1 or q.tracks:
-        groups.append({"title": "Трек", "items": chips("track", options["track"], q.tracks)})
-    groups.append({"title": "Амбассадоры", "items": [{
+        groups.append(group_of("Трек", "track", options["track"], q.tracks))
+    groups.append({"title": "Амбассадоры", "tail": [], "tail_open": False, "items": [{
         "label": "Только по ссылке амбассадора", "count": None, "color": None,
         "active": q.ambassador_only, "href": href(ambassador_only=not q.ambassador_only),
     }]})
@@ -700,7 +712,7 @@ def build_sources_context(
             "active": not q.custom_range and q.period == p,
             "href": href(period=p, date_from=None, date_to=None),
         }
-        for p in ("7", "30", "all")
+        for p in ("today", "yesterday", "7", "30", "all")
     ]
     # Форма «свои даты» — GET, прочие параметры едут скрытыми полями, чтобы выбор дат не
     # сбрасывал уже нажатые чипы.

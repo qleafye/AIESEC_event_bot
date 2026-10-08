@@ -83,9 +83,24 @@
           {% if chip.active %}<span class="visually-hidden">(выбрано)</span>{% endif %}
         </a>
         {% endfor %}
+        {% if group.tail %}
+        <details class="chips-more"{% if group.tail_open %} open{% endif %}>
+          <summary>Показать все {{ (group["items"] | length) + (group.tail | length) }}</summary>
+          <div class="chips-more-list">
+            {% for chip in group.tail %}
+            <a class="switch-link{% if chip.active %} active{% endif %}" href="{{ chip.href }}">
+              <span>{{ chip.label }}</span>
+              {% if chip.count is not none %}<span class="chip-count">{{ chip.count | thousands }}</span>{% endif %}
+              {% if chip.active %}<span class="visually-hidden">(выбрано)</span>{% endif %}
+            </a>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
       </nav>
       {% endfor %}
 
+      <p class="sources-hint">Кто пришёл по ссылке с меткой, вопрос «Откуда узнал» не получает — его канал = метка ссылки.</p>
       <p class="sources-hint">Можно выбрать несколько вариантов в одной группе — покажем любой из них; фильтры из разных групп действуют вместе.
         {% if q.has_filters %}<a href="{{ reset_href }}">Сбросить фильтры</a>{% endif %}</p>
     </div>
@@ -123,6 +138,42 @@
   </section>
 
   {% if result.has_data %}
+  <section class="block">
+    <h2 class="block-title">Все каналы за период</h2>
+    <div class="card">
+      <p class="sources-caption">Полный список каналов без «Остальных», с учётом выбранных фильтров; «🔗» — метка ссылки.
+        {%- if result.channel_days %} Заявки по дням, свежий день слева.{% endif %}</p>
+      <div class="table-wrap sources-table-wrap">
+        <table class="sources-table channels-table">
+          <thead>
+            <tr>
+              <th scope="col">Канал</th>
+              {% if result.channel_days %}
+              {% for d in result.channel_days %}<th scope="col" class="num">{{ d.label }}</th>{% endfor %}
+              <th scope="col" class="num col-total">Итого</th>
+              {% else %}
+              <th scope="col" class="num col-total">Заявок</th>
+              {% endif %}
+              <th scope="col" class="num">Доля</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in result.channels %}
+            <tr>
+              <th scope="row">{{ c.label }}</th>
+              {% if c.per_day is not none %}
+              {% for n in c.per_day %}<td class="num{% if not n %} cell-zero{% endif %}">{{ n | thousands }}</td>{% endfor %}
+              {% endif %}
+              <td class="num col-total">{{ c.count | thousands }}</td>
+              <td class="num">{{ c.share | string | replace(".", ",") }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <section class="block">
     <div class="sources-table-head">
       <h2 class="block-title">Таблица</h2>
