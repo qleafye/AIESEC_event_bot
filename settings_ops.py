@@ -457,6 +457,7 @@ EXCLUDED_GROUPS = ("roles",)
 _DELEGATION_SERVICE_KEYS = frozenset({
     "delegation_form_id", "delegation_q_fullname", "delegation_q_university",
     "delegation_q_course", "delegation_q_email",
+    "delegation_armed_form_id",
 })
 EXCLUDED_KEYS: frozenset[str] = (
     frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks"} | _DELEGATION_SERVICE_KEYS
