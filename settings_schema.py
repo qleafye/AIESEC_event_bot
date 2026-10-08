@@ -239,6 +239,26 @@ SETTINGS_SCHEMA = {
     },
     # Phase 07.3 (A): start_text_returning is also NOT per_city — a global banner for
     # returning delegates, unlike per-city start_text_registered.
+    "bot_description": {
+        "type": "text", "group": "event", "label": "🪪 Описание бота (до /start)",
+        "prompt": (
+            "Текст, который человек видит в пустом чате с ботом ДО нажатия «Старт» — что это "
+            "за бот и куда ещё подписаться. Например:\n«Бот регистрации на РилТолк’Медиа "
+            "Форум. Новости — t.me/realtalkforum26, ВК — vk.com/realtalk26»\n\nДо 512 "
+            "символов, обычным текстом без разметки (ссылки Telegram сделает кликабельными сам). Применяется "
+            "сразу после сохранения."
+        ),
+        "default": None,
+    },
+    "bot_short_description": {
+        "type": "text", "group": "event", "label": "🪪 Строка «О боте» в профиле",
+        "prompt": (
+            "Короткая строка в профиле бота и в превью, когда ссылкой на бота делятся. "
+            "Например: «Регистрация на форум · новости t.me/realtalkforum26»\n\nДо 120 "
+            "символов, обычным текстом без разметки. Применяется сразу после сохранения."
+        ),
+        "default": None,
+    },
     "start_text_returning": {
         "type": "text", "group": "event", "label": "🔄 Приветствие делегату прошлого сезона",
         "prompt": (
