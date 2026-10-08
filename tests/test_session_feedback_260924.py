@@ -584,9 +584,10 @@ def test_sfb_comment_step_noop_when_no_session_in_state(tmp_path):
 
 def test_render_day_feedback_screen_lists_sessions_with_stats(tmp_path):
     _ready(tmp_path)
-    sid = _run(_make_session())
-    _run(_mark_prompt_and_set(DELEGATE_ID, sid, rating=5))
+    # День задаём явно: сессия «кончилась 30 минут назад» в 00:10 МСК лежит во вчерашнем дне.
     day = msk_now().strftime("%Y-%m-%d")
+    sid = _run(_make_session(day=day))
+    _run(_mark_prompt_and_set(DELEGATE_ID, sid, rating=5))
 
     text, _kb = _run(sf_handlers.render_day_feedback_screen("msk", day))
     assert "⭐ 5.0" in text
