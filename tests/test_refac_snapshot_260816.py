@@ -613,6 +613,8 @@ def _build_snapshot_lines():
 # Дрифт-нота (03.10, приёмка хаба форума): +3 хендлера admin.router — forumfn_qr_screen/forumfn_qr_set/forumfn_back (handlers/admin_forum_hub_nav.py, импорт последним в хвосте admin.py), чистая вставка (968 -> 971).
 # Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
 # Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/admin_program_halls.py), чистая вставка (972 -> 973).
+# Дрифт-нота (09.10, личные Яндекс Формы): +7 хендлеров admin.router (3 message + 4 callback_query,
+# handlers/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070).
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -802,6 +804,9 @@ admin|message|extf_oauth_code|state:ExtFormOAuth:*
 admin|message|extf_oauth_org|state:ExtFormOAuth:*
 admin|message|extf_connect_cancel|state:ExtFormConnect:*
 admin|message|extf_connect_link|state:ExtFormConnect:*
+admin|message|extf_import_cancel|state:ExtFormImport:*
+admin|message|extf_import_file|state:ExtFormImport:*
+admin|message|extf_import_not_file|state:ExtFormImport:*
 admin|message|dlg_cutoff_input|state:DelegationEdit:*
 admin|message|dlg_text_input|state:DelegationEdit:*
 admin|message|dlg_link_person|state:DelegationLink:*
@@ -1488,6 +1493,10 @@ admin|callback_query|extf_gwarn_no|extf_gwarn_no
 admin|callback_query|extf_key|extf_key:u,extf_key:p
 admin|callback_query|extf_keyset|extf_keyset:*
 admin|callback_query|extf_keys_ok|extf_keys_ok
+admin|callback_query|extf_import_start|extf_import:*
+admin|callback_query|extf_pkeys|extf_pkeys:*
+admin|callback_query|extf_pkey|extf_pkey:*
+admin|callback_query|extf_pkeyset|extf_pkeyset:*
 admin|callback_query|admin_delegations|admin_delegations
 admin|callback_query|dlg_univ|dlg_univ:*
 admin|callback_query|dlg_form_pick|dlg_form_pick
@@ -2235,7 +2244,11 @@ def test_snapshot_total_handler_count_is_292():
     # Снятие роли с подтверждением: +1 admin.callback_query (roles_remove_yes) сразу после
     # roles_remove; одна чистая вставка (1060 -> 1061).
     # Часовой пояс города: forumtz_cfg_screen/forumtz_set_go перед prog_fbday_open (1061 -> 1063).
-    assert len(GOLDEN_SNAPSHOT) == 1063
+    # Личные Яндекс Формы (handlers/admin_ext_forms_push.py, импорт из хвоста admin_ext_forms.py):
+    # +3 admin.message (state:ExtFormImport:* — отмена/файл/не файл) сразу после
+    # extf_connect_link и +4 admin.callback_query (extf_import_start/extf_pkeys/extf_pkey/
+    # extf_pkeyset) сразу после extf_keys_ok; две чистые вставки (1063 -> 1070).
+    assert len(GOLDEN_SNAPSHOT) == 1070
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
