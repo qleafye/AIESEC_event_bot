@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import cities
-from database import db, quiz_db as qz, session_enroll_db as se
+from database import db, quiz_db as qz, session_enroll_db as se_db
 from tests._enroll38 import CITY, add_user, ready, run, seed_delegates, seed_msk_program
 
 
@@ -77,5 +77,26 @@ def test_current_question_skips_question_without_options(tmp_path):
         attempt_id = await qz.create_attempt(1, quiz["id"], quiz["content_version"])
         cur = await svc.current_question(await qz.get_attempt(attempt_id))
         assert cur[0]["id"] == q2
+
+    run(go())
+
+
+def test_staff_enroll_validates_delegate(tmp_path):
+    from cities import per_city_key
+    from services import session_enroll as svc
+
+    ready(tmp_path)
+
+    async def go():
+        p = await seed_msk_program()
+        d = await seed_delegates()
+        await add_user(201, city="spb")
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(per_city_key("session_enroll_enabled", CITY), "on")
+        assert (await svc.enroll_by_staff(999, p["A"], by_staff_id=1)).status == "denied"
+        assert (await svc.enroll_by_staff(d["pending"], p["A"], by_staff_id=1)).status == "denied"
+        assert (await svc.enroll_by_staff(201, p["A"], by_staff_id=1)).status == "wrong_city"
+        assert (await svc.enroll_by_staff(d["cur1"], p["A"], by_staff_id=1)).status == "ok"
+        assert await se_db.user_enrollment_ids(999) == set()
 
     run(go())
