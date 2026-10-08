@@ -12,6 +12,7 @@
 
 Callback'и (числа, <= 64 байт): qz:go (начать/продолжить), qz:a:{attempt}:{question}:{option},
 qz:res (мой результат), qz:re (пройти заново)."""
+import html
 import logging
 
 from aiogram import F, types
@@ -56,7 +57,7 @@ async def _question_screen(target: types.Message, ctx: _Ctx, attempt: dict, *,
     if current is None:
         return False
     question, options, n, total = current
-    text = await ctx.t("quiz_question_header", n=n, total=total) + "\n\n" + question["text"]
+    text = await ctx.t("quiz_question_header", n=n, total=total) + "\n\n" + html.escape(question["text"] or "")
     if head:
         text = f"{head}\n\n{text}"
     rows = [[_btn(o["text"], f"qz:a:{attempt['id']}:{question['id']}:{o['id']}")] for o in options]
@@ -72,10 +73,10 @@ async def _result_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, edit: 
     no_level = await ctx.t("quiz_no_level_label")
     parts = [await ctx.t("quiz_result_header")]
     for line in lines:
-        row = await ctx.t("quiz_result_line", competency=line["competency"],
-                          level=line["level_name"] or no_level)
+        row = await ctx.t("quiz_result_line", competency=html.escape(line["competency"] or ""),
+                          level=html.escape(line["level_name"] or "") or no_level)
         if line["level_description"]:
-            row += "\n" + line["level_description"]
+            row += "\n" + html.escape(line["level_description"])
         parts.append(row)
     rows = []
     if await enroll_svc.module_enabled(ctx.city):
@@ -87,7 +88,7 @@ async def _result_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, edit: 
 
 async def _intro_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, finished: bool,
                         edit: bool = False) -> None:
-    text = "\n\n".join(p for p in (quiz.get("title"), quiz.get("intro")) if p) or \
+    text = "\n\n".join(html.escape(p) for p in (quiz.get("title"), quiz.get("intro")) if p) or \
         await ctx.t("quiz_start_button")
     rows = [[_btn(await ctx.t("quiz_start_button"), "qz:go")]]
     if finished:
