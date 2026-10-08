@@ -808,3 +808,31 @@ def test_schedule_wave_end_past_date_catches_up_now_plus_minute(tmp_path, monkey
         assert job.next_run_time.replace(tzinfo=None) == now + timedelta(minutes=1)
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_send_task_deadline_reminder_skips_users_without_game_access(tmp_path, monkeypatch):
+    """Жалоба 08.10 (прод Юлида, «Задание 15»): напоминание о дедлайне задания вне волн для
+    всех делегатов города уходило и отклонённым, и тем, чья заявка ещё на рассмотрении, и
+    делегатам прошлого сезона — тем, кому задания закрыты гейтом бота."""
+    _ready(tmp_path, "t2k.db")
+    bot = _with_bot(monkeypatch)
+    _run(db.set_setting("event_season", "YL 26/2"))
+    for tid in (1, 2, 3, 4, 5):
+        _seed_user(tid, event_city="msk")
+
+    async def _mark():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET status = 'approved', season = 'YL 26/2' WHERE telegram_id = 1")
+            await conn.execute("UPDATE users SET status = 'rejected' WHERE telegram_id = 2")
+            await conn.execute("UPDATE users SET status = 'pending' WHERE telegram_id = 3")
+            await conn.execute("UPDATE users SET status = 'approved', season = 'YL 26/1' WHERE telegram_id = 4")
+            await conn.execute("UPDATE users SET status = NULL, season = NULL WHERE telegram_id = 5")
+            await conn.commit()
+    _run(_mark())
+
+    task_id = _run(db.create_task(
+        "Задание 15", "Light", 25, "photo", "2026-10-05 12:00:00", None, event_city="msk",
+    ))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert sorted(c[0] for c in bot.sent) == [1, 5]
