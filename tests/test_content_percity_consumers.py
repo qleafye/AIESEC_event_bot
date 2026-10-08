@@ -240,7 +240,7 @@ def test_menu_order_and_adjust_unchanged(tmp_path):
         label for key, label in MENU_BUTTONS
         if key not in (
             "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_program",
-            "menu_important", "menu_sos",
+            "menu_important", "menu_sos", "menu_session_enroll", "menu_quiz",
         )
     ]
     assert texts == expected_order
