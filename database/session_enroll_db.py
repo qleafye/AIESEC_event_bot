@@ -221,6 +221,14 @@ async def delete_competency(cid: int) -> None:
         await db.commit()
 
 
+async def count_sessions_for_competency(cid: int) -> int:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM program_session_competencies WHERE competency_id = ?", (int(cid),),
+        ) as cursor:
+            return int((await cursor.fetchone())[0])
+
+
 async def get_session_competency_ids(session_id: int) -> list[int]:
     async with _db._connect() as db:
         async with db.execute(
