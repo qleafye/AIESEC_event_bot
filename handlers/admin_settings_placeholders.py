@@ -50,12 +50,12 @@ async def _previous_text(key: str):
     return default if isinstance(default, str) else None
 
 
-async def gate(message: types.Message, state: FSMContext, key: str, value: str) -> bool:
+async def gate(message: types.Message, state: FSMContext, key: str, value: str,
+               ack: str | None = None) -> bool:
     """True — вопрос задан, запись отложена. False — можно сохранять."""
     if value == "-" or not isinstance(value, str):
         return False
-    data = await state.get_data()
-    if data.get("ph_ack") == value:
+    if ack is not None and ack == value:
         return False
     result = check(key, value, await _previous_text(key))
     if result.ok:
