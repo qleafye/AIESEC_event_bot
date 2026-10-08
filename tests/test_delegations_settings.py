@@ -16,7 +16,7 @@ from tests._dbtpl import fast_init_db
 
 SERVICE_KEYS = (
     "delegation_form_id", "delegation_q_fullname", "delegation_q_university",
-    "delegation_q_course", "delegation_q_email",
+    "delegation_q_course", "delegation_q_email", "delegation_armed_form_id",
 )
 REG_TEXT_KEYS = (
     "delegation_welcome_text", "delegation_welcome_existing_text", "delegation_game_off_text",
@@ -31,8 +31,8 @@ def _ready(tmp_path):
     fast_init_db()
 
 
-def test_all_eleven_keys_registered_with_expected_shape():
-    assert len(ALL_KEYS) == 11
+def test_all_twelve_keys_registered_with_expected_shape():
+    assert len(ALL_KEYS) == 12
     for key in ALL_KEYS:
         assert key in SETTINGS_SCHEMA, key
     for key in SERVICE_KEYS:

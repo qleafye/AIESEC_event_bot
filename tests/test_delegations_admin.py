@@ -116,6 +116,7 @@ def _form(title="Делегации", *, questions=QUESTIONS, username_q="q7") -
 def _select(fid: int, *, keys: bool = True) -> None:
     async def go():
         await set_setting_by_admin(None, "delegation_form_id", str(fid))
+        await set_setting_by_admin(None, "delegation_armed_form_id", str(fid))
         if keys:
             await set_setting_by_admin(None, "delegation_q_fullname", "q1")
             await set_setting_by_admin(None, "delegation_q_university", "q4")
