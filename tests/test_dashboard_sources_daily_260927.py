@@ -171,7 +171,8 @@ def test_empty_answer_and_tag_source_get_human_labels(tmp_path):
     res = _build(db_path)
     day = _row(res, "2026-09-21")
     assert day["counts"][_col(res, "Не указано")] == 3
-    assert day["counts"][_col(res, "По метке ссылки")] == 1
+    assert day["counts"][_col(res, "🔗 vk_post")] == 1
+    assert "По метке ссылки" not in [c["label"] for c in res["columns"]]
 
 
 def test_tag_view_uses_campaign_tags_and_ambassador_link(tmp_path):
@@ -437,3 +438,113 @@ def test_old_db_without_onsite_column_still_builds(tmp_path):
     conn.close()
     res = _build(db_path, query="by=tag")
     assert _row(res, "2026-09-21")["counts"][_col(res, "Без метки")] == 1
+
+
+# ── единый ключ канала, периоды, хвост, нормализация ─────────────────────────────────────
+
+def test_channel_key_splits_tags_and_answers(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        _u("2026-09-21", "src_a", from_tag=1), _u("2026-09-21", "src_a", from_tag=1),
+        _u("2026-09-21", "src_b", from_tag=1),
+        _u("2026-09-21", "ВК"),
+        _u("2026-09-21", None),
+    ])
+    res = _build(db_path)
+    day = _row(res, "2026-09-21")
+    assert day["counts"][_col(res, "🔗 src_a")] == 2
+    assert day["counts"][_col(res, "🔗 src_b")] == 1
+    assert day["counts"][_col(res, "ВК")] == 1
+    assert day["counts"][_col(res, "Не указано")] == 1
+    assert "По метке ссылки" not in [c["label"] for c in res["columns"]]
+    assert sd.BY_LABELS["answer"] == "Канал (метка ссылки или ответ в анкете)"
+
+
+def test_old_by_tag_src_is_dropped():
+    q = sd.SourcesQuery.from_params(QueryParams("src=По метке ссылки"))
+    assert q.answers == ()
+
+
+def test_manual_answers_merge_by_case_and_spaces(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        _u("2026-09-21", "ВК"), _u("2026-09-21", "ВК"), _u("2026-09-21", "вк"),
+        _u("2026-09-21", "  Вк  "), _u("2026-09-21", "тг"), _u("2026-09-21", "телеграм"),
+    ])
+    res = _build(db_path)
+    day = _row(res, "2026-09-21")
+    assert day["counts"][_col(res, "ВК")] == 4
+    labels = [c["label"] for c in res["columns"]]
+    assert "тг" in labels and "телеграм" in labels
+    filt = _build(db_path, query="src=вк")
+    assert filt["totals"]["total"] == 4
+    assert next(o for o in filt["options"]["answer"] if o["value"] == "ВК")["selected"] is True
+    q = sd.SourcesQuery.from_params(QueryParams("src=вк"))
+    assert q.toggled("src", "ВК").answers == ()
+
+
+def test_manual_merge_tie_is_lexicographic_first(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[_u("2026-09-21", "вк"), _u("2026-09-21", "ВК")])
+    res = _build(db_path)
+    assert [c["label"] for c in res["columns"]] == ["ВК"]
+
+
+def test_tag_labels_not_normalized(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        _u("2026-09-21", "src_VK", from_tag=1), _u("2026-09-21", "src_vk", from_tag=1),
+    ])
+    res = _build(db_path)
+    labels = [c["label"] for c in res["columns"]]
+    assert "🔗 src_VK" in labels and "🔗 src_vk" in labels
+
+
+def test_today_and_yesterday_periods(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[
+        _u("2026-09-27", "ВК"), _u("2026-09-27", "ВК"), _u("2026-09-26", "ВК"),
+    ])
+    today = _build(db_path, query="period=today")
+    assert today["totals"]["total"] == 2
+    assert [r["key"] for r in today["rows"]] == ["2026-09-27"]
+    yest = _build(db_path, query="period=yesterday")
+    assert yest["totals"]["total"] == 1
+    assert sd.SourcesQuery.from_params(QueryParams("period=today")).period == "today"
+    assert sd.SourcesQuery.from_params(QueryParams("period=junk")).period == "all"
+    q = sd.SourcesQuery.from_params(QueryParams("period=today"))
+    assert "период: сегодня" in sd.describe(q, city_label=None)
+    q = sd.SourcesQuery.from_params(QueryParams("period=yesterday"))
+    assert "период: вчера" in sd.describe(q, city_label=None)
+
+
+def test_tail_options_selectable(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    users = []
+    for i in range(7):
+        users += [_u("2026-09-21", f"Канал {i}") for _ in range(2)]
+    users += [_u("2026-09-21", "Редкий А"), _u("2026-09-21", "Редкий Б")]
+    _seed(users=users)
+    res = _build(db_path)
+    opts = res["options"]["answer"]
+    assert all(not o["tail"] and o["color"] for o in opts[:7])
+    assert opts[7]["value"] == "_rest" and not opts[7]["tail"]
+    tail = [o for o in opts if o["tail"]]
+    assert [o["value"] for o in tail] == ["Редкий А", "Редкий Б"]
+    assert all(o["color"] is None and o["count"] == 1 for o in tail)
+    sel = _build(db_path, query="src=Редкий А")
+    assert sel["totals"]["total"] == 1
+    assert next(o for o in sel["options"]["answer"] if o["value"] == "Редкий А")["selected"] is True
+
+
+def test_tail_options_for_tag_group(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    users = []
+    for i in range(7):
+        users += [_u("2026-09-21", f"src_{i}", from_tag=1) for _ in range(2)]
+    users += [_u("2026-09-21", "src_rare", from_tag=1)]
+    _seed(users=users)
+    sel = _build(db_path, query="tag=src_rare")
+    assert sel["totals"]["total"] == 1
+    tail = [o for o in sel["options"]["tag"] if o["tail"]]
+    assert [o["value"] for o in tail] == ["src_rare"] and tail[0]["selected"] is True
