@@ -23,7 +23,8 @@ async def _make_quiz(enabled=1, questions=1):
     quiz = await quiz_db.get_or_create_quiz(CITY)
     await quiz_db.update_quiz(quiz["id"], enabled=enabled)
     for i in range(questions):
-        await quiz_db.create_question(quiz["id"], f"Вопрос {i}")
+        qid = await quiz_db.create_question(quiz["id"], f"Вопрос {i}")
+        await quiz_db.create_option(qid, "Да")
 
 
 def test_menu_hidden_when_module_off(tmp_path):
