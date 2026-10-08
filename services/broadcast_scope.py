@@ -65,3 +65,35 @@ async def sender_city_note(admin_id: int | None, dropped: int = 0) -> str:
         note += (f"⚠️ {dropped} из выбранных — из другого города или их нет в базе бота: "
                  "им не уйдёт.\n")
     return note + "\n"
+
+
+# ── Сезон: рассылка по умолчанию идёт только текущему сезону ─────────────────────────────────
+# Делегаты прошлого сезона остаются в базе (на проде 482 человека «YL 26/1»), и «Всем» без
+# оговорок зовёт их на новое мероприятие. Менеджер видит, сколько их в выборке, и одной
+# кнопкой оставляет только текущих. Пустой сезон считается текущим (`split_ids_by_season`).
+
+
+async def past_season_note(ids: list[int]) -> str:
+    """Строка «из них прошлого сезона: K» для экрана подсчёта; пусто, если таких нет."""
+    from database.db import split_ids_by_season
+
+    _current, past = await split_ids_by_season(ids)
+    return f"\nиз них прошлого сезона: {len(past)}" if past else ""
+
+
+async def current_season_only(ids: list[int]) -> list[int]:
+    """Оставляет из `ids` только текущий сезон (и людей без сезона)."""
+    from database.db import split_ids_by_season
+
+    return (await split_ids_by_season(ids))[0]
+
+
+async def season_default_filter() -> dict | None:
+    """Условие «Текущий сезон (…)» для мастера фильтров или `None`: сезон мероприятия не задан
+    либо в базе один сезон — сужать не по чему."""
+    from database.db import SEASON_CURRENT, get_season_filter_options, get_setting
+
+    event_season = (await get_setting("event_season") or "").strip()
+    if not event_season or len(await get_season_filter_options()) <= 1:
+        return None
+    return {"field": "season", "value": SEASON_CURRENT, "label": f"Текущий сезон ({event_season})"}
