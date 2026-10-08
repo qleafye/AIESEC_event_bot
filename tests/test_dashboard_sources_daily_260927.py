@@ -368,7 +368,7 @@ def test_csv_bom_header_rows_and_no_pii(tmp_path):
     assert "'=HYPERLINK(1)" in header  # формула не выполнится в Excel
     day = next(r for r in rows if r and r[0] == "21.09.2026")
     assert day[-1] == "2" and day[-2] == "1"
-    assert rows[-1][0] == "Итого"
+    assert any(r and r[0] == "Итого" for r in rows)
     assert "Секретный" not in text  # только агрегаты, никаких ПД
 
 
@@ -548,3 +548,82 @@ def test_tail_options_for_tag_group(tmp_path):
     assert sel["totals"]["total"] == 1
     tail = [o for o in sel["options"]["tag"] if o["tail"]]
     assert [o["value"] for o in tail] == ["src_rare"] and tail[0]["selected"] is True
+
+
+# ── «Все каналы за период» ───────────────────────────────────────────────────────────────
+
+def _channel_users():
+    users = []
+    for i in range(7):
+        users += [_u("2026-09-21", f"Канал {i}") for _ in range(2)]
+    users += [
+        _u("2026-09-21", "Редкий А"), _u("2026-09-26", "Редкий Б"),
+        _u("2026-09-26", "src_x", from_tag=1), _u("2026-09-26", None),
+    ]
+    return users
+
+
+def test_channels_full_list_sum_equals_total(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=_channel_users())
+    for query in ("", "period=7", "status=approved"):
+        res = _build(db_path, query=query)
+        labels = [c["label"] for c in res["channels"]]
+        assert "Редкий А" in labels and "Редкий Б" in labels
+        assert "🔗 src_x" in labels and "Не указано" in labels
+        assert "Остальные" not in labels
+        assert sum(c["count"] for c in res["channels"]) == res["totals"]["total"]
+        counts = [(-c["count"], c["label"]) for c in res["channels"]]
+        assert counts == sorted(counts)
+
+
+def test_channels_matrix_short_period(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=_channel_users())
+    res = _build(db_path, query="period=7")
+    days = res["channel_days"]
+    assert len(days) == 7 and days[0]["key"] == "2026-09-27"
+    for c in res["channels"]:
+        assert len(c["per_day"]) == 7
+        assert sum(c["per_day"]) == c["count"]
+    for i, r in enumerate(res["rows"]):
+        assert sum(c["per_day"][i] for c in res["channels"]) == r["total"]
+    rare_b = next(c for c in res["channels"] if c["label"] == "Редкий Б")
+    assert rare_b["per_day"][days.index(next(d for d in days if d["key"] == "2026-09-26"))] == 1
+
+
+def test_channels_no_matrix_for_week_step_or_long_calendar(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[*_channel_users(), _u("2026-08-01", "ВК")])
+    for query in ("step=week", "period=30", ""):
+        res = _build(db_path, query=query)
+        assert res["channel_days"] is None
+        assert all(c["per_day"] is None for c in res["channels"])
+
+
+def _csv_rows(res):
+    text = sd.csv_bytes(res, "Фильтры: нет").decode("utf-8-sig")
+    return list(csv.reader(io.StringIO(text), delimiter=";"))
+
+
+def test_csv_channels_section_totals_only(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[_u("2026-09-10", "ВК"), _u("2026-09-10", "ВК"), _u("2026-09-11", "=HYPERLINK(1)")])
+    rows = _csv_rows(_build(db_path))
+    i = next(k for k, r in enumerate(rows) if r and r[0] == "Итого")
+    assert rows[i + 1] == [] and rows[i + 2] == ["Все каналы за период"]
+    assert rows[i + 3] == ["Канал", "Заявок", "Доля, %"]
+    assert rows[i + 4] == ["ВК", "2", "66,7"]
+    assert rows[i + 5][0] == "'=HYPERLINK(1)"
+    assert "Секретный" not in str(rows)
+
+
+def test_csv_channels_section_matrix(tmp_path):
+    db_path = _use_tmp_db(tmp_path)
+    _seed(users=[_u("2026-09-27", "ВК"), _u("2026-09-26", "ВК"), _u("2026-09-26", "тг")])
+    rows = _csv_rows(_build(db_path, query="period=7"))
+    head = next(r for r in rows if r and r[0] == "Канал")
+    assert head[1] == "27.09.2026" and head[2] == "26.09.2026"
+    assert head[-2:] == ["Итого", "Доля, %"] and len(head) == 7 + 3
+    vk = next(r for r in rows if r and r[0] == "ВК" and len(r) == len(head))
+    assert vk[1:3] == ["1", "1"] and vk[-2] == "2"
