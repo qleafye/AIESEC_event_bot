@@ -2324,7 +2324,12 @@
     if (terms.length > 1) marks.sort(function (a, b) { return a.compareDocumentPosition(b) & 4 ? -1 : 1; });
     var pre = synPre = syn ? 'Ищу «' + (syn.l || syn.t) + '» · ' : (words ? 'Ищу по словам: ' + words.join(', ') + ' · ' : '');
     cnt.textContent = !v ? '' : pre + (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
-    if (v && !shown) cnt.textContent = 'Ничего не нашли. Попробуйте другое слово, например «заявка», или откройте «☰ Разделы».';
+    if (v && !shown) {
+      cnt.textContent = 'Ничего не нашли.';
+      // С верха страницы поле поиска стоит у нижнего края экрана, и подсказка уходит за край: подтягиваем её в видимую часть.
+      var er = empty.getBoundingClientRect(), bar = q.closest('.bar'), bh = bar ? bar.getBoundingClientRect().height : 60;
+      if (er.bottom > window.innerHeight || er.top < bh) window.scrollTo({ top: Math.max(0, window.scrollY + er.top - bh - 16), behavior: 'auto' });
+    }
     var first = 0, i;
     if (hits) {
       for (var h = 0; h < hits.length; h++) {
