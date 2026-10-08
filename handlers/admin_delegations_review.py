@@ -62,6 +62,10 @@ _OTHER_ROW = "Этот человек уже привязан к другой с
 _ROW_TAKEN = "Эта строка формы уже привязана к другому человеку."
 _STALE_LINK = "Этот выбор устарел — начните заново"
 _ALREADY_LINKED_ALERT = "Этот ответ уже привязан к делегату"
+_NOT_ARMED_LINK = (
+    "Делегации ещё не включены — бот пока никого не одобряет. Нажмите «✅ Включить делегации» "
+    "на экране «🏫 Делегации»."
+)
 _STATUS_WORDS = {"ok": "ЦА", "no": "не ЦА", "check": "проверить"}
 
 
@@ -240,6 +244,8 @@ async def dlg_ta(callback: types.CallbackQuery):
         toast = "Отмечено: не ЦА"
     elif res.get("converted") or res.get("verdict") == "already":
         toast = "Отмечено: ЦА — заявка одобрена"
+    elif res.get("waiting") == "not_armed":
+        toast = "Отмечено: ЦА — одобрим и напишем после «✅ Включить делегации»"
     elif res.get("waiting") == "ambiguous_nick":
         toast = "Отмечено: ЦА — ник у нескольких людей, привяжите нужного в «⏳ Не зашли»"
     else:
@@ -291,6 +297,9 @@ async def dlg_absent(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_link:"))
 async def dlg_link(callback: types.CallbackQuery, state: FSMContext):
+    if not await delegations.is_armed():
+        await callback.answer(_NOT_ARMED_LINK, show_alert=True)
+        return
     form, keys = await _form_and_keys()
     row = await _row_of_form(_tail_int(callback.data)) if form else None
     if row is None:
@@ -387,6 +396,10 @@ async def dlg_pick(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_link_yes")
 async def dlg_link_yes(callback: types.CallbackQuery, state: FSMContext):
+    if not await delegations.is_armed():
+        await state.clear()
+        await callback.answer(_NOT_ARMED_LINK, show_alert=True)
+        return
     if await state.get_state() != DelegationLink.waiting_confirm.state:
         await callback.answer(_STALE_LINK, show_alert=True)
         return

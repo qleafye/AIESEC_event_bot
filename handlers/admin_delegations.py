@@ -75,6 +75,22 @@ _FORM_NOT_FOUND = "Форма не найдена — обновите спис�
 _STALE_QUESTIONS = "Список вопросов устарел — откройте выбор ещё раз"
 _KEYS_MISSING = "Без вопросов ФИО, вуз и курс бот не сможет узнать делегата — выберите их."
 _KEYS_SAVED = "Вопросы сохранены"
+_STATE_OFF = (
+    "⏸ Не включено — бот пока никого не одобряет и никому не пишет. Проверьте вопросы, курсы и "
+    "тексты приветствия, затем нажмите «✅ Включить делегации»."
+)
+_STATE_ON = "▶️ Включено — бот одобряет делегатов из формы и пишет им приветствие."
+_ARM_CONFIRM = (
+    "Бот одобрит {n} человек, которые уже есть в боте, и отправит им приветствие. Остальные "
+    "получат одобрение, когда сами зайдут в бот по нику из формы. Включить?"
+)
+_ARM_CONFIRM_ZERO = (
+    "Сейчас в боте нет никого из ЦА этой формы. Бот одобрит людей и напишет им, когда они "
+    "зайдут в бот по нику из формы. Включить?"
+)
+_ARM_TOAST = "Делегации включены — одобряю и пишу делегатам…"
+_DISARM_TOAST = ("Делегации выключены. Уже одобренные делегаты остаются одобренными — бот просто "
+                 "перестаёт одобрять новых.")
 
 
 def _e(value) -> str:
@@ -220,11 +236,14 @@ async def render_screen(target, *, edit: bool = True) -> None:
     lines = [f"🏫 <b>Делегации вузов</b>\n📝 Форма: {_e(_form_title(form))}"]
     lines.extend(_sheet_lines(form))
     lines.append(_keys_line(keys))
+    armed = await delegations.is_armed()
+    lines.append("\n" + (_STATE_ON if armed else _STATE_OFF))
     lines.append(
         f"\nВ форме: {c['total']} · ЦА: {c['ok']} · не ЦА: {c['no']} · проверить: {c['check']} · "
         f"зашли в бота: {c['in_bot']} · пришли: {c['arrived']}"
     )
     rows = [
+        [_btn("⏸ Выключить", "dlg_disarm") if armed else _btn("✅ Включить делегации", "dlg_arm")],
         [_btn(f"❔ Проверить курс ({c['check']})", "dlg_review:0")],
         [_btn(f"⏳ Не зашли ({c['absent']})", "dlg_absent:0")],
         [_btn("🏫 По вузам", "dlg_univ:0")],
@@ -309,6 +328,8 @@ async def dlg_form(callback: types.CallbackQuery):
     admin = _admin_id(callback)
     await _release_previous_export(await delegations.delegation_form_id(), fid)
     await set_setting_by_admin(admin, "delegation_form_id", str(fid))
+    # Выбор формы никогда не включает модуль: включает только «✅ Включить делегации».
+    await set_setting_by_admin(admin, "delegation_armed_form_id", "")
     columns = await ef.list_columns(fid)
     guess = delegations.guess_delegation_questions([(c["qkey"], c["label"]) for c in columns])
     for which, key in _KEY_SETTINGS.items():
@@ -396,6 +417,10 @@ async def _offer_reevaluate(target, lead: str, *, edit: bool = True) -> bool:
     """Пересчёт уже пришедших ответов может одобрить людей и написать им — без подтверждения
     он не стартует. Некого одобрять — пересчёт идёт сразу (False), иначе показан экран с числом
     и вопросом (True)."""
+    if not await delegations.is_armed():
+        # Не включено: только переоценка статусов, никого не одобряем — «будут одобрены» не врём.
+        spawn(delegations.sweep_pending(reevaluate=True))
+        return False
     n = await delegations.preview_reevaluate()
     if n == 0:
         spawn(delegations.sweep_pending(reevaluate=True))
@@ -560,6 +585,50 @@ async def dlg_courses_done(callback: types.CallbackQuery):
 async def dlg_apply(callback: types.CallbackQuery):
     spawn(delegations.sweep_pending(reevaluate=True))
     await callback.answer("Пересчитываю ЦА по ответам формы…")
+    await render_screen(callback)
+
+
+# включение / выключение модуля
+
+@router.callback_query(F.data == "dlg_arm")
+async def dlg_arm(callback: types.CallbackQuery):
+    keys = await delegations.field_keys()
+    if any(not keys.get(w) for w in _REQUIRED_KEYS):
+        await callback.answer(_KEYS_MISSING, show_alert=True)
+        return
+    n = await delegations.preview_reevaluate()
+    text = "🏫 <b>Включить делегации?</b>\n\n" + (_ARM_CONFIRM.format(n=n) if n else _ARM_CONFIRM_ZERO)
+    await _show(callback, text, _kb([
+        [_btn("✅ Включить", "dlg_arm_yes")],
+        [_btn("← Назад", SCREEN)],
+    ]))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "dlg_arm_yes")
+async def dlg_arm_yes(callback: types.CallbackQuery):
+    # Форма и вопросы перечитываются в момент нажатия: устаревшая кнопка не включит другую форму.
+    fid = await delegations.delegation_form_id()
+    form = await ef.get_form(fid) if fid is not None else None
+    if form is None:
+        await callback.answer(_FORM_NOT_FOUND, show_alert=True)
+        await render_screen(callback)
+        return
+    keys = await delegations.field_keys()
+    if any(not keys.get(w) for w in _REQUIRED_KEYS):
+        await callback.answer(_KEYS_MISSING, show_alert=True)
+        await render_screen(callback)
+        return
+    await set_setting_by_admin(_admin_id(callback), "delegation_armed_form_id", str(fid))
+    spawn(delegations.sweep_pending(reevaluate=True))
+    await callback.answer(_ARM_TOAST)
+    await render_screen(callback)
+
+
+@router.callback_query(F.data == "dlg_disarm")
+async def dlg_disarm(callback: types.CallbackQuery):
+    await set_setting_by_admin(_admin_id(callback), "delegation_armed_form_id", "")
+    await callback.answer(_DISARM_TOAST, show_alert=True)
     await render_screen(callback)
 
 

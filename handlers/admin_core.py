@@ -75,6 +75,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🎮 Проверка заданий", "admin_game_review"),
     ("🪙 Монеты вручную", "admin_coins_manual"),
     ("📜 Журнал монет", "admin_coins_journal"),
+    ("📥 Перенос баллов из таблицы", "admin_coins_transfer"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +

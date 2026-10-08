@@ -813,6 +813,9 @@ admin|message|extf_import_not_file|state:ExtFormImport:*
 admin|message|dlg_cutoff_input|state:DelegationEdit:*
 admin|message|dlg_text_input|state:DelegationEdit:*
 admin|message|dlg_link_person|state:DelegationLink:*
+admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
+admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
+admin|message|cointr_link|state:CoinsTransfer:*
 admin|message|prog_trk_cancel_word|state:ProgramTrackEdit:*
 admin|message|prog_cmp_cancel_word|state:ProgramCompetencyEdit:*
 admin|message|prog_lim_cancel_word|state:ProgramEnrollLimit:*
@@ -1541,6 +1544,9 @@ admin|callback_query|dlg_courses|dlg_courses
 admin|callback_query|dlg_course|dlg_course:*
 admin|callback_query|dlg_courses_done|dlg_courses_done
 admin|callback_query|dlg_apply|dlg_apply
+admin|callback_query|dlg_arm|dlg_arm
+admin|callback_query|dlg_arm_yes|dlg_arm_yes
+admin|callback_query|dlg_disarm|dlg_disarm
 admin|callback_query|dlg_text|dlg_text
 admin|callback_query|dlg_text_pick|dlg_text:*
 admin|callback_query|dlg_sheet|dlg_sheet
@@ -1559,6 +1565,10 @@ admin|callback_query|dlg_pick|dlg_pick:*
 admin|callback_query|dlg_link_yes|dlg_link_yes
 admin|callback_query|forumtz_cfg_screen|forumtz_cfg:*
 admin|callback_query|forumtz_set_go|forumtz_set:*
+admin|callback_query|admin_coins_transfer|admin_coins_transfer
+admin|callback_query|cointr_cancel|cointr_cancel
+admin|callback_query|cointr_tab|cointr_tab:*
+admin|callback_query|cointr_go|cointr_go:*
 admin|callback_query|prog_trkl|prog_trkl:*
 admin|callback_query|prog_trkn|prog_trkn:*
 admin|callback_query|prog_trko|prog_trko:*
@@ -2361,10 +2371,13 @@ def test_snapshot_total_handler_count_is_292():
     # (extf_push_title, ExtFormConnect.push_title) сразу после extf_connect_link и +2
     # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
     # две чистые вставки (1070 -> 1073).
-    # Запись на сессии и тест: сезон и фильтры записи/теста в рассылке, подтверждение подстановок (admin_broadcast_season, admin_broadcast_enroll_filter, admin_settings_placeholders); чистые вставки, SequenceMatcher (1073 -> 1085).
-    # Запись на сессии: админка треков/компетенций/записей (admin_enroll, admin_enroll_list) и поток делегата (session_enroll, до catch-all); чистые вставки, SequenceMatcher (1085 -> 1132).
-    # Тест компетенций: админка (admin_quiz, admin_quiz_levels, admin_quiz_import) и прохождение делегатом (quiz, до catch-all); чистые вставки, SequenceMatcher (1132 -> 1177).
-    assert len(GOLDEN_SNAPSHOT) == 1177
+    # 2026-10-09, квик 261009-1v0: делегации «✅ Включить делегации» — +3 admin.callback_query
+    # (dlg_arm/dlg_arm_yes/dlg_disarm) сразу после dlg_apply; одна чистая вставка (1073 -> 1076).
+    # Перенос баллов из таблицы (handlers/admin_coins_transfer.py, хвост admin.py): +3 admin.message
+    # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
+    # вставки (1076 -> 1083).
+    # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1083 -> 1187).
+    assert len(GOLDEN_SNAPSHOT) == 1187
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

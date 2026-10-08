@@ -240,3 +240,9 @@ def test_push_answers_single_encoded_string_still_works():
     from services.ext_forms_parse import parse_push_body
     parsed = parse_push_body({"params": {"answer_id": "1", "answers": '{"\u0424\u0418\u041e": "x"}'}})
     assert [(i["q"], i["value"]) for i in parsed["items"]] == [("ФИО", "x")]
+
+
+def test_push_keys_trimmed_like_export_header():
+    from services.ext_forms_parse import parse_push_body
+    parsed = parse_push_body({"params": {"answer_id": "1", "answers": {"Название университета ": "МГУ"}}})
+    assert [(i["q"], i["label"]) for i in parsed["items"]] == [("Название университета", "Название университета")]

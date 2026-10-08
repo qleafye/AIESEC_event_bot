@@ -615,3 +615,8 @@ class ExtFormAppKeys(StatesGroup):
     # «🔑 Ключи приложения Яндекса»: идентификатор и секрет приложения.
     client_id = State()
     client_secret = State()
+
+
+class CoinsTransfer(StatesGroup):
+    # «📥 Перенос баллов из таблицы»: ждём ссылку на Google-таблицу.
+    link = State()
