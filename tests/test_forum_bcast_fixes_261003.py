@@ -11,6 +11,7 @@ from config import config
 from database import db
 import services.checkin_broadcast as cb
 import services.scheduler as sched
+from services.timeutil import msk_now as real_msk_now
 from tests._dbtpl import fast_init_db
 
 
@@ -154,7 +155,7 @@ def test_not_arrived_transient_failure_unmarks_for_retry(tmp_path, monkeypatch):
     import services.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
-    monkeypatch.setattr(cna, "msk_now", lambda: datetime.now())
+    monkeypatch.setattr(cna, "msk_now", real_msk_now)  # дата «сегодня» по МСК, как у db; datetime.now() в CI = UTC
     bot = TextBot(fail_for={1: RuntimeError("network down")})
     monkeypatch.setattr(sched, "_bot", bot)
     res = _run(cna.send(city=None, city_scope=None))
@@ -170,7 +171,7 @@ def test_not_arrived_blocked_user_stays_marked(tmp_path, monkeypatch):
     import services.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
-    monkeypatch.setattr(cna, "msk_now", lambda: datetime.now())
+    monkeypatch.setattr(cna, "msk_now", real_msk_now)  # дата «сегодня» по МСК, как у db; datetime.now() в CI = UTC
     bot = TextBot(fail_for={1: TelegramForbiddenError(method=None, message="bot was blocked")})
     monkeypatch.setattr(sched, "_bot", bot)
     res = _run(cna.send(city=None, city_scope=None))
