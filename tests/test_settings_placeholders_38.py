@@ -43,11 +43,22 @@ def test_every_registry_placeholder_has_label():
 
 
 def test_prompt_only_keys_covered():
-    assert len(sp.PROMPT_ONLY_PLACEHOLDERS) == 7
+    assert len(sp.PROMPT_ONLY_PLACEHOLDERS) == 9
     for key, names in sp.PROMPT_ONLY_PLACEHOLDERS.items():
         exp = sp.expected_placeholders(key)
         for n in names:
             assert exp.get(n), (key, n)
+
+
+def test_every_prompt_token_is_known_to_its_key():
+    """Подстановка, которую подсказка обещает менеджеру, не должна считаться «неизвестной»."""
+    bad = []
+    for key, entry in SETTINGS_SCHEMA.items():
+        prompt = entry.get("prompt")
+        if isinstance(prompt, str):
+            exp = sp.expected_placeholders(key)
+            bad += [(key, n) for n in sp.TOKEN_RE.findall(prompt) if n not in exp]
+    assert not bad, bad
 
 
 def test_hint_text():
