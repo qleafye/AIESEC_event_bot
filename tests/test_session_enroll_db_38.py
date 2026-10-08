@@ -140,3 +140,175 @@ def test_delete_session_cleans_enrollments(tmp_path):
 def test_purge_tables_registered():
     tables = {t for t, _, _ in db.USER_PURGE_TABLES}
     assert {"session_enrollments", "session_schedule_confirms"} <= tables
+
+
+# ── enroll_tx ────────────────────────────────────────────────────────────────────────────────
+
+def test_enroll_ok_and_already(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        r = await se.enroll_tx(5, ids["A"])
+        assert r.status == "ok" and r.replaced == []
+        assert (await se.enroll_tx(5, ids["A"])).status == "already"
+        assert await se.count_enrollments(ids["A"]) == 1
+
+    run(go())
+
+
+def test_enroll_conflict_pairwise(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        await se.enroll_tx(5, ids["A"])
+        r = await se.enroll_tx(5, ids["B"])
+        assert (r.status, r.conflicts) == ("conflict", [ids["A"]])
+        assert (await se.enroll_tx(5, ids["D"])).status == "ok"  # 11:30, с A не пересекается
+        r = await se.enroll_tx(5, ids["C"])  # C пересекается и с A, и с D
+        assert r.status == "conflict" and set(r.conflicts) == {ids["A"], ids["D"]}
+        assert await se.user_enrollment_ids(5) == {ids["A"], ids["D"]}
+
+    run(go())
+
+
+def test_enroll_replace(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        await se.enroll_tx(5, ids["A"])
+        r = await se.enroll_tx(5, ids["B"], allow_replace=True)
+        assert (r.status, r.replaced) == ("ok", [ids["A"]])
+        assert await se.user_enrollment_ids(5) == {ids["B"]}
+
+    run(go())
+
+
+def test_enroll_limit(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        await db.update_program_session(ids["A"], enroll_limit=1)
+        assert (await se.enroll_tx(1, ids["A"])).status == "ok"
+        assert (await se.enroll_tx(2, ids["A"])).status == "full"
+        assert (await se.enroll_tx(2, ids["A"], limit_check=False, source="scan",
+                                   by_staff_id=77)).status == "ok"
+        users = await se.list_enrolled_users(ids["A"])
+        assert [(u["telegram_id"], u["source"], u["by_staff_id"]) for u in users] == [
+            (1, "self", None), (2, "scan", 77)]
+
+    run(go())
+
+
+def test_enroll_plenary_not_enrollable(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        assert (await se.enroll_tx(5, ids["P"])).status == "not_enrollable"
+        assert (await se.enroll_tx(5, 99999)).status == "no_session"
+
+    run(go())
+
+
+def test_other_day_and_city_ignored(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        track = ids["career"]
+        other_day = await db.create_program_session(CITY, "2026-10-31", "10:00", "11:00", "Д2")
+        other_city = await db.create_program_session("spb", "2026-10-30", "10:00", "11:00", "СПб")
+        await db.update_program_session(other_day, track_id=track)
+        await db.update_program_session(other_city, track_id=track)
+        await se.enroll_tx(5, ids["A"])
+        assert (await se.enroll_tx(5, other_day)).status == "ok"
+        assert (await se.enroll_tx(5, other_city)).status == "ok"
+
+    run(go())
+
+
+def test_pleanary_enrollment_ignored_in_conflicts(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        # запись на сессию, потерявшую трек, не мешает новым записям
+        await se.enroll_tx(5, ids["A"])
+        await db.update_program_session(ids["A"], track_id=None)
+        assert (await se.enroll_tx(5, ids["B"])).status == "ok"
+
+    run(go())
+
+
+def test_confirm_schedule(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        assert await se.get_schedule_confirmed_at(5, CITY) is None
+        stamp = await se.confirm_schedule(5, CITY)
+        assert await se.get_schedule_confirmed_at(5, CITY) == stamp
+        await se.confirm_schedule(5, CITY)
+        await se.confirm_schedule(6, CITY)
+        assert await se.count_schedule_confirms(CITY) == 2
+        assert await se.count_schedule_confirms("spb") == 0
+
+    run(go())
+
+
+def test_counts_and_lists(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await seed_msk_program()
+        await se.enroll_tx(1, ids["A"])
+        await se.enroll_tx(2, ids["A"])
+        await se.enroll_tx(2, ids["D"])
+        assert await se.enrollment_counts_for_city(CITY) == {ids["A"]: 2, ids["D"]: 1}
+        assert await se.count_enrolled_users(CITY) == 2
+        mine = await se.list_user_enrollments(2, CITY)
+        assert [(s["id"], s["track_name"]) for s in mine] == [
+            (ids["A"], "Карьера"), (ids["D"], "Бизнес")]
+        assert await se.unenroll(2, ids["D"]) and not await se.unenroll(2, ids["D"])
+
+    run(go())
+
+
+# ── переезд делегата ─────────────────────────────────────────────────────────────────────────
+
+def test_city_move_deletes_enrollments(tmp_path, monkeypatch):
+    import cities
+    from services.city_move import STATUS_MODE_KEEP, move_user_city
+    from tests import test_city_move_260925 as cm
+
+    ready(tmp_path)
+    saved = cities.all_cities()
+    cities.set_cities_for_test([dict(c) for c in cm._CITIES])
+    store = cm._install_fake_sheets(monkeypatch)
+    try:
+        async def go():
+            await cm._enable_cities_module()
+            await cm._seed_user(cm.DELEGATE_ID, city="msk", participant_type="short")
+            store.seed(await cm._resolve_tabs("msk", "short"), [[cm.DELEGATE_ID, "Тест"]])
+            store.seed(await cm._resolve_tabs("spb", "short"), [])
+            ids = await seed_msk_program()
+            await se.enroll_tx(cm.DELEGATE_ID, ids["A"])
+            await se.confirm_schedule(cm.DELEGATE_ID, CITY)
+            dry = await move_user_city(cm.DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP,
+                                       by_admin=1, dry_run=True)
+            assert dry["enrollments"] == 1
+            assert await se.count_enrollments_for_user(cm.DELEGATE_ID) == 1
+            from services.city_move import preview_city_move
+            assert (await preview_city_move("short", "spb", cm.DELEGATE_ID))["enrollments"] == 1
+            rep = await move_user_city(cm.DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP,
+                                       by_admin=1)
+            assert rep["ok"] and "session_enrollments" in rep["db_changes"]
+            assert await se.count_enrollments_for_user(cm.DELEGATE_ID) == 0
+            assert await se.get_schedule_confirmed_at(cm.DELEGATE_ID, CITY) is None
+
+        run(go())
+    finally:
+        cities.set_cities_for_test(saved)

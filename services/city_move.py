@@ -49,6 +49,10 @@ from database.db import (
 )
 from reg_engine import _is_party_track, _is_short_track
 import services.sheets as sheets_service
+from database.session_enroll_db import (
+    count_enrollments_for_user,
+    delete_enrollments_for_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +149,9 @@ async def _resolve_sheet_targets(new_city: str, participant_type: str | None) ->
     }
 
 
-async def preview_city_move(participant_type: str | None, new_city: str) -> dict:
+async def preview_city_move(
+    participant_type: str | None, new_city: str, telegram_id: int | None = None,
+) -> dict:
     """Публичная точка правды для экрана подтверждения (`handlers/admin_city_move.py`) —
     ничего не пишет, только читает (список вкладок листа — сетевой вызов). Трек делегата НЕ
     меняется никогда (см. докстринг модуля) — `track_supported` только сигнализирует, допускает
@@ -154,6 +160,8 @@ async def preview_city_move(participant_type: str | None, new_city: str) -> dict
     return {
         "track_supported": await _track_supported(participant_type, new_city),
         "sheet": await _resolve_sheet_targets(new_city, participant_type),
+        # Записи на сессии привязаны к программе старого города и при переезде пропадают.
+        "enrollments": await count_enrollments_for_user(telegram_id) if telegram_id else 0,
     }
 
 
@@ -250,6 +258,8 @@ async def move_user_city(
         "write_tab": sheet_targets["write_tab"],
     })
     write_tab = sheet_targets["write_tab"]
+
+    report["enrollments"] = await count_enrollments_for_user(telegram_id)
 
     if dry_run:
         report["sheet"]["old_rows_found"] = await sheets_service.find_rows_by_id(old_tab, telegram_id)
@@ -350,6 +360,9 @@ async def move_user_city(
         report["db_changes"].append("reg_submit_digest_queue")
     if await update_unsent_game_digest_city(telegram_id, new_city):
         report["db_changes"].append("game_submit_digest_queue")
+    # Записи на сессии программы старого города и подтверждение расписания не переезжают.
+    if await delete_enrollments_for_user(telegram_id):
+        report["db_changes"].append("session_enrollments")
 
     # ── 4. Статус ────────────────────────────────────────────────────────────────────────────
     if status_mode == STATUS_MODE_TO_MODERATION and current_status != "pending":
