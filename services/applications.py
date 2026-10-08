@@ -60,7 +60,7 @@ from database.db import (
 from reg_engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
 from services.timeutil import utc_naive_to_msk
-from settings_schema import get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.
 # database.db.mark_user_edited) — CLAUDE.md запрещает показывать код менеджеру, это ЕДИНСТВЕННОЕ
@@ -800,7 +800,7 @@ async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict
     `coins_manual_notify_text`/{reason} в user_actions.py: заранее неизвестный текст менеджера
     вне делегатского корпуса."""
     from services.i18n import tr as _tr
-    prefix = await get_setting("reject_text") or "К сожалению, твоя заявка отклонена."
+    prefix = await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"]
     prefix = _tr(prefix, lang, tr_map or {})
     text = html_module.escape(prefix)
     if reason:
