@@ -199,6 +199,14 @@ async def enroll_by_staff(telegram_id: int, session_id: int, *, by_staff_id: int
         return EnrollOutcome("disabled", session=session, text_key="session_enroll_disabled_text")
     if session.get("track_id") is None:
         return EnrollOutcome("not_enrollable", session=session)
+    # волонтёр не должен записывать мусор: нужен существующий одобренный делегат этого города
+    user = await get_user(telegram_id)
+    denial = await checkin_denial(user)
+    if denial:
+        return EnrollOutcome("denied", session=session, text_key="session_enroll_not_approved_text",
+                             denial=denial)
+    if normalize_city(user.get("event_city")) != session["city"]:
+        return EnrollOutcome("wrong_city", session=session)
     res = await _edb.enroll_tx(telegram_id, session_id, allow_replace=True, limit_check=False,
                                source="scan", by_staff_id=by_staff_id)
     return await _outcome_from_tx(res, session)
