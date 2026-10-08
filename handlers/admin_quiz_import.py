@@ -126,7 +126,7 @@ async def prog_qzapply(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     text, kb = await render_quiz(code)
     await callback.message.edit_text(
-        f"✅ Тест обновлён: {len(questions)} вопросов\n\n{text}", parse_mode="HTML", reply_markup=kb,
+        f"✅ Тест обновлён: {quiz_import._count(len(questions), 'вопрос', 'вопроса', 'вопросов')}\n\n{text}", parse_mode="HTML", reply_markup=kb,
     )
     await callback.answer()
 
