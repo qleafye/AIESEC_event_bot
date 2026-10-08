@@ -316,7 +316,7 @@
 <li><a href="#glossary"><span class="n">25.</span>Глоссарий</a></li>
 </ol></nav>
 <main>
-<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово, например «заявка», «рассылка», «роль» или «текст», или откройте оглавление.</div>
+<div class="empty" id="empty">Ничего не нашли. Напишите одно-два слова, например «заявка», «отклонить», «рассылка», «вопрос», «таблица», «роль» или «текст», или откройте «☰ Разделы».</div>
 
 <section class="sec" id="routes"><h2>Какое у вас событие?</h2>
 <div class="blk">
@@ -2150,9 +2150,9 @@
     marks = []; curMark = -1;
   }
   function visible(node) { for (var el = node.parentNode; el && el !== main; el = el.parentNode) { if (el === empty || (el.classList && el.classList.contains('gone'))) return false; } return true; }
-  function addMarks(v) {
+  function addMarks(v, roots) {
     var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, null), nodes = [], n;
-    while ((n = w.nextNode())) { if (n.nodeValue.trim() && n.parentNode.nodeName !== 'MARK' && norm(n.nodeValue).indexOf(v) > -1 && visible(n)) nodes.push(n); }
+    while ((n = w.nextNode())) { if (n.nodeValue.trim() && n.parentNode.nodeName !== 'MARK' && norm(n.nodeValue).indexOf(v) > -1 && visible(n) && (!roots || roots.some(function (r) { return r.contains(n); }))) nodes.push(n); }
     nodes.forEach(function (node) {
       var text = node.nodeValue, low = norm(text), i = 0, j, frag = document.createDocumentFragment();
       while ((j = low.indexOf(v, i)) > -1 && marks.length < 400) {
@@ -2174,8 +2174,12 @@
     cnt.textContent = synPre + 'Совпадение ' + (curMark + 1) + ' из ' + marks.length + (marks.length > 1 ? ' · Enter — следующее' : '');
   }
   // Словарь новичка: если по словам запроса ничего не нашлось, ищем то, как это названо в гайде.
-  // k — куски запроса (уже в нижнем регистре, ё = е), t — что искать, at — куда прокрутить.
+  // k — куски запроса (уже в нижнем регистре, ё = е; «=слово» — только запрос целиком), t — что искать,
+  // at — куда прокрутить, pre — словарь важнее буквального совпадения (слово встречается в гайде не там).
   var SYN = [
+    { k: ['список участ', 'список делег', 'список одобр', 'список принят', 'списком', 'выгрузить спис', 'выгрузить участ', 'выгрузить делег', 'выгрузить одобр', 'выгрузить таблиц', 'выгрузить баз', 'выгрузка участ', 'выгрузка делег', 'выгрузка спис', 'выгрузку', '=выгрузить', '=выгрузка', 'скачать спис', 'скачать участ', 'скачать делег', 'скачать таблиц', 'скачать баз', '=скачать', '=экспорт', 'экспорт csv', 'экспорт в', 'csv', 'цсв', 'excel', 'эксель'], t: 'нужен список участников', l: 'список участников', at: 'sheet-list', pre: true },
+    { k: ['где таблиц', 'открыть таблиц', 'ссылка на таблиц', 'ссылку на таблиц', 'найти таблиц', 'доступ к таблиц'], t: 'как открыть таблицу', at: 'sheet-open' },
+    { k: ['отменить рассылк', 'остановить рассылк', 'отозвать рассылк', 'отмена рассылк', 'удалить рассылк', 'отменить отправк'], t: '⛔ остановить', l: 'остановить', at: 'broadcast' },
     { k: ['первый день', 'с чего начать', 'новичок', 'я новый', 'новеньк', 'только пришел'], t: 'с чего начать', at: 'start' },
     { k: ['кто может одобр', 'кто одобряет', 'кто может принима', 'право одобр', 'права на одобр', 'право на одобр', 'доступ к заявк'], t: 'модерация заявок', at: 'roles-rights' },
     { k: ['письмо после одобрения', 'поменять письмо', 'изменить письмо', 'исправить письмо', 'переписать письмо', 'текст письма'], t: 'после одобрения', at: 'form-texts' },
@@ -2185,22 +2189,45 @@
     { k: ['текст одобрения', 'письмо одобрения', 'письмо об одобрении', 'сообщение об одобрении', 'текст после одобрения', 'сообщение после одобрения', 'поздравлени'], t: 'после одобрения', at: 'form-texts' },
     { k: ['письмо отказа', 'письмо об отказе', 'сообщение об отказе', 'текст отклонения', 'текст при отказе'], t: 'при отклонении', at: 'form-texts' },
     { k: ['одобрить заявк', 'принять заявк', 'одобрить участник', 'принять участник', 'принять делегат', 'разобрать заявк', 'посмотреть заявк', 'одобрени заявк', 'одобрить человек', 'принять человек', 'принять люд', 'как принять'], t: '✅ одобрить', l: 'одобрить', at: 'apps' },
-    { k: ['отклонить заявк', 'отказать', 'отказ участник', 'отказ делегат'], t: '❌ отклонить', l: 'отклонить', at: 'apps-reject' },
+    { k: ['отклонить заявк', 'отказать', 'отказ участник', 'отказ делегат', 'причина отказ', 'причину отказ', 'причины отказ', 'отказ с причин', 'отклонить с причин', 'указать причин', 'написать причин'], t: '❌ отклонить', l: 'отклонить', at: 'apps-reject' },
     { k: ['найти делегат', 'найти человек', 'найти участник', 'найти заявк', 'найти анкет'], t: '/find', at: 'find' },
     { k: ['бот не работает', 'бот сломал', 'бот завис', 'бот лежит', 'бот упал', 'не работает бот'], t: 'бот не отвечает', at: 'problems' },
     { k: ['поменять текст', 'изменить текст', 'редактировать текст', 'исправить текст', 'править текст', 'сменить текст'], t: 'где менять какой текст', at: 'form-texts' },
     { k: ['удалить заявк', 'убрать заявк', 'удалить тестов', 'отменить одобрение', 'отменить решение', 'отменить отказ'], t: 'вернуть в ожидание', at: 'apps-undo' },
-    { k: ['ответить делегат', 'ответить участник', 'ответить на вопрос', 'вопрос от делегат'], t: 'вопросы делегатов', at: 'faq' },
-    { k: ['гугл', 'эксель', 'excel'], t: 'таблиц', l: 'таблица', at: 'sheet' },
+    { k: ['ответить делегат', 'ответить участник', 'ответить человек', 'ответить на вопрос', 'вопрос от делегат', 'вопрос делегат', 'задал вопрос', 'задает вопрос', 'задают вопрос', 'спрашивает', 'пришел вопрос', 'пришло сообщение от делегат'], t: 'вопросы делегатов', at: 'faq' },
+    { k: ['гугл'], t: 'таблиц', l: 'таблица', at: 'sheet' },
     { k: ['оплатить', 'деньги', 'платн'], t: 'оплат', l: 'оплата', at: 'pay' },
     { k: ['кюар', 'куар'], t: 'qr', l: 'QR', at: 'forum-qr' }
   ];
   function synFor(v) {
-    for (var i = 0; i < SYN.length; i++) { for (var j = 0; j < SYN[i].k.length; j++) { if (v.indexOf(SYN[i].k[j]) > -1) return SYN[i]; } }
+    for (var i = 0; i < SYN.length; i++) {
+      for (var j = 0; j < SYN[i].k.length; j++) { var k = SYN[i].k[j]; if (k.charAt(0) === '=' ? v === k.slice(1) : v.indexOf(k) > -1) return SYN[i]; }
+    }
     return null;
   }
   // Запасной путь: если по фразе и по словарю пусто, ищем по отдельным словам запроса.
   // Служебные слова выкидываем, у длинных слов берём начало, чтобы «одобрения» нашло «одобрить».
+  // Засчитываем только абзац, пункт, строку таблицы или заголовок, где встретились ВСЕ слова сразу:
+  // обрывки вроде «челов» и «делег» разбросаны по всему гайду, и первое попавшееся совпадение уводит не туда.
+  // Нет такого места — честно пишем «Ничего не нашли».
+  var units = $$('h2, h3, h4, summary, .sym, p, li, tr, figcaption, details.q', main).filter(function (u) { return !empty.contains(u); });
+  units.forEach(function (u) { u._t = norm(u.textContent); u._h = /^(H2|H3|H4|SUMMARY)$/.test(u.nodeName) || u.classList.contains('sym'); });
+  function unitsWith(terms) {
+    var hit = units.filter(function (u) { return has(u._t, terms); });
+    return hit.filter(function (u) { return u._h; }).concat(hit.filter(function (u) { return !u._h; }));
+  }
+  function inAny(el, list) { for (var i = 0; i < list.length; i++) { if (el.contains(list[i]) || list[i].contains(el)) return true; } return false; }
+  function filterHits(hits) {
+    var shown = 0;
+    secs.forEach(function (s) {
+      var ok = hits.some(function (h) { return s.contains(h); });
+      $$('.blk', s).forEach(function (b) { b.classList.toggle('gone', ok && !inAny(b, hits)); });
+      $$('details.q, details.more', s).forEach(function (d) { d.open = ok && hits.some(function (h) { return d.contains(h); }); });
+      s.classList.toggle('gone', !ok); if (ok) shown++;
+      tocLinks.forEach(function (a) { if (a.getAttribute('href') === '#' + s.id) a.parentNode.classList.toggle('gone', !ok); });
+    });
+    return shown;
+  }
   var STOP = ' как что где кто когда куда зачем почему мне меня мой моя мое мои наш ваш это этот эта эти для при без про над под или если чтобы тоже уже еще все всех можно может могу нужно надо хочу сделать делать там тут вот есть нет был была быть через после перед нибудь его они она мы вы ли же бы '.split(' ');
   function stems(v, labels) {
     var out = [];
@@ -2228,29 +2255,40 @@
     return shown;
   }
   function run() {
-    var v = norm(q.value.trim()), syn = null, words = null, terms = v ? [v] : [];
+    var v = norm(q.value.trim()), syn = v ? synFor(v) : null, words = null, hits = null, terms = v ? [v] : [], shown;
     clearMarks();
     document.body.classList.toggle('searching', !!v);
-    var shown = filter(terms);
-    if (v && !shown && (syn = synFor(v))) { terms = [syn.t]; shown = filter(terms); }
+    if (syn && syn.pre) {
+      terms = [syn.t]; shown = filter(terms);
+      if (!shown) { syn = null; terms = [v]; shown = filter(terms); }
+    } else {
+      shown = filter(terms);
+      if (shown || !syn) syn = null; else { terms = [syn.t]; shown = filter(terms); }
+    }
     if (v && !shown) {
       var lbl = [], ws = stems(v, lbl);
       if (ws.length && !(ws.length === 1 && ws[0] === v)) {
-        shown = filter(ws);
-        if (!shown && ws.length > 1) shown = filter(ws, true);
-        if (shown) { words = lbl; terms = ws; syn = null; } else { terms = [v]; filter(terms); }
+        hits = unitsWith(ws);
+        if (hits.length) { shown = filterHits(hits); words = lbl; terms = ws; } else hits = null;
       }
+      if (!shown) { terms = [v]; filter(terms); }
     }
     $$('li.grp').forEach(function (g) { g.classList.toggle('gone', !!q.value.trim()); });
     empty.style.display = shown ? 'none' : 'block';
-    terms.forEach(function (t) { if (t.length >= 2) addMarks(t); });
+    if (shown) terms.forEach(function (t) { if (t.length >= 2) addMarks(t, hits); });
     if (terms.length > 1) marks.sort(function (a, b) { return a.compareDocumentPosition(b) & 4 ? -1 : 1; });
     var pre = synPre = syn ? 'Ищу «' + (syn.l || syn.t) + '» · ' : (words ? 'Ищу по словам: ' + words.join(', ') + ' · ' : '');
     cnt.textContent = !v ? '' : pre + (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
-    var first = 0;
-    if (syn && syn.at) {
+    var first = 0, i;
+    if (hits) {
+      for (var h = 0; h < hits.length; h++) {
+        var hi = -1;
+        for (i = 0; i < marks.length; i++) { if (hits[h].contains(marks[i])) { hi = i; break; } }
+        if (hi > -1) { first = hi; break; }
+      }
+    } else if (syn && syn.at) {
       var host = document.getElementById(syn.at);
-      if (host) { for (var i = 0; i < marks.length; i++) { if (host.contains(marks[i])) { first = i; break; } } }
+      if (host) { for (i = 0; i < marks.length; i++) { if (host.contains(marks[i])) { first = i; break; } } }
     }
     clearTimeout(scrollTimer);
     if (marks.length) scrollTimer = setTimeout(function () { goMark(first); }, 700);
