@@ -19,6 +19,7 @@
     checkin_first_entry        {user_id, city, day, source, by_staff_id, scanned_at, approx, session_id?}
     onsite_approved            {telegram_id}
     amb_tier_reached           {telegram_id, tier, left}
+    bot_profile_changed        {}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
 код (`services/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
@@ -92,6 +93,7 @@ OUTBOX_KINDS = frozenset({
     "checkin_first_entry",
     "onsite_approved",
     "amb_tier_reached",
+    "bot_profile_changed",
 })
 
 
