@@ -62,6 +62,7 @@ _BREAKDOWN_CUTS: tuple[tuple[str, str, "str | None"], ...] = (
     ("university", "ВУЗ", "dashboard_block_universities"),
     ("course", "Курс", "dashboard_block_courses"),
     ("study_field", "Направление обучения", "dashboard_block_study_fields"),
+    ("age", "Возраст", None),  # корзинами, queries.age_breakdown; без тумблера, как трек
     ("participant_type", "Трек", None),
     ("payment_option", "Тариф", None),  # гасится payment_enabled внутри queries.breakdown
 )
@@ -272,7 +273,7 @@ def _city_label(conn, code: "str | None") -> "str | None":
 
 
 def build_page_context(
-    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, cuts_approved: bool = False,
 ) -> dict:
     """Собирает ВЕСЬ контекст страницы одним вызовом — шаблон сам не зовёт БД (D-16: на лету
     на каждый запрос, без кэша). Каждый блок гасится своим тумблером `dashboard_block_*`
@@ -340,7 +341,13 @@ def build_page_context(
             continue
         if column == "payment_option" and flags.get("payment_enabled") != "on":
             continue  # тариф — только при оплате (D-14), тумблера у него нет
-        rows = queries.breakdown(conn, column, scope=scope, limit=10)
+        # Фильтр «только одобренные» — для раздела «Кто подаёт»; источник живёт в «Откуда
+        # приходят» и всегда считается по всем заявкам.
+        approved_only = cuts_approved and column != "source"
+        if column == "age":
+            rows = queries.age_breakdown(conn, scope=scope, approved_only=approved_only)
+        else:
+            rows = queries.breakdown(conn, column, scope=scope, limit=10, approved_only=approved_only)
         cuts.append({"title": title, "rows": _bar_rows(rows), "has_data": bool(rows)})
 
     game_stats = queries.game_block(conn, scope) if flags.get("dashboard_block_game") == "on" else None
@@ -391,6 +398,7 @@ def build_page_context(
     # от раздела «Кто подаёт» (остальные разрезы) — сам разрез по-прежнему из общего цикла
     # `_BREAKDOWN_CUTS` выше, `_split_source_cut` только перекладывает готовый элемент.
     source_cut, cuts = _split_source_cut(cuts)
+    scope_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
 
     ctx = {
         "event_name": flags.get("event_name"),
@@ -428,6 +436,12 @@ def build_page_context(
         ),
         "source_cut": source_cut,
         "cuts": cuts,
+        "cuts_approved": cuts_approved,
+        "cuts_approved_total": queries.approved_count(conn, scope),
+        "cuts_links": {
+            "all": "?" + urlencode(scope_params) + "#who",
+            "approved": "?" + urlencode({**scope_params, "who": "approved"}) + "#who",
+        },
         "dropout": (
             {"rows": _bar_rows(dropout_rows), "has_data": bool(dropout_rows)}
             if dropout_rows is not None
@@ -912,6 +926,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        who: Optional[str] = None,
     ):
         # Phase 26.1-02 (SD-08): на хосте супердашборда Telegram-вход не работает и не должен
         # (домен за ботом не закреплён) — показывать заведомо нерабочий /login хуже, чем
@@ -950,7 +965,8 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_page_context(conn, cfg, scope, viewer)
+            # `who` — белый список: только "approved" включает фильтр, остальное = все заявки.
+            context = build_page_context(conn, cfg, scope, viewer, cuts_approved=(who == "approved"))
 
         return templates.TemplateResponse(request, "dashboard.html", context)
 
