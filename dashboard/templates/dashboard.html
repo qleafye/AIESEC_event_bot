@@ -590,9 +590,18 @@
   {# ═══ Раздел 5: Кто подаёт ═══ #}
   {% if 'who' in section_ids %}
   <section class="page-section" id="who" aria-labelledby="who-title">
-    <h2 class="section-title" id="who-title">Кто подаёт</h2>
+    <h2 class="section-title" id="who-title">{% if cuts_approved %}Кто отобран{% else %}Кто подаёт{% endif %}</h2>
     <section class="block">
       <h2 class="visually-hidden">Разрезы заявок</h2>
+      <nav class="switchers" aria-label="Чьи заявки в разрезах">
+        <span class="switchers-label">Считать:</span>
+        <a class="switch-link{% if not cuts_approved %} active{% endif %}"
+           {% if not cuts_approved %}aria-current="page"{% endif %}
+           href="{{ cuts_links.all }}">Все заявки</a>
+        <a class="switch-link{% if cuts_approved %} active{% endif %}"
+           {% if cuts_approved %}aria-current="page"{% endif %}
+           href="{{ cuts_links.approved }}">Только одобренные <span class="chip-count">{{ cuts_approved_total | thousands }}</span></a>
+      </nav>
       <div class="cuts-grid">
         {% for cut in cuts %}
         <div class="card">
@@ -606,7 +615,11 @@
           </div>
           {% endfor %}
           {% else %}
+          {% if cuts_approved %}
+          <p class="empty-note">Среди одобренных пока никто не ответил на этот вопрос — переключитесь на «Все заявки» или проверьте, что вопрос включён в форме регистрации.</p>
+          {% else %}
           <p class="empty-note">Появится, когда делегаты ответят на этот вопрос анкеты — проверьте, что он включён в форме регистрации.</p>
+          {% endif %}
           {% endif %}
         </div>
         {% endfor %}
