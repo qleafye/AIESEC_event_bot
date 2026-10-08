@@ -1173,3 +1173,5 @@ from handlers import admin_forum_tz  # noqa: E402,F401
 from handlers import admin_enroll  # noqa: E402,F401
 # Список записей, выгрузка и настройки записи (handlers/admin_enroll_list.py) — golden append в хвост.
 from handlers import admin_enroll_list  # noqa: E402,F401
+# Тест компетенций: настройки, вопросы, баллы (handlers/admin_quiz.py) — golden append в хвост.
+from handlers import admin_quiz  # noqa: E402,F401
