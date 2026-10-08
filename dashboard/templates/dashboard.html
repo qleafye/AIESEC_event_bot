@@ -27,11 +27,11 @@
       <span class="switchers-label">Город:</span>
       <a class="switch-link{% if not scope.city %} active{% endif %}"
          {% if not scope.city %}aria-current="page"{% endif %}
-         href="?{% if scope.season %}season={{ scope.season }}{% endif %}">Все города</a>
+         href="?{% if scope.season %}season={{ scope.season }}&{% endif %}{% if cuts_approved %}who=approved{% endif %}">Все города</a>
       {% for city in city_options %}
       <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
          {% if scope.city == city.code %}aria-current="page"{% endif %}
-         href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}">{{ city.label }}</a>
+         href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}{% if cuts_approved %}&who=approved{% endif %}">{{ city.label }}</a>
       {% endfor %}
     </nav>
     {% elif viewer.bound_city %}
@@ -45,7 +45,7 @@
       {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
       <a class="switch-link{% if is_active %} active{% endif %}"
          {% if is_active %}aria-current="page"{% endif %}
-         href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}">{{ season.label }}</a>
+         href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}{% if cuts_approved %}&who=approved{% endif %}">{{ season.label }}</a>
       {% endfor %}
     </nav>
     {% endif %}
