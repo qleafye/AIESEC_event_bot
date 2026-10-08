@@ -17,6 +17,10 @@
 И между группами» и хвост «Остальные» читаются в одном месте. Значения из URL в SQL не
 попадают вовсе — только сравниваются в Python. ПД наружу не уходят: ни имён, ни ID — только
 счётчики (D-17 дашборда); CSV — те же агрегаты, что видны на странице.
+
+Разбивка «Канал» — единый ключ: у пришедшего по ссылке с меткой это «🔗 <метка>» (вопрос
+«откуда узнал» ему не задаётся), иначе ответ из анкеты, иначе «Не указано». Ручные ответы,
+отличающиеся только регистром и пробелами, склеены в одну корзину.
 """
 from __future__ import annotations
 
@@ -33,16 +37,18 @@ from dashboard.timeutil import msk_now
 
 BREAKDOWNS = ("answer", "tag", "city", "status")
 STEPS = ("day", "week")
-PERIODS = ("all", "7", "30")
+PERIODS = ("all", "7", "30", "today", "yesterday")
 
 BY_LABELS = {
-    "answer": "Ответ в анкете",
+    "answer": "Канал (метка ссылки или ответ в анкете)",
     "tag": "Ссылка, по которой пришёл",
     "city": "Город",
     "status": "Статус заявки",
 }
 STEP_LABELS = {"day": "По дням", "week": "По неделям"}
-PERIOD_LABELS = {"7": "7 дней", "30": "30 дней", "all": "Весь сезон"}
+PERIOD_LABELS = {
+    "today": "Сегодня", "yesterday": "Вчера", "7": "7 дней", "30": "30 дней", "all": "Весь сезон",
+}
 
 STATUS_LABELS = {"approved": "Одобрена", "pending": "Ждёт решения", "rejected": "Отказ"}
 _STATUS_OTHER = "other"
@@ -59,7 +65,10 @@ TRACK_LABELS = {
 }
 
 ANSWER_NOT_GIVEN = "Не указано"
-ANSWER_BY_TAG = "По метке ссылки"
+# Старое значение корзины из поделённых ссылок: в from_params выкидывается из answers (молча
+# отбросить проще алиаса «все метки», которому понадобилось бы отдельное правило в _matches).
+_ANSWER_BY_TAG_OLD = "По метке ссылки"
+_TAG_MARK = "🔗 "
 TAG_NONE = "Без метки"
 TAG_AMBASSADOR = "Личная ссылка амбассадора"
 # Регистрация на месте (D-41): и walk-in, и одобренные у стойки — отдельная корзина разбивки
@@ -73,6 +82,9 @@ _TOP_LIMIT = 7
 _MAX_SPAN_DAYS = 731
 _MAX_VALUES = 30
 _MAX_VALUE_LEN = 200
+# Отделы ведут метрики по каналам каждый день: неделя-две помещаются колонками матрицы,
+# больше — нечитаемо, остаётся итог за период.
+_MATRIX_MAX_DAYS = 14
 _WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
 
 
@@ -124,7 +136,7 @@ class SourcesQuery:
             by=by if by in BREAKDOWNS else "answer",
             step=step if step in STEPS else "day",
             statuses=tuple(s for s in _clean_list(params.getlist("status")) if s in STATUS_LABELS),
-            answers=_clean_list(params.getlist("src")),
+            answers=tuple(v for v in _clean_list(params.getlist("src")) if v != _ANSWER_BY_TAG_OLD),
             tags=_clean_list(params.getlist("tag")),
             tracks=_clean_list(params.getlist("track")),
             ambassador_only=params.get("amb") == "1",
@@ -147,7 +159,12 @@ class SourcesQuery:
     def toggled(self, group: str, value: str) -> "SourcesQuery":
         attr = {"status": "statuses", "src": "answers", "tag": "tags", "track": "tracks"}[group]
         current = getattr(self, attr)
-        new = tuple(v for v in current if v != value) if value in current else current + (value,)
+        if group == "src":
+            # «вк» в URL и клик по чипу «ВК» — одно значение: снимаем, а не дублируем
+            same = tuple(v for v in current if _match_key(v) == _match_key(value))
+            new = tuple(v for v in current if v not in same) if same else current + (value,)
+        else:
+            new = tuple(v for v in current if v != value) if value in current else current + (value,)
         return replace(self, **{attr: new})
 
     def pairs(self, *, city, season) -> list[tuple[str, str]]:
@@ -188,9 +205,20 @@ def _is_blank(value) -> bool:
     return value is None or not str(value).strip() or str(value).strip() == "-"
 
 
+def _norm(text) -> str:
+    return " ".join(str(text).split()).casefold()
+
+
+def _match_key(value: str) -> str:
+    """Метки ссылок — slug, их не склеиваем; ручные ответы сравниваем без регистра/пробелов."""
+    if value.startswith(_TAG_MARK) or value == REST:
+        return value
+    return _norm(value)
+
+
 def _answer_key(row) -> str:
     if row["is_tag"]:
-        return ANSWER_BY_TAG
+        return _TAG_MARK + str(row["source"]).strip()
     if _is_blank(row["source"]):
         return ANSWER_NOT_GIVEN
     return str(row["source"]).strip()
@@ -249,7 +277,28 @@ def _fetch(conn, scope: queries.Scope) -> list[dict]:
         item["tag"] = _tag_key(item)
         item["status_key"] = _status_key(item)
         result.append(item)
+    _canonicalize_answers(result)
     return result
+
+
+def _canonicalize_answers(rows: list[dict]) -> None:
+    """Склеивает ручные ответы, отличающиеся только регистром/пробелами, в самое частое
+    написание (при равенстве — лексикографически первое). Считаем по всему скоупу, до
+    периода и фильтров: показываемое написание = ключ в URL и не должно меняться при
+    переключении периода."""
+    groups: dict[str, Counter] = {}
+    for r in rows:
+        if r["is_tag"] or r["answer"] == ANSWER_NOT_GIVEN:
+            continue
+        spelling = " ".join(r["answer"].split())
+        groups.setdefault(_norm(spelling), Counter())[spelling] += 1
+    best = {
+        k: min(c, key=lambda sp: (-c[sp], sp)) for k, c in groups.items()
+    }
+    for r in rows:
+        if r["is_tag"] or r["answer"] == ANSWER_NOT_GIVEN:
+            continue
+        r["answer"] = best[_norm(r["answer"])]
 
 
 def _period_bounds(q: SourcesQuery, today: date) -> tuple["date | None", "date | None"]:
@@ -257,6 +306,10 @@ def _period_bounds(q: SourcesQuery, today: date) -> tuple["date | None", "date |
         return q.date_from, q.date_to
     if q.period in ("7", "30"):
         return today - timedelta(days=int(q.period) - 1), today
+    if q.period == "today":
+        return today, today
+    if q.period == "yesterday":
+        return today - timedelta(days=1), today - timedelta(days=1)
     return None, None
 
 
@@ -277,6 +330,13 @@ def _matches(value: str, selected: tuple, top: list[str]) -> bool:
     if not selected:
         return True
     return value in selected or (REST in selected and value not in top)
+
+
+def _answer_matches(value: str, selected: tuple, top: list[str]) -> bool:
+    if not selected:
+        return True
+    keys = {_match_key(v) for v in selected}
+    return _match_key(value) in keys or (REST in selected and value not in top)
 
 
 def _week_start(day: date) -> date:
@@ -312,7 +372,7 @@ def build(conn, scope: queries.Scope, q: SourcesQuery, *, today: "date | None" =
     filtered = [
         r for r in base
         if (not q.statuses or r["status_key"] in q.statuses)
-        and _matches(r["answer"], q.answers, tops["answer"])
+        and _answer_matches(r["answer"], q.answers, tops["answer"])
         and _matches(r["tag"], q.tags, tops["tag"])
         and (not q.tracks or r["track"] in q.tracks)
         and (not q.ambassador_only or r["amb"])
@@ -405,17 +465,27 @@ def build(conn, scope: queries.Scope, q: SourcesQuery, *, today: "date | None" =
     def _options(kind: str, selected: tuple) -> list[dict]:
         ranking = rankings[kind]
         top = tops[kind]
+        norm = _match_key if kind == "answer" else (lambda v: v)
+        sel_keys = {norm(v) for v in selected}
         items = [
-            {"value": k, "label": k, "count": n, "color": str(i + 1)}
+            {"value": k, "label": k, "count": n, "color": str(i + 1), "tail": False,
+             "selected": norm(k) in sel_keys}
             for i, (k, n) in enumerate(ranking[:_TOP_LIMIT])
         ]
         tail = sum(n for _, n in ranking[_TOP_LIMIT:])
         if tail:
-            items.append({"value": REST, "label": REST_LABEL, "count": tail, "color": "other"})
-        listed = {i["value"] for i in items}
-        for value in selected:  # выбранное по старой ссылке, но выпавшее из топа — видно
-            if value not in listed and value not in top:
-                items.append({"value": value, "label": value, "count": None, "color": None})
+            items.append({"value": REST, "label": REST_LABEL, "count": tail, "color": "other",
+                          "tail": False, "selected": REST in selected})
+        # Лимит 7 — только для цветных колонок: каждое значение хвоста выбирается отдельно.
+        for k, n in ranking[_TOP_LIMIT:]:
+            items.append({"value": k, "label": k, "count": n, "color": None, "tail": True,
+                          "selected": norm(k) in sel_keys})
+        listed = {norm(i["value"]) for i in items}
+        for value in selected:  # выбранное по старой ссылке, но выпавшее из ranking — видно
+            if norm(value) not in listed and value not in top:
+                items.append({"value": value, "label": value, "count": None, "color": None,
+                              "tail": False, "selected": True})
+                listed.add(norm(value))
         return items
 
     track_counts = Counter(r["track"] for r in base)
@@ -461,7 +531,7 @@ def describe(q: SourcesQuery, *, city_label: "str | None", track_labels=None) ->
     if q.statuses:
         filters.append("статус — " + ", ".join(STATUS_LABELS[s].lower() for s in q.statuses))
     if q.answers:
-        filters.append("ответ в анкете — " + ", ".join(REST_LABEL if v == REST else v for v in q.answers))
+        filters.append("канал — " + ", ".join(REST_LABEL if v == REST else v for v in q.answers))
     if q.tags:
         filters.append("ссылка — " + ", ".join(REST_LABEL if v == REST else v for v in q.tags))
     if q.tracks:
