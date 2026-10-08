@@ -38,6 +38,11 @@
   header.top p { margin:10px 0 0; max-width:760px; font-size:18px; line-height:1.5; opacity:.96; }
   header.top .contact { margin:16px 0 0; display:inline-block; background:rgba(255,255,255,.16); border-radius:12px; padding:10px 14px; font-size:16.5px; }
   header.top .contact a { color:#fff; font-weight:800; }
+  header.top p.first { margin:14px 0 4px; background:#fff; color:#1C1C1C; border-radius:12px; padding:12px 16px; font-size:17px; box-shadow:0 4px 14px rgba(0,0,0,.12); opacity:1; }
+  header.top p.first a { color:#00663B; font-weight:800; }
+  :root[data-theme="dark"] header.top p.first { background:#17352A; color:#E9EEEB; }
+  :root[data-theme="dark"] header.top p.first a { color:#7FE0B3; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header.top p.first { background:#17352A; color:#E9EEEB; } :root:not([data-theme="light"]) header.top p.first a { color:#7FE0B3; } }
   header.top .meta { margin-top:14px; font-size:14px; opacity:.85; }
   .bar { position:sticky; top:0; z-index:30; background:var(--card); border-bottom:1px solid var(--line); }
   .bar .in { max-width:1180px; margin:0 auto; padding:8px 16px; display:flex; gap:10px; align-items:center; }
@@ -265,6 +270,7 @@
 <body>
 <header class="top"><div class="in">
   <h1>Гайд менеджера бота мероприятий АЙСЕК</h1>
+  <p class="first"><b>Первый день?</b> Прочитайте только <a href="#start">«С чего начать за 5 минут»</a> и <a href="#rules">«Пять правил от больших ошибок»</a>: этого хватит, чтобы разбирать заявки. Остальное читайте, когда понадобится. Настройку события делает руководитель или тот, у кого есть право «⚙️ Настройки».</p>
   <p>Для тех, кто ведёт через бота любое событие АЙСЕК: форум, конференцию, съезд. Что нажимать, что вы увидите в ответ и чего лучше не делать. Всё написано по коду бота. Названия событий в тексте (Юлид, РилТолк, СкиллАп) приведены только как примеры.</p>
   <p class="contact"><b>Сломалось, непонятно, нужен доступ?</b> Пишите владельцу и разработчику бота: <a href="https://t.me/qleafye">@qleafye</a>. Укажите, какой бот, что нажимали и во сколько.</p>
   <div class="meta">Версия бота: обновление от 8 октября 2026. Картинки сняты на боте СкиллАп 5 на вымышленных данных: у вашего события набор кнопок может отличаться, потому что часть модулей включается отдельно.</div>
@@ -403,7 +409,7 @@
 <li><b>Прочитайте блок «Проверьте в первую очередь».</b> В нём то, что чаще всего оказывается настроено не так, как вы ожидаете. Три минуты чтения сэкономят часы: <a href="#check">перейти</a>. Порядок настройки под ваш тип события: <a href="#routes">«Какое у вас событие?»</a>.</li>
 </ol>
 </div>
-<div class="blk">
+<div class="blk" id="rules">
 <h3>Пять правил от больших ошибок</h3>
 <div class="cards">
 <div class="tip bad"><p class="sym">Не проверяйте рассылку на «📢 Все пользователи»</p>
