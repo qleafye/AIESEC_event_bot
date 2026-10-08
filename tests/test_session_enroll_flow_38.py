@@ -222,3 +222,16 @@ def test_slot_with_chain_shows_all_chosen_and_clears_all(tmp_path):
         assert await chosen() == []
         assert not [t for t, _ in buttons(cb.message.last[1]) if t.startswith("✅")]
     run(go())
+
+
+def test_html_in_session_title_is_escaped(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await setup_world()
+        await db.update_program_session(ids["A"], title="Q&A <лекция>")
+        await press(f"se:p:0:0:{ids['A']}")
+        cb = await press("se:my")
+        text = cb.message.last[0]
+        assert "Q&amp;A &lt;лекция&gt;" in text and "<лекция>" not in text
+    run(go())

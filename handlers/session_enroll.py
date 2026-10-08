@@ -81,7 +81,11 @@ async def _show(target: types.Message, text: str, kb, *, edit: bool) -> None:
             return
         except Exception as e:  # сообщение устарело/не изменилось — просто шлём новое
             logger.info("session_enroll: edit_text не удался: %s", e)
-    await target.answer(text, reply_markup=kb)
+    try:
+        await target.answer(text, reply_markup=kb)
+    except Exception as e:  # разметка в тексте не разобралась — шлём как обычный текст
+        logger.warning("session_enroll: answer с разметкой не удался: %s", e)
+        await target.answer(text, reply_markup=kb, parse_mode=None)
 
 
 async def _ctx_for(event, telegram_id: int) -> tuple[_Ctx | None, str | None]:
@@ -172,7 +176,7 @@ async def _schedule_text(ctx: _Ctx) -> str:
             s = item["session"]
             tail = f" ({common})" if item["kind"] == "common" else ""
             chosen_any = chosen_any or item["kind"] == "chosen"
-            lines.append(f"{_span(s['start_time'], s['end_time'])} {s['title']}{tail}")
+            lines.append(f"{_span(s['start_time'], s['end_time'])} {html.escape(s['title'] or '')}{tail}")
     if not chosen_any:
         lines.append("")
         lines.append(await ctx.t("session_enroll_schedule_empty"))
@@ -293,7 +297,8 @@ async def se_slot(callback: types.CallbackQuery):
 
 
 async def _replace_screen(callback, ctx, tid, gi, old, new) -> None:
-    text = await ctx.t("session_enroll_replace_question", old=old["title"], new=new["title"])
+    text = await ctx.t("session_enroll_replace_question", old=html.escape(old["title"] or ""),
+                       new=html.escape(new["title"] or ""))
     rows = [[_btn(await ctx.t("session_enroll_replace_yes"), f"se:r:{tid}:{gi}:{new['id']}")],
             [_btn(await ctx.t("session_enroll_replace_no"), f"se:k:{tid}:{gi}")]]
     await _show(callback.message, text, _kb(rows), edit=True)

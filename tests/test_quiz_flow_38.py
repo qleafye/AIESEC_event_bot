@@ -240,3 +240,15 @@ def test_retake(tmp_path):
         cb = await tap(h.quiz_retake, "qz:re")
         assert cb.message.last[0].startswith("Вопрос 1 из 3")
     run(go())
+
+
+def test_html_in_quiz_content_is_escaped(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        quiz, oids = await seed_quiz()
+        await qz.update_question_text(oids[1][0], "Что лучше: A<B & C?")
+        cb = await tap(h.quiz_go, "qz:go")
+        text = cb.message.last[0]
+        assert "A&lt;B &amp; C?" in text
+    run(go())
