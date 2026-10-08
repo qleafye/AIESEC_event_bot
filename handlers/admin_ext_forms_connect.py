@@ -42,11 +42,12 @@ _YANDEX_REASONS = {
                  "войдите под тем, кто её создал",
     "not_found": "Форма не найдена — проверьте ссылку",
     "upstream_unavailable": "Яндекс сейчас не отвечает — попробуйте через пару минут",
-    "org_required": "Яндекс отдаёт боту только формы организации, а эта форма — в личном "
-                    "аккаунте или бот вошёл без ID организации. Создайте форму внутри "
-                    "организации (ссылка вида forms.yandex.ru/cloud/…), затем нажмите "
-                    "«🔑 Войти через Яндекс» и укажите ID организации",
+    "org_required": "Эта форма в личном аккаунте Яндекса — бот не может читать её сам. "
+                    "Ответы может присылать интеграция формы.",
 }
+_PUSH_BTN = "📮 Это личная форма — ответы пришлёт интеграция"
+_DEFAULT_TITLE = "Яндекс Форма"
+_TITLE_MAX = 100
 
 
 def _btn(text: str, data: str) -> InlineKeyboardButton:
@@ -152,12 +153,17 @@ async def _link_yandex(message: types.Message, state: FSMContext) -> None:
     conn = await xdb.get_yandex_connection()
     conn = await ensure_fresh_token(conn) if conn else None
     if conn is None:
-        await message.answer("Доступ к Яндекс Формам потерян — войдите через Яндекс заново.",
-                             reply_markup=_kb([[_btn(_LOGIN_BTN, "extf_oauth")]]))
+        await _offer_push(message, state, form_id,
+                          "Доступ к Яндекс Формам потерян — войдите через Яндекс заново. "
+                          "Если форма в личном аккаунте, войти не нужно: ответы может "
+                          "присылать интеграция формы.")
         return
     try:
         survey = await yx.get_survey(conn, form_id)
     except yx.YandexApiError as e:
+        if e.reason == "org_required":
+            await _offer_push(message, state, form_id, _YANDEX_REASONS["org_required"])
+            return
         await message.answer(_YANDEX_REASONS.get(
             e.reason, "Не получилось проверить форму — попробуйте ещё раз чуть позже."))
         return
@@ -172,6 +178,82 @@ async def _link_yandex(message: types.Message, state: FSMContext) -> None:
     title = str(survey.get("name") or "").strip() or "Яндекс Форма"
     await _keys_step(message, state, platform="yandex", external_id=form_id, gid=None,
                      title=title, questions=questions)
+
+
+async def _offer_push(message, state: FSMContext, form_id: str, text: str) -> None:
+    """Форма не читается через API: уже подключённая открывается, иначе предлагаем личный режим."""
+    existing = await xdb.get_form_by_external("yandex", form_id)
+    if existing:
+        await _open_existing(message, existing, state)
+        return
+    await state.update_data(platform="yandex", external_id=form_id)
+    await message.answer(text, reply_markup=_kb([[_btn(_PUSH_BTN, "extf_push")],
+                                                 [_btn(_LOGIN_BTN, "extf_oauth")]]))
+
+
+# ---------- личная форма (без организации) ----------
+
+@router.callback_query(F.data == "extf_push")
+async def extf_push(callback: types.CallbackQuery, state: FSMContext):
+    d = await state.get_data()
+    if d.get("platform") != "yandex" or not d.get("external_id"):
+        await callback.answer(_RESTART, show_alert=True)
+        return
+    await state.set_state(ExtFormConnect.push_title)
+    await _reply(callback, "Как назвать форму в боте? Пришлите название, например "
+                           "«Отбор волонтёров».",
+                 _kb([[_btn(f"Оставить «{_DEFAULT_TITLE}»", "extf_push_title_default")]]))
+    await callback.answer()
+
+
+@router.message(ExtFormConnect.push_title, F.text)
+async def extf_push_title(message: types.Message, state: FSMContext):
+    title = (message.text or "").strip()[:_TITLE_MAX] or _DEFAULT_TITLE
+    await _create_push_form(message, state, title, message.from_user.id)
+
+
+@router.callback_query(F.data == "extf_push_title_default")
+async def extf_push_title_default(callback: types.CallbackQuery, state: FSMContext):
+    await _create_push_form(callback, state, _DEFAULT_TITLE, callback.from_user.id)
+    await callback.answer()
+
+
+async def _create_push_form(target, state: FSMContext, title: str, by: int) -> None:
+    d = await state.get_data()
+    external_id = d.get("external_id")
+    if d.get("platform") != "yandex" or not external_id:
+        await state.clear()
+        await _reply(target, _RESTART, _kb([_to_list()]))
+        return
+    # Состояние чистим ДО проверки и вставки: второй быстрый тап увидит пустое состояние
+    # и получит «начните заново», а не создаст дубль формы.
+    await state.clear()
+    existing = await xdb.get_form_by_external("yandex", external_id)
+    if existing:
+        await _open_existing(target, existing, state)
+        return
+    try:
+        form_id = await xdb.create_form(
+            platform="yandex", connection_id=None, external_id=external_id, title=title,
+            secret=secrets.token_urlsafe(24), ingest_mode="push", created_by=by)
+    except sqlite3.IntegrityError:
+        existing = await xdb.get_form_by_external("yandex", external_id)
+        if existing is None:
+            raise
+        await _open_existing(target, existing, state)
+        return
+    await _reply(target, "Название принято.", ReplyKeyboardRemove())
+    await _reply(
+        target,
+        "✅ Форма подключена. Ответы будут приходить через интеграцию формы.\n\nОсталось:\n"
+        "1) «🔗 Адрес и инструкция» — вставить адрес и параметры в Интеграции;\n"
+        "2) «📥 Загрузить старые ответы» — файл выгрузки;\n"
+        "3) выбрать вкладку для копии.\n"
+        "Вопросы ника и телефона выберете в карточке, когда придут первые ответы.",
+        _kb([[_btn("🔗 Адрес и инструкция", f"extf_hook:{form_id}")],
+             [_btn("📥 Загрузить старые ответы", f"extf_import:{form_id}")],
+             [_btn("📋 Выбрать вкладку", f"extf_tab:{form_id}")],
+             [_btn("📄 Карточка формы", f"extf_card:{form_id}")]]))
 
 
 # ---------- Google ----------
