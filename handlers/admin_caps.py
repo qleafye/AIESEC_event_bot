@@ -954,6 +954,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_coins_journal": "moderate_game",
     "coinsjrn_page:*": "moderate_game",
     "coinsjrn_csv": "moderate_game",
+    # Разовый перенос старых баллов из Google-таблицы (handlers/admin_coins_transfer.py).
+    "admin_coins_transfer": "moderate_game",
+    "cointr_*": "moderate_game",
+    "state:CoinsTransfer:*": "moderate_game",
 
     # Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): экран «🌊 Волны» — список/создание/карточка/
     # правка/копия/активация/удаление (handlers/admin_game_waves.py). WARNING: та же ловушка

@@ -2605,6 +2605,9 @@ async def init_db():
         # Журнал зачётов приглашённых — колонки на referral_credits.
         from database import amb_journal_db
         await amb_journal_db.ensure_schema(db)
+        # Монеты из чата: «+N» ответом гейм-менеджера, перенос старых баллов из таблицы.
+        from database import chat_coins_db
+        await chat_coins_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
@@ -3549,6 +3552,11 @@ _COIN_JOURNAL_SELECT = (
 )
 
 
+# Экран журнала — операции людей: ручные, «+N» в чате, перенос из таблицы. Начисления за
+# задания и автоматические — только в CSV.
+_JOURNAL_SOURCES = "c.source IN ('manual', 'chat', 'transfer')"
+
+
 async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dict]:
     """Paginated «📜 Журнал монет» screen feed -- same LIMIT/OFFSET + LEFT JOIN shape as
     `get_pending_submissions` (CLAUDE.md: 1000+ rows must never render in one message).
@@ -3557,7 +3565,7 @@ async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dic
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            f"{_COIN_JOURNAL_SELECT} WHERE c.source = 'manual' ORDER BY c.id DESC LIMIT ? OFFSET ?",
+            f"{_COIN_JOURNAL_SELECT} WHERE {_JOURNAL_SOURCES} ORDER BY c.id DESC LIMIT ? OFFSET ?",
             (limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
@@ -3567,13 +3575,16 @@ async def count_manual_coin_entries() -> int:
     """Same WHERE as `list_manual_coin_entries` -- drives the «Страница K из N» label."""
     async with _connect() as db:
         async with db.execute(
-            "SELECT COUNT(*) FROM coins WHERE source = 'manual'"
+            f"SELECT COUNT(*) FROM coins c WHERE {_JOURNAL_SOURCES}"
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
 
-_COIN_SOURCE_CSV_LABELS = {"manual": "Вручную", "task": "За задание", None: "До обновления"}
+_COIN_SOURCE_CSV_LABELS = {
+    "manual": "Вручную", "task": "За задание", "chat": "В чате (+N)", "transfer": "Перенос из таблицы",
+    None: "До обновления",
+}
 
 
 async def export_coins_journal_csv() -> tuple[list[str], list[tuple]]:
