@@ -151,7 +151,7 @@
     .bar .thl { display:none; }
     .bar button { padding:8px 10px; }
     .bar input[type=search] { padding:9px 8px; }
-    .bar .count { order:5; flex-basis:100%; font-size:13.5px; }
+    .bar .count { order:5; flex-basis:100%; font-size:13.5px; white-space:normal; line-height:1.35; }
     .bar .count:empty { display:none; }
     .steps > li { padding-left:42px; }
   }
@@ -313,7 +313,7 @@
 <li><a href="#glossary"><span class="n">25.</span>Глоссарий</a></li>
 </ol></nav>
 <main>
-<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово или откройте оглавление.</div>
+<div class="empty" id="empty">Ничего не нашли. Попробуйте другое слово, например «заявка», «рассылка», «роль» или «текст», или откройте оглавление.</div>
 
 <section class="sec" id="routes"><h2>Какое у вас событие?</h2>
 <div class="blk">
@@ -2123,12 +2123,12 @@
 
   // Поиск: ё = е, подсветка, счётчик, прокрутка к первому совпадению.
   secs.forEach(function (s) { s._t = norm(s.textContent); $$('.blk', s).forEach(function (b) { b._t = norm(b.textContent); }); });
-  var marks = [], curMark = -1, scrollTimer = null;
+  var marks = [], curMark = -1, scrollTimer = null, synPre = '';
   function clearMarks() {
     $$('mark.hit', main).forEach(function (m) { var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); });
     marks = []; curMark = -1;
   }
-  function visible(node) { for (var el = node.parentNode; el && el !== main; el = el.parentNode) { if (el.classList && el.classList.contains('gone')) return false; } return true; }
+  function visible(node) { for (var el = node.parentNode; el && el !== main; el = el.parentNode) { if (el === empty || (el.classList && el.classList.contains('gone'))) return false; } return true; }
   function addMarks(v) {
     var w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, null), nodes = [], n;
     while ((n = w.nextNode())) { if (n.nodeValue.trim() && norm(n.nodeValue).indexOf(v) > -1 && visible(n)) nodes.push(n); }
@@ -2150,12 +2150,32 @@
     var m = marks[curMark]; m.classList.add('cur');
     var d = m.closest('details'); while (d) { d.open = true; d = d.parentNode.closest && d.parentNode.closest('details'); }
     m.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    cnt.textContent = 'Совпадение ' + (curMark + 1) + ' из ' + marks.length + (marks.length > 1 ? ' · Enter — следующее' : '');
+    cnt.textContent = synPre + 'Совпадение ' + (curMark + 1) + ' из ' + marks.length + (marks.length > 1 ? ' · Enter — следующее' : '');
   }
-  function run() {
-    var v = norm(q.value.trim()), shown = 0;
-    clearMarks();
-    document.body.classList.toggle('searching', !!v);
+  // Словарь новичка: если по словам запроса ничего не нашлось, ищем то, как это названо в гайде.
+  // k — куски запроса (уже в нижнем регистре, ё = е), t — что искать, at — куда прокрутить.
+  var SYN = [
+    { k: ['коллег', 'добавить человека', 'дать доступ', 'выдать доступ', 'дать права', 'выдать права', 'новый менеджер', 'нового менеджера', 'добавить админ', 'сделать админ', 'помощник'], t: 'добавить менеджера', at: 'roles-add' },
+    { k: ['написать всем', 'сообщение всем', 'отправить всем', 'всем сообщение', 'написать делегатам', 'написать участникам', 'сообщение делегатам', 'сообщение участникам', 'написать одобренным', 'разослат', 'оповест', 'массов'], t: 'рассылк', l: 'рассылка', at: 'broadcast' },
+    { k: ['текст одобрения', 'письмо одобрения', 'письмо об одобрении', 'сообщение об одобрении', 'текст после одобрения', 'сообщение после одобрения', 'поздравлени'], t: 'после одобрения', at: 'form-texts' },
+    { k: ['письмо отказа', 'письмо об отказе', 'сообщение об отказе', 'текст отклонения', 'текст при отказе'], t: 'при отклонении', at: 'form-texts' },
+    { k: ['одобрить заявк', 'принять заявк', 'одобрить участник', 'принять участник', 'принять делегат', 'разобрать заявк', 'посмотреть заявк', 'одобрени заявк', 'одобрить человек'], t: '✅ одобрить', l: 'одобрить', at: 'apps' },
+    { k: ['отклонить заявк', 'отказать', 'отказ участник', 'отказ делегат'], t: '❌ отклонить', l: 'отклонить', at: 'apps-reject' },
+    { k: ['найти делегат', 'найти человек', 'найти участник', 'найти заявк', 'найти анкет'], t: '/find', at: 'find' },
+    { k: ['бот не работает', 'бот сломал', 'бот завис', 'бот лежит', 'бот упал', 'не работает бот'], t: 'бот не отвечает', at: 'problems' },
+    { k: ['поменять текст', 'изменить текст', 'редактировать текст', 'исправить текст', 'править текст', 'сменить текст'], t: 'где менять какой текст', at: 'form-texts' },
+    { k: ['удалить заявк', 'убрать заявк', 'удалить тестов', 'отменить одобрение', 'отменить решение', 'отменить отказ'], t: 'вернуть в ожидание', at: 'apps-undo' },
+    { k: ['ответить делегат', 'ответить участник', 'ответить на вопрос', 'вопрос от делегат'], t: 'вопросы делегатов', at: 'faq' },
+    { k: ['гугл', 'эксель', 'excel'], t: 'таблиц', l: 'таблица', at: 'sheet' },
+    { k: ['оплатить', 'деньги', 'платн'], t: 'оплат', l: 'оплата', at: 'pay' },
+    { k: ['кюар', 'куар'], t: 'qr', l: 'QR', at: 'forum-qr' }
+  ];
+  function synFor(v) {
+    for (var i = 0; i < SYN.length; i++) { for (var j = 0; j < SYN[i].k.length; j++) { if (v.indexOf(SYN[i].k[j]) > -1) return SYN[i]; } }
+    return null;
+  }
+  function filter(v) {
+    var shown = 0;
     secs.forEach(function (s) {
       var blks = $$('.blk', s), ok = !v || s._t.indexOf(v) > -1;
       if (v && ok) { blks.forEach(function (b) { b.classList.toggle('gone', b._t.indexOf(v) < 0); }); }
@@ -2164,12 +2184,26 @@
       s.classList.toggle('gone', !ok); if (ok) shown++;
       tocLinks.forEach(function (a) { if (a.getAttribute('href') === '#' + s.id) a.parentNode.classList.toggle('gone', !ok); });
     });
-    $$('li.grp').forEach(function (g) { g.classList.toggle('gone', !!v); });
+    return shown;
+  }
+  function run() {
+    var v = norm(q.value.trim()), syn = null;
+    clearMarks();
+    document.body.classList.toggle('searching', !!v);
+    var shown = filter(v);
+    if (v && !shown && (syn = synFor(v))) { v = syn.t; shown = filter(v); }
+    $$('li.grp').forEach(function (g) { g.classList.toggle('gone', !!q.value.trim()); });
     empty.style.display = shown ? 'none' : 'block';
     if (v.length >= 2) addMarks(v);
-    cnt.textContent = !v ? '' : (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
+    var pre = synPre = syn ? 'Ищу «' + (syn.l || syn.t) + '» · ' : '';
+    cnt.textContent = !v ? '' : pre + (marks.length ? 'Найдено: ' + marks.length + ' в ' + shown + ' разд.' : (shown ? 'Найдено разделов: ' + shown : ''));
+    var first = 0;
+    if (syn && syn.at) {
+      var host = document.getElementById(syn.at);
+      if (host) { for (var i = 0; i < marks.length; i++) { if (host.contains(marks[i])) { first = i; break; } } }
+    }
     clearTimeout(scrollTimer);
-    if (marks.length) scrollTimer = setTimeout(function () { goMark(0); }, 700);
+    if (marks.length) scrollTimer = setTimeout(function () { goMark(first); }, 700);
   }
   var runTimer = null;
   q.addEventListener('input', function () { clearTimeout(runTimer); runTimer = setTimeout(run, 180); });
