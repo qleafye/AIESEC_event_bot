@@ -5799,6 +5799,11 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             # not_paid) — в «не оплатили» им не место, напоминание об оплате им не уйдёт.
             clauses.append("(payment_status = ? AND delegation_answer_id IS NULL)")
             params.append(f.get("value"))
+        elif field == "payment_status" and f.get("value") == "paid":
+            # Возврат на модерацию и отказ не снимают «Оплата подтверждена» (факт оплаты нужен
+            # для возврата денег), поэтому «оплатившим» уходит только одобренным.
+            clauses.append("(payment_status = ? AND status = 'approved')")
+            params.append("paid")
         elif field in _FILTER_COLUMNS:
             clauses.append(f"{field} = ?")
             params.append(f.get("value"))
