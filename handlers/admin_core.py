@@ -63,7 +63,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
     # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс операции, что
     # соседние две строки выше (handlers/admin_sheet_reconcile.py).
-    ("🔍 Сверить с БД", "admin_sheet_reconcile"),
+    ("🔍 Сверить таблицу с базой", "admin_sheet_reconcile"),
     ("🧹 Убрать дубли из таблицы", "admin_dedupe_sheet"),
     ("⚙️ Настройки форума", "admin_settings"),
     ("📖 Справка по настройкам", "admin_settings_guide"),
