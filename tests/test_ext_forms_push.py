@@ -137,7 +137,7 @@ def test_push_without_answers_sets_warning_and_does_not_log_values(env, caplog):
     caplog.set_level(logging.INFO)
     r = _post(_client(_cfg(path)), {"params": {"answer_id": "5", "secret_value": "ТАЙНА"}})
     assert r.status_code == 200
-    assert _rows() == []
+    assert len(_rows()) == 1  # тело сохранено в очередь — разбор можно поправить позже
     form = asyncio.run(ef.get_form(form_id))
     assert "без ответов" in form["push_warning"]
     assert "ТАЙНА" not in caplog.text
@@ -220,3 +220,23 @@ def test_reconcile_and_backfill_skip_push(env, monkeypatch):
     assert asyncio.run(S.reconcile_all())["enqueued"] == 0
     assert calls == []
     assert asyncio.run(ef.get_form(form_id))["sync_error"] is None
+
+
+def test_push_answers_double_escaped_string_from_prod():
+    # Прод 09.10: интеграция «JSON-RPC POST» прислала answers строкой с \" и \uXXXX внутри.
+    import json as _json
+    from services.ext_forms_parse import parse_push_body
+
+    inner = r'{\"ФИО\": \"фвфы\", \"Ник в телеграмме (через @)\": \"awdaw\"}'
+    body = _json.loads(_json.dumps({"jsonrpc": "2.0", "method": "answer", "id": 1,
+                                    "params": {"answer_id": "2549315454", "answers": inner}}))
+    parsed = parse_push_body(body)
+    assert parsed["answer_id"] == "2549315454"
+    got = {i["q"]: i["value"] for i in parsed["items"]}
+    assert got == {"ФИО": "фвфы", "Ник в телеграмме (через @)": "awdaw"}
+
+
+def test_push_answers_single_encoded_string_still_works():
+    from services.ext_forms_parse import parse_push_body
+    parsed = parse_push_body({"params": {"answer_id": "1", "answers": '{"\u0424\u0418\u041e": "x"}'}})
+    assert [(i["q"], i["value"]) for i in parsed["items"]] == [("ФИО", "x")]
