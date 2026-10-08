@@ -34,8 +34,9 @@ _BAD_CODE_FORMAT = ("Не понял — пришлите только код с
 # Яндекс выдавал 7 цифр, теперь — 16 букв и цифр; принимаем оба вида, регистр не трогаем.
 _CODE_RE = re.compile(r"[A-Za-z0-9]{6,32}")
 _CODE_REJECTED = "Код не подошёл или устарел — нажмите «🔑 Войти через Яндекс» ещё раз"
-_BAD_ORG = ("Не понял — пришлите ID организации числом, например 1234567, "
-            "или нажмите «Формы в личном аккаунте, без организации»")
+_BAD_ORG = ("Не понял — пришлите ID организации: число из Яндекс 360 (например 1234567) "
+            "или 20 букв и цифр из Yandex Cloud (например bpf1a2b3c4d5e6f7g8h9)")
+_ORG_RE = re.compile(r"\d{1,20}|[a-z0-9]{20}")
 
 _APPKEYS_HELP = (
     "Как завести приложение Яндекса:\n"
@@ -224,31 +225,49 @@ async def extf_oauth_code(message: types.Message, state: FSMContext, bot: Bot):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [_btn("Формы в личном аккаунте, без организации", "extf_oauth_noorg")]])
     await message.answer(
-        "Пришлите ID организации Яндекс 360 (число, например 1234567) — "
-        "его видно в Администрировании → Организация.", reply_markup=kb)
+        "Пришлите ID организации, в которой лежат формы:\n"
+        "• Яндекс 360 — число, например 1234567: tracker.yandex.ru → Администрирование → "
+        "Организации → поле «Идентификатор»;\n"
+        "• Yandex Cloud — 20 букв и цифр, например bpf1a2b3c4d5e6f7g8h9: "
+        "org.yandex.cloud → Организация → Идентификатор.\n"
+        "Формы в личном аккаунте бот прочитать не сможет — так устроен Яндекс.", reply_markup=kb)
 
 
-async def _finish_org(target_message, org_id: int | None, by: int | None) -> None:
+async def _finish_org(target_message, org_id: str | None, by: int | None) -> bool:
     conn = await xdb.get_yandex_connection()
     if conn is None:
         await target_message.answer(_CODE_REJECTED)
-        return
+        return True
+    header = conn.get("org_header") or _ORG_HEADER
+    if org_id:
+        try:
+            header = await yx.detect_org_header(conn, org_id)
+        except yx.YandexApiError:
+            await target_message.answer("Яндекс сейчас не отвечает — пришлите ID организации "
+                                        "ещё раз через пару минут.")
+            return False
+        if header is None:
+            await target_message.answer(
+                "Яндекс не узнал эту организацию для аккаунта, под которым вы вошли. Проверьте ID "
+                "и что аккаунт бота состоит в организации, и пришлите ID ещё раз.")
+            return False
     await xdb.upsert_yandex_connection(
-        org_id=org_id, org_header=conn.get("org_header") or _ORG_HEADER,
+        org_id=org_id, org_header=header,
         access_token=conn["access_token"], refresh_token=conn.get("refresh_token"),
         expires_at=conn.get("expires_at"), by=by)
     kb = InlineKeyboardMarkup(inline_keyboard=[_back_row()])
     await target_message.answer("✅ Доступ к Яндекс Формам подключён", reply_markup=kb)
+    return True
 
 
 @router.message(ExtFormOAuth.org_id, F.text)
 async def extf_oauth_org(message: types.Message, state: FSMContext):
-    text = (message.text or "").strip()
-    if not re.fullmatch(r"\d{1,20}", text):
+    text = (message.text or "").strip().lower()
+    if not _ORG_RE.fullmatch(text):
         await message.answer(_BAD_ORG)
         return
-    await state.clear()
-    await _finish_org(message, int(text), message.from_user.id if message.from_user else None)
+    if await _finish_org(message, text, message.from_user.id if message.from_user else None):
+        await state.clear()
 
 
 @router.callback_query(F.data == "extf_oauth_noorg")

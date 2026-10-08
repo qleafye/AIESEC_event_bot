@@ -176,3 +176,25 @@ def test_get_survey_and_questions(monkeypatch):
     asyncio.run(Y.get_survey(CONN, "6a94ad5c1f1eb5c9649c12bd"))
     asyncio.run(Y.get_questions(CONN, "6a94ad5c1f1eb5c9649c12bd"))
     assert urls == ["/v1/surveys/6a94ad5c1f1eb5c9649c12bd", "/v1/surveys/6a94ad5c1f1eb5c9649c12bd/questions"]
+
+
+def test_org_required_reason(monkeypatch):
+    # 09.10 прод: форма личного аккаунта / вход без организации -> 400 «Требуется организация»
+    _patch(monkeypatch, lambda req: httpx.Response(400, json={"detail": "Требуется организация"}))
+    with pytest.raises(Y.YandexApiError) as ei:
+        asyncio.run(Y.get_survey(CONN, "6aa022f0068ff027eaba0bcb"))
+    assert ei.value.reason == "org_required"
+
+
+@pytest.mark.parametrize("accepts, expected", [
+    ("X-Org-Id", "X-Org-Id"),
+    ("X-Cloud-Org-Id", "X-Cloud-Org-Id"),
+    (None, None),
+])
+def test_detect_org_header(monkeypatch, accepts, expected):
+    def handler(req):
+        if accepts and req.headers.get(accepts) == "bpf1a2b3c4d5e6f7g8h9":
+            return httpx.Response(200, json={"surveys": []})
+        return httpx.Response(400, json={"detail": "Требуется организация"})
+    _patch(monkeypatch, handler)
+    assert asyncio.run(Y.detect_org_header(CONN, "bpf1a2b3c4d5e6f7g8h9")) == expected
