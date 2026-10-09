@@ -194,7 +194,9 @@ def test_stats_manager_sees_only_data_section_with_five_ops():
     caps = {"stats"}
     assert visible_sections(caps, False) == [("data", "📊 Данные")]
     rows = visible_rows("data", caps, False)
-    ops = [value for kind, value in rows if kind == "op"]
+    ops = [row[1] for row in rows if row[0] == "op"]
+    # 09.10: плюс экран «👥 Список участников» (право stats)
+    assert [row[1] for row in rows if row[0] == "screen"] == ["admin_export_participants"]
     assert ops == [
         "admin_stats",
         "admin_monthly_stats",

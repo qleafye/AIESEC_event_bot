@@ -288,7 +288,8 @@ def test_manager_with_moderate_reg_only_sees_the_applications_section(tmp_path):
 
     caps = asyncio.run(resolve_capabilities(MANAGER_ID))
     assert caps == {"moderate_reg"}
-    assert sec.visible_sections(caps, False) == [("apps", "📋 Заявки")]
+    # 09.10: «👥 Список участников» и «📄 Открыть таблицу» в «📊 Данные» открыты и moderate_reg.
+    assert sec.visible_sections(caps, False) == [("apps", "📋 Заявки"), ("data", "📊 Данные")]
 
 
 def test_settings_holder_sees_every_settings_section(tmp_path):
@@ -515,7 +516,7 @@ def test_unavailable_section_answers_alert_without_editing(tmp_path):
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "moderate_reg")
 
-    cb = FakeCallback("admin_sec:data", user_id=MANAGER_ID)
+    cb = FakeCallback("admin_sec:manage", user_id=MANAGER_ID)
     asyncio.run(sec.show_admin_section(cb))
 
     assert cb.message.edit_calls == 0
@@ -588,7 +589,7 @@ def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path)
     from handlers.admin_core import build_admin_keyboard
 
     flat = _flat_callback_data(asyncio.run(build_admin_keyboard(MANAGER_ID)))
-    assert flat == ["admin_sec:apps"]
+    assert flat == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные» (список участников)
 
 
 def test_root_of_a_stranger_stays_empty(tmp_path):
