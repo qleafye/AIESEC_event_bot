@@ -124,3 +124,28 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     else:
         await _show_city_fork(message)
     return False, None
+
+
+# ── Приёмка 09.10: делегат видит выбранный город форума ──────────────────────────────────────
+
+FORUM_CITY_LABEL = "Город форума"
+
+
+async def confirm_city_choice(message, code: str) -> None:
+    """После тапа по городу кнопки пропадают — подтверждаем выбор строкой в чате, иначе
+    делегат не знает, в какой город подаёт заявку."""
+    lang, tr_map = await reg_i18n.ctx_for(message)
+    label = reg_i18n.tr_text(FORUM_CITY_LABEL, lang, tr_map)
+    city = reg_i18n.tr_text(await city_label(code), lang, tr_map)
+    await message.answer(f"✅ {label}: {city}")
+
+
+async def summary_data(data: dict) -> dict:
+    """Ответы для сводки + подпись города форума (`reg_engine.SUMMARY_EVENT_CITY_KEY`).
+    Модуль городов выключен или город не выбран — подписи нет, строки в сводке тоже."""
+    from cities import cities_module_on
+    from reg_engine import SUMMARY_EVENT_CITY_KEY
+    code = data.get("event_city")
+    if not code or not await cities_module_on():
+        return data
+    return {**data, SUMMARY_EVENT_CITY_KEY: await city_label(code)}

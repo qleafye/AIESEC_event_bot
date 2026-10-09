@@ -226,6 +226,8 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot |
     except Exception:
         pass
     # callback.message.from_user is the BOT — swap in the tapping user, same fix as party_pick.
+    from handlers.reg_city_gate import confirm_city_choice
+    await confirm_city_choice(callback.message, code)
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     data = await state.get_data()
     if data.get("_resume_after_city"):

@@ -773,7 +773,8 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
         # UAT-фикс (стенд, lang=en): карта закрытых вариантов сводки — один поход в БД на
         # рендер, не по полю (докстринг reg_i18n.summary_value_maps).
         value_maps = await reg_i18n.summary_value_maps(lang, tr_map)
-        summary = _build_summary(data, lang, tr_map, value_maps)
+        from handlers.reg_city_gate import summary_data  # приёмка 09.10: строка «Город форума»
+        summary = _build_summary(await summary_data(data), lang, tr_map, value_maps)
         await _safe_answer(message, summary, reply_markup=get_confirm_kb(), parse_mode="HTML")
         await state.set_state(Registration.confirm)
 

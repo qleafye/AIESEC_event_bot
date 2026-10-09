@@ -244,6 +244,7 @@ def code_literals() -> list[tuple[str, str]]:
     # -> "Да"/"Нет", факт вложения файла), та же дыра корпуса.
     items.append(("lit:reg_engine.summary_fields.work_status", "Работа"))
     items.append(("lit:reg_engine.summary_fields.ambassador", "Амбассадор"))
+    items.append(("lit:reg_engine.summary_fields.event_city", "Город форума"))
     items.append(("lit:reg_engine.summary_fields.resume", "Резюме"))
     items.append(("lit:reg_engine.summary_fields.resume_attached", "прикреплено файлом"))
 
