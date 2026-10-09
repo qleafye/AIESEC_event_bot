@@ -230,6 +230,11 @@ async def _pre_items(
                 "type": "consent",
                 "key": key,
                 "label": i18n.tr(label, lang, {}),
+                # Приёмка 09.10: текст согласия, который менеджер задаёт для чата
+                # (`reg_prompt_consent_<ключ>`, тот же override, что `handlers/registration.py::
+                # _prompt`), — раньше приложение показывало одну галочку с названием документа.
+                # Перевод — только ярусом A, как у `label` (LANG-09).
+                "text": i18n.tr(consent_text, lang, {}) if (consent_text := await get_setting(f"reg_prompt_consent_{key}")) else None,
                 "pdf_file_id": await get_setting(f"consent_pdf_{key}"),
                 "button_text": button_text,
             })

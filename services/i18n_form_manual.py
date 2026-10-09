@@ -765,7 +765,7 @@ _REGISTRY_TEXTS_EN = {
     "Спасибо! Мы всё получили — подробности пришли в чат с ботом.": "Thank you! We've received everything — details were sent to the bot chat.",
     "Заявка принята": "Application accepted",
     "Ответы обновились из чата — некоторые поля мы обновили автоматически.": "Your answers were updated from the chat — we've updated some fields automatically.",
-    "Нужно подтвердить согласия — вернитесь к шагу «Согласия».": "You need to confirm your consents — go back to the «Consents» step.",
+    "Чтобы продолжить, поставь галочку согласия.": "To continue, tick the consent box.",
     "Продолжить": "Continue",
     "📱 Заполнить в приложении": "📱 Fill in the app",
     "Черновик сохранён": "Draft saved",
