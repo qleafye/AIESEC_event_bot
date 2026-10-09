@@ -203,21 +203,21 @@ def replay_seed(key: str, seed) -> None:
 
 
 def remove_stale_copies() -> None:
-    """Стирает копии шаблона, на которые уже не смотрит config.DB_PATH (вместе с -wal/-shm/
-    -journal). Файл, который ещё держит незакрытое соединение (Windows не даёт его удалить),
-    остаётся в списке и стирается при следующем вызове."""
+    """Стирает копии шаблона, на которые уже не смотрит config.DB_PATH.
+
+    Копию, рядом с которой ещё лежит `-wal`/`-shm`, не трогает: SQLite убирает их, когда
+    закрывается последнее соединение, значит базу ещё держит фоновая задача (на Linux
+    `os.remove` удалил бы файл из-под неё, на Windows не дал бы удалить вовсе). Такая копия
+    остаётся в списке и стирается при следующем вызове, когда соединение закроется."""
     from config import config
 
     current = os.path.abspath(str(config.DB_PATH))
     keep: list[str] = []
     for path in _COPIES:
-        if path == current:
+        if path == current or os.path.exists(path + "-wal") or os.path.exists(path + "-shm"):
             keep.append(path)
             continue
         try:
-            for suffix in ("-wal", "-shm", "-journal"):
-                if os.path.exists(path + suffix):
-                    os.remove(path + suffix)
             if os.path.exists(path):
                 os.remove(path)
         except OSError:

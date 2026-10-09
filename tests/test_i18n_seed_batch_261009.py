@@ -136,3 +136,66 @@ def test_enqueue_untranslated_failure_rolls_back_whole_call(tmp_path):
         asyncio.run(db.enqueue_untranslated("en", items))
 
     assert _queue() == []
+
+
+def _locked_once(monkeypatch):
+    """Первый `BEGIN IMMEDIATE` в вызове падает «database is locked», второй проходит."""
+    import sqlite3
+
+    monkeypatch.setattr(db, "SEED_LOCK_RETRY_PAUSE_S", 0)
+    real_connect = db._connect
+    calls = {"n": 0}
+
+    def flaky_connect():
+        conn = real_connect()
+        calls["n"] += 1
+        if calls["n"] == 1:
+            real_execute = conn.execute
+
+            def execute(sql, *args, **kwargs):
+                if sql == "BEGIN IMMEDIATE":
+                    raise sqlite3.OperationalError("database is locked")
+                return real_execute(sql, *args, **kwargs)
+
+            conn.execute = execute
+        return conn
+
+    monkeypatch.setattr(db, "_connect", flaky_connect)
+    return calls
+
+
+def test_seed_manual_translations_retries_once_on_locked_db(tmp_path, monkeypatch):
+    _db_ready(tmp_path, "locked.db")
+    calls = _locked_once(monkeypatch)
+
+    result = asyncio.run(db.seed_manual_translations("en", [(DICT_A, ORIGIN_A)], src_hash))
+
+    assert calls["n"] == 2
+    assert result == [{"applied": 4, "skipped_manager_edit": 0}]
+    assert len(_translations()) == 4
+
+
+def test_enqueue_untranslated_retries_once_on_locked_db(tmp_path, monkeypatch):
+    _db_ready(tmp_path, "locked_q.db")
+    calls = _locked_once(monkeypatch)
+
+    queued = asyncio.run(db.enqueue_untranslated("en", [("k1", src_hash("Раз"), "Раз")]))
+
+    assert calls["n"] == 2
+    assert queued == 1
+
+
+def test_seed_gives_up_after_second_locked_attempt(tmp_path, monkeypatch):
+    import sqlite3
+
+    _db_ready(tmp_path, "locked_twice.db")
+    monkeypatch.setattr(db, "SEED_LOCK_RETRY_PAUSE_S", 0)
+    attempts = {"n": 0}
+
+    def always_locked(_text):
+        attempts["n"] += 1
+        raise sqlite3.OperationalError("database is locked")
+
+    with pytest.raises(sqlite3.OperationalError):
+        asyncio.run(db.seed_manual_translations("en", [(DICT_A, ORIGIN_A)], always_locked))
+    assert attempts["n"] == 2  # один повтор, не больше
