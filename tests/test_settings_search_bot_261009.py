@@ -239,3 +239,56 @@ def test_cancel_clears_state_and_returns_to_manage_section(tmp_path):
     assert "Управление" in edited["text"]
     cbs = [b.callback_data for row in edited["kb"].inline_keyboard for b in row]
     assert "settings_search" in cbs
+
+
+# ── ревью: длина запроса, выход командой/кнопкой меню, синонимы только бота ─────────────────
+
+def test_long_query_is_refused_and_keeps_waiting(tmp_path):
+    _ready(tmp_path)
+    state = _state()
+    _run(state.set_state(SettingsSearch.waiting_query))
+    msg = _Msg("оплата " * 50)
+    _run(ss.settings_search_query(msg, state))
+    assert msg.answers[0][0].startswith("Слишком длинно, напишите одно-два слова")
+    assert _run(state.get_state()) == SettingsSearch.waiting_query.state
+
+
+def test_echo_of_query_is_trimmed(tmp_path):
+    _ready(tmp_path)
+    query = "приветствие " + "а" * 80  # длиннее эха, но короче предела запроса
+    assert len(query) <= ss.QUERY_MAX
+    cands = [Candidate(key="start_text", label="Приветствие " + "а" * 80, extra={"cb": "settings_edit:start_text", "section": "x"})]
+    import handlers.admin_settings_search as mod
+
+    orig = mod.candidates
+    mod.candidates = lambda: cands
+    try:
+        text, _kb = _run(ss.results_screen(ADMIN, query))
+    finally:
+        mod.candidates = orig
+    echo = text.split("«", 1)[1].split("»", 1)[0]
+    assert len(echo) == ss.ECHO_MAX and echo.endswith("…")
+
+
+def test_command_or_menu_tap_leaves_search_and_passes_through(tmp_path):
+    import pytest
+    from aiogram.dispatcher.event.bases import SkipHandler
+    from keyboards.builders import all_menu_button_texts
+
+    _ready(tmp_path)
+    for text in ("/admin", next(iter(all_menu_button_texts()))):
+        state = _state()
+        _run(state.set_state(SettingsSearch.waiting_query))
+        msg = _Msg(text)
+        with pytest.raises(SkipHandler):
+            _run(ss.settings_search_query(msg, state))
+        assert msg.answers == []
+        assert _run(state.get_state()) is None
+
+
+def test_bot_only_synonyms_not_in_web_search():
+    from settings_synonyms import BOT_ONLY_SYNONYMS
+
+    key = next(iter(BOT_ONLY_SYNONYMS))
+    assert search_terms(key) == []  # веб-поиск (роутер Mini App зовёт без bot=True)
+    assert search_terms(key, bot=True) == BOT_ONLY_SYNONYMS[key]
