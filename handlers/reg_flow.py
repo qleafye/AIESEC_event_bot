@@ -220,6 +220,10 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot |
     if not await is_city_registration_open(code):
         await callback.answer(await reg_i18n.tr_for(callback, CITY_CLOSED_TEXT), show_alert=True)
         return
+    # Приёмка 09.10 (C12): язык спрашивается раньше города — тап до выбора языка его не обходит.
+    from handlers.reg_lang import lang_first_gate
+    if await lang_first_gate(callback, state):
+        return
 
     await callback.answer()
     try:
