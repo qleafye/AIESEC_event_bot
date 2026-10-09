@@ -894,6 +894,7 @@ _REGISTRY_TEXTS_EN = {
     "📲 Подхватил ответы, которые вы ввели в приложении.": "📲 Picked up the answers you entered in the app.",
     "Список спикеров формируется и скоро появится здесь.": "The speaker list is being put together and will appear here soon.",
     "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.": "Want to join again? Let's update your application — I'll offer to keep your previous answers.",
+    "Твоя заявка в этом сезоне отклонена. Это не навсегда: анкету можно поправить и подать заново 👇": "Your application was rejected this season. It's not final: you can fix your answers and apply again 👇",
     # Квик 260923 (форум-чекин): подпись к личному QR и текст «QR ещё не выдаётся» (кнопка
     # «🎟 Мой QR» главного меню, group "reg" — делегатский текст, checkin_qr_caption_text /
     # checkin_qr_disabled_text).
