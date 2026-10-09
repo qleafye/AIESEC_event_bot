@@ -1136,7 +1136,6 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
 # «🎪 Название мероприятия», `services.text_fill.event_label`). Прежние RU-ключи выше оставлены:
 # у менеджера мог сохраниться старый дефолт дословно — перевод для него не должен пропасть.
 _NEUTRAL_DEFAULTS_EN: dict[str, str] = {
-    "Соцсети мероприятия": "Event social media",
     "Программа ещё не загружена.": "The program hasn't been uploaded yet.",
     "Финал — очно на мероприятии, командами по 3–4 человека. Опыт не нужен, важно желание пробовать.":
         "The final is in person at the event, in teams of 3–4. No experience needed — just a willingness to try.",
