@@ -277,3 +277,22 @@ def test_confirm_after_draft_submitted_elsewhere_does_not_resubmit(tmp_path):
     assert user is None, "заявка подана второй раз из FSM"
     assert fsm_state is None
     assert any("уже отправлена" in (t or "") for t in _texts(msg)), _texts(msg)
+
+
+def test_confirm_edit_consent_read_failure_goes_to_full_name(tmp_path, monkeypatch):
+    """Сбой чтения согласий из базы не роняет обработчик (делегат без ответа) и не гоняет по
+    всем согласиям заново — согласие уже дано при первой подаче, сразу прошлое ФИО."""
+    _use_tmp_db(tmp_path, "uat261009_c9d.db")
+
+    async def boom(*a, **k):
+        raise RuntimeError("database is locked")
+
+    async def go():
+        from handlers import reg_flow
+        monkeypatch.setattr(reg_flow, "get_consent_steps", boom)
+        msg, state = await _confirm_edit(signed_consents=False)
+        return await state.get_state(), await state.get_data()
+
+    fsm_state, data = asyncio.run(go())
+    assert fsm_state == Registration.recall_pending.state
+    assert data.get("_recall_step") == "full_name"
