@@ -678,7 +678,7 @@ def test_hub_returns_registry_defaults_for_untouched_stand(tmp_path):
     _standard_seed()
     body = _client(_cfg(db_path)).get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
     assert body["balance_eyebrow"] == "Твой баланс"
-    assert body["balance_unit"] == "монет"
+    assert body["balance_unit"] == "баллов"
     assert body["next_eyebrow"] == "Следующее"
     assert body["sections_eyebrow"] == "Разделы"
     assert body["event_dates"] is None

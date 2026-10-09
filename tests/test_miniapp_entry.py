@@ -103,7 +103,7 @@ def test_other_menu_buttons_untouched_by_miniapp_gate(tmp_path):
     kb = asyncio.run(get_main_menu_kb())
     texts = _flat_reply_texts(kb)
     assert "🎯 Задания" in texts
-    assert "🪙 Мои монеты" in texts
+    assert "🪙 Мои баллы" in texts
 
 
 def test_menu_miniapp_registered_right_after_game_tasks():

@@ -127,7 +127,7 @@ def test_menu_module_off_byte_identical_for_any_raw_toggle_value(tmp_path):
         # event_city_enabled left at its default ("off") -- module-off contract.
         kb = asyncio.run(get_main_menu_kb(MSK_DELEGATE_ID))
         texts = _menu_texts(kb)
-        has_coins = "🪙 Мои монеты" in texts
+        has_coins = "🪙 Мои баллы" in texts
         expected = raw is None or raw == "on"
         assert has_coins == expected, f"raw={raw!r}: expected has_coins={expected}, got {has_coins}"
 
@@ -141,7 +141,7 @@ def test_menu_empty_string_toggle_resolves_to_default_on_documented(tmp_path):
     _db_ready(tmp_path, name="test_menu_empty_string.db")
     asyncio.run(db.set_setting("menu_coins", ""))
     kb = asyncio.run(get_main_menu_kb(MSK_DELEGATE_ID))
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_no_telegram_id_defaults_to_global(tmp_path):
@@ -151,7 +151,7 @@ def test_menu_no_telegram_id_defaults_to_global(tmp_path):
     _enable_cities()
     _set_override("menu_coins", "spb", "off")
     kb = asyncio.run(get_main_menu_kb())
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_city_override_hides_button_for_that_citys_delegate(tmp_path):
@@ -162,7 +162,7 @@ def test_menu_city_override_hides_button_for_that_citys_delegate(tmp_path):
 
     kb = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
     texts = _menu_texts(kb)
-    assert "🪙 Мои монеты" not in texts
+    assert "🪙 Мои баллы" not in texts
     # Everything else is still there.
     assert "📞 Контакты" in texts
 
@@ -173,7 +173,7 @@ def test_menu_no_override_falls_back_to_global(tmp_path):
     _add_delegate(SPB_DELEGATE_ID, event_city="spb")
     # No override written -- global default ("on") applies.
     kb = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_other_city_delegate_not_affected_by_override(tmp_path):
@@ -182,7 +182,7 @@ def test_menu_other_city_delegate_not_affected_by_override(tmp_path):
     _add_delegate(MSK_DELEGATE_ID, event_city="msk")
     _set_override("menu_coins", "spb", "off")
     kb = asyncio.run(get_main_menu_kb(MSK_DELEGATE_ID))
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_unknown_user_defaults_without_exception(tmp_path):
@@ -192,7 +192,7 @@ def test_menu_unknown_user_defaults_without_exception(tmp_path):
     _enable_cities()
     kb = asyncio.run(get_main_menu_kb(STRANGER_ID))
     assert isinstance(_menu_texts(kb), list)  # did not raise
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_city_resolve_failure_falls_back_to_global(tmp_path, monkeypatch):
@@ -211,7 +211,7 @@ def test_menu_city_resolve_failure_falls_back_to_global(tmp_path, monkeypatch):
     monkeypatch.setattr(builders_mod, "get_user", _boom)
     kb = asyncio.run(get_main_menu_kb(SPB_DELEGATE_ID))
     # code falls back to None -> global value ("on") -- override is NOT applied.
-    assert "🪙 Мои монеты" in _menu_texts(kb)
+    assert "🪙 Мои баллы" in _menu_texts(kb)
 
 
 def test_menu_order_and_adjust_unchanged(tmp_path):

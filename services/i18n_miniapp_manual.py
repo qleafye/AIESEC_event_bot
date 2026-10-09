@@ -303,8 +303,29 @@ _NEUTRAL_261009 = {
     ),
 }
 
+# Валюта в дефолтах — «баллы» / «points» (10.10); прежние RU-ключи с «монетами» оставлены —
+# у менеджера мог сохраниться старый дефолт дословно.
+_POINTS_261010 = {
+    "баллов": "points",
+    "Принято! Менеджер проверит и начислит баллы.": "Accepted! A manager will review it and award points.",
+    "⏰ Срок вышел — отправить можно, баллы решит менеджер": (
+        "⏰ Deadline passed — you can still submit, a manager will decide on the points"
+    ),
+    "🏆 Рейтинг по баллам": "🏆 Points leaderboard",
+    "Пока ни у кого нет баллов.": "Nobody has points yet.",
+    "📜 История баллов": "📜 Points history",
+    "Делаешь задания — получаешь баллы.": "Complete tasks — earn points.",
+    "Заполни анкету — 14 вопросов, минут на пять. Черновик сохраняется сам.; "
+    "Делай задания — сторис, фото, знакомства с делегатами из других городов.; "
+    "Копи баллы — на мероприятии обменяешь их на призы.": (
+        "Fill out the application — 14 questions, about five minutes. Your draft saves itself.; "
+        "Complete tasks — stories, photos, meeting delegates from other cities.; "
+        "Collect points — trade them for prizes at the event."
+    ),
+}
+
 MANUAL_EN: dict[str, str] = {
-    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO, **_ACCEPTANCE_260917, **_NEUTRAL_261009,
+    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO, **_ACCEPTANCE_260917, **_NEUTRAL_261009, **_POINTS_261010,
 }
 
 

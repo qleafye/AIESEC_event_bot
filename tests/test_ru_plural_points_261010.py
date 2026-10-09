@@ -28,3 +28,22 @@ def test_agree_points_ru():
 def test_agree_points_en():
     assert agree_points("(1 points) and 2 point, 21 points") == "(1 point) and 2 points, 21 points"
     assert agree_points(None) is None
+
+
+def test_game_template_agrees_points_after_fill():
+    """Тексты волн и штрафа: «{coins} баллов» → «1 балл» после подстановки числа."""
+    from game_labels import fill_template
+
+    assert fill_template("«{task}» ({coins} баллов)", task="Сторис", coins=1) == "«Сторис» (1 балл)"
+    assert fill_template("{penalized} баллов вместо {coins}", penalized=22, coins=30) == "22 балла вместо 30"
+    assert fill_template("({coins} points)", coins=1) == "(1 point)"
+
+
+def test_old_coins_menu_caption_still_opens_balance():
+    """Дефолт кнопки стал «🪙 Мои баллы»; старые клавиатуры с «🪙 Мои монеты» работают как раньше."""
+    from services.menu_labels import STATIC_TEXT_TO_KEY, default_caption
+
+    assert default_caption("menu_coins") == "🪙 Мои баллы"
+    for text in ("🪙 Мои баллы", "🪙 My points", "🪙 Мои монеты", "🪙 My coins"):
+        assert STATIC_TEXT_TO_KEY[text] == "menu_coins"
+
