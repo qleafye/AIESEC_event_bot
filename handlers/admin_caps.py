@@ -636,6 +636,8 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_season_reset": "settings",
     "season_reset_go": "settings",
     "state:SeasonReset:*": "settings",
+    # «🔗 Какая таблица»: как «Новый сезон» — настоящий гейт ADMIN_IDS в handlers/admin_sheet_target.py.
+    "admin_sheet_target": "settings", "sheet_target_*": "settings", "state:SheetTarget:*": "settings",
     # Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard. Available to any `settings`
     # holder (CONTEXT D — unlike «Новый сезон», not superadmin-only): the action is additive,
     # existing records are never changed, and it's logged with the admin's id.

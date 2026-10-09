@@ -834,6 +834,9 @@ admin|message|bot_avatar_photo|state:BotAvatar:*
 admin|message|bot_avatar_not_photo|state:BotAvatar:*
 admin|message|settings_search_query|state:SettingsSearch:*
 admin|message|settings_search_not_text|state:SettingsSearch:*
+admin|message|sheet_target_cancel|state:SheetTarget:*,state:SheetTarget:*
+admin|message|sheet_target_cancel|state:SheetTarget:*,state:SheetTarget:*
+admin|message|sheet_target_receive|state:SheetTarget:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1659,6 +1662,11 @@ admin|callback_query|decresend_go|decresend_go:*
 admin|callback_query|decresend_cancel|decresend_cancel:*
 admin|callback_query|settings_search_start|settings_search
 admin|callback_query|settings_search_cancel|settings_search_cancel
+admin|callback_query|sheet_target_screen|admin_sheet_target
+admin|callback_query|sheet_target_set|sheet_target_set
+admin|callback_query|sheet_target_apply|sheet_target_apply
+admin|callback_query|sheet_target_env|sheet_target_env
+admin|callback_query|sheet_target_env_go|sheet_target_env_go
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2428,7 +2436,11 @@ def test_snapshot_total_handler_count_is_292():
     # (settings_search_query/settings_search_not_text) после prog_qzimp_not_file и +2 admin.
     # callback_query (settings_search_start/settings_search_cancel) после decresend_cancel;
     # чистые вставки, сверено SequenceMatcher поверх аватара (1211 -> 1215).
-    assert len(GOLDEN_SNAPSHOT) == 1215
+    # 09.10 («🔗 Какая таблица», handlers/admin_sheet_target.py, хвост admin.py после
+    # admin_settings_search): +3 admin.message (state:SheetTarget:* — отмена дважды/ссылка) после
+    # settings_search_not_text и +5 admin.callback_query после settings_search_cancel; чистые
+    # вставки, сверено SequenceMatcher (1215 -> 1223).
+    assert len(GOLDEN_SNAPSHOT) == 1223
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

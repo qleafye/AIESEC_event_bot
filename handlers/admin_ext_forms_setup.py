@@ -13,6 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
+from services import sheet_target as _sheet_target
 from database import ext_forms_db as xdb
 from handlers.admin import router
 from handlers.admin_ext_forms import _e, _show, render_form_card
@@ -61,7 +62,7 @@ async def protected_tab_titles(form: dict) -> set[str]:
     for other in await xdb.list_forms():
         if other["id"] != form["id"] and other.get("mirror_tab"):
             hidden.add(other["mirror_tab"])
-    if form.get("platform") == "google" and form.get("external_id") == config.GOOGLE_SHEET_ID:
+    if form.get("platform") == "google" and form.get("external_id") == _sheet_target.sheet_id():
         try:
             _, tabs = await google_list_tabs(form["external_id"])
             gid = form.get("gsheet_gid")

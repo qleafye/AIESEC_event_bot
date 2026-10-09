@@ -22,6 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from config import config
+from services import sheet_target as _sheet_target
 from database.db import (
     checkin_qr_send_counts, get_staff_city, sheet_arrival_count_with_error, sheet_arrival_queue_stats,
 )
@@ -200,7 +201,7 @@ async def _row_sheet() -> dict:
 
 
 async def _row_sheet_write() -> dict:
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return _row(GRAY, "Таблица не подключена")
     from services.sheets import last_write_state
     from services.sheet_arrival_sync import MISSING_ERROR

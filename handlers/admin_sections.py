@@ -217,8 +217,12 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Маркетологу (право source_links) этот раздел показывает только две строки — эту и
         # «📈 Источники» выше: обе про метки, ни одной про людей.
         ("op", "admin_source_links"),
-        # Ссылка-кнопка на Google-таблицу события: нет GOOGLE_SHEET_ID — не рисуется.
+        # Ссылка-кнопка на Google-таблицу события (services/sheet_target: из бота, иначе .env);
+        # таблица не подключена — не рисуется.
         ("link", "admin_open_sheet", "📄 Открыть таблицу"),
+        # Какая таблица у события — вставить ссылку, бот проверит доступ. Только суперадмину:
+        # смена таблицы уводит все записи бота в другой файл.
+        ("screen_admin", "admin_sheet_target", "🔗 Какая таблица"),
         ("screen", "admin_export_participants", "👥 Список участников"),
         ("op", "admin_export_csv"),
         ("op", "admin_export_incomplete"),
@@ -289,7 +293,8 @@ _SECTION_HINTS = {
 
 
 def sheet_url() -> str:
-    return f"https://docs.google.com/spreadsheets/d/{config.GOOGLE_SHEET_ID}/edit"
+    from services.sheet_target import sheet_url as _url  # тот же резолвер, что у записи в лист
+    return _url()
 
 
 def row_callback(row: tuple) -> str:
@@ -597,7 +602,8 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                 continue
             buttons.append([InlineKeyboardButton(text=label, callback_data=row[1])])
         elif kind == "link":
-            if config.GOOGLE_SHEET_ID:  # таблица не задана — кнопку не показываем
+            from services.sheet_target import sheet_id as _sheet_id
+            if _sheet_id():  # таблица не задана — кнопку не показываем
                 buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])

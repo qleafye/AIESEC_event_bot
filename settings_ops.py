@@ -459,8 +459,11 @@ _DELEGATION_SERVICE_KEYS = frozenset({
     "delegation_q_course", "delegation_q_email",
     "delegation_armed_form_id",
 })
+# Таблица события (`google_sheet_id`): смена — только суперадмином на экране бота «🔗 Какая
+# таблица», где ссылка разбирается и доступ сервисного аккаунта проверяется до сохранения.
 EXCLUDED_KEYS: frozenset[str] = (
-    frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks"} | _DELEGATION_SERVICE_KEYS
+    frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks", "google_sheet_id"}
+    | _DELEGATION_SERVICE_KEYS
 )
 
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —

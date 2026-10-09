@@ -29,6 +29,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from config import config
+from services import sheet_target as _sheet_target
 from database.db import (
     drop_sheet_arrivals,
     fail_sheet_arrivals,
@@ -111,7 +112,7 @@ async def drain() -> dict:
         attempts[tid] = max(attempts[tid], row["attempts"])
         oldest[tid] = min(oldest.get(tid, row["created_at"]), row["created_at"])
 
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         await drop_sheet_arrivals(upto)  # таблица не подключена — писать некуда
         return counts
 

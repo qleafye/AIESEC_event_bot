@@ -1214,3 +1214,4 @@ from handlers import admin_bot_avatar  # noqa: E402,F401
 # хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
 from handlers import admin_resend_decision  # noqa: E402,F401
 from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
+from handlers import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
