@@ -165,3 +165,83 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
         }
     finally:
         _release(key)
+
+
+# ── Одиночная переотправка из карточки /find ────────────────────────────────────────────────
+
+def failure_line(user: dict | None) -> str:
+    """Строка карточки /find «Письмо о решении не дошло: <причина>» — пустая строка, если
+    решения нет или сбоя не зафиксировано. Причину пишет `application_effects.
+    _classify_decision_delivery_error` (уже человеческая), сюда она приходит как есть."""
+    import html as _html
+    u = user or {}
+    if u.get("status") not in DECIDED_STATUSES or u.get("decision_delivery_status") != "failed":
+        return ""
+    reason = _html.escape(str(u.get("decision_delivery_error") or "причина неизвестна"))
+    return f"\n\n⚠️ Письмо о решении не дошло: {reason}"
+
+
+_PREVIEW_LEN = 80
+
+
+async def preview_decision_text(user: dict) -> str:
+    """Начало текста, который получит делегат (для экрана подтверждения). Те же функции, что
+    собирают реальное письмо: одобрение — `handlers.reg_schema._approve_text_for` (трек/город),
+    отказ — `services.applications.reject_message_text` с последней причиной. Теги убираются,
+    чтобы обрезка не оставила незакрытый тег."""
+    import html as _html
+    import re
+
+    tid = user["telegram_id"]
+    if user.get("status") == "rejected":
+        from services.applications import last_rejection_reason, reject_message_text
+        from services.i18n import context as _i18n_context
+        lang, tr_map = await _i18n_context(tid)
+        raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
+    else:
+        from cities import cities_module_on, normalize_city
+        from handlers.reg_schema import _approve_text_for
+        city_code = normalize_city(user.get("event_city")) if await cities_module_on() else None
+        raw = await _approve_text_for(user.get("participant_type") or "full", city_code)
+    plain = _html.unescape(re.sub(r"<[^>]+>", "", raw or ""))
+    plain = " ".join(plain.split())
+    if len(plain) > _PREVIEW_LEN:
+        plain = plain[:_PREVIEW_LEN].rstrip() + "…"
+    return plain
+
+
+async def resend_one_decision(bot, telegram_id: int) -> dict:
+    """Переотправка решения ОДНОМУ делегату (кнопка в карточке /find). Тот же путь, что у
+    массовой: `apply_decision_effects(sheet=False, resend=True)` — тот же текст, та же запись
+    `users.decision_delivery_*`; результат читаем из свежей строки, а не предполагаем успех.
+
+    `{"ok": True, "delivered": True}` — дошло; `{"ok": True, "queued": True}` — делегат в тихих
+    часах, письмо уйдёт утром; `{"ok": True, "delivered": False, "error": ...}` — не дошло;
+    `{"ok": False, "error": ...}` — отправку не начинали (нет решения / уже идёт)."""
+    key = f"resend1:{telegram_id}"
+    if not _claim(key):
+        return {"ok": False, "error": "уже отправляется — подождите несколько секунд"}
+    try:
+        from database.db import get_user
+        from services.application_effects import apply_decision_effects
+        from services.applications import last_rejection_reason
+
+        user = await get_user(telegram_id)
+        decision = (user or {}).get("status")
+        if decision not in DECIDED_STATUSES:
+            return {"ok": False, "error": "по заявке ещё нет решения"}
+        reason = await last_rejection_reason(telegram_id) if decision == "rejected" else None
+        try:
+            await apply_decision_effects(bot, telegram_id, decision, reason, sheet=False, resend=True)
+        except Exception as e:
+            logger.error(f"resend_one_decision: сбой отправки {telegram_id}: {e}")
+            return {"ok": True, "delivered": False, "error": f"ошибка отправки: {e}"}
+        fresh = await get_user(telegram_id) or {}
+        status = fresh.get("decision_delivery_status")
+        if status == "delivered":
+            return {"ok": True, "delivered": True}
+        if status == "queued":
+            return {"ok": True, "delivered": False, "queued": True}
+        return {"ok": True, "delivered": False, "error": fresh.get("decision_delivery_error") or "не доставлено"}
+    finally:
+        _release(key)
