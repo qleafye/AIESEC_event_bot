@@ -158,14 +158,46 @@ export function maskDateInput(raw) {
   return day + (month ? `.${month}` : "") + (year ? `.${year}` : "");
 }
 
+// Ревью 10.10: правка в середине поля. Маска переписывает значение целиком, и браузер
+// ставит каретку в конец — следующая цифра уезжала туда же, а лишние срезались лимитом.
+// Каретка восстанавливается по числу цифр слева от неё. Backspace сразу после точки
+// стирает цифру перед точкой (иначе маска тут же возвращала бы точку на место).
+function digitsOf(text) {
+  return String(text || "").replace(/\D/g, "");
+}
+
+export function maskDateEdit(prev, raw, caret, inputType) {
+  let digits = digitsOf(raw);
+  const at = caret == null ? String(raw || "").length : caret;
+  let before = digitsOf(String(raw || "").slice(0, at)).length;
+  const deletedOnlyDot = inputType === "deleteContentBackward"
+    && digits === digitsOf(prev) && String(raw || "").length < String(prev || "").length;
+  if (deletedOnlyDot && before > 0) {
+    digits = digits.slice(0, before - 1) + digits.slice(before);
+    before -= 1;
+  }
+  const value = maskDateInput(digits);
+  before = Math.min(before, digitsOf(value).length);
+  let pos = 0;
+  for (let seen = 0; pos < value.length && seen < before; pos += 1) {
+    if (/\d/.test(value[pos])) seen += 1;
+  }
+  return { value, caret: pos };
+}
+
 function dateControl(h, spec, value, onChange) {
   const input = h("input", { class: "input", type: "text", inputmode: "numeric", autocomplete: "off", id: `f-${spec.key}` });
   // Старое значение в ISO (нативное поле до 09.10) показываем так, как хранит сервер.
   const iso = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
   input.value = iso ? `${iso[3]}.${iso[2]}.${iso[1]}` : (value || "");
-  input.addEventListener("input", () => {
-    const masked = maskDateInput(input.value);
-    if (masked !== input.value) input.value = masked;
+  let prev = input.value;
+  input.addEventListener("input", (e) => {
+    const next = maskDateEdit(prev, input.value, input.selectionStart, e && e.inputType);
+    if (next.value !== input.value) input.value = next.value;
+    if (typeof input.setSelectionRange === "function") {
+      try { input.setSelectionRange(next.caret, next.caret); } catch (_) { /* поле не в фокусе */ }
+    }
+    prev = input.value;
     onChange(input.value);
   });
   input.addEventListener("change", () => onChange(input.value));
