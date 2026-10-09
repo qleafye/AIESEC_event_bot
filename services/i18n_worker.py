@@ -40,6 +40,7 @@ from database.db import (
     bump_translation_attempt,
     drop_translation_queue,
     enqueue_translation,
+    enqueue_untranslated,
     get_translation,
     list_pending_translations,
     list_translations,
@@ -171,16 +172,11 @@ async def bulk_seed(lang: str = "en") -> int:
     (`UNIQUE(lang, src_hash)`) сам не даёт повторному вызову наплодить дублей ДЛЯ ещё не
     переведённых строк, уже стоящих в очереди. Возвращает число реально поставленных строк."""
     items = await corpus()
-    queued = 0
-    for origin_key, text in items:
-        text_hash = src_hash(text)
-        existing = await get_translation(lang, text_hash)
-        if existing:
-            continue
-        row_id = await enqueue_translation(lang, text_hash, text, origin_key=origin_key)
-        if row_id is not None:
-            queued += 1
-    return queued
+    # Одно соединение и одна транзакция на весь корпус (`enqueue_untranslated`) — построчные
+    # чтение+запись с коммитом на каждую строку тормозили старт бота.
+    return await enqueue_untranslated(
+        lang, [(origin_key, src_hash(text), text) for origin_key, text in items],
+    )
 
 
 def _translated_before_prep_fix(src: str, text: str) -> bool:

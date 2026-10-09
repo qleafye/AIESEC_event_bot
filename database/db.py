@@ -10492,20 +10492,102 @@ async def upsert_translation(
     updated_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         await db.execute(
-            '''
-            INSERT INTO translations (lang, src_hash, src_text, text, manual, origin_key, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(lang, src_hash) DO UPDATE SET
-                src_text = excluded.src_text,
-                text = excluded.text,
-                manual = excluded.manual,
-                origin_key = COALESCE(excluded.origin_key, translations.origin_key),
-                updated_at = excluded.updated_at
-            WHERE excluded.manual = 1 OR translations.manual = 0
-            ''',
+            _UPSERT_TRANSLATION_SQL,
             (lang, src_hash, src_text, text, int(manual), origin_key, updated_at),
         )
         await db.commit()
+
+
+_UPSERT_TRANSLATION_SQL = '''
+    INSERT INTO translations (lang, src_hash, src_text, text, manual, origin_key, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(lang, src_hash) DO UPDATE SET
+        src_text = excluded.src_text,
+        text = excluded.text,
+        manual = excluded.manual,
+        origin_key = COALESCE(excluded.origin_key, translations.origin_key),
+        updated_at = excluded.updated_at
+    WHERE excluded.manual = 1 OR translations.manual = 0
+'''
+
+
+async def seed_manual_translations(
+    lang: str, passes: list[tuple[dict[str, str], str]], src_hash_fn,
+) -> list[dict]:
+    """Ручные переводы на старте бота (`i18n_miniapp_manual.seed`, `i18n_form_manual.seed`) —
+    одно соединение и одна транзакция на весь вызов вместо пары чтение+запись с коммитом на
+    каждую строку (~930 строк: старт бота и тесты засева тратили на это десятки секунд).
+
+    Правило то же, что у построчного варианта: строку пропускаем, если на неё уже есть
+    `manual=1` перевод с ЧУЖИМ `origin_key` (правка менеджера), остальное пишем тем же
+    `INSERT ... ON CONFLICT`, что `upsert_translation`. `passes` — список `(словарь ru→en,
+    origin_key)`, проходы идут по порядку и видят записи предыдущих (повтор строки во втором
+    словаре пропускается как «чужая ручная»). Сбой посреди — откат всего вызова, исключение
+    уходит вызывающему (на старте его ловит fail-soft в `main.py`).
+
+    Возвращает по `{"applied": N, "skipped_manager_edit": M}` на каждый проход."""
+    updated_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    results: list[dict] = []
+    async with _connect() as db:
+        try:
+            for translations, origin in passes:
+                async with db.execute(
+                    "SELECT src_hash, manual, origin_key FROM translations WHERE lang = ?", (lang,),
+                ) as cursor:
+                    existing = {row[0]: (row[1], row[2]) for row in await cursor.fetchall()}
+                rows = []
+                skipped = 0
+                for ru_text, en_text in translations.items():
+                    text_hash = src_hash_fn(ru_text)
+                    manual, row_origin = existing.get(text_hash, (0, None))
+                    if manual and row_origin != origin:
+                        skipped += 1
+                        continue
+                    rows.append((lang, text_hash, ru_text, en_text, 1, origin, updated_at))
+                await db.executemany(_UPSERT_TRANSLATION_SQL, rows)
+                results.append({"applied": len(rows), "skipped_manager_edit": skipped})
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return results
+
+
+async def enqueue_untranslated(
+    lang: str, items: list[tuple[str, str, str]],
+) -> int:
+    """Массовая постановка в очередь перевода (`i18n_worker.bulk_seed`) — одно соединение и
+    одна транзакция вместо чтения+записи с коммитом на каждую строку корпуса.
+
+    `items` — `(origin_key, src_hash, src_text)` в порядке корпуса. Строка, для которой в
+    `translations` уже есть запись (ручная или машинная), пропускается; остальные идут тем же
+    `INSERT OR IGNORE`, что `enqueue_translation` (`UNIQUE(lang, src_hash)` — повтор текста в
+    корпусе и уже стоящие в очереди строки не плодят дублей). Сбой — откат всего вызова.
+    Возвращает число реально вставленных строк."""
+    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        try:
+            async with db.execute(
+                "SELECT src_hash FROM translations WHERE lang = ?", (lang,),
+            ) as cursor:
+                translated = {row[0] for row in await cursor.fetchall()}
+            rows = [
+                (lang, text_hash, text, origin_key, created_at)
+                for origin_key, text_hash, text in items
+                if text_hash not in translated
+            ]
+            before = db.total_changes
+            await db.executemany(
+                "INSERT OR IGNORE INTO translation_queue (lang, src_hash, src_text, origin_key, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                rows,
+            )
+            queued = db.total_changes - before
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return queued
 
 
 async def clear_translation_manual(lang: str, src_hash: str) -> None:
