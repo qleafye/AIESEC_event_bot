@@ -1,7 +1,8 @@
 """UAT 07.09 (T-d6t-04): `reg_engine.STEP_DONE` — маркер «все включённые шаги отвечены» в
 `reg_drafts.step`. PATCH последнего шага кладёт маркер вместо уже отвеченного шага (иначе бот,
 читающий тот же столбец, переспрашивает после «✍️ Продолжить в чате»); `resume_from_draft`
-на маркере финализирует анкету, а не задаёт вопрос повторно.
+на маркере показывает сводку «Всё верно / Изменить» (приёмка 09.10; до неё — сразу отправлял
+заявку), а не задаёт вопрос повторно.
 
 Серверный харнесс — `tests/test_miniapp_form.py` (тот же клиент/сиды). Бот-часть — приём
 `tests/test_reg_resume_draft.py` (Fake-объекты aiogram, `_seed_new_draft`, monkeypatch
@@ -121,7 +122,7 @@ def _use_tmp_bot_db(tmp_path, name="test_reg_step_done_bot.db"):
     fast_init_db()
 
 
-def test_resume_from_draft_marker_finalizes_without_asking(tmp_path, monkeypatch):
+def test_resume_from_draft_marker_shows_summary_without_asking(tmp_path, monkeypatch):
     _use_tmp_bot_db(tmp_path)
 
     async def go():
@@ -144,10 +145,13 @@ def test_resume_from_draft_marker_finalizes_without_asking(tmp_path, monkeypatch
         state = _new_state(USER_ID)
         draft = await db.get_reg_draft(USER_ID)
         await reg_resume.resume_from_draft(msg, state, bot=object(), draft=draft)
-        return calls
+        return calls, await state.get_state(), msg
 
-    calls = asyncio.run(go())
-    assert calls == ["finalize"]
+    calls, fsm_state, msg = asyncio.run(go())
+    # Приёмка 09.10: заявка не уходит мимо подтверждения — сначала сводка.
+    assert calls == []
+    assert fsm_state == "Registration:confirm"
+    assert any("Проверь свои ответы" in (t or "") for t in _texts(msg))
 
 
 def test_resume_from_draft_unknown_step_falls_back(tmp_path, monkeypatch):

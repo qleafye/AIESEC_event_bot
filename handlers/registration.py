@@ -743,7 +743,6 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
     # условные шаги посчитаются по устаревшим данным) и ПЕРЕД тем, как бот запишет свой
     # собственный ответ (см. докстринг _sync_draft_in — порядок load-bearing).
     data = await _sync_draft_in(state, telegram_id, message, just_answered=cols)
-    await _sync_draft_out(telegram_id, state, data, after_step, answered_col=cols)
     enabled = await _get_enabled_steps(data)
 
     try:
@@ -754,6 +753,10 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
         # toggled off mid-flow, or a conditional removed it). Finalize instead of bouncing
         # the user back to step 0 — a silent restart is the wrong failure mode.
         next_idx = len(enabled)
+    # Приёмка 09.10: на сводке черновик получает маркер «всё отвечено», как в приложении —
+    # иначе «Продолжить» после /start переспрашивал последний шаг (резюме — заново файлом).
+    done = next_idx >= len(enabled)
+    await _sync_draft_out(telegram_id, state, data, reg_engine.STEP_DONE if done else after_step, answered_col=cols)
 
     if next_idx < len(enabled):
         step = data.get("_reg_step", 0) + 1
@@ -764,19 +767,8 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
         await state.update_data(_reg_step=step, _reg_total=total)
         await _ask_step_or_recall(enabled[next_idx], message, state, step, total)
     else:
-        # QW-01: show a summary + confirm keyboard before finalizing the full form (D-01).
-        # Phase 27 (27-05, LANG-02): подписи сводки переводятся ЗДЕСЬ (составная строка не
-        # найдётся в карте переводов как единое целое — см. докстринг _build_summary),
-        # отдельно от общей врезки внутри _safe_answer (та переведёт саму клавиатуру
-        # подтверждения и не тронет уже готовый текст — его хеш не совпадёт ни с чем в карте).
-        lang, tr_map = await reg_i18n.ctx_for(message)
-        # UAT-фикс (стенд, lang=en): карта закрытых вариантов сводки — один поход в БД на
-        # рендер, не по полю (докстринг reg_i18n.summary_value_maps).
-        value_maps = await reg_i18n.summary_value_maps(lang, tr_map)
-        from handlers.reg_city_gate import summary_data  # приёмка 09.10: строка «Город форума»
-        summary = _build_summary(await summary_data(data), lang, tr_map, value_maps)
-        await _safe_answer(message, summary, reply_markup=get_confirm_kb(), parse_mode="HTML")
-        await state.set_state(Registration.confirm)
+        from handlers.reg_summary import show_summary  # общая с «Продолжить» (reg_resume)
+        await show_summary(message, state, data)
 
 
 async def _ask_step_or_recall(step_key: str, message: types.Message, state: FSMContext, step: int, total: int):
