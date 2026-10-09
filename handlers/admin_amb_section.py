@@ -159,7 +159,15 @@ async def toggle_amb_team_selection(callback: types.CallbackQuery):
     new_val = "off" if await amb_status.selection_enabled() else "on"
     await set_setting_by_admin(callback.from_user.id, amb_status.TOGGLE_KEY, new_val)
     logger.info("admin=%s %s=%s", callback.from_user.id, amb_status.TOGGLE_KEY, new_val)
-    await callback.answer(_TOGGLE_ALERT[new_val], show_alert=True)
+    alert = _TOGGLE_ALERT[new_val]
+    if new_val == "on":
+        # Тумблер сам способ входа не меняет — говорим, как вступают прямо сейчас (≤200 символов).
+        mode = await amb_status.join_mode()
+        _, limit = await amb_status.slot_counter()
+        hint = ("Чтобы брать людей вручную" if mode == amb_status.MODE_INSTANT else "Настройки")
+        alert = (f"🤝 Отбор включён. Сейчас: {_MODE_LABELS[mode]}, мест: {_limit_text(limit)}. "
+                 f"{hint} — «🤝 Амбассадоры» → «🚪 Вход и лимит».")
+    await callback.answer(alert, show_alert=True)
     text = await render_settings_group_text("game", callback.from_user.id)
     kb = await build_settings_group_keyboard("game", callback.from_user.id)
     await _edit_or_send(callback.message, text, kb)
