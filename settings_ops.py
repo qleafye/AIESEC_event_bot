@@ -1149,10 +1149,13 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # Форум-ночь п.9: название сессии в session_feedback_prompt_text («Как тебе «{title}»?»).
     "title": "Как продать идею АЙСЕК за 5 минут",
     # Трек «региональные форумы → Москва»: город назначения и даты его форума в
-    # regional_noshow_offer_text («Приезжай на Юлид: {target_city}{dates}») — `{dates}` уже
+    # regional_noshow_offer_text («Приезжай на {event}: {target_city}{dates}») — `{dates}` уже
     # несёт ведущий пробел и скобки (см. `services.regional_noshow_move._dates_label_for`).
     "target_city": "Москва",
     "dates": " (30.10–31.10)",
+    # Название мероприятия (`services.text_fill.event_label`): без «🎪 Название мероприятия» —
+    # нейтральное слово, с ним — настоящее название (подменяется в `preview_samples`).
+    "event": "мероприятие",
 }
 
 
@@ -1160,6 +1163,9 @@ async def preview_samples() -> dict[str, str]:
     """Образцы для превью: поверх заглушек — реальные значения мероприятия из реестра/БД
     (сезон, дедлайн оплаты, реквизиты), чтобы менеджер видел свой текст, а не абстрактный."""
     samples = dict(PREVIEW_SAMPLES)
+    event_title = await get_setting("event_name")
+    if event_title and event_title.strip():
+        samples["event"] = event_title.strip()
     season = await get_setting_typed("event_season")
     if season:
         samples["season"] = str(season)

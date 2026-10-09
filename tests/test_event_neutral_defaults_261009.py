@@ -175,3 +175,18 @@ def test_stats_card_caption_default_has_no_brand_after_fill():
     filled = fill_event(caption, "СкиллАп 5")
     assert "СкиллАп 5 в цифрах" in filled
     assert "Юлид" not in fill_event(caption, None)
+
+
+def test_preview_shows_event_name_or_neutral_word(tmp_path):
+    """Превью текста в настройках подставляет {event} так же, как доставка делегату."""
+    import settings_ops
+
+    _ready(tmp_path)
+    text = SETTINGS_SCHEMA["forum_welcome_text"]["default"]
+    samples = _run(settings_ops.preview_samples())
+    assert settings_ops.preview_text("forum_welcome_text", text, samples=samples).endswith(
+        "Добро пожаловать на мероприятие!")
+    _run(db.set_setting("event_name", "РилТолк"))
+    samples = _run(settings_ops.preview_samples())
+    assert settings_ops.preview_text("forum_welcome_text", text, samples=samples).endswith(
+        "Добро пожаловать на РилТолк!")
