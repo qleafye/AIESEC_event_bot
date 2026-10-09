@@ -58,6 +58,25 @@ MAX_ROWS = 10
 
 # ── Pure helpers (unit-test surface) ──────────────────────────────────────────
 
+async def on_setting_written(key: str) -> None:
+    """Новое время «📊 Итоги дня» действует сразу, без перезапуска бота."""
+    if key != "daily_digest_time":
+        return
+    from services.scheduler import get_scheduler
+    from settings_schema import get_setting_typed
+
+    hour, minute = parse_time(await get_setting_typed("daily_digest_time"))
+    try:
+        sched = get_scheduler()
+    except RuntimeError:
+        return  # планировщик ещё не поднят (веб-процесс, тесты) — время возьмёт старт бота
+    if sched.get_job(JOB_ID) is not None:
+        sched.reschedule_job(JOB_ID, trigger="cron", hour=hour, minute=minute)
+    else:
+        sched.add_job(daily_digest_job, "cron", hour=hour, minute=minute, id=JOB_ID)
+    logger.info("daily_digest: время сводки перенесено на %02d:%02d", hour, minute)
+
+
 def parse_time(raw) -> tuple[int, int]:
     """«ЧЧ:ММ» -> (часы, минуты). Мусор/пусто -> 21:00 — та же терпимость, что у
     `services.scheduler._int_or_default`: джоба обязана встать даже если в ключе ерунда,

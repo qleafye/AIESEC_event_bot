@@ -38,25 +38,27 @@ from database import db
 logger = logging.getLogger(__name__)
 
 
+async def run_setting_hooks(key: str) -> None:
+    """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
+    приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
+    Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
+    from services import bot_profile, daily_digest, reject_rules_notify
+
+    for hook in (reject_rules_notify.on_setting_written, bot_profile.on_setting_written,
+                 daily_digest.on_setting_written):
+        try:
+            await hook(key)
+        except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
+            logger.error("settings_audit: реакция на %r сорвалась: %s", key, exc)
+
+
 async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> None:
     logger.info(f"admin={admin_id} setting {key} <- {value!r}")
     await db.set_setting(key, value)
-    try:
-        from services import reject_rules_notify as _rrn
-        await _rrn.on_setting_written(key)
-        from services import bot_profile as _bp
-        await _bp.on_setting_written(key)
-    except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
-        logger.error("settings_audit.set_setting_by_admin: реакция на %r сорвалась: %s", key, exc)
+    await run_setting_hooks(key)
 
 
 async def delete_setting_by_admin(admin_id: int | None, key: str) -> None:
     logger.info(f"admin={admin_id} setting {key} <- (сброшено)")
     await db.delete_setting(key)
-    try:
-        from services import reject_rules_notify as _rrn
-        await _rrn.on_setting_written(key)
-        from services import bot_profile as _bp
-        await _bp.on_setting_written(key)
-    except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
-        logger.error("settings_audit.delete_setting_by_admin: реакция на %r сорвалась: %s", key, exc)
+    await run_setting_hooks(key)

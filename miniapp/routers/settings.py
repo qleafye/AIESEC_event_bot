@@ -708,11 +708,12 @@ async def settings_batch(
                 if warning:
                     warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
                 saved.append(key)
-            if any(k in ("bot_description", "bot_short_description") for k in saved):
-                # Описание бота ставит в Telegram только бот — просим его через очередь.
+            if saved:
+                # Реакции на правку (описание бота, время «Итогов дня», автоотказ) живут в
+                # процессе бота — просим его через очередь, как после записи из бота.
                 from miniapp.outbox import enqueue
 
-                await enqueue("bot_profile_changed", {})
+                await enqueue("settings_changed", {"keys": saved})
             # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
             # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
             # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам
