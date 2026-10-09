@@ -45,6 +45,7 @@ from cities import (
     get_setting_typed_for_city,
 )
 from database.db import (
+    fetch_manual_translations,
     claim_reg_draft,
     get_reg_draft,
     get_setting,
@@ -73,6 +74,14 @@ router = APIRouter()
 
 
 # ── Контекст черновика: общий для GET/PATCH/submit ──────────────────────────────────────────
+
+async def _manual_tr_map(lang: str) -> dict:
+    """Карта только ручных переводов (`manual=1`) — для юридических текстов, которые
+    машинным переводом не переводятся (LANG-09). Для русского — пустая, без похода в БД."""
+    if lang != "en":
+        return {}
+    return await fetch_manual_translations(lang)
+
 
 async def _forum_city_row(event_city: str | None, lang: str, tr_map: dict) -> dict | None:
     """Приёмка 09.10: строка «Город форума» для обзора анкеты перед отправкой — та же, что в
@@ -233,8 +242,12 @@ async def _pre_items(
                 # Приёмка 09.10: текст согласия, который менеджер задаёт для чата
                 # (`reg_prompt_consent_<ключ>`, тот же override, что `handlers/registration.py::
                 # _prompt`), — раньше приложение показывало одну галочку с названием документа.
-                # Перевод — только ярусом A, как у `label` (LANG-09).
-                "text": i18n.tr(consent_text, lang, {}) if (consent_text := await get_setting(f"reg_prompt_consent_{key}")) else None,
+                # Ревью 10.10: юридический текст переводится только рукописно — ярус A и
+                # ручные переводы менеджера (`manual=1`), машинный перевод сюда не попадает
+                # (LANG-09). Нет ручного перевода — делегат видит русский текст: известный
+                # пробел, закрывается ручным переводом в админке. В чате (`_ask_step`) сейчас
+                # только ярус A — ручной перевод там тоже стоит подключить.
+                "text": i18n.tr(consent_text, lang, await _manual_tr_map(lang)) if (consent_text := await get_setting(f"reg_prompt_consent_{key}")) else None,
                 "pdf_file_id": await get_setting(f"consent_pdf_{key}"),
                 "button_text": button_text,
             })
