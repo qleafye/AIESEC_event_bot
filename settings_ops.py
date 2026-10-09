@@ -91,7 +91,8 @@ async def per_city_visible_codes(admin_id: int) -> list[str]:
 # ── HTML-разметка текстовых ключей ────────────────────────────────────────────────────────
 
 HTML_SETTINGS = {
-    "start_text", "start_text_registered", "start_text_returning", "reg_complete_text",
+    "start_text", "start_text_registered", "start_text_returning", "start_text_rejected",
+    "reg_complete_text",
     "approve_text", "approve_text__party",
     # Phase 17.1 (17.1-03): единая политика для текстовых ключей 17.1 — если prompt обещает
     # менеджеру «Поддерживается HTML», ввод берётся из message.html_text (жирный/курсив из
