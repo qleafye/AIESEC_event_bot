@@ -230,3 +230,12 @@ def test_start_drops_avatar_wait():
     src = inspect.getsource(cmd_start)
     head = src[: src.index("offer_language")]
     assert 'startswith("BotAvatar:")' in head and "state.clear()" in head
+
+
+def test_intro_does_not_promise_instant_set():
+    """UAT 09.10: экран обещал «бот сразу поставит», а перед установкой стоит вопрос
+    «Поставить это фото аватаром бота?» — текст обязан говорить про подтверждение."""
+    from handlers import admin_bot_avatar as m
+
+    assert "сразу" not in m.INTRO_TEXT
+    assert "подтвержд" in m.INTRO_TEXT
