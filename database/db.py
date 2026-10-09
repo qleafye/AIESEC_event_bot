@@ -3446,6 +3446,49 @@ async def export_users_csv(*, city_scope=None):
             return headers, rows
 
 
+async def export_participants_csv(*, city_scope=None, with_payment: bool = False):
+    """«👥 Список участников»: ТОЛЬКО одобренные текущего сезона (`event_season`; не задан —
+    все одобренные), человеческие колонки и без служебного/телефона. Возвращает `(headers, rows)`
+    с уже готовыми подписями: город — названием, статус оплаты — словами (`with_payment` — колонка
+    нужна, только если модуль оплаты включён). Пусто -> `(headers, [])`."""
+    from cities import city_label_or_none, normalize_city
+    from reg_labels import PAYMENT_STATUS_LABELS
+
+    season = (await get_setting("event_season") or "").strip() or None
+    frag, params = _approved_current_season_frag(season)
+    city_frag, city_params = _city_clause(city_scope)
+    where = f"{frag}" + (f" AND {city_frag}" if city_frag else "")
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT full_name, username, event_city, university, approved_at, payment_status "
+            f"FROM users WHERE {where} ORDER BY full_name COLLATE NOCASE",
+            tuple(params + city_params),
+        ) as cursor:
+            raw = await cursor.fetchall()
+    headers = ["ФИО", "Telegram", "Город", "Вуз", "Дата одобрения"] + (["Оплата"] if with_payment else [])
+    labels: dict[str, str] = {}
+    rows = []
+    for full_name, username, event_city, university, approved_at, pay in raw:
+        code = normalize_city(event_city)
+        if code not in labels:
+            labels[code] = await city_label_or_none(code) or ""
+        uni = (university or "").strip()
+        row = [
+            full_name or "",
+            "@" + username.lstrip("@") if username else "",
+            labels[code],
+            "" if uni == "-" else uni,
+            (approved_at or "")[:10],
+        ]
+        if with_payment:
+            row.append(PAYMENT_STATUS_LABELS.get(pay or "not_paid", ""))
+        # Ник вида @abc_123 безопасен (формулой не станет) — апостроф перед ним в Excel виден
+        # человеку; нейтрализуем только то, что на ник не похоже.
+        nick_ok = bool(re.fullmatch(r"@\w{1,64}", row[1]))
+        rows.append(tuple(c if (i == 1 and nick_ok) else _csv_safe(c) for i, c in enumerate(row)))
+    return headers, rows
+
+
 async def get_city_counts() -> list[tuple]:
     """One row per RAW `event_city` value present in `users` (including NULL and any
     unknown/garbage code) — `(event_city, total, pending, approved)`. Deliberately returns
