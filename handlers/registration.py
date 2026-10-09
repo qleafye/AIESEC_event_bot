@@ -2298,6 +2298,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             )
         return
 
+    # Ночь 09.10: чистый /start менеджера — подсказка про /admin вместо анкеты делегата
+    # (reg_started не пишется, пока он сам не нажмёт «Всё-таки заполнить анкету»).
+    from handlers.reg_manager_start import offer_manager_hint
+    if await offer_manager_hint(message, state, user, args):
+        return
+
     # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
     # fires ONLY for a user with no existing non-rejected users row — an already-registered
     # delegate tapping a stale/shared party link still gets their normal welcome + main menu
@@ -2781,3 +2787,6 @@ from handlers import reg_ambassador  # noqa: E402, F401
 from handlers import reg_types_lookup  # noqa: E402, F401
 from handlers import reg_types_composite  # noqa: E402, F401
 from handlers import reg_types_repeatable  # noqa: E402, F401
+
+# Ночь 09.10: «Всё-таки заполнить анкету» менеджера — callback в самом хвосте router.
+from handlers import reg_manager_start  # noqa: E402, F401
