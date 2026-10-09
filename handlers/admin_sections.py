@@ -232,6 +232,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen", "admin_dashboard_settings", "📊 Дашборд"),
     ]),
     ("manage", "🔧 Управление", [
+        # «🔎 Найти настройку» — первой строкой: в сотнях настроек нужную ищут словом
+        # (handlers/admin_settings_search.py), кнопка ведёт на тот же экран правки.
+        ("screen", "settings_search", "🔎 Найти настройку"),
         ("op", "admin_cities"),
         ("op", "admin_settings_guide"),
         ("screen", "admin_roles", "👥 Роли и доступы"),

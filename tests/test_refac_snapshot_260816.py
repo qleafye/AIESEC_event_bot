@@ -832,6 +832,8 @@ admin|message|bot_avatar_cancel_text|state:BotAvatar:*,state:BotAvatar:*
 admin|message|bot_avatar_cancel_text|state:BotAvatar:*,state:BotAvatar:*
 admin|message|bot_avatar_photo|state:BotAvatar:*
 admin|message|bot_avatar_not_photo|state:BotAvatar:*
+admin|message|settings_search_query|state:SettingsSearch:*
+admin|message|settings_search_not_text|state:SettingsSearch:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1655,6 +1657,8 @@ admin|callback_query|bot_avatar_remove_go|botava_rm_yes
 admin|callback_query|decresend_start|decresend_start:*
 admin|callback_query|decresend_go|decresend_go:*
 admin|callback_query|decresend_cancel|decresend_cancel:*
+admin|callback_query|settings_search_start|settings_search
+admin|callback_query|settings_search_cancel|settings_search_cancel
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2420,7 +2424,11 @@ def test_snapshot_total_handler_count_is_292():
     # (state:BotAvatar:* — отмена дважды/фото/не фото) и +4 admin.callback_query в хвосте
     # перед decresend_start; две чистые вставки (1202 -> 1210). Ревью: +1 admin.callback_query
     # bot_avatar_set_go (подтверждение «Поставить это фото?») после bot_avatar_cancel (1210 -> 1211).
-    assert len(GOLDEN_SNAPSHOT) == 1211
+    # 09.10 («🔎 Найти настройку», handlers/admin_settings_search.py): +2 admin.message
+    # (settings_search_query/settings_search_not_text) после prog_qzimp_not_file и +2 admin.
+    # callback_query (settings_search_start/settings_search_cancel) после decresend_cancel;
+    # чистые вставки, сверено SequenceMatcher поверх аватара (1211 -> 1215).
+    assert len(GOLDEN_SNAPSHOT) == 1215
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
