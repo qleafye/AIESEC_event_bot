@@ -924,8 +924,10 @@ export async function render(root, params, ctx) {
             // только иконкой check — делегат не понимал, что это кнопка подтверждения выбора.
             // Подпись — тот же `d.next_cta_text` («Дальше»), что и на остальных шагах мастера
             // (один и тот же глагол действия на всей анкете, без нового реестрового ключа).
+            // Приёмка 09.10: имя кнопки для скринридера — её подпись «Дальше», а не вопрос
+            // развилки («Выбери город мероприятия:»), иначе кнопку «Дальше» не найти.
             h("button", {
-              class: "btn", type: "button", disabled: busy, "aria-label": item.text || "", onClick: next,
+              class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: next,
             }, icon("check"), h("span", { text: d.next_cta_text || "" })),
             chatLink(d.continue_in_chat_text, d.continue_deeplink),
           ),
