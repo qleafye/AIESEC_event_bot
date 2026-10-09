@@ -1117,6 +1117,7 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Приглашённый №{n}": "Invitee #{n}",
     "Снят с зачёта приглашённый: {name}": "Invitee removed from your count: {name}",
     "Возвращён в зачёт приглашённый: {name}": "Invitee restored to your count: {name}",
+    "За приглашённых до вступления: {count}": "For invitees approved before you joined: {count}",
     # Вход в команду амбассадоров: режим отбора, лимит мест, взяли / вывели / отказ.
     "Заявка в команду амбассадоров принята! Менеджер свяжется с тобой. А ссылка уже твоя — можешь делиться ею прямо сейчас.": "Your request to join the ambassador team has been received! A manager will get in touch with you. Your invite link is already yours — you can start sharing it right now.",
     "🎁 Ты в команде амбассадоров — пакет амбассадора за тобой.": "🎁 You're on the ambassador team — the ambassador pack is yours.",
