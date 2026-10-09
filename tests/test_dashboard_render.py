@@ -1028,7 +1028,7 @@ def test_game_review_tile_and_extended_block_shown_with_data(tmp_path):
     text = resp.text
     assert "Модерация заданий" in text
     assert "от сдачи задания до решения менеджера" in text
-    assert "Коинов начислено" in text
+    assert "Баллов начислено" in text
     assert "Ждут проверки" in text
     assert text.index("Модерация заданий") > text.index("Геймификация")
     assert "Топ заданий" in text
