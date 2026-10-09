@@ -151,6 +151,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "sos_active_days",
         # 08.10: описание бота до /start и строка «О боте».
         "bot_description", "bot_short_description",
+        # 09.10: «🤖 Имя бота» — рядом с типом события.
+        "bot_name",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
