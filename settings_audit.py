@@ -54,8 +54,25 @@ async def run_setting_hooks(key: str) -> None:
 
 async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> None:
     logger.info(f"admin={admin_id} setting {key} <- {value!r}")
+    previous = await db.get_setting(key) if key == "bot_name" else None
     await db.set_setting(key, value)
     await run_setting_hooks(key)
+    if key == "bot_name":
+        # Имя бота ставится в Telegram ПОСЛЕ записи; отказ Telegram возвращает прежнее
+        # значение (`revert_setting` ниже) и сообщает менеджеру — services/bot_profile.py.
+        from services.bot_profile import after_name_saved_by_admin
+
+        await after_name_saved_by_admin(admin_id, previous)
+
+
+async def revert_setting(admin_id: int | None, key: str, previous: str | None) -> None:
+    """Откат значения после отказа внешней стороны (Telegram не принял имя бота). Без
+    реакций на правку: возвращается то, что уже действовало."""
+    logger.info(f"admin={admin_id} setting {key} <- {previous!r} (откат: Telegram не принял)")
+    if previous is None:
+        await db.delete_setting(key)
+    else:
+        await db.set_setting(key, previous)
 
 
 async def delete_setting_by_admin(admin_id: int | None, key: str) -> None:

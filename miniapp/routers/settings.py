@@ -701,6 +701,8 @@ async def settings_batch(
         saved: list[str] = []
         if not errors and not needs_confirm and not stale:
             # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
+            # Имя бота: прежнее значение — в очередь, бот вернёт его, если Telegram откажет.
+            prev_bot_name = await get_setting("bot_name")
             for change in body.changes:
                 key = change.key
                 logger.info(f"admin {p.telegram_id} правит настройку {key}")
@@ -713,7 +715,8 @@ async def settings_batch(
                 # процессе бота — просим его через очередь, как после записи из бота.
                 from miniapp.outbox import enqueue
 
-                await enqueue("settings_changed", {"keys": saved, "by": p.telegram_id})
+                await enqueue("settings_changed", {"keys": saved, "by": p.telegram_id,
+                                                   "prev_bot_name": prev_bot_name})
             # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
             # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
             # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам

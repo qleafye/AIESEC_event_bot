@@ -13,6 +13,7 @@ from database import db
 import services.scheduler as sched
 from services import bot_profile, miniapp_outbox
 import settings_ops
+from settings_audit import set_setting_by_admin
 from settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
@@ -57,11 +58,26 @@ def test_key_is_in_registry_and_on_event_screen():
     assert "bot_description" in _EVENT_GROUP_KEYS  # описание «О боте» — на том же экране
 
 
-def test_bot_process_applies_name_before_saving(tmp_path, monkeypatch):
+def test_precheck_never_calls_telegram(tmp_path, monkeypatch):
+    """До записи — только длина и пустота: запись ещё может не состояться (подтверждение,
+    отмена), а имя в Telegram уже сменилось бы."""
     bot = _ready(tmp_path, monkeypatch, _Bot())
-    error = asyncio.run(settings_ops.cross_setting_error("bot_name", "Юлид’26 · регистрация"))
-    assert error is None
+    assert asyncio.run(settings_ops.cross_setting_error("bot_name", "Юлид’26 · регистрация")) is None
+    assert "64" in asyncio.run(settings_ops.cross_setting_error("bot_name", "я" * 65))
+    assert "пустым" in asyncio.run(bot_profile.precheck_bot_name("   "))
+    check = asyncio.run(settings_ops.validate_batch_item(
+        "bot_name", "я" * 70, visible_codes=[], selected_city=None, cities_on=False,
+    ))
+    assert check.error and "64" in check.error
+    assert bot.set_calls == []
+
+
+def test_saved_in_bot_is_applied_once_after_write(tmp_path, monkeypatch):
+    bot = _ready(tmp_path, monkeypatch, _Bot())
+    asyncio.run(set_setting_by_admin(1, "bot_name", "Юлид’26 · регистрация"))
     assert bot.set_calls == ["Юлид’26 · регистрация"]
+    assert bot.sent == []
+    assert asyncio.run(db.get_setting("bot_name")) == "Юлид’26 · регистрация"
 
 
 def test_same_name_is_not_resent(tmp_path, monkeypatch):
@@ -72,11 +88,23 @@ def test_same_name_is_not_resent(tmp_path, monkeypatch):
     assert bot.set_calls == []
 
 
-def test_rate_limit_becomes_human_error(tmp_path, monkeypatch):
+def test_refusal_in_bot_reverts_value_and_tells_admin(tmp_path, monkeypatch):
     bot = _ready(tmp_path, monkeypatch, _Bot(fail=_retry(5400)))
-    error = asyncio.run(settings_ops.cross_setting_error("bot_name", "Новое имя"))
-    assert error and "1 ч 30 мин" in error and "прежним" in error
-    assert "Flood" not in error and "Retry" not in error
+    asyncio.run(db.set_setting("bot_name", "Старое имя"))
+    asyncio.run(set_setting_by_admin(7, "bot_name", "Новое имя"))
+    assert asyncio.run(db.get_setting("bot_name")) == "Старое имя"
+    (chat_id, text), = bot.sent
+    assert chat_id == 7 and "1 ч 30 мин" in text and "«Старое имя»" in text
+    assert "Flood" not in text and "Retry" not in text
+
+
+def test_refusal_without_previous_value_clears_setting(tmp_path, monkeypatch):
+    bad = _Bot(fail=TelegramBadRequest(method=SetMyName(name="x"), message="Bad Request: name invalid"))
+    _ready(tmp_path, monkeypatch, bad)
+    asyncio.run(set_setting_by_admin(7, "bot_name", "Имя"))
+    assert asyncio.run(db.get_setting("bot_name")) is None
+    (_chat, text), = bad.sent
+    assert "не принял" in text and "Bad Request" not in text
 
 
 def test_bad_request_and_network_errors_are_human(tmp_path, monkeypatch):
@@ -90,40 +118,53 @@ def test_bad_request_and_network_errors_are_human(tmp_path, monkeypatch):
     assert error and "через минуту" in error and "proxy" not in error
 
 
-def test_too_long_name_is_rejected_without_telegram(tmp_path, monkeypatch):
-    bot = _ready(tmp_path, monkeypatch, _Bot())
-    error = asyncio.run(settings_ops.cross_setting_error("bot_name", "я" * 65))
-    assert error and "64" in error
-    assert bot.set_calls == []
-
-
-def test_app_process_only_checks_length(tmp_path, monkeypatch):
-    """В процессе приложения бота нет: проверка до записи не зовёт Telegram."""
+def test_app_process_save_does_not_call_telegram(tmp_path, monkeypatch):
+    """Процесс приложения (бота нет): запись не зовёт Telegram — имя поставит бот из очереди."""
     _ready(tmp_path, monkeypatch, None)
-    assert asyncio.run(settings_ops.cross_setting_error("bot_name", "Имя")) is None
-    check = asyncio.run(settings_ops.validate_batch_item(
-        "bot_name", "я" * 70, visible_codes=[], selected_city=None, cities_on=False,
-    ))
-    assert check.error and "64" in check.error
+    asyncio.run(set_setting_by_admin(1, "bot_name", "Имя"))
+    assert asyncio.run(db.get_setting("bot_name")) == "Имя"
 
 
-def test_app_save_is_applied_by_bot_and_failure_reported_to_author(tmp_path, monkeypatch):
+def test_app_save_is_applied_by_bot(tmp_path, monkeypatch):
     ok = _ready(tmp_path, monkeypatch, _Bot())
     asyncio.run(db.set_setting("bot_name", "Из приложения"))
-    asyncio.run(miniapp_outbox._handle_row(ok, "settings_changed", {"keys": ["bot_name"], "by": 42}))
+    asyncio.run(miniapp_outbox._handle_row(
+        ok, "settings_changed", {"keys": ["bot_name"], "by": 42, "prev_bot_name": "Было"}))
     assert ok.set_calls == ["Из приложения"] and ok.sent == []
-
-    limited = _Bot(fail=_retry(120))
-    asyncio.run(miniapp_outbox._handle_row(limited, "settings_changed", {"keys": ["bot_name"], "by": 42}))
-    assert len(limited.sent) == 1
-    chat_id, text = limited.sent[0]
-    assert chat_id == 42 and "2 мин" in text and "не применилось" in text
+    assert asyncio.run(db.get_setting("bot_name")) == "Из приложения"
 
 
-def test_saving_name_hook_does_not_call_telegram_twice(tmp_path, monkeypatch):
-    """Хук записи `bot_name` не трогает: имя уже поставила проверка до записи."""
-    from settings_audit import set_setting_by_admin
+def test_app_refusal_reverts_value_and_tells_author(tmp_path, monkeypatch):
+    limited = _ready(tmp_path, monkeypatch, _Bot(fail=_retry(120)))
+    asyncio.run(db.set_setting("bot_name", "Из приложения"))
+    asyncio.run(miniapp_outbox._handle_row(
+        limited, "settings_changed", {"keys": ["bot_name"], "by": 42, "prev_bot_name": "Было"}))
+    assert asyncio.run(db.get_setting("bot_name")) == "Было"
+    (chat_id, text), = limited.sent
+    assert chat_id == 42 and "2 мин" in text and "не сменилось" in text
 
-    bot = _ready(tmp_path, monkeypatch, _Bot())
-    asyncio.run(set_setting_by_admin(1, "bot_name", "Имя"))
-    assert bot.set_calls == []
+
+def test_newer_edit_is_not_overwritten_by_revert(tmp_path, monkeypatch):
+    """Пока Telegram отвечал, имя успели поменять ещё раз — откат его не трогает."""
+    bot = _ready(tmp_path, monkeypatch, _Bot(fail=_retry(60)))
+    asyncio.run(db.set_setting("bot_name", "Попытка"))
+    original_get = bot.get_my_name
+
+    async def get_and_race():
+        await db.set_setting("bot_name", "Ещё новее")
+        return await original_get()
+
+    bot.get_my_name = get_and_race
+    asyncio.run(bot_profile.apply_saved_name(bot, "Было", 1))
+    assert asyncio.run(db.get_setting("bot_name")) == "Ещё новее"
+
+
+def test_startup_syncs_name_separately_from_description():
+    import inspect
+    import main
+
+    src = inspect.getsource(main)
+    i_profile = src.index("await sync_bot_profile(bot)")
+    i_name = src.index("await sync_bot_name(bot)")
+    between = src[i_profile:i_name]
+    assert "except Exception" in between and "try:" in between
