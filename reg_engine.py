@@ -44,7 +44,7 @@ from cities import (
     get_setting_typed_for_city, is_city_registration_open,
     normalize_city, open_cities, per_city_key,
 )
-from reg_labels import REG_LABELS
+from reg_labels import DELEGATE_LABELS, REG_LABELS
 import reg_options as _opts
 from services.i18n import tr as _tr
 from i18n_ui_en import EN_TO_RU as _EN_TO_RU
@@ -242,6 +242,12 @@ def label_for(step_key: str) -> str:
     """Человеческая подпись шага — та же строка, что у бота в админке; фоллбэк на step_key
     остаётся только для ключей, которых нет ни в REG_FLOW, ни в REG_LABELS."""
     return REG_LABELS.get(label_key_for(step_key), step_key)
+
+
+def delegate_label_for(step_key: str) -> str:
+    """Подпись шага для делегата: служебные уточнения админской подписи (`DELEGATE_LABELS`)
+    заменены человеческой, остальные шаги — как `label_for`."""
+    return DELEGATE_LABELS.get(label_key_for(step_key)) or label_for(step_key)
 
 # Phase 21 (21-11, D-13): шаги, не редактируемые при правке уже поданной анкеты («город/трек/
 # согласия — другая заявка»). Согласия — pre-flow, не запись REG_FLOW, поэтому их сюда
@@ -2085,7 +2091,7 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     сильнее группы) — флаг её не касается вовсе, сохраняет собственную деградацию lookup."""
     step_type = REG_STEP_TYPES.get(step_key, "text")
     ui_type = _ui_type_for(step_key, step_type)
-    label = label_for(step_key)
+    label = delegate_label_for(step_key)
     resume_mode_value = None
     if step_key == "resume":
         resume_mode_value = await resume_mode(event_city)
