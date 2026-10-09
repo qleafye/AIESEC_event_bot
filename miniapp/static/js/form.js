@@ -142,18 +142,32 @@ function intControl(h, spec, value, onChange) {
   return { control: input };
 }
 
+// Приёмка 09.10: нативное `<input type="date">` спорило со всеми текстами шага — вопрос
+// («Напиши дату рождения в формате ДД.ММ.ГГГГ»), подсказка и ошибка формата из реестра и
+// движка говорят о ручном вводе «ДД.ММ.ГГГГ», а в пикер такое не впечатать. Выбрано одно:
+// текстовое поле «ДД.ММ.ГГГГ», как в чате, с цифровой клавиатурой и точками, которые поле
+// ставит само («15032007» → «15.03.2007»). Сервер принимает и этот формат, и ISO.
+// Автоперехода нет (приёмка 17.09, находка 1): ответ уходит по «Дальше».
+const DATE_DIGITS_MAX = 8;
+
+export function maskDateInput(raw) {
+  const digits = String(raw || "").replace(/\D/g, "").slice(0, DATE_DIGITS_MAX);
+  const day = digits.slice(0, 2);
+  const month = digits.slice(2, 4);
+  const year = digits.slice(4);
+  return day + (month ? `.${month}` : "") + (year ? `.${year}` : "");
+}
+
 function dateControl(h, spec, value, onChange) {
-  const input = h("input", { class: "input", type: "date", id: `f-${spec.key}` });
-  // Сервер хранит дату как в чате — «ДД.ММ.ГГГГ», а нативное поле понимает только ISO.
-  const ru = typeof value === "string" ? value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/) : null;
-  if (ru) input.value = `${ru[3]}-${ru[2]}-${ru[1]}`;
-  else if (value) input.value = value;
-  // Приёмка 17.09 (находка 1): автопереход по `change` СНЯТ — на мобильных пикерах `change`
-  // стреляет на КАЖДОЙ смене части даты (месяц/год выбраны, день ещё нет), значение уже
-  // непусто (браузер подставляет текущий день по умолчанию), и мастер уводил делегата на
-  // следующий шаг раньше, чем тот успел выбрать день. Дата — единственный тип, где «одно
-  // действие» (открыл пикер) не гарантирует «один законченный ответ»: коммит только по кнопке
-  // «Дальше», как раньше было у текстовых полей.
+  const input = h("input", { class: "input", type: "text", inputmode: "numeric", autocomplete: "off", id: `f-${spec.key}` });
+  // Старое значение в ISO (нативное поле до 09.10) показываем так, как хранит сервер.
+  const iso = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+  input.value = iso ? `${iso[3]}.${iso[2]}.${iso[1]}` : (value || "");
+  input.addEventListener("input", () => {
+    const masked = maskDateInput(input.value);
+    if (masked !== input.value) input.value = masked;
+    onChange(input.value);
+  });
   input.addEventListener("change", () => onChange(input.value));
   return { control: input };
 }
