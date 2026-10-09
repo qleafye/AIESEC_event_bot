@@ -379,6 +379,8 @@ _ADMIN_HELP_LINES = [
 
 @router.message(Command("admin"))
 async def cmd_admin_help(message: types.Message, state: FSMContext):
+    if (await state.get_state() or "").startswith("BotAvatar:"):  # ушёл с экрана аватара
+        await state.clear()
     caps = await resolve_capabilities(message.from_user.id)
     rows = _visible_menu_rows(caps)
 

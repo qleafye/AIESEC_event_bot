@@ -623,5 +623,6 @@ class CoinsTransfer(StatesGroup):
 
 
 class BotAvatar(StatesGroup):
-    # «🖼 Аватар бота» (handlers/admin_bot_avatar.py): ждём фото для аватара.
+    # «🖼 Аватар бота» (handlers/admin_bot_avatar.py): ждём фото, затем «Поставить?».
     photo = State()
+    confirm = State()

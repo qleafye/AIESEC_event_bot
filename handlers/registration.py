@@ -2008,6 +2008,8 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
 async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command: CommandObject | None = None):
     user_id = message.from_user.id
     logger.info(f"User {user_id} requested /start")
+    if (await state.get_state() or "").startswith("BotAvatar:"):  # /start снимает ожидание аватара
+        await state.clear()
 
     # Phase 07.1 (CITY-03): moved up from its original position further down in this function
     # (below the pre-selection gate) so the "start" funnel write right below can already carry
