@@ -242,6 +242,7 @@ _SUMMARY_LABELS_EN = {
     # reg_engine.summary_fields() computed
     "Работа": "Work",
     "Амбассадор": "Ambassador",
+    "Город форума": "Forum city",
     "Резюме": "CV",
     "прикреплено файлом": "attached as a file",
 }

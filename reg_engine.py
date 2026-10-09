@@ -3130,6 +3130,10 @@ _SUMMARY_FIELD_LABELS = [
 ]
 
 
+# Служебный ключ (с подчёркиванием — в БД/лист не уходит) с ПОДПИСЬЮ города форума для сводки.
+SUMMARY_EVENT_CITY_KEY = "_event_city_label"
+
+
 def summary_fields(answers: dict) -> list:
     """QW-01: данные сводки анкеты БЕЗ разметки (T-21-03 — HTML собирает вызывающий, не
     движок). Перенос дословный из handlers/registration.py::_build_summary — тот же список
@@ -3153,7 +3157,13 @@ def summary_fields(answers: dict) -> list:
     # без шага reg_q_work ключа нет вовсе (None) — иначе у каждого делегата стояло бы «Работа: Нет».
     work_answer = answers.get("work_status")
     fields.append(("Работа", None if work_answer is None else ("Да" if work_answer else "Нет")))
-    fields.append(("Амбассадор", "Да" if answers.get("is_ambassador_candidate") else None))
+    # Приёмка 09.10: «Пока нет» хранится как False и раньше в сводке не показывался — делегат не
+    # видел свой ответ. Та же схема, что у «Работы»: None (вопрос не задавали) -> строки нет.
+    ambassador_answer = answers.get("is_ambassador_candidate")
+    fields.append(("Амбассадор", None if ambassador_answer is None else ("Да" if ambassador_answer else "Нет")))
+    # Приёмка 09.10: город ФОРУМА (event_city) — первой строкой. Подпись готовит вызывающий
+    # (`registration._summary_data`, async-реестр городов), движок только кладёт её в список.
+    fields.insert(0, ("Город форума", answers.get(SUMMARY_EVENT_CITY_KEY)))
     out = [(label, value) for label, value in fields if not (value is None or str(value) == "")]
     if answers.get("resume_file_id"):
         out.append(("Резюме", "прикреплено файлом"))
