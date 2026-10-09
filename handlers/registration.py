@@ -2183,40 +2183,11 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
         is_returning = False
     if is_returning:
-        # Квик 260922-wrg (задача 1): отклонённый ТЕКУЩЕГО сезона при «нельзя» не видит
-        # баннер возвращенца и кнопку rereg_start вовсе — только текст закрытия. Возвращенца
-        # ПРОШЛОГО сезона (и отклонённого, и approved/pending) resubmit_gate не касается — он
-        # всегда True (не наш гейт, reg_engine.is_past_season_row в resubmit_gate это уже
-        # учитывает), сюда попадает read-through без разницы в поведении.
-        _rs_ok, _rs_text = await reg_edit_policy.resubmit_gate(user)
-        if not _rs_ok:
-            await _send_welcome(message, start_text, start_photo, await get_main_menu_kb(user_id), user_id)
-            await reg_i18n.say(message, _rs_text)
-            return
-        prev_label = (user.get("season") or "").strip() or "прошлом событии"
-        returning_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
-        returning_text = await reg_i18n.tr_for(message, returning_text)  # Quick 260906: ДО .replace(season)!
-        # T-073-03-05: str.replace, NOT .format() — an admin-authored text may contain other
-        # unrelated {} that .format() would raise on.
-        returning_text = returning_text.replace("{season}", prev_label)
-        await _send_welcome(message, returning_text, start_photo, await get_main_menu_kb(user_id), user_id)
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="\U0001f680 Обновить анкету", callback_data="rereg_start")
-        ]])
-        # Phase 17.1 (17.1-02): CTA под баннером — из реестра, как и сам баннер выше.
-        await reg_i18n.say(message, await get_setting_typed("start_returning_cta_text"), reply_markup=kb)
-        # The tap on rereg_start arrives as a SEPARATE update, after this /start's local
-        # variables (referrer_id/source_tag/party_track/dl_event_city) are gone — preserve
-        # whatever this deep-link carried into FSM now, same idiom as the city-fork early
-        # return below, so the campaign/referral/city attribution is not lost.
-        if referrer_id:
-            await state.update_data(referrer_id=referrer_id)
-        if source_tag:
-            await state.update_data(source=source_tag, _source_from_tag=True)
-        if party_track:
-            await state.update_data(participant_type=party_track, _track_from_link=True)
-        if dl_event_city:
-            await state.update_data(event_city=dl_event_city)
+        # Приёмка 09.10 (D3): прошлый сезон — баннер возвращенца, отклонённый в этом — свой экран.
+        from handlers.reg_returning import offer_returning
+        await offer_returning(message, state, user, event_season, start_text, start_photo,
+                              referrer_id=referrer_id, source_tag=source_tag,
+                              party_track=party_track, dl_event_city=dl_event_city)
         return
 
     # Phase 21 (21-09, D-18): branch (b) — a delegate already registered THIS season (not

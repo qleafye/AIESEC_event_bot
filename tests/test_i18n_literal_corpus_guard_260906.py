@@ -31,6 +31,8 @@ SCANNED_FILES = [
     ROOT / "handlers" / "reg_steps.py",
     ROOT / "handlers" / "reg_resume.py",
     ROOT / "handlers" / "reg_handoff.py",
+    # Приёмка 09.10 (D3): экран /start возвращенца и отклонённого в этом сезоне.
+    ROOT / "handlers" / "reg_returning.py",
     # Квик 260917-en: расширение на остальные швы, которые теперь тоже зовут reg_i18n.say/
     # tr_for/tr_text/tr_fmt — полный чат бота, не только анкета (item 4 приёмки 17.09).
     ROOT / "handlers" / "user_actions.py",

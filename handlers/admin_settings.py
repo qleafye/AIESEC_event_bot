@@ -97,7 +97,7 @@ _EVENT_FIELD_ORDER = [
     # читает «дата для делегата → дата для расчётов» подряд; под ней — длина форума (25.09).
     "event_date", "forum_date", "sos_active_days", "event_time", "event_place_name",
     "event_place_address", "contact_person", "contact_vk", "contact_tg", "start_text",
-    "start_text_registered", "start_text_returning",
+    "start_text_registered", "start_text_returning", "start_text_rejected",
     # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два
     # экрана «прошлый ответ» анкеты, рядом со start_text_returning (то же «возвращение»).
     "start_returning_cta_text", "recall_resume_prompt_text", "recall_generic_prompt_text",

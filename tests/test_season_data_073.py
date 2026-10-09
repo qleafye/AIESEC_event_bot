@@ -153,6 +153,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "bot_description", "bot_short_description",
         # 09.10: «🤖 Имя бота» — рядом с типом события.
         "bot_name",
+        # 10.10 (приёмка): приветствие отклонённому в этом сезоне — рядом с возвращенцем.
+        "start_text_rejected",
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
