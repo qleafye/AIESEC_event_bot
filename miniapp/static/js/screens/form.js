@@ -1047,6 +1047,10 @@ export async function render(root, params, ctx) {
     // предыдущий вопрос анкеты, а на экран выбора способа (A-03 CONTEXT) — тот же закрытый
     // список, что `handlers/reg_extra_steps._FORK_BACK_STEPS` в боте (сверено, не общий
     // импорт — тот же приём дублирования, что литералы «Пропустить»/«Отмена» в проекте).
+    // Порог «длинного» вопроса для плиты шага (см. drawStep): дальше крупный заголовок на
+    // телефоне занимает больше половины экрана.
+    const LONG_PROMPT_CHARS = 90;
+
     const FORK_BACK_STEPS = new Set(["resume_link", "mini_projects", "mini_portfolio", "mini_direction"]);
 
     // Phase 30 (30-05, задача 4, A2-08, 30-UI-SPEC.md § «Настройки в шапке анкеты»): поповер
@@ -1493,11 +1497,17 @@ export async function render(root, params, ctx) {
           h("span", { class: "plate-eyebrow", text: progressLabel }),
         )
         : null;
+      // Приёмка 09.10: длинный вопрос (резюме — абзац со списком «1. 2. 3.») крупным курсивом
+      // занимал весь экран телефона, а переносы строк схлопывались в одну строку. Такой вопрос
+      // уходит под плиту обычным текстом с переносами, в заголовке — короткая подпись шага.
+      const promptText = spec.prompt || spec.label || "";
+      const longPrompt = promptText.length > LONG_PROMPT_CHARS || promptText.includes("\n");
       const plate = h("section", { class: "plate plate--form" },
         plateRow,
-        h("h1", { text: spec.prompt || spec.label, class: isV2 ? "step-title" : null }),
+        h("h1", { text: longPrompt ? labelText(spec.label) : promptText, class: isV2 ? "step-title" : null }),
         spec.help ? h("p", { class: "plate-sub", text: spec.help }) : null,
       );
+      const longPromptNode = longPrompt ? h("p", { class: "step-prompt-long", text: promptText }) : null;
 
       // Phase 28 (28-05, SU-04, 28-UI-SPEC §1/§3): развилка резюме — тап кнопки И ЕСТЬ переход,
       // футера «Дальше» на этом экране нет вовсе (isForkPick); mini_portfolio — единственный
@@ -1599,6 +1609,7 @@ export async function render(root, params, ctx) {
         headerRow,
         progressRow,
         plate,
+        longPromptNode,
         // Квик 12.09 (UI-аудит, пункт 9): пояснение шага (например case_optin.description) —
         // Body-роль (28-UI-SPEC §5, 15px, var(--text)), поэтому живёт ВНЕ акцентной плиты, а
         // не среди spec.prompt/spec.help, которые плита уже рисует выше.
