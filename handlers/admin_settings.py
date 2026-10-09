@@ -2731,6 +2731,9 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             return
         if await ph.gate(message, state, key, value, ack=ack):  # пропавшая/опечатанная {подстановка}
             return
+        if key == "event_type" and value == "skillup":  # пресет СкиллАп — только через подтверждение
+            from handlers.admin_reg_config import skillup_event_type_confirm  # ленивый: цикл импорта
+            return await skillup_event_type_confirm(message, state)
 
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
     # ДО гейта 260815-3hw ниже (тот смотрит только на НОВОЕ имя, про брошенную старую не

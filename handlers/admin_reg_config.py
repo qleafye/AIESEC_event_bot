@@ -278,6 +278,34 @@ async def admin_event_preset(callback: types.CallbackQuery):
     await callback.answer()
 
 
+async def skillup_confirm_screen(from_event_type: bool = False) -> tuple[str, InlineKeyboardMarkup]:
+    """Экран подтверждения пресета «🎓 Форум СкиллАп» — один на два входа: кнопка пресета в
+    «🎛 Тип события (пресет)» и выбор `skillup` в «🎭 Тип события». Владелец 09.10: тот же
+    текст, что приложение показывает при смене типа на СкиллАп (settings_ops.dangerous_confirm_key)
+    — один ключ реестра, не дубль. Он говорит, что пресет НЕ настраивает (тексты предложения
+    ссылки, ступени), и где это сделать самому. Текст редактируемый и не из HTML_SETTINGS —
+    экранируем. Со входа «🎭 Тип события» «Применить» ещё и записывает сам тип (`:et`), а
+    «Отмена» возвращает к этой настройке."""
+    confirm = await get_setting_typed("skillup_preset_confirm_text")
+    apply_cb, back_cb = (
+        ("preset_confirm:skillup:et", "settings_edit:event_type") if from_event_type
+        else ("preset_confirm:skillup", "admin_event_preset")
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Применить", callback_data=apply_cb)],
+        [InlineKeyboardButton(text="← Отмена", callback_data=back_cb)],
+    ])
+    return f"<b>{REG_PRESETS['skillup']['label']}</b>\n\n{html_module.escape(confirm or '')}", kb
+
+
+async def skillup_event_type_confirm(message: types.Message, state) -> None:
+    """«🎭 Тип события» = skillup (текстом или кнопкой) — не применять сразу, а показать то же
+    подтверждение пресета; до «✅ Применить» ничего не пишется."""
+    await state.clear()
+    text, kb = await skillup_confirm_screen(from_event_type=True)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
 @router.callback_query(F.data.startswith("preset_apply:"))
 async def preset_apply(callback: types.CallbackQuery):
     key = callback.data.split(":", 1)[1]
@@ -303,16 +331,8 @@ async def preset_apply(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_event_preset")],
     ])
     if key == "skillup":
-        # Владелец 09.10: тот же текст, что приложение показывает при смене «🎭 Тип события»
-        # на СкиллАп (settings_ops.dangerous_confirm_key) — один ключ реестра, не дубль. Он
-        # говорит, что пресет НЕ настраивает (тексты предложения ссылки, ступени), и где это
-        # сделать самому. Текст редактируемый и не из HTML_SETTINGS — экранируем.
-        confirm = await get_setting_typed("skillup_preset_confirm_text")
-        await callback.message.edit_text(
-            f"<b>{preset['label']}</b>\n\n{html_module.escape(confirm or '')}",
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+        text, kb = await skillup_confirm_screen()
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         await callback.answer()
         return
     await callback.message.edit_text(
@@ -332,7 +352,8 @@ async def preset_confirm(callback: types.CallbackQuery):
     # admin_reg_percity.py -- lazy import avoids a load-time cycle (that module imports the
     # _refresh_*_sheet_header trio back from THIS module, which must finish loading first).
     from handlers.admin_reg_percity import render_questions_text, build_questions_keyboard
-    key = callback.data.split(":", 1)[1]
+    # `:et` — подтверждение пришло из «🎭 Тип события» (skillup_confirm_screen): тип тоже пишем.
+    key, _, origin = callback.data.split(":", 1)[1].partition(":")
     preset = REG_PRESETS.get(key)
     if not preset:
         await callback.answer("Неизвестный пресет.", show_alert=True)
@@ -380,8 +401,10 @@ async def preset_confirm(callback: types.CallbackQuery):
         await _refresh_short_sheet_header()
         return
     await _apply_event_preset(key)
+    if origin == "et":
+        await set_setting_by_admin(admin_id, "event_type", key)
     alert = f"Пресет применён: {preset['label']}"
-    if event_type := preset.get("settings", {}).get("event_type"):
+    if event_type := preset.get("settings", {}).get("event_type") or (origin == "et" and key):
         alert += f"\nТип события: {option_label('event_type', event_type)}"
     await callback.answer(alert, show_alert=True)
     text = await render_questions_text()
