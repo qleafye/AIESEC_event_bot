@@ -3,7 +3,9 @@
 Одна страница-чек-лист + крошечный JSON-API на stdlib, чтобы трое тестировщиков на своих
 телефонах видели отметки друг друга. Состояние — один файл ``/data/state.json``:
 ``{"v": <версия>, "steps": {"<вкладка>:<шаг>": {"s": "ok|bad|skip|", "note": "...",
-"who": "...", "at": "ЧЧ:ММ"}}}``. Доступ — по коду из ссылки (``?k=...``), код задаётся
+"who": "...", "at": "ЧЧ:ММ"}}, "agent": {"<вкладка>:<шаг>": {"c": "<коммит стенда>",
+"note": "...", "at": "ДД.ММ ЧЧ:ММ"}}}``. «agent» — отметки агента-тестировщика «проверил в браузере»: отдельный
+словарь, отметок людей не касается; старый файл без него читается как раньше. Доступ — по коду из ссылки (``?k=...``), код задаётся
 переменной ``UAT_CODE``; пустой код = доступ открыт.
 
 Запуск: ``python app.py`` (порт 8005), в проде — контейнер ``uat-board`` на leafye,
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -56,6 +59,8 @@ def _read(path: str) -> bytes:
 
 _lock = threading.Lock()
 _ALLOWED = {"", "ok", "bad", "skip"}
+_COMMIT = re.compile(r"[0-9a-fA-F]{7,40}")
+_AGENT_MAX_KEYS = 600
 
 
 def _load(path: str | None = None) -> dict:
@@ -64,10 +69,12 @@ def _load(path: str | None = None) -> dict:
             state = json.load(f)
         if isinstance(state, dict) and isinstance(state.get("steps"), dict):
             state.setdefault("v", 0)
+            if not isinstance(state.get("agent"), dict):
+                state["agent"] = {}
             return state
     except (OSError, ValueError):
         pass
-    return {"v": 0, "steps": {}}
+    return {"v": 0, "steps": {}, "agent": {}}
 
 
 def _store(state: dict, path: str | None = None) -> None:
@@ -91,6 +98,34 @@ def _mark(state: dict, body: dict) -> bool:
         state["steps"].pop(key, None)
     else:
         state["steps"][key] = {"s": s, "note": note, "who": who, "at": _msk_hhmm()}
+    state["v"] = int(state.get("v", 0)) + 1
+    return True
+
+
+def _mark_agent(state: dict, body: dict) -> bool:
+    """Отметка агента-тестировщика: ``key`` или ``keys`` (пачка), ``commit`` (hex 7-40 — коммит стенда),
+    необязательная ``note``; ``off: true`` снимает отметки с этих шагов. Всё или ничего: если хоть один
+    ключ или коммит не годится, ничего не меняется. Отметки людей (``steps``) не трогаем."""
+    keys = body.get("keys")
+    if keys is None:
+        keys = [body.get("key")]
+    if not isinstance(keys, list) or not keys or len(keys) > _AGENT_MAX_KEYS:
+        return False
+    if not all(isinstance(k, str) and 0 < len(k.strip()) <= 80 for k in keys):
+        return False
+    keys = [k.strip() for k in keys]
+    agent = state.setdefault("agent", {})
+    if body.get("off") is True:
+        for k in keys:
+            agent.pop(k, None)
+    else:
+        commit = body.get("commit")
+        if not isinstance(commit, str) or not _COMMIT.fullmatch(commit.strip()):
+            return False
+        note = str(body.get("note", ""))[:300].strip()
+        at = _msk_hhmm()
+        for k in keys:
+            agent[k] = {"c": commit.strip().lower(), "note": note, "at": at}
     state["v"] = int(state.get("v", 0)) + 1
     return True
 
@@ -122,7 +157,8 @@ def _reset(path: str | None = None) -> dict:
     path = path or DATA
     _backup(path)
     state = _load(path)
-    state = {"v": int(state.get("v", 0)) + 1, "steps": {}}
+    # Отметки агента привязаны к коммиту стенда: новый круг приёмки начинается и без них.
+    state = {"v": int(state.get("v", 0)) + 1, "steps": {}, "agent": {}}
     _store(state, path)
     return state
 
@@ -390,6 +426,14 @@ class Handler(BaseHTTPRequestHandler):
                 state = _load()
                 if not _mark(state, body):
                     self._json(400, {"error": "bad_step"})
+                    return
+                _store(state)
+                self._json(200, state)
+        elif parts.path == "/api/agent":
+            with _lock:
+                state = _load()
+                if not _mark_agent(state, body):
+                    self._json(400, {"error": "bad_agent_mark"})
                     return
                 _store(state)
                 self._json(200, state)
