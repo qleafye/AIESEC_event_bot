@@ -97,6 +97,7 @@ from database.db import (
 )
 from services import scheduler as _sched
 from services.checkin import ENTRY_POINT, checkin_denial
+from services.ru_plural import ru_plural
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
@@ -137,13 +138,7 @@ _MONTH_EN = (
 
 # ── Подписи (RU/EN код-литералы, см. докстринг модуля) ──────────────────────────────────────
 
-def _ru_plural(n: int, one: str, few: str, many: str) -> str:
-    n = abs(int(n))
-    if n % 10 == 1 and n % 100 != 11:
-        return one
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return few
-    return many
+_ru_plural = ru_plural  # общая функция склонения (services/ru_plural.py)
 
 
 def _hero_caption(key: str, n: int, lang: str) -> str:
