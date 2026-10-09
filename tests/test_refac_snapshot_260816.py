@@ -1550,6 +1550,9 @@ admin|callback_query|cointr_tab|cointr_tab:*
 admin|callback_query|cointr_go|cointr_go:*
 admin|callback_query|settings_enum_pick|settings_enum_pick:*
 admin|callback_query|export_participants|admin_export_participants
+admin|callback_query|decresend_start|decresend_start:*
+admin|callback_query|decresend_go|decresend_go:*
+admin|callback_query|decresend_cancel|decresend_cancel:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2286,7 +2289,10 @@ def test_snapshot_total_handler_count_is_292():
     # (export_participants) перед prog_fbday_open (1085 -> 1086).
     # 09.10 (ступени амбассадоров): +3 admin.callback_query — amb_exclude_start_from_list сразу
     # после amb_exclude_start, amb_fill_preview/amb_fill_go в конце группы ambt_* (1086 -> 1089).
-    assert len(GOLDEN_SNAPSHOT) == 1089
+    # 09.10 (переотправка решения одному делегату, handlers/admin_resend_decision.py): +3 admin.
+    # callback_query (decresend_start/decresend_go/decresend_cancel) перед prog_fbday_open; чистая
+    # вставка (1089 -> 1092).
+    assert len(GOLDEN_SNAPSHOT) == 1092
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
