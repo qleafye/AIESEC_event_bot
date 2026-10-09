@@ -238,3 +238,136 @@ def test_quiet_hours_failure_after_enqueue_marks_question_and_retry_does_not_que
         assert bot.sent == []
 
     asyncio.run(scenario())
+
+
+# ── 3: утренняя отправка из очереди упала ────────────────────────────────────────────────
+
+class _FlushBot:
+    def __init__(self, exc):
+        self.exc = exc
+        self.sent = []
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        if chat_id == DELEGATE_ID:
+            raise self.exc
+        self.sent.append((chat_id, text))
+
+    async def copy_message(self, chat_id, from_chat_id, message_id, caption=None):
+        if chat_id == DELEGATE_ID:
+            raise self.exc
+
+
+async def _queue_answer(qid, text="Ответ ночью"):
+    await _quiet_all_day()
+    m = _AdminMessage(text, qid)
+    await admin_mod.admin_reply_to_question(m, _Bot())
+    assert await qh.queued_count() >= 1
+
+
+def _install(bot):
+    from services import scheduler as sched
+    sched._bot = bot
+
+
+def test_flush_failure_blocked_reopens_question_and_tells_author(tmp_path, monkeypatch):
+    from aiogram.exceptions import TelegramForbiddenError
+
+    _ready(tmp_path, "qguard_flush_block.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await _queue_answer(qid)
+
+        bot = _FlushBot(TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user"))
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+
+        row = await db.get_question(qid)
+        assert row["delivered_at"] is None
+        assert row["answered_by"] == ADMIN_ID
+        assert row["answer_text"] == "Ответ ночью"
+
+        to_author = [t for cid, t in bot.sent if cid == ADMIN_ID]
+        assert len(to_author) == 1, bot.sent
+        assert f"Не удалось доставить ответ на вопрос #{qid}" in to_author[0]
+        assert "заблокировал бота" in to_author[0]
+
+    asyncio.run(scenario())
+
+
+def test_flush_failure_transient_says_unavailable_and_allows_retry(tmp_path, monkeypatch):
+    _ready(tmp_path, "qguard_flush_net.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await _queue_answer(qid)
+
+        bot = _FlushBot(TimeoutError("network blip"))
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+
+        row = await db.get_question(qid)
+        assert row["delivered_at"] is None
+        to_author = [t for cid, t in bot.sent if cid == ADMIN_ID]
+        assert len(to_author) == 1, bot.sent
+        assert f"Не удалось доставить ответ на вопрос #{qid}" in to_author[0]
+        assert "недоступен" in to_author[0]
+        assert "заблокировал" not in to_author[0]
+
+        # Вопрос снова «в работе» — тот же менеджер может отправить ответ ещё раз.
+        await db.set_setting("quiet_hours_enabled", "off")
+        m = _AdminMessage("Ответ ещё раз", qid)
+        ok_bot = _Bot()
+        await admin_mod.admin_reply_to_question(m, ok_bot)
+        assert len(_delegate_msgs(ok_bot)) == 1
+        assert (await db.get_question(qid))["delivered_at"] is not None
+
+    asyncio.run(scenario())
+
+
+def test_flush_failure_of_non_text_answer_notifies_author_once(tmp_path, monkeypatch):
+    """Не-текстовый ответ — две строки очереди (шапка + копия). Обе упали — автору одно
+    сообщение, не два."""
+    _ready(tmp_path, "qguard_flush_copy.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    class _VoiceMessage(_AdminMessage):
+        async def send_copy(self, chat_id):
+            raise AssertionError("в тихие часы — только очередь")
+
+    async def scenario():
+        await _quiet_all_day()
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        m = _VoiceMessage(None, qid)
+        m.text = None
+        m.html_text = None
+        await admin_mod.admin_reply_to_question(m, _Bot())
+        assert await qh.queued_count() == 2
+
+        bot = _FlushBot(TimeoutError("network blip"))
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+
+        assert (await db.get_question(qid))["delivered_at"] is None
+        assert len([1 for cid, _t in bot.sent if cid == ADMIN_ID]) == 1, bot.sent
+
+    asyncio.run(scenario())
+
+
+def test_flush_success_keeps_question_answered(tmp_path, monkeypatch):
+    _ready(tmp_path, "qguard_flush_ok.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await _queue_answer(qid)
+        bot = _Bot()
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+        assert len(_delegate_msgs(bot)) == 1
+        assert [t for cid, t in bot.sent if cid == ADMIN_ID] == []
+        assert (await db.get_question(qid))["delivered_at"] is not None
+
+    asyncio.run(scenario())

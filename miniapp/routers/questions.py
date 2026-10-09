@@ -260,6 +260,7 @@ async def questions_answer(
                 request.app.state.cfg, row["user_id"], answer_text,
             ),
             parse_mode=None,
+            question_id=qid,
         )
     except TelegramApiError as exc:
         logger.error("questions: не удалось доставить ответ %s (%s)", qid, exc.reason)
