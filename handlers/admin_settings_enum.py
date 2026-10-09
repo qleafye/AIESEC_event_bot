@@ -8,10 +8,13 @@
 
 Шов к общему `admin.router`, импортируется хвостом `handlers/admin.py`.
 """
+import html as html_module
+
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton
 
+from database.db import get_setting
 from handlers import admin_settings
 from handlers.admin import router
 from settings_schema import SETTINGS_SCHEMA, option_label
@@ -32,6 +35,35 @@ def enum_label(key: str, code: str) -> str:
     """Человеческая подпись варианта enum-ключа (общего или своего у города); не enum — как есть."""
     label = option_label(key, code)
     return _ON_OFF.get(code, label) if label == code and enum_options(key) else label
+
+
+def _now_value(key: str, value: str | None) -> str:
+    """HTML: подпись значения; не задано — подпись дефолта реестра «(по умолчанию)», а если
+    дефолта нет — «не выбрано» (менеджер видит, что действует сейчас)."""
+    if value:
+        return f"<b>{html_module.escape(enum_label(key, value))}</b>"
+    dflt = SETTINGS_SCHEMA.get(admin_settings._base_setting_key(key), {}).get("default")
+    if dflt is None or dflt == "":
+        return "<i>не выбрано</i>"
+    return f"<b>{html_module.escape(enum_label(key, str(dflt)))}</b> (по умолчанию)"
+
+
+def enum_now_line(key: str, current: str | None) -> str:
+    """«Сейчас: …» над кнопками enum на общем экране (обе шапки)."""
+    return f"Сейчас: {_now_value(key, current)}"
+
+
+async def city_now_line(key: str, current: str | None) -> str:
+    """Строка «Сейчас у города» на экране «✏️ Изменить для …». У enum без своего значения —
+    что действует («как везде» = общее значение или дефолт); у остальных — как раньше."""
+    if enum_options(key):
+        if current:
+            return f"Сейчас у города: {_now_value(key, current)}"
+        return f"Сейчас у города: как везде — {_now_value(key, await get_setting(key))}"
+    if current:
+        return f"Сейчас у города:\n<b>{html_module.escape(current)}</b>"
+    from handlers.admin_forum_date import is_city_only_key
+    return f"Сейчас у города: <i>{'даты нет' if is_city_only_key(key) else 'как везде'}</i>"
 
 
 def enum_rows(key: str, current: str | None) -> list[list[InlineKeyboardButton]]:
