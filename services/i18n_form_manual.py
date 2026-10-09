@@ -690,6 +690,12 @@ _ENGINE_DYNAMIC_EN = {
 # ── Голые ключи реестра (group=event/reg/game/pay) — хаб/статус/оплата/задания за пределами
 # готовых списков выше: подписи Mini App-анкеты, экрана статуса заявки, оплаты, монет, FAQ. ──
 _REGISTRY_TEXTS_EN = {
+    # reg_engine._STEP_HELP_RESUME_FORK / _STEP_HELP_RESUME_FORK_FILE_CHAT — подсказки развилки
+    # резюме (приложение и редактор в админке) и ветки «📎 Загрузить файл» в чате.
+    "Файл PDF или DOCX до 10 МБ, ссылка на резюме, текст об опыте или «нет резюме» — как удобнее.": (
+        "A PDF or DOCX file up to 10 MB, a link to your CV, a text about your experience, or «no CV» — whatever works for you."
+    ),
+    "Прикрепи файл резюме — PDF или DOCX до 10 МБ.": "Attach your CV file — PDF or DOCX up to 10 MB.",
     # Делегации вузов — тексты делегату, группа reg (delegation_welcome_text /
     # delegation_welcome_existing_text / delegation_game_off_text). RU-ключ — дефолт из
     # settings_schema.py байт-в-байт; меняется дефолт — меняются оба места одним коммитом.

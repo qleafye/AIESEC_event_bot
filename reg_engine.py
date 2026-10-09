@@ -780,7 +780,9 @@ async def help_default(
     if step_key == "resume":
         mode = await resume_mode(city_code)
         if mode == "fork":
-            return _STEP_HELP_RESUME_FORK if surface == "app" else _STEP_HELP_RESUME_FORK_FILE_CHAT
+            # "chat_file" — только ветка «📎 Загрузить файл» в чате; приложение и редактор
+            # подсказки в админке видят подсказку развилки.
+            return _STEP_HELP_RESUME_FORK_FILE_CHAT if surface == "chat_file" else _STEP_HELP_RESUME_FORK
         if mode == "text_only":
             return _STEP_HELP_RESUME_TEXT_ONLY_APP if surface == "app" else _STEP_HELP_RESUME_TEXT_ONLY_CHAT
         if surface == "app":
