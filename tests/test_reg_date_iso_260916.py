@@ -24,7 +24,10 @@ def test_garbage_keeps_format_error():
     )
 
 
-def test_date_control_converts_stored_value_to_iso():
+def test_date_control_shows_legacy_iso_value_like_chat():
+    """Приёмка 09.10: поле даты в приложении — текст «ДД.ММ.ГГГГ», как в чате (было нативное
+    поле с переводом в ISO). Старое ISO-значение показывается в формате чата."""
     js = (Path(__file__).resolve().parents[1] / "miniapp/static/js/form.js").read_text(encoding="utf-8")
     body = js.split("function dateControl", 1)[1].split("\n}\n", 1)[0]
-    assert "ru[3]" in body and "ru[1]" in body
+    assert "iso[3]" in body and "iso[1]" in body
+    assert 'type: "date"' not in body
