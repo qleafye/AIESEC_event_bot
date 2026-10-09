@@ -76,6 +76,27 @@ def _fmt(iso: str | None) -> str:
         return str(iso or "—")
 
 
+# Владелец 09.10: рейтинг волны берёт приглашённых только через баллы за них — при нуле
+# волна молча считает одни задания. Поведение рейтинга не меняем, только предупреждаем.
+ZERO_REFERRAL_WARNING = (
+    "⚠️ Баллов за приглашённого — 0: в рейтинге волны считаются только задания, "
+    "приглашённые в него не попадут. Задайте баллы, если волна про то, кто больше приведёт."
+)
+SET_REFERRAL_COINS_BUTTON = "💰 Задать баллы"
+
+
+async def _referral_coins_zero() -> bool:
+    from settings_schema import get_setting_typed
+    try:
+        return int(await get_setting_typed("ambassador_referral_coins") or 0) <= 0
+    except Exception:
+        return False  # сбой чтения — без предупреждения, карточка важнее
+
+
+def _set_coins_row() -> list[InlineKeyboardButton]:
+    return [InlineKeyboardButton(text=SET_REFERRAL_COINS_BUTTON, callback_data="admin_amb_points")]
+
+
 async def _city_display(city: str | None) -> str:
     return ALL_CITIES_LABEL if city is None else await cities.city_label(city)
 
@@ -119,7 +140,13 @@ async def _wave_card_screen(admin_id: int, wave: dict) -> tuple[str, InlineKeybo
             "нельзя."
         )
 
+    zero_coins = wave["state"] != "announced" and await _referral_coins_zero()
+    if zero_coins:
+        lines.append(ZERO_REFERRAL_WARNING)
+
     buttons: list[list[InlineKeyboardButton]] = []
+    if zero_coins:
+        buttons.append(_set_coins_row())
     if "dates" in editable:
         buttons.append([InlineKeyboardButton(text="📅 Даты", callback_data=f"waveedit:{wave['id']}:dates")])
     if "intro_text" in editable:
@@ -212,16 +239,20 @@ async def wave_activate_confirm(callback: types.CallbackQuery, state: FSMContext
         f"в дату начала волны, {_fmt(wave['starts_at'])} в 00:00"
         if starts_dt > now else "в течение минуты — дата начала уже наступила"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text="▶️ Да, запустить", callback_data=f"waveactivate_go:{wave_id}")],
         [InlineKeyboardButton(text="← Отмена", callback_data=f"wave:{wave_id}")],
-    ])
+    ]
+    warning = ""
+    if await _referral_coins_zero():
+        warning = "\n\n" + ZERO_REFERRAL_WARNING
+        rows.insert(1, _set_coins_row())
     await callback.message.edit_text(
         f"▶️ <b>Запустить {aw.wave_number_label(wave)}?</b>\n\n"
         f"Стартовое сообщение со списком заданий волны и дедлайнами уйдёт {when_text} всем "
         "участникам волны. До этого момента даты и состав заданий ещё можно поправить — "
-        "после отправки будет нельзя.",
-        parse_mode="HTML", reply_markup=kb,
+        "после отправки будет нельзя." + warning,
+        parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
     await callback.answer()
 
