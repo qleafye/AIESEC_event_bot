@@ -186,10 +186,13 @@ def test_coverage_frozen_before_is_fully_reachable(tmp_path):
 
 def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
     """Допустимые добавления сверх старого набора групп — «📋 Заявки» и (квик 260927)
-    «💬 Чат делегатов» с весами рейтинга чата, «🤝 Амбассадоры» (настройки амбассадорки), раздел «🔧 Управление»."""
+    «💬 Чат делегатов» с весами рейтинга чата, «🤝 Амбассадоры» (настройки амбассадорки), раздел «🔧 Управление»,
+    «✏️ Подписи кнопок меню» (09.10) в «🎪 Событие»."""
     after = _after_callbacks(tmp_path)
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
-    assert groups_after == _GROUPS_BEFORE | {"settings_group:apps", "settings_group:chat", "settings_group:amb"}
+    assert groups_after == _GROUPS_BEFORE | {
+        "settings_group:apps", "settings_group:chat", "settings_group:amb", "settings_group:menu_labels",
+    }
 
 
 def test_coverage_regmode_reset_comes_only_from_the_render_pass(tmp_path):
