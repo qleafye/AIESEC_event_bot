@@ -383,6 +383,9 @@ _OPTIONS_EN = {
 # user_actions/payment/application_effects/reg_schema) — не импортируются `i18n_sources.py`
 # (докстринг `code_literals()`), продублированы там же буквально, здесь тот же приём. ────────
 _CODE_LITERALS_EN = {
+    # Запасные тексты /start и после подачи — с 09.10 дефолты реестра (start_text, reg_complete_text).
+    "Привет! 👋\n\nЭто бот мероприятия. Зарегистрируйся, чтобы получить доступ ко всей информации.": "Hi! 👋\n\nThis is the event bot. Register to get access to all the information.",
+    "Поздравляем, твоя заявка принята!\n\nМы рассмотрим её в течение 2-3 дней и напишем сюда. Следи за обновлениями, впереди много интересного.\n\nЕсли у тебя возникнут вопросы — не стесняйся задавать их нам!": "Congratulations, your application has been received!\n\nWe'll review it within 2-3 days and write to you here. Stay tuned — lots of exciting things ahead.\n\nIf you have any questions, don't hesitate to ask us!",
     "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже 👇": "Welcome back! You're already registered — everything you need is in the menu below 👇",
     "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — большинство ответов уже заполнено, останется только подтвердить 👇": "Welcome back! You were with us at {season}. Let's update your application — most answers are already filled in, you'll just need to confirm them 👇",
     "Отлично, начинаем регистрацию.": "Great, let's start the registration.",

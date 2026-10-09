@@ -97,18 +97,12 @@ logger = logging.getLogger(__name__)
 # in-flight вызова, а не состояние; после рестарта ни одного вызова в полёте нет.
 _FINALIZING_USERS: set[int] = set()
 
-DEFAULT_START_TEXT = (
-    "Привет! \U0001f44b\n\n"
-    "Это бот мероприятия. Зарегистрируйся, чтобы получить доступ ко всей информации.\n\n"
-    "Настройте текст приветствия через /admin → Настройки → Приветствие."
-)
+DEFAULT_START_TEXT = SETTINGS_SCHEMA["start_text"]["default"]
 
 # UAT 17.08: вернувшемуся участнику нельзя показывать текст для новичков («заявка займёт
 # 5-7 минут…») — тестировщики решили, что регистрация сбросилась. Настраивается ключом
 # start_text_registered (/admin → Настройки → Событие/Медиа).
-DEFAULT_START_REGISTERED_TEXT = (
-    "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447"
-)
+DEFAULT_START_REGISTERED_TEXT = SETTINGS_SCHEMA["start_text_registered"]["default"]
 
 # Phase 07.3 (RET-02): a delegate whose row belongs to a PAST season (or who was rejected) is
 # neither a newcomer nor a currently-registered delegate — cmd_start's already-registered
@@ -116,20 +110,12 @@ DEFAULT_START_REGISTERED_TEXT = (
 # fresh registration; a past-season pending/approved row hits a hard `return`). `{season}` is
 # substituted with the delegate's own past-season label via str.replace, never `.format()` —
 # an admin-authored registry text may contain other braces that `.format()` would choke on.
-DEFAULT_START_RETURNING_TEXT = (
-    "С возвращением! Ты уже был(а) с нами на {season}. Давай обновим анкету — "
-    "большинство ответов уже заполнено, останется только подтвердить \U0001f447"
-)
+DEFAULT_START_RETURNING_TEXT = SETTINGS_SCHEMA["start_text_returning"]["default"]
 
 # Tatiana: «поздравляем» теперь приходит СРАЗУ после регистрации (раньше — только после
 # одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
 # скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
-DEFAULT_REG_COMPLETE_TEXT = (
-    "Поздравляем, твоя заявка принята!\n\n"
-    "Мы рассмотрим её в течение 2-3 дней и напишем сюда. "
-    "Следи за обновлениями, впереди много интересного.\n\n"
-    "Если у тебя возникнут вопросы — не стесняйся задавать их нам!"
-)
+DEFAULT_REG_COMPLETE_TEXT = SETTINGS_SCHEMA["reg_complete_text"]["default"]
 # DEFAULT_APPROVE_TEXT moved to handlers/reg_schema.py (13-02, REFAC-02).
 
 # --- Approval status decision (Phase 2, D-01..D-03) ---
@@ -2316,6 +2302,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             )
         return
 
+    # Ночь 09.10: чистый /start менеджера — подсказка про /admin вместо анкеты делегата
+    # (reg_started не пишется, пока он сам не нажмёт «Всё-таки заполнить анкету»).
+    from handlers.reg_manager_start import offer_manager_hint
+    if await offer_manager_hint(message, state, user, args):
+        return
+
     # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
     # fires ONLY for a user with no existing non-rejected users row — an already-registered
     # delegate tapping a stale/shared party link still gets their normal welcome + main menu
@@ -2799,3 +2791,6 @@ from handlers import reg_ambassador  # noqa: E402, F401
 from handlers import reg_types_lookup  # noqa: E402, F401
 from handlers import reg_types_composite  # noqa: E402, F401
 from handlers import reg_types_repeatable  # noqa: E402, F401
+
+# Ночь 09.10: «Всё-таки заполнить анкету» менеджера — callback в самом хвосте router.
+from handlers import reg_manager_start  # noqa: E402, F401

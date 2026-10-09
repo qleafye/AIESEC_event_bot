@@ -1569,6 +1569,7 @@ admin|callback_query|admin_coins_transfer|admin_coins_transfer
 admin|callback_query|cointr_cancel|cointr_cancel
 admin|callback_query|cointr_tab|cointr_tab:*
 admin|callback_query|cointr_go|cointr_go:*
+admin|callback_query|settings_enum_pick|settings_enum_pick:*
 admin|callback_query|prog_tmok|prog_tmok:*
 admin|callback_query|prog_tmno|prog_tmno
 admin|callback_query|prog_lmok|prog_lmok:*
@@ -1731,6 +1732,7 @@ registration|callback_query|regamb_later|regamb:later
 registration|callback_query|reglookup_pick|reglookup:*
 registration|callback_query|regedu_pick|regedu:*
 registration|callback_query|regrepeat_pick|regrepeat:*
+registration|callback_query|manager_fill_form|
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -2380,9 +2382,12 @@ def test_snapshot_total_handler_count_is_292():
     # Перенос баллов из таблицы (handlers/admin_coins_transfer.py, хвост admin.py): +3 admin.message
     # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
     # вставки (1076 -> 1083).
-    # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1083 -> 1187).
-    # Запись на сессии: подтверждение смены времени и лимита при существующих записях (admin_enroll_guard prog_tmok/tmno/lmok/lmno); чистая вставка, SequenceMatcher (1187 -> 1191).
-    assert len(GOLDEN_SNAPSHOT) == 1191
+    # Enum-настройки кнопками (handlers/admin_settings_enum.py, хвост admin.py): +1
+    # admin.callback_query settings_enum_pick в хвосте; чистая вставка (1083 -> 1084).
+    # 09.10 (/start менеджера, handlers/reg_manager_start.py): +1 registration.callback_query
+    # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
+    # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста и подтверждения, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1085 -> 1193).
+    assert len(GOLDEN_SNAPSHOT) == 1193
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
