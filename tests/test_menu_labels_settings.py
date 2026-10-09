@@ -16,6 +16,7 @@ from i18n_ui_en import MENU_EN
 from keyboards import menu_dynamic
 from keyboards.builders import MENU_BUTTONS, get_main_menu_kb
 from keyboards.menu_dynamic import (
+    DELEGATE_STATE_GROUPS,
     CONFERENCE_MENU_LABELS,
     MENU_LABEL_KEYS,
     MenuButton,
@@ -118,7 +119,7 @@ def test_english_default_is_handwritten(ready):
 
 
 async def _en_default():
-    return await caption_for("menu_coins", None, "en", tr_map={})
+    return await caption_for("menu_coins", None, "en", en_map={})
 
 
 def test_per_city_label(ready):
@@ -141,9 +142,10 @@ def test_filter_matches_every_actual_caption(ready):
     codes = cities.city_codes()
 
     async def go():
+        await db.set_setting("event_city_enabled", "on")
         await db.set_setting("menu_coins_label", "🪙 Мои баллы")
-        if codes:
-            await db.set_setting(cities.per_city_key("menu_coins_label", codes[0]), "🪙 Копилка")
+        if codes:  # делегат без города — город по умолчанию, как в get_main_menu_kb
+            await db.set_setting(cities.per_city_key("menu_coins_label", cities.default_city_code()), "🪙 Копилка")
         f = MenuButton("menu_coins")
         return {
             "custom": await f(_Msg("🪙 Мои баллы")),
@@ -169,27 +171,6 @@ def test_filter_matches_legacy_and_conference_captions(ready):
     assert all(asyncio.run(go()))
 
 
-def test_one_settings_read_per_update(ready, monkeypatch):
-    calls = []
-    real = menu_dynamic._configured_text_map
-
-    async def counting():
-        calls.append(1)
-        return await real()
-
-    monkeypatch.setattr(menu_dynamic, "_configured_text_map", counting)
-
-    async def go():
-        msg = _Msg("не кнопка")
-        for key in MENU_LABEL_KEYS:
-            assert not await MenuButton(key)(msg)
-        # статичная подпись — без чтения настроек вовсе
-        assert await menu_key_for_text("🪙 Мои монеты", _Msg("🪙 Мои монеты")) == "menu_coins"
-
-    asyncio.run(go())
-    assert len(calls) == 1
-
-
 def test_unknown_menu_key_rejected():
     with pytest.raises(KeyError):
         MenuButton("menu_nope")
@@ -199,7 +180,7 @@ def test_unknown_menu_key_rejected():
 
 def test_label_cannot_take_other_buttons_caption():
     value, error = validate_setting_value("menu_coins_label", "🎯 Задания")
-    assert value is None and "другой кнопки" in error
+    assert value is None and "уже у кнопки «🎯 Задания»" in error
     value, error = validate_setting_value("menu_coins_label", "🪙 Мои монеты")
     assert error is None
     value, error = validate_setting_value("menu_info_label", "ℹ️ О конференции")
@@ -249,3 +230,186 @@ def test_menu_buttons_screen_shows_custom_caption(ready):
 
     text = asyncio.run(go())
     assert "❓ Ответы" in text
+
+
+# ── ревью: город делегата, общий кэш, состояния, прежние подписи ──────────────────────────
+
+class _User:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class _DelegateMsg:
+    def __init__(self, text, uid=555):
+        self.text = text
+        self.from_user = _User(uid)
+
+
+def _two_cities():
+    codes = cities.city_codes()
+    if len(codes) < 2:
+        pytest.skip("в реестре меньше двух городов")
+    return codes[0], codes[1]
+
+
+def _as_delegate(monkeypatch, city=None, lang=None):
+    async def fake_get_user(_uid):
+        return {"event_city": city, "lang": lang}
+    monkeypatch.setattr(menu_dynamic, "get_user", fake_get_user)
+
+
+def test_same_custom_label_on_two_buttons_is_refused(ready):
+    """Своя подпись другой кнопки — общая или любого города — занята (бот и приложение)."""
+    from settings_ops import cross_setting_error
+    a, _b = _two_cities()
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("menu_info_label", "🧭 Гид")
+        await db.set_setting(cities.per_city_key("menu_faq_label", a), "❓ Ответы")
+        return (
+            await cross_setting_error("menu_program_label", "🧭 Гид"),
+            await cross_setting_error(cities.per_city_key("menu_program_label", a), "🧭 Гид"),
+            await cross_setting_error("menu_coins_label", "❓ Ответы"),
+            await cross_setting_error(cities.per_city_key("menu_info_label", a), "🧭 Гид"),
+        )
+
+    global_dup, city_dup, cross_city_dup, own = asyncio.run(go())
+    assert "уже у кнопки «ℹ️ Информация о форуме»" in global_dup
+    assert city_dup and cross_city_dup
+    assert own is None  # та же кнопка в другом городе — не конфликт
+
+
+def test_label_resolved_by_delegate_city(ready, monkeypatch):
+    """Город A «Гид» = информация, город B «Гид» = программа: делегат B попадает в программу."""
+    a, b = _two_cities()
+
+    async def setup():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(cities.per_city_key("menu_info_label", a), "🧭 Гид")
+        await db.set_setting(cities.per_city_key("menu_program_label", b), "🧭 Гид")
+
+    asyncio.run(setup())
+
+    def tap(city, key):
+        _as_delegate(monkeypatch, city)
+        return asyncio.run(MenuButton(key)(_DelegateMsg("🧭 Гид")))
+
+    assert tap(b, "menu_program") and not tap(b, "menu_info")
+    assert tap(a, "menu_info") and not tap(a, "menu_program")
+
+
+def test_label_data_cached_until_write(ready, monkeypatch):
+    """Подписи читаются один раз до следующей записи; русскому делегату EN-переводы не грузятся."""
+    from services import menu_labels
+    loads, en_loads = [], []
+    real_keys, real_en = menu_labels._setting_keys, db.fetch_manual_translations
+
+    def counting_keys():
+        loads.append(1)
+        return real_keys()
+
+    async def counting_en(lang):
+        en_loads.append(lang)
+        return await real_en(lang)
+
+    monkeypatch.setattr(menu_labels, "_setting_keys", counting_keys)
+    monkeypatch.setattr(db, "fetch_manual_translations", counting_en)
+    _as_delegate(monkeypatch, lang="ru")
+    menu_labels.invalidate()
+
+    async def go():
+        for text in ("привет", "Hello there", "🪙 Мои монеты", "ещё текст"):
+            await MenuButton("menu_coins")(_DelegateMsg(text))
+        first = len(loads)
+        await db.set_setting("menu_coins_label", "🪙 Мои баллы")
+        hit = await MenuButton("menu_coins")(_DelegateMsg("🪙 Мои баллы"))
+        return first, len(loads), hit
+
+    first, after_write, hit = asyncio.run(go())
+    assert first == 1 and after_write == 2 and hit
+    assert en_loads == []
+
+
+def test_menu_not_matched_in_delegate_states(ready):
+    from handlers.states import DELEGATE_STATE_GROUPS as STATES_GROUPS
+
+    assert DELEGATE_STATE_GROUPS == STATES_GROUPS
+
+    async def go():
+        f = MenuButton("menu_speakers")
+        return (await f(_Msg("🗣 Спикеры"), raw_state="Question:waiting_for_question"),
+                await f(_Msg("🗣 Speakers"), raw_state="Registration:full_name"),
+                await f(_Msg("🗣 Спикеры"), raw_state="EditSetting:waiting_for_value"),
+                await f(_Msg("🗣 Спикеры"), raw_state=None))
+
+    in_question, in_reg, admin_state, no_state = asyncio.run(go())
+    assert not in_question and not in_reg
+    assert admin_state and no_state
+
+
+def test_only_manual_english_translation_matches(ready, monkeypatch):
+    from services.i18n import src_hash
+    _as_delegate(monkeypatch, lang="en")
+
+    async def go():
+        await db.set_setting("menu_coins_label", "🪙 Копилка")
+        await db.upsert_translation("en", src_hash("🪙 Копилка"), "🪙 Копилка", "🪙 Piggy", manual=0)
+        machine = await MenuButton("menu_coins")(_DelegateMsg("🪙 Piggy", uid=1))
+        machine_caption = await caption_for("menu_coins", None, "en")
+        await db.upsert_translation("en", src_hash("🪙 Копилка"), "🪙 Копилка", "🪙 Piggy bank", manual=1)
+        manual = await MenuButton("menu_coins")(_DelegateMsg("🪙 Piggy bank", uid=2))
+        manual_caption = await caption_for("menu_coins", None, "en")
+        return machine, machine_caption, manual, manual_caption
+
+    machine, machine_caption, manual, manual_caption = asyncio.run(go())
+    assert not machine and machine_caption == "🪙 Копилка"
+    assert manual and manual_caption == "🪙 Piggy bank"
+
+
+def test_taken_label_in_chat_is_explained_not_tapped(ready):
+    """Ввод подписи, занятой другой кнопкой, — объяснение, а не срабатывание чужой кнопки."""
+    from handlers import admin_settings
+    from tests.test_settings_menu_button_guard_260916 import (
+        ADMIN_ID as GUARD_ADMIN, _FakeFSMState, _FakeSettingsMessage,
+    )
+    config.ADMIN_IDS = [GUARD_ADMIN]
+    message = _FakeSettingsMessage(text="🎯 Задания")
+    state = _FakeFSMState({"setting_key": "menu_coins_label"})
+
+    async def go():
+        await admin_settings.settings_edit_value(message, state)  # без SkipHandler
+        return await db.get_setting("menu_coins_label")
+
+    assert asyncio.run(go()) is None
+    assert any("уже у кнопки «🎯 Задания»" in a for a in message.answers)
+
+
+def test_old_captions_keep_working_after_rename(ready):
+    """Прежние подписи (до HISTORY_DEPTH на ключ) узнаются — старая клавиатура не мертва."""
+    from services import menu_labels
+
+    async def rename(value):
+        await db.set_setting("menu_coins_label", value)
+        await menu_labels.on_setting_written("menu_coins_label")
+
+    async def go():
+        for value in ("🪙 Один", "🪙 Два", "🪙 Три", "🪙 Четыре", "🪙 Пять"):
+            await rename(value)
+        await db.delete_setting("menu_coins_label")
+        await menu_labels.on_setting_written("menu_coins_label")
+        f = MenuButton("menu_coins")
+        return {v: await f(_Msg(v)) for v in ("🪙 Один", "🪙 Два", "🪙 Три", "🪙 Четыре", "🪙 Пять",
+                                               "🪙 Мои монеты")}
+
+    seen = asyncio.run(go())
+    assert seen["🪙 Пять"] and seen["🪙 Четыре"] and seen["🪙 Три"] and seen["🪙 Два"]
+    assert not seen["🪙 Один"]  # глубже HISTORY_DEPTH + текущей
+    assert seen["🪙 Мои монеты"]
+
+
+def test_history_hook_wired_into_setting_writes():
+    import inspect
+    import settings_audit
+
+    assert "menu_labels.on_setting_written" in inspect.getsource(settings_audit.run_setting_hooks)
