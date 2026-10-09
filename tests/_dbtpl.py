@@ -37,6 +37,13 @@ import threading
 
 _TEMPLATE_PATH: str | None = None
 
+# Копии шаблона, разложенные fast_init_db() по tmp_path тестов. Каждая ~2.6 МБ, а tmp_path
+# pytest не чистит до конца сессии — полный прогон оставлял ~25 ГБ. remove_stale_copies()
+# (зовётся из conftest после каждого теста) стирает все, кроме текущей config.DB_PATH:
+# часть тестов рассчитывает на базу, оставленную предыдущим тестом того же файла (см.
+# conftest.py), поэтому последняя живёт до следующей подмены.
+_COPIES: list[str] = []
+
 
 def _run_coro_sync(coro):
     """Запускает корутину синхронно вне зависимости от того, крутится ли уже event loop
@@ -117,3 +124,33 @@ def fast_init_db() -> None:
 
     template_path = _build_template()
     shutil.copy(template_path, config.DB_PATH)
+    _track_copy(config.DB_PATH)
+
+
+def _track_copy(db_path) -> None:
+    path = os.path.abspath(str(db_path))
+    if path not in _COPIES:
+        _COPIES.append(path)
+
+
+def remove_stale_copies() -> None:
+    """Стирает копии шаблона, на которые уже не смотрит config.DB_PATH (вместе с -wal/-shm/
+    -journal). Файл, который ещё держит незакрытое соединение (Windows не даёт его удалить),
+    остаётся в списке и стирается при следующем вызове."""
+    from config import config
+
+    current = os.path.abspath(str(config.DB_PATH))
+    keep: list[str] = []
+    for path in _COPIES:
+        if path == current:
+            keep.append(path)
+            continue
+        try:
+            for suffix in ("-wal", "-shm", "-journal"):
+                if os.path.exists(path + suffix):
+                    os.remove(path + suffix)
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            keep.append(path)
+    _COPIES[:] = keep
