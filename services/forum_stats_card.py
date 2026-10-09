@@ -694,7 +694,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         logo = await _load_logo_bytes()
         accent = await _brand_colors()
         caption_base = await get_setting_typed_for_city("forum_stats_card_caption_text", city)
-        from services.text_fill import event_label, event_name
+        from services.text_fill import event_name, fill_event
 
         event_title = await event_name()
         if not (caption_base or "").strip():
@@ -737,8 +737,8 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
                 # Подпись уходит с parse_mode=HTML: «<» или «&» в имени давали 400 этому делегату.
                 caption = reg_i18n.tr_fmt(
                     caption_base, lang, tr_map, name=html.escape(stats.get("name") or ""),
-                    event=html.escape(event_label(event_title, lang)),
                 )
+                caption = fill_event(caption, event_title, lang, escape=True)
             except Exception as e:
                 logger.error(f"forum_stats_card.send_broadcast: build for {tid} failed: {e}")
                 failed += 1

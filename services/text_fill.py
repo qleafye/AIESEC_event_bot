@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import html
 import re
 
 _PREPOSITIONS = r"(?:во|в|in)"
@@ -50,11 +51,14 @@ def event_label(name: str | None, lang: str = "ru") -> str:
     return text or EVENT_FALLBACK["en" if lang == "en" else "ru"]
 
 
-def fill_event(template, name: str | None, lang: str = "ru"):
-    """`{event}` → название мероприятия; не-строку возвращает как есть."""
+def fill_event(template, name: str | None, lang: str = "ru", *, escape: bool = False):
+    """`{event}` → название мероприятия; не-строку возвращает как есть. `escape=True` — для
+    сообщений с parse_mode=HTML: «&» или «<» в названии иначе даёт 400 от Телеграма.
+    Единственная точка подстановки `{event}` у всех отправителей — после перевода шаблона."""
     if not isinstance(template, str) or "{event}" not in template:
         return template
-    return template.replace("{event}", event_label(name, lang))
+    label = event_label(name, lang)
+    return template.replace("{event}", html.escape(label) if escape else label)
 
 
 async def event_name() -> str | None:
