@@ -32,7 +32,7 @@ from settings_schema import get_setting_typed
 from services.consent import tapped_button_text
 from cities import CITIES, is_city_registration_open
 from handlers.states import Registration
-from keyboards.builders import get_main_menu_kb
+from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
     router,
     _PARTY_TAG_MAP, MULTI_CONFIG,
@@ -352,6 +352,16 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
     snapshot["_from_confirm"] = True
     await state.update_data(_prior_answers=snapshot)
     await _start_registration_flow(message, state)
+
+
+@router.message(Registration.confirm)
+async def process_confirm_other(message: types.Message, state: FSMContext):
+    """Приёмка 09.10 (C10b): всё, кроме «Всё верно»/«Изменить», на сводке раньше уходило в
+    тишину. Подсказка и та же клавиатура; состояние и ответы не трогаем."""
+    await reg_i18n.say(
+        message, "Нажми «Всё верно», чтобы отправить анкету, или «Изменить», чтобы поправить ответы.",
+        reply_markup=get_confirm_kb(),
+    )
 
 
 async def start_confirm_edit(message: types.Message, state: FSMContext) -> None:

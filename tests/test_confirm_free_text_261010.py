@@ -63,6 +63,7 @@ def test_summary_free_text_through_dispatcher(tmp_path, monkeypatch):
     monkeypatch.setattr(handler, "callback", _spy)
 
     async def go():
+        fast_init_db()
         from aiogram import Bot
         from aiogram.fsm.storage.base import StorageKey
         bot = Bot(token="123456:ABCDEF")
