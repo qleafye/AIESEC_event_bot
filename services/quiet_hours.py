@@ -42,9 +42,10 @@ KIND_APPLICATION_DECISION = "application_decision"
 # payload {"text": str, "parse_mode": str, "reply_markup": dict | None} — произвольный текст
 # (гейма/монеты/напоминания/ответ организаторов). `reply_markup` — сериализованная клавиатура
 # (см. `serialize_markup`), None/отсутствует — сообщение без клавиатуры (форма до 16.09).
-# `question_id` (10.10, есть только у ответа на «❓ Задать вопрос», и у KIND_TEXT, и у
-# KIND_COPY) — по нему `flush_due` при сбое утренней отправки возвращает вопрос «в работу» и
-# предупреждает автора ответа (`_on_question_answer_failed`).
+# `question_id` + `question_token` (+ `question_part: "header"` у заголовка не-текстового
+# ответа) — 10.10, есть только у ответа на «❓ Задать вопрос», и у KIND_TEXT, и у KIND_COPY
+# (вызывающий передаёт их словарём `question_ref`). По ним `flush_due` при сбое утренней
+# отправки возвращает вопрос «в работу» и предупреждает автора (`_on_question_answer_failed`).
 KIND_TEXT = "text_html"
 # payload {"method": "send_photo"|"send_document", "file_id": str, "caption": str | None,
 # "parse_mode": str | None} — файл по `file_id` (бонус за регистрацию и подобное). Телеграм
@@ -211,7 +212,14 @@ async def _send_or_queue(now: datetime, user_id: int, kind: str, payload: dict, 
     выключенном тумблере она выходит первым же чтением, и `payload` не собирается зря."""
     due = await defer_until(now, user_id)
     if due is None:
-        await sender()
+        if payload.get("question_token"):
+            # Ответ на вопрос делегата: явный потолок отправки — окно перехвата отметки
+            # «ответ уходит» (database.db.QUESTION_DELIVERING_STALE) заведомо длиннее.
+            import asyncio
+            from database.db import QUESTION_SEND_TIMEOUT
+            await asyncio.wait_for(sender(), QUESTION_SEND_TIMEOUT)
+        else:
+            await sender()
         return None
     await enqueue(user_id, kind, payload, due, now)
     return due
@@ -219,7 +227,7 @@ async def _send_or_queue(now: datetime, user_id: int, kind: str, payload: dict, 
 
 async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
                              parse_mode: str = "HTML", reply_markup=None,
-                             question_id: int | None = None) -> bool:
+                             question_ref: dict | None = None) -> bool:
     """`sender` — асинхронный колбэк без аргументов (бот передаёт `lambda: bot.send_message(...)`,
     веб — свой `telegram_api`-путь). `True` — отправлено сейчас, `False` — положено в очередь.
 
@@ -230,13 +238,13 @@ async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
     немедленную отправку САМ: клавиатуру в него кладёт вызывающий."""
     return await send_or_queue_text_due(
         now, user_id, text, sender=sender, parse_mode=parse_mode, reply_markup=reply_markup,
-        question_id=question_id,
+        question_ref=question_ref,
     ) is None
 
 
 async def send_or_queue_text_due(now: datetime, user_id: int, text: str, *, sender,
                                  parse_mode: str = "HTML", reply_markup=None,
-                                 question_id: int | None = None) -> datetime | None:
+                                 question_ref: dict | None = None) -> datetime | None:
     """То же, что `send_or_queue_text`, но возвращает МОМЕНТ доставки (`None` — отправлено
     сейчас). Нужен там, где интерфейс показывает человеку «доставим утром в 09:00»: иначе
     вызывающему пришлось бы вторым запросом дёргать `defer_until` ради того же ответа."""
@@ -244,8 +252,8 @@ async def send_or_queue_text_due(now: datetime, user_id: int, text: str, *, send
     markup = serialize_markup(reply_markup)
     if markup is not None:
         payload["reply_markup"] = markup
-    if question_id is not None:
-        payload["question_id"] = int(question_id)
+    if question_ref:
+        payload.update(question_ref)
     return await _send_or_queue(now, user_id, KIND_TEXT, payload, sender)
 
 
@@ -258,11 +266,11 @@ async def send_or_queue_media(now: datetime, user_id: int, *, sender, method: st
 
 async def send_or_queue_copy(now: datetime, user_id: int, *, sender, from_chat_id: int,
                              message_id: int, caption: str | None = None,
-                             question_id: int | None = None) -> bool:
+                             question_ref: dict | None = None) -> bool:
     """Копия сообщения (`bot.copy_message`). `True` — отправлено сейчас."""
     payload = {"from_chat_id": from_chat_id, "message_id": message_id, "caption": caption}
-    if question_id is not None:
-        payload["question_id"] = int(question_id)
+    if question_ref:
+        payload.update(question_ref)
     return await _send_or_queue(now, user_id, KIND_COPY, payload, sender) is None
 
 
@@ -308,6 +316,8 @@ async def flush_due(now: datetime) -> int:
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
     rows = await list_due_delayed_notifications(now_str)
     count = 0
+    # Токены ответов на вопросы, чей заголовок в этом проходе ушёл (копия идёт следом).
+    headers_sent: set[str] = set()
     for row in rows:
         row_id = row["id"]
         kind = row.get("kind")
@@ -321,6 +331,8 @@ async def flush_due(now: datetime) -> int:
                     reply_markup=_rebuild_markup(payload.get("reply_markup")),
                 )
                 await mark_delayed_notification_sent(row_id, now_str)
+                if payload.get("question_part") == "header" and payload.get("question_token"):
+                    headers_sent.add(payload["question_token"])
             elif kind == KIND_MEDIA:
                 await _flush_media_row(row_id, user_id, payload, now_str)
             elif kind == KIND_COPY:
@@ -343,7 +355,9 @@ async def flush_due(now: datetime) -> int:
             await mark_delayed_notification_sent(row_id, now_str, error=redact_secrets(e))
             if payload.get("question_id") is not None:
                 try:
-                    await _on_question_answer_failed(payload["question_id"], e)
+                    await _on_question_answer_failed(
+                        payload, kind, e, payload.get("question_token") in headers_sent,
+                    )
                 except Exception as hook_err:
                     logger.error(
                         f"quiet_hours: question_id={payload.get('question_id')} "
@@ -353,34 +367,56 @@ async def flush_due(now: datetime) -> int:
     return count
 
 
-async def _on_question_answer_failed(question_id, error: Exception) -> None:
+# Ответ организаторов, у которого исходное сообщение менеджера к утру удалено: `copy_message`
+# отвечает «message to copy not found» — повтор той же копией не поможет никогда.
+_COPY_SOURCE_GONE_MARKERS = ("message to copy not found", "message not found")
+
+
+async def _on_question_answer_failed(payload: dict, kind: str | None, error: Exception,
+                                     header_delivered: bool) -> None:
     """Утренняя отправка ответа на вопрос делегата упала. Без этого вопрос числился бы
     «отвеченным» (delivered_at ставится при постановке в очередь), а делегат ответа так и не
     получил бы — и никто бы об этом не узнал. Вопрос возвращается «в работу» (захват и текст
     ответа остаются), автор ответа получает сообщение. Повтора здесь нет: заблокировавшему
     бота делегату он не поможет, а временный сбой менеджер повторит сам.
-    Не-текстовый ответ лежит в очереди двумя строками — автору пишем один раз (сообщение
-    шлёт только тот вызов, что действительно вернул вопрос)."""
+
+    `reopen_question_delivery` сверяет токен попытки из строки очереди: менеджер уже ответил
+    заново — старая строка ничего не трогает и не пишет. Не-текстовый ответ лежит в очереди
+    двумя строками — автору пишем один раз (сообщение шлёт только тот вызов, что вернул
+    вопрос). `header_delivered` — заголовок этого же ответа в этом проходе ушёл, упала копия."""
     from aiogram.exceptions import TelegramForbiddenError
     from database.db import get_question, reopen_question_delivery
     from services import scheduler as _sched
 
-    qid = int(question_id)
-    if not await reopen_question_delivery(qid):
+    qid = int(payload["question_id"])
+    token = payload.get("question_token")
+    if not token or not await reopen_question_delivery(qid, token):
         return
     row = await get_question(qid)
     author_id = (row or {}).get("answered_by")
     if not author_id:
         return
+    head = f"⚠️ Не удалось доставить ответ на вопрос #{qid}"
+    if header_delivered:
+        head = (
+            f"⚠️ Ответ на вопрос #{qid} дошёл не целиком: делегат получил только заголовок "
+            "«Ответ от организаторов», а само сообщение — нет"
+        )
+    gone = kind == KIND_COPY and any(m in str(error).lower() for m in _COPY_SOURCE_GONE_MARKERS)
     if isinstance(error, TelegramForbiddenError):
         text = (
-            f"⚠️ Не удалось доставить ответ на вопрос #{qid} — делегат заблокировал бота. "
+            f"{head} — делегат заблокировал бота. "
             "Повтор не поможет: свяжитесь с делегатом другим способом. "
             "Вопрос снова «в работе», текст ответа сохранён."
         )
+    elif gone:
+        text = (
+            f"{head} — исходное сообщение удалено из чата. "
+            "Вопрос снова «в работе» — отправьте ответ заново текстом."
+        )
     else:
         text = (
-            f"⚠️ Не удалось доставить ответ на вопрос #{qid} — делегат недоступен. "
+            f"{head} — делегат недоступен. "
             "Вопрос снова «в работе», текст ответа сохранён — отправьте ответ ещё раз."
         )
     await _sched._bot.send_message(author_id, text)

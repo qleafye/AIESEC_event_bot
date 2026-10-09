@@ -305,7 +305,7 @@ def test_answer_while_own_delivery_in_flight_returns_sending_no_second_copy(clie
     понятный текст «уже отправляется»."""
     qid = _seed_question(DELEGATE_ID)
     _run(bot_db.claim_question(qid, REG_MANAGER_ID, "Менеджер"))
-    assert _run(bot_db.begin_question_delivery(qid, REG_MANAGER_ID)) is True
+    assert _run(bot_db.begin_question_delivery(qid, REG_MANAGER_ID)) is not None
 
     resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
     assert resp.status_code == 200
@@ -451,3 +451,51 @@ def test_answer_outside_quiet_hours_sends_immediately_and_queued_until_is_null(c
     assert resp.json()["queued_until"] is None
     assert len(bot_api.messages) == 1
     assert _run(quiet_hours.queued_count()) == 0
+
+
+def test_answer_any_error_before_send_releases_mark_so_retry_works(client, bot_api, monkeypatch):
+    """Ревью 10.10: отметка «уходит» снимается при ЛЮБОЙ ошибке до отправки, не только при
+    TelegramApiError — иначе пять минут «уже отправляется» на попытку, которой нет."""
+    from services import quiet_hours
+
+    real = quiet_hours.send_or_queue_text_due
+    calls = {"n": 0}
+
+    async def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("очередь недоступна")
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(quiet_hours, "send_or_queue_text_due", flaky)
+    qid = _seed_question(DELEGATE_ID)
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    assert resp.json()["reason"] == "delivery_failed"
+    assert _get_question(qid)["delivery_token"] is None
+
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    assert resp.json()["ok"] is True
+    assert len(bot_api.messages) == 1
+
+
+def test_answer_record_failure_after_send_is_retried(client, bot_api, monkeypatch):
+    """Ответ ушёл, первая запись в БД упала — запись повторяется, менеджер видит успех."""
+    import services.questions as qs
+    from database import db as dbm
+
+    monkeypatch.setattr(qs, "RECORD_ANSWER_PAUSE", 0)
+    real = dbm.set_question_answer
+    calls = {"n": 0}
+
+    async def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(dbm, "set_question_answer", flaky)
+    qid = _seed_question(DELEGATE_ID)
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    assert resp.json()["ok"] is True
+    assert _get_question(qid)["delivered_at"] is not None
+    assert len(bot_api.messages) == 1

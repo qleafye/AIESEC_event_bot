@@ -16,7 +16,7 @@ aiogram), правило статуса и постраничная выборк
         (10.10: тот же менеджер нажал «Отправить» второй раз, пока первая отправка ещё идёт —
         без этой отметки делегат получал две копии)
     -> quiet_hours.send_or_queue_text_due(...) -> отправка сейчас ИЛИ строка в очередь тихих
-       часов -> ТОЛЬКО при успехе set_question_answer(...)
+       часов -> ТОЛЬКО при успехе mark_question_dispatched + record_answer (запись с повтором)
     -> {ok: true, status: "answered", queued_until: "09:00" | null}
 
 Quick 260904-kk6 (Q2): обе ветки `ok: false` дописывают `item` — ЧАСТИЧНЫЙ патч полей статуса
@@ -45,11 +45,11 @@ from database.db import (
     get_question,
     get_user,
     list_questions_page,
+    mark_question_dispatched,
     release_question_delivery,
-    set_question_answer,
 )
 from services import applications, quiet_hours
-from services.questions import FILTER_LABELS, STATUSES, format_stamp, is_stuck, question_status, status_label
+from services.questions import FILTER_LABELS, STATUSES, format_stamp, is_stuck, question_status, record_answer, status_label
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -234,7 +234,8 @@ async def questions_answer(
                 **({"item": _status_patch(row2)} if row2 else {}),
             }
 
-    if not await begin_question_delivery(qid, p.telegram_id):
+    token = await begin_question_delivery(qid, p.telegram_id)
+    if token is None:
         row3 = await get_question(qid)
         if row3 and row3.get("delivered_at"):
             return {"ok": False, "reason": "already", "by": row3.get("answered_by_name"),
@@ -260,11 +261,17 @@ async def questions_answer(
                 request.app.state.cfg, row["user_id"], answer_text,
             ),
             parse_mode=None,
-            question_id=qid,
+            question_ref={"question_id": qid, "question_token": token},
         )
-    except TelegramApiError as exc:
-        logger.error("questions: не удалось доставить ответ %s (%s)", qid, exc.reason)
-        await release_question_delivery(qid)
+    except Exception as exc:
+        # 10.10: ЛЮБАЯ ошибка до отправки (не только TelegramApiError — ещё таймаут отправки,
+        # сбой постановки в очередь) снимает свою отметку «уходит»: иначе вопрос пять минут
+        # отвечал бы «уже отправляется» на попытку, которой на деле нет.
+        logger.error(
+            "questions: не удалось доставить ответ %s (%s)", qid,
+            exc.reason if isinstance(exc, TelegramApiError) else repr(exc),
+        )
+        await release_question_delivery(qid, token)
         # Quick 260904-kk6 (Q2): захват уже записан claim_question() выше — перечитываем
         # факт из БД (не собираем патч руками), иначе status_patch мог бы разойтись с тем,
         # что реально в строке.
@@ -274,7 +281,13 @@ async def questions_answer(
             **({"item": _status_patch(row_after)} if row_after else {}),
         }
 
-    await set_question_answer(qid, text)
+    # Ответ ушёл или встал в очередь: отметка «дошло» (повтор и перехват закрыты) и запись
+    # ответа с повтором — сбой записи не превращается в «не удалось» и во вторую копию.
+    try:
+        await mark_question_dispatched(qid, token)
+    except Exception as exc:
+        logger.error("questions: отметка «дошло» для %s не записалась: %s", qid, exc)
+    await record_answer(qid, text)
     # Quick 260906-52m (правило D-06): единственная ветка эндпоинта, которая раньше не отдавала
     # `item` — фронт был вынужден выдумывать подпись статуса сам. Второй поход в БД здесь
     # осознанный, та же мотивация, что в ветке delivery_failed выше: патч собирается из факта

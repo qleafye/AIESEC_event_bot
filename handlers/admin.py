@@ -679,7 +679,7 @@ async def _notify_other_moderate_reg_holders(bot: Bot, admin_name: str, user_id:
 
 
 async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int, admin_name: str,
-                                  *, on_dispatched=None, question_id: int | None = None):
+                                  *, on_dispatched=None, on_part_sent=None, question_ref=None):
     """Shared delivery: send the reply (text or a copy of the admin's message) to the
     delegate, ack the replying admin, and fan out «who answered» to other moderate_reg
     holders. Raises on delivery failure -- callers decide what happens to a claim, if any.
@@ -691,7 +691,7 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     Менеджер в ответ получает приписку `manager_notice` — «отправлено» без неё было бы
     полуправдой.
 
-    `on_dispatched`/`question_id` (10.10) — см. handlers/admin_question_delivery.py."""
+    `on_dispatched`/`on_part_sent`/`question_ref` (10.10) — см. handlers/admin_question_delivery.py."""
     from services import questions as questions_service, quiet_hours
     from services.scheduler import _now_moscow_naive
     now = _now_moscow_naive()
@@ -700,19 +700,21 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
         await quiet_hours.send_or_queue_text(
             now, user_id, reply_text,
             sender=lambda: bot.send_message(user_id, reply_text, parse_mode="HTML"),
-            question_id=question_id,
+            question_ref=question_ref,
         )
     else:
         header = await questions_service.org_reply_header_html(user_id)
         await quiet_hours.send_or_queue_text(
             now, user_id, header,
             sender=lambda: bot.send_message(user_id, header, parse_mode="HTML"),
-            question_id=question_id,
+            question_ref=question_ref and {**question_ref, "question_part": "header"},
         )
+        if on_part_sent is not None:
+            await on_part_sent()
         await quiet_hours.send_or_queue_copy(
             now, user_id, sender=lambda: message.send_copy(user_id),
             from_chat_id=message.chat.id, message_id=message.message_id,
-            question_id=question_id,
+            question_ref=question_ref,
         )
     if on_dispatched is not None:
         await on_dispatched()
