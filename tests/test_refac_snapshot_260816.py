@@ -1234,11 +1234,14 @@ admin|callback_query|show_amb_tiers|admin_amb_tiers
 admin|callback_query|amb_tiers_toggle|ambt_toggle:*
 admin|callback_query|amb_tiers_csv|ambt_csv
 admin|callback_query|amb_exclude_start|ambt_excl
+admin|callback_query|amb_exclude_start_from_list|ambt_excl_l
 admin|callback_query|amb_exclude_cancel|ambt_excl_cancel
 admin|callback_query|amb_exclude_go|ambt_excl_go
 admin|callback_query|amb_exclusions_list|ambt_excl_list:*
 admin|callback_query|amb_unexclude_confirm|ambt_unexcl:*
 admin|callback_query|amb_unexclude_go|ambt_unexcl_go:*
+admin|callback_query|amb_fill_preview|ambt_fill
+admin|callback_query|amb_fill_go|ambt_fill_go:*
 admin|callback_query|show_admin_polls|admin_polls
 admin|callback_query|show_admin_polls_closed|admin_polls_closed
 admin|callback_query|show_poll_card|poll_card:*
@@ -2281,7 +2284,9 @@ def test_snapshot_total_handler_count_is_292():
     # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
     # 09.10: «👥 Список участников» (handlers/admin_participants.py): +1 admin.callback_query
     # (export_participants) перед prog_fbday_open (1085 -> 1086).
-    assert len(GOLDEN_SNAPSHOT) == 1086
+    # 09.10 (ступени амбассадоров): +3 admin.callback_query — amb_exclude_start_from_list сразу
+    # после amb_exclude_start, amb_fill_preview/amb_fill_go в конце группы ambt_* (1086 -> 1089).
+    assert len(GOLDEN_SNAPSHOT) == 1089
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -220,7 +220,7 @@ def test_program_toggle_off_on_off(tmp_path):
     _run(h.amb_tiers_toggle(cb))
     assert _run(amb_tiers.program_on())
     text, show_alert = cb.answers[-1]
-    assert show_alert and "пересчёт" in text and len(text) <= 200
+    assert show_alert and "Пересчитать ступени" in text and len(text) <= 200
     screen = cb.message.edits[-1][0]
     assert "включена" in screen and "amb_qualified_program" not in screen
 
