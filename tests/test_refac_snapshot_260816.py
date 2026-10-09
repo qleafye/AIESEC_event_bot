@@ -1768,6 +1768,7 @@ user_actions|message|sfb_comment_step|
 user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
 user_actions|message|session_enroll_menu|
 user_actions|message|quiz_menu|
+user_actions|message|menu_edit_anketa|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -2401,7 +2402,9 @@ def test_snapshot_total_handler_count_is_292():
     # callback_query (decresend_start/decresend_go/decresend_cancel) перед prog_fbday_open; чистая
     # вставка (1089 -> 1092).
     # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста и подтверждения, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1086 -> 1200).
-    assert len(GOLDEN_SNAPSHOT) == 1200
+    # 09.10 (кнопка меню «✏️ Изменить анкету», handlers/menu_edit_anketa.py): +1 user_actions.message
+    # menu_edit_anketa сразу после quiz_menu, до reg_handoff_idle_fallback (1200 -> 1201).
+    assert len(GOLDEN_SNAPSHOT) == 1201
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
