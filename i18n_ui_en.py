@@ -284,6 +284,7 @@ UI_EN: dict[str, str] = {
     # Приёмка 09.10: «Изменить» на сводке (handlers/reg_flow.py::start_confirm_edit) и пропуск
     # на экране «Прошлый ответ» (handlers/reg_i18n.py::display_value_for_step).
     "Давай поправим ответы — пройдём по ним по очереди.": "Let's fix your answers — we'll go through them one by one.",
+    "Нажми «Всё верно», чтобы отправить анкету, или «Изменить», чтобы поправить ответы.": "Tap «Looks good» to submit the form, or «Edit» to change your answers.",
     "не указан": "not specified",
     "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.":
         "Great, you're here through a friend's invite. Let's start your application.",

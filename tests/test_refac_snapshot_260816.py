@@ -85,6 +85,10 @@ message-хендлер `admin_reply_to_sos` в поток callback_query не п
 — пять хендлеров (`prog_fbset_open`/`prog_fbtoggle`/`prog_fbdelay`/`prog_fbdelay_custom_start`/
 `prog_fbtext_edit`, `handlers/session_feedback.py`) вставлены сразу после `prog_fbc_open`
 (тот же файл, простое добавление в хвост).
+
+Дрифт-нота (2026-10-10, приёмка 09.10, свободный текст на сводке): +1 хендлер, чистая вставка —
+`process_confirm_other` (`handlers/reg_flow.py`) сразу после `process_confirm_edit`: всё, кроме
+«Всё верно»/«Изменить», в состоянии сводки получает подсказку вместо тишины.
 """
 import asyncio
 import time
@@ -1684,6 +1688,7 @@ registration|message|cmd_start|cmd:start
 registration|message|cancel_registration|state:Registration:*
 registration|message|process_confirm_ok|state:Registration:*
 registration|message|process_confirm_edit|state:Registration:*
+registration|message|process_confirm_other|state:Registration:*
 registration|message|process_resume|state:Registration:*
 registration|message|process_resume_text|state:Registration:*
 registration|message|process_resume_invalid|state:Registration:*
@@ -2440,7 +2445,9 @@ def test_snapshot_total_handler_count_is_292():
     # admin_settings_search): +3 admin.message (state:SheetTarget:* — отмена дважды/ссылка) после
     # settings_search_not_text и +5 admin.callback_query после settings_search_cancel; чистые
     # вставки, сверено SequenceMatcher (1215 -> 1223).
-    assert len(GOLDEN_SNAPSHOT) == 1223
+    # 10.10 (свободный текст на сводке анкеты): +1 registration.message process_confirm_other
+    # сразу после process_confirm_edit (1223 -> 1224).
+    assert len(GOLDEN_SNAPSHOT) == 1224
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
