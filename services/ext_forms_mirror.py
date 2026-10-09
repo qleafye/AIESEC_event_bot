@@ -18,6 +18,7 @@ import gspread
 from gspread.utils import rowcol_to_a1
 
 from config import config
+from services import sheet_target as _sheet_target
 from database import ext_forms_db as ef
 from secret_redact import redact_secrets
 from services import delegations_mirror  # режим «как выгрузка Яндекса» (вкладка делегаций)
@@ -38,7 +39,7 @@ def _raw():
 
 
 def _configured() -> bool:
-    return bool(config.GOOGLE_SHEET_ID and config.GOOGLE_CREDENTIALS_FILE)
+    return _sheet_target.sheets_enabled()
 
 
 def _open_tab_sync(tab: str):
@@ -49,7 +50,7 @@ def _open_tab_sync(tab: str):
 
 def _create_tab_sync(title: str, cols: int):
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     return sh.add_worksheet(title=title, rows=1000, cols=cols)
 
 

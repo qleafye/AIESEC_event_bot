@@ -24,6 +24,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from config import config
+from services import sheet_target as _sheet_target
 from database.db import drop_sheet_chat, fail_sheet_chat, list_due_sheet_chat
 from secret_redact import redact_secrets
 from services.sheet_arrival_sync import backoff_seconds
@@ -51,7 +52,7 @@ async def drain() -> dict:
         upto[tid] = max(upto.get(tid, 0), row["id"])
         attempts[tid] = max(attempts[tid], row["attempts"])
 
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         await drop_sheet_chat(upto)  # таблица не подключена — писать некуда
         return counts
 

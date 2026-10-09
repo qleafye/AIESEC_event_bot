@@ -36,6 +36,7 @@ import logging
 import gspread
 
 from config import config
+from services import sheet_target as _sheet_target
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
 from settings_schema import get_setting_typed
 from reg_engine import is_past_season_row
@@ -123,7 +124,7 @@ def _read_all_tabs_snapshot_sync(
         worksheets = main_ws.spreadsheet.worksheets()
     except Exception:
         gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        sh = gc.open_by_key(_sheet_target.sheet_id())
         worksheets = sh.worksheets()
     all_real_titles = {ws.title for ws in worksheets}
     read_titles = set(delegate_titles) | ({main_title} if main_title else set())
@@ -138,7 +139,7 @@ async def _read_all_tabs_snapshot(
 ) -> tuple[str | None, dict[str, list[list[str]]], set[str]] | None:
     """Fail-soft wrapper (тот же контракт, что `list_worksheet_titles`): `None`, если Sheets не
     настроен или запрос упал — вызывающий `build_report` тогда отдаёт `report["ok"] is False`."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return None
     try:
         return await asyncio.to_thread(_read_all_tabs_snapshot_sync, delegate_titles)
