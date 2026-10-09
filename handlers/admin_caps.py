@@ -843,6 +843,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "settings_toggle_reg": "settings",
     "settings_toggle_short_approval": "settings",
     "state:EditSetting:*": "settings",
+    "state:SettingsSearch:*": "settings",  # «🔎 Найти настройку» — то же право, что у правки
+    "settings_search": "settings",
+    "settings_search_cancel": "settings",
     "state:StaffAdd:*": "settings",
     "toggle_checkin_qr_enabled": "settings",  # Квик 260923 (форум-чекин)
     "toggle_consent_enabled": "settings",

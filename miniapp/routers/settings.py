@@ -51,7 +51,7 @@ from cities import (
 )
 from database.db import get_setting, set_setting, settings_snapshot
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
-from settings_synonyms import SETTINGS_SYNONYMS
+from settings_search import search_terms
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.setup_wizard import TEXTS as SETUP_TEXTS
@@ -360,7 +360,7 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
         "city_override_count": len(override_labels),
         "city_override_labels": override_labels,
         "confirm_text": await _confirm_text(base, value),
-        "search_terms": list(SETTINGS_SYNONYMS.get(base, [])),
+        "search_terms": search_terms(base),
         "editable": editable,
         # Quick 260904-8o3 Task 3 (E5/E6): группа "miniapp" несёт ключи оформления ВПЕРЕМЕШКУ
         # с обычными текстами Mini App (row["theme_preview"] в _sections отмечает всю группу
