@@ -175,8 +175,8 @@ UI_EN: dict[str, str] = {
     "Заполнить в приложении": "Fill in the app",
     # Не начинается с символа — переводится целиком, включая замыкающий эмодзи (tr_text не
     # отделяет замыкающие символы, только ведущие).
-    "Задания, монеты и рейтинг — в одном экране. Открывай приложение 👇":
-        "Tasks, coins and leaderboard in one place. Open the app 👇",
+    "Всё о мероприятии — в одном экране. Открывай приложение 👇":
+        "Everything about the event in one place. Open the app 👇",
     "Приложение временно недоступно. Всё то же самое есть в боте.":
         "The app is temporarily unavailable. Everything is also here in the bot.",
 
