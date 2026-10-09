@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from database import quiz_db, session_enroll_db
 from services.checkin import _sniff_dialect, decode_scan_export
+from services.ru_plural import ru_plural
 
 TEMPLATE_HEADERS = ("вопрос", "вариант", "компетенция", "баллы")
 _DELIMITERS = (";", ",", "\t")
@@ -132,10 +133,7 @@ def parse_csv(raw: bytes, competency_ids_by_name: dict[str, int], points_max: in
     return parsed
 
 
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    if n % 100 in (11, 12, 13, 14):
-        return many
-    return one if n % 10 == 1 else few if n % 10 in (2, 3, 4) else many
+_plural = ru_plural  # общая функция склонения (services/ru_plural.py)
 
 
 def _count(n: int, one: str, few: str, many: str) -> str:
