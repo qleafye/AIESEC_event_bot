@@ -25,7 +25,6 @@
 Для `CallbackQuery` (нет своего `.chat`) идентичность берётся из `callback.from_user.id` —
 тот же tapper, что везде в проекте (`record_user_consent(callback.from_user.id, ...)`).
 """
-import html
 import logging
 import re
 
@@ -303,12 +302,13 @@ async def say(message, text, **kwargs):
 async def echo_choice(message, values) -> None:
     """Приёмка 09.10: выбор инлайн-кнопкой (подсказка ВУЗа, «Готово» в мультивыборе) гасит
     кнопки, и в переписке не оставалось, что выбрано, — ответ всплывал только в сводке. Теперь
-    каждое значение строкой «✅ …» (вариант переводится по отдельности, экранируется под
-    глобальный HTML-режим). Пустой список — ничего не отправляется."""
+    каждое значение строкой «✅ …» (вариант переводится по отдельности). Разметки в строке нет —
+    уходит без parse_mode и без экранирования: запасной путь `_safe_answer` (повтор без
+    parse_mode) иначе показал бы «&amp;» буквально. Пустой список — ничего не отправляется."""
     lang, tr_map = await ctx_for(message)
-    lines = [f"✅ {html.escape(str(tr_text(v, lang, tr_map)))}" for v in values if v not in (None, "")]
+    lines = [f"✅ {tr_text(v, lang, tr_map)}" for v in values if v not in (None, "")]
     if not lines:
         return
     from handlers import registration
 
-    await registration._safe_answer(message, "\n".join(lines))
+    await registration._safe_answer(message, "\n".join(lines), parse_mode=None)
