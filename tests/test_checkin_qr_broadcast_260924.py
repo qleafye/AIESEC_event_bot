@@ -538,7 +538,7 @@ def test_send_broadcast_translates_caption_for_english_delegate(tmp_path, monkey
 
     assert len(bot.photos) == 1
     default_ru = (
-        "Завтра форум! Вот твой QR для входа. Открой его сейчас и сделай скриншот — "
+        "Завтра встречаемся! Вот твой QR для входа. Открой его сейчас и сделай скриншот — "
         "на площадке может не быть сети."
     )
     _tid, caption, _kb = bot.photos[0]

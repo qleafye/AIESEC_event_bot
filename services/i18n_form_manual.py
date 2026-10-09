@@ -1131,10 +1131,94 @@ _AMBASSADOR_WAVE_TEXTS_EN = {
     "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём на форуме — следи за его развитием.": "Thank you for responding! All spots on the ambassador team are already taken, but we're still really looking forward to seeing you at the forum — stay tuned for updates.",
 }
 
+# Нейтральные дефолты 09.10: «форум»/«Юлид» в дефолтах реестра уезжали делегату конференции и
+# СкиллАпа — тексты переписаны на «мероприятие»/«площадку» и подстановку `{event}` (название из
+# «🎪 Название мероприятия», `services.text_fill.event_label`). Прежние RU-ключи выше оставлены:
+# у менеджера мог сохраниться старый дефолт дословно — перевод для него не должен пропасть.
+_NEUTRAL_DEFAULTS_EN: dict[str, str] = {
+    "Соцсети мероприятия": "Event social media",
+    "Программа ещё не загружена.": "The program hasn't been uploaded yet.",
+    "Финал — очно на мероприятии, командами по 3–4 человека. Опыт не нужен, важно желание пробовать.":
+        "The final is in person at the event, in teams of 3–4. No experience needed — just a willingness to try.",
+    "Пришёл(ла) к нам впервые": "Coming for the first time",
+    "Мероприятие": "Event",
+    "Собирай монеты до старта": "Collect coins before the start",
+    "Отправь эту ссылку друзьям, чтобы пригласить их с собой!\n\n{link}":
+        "Send this link to your friends to bring them along!\n\n{link}",
+    "Ты дошёл до третьей ступени — спасибо, что приводишь к нам людей! Детали награды напишем в личку.":
+        "You've reached the third level — thank you for bringing people to us! We'll send the reward details in a private message.",
+    "Ты дошёл до ступени 4 — спасибо, что приводишь к нам людей! Детали награды напишем в личку.":
+        "You've reached level 4 — thank you for bringing people to us! We'll send the reward details in a private message.",
+    "Ты дошёл до ступени 5 — спасибо, что приводишь к нам людей! Детали награды напишем в личку.":
+        "You've reached level 5 — thank you for bringing people to us! We'll send the reward details in a private message.",
+    "Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём — следи за новостями!":
+        "All spots on the ambassador team are already taken, but we're still really looking forward to seeing you — stay tuned for news!",
+    "Ты в команде амбассадоров. Пакет амбассадора закрепляется за теми, чья заявка одобрена, пока есть места.":
+        "You're on the ambassador team. The ambassador pack goes to those whose application is approved, while spots last.",
+    "Ты больше не в команде амбассадоров. Спасибо за помощь! Твоя ссылка для приглашений продолжает работать, а баллы остаются за тобой.":
+        "You're no longer on the ambassador team. Thank you for your help! Your invite link keeps working, and your points stay with you.",
+    "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём — следи за новостями.":
+        "Thank you for responding! All spots on the ambassador team are already taken, but we're still really looking forward to seeing you — stay tuned for news.",
+    "Привет! Ты в списке делегации {university} на {event} 🎉\n\nАнкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости мероприятия.":
+        "Hi! You're on the {university} delegation list for {event} 🎉\n\nNo need to fill in the questionnaire — your application is already approved. Below is the participant menu: your entry QR and all event news will be there.",
+    "Задания и монеты для делегаций вузов здесь выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.":
+        "Tasks and coins for university delegations are switched off here. Everything else — the programme, the entry QR, the news — works as usual.",
+    "🎟 Твой QR для отметки на входе.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
+        "🎟 Your QR code for check-in at the entrance.\n\n"
+        "Save it in advance (for example, take a screenshot) — the venue may have no network, "
+        "but a photo from the chat opens even without the internet."
+    ),
+    "Твой QR для отметки на входе.\n\nСохрани его заранее (например, сделай скриншот) — на площадке может не быть сети, а фото из чата открывается и без интернета.": (
+        "Your QR code for check-in at the entrance.\n\n"
+        "Save it in advance (for example, take a screenshot) — the venue may have no network, "
+        "but a photo from the chat opens even without the internet."
+    ),
+    "Учебный QR — не пропуск на вход, ничего не записывается.":
+        "Training QR — not an entry pass, nothing is recorded.",
+    "Красная плашка «QR другого мероприятия». Попросите открыть «Мой QR» в боте этого мероприятия.":
+        "Red banner «QR of another event». Ask them to open «My QR» in this event's bot.",
+    "Завтра встречаемся! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.": (
+        "See you tomorrow! Here's your QR code for entry. Open it now and take a "
+        "screenshot — the venue may have no network."
+    ),
+    "Сегодня встречаемся! Вот твой QR для входа. Открой его сейчас и сделай скриншот — на площадке может не быть сети.": (
+        "See you today! Here's your QR code for entry. Open it now and take a "
+        "screenshot — the venue may have no network."
+    ),
+    "Мы тебя не видим на площадке 👀 Всё в порядке?": "We don't see you at the venue 👀 Is everything okay?",
+    "Отлично, до встречи!": "Great, see you there!",
+    "Ты отмечен на входе в {time} ✅ Добро пожаловать на {event}!": "You're checked in at {time} ✅ Welcome to {event}!",
+    "Мы не видели тебя на площадке. Расскажешь, что помешало прийти?":
+        "We didn't see you at the venue. Would you tell us what got in the way?",
+    "Не получилось на форум в {city}? Приезжай на {event}: {target_city}{dates}":
+        "Couldn't make it to the forum in {city}? Come to {event}: {target_city}{dates}",
+    "Привет! Это короткая регистрация прямо на площадке — всего 3 вопроса: имя, телефон и вуз.\n\n"
+    "Нажимая кнопку ниже, ты соглашаешься на обработку этих данных для участия в мероприятии.": (
+        "Hi! This is a quick on-site registration — just 3 questions: your name, "
+        "phone number and university.\n\n"
+        "By tapping the button below, you agree to the processing of this data for participation "
+        "in the event."
+    ),
+    "Готово, {name}! Подойди к волонтёру на стойке регистрации и назови свою фамилию — "
+    "он пропустит тебя внутрь.": (
+        "All set, {name}! Go to the volunteer at the registration desk and say your last name — "
+        "they'll let you in."
+    ),
+    "Добро пожаловать! Тебя зарегистрировали на месте. Ниже — твой QR: он "
+    "понадобится на сессиях, сохрани его.": (
+        "Welcome! You've been registered on site. Below is your QR code — you'll "
+        "need it at the sessions, so save it."
+    ),
+    "Человек записан в другом городе — после одобрения он переедет в {city}.":
+        "This person signed up in another city — once approved, they will be moved to {city}.",
+    "🎉 {name}, {event} в цифрах — вот твой итог! Поделись с друзьями 🧡💙":
+        "🎉 {name}, {event} in numbers — here's your recap! Share it with friends 🧡💙",
+}
+
 FORM_DEFAULT_EN: dict[str, str] = {
     **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
-    **_AMBASSADOR_WAVE_TEXTS_EN,
+    **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN,
     # --- запись на сессии и тест по компетенциям ---
     "📅 Выбрать сессии": "📅 Choose sessions",
     "Тест сейчас недоступен.": "The quiz is currently unavailable.",

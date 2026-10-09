@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _JOB_PREFIX = "forum_noshow_poll:"
 DEFAULT_TIME = "12:00"
 
-DEFAULT_QUESTION = "Мы не видели тебя на форуме. Расскажешь, что помешало прийти?"
+DEFAULT_QUESTION = "Мы не видели тебя на площадке. Расскажешь, что помешало прийти?"
 DEFAULT_OTHER_PROMPT = "Напиши своими словами, что помешало прийти."
 DEFAULT_THANKS = "Спасибо, учтём!"
 

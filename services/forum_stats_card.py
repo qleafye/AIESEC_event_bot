@@ -11,9 +11,10 @@
 никаких чужих имён/топа на карточке нет вовсе — `get_user_rank`/`get_leaderboard` дают ровно
 эти два числа, сама функция никогда не тянет чужие строки леджера на отображение.
 
-Бренд «Юлид»/«АЙСЕК» — КИРИЛЛИЦЕЙ на картинке всегда, в том числе в EN-версии (уточнение
-координатора 25.09, закон РФ + правило проекта CLAUDE.md): латиница («YouLead») на карточку не
-попадает вовсе — см. `_LABELS["en"]["title"]`.
+Название мероприятия на картинке — из «🎪 Название мероприятия» (`event_name`) как есть, в том
+числе в EN-версии (уточнение координатора 25.09: бренд кириллицей, закон РФ + правило проекта
+CLAUDE.md) — см. `_title_text`/`_footer_line`. Не задано — нейтральные «Итоги в цифрах» и футер
+без названия.
 
 Подписи карточки (шесть коротких фраз) — код-литералы ЭТОГО модуля, не реестр и не
 `services/i18n_form_manual.py`: текст рисуется ПИКСЕЛЯМИ, никогда не идёт через
@@ -166,7 +167,8 @@ def _human_season(value: str | None) -> str | None:
 
 _LABELS: dict[str, dict[str, str]] = {
     "ru": {
-        "title": "Юлид в цифрах",
+        "title": "{event} в цифрах",
+        "title_plain": "Итоги в цифрах",
         "days": "Дней на форуме",
         "sessions": "Сессий на форуме",
         "hall": "Любимый зал",
@@ -176,8 +178,10 @@ _LABELS: dict[str, dict[str, str]] = {
         "rank_fmt": "{rank} из {total}",
     },
     "en": {
-        # Бренд кириллицей и в EN-версии тоже (см. докстринг модуля) — не "YouLead in numbers".
-        "title": "Юлид in numbers",
+        # Название мероприятия — как его вписал менеджер (кириллицей и в EN-версии, см.
+        # докстринг модуля), без перевода.
+        "title": "{event} in numbers",
+        "title_plain": "Results in numbers",
         "days": "Forum days",
         "sessions": "Forum sessions",
         "hall": "Favorite hall",
@@ -313,12 +317,22 @@ def format_forum_dates(start, end, lang: str) -> str:
     return f"{start.day} {months[start.month - 1]} – {end.day} {months[end.month - 1]}"
 
 
-def _footer_line(city_label_text: str | None, date_range_text: str | None) -> str:
-    """«Юлид · Москва, 30–31 октября» (координатор 25.09) — бренд ВСЕГДА, город/даты — только
-    если реально известны (пропущенная часть просто не попадает в строку, без пустых «, »)."""
-    tail_parts = [p for p in (city_label_text, date_range_text) if p]
-    tail = ", ".join(tail_parts)
-    return f"Юлид · {tail}" if tail else "Юлид"
+def _footer_line(
+    city_label_text: str | None, date_range_text: str | None, event_name: str | None = None,
+) -> str:
+    """«Юлид · Москва, 30–31 октября» (координатор 25.09) — название мероприятия из
+    «🎪 Название мероприятия» (`event_name`), город/даты — только если реально известны
+    (пропущенная часть просто не попадает в строку, без пустых «, »). Название не задано —
+    строка без него: зашитый «Юлид» уезжал на карточку конференции и СкиллАпа."""
+    tail = ", ".join(p for p in (city_label_text, date_range_text) if p)
+    brand = (event_name or "").strip()
+    return " · ".join(p for p in (brand, tail) if p)
+
+
+def _title_text(labels: dict[str, str], event_name: str | None) -> str:
+    """«Юлид в цифрах» при заданном названии мероприятия, иначе нейтральное «Итоги в цифрах»."""
+    name = (event_name or "").strip()
+    return labels["title"].replace("{event}", name) if name else labels["title_plain"]
 
 
 async def _resolve_footer_parts(
@@ -387,6 +401,7 @@ def render_card_sync(
     logo_bytes: bytes | None = None,
     city_label_text: str | None = None,
     date_range_text: str | None = None,
+    event_name: str | None = None,
 ) -> bytes:
     """Чистая (без БД/сети) синхронная функция — единственная, что зовёт `asyncio.to_thread`.
     Никогда не падает на длинном имени/пустых данных/отсутствующем фоне/лого (см. докстринг
@@ -435,7 +450,7 @@ def render_card_sync(
     content_width = width - 2 * pad
 
     y = 96
-    title_text = _truncate(draw, labels["title"], title_font, content_width)
+    title_text = _truncate(draw, _title_text(labels, event_name), title_font, content_width)
     draw.text((pad, y), title_text, font=title_font, fill=white)
     y = draw.textbbox((pad, y), title_text, font=title_font)[3] + 26
 
@@ -469,7 +484,7 @@ def render_card_sync(
     # ── футер: геометрия считается ДО героя/плашек — прижат к низу карточки константным
     # отступом, героя/плашки размещаем ВЫШЕ него (а не «сверху вниз, что получится»), поэтому
     # нижняя треть никогда не пустует даже при минимуме данных (координатор 25.09) ──
-    footer_text = _footer_line(city_label_text, date_range_text)
+    footer_text = _footer_line(city_label_text, date_range_text, event_name)
     footer_bbox = draw.textbbox((0, 0), footer_text, font=footer_font)
     footer_h = footer_bbox[3] - footer_bbox[1]
 
@@ -624,9 +639,12 @@ async def render_preview(lang: str = "ru", city: str | None = None) -> bytes:
     accent = await _brand_colors()
     render_lang = "en" if lang == "en" else "ru"
     city_label_text, date_range_text = await _resolve_footer_parts(city, render_lang)
+    from services.text_fill import event_name
+
     return await asyncio.to_thread(
         render_card_sync, _PREVIEW_STATS, background, lang, accent,
         logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
+        event_name=await event_name(),
     )
 
 
@@ -676,6 +694,9 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         logo = await _load_logo_bytes()
         accent = await _brand_colors()
         caption_base = await get_setting_typed_for_city("forum_stats_card_caption_text", city)
+        from services.text_fill import event_label, event_name
+
+        event_title = await event_name()
         if not (caption_base or "").strip():
             # Экран обещает менеджеру «подпись пуста — рассылка НЕ уйдёт»; без этой проверки
             # уходило фото без подписи.
@@ -711,10 +732,12 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
                 png = await asyncio.to_thread(
                     render_card_sync, stats, background, render_lang, accent,
                     logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
+                    event_name=event_title,
                 )
                 # Подпись уходит с parse_mode=HTML: «<» или «&» в имени давали 400 этому делегату.
                 caption = reg_i18n.tr_fmt(
                     caption_base, lang, tr_map, name=html.escape(stats.get("name") or ""),
+                    event=html.escape(event_label(event_title, lang)),
                 )
             except Exception as e:
                 logger.error(f"forum_stats_card.send_broadcast: build for {tid} failed: {e}")
