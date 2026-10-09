@@ -26,7 +26,7 @@ ask_step`, показ уже готов планом 28-02, здесь толь�
 """
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from handlers import reg_extra_steps
 from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
@@ -43,6 +43,9 @@ from reg_engine import (
 # (сверено, не общий импорт — тот же приём дублирования служебных литералов, что «Пропустить»/
 # «Отмена» в проекте).
 BACK_LABEL = "⬅️ Назад"
+
+# Заголовок сообщения с кнопками развилки (сам вопрос уходит отдельным сообщением, см. ask_fork).
+FORK_PICK_TITLE = "👇 Выбери способ:"
 
 # Владелец 17.09: четвёртый токен закрытого словаря — «text» (написать текстом об опыте),
 # между «link» и «mini» (тот же порядок, что в reg_engine._RESUME_FORK_OPTIONS).
@@ -62,7 +65,11 @@ async def ask_fork(message: types.Message, state: FSMContext, progress_prefix: s
         [InlineKeyboardButton(text=opt["label"], callback_data=f"regfork:{opt['code']}")]
         for opt in fork_opts
     ])
-    await _safe_answer(message, text, reply_markup=kb)
+    # Приёмка 09.10: у сообщения одна разметка — инлайн-кнопки развилки не снимают reply-
+    # клавиатуру прошлого вопроса («Да! / Пока нет» оставались внизу, тап по ним давал
+    # «Выбери способ кнопкой выше»). Вопрос снимает клавиатуру, кнопки — отдельной строкой под ним.
+    await _safe_answer(message, text, reply_markup=ReplyKeyboardRemove())
+    await _safe_answer(message, FORK_PICK_TITLE, reply_markup=kb)
     await state.set_state(Registration.resume)
 
 
