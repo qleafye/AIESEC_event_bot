@@ -2760,7 +2760,7 @@ _MEMBERSHIP_STEPS = {
 }
 
 
-def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> tuple:
+def _validate_answer_core(step_key: str, raw, participant_type: str | None, surface: str = "chat") -> tuple:
     # Task 260915-skg (P1/P3, T-skg-01): Mini App PATCH может прислать не-строковый JSON —
     # тумблер шлёт bool, `<input type="number">` шлёт число, до этого guard'а нижние ветки делают
     # голый `(raw or "").strip()`/`.startswith(...)` и падают AttributeError -> 500 (возраст,
@@ -2794,6 +2794,12 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
         if text == "Пропустить":
             return "-", None
         cleaned = text.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        # Приёмка 09.10: в приложении кнопки «Пропустить» на шаге телефона нет — ошибка не
+        # должна на неё ссылаться (`surface="app"` передаёт PATCH анкеты приложения).
+        if surface == "app" and (
+            not cleaned or (not (cleaned.startswith("+") and cleaned[1:].isdigit()) and not cleaned.isdigit())
+        ):
+            return None, PHONE_ERROR_APP
         if not cleaned:
             return None, "Укажи номер телефона или нажми «Пропустить»."
         if not (cleaned.startswith("+") and cleaned[1:].isdigit()) and not cleaned.isdigit():
@@ -2912,10 +2918,15 @@ _NULL_SKIP_STEPS = _SKIP_ALLOWED_STEPS | {"phone"}
 _DEFAULT_MULTI_LIMIT_ERROR_TEXT = "Можно выбрать не больше {max} вариантов."
 
 
+# Ошибка телефона в приложении: там нет кнопки «Пропустить», на которую ссылается текст чата.
+PHONE_ERROR_APP = "Укажи номер телефона цифрами, можно с плюсом впереди, например «+79161234567»."
+
+
 def validate_answer(
     step_key: str, raw, *, participant_type: str | None = None,
     max_select: int | None = None, limit_error_text: str | None = None,
     whitelist: list[str] | None = None, repeatable_max_items: int | None = None,
+    surface: str = "chat",
 ) -> tuple:
     """Единая точка проверки ответа — и для текста из чата бота, и (план 21-10) для JSON из
     Mini App (T-21-05). Возвращает `(value, error_text)`; `error_text is None` значит `value`
@@ -2984,7 +2995,7 @@ def validate_answer(
         url, _verified, error = validate_resume_link(raw, whitelist)
         value = url
     else:
-        value, error = _validate_answer_core(step_key, raw, participant_type)
+        value, error = _validate_answer_core(step_key, raw, participant_type, surface)
     if error is None and isinstance(value, str):
         ui_type = _ui_type_for(step_key, REG_STEP_TYPES.get(step_key, "text"))
         max_len = _max_len_for(step_key, ui_type)
