@@ -219,11 +219,15 @@ async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> boo
         text = _i18n_tr(template, lang, tr_map)
         # Кнопка ведёт в правку прямо в чате (/start edit) — профиля приложения на событии
         # может не быть вовсе.
-        me = await bot.me()
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-            text=_i18n_tr("✏️ Изменить анкету", lang, tr_map),
-            url=f"https://t.me/{me.username}?start=edit",
-        )]])
+        kb = None
+        try:
+            me = await bot.me()
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text=_i18n_tr("✏️ Изменить анкету", lang, tr_map),
+                url=f"https://t.me/{me.username}?start=edit",
+            )]])
+        except Exception as e:  # без имени бота — сообщение всё равно уходит, просто без кнопки
+            logger.warning(f"editg: bot.me() failed, notify without button: {e}")
         await quiet_hours.send_or_queue_text(
             _now_moscow_naive(), telegram_id, text,
             sender=lambda: bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb),
