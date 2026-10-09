@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import logging
 
-from database.db import get_translation, upsert_translation
+from database.db import seed_manual_translations
 from services.i18n import src_hash
 
 logger = logging.getLogger(__name__)
@@ -1296,30 +1296,16 @@ EVENT_TEXTS_260917: dict[str, str] = {
 }
 
 
-async def _seed_dict(lang: str, translations: dict[str, str], origin: str) -> dict:
-    """Общий сид для `FORM_DEFAULT_EN`/`EVENT_TEXTS_260917` — то же правило, что
-    `i18n_miniapp_manual.seed()`: не перетирает `manual=1` перевод с ЧУЖИМ `origin_key`
-    (менеджер отредактировал строку сам через экран правки, план 27-06)."""
-    applied = 0
-    skipped = 0
-    for ru_text, en_text in translations.items():
-        text_hash = src_hash(ru_text)
-        existing = await get_translation(lang, text_hash)
-        if existing and existing.get("manual") and existing.get("origin_key") != origin:
-            skipped += 1
-            continue
-        await upsert_translation(lang, text_hash, ru_text, en_text, manual=1, origin_key=origin)
-        applied += 1
-    return {"applied": applied, "skipped_manager_edit": skipped}
-
-
 async def seed(lang: str = "en") -> dict:
     """Пишет `FORM_DEFAULT_EN` и `EVENT_TEXTS_260917` в `translations` с `manual=1` —
     идемпотентно, зовётся на каждом старте бота рядом с `i18n_miniapp_manual.seed()`
     (`main.py`). Возвращает `{"applied": N, "skipped_manager_edit": M}` суммарно по обоим
     словарям — для лога старта."""
-    default_result = await _seed_dict(lang, FORM_DEFAULT_EN, ORIGIN_DEFAULT)
-    event_result = await _seed_dict(lang, EVENT_TEXTS_260917, ORIGIN_EVENT)
+    # Не перетирает `manual=1` перевод с ЧУЖИМ `origin_key` (менеджер отредактировал строку
+    # сам через экран правки, план 27-06) — правило внутри `seed_manual_translations`.
+    default_result, event_result = await seed_manual_translations(
+        lang, [(FORM_DEFAULT_EN, ORIGIN_DEFAULT), (EVENT_TEXTS_260917, ORIGIN_EVENT)], src_hash,
+    )
     total = {
         "applied": default_result["applied"] + event_result["applied"],
         "skipped_manager_edit": default_result["skipped_manager_edit"] + event_result["skipped_manager_edit"],
