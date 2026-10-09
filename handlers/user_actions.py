@@ -81,6 +81,7 @@ from keyboards.menu_dynamic import MenuButton  # подпись кнопки —
 from handlers.states import Question, GameSubmit
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
+from services.ru_plural import agree_points  # «1 балл», «22 балла» после подстановки числа
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
@@ -307,10 +308,10 @@ async def _balance_screen(
     balance = await get_balance(user_id)
     rank = await get_user_rank(user_id)
     total = len(await get_leaderboard(10_000))  # scale-acceptable per CLAUDE.md (1000-1500/season)
-    header = reg_i18n.tr_fmt(
+    header = agree_points(reg_i18n.tr_fmt(
         await get_setting_typed("balance_screen_header"), lang, tr_map,
         balance=balance, rank=rank if rank is not None else "—", total=total or "—",
-    )
+    ))
     rows = await list_coin_entries_for_user(user_id, limit=5, offset=0)
     rows = await amb_progress.mask_referral_coin_rows(user_id, rows, _amb_tr(lang, tr_map))
     lines = [header, ""]
@@ -924,11 +925,11 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     # «просрочено» (helper возвращает `("", False)`), и правило одно на весь проект.
     _, deadline_passed = _game_task_deadline_short(task)
     if deadline_passed:
-        # Делегат не должен узнавать об этом только из отсутствия коинов -- предупреждаем
+        # Делегат не должен узнавать об этом только из отсутствия баллов -- предупреждаем
         # прямо в промпте, отправка при этом РАЗРЕШЕНА (A-05, созвон 13.08).
         prompt = (
             reg_i18n.tr_text(
-                "⏰ Срок сдачи вышел. Отправить можно, но начислять коины будет решать менеджер.",
+                "⏰ Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.",
                 lang, tr_map,
             ) + "\n\n" + prompt
         )
@@ -1858,10 +1859,10 @@ async def _wave_rating_screen(
     own = view["own"]
     if own is not None:
         gap = own["gap_to_prize"] if own["gap_to_prize"] is not None else 0
-        own_line = reg_i18n.tr_fmt(
+        own_line = agree_points(reg_i18n.tr_fmt(
             await get_setting_typed("wave_rating_own_line_text"), lang, tr_map,
             rank=own["place"], total=own["total"], place=view["prize_places"], gap=gap,
-        )
+        ))
         lines.append("")
         lines.append(own_line)
 

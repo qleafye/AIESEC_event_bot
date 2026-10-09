@@ -118,11 +118,11 @@ _PRE_MIGRATION_LITERALS = {
     "game_proof_type_label_text": "✍️ Текст",
     "game_proof_type_label_link": "🔗 Ссылка",
     "game_proof_type_unspecified_text": "не важно",
-    "game_task_overdue_hint_text": "⏰ Срок вышел — отправить можно, монеты решит менеджер",
-    "leaderboard_header_text": "🏆 <b>Рейтинг по монетам</b>",
-    "leaderboard_empty_text": "Пока ни у кого нет монет.",
+    "game_task_overdue_hint_text": "⏰ Срок вышел — отправить можно, баллы решит менеджер",
+    "leaderboard_header_text": "🏆 <b>Рейтинг по баллам</b>",
+    "leaderboard_empty_text": "Пока ни у кого нет баллов.",
     "leaderboard_rank_line_text": "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>",
-    "balance_history_header_text": "📜 <b>История монет</b>",
+    "balance_history_header_text": "📜 <b>История баллов</b>",
     "referral_link_prompt_text": (
         "Отправь эту ссылку друзьям, чтобы пригласить их с собой!\n\n{link}"
     ),

@@ -414,7 +414,7 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append((
         "lit:user_actions.mytask_submit_deadline_passed",
-        "⏰ Срок сдачи вышел. Отправить можно, но начислять коины будет решать менеджер.",
+        "⏰ Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.",
     ))
     items.append(("lit:user_actions.cancel_game_submit", "Действие отменено."))
     items.append((
