@@ -3475,12 +3475,13 @@ async def export_users_csv(*, city_scope=None):
             return headers, rows
 
 
-async def export_participants_csv(*, city_scope=None, with_payment: bool = False):
+async def export_participants_csv(*, city_scope=None, with_payment: bool = False, city_label=None):
     """«👥 Список участников»: ТОЛЬКО одобренные текущего сезона (`event_season`; не задан —
     все одобренные), человеческие колонки и без служебного/телефона. Возвращает `(headers, rows)`
     с уже готовыми подписями: город — названием, статус оплаты — словами (`with_payment` — колонка
-    нужна, только если модуль оплаты включён). Пусто -> `(headers, [])`."""
-    from cities import city_label_or_none, normalize_city
+    нужна, только если модуль оплаты включён). Пусто -> `(headers, [])`.
+    `city_label` — async-функция «сырое значение event_city -> название»: её передаёт хендлер,
+    потому что db.py не импортирует cities (цикл импорта); без неё в колонке сырое значение."""
     from reg_labels import PAYMENT_STATUS_LABELS
 
     season = (await get_setting("event_season") or "").strip() or None
@@ -3498,9 +3499,9 @@ async def export_participants_csv(*, city_scope=None, with_payment: bool = False
     labels: dict[str, str] = {}
     rows = []
     for full_name, username, event_city, university, approved_at, pay in raw:
-        code = normalize_city(event_city)
+        code = event_city or ""
         if code not in labels:
-            labels[code] = await city_label_or_none(code) or ""
+            labels[code] = (await city_label(event_city) if city_label else code) or ""
         uni = (university or "").strip()
         row = [
             full_name or "",
