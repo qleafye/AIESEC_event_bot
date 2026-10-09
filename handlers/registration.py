@@ -2676,6 +2676,9 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         if existing is not None:
             logger.warning(f"finalize_registration: draft for {uid} is already submitting elsewhere")
             return
+        if data.get("_draft_version") is not None:  # черновик был и исчез: подан другой поверхностью
+            from handlers.reg_resume import reply_already_submitted
+            return await reply_already_submitted(message, state)
         draft = {"telegram_id": uid, "kind": "new", "answers": dict(data), "updated_by": "bot"}
 
     try:
