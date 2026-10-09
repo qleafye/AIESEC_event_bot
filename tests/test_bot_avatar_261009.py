@@ -213,11 +213,12 @@ def test_admin_command_and_panel_drop_avatar_wait(tmp_path):
         await admin_menu_root(_Cb(None, "admin_menu"), state)
         assert await state.get_state() is None
 
-        # чужое состояние эти точки входа не трогают
-        from handlers.states import CoinsTransfer
-        await state.set_state(CoinsTransfer.link)
+        # анкету делегата эти точки входа не трогают (общий сброс — clear_admin_flow_state)
+        from handlers.states import Registration
+        reg = next(iter(Registration.__states__))
+        await state.set_state(reg)
         await admin_menu_root(_Cb(None, "admin_menu"), state)
-        assert await state.get_state() == CoinsTransfer.link.state
+        assert await state.get_state() == reg.state
 
     asyncio.run(go())
 
