@@ -36,6 +36,13 @@ out.lastCall = calls[calls.length - 1];
 
 out.storedRu = m.field(h, { key: "birth_date", type: "date", label: "Д" }, "15.03.2007", () => {})._nodes.control.value;
 out.storedIso = m.field(h, { key: "birth_date", type: "date", label: "Д" }, "2007-03-15", () => {})._nodes.control.value;
+// Ревью 10.10: правка в середине и Backspace по точке.
+const e = (prev, raw, caret, type) => m.maskDateEdit(prev, raw, caret, type);
+out.midInsert = e("15.03.2007", "15.093.2007", 5, "insertText");      // вставили 9 после «0» месяца
+out.midDelete = e("15.03.2007", "15.0.2007", 4, "deleteContentBackward"); // стёрли «3»
+out.dotBackspace = e("15.03", "1503", 2, "deleteContentBackward");   // Backspace сразу после точки
+out.typeEnd = e("15.0", "15.03", 5, "insertText");
+out.typeThird = e("15", "150", 3, "insertText");
 console.log(JSON.stringify(out));
 """
 
@@ -75,3 +82,21 @@ def test_stored_value_shown_in_chat_format(result):
 
 def test_masked_value_passes_server_validator():
     assert reg_engine.validate_answer("birth_date", "15.03.2007") == ("15.03.2007", None)
+
+
+def test_middle_insert_keeps_caret_after_typed_digit(result):
+    # Цифры: 1 5 0 9 3 2 0 0 7 -> лимит 8 срезает хвост, каретка — сразу после «9».
+    assert result["midInsert"] == {"value": "15.09.3200", "caret": 5}
+
+
+def test_middle_delete_keeps_caret_in_place(result):
+    assert result["midDelete"] == {"value": "15.02.007", "caret": 4}
+
+
+def test_backspace_after_dot_removes_digit_before_it(result):
+    assert result["dotBackspace"] == {"value": "10.3", "caret": 1}
+
+
+def test_typing_at_end_keeps_caret_at_end(result):
+    assert result["typeEnd"] == {"value": "15.03", "caret": 5}
+    assert result["typeThird"] == {"value": "15.0", "caret": 4}
