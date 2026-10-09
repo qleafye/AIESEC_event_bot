@@ -274,6 +274,12 @@ def shell(request: Request):
     cfg = request.app.state.cfg
     with read_conn(cfg.db_path) as conn:
         context = _shell_context(request, conn)
+        app_off = read_setting(conn, "miniapp_enabled") != "on"
+    # Выключенное приложение отдаёт оболочку и делегатам (кто открыл, станет ясно только из
+    # JS по initData) — значит, без личности ничего о событии в ней быть не должно: ни
+    # названия, ни разделов, ни логотипа. Персонал получает всё это из /app/api/me.
+    if app_off and not ("session" in request.scope and request.session.get("telegram_id")):
+        context.update(event_name=None, logo_file_id=None, sections=[])
     return templates.TemplateResponse(request, "app.html", context)
 
 
