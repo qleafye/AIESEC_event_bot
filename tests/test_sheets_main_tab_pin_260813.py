@@ -22,6 +22,8 @@ Google API calls.
 """
 import asyncio
 
+import pytest
+
 import gspread
 
 from config import config
@@ -35,6 +37,22 @@ from tests._dbtpl import fast_init_db
 
 def _use_tmp_db(tmp_path):
     config.DB_PATH = str(tmp_path / "test_forum.db")
+
+
+@pytest.fixture(autouse=True)
+def _own_empty_db(tmp_path, monkeypatch):
+    """Каждый тест — со своей пустой базой. Без этого тесты без `_use_tmp_db` читали
+    `bot_settings` (main_sheet_tab, google_sheet_id) из базы, которую оставил в
+    `config.DB_PATH` предыдущий тест того же воркера xdist: там вкладка уже задана, и отказ
+    «вкладка не задана» (-2) превращался в попытку пересборки (-1) — порядок тестов решал
+    исход. monkeypatch возвращает путь и после `_use_tmp_db`, который пишет его напрямую."""
+    from services import sheet_target
+
+    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "isolated_forum.db"))
+    fast_init_db()
+    sheet_target.invalidate()
+    yield
+    sheet_target.invalidate()
 
 
 def _reset_module_state():
