@@ -265,7 +265,7 @@ def test_edit_card_offers_every_point_edit_and_actions(tmp_path):
     assert "Карточка" in callback.message.text_edited
     assert "Среднее" in callback.message.text_edited
     texts = _flat_texts(callback.message.edit_markup)
-    for label in ("✏️ Название", "✏️ Описание", "💰 Монеты", "📅 Дедлайн", "📷 Добавить фото",
+    for label in ("✏️ Название", "✏️ Описание", "💰 Баллы", "📅 Дедлайн", "📷 Добавить фото",
                   "🗄 В архив", "🗑 Удалить", "👁 Как видит делегат", "← К заданиям"):
         assert label in texts, label
     assert "↩️ Вернуть" not in texts
@@ -685,7 +685,7 @@ def test_edit_menu_swaps_keyboard_and_back_restores(tmp_path):
         assert f"gtwiz_edit:{field}" in data
     assert "gtwiz_back" in data
     texts = _flat_texts(menu)
-    assert "📝 Название" in texts and "📄 Описание" in texts and "💰 Монеты" in texts
+    assert "📝 Название" in texts and "📄 Описание" in texts and "💰 Баллы" in texts
     assert "📅 Дедлайн" in texts and "📷 Фото" in texts
     # state stays parked at confirm -- nothing typed yet
     assert asyncio.run(state.get_state()) == GameTaskCreate.confirm

@@ -16,6 +16,7 @@
 
 import { icon } from "../icons.js";
 import { atUsername, emptyState, fileUrl, noticeBox } from "../ui.js";
+import { unitFor } from "../units.js";
 import { haptic } from "../motion.js";
 
 const PART_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
@@ -104,7 +105,7 @@ export async function render(root, params, ctx) {
     const coinsInput = h("input", { class: "input", type: "number", min: "1", step: "1", inputmode: "numeric" });
     coinsInput.value = String(card.task.coins);
     const customBox = h("div", { class: "field hidden" },
-      h("label", { text: "Сколько монет начислить?" }),
+      h("label", { text: "Сколько баллов начислить?" }),
       coinsInput,
       h("button", { class: "btn", type: "button", text: "Начислить", onClick: () => decide("approve", { coins: Number(coinsInput.value) }) }),
     );
@@ -165,7 +166,7 @@ export async function render(root, params, ctx) {
       h("article", { class: "card review-card" },
         h("p", { class: "flat-row-meta", text: delegateMeta }),
         h("h2", { text: card.task.title }),
-        h("p", { class: "flat-row-meta", text: [card.task.category_label, `${card.task.coins} монет`, card.task.proof_label ? `нужно: ${card.task.proof_label}` : null].filter(Boolean).join(" · ") }),
+        h("p", { class: "flat-row-meta", text: [card.task.category_label, `${card.task.coins} ${unitFor(card.task.coins, "баллов")}`, card.task.proof_label ? `нужно: ${card.task.proof_label}` : null].filter(Boolean).join(" · ") }),
         flags.length ? h("div", { class: "task-foot" }, flags) : null,
         h("div", { class: "review-parts" }, card.parts.length ? card.parts.map(partNode) : h("p", { class: "muted", text: "Содержимое: —" })),
       ),

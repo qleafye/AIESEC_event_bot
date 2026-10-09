@@ -143,7 +143,7 @@ def build_digest_text(stats: dict, names: dict[int, str], *, day_label: str,
     if game_active:
         lines.append(
             f"🎮 Геймификация: сдач {stats['game_submissions']} · "
-            f"проверено {stats['game_reviewed']} · монет начислено {stats['coins_awarded']}"
+            f"проверено {stats['game_reviewed']} · баллов начислено {stats['coins_awarded']}"
         )
         for manager_id, reviewed in stats["game_managers"][:MAX_ROWS]:
             who = html.escape(manager_name(manager_id, names))

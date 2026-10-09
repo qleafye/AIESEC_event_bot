@@ -61,7 +61,7 @@ async def _render_confirm(tid: int, notify: bool) -> tuple[str, InlineKeyboardMa
         "форум перестанет пускать.",
     ]
     coins_balance = preview.get("coins_balance") or 0
-    coins_line = f"Монеты делегата останутся как есть: {coins_balance}."
+    coins_line = f"Баллы делегата останутся как есть: {coins_balance}."
     referrer = preview.get("referrer")
     if referrer:
         ref_name = html_module.escape(str(referrer.get("full_name") or referrer.get("telegram_id")))
