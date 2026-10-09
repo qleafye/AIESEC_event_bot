@@ -200,18 +200,21 @@ def test_health_open_even_when_disabled(tmp_path):
 
 
 def test_disabled_by_default_returns_503(tmp_path):
-    """Дефолт реестра miniapp_enabled = off — новая поверхность включается осознанно."""
+    """Дефолт реестра miniapp_enabled = off — новая поверхность включается осознанно.
+    Выключено = закрыто делегатам; персонал входит (tests/test_miniapp_staff_when_off_261009.py)."""
     db_path = _use_tmp_db(tmp_path)
+    _seed(users=[(DELEGATE_ID, "approved")])
     client = _client(_cfg(db_path))
-    resp = client.get("/app/api/me", headers=_hdr(ADMIN_ID))
+    resp = client.get("/app/api/me", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 503
     assert resp.json() == {"reason": "miniapp_off"}
+    assert client.get("/app/api/me", headers=_hdr(ADMIN_ID)).status_code == 200
 
 
 def test_trailing_slash_redirects_to_shell(tmp_path):
     """Находка 3 приёмки 19-10: `/app/` отдавал JSON 404. Слэш-вариант — 308 на `/app`
-    с сохранением query; при выключенном тумблере middleware по-прежнему рисует человеку
-    страницу-объяснение (оба пути в SHELL_PATHS), а не редирект в никуда."""
+    с сохранением query. При выключенном тумблере оболочка отдаётся как обычно: приложение
+    выключено только делегатам, а кто открыл — станет ясно из JS по initData."""
     db_path = _use_tmp_db(tmp_path)
     _standard_seed()
     client = _client(_cfg(db_path))
@@ -224,17 +227,17 @@ def test_trailing_slash_redirects_to_shell(tmp_path):
     assert client.get("/app/").status_code == 200  # по редиректу — сама оболочка
     _set("miniapp_enabled", "off")
     resp = client.get("/app/", follow_redirects=False)
-    assert resp.status_code == 503
-    assert "text/html" in resp.headers["content-type"]
+    assert resp.status_code == 308
+    assert client.get("/app/").status_code == 200
 
 
 def test_toggle_off_between_requests_without_restart(tmp_path):
     db_path = _use_tmp_db(tmp_path)
     _standard_seed()
     client = _client(_cfg(db_path))
-    assert client.get("/app/api/me", headers=_hdr(ADMIN_ID)).status_code == 200
+    assert client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).status_code == 200
     _set("miniapp_enabled", "off")
-    assert client.get("/app/api/me", headers=_hdr(ADMIN_ID)).status_code == 503
+    assert client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).status_code == 503
     assert client.get("/app/health").status_code == 200
 
 

@@ -355,11 +355,10 @@ async def _stats_keyboard_for(user_id: int, callback_data: str | None = None) ->
     rows = [dashboard_row]
     # Запасной вход менеджера: Mini App открывается и в обычном браузере — там экран «Откройте
     # через бота» с входом через Telegram (miniapp/static/js/app.js, /login дашборда). Кнопка
-    # только при включённом приложении; адрес — тот же публичный адрес дашборда + /app.
-    if await get_setting_typed("miniapp_enabled") == "on":
-        rows.append([InlineKeyboardButton(
-            text="📱 Приложение в браузере", url=config.DASHBOARD_PUBLIC_URL.rstrip("/") + "/app",
-        )])
+    # есть и при выключенном приложении: оно выключено только для делегатов, не для персонала.
+    rows.append([InlineKeyboardButton(
+        text="📱 Приложение в браузере", url=config.DASHBOARD_PUBLIC_URL.rstrip("/") + "/app",
+    )])
     return InlineKeyboardMarkup(inline_keyboard=rows + base.inline_keyboard)
 
 

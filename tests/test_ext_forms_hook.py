@@ -159,9 +159,10 @@ def test_hook_works_when_miniapp_off_but_api_gated(env):
     r = _post(c, body=BODY)
     assert r.status_code == 200
     assert _count() == 1
+    # Выключено = закрыто делегатам; без личности API по-прежнему закрыт (401, не данные).
     gated = c.get("/app/api/hub")
-    assert gated.status_code == 503
-    assert gated.json() == {"reason": "miniapp_off"}
+    assert gated.status_code == 401
+    assert gated.json()["reason"] == "no_auth"
 
 
 def test_access_log_masks_secret():
