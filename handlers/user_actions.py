@@ -76,8 +76,8 @@ from keyboards.builders import (
     get_main_menu_kb,
     get_info_submenu_kb,
     get_socials_kb,
-    MENU_TEXTS,
 )
+from keyboards.menu_dynamic import MenuButton  # подпись кнопки — настройка, узнаём любую актуальную
 from handlers.states import Question, GameSubmit
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
@@ -375,7 +375,7 @@ async def _balance_history_screen(
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_coins"]))
+@router.message(MenuButton("menu_coins"))
 async def show_my_coins(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -614,7 +614,7 @@ async def _game_task_list_screen(
     return "\n\n".join(lines), kb
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_game_tasks"]))
+@router.message(MenuButton("menu_game_tasks"))
 async def show_game_tasks(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1106,7 +1106,7 @@ async def gs_cancel(callback: types.CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_payment"]))
+@router.message(MenuButton("menu_payment"))
 async def upload_receipt_entry(message: types.Message, bot: Bot):
     """Re-entry into the payment step for a user who deferred (or lost FSM state on a
     bot restart). The button only appears while a receipt is owed, but re-check here in
@@ -1142,7 +1142,7 @@ async def _delegate_city(telegram_id: int) -> str | None:
 
 
 #ℹ️ Информация о форуме
-@router.message(F.text.in_(MENU_TEXTS["menu_info"]))
+@router.message(MenuButton("menu_info"))
 async def show_info_menu(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1235,7 +1235,7 @@ async def info_place(callback: types.CallbackQuery):
 # приоритет, если фото нет — текстовая программа сессий, если и её нет — пустая заглушка.
 # Видимость самой кнопки — `keyboards.builders.get_main_menu_kb` (фото ИЛИ сессии есть).
 # 📅 Программа форума
-@router.message(F.text.in_(MENU_TEXTS["menu_program"]))
+@router.message(MenuButton("menu_program"))
 async def show_program(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1270,7 +1270,7 @@ async def show_program(message: types.Message):
     await reg_i18n.say(message, await get_setting_typed("program_empty_text"))
 
 # 🗣 Спикеры
-@router.message(F.text.in_(MENU_TEXTS["menu_speakers"]))
+@router.message(MenuButton("menu_speakers"))
 async def show_speakers(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1292,7 +1292,7 @@ async def show_speakers(message: types.Message):
     await reg_i18n.say(message, await get_setting_typed("speakers_empty_text"))
 
 # 📞 Контакты
-@router.message(F.text.in_(MENU_TEXTS["menu_contacts"]))
+@router.message(MenuButton("menu_contacts"))
 async def show_contacts(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1337,7 +1337,7 @@ def _msk_now_str() -> str:
     return msk_now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_referral"]))
+@router.message(MenuButton("menu_referral"))
 async def my_referral_link(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
@@ -1348,7 +1348,7 @@ async def my_referral_link(message: types.Message, bot: Bot):
     await message.answer(text, reply_markup=kb)
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_invites"]))
+@router.message(MenuButton("menu_invites"))
 async def my_referrals(message: types.Message, bot: Bot):
     if not await ensure_registered(message):
         return
@@ -1468,7 +1468,7 @@ async def _start_question_form(message: types.Message, state: FSMContext) -> Non
     await state.set_state(Question.waiting_for_question)
 
 
-@router.message(F.text.in_(MENU_TEXTS["menu_faq"]))
+@router.message(MenuButton("menu_faq"))
 async def show_faq(message: types.Message):
     if not await ensure_registered(message):
         return
@@ -1533,7 +1533,7 @@ async def faq_ask(callback: types.CallbackQuery, state: FSMContext):
 
 
 # ❓ Задать вопрос
-@router.message(F.text.in_(MENU_TEXTS["menu_question"]))
+@router.message(MenuButton("menu_question"))
 async def ask_organizer_start(message: types.Message, state: FSMContext):
     if not await ensure_registered(message):
         return
@@ -1627,7 +1627,7 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
 # KeyboardButton(web_app=...) в reply-клавиатуре даёт simple web view БЕЗ initData, делегат не
 # аутентифицируется). Хендлер шлёт сообщение с inline web_app-кнопкой — только там initData
 # полный. Полностью вне CapabilityMiddleware (кнопка делегатская, права не нужны).
-@router.message(F.text.in_(MENU_TEXTS["menu_miniapp"]))
+@router.message(MenuButton("menu_miniapp"))
 async def open_miniapp_button(message: types.Message):
     # Квик 260915-skg (P7): реестровые тексты/подпись кнопки этого хендлера уходили сырым
     # message.answer мимо reg_i18n — reply-кнопка меню уже переводится (builders.py::MENU_EN),
@@ -1666,7 +1666,7 @@ async def open_miniapp_button(message: types.Message):
 # Дописана СРАЗУ ПОСЛЕ open_miniapp_button и ПЕРЕД reg_handoff_idle_fallback (тот — фолбэк
 # StateFilter(None)+F.text без ограничений, ловит любой необработанный текст; кнопки меню
 # обязаны регистрироваться раньше него, иначе aiogram отдаст текст туда first-match).
-@router.message(F.text.in_(MENU_TEXTS["menu_checkin_qr"]))
+@router.message(MenuButton("menu_checkin_qr"))
 async def show_my_checkin_qr(message: types.Message):
     # ensure_registered закрывает «нет анкеты»/pending/rejected человеческим текстом реестра
     # (см. ensure_registered выше). Но её _gate_decision пропускает legacy/NULL/будущий
@@ -1752,7 +1752,7 @@ from handlers import program  # noqa: E402,F401
 # Встал СРАЗУ ПОСЛЕ импорта program (см. блок выше) и ПЕРЕД reg_handoff_idle_fallback — тот же
 # довод: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений, кнопка меню обязана
 # зарегистрироваться раньше него.
-@router.message(F.text.in_(MENU_TEXTS["menu_important"]))
+@router.message(MenuButton("menu_important"))
 async def show_important_today(message: types.Message):
     if not await ensure_registered(message):
         return

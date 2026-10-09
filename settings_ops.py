@@ -532,6 +532,7 @@ GROUP_LABELS: dict[str, str] = {
     "reg_questions": "📋 Вопросы регистрации",
     "reg_prompts": "✏️ Тексты вопросов",
     "menu": "🔘 Кнопки меню",
+    "menu_labels": "✏️ Подписи кнопок меню",
     "dashboard": "📊 Дашборд",
     "miniapp": "🎨 Приложение",
 }
@@ -547,7 +548,7 @@ GROUP_LABELS: dict[str, str] = {
 # конкретному разделу; дрейф в боте (если менеджер физически перенесёт кнопку экрана в
 # другой раздел) этим тестом не ловится.
 SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("event", "🎪 Событие", ("event", "menu")),
+    ("event", "🎪 Событие", ("event", "menu", "menu_labels")),
     ("form", "📝 Анкета", ("reg_questions", "reg_prompts", "reg", "party", "consent")),
     ("apps", "📋 Заявки", ("apps",)),
     ("pay", "💳 Оплата", ("pay",)),

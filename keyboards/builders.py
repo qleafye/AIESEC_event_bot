@@ -10,8 +10,12 @@ from cities import default_city_code, get_setting_typed_for_city, cities_module_
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
 from i18n_ui_en import MENU_EN
-from services.i18n import resolve_lang
-from keyboards.menu_dynamic import DYNAMIC_MENU_LABEL_KEYS, caption_for
+from services.i18n import load_map, resolve_lang
+# Подписи кнопок меню — настройки; CONFERENCE_MENU_LABELS/LEGACY_MENU_TEXTS реэкспортом
+# (на них ссылаются старые импорты).
+from keyboards.menu_dynamic import (  # noqa: F401
+    CONFERENCE_MENU_LABELS, LEGACY_MENU_TEXTS, STATIC_MENU_TEXTS, caption_for,
+)
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
 # aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
@@ -90,38 +94,15 @@ MENU_BUTTONS = [
     ("menu_edit_anketa", "✏️ Изменить анкету"),
 ]
 
-# Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
-# матчинга фильтров aiogram (`F.text.in_(MENU_TEXTS[key])` вместо `F.text == "..."`). Собрано
-# ВЫЧИСЛЕНИЕМ из `MENU_BUTTONS` + `i18n_ui_en.MENU_EN`, а не выписано руками — расширение
-# набора подписей идёт по построению, без риска забыть одну из точек входа. Ключи — все ключи
-# `MENU_BUTTONS` (12) плюс синтетический `"menu_payment"` для литерала «💳 Оплата» ниже (этот
-# литерал НЕ входит в `MENU_BUTTONS` намеренно — экран тумблеров админки и реестр перебирают
-# именно `MENU_BUTTONS`, несуществующий ключ `menu_payment` там сломал бы сверку со
-# `SETTINGS_SCHEMA`). `MENU_EN.get(text, text)` — русская подпись без записи в `MENU_EN`
-# (сейчас такой нет, кроме `menu_lang`, которая и так двуязычна) даёт множество из одного
-# элемента, а не падает.
-MENU_TEXTS: dict[str, frozenset[str]] = {
-    key: frozenset({text, MENU_EN.get(text, text)}) for key, text in MENU_BUTTONS
-}
+# Подписи кнопок — настройки (`keyboards/menu_dynamic.py::MENU_LABEL_KEYS`), литералы выше —
+# только порядок и дефолты для экрана тумблеров (совпадение с дефолтами реестра сторожит
+# tests/test_menu_labels_settings.py).
 
-# Национальная конференция (съезд АЙСЕК) — не форум: при event_type == "conference" две
-# подписи меню меняются. Входной матчинг принимает обе формы — клавиатура, выданная делегату
-# до смены типа события, продолжает работать.
-CONFERENCE_MENU_LABELS: dict[str, str] = {
-    "menu_info": "ℹ️ О конференции",
-    "menu_program": "📅 Программа конференции",
-}
-for _key, _text in CONFERENCE_MENU_LABELS.items():
-    MENU_TEXTS[_key] = MENU_TEXTS[_key] | {_text, MENU_EN.get(_text, _text)}
-MENU_TEXTS["menu_payment"] = frozenset({"💳 Оплата", MENU_EN.get("💳 Оплата", "💳 Оплата")})
-# D-29 объединил «🗓 Программа» (menu_schedule) с «📅 Программа форума». У делегатов с
-# закэшированной старой клавиатурой кнопка осталась и молчала — её подписи (RU+EN, как были
-# до объединения) ведут в тот же show_program. В меню кнопку не возвращаем.
-LEGACY_MENU_TEXTS: dict[str, frozenset[str]] = {
-    "menu_program": frozenset({"🗓 Программа", "🗓 Schedule"}),
-}
-for _key, _texts in LEGACY_MENU_TEXTS.items():
-    MENU_TEXTS[_key] = MENU_TEXTS[_key] | _texts
+# Подписи, известные без чтения БД (дефолт + английская версия, конференционные, старые с
+# закэшированных клавиатур) — для синхронных сверок (сторож ввода настроек, проверка
+# совпадения подписей). Хендлеры меню узнают кнопку фильтром `menu_dynamic.MenuButton`:
+# он видит ещё и подписи, которые менеджер настроил.
+MENU_TEXTS: dict[str, frozenset[str]] = dict(STATIC_MENU_TEXTS)
 
 # Идея №1 бэклога чек-ина (режим «день форума», services/forum_day_menu.py): пока для города
 # делегата идёт форум, эти четыре кнопки (если каждая и так прошла СВОЙ обычный гейт — сама
@@ -346,10 +327,23 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         logger.error(f"get_main_menu_kb: edit gate resolve failed for {telegram_id}: {e}")
         edit_on = False
 
+    # Подписи кнопок — настройки по городу (keyboards/menu_dynamic.caption_for). Город для
+    # подписи — тот же фолбэк, что у гейтов записи/теста выше; карта переводов — одна на меню.
+    try:
+        label_city = code if code is not None else default_city_code()
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: label city resolve failed: {e}")
+        label_city = None
+    tr_map: dict[str, str] = {}
+    if lang == "en":
+        try:
+            tr_map = await load_map("en")
+        except Exception as e:
+            logger.error(f"get_main_menu_kb: EN map resolve failed: {e}")
+            tr_map = {}
+
     collected: list[tuple[str, str]] = []
-    for key, text in MENU_BUTTONS:
-        if conference:
-            text = CONFERENCE_MENU_LABELS.get(key, text)
+    for key, _default_text in MENU_BUTTONS:
         # menu_* is a registry `enum` key (options ["on","off"], default "on") -- the enum
         # branch of `_parse_setting` is `raw if raw else default`, so an unset/empty stored
         # value resolves to "on" exactly like the old `val is None or val == "on"` idiom;
@@ -398,14 +392,9 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
                 continue
             if key == "menu_edit_anketa" and not edit_on:
                 continue
-            if key in DYNAMIC_MENU_LABEL_KEYS:
-                collected.append((key, await caption_for(
-                    key, code if code is not None else default_city_code(), lang)))
-                continue
-            # Квик 260912 (W5, Задача 3): перевод подписи в ОДНОМ месте, прямо перед
-            # добавлением кнопки -- не через services.i18n.tr() (та лезла бы в UI_EN/tr_map,
-            # подписей меню там нет и быть не должно, см. i18n_ui_en.py::MENU_EN).
-            collected.append((key, MENU_EN.get(text, text) if lang == "en" else text))
+            # EN: рукописный MENU_EN для дефолтов, машинный перевод — для своих подписей.
+            collected.append((key, await caption_for(
+                key, label_city, lang, conference=conference, tr_map=tr_map)))
 
     # Идея №1 бэклога чек-ина: в режиме «день форума» четыре приоритетные кнопки (та из них,
     # что вообще прошла свой гейт выше) поднимаются наверх в фиксированном порядке
@@ -430,8 +419,8 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         try:
             from handlers.payment import should_offer_receipt_upload
             if await should_offer_receipt_upload(telegram_id):
-                payment_text = "💳 Оплата"
-                kb.button(text=MENU_EN.get(payment_text, payment_text) if lang == "en" else payment_text)
+                kb.button(text=await caption_for(
+                    "menu_payment", label_city, lang, tr_map=tr_map))
         except Exception:
             pass
     kb.adjust(2)
