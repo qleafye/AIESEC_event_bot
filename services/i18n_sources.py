@@ -436,6 +436,10 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append(("lit:user_actions.process_question_none_configured", "Администраторы не настроены."))
     items.append(("lit:user_actions.cancel_question", "Действие отменено."))
+    items.append((
+        "lit:admin_no_access.admin_no_access",
+        "Это команда для организаторов. Если вы организатор — попросите доступ у руководителя.",
+    ))
     items.append(("lit:user_actions.not_registered", "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start."))
 
     # Phase 32 (32-06, D-24/D-29/D-32/D-38): кнопка рейтинга волны в списке заданий, отказ по
