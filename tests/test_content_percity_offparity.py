@@ -49,7 +49,7 @@ from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 import cities
-from tests._dbtpl import fast_init_db
+from tests._dbtpl import fast_init_db, replay_seed
 
 
 ADMIN_ID = 920701
@@ -84,6 +84,13 @@ _GLOBAL_TEXT = {
 
 
 def _seed_overrides():
+    """Итог `_seed_overrides_slow()` в текущей базе. Сам засев (~970 `set_setting`, у каждого свой
+    коммит) прогоняется один раз на процесс, дальше его строки вставляются одним пакетом —
+    см. `tests/_dbtpl.py::replay_seed`."""
+    replay_seed("percity_offparity_overrides", _seed_overrides_slow)
+
+
+def _seed_overrides_slow():
     """Переопределения для ВСЕХ per_city-ключей реестра по ВСЕМ городам — набор ключей
     читается из SETTINGS_SCHEMA/cities.is_per_city, а не литералом (сторож ниже проверяет,
     что множество непусто, иначе файл молча проверял бы пустоту)."""
