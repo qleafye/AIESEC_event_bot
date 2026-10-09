@@ -1789,6 +1789,10 @@ from handlers import session_feedback  # noqa: E402,F401
 # session_feedback и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos/
 # session_feedback выше). Сам хендлер/логика — в шве handlers/forum_noshow_poll.py.
 from handlers import forum_noshow_poll  # noqa: E402,F401
+# Запись на сессии (кнопка меню, se:*) — до reg_handoff_idle_fallback, как соседние швы.
+from handlers import session_enroll  # noqa: E402,F401
+# Тест компетенций (кнопка меню, qz:*) — там же, до фолбэка.
+from handlers import quiz as quiz_handlers  # noqa: E402,F401
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —

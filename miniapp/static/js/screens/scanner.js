@@ -35,6 +35,7 @@ import { atUsername, flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
 import { createScanGate, HOLD } from "../scan_gate.js";
+import { enrollButton } from "../scanner_enroll.js";
 
 const ENTRY_POINT = "entry";
 const TRAINING_POINT = "training"; // «🧪 Тренировка» ничего не пишет — кнопок «на месте» там нет
@@ -450,6 +451,8 @@ export async function render(root, params, ctx) {
         ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }, { override: true }) : null,
       res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
       res.day_override && res.telegram_id && selectedPoint !== TRAINING_POINT ? dayOverrideButton(res) : null,
+      res.enroll && res.telegram_id && selectedPoint !== TRAINING_POINT
+        ? enrollButton(res, { h, api, say, failureText, refreshCounters, timeoutMs: SCAN_TIMEOUT_MS }) : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
     haptic(HAPTIC_BY_TONE[tone] || "error");

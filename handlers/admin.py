@@ -1175,3 +1175,9 @@ from handlers import admin_coins_transfer  # noqa: E402,F401
 from handlers import admin_settings_enum  # noqa: E402,F401
 # «👥 Список участников» в «📊 Данные» (handlers/admin_participants.py) — golden append в хвост.
 from handlers import admin_participants  # noqa: E402,F401
+# Треки, компетенции и запись у сессии (handlers/admin_enroll.py) — golden append в хвост.
+from handlers import admin_enroll  # noqa: E402,F401
+# Список записей, выгрузка и настройки записи (handlers/admin_enroll_list.py) — golden append в хвост.
+from handlers import admin_enroll_list  # noqa: E402,F401
+# Тест компетенций: настройки, вопросы, баллы (handlers/admin_quiz.py) — golden append в хвост.
+from handlers import admin_quiz  # noqa: E402,F401

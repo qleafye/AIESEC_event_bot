@@ -816,6 +816,18 @@ admin|message|dlg_link_person|state:DelegationLink:*
 admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
 admin|message|cointr_cancel_text|state:CoinsTransfer:*,state:CoinsTransfer:*
 admin|message|cointr_link|state:CoinsTransfer:*
+admin|message|prog_trk_cancel_word|state:ProgramTrackEdit:*
+admin|message|prog_cmp_cancel_word|state:ProgramCompetencyEdit:*
+admin|message|prog_lim_cancel_word|state:ProgramEnrollLimit:*
+admin|message|prog_trk_name_step|state:ProgramTrackEdit:*
+admin|message|prog_cmp_name_step|state:ProgramCompetencyEdit:*
+admin|message|prog_enrlim_step|state:ProgramEnrollLimit:*
+admin|message|prog_qz_cancel_word|state:QuizEdit:*
+admin|message|prog_qz_value|state:QuizEdit:*
+admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
+admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
+admin|message|prog_qzimp_file|state:QuizImport:*
+admin|message|prog_qzimp_not_file|state:QuizImport:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1003,6 +1015,9 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|phchk_save|phchk_save
+admin|callback_query|phchk_fix|phchk_fix
+admin|callback_query|phchk_retry|phchk_retry
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1065,6 +1080,15 @@ admin|callback_query|extff_start|extff_start
 admin|callback_query|extff_form|extff_form:*
 admin|callback_query|extff_pick|extff_pick:*
 admin|callback_query|extff_cancel|extff_cancel
+admin|callback_query|bcseason_all|bcseason_all
+admin|callback_query|bcseason_cur|bcseason_cur
+admin|callback_query|bcseason_only|bcseason_only
+admin|callback_query|bcseason_sched|bcseason_sched
+admin|callback_query|enrf_start|enrf_start:*
+admin|callback_query|enrf_city_pick|enrf_city:*
+admin|callback_query|enrf_day_pick|enrf_day:*
+admin|callback_query|enrf_session_pick|enrf_pick:*
+admin|callback_query|enrf_cancel|enrf_cancel
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -1547,6 +1571,74 @@ admin|callback_query|cointr_tab|cointr_tab:*
 admin|callback_query|cointr_go|cointr_go:*
 admin|callback_query|settings_enum_pick|settings_enum_pick:*
 admin|callback_query|export_participants|admin_export_participants
+admin|callback_query|prog_tmok|prog_tmok:*
+admin|callback_query|prog_tmno|prog_tmno
+admin|callback_query|prog_lmok|prog_lmok:*
+admin|callback_query|prog_lmno|prog_lmno
+admin|callback_query|prog_trkl|prog_trkl:*
+admin|callback_query|prog_trkn|prog_trkn:*
+admin|callback_query|prog_trko|prog_trko:*
+admin|callback_query|prog_trkr|prog_trkr:*
+admin|callback_query|prog_trkm|prog_trkm:*
+admin|callback_query|prog_trkx|prog_trkx:*
+admin|callback_query|prog_trkxgo|prog_trkxgo:*
+admin|callback_query|prog_cmpl|prog_cmpl:*
+admin|callback_query|prog_cmpn|prog_cmpn:*
+admin|callback_query|prog_cmpo|prog_cmpo:*
+admin|callback_query|prog_cmpr|prog_cmpr:*
+admin|callback_query|prog_cmpm|prog_cmpm:*
+admin|callback_query|prog_cmpx|prog_cmpx:*
+admin|callback_query|prog_cmpxgo|prog_cmpxgo:*
+admin|callback_query|prog_enrcancel|prog_enrcancel
+admin|callback_query|prog_enrcard|prog_enrcard:*
+admin|callback_query|prog_enrtrk|prog_enrtrk:*
+admin|callback_query|prog_enrtrkgo|prog_enrtrkgo:*
+admin|callback_query|prog_enrcmp|prog_enrcmp:*
+admin|callback_query|prog_enrcl|prog_enrcl:*
+admin|callback_query|prog_enrlim0|prog_enrlim0:*
+admin|callback_query|prog_enrlim|prog_enrlim:*
+admin|callback_query|prog_enrl|prog_enrl:*
+admin|callback_query|prog_enrlt|prog_enrlt:*
+admin|callback_query|prog_enrx|prog_enrx:*
+admin|callback_query|prog_enrset|prog_enrset:*
+admin|callback_query|prog_enrsw|prog_enrsw:*
+admin|callback_query|prog_enrdl|prog_enrdl:*
+admin|callback_query|prog_enrtx|prog_enrtx:*
+admin|callback_query|prog_enrte|prog_enrte:*
+admin|callback_query|prog_qz|prog_qz:*
+admin|callback_query|prog_qzcancel|prog_qzcancel
+admin|callback_query|prog_qzsw|prog_qzsw:*
+admin|callback_query|prog_qzrt|prog_qzrt:*
+admin|callback_query|prog_qzmode|prog_qzmode:*
+admin|callback_query|prog_qzf|prog_qzf:*
+admin|callback_query|prog_qzql|prog_qzql:*
+admin|callback_query|prog_qzqn|prog_qzqn:*
+admin|callback_query|prog_qzq|prog_qzq:*
+admin|callback_query|prog_qzqe|prog_qzqe:*
+admin|callback_query|prog_qzqm|prog_qzqm:*
+admin|callback_query|prog_qzqx|prog_qzqx:*
+admin|callback_query|prog_qzqxgo|prog_qzqxgo:*
+admin|callback_query|prog_qzon|prog_qzon:*
+admin|callback_query|prog_qzo|prog_qzo:*
+admin|callback_query|prog_qzoe|prog_qzoe:*
+admin|callback_query|prog_qzoc|prog_qzoc:*
+admin|callback_query|prog_qzop|prog_qzop:*
+admin|callback_query|prog_qzox|prog_qzox:*
+admin|callback_query|prog_qzoxgo|prog_qzoxgo:*
+admin|callback_query|prog_qzl|prog_qzl:*
+admin|callback_query|prog_qzln|prog_qzln:*
+admin|callback_query|prog_qzlo|prog_qzlo:*
+admin|callback_query|prog_qzle|prog_qzle:*
+admin|callback_query|prog_qzlx|prog_qzlx:*
+admin|callback_query|prog_qzlxgo|prog_qzlxgo:*
+admin|callback_query|prog_qzst|prog_qzst:*
+admin|callback_query|prog_qzlink|prog_qzlink:*
+admin|callback_query|prog_qztx|prog_qztx:*
+admin|callback_query|prog_qzte|prog_qzte:*
+admin|callback_query|prog_qzimp|prog_qzimp:*
+admin|callback_query|prog_qztpl|prog_qztpl:*
+admin|callback_query|prog_qzapply|prog_qzapply:*
+admin|callback_query|prog_qzimpno|prog_qzimpno:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1668,6 +1760,8 @@ user_actions|message|sos_collecting_step|state:SosReport:*
 user_actions|message|sos_delegate_followup|
 user_actions|message|sfb_comment_step|
 user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
+user_actions|message|session_enroll_menu|
+user_actions|message|quiz_menu|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1690,6 +1784,20 @@ user_actions|callback_query|pds_days_back|pds_days
 user_actions|callback_query|sfb_rate|
 user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|fnsp_answer|fnsp:*
+user_actions|callback_query|se_open|se:open
+user_actions|callback_query|se_track|se:t:*
+user_actions|callback_query|se_slot|se:s:*
+user_actions|callback_query|se_pick|se:p:*
+user_actions|callback_query|se_replace|se:r:*
+user_actions|callback_query|se_keep|se:k:*
+user_actions|callback_query|se_clear|se:c:*
+user_actions|callback_query|se_my|se:my
+user_actions|callback_query|se_edit|se:ed
+user_actions|callback_query|se_confirm|se:ok
+user_actions|callback_query|quiz_go|qz:go
+user_actions|callback_query|quiz_answer|qz:a:*
+user_actions|callback_query|quiz_result|qz:res
+user_actions|callback_query|quiz_retake|qz:re
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2281,7 +2389,8 @@ def test_snapshot_total_handler_count_is_292():
     # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
     # 09.10: «👥 Список участников» (handlers/admin_participants.py): +1 admin.callback_query
     # (export_participants) перед prog_fbday_open (1085 -> 1086).
-    assert len(GOLDEN_SNAPSHOT) == 1086
+    # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста и подтверждения, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1086 -> 1194).
+    assert len(GOLDEN_SNAPSHOT) == 1194
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

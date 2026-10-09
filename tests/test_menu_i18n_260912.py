@@ -98,7 +98,7 @@ def test_menu_texts_covers_all_thirteen_keys():
     # assert ниже проверяет актуальное число.
     expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 16
+    assert len(MENU_TEXTS) == 18  # +menu_session_enroll, +menu_quiz
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -249,7 +249,7 @@ def test_no_handler_file_matches_menu_label_by_exact_equality():
 # же паритет.
 _GATED_KEYS = (
     "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_program",
-    "menu_important", "menu_sos",
+    "menu_important", "menu_sos", "menu_session_enroll", "menu_quiz",
 )
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
 

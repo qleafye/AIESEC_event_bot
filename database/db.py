@@ -2608,6 +2608,11 @@ async def init_db():
         # Монеты из чата: «+N» ответом гейм-менеджера, перенос старых баллов из таблицы.
         from database import chat_coins_db
         await chat_coins_db.ensure_schema(db)
+        # Запись на сессии программы: треки, компетенции, записи, подтверждение расписания.
+        from database import session_enroll_db
+        await session_enroll_db.ensure_schema(db)
+        from database import quiz_db
+        await quiz_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
@@ -5423,6 +5428,7 @@ _FILTER_COLUMNS = {
     "local_committee", "department", "aiesec_role", "education_status",
     "course", "study_field", "position", "attendance_format",
     "participant_type",  # Phase 5 (D-19, TRACK-06 SC#8)
+    "session_enroll", "quiz",  # виртуальные, см. _FILTER_VIRTUAL_FIELDS
     # Phase 07.2 (CITY-02) — event city as a broadcast-segment filter. MUST also be in
     # `handlers.admin._PICKER_FIELDS`, otherwise the field is silently dropped and the
     # manager broadcasts to the wrong segment while the screen says otherwise
@@ -5492,6 +5498,9 @@ _FILTER_VIRTUAL_FIELDS = {
     "checkin_entry", "checkin_session", "ext_form",
     # Делегации вузов (D-07): колонки `users.delegation_any` нет, условие — по `delegation`.
     "delegation_any",
+    # Запись на сессии / тест компетенций: условия по таблицам, колонок users с такими
+    # именами нет.
+    "session_enroll", "quiz",
 }
 
 # Квик 260910-vfl (SEASON-FILTER-03): маркер «строк без сезона» в спеке фильтра рассылки.
@@ -5502,6 +5511,19 @@ _FILTER_VIRTUAL_FIELDS = {
 # внутри списка словарей — риск не в этом, риск в читаемости и в случайном совпадении с
 # легитимным отсутствующим ключом; явная строка исключает оба случая).
 SEASON_NONE = "__none__"
+
+# Сентинел «текущий сезон» для фильтра рассылки: делегаты текущего `event_season` плюс строки
+# без сезона. Строка (не None) ради `json.dumps` отложенной рассылки. Сам сезон в спеку НЕ
+# кладётся — его подставляет `_resolve_enroll_and_season` снимком настройки на момент вызова,
+# иначе смена сезона оставила бы отложенную рассылку на старой аудитории.
+SEASON_CURRENT = "__current__"
+
+# Фильтр «Запись на сессию» (`session_enroll`): «записаны на сессию X» (`in` + session_id) и
+# «не записаны ни на одну сессию города» (`none` + city). Фильтр «Тест» (`quiz`): «не прошли
+# тест города» (`not_passed` + city).
+SESSION_ENROLL_IN = "in"
+SESSION_ENROLL_NONE = "none"
+QUIZ_NOT_PASSED = "not_passed"
 
 # Квик 260911-0fh (RESUME-FILTER-01/03): единственный источник правды о том, какие колонки
 # `users` считаются «резюме». Прод-инцидент: с 05.09 по 10.09 у 203 делегатов молча
@@ -5576,6 +5598,44 @@ def _approved_current_season_frag(event_season: str | None) -> tuple[str, list]:
     return f"status = 'approved' AND {season_frag}", params
 
 
+def _enroll_quiz_clause(f: dict) -> tuple[str, list]:
+    """Условие фильтров `session_enroll` / `quiz`. Всё через `?`, неизвестное значение или
+    удалённая сессия (`_invalid`) — заведомо ложное `0` (fail closed, WR-01: не «всем»).
+    Гард «approved + текущий сезон» — как у `checkin_session` (`event_season` кладёт резолвер)."""
+    field, value = f.get("field"), f.get("value")
+    guard, guard_params = _approved_current_season_frag(f.get("event_season"))
+    if f.get("_invalid"):
+        return "0", []
+    if field == "session_enroll" and value == SESSION_ENROLL_IN:
+        session_id = f.get("session_id")
+        if not isinstance(session_id, int) or isinstance(session_id, bool):
+            return "0", []
+        return (
+            f"({guard} AND EXISTS (SELECT 1 FROM session_enrollments e "
+            "WHERE e.telegram_id = users.telegram_id AND e.session_id = ?))",
+            [*guard_params, session_id],
+        )
+    city = f.get("city")
+    if not city or not isinstance(city, str):
+        return "0", []
+    city_frag, city_params = _city_clause((city, tuple(f.get("exclude") or ())))
+    if field == "session_enroll" and value == SESSION_ENROLL_NONE:
+        return (
+            f"({guard} AND {city_frag} AND NOT EXISTS (SELECT 1 FROM session_enrollments e "
+            "JOIN program_sessions s ON s.id = e.session_id "
+            "WHERE e.telegram_id = users.telegram_id AND s.city = ?))",
+            [*guard_params, *city_params, city],
+        )
+    if field == "quiz" and value == QUIZ_NOT_PASSED:
+        return (
+            f"({guard} AND {city_frag} AND NOT EXISTS (SELECT 1 FROM quiz_attempts a "
+            "JOIN quizzes q ON q.id = a.quiz_id WHERE a.telegram_id = users.telegram_id "
+            "AND q.city = ? AND a.finished_at IS NOT NULL))",
+            [*guard_params, *city_params, city],
+        )
+    return "0", []
+
+
 def _resume_has_fragment() -> str:
     """SQL fragment: «резюме есть» — любая из `RESUME_COLUMNS` непуста (`-` тоже пусто).
     Единственное место, где это условие собрано — и `_build_filter_clause`, и
@@ -5648,6 +5708,17 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
             value = f.get("value")
             if value == SEASON_NONE:
                 clauses.append("(season IS NULL OR TRIM(season) = '')")
+            elif value == SEASON_CURRENT:
+                # Сезон приходит снимком от `_resolve_enroll_and_season`. Настройка пуста —
+                # понятия «прошлый сезон» нет, но и «всем подряд» нельзя: условие
+                # «только текущий» не должно молча открываться на делегатов с проставленным
+                # сезоном. Остаются строки без сезона; если сезонов в базе нет, это все строки.
+                snapshot = f.get("event_season")
+                if snapshot:
+                    clauses.append("(season IS NULL OR TRIM(season) = '' OR season = ?)")
+                    params.append(snapshot)
+                else:
+                    clauses.append("(season IS NULL OR TRIM(season) = '')")
             elif not value:
                 # WR-01, same reasoning as event_city above: an empty value must NOT drop the
                 # condition (that would fan out to the whole base) — emit a false clause.
@@ -5837,6 +5908,10 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
                 clauses.append(f"({guard_frag} AND {presence_frag})")
                 params.extend(guard_params)
                 params.append(f"session:{session_id}")
+        elif field in ("session_enroll", "quiz"):
+            frag, frag_params = _enroll_quiz_clause(f)
+            clauses.append(frag)
+            params.extend(frag_params)
         elif field == "payment_status" and f.get("value") in ("not_paid", "overdue"):
             # Делегаты вузов оплаты не имеют (у них payment_status остаётся дефолтным
             # not_paid) — в «не оплатили» им не место, напоминание об оплате им не уйдёт.
@@ -6152,10 +6227,63 @@ async def _resolve_checkin_session_validity(filters: list[dict]) -> list[dict]:
     return result
 
 
+async def _resolve_enroll_and_season(filters: list[dict]) -> list[dict]:
+    """Для `session_enroll` / `quiz` / `season=SEASON_CURRENT` кладёт `event_season` СНИМКОМ
+    настройки на момент вызова (в спеку отложенной рассылки сезон не замораживается — смена
+    сезона между планированием и отправкой не оставляет рассылку на старой аудитории).
+    `session_enroll` `in` с уже удалённой сессией помечается `_invalid` — fail closed."""
+    def _wants_season(f) -> bool:
+        return isinstance(f, dict) and (
+            f.get("field") in ("session_enroll", "quiz")
+            or (f.get("field") == "season" and f.get("value") == SEASON_CURRENT)
+        )
+
+    if not any(_wants_season(f) for f in filters):
+        return filters
+    event_season = (await get_setting("event_season") or "").strip() or None
+    cache: dict[int, bool] = {}
+    out: list[dict] = []
+    for f in filters:
+        if _wants_season(f):
+            f = {**f, "event_season": event_season}
+            if f.get("field") == "session_enroll" and f.get("value") == SESSION_ENROLL_IN:
+                sid = f.get("session_id")
+                if isinstance(sid, int) and not isinstance(sid, bool):
+                    if sid not in cache:
+                        cache[sid] = (await get_program_session(sid)) is not None
+                    if not cache[sid]:
+                        f["_invalid"] = True
+        out.append(f)
+    return out
+
+
+async def split_ids_by_season(ids: list[int]) -> tuple[list[int], list[int]]:
+    """Делит id на (текущий сезон, включая пустой сезон) и (прошлые сезоны). `event_season` не
+    задан — все в «текущих». Порядок id сохраняется; id, которых нет в users, считаются
+    текущими (сезона у них нет)."""
+    ids = [int(i) for i in ids]
+    event_season = (await get_setting("event_season") or "").strip()
+    if not event_season or not ids:
+        return ids, []
+    past: set[int] = set()
+    async with _connect() as db:
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" for _ in chunk)
+            async with db.execute(
+                f"SELECT telegram_id FROM users WHERE telegram_id IN ({marks}) "
+                "AND TRIM(COALESCE(season, '')) != '' AND season != ?",
+                [*chunk, event_season],
+            ) as cursor:
+                past.update(int(r[0]) for r in await cursor.fetchall())
+    return [i for i in ids if i not in past], [i for i in ids if i in past]
+
+
 async def count_and_list_filtered(filters: list[dict]) -> list[int]:
     """Materialize the matched telegram_id list; the count preview is len(...)."""
     filters = await _resolve_checkin_entry_season(filters)
     filters = await _resolve_checkin_session_validity(filters)
+    filters = await _resolve_enroll_and_season(filters)
     where, params = _build_filter_clause(filters)
     # ME-04: if the caller supplied filter(s) but every one was dropped (non-whitelisted field
     # / malformed spec), `where` degenerates to empty and the query would fan out to ALL users.
@@ -10557,6 +10685,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("reg_submit_digest_queue", "telegram_id", "queue"),
     ("delayed_notifications", "user_id", "queue"),
     ("application_decisions", "telegram_id", "decisions"),
+    # Запись на сессии программы и подтверждение расписания — личный след делегата.
+    ("session_enrollments", "telegram_id", "enrollments"),
+    ("session_schedule_confirms", "telegram_id", "enrollments"),
+    ("quiz_attempts", "telegram_id", "quiz"),
     ("poll_answers", "user_id", "deliveries"),
     ("poll_messages", "chat_id", "deliveries"),
     ("broadcast_deliveries", "chat_id", "deliveries"),
@@ -12016,6 +12148,7 @@ async def get_program_session(session_id: int) -> dict | None:
 # list колонок у любой другой PATCH-функции в этом файле (не SET из произвольных kwargs).
 _PROGRAM_SESSION_PATCH_FIELDS = (
     "day", "start_time", "end_time", "title", "speaker", "hall_id", "description",
+    "track_id", "enroll_closed", "enroll_limit",
 )
 
 
@@ -12041,6 +12174,11 @@ async def update_program_session(session_id: int, **fields) -> bool:
 
 async def delete_program_session(session_id: int) -> bool:
     async with _connect() as db:
+        # Записи на сессию и её компетенции уходят вместе с ней — иначе сироты.
+        await db.execute("DELETE FROM session_enrollments WHERE session_id = ?", (session_id,))
+        await db.execute(
+            "DELETE FROM program_session_competencies WHERE session_id = ?", (session_id,),
+        )
         cursor = await db.execute("DELETE FROM program_sessions WHERE id = ?", (session_id,))
         await db.commit()
         return bool(cursor.rowcount)

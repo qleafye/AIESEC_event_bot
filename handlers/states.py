@@ -130,6 +130,9 @@ class EditSetting(StatesGroup):
     # Quick 260822: «➕ Добавить пункт» списочной настройки -- одно сообщение = один пункт
     # (handlers/admin_settings_lists.py).
     waiting_for_list_item = State()
+    # Подтверждение «Пропала подстановка — сохранить всё равно?»: менеджер убрал из текста
+    # скобки {…}, которые бот подставляет сам (callback'и phchk_*).
+    waiting_for_placeholder_confirm = State()
 
 class StaffAdd(StatesGroup):
     # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by
@@ -397,6 +400,31 @@ class ProgramHallName(StatesGroup):
 class ProgramDayCustom(StatesGroup):
     # «📅 Другой день» — ввод даты текстом («31.10»/«31.10.2026»); город — в state.get_data().
     value = State()
+
+
+class ProgramTrackEdit(StatesGroup):
+    # Название трека сессий (создание и переименование); контекст — в state.get_data().
+    name = State()
+
+
+class ProgramCompetencyEdit(StatesGroup):
+    # Название компетенции теста (создание и переименование); контекст — в state.get_data().
+    name = State()
+
+
+class ProgramEnrollLimit(StatesGroup):
+    # Лимит мест на сессию текстом (число; «-» — без лимита); сессия — в state.get_data().
+    value = State()
+
+
+class QuizEdit(StatesGroup):
+    # Правка текста вопроса/варианта/уровня теста; что именно правится — в state.get_data().
+    value = State()
+
+
+class QuizImport(StatesGroup):
+    # Ожидание файла с вопросами теста (импорт из таблицы).
+    waiting_file = State()
 
 
 class SosReport(StatesGroup):
