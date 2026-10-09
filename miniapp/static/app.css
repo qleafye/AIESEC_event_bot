@@ -1270,6 +1270,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   margin-bottom: var(--sp-3);
 }
 .consent-card .icon { flex: none; color: var(--accent-text); }
+/* Приёмка 09.10: текст согласия от менеджера — над галочкой, переносы строк сохраняются. */
+.consent-body { display: flex; flex-direction: column; gap: var(--sp-2); flex: 1; min-width: 0; }
+.consent-text { margin: 0; font-size: 15px; line-height: 1.45; color: var(--text); white-space: pre-line; }
 
 /* ── экран настроек (фаза 22, 22-UI-SPEC.md): липкая строка поиска, группы реестра со
    свёрткой, строки настроек с маркером состояния, плавающая панель батча, diff-строки
