@@ -534,7 +534,10 @@ async def setup_status(
         for step in visible_steps(event_type, flags):
             fields_out = [await _item_for(key, ctx) for key in step.fields]
             filled = {
-                key: (step.accept_default or not item["is_default"]) and item["display"] != ""
+                key: (
+                    step.accept_default or not item["is_default"]
+                    or (step.explicit_choice and await get_setting(key) is not None)
+                ) and item["display"] != ""
                 for key, item in zip(step.fields, fields_out)
             }
             counts = step.kind == "fields"

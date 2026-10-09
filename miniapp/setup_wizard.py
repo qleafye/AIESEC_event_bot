@@ -33,6 +33,7 @@ class WizardStep:
     event_types: frozenset[str] | None = None  # None = для любого типа
     requires: str | None = None           # ключ-тумблер, который должен быть "on"
     accept_default: bool = False          # значение по умолчанию тоже считается «задано»
+    explicit_choice: bool = False         # «задано» = менеджер выбрал явно, даже равное дефолту
 
 
 # Порядок — из шпаргалки; вставка СкиллАп (13–16) идёт после общих текстов и до таблицы
@@ -47,6 +48,9 @@ STEPS: tuple[WizardStep, ...] = (
               "пресет СкиллАп (анкету, догонялку, тексты амбассадоров). Всё можно поправить потом."),
         kind="fields",
         fields=("event_type",),
+        # 10.10: дефолт event_type = "forum". Неявный дефолт шаг не закрывает (менеджер выбирает
+        # тип сам, как было при пустом дефолте), явно выбранный «Форум» — закрывает.
+        explicit_choice=True,
     ),
     WizardStep(
         key="botfather",
