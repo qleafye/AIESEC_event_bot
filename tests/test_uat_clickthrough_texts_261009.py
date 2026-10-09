@@ -113,7 +113,7 @@ def test_file_branch_in_chat_asks_for_file(tmp_path):
 
     async def go():
         await db.set_setting("reg_resume_mode", "fork")
-        chat = await reg_engine.help_default("resume", None, "chat")
+        chat = await reg_engine.help_default("resume", None, "chat_file")
         app = await reg_engine.help_default("resume", None, "app")
         return chat, app
 
@@ -145,3 +145,24 @@ def test_admin_header_leads_with_buttons_and_folds_commands(tmp_path):
     assert "Выберите раздел кнопкой ниже." in head
     assert "/stats" not in head
     assert "/stats_monthly" in folded and folded.endswith("</blockquote>")
+
+
+def test_resume_fork_help_texts_have_english_and_are_in_corpus():
+    from services import i18n_sources
+    from services.i18n_form_manual import _REGISTRY_TEXTS_EN
+    corpus = {t for _k, t in i18n_sources.code_literals()}
+    for text in (reg_engine._STEP_HELP_RESUME_FORK, reg_engine._STEP_HELP_RESUME_FORK_FILE_CHAT):
+        assert text in _REGISTRY_TEXTS_EN, text
+        assert text in corpus, text
+
+
+def test_admin_editor_default_is_fork_help_not_file_branch(tmp_path):
+    """Ревью: редактор подсказки в админке (`admin_reg_percity`) зовёт help_default без
+    surface — он должен показывать подсказку развилки, а не текст ветки «файл»."""
+    _use_tmp_db(tmp_path)
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        return await reg_engine.help_default("resume", None)
+
+    assert asyncio.run(go()) == reg_engine._STEP_HELP_RESUME_FORK
