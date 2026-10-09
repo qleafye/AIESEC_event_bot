@@ -358,7 +358,9 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
 # Экраны раздела «🤝 Амбассадоры», у которых есть собственный тумблер и которые должны жить и
 # при выключенном «🤝 Отборе амбассадоров» (волны, ступени): раздела в корне тогда нет, а эти две
 # строки показываются в «🎮 Геймификации».
-_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "settings_group:amb")  # порядок = порядок в «🎮 Геймификации»
+# 09.10: баллы, исключения и закрепление от отбора не зависят — тоже доступны при выключенном.
+_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "admin_amb_points", "ambt_excl_list:0",
+                      "admin_amb_attach", "settings_group:amb")  # порядок = порядок в «🎮 Геймификации»
 
 
 async def owner_back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:

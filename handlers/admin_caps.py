@@ -1013,6 +1013,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambt_toggle:*": "moderate_game",
     "ambt_csv": "moderate_game",
     "ambt_excl": "moderate_game",
+    "ambt_excl_l": "moderate_game",
+    "ambt_fill": "moderate_game",
+    "ambt_fill_go:*": "moderate_game",
     "ambt_excl_go": "moderate_game",
     "ambt_excl_cancel": "moderate_game",
     "ambt_excl_list:*": "moderate_game",
@@ -1278,6 +1281,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "revertp_toggle:*": "moderate_reg",
     "revertp_apply:*": "moderate_reg",
     "revertp_cancel:*": "moderate_reg",
+    # «📨 Отправить решение заново» — кнопка карточки /find (handlers/admin_resend_decision.py).
+    # Префикс decresend_ не пересекается ни с одним существующим ключом.
+    "decresend_start:*": "moderate_reg",
+    "decresend_go:*": "moderate_reg",
+    "decresend_cancel:*": "moderate_reg",
     # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» / отзыв — та же капа, что у соседних
     # карточных действий (handlers/admin_resubmit_grant.py).
     "resubg_start:*": "moderate_reg",

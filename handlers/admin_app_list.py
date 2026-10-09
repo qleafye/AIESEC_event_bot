@@ -14,7 +14,7 @@ from datetime import datetime
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import count_applications, list_applications_page, resolve_decision_managers
+from database.db import count_applications, get_setting, list_applications_page, resolve_decision_managers
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from services.reject_journal import AUTO_DECIDED_BY
@@ -105,7 +105,7 @@ _DATE_CAPTION = {
 
 
 async def render_app_list_screen(
-    admin_id: int, status: str = "approved", offset: int = 0
+    admin_id: int, status: str = "approved", offset: int = 0, all_seasons: bool = False
 ) -> tuple[str, InlineKeyboardMarkup]:
     """«Функция возвращает (text, kb)» idiom (форма `render_questions_screen`). WR-05: одно
     чтение города на экран — тот же scope уходит и в счётчики, и в выборку, иначе счётчик в
@@ -113,8 +113,14 @@ async def render_app_list_screen(
     if status not in STATUS_LABELS:
         status = "approved"
     scope, label = await _admin_city_view(admin_id)
-    counts = await count_applications(city_scope=scope)
-    rows = await list_applications_page(status=status, city_scope=scope, limit=PAGE, offset=offset)
+    # Сезон: по умолчанию только текущий (`event_season`), иначе импортированные делегаты
+    # прошлого сезона попадают в «✅ одобрено». Сезон не задан — фильтровать не по чему.
+    current_season = (await get_setting("event_season") or "").strip() or None
+    season = None if all_seasons else current_season
+    counts = await count_applications(city_scope=scope, season=season)
+    rows = await list_applications_page(
+        status=status, city_scope=scope, limit=PAGE, offset=offset, season=season
+    )
     # Один запрос на страницу (WR-05-стиль): собрали неповторяющиеся decided_by СО страницы,
     # резолвим имена одним IN (...), а не дёргаем resolve_decision_managers на каждую строку.
     manager_labels = await resolve_decision_managers(
@@ -129,6 +135,9 @@ async def render_app_list_screen(
     lines.append(
         f"✅ {counts['approved']} · ❌ {counts['rejected']} · ⏳ {counts['pending']}"
     )
+    if current_season:
+        shown = "все сезоны" if all_seasons else current_season
+        lines.append(f"Сезон: {html_module.escape(shown)}")
     if label:
         lines.append(html_module.escape(str(label)))
     lines.append(f"Показаны: {STATUS_LABELS[status]} ({_DATE_CAPTION[status]})")
@@ -147,11 +156,13 @@ async def render_app_list_screen(
 
     text = "\n".join(lines)
 
+    # Выбор сезона едет в callback_data (суффикс `:all`), в настройки не пишется.
+    suffix = ":all" if all_seasons else ""
     buttons: list[list[InlineKeyboardButton]] = []
     status_row = [
         InlineKeyboardButton(
             text=("• " if opt == status else "") + STATUS_LABELS[opt],
-            callback_data=f"apl:{opt}:0",
+            callback_data=f"apl:{opt}:0{suffix}",
         )
         for opt in _STATUS_ORDER
     ]
@@ -160,14 +171,26 @@ async def render_app_list_screen(
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:
         nav_row.append(InlineKeyboardButton(
-            text="⬅️", callback_data=f"apl:{status}:{max(0, offset - PAGE)}",
+            text="⬅️", callback_data=f"apl:{status}:{max(0, offset - PAGE)}{suffix}",
         ))
     if offset + PAGE < total:
         nav_row.append(InlineKeyboardButton(
-            text="➡️", callback_data=f"apl:{status}:{offset + PAGE}",
+            text="➡️", callback_data=f"apl:{status}:{offset + PAGE}{suffix}",
         ))
     if nav_row:
         buttons.append(nav_row)
+
+    if current_season:
+        buttons.append([
+            InlineKeyboardButton(
+                text=("✅ " if not all_seasons else "") + "🗓 Только текущий сезон",
+                callback_data=f"apl:{status}:0",
+            ),
+            InlineKeyboardButton(
+                text=("✅ " if all_seasons else "") + "Все сезоны",
+                callback_data=f"apl:{status}:0:all",
+            ),
+        ])
 
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_app_list")])
@@ -184,11 +207,12 @@ async def admin_app_list_open(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("apl:"))
 async def apl_page(callback: types.CallbackQuery):
-    parts = callback.data.split(":", 2)
-    if len(parts) != 3:
+    parts = callback.data.split(":")
+    if len(parts) not in (3, 4) or (len(parts) == 4 and parts[3] != "all"):
         await callback.answer("Некорректная страница", show_alert=True)
         return
-    _, status_raw, offset_raw = parts
+    all_seasons = len(parts) == 4
+    _, status_raw, offset_raw = parts[:3]
     try:
         offset = int(offset_raw)
     except ValueError:
@@ -197,6 +221,8 @@ async def apl_page(callback: types.CallbackQuery):
         await callback.answer("Некорректная страница", show_alert=True)
         return
     status = status_raw if status_raw in STATUS_LABELS else "approved"
-    text, kb = await render_app_list_screen(callback.from_user.id, status=status, offset=offset)
+    text, kb = await render_app_list_screen(
+        callback.from_user.id, status=status, offset=offset, all_seasons=all_seasons
+    )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()

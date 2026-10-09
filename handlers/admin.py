@@ -87,6 +87,7 @@ from database.db import (
     mark_season_ended,
     # Phase 07.3 (05, RET-03): менеджерские поверхности повторного делегата
     get_returning_count,
+    count_past_season_users,
     # Phase 07.3 (06, RET-04): импорт делегатов прошлого события
     bulk_insert_users_if_absent,
     count_existing_telegram_ids,
@@ -103,6 +104,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
 from services.background import spawn as _spawn
+from services import decision_delivery
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
@@ -254,7 +256,10 @@ async def render_stats_text(admin_id: int | None = None) -> str:
                 city_scope_val = city_scope(bound_city)
                 own_city_label = html_module.escape(await city_label(own_city_code))
 
-    total, top_unis = await get_stats(city_scope=city_scope_val)
+    # Счётчики — только текущий сезон (`event_season`); сезон не задан — все строки, как раньше.
+    # Прошлые сезоны (в т.ч. импортированные делегаты) отдельной строкой ниже, в «Всего» не идут.
+    season = (await get_setting("event_season") or "").strip() or None
+    total, top_unis = await get_stats(city_scope=city_scope_val, season=season)
 
     header_suffix = f" — {own_city_label}" if own_city_label else ""
     text = (
@@ -268,14 +273,17 @@ async def render_stats_text(admin_id: int | None = None) -> str:
 
     # Phase 07.3 (05, RET-03): счётчик повторных делегатов — глобальный (без городского
     # разреза) в НЕсуженном режиме; в суженном режиме (D-10) считается по тому же city_scope.
-    text += f"🔁 Повторных: {await get_returning_count(city_scope=city_scope_val)}\n"
+    text += f"🔁 Повторных: {await get_returning_count(city_scope=city_scope_val, season=season)}\n"
+    past_n = await count_past_season_users(season, city_scope=city_scope_val)
+    if past_n:
+        text += f"Прошлые сезоны: {past_n}\n"
 
     if own_city_code is not None:
         # D-10 scoped mode: ровно ОДНА строка города (привязка менеджера), без «Итого» — она
         # дублировала бы единственную строку. get_city_counts() остаётся нефильтрованным
         # (небольшой датасет) — коллапс NULL/неизвестного кода в дефолтный город делается
         # здесь же, тем же способом, что и в нессуженной ветке ниже.
-        rows = await get_city_counts()
+        rows = await get_city_counts(season=season)
         t = p = a = 0
         for raw_city, cnt, pending, approved in rows:
             if normalize_city(raw_city) == own_city_code:
@@ -293,7 +301,7 @@ async def render_stats_text(admin_id: int | None = None) -> str:
     # городам сходится со Всего регистраций» визуально нарушался без единого предупреждения.
     # Пустой реестр = показывать в разрезе городов нечего, блок не рисуется вовсе.
     if await cities_module_on() and CITIES:
-        rows = await get_city_counts()
+        rows = await get_city_counts(season=season)
         # Same collapse the Sheets tabs and _city_clause's default-city branch already use:
         # NULL / unknown-code rows fold into the default city here, not in the SQL (db.py
         # cannot import cities.normalize_city — see get_city_counts()'s docstring).
@@ -344,7 +352,15 @@ async def _stats_keyboard_for(user_id: int, callback_data: str | None = None) ->
     if not config.DASHBOARD_PUBLIC_URL:
         return base
     dashboard_row = [InlineKeyboardButton(text="🌐 Открыть дашборд", url=config.DASHBOARD_PUBLIC_URL)]
-    return InlineKeyboardMarkup(inline_keyboard=[dashboard_row] + base.inline_keyboard)
+    rows = [dashboard_row]
+    # Запасной вход менеджера: Mini App открывается и в обычном браузере — там экран «Откройте
+    # через бота» с входом через Telegram (miniapp/static/js/app.js, /login дашборда). Кнопка
+    # только при включённом приложении; адрес — тот же публичный адрес дашборда + /app.
+    if await get_setting_typed("miniapp_enabled") == "on":
+        rows.append([InlineKeyboardButton(
+            text="📱 Приложение в браузере", url=config.DASHBOARD_PUBLIC_URL.rstrip("/") + "/app",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows + base.inline_keyboard)
 
 
 _ADMIN_HELP_LINES = [
@@ -500,6 +516,14 @@ async def cmd_find_user(message: types.Message):
         if user.get("status") in ("approved", "rejected"):
             rows.append([InlineKeyboardButton(
                 text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
+            )])
+        # «📨 Отправить решение заново» — для решённой заявки; если письмо не дошло, причина
+        # строкой в карточке (services/decision_delivery.py::failure_line). Шов — handlers/
+        # admin_resend_decision.py.
+        if user.get("status") in ("approved", "rejected"):
+            text += decision_delivery.failure_line(user)
+            rows.append([InlineKeyboardButton(
+                text="📨 Отправить решение заново", callback_data=f"decresend_start:{user['telegram_id']}",
             )])
         # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» — видна только для отклонённой
         # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
@@ -1181,3 +1205,8 @@ from handlers import admin_enroll  # noqa: E402,F401
 from handlers import admin_enroll_list  # noqa: E402,F401
 # Тест компетенций: настройки, вопросы, баллы (handlers/admin_quiz.py) — golden append в хвост.
 from handlers import admin_quiz  # noqa: E402,F401
+
+# Переотправка решения одному делегату: shared-router seam import «📨 Отправить решение заново»
+# (handlers/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
+# хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
+from handlers import admin_resend_decision  # noqa: E402,F401

@@ -23,7 +23,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import get_setting_typed
+from settings_schema import get_setting_typed, option_label
 from database.db import get_setting
 from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import ensure_sheet_header
@@ -367,7 +367,10 @@ async def preset_confirm(callback: types.CallbackQuery):
         await _refresh_short_sheet_header()
         return
     await _apply_event_preset(key)
-    await callback.answer(f"Пресет применён: {preset['label']}", show_alert=True)
+    alert = f"Пресет применён: {preset['label']}"
+    if event_type := preset.get("settings", {}).get("event_type"):
+        alert += f"\nТип события: {option_label('event_type', event_type)}"
+    await callback.answer(alert, show_alert=True)
     text = await render_questions_text()
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_questions_keyboard())
     await _refresh_sheet_header()  # preset flips many questions → resync the sheet header

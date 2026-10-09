@@ -318,7 +318,6 @@ _GAME_FIELD_ORDER = [
     "game_proof_type_unspecified_text", "game_task_overdue_hint_text",
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
     "balance_history_header_text",
-    "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
     # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
     "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",
 ]

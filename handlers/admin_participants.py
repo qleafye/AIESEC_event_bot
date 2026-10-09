@@ -12,10 +12,17 @@ from aiogram import F, types
 from aiogram.types import BufferedInputFile
 
 from database.db import export_participants_csv
+
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from settings_schema import get_setting_typed
 from services.timeutil import msk_now
+
+
+async def _city_label(raw) -> str:
+    """Сырое event_city -> название города (db.py сам cities не импортирует)."""
+    from cities import city_label_or_none, normalize_city
+    return await city_label_or_none(normalize_city(raw)) or ""
 
 EMPTY_TEXT = ("Одобренных в текущем сезоне пока нет. Список появится, когда вы одобрите "
               "первые заявки в разделе «📋 Заявки».")
@@ -26,7 +33,8 @@ CAPTION = "Список участников — одобренные текущ
 async def export_participants(callback: types.CallbackQuery):
     scope, _label = await _admin_city_view(callback.from_user.id)
     with_payment = await get_setting_typed("payment_enabled") == "on"
-    headers, rows = await export_participants_csv(city_scope=scope, with_payment=with_payment)
+    headers, rows = await export_participants_csv(city_scope=scope, with_payment=with_payment,
+                                                  city_label=_city_label)
     if not rows:
         await callback.answer(EMPTY_TEXT, show_alert=True)
         return
