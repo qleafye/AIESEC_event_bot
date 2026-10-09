@@ -945,7 +945,7 @@ def test_settings_landing_text_snapshot(tmp_path):
     assert "🎁 Бонус за регистрацию: <b>❌ Выкл</b>" in text
     assert "✅ Модерация полной формы: <b>👮 Ручная</b>" in text
     assert "✅ Модерация краткой формы: <b>⚡ Авто</b>" in text
-    assert "🔔 Уведомление о заявке: <b>🕒 Пачкой (напоминалка)</b>" in text
+    assert "🔔 О новых заявках: <b>🕒 Сводкой по таймеру</b>" in text
     assert "💳 Модуль оплаты: <b>❌ Выкл</b>" in text
     assert "📋 Модуль согласий: <b>❌ Выкл</b>" in text
     assert "⏰ Автонапоминания об оплате: <b>✅ Вкл</b>" in text
@@ -981,7 +981,7 @@ def test_settings_toggle_button_snapshot(tmp_path):
         ("🎁 Бонус: ❌ Выкл → ✅ Вкл", "settings_toggle_bonus"),
         ("✅ Полная форма: 👮 Ручная → ⚡ Авто", "settings_toggle_full_approval"),
         ("✅ Краткая форма: ⚡ Авто → 👮 Ручная", "settings_toggle_short_approval"),
-        ("🔔 Уведомление: 🕒 Пачкой → 📨 Сразу", "settings_toggle_notify"),
+        ("🔔 О новых заявках: 🕒 Сводкой по таймеру → 📨 О каждой", "settings_toggle_notify"),
         ("💳 Оплата: ❌ Выкл → ✅ Вкл", "toggle_payment_enabled"),
         ("⏰ Автонапоминания оплаты: ✅ Вкл → ❌ Выкл", "toggle_payment_reminders"),
         ("📋 Согласия: ❌ Выкл → ✅ Вкл", "toggle_consent_enabled"),
@@ -1013,7 +1013,7 @@ def test_settings_toggle_button_snapshot(tmp_path):
     texts2 = [btn.text for btn in flat_buttons2]
     cbs2 = [btn.callback_data for btn in flat_buttons2]
 
-    assert texts2[4] == "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой"
+    assert texts2[4] == "🔔 О новых заявках: 📨 О каждой → 🕒 Сводкой по таймеру"
     assert cbs2[4] == "settings_toggle_notify"
     assert texts2[5] == "💳 Оплата: ✅ Вкл → ❌ Выкл"
     assert cbs2[5] == "toggle_payment_enabled"

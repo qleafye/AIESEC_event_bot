@@ -89,7 +89,7 @@ def test_schema_keys_present_with_human_labels():
     assert mode["options"] == ["each", "digest"] and mode["default"] == "each"
     assert mode["option_labels"] == REG_SUBMIT_NOTIFY_MODE_LABELS
     assert REG_SUBMIT_NOTIFY_MODE_LABELS == {
-        "each": "Каждую заявку отдельно", "digest": "Пачкой (дайджест)",
+        "each": "По одной", "digest": "Одной сводкой, когда стихнет",
     }
     minutes = SETTINGS_SCHEMA["reg_submit_digest_minutes"]
     assert minutes["type"] == "int" and minutes["group"] == "apps" and minutes["default"] == 15
@@ -118,7 +118,7 @@ def test_toggle_row_shows_human_labels_only(tmp_path):
     rows = asyncio.run(admin_settings.settings_toggle_rows(ADMIN_ID))
     btn = rows["toggle_reg_submit_notify"][0][0]
     assert btn.callback_data == "toggle_reg_submit_notify"
-    assert "Каждую заявку отдельно" in btn.text and "Пачкой (дайджест)" in btn.text
+    assert "По одной" in btn.text and "Одной сводкой, когда стихнет" in btn.text
     assert "each" not in btn.text and "digest" not in btn.text
 
 
@@ -159,12 +159,12 @@ def test_toggle_handler_flips_mode_and_answers_with_label(tmp_path):
     cb = _Cb()
     asyncio.run(admin_settings.toggle_reg_submit_notify(cb))
     assert asyncio.run(db.get_setting("reg_submit_notify_mode")) == "digest"
-    assert "Пачкой (дайджест)" in cb.answers[0]
+    assert "Одной сводкой, когда стихнет" in cb.answers[0]
     assert "digest" not in cb.answers[0]
     cb2 = _Cb()
     asyncio.run(admin_settings.toggle_reg_submit_notify(cb2))
     assert asyncio.run(db.get_setting("reg_submit_notify_mode")) == "each"
-    assert "Каждую заявку отдельно" in cb2.answers[0]
+    assert "По одной" in cb2.answers[0]
 
 
 # ── Режим «каждую отдельно» (по умолчанию) ────────────────────────────────────
