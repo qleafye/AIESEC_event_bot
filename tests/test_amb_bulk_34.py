@@ -91,7 +91,7 @@ def test_decline_confirm_states_count_text_and_consequences(tmp_path):
     text, kb = _screen(cb)
     assert "Уйдёт 12 кандидатам (включая отложенных «в запасе»)." in text
     assert f"Текст: «{DECLINE_DEFAULT}»" in text
-    assert "После этого кнопки «Хочу стать амбассадором» у них не будет в этом сезоне." in text
+    assert "После этого кнопки «Хочу свою ссылку» у них не будет в этом сезоне." in text
     assert "«🙋 Кандидаты и команда» → «Отказано» → «Взять»" in text
     buttons = _buttons(kb)
     assert ("✅ Отправить 12", "ambc_decl_go:12") in buttons
