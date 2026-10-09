@@ -178,6 +178,7 @@ async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, Inl
     buttons.append([InlineKeyboardButton(text="🏛 Залы", callback_data=f"prog_halls:{code}")])
     # Ревью 24.09: экран настроек отзыва — handlers/session_feedback.py (потолок этого файла).
     buttons.append([InlineKeyboardButton(text="⭐ Отзывы о сессиях", callback_data=f"prog_fbset:{code}")])
+    buttons.append([InlineKeyboardButton(text="📋 Записи на сессии", callback_data=f"prog_enrl:{code}:0")])
     # D-29: таблица/фото в Mini App — общий рендер handlers/admin_program_view.py (потолок
     # этого файла, кнопка нужна и хабу «🎪 Форум: функции»).
     from handlers.admin_program_view import program_rows  # + фото программы города
@@ -343,6 +344,9 @@ async def prog_time_step(message: types.Message, state: FSMContext):
         await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=ReplyKeyboardRemove())
         await message.answer("Выберите:", reply_markup=kb)
         return
+    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    if await confirm_time(message, state, session_id, start, end):
+        return
     await state.clear()
     await update_program_session(session_id, start_time=start, end_time=end)
     await _send_card(message, session_id, intro="✅ Время обновлено.")
@@ -356,6 +360,10 @@ async def prog_ftyes(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     if start is None or end is None:
         await callback.answer("Действие устарело — откройте карточку заново.", show_alert=True)
+        return
+    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    if await confirm_time(callback.message, state, session_id, start, end):
+        await callback.answer()
         return
     await update_program_session(session_id, start_time=start, end_time=end)
     await _edit_to_card(callback, session_id)
@@ -729,6 +737,8 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         f"✅ {arrived_line}",
         session_feedback.stats_line(fb_stats),
     ]
+    from handlers.admin_enroll import enroll_card_lines  # трек, компетенции, запись
+    lines += await enroll_card_lines(session)
     if session.get("description"):
         lines.append("")
         lines.append(html_module.escape(session["description"]))
@@ -740,6 +750,7 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         [InlineKeyboardButton(text="🏛 Зал", callback_data=f"prog_hallscreen:f{sid}")],
         [InlineKeyboardButton(text="🎤 Спикер", callback_data=f"prog_field:{sid}:speaker")],
         [InlineKeyboardButton(text="📝 Описание", callback_data=f"prog_field:{sid}:description")],
+        [InlineKeyboardButton(text="🧭 Запись и треки", callback_data=f"prog_enrcard:{sid}")],
     ]
     if fb_stats.get("comment_count"):
         buttons.append([InlineKeyboardButton(text="💬 Комментарии", callback_data=f"prog_fbc:{sid}:0")])
@@ -840,6 +851,9 @@ async def prog_delete_confirm(callback: types.CallbackQuery):
     rated = (await session_feedback.session_feedback_stats(session_id)).get("rating_count", 0)
     if arrived or rated:
         text += f"\nПропадут из отчёта: отметок на сессии — {arrived}, оценок — {rated}."
+    from database.session_enroll_db import count_enrollments
+    if enrolled := await count_enrollments(session_id):
+        text += f"\nПропадут записи: {enrolled}."
     if await session_feedback.is_enabled_for_city(session["city"]):
         text += "\nДелегатам не придёт приглашение оценить эту сессию."
     text += ("\n\nНужно поменять время или название — нажмите «← Отмена» и «✏ Время»/«✏ Название» "

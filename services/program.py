@@ -33,6 +33,7 @@ from cities import cities_module_on, default_city_code, per_city_key
 from database.db import (
     create_program_hall,
     create_program_session,
+    update_program_session,
     get_program_hall,
     get_program_session,
     get_setting,
@@ -328,6 +329,9 @@ async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
     source_sessions = await list_program_sessions_for_city_day(from_city, day)
     dest_halls = {h["name"]: h["id"] for h in await list_program_halls(to_city)}
     hall_map: dict[int, int | None] = {}
+    from database import session_enroll_db as _edb  # трек переносится по названию, иначе сессия общая
+    src_tracks = {t["id"]: t["name"] for t in await _edb.list_tracks(from_city)}
+    dst_tracks = {t["name"]: t["id"] for t in await _edb.list_tracks(to_city)}
     halls_created = 0
     sessions_created = 0
     for session in source_sessions:
@@ -349,11 +353,14 @@ async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
                     hall_map[hall_id] = created_id
                     halls_created += 1
             new_hall_id = hall_map[hall_id]
-        await create_program_session(
+        new_id = await create_program_session(
             to_city, day, session["start_time"], session["end_time"], session["title"],
             speaker=session.get("speaker"), hall_id=new_hall_id,
             description=session.get("description"),
         )
+        new_track = dst_tracks.get(src_tracks.get(session.get("track_id")))
+        if new_track:
+            await update_program_session(new_id, track_id=new_track)
         sessions_created += 1
     return {"halls_created": halls_created, "sessions_created": sessions_created}
 

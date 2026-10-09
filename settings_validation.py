@@ -17,6 +17,7 @@ admin_settings.py упирается в потолок test_module_size_conventi
   prompt (game_resubmit_limit, proxy_connect_timeout).
 - `enum` — одно из `options`; сравнение без учёта регистра, сохраняется каноническое
   написание из схемы.
+- `format: datetime` — «ДД.ММ.ГГГГ ЧЧ:ММ», реальный `strptime`, нормализация к ведущим нулям.
 - `date_only` — маска `ДД.ММ.ГГГГ`, проверяется реальным `strptime` (Phase 31, 31-03,
   D-30) — не regex, `31.02.2026` отбрасывается. Нормализуется к ведущим нулям.
 - `format: "number"` (квик 260927) — число >= 0, дробь через запятую, нормализуется `:g`.
@@ -138,6 +139,20 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
 
     entry_type = entry.get("type")
 
+    if base.endswith("_menu_label") and value.strip() != "-":
+        # подпись динамической кнопки меню не должна совпадать с подписью другой кнопки:
+        # хендлер, зарегистрированный раньше, перехватил бы нажатие
+        from keyboards.builders import MENU_TEXTS
+        from keyboards.menu_dynamic import DYNAMIC_MENU_LABEL_KEYS
+        own = {mk for mk, lk in DYNAMIC_MENU_LABEL_KEYS.items() if lk == base}
+        taken = set().union(*(texts for mk, texts in MENU_TEXTS.items() if mk not in own))
+        if value.strip() in taken:
+            return None, (
+                "Такая подпись уже есть у другой кнопки меню — нажатия перепутаются. "
+                "Придумайте другую, например <code>📅 Мои сессии</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
+            )
+
     forum_error = _forum_text_error(base, value)
     if forum_error:
         return None, forum_error
@@ -247,6 +262,19 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
                 "Пришлите ещё раз или «-», чтобы сбросить значение."
             )
         return parsed.strftime("%d.%m.%Y"), None
+
+    if entry.get("format") == "datetime":
+        # Дата и время «ДД.ММ.ГГГГ ЧЧ:ММ» (дедлайн записи на сессии): реальный strptime,
+        # нормализуем к ведущим нулям, чтобы в базе не копились «1.9.2026 9:05».
+        try:
+            parsed = datetime.strptime(value.strip(), "%d.%m.%Y %H:%M")
+        except ValueError:
+            return None, (
+                "Нужны дата и время в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>, например "
+                "<code>28.10.2026 23:59</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы убрать дату."
+            )
+        return parsed.strftime("%d.%m.%Y %H:%M"), None
 
     if entry.get("format") == "time":
         match = _TIME_RE.fullmatch(value.strip())

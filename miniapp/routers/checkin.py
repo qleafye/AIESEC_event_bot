@@ -473,6 +473,8 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
     )), p)
     if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
         await _log_denial(p, bound, result["status"], point=point, source="miniapp", user=user)
+    from miniapp.routers import checkin_enroll  # ленивый импорт: модуль сам берёт хелперы отсюда
+    result = await checkin_enroll.with_enroll_hint(result, user, point, bound)
     return await _with_city_emphasis({**result, **_person_fields(user)}, bound)
 
 
@@ -529,6 +531,8 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
     )), p)
     if result.get("status") in _ARRIVAL_DENIAL_STATUSES:
         await _log_denial(p, bound, result["status"], point=point, source="manual", user=user)
+    from miniapp.routers import checkin_enroll  # ленивый импорт: модуль сам берёт хелперы отсюда
+    result = await checkin_enroll.with_enroll_hint(result, user, point, bound)
     return await _with_city_emphasis({**result, **_person_fields(user)}, bound)
 
 
