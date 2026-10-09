@@ -217,9 +217,17 @@ async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> boo
             template = SETTINGS_SCHEMA["edit_granted_notify_text"]["default"]
         lang, tr_map = await _i18n_context(telegram_id)
         text = _i18n_tr(template, lang, tr_map)
+        # Кнопка ведёт в правку прямо в чате (/start edit) — профиля приложения на событии
+        # может не быть вовсе.
+        me = await bot.me()
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=_i18n_tr("✏️ Изменить анкету", lang, tr_map),
+            url=f"https://t.me/{me.username}?start=edit",
+        )]])
         await quiet_hours.send_or_queue_text(
             _now_moscow_naive(), telegram_id, text,
-            sender=lambda: bot.send_message(telegram_id, text, parse_mode="HTML"),
+            sender=lambda: bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb),
+            reply_markup=kb,
         )
         return True
     except Exception as e:
