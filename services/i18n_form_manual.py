@@ -243,6 +243,8 @@ _SUMMARY_LABELS_EN = {
     "Работа": "Work",
     "Амбассадор": "Ambassador",
     "Город форума": "Forum city",
+    # Приёмка 09.10: заголовок над результатами поиска справочника в чате.
+    "Нашли — выбери:": "Found it — pick one:",
     "Резюме": "CV",
     "прикреплено файлом": "attached as a file",
 }
@@ -852,7 +854,9 @@ _REGISTRY_TEXTS_EN = {
     "Опиши свой опыт текстом: где работаешь или учишься, какие проекты, стажировки или волонтёрство есть, какие задачи решал(а) и каких результатов добился(ась) — коротко.": "Describe your experience in text: where you work or study, what projects, internships or volunteering you've done, what tasks you handled and what results you got — keep it short.",
     "Опиши опыт текстом ответом в чате.": "Describe your experience in a text reply in the chat.",
     "🙅 У меня нет резюме": "🙅 I don't have a CV",
-    "Выбери способ кнопкой выше ⬆️": "Choose a way with the button above ⬆️",
+    "Выбери способ кнопкой выше ⬆️ — в том числе если хочешь написать об опыте текстом.": (
+        "Choose a way with the button above ⬆️ — including if you want to describe your experience in text."
+    ),
     "Пришли ссылку целиком, начиная с http:// или https://": "Send the full link, starting with http:// or https://",
     "Личный сайт — тоже подойдёт": "A personal website also works",
     "{domain} — сайт из списка проверенных": "{domain} — a site from our trusted list",

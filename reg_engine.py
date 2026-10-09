@@ -736,6 +736,9 @@ _STEP_HELP_RESUME_TEXT_ONLY_APP = "Коротко, текстом."
 _STEP_HELP_RESUME_FORK = (
     "Файл PDF или DOCX до 10 МБ, ссылка на резюме, текст об опыте или «нет резюме» — как удобнее."
 )
+# Приёмка 09.10: в чате эту подсказку видит только ветка «📎 Загрузить файл» (`handlers/
+# reg_resume_fork.py::_ask_file_branch`) — способ уже выбран, перечислять все четыре незачем.
+_STEP_HELP_RESUME_FORK_FILE_CHAT = "Прикрепи файл резюме — PDF или DOCX до 10 МБ."
 
 # Пример-значение для каждого шага из STEP_HELP — ровно то, что названо в подсказке. Карта
 # существует ради сторожа «подсказка не врёт»: пример, не проходящий собственный валидатор
@@ -777,7 +780,7 @@ async def help_default(
     if step_key == "resume":
         mode = await resume_mode(city_code)
         if mode == "fork":
-            return _STEP_HELP_RESUME_FORK
+            return _STEP_HELP_RESUME_FORK if surface == "app" else _STEP_HELP_RESUME_FORK_FILE_CHAT
         if mode == "text_only":
             return _STEP_HELP_RESUME_TEXT_ONLY_APP if surface == "app" else _STEP_HELP_RESUME_TEXT_ONLY_CHAT
         if surface == "app":
@@ -2854,6 +2857,9 @@ def _validate_answer_core(step_key: str, raw, participant_type: str | None) -> t
             try:
                 dt = datetime.strptime(text, "%Y-%m-%d")
             except (ValueError, TypeError):
+                # Приёмка 09.10: «31.02.2007» — формат верный, такой даты просто нет.
+                if re.fullmatch(r"\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{1,2}-\d{1,2}", text):
+                    return None, "Такой даты нет — проверь число и месяц."
                 return None, "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
             text = dt.strftime("%d.%m.%Y")
         range_err = validate_date_range(step_key, dt)

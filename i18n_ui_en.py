@@ -104,6 +104,7 @@ UI_EN: dict[str, str] = {
     "Выбери «Да!» или «Пока нет».": "Choose «Yes!» or «Not yet».",
     "Выбери хотя бы один вариант.": "Choose at least one option.",
     "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз.": "Date format: DD.MM.YYYY. Try again.",
+    "Такой даты нет — проверь число и месяц.": "There is no such date — check the day and month.",
 
     # ── validate_date_range: тексты зашиты внутрь тела функции, недоступны интроспекцией
     # извне (см. tests/test_i18n_core_27.py — там перечислены явным списком, «сверено с

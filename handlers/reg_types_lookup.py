@@ -197,8 +197,8 @@ async def receive_lookup_text(message: types.Message, state: FSMContext, bot):
         empty_title = empty_title.replace("{query}", text)
         await reg_i18n.say(message, empty_title, reply_markup=_build_kb([], other_label))
         return
-    hint = await get_setting_typed("reg_lookup_hint_default_text")
-    await reg_i18n.say(message, hint or text, reply_markup=_build_kb(results, other_label))
+    found_title = await get_setting_typed("reg_lookup_found_title_text")  # приёмка 09.10
+    await reg_i18n.say(message, found_title or text, reply_markup=_build_kb(results, other_label))
 
 
 @router.callback_query(F.data.startswith("reglookup:"), _LookupChat.waiting)
