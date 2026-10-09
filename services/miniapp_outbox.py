@@ -267,6 +267,13 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
 
         await sync_bot_profile(bot)
         return
+    if kind == "settings_changed":
+        # 09.10: правка в приложении запускает те же реакции, что запись из бота.
+        from settings_audit import run_setting_hooks  # ленивый, как выше
+
+        for key in payload.get("keys") or []:
+            await run_setting_hooks(str(key))
+        return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 
 
