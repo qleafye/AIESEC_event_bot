@@ -29,10 +29,12 @@ from aiogram import F, Router, types
 from aiogram.filters import StateFilter
 
 from config import config
+from database.db import get_user
 from handlers.admin_caps import resolve_capabilities
 from handlers.reg_resume import offer_resume
 from handlers.registration import _resumable_draft_for
 from handlers import reg_i18n
+from reg_engine import has_submitted_anketa
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -74,11 +76,41 @@ async def offer_if_resumable(chat_message: types.Message) -> bool:
     return True
 
 
+async def reply_if_submitted(chat_message: types.Message) -> bool:
+    """Приёмка 09.10: делегат подал анкету в чате и пишет «когда ответ» — бот молчал.
+    `reg_already_submitted_text` отвечал только из `RegHandoffGuard` (состояние
+    `Registration:*`), а после подачи из чата FSM уже очищен. Отвечаем тем же текстом, если
+    анкета этого сезона подана и ещё ждёт решения. Одобренным/отклонённым — по-прежнему
+    тишина: «анкета на проверке» им неверно, а «❓ Задать вопрос» ожидающему закрыт."""
+    if getattr(chat_message.chat, "type", "private") != "private":
+        return False
+    uid = chat_message.chat.id
+    if await _is_staff_or_admin(uid):
+        return False
+    try:
+        user_row = await get_user(uid)
+        season = await get_setting_typed("event_season") or None
+    except Exception as e:
+        logger.error(f"reg_silence_fallback: submitted check failed for {uid}: {e}")
+        return False
+    if not has_submitted_anketa(user_row, season) or user_row.get("status") != "pending":
+        return False
+    await reg_i18n.say(chat_message, await get_setting_typed("reg_already_submitted_text"))
+    return True
+
+
+async def reply_idle(chat_message: types.Message) -> None:
+    """Последний ответ на сообщение без состояния: сначала незаконченная анкета (рестарт
+    посреди заполнения), потом «анкета уже отправлена»."""
+    if not await offer_if_resumable(chat_message):
+        await reply_if_submitted(chat_message)
+
+
 @router.message(StateFilter(None), F.chat.type == "private")
 async def catch_silent_nontext_message(message: types.Message) -> None:
     """Текстовые сообщения сюда не доходят вовсе — забирает `reg_handoff_idle_fallback`
     (см. докстринг модуля). Остаётся нетекст: документ/фото и т.п."""
-    await offer_if_resumable(message)
+    await reply_idle(message)
 
 
 @router.callback_query(StateFilter(None), F.message.chat.type == "private")
