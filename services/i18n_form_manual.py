@@ -51,6 +51,7 @@ import logging
 
 from database.db import seed_manual_translations
 from services.i18n import src_hash
+from i18n_ui_en import MENU_EN  # литеральный словарь без импортов проекта — цикла нет
 
 logger = logging.getLogger(__name__)
 
@@ -1218,6 +1219,10 @@ FORM_DEFAULT_EN: dict[str, str] = {
     **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
     **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN,
+    # Подписи кнопок главного меню (группа menu_labels): дефолты переведены руками в MENU_EN —
+    # тот же перевод, второй копии не заводим.
+    **MENU_EN,
+    "🌐 Язык / Language": "🌐 Язык / Language",  # кнопка языка двуязычна сама по себе
     # --- запись на сессии и тест по компетенциям ---
     "📅 Выбрать сессии": "📅 Choose sessions",
     "Тест сейчас недоступен.": "The quiz is currently unavailable.",

@@ -41,7 +41,8 @@ from handlers import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
 from i18n_ui_en import DONE_WORDS
-from keyboards.builders import MENU_TEXTS, get_main_menu_kb
+from keyboards.builders import get_main_menu_kb
+from keyboards.menu_dynamic import MenuButton
 from services import sos as sos_service
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
@@ -173,7 +174,7 @@ async def _may_send_sos(message: types.Message) -> bool:
 
 
 # 🆘 SOS — кнопка главного меню
-@router.message(F.text.in_(MENU_TEXTS["menu_sos"]))
+@router.message(MenuButton("menu_sos"))
 async def sos_start(message: types.Message, state: FSMContext):
     if not await _may_send_sos(message):
         return

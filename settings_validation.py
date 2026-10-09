@@ -139,13 +139,13 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
 
     entry_type = entry.get("type")
 
-    if base.endswith("_menu_label") and value.strip() != "-":
-        # подпись динамической кнопки меню не должна совпадать с подписью другой кнопки:
-        # хендлер, зарегистрированный раньше, перехватил бы нажатие
-        from keyboards.builders import MENU_TEXTS
-        from keyboards.menu_dynamic import DYNAMIC_MENU_LABEL_KEYS
-        own = {mk for mk, lk in DYNAMIC_MENU_LABEL_KEYS.items() if lk == base}
-        taken = set().union(*(texts for mk, texts in MENU_TEXTS.items() if mk not in own))
+    is_menu_label = base.endswith("_menu_label") or (base.startswith("menu_") and base.endswith("_label"))
+    if is_menu_label and value.strip() != "-":
+        # подпись кнопки меню не должна совпадать с подписью другой кнопки: бот узнаёт кнопку
+        # по подписи, и нажатие ушло бы не туда (keyboards/menu_dynamic.py::MENU_LABEL_KEYS)
+        from keyboards.menu_dynamic import MENU_LABEL_KEYS, STATIC_MENU_TEXTS
+        own = {mk for mk, lk in MENU_LABEL_KEYS.items() if lk == base}
+        taken = set().union(*(texts for mk, texts in STATIC_MENU_TEXTS.items() if mk not in own))
         if value.strip() in taken:
             return None, (
                 "Такая подпись уже есть у другой кнопки меню — нажатия перепутаются. "
