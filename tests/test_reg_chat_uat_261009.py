@@ -296,3 +296,18 @@ def test_confirm_edit_consent_read_failure_goes_to_full_name(tmp_path, monkeypat
     fsm_state, data = asyncio.run(go())
     assert fsm_state == Registration.recall_pending.state
     assert data.get("_recall_step") == "full_name"
+
+
+def test_echo_choice_sends_plain_text_without_entities(tmp_path):
+    """«&» в названии не превращается в «&amp;»: строка уходит без разметки и без экранирования
+    (иначе запасной путь `_safe_answer` без parse_mode показывал бы «&amp;» буквально)."""
+    _use_tmp_db(tmp_path, "uat261009_c5c.db")
+
+    async def go():
+        from handlers import reg_i18n
+        msg = _KBCapturingMessage(USER_ID, "delegate")
+        await reg_i18n.echo_choice(msg, ["Маркетинг & PR <онлайн>"])
+        return msg
+
+    msg = asyncio.run(go())
+    assert msg.sent == [("✅ Маркетинг & PR <онлайн>", None, None)], msg.sent
