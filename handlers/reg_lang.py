@@ -181,6 +181,32 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
     return await _show_lang_picker(message, state, raw_args)
 
 
+# Приёмка 09.10 (C12): двуязычно по той же причине, что и сам экран выбора — язык ещё не известен.
+_LANG_FIRST_ALERT = "Сначала выберите язык анкеты / Choose the form language first"
+
+
+async def lang_first_gate(callback: types.CallbackQuery, state: FSMContext) -> bool:
+    """Приёмка 09.10 (C12): кнопки городов и экран языка оказались в чате одновременно, и тап по
+    городу продолжил анкету мимо выбора языка. Тап по городу, пока язык ещё нужно спросить
+    (те же правила, что у `/start` — `offer_language`), анкету не продолжает: кнопки города
+    гаснут, приходит экран выбора языка, а после выбора `/start` идёт обычным путём, снова к
+    городу. `True` — экран показан, вызывающий обязан выйти. Сбой проверки — `False`, тап
+    работает как раньше."""
+    tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
+    try:
+        shown = await offer_language(tap_message, state)
+    except Exception:
+        logger.warning("lang_first_gate: проверка языка не удалась для %s", callback.from_user.id, exc_info=True)
+        return False
+    if shown:
+        await callback.answer(_LANG_FIRST_ALERT)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+    return shown
+
+
 @router.message(MenuButton("menu_lang"))
 async def menu_lang_open(message: types.Message) -> None:
     """Переключатель в главном меню — делегат сам просит сменить язык в ЛЮБОЙ момент, поэтому
