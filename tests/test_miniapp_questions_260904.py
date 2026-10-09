@@ -299,6 +299,31 @@ def test_answer_same_manager_retry_after_own_failed_claim_succeeds(client, bot_a
     assert len(bot_api.messages) == 1
 
 
+def test_answer_while_own_delivery_in_flight_returns_sending_no_second_copy(client, bot_api):
+    """10.10: тот же менеджер нажал «Отправить» второй раз, пока первая отправка ещё идёт
+    (отметка «уходит» стоит, delivered_at пуст) — второй копии делегату нет, человеку
+    понятный текст «уже отправляется»."""
+    qid = _seed_question(DELEGATE_ID)
+    _run(bot_db.claim_question(qid, REG_MANAGER_ID, "Менеджер"))
+    assert _run(bot_db.begin_question_delivery(qid, REG_MANAGER_ID)) is True
+
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False and body["reason"] == "sending"
+    assert "уже отправляется" in body["text"]
+    assert bot_api.messages == []
+
+
+def test_answer_delivery_failure_releases_sending_mark_so_retry_works(client, bot_api):
+    qid = _seed_question(DELEGATE_ID)
+    bot_api.fail = True
+    client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    bot_api.fail = False
+    resp = client.post(f"/app/api/questions/{qid}/answer", json={"text": "Ответ"}, headers=_hdr(REG_MANAGER_ID))
+    assert resp.json()["ok"] is True
+
+
 def test_answer_delivery_failure_keeps_claim_no_delivered_at(client, bot_api):
     qid = _seed_question(DELEGATE_ID)
     bot_api.fail = True
