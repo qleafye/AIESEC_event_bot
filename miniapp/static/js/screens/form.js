@@ -359,6 +359,9 @@ export async function render(root, params, ctx) {
   function renderComplete(res) {
     onRefresh = null;
     setMainButton(null);
+    // Приёмка 09.10: плашка прошлой ошибки (например, «Файл резюме ещё не загрузился»)
+    // висела над экраном «Заявка принята» — заявка подана, старая ошибка уже неправда.
+    say("");
     // Phase 28 (28-06, SU-07, D-09): блок-предложение реф-ссылки — доп. узел ПОД стандартным
     // сообщением, только если сервер прислал `res.ambassador` (mode == "new" И тумблер
     // reg_offer_ref_link включён). Тумблер выключен -> ключа нет вовсе -> слот остаётся
@@ -1279,6 +1282,9 @@ export async function render(root, params, ctx) {
             body: { version: d.version, answers: { resume_type: pick.resumeType }, step: staysOnStep ? null : spec.key },
           });
           busy = false;
+          // Приёмка 09.10: делегат сменил способ резюме — ошибка прошлой ветки (например,
+          // «файл ещё не загрузился») к новой не относится.
+          say("");
           if (staysOnStep) {
             // Ветка «файл»/«текстом» — клиентская подмена ЭТОГО ЖЕ шага (resumeForkBranch выше);
             // resume_type уже сохранён сервером (нужен последующим PATCH для enabled_steps),
@@ -1383,6 +1389,8 @@ export async function render(root, params, ctx) {
           // отправку (`stepIndexFromKey` → `specs.length`).
           adoptDraft(res);
           busy = false;
+          // Приёмка 09.10: ответ принят — плашка ошибки прошлого шага больше не про него.
+          say("");
           drawStep();
         } catch (err) {
           busy = false;
