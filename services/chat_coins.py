@@ -119,12 +119,12 @@ async def try_handle(message, bot) -> bool:
     if amount <= 0 or amount > MAX_CHAT_AWARD:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: в чате можно начислить от 1 до {MAX_CHAT_AWARD}. "
-                  f"Больше — через «🪙 Монеты вручную» в админке.")
+                  f"Больше — через «🪙 Баллы вручную» в админке.")
         return True
     if await get_user(target.id) is None:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: {_display(target)} ещё не подавал(а) анкету в "
-                  f"боте — монеты некуда записать. Попросите его(её) зарегистрироваться.")
+                  f"боте — баллы некуда записать. Попросите его(её) зарегистрироваться.")
         return True
 
     full_reason = award_reason(reason)
@@ -138,7 +138,7 @@ async def try_handle(message, bot) -> bool:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: за это сообщение {_display(target)} уже "
                   f"начислено +{before} — одно сообщение = одно начисление. Поправить сумму можно "
-                  f"в «🪙 Монеты вручную».")
+                  f"в «🪙 Баллы вручную».")
         return True
 
     logger.info("chat_coins: +%s user=%s by=%s chat=%s", amount, target.id, sender.id, message.chat.id)

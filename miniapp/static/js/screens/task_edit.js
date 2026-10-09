@@ -17,6 +17,7 @@
 // Ошибки сервера показываются человеческим текстом из payload.text, не кодом ответа.
 
 import { fileUrl, flatRow, noticeBox } from "../ui.js";
+import { unitFor } from "../units.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
@@ -75,7 +76,7 @@ export async function render(root, params, ctx) {
     // готовую строку `deadline_display` — байт-в-байт та же дата, что и раньше); без срока
     // сервер уже прислал слова «без срока» — печатаем их без «до» и без своего литерала.
     const deadlinePart = card.deadline_display ? (card.has_deadline ? `до ${card.deadline_display}` : card.deadline_display) : null;
-    const metaParts = [card.category_label, card.coins != null ? `${card.coins} монет` : null, deadlinePart].filter(Boolean);
+    const metaParts = [card.category_label, card.coins != null ? `${card.coins} ${unitFor(card.coins, "баллов")}` : null, deadlinePart].filter(Boolean);
     if (metaParts.length) box.append(h("p", { class: "label-role", text: metaParts.join(" · ") }));
     const chips = proofChips(h, card.proof_type);
     if (chips) box.append(chips);
@@ -185,7 +186,7 @@ export async function render(root, params, ctx) {
       // Монеты
       const coinsInput = h("input", { class: "input", type: "number", min: "1", step: "1", inputmode: "numeric" });
       coinsInput.value = String(card.coins);
-      const coinsBox = panel("Сколько монет за задание? Например 10", coinsInput, "Сохранить", () => patch({ coins: Number(coinsInput.value) }, `Монеты обновлены: ${coinsInput.value}.`));
+      const coinsBox = panel("Сколько баллов за задание? Например 10", coinsInput, "Сохранить", () => patch({ coins: Number(coinsInput.value) }, `Баллы обновлены: ${coinsInput.value}.`));
 
       // Дедлайн — пресеты + своя дата
       const deadlineBox = h("div", { class: "field hidden" }, h("label", { text: `Сейчас: ${deadlineNowLabel(card)}` }));
@@ -221,7 +222,7 @@ export async function render(root, params, ctx) {
       const pointsList = h("div", { class: "flat-list" },
         flatRow(h, { title: "Название", meta: card.title, trailing: icon("pen-line"), onClick: () => toggle(titleBox) }),
         flatRow(h, { title: "Описание", meta: card.text, trailing: icon("pen-line"), onClick: () => toggle(textBox) }),
-        flatRow(h, { title: "Монеты", meta: `${card.coins} монет`, trailing: icon("pen-line"), onClick: () => toggle(coinsBox) }),
+        flatRow(h, { title: "Баллы", meta: `${card.coins} ${unitFor(card.coins, "баллов")}`, trailing: icon("pen-line"), onClick: () => toggle(coinsBox) }),
         flatRow(h, { title: "Дедлайн", meta: deadlineNowLabel(card), trailing: icon("pen-line"), onClick: openDeadline }),
         flatRow(h, { title: "Обложка", meta: card.photo_file_id ? "Загружена" : "Не добавлена", trailing: icon("image"), onClick: () => fileInput.click() }),
       );
@@ -403,10 +404,10 @@ export async function render(root, params, ctx) {
       } else if (name === "coins") {
         const input = h("input", { class: "input", type: "number", min: "1", step: "1", inputmode: "numeric" });
         if (draft.coins != null) input.value = String(draft.coins);
-        body = step("Монеты", h("div", { class: "field" }, h("label", { text: "Сколько монет за задание? Например 10" }), input),
+        body = step("Баллы", h("div", { class: "field" }, h("label", { text: "Сколько баллов за задание? Например 10" }), input),
           navRow(() => {
             const v = Number(input.value);
-            if (!Number.isInteger(v) || v <= 0) { say("Монеты — целое число больше нуля, например 10.", "warn"); return; }
+            if (!Number.isInteger(v) || v <= 0) { say("Баллы — целое число больше нуля, например 10.", "warn"); return; }
             draft.coins = v; next();
           }));
       } else if (name === "city") {

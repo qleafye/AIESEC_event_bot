@@ -283,7 +283,7 @@ def test_coins_manual_notify_text_registry_key():
 
 def test_menu_row_visible_for_moderate_game_hidden_for_moderate_reg(tmp_path):
     _db_ready(tmp_path)
-    row = ("🪙 Монеты вручную", "admin_coins_manual")
+    row = ("🪙 Баллы вручную", "admin_coins_manual")
     assert row in admin_mod._ADMIN_MENU_ROWS
     assert row in admin_mod._visible_menu_rows({"moderate_game"})
     assert row not in admin_mod._visible_menu_rows({"moderate_reg"})
@@ -628,7 +628,7 @@ def test_export_coins_journal_csv_neutralizes_formula_injection_in_reason(tmp_pa
 
 def test_coins_journal_menu_row_visible_for_moderate_game_hidden_for_moderate_reg(tmp_path):
     _db_ready(tmp_path)
-    row = ("📜 Журнал монет", "admin_coins_journal")
+    row = ("📜 Журнал баллов", "admin_coins_journal")
     assert row in admin_mod._ADMIN_MENU_ROWS
     assert row in admin_mod._visible_menu_rows({"moderate_game"})
     assert row not in admin_mod._visible_menu_rows({"moderate_reg"})

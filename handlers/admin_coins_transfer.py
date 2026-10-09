@@ -19,6 +19,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_balance
+from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from handlers.admin import router
 from handlers.states import CoinsTransfer
 from services import coins_transfer, ext_forms_google as gsheet
@@ -172,7 +173,7 @@ async def _preview(target: types.Message, state: FSMContext, sheet_id: str, gid:
 
     lines = [f"📥 <b>Перенос с вкладки «{html.escape(tab_name)}»</b>", ""]
     lines.append(f"В таблице: {len(parsed.people)} ников с баллами.")
-    lines.append(f"✅ Начислю: <b>{len(plan.matched)}</b> делегатам, всего <b>{plan.total}</b> монет.")
+    lines.append(f"✅ Начислю: <b>{len(plan.matched)}</b> делегатам, всего <b>{plan.total}</b> {points_word(plan.total)}.")
     for person, _ in plan.matched[:10]:
         lines.append(f"  · @{html.escape(person.nick)} — +{person.total}")
     if len(plan.matched) > 10:
@@ -190,8 +191,8 @@ async def _preview(target: types.Message, state: FSMContext, sheet_id: str, gid:
         lines.append("")
         lines.append(f"⚠️ Строк с баллами без понятного ника: {parsed.bad_rows} — их пропущу.")
     lines.append("")
-    lines.append("Монеты придут с причиной «перенос из таблицы» и списком заданий. Снять их потом "
-                 "можно через «🪙 Монеты вручную».")
+    lines.append("Баллы придут с причиной «перенос из таблицы» и списком заданий. Снять их потом "
+                 "можно через «🪙 Баллы вручную».")
 
     rows = []
     if plan.matched:
@@ -248,10 +249,10 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
                 delivered += 1
             await asyncio.sleep(0.05)
 
-    lines = [f"✅ Перенесено: {len(done)} делегатам, {total} монет."]
+    lines = [f"✅ Перенесено: {len(done)} делегатам, {total} {points_word(total)}."]
     if notify and done:
         lines.append(f"Сообщение получили: {delivered} из {len(done)}.")
     if plan.unknown:
         lines.append(f"Не нашёл в боте: {len(plan.unknown)} — после правки ников запустите перенос ещё раз.")
-    lines.append("Все строки — в «📜 Журнал монет».")
+    lines.append("Все строки — в «📜 Журнал баллов».")
     await callback.message.answer("\n".join(lines))

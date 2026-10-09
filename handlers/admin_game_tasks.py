@@ -161,7 +161,7 @@ async def game_task_editcoins_step(message: types.Message, state: FSMContext):
         return
     _request_game_resync()
     await state.set_state(None)
-    await _rerender_edit_card(message, task_id, f"Монеты обновлены: {value}🪙")
+    await _rerender_edit_card(message, task_id, f"Баллы обновлены: {value}🪙")
 
 
 # ── point-edit: deadline (typed or preset, no confirm card) ─────────────────────────────────
@@ -342,7 +342,7 @@ _WIZARD_EDIT_FIELDS = (
     ("title", "📝 Название"),
     ("text", "📄 Описание"),
     ("category", "🏷 Категория"),
-    ("coins", "💰 Монеты"),
+    ("coins", "💰 Баллы"),
     ("wave", "🌊 Волна"),  # Phase 32 (32-12, D-12)
     ("audience", "👥 Аудитория"),  # Phase 32 (32-12, D-28)
     ("deadline", "📅 Дедлайн"),

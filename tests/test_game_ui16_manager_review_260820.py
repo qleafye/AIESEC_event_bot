@@ -216,7 +216,7 @@ def test_render_coinsman_confirm_card_default_is_legacy_sum_line():
     assert text == (
         "🪙 <b>Подтвердите операцию</b>\n\n"
         "Кому: Пётр Сидоров\n"
-        "Сумма: +5 монет(ы)\n"
+        "Сумма: +5 баллов\n"
         "Причина: за помощь\n\n"
         "Делегат получит сообщение с суммой, причиной и новым балансом."
     )
@@ -314,7 +314,7 @@ def test_coinsman_sign_step_sends_prompt_then_quick_pick(tmp_path):
     asyncio.run(admin_gamification.coinsman_sign_step(callback, state))
     assert asyncio.run(state.get_state()) == CoinsManual.amount
     msgs = callback.message.answers_sent
-    assert any("Сколько монет" in m for m in msgs)
+    assert any("Сколько баллов" in m for m in msgs)
     inline = [kb for kb in callback.message.answer_markups if kb is not None and hasattr(kb, "inline_keyboard")]
     assert inline, "второе сообщение с inline quick-pick не отправлено"
     assert [t for t, _ in _flat_buttons(inline[-1])] == ["-5", "-10", "-20"]

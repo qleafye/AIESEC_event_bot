@@ -39,7 +39,7 @@ export async function render(root, params, ctx) {
   const journalFoot = h("div", { class: "list-foot" });
 
   root.append(
-    h("h1", { text: "Монеты вручную" }),
+    h("h1", { text: "Баллы вручную" }),
     notice,
     h("div", { class: "field" },
       h("label", { text: "Кому начислить" }),

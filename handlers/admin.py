@@ -15,6 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from config import config
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-02/REG-03: registry + typed accessor
+from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     get_stats,
     get_all_users_ids,
@@ -369,7 +370,7 @@ _ADMIN_HELP_LINES = [
     ("export", "/export - Скачать базу пользователей (CSV)"),
     ("broadcast", "/broadcast - Рассылка сообщения всем"),
     ("find", "/find @username - Найти пользователя по юзернейму"),
-    ("coins", "/coins @username +N причина - Начислить/списать монеты"),
+    ("coins", "/coins @username +N причина - Начислить/списать баллы"),
     ("scheduled", "/scheduled - Запланированные рассылки"),
     ("refresh_allowlist", "/refresh_allowlist - Обновить список отобранных"),
     ("settings_guide", "/settings_guide - 📖 Справка по всем настройкам бота"),
@@ -431,7 +432,7 @@ async def cmd_coins(message: types.Message, bot: Bot):
     # «кто, кому, за что»» (owner, CONTEXT.md B). Quick path stays for people used to it, but
     # follows the same rule as the button wizard.
     hint = (
-        "⚠️ Формат: /coins @username +N причина — причину нужно указать: журнал монет "
+        "⚠️ Формат: /coins @username +N причина — причину нужно указать: журнал баллов "
         "должен отвечать на вопрос «кто, кому, за что»."
     )
     if len(args) < 4 or not args[3].strip():
@@ -458,7 +459,7 @@ async def cmd_coins(message: types.Message, bot: Bot):
     notified = await _notify_manual_coins(bot, user["telegram_id"], amount, reason, balance)
     notify_suffix = "" if notified else " (делегат не получил уведомление)"
     await message.answer(
-        f"🪙 {sign} {abs(amount)} монет(ы) для {safe_username}.\n"
+        f"🪙 {sign} {abs(amount)} {points_word(abs(amount))} для {safe_username}.\n"
         f"Новый баланс: <b>{balance}</b>.{notify_suffix}",
         parse_mode="HTML",
     )

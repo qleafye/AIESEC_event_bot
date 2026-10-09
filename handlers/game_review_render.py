@@ -19,6 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
 from settings_schema import get_setting_typed
+from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from handlers.game_labels import category_label, penalized_coins
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────
@@ -245,7 +246,7 @@ def _render_coinsman_confirm_card(recipient_name: str, delta: int, reason: str, 
     if city_label_text is not None:
         recipient += f" · 🏙 {html_module.escape(city_label_text)}"
     if balance_before is None:
-        amount_line = f"Сумма: {delta:+d} монет(ы)"
+        amount_line = f"Сумма: {delta:+d} {points_word(delta)}"
     else:
         amount_line = f"Баланс сейчас: {balance_before}🪙 → станет: {balance_before + delta}🪙 ({delta:+d})"
     return (
