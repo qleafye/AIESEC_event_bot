@@ -6,6 +6,7 @@
 // конфетти (только motion "full").
 
 import { flatRow, emptyState, guardedRender } from "../ui.js";
+import { unitFor } from "../units.js";
 import { icon } from "../icons.js";
 import { confetti, haptic, stagger } from "../motion.js";
 
@@ -60,7 +61,7 @@ function pinnedRow(h, board) {
       label.append(h("div", { class: "faint" },
         "ещё ",
         h("span", { class: "gap-amount", text: String(gap) }),
-        ` монет до ${above.rank}-го места`,
+        ` ${unitFor(gap, "баллов")} до ${above.rank}-го места`,
       ));
     }
   }

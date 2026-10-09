@@ -5,6 +5,7 @@
 // постранично с «Показать ещё» (D-07). Подписи источников приходят из API (реестр).
 
 import { flatRow, sectionTitle, emptyState, guardedRender } from "../ui.js";
+import { unitFor } from "../units.js";
 import { icon } from "../icons.js";
 import { countUp } from "../motion.js";
 
@@ -50,7 +51,7 @@ async function draw(root, params, ctx) {
       h("div", { class: "plate-row" },
         plateBig,
         h("span", { class: "plate-coin" }, icon("coin")),
-        h("span", { class: "plate-sub", text: hub.balance_unit || "" }),
+        h("span", { class: "plate-sub", text: unitFor(bal.balance || 0, hub.balance_unit) }),
         rankChip,
       ),
     ),
