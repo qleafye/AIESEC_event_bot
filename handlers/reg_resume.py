@@ -218,7 +218,15 @@ async def reg_resume_restart(callback: types.CallbackQuery, state: FSMContext):
     except Exception:
         pass
     draft = await get_reg_draft(callback.from_user.id)
-    count = len(draft.get("answers") or {}) if draft else 0
+    count = 0
+    if draft:
+        # Приёмка 09.10: считаем отвеченные вопросы, а не поля черновика (было 18 при 14).
+        answers = draft.get("answers") or {}
+        enabled = await _get_enabled_steps({
+            "participant_type": draft.get("participant_type"),
+            "event_city": draft.get("event_city"), **answers,
+        })
+        count = reg_engine.answered_step_count(answers, enabled)
     lang, tr_map = await reg_i18n.ctx_for(callback.message)
     text = reg_i18n.tr_fmt(
         await get_setting_typed("reg_resume_restart_confirm_text"), lang, tr_map, count=count,

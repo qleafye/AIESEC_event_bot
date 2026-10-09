@@ -78,3 +78,30 @@ def test_continue_from_done_draft_shows_summary_not_questions(tmp_path, monkeypa
     assert calls == []
     assert fsm_state == Registration.confirm.state
     assert any("Проверь свои ответы" in (t or "") for t in _texts(msg))
+
+
+# ── «Пропадут уже введённые ответы (N)» ───────────────────────────────────────────────────
+
+def test_restart_confirm_counts_answered_questions_not_draft_fields(tmp_path):
+    """Резюме файлом — три поля черновика, служебные поля (`resume_type`) — тоже не вопросы.
+    Делегат видит число отвеченных вопросов анкеты, не больше числа её шагов."""
+    _use_tmp_db(tmp_path, "uat261009_c2.db")
+
+    async def go():
+        await db.set_setting("reg_q_age", "on")
+        await db.set_setting("reg_q_resume", "on")
+        await _seed_new_draft(USER_ID, patch={
+            "full_name": "Иванова Мария", "age": "22", "resume_type": "file",
+            "resume_file_id": "FILE_1", "resume_file_name": "cv.pdf",
+        })
+        from handlers import reg_resume
+        enabled = await reg._get_enabled_steps({"participant_type": "full", "age": "22"})
+        callback = _FakeCallback("reg_resume:restart", USER_ID, "delegate")
+        await reg_resume.reg_resume_restart(callback, _new_state(USER_ID))
+        return enabled, callback.message
+
+    enabled, msg = asyncio.run(go())
+    assert "age" in enabled and "resume" in enabled
+    confirm = [t for t in _texts(msg) if t and "(" in t]
+    assert confirm, _texts(msg)
+    assert "(2)" in confirm[0], confirm[0]
