@@ -803,6 +803,7 @@ _REGISTRY_TEXTS_EN = {
     "Выбери вариант резюме кнопкой ещё раз: приложи файл, дай ссылку или напиши о себе текстом.": "Pick your CV option with a button again: attach a file, share a link or write about yourself as text.",
     "Файл резюме ещё не загрузился — прикрепи его ещё раз.": "Your CV file hasn't uploaded yet — please attach it again.",
     "Выбрать другой способ": "Choose another way",
+    "Чтобы загрузить файл, открой чат с ботом и нажми /start — или напиши о себе текстом.": "To upload a file, open the chat with the bot and tap /start — or write about yourself as text.",
     "Резюме принимается как PDF или DOCX — другой формат не подойдёт.": "Your CV is accepted as PDF or DOCX — other formats won't work.",
     "📱 Поделиться номером": "📱 Share phone number",
     "Вместо строчки «Анкета: одобрена» в профиле": "Instead of the «Application: approved» line in the profile",
