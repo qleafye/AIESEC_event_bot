@@ -8,10 +8,12 @@
 
 09.10: имя бота (`bot_name`) — тоже настройка. В отличие от описания, имя Telegram даёт
 менять редко (ответ 429 с ожиданием до суток), поэтому:
-  * правка в боте применяет имя ДО записи (`settings_ops.cross_setting_error`): отказ
-    Telegram — человеческая ошибка на экране правки, в базе остаётся прежнее имя;
-  * правка в приложении применяется ботом при разборе очереди (`settings_changed`), отказ
-    уходит сообщением тому, кто правил;
+  * до записи проверяются только длина и пустота (`settings_ops.cross_setting_error`) —
+    Telegram там не зовём: запись ещё может не состояться (подтверждение, отмена), и у бота
+    осталось бы имя, которого нет в настройках;
+  * после записи из бота (`settings_audit.set_setting_by_admin`) и после разбора очереди
+    приложения (`settings_changed`) имя ставится в Telegram; отказ — в настройке
+    возвращается прежнее значение, автору правки уходит понятная ошибка;
   * старт бота ставит имя, только если в Telegram сейчас другое (`getMyName` дешёвый) —
     перезапуски не тратят лимит;
   * пустое значение имя в Telegram не трогает: снять имя бот не может, только сменить.
@@ -112,27 +114,46 @@ def _running_bot():
 
 
 async def precheck_bot_name(value: str | None) -> str | None:
-    """Проверка `bot_name` до записи (`settings_ops.cross_setting_error`). В процессе бота —
-    сразу ставит имя в Telegram: отказ Telegram становится ошибкой экрана правки, и в базе не
-    оказывается имени, которого у бота нет. В процессе приложения — только длина; само имя
-    поставит бот, разбирая очередь (`apply_name_from_app`)."""
-    error = name_length_error(value)
-    if error:
-        return error
-    bot = _running_bot()
-    if bot is None:
+    """Проверка `bot_name` до записи (`settings_ops.cross_setting_error`): только длина и
+    пустота, Telegram не зовём (см. докстринг модуля)."""
+    if value is not None and not value.strip():
+        return "Имя бота не может быть пустым. Пришлите имя текстом, например «Юлид’26 · регистрация»."
+    return name_length_error(value)
+
+
+async def apply_saved_name(bot, previous: str | None, author_id: int | None) -> str | None:
+    """Ставит в Telegram только что сохранённое имя. Отказ Telegram — прежнее значение
+    настройки возвращается (если её не успели поменять ещё раз), автору — сообщение.
+    Возвращает текст ошибки или `None`."""
+    from database import db
+    from settings_audit import revert_setting  # ленивый: settings_audit лениво зовёт этот модуль
+
+    attempted = await db.get_setting(NAME_KEY)
+    error = await apply_bot_name(bot, attempted)
+    if not error:
         return None
-    return await apply_bot_name(bot, value)
-
-
-async def apply_name_from_app(bot, author_id: int | None) -> None:
-    """Имя, сохранённое в приложении: ставит его и при отказе пишет автору правки."""
-    error = await apply_bot_name(bot, await get_setting_typed(NAME_KEY))
-    if error and author_id:
+    if await db.get_setting(NAME_KEY) == attempted:
+        await revert_setting(author_id, NAME_KEY, previous)
+    if author_id:
+        kept = f"\n\nВ настройке осталось прежнее имя «{previous}»." if previous else ""
         try:
-            await bot.send_message(author_id, f"⚠️ Имя бота из приложения не применилось.\n\n{error}")
+            await bot.send_message(author_id, f"⚠️ Имя бота не сменилось.\n\n{error}{kept}")
         except Exception as exc:  # noqa: BLE001 — автор мог заблокировать бота; в логе причина
             logger.warning("bot_profile: не удалось сообщить %s об ошибке имени: %s", author_id, exc)
+    return error
+
+
+async def after_name_saved_by_admin(admin_id: int | None, previous: str | None) -> None:
+    """Запись из бота (`settings_audit.set_setting_by_admin`). Вне процесса бота — ничего:
+    имя поставит бот (старт или очередь приложения)."""
+    bot = _running_bot()
+    if bot is not None:
+        await apply_saved_name(bot, previous, admin_id)
+
+
+async def apply_name_from_app(bot, author_id: int | None, previous: str | None = None) -> None:
+    """Имя, сохранённое в приложении (разбор очереди `settings_changed`)."""
+    await apply_saved_name(bot, previous, author_id)
 
 
 async def sync_bot_name(bot) -> None:

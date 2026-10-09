@@ -275,7 +275,7 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             # Имя бота из приложения: ставит бот, отказ Telegram — сообщением автору правки.
             from services.bot_profile import apply_name_from_app
 
-            await apply_name_from_app(bot, payload.get("by"))
+            await apply_name_from_app(bot, payload.get("by"), payload.get("prev_bot_name"))
         for key in payload.get("keys") or []:
             await run_setting_hooks(str(key))
         return
