@@ -263,7 +263,11 @@ async def display_value_for_step(step_key: str, value, lang: str, tr_map: dict[s
     """Тот же перевод канон -> подпись, что `display_summary_value`, но для ОДНОГО шага сразу
     (экран «Прошлый ответ» — `_show_recall_screen`, один вызов на экран, поход в БД внутри
     `option_pairs` не нужно объединять с чем-либо ещё). `step_key` берётся напрямую из вызова
-    (в отличие от сводки, здесь не нужна карта label -> step_key)."""
+    (в отличие от сводки, здесь не нужна карта label -> step_key).
+
+    Приёмка 09.10: пропуск («-», правка со сводки) показывается словами «не указан»."""
+    if value == "-":
+        return tr_text("не указан", lang, tr_map)
     if lang == "ru" or not isinstance(value, str) or not value:
         return value
     pairs = await option_pairs(step_key, lang, tr_map)

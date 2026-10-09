@@ -1844,6 +1844,9 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
         await state.update_data(_draft_version=ver)
     except Exception as e:
         logger.error(f"draft create/refresh failed for {message.from_user.id}: {e}")
+    if (saved_prior or {}).get("_from_confirm"):  # приёмка 09.10: «Изменить» на сводке — правка, не новая анкета
+        from handlers.reg_flow import start_confirm_edit
+        return await start_confirm_edit(message, state)
 
     await _safe_answer(  # Quick 260906: литералы -> i18n_sources.py::code_literals()
         message,
