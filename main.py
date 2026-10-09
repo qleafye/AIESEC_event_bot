@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg
+from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg, admin_no_access
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -502,6 +502,8 @@ async def main():
     dp.include_router(group_chat.private_router)
     dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands
+    # Приёмка 09.10: /admin без прав — admin.router пропускает апдейт дальше молча, отвечаем тут.
+    dp.include_router(admin_no_access.router)
     dp.include_router(payment.router)  # payment callbacks/states checked before registration
     # D-41: короткая анкета на месте — раньше registration.router, чтобы состояния OnsiteReg
     # не перехватили catch-all хендлеры анкеты делегата.
