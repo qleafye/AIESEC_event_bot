@@ -270,17 +270,12 @@ def test_user_version_migrations_unique_and_ordered():
 
 # ── пресет ──────────────────────────────────────────────────────────────────────────────────
 
-def test_skillup_preset_sets_legacy_tier_values():
+def test_skillup_preset_leaves_tiers_to_manager():
+    # Владелец 09.10: ступени — обещания конкретного события, пресет их не пишет. Прежние
+    # значения СкиллАп 5 остаются только для миграции freeze_legacy_tier_defaults.
     settings = reg_presets.REG_PRESETS["skillup"]["settings"]
-    assert settings["amb_tier1_threshold"] == "1"
-    assert settings["amb_tier2_threshold"] == "3"
-    assert settings["amb_tier3_threshold"] == "7"
-    assert settings["amb_tier2_quota_on"] == "on"
-    assert settings["amb_o2o_quota"] == "15"
-    assert settings["amb_count_deadline"] == "2026-11-14 23:59"
-    assert settings["amb_tiers_require_approved"] == "on"
-    for key, value in reg_presets.SKILLUP_TIER_SETTINGS.items():
-        assert settings[key] == value
+    assert not set(reg_presets.SKILLUP_TIER_SETTINGS) & set(settings)
+    assert reg_presets.SKILLUP_TIER_SETTINGS["amb_count_deadline"] == "2026-11-14 23:59"
 
 
 def test_skillup_tier_values_valid_for_registry():
