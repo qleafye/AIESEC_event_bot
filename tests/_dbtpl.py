@@ -32,6 +32,7 @@ import asyncio
 import atexit
 import os
 import shutil
+import sqlite3
 import tempfile
 import threading
 
@@ -43,6 +44,9 @@ _TEMPLATE_PATH: str | None = None
 # часть тестов рассчитывает на базу, оставленную предыдущим тестом того же файла (см.
 # conftest.py), поэтому последняя живёт до следующей подмены.
 _COPIES: list[str] = []
+
+# Итоги засевов replay_seed(): ключ → {таблица: (колонки, строки)}.
+_SEEDED: dict[str, dict] = {}
 
 
 def _run_coro_sync(coro):
@@ -131,6 +135,71 @@ def _track_copy(db_path) -> None:
     path = os.path.abspath(str(db_path))
     if path not in _COPIES:
         _COPIES.append(path)
+
+
+def replay_seed(key: str, seed) -> None:
+    """Применяет к текущей `config.DB_PATH` то же, что сделал бы `seed()`, но сам `seed()`
+    прогоняется один раз на процесс.
+
+    Для тестов, где каждый тест сеет один и тот же большой набор через прод-функции
+    (например, переопределения всех per_city-ключей по всем городам — ~970 `set_setting`,
+    каждый со своим коммитом: ~60 с на тест на нагруженной машине). Первый вызов прогоняет
+    `seed()` на свежей копии шаблона и запоминает строки, которых в шаблоне не было; этот и
+    следующие вызовы вставляют их в текущую базу через `INSERT OR REPLACE` — на том же месте
+    теста, где раньше стоял `seed()`, так что порядок шагов теста не меняется.
+
+    Годится только для засева, который ДОБАВЛЯЕТ/ПЕРЕЗАПИСЫВАЕТ строки по первичному ключу и
+    не зависит от того, что тест успел положить в базу до него (типичный случай —
+    `set_setting`). Засев, который удаляет строки или пишет в таблицы с автоинкрементом, здесь
+    не поддержан — падает с AssertionError, а не молча меняет смысл теста."""
+    from config import config
+
+    delta = _SEEDED.get(key)
+    if delta is None:
+        template_path = _build_template()
+        seeded = os.path.join(os.path.dirname(template_path), f"seeded_{len(_SEEDED)}.db")
+        shutil.copy(template_path, seeded)
+        target = config.DB_PATH
+        try:
+            config.DB_PATH = seeded
+            seed()
+        finally:
+            config.DB_PATH = target
+        conn = sqlite3.connect(seeded)
+        try:
+            # База в WAL: без чекпойнта часть засева осталась бы в -wal.
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("ATTACH DATABASE ? AS tpl", (template_path,))
+            delta = {}
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )]
+            for name in tables:
+                removed = conn.execute(
+                    f'SELECT COUNT(*) FROM (SELECT * FROM tpl."{name}" EXCEPT SELECT * FROM main."{name}")'
+                ).fetchone()[0]
+                assert not removed, f"replay_seed({key!r}): засев удаляет/меняет строки шаблона в {name}"
+                cur = conn.execute(
+                    f'SELECT * FROM main."{name}" EXCEPT SELECT * FROM tpl."{name}"'
+                )
+                rows = cur.fetchall()
+                if rows:
+                    cols = [d[0] for d in cur.description]
+                    delta[name] = (cols, rows)
+        finally:
+            conn.close()
+        os.remove(seeded)
+        _SEEDED[key] = delta
+
+    conn = sqlite3.connect(str(config.DB_PATH))
+    try:
+        for name, (cols, rows) in delta.items():
+            col_sql = ", ".join(f'"{c}"' for c in cols)
+            marks = ", ".join("?" for _ in cols)
+            conn.executemany(f'INSERT OR REPLACE INTO "{name}" ({col_sql}) VALUES ({marks})', rows)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def remove_stale_copies() -> None:
