@@ -23,7 +23,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from config import config
 from database.db import get_setting
 from settings_schema import get_setting_typed
-from services.ru_plural import agree_points
 from services.timeutil import MOSCOW_TZ, msk_now
 
 logger = logging.getLogger(__name__)
@@ -1811,7 +1810,7 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
                 deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t)}"
             else:
                 deadline_tail = await game_labels.task_deadline_text(t)
-            amount = agree_points(f"{int(t['coins'])} {coins_word}")  # «1 балл», «22 балла»
+            amount = game_labels.fill_template("{n} " + coins_word, n=int(t["coins"]))  # «1 балл»
             lines.append(f"• {html.escape(str(task_title(t)))} — {amount}, {deadline_tail}")
         tasks_block = "\n".join(lines)
 
