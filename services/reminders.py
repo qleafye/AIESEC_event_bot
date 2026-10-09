@@ -137,6 +137,18 @@ async def _auto_reject_block(since: str | None, city_scope_desc) -> str | None:
     return "\n".join(auto_reject_block(title, names, rules))
 
 
+# Кнопка под сводкой вместо «Открой /admin → Заявки»: новичок отправлял эту строку целиком.
+def _open_apps_kb():
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📋 Открыть заявки", callback_data="admin_applications"),
+    ]])
+
+
+_OPEN_APPS_KB = _open_apps_kb()
+
+
 async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
     """`None` — этому получателю сейчас нечего слать (счётчик ожидания и автоотказ оба нули).
     Иначе готовый текст, из ОДНОЙ или ДВУХ строк.
@@ -167,7 +179,7 @@ async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
         lines = []
         if count > 0:
             label = await city_label(code)
-            lines.append(f"📋 Заявок в ожидании ({label}): {count}. Открой /admin → Заявки.")
+            lines.append(f"📋 Заявок в ожидании ({label}): {count}.")
         if auto_block:
             lines.append(auto_block)
         return "\n\n".join(lines)
@@ -179,7 +191,7 @@ async def _text_for_recipient(uid: int, since: str | None = None) -> str | None:
     lines = []
     if count > 0:
         suffix = await _pending_breakdown_suffix(count)
-        lines.append(f"📋 Заявок в ожидании: {count}{suffix}. Открой /admin → Заявки.")
+        lines.append(f"📋 Заявок в ожидании: {count}{suffix}.")
     if auto_block:
         lines.append(auto_block)
     return "\n\n".join(lines)
@@ -229,7 +241,7 @@ async def pending_reminder_loop(bot):
                         text = await _text_for_recipient(uid, since=_last_summary_at)
                         if text is None:
                             continue  # ничего не ждёт этого получателя — не будим зря
-                        await bot.send_message(uid, text)
+                        await bot.send_message(uid, text, reply_markup=_OPEN_APPS_KB)
                     except _PERMANENT_SEND_ERRORS as e:
                         _blocked_admins.add(uid)
                         logger.warning(
