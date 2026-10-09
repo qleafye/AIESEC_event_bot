@@ -2036,6 +2036,9 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
    case_optin.description) — Body-роль (28-UI-SPEC §5: 15px, var(--text), НЕ muted), живёт
    между плитой и полем, не внутри акцентной плиты. */
 .step-description { font-size: 15px; line-height: 1.45; color: var(--text); margin: var(--sp-3) 0 0; }
+/* Приёмка 09.10: длинный вопрос шага (резюме со списком «1. 2. 3.») — под плитой обычным
+   текстом, переносы строк из реестра сохраняются. */
+.step-prompt-long { font-size: 15px; line-height: 1.45; color: var(--text); margin: var(--sp-3) 0 0; white-space: pre-line; }
 
 /* Крупное поле мастера: вопрос уже задан плитой, поле обязано выглядеть главным
    действием экрана, а не подписью из настроек. */
