@@ -415,7 +415,7 @@ _CODE_LITERALS_EN = {
     "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», там актуальный список.": "This task was archived — you can no longer submit it. Check «🎯 Tasks» for the current list.",
     "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Мои задания», там актуальный список.": "This task was archived — you can no longer submit it. Check «🎯 My tasks» for the current list.",
     "Лимит попыток по этому заданию исчерпан ({limit}). Если считаешь, что это ошибка — напиши менеджеру через «❓ Задать вопрос».": "You've used up your attempts for this task ({limit}). If you think this is a mistake, message a manager via «❓ Ask a question».",
-    "⏰ Срок сдачи вышел. Отправить можно, но начислять коины будет решать менеджер.": "⏰ The deadline has passed. You can still submit, but a manager will decide on the coins.",
+    "⏰ Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.": "⏰ The deadline has passed. You can still submit, but a manager will decide on the points.",
     "Больше {max_parts} частей в одну сдачу не влезет — нажми «✅ Готово», менеджер уже увидит присланное.": "More than {max_parts} parts won't fit in one submission — tap «✅ Done», the manager will already see what you sent.",
     "Это задание больше не доступно.": "This task is no longer available.",
     "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.": "Already submitted — someone beat you to it by a split second. Refresh the task list.",
@@ -1230,10 +1230,22 @@ _NEUTRAL_DEFAULTS_EN: dict[str, str] = {
         "🎉 {name}, {event} in numbers — here's your recap! Share it with friends 🧡💙",
 }
 
+# Валюта в дефолтах — «баллы» / «points» (10.10, выбор DXP): одно слово на все тексты делегату.
+# Прежние RU-ключи с «монетами» выше оставлены — у менеджера мог сохраниться старый дефолт дословно.
+_POINTS_261010_EN = {
+    "📜 <b>История баллов</b>": "📜 <b>Points history</b>",
+    "🪙 Баланс: {balance} баллов\nМесто в общем рейтинге: {rank} из {total}": "🪙 Balance: {balance} points\nOverall leaderboard place: {rank} of {total}",
+    "🪙 Баланс изменён: {delta} баллов.\nПричина: {reason}\nТекущий баланс: {balance}": "🪙 Balance changed: {delta} points.\nReason: {reason}\nCurrent balance: {balance}",
+    "🏆 <b>Рейтинг по баллам</b>": "🏆 <b>Points leaderboard</b>",
+    "Собирай баллы до старта": "Collect points before the start",
+    "Задания и баллы для делегаций вузов здесь выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.":
+        "Tasks and points for university delegations are switched off here. Everything else — the programme, the entry QR, the news — works as usual.",
+}
+
 FORM_DEFAULT_EN: dict[str, str] = {
     **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
-    **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN,
+    **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN, **_POINTS_261010_EN,
     # Подписи кнопок главного меню (группа menu_labels): дефолты переведены руками в MENU_EN —
     # тот же перевод, второй копии не заводим.
     **MENU_EN,

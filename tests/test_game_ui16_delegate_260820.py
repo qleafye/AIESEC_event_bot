@@ -332,7 +332,7 @@ def test_show_my_coins_empty_history(tmp_path):
     message = FakeMessage(user_id=DELEGATE_ID)
     asyncio.run(ua_mod.show_my_coins(message))
     text = message.answers_sent[-1]
-    assert "🪙 Баланс: 0 монет" in text
+    assert "🪙 Баланс: 0 баллов" in text
     assert "Место в общем рейтинге: — из —" in text
     assert "Пока не было ни одной операции." in text
     kb_texts = _flat_kb_texts(message.answer_markups[-1])
@@ -347,7 +347,7 @@ def test_show_my_coins_with_history_and_rank(tmp_path):
     message = FakeMessage(user_id=DELEGATE_ID)
     asyncio.run(ua_mod.show_my_coins(message))
     text = message.answers_sent[-1]
-    assert "🪙 Баланс: 15 монет" in text
+    assert "🪙 Баланс: 15 баллов" in text
     assert "Место в общем рейтинге: 1 из 1" in text
     assert "вручную" in text
     assert "задание" in text

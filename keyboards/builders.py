@@ -63,7 +63,7 @@ MENU_BUTTONS = [
     # Дополнительный гейт ниже (`has_faq_for_city`) прячет кнопку, пока в FAQ нет ни одного
     # включённого пункта, — тот же приём, что у menu_miniapp (T-19-54).
     ("menu_faq", "❓ Частые вопросы"),
-    ("menu_coins", "🪙 Мои монеты"),
+    ("menu_coins", "🪙 Мои баллы"),
     ("menu_game_tasks", "🎯 Задания"),
     # Phase 19 (D-10): текстовая reply-кнопка «📱 Приложение» — НЕ web_app-кнопка (Pitfall 1:
     # KeyboardButton(web_app=...) даёт simple web view без initData, делегат не

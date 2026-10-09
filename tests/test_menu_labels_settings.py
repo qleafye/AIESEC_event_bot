@@ -115,7 +115,7 @@ def test_conference_menu_keeps_conference_caption(ready):
 
 def test_english_default_is_handwritten(ready):
     caption = asyncio.run(_en_default())
-    assert caption == MENU_EN["🪙 Мои монеты"]
+    assert caption == MENU_EN["🪙 Мои баллы"]
 
 
 async def _en_default():
@@ -143,15 +143,18 @@ def test_filter_matches_every_actual_caption(ready):
 
     async def go():
         await db.set_setting("event_city_enabled", "on")
-        await db.set_setting("menu_coins_label", "🪙 Мои баллы")
+        await db.set_setting("menu_coins_label", "🪙 Мой счёт")
         if codes:  # делегат без города — город по умолчанию, как в get_main_menu_kb
             await db.set_setting(cities.per_city_key("menu_coins_label", cities.default_city_code()), "🪙 Копилка")
         f = MenuButton("menu_coins")
         return {
-            "custom": await f(_Msg("🪙 Мои баллы")),
+            "custom": await f(_Msg("🪙 Мой счёт")),
             "city": await f(_Msg("🪙 Копилка")) if codes else True,
-            "default": await f(_Msg("🪙 Мои монеты")),
-            "en": await f(_Msg(MENU_EN["🪙 Мои монеты"])),
+            "default": await f(_Msg("🪙 Мои баллы")),
+            "en": await f(_Msg(MENU_EN["🪙 Мои баллы"])),
+            # прежний дефолт с закэшированных клавиатур (до 10.10 — «монеты»)
+            "legacy": await f(_Msg("🪙 Мои монеты")),
+            "legacy_en": await f(_Msg("🪙 My coins")),
             "foreign": await f(_Msg("просто текст")),
             "other_button": await f(_Msg("🎯 Задания")),
             "other_filter": await MenuButton("menu_game_tasks")(_Msg("🪙 Мои баллы")),
@@ -159,6 +162,7 @@ def test_filter_matches_every_actual_caption(ready):
 
     r = asyncio.run(go())
     assert r["custom"] and r["city"] and r["default"] and r["en"]
+    assert r["legacy"] and r["legacy_en"]
     assert not r["foreign"] and not r["other_button"] and not r["other_filter"]
 
 
@@ -322,8 +326,8 @@ def test_label_data_cached_until_write(ready, monkeypatch):
         for text in ("привет", "Hello there", "🪙 Мои монеты", "ещё текст"):
             await MenuButton("menu_coins")(_DelegateMsg(text))
         first = len(loads)
-        await db.set_setting("menu_coins_label", "🪙 Мои баллы")
-        hit = await MenuButton("menu_coins")(_DelegateMsg("🪙 Мои баллы"))
+        await db.set_setting("menu_coins_label", "🪙 Мой счёт")
+        hit = await MenuButton("menu_coins")(_DelegateMsg("🪙 Мой счёт"))
         return first, len(loads), hit
 
     first, after_write, hit = asyncio.run(go())
