@@ -359,10 +359,11 @@ def test_browser_app_button_when_enabled_and_url_set(tmp_path):
     assert second.url == "https://yl26.alekseev.info/app"
 
 
-def test_browser_app_button_hidden_when_miniapp_off(tmp_path):
+def test_browser_app_button_kept_when_miniapp_off(tmp_path):
+    """Выключенное приложение закрыто только делегатам — менеджерский запасной вход остаётся."""
     _db_ready(tmp_path)
     texts = [b.text for row in _stats_kb("off", "https://yl26.alekseev.info").inline_keyboard for b in row]
-    assert "📱 Приложение в браузере" not in texts
+    assert "📱 Приложение в браузере" in texts
     assert "🌐 Открыть дашборд" in texts
 
 

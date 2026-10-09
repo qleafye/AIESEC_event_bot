@@ -104,12 +104,13 @@ def test_shell_delivers_manager_edited_screen_text(tmp_path):
 
 
 def test_disabled_page_also_carries_screen_texts_attribute(tmp_path):
-    """503 (`miniapp_enabled = off`) несёт тот же атрибут — фолбэк `{}` только когда БД
-    физически недоступна (ветка `except` `render_disabled_page`), а не всегда."""
+    """Оболочка при `miniapp_enabled = off` (выключено только делегатам — отдаётся как обычно)
+    несёт тот же атрибут — фолбэк `{}` только когда БД физически недоступна (ветка `except`
+    `render_disabled_page`), а не всегда."""
     db_path = _use_tmp_db(tmp_path, "miniapp_error_states_disabled.db")
     _seed(settings={"miniapp_enabled": "off"})
     resp = _client(db_path).get("/app")
-    assert resp.status_code == 503
+    assert resp.status_code == 200
     texts = _screen_texts_from_html(resp.text)
     assert set(texts) == set(page_module.SCREEN_TEXT_KEYS)
     assert texts["load_error"] == SETTINGS_SCHEMA["miniapp_load_error_text"]["default"]

@@ -230,7 +230,9 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     # a read failure means "no button", never a broken menu.
     miniapp_on = False
     try:
-        miniapp_on = await get_setting_typed("miniapp_enabled") == "on"
+        # Выключенное приложение закрыто делегатам — у персонала кнопка остаётся.
+        from services.miniapp_access import miniapp_open_for
+        miniapp_on = await miniapp_open_for(telegram_id)
     except Exception as e:
         logger.error(f"get_main_menu_kb: miniapp_enabled resolve failed: {e}")
         miniapp_on = False
@@ -445,7 +447,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
 
 async def _hidden_miniapp(code: str | None) -> str | None:
     if await get_setting_typed("miniapp_enabled") != "on":
-        return "выключено приложение (Mini App)"
+        return "выключено приложение (Mini App) — делегаты кнопку не видят, менеджерам она видна"
     if not config.DASHBOARD_PUBLIC_URL:
         return "у приложения не задан адрес — нужен разработчик"
     return None

@@ -24,6 +24,7 @@ from miniapp.main import create_app
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
+    DELEGATE_ID,
     _cfg,
     _hdr,
     _seed,
@@ -154,17 +155,17 @@ def test_shell_escapes_registry_texts(tmp_path):
     assert "&lt;script&gt;" in resp.text
 
 
-def test_shell_disabled_returns_human_page_503(tmp_path):
+def test_shell_disabled_still_served_with_disabled_text_for_delegates(tmp_path):
+    """Выключено = закрыто делегатам: оболочка грузится (персонал входит по initData), текст
+    `miniapp_disabled_text` едет в атрибуте — клиент рисует его делегату на 503 `miniapp_off`."""
     db_path = _use_tmp_db(tmp_path, "miniapp_front_off.db")
-    _seed(settings={"miniapp_enabled": "off", "miniapp_disabled_text": "Ушли на обед, всё в боте."})
+    _seed(settings={"miniapp_enabled": "off", "miniapp_disabled_text": "Ушли на обед, всё в боте."},
+          users=[(DELEGATE_ID, "approved")])
     resp = _client(db_path).get("/app")
-    assert resp.status_code == 503
-    assert resp.headers["content-type"].startswith("text/html")
-    assert "Ушли на обед, всё в боте." in resp.text
-    assert '"reason"' not in resp.text
-    assert "/js/app.js" not in resp.text  # ядро не грузится на заглушке
-    # API при этом по-прежнему JSON.
-    assert _client(db_path).get("/app/api/me", headers=_hdr(ADMIN_ID)).json() == {"reason": "miniapp_off"}
+    assert resp.status_code == 200
+    assert 'data-disabled-text="Ушли на обед, всё в боте."' in resp.text
+    assert _client(db_path).get("/app/api/me", headers=_hdr(DELEGATE_ID)).json() == {"reason": "miniapp_off"}
+    assert _client(db_path).get("/app/api/me", headers=_hdr(ADMIN_ID)).status_code == 200
 
 
 def test_static_served_under_app_prefix(tmp_path):
