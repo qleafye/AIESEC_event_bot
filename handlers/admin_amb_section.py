@@ -329,3 +329,9 @@ async def amb_texts_menu(callback: types.CallbackQuery):
 # Экран «🙋 Кандидаты и команда» (admin_amb_candidates, ambc*/ambp:*) — хвост admin.router
 # после хендлеров этого файла.
 from handlers import admin_amb_candidates  # noqa: E402,F401
+
+
+@router.callback_query(F.data == "amb_sep")
+async def amb_separator(callback: types.CallbackQuery):
+    # Подзаголовок «── Общее ──» и соседи в разделе — не кнопка действия.
+    await callback.answer("Это подзаголовок — кнопки группы под ним.")
