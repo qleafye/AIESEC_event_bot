@@ -24,6 +24,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_user, get_setting, record_user_consent, delete_reg_draft
+from database.db import current_consent_version, get_user_consent_versions
 # Квик 260914-k74 (LEAK-01): набор колонок резюме для снимка process_confirm_edit — тот же
 # источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
 from database.db import RESUME_RECALL_COLUMNS
@@ -49,7 +50,7 @@ from reg_engine import STEP_TO_COLUMN
 # Квик 260919-u7e (находка #2): набор колонок шага резюме (включая `resume_file_name`, которой
 # нет в `RESUME_RECALL_COLUMNS` — она никогда не жила в `users`, только в reg_drafts/FSM) для
 # того же снимка -- см. докстринг ниже у `recall_columns`.
-from reg_engine import columns_for_step
+from reg_engine import columns_for_step, get_consent_steps
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
 from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
@@ -335,10 +336,12 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
     # набору колонок из `_prior_answers` -- без неё «Оставить прошлое резюме» после файлового
     # ответа терял бы расширение файла (Nextcloud-загрузка резюме без имени/расширения).
     recall_columns = set(STEP_TO_COLUMN.values()) | set(RESUME_RECALL_COLUMNS) | set(columns_for_step("resume"))
+    # Приёмка 09.10: пропущенный ответ («-») тоже в снимке — на правке он показывается
+    # «Прошлый ответ: не указан / Оставить», а не новым вопросом (`prior_answers_for`).
     snapshot = {
         column: data[column]
         for column in recall_columns
-        if data.get(column) not in (None, "", "-")
+        if data.get(column) not in (None, "")
     }
     # Маркер живёт ВНУТРИ снимка (не отдельным FSM-ключом): так он бесплатно переживает
     # state.clear() вместе с остальным `_prior_answers` и не требует своего saved_x-блока в
@@ -349,6 +352,27 @@ async def process_confirm_edit(message: types.Message, state: FSMContext):
     snapshot["_from_confirm"] = True
     await state.update_data(_prior_answers=snapshot)
     await _start_registration_flow(message, state)
+
+
+async def start_confirm_edit(message: types.Message, state: FSMContext) -> None:
+    """Приёмка 09.10: «Изменить» на сводке выглядел как перезапуск анкеты — «Отлично, начинаем
+    регистрацию.» и снова согласие на обработку ПД; на проде из-за такого вида бросали анкету
+    (14.09). Зовётся из `_start_registration_flow` (маркер `_from_confirm` в снимке) ПОСЛЕ того,
+    как он перенёс ответы через state.clear() и обновил черновик, — сохранность ответов та же.
+    Согласие спрашивается снова, только если его подписи текущей редакции в базе нет."""
+    await reg_i18n.say(message, "Давай поправим ответы — пройдём по ним по очереди.")
+    try:
+        version = await current_consent_version()
+        signed = {key for key, ver in await get_user_consent_versions(message.from_user.id) if ver == version}
+    except Exception as e:  # сбой чтения — спросить согласие ещё раз безопаснее, чем пропустить
+        logger.error(f"start_confirm_edit: consent read failed for {message.from_user.id}: {e}")
+        signed = set()
+    pending = [s for s in await get_consent_steps() if s.split(":", 1)[1] not in signed]
+    if pending:
+        await state.update_data(_consent_queue=pending, _consent_i=0)
+        await _ask_step_or_recall(pending[0], message, state, 1, len(pending))
+    else:
+        await _ask_full_name(message, state)
 
 
 # --- QW-03 resume upload step ---

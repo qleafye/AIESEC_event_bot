@@ -178,3 +178,72 @@ def test_resume_fork_removes_previous_reply_keyboard(tmp_path):
     assert "резюме" in (msg.sent[0][0] or "").lower()
     assert isinstance(msg.sent[-1][1], InlineKeyboardMarkup)
     assert state_name == Registration.resume.state
+
+
+# ── «Изменить» на сводке — правка, а не новая анкета ──────────────────────────────────────
+
+async def _confirm_edit(signed_consents: bool, extra: dict | None = None):
+    from handlers import reg_flow
+    await db.set_setting("consent_enabled", "on")
+    if signed_consents:
+        for step in await reg_engine.get_consent_steps():
+            await db.record_user_consent(USER_ID, step.split(":", 1)[1])
+    msg = _KBCapturingMessage(USER_ID, "delegate", text="Изменить")
+    state = _new_state(USER_ID)
+    await state.update_data(
+        participant_type="full", event_city="msk", _draft_kind="new",
+        full_name="Иванова Мария", age="22", **(extra or {}),
+    )
+    await state.set_state(Registration.confirm)
+    await reg_flow.process_confirm_edit(msg, state)
+    return msg, state
+
+
+def test_confirm_edit_does_not_look_like_restart(tmp_path):
+    """После «Изменить» — не «Отлично, начинаем регистрацию.» и не повторное согласие
+    (уже подписано в этой анкете), а «пройдём по ответам» и сразу прошлое ФИО."""
+    _use_tmp_db(tmp_path, "uat261009_c9a.db")
+
+    async def go():
+        msg, state = await _confirm_edit(signed_consents=True)
+        return msg, await state.get_state(), await state.get_data()
+
+    msg, fsm_state, data = asyncio.run(go())
+    texts = _texts(msg)
+    assert not any("начинаем регистрацию" in (t or "") for t in texts), texts
+    assert any("поправим ответы" in (t or "") for t in texts), texts
+    assert fsm_state == Registration.recall_pending.state
+    assert data.get("_recall_step") == "full_name"
+    # ответы целы: снимок для «Оставить» на месте, черновик не стёрт
+    assert data["_prior_answers"].get("age") == "22"
+
+
+def test_confirm_edit_still_asks_unsigned_consent(tmp_path):
+    """Согласие, которого в базе нет (например, менеджер поднял редакцию), спрашивается."""
+    _use_tmp_db(tmp_path, "uat261009_c9b.db")
+
+    async def go():
+        msg, state = await _confirm_edit(signed_consents=False)
+        return msg, await state.get_state()
+
+    msg, fsm_state = asyncio.run(go())
+    assert fsm_state == Registration.consent_pending.state
+    assert not any("начинаем регистрацию" in (t or "") for t in _texts(msg))
+
+
+def test_confirm_edit_skipped_answer_offered_as_not_specified(tmp_path):
+    """Пропущенный телефон («-») на правке — «Прошлый ответ: не указан / Оставить», а не
+    новый вопрос «Введи номер телефона»."""
+    _use_tmp_db(tmp_path, "uat261009_c9c.db")
+
+    async def go():
+        await db.set_setting("reg_q_phone", "on")
+        msg, state = await _confirm_edit(signed_consents=True, extra={"phone": "-"})
+        msg.sent.clear()
+        await reg._ask_step_or_recall("phone", msg, state, 2, 14)
+        return msg, await state.get_state(), await state.get_data()
+
+    msg, fsm_state, data = asyncio.run(go())
+    assert fsm_state == Registration.recall_pending.state, _texts(msg)
+    assert data.get("_recall_step") == "phone"
+    assert any("не указан" in (t or "") for t in _texts(msg)), _texts(msg)

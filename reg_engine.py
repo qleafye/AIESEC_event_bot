@@ -2483,10 +2483,13 @@ def prior_answers_for(user_row: dict | None) -> dict:
     handlers/registration.py::_ask_step_or_recall."""
     if not user_row:
         return {}
+    # Приёмка 09.10: снимок «Изменить» со сводки (`_from_confirm`) — ответы ЭТОЙ анкеты, и
+    # пропуск («-») в ней тоже ответ: «Прошлый ответ: не указан / Оставить», не новый вопрос.
+    empty = (None, "") if user_row.get("_from_confirm") else (None, "", "-")
     return {
         step: user_row.get(col)
         for step, col in STEP_TO_COLUMN.items()
-        if step != "resume" and user_row.get(col) not in (None, "", "-")
+        if step != "resume" and user_row.get(col) not in empty
     }
 
 
