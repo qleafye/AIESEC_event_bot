@@ -626,3 +626,25 @@ class BotAvatar(StatesGroup):
     # «🖼 Аватар бота» (handlers/admin_bot_avatar.py): ждём фото, затем «Поставить?».
     photo = State()
     confirm = State()
+
+
+# Состояния делегата: анкета (в т.ч. вложенные шаги типов вопросов и короткая анкета на
+# месте) и прочие ответы делегата боту. Вход в админку их НЕ сбрасывает: менеджер, который
+# сам заполняет анкету, не должен терять её, нажав /admin. Имена — строками, а не классами:
+# `_CompositeChat`/`_LookupChat`/`OnsiteReg` живут в своих швах, импорт отсюда дал бы цикл
+# (сторож имён — tests/test_admin_flow_state_reset_261009.py).
+DELEGATE_STATE_GROUPS: frozenset[str] = frozenset({
+    "Registration", "_CompositeChat", "_LookupChat", "OnsiteReg",
+    "Question", "GameSubmit", "SosReport", "SessionFeedbackComment", "ForumNoshowPollOther",
+})
+
+
+async def clear_admin_flow_state(state) -> bool:
+    """Вход в админку (/admin, «⬅ Панель») снимает любое незаконченное админское ожидание
+    ввода — иначе оно переживает уход с экрана, и следующее сообщение (фото для рассылки,
+    текст) молча уходит в брошенный мастер. Состояния делегата не трогает. True — сбросили."""
+    current = await state.get_state()
+    if not current or current.split(":", 1)[0] in DELEGATE_STATE_GROUPS:
+        return False
+    await state.clear()
+    return True

@@ -106,7 +106,7 @@ from services import source_links
 from services.background import spawn as _spawn
 from services import decision_delivery
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport
+from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.reg_schema import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
@@ -379,8 +379,7 @@ _ADMIN_HELP_LINES = [
 
 @router.message(Command("admin"))
 async def cmd_admin_help(message: types.Message, state: FSMContext):
-    if (await state.get_state() or "").startswith("BotAvatar:"):  # ушёл с экрана аватара
-        await state.clear()
+    await clear_admin_flow_state(state)  # брошенный админский мастер не ловит следующее сообщение
     caps = await resolve_capabilities(message.from_user.id)
     rows = _visible_menu_rows(caps)
 

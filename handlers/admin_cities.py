@@ -40,7 +40,7 @@ from database.db import (
 from services.sheets import dedupe_sheet_by_id, REFUSED_UNPINNED_TAB
 from services.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
-from handlers.states import CityForm, SeasonReset, SeasonImport
+from handlers.states import CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
 from cities import (
     CITIES,
     ALL_CITIES,
@@ -908,8 +908,7 @@ async def admin_city_pick(callback: types.CallbackQuery):
 async def admin_menu_root(callback: types.CallbackQuery, state: FSMContext):
     """Back to the admin panel keyboard (also fixes the previously dead «Отмена» buttons
     that pointed at admin_menu without a handler)."""
-    if (await state.get_state() or "").startswith("BotAvatar:"):  # ушёл с экрана аватара
-        await state.clear()
+    await clear_admin_flow_state(state)  # брошенный админский мастер не ловит следующее сообщение
     await callback.message.edit_text(
         "👮‍♂️ <b>Панель администратора</b>", parse_mode="HTML", reply_markup=await admin_keyboard_for(callback.from_user.id)
     )
