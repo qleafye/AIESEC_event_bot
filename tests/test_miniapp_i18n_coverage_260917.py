@@ -116,6 +116,8 @@ def test_leaderboard_empty_translated(make_client):
     resp = client.get("/app/api/leaderboard", headers=_hdr(DELEGATE_ID))
     assert resp.status_code == 200, resp.text
     assert resp.json()["empty_text"].startswith(EN_PREFIX)
+    # Слово после числа в «ещё N … до K-го места» — тоже переведённое, не русский литерал JS.
+    assert resp.json()["unit"].startswith(EN_PREFIX)
 
 
 def test_faq_empty_text_translated(make_client):

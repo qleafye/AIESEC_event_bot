@@ -118,6 +118,9 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
         "items": items,
         "me": {"rank": await get_user_rank(p.telegram_id), "balance": await get_balance(p.telegram_id)},
         "total": await count_participants(),
+        # Слово после числа в строке «ещё N … до K-го места» — та же подпись, что у плиты
+        # баланса в хабе, переведённая на язык делегата; форму под число выбирает `unitFor`.
+        "unit": await i18n.tr_setting("miniapp_hub_balance_unit", lang, tr_map),
         "empty_text": (
             await i18n.tr_setting("leaderboard_empty_text", lang, tr_map) if not rows else None
         ),
