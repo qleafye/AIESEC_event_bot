@@ -811,6 +811,9 @@ async def cross_setting_error(key: str, value: str | None) -> str | None:
         # запись не состоится). Ленивый импорт: корневой модуль не тянет services/* на верх.
         from services.bot_profile import precheck_bot_name
         return await precheck_bot_name(value)
+    from services.menu_labels import base_label_key, label_conflict_text  # ленивый: без aiogram
+    if base_label_key(key):  # подпись кнопки меню, занятая другой кнопкой (любой город)
+        return await label_conflict_text(key, value)
     if key not in AMB_THRESHOLD_KEYS:
         return None
     current = {k: int(await get_setting_typed(k)) for k in AMB_THRESHOLD_KEYS}

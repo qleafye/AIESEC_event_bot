@@ -2686,6 +2686,15 @@ async def get_setting(key: str) -> str | None:
             return row[0] if row else None
 
 
+# Счётчик записей настроек и переводов в этом процессе: кэши поверх них (подписи кнопок
+# меню, services/menu_labels.py) сверяют его и перечитывают данные после любой записи.
+_WRITE_GENERATION = [0]
+
+
+def write_generation() -> int:
+    return _WRITE_GENERATION[0]
+
+
 async def set_setting(key: str, value: str):
     # Quick 260820-rms: единственная точка записи настроек — единственное место, где можно
     # дёшево получить аудит правок. 20.08 в source_options и approve_text прилетело «/start»,
@@ -2706,6 +2715,7 @@ async def set_setting(key: str, value: str):
     snapshot = _settings_snapshot_var.get()
     if snapshot is not None:
         snapshot[key] = value
+    _WRITE_GENERATION[0] += 1
     await _maybe_enqueue_translation(key, value)
 
 
@@ -2811,6 +2821,7 @@ async def delete_setting(key: str):
     snapshot = _settings_snapshot_var.get()
     if snapshot is not None:
         snapshot.pop(key, None)
+    _WRITE_GENERATION[0] += 1
 
 
 async def add_user(data: dict):
@@ -10475,6 +10486,19 @@ async def fetch_translations(lang: str) -> dict[str, str]:
     return {row[0]: row[1] for row in rows}
 
 
+async def fetch_manual_translations(lang: str) -> dict[str, str]:
+    """Только ручные переводы (`manual=1`) — `src_hash -> text`. Подписи кнопок меню узнаются
+    по ним, а не по машинным: машинный перевод может поменяться сам и оставить кнопку мёртвой."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT src_hash, text FROM translations "
+            "WHERE lang = ? AND manual = 1 AND text IS NOT NULL AND text != ''",
+            (lang,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
 async def upsert_translation(
     lang: str, src_hash: str, src_text: str, text: str | None, *,
     manual: int = 0, origin_key: str | None = None,
@@ -10496,6 +10520,7 @@ async def upsert_translation(
             (lang, src_hash, src_text, text, int(manual), origin_key, updated_at),
         )
         await db.commit()
+    _WRITE_GENERATION[0] += 1
 
 
 _UPSERT_TRANSLATION_SQL = '''
@@ -10637,6 +10662,7 @@ async def clear_translation_manual(lang: str, src_hash: str) -> None:
             (lang, src_hash),
         )
         await db.commit()
+    _WRITE_GENERATION[0] += 1
 
 
 async def get_translation(lang: str, src_hash: str) -> dict | None:

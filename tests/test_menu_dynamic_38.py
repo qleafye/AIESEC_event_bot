@@ -73,7 +73,8 @@ def test_caption_en_never_empty(ready):
 def test_dynamic_filter_matches(ready):
     async def go():
         await _city_per_city_on()
-        await db.set_setting(cities.per_city_key(KEY, _first_city()), CUSTOM)
+        # делегат без города видит подписи города по умолчанию — как в get_main_menu_kb
+        await db.set_setting(cities.per_city_key(KEY, cities.default_city_code()), CUSTOM)
         f = DynamicMenuText(MENU)
         return (
             await f(_Msg(CUSTOM)),

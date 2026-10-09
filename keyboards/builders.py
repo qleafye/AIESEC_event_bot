@@ -10,7 +10,7 @@ from cities import default_city_code, get_setting_typed_for_city, cities_module_
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
 from i18n_ui_en import MENU_EN
-from services.i18n import load_map, resolve_lang
+from services.i18n import resolve_lang
 # Подписи кнопок меню — настройки; CONFERENCE_MENU_LABELS/LEGACY_MENU_TEXTS реэкспортом
 # (на них ссылаются старые импорты).
 from keyboards.menu_dynamic import (  # noqa: F401
@@ -328,19 +328,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         edit_on = False
 
     # Подписи кнопок — настройки по городу (keyboards/menu_dynamic.caption_for). Город для
-    # подписи — тот же фолбэк, что у гейтов записи/теста выше; карта переводов — одна на меню.
+    # подписи — тот же фолбэк, что у гейтов записи/теста выше; EN — рукописный MENU_EN для
+    # стандартных подписей и ручной перевод менеджера для своих (машинный не берём: его не
+    # узнал бы фильтр нажатий, services/menu_labels.py).
     try:
         label_city = code if code is not None else default_city_code()
     except Exception as e:
         logger.error(f"get_main_menu_kb: label city resolve failed: {e}")
         label_city = None
-    tr_map: dict[str, str] = {}
+    en_map: dict[str, str] = {}
     if lang == "en":
-        try:
-            tr_map = await load_map("en")
-        except Exception as e:
-            logger.error(f"get_main_menu_kb: EN map resolve failed: {e}")
-            tr_map = {}
+        from services.menu_labels import manual_en_map
+        en_map = await manual_en_map()
 
     collected: list[tuple[str, str]] = []
     for key, _default_text in MENU_BUTTONS:
@@ -392,9 +391,8 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
                 continue
             if key == "menu_edit_anketa" and not edit_on:
                 continue
-            # EN: рукописный MENU_EN для дефолтов, машинный перевод — для своих подписей.
             collected.append((key, await caption_for(
-                key, label_city, lang, conference=conference, tr_map=tr_map)))
+                key, label_city, lang, conference=conference, en_map=en_map)))
 
     # Идея №1 бэклога чек-ина: в режиме «день форума» четыре приоритетные кнопки (та из них,
     # что вообще прошла свой гейт выше) поднимаются наверх в фиксированном порядке
@@ -420,7 +418,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             from handlers.payment import should_offer_receipt_upload
             if await should_offer_receipt_upload(telegram_id):
                 kb.button(text=await caption_for(
-                    "menu_payment", label_city, lang, tr_map=tr_map))
+                    "menu_payment", label_city, lang, en_map=en_map))
         except Exception:
             pass
     kb.adjust(2)

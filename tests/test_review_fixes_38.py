@@ -209,6 +209,6 @@ def test_menu_label_cannot_equal_other_button():
     from settings_validation import validate_setting_value
 
     value, error = validate_setting_value("quiz_menu_label", "📞 Контакты")
-    assert value is None and "другой кнопки" in error
+    assert value is None and "уже у кнопки «📞 Контакты»" in error
     assert validate_setting_value("quiz_menu_label", "🧭 Тест")[1] is None  # собственная подпись
     assert validate_setting_value("quiz_menu_label", "🧭 Проверка навыков")[1] is None

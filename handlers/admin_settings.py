@@ -58,6 +58,7 @@ from services.program import own_program_photo  # строка «📅 Прогр
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
 from keyboards.menu_dynamic import MENU_LABEL_FIELDS, is_dynamic_menu_text
+from services.menu_labels import base_label_key, label_conflict_text
 from handlers.reg_schema import (
     REG_FLOW,
     dropout_step_label,
@@ -2674,8 +2675,11 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # СРАБОТАТЬ: чистим FSM и уходим через SkipHandler, admin.router подключён первым
     # (main.py), поэтому событие продолжит путь к user_actions.router, где живёт реальный
     # обработчик этой подписи.
-    # Подписи динамических кнопок (запись на сессии, тест) настраиваются — тоже не значение.
-    if value in all_menu_button_texts() or await is_dynamic_menu_text(value):
+    # Подпись кнопки меню, занятая другой кнопкой, — не «нажатие»: объясняем, ждём другую.
+    is_label = base_label_key(key) is not None
+    if is_label and value != "-" and (label_error := await label_conflict_text(key, value)):
+        return await message.answer(label_error, parse_mode="HTML")
+    if not is_label and (value in all_menu_button_texts() or await is_dynamic_menu_text(value)):
         await state.clear()
         logger.info(
             f"admin {message.from_user.id}: подпись кнопки меню «{value}» пришла как "
