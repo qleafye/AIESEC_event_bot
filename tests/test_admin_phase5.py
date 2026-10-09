@@ -6,6 +6,7 @@ pytest-asyncio is unavailable in this env (see tests/test_db_phase5.py) — ever
 helper is driven via asyncio.run() and config.DB_PATH points at a tmp_path file.
 """
 import asyncio
+import html as html_module
 
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -204,6 +205,35 @@ def test_preset_apply_forum_still_shows_payment_line(tmp_path):
     cb = FakeCallback("preset_apply:forum")
     asyncio.run(admin_reg_config.preset_apply(cb))
     assert "Модуль оплаты" in cb.message.text
+
+
+def test_preset_apply_skillup_shows_registry_confirm_text_and_applies_nothing(tmp_path):
+    """Владелец 09.10: кнопка «🎓 Форум СкиллАп» в боте показывает то же подтверждение,
+    что приложение (skillup_preset_confirm_text из реестра, правка менеджера тоже видна),
+    с «✅ Применить» / «Отмена» — и до нажатия «Применить» ничего не пишет."""
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("skillup_preset_confirm_text", "Свой текст <менеджера> & ступени"))
+    before = asyncio.run(db.get_setting("reg_q_stack"))
+    cb = FakeCallback("preset_apply:skillup")
+    asyncio.run(admin_reg_config.preset_apply(cb))
+    assert "Свой текст &lt;менеджера&gt; &amp; ступени" in cb.message.text
+    assert "Включатся" not in cb.message.text  # не общий экран пресетов
+    flat = _flat_callback_data(cb.message.markup)
+    assert flat == ["preset_confirm:skillup", "admin_event_preset"]
+    labels = [b.text for row in cb.message.markup.inline_keyboard for b in row]
+    assert labels[0] == "✅ Применить" and "Отмена" in labels[1]
+    assert asyncio.run(db.get_setting("reg_q_stack")) == before
+    assert required_capability(callback_data="preset_apply:skillup") == "settings"
+    assert required_capability(callback_data="preset_confirm:skillup") == "settings"
+
+
+def test_preset_apply_skillup_default_text_says_tiers_are_manual(tmp_path):
+    from settings_schema import SETTINGS_SCHEMA
+    _admin_ready(tmp_path)
+    cb = FakeCallback("preset_apply:skillup")
+    asyncio.run(admin_reg_config.preset_apply(cb))
+    default = SETTINGS_SCHEMA["skillup_preset_confirm_text"]["default"]
+    assert html_module.escape(default) in cb.message.text
 
 
 def test_preset_confirm_party_routes_to_apply_party_preset(tmp_path, monkeypatch):
