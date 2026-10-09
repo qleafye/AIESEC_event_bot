@@ -54,10 +54,7 @@ from database.db import (
     get_staff_city,
     set_staff_city,
     get_question,
-    begin_question_delivery,
     claim_question,
-    release_question_delivery,
-    set_question_answer,
     list_all_tasks,
     create_task,
     get_task,
@@ -682,7 +679,7 @@ async def _notify_other_moderate_reg_holders(bot: Bot, admin_name: str, user_id:
 
 
 async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int, admin_name: str,
-                                  *, on_dispatched=None):
+                                  *, on_dispatched=None, question_id: int | None = None):
     """Shared delivery: send the reply (text or a copy of the admin's message) to the
     delegate, ack the replying admin, and fan out «who answered» to other moderate_reg
     holders. Raises on delivery failure -- callers decide what happens to a claim, if any.
@@ -694,10 +691,7 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     Менеджер в ответ получает приписку `manager_notice` — «отправлено» без неё было бы
     полуправдой.
 
-    `on_dispatched` (10.10) — корутина без аргументов, которую зовут СРАЗУ после того, как
-    ответ ушёл делегату или встал в очередь тихих часов, до ответа менеджеру и рассылки «кто
-    ответил»: сбой на этих хвостовых шагах не должен оставлять вопрос «в работе» при уже
-    отправленном/поставленном в очередь ответе (повтор поставил бы вторую копию)."""
+    `on_dispatched`/`question_id` (10.10) — см. handlers/admin_question_delivery.py."""
     from services import questions as questions_service, quiet_hours
     from services.scheduler import _now_moscow_naive
     now = _now_moscow_naive()
@@ -706,16 +700,19 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
         await quiet_hours.send_or_queue_text(
             now, user_id, reply_text,
             sender=lambda: bot.send_message(user_id, reply_text, parse_mode="HTML"),
+            question_id=question_id,
         )
     else:
         header = await questions_service.org_reply_header_html(user_id)
         await quiet_hours.send_or_queue_text(
             now, user_id, header,
             sender=lambda: bot.send_message(user_id, header, parse_mode="HTML"),
+            question_id=question_id,
         )
         await quiet_hours.send_or_queue_copy(
             now, user_id, sender=lambda: message.send_copy(user_id),
             from_chat_id=message.chat.id, message_id=message.message_id,
+            question_id=question_id,
         )
     if on_dispatched is not None:
         await on_dispatched()
@@ -750,49 +747,7 @@ async def _reply_with_delivery_error(message: types.Message, error: Exception):
         )
 
 
-async def _attempt_question_delivery(message: types.Message, bot: Bot, user_id: int, admin_name: str, qid: int):
-    """Deliver + record, shared by the first-claim path and the C-variant same-person retry
-    path below -- both need identical delivery/error-handling behaviour.
-
-    10.10: перед отправкой — атомарная отметка «ответ уходит» (`begin_question_delivery`).
-    Без неё тот же менеджер, отправивший ответ второй раз, пока первый ещё летел, проходил
-    проверку «захват мой, delivered_at пуст», и делегат получал две копии."""
-    if not await begin_question_delivery(qid, message.from_user.id):
-        row = await get_question(qid)
-        if row and row.get("delivered_at"):
-            await message.reply("✅ Ответ на этот вопрос уже отправлен — повторять не нужно.")
-        else:
-            await message.reply(
-                "⏳ Ответ уже отправляется — дождитесь подтверждения, повторять не нужно."
-            )
-        return
-    dispatched = False
-
-    async def _record_answer():
-        # D: delivered_at is stamped here, together with answer_text, ONLY once the answer has
-        # been sent or queued -- see set_question_answer's own docstring for why it can't be
-        # derived from answer_text alone. 10.10: stamped BEFORE the manager's ack/fan-out, so a
-        # failure there can't leave an already-queued answer looking «в работе».
-        nonlocal dispatched
-        dispatched = True
-        await set_question_answer(qid, message.html_text or message.text or "")
-
-    try:
-        await _deliver_question_reply(message, bot, user_id, admin_name, on_dispatched=_record_answer)
-    except Exception as e:
-        if dispatched:
-            # Ответ уже у делегата или в очереди — упал хвост (подтверждение менеджеру,
-            # рассылка «кто ответил»). Отметку не снимаем и «не удалось» не пишем: это было бы
-            # неправдой, а повтор задвоил бы ответ.
-            logger.error(f"Question {qid}: answer dispatched to user {user_id}, follow-up step failed: {e}")
-            return
-        # T-08-33 (accepted risk): the claim is NOT released here -- releasing it would let a
-        # retry double-send to the delegate. The manager sees an explicit failure and can
-        # follow up out-of-band; documented as a known limitation in 08-06-SUMMARY.md.
-        # Снимается только отметка «уходит»: повтор того же менеджера снова возможен.
-        await release_question_delivery(qid)
-        logger.error(f"Failed to send reply to user {user_id}: {e}")
-        await _reply_with_delivery_error(message, e)
+from handlers.admin_question_delivery import _attempt_question_delivery  # noqa: E402
 
 
 @router.message(is_question_reply)

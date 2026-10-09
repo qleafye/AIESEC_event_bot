@@ -426,6 +426,20 @@ def test_answer_in_quiet_hours_queues_instead_of_sending(client, bot_api):
     assert _get_question(qid)["delivered_at"] is not None
 
 
+def test_answer_in_quiet_hours_queue_row_carries_question_id(client, bot_api):
+    """10.10: строка очереди несёт id вопроса — если утренняя отправка упадёт, бот вернёт
+    вопрос «в работу» и предупредит ответившего менеджера (как и для ответа из чата)."""
+    qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
+    _seed(settings={"quiet_hours_enabled": "on", "quiet_hours_start": "00:00",
+                    "quiet_hours_end": "23:59"})
+    client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Завтра в 18:00"},
+        headers=_hdr(REG_MANAGER_ID),
+    )
+    rows = _run(bot_db.list_due_delayed_notifications("2100-01-01 00:00:00"))
+    assert [r["payload"].get("question_id") for r in rows] == [qid]
+
+
 def test_answer_outside_quiet_hours_sends_immediately_and_queued_until_is_null(client, bot_api):
     from services import quiet_hours
 
