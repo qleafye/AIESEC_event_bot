@@ -402,6 +402,8 @@ def test_toggle_button_in_game_settings_flips_key(tmp_path):
     assert _run(db.get_setting(KEY)) == "on"
     text, alert = cb.answers[-1]
     assert alert and len(text) <= 200
+    # 09.10: тумблер способ входа не меняет — алерт честно говорит, что вступают сразу.
+    assert "Сейчас: ⚡ Сразу по кнопке, мест: без лимита" in text and "Вход и лимит" in text
     assert ("🤝 Отбор амбассадоров: ✅ Вкл → ❌ Выкл", "toggle_amb_team_selection") in _buttons(
         (cb.message.edits or cb.message.answers)[-1][1])
     _run(s.toggle_amb_team_selection(_cb("toggle_amb_team_selection")))
