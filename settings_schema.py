@@ -1030,7 +1030,10 @@ SETTINGS_SCHEMA = {
             "Для форума и конференции бот сам включит/выключит модули оплаты и согласий — "
             "потом можно поправить кнопками выше."
         ),
-        "default": None,
+        # 10.10: пусто и раньше вело себя как форум (все читатели сравнивают с "conference"/
+        # "skillup"); дефолт делает это видимым — «Сейчас: Форум (по умолчанию)». Мастер первой
+        # настройки шаг типа по дефолту не засчитывает (accept_default=False) — спросит, как раньше.
+        "default": "forum",
     },
     # Photo/file entries rendered on the event sub-screen (handlers/admin.py PHOTO_FIELDS/
     # FILE_FIELDS). Registry key is the derived-key PREFIX, not the actual bot_settings row

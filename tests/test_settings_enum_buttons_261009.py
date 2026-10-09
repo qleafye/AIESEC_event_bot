@@ -227,7 +227,9 @@ def test_enum_screen_says_current_value_or_default_both_headers(tmp_path):
         text, _kb = _run(admin_settings._settings_edit_screen("payment_enabled", header))
         assert "Сейчас: <b>" in text and "(по умолчанию)" in text, header
         text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
-        assert "Сейчас: <i>не выбрано</i>" in text, header
+        assert "Сейчас: <b>Форум</b> (по умолчанию)" in text, header  # дефолт реестра — forum
+        text, _kb = _run(admin_settings._settings_edit_screen("pending_notify_mode", header))
+        assert "Сейчас: <b>" in text
     _run(db.set_setting("event_type", "conference"))
     for header in (None, "spb"):
         text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
@@ -254,3 +256,9 @@ def test_city_own_enum_screen_says_what_applies_when_inherited(tmp_path):
 def SETTINGS_SCHEMA_DEFAULT(key):
     from settings_schema import SETTINGS_SCHEMA
     return SETTINGS_SCHEMA[key]["default"]
+
+
+def test_enum_without_registry_default_says_not_chosen(monkeypatch):
+    from settings_schema import SETTINGS_SCHEMA
+    monkeypatch.setitem(SETTINGS_SCHEMA, "event_type", {**SETTINGS_SCHEMA["event_type"], "default": None})
+    assert admin_settings_enum.enum_now_line("event_type", None) == "Сейчас: <i>не выбрано</i>"
