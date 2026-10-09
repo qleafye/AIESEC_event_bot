@@ -100,6 +100,7 @@ UI_EN: dict[str, str] = {
     "Укажи корректный email (например, name@example.com).": "Enter a valid email (e.g. name@example.com).",
     "Укажи номер телефона или нажми «Пропустить».": "Enter your phone number or tap «Skip».",
     "Укажи корректный номер телефона или нажми «Пропустить».": "Enter a valid phone number or tap «Skip».",
+    "Укажи номер телефона цифрами, можно с плюсом впереди, например «+79161234567».": "Enter your phone number in digits, optionally starting with a plus, e.g. «+79161234567».",
     "Укажи ник в ВК в формате @username (начинается с @, без пробелов).": "Enter your VK handle as @username (starts with @, no spaces).",
     "Напиши резюме текстом или прикрепи файл (PDF или DOCX).": "Type your resume as text or attach a file (PDF or DOCX).",
     "Выбери курс.": "Choose your year of study.",

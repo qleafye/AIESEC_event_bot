@@ -691,7 +691,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
                 limit_error_text = await i18n.tr_setting("reg_multi_limit_error_text", lang, tr_map)
         value, err = reg_engine.validate_answer(
             step_key, unwrapped, participant_type=effective_track,
-            max_select=max_select, limit_error_text=limit_error_text,
+            max_select=max_select, limit_error_text=limit_error_text, surface="app",
         )
         if err:
             errors[column] = err
