@@ -660,7 +660,9 @@ export async function render(root, params, ctx) {
     // «file»/«text» рисуется дропзоной/полем текста вместо кнопок развилки.
     function resumeEditSpec(spec) {
       if (spec.type !== "resume-fork" || !resumeEditBranch) return spec;
-      if (resumeEditBranch === "file") return { ...spec, type: "file", __resumeForkFile: true };
+      if (resumeEditBranch === "file") {
+        return { ...spec, type: "file", __resumeForkFile: true, __onWriteText: () => pickResumeBranchInOverview("text") };
+      }
       return { ...spec, type: "textarea", __resumeForkText: true, prompt: spec.fork_text_prompt || spec.prompt };
     }
 
@@ -1144,8 +1146,11 @@ export async function render(root, params, ctx) {
       // черновика не двигаются. Владелец 17.09: «текстом» — та же подмена, но textarea вместо
       // дропзоны (`__resumeForkText` — гейт «Дальше» в `form.js::textareaControl`, отличает эту
       // подмену от обычных textarea-шагов/резюме в режиме text_only).
+      // Приёмка 09.10: «Написать текстом» внутри дропзоны (например, после сбоя загрузки)
+      // ведёт на ветку «текст» тем же переходом, что кнопка развилки, — иначе тип оставался
+      // «файл» и подача отбивалась «Файл ещё не загрузился».
       const spec = (rawSpec.key === "resume" && resumeForkBranch === "file")
-        ? { ...rawSpec, type: "file" }
+        ? { ...rawSpec, type: "file", __onWriteText: () => pickResumeBranch("text") }
         : (rawSpec.key === "resume" && resumeForkBranch === "text")
           ? { ...rawSpec, type: "textarea", __resumeForkText: true, prompt: rawSpec.fork_text_prompt || rawSpec.prompt }
           : rawSpec;
