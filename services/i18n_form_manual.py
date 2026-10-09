@@ -700,7 +700,7 @@ _REGISTRY_TEXTS_EN = {
     # делегату, того же класса, что coins_manual_notify_text).
     "Ваша заявка снова на рассмотрении — менеджер посмотрит её ещё раз.": "Your application is under review again — a manager will take another look.",
     "Вы можете подать заявку заново — отправьте /start.": "You can submit your application again — send /start.",
-    "Менеджер разрешил вам ещё раз изменить анкету — откройте «Изменить» в профиле.": "A manager has allowed you to edit your application once more — open «Edit» in your profile.",
+    "Менеджер разрешил вам ещё раз изменить анкету — нажмите «✏️ Изменить анкету» под этим сообщением.": "A manager has allowed you to edit your application once more — tap «✏️ Edit application» below this message.",
     # Phase 33 (задача 1): «🧹 Сбросить зависшую анкету» — та же группа "apps"/тот же
     # приём "сверх минимума", что у трёх строк выше.
     "Анкета сброшена — начни заново: /start": "Your application has been reset — start again: /start",
