@@ -705,12 +705,12 @@
           <div class="kpi"><div class="num">{{ game.submissions_total | thousands }}</div><div class="lbl">Сдач всего</div></div>
           <div class="kpi">
             <div class="num">{{ game.coins_total | thousands }}</div>
-            <div class="lbl">Коинов начислено</div>
+            <div class="lbl">Баллов начислено</div>
             <div class="delta">за задания {{ game.coins_task | thousands }} · вручную {{ game.coins_manual | thousands }}</div>
           </div>
           <div class="kpi">
             <div class="num">{{ game.coins_per_participant | thousands }}</div>
-            <div class="lbl">коинов на участника</div>
+            <div class="lbl">баллов на участника</div>
           </div>
           <div class="kpi">
             <div class="num text">{{ kpi.game_review_avg_label }}</div>
