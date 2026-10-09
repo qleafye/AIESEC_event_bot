@@ -371,6 +371,10 @@ def test_retry_one_bad_row_does_not_block_the_next(tmp_path, monkeypatch):
 def test_scheduler_registers_resume_upload_retry_job():
     import services.scheduler as scheduler_mod
 
-    src = inspect.getsource(scheduler_mod.init_scheduler)
-    assert "resume_upload_retry" in src
-    assert "resume_retry_minutes" in src
+    # Интервальные джобы из настроек регистрируются одной таблицей (её же читает хук записи
+    # настройки — правка интервала действует без перезапуска).
+    assert "_setting_interval_jobs" in inspect.getsource(scheduler_mod.init_scheduler)
+    jobs = scheduler_mod._setting_interval_jobs()["resume_retry_minutes"]
+    assert [(j[0], j[1]) for j in jobs] == [
+        ("resume_upload_retry", scheduler_mod.resume_upload_retry_job)
+    ]
