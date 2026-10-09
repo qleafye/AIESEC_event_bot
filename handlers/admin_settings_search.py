@@ -22,6 +22,7 @@ from __future__ import annotations
 import html
 
 from aiogram import F, types
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -44,6 +45,11 @@ PROMPT_TEXT = (
 )
 NOT_FOUND_TEXT = "Не нашёл. Попробуйте другое слово, например «оплата» или «приветствие»."
 NOT_TEXT_TEXT = "Пришлите слово текстом — например «оплата» или «приветствие»."
+TOO_LONG_TEXT = "Слишком длинно, напишите одно-два слова — например «оплата» или «приветствие»."
+# Запрос длиннее — не поиск, а, скорее всего, случайно отправленный текст; эхо в ответе режем,
+# чтобы длинный запрос не раздул ответ сверх 4096 символов.
+QUERY_MAX = 100
+ECHO_MAX = 60
 
 
 def entry_button() -> InlineKeyboardButton:
@@ -73,7 +79,7 @@ def candidates() -> list[Candidate]:
                 key=key,
                 label=field_labels.get(key) or entry.get("label") or key,
                 help=entry.get("prompt") or "",
-                terms=search_terms(key),
+                terms=search_terms(key, bot=True),
                 extra={"cb": f"settings_edit:{key}", "section": group_label},
             ))
     media_section = s._settings_group_label(s.PHOTO_FILE_GROUP)
@@ -81,7 +87,7 @@ def candidates() -> list[Candidate]:
         for prefix, label, prompt in fields:
             out.append(Candidate(
                 key=prefix, label=label, help=prompt,
-                terms=search_terms(prefix) + search_terms(f"{prefix}_photo_file_id"),
+                terms=search_terms(prefix, bot=True) + search_terms(f"{prefix}_photo_file_id", bot=True),
                 extra={"cb": f"{cb}:{prefix}", "section": media_section, "media": True},
             ))
     return out
@@ -120,7 +126,8 @@ async def results_screen(admin_id: int, query: str) -> tuple[str, InlineKeyboard
     shown, total = await find(admin_id, query)
     if not shown:
         return None
-    q = html.escape(query.strip())
+    q = query.strip()
+    q = html.escape(q if len(q) <= ECHO_MAX else q[: ECHO_MAX - 1] + "…")
     lines = [f"🔎 По запросу «{q}» нашлось: {total}. Нажмите нужную настройку:"]
     if total > len(shown):
         lines.append(f"<i>Показываю первые {len(shown)} — уточните слово, если нужной нет.</i>")
@@ -154,7 +161,20 @@ async def settings_search_cancel(callback: types.CallbackQuery, state: FSMContex
 
 @router.message(SettingsSearch.waiting_query, F.text)
 async def settings_search_query(message: types.Message, state: FSMContext):
-    screen = await results_screen(message.from_user.id, message.text or "")
+    from keyboards.builders import all_menu_button_texts
+    from keyboards.menu_dynamic import is_dynamic_menu_text
+
+    text = message.text or ""
+    # Команда или тап по кнопке меню — не запрос: менеджер ушёл из поиска. Сбрасываем ожидание
+    # и отдаём сообщение настоящему обработчику дальше по роутерам (тот же приём, что у правки
+    # настройки в admin_settings.settings_edit_value).
+    if text.startswith("/") or text in all_menu_button_texts() or await is_dynamic_menu_text(text):
+        await state.clear()
+        raise SkipHandler
+    if len(text.strip()) > QUERY_MAX:
+        await message.answer(TOO_LONG_TEXT, reply_markup=_cancel_kb())
+        return
+    screen = await results_screen(message.from_user.id, text)
     if screen is None:
         # Состояние остаётся: следующее слово можно прислать сразу, без лишней кнопки.
         await message.answer(NOT_FOUND_TEXT, reply_markup=_cancel_kb())

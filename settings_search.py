@@ -43,10 +43,17 @@ def _base(key: str) -> str:
     return key.split(_PER_CITY_SEP)[0]
 
 
-def search_terms(key: str) -> list[str]:
-    """Слова-синонимы настройки (композитный ключ города сводится к базовому)."""
+def search_terms(key: str, *, bot: bool = False) -> list[str]:
+    """Слова-синонимы настройки (композитный ключ города сводится к базовому).
+
+    `bot=True` — поиск бота: к веб-синонимам добавляются `BOT_ONLY_SYNONYMS` (ключи, которые
+    правятся только в боте). Веб-поиску они не отдаются — правило `settings_synonyms.py`:
+    карта веб-подсказок совпадает с `editable_keys()`."""
     base = _base(key)
-    return list(SETTINGS_SYNONYMS.get(base) or BOT_ONLY_SYNONYMS.get(base) or [])
+    terms = SETTINGS_SYNONYMS.get(base)
+    if not terms and bot:
+        terms = BOT_ONLY_SYNONYMS.get(base)
+    return list(terms or [])
 
 
 def normalize(text) -> str:
