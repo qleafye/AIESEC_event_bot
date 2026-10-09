@@ -42,15 +42,20 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="event_type",
         title="🎭 Тип события",
-        hint="Первый шаг — от него зависит состав всех дальнейших шагов и пресет модулей.",
+        hint=("Первый шаг — от него зависит состав дальнейших шагов. «Форум» выключит оплату и "
+              "согласия, «Конференция» включит их и вопрос о ЛК, «Форум СкиллАп» применит весь "
+              "пресет СкиллАп (анкету, догонялку, тексты амбассадоров). Всё можно поправить потом."),
         kind="fields",
         fields=("event_type",),
     ),
     WizardStep(
         key="botfather",
-        title="🤖 Оформление бота в @BotFather",
-        hint="Аватар, описание и About бота настраиваются не здесь: @BotFather → /mybots → Edit Bot.",
-        kind="note",
+        title="🤖 Описание бота",
+        hint=("Что человек видит до /start и в профиле бота — бот поставит это в Телеграм сам. "
+              "В @BotFather остаётся только аватар: /mybots → Edit Bot → Edit Botpic."),
+        kind="fields",
+        fields=("bot_description", "bot_short_description"),
+        done_rule="any",
     ),
     WizardStep(
         key="event_info",

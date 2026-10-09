@@ -65,12 +65,13 @@ def _parse(doc):
 
 
 def test_rows_are_approved_current_season_only_without_phone(tmp_path):
+    from handlers.admin_participants import _city_label
     _use_tmp_db(tmp_path)
     _set("event_season", "YL 26/2")
     _user(1, "Анна Иванова", username="anna")
     _user(2, "Старый Сезон", season="YL 26/1")
     _user(3, "Ещё Не Одобрен", status="pending")
-    headers, rows = asyncio.run(db.export_participants_csv())
+    headers, rows = asyncio.run(db.export_participants_csv(city_label=_city_label))
     assert headers == ["ФИО", "Telegram", "Город", "Вуз", "Дата одобрения"]
     assert len(rows) == 1
     assert rows[0][0] == "Анна Иванова" and rows[0][1] == "@anna"

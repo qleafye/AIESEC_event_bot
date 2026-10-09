@@ -118,7 +118,8 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # кандидату. Переезд в собственную группу раздела «🤝 Амбассадоры» — отдельным шагом.
     # Ключи амбассадорки переехали в группу amb: в game остаются только игровые, а переехавшие
     # обязаны лежать в amb.
-    assert len(keys) == 50
+    # 09.10: три текста ссылки и приглашённых переехали в группу «amb» (−3).
+    assert len(keys) == 47
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:

@@ -98,6 +98,8 @@ def _ready(tmp_path, name="test_skillup_preset_28.db"):
     fast_init_db()
 
 
+EXPECTED_PRESET_SETTINGS = {"forum": {"event_type": "forum"}, "conf": {"event_type": "conference"}}
+
 # ── Задача 1: перенос модуля ──────────────────────────────────────────────────────────────
 
 def test_reg_presets_module_is_aiogram_free():
@@ -116,7 +118,8 @@ def test_existing_presets_byte_identical():
         assert actual["label"] == expected["label"], key
         assert actual["on"] == expected["on"], key
         assert actual.get("payment_enabled") == expected.get("payment_enabled"), key
-        assert "settings" not in actual, f"{key}: пресет неожиданно получил блок settings"
+        # 09.10: «Форум»/«Конференция» ставят «🎭 Тип события» — и больше ничего.
+        assert actual.get("settings", {}) == EXPECTED_PRESET_SETTINGS.get(key, {}), key
 
 
 def test_apply_preset_is_deterministic(tmp_path):
@@ -249,3 +252,18 @@ def test_web_and_bot_apply_same_preset(tmp_path):
 def test_settings_ops_still_aiogram_free():
     loaded = _loaded_aiogram("import settings_ops")
     assert loaded == [], f"settings_ops потянул aiogram: {loaded}"
+
+
+def test_conference_preset_sets_event_type(tmp_path):
+    """Пресет анкеты «Конференция» ставит event_type — подписи меню и «Конференция пройдёт»."""
+    _ready(tmp_path)
+
+    async def _run():
+        await reg_presets.apply_reg_preset("conf")
+        conf = await db.get_setting("event_type")
+        await reg_presets.apply_reg_preset("forum")
+        return conf, await db.get_setting("event_type")
+
+    conf, after_forum = asyncio.run(_run())
+    assert conf == "conference"
+    assert after_forum == "forum"

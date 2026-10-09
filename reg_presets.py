@@ -98,6 +98,9 @@ REG_PRESETS = {
             "reg_q_university", "reg_q_course", "reg_q_study_field", "reg_q_work",
             "reg_q_work_sphere", "reg_q_skills", "reg_q_expectations",
         ],
+        # 09.10: пресет анкеты заодно ставит «🎭 Тип события» — от него зависят подписи меню и
+        # «Форум/Конференция пройдёт»; раньше это были две несвязанные настройки.
+        "settings": {"event_type": "forum"},
     },
     "conf": {
         "label": "🎤 Конференция",
@@ -109,6 +112,7 @@ REG_PRESETS = {
             "reg_q_transport", "reg_q_payment_date",
             "reg_q_cc_shop", "reg_q_exp_organizers", "reg_q_volunteer",
         ],
+        "settings": {"event_type": "conference"},
     },
     "party": {
         "label": "🎉 Вечеринка",
