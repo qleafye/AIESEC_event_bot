@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 
-from database.db import get_translation, upsert_translation
+from database.db import seed_manual_translations
 from services.i18n import src_hash
 
 logger = logging.getLogger(__name__)
@@ -316,16 +316,8 @@ async def seed(lang: str = "en") -> dict:
     — эта функция не имеет права затирать чужую ручную работу, LANG-05 действует и для сида).
 
     Возвращает `{"applied": N, "skipped_manager_edit": M}` — для лога старта."""
-    applied = 0
-    skipped = 0
-    for ru_text, en_text in MANUAL_EN.items():
-        text_hash = src_hash(ru_text)
-        existing = await get_translation(lang, text_hash)
-        if existing and existing.get("manual") and existing.get("origin_key") != ORIGIN:
-            skipped += 1
-            continue
-        await upsert_translation(lang, text_hash, ru_text, en_text, manual=1, origin_key=ORIGIN)
-        applied += 1
+    [result] = await seed_manual_translations(lang, [(MANUAL_EN, ORIGIN)], src_hash)
+    applied, skipped = result["applied"], result["skipped_manager_edit"]
     if skipped:
         logger.info(
             "i18n_miniapp_manual.seed: пропущено %d строк — уже отредактированы менеджером", skipped,
