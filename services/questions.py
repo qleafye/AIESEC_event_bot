@@ -171,3 +171,35 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int 
         # Показ в местном времени города (смещение от МСК, «🕐 Часовой пояс»); в БД метка МСК.
         stamp = stamp + timedelta(hours=offset_hours)
     return stamp.strftime("%d.%m.%Y %H:%M")
+
+
+# 10.10: запись ответа после того, как он дошёл до делегата (или встал в очередь тихих часов).
+# Ответ уже ушёл — сбой записи не должен превращаться в «не удалось» менеджеру и в повтор
+# (второй экземпляр делегату). Поэтому несколько попыток, а если не вышло — ERROR в лог:
+# вопрос остаётся «отправляется» (отметка `dispatched_at` стоит, повтор и перехват закрыты).
+RECORD_ANSWER_ATTEMPTS = 3
+RECORD_ANSWER_PAUSE = 0.5  # секунд между попытками
+
+
+async def record_answer(question_id: int, answer_text: str) -> bool:
+    """`set_question_answer` с повтором; никогда не бросает. True — записано."""
+    import asyncio
+    import logging
+
+    from database.db import set_question_answer
+
+    log = logging.getLogger(__name__)
+    for attempt in range(1, RECORD_ANSWER_ATTEMPTS + 1):
+        try:
+            await set_question_answer(question_id, answer_text)
+            return True
+        except Exception as e:
+            if attempt == RECORD_ANSWER_ATTEMPTS:
+                log.error(
+                    "question %s: ответ дошёл до делегата, но записать его не удалось "
+                    "(%s попытки): %s — вопрос остаётся «отправляется»",
+                    question_id, attempt, e,
+                )
+                return False
+            await asyncio.sleep(RECORD_ANSWER_PAUSE)
+    return False

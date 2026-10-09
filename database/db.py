@@ -1032,11 +1032,14 @@ async def init_db():
         # falsy. delivered_at is the single unambiguous signal, stamped ONLY on a successful
         # send to the delegate (set_question_answer below), never on a claim alone.
         await _ensure_column(db, "delegate_questions", "delivered_at", "TEXT")
-        # 10.10: отметка «ответ сейчас уходит делегату» (UTC ISO). Ставится атомарно ПЕРЕД
-        # отправкой (`begin_question_delivery`) — второй повтор того же менеджера, пока первая
-        # отправка ещё идёт, получает отказ, а не дублирует ответ делегату. Снимается при
-        # ошибке до отправки; зависшая (процесс упал посреди отправки) устаревает сама.
+        # 10.10: попытка отправить ответ. `delivery_token` + `delivering_at` (UTC ISO) ставятся
+        # атомарно ПЕРЕД отправкой (`begin_question_delivery`) — второй повтор того же
+        # менеджера, пока первая отправка ещё идёт, получает отказ, а не дублирует ответ.
+        # `dispatched_at` — «до делегата уже что-то дошло/встало в очередь»: с ней попытку не
+        # снимает ни ошибка, ни перехват по давности. Подробно — у begin_question_delivery.
         await _ensure_column(db, "delegate_questions", "delivering_at", "TEXT")
+        await _ensure_column(db, "delegate_questions", "delivery_token", "TEXT")
+        await _ensure_column(db, "delegate_questions", "dispatched_at", "TEXT")
 
         # Quick 260906-8uq (FAQ-01..06): «❓ Частые вопросы» — city NULL means "все города"
         # (same convention as game_tasks.event_city above), position orders the manager's
@@ -7284,49 +7287,76 @@ async def claim_question(question_id: int, admin_id: int, admin_name: str) -> bo
         return cursor.rowcount == 1
 
 
-# Сколько живёт отметка «ответ уходит»: дольше любой реальной отправки (сеть + прокси), но
-# достаточно коротко, чтобы упавший посреди отправки процесс не запер вопрос навсегда.
+# Сколько живёт отметка «ответ уходит», пока до делегата ещё НИЧЕГО не дошло: заведомо дольше
+# любой отправки (каждая отправка ответа ограничена QUESTION_SEND_TIMEOUT), но достаточно
+# коротко, чтобы упавший посреди отправки процесс не запер вопрос навсегда.
+QUESTION_SEND_TIMEOUT = 60  # секунд, явный потолок одной отправки ответа делегату
 QUESTION_DELIVERING_STALE = timedelta(minutes=5)
 
 
-async def begin_question_delivery(question_id: int, admin_id: int) -> bool:
+async def begin_question_delivery(question_id: int, admin_id: int) -> str | None:
     """Атомарная отметка «ответ уходит делегату» — тот же приём, что `claim_question`
-    (условный UPDATE, True только у того вызова, что перевернул строку). Ставит её только
-    держатель захвата, только пока ответ не доставлен и только если свежей отметки ещё нет —
-    второй повтор того же менеджера, пока первая отправка не вернулась, получает False."""
+    (условный UPDATE). Возвращает ТОКЕН попытки (или None — отметку поставить нельзя).
+    Ставит её только держатель захвата, только пока ответ не доставлен и пока до делегата
+    ничего не дошло (`dispatched_at IS NULL`); чужую свежую отметку не перебивает. Перехват по
+    давности (QUESTION_DELIVERING_STALE) — только пока ничего не дошло: дошедший заголовок
+    повтор продублировал бы. Все дальнейшие шаги попытки (`mark_question_dispatched`,
+    `release_question_delivery`, `reopen_question_delivery`) работают только по своему токену —
+    медленный первый держатель после перехвата чужую отметку не тронет."""
     now = datetime.utcnow()
     stale_before = (now - QUESTION_DELIVERING_STALE).isoformat()
+    token = secrets.token_hex(16)
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE delegate_questions SET delivering_at = ? "
+            "UPDATE delegate_questions SET delivery_token = ?, delivering_at = ? "
             "WHERE id = ? AND answered_by = ? AND delivered_at IS NULL "
+            "AND dispatched_at IS NULL "
             "AND (delivering_at IS NULL OR delivering_at < ?)",
-            (now.isoformat(), question_id, admin_id, stale_before),
+            (token, now.isoformat(), question_id, admin_id, stale_before),
+        )
+        await db.commit()
+        return token if cursor.rowcount == 1 else None
+
+
+async def mark_question_dispatched(question_id: int, token: str) -> None:
+    """«До делегата уже что-то дошло (или встало в очередь)» — ставится сразу после ПЕРВОЙ
+    успешной отправки попытки (у не-текстового ответа это заголовок). С этой отметкой попытку
+    больше не снимает ни ошибка, ни перехват по давности."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE delegate_questions SET dispatched_at = ? "
+            "WHERE id = ? AND delivery_token = ? AND dispatched_at IS NULL",
+            (datetime.utcnow().isoformat(), question_id, token),
+        )
+        await db.commit()
+
+
+async def release_question_delivery(question_id: int, token: str) -> bool:
+    """Снять СВОЮ отметку «ответ уходит» — отправка упала ДО того, как что-либо дошло до
+    делегата или встало в очередь, повтор безопасен. Чужую (перехваченную) отметку и отметку
+    попытки, от которой уже что-то дошло, не трогает."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE delegate_questions SET delivery_token = NULL, delivering_at = NULL "
+            "WHERE id = ? AND delivery_token = ? AND dispatched_at IS NULL",
+            (question_id, token),
         )
         await db.commit()
         return cursor.rowcount == 1
 
 
-async def release_question_delivery(question_id: int) -> None:
-    """Снять отметку «ответ уходит» — отправка упала ДО того, как что-либо ушло делегату или
-    встало в очередь, повтор безопасен."""
-    async with _connect() as db:
-        await db.execute(
-            "UPDATE delegate_questions SET delivering_at = NULL WHERE id = ?", (question_id,),
-        )
-        await db.commit()
-
-
-async def reopen_question_delivery(question_id: int) -> bool:
-    """Отправка из очереди тихих часов упала: вопрос снова «в работе» (delivered_at и
-    отметка сброшены, захват и текст ответа остаются). True — только у вызова, который
-    действительно вернул вопрос: не-текстовый ответ лежит в очереди двумя строками, и автор
-    ответа должен услышать о сбое один раз, а не дважды."""
+async def reopen_question_delivery(question_id: int, token: str) -> bool:
+    """Отправка из очереди тихих часов упала: вопрос снова «в работе» (delivered_at и отметки
+    попытки сброшены; захват и текст ответа остаются). Только по токену той попытки, что
+    поставила строку в очередь: если менеджер уже ответил заново, у вопроса другой токен, и
+    старая строка ничего не трогает. True — только у вызова, который действительно вернул
+    вопрос: не-текстовый ответ лежит в очереди двумя строками, автору пишем один раз."""
     async with _connect() as db:
         cursor = await db.execute(
-            "UPDATE delegate_questions SET delivered_at = NULL, delivering_at = NULL "
-            "WHERE id = ? AND delivered_at IS NOT NULL",
-            (question_id,),
+            "UPDATE delegate_questions SET delivered_at = NULL, dispatched_at = NULL, "
+            "delivery_token = NULL, delivering_at = NULL "
+            "WHERE id = ? AND delivery_token = ?",
+            (question_id, token),
         )
         await db.commit()
         return cursor.rowcount == 1
@@ -7336,7 +7366,8 @@ async def set_question_answer(question_id: int, answer_text: str):
     """Record the answer text AND stamp delivered_at together -- called right after the
     answer was SENT to the delegate OR put into the quiet-hours queue (`delayed_notifications`):
     in quiet hours delivered_at is the moment of queueing, not of the actual delivery. If the
-    morning send from the queue fails, `reopen_question_delivery` clears it again. Never
+    morning send from the queue fails, `reopen_question_delivery` clears it again.
+    Retried by `services.questions.record_answer`. Never
     called on a claim alone or after a failed send (T-08-33 quick task). delivered_at, not
     answer_text, is the detector `get_stuck_questions()` relies on -- see the column's comment
     in init_db for why answer_text alone can't do it."""
