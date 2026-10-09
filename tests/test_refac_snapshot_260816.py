@@ -1640,6 +1640,7 @@ registration|callback_query|regamb_later|regamb:later
 registration|callback_query|reglookup_pick|reglookup:*
 registration|callback_query|regedu_pick|regedu:*
 registration|callback_query|regrepeat_pick|regrepeat:*
+registration|callback_query|manager_fill_form|
 user_actions|message|show_my_coins|
 user_actions|message|show_leaderboard|
 user_actions|message|show_game_tasks|
@@ -2275,7 +2276,9 @@ def test_snapshot_total_handler_count_is_292():
     # вставки (1076 -> 1083).
     # Enum-настройки кнопками (handlers/admin_settings_enum.py, хвост admin.py): +1
     # admin.callback_query settings_enum_pick в хвосте; чистая вставка (1083 -> 1084).
-    assert len(GOLDEN_SNAPSHOT) == 1084
+    # 09.10 (/start менеджера, handlers/reg_manager_start.py): +1 registration.callback_query
+    # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
+    assert len(GOLDEN_SNAPSHOT) == 1085
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
