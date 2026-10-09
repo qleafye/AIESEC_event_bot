@@ -361,7 +361,7 @@ def test_return_to_env_table(env):
     async def go():
         await db.set_setting(sheet_target.SETTING_KEY, ID_B)
         sheet_target.invalidate()
-        assert "sheet_target_env" in _cbs(st_handlers.screen_kb())
+        assert "sheet_target_env" in _cbs(st_handlers.screen_kb(ID_B))
 
         cb = _Cb("sheet_target_env", SUPER)
         await st_handlers.sheet_target_env(cb)
@@ -372,13 +372,184 @@ def test_return_to_env_table(env):
         assert await db.get_setting(sheet_target.SETTING_KEY) is None
         assert sheet_target.sheet_id() == ID_A
         assert "Задана при установке бота" in cb.message.sent[-1][0]
-        assert "sheet_target_env" not in _cbs(st_handlers.screen_kb())
+        assert "sheet_target_env" not in _cbs(st_handlers.screen_kb(None))
 
     asyncio.run(go())
 
 
 def test_screen_without_any_table(env, monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "")
-    text = asyncio.run(st_handlers.screen_text())
+    text = asyncio.run(st_handlers.screen_text(None))
     assert "не подключена" in text
     assert "bot@proj.iam.gserviceaccount.com" in text
+
+
+# ── Ревью: кэши вкладок привязаны к таблице ──────────────────────────────────────────────
+
+class _TabSH:
+    def __init__(self, sid, opened):
+        self.sid = sid
+        opened.append(sid)
+
+    def worksheet(self, title):
+        return _WS(f"{self.sid}:{title}")
+
+
+def test_named_tab_cache_follows_table_change_without_any_reset(env, monkeypatch):
+    """Ни reset_client_caches, ни invalidate: так видит смену второй процесс (Mini App) —
+    резолвер отдал новый ID, и вкладки старого файла больше не используются."""
+    opened = []
+
+    class _G:
+        def open_by_key(self, sid):
+            return _TabSH(sid, opened)
+
+    monkeypatch.setattr(gspread, "service_account", lambda filename=None: _G())
+    sheets._named_sheets.clear()
+    sheets._header_checked_tabs.clear()
+
+    assert sheets._get_named_sheet("Party").title == f"{ID_A}:Party"
+    sheets._header_checked_tabs.add("Party")
+    assert sheets._get_named_sheet("Party").title == f"{ID_A}:Party"  # кэш работает
+    assert opened == [ID_A]
+
+    asyncio.run(db.set_setting(sheet_target.SETTING_KEY, ID_B))
+    monkeypatch.setattr(sheet_target, "_TTL_S", 0.0)  # «прошло время» — без invalidate
+    assert sheets._get_named_sheet("Party").title == f"{ID_B}:Party"
+    assert "Party" not in sheets._header_checked_tabs  # шапку новой таблицы сверим заново
+    assert opened == [ID_A, ID_B]
+
+
+# ── Ревью: сбой чтения базы ≠ «не задано» ────────────────────────────────────────────────
+
+def _boom():
+    raise sheet_target._ReadError("database is locked")
+
+
+def test_read_error_keeps_last_good_value(env, monkeypatch, caplog):
+    asyncio.run(db.set_setting(sheet_target.SETTING_KEY, ID_B))
+    assert sheet_target.sheet_id() == ID_B
+    monkeypatch.setattr(sheet_target, "_TTL_S", 0.0)
+    monkeypatch.setattr(sheet_target, "_read_db_value", _boom)
+    with caplog.at_level("WARNING"):
+        assert sheet_target.sheet_id() == ID_B  # не откатились на .env (ID_A)
+    assert "database is locked" in caplog.text
+
+
+def test_read_error_without_good_value_is_empty_not_env(env, monkeypatch):
+    real = sheet_target._read_db_value
+    monkeypatch.setattr(sheet_target, "_read_db_value", _boom)
+    assert sheet_target.sheet_id() == ""
+    assert sheet_target.sheets_enabled() is False
+    monkeypatch.setattr(sheet_target, "_read_db_value", real)
+    # Ошибку не закэшировали: база ожила — сразу честное значение.
+    assert sheet_target.sheet_id() == ID_A
+
+
+def test_missing_table_means_not_set(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "empty.db"
+    sqlite3.connect(path).close()  # файл есть, таблицы настроек нет
+    monkeypatch.setattr(config, "DB_PATH", str(path))
+    monkeypatch.setattr(config, "GOOGLE_SHEET_ID", ID_A)
+    sheet_target.invalidate()
+    assert sheet_target.sheet_id() == ID_A
+    sheet_target.invalidate()
+
+
+# ── Ревью: на цикле событий база не читается синхронно ───────────────────────────────────
+
+def test_stale_value_on_event_loop_refreshes_in_background(env, monkeypatch):
+    import threading
+
+    assert sheet_target.sheet_id() == ID_A  # первое чтение
+    asyncio.run(db.set_setting(sheet_target.SETTING_KEY, ID_B))
+    monkeypatch.setattr(sheet_target, "_TTL_S", 0.0)
+    reader_threads = []
+    real = sheet_target._read_db_value
+
+    def spy():
+        reader_threads.append(threading.current_thread())
+        return real()
+
+    monkeypatch.setattr(sheet_target, "_read_db_value", spy)
+
+    async def go():
+        assert sheet_target.sheet_id() == ID_A  # устаревшее — сразу, без чтения на цикле
+        for _ in range(100):
+            if reader_threads:
+                break
+            await asyncio.sleep(0.02)
+
+    asyncio.run(go())
+    for _ in range(100):
+        if sheet_target._cache["value"] == ID_B:
+            break
+        import time
+        time.sleep(0.02)
+    assert reader_threads and all(t is not threading.main_thread() for t in reader_threads)
+    assert sheet_target._cache["value"] == ID_B
+
+
+# ── Ревью: таймаут проверки, перепроверка на «Переключить», команда вместо ссылки ────────
+
+def test_check_timeout_resets_state(env, monkeypatch):
+    import time
+
+    monkeypatch.setattr(st_handlers, "CHECK_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(sheet_target, "check_access_sync", lambda sid: time.sleep(0.5) or ("ok", "x"))
+
+    async def go():
+        st = _state(SUPER)
+        await st.set_state(SheetTarget.waiting_ref)
+        msg = _Msg(SUPER, ID_B)
+        await st_handlers.sheet_target_receive(msg, st)
+        assert "не ответил за" in msg.sent[-1][0]
+        assert await st.get_state() is None
+        assert await db.get_setting(sheet_target.SETTING_KEY) is None
+
+    asyncio.run(go())
+
+
+def test_apply_rechecks_access(env, monkeypatch):
+    verdicts = iter([("ok", "YL"), ("no_access", None)])
+    monkeypatch.setattr(sheet_target, "check_access_sync", lambda sid: next(verdicts))
+
+    async def go():
+        st = _state(SUPER)
+        await st.set_state(SheetTarget.waiting_ref)
+        await st_handlers.sheet_target_receive(_Msg(SUPER, ID_B), st)
+        cb = _Cb("sheet_target_apply", SUPER)
+        await st_handlers.sheet_target_apply(cb, st)
+        assert "Настройки доступа" in cb.message.sent[-1][0]
+        assert await db.get_setting(sheet_target.SETTING_KEY) is None
+        assert sheet_target.sheet_id() == ID_A
+
+    asyncio.run(go())
+
+
+def test_command_instead_of_link_leaves_wizard(env):
+    from aiogram.dispatcher.event.bases import SkipHandler
+
+    async def go():
+        st = _state(SUPER)
+        await st.set_state(SheetTarget.waiting_ref)
+        with pytest.raises(SkipHandler):
+            await st_handlers.sheet_target_receive(_Msg(SUPER, "/start"), st)
+        assert await st.get_state() is None
+
+    asyncio.run(go())
+
+
+# ── Ревью: две копии разрешения прав не расходятся ───────────────────────────────────────
+
+def test_dashboard_roles_match_bot_roles():
+    from dashboard.access import _ROLE_DEFAULT_CAPS
+    from handlers.admin_caps import ROLES
+    from settings_schema import SETTINGS_SCHEMA
+
+    assert set(_ROLE_DEFAULT_CAPS) == set(ROLES)  # роль без записи в дашборде = ноль прав в приложении
+    for role, meta in ROLES.items():
+        assert _ROLE_DEFAULT_CAPS[role] == meta["default_caps"], role
+        assert SETTINGS_SCHEMA[f"role_caps_{role}"]["default"] == meta["default_caps"], role

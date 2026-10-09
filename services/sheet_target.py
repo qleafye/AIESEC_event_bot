@@ -11,14 +11,19 @@
 Резолвер СИНХРОННЫЙ (plain sqlite3, только чтение): его зовут и с цикла событий (гейты
 «таблица подключена?»), и из `asyncio.to_thread` (`services/sheets._get_sheet`), где у
 aiosqlite нет цикла. Короткий кэш в памяти процесса — гейты стоят на каждой записи в лист;
-сохранение из бота сбрасывает его сразу (`invalidate`), второй процесс (Mini App) увидит
+сохранение из бота кладёт новое значение сразу (`remember`), второй процесс (Mini App) увидит
 смену не позже `_TTL_S`.
+
+Сбой чтения базы не равен «не задано»: отдаём последнее удачное значение, а если его ещё не
+было — пустое (запись пропускается), но не таблицу из `.env`.
 
 Модуль без aiogram — тянуть его можно отовсюду (скрипты, Mini App)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -40,6 +45,7 @@ _URL_RE = re.compile(r"/spreadsheets/(?:u/\d+/)?d/([A-Za-z0-9_-]{20,})")
 
 _cache_lock = threading.Lock()
 _cache: dict = {"key": None, "value": None, "at": 0.0}
+_refreshing = False
 
 
 def parse_sheet_ref(text: str | None) -> str | None:
@@ -57,8 +63,16 @@ def parse_sheet_ref(text: str | None) -> str | None:
     return None
 
 
+class _ReadError(Exception):
+    """Базу прочитать не удалось (занята, сбой диска) — это НЕ «в боте не задано»."""
+
+
 def _read_db_value() -> str | None:
-    """Сохранённый в боте ID — только чтение (`mode=ro`: не создаём файл БД, если его нет)."""
+    """Сохранённый в боте ID или None, если его там нет (нет файла базы, нет таблицы настроек,
+    нет строки). Только чтение (`mode=ro`: файл базы не создаём). Настоящий сбой чтения —
+    `_ReadError`: путать его с «не задано» нельзя, иначе запись молча уедет в таблицу из .env."""
+    if not os.path.exists(config.DB_PATH):
+        return None
     try:
         conn = sqlite3.connect(
             f"file:{config.DB_PATH}?mode=ro", uri=True, timeout=_DB_BUSY_TIMEOUT_S,
@@ -69,9 +83,12 @@ def _read_db_value() -> str | None:
             ).fetchone()
         finally:
             conn.close()
-    except Exception as e:  # нет файла/таблицы — значит в боте не задано
-        logger.debug(f"sheet_target: чтение {SETTING_KEY} не удалось: {e}")
-        return None
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e):
+            return None
+        raise _ReadError(str(e)) from e
+    except Exception as e:
+        raise _ReadError(str(e)) from e
     return ((row[0] if row else None) or "").strip() or None
 
 
@@ -81,22 +98,91 @@ def env_sheet_id() -> str:
 
 
 def bot_sheet_id() -> str | None:
-    """Только то, что задано в боте (без отката на `.env`), — для экрана настройки."""
-    return _read_db_value()
+    """Только то, что задано в боте (без отката на `.env`), — для экрана настройки. Блокирующее
+    чтение: с цикла событий — через `asyncio.to_thread`. Сбой чтения — None и WARNING."""
+    try:
+        return _read_db_value()
+    except _ReadError as e:
+        logger.warning(f"sheet_target: не прочитать {SETTING_KEY} из базы: {e}")
+        return None
+
+
+def _store(key, value: str) -> None:
+    with _cache_lock:
+        _cache.update(key=key, value=value, at=time.monotonic())
+
+
+def _resolve_sync(key, env: str) -> str:
+    try:
+        db_value = _read_db_value()
+    except _ReadError as e:
+        with _cache_lock:
+            last = _cache["value"] if _cache["key"] == key else None
+            if last is not None:
+                _cache["at"] = time.monotonic()  # следующая попытка — через TTL, базу не долбим
+        logger.warning(
+            f"sheet_target: не прочитать {SETTING_KEY} из базы ({e}) — "
+            + ("оставляю прежнюю таблицу" if last is not None
+               else "таблица неизвестна, запись в лист пропускается до следующей попытки")
+        )
+        # Удачного значения ещё не было: неизвестно, задана ли таблица в боте — лучше не писать
+        # никуда (строку догонит «🔄 Синхронизация»), чем писать в чужую таблицу из .env.
+        return last if last is not None else ""
+    value = db_value or env
+    _store(key, value)
+    return value
+
+
+def _refresh_in_background(key, env: str) -> None:
+    global _refreshing
+    with _cache_lock:
+        if _refreshing:
+            return
+        _refreshing = True
+
+    def job():
+        global _refreshing
+        try:
+            _resolve_sync(key, env)
+        finally:
+            with _cache_lock:
+                _refreshing = False
+
+    threading.Thread(target=job, name="sheet-target-refresh", daemon=True).start()
 
 
 def sheet_id() -> str:
-    """ID таблицы события: из бота, иначе из `.env`; пустая строка — таблица не подключена."""
+    """ID таблицы события: из бота, иначе из `.env`; пустая строка — таблица не подключена.
+
+    Значение живёт в памяти процесса. Свежее (моложе `_TTL_S`) отдаётся сразу. Устаревшее на
+    цикле событий тоже отдаётся сразу, а перечитывается в фоновом потоке — цикл на базе не
+    блокируется. В рабочем потоке (gspread через `to_thread`) и при самом первом обращении
+    читается синхронно. Сохранение из бота кладёт новое значение сразу (`remember`)."""
     env = env_sheet_id()
     key = (config.DB_PATH, env)
-    now = time.monotonic()
     with _cache_lock:
-        if _cache["key"] == key and now - _cache["at"] < _TTL_S:
-            return _cache["value"]
-    value = _read_db_value() or env
-    with _cache_lock:
-        _cache.update(key=key, value=value, at=now)
-    return value
+        cached = _cache["value"] if _cache["key"] == key else None
+        fresh = cached is not None and time.monotonic() - _cache["at"] < _TTL_S
+    if fresh:
+        return cached
+    if cached is not None and _on_event_loop():
+        _refresh_in_background(key, env)
+        return cached
+    return _resolve_sync(key, env)
+
+
+def _on_event_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+def remember(bot_value: str | None) -> None:
+    """Таблицу только что сохранили/сбросили в боте — положить итог в память сразу."""
+    env = env_sheet_id()
+    _store((config.DB_PATH, env), (bot_value or "").strip() or env)
 
 
 def invalidate() -> None:
@@ -156,8 +242,8 @@ def check_access_sync(spreadsheet_id: str) -> tuple[str, str | None]:
 
 
 def reset_client_caches() -> None:
-    """Таблица сменилась — бросить всё, что держит открытую старую (кэш главного листа)."""
-    invalidate()
+    """Таблица сменилась — бросить открытый главный лист сразу. Кэши вкладок сами сверяют
+    ID таблицы (services/sheets.py), второй процесс (Mini App) переключится по TTL."""
     try:
         from services import sheets
         sheets._reset_sheet_cache()

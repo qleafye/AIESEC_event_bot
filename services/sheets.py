@@ -837,6 +837,7 @@ def _write_column_sync(header_name: str, id_to_value: dict[str, str],
             # переименованная вкладка -> бот завёл новую). Нет вкладки — второй проход на
             # главный лист, как у строки, не найденной на вкладке. Кэшированный хэндл значит,
             # что вкладка уже существовала, — берём его без лишних запросов метаданных.
+            _scope_tab_caches()
             sheet = _named_sheets.get(tab_name) or _open_named_or_main_sync(tab_name)
             found = _write_column_on_sheet(sheet, header_name, part) if sheet is not None else set()
         except Exception as e:
@@ -1261,10 +1262,29 @@ _named_sheets_lock = threading.Lock()
 # пересоздания воркшита заголовок больше никогда не проверится.
 _header_checked_tabs: set[str] = set()
 
+# Оба кэша выше — вкладки ОДНОЙ таблицы: ID, под который они собраны. Суперадмин сменил
+# таблицу в боте («🔗 Какая таблица») — резолвер вернул другой ID, и кэши очищаются при первом
+# же обращении: вкладки и сверенные шапки старого файла не живут до рестарта. Так же
+# переключается и процесс Mini App — ему никто кэш не сбрасывает, он видит новый ID сам.
+_tab_caches_for_id: str | None = None
+
+
+def _scope_tab_caches() -> None:
+    global _tab_caches_for_id
+    sid = _sheet_target.sheet_id()
+    if sid == _tab_caches_for_id:
+        return
+    with _named_sheets_lock:
+        if _tab_caches_for_id is not None:
+            _named_sheets.clear()
+            _header_checked_tabs.clear()
+        _tab_caches_for_id = sid
+
 
 def _get_named_sheet(tab_name: str):
     """Lazy double-checked-lock cache keyed by tab name (mirrors _get_sheet). Auto-creates the
     tab on WorksheetNotFound (D-11: the party tab needs no manual setup)."""
+    _scope_tab_caches()
     if tab_name in _named_sheets:
         return _named_sheets[tab_name]
     with _named_sheets_lock:
@@ -1305,6 +1325,7 @@ async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | 
         logger.warning(f"Google Sheet ID or Credentials not set. Skipping named sheet export (tab={tab_name!r}).")
         return
 
+    _scope_tab_caches()
     if headers and tab_name not in _header_checked_tabs:
         try:
             await asyncio.to_thread(_ensure_named_header_sync, tab_name, headers)
