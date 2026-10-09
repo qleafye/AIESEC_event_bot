@@ -21,6 +21,7 @@ import html as html_module
 import logging
 
 from aiogram import F, types
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from settings_schema import get_setting_typed, option_label
@@ -52,6 +53,7 @@ from cities import (
     is_default_city,
 )
 from handlers.admin import router
+from handlers.states import EditSetting
 from handlers.admin_consent import remind_consent_purposes_after_preset
 from handlers.admin_settings import _per_city_visible_codes, _settings_edit_screen  # Phase 13 (13-06): settings moved out of admin.py
 
@@ -372,7 +374,7 @@ async def preset_apply(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("preset_confirm:"))
-async def preset_confirm(callback: types.CallbackQuery):
+async def preset_confirm(callback: types.CallbackQuery, state: FSMContext | None = None):
     # Phase 25 (module-size split): render_questions_text/build_questions_keyboard now live in
     # admin_reg_percity.py -- lazy import avoids a load-time cycle (that module imports the
     # _refresh_*_sheet_header trio back from THIS module, which must finish loading first).
@@ -400,6 +402,10 @@ async def preset_confirm(callback: types.CallbackQuery):
         )
         text, kb = await _settings_edit_screen("event_type", header_code)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        if state is not None:  # экран «🎭 Тип события» живой: кнопки/ввод — как из settings_edit_start
+            await state.clear()
+            await state.set_state(EditSetting.waiting_for_value)
+            await state.update_data(setting_key="event_type")
         return
     if header_code and header_code != ALL_CITIES:
         await callback.answer(
