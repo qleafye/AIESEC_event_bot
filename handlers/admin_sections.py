@@ -215,6 +215,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Маркетологу (право source_links) этот раздел показывает только две строки — эту и
         # «📈 Источники» выше: обе про метки, ни одной про людей.
         ("op", "admin_source_links"),
+        # Ссылка-кнопка на Google-таблицу события: нет GOOGLE_SHEET_ID — не рисуется.
+        ("link", "admin_open_sheet", "📄 Открыть таблицу"),
+        ("screen", "admin_export_participants", "👥 Список участников"),
         ("op", "admin_export_csv"),
         ("op", "admin_export_incomplete"),
         ("op", "admin_sync_sheet"),
@@ -278,6 +281,10 @@ _SECTION_HINTS = {
     "data": "Статистика, выгрузки и Google-таблица.",
     "manage": "Города, роли, оформление и запуск нового сезона.",
 }
+
+
+def sheet_url() -> str:
+    return f"https://docs.google.com/spreadsheets/d/{config.GOOGLE_SHEET_ID}/edit"
 
 
 def row_callback(row: tuple) -> str:
@@ -553,6 +560,9 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                 logger.warning("Раздел %s: строка без подписи в _ADMIN_MENU_ROWS (%s) — пропущена", token, row[1])
                 continue
             buttons.append([InlineKeyboardButton(text=label, callback_data=row[1])])
+        elif kind == "link":
+            if config.GOOGLE_SHEET_ID:  # таблица не задана — кнопку не показываем
+                buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])
         elif kind == "toggle":
