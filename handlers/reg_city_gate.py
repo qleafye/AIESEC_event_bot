@@ -134,9 +134,11 @@ FORUM_CITY_LABEL = "Город форума"
 async def confirm_city_choice(message, code: str) -> None:
     """После тапа по городу кнопки пропадают — подтверждаем выбор строкой в чате, иначе
     делегат не знает, в какой город подаёт заявку."""
+    import html
     lang, tr_map = await reg_i18n.ctx_for(message)
     label = reg_i18n.tr_text(FORUM_CITY_LABEL, lang, tr_map)
-    city = reg_i18n.tr_text(await city_label(code), lang, tr_map)
+    # Подпись города пишет менеджер: «&»/«<» при parse_mode=HTML Telegram отклонил бы.
+    city = html.escape(reg_i18n.tr_text(await city_label(code), lang, tr_map))
     await message.answer(f"✅ {label}: {city}")
 
 
