@@ -854,6 +854,8 @@ VK_ERROR = (
 )
 FULL_NAME_ERROR = "Укажи ФИО полностью (минимум фамилию и имя)."
 DATE_FORMAT_ERROR = "Формат даты: ДД.ММ.ГГГГ. Попробуй ещё раз."
+# Приёмка 09.10: формат верный, а даты нет («31.02», «32.13») — своя ошибка, не «формат».
+DATE_NONEXISTENT_ERROR = "Такой даты нет — проверь число и месяц."
 BIRTH_FUTURE_ERROR = "Дата рождения не может быть в будущем. Проверь и введи ещё раз."
 ARRIVAL_PAST_ERROR = "Дата приезда не может быть в прошлом. Введи корректную дату."
 MULTI_EMPTY_ERROR = "Выбери хотя бы один вариант."
@@ -895,7 +897,7 @@ VALIDATION_GOLDEN = [
      "value": None, "error": "Напиши название своего города:",
      "literal": "Напиши название своего города:"},
     {"step": "birth_date", "kind": "date", "raw": "32.13.2026",
-     "value": None, "error": DATE_FORMAT_ERROR, "literal": None},
+     "value": None, "error": DATE_NONEXISTENT_ERROR, "literal": None},
     {"step": "birth_date", "kind": "date", "raw": "01.01.2099",
      "value": None, "error": BIRTH_FUTURE_ERROR, "literal": None},
     {"step": "birth_date", "kind": "date", "raw": "01.01.2000",

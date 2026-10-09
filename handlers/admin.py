@@ -412,7 +412,8 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
 
     # Только команды, которые этому человеку откроются: маркетологу незачем видеть /broadcast.
     lines = [line for cmd, line in _ADMIN_HELP_LINES if _holds(caps, required_capability(command=cmd))]
-    text = "👮‍♂️ <b>Панель администратора</b>\n\n" + "\n".join(lines)
+    text = "👮‍♂️ <b>Панель администратора</b>\n\nВыберите раздел кнопкой ниже." + (  # 09.10: команды свёрнуты
+        "\n\n<blockquote expandable>Команды — для тех, кто привык:\n" + "\n".join(lines) + "</blockquote>" if lines else "")
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
