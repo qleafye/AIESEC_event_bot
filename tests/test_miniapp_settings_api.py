@@ -18,6 +18,7 @@ from miniapp.routers.settings import DANGER_CONFIRM, EDITABLE_KEYS
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
+    DELEGATE_ID,
     GAME_MANAGER_ID,
     _cfg,
     _client,
@@ -158,9 +159,8 @@ def _item(items, key):
 
 
 def test_miniapp_enabled_confirm_only_on_disabling_direction(tmp_path):
-    # Через HTTP это не проверить: miniapp_enabled=off гасит весь /app/api/* (T-19-01,
-    # _enabled_gate) -- то есть саму настройку из выключенного приложения не открыть.
-    # `_items()` -- backend-логика роутера, тестируется напрямую.
+    # `_items()` -- backend-логика роутера, тестируется напрямую (выключенное приложение
+    # закрыто только делегатам, менеджер правит настройки и при off).
     _setup(tmp_path)
     _set("miniapp_enabled", "on")
     on_item = _item(_run(settings_router._items()), "miniapp_enabled")
@@ -273,13 +273,15 @@ def test_get_all_scoped_to_bound_manager_city_own_editable_foreign_absent(tmp_pa
     assert own["editable"] is True
 
 
-def test_disabling_miniapp_enabled_locks_app_with_503(tmp_path):
+def test_disabling_miniapp_enabled_locks_app_for_delegates_only(tmp_path):
     client = _setup(tmp_path)
-    assert client.get("/app").status_code == 200
+    assert client.get("/app/api/me", headers=_hdr(DELEGATE_ID)).status_code == 200
 
     resp = _post(client, "miniapp_enabled", "off")
     assert resp.status_code == 200, resp.text
 
-    locked = client.get("/app")
+    locked = client.get("/app/api/me", headers=_hdr(DELEGATE_ID))
     assert locked.status_code == 503
+    # Выключивший менеджер не запирает сам себя — может включить обратно из приложения.
+    assert _post(client, "miniapp_enabled", "on").status_code == 200
     assert client.get("/app/health").status_code == 200  # health переживает тумблер

@@ -20,14 +20,17 @@ Mini App в `<iframe>` на `https://web.telegram.org`, поэтому отве�
 `Content-Security-Policy: frame-ancestors https://web.telegram.org https://*.telegram.org`
 и НЕ несут `X-Frame-Options` — `DENY` остаётся только у дашборда (T-19-06).
 
-Тумблер `miniapp_enabled` (D-06): при `off` все маршруты, кроме `/app/health`, отвечают
-503 `miniapp_off` — менеджер выключает приложение одним ключом реестра, health остаётся
-живым, чтобы контейнер не перезапускался по кругу.
+Тумблер `miniapp_enabled` (D-06): при `off` приложение закрыто ДЕЛЕГАТАМ — их запросы
+отвечают 503 `miniapp_off`, а персонал (хоть одно право приложения) входит как обычно
+(`_passes_when_off`): сканер и мастер первой настройки есть только здесь. `/app/health`
+живёт всегда, чтобы контейнер не перезапускался по кругу.
 
 `/docs`/`/openapi.json` отключены (T-19-10) — приложение смотрит в базу с ПД.
 Статика монтируется на `/app/static` только при наличии каталога — фабрика обязана работать
-без него (тесты, урезанный образ). HTML-маршрут `/app` при выключенном тумблере получает
-человеческую страницу 503 (`routers.page.render_disabled_page`), остальные — JSON.
+без него (тесты, урезанный образ). Оболочка `/app` при выключенном тумблере отдаётся как
+обычно (кто открыл — станет ясно только из JS по initData), делегат получает 503 на первом же
+API-запросе и видит `miniapp_disabled_text`. Человеческая страница 503 без ядра
+(`routers.page.render_disabled_page`) остаётся для недоступной БД.
 """
 from __future__ import annotations
 
@@ -56,7 +59,10 @@ from miniapp.config import (
     DashboardConfig,
     load_miniapp_config,
 )
-from miniapp.deps import read_setting
+from dashboard.access import resolve_capabilities
+from miniapp.auth import verify_init_data
+from miniapp.deps import BOT_ONLY_CAPS, read_setting
+from miniapp.file_tokens import verify_file_token
 from miniapp.logging_config import configure_logging
 from secret_redact import register_secret
 from miniapp.routers import ALL_ROUTERS
@@ -141,15 +147,46 @@ def _log_api_error(request: Request, status_code: int, body: dict) -> None:
         logger.warning(line, *args)
 
 
-def _miniapp_enabled(db_path: str) -> bool:
-    """Тумблер читается на каждый запрос (без кэша — как и права). Недоступная БД
-    считается «выключено»: лучше честный 503, чем трассировка с путём к базе."""
+def _miniapp_state(db_path: str) -> str:
+    """`"on"` | `"off"` | `"error"`. Тумблер читается на каждый запрос (без кэша — как и
+    права). Недоступная БД — `"error"`: лучше честный 503, чем трассировка с путём к базе."""
     try:
         with read_conn(db_path) as conn:
-            return read_setting(conn, "miniapp_enabled") == "on"
+            return "on" if read_setting(conn, "miniapp_enabled") == "on" else "off"
     except sqlite3.Error as exc:
         logger.warning("miniapp: не удалось прочитать miniapp_enabled (%s)", exc)
+        return "error"
+
+
+def _passes_when_off(request: Request, cfg: DashboardConfig) -> bool:
+    """Выключенное приложение закрыто ДЕЛЕГАТАМ, не персоналу: сканер, мастер первой настройки
+    и поиск настроек живут только здесь. Личность — подписанный initData или токен файла
+    (`<img>`); у кого есть хоть одно право приложения (те же права, что в админке бота, без
+    `BOT_ONLY_CAPS`) — проходит, остальным 503 `miniapp_off` (клиент рисует
+    `miniapp_disabled_text`).
+
+    Запрос без личности пропускается дальше как есть: оболочка `/app` (личность в Телеграме
+    узнаётся только из JS — сервер на этом шаге её не видит), публичные картинки, вход по cookie
+    дашборда (он и так только для персонала, `principal` -> 403 `staff_only`). Закрытые ручки
+    без личности сами ответят 401 — клиент покажет «Откройте через бота» с кнопкой входа."""
+    init_data = request.headers.get("x-telegram-init-data")
+    token = request.query_params.get("t") if request.url.path.startswith(_FILE_ROUTE_PREFIX) else None
+    if init_data:
+        data = verify_init_data(init_data, cfg.bot_token)
+        telegram_id = int(data["user"]["id"]) if data else None
+    elif token:
+        telegram_id = verify_file_token(token, cfg.bot_token)
+    else:
+        return True
+    if telegram_id is None:
+        return True  # подпись не сошлась — маршрут сам ответит 401
+    try:
+        with read_conn(cfg.db_path) as conn:
+            caps = set(resolve_capabilities(conn, telegram_id, cfg.admin_ids)) - BOT_ONLY_CAPS
+    except sqlite3.Error as exc:
+        logger.warning("miniapp: не удалось прочитать права при выключенном приложении (%s)", exc)
         return False
+    return bool(caps)
 
 
 def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
@@ -203,17 +240,18 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         path = request.url.path
         # вебхуки внешних форм должны доходить и при выключенном Mini App — иначе Яндекс
         # получает 503 и бросает интеграцию
-        if (
-            path != HEALTH_PATH
-            and not path.startswith("/app/hooks/")
-            and not _miniapp_enabled(cfg.db_path)
-        ):
-            if path in SHELL_PATHS:
-                return render_disabled_page(request)
-            if _is_shell_asset(path):
-                return await call_next(request)  # см. _is_shell_asset -- стили/шрифты оболочки
-            return JSONResponse({"reason": "miniapp_off"}, status_code=503)
-        return await call_next(request)
+        if path == HEALTH_PATH or path.startswith("/app/hooks/"):
+            return await call_next(request)
+        state = _miniapp_state(cfg.db_path)
+        if state == "on":
+            return await call_next(request)
+        if state == "error" and path in SHELL_PATHS:
+            return render_disabled_page(request)
+        if _is_shell_asset(path):
+            return await call_next(request)  # см. _is_shell_asset -- стили/шрифты оболочки
+        if state == "off" and _passes_when_off(request, cfg):
+            return await call_next(request)  # выключено только для делегатов
+        return JSONResponse({"reason": "miniapp_off"}, status_code=503)
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):

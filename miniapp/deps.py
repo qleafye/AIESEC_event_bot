@@ -54,10 +54,11 @@ _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # настроек (Phase 22, D-05/T-22-05: нового транспорта для них не заводится).
 STAFF_UPLOAD_CAPS = frozenset({"moderate_game", "settings"})
 
-# Права, у которых в Mini App нет ни одного экрана: «🔗 Ссылки с метками» живут только в боте.
-# Отбрасываются в `principal`, иначе держатель одной такой роли считался бы сотрудником
-# (`is_staff`): терял бы привет-экран делегата, видел плитку дашборда и проходил cookie-вход.
-BOT_ONLY_CAPS = frozenset({"source_links"})
+# Права, у которых в Mini App нет ни одного экрана (`services/miniapp_access.BOT_ONLY_CAPS` —
+# одно правило с ботом). Отбрасываются в `principal`, иначе держатель одной такой роли считался
+# бы сотрудником (`is_staff`): терял бы привет-экран делегата, видел плитку дашборда и проходил
+# cookie-вход.
+from services.miniapp_access import BOT_ONLY_CAPS  # noqa: E402
 
 # Разделы-чекбоксы D-06: имя раздела -> ключ реестра `miniapp_section_{section}`.
 # "form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — рядом с "profile": оба делегатские разделы.

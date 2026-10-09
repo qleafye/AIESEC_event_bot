@@ -1635,8 +1635,8 @@ async def open_miniapp_button(message: types.Message):
     # tr_text/tr_kb возвращают ТЕ ЖЕ объекты (reg_i18n docstring), русская ветка ничем не платит.
     lang, tr_map = await reg_i18n.ctx_for(message)
     try:
-        enabled = await get_setting_typed("miniapp_enabled") == "on"
-        url = config.DASHBOARD_PUBLIC_URL
+        from services.miniapp_access import miniapp_open_for  # выключено — только для делегатов
+        enabled, url = await miniapp_open_for(message.from_user.id), config.DASHBOARD_PUBLIC_URL
         # T-19-54/Pitfall 10: выключенный тумблер ИЛИ пустой адрес — короткое человеческое
         # объяснение, что приложение сейчас недоступно, без падения хендлера.
         if not (enabled and url):

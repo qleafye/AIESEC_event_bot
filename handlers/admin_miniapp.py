@@ -73,7 +73,8 @@ async def render_miniapp_settings_text() -> str:
     lines = ["🎨 <b>Оформление приложения</b>", ""]
     lines.append(
         ("✅" if enabled else "☐")
-        + " Приложение включено — кнопка в меню бота видна, только пока включено."
+        + " Приложение включено. Выключено — делегаты не видят приложение, менеджеры "
+        "по-прежнему могут им пользоваться (сканер, первая настройка)."
     )
     lines.append(
         ("✅" if staff_only else "☐")
@@ -205,7 +206,7 @@ async def toggle_miniapp_enabled(callback: types.CallbackQuery):
     current = await get_setting_typed("miniapp_enabled")
     new_val = "off" if current == "on" else "on"
     await set_setting_by_admin(callback.from_user.id, "miniapp_enabled", new_val)
-    toast = "Приложение: " + ("включено" if new_val == "on" else "выключено")
+    toast = "Приложение: " + ("включено" if new_val == "on" else "выключено для делегатов")
     # T-19-52: kept in sync with the toggle immediately, not only at next restart. Fail-soft —
     # an unreachable Telegram must not break this screen, only delay the chat menu button.
     try:
