@@ -209,3 +209,32 @@ def test_stale_delivering_mark_does_not_lock_question_forever(tmp_path):
         assert await db.begin_question_delivery(qid, ADMIN_ID + 1) is False
 
     asyncio.run(scenario())
+
+
+# ── 2: тихие часы + сбой после постановки в очередь ──────────────────────────────────────
+
+def test_quiet_hours_failure_after_enqueue_marks_question_and_retry_does_not_queue_twice(
+    tmp_path, monkeypatch,
+):
+    _ready(tmp_path, "qguard_queue.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    async def scenario():
+        await _quiet_all_day()
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        bot = _Bot()
+
+        m1 = _AdminMessage("Ответ ночью", qid, reply_fail_times=1)
+        await admin_mod.admin_reply_to_question(m1, bot)
+
+        assert await qh.queued_count() == 1
+        row = await db.get_question(qid)
+        assert row["delivered_at"] is not None, "ответ уже в очереди — вопрос не «в работе»"
+        assert row["answer_text"] == "Ответ ночью"
+
+        m2 = _AdminMessage("Ответ ночью", qid)
+        await admin_mod.admin_reply_to_question(m2, bot)
+        assert await qh.queued_count() == 1, "повтор поставил вторую копию в очередь"
+        assert bot.sent == []
+
+    asyncio.run(scenario())
