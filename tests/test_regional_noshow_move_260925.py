@@ -934,7 +934,7 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
     assert bot.sent
     _chat_id, text, kb = bot.sent[0]
     assert "Couldn't make it to the forum" in text
-    assert f"Come to YouLead: {target_label}" in text
+    assert f"Come to the event: {target_label}" in text
     labels = [b.text for row in kb.inline_keyboard for b in row]
     assert f"✅ Move application: {target_label}" in labels
     assert "No, thanks" in labels

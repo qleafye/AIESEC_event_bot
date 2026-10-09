@@ -45,6 +45,7 @@ PLACEHOLDER_LABELS: dict[str, str] = {
     "total": "общее число", "university": "вуз", "value": "значение", "wave": "название волны",
     "week": "неделя", "where": "место", "who": "кто", "winners": "победители",
     "season": "название сезона", "remaining": "сколько осталось", "currency": "название валюты",
+    "event": "название мероприятия",
 }
 
 PROMPT_ONLY_PLACEHOLDERS: dict[str, tuple[str, ...]] = {

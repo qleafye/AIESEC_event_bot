@@ -368,8 +368,8 @@ def test_english_delegate_gets_translated_greeting(tmp_path):
         scanned_at="2026-10-30 09:15:00", bot=bot,
     ))
     assert len(bot.sent) == 1
-    default_ru = "Ты отмечен на входе в {time} ✅ Добро пожаловать на Юлид!"
-    expected = FORM_DEFAULT_EN[default_ru].replace("{time}", "09:15")
+    default_ru = "Ты отмечен на входе в {time} ✅ Добро пожаловать на {event}!"
+    expected = FORM_DEFAULT_EN[default_ru].replace("{time}", "09:15").replace("{event}", "the event")
     assert bot.sent[0][1] == expected
 
 

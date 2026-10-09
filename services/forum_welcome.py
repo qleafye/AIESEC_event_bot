@@ -112,7 +112,14 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         from handlers import reg_i18n
 
         lang, tr_map = await i18n_service.context(user_id)
-        text = reg_i18n.tr_fmt(template, lang, tr_map, time=_format_time(scanned_at, await city_offset_hours(city)))
+        import html
+
+        from services.text_fill import event_label, event_name
+
+        text = reg_i18n.tr_fmt(
+            template, lang, tr_map, time=_format_time(scanned_at, await city_offset_hours(city)),
+            event=html.escape(event_label(await event_name(), lang)),
+        )
         # С приветствием приходит и главное меню: reply-клавиатуру никто не перерисовывает, а
         # кнопка «🆘 SOS» появляется только в дни форума — без этого её не было до /start.
         from keyboards.builders import get_main_menu_kb

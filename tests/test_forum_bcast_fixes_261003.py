@@ -57,7 +57,7 @@ def test_morning_repeat_uses_today_text(tmp_path, monkeypatch):
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
     _run(cb.send_morning_repeat(None))
     caption = bot.photos[0][1]
-    assert caption.startswith("Сегодня форум!") and "Завтра" not in caption
+    assert caption.startswith("Сегодня встречаемся!") and "Завтра" not in caption
 
 
 def test_manual_send_on_forum_day_uses_today_text(tmp_path, monkeypatch):
@@ -67,7 +67,7 @@ def test_manual_send_on_forum_day_uses_today_text(tmp_path, monkeypatch):
     monkeypatch.setattr(sched, "_bot", bot)
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 9, 30))
     _run(cb.send_broadcast(None))
-    assert bot.photos[0][1].startswith("Сегодня форум!")
+    assert bot.photos[0][1].startswith("Сегодня встречаемся!")
 
 
 def test_manual_send_on_second_forum_day_uses_today_text(tmp_path, monkeypatch):
@@ -78,7 +78,7 @@ def test_manual_send_on_second_forum_day_uses_today_text(tmp_path, monkeypatch):
     monkeypatch.setattr(sched, "_bot", bot)
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 4, 9, 30))
     _run(cb.send_broadcast(None))
-    assert bot.photos[0][1].startswith("Сегодня форум!")
+    assert bot.photos[0][1].startswith("Сегодня встречаемся!")
 
 
 def test_evening_send_keeps_tomorrow_text(tmp_path, monkeypatch):
@@ -88,7 +88,7 @@ def test_evening_send_keeps_tomorrow_text(tmp_path, monkeypatch):
     monkeypatch.setattr(sched, "_bot", bot)
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
     _run(cb.send_broadcast(None))
-    assert bot.photos[0][1].startswith("Завтра форум!")
+    assert bot.photos[0][1].startswith("Завтра встречаемся!")
 
 
 def test_morning_text_registered_like_neighbours():
