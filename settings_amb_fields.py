@@ -20,6 +20,8 @@ AMB_FIELD_ORDER = [
     "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
     "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",
     "wave_rating_header_text", "wave_rating_own_line_text", "wave_rating_closed_text",
+    # Ссылка и список приглашённых («Моя ссылка») — 09.10 переехали сюда из «🎮 Геймификации».
+    "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
     # Тексты амбассадорского блока и пути — делегатские.
     "ambassador_block_header_text",
     "ambassador_path_prompt_text", "ambassador_path_label_invite", "ambassador_path_label_content",
