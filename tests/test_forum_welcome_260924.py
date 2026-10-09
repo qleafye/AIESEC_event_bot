@@ -250,14 +250,18 @@ def test_missing_first_of_forum_kwarg_defaults_to_send(tmp_path):
     assert len(bot.sent) == 1
 
 
-def test_csv_source_fresh_scan_sends(tmp_path):
+def test_csv_source_fresh_scan_sends(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(db.set_setting("forum_welcome_enabled", "on"))
     fw.register()
     _run(_add_delegate(UID))
-    from services.timeutil import msk_now
+    from services import timeutil
 
-    now = msk_now()
+    # «Сейчас» — полдень: прогон около полуночи по МСК уводил скан «10 минут назад» во
+    # вчерашний день, и первым входом форума он уже не считался.
+    noon = timeutil.msk_now().replace(hour=12, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(timeutil, "msk_now", lambda: noon)
+    now = noon
     fresh = (now - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
     bot = FakeBot()
     _run(record_arrival(
