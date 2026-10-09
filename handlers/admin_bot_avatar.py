@@ -32,6 +32,8 @@ INTRO_TEXT = (
 )
 NOT_PHOTO_TEXT = "Не понял — пришлите картинку как фото (не файлом) или нажмите «✖️ Отмена»."
 DONE_TEXT = "✅ Аватар бота обновлён. У людей в Telegram он сменится в течение пары минут."
+CONFIRM_TEXT = "Поставить это фото аватаром бота?"
+EXPIRED_TEXT = "Фото для аватара не нашлось — откройте «🖼 Аватар бота» и пришлите его заново."
 REMOVE_CONFIRM_TEXT = (
     "Убрать аватар бота?\n\nВместо картинки у бота в Telegram останется цветной кружок с первой "
     "буквой имени. Поставить новый аватар можно в любой момент."
@@ -123,17 +125,41 @@ async def bot_avatar_cancel_text(message: types.Message, state: FSMContext):
     await message.answer(CANCELLED_TEXT)
 
 
-@router.message(BotAvatar.photo, F.photo)
+@router.message(StateFilter(BotAvatar), F.photo)
 async def bot_avatar_photo(message: types.Message, state: FSMContext):
-    error = await set_avatar_from_photo(message.bot, message.photo[-1].file_id)
+    """Фото не ставится сразу: ожидание могло пережить уход с экрана, и фото, присланное
+    позже для другого дела, молча стало бы аватаром. Сначала — вопрос с кнопками."""
+    await state.set_state(BotAvatar.confirm)
+    await state.update_data(avatar_file_id=message.photo[-1].file_id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, поставить", callback_data="botava_set_yes")],
+        [InlineKeyboardButton(text="← Отмена", callback_data="botava_cancel")],
+    ])
+    await message.reply(CONFIRM_TEXT, reply_markup=kb)
+
+
+@router.callback_query(F.data == "botava_set_yes")
+async def bot_avatar_set_go(callback: types.CallbackQuery, state: FSMContext):
+    file_id = (await state.get_data()).get("avatar_file_id")
+    if await state.get_state() != BotAvatar.confirm.state or not file_id:
+        await callback.answer(EXPIRED_TEXT, show_alert=True)
+        return
+    await callback.answer()
+    error = await set_avatar_from_photo(callback.bot, file_id)
     if error:
-        await message.answer(error, reply_markup=_CANCEL_KB)
+        await state.set_state(BotAvatar.photo)  # можно сразу прислать другое фото
+        await callback.message.answer(error, reply_markup=_CANCEL_KB)
         return
     await state.clear()
-    await message.answer(DONE_TEXT)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(DONE_TEXT)
 
 
-@router.message(BotAvatar.photo)
+# Команды («/…») не перехватываем: менеджер ушёл в другую команду — пусть она и сработает.
+@router.message(StateFilter(BotAvatar), ~F.text.startswith("/"))
 async def bot_avatar_not_photo(message: types.Message):
     await message.answer(NOT_PHOTO_TEXT, reply_markup=_CANCEL_KB)
 
