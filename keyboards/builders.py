@@ -334,7 +334,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     edit_on = False
     try:
         import reg_engine
-        if reg_engine.has_submitted_anketa(user, await get_setting_typed("event_season") or None):
+        _season = await get_setting_typed("event_season") or None
+        # Тот же сезон, что сверяет ветка правки в cmd_start, иначе кнопка ведёт в пустое меню.
+        if ((user.get("season") or None) == _season
+                and reg_engine.has_submitted_anketa(user, _season)):
             from services import reg_edit_policy
             edit_on, _ = await reg_edit_policy.edit_gate(user)
     except Exception as e:

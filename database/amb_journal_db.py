@@ -364,7 +364,8 @@ async def credit_candidate_period(referrer_id: int, *, since: str, coins: int, r
                 "WHERE rc.referrer_id = ? AND COALESCE(rc.coins, 0) = 0 "
                 "AND COALESCE(rc.referrer_was_ambassador, 0) = 0 "
                 "AND rc.excluded_at IS NULL AND rc.revoked_at IS NULL "
-                "AND rc.credited_at >= ? AND u.status = 'approved' "
+                "AND rc.credited_at >= ? AND COALESCE(rc.source, 'approval') != 'backfill' "
+                "AND u.status = 'approved' "
                 "AND rc.invitee_id NOT IN (SELECT invitee_id FROM ambassador_exclusions)",
                 (int(referrer_id), since),
             ) as cursor:
