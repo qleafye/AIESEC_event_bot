@@ -1824,8 +1824,8 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
     if draft_holder(draft) == SURFACE_APP:
         await handoff_plate(message)
         return
-    from handlers.reg_silence_fallback import offer_if_resumable
-    await offer_if_resumable(message)
+    from handlers.reg_silence_fallback import reply_idle  # + «анкета уже отправлена» (09.10)
+    await reply_idle(message)
 
 
 # ── Phase 32 (32-06, D-29): экран рейтинга волны ─────────────────────────────────────────────
