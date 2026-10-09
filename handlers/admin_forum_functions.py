@@ -212,6 +212,16 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     if visible(f"forumfn_open:fb:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"forumfn_open:fb:{_encode_city(code)}")])
 
+    from services.session_enroll import module_enabled as _enroll_on  # запись на сессии (admin_enroll_list)
+    lines.append(f"📅 Запись на сессии: {_status(await _enroll_on(code))}")
+    if visible(f"prog_enrset:{code}"):
+        buttons.append([InlineKeyboardButton(text="📅 Настройки записи", callback_data=f"prog_enrset:{code}")])
+    from database import quiz_db as _qdb  # тест компетенций (admin_quiz)
+    _quiz = await _qdb.get_quiz_for_city(code)
+    lines.append(f"🧭 Тест компетенций: {_status(bool(_quiz and _quiz['enabled']))}")
+    if visible(f"prog_qz:{code}"):
+        buttons.append([InlineKeyboardButton(text="🧭 Тест компетенций", callback_data=f"prog_qz:{code}")])
+
     # 8. SOS — сама кнопка меню (menu_sos, см. пункт 6) + окно активности (forum_date +
     # sos_active_days); родной экран уже есть (handlers/admin_sos.py).
     sos_on = await is_sos_active_for_city(code)

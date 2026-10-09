@@ -140,7 +140,7 @@ async def _render_confirm_screen(
     «🔔 Сообщить делегату» мог перерисовать ТОТ ЖЕ экран, не дублируя вёрстку."""
     old_city = normalize_city(user.get("event_city"))
     participant_type = user.get("participant_type")
-    preview = await preview_city_move(participant_type, code)
+    preview = await preview_city_move(participant_type, code, tid)
 
     name = html_module.escape(str(user.get("full_name") or "-"))
     old_label = html_module.escape(await city_label(old_city))
@@ -169,6 +169,8 @@ async def _render_confirm_screen(
         else:
             write_esc = html_module.escape(write_tab) if write_tab else "главный лист"
             lines.append(f"Строка уйдёт на вкладку «{write_esc}» — вкладки «{target_esc}» пока нет в таблице.")
+    if preview.get("enrollments"):
+        lines.append(f"⚠️ Записи на сессии старого города пропадут: {preview['enrollments']}")
     lines.append(f"Статус сейчас: {status_label}")
     lines.append("")
     lines.append(

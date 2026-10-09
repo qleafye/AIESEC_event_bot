@@ -468,6 +468,12 @@ def refresh_city_filter_spec(spec: list[dict]) -> list[dict] | None:
     """
     out: list[dict] = []
     for f in spec:
+        if isinstance(f, dict) and f.get("field") in ("session_enroll", "quiz") and f.get("city"):
+            # фильтры «не записался» / «не прошёл тест» несут город в `city`, а не в `value`
+            if get_city(f["city"]) is None:
+                return None
+            out.append({**f, "exclude": list(city_scope(f["city"])[1])})
+            continue
         if not isinstance(f, dict) or f.get("field") != "event_city":
             out.append(f)
             continue

@@ -57,6 +57,7 @@ from services.game_digest import game_submit_notify_button_text  # Quick 260822:
 from services.program import own_program_photo  # строка «📅 Программа» при городе в шапке
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
+from keyboards.menu_dynamic import is_dynamic_menu_text
 from handlers.reg_schema import (
     REG_FLOW,
     dropout_step_label,
@@ -1877,6 +1878,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # SETTINGS_FIELDS (D-18) — fall back to the registry itself for the prompt (Phase 6
     # D-13, registry-as-source) before the last-resort literal.
     prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
+    prompt += ph.hint_line(key, prompt)
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
     # Quick 260822: списочный ключ правится по пунктам (handlers/admin_settings_lists.py) —
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
@@ -2043,6 +2045,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     entry = SETTINGS_SCHEMA.get(key, {})
     prompts = {k: prompt for k, _, prompt in SETTINGS_FIELDS}
     prompt = prompts.get(key) or entry.get("prompt") or "Введите значение"
+    prompt += ph.hint_line(key, prompt)
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"
@@ -2629,6 +2632,10 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         value = (message.html_text or message.text or "").strip()
     else:
         value = (message.text or "").strip()
+    ack = data.get("ph_ack")  # подтверждённый текст с подстановками (шов admin_settings_placeholders)
+    if ack:
+        await state.update_data(ph_ack=None)  # одноразовый: следующая правка не должна его унаследовать
+        value = ack
 
     # Guard: a non-text message (sticker/photo/voice/forwarded media) or a whitespace-only
     # send yields value == "" here. Storing "" is never a meaningful value — the registry's
@@ -2667,7 +2674,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # СРАБОТАТЬ: чистим FSM и уходим через SkipHandler, admin.router подключён первым
     # (main.py), поэтому событие продолжит путь к user_actions.router, где живёт реальный
     # обработчик этой подписи.
-    if value in all_menu_button_texts():
+    # Подписи динамических кнопок (запись на сессии, тест) настраиваются — тоже не значение.
+    if value in all_menu_button_texts() or await is_dynamic_menu_text(value):
         await state.clear()
         logger.info(
             f"admin {message.from_user.id}: подпись кнопки меню «{value}» пришла как "
@@ -2721,6 +2729,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         error = error or await cross_setting_error(key, value)  # пороги ступеней 1 < 2 < 3
         if error:
             await message.answer(error, parse_mode="HTML")
+            return
+        if await ph.gate(message, state, key, value, ack=ack):  # пропавшая/опечатанная {подстановка}
             return
 
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
@@ -2808,6 +2818,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
 
     per_city_base = data.get("per_city_base")
     await state.clear()
+    if value != "-":
+        await ph.send_preview(message, key, value)
     if per_city_base:
         # Phase 09.3 (06, CITY-09): a per-city save/clear returns to the SAME header-aware
         # editor screen, not the general settings landing (RESEARCH Pattern 3 lineage — reuse
@@ -2967,3 +2979,4 @@ from handlers import admin_miniapp_theme  # noqa: E402,F401
 # after admin_miniapp_theme, so its handler lands right after every handler above at any
 # module import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_sections  # noqa: E402,F401
+from handlers import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
