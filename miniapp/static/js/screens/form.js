@@ -1034,8 +1034,10 @@ export async function render(root, params, ctx) {
       const list = h("div", { class: "flat-list flush" },
         ...rows.map((s) => questionRow(h, s, { notSetText: d.not_set_text })),
       );
+      // Приёмка 09.10: в {n} — все вопросы после текущего, а не только скрытые за окном:
+      // делегат читает строку как «сколько осталось до конца» (было «1» при трёх оставшихся).
       const more = remaining > 0
-        ? h("p", { class: "pad faint", text: (d.more_questions_text || "").replace("{n}", String(remaining)) })
+        ? h("p", { class: "pad faint", text: (d.more_questions_text || "").replace("{n}", String(totalUpcoming)) })
         : null;
       if (!rows.length && !more) return null;
       return h("div", {}, sectionTitle(h, d.questions_eyebrow), list, more);
