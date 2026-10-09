@@ -660,6 +660,12 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
         for col in cols:
             if col not in cleared_columns:
                 cleared_columns.append(col)
+    # Ревью 10.10: выбрали «Текстом» после загруженного файла — файл больше не ответ. Иначе
+    # в листе «Текстом», в сводке «прикреплено файлом», в карточке модерации файл.
+    if resume_type_patch == "text":
+        for col in _RESUME_FILE_COLUMNS:
+            if col not in cleared_columns:
+                cleared_columns.append(col)
 
     step_patch: dict[str, Any] = {}
     for column, raw in body.answers.items():
@@ -913,61 +919,79 @@ async def set_lang(
 
 # ── POST /app/api/reg/draft/submit ───────────────────────────────────────────────────────
 
-# Колонки черновика, по которым видно, что в правке трогали именно ФАЙЛ резюме: выбор ветки
-# развилки (`resume_type`) или загрузка/удаление файла (`resume_file_id`; «×» очищает весь
-# набор колонок шага). Правка текста резюме или посторонних полей сюда не относится.
-_RESUME_FILE_TOUCH_COLUMNS = ("resume_type", "resume_file_id")
+# Колонки черновика, по которым видно, что в правке трогали резюме: выбор ветки развилки
+# (`resume_type`), загрузка/удаление файла (`resume_file_id`; «×» очищает весь набор колонок
+# шага) или текст резюме. Правка посторонних полей сюда не относится.
+_RESUME_TOUCH_COLUMNS = ("resume_type", "resume_file_id", "resume_text")
+# Колонки файла резюме: снимаются, когда резюме — текстом.
+_RESUME_FILE_COLUMNS = ("resume_file_id", "resume_file_name")
+# Ветки развилки, у которых резюме лежит не в файле и не в тексте, — гард их не трогает.
+_RESUME_OTHER_TYPES = ("none", "link", "mini")
 
 
-async def _resume_file_state(ctx: dict) -> str | None:
-    """Квик 27.09 + ревью: выбрана ветка «файл», а файла нет — подавать анкету нельзя.
+async def _resume_submit_check(ctx: dict) -> tuple[bool, dict]:
+    """Гард резюме на подаче анкеты из приложения: `(missing, patch)`.
 
-    Возвращает `"missing"` (подачу отбить), `"text"` (файла нет, но в этой анкете есть текст
-    резюме — подать, записав тип «текст») или `None` (гард ни при чём).
+    `missing` — подавать нельзя: шаг «Резюме» включён, режим допускает файл (`fork`/
+    `file_or_text`), а резюме нет ни файлом, ни текстом (квик 27.09: выбран «файл», файл не
+    доехал; ревью 10.10: и без выбора/с «текстом», но пустым). Ветки `none`/`link`/`mini` не
+    трогаются — у них ответ в других шагах.
 
-    Срабатывает, только если шаг «Резюме» сейчас включён и режим города допускает файл
-    (`fork`/`file_or_text`): в `text_only` файл приложить нельзя (загрузка отвечает 409), и
-    устаревший `users.resume_type="file"` не должен запирать делегата. В правке — только
-    если в ЭТОЙ правке трогали файл резюме (`_RESUME_FILE_TOUCH_COLUMNS`): правка телефона
-    не блокируется старой потерей файла. Значение из черновика правки побеждает `users`
-    даже когда оно пустое — явное `None` после «×» значит «файл удалён», а не «не менялось».
-    Файлом считается только `resume_file_id`: `resume_url` у текстового резюме — ссылка
-    облака на .txt."""
+    `patch` — правка черновика перед подачей (кладёт вызывающий):
+    - тип «файл», файла нет, а в этой анкете есть текст (приёмка 09.10 — загрузка упала,
+      делегат написал текстом) → тип «текст», в любом режиме, включая `text_only` (там старый
+      `resume_type="file"` иначе уходил с «Файл» без файла);
+    - тип «текст», а файл остался (загрузили, потом выбрали «Текстом») → файл снимается.
+
+    В правке — только если в ЭТОЙ правке трогали резюме (`_RESUME_TOUCH_COLUMNS`): правка
+    телефона не блокируется старой потерей файла. Значение из черновика правки побеждает
+    `users` даже когда оно пустое — явное `None` после «×» значит «файл удалён». Файлом
+    считается только `resume_file_id`: `resume_url` у текстового резюме — ссылка облака на .txt.
+    Текст для смены типа берётся только из черновика: старый текст в `users` при выборе «файла»
+    в правке не спасает (делегат сам выбрал файл)."""
     kind = ctx["kind"]
     if kind == "edit":
         # Без строки черновика `answers` — снимок `users`, а не правка; подавать там нечего
         # (submit ответит no_draft), гард не нужен.
         if not ctx["draft"]:
-            return None
+            return False, {}
         answers = ctx["answers"]
-        if not any(column in answers for column in _RESUME_FILE_TOUCH_COLUMNS):
-            return None
+        if not any(column in answers for column in _RESUME_TOUCH_COLUMNS):
+            return False, {}
         user_row = ctx["user_row"] or {}
     else:
         answers = ctx["answers"]
         user_row = {}
 
     mode = await reg_engine.resume_mode(ctx["event_city"])
-    if mode not in ("fork", "file_or_text"):
-        return None
 
     def _value(column: str):
         return answers[column] if column in answers else user_row.get(column)
 
-    if _value("resume_type") != "file" or _value("resume_file_id"):
-        return None
-    # Ответ текстом в этой же анкете — резюме есть, просто не файлом. Приёмка 09.10: и в
-    # развилке тоже — загрузка файла упала, делегат нажал «Написать текстом» прямо в дропзоне,
-    # а тип остался «файл»; раньше такой текст пропускал только режим «файл или текст», и
-    # делегат ходил по кругу «Файл резюме ещё не загрузился».
-    if str(answers.get("resume_text") or "").strip():
-        return "text"
+    resume_type = _value("resume_type")
+    has_file = bool(_value("resume_file_id"))
+    draft_text = str(answers.get("resume_text") or "").strip()
+    any_text = str(_value("resume_text") or "").strip()
+
+    patch: dict = {}
+    if resume_type == "file" and not has_file and draft_text:
+        resume_type = "text"
+        patch["resume_type"] = "text"
+    if resume_type == "text" and has_file:
+        has_file = False
+        for column in _RESUME_FILE_COLUMNS:
+            patch[column] = None
+
+    if mode not in ("fork", "file_or_text") or resume_type in _RESUME_OTHER_TYPES:
+        return False, patch
+    if has_file or (resume_type != "file" and any_text):
+        return False, patch
 
     snapshot = {**reg_engine.answers_from_user_row(ctx["user_row"] if kind == "edit" else None), **answers}
     enabled = await reg_engine.enabled_steps(
         {**snapshot, "participant_type": ctx["effective_track"]}, ctx["event_city"],
     )
-    return "missing" if "resume" in enabled else None
+    return "resume" in enabled, patch
 
 
 @router.post("/app/api/reg/draft/submit")
@@ -1022,17 +1046,17 @@ async def draft_submit(
 
     # Квик 27.09: выбран «файл», а файла на сервере нет (мастер не дождался загрузки) —
     # не подаём анкету: после подачи загрузка получает 403 и файл теряется. Тоже ДО claim.
-    resume_file_state = await _resume_file_state(ctx)
-    if resume_file_state == "missing":
+    resume_missing, resume_patch = await _resume_submit_check(ctx)
+    if resume_missing:
         logger.info("reg draft submit refused telegram_id=%s reason=resume_file_missing", p.telegram_id)
         raise HTTPException(400, {
             "reason": "resume_file_missing",
             "text": await i18n.tr_setting("reg_form_resume_file_missing_text", lang, tr_map),
         })
-    if resume_file_state == "text":
-        # Файла нет, резюме — текстом: тип переписываем, иначе в листе и карточке модерации
-        # стоит «Файл», а файла нет.
-        await upsert_reg_draft(p.telegram_id, kind=ctx["kind"], patch={"resume_type": "text"}, source="miniapp")
+    if resume_patch:
+        # Тип и файл резюме приводим к правде до подачи, иначе в листе и карточке модерации
+        # стоит «Файл» без файла или «Текстом» с файлом.
+        await upsert_reg_draft(p.telegram_id, kind=ctx["kind"], patch=resume_patch, source="miniapp")
 
     # Квик 27.09: новая анкета без города при нескольких открытых городах доходила до users с
     # NULL. Город берём из уже известного (та же цепочка, что у бота), один открытый —
