@@ -1489,6 +1489,7 @@ admin|callback_query|show_amb_points|admin_amb_points
 admin|callback_query|amb_points_start|ambpt_coins
 admin|callback_query|amb_points_cancel|ambpt_coins_cancel
 admin|callback_query|amb_points_toggle|ambpt_toggle:*
+admin|callback_query|amb_separator|amb_sep
 admin|callback_query|forumfn_qr_screen|forumfn_qr:*
 admin|callback_query|forumfn_qr_set|forumfn_qr_set:*
 admin|callback_query|forumfn_back|forumfn_back:*
@@ -2404,7 +2405,9 @@ def test_snapshot_total_handler_count_is_292():
     # Запись на сессии и тест компетенций (слияние с main): фильтры рассылки, проверка подстановок, админка записи/теста и подтверждения, потоки делегата session_enroll/quiz; чистые вставки поверх снимка main, SequenceMatcher (1086 -> 1200).
     # 09.10 (кнопка меню «✏️ Изменить анкету», handlers/menu_edit_anketa.py): +1 user_actions.message
     # menu_edit_anketa сразу после quiz_menu, до reg_handoff_idle_fallback (1200 -> 1201).
-    assert len(GOLDEN_SNAPSHOT) == 1201
+    # 09.10 (подзаголовки раздела «🤝 Амбассадоры»): +1 admin.callback_query amb_separator (amb_sep)
+    # в хвосте handlers/admin_amb_section.py, перед forumfn_qr_screen (1201 -> 1202).
+    assert len(GOLDEN_SNAPSHOT) == 1202
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

@@ -53,7 +53,15 @@ def test_back_buttons_lead_to_owner_section():
 def test_on_section_shows_everything_and_game_has_no_waves(tmp_path):
     _ready(tmp_path, selection=True)
     text, kb = _run(sec.section_screen(ADMIN_ID, "amb"))
-    assert _callbacks(kb)[:len(AMB_ROWS)] == list(AMB_ROWS)
+    # 09.10: строки сгруппированы подзаголовками «Общее» / «Команда и волны» / «Ступени».
+    assert _callbacks(kb)[:len(AMB_ROWS) + 3] == [
+        "amb_sep", "admin_amb_points", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb",
+        "amb_sep", "admin_amb_entry", "admin_amb_candidates", "admin_game_waves",
+        "amb_sep", "admin_amb_tiers",
+    ]
+    assert set(AMB_ROWS) <= set(_callbacks(kb))
+    seps = [b.text for row in kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
+    assert seps == ["── Общее ──", "── Команда и волны ──", "── Ступени ──"]
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
     cbs = _callbacks(game_kb)
     assert "admin_game_waves" not in cbs and "admin_amb_tiers" not in cbs
@@ -67,6 +75,10 @@ def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
     cbs = _callbacks(game_kb)
     assert cbs.index("admin_game_tasks") < cbs.index("admin_game_waves") < cbs.index("admin_amb_tiers")
+    # 09.10: амбассадорский блок внутри «🎮 Геймификации» отделён подзаголовками.
+    seps = [b.text for row in game_kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
+    assert seps == ["── 🤝 Амбассадоры ──", "── 🎮 Проверка и монеты ──"]
+    assert cbs.index("admin_game_tasks") < cbs.index("amb_sep") < cbs.index("admin_game_waves")
     # 09.10: вход и кандидаты — экраны отбора, при выключенном не видны; баллы, исключения и
     # закрепление от отбора не зависят — доступны из «🎮 Геймификации».
     for hidden in ("admin_amb_entry", "admin_amb_candidates"):
