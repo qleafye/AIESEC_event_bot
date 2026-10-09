@@ -290,7 +290,7 @@ def game_gate(request: Request, p: Principal = Depends(principal)) -> Principal:
         raise HTTPException(403, {
             "reason": "game_gate",
             "code": code,
-            "message": "Задания и монеты для делегаций выключены",
+            "message": "Задания и баллы для делегаций выключены",
         })
     return p
 

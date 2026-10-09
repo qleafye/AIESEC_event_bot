@@ -402,7 +402,7 @@ async function showPastSeasonState() {
     // fail-soft: /hub/status недоступен — запасной текст ниже.
   }
   card.append(h("p", {
-    text: heading || "Разделы откроются после новой анкеты. Обновите анкету, чтобы снова открыть задания, монеты и рейтинг.",
+    text: heading || "Разделы откроются после новой анкеты. Обновите анкету, чтобы снова открыть задания, баллы и рейтинг.",
   }));
   card.append(h("div", { class: "actions" },
     h("a", { class: "btn", href: "#/form", text: ctaText || "Обновить анкету" }),
