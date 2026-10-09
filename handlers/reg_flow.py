@@ -359,15 +359,17 @@ async def start_confirm_edit(message: types.Message, state: FSMContext) -> None:
     регистрацию.» и снова согласие на обработку ПД; на проде из-за такого вида бросали анкету
     (14.09). Зовётся из `_start_registration_flow` (маркер `_from_confirm` в снимке) ПОСЛЕ того,
     как он перенёс ответы через state.clear() и обновил черновик, — сохранность ответов та же.
-    Согласие спрашивается снова, только если его подписи текущей редакции в базе нет."""
+    Согласие спрашивается снова, только если его подписи текущей редакции в базе нет. Сбой
+    чтения — сразу ФИО: согласие уже дано при первой подаче, а прогон по всем согласиям заново
+    выглядел бы тем самым перезапуском (и исключение не должно оставить делегата без ответа)."""
     await reg_i18n.say(message, "Давай поправим ответы — пройдём по ним по очереди.")
     try:
         version = await current_consent_version()
         signed = {key for key, ver in await get_user_consent_versions(message.from_user.id) if ver == version}
-    except Exception as e:  # сбой чтения — спросить согласие ещё раз безопаснее, чем пропустить
+        pending = [s for s in await get_consent_steps() if s.split(":", 1)[1] not in signed]
+    except Exception as e:
         logger.error(f"start_confirm_edit: consent read failed for {message.from_user.id}: {e}")
-        signed = set()
-    pending = [s for s in await get_consent_steps() if s.split(":", 1)[1] not in signed]
+        pending = []
     if pending:
         await state.update_data(_consent_queue=pending, _consent_i=0)
         await _ask_step_or_recall(pending[0], message, state, 1, len(pending))
