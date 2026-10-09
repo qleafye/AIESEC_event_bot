@@ -57,7 +57,7 @@ from services.game_digest import game_submit_notify_button_text  # Quick 260822:
 from services.program import own_program_photo  # строка «📅 Программа» при городе в шапке
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
-from keyboards.menu_dynamic import is_dynamic_menu_text
+from keyboards.menu_dynamic import MENU_LABEL_FIELDS, is_dynamic_menu_text
 from handlers.reg_schema import (
     REG_FLOW,
     dropout_step_label,
@@ -386,7 +386,7 @@ _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) f
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS + MENU_LABEL_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -418,6 +418,7 @@ _EVENT_GROUP_KEYS = [
 
 SETTINGS_GROUPS = [
     ("🎪 Событие/Медиа", "event", _EVENT_GROUP_KEYS),
+    ("✏️ Подписи кнопок меню", "menu_labels", [k for k, _l, _p in MENU_LABEL_FIELDS]),  # вход — «🎪 Событие» и «🔘 Кнопки меню»
     ("📝 Регистрация", "reg", _REG_FIELD_ORDER),
     # Phase 20 (20-01): сразу после «📝 Регистрация» — менеджер идёт по пути делегата
     # (анкета -> заявка), а не ищет «После одобрения» среди списков вариантов вопросов.
