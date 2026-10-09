@@ -292,3 +292,41 @@ def test_bot_only_synonyms_not_in_web_search():
     key = next(iter(BOT_ONLY_SYNONYMS))
     assert search_terms(key) == []  # веб-поиск (роутер Mini App зовёт без bot=True)
     assert search_terms(key, bot=True) == BOT_ONLY_SYNONYMS[key]
+
+
+# ── экраны-кнопки разделов (UAT 09.10: «аватар» → «Не нашёл») ─────────────────────────────
+
+def test_screen_rows_of_sections_are_found(tmp_path):
+    """«🖼 Аватар бота» — не ключ реестра, а экран раздела «🎪 Событие». Поиск обязан его
+    находить: кнопка ведёт тем же callback, что из раздела, подпись — «экран · раздел»."""
+    _ready(tmp_path)
+    text, kb = _run(ss.results_screen(ADMIN, "аватар"))
+    buttons = [row[0] for row in kb.inline_keyboard]
+    avatar = [b for b in buttons if b.callback_data == "admin_bot_avatar"]
+    assert avatar, [b.text for b in buttons]
+    assert avatar[0].text == "🖼 Аватар бота · 🎪 Событие"
+    for word, cb in (("роли", "admin_roles"), ("сезон", "admin_season_reset"), ("таблица", "admin_sheet_target")):
+        shown, _ = _run(ss.find(ADMIN, word))
+        assert cb in [c.extra["cb"] for c in shown], word
+
+
+def test_screen_candidates_respect_section_rights(tmp_path):
+    """Права — как у раздела: экран без права не показывается, «только суперадмину» — только ему,
+    сам поиск в выдаче не встречается."""
+    from handlers.admin_sections import SECTIONS, row_callback
+
+    _ready(tmp_path)
+    all_screens = {row_callback(r) for _t, _l, rows in SECTIONS for r in rows if r[0] in ("screen", "screen_admin")}
+    shown = {c.extra["cb"] for c in _run(ss.screen_candidates(ADMIN))}
+    assert "settings_search" not in shown
+    assert "admin_season_reset" in shown and "admin_bot_avatar" in shown
+    assert shown <= all_screens
+
+    _run(db.add_staff(MANAGER, "reg_manager", ADMIN))  # заявки и чеки, без настроек
+    mgr = {c.extra["cb"] for c in _run(ss.screen_candidates(MANAGER))}
+    assert "admin_season_reset" not in mgr and "admin_sheet_target" not in mgr
+    assert "admin_bot_avatar" not in mgr  # капа settings
+    from handlers.admin_caps import _holds
+
+    for cb in mgr:
+        assert _holds({"moderate_reg", "moderate_receipts"}, required_capability(callback_data=cb)), cb
