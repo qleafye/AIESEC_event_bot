@@ -42,6 +42,9 @@ KIND_APPLICATION_DECISION = "application_decision"
 # payload {"text": str, "parse_mode": str, "reply_markup": dict | None} — произвольный текст
 # (гейма/монеты/напоминания/ответ организаторов). `reply_markup` — сериализованная клавиатура
 # (см. `serialize_markup`), None/отсутствует — сообщение без клавиатуры (форма до 16.09).
+# `question_id` (10.10, есть только у ответа на «❓ Задать вопрос», и у KIND_TEXT, и у
+# KIND_COPY) — по нему `flush_due` при сбое утренней отправки возвращает вопрос «в работу» и
+# предупреждает автора ответа (`_on_question_answer_failed`).
 KIND_TEXT = "text_html"
 # payload {"method": "send_photo"|"send_document", "file_id": str, "caption": str | None,
 # "parse_mode": str | None} — файл по `file_id` (бонус за регистрацию и подобное). Телеграм
@@ -215,7 +218,8 @@ async def _send_or_queue(now: datetime, user_id: int, kind: str, payload: dict, 
 
 
 async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
-                             parse_mode: str = "HTML", reply_markup=None) -> bool:
+                             parse_mode: str = "HTML", reply_markup=None,
+                             question_id: int | None = None) -> bool:
     """`sender` — асинхронный колбэк без аргументов (бот передаёт `lambda: bot.send_message(...)`,
     веб — свой `telegram_api`-путь). `True` — отправлено сейчас, `False` — положено в очередь.
 
@@ -226,11 +230,13 @@ async def send_or_queue_text(now: datetime, user_id: int, text: str, *, sender,
     немедленную отправку САМ: клавиатуру в него кладёт вызывающий."""
     return await send_or_queue_text_due(
         now, user_id, text, sender=sender, parse_mode=parse_mode, reply_markup=reply_markup,
+        question_id=question_id,
     ) is None
 
 
 async def send_or_queue_text_due(now: datetime, user_id: int, text: str, *, sender,
-                                 parse_mode: str = "HTML", reply_markup=None) -> datetime | None:
+                                 parse_mode: str = "HTML", reply_markup=None,
+                                 question_id: int | None = None) -> datetime | None:
     """То же, что `send_or_queue_text`, но возвращает МОМЕНТ доставки (`None` — отправлено
     сейчас). Нужен там, где интерфейс показывает человеку «доставим утром в 09:00»: иначе
     вызывающему пришлось бы вторым запросом дёргать `defer_until` ради того же ответа."""
@@ -238,6 +244,8 @@ async def send_or_queue_text_due(now: datetime, user_id: int, text: str, *, send
     markup = serialize_markup(reply_markup)
     if markup is not None:
         payload["reply_markup"] = markup
+    if question_id is not None:
+        payload["question_id"] = int(question_id)
     return await _send_or_queue(now, user_id, KIND_TEXT, payload, sender)
 
 
@@ -249,9 +257,12 @@ async def send_or_queue_media(now: datetime, user_id: int, *, sender, method: st
 
 
 async def send_or_queue_copy(now: datetime, user_id: int, *, sender, from_chat_id: int,
-                             message_id: int, caption: str | None = None) -> bool:
+                             message_id: int, caption: str | None = None,
+                             question_id: int | None = None) -> bool:
     """Копия сообщения (`bot.copy_message`). `True` — отправлено сейчас."""
     payload = {"from_chat_id": from_chat_id, "message_id": message_id, "caption": caption}
+    if question_id is not None:
+        payload["question_id"] = int(question_id)
     return await _send_or_queue(now, user_id, KIND_COPY, payload, sender) is None
 
 
@@ -330,8 +341,49 @@ async def flush_due(now: datetime) -> int:
         except Exception as e:
             logger.error(f"quiet_hours: row id={row_id} kind={kind!r} user_id={user_id} failed: {e}")
             await mark_delayed_notification_sent(row_id, now_str, error=redact_secrets(e))
+            if payload.get("question_id") is not None:
+                try:
+                    await _on_question_answer_failed(payload["question_id"], e)
+                except Exception as hook_err:
+                    logger.error(
+                        f"quiet_hours: question_id={payload.get('question_id')} "
+                        f"reopen/notify failed: {hook_err}"
+                    )
         count += 1
     return count
+
+
+async def _on_question_answer_failed(question_id, error: Exception) -> None:
+    """Утренняя отправка ответа на вопрос делегата упала. Без этого вопрос числился бы
+    «отвеченным» (delivered_at ставится при постановке в очередь), а делегат ответа так и не
+    получил бы — и никто бы об этом не узнал. Вопрос возвращается «в работу» (захват и текст
+    ответа остаются), автор ответа получает сообщение. Повтора здесь нет: заблокировавшему
+    бота делегату он не поможет, а временный сбой менеджер повторит сам.
+    Не-текстовый ответ лежит в очереди двумя строками — автору пишем один раз (сообщение
+    шлёт только тот вызов, что действительно вернул вопрос)."""
+    from aiogram.exceptions import TelegramForbiddenError
+    from database.db import get_question, reopen_question_delivery
+    from services import scheduler as _sched
+
+    qid = int(question_id)
+    if not await reopen_question_delivery(qid):
+        return
+    row = await get_question(qid)
+    author_id = (row or {}).get("answered_by")
+    if not author_id:
+        return
+    if isinstance(error, TelegramForbiddenError):
+        text = (
+            f"⚠️ Не удалось доставить ответ на вопрос #{qid} — делегат заблокировал бота. "
+            "Повтор не поможет: свяжитесь с делегатом другим способом. "
+            "Вопрос снова «в работе», текст ответа сохранён."
+        )
+    else:
+        text = (
+            f"⚠️ Не удалось доставить ответ на вопрос #{qid} — делегат недоступен. "
+            "Вопрос снова «в работе», текст ответа сохранён — отправьте ответ ещё раз."
+        )
+    await _sched._bot.send_message(author_id, text)
 
 
 def _rebuild_markup(raw: dict | None):
