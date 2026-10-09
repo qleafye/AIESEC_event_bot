@@ -369,6 +369,15 @@ async def _seed_event_city() -> str | None:
     return normalize_city(codes[0]) if codes else default_city_code()
 
 
+def _home_city_name(forum_label: str) -> str:
+    """Подпись города ФОРУМА -> название города для `users.city` (где делегат ЖИВЁТ).
+
+    Приёмка 09.10: подпись форума несёт дату («Санкт-Петербург, 3 октября»), а `users.city`
+    питает подсказки вопроса «Выбери свой город» (`services.lookup.top_chips`) — засеянная
+    подпись с датой вылезала у тестеров первой кнопкой. Дата отделена запятой."""
+    return forum_label.split(",", 1)[0].strip() or forum_label
+
+
 async def _seed_state(
     tid: int, username: str | None, state_code: str, forum_city: str | None = None,
 ) -> None:
@@ -382,7 +391,7 @@ async def _seed_state(
     if event_city_code:
         # «Согласованный» city: тот же город, что и event_city, а не оставшаяся от прошлого
         # состояния «Москва» — иначе засеянный делегат «учится в Москве» на «событии в СПб».
-        seed_answers["city"] = await city_label(event_city_code)
+        seed_answers["city"] = _home_city_name(await city_label(event_city_code))
     if state_code == "draft":
         await mark_reg_started(tid, username)
         resume_cols = set(columns_for_step("resume"))
