@@ -84,7 +84,7 @@ def test_ask_step_translates_prompt_and_hint_separately(tmp_path, monkeypatch):
     русскими. Теперь: каждая часть переводится по отдельности ДО склейки."""
     _use_tmp_db(tmp_path)
     prompt_ru = "Выбери свой город"
-    hint_ru = "Начни вводить — подскажем. Например: «спб», «вшэ», «политех»."
+    hint_ru = "Начни вводить название — подскажем. Подойдёт и сокращение."
     asyncio.run(db.set_setting("reg_prompt_city", prompt_ru))
     _patch_ctx_en(monkeypatch, prompt_ru, hint_ru)
     uid = UID + 1

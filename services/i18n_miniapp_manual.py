@@ -248,8 +248,8 @@ _FORM_INTRO = {
     "Выключи, если уже закончил(а)": "Turn off if you've already graduated",
     "Включи, если ещё студент(ка)": "Turn on if you're still a student",
     "Хорошо — про учёбу больше не спросим.": "Got it — we won't ask about studies anymore.",
-    "Начни вводить — подскажем. Например: «спб», «вшэ», «политех».": (
-        "Start typing — we'll suggest options. For example: «spb», «hse», «polytech»."
+    "Начни вводить название — подскажем. Подойдёт и сокращение.": (
+        "Start typing the name — we'll suggest options. An abbreviation works too."
     ),
     "Впиши {entity} сам — менеджер увидит его как есть.": (
         "Type your own {entity} — the manager will see it exactly as you wrote it."
@@ -273,7 +273,7 @@ _ACCEPTANCE_260917 = {
     "Приглашено по твоей ссылке: {count}": "Invited with your link: {count}",
     "Загрузить файл": "Upload a file",
     "Написать текстом": "Type it instead",
-    "Отметь вариантов: не меньше {min}.": "Pick at least {min}.",
+    "Отметь хотя бы один вариант.": "Pick at least one option.",
     "Выбери от {min} до {max}.": "Pick from {min} to {max}.",
     "Впереди ещё вопросов: {n}": "Questions left: {n}",
     "Нажми на вариант — сразу перейдём к следующему вопросу.": "Tap an option — we'll move on to the next question right away.",
