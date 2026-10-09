@@ -1032,6 +1032,11 @@ async def init_db():
         # falsy. delivered_at is the single unambiguous signal, stamped ONLY on a successful
         # send to the delegate (set_question_answer below), never on a claim alone.
         await _ensure_column(db, "delegate_questions", "delivered_at", "TEXT")
+        # 10.10: отметка «ответ сейчас уходит делегату» (UTC ISO). Ставится атомарно ПЕРЕД
+        # отправкой (`begin_question_delivery`) — второй повтор того же менеджера, пока первая
+        # отправка ещё идёт, получает отказ, а не дублирует ответ делегату. Снимается при
+        # ошибке до отправки; зависшая (процесс упал посреди отправки) устаревает сама.
+        await _ensure_column(db, "delegate_questions", "delivering_at", "TEXT")
 
         # Quick 260906-8uq (FAQ-01..06): «❓ Частые вопросы» — city NULL means "все города"
         # (same convention as game_tasks.event_city above), position orders the manager's
@@ -7279,11 +7284,62 @@ async def claim_question(question_id: int, admin_id: int, admin_name: str) -> bo
         return cursor.rowcount == 1
 
 
+# Сколько живёт отметка «ответ уходит»: дольше любой реальной отправки (сеть + прокси), но
+# достаточно коротко, чтобы упавший посреди отправки процесс не запер вопрос навсегда.
+QUESTION_DELIVERING_STALE = timedelta(minutes=5)
+
+
+async def begin_question_delivery(question_id: int, admin_id: int) -> bool:
+    """Атомарная отметка «ответ уходит делегату» — тот же приём, что `claim_question`
+    (условный UPDATE, True только у того вызова, что перевернул строку). Ставит её только
+    держатель захвата, только пока ответ не доставлен и только если свежей отметки ещё нет —
+    второй повтор того же менеджера, пока первая отправка не вернулась, получает False."""
+    now = datetime.utcnow()
+    stale_before = (now - QUESTION_DELIVERING_STALE).isoformat()
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE delegate_questions SET delivering_at = ? "
+            "WHERE id = ? AND answered_by = ? AND delivered_at IS NULL "
+            "AND (delivering_at IS NULL OR delivering_at < ?)",
+            (now.isoformat(), question_id, admin_id, stale_before),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def release_question_delivery(question_id: int) -> None:
+    """Снять отметку «ответ уходит» — отправка упала ДО того, как что-либо ушло делегату или
+    встало в очередь, повтор безопасен."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE delegate_questions SET delivering_at = NULL WHERE id = ?", (question_id,),
+        )
+        await db.commit()
+
+
+async def reopen_question_delivery(question_id: int) -> bool:
+    """Отправка из очереди тихих часов упала: вопрос снова «в работе» (delivered_at и
+    отметка сброшены, захват и текст ответа остаются). True — только у вызова, который
+    действительно вернул вопрос: не-текстовый ответ лежит в очереди двумя строками, и автор
+    ответа должен услышать о сбое один раз, а не дважды."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE delegate_questions SET delivered_at = NULL, delivering_at = NULL "
+            "WHERE id = ? AND delivered_at IS NOT NULL",
+            (question_id,),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
 async def set_question_answer(question_id: int, answer_text: str):
-    """Record the answer text AND stamp delivered_at together -- this is only ever called
-    after `bot.send_message`/`send_copy` to the delegate has actually SUCCEEDED (T-08-33
-    quick task). delivered_at, not answer_text, is the detector `get_stuck_questions()`
-    relies on -- see the column's comment in init_db for why answer_text alone can't do it."""
+    """Record the answer text AND stamp delivered_at together -- called right after the
+    answer was SENT to the delegate OR put into the quiet-hours queue (`delayed_notifications`):
+    in quiet hours delivered_at is the moment of queueing, not of the actual delivery. If the
+    morning send from the queue fails, `reopen_question_delivery` clears it again. Never
+    called on a claim alone or after a failed send (T-08-33 quick task). delivered_at, not
+    answer_text, is the detector `get_stuck_questions()` relies on -- see the column's comment
+    in init_db for why answer_text alone can't do it."""
     async with _connect() as db:
         await db.execute(
             "UPDATE delegate_questions SET answer_text = ?, delivered_at = ? WHERE id = ?",

@@ -12,6 +12,9 @@ aiogram), правило статуса и постраничная выборк
         (проиграл, но захват твой же, доставка не прошла в прошлый раз — тот же приём, что
         T-08-33 часть C / `handlers/admin.py::admin_reply_to_question`: это retry, не чужой
         ответ)
+    begin_question_delivery(...) -> не вышло -> {ok: false, reason: "sending", text, item}
+        (10.10: тот же менеджер нажал «Отправить» второй раз, пока первая отправка ещё идёт —
+        без этой отметки делегат получал две копии)
     -> quiet_hours.send_or_queue_text_due(...) -> отправка сейчас ИЛИ строка в очередь тихих
        часов -> ТОЛЬКО при успехе set_question_answer(...)
     -> {ok: true, status: "answered", queued_until: "09:00" | null}
@@ -36,11 +39,13 @@ from pydantic import BaseModel
 
 from cities import cities_module_on, city_label, normalize_city
 from database.db import (
+    begin_question_delivery,
     claim_question,
     count_questions_by_status,
     get_question,
     get_user,
     list_questions_page,
+    release_question_delivery,
     set_question_answer,
 )
 from services import applications, quiet_hours
@@ -65,6 +70,7 @@ DELIVERY_FAILED_TEXT = (
     "Не удалось доставить ответ — делегат мог заблокировать бота или произошла временная "
     "ошибка. Попробуйте ещё раз позже."
 )
+SENDING_TEXT = "Ответ уже отправляется — подождите пару секунд и обновите список, повторять не нужно."
 
 
 def _parse_int(raw, default: int, lo: int, hi: int) -> int:
@@ -228,6 +234,16 @@ async def questions_answer(
                 **({"item": _status_patch(row2)} if row2 else {}),
             }
 
+    if not await begin_question_delivery(qid, p.telegram_id):
+        row3 = await get_question(qid)
+        if row3 and row3.get("delivered_at"):
+            return {"ok": False, "reason": "already", "by": row3.get("answered_by_name"),
+                    "item": _status_patch(row3)}
+        return {
+            "ok": False, "reason": "sending", "text": SENDING_TEXT,
+            **({"item": _status_patch(row3)} if row3 else {}),
+        }
+
     # 16.09 («все уведомления делегатам подходят под правило тихого часа»): тот же приём, что
     # у `miniapp/routers/review.py::_notify_delegate` — попал в окно тишины делегата, веб
     # кладёт строку в ТУ ЖЕ очередь `delayed_notifications`, отправит её бот своей джобой
@@ -247,6 +263,7 @@ async def questions_answer(
         )
     except TelegramApiError as exc:
         logger.error("questions: не удалось доставить ответ %s (%s)", qid, exc.reason)
+        await release_question_delivery(qid)
         # Quick 260904-kk6 (Q2): захват уже записан claim_question() выше — перечитываем
         # факт из БД (не собираем патч руками), иначе status_patch мог бы разойтись с тем,
         # что реально в строке.
