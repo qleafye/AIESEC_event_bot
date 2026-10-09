@@ -150,6 +150,7 @@ _REG_LABELS_EN = {
     "🏭 Сфера работы": "🏭 Field of work",
     "💡 Навыки": "💡 Skills",
     "💬 Ожидания (общие)": "💬 Expectations (general)",
+    "💬 Ожидания": "💬 Expectations",
     "🏕 Неформальный день": "🏕 Informal day",
     "📍 Формат": "📍 Format",
     "💬 Доп. комментарии": "💬 Additional comments",

@@ -22,7 +22,7 @@ import pytest
 import reg_engine
 from config import config
 from database.db import init_db
-from reg_labels import REG_LABELS
+from reg_labels import DELEGATE_LABELS, REG_LABELS
 from tests._dbtpl import fast_init_db
 
 _DRIFTED = [
@@ -47,7 +47,9 @@ def test_every_reg_flow_step_label_matches_bot_dictionary(tmp_path):
     _ready(tmp_path)
     for step_key, setting_key, _t in reg_engine.REG_FLOW:
         spec = asyncio.run(reg_engine.step_spec(step_key))
-        assert spec["label"] == REG_LABELS[setting_key], step_key
+        # Приёмка 09.10: делегату в приложении — подпись без служебных уточнений
+        # (`reg_labels.DELEGATE_LABELS`), остальным шагам — словарь бота.
+        assert spec["label"] == DELEGATE_LABELS.get(setting_key, REG_LABELS[setting_key]), step_key
         assert spec["label"] != step_key, step_key
 
 
