@@ -73,4 +73,5 @@ jobs:
       - name: Run tests
         # -n auto: 9 тыс. тестов в один поток дольше 45 мин — прогон убивался по таймауту
         # и висел «cancelled» с 22.09. На 4 ядрах раннера ~15–20 мин.
-        run: python -m pytest tests -q -n auto
+        # --durations=30: список самых медленных тестов в логе — по нему решать, что ускорять.
+        run: python -m pytest tests -q -n auto --durations=30
