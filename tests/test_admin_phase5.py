@@ -236,6 +236,53 @@ def test_preset_apply_skillup_default_text_says_tiers_are_manual(tmp_path):
     assert html_module.escape(default) in cb.message.text
 
 
+def test_event_type_skillup_typed_goes_to_preset_confirm_and_writes_nothing(tmp_path):
+    """Владелец 09.10: «skillup» в «🎭 Тип события» (текстом; кнопка варианта идёт тем же
+    путём) не применяет пресет сразу, а ведёт на то же подтверждение, что кнопка «🎓 Форум
+    СкиллАп»; до «✅ Применить» ничего не пишется, «Применить» пишет и пресет, и сам тип."""
+    from tests.test_roles_phase8 import FakeMessage as MsgFake
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("skillup_preset_confirm_text", "Ступени <настройте> сами"))
+    before = asyncio.run(db.get_setting("reg_q_stack"))
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_start(FakeCallback("settings_edit:event_type"), state))
+    msg = MsgFake("SkillUp", user_id=ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
+    text, _mode, kb = msg.answers[-1]
+    assert "Ступени &lt;настройте&gt; сами" in text and REG_PRESETS["skillup"]["label"] in text
+    assert _flat_callback_data(kb) == ["preset_confirm:skillup:et", "settings_edit:event_type"]
+    assert asyncio.run(state.get_state()) is None
+    assert asyncio.run(db.get_setting("event_type")) is None
+    assert asyncio.run(db.get_setting("reg_q_stack")) == before
+    assert required_capability(callback_data="preset_confirm:skillup:et") == "settings"
+
+    cb = FakeCallback("preset_confirm:skillup:et")
+    cb.message = MsgFake()
+    asyncio.run(admin_reg_config.preset_confirm(cb))
+    assert asyncio.run(db.get_setting("event_type")) == "skillup"
+    assert asyncio.run(db.get_setting("reg_q_stack")) == "on"
+    assert "Форум СкиллАп" in cb.answers[0][0]
+
+
+def test_event_type_forum_typed_still_saves_immediately(tmp_path):
+    from tests.test_roles_phase8 import FakeMessage as MsgFake
+    _admin_ready(tmp_path)
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_start(FakeCallback("settings_edit:event_type"), state))
+    asyncio.run(admin_settings.settings_edit_value(MsgFake("forum", user_id=ADMIN_ID), state))
+    assert asyncio.run(db.get_setting("event_type")) == "forum"
+    assert asyncio.run(db.get_setting("payment_enabled")) == "off"
+
+
+def test_preset_button_skillup_confirm_does_not_touch_event_type(tmp_path):
+    from tests.test_roles_phase8 import FakeMessage as MsgFake
+    _admin_ready(tmp_path)
+    cb = FakeCallback("preset_confirm:skillup")
+    cb.message = MsgFake()
+    asyncio.run(admin_reg_config.preset_confirm(cb))
+    assert asyncio.run(db.get_setting("event_type")) is None
+
+
 def test_preset_confirm_party_routes_to_apply_party_preset(tmp_path, monkeypatch):
     _admin_ready(tmp_path)
     calls = {"party": 0, "event": 0}
