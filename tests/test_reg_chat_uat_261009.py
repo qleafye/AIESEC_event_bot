@@ -109,7 +109,8 @@ def test_restart_confirm_counts_answered_questions_not_draft_fields(tmp_path):
     assert "age" in enabled and "resume" in enabled
     confirm = [t for t in _texts(msg) if t and "(" in t]
     assert confirm, _texts(msg)
-    assert "(2)" in confirm[0], confirm[0]
+    # ФИО + возраст + резюме: «Заново» стирает и ФИО, поэтому оно в счёте (ревью 09.10)
+    assert "(3)" in confirm[0], confirm[0]
 
 
 # ── Выбор кнопкой подтверждается в переписке ──────────────────────────────────────────────
