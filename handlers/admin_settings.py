@@ -1881,6 +1881,9 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
     entry = SETTINGS_SCHEMA.get(_base_setting_key(key), {})
     is_list, label = entry.get("type") == "list", entry.get("label", key)
+    # enum — кнопками (handlers/admin_settings_enum.py), на экране города — текстом, как раньше.
+    is_enum = entry.get("type") == "enum" and bool(entry.get("options")) and not per_city_ctx
+    from handlers.admin_settings_enum import enum_rows  # ленивый шов
 
     if per_city_ctx and is_per_city(key):
         city_label_txt = await city_label(header_code)
@@ -1930,10 +1933,13 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             "«✏️ Заменить список целиком».</i>"
         )
     elif current:
-        text = f"Сейчас задано:\n<b>{html_module.escape(current)}</b>\n\n{text}"
+        shown = option_label(key, current) if is_enum else current
+        text = f"Сейчас задано:\n<b>{html_module.escape(shown)}</b>\n\n{text}"
     elif dflt := _shown_default(key):
         text = f"Сейчас: <i>по умолчанию — {html_module.escape(dflt)}</i>\n\n{text}"
-    if not is_list:
+    if is_enum:
+        text += "\n\n<i>Выберите вариант кнопкой ниже.</i>"
+    elif not is_list:
         text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
     if per_city_ctx:
@@ -1964,6 +1970,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         text += f"\n\n{html_module.escape(hint)}"
 
     rows = await admin_settings_lists.list_edit_rows(key) if is_list else []
+    if is_enum:
+        rows.extend(enum_rows(key, current))
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 

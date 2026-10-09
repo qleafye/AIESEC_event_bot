@@ -1171,6 +1171,8 @@ from handlers import admin_delegations  # noqa: E402,F401
 from handlers import admin_forum_tz  # noqa: E402,F401
 # «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/admin_coins_transfer.py) — golden append в хвост.
 from handlers import admin_coins_transfer  # noqa: E402,F401
+# Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
+from handlers import admin_settings_enum  # noqa: E402,F401
 # Треки, компетенции и запись у сессии (handlers/admin_enroll.py) — golden append в хвост.
 from handlers import admin_enroll  # noqa: E402,F401
 # Список записей, выгрузка и настройки записи (handlers/admin_enroll_list.py) — golden append в хвост.

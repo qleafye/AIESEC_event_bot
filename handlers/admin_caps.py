@@ -785,6 +785,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "settings_back": "settings",
     "settings_cancel": "settings",
     "settings_edit:*": "settings",
+    "settings_enum_pick:*": "settings",
     # Phase 09.3 (06, CITY-09): header-scoped per-key editor — «✏️ Изменить для {город}»/
     # «↩️ Как везде» replace 09.2-05's four-entry per-city picker family (deleted from this
     # dict); same right as every other settings_* screen, never a separate capability.

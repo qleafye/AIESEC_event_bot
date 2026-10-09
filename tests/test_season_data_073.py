@@ -108,7 +108,8 @@ def test_registry_has_season_keys():
 
     assert SETTINGS_SCHEMA["start_text_returning"]["group"] == "event"
     assert SETTINGS_SCHEMA["start_text_returning"]["type"] == "text"
-    assert SETTINGS_SCHEMA["start_text_returning"]["default"] is None
+    # 09.10: запасной текст переехал из кода в дефолт реестра — менеджер видит его на экране.
+    assert "{season}" in SETTINGS_SCHEMA["start_text_returning"]["default"]
     assert (
         "per_city" not in SETTINGS_SCHEMA["start_text_returning"]
         or SETTINGS_SCHEMA["start_text_returning"].get("per_city") is not True
