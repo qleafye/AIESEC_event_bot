@@ -90,11 +90,13 @@ def test_event_placeholder_defaults_and_hints():
         assert expected_placeholders(key)["event"] == "название мероприятия", key
 
 
-def test_default_source_options_neutral():
+def test_default_source_option_keeps_stored_answer_label():
+    """«Соцсети Юлид» — это и ответ, сохранённый в users.source у старых анкет: смена подписи
+    разбила бы статистику источников на две корзины, поэтому вариант оставлен как был."""
     from reg_options import DEFAULT_SOURCE_OPTIONS
 
-    assert "Соцсети Юлид" not in DEFAULT_SOURCE_OPTIONS
-    assert "Соцсети мероприятия" in DEFAULT_SOURCE_OPTIONS
+    assert "Соцсети Юлид" in DEFAULT_SOURCE_OPTIONS
+    assert "Соцсети мероприятия" not in DEFAULT_SOURCE_OPTIONS
 
 
 # ── подстановка {event} ───────────────────────────────────────────────────────────────────
@@ -113,6 +115,12 @@ def test_fill_event_keeps_sentence_whole():
     assert fill_event("Добро пожаловать на {event}!", "РилТолк") == "Добро пожаловать на РилТолк!"
     assert fill_event("Без токена", "Юлид") == "Без токена"
     assert fill_event(None, "Юлид") is None
+
+
+def test_fill_event_escapes_for_html_messages():
+    assert fill_event("на {event}!", "A & <B>", escape=True) == "на A &amp; &lt;B&gt;!"
+    assert fill_event("на {event}!", "A & B") == "на A & B!"
+    assert fill_event("на {event}!", None, "en", escape=True) == "на the event!"
 
 
 def test_event_name_reads_setting(tmp_path):
@@ -190,3 +198,54 @@ def test_preview_shows_event_name_or_neutral_word(tmp_path):
     samples = _run(settings_ops.preview_samples())
     assert settings_ops.preview_text("forum_welcome_text", text, samples=samples).endswith(
         "Добро пожаловать на РилТолк!")
+
+
+# ── каждый отправитель с {event}: в отправленном тексте нет буквального «{event}» ──────────
+
+def test_delegation_welcome_sent_without_raw_event_token(tmp_path):
+    from services import delegations
+
+    _ready(tmp_path)
+    _run(db.set_setting("event_name", "Юлид & Ко"))
+    _run(db.add_user({
+        "telegram_id": UID, "full_name": "Тест Делегатов", "username": "t",
+        "event_city": None, "registration_date": "2026-09-01 00:00:00", "status": "approved",
+    }))
+    bot = _FakeBot()
+    _run(delegations._send_welcome(bot, UID, "МГУ", existing=False))
+    text = bot.sent[0][1]
+    assert "{event}" not in text and "{university}" not in text
+    assert "делегации МГУ на Юлид &amp; Ко" in text
+
+
+def test_regional_offer_sent_without_raw_event_token(tmp_path, monkeypatch):
+    import services.regional_noshow_move as rgnm
+    from tests import test_regional_noshow_move_260925 as rt
+
+    rt._ready(tmp_path)
+    _run(rt._add_delegate(1, city="spb"))
+    bot = rt._with_bot(monkeypatch)
+    _run(rgnm.send_offers("spb"))
+    text = bot.sent[0][1]
+    assert "{event}" not in text
+    assert "Приезжай на мероприятие:" in text
+
+
+def test_stats_card_caption_sent_without_raw_event_token(tmp_path, monkeypatch):
+    import services.forum_stats_card as fsc
+    from tests import test_forum_stats_card_260926 as st
+
+    st._ready(tmp_path)
+    st._seed_user(st.UID)
+    bot = st._with_bot(monkeypatch)
+    st._fake_render(monkeypatch, [])
+
+    async def go():
+        await db.set_setting("forum_stats_card_enabled", "on")
+        await db.set_setting("event_name", "СкиллАп 5")
+        return await fsc.send_broadcast(None, only_arrived=False)
+
+    assert _run(go())["sent"] == 1
+    caption = bot.photos[0][1]
+    assert "{event}" not in caption
+    assert "СкиллАп 5 в цифрах" in caption

@@ -344,7 +344,7 @@ async def send_offers(city: str | None) -> dict:
     target_label = await _cities.city_label(target_city)
     raw_text = await _offer_text_for(city)
     dates_label = await _dates_label_for(target_city)
-    from services.text_fill import event_label, event_name
+    from services.text_fill import event_name, fill_event
 
     event_title = await event_name()
     now = msk_now()
@@ -378,8 +378,8 @@ async def send_offers(city: str | None) -> dict:
             text.replace("{city}", html.escape(source_city_label))
             .replace("{target_city}", html.escape(target_label))
             .replace("{dates}", dates_label)
-            .replace("{event}", html.escape(event_label(event_title, lang)))
         )
+        text = fill_event(text, event_title, lang, escape=True)
         tr_kb = _localized_offer_keyboard(lang, tr_map, target_label)
         try:
             delivered_now = await quiet_hours.send_or_queue_text(
