@@ -61,7 +61,7 @@ function pinnedRow(h, board) {
       label.append(h("div", { class: "faint" },
         "ещё ",
         h("span", { class: "gap-amount", text: String(gap) }),
-        ` ${unitFor(gap, "баллов")} до ${above.rank}-го места`,
+        ` ${unitFor(gap, board.unit || "")} до ${above.rank}-го места`,
       ));
     }
   }
