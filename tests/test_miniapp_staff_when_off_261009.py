@@ -192,3 +192,20 @@ def test_browser_app_button_present_when_off(bot_env):
     kb = asyncio.run(admin_mod._stats_keyboard_for(ADMIN))
     urls = [b.url for row in kb.inline_keyboard for b in row if b.url]
     assert "https://yl.example.test/app" in urls
+
+
+# ── Ревью: выключенная оболочка без личности ничего не рассказывает о событии ─────────────
+
+def test_off_shell_hides_event_details_from_anonymous(tmp_path):
+    db_path = _use_tmp_db(tmp_path, "miniapp_staff_off_shell.db")
+    _standard_seed()  # event_name = «форума YouLead», разделы включены
+    _set("miniapp_logo", "AgACAgIAAxkBAAIBlogo")
+    client = _client(_cfg(db_path))
+    on = client.get("/app").text
+    assert "форума YouLead" in on and "AgACAgIAAxkBAAIBlogo" in on
+    _set("miniapp_enabled", "off")
+    off = client.get("/app")
+    assert off.status_code == 200
+    assert "форума YouLead" not in off.text
+    assert "AgACAgIAAxkBAAIBlogo" not in off.text
+    assert 'data-sections=""' in off.text
