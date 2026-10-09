@@ -42,10 +42,11 @@ async def run_setting_hooks(key: str) -> None:
     """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
-    from services import bot_profile, daily_digest, reject_rules_notify, scheduler
+    from services import bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
 
     for hook in (reject_rules_notify.on_setting_written, bot_profile.on_setting_written,
-                 daily_digest.on_setting_written, scheduler.on_setting_written):
+                 daily_digest.on_setting_written, scheduler.on_setting_written,
+                 menu_labels.on_setting_written):
         try:
             await hook(key)
         except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись

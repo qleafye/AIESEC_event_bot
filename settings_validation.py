@@ -141,17 +141,14 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
 
     is_menu_label = base.endswith("_menu_label") or (base.startswith("menu_") and base.endswith("_label"))
     if is_menu_label and value.strip() != "-":
-        # подпись кнопки меню не должна совпадать с подписью другой кнопки: бот узнаёт кнопку
-        # по подписи, и нажатие ушло бы не туда (keyboards/menu_dynamic.py::MENU_LABEL_KEYS)
-        from keyboards.menu_dynamic import MENU_LABEL_KEYS, STATIC_MENU_TEXTS
+        # подпись кнопки меню не должна совпадать со стандартной подписью другой кнопки: бот
+        # узнаёт кнопку по подписи. Настроенные подписи других кнопок (общие и всех городов)
+        # сверяет async-проверка settings_ops.cross_setting_error -> services/menu_labels.py.
+        from services.menu_labels import MENU_LABEL_KEYS, STATIC_MENU_TEXTS, conflict_text
         own = {mk for mk, lk in MENU_LABEL_KEYS.items() if lk == base}
-        taken = set().union(*(texts for mk, texts in STATIC_MENU_TEXTS.items() if mk not in own))
-        if value.strip() in taken:
-            return None, (
-                "Такая подпись уже есть у другой кнопки меню — нажатия перепутаются. "
-                "Придумайте другую, например <code>📅 Мои сессии</code>.\n\n"
-                "Пришлите ещё раз или «-», чтобы сбросить к значению по умолчанию."
-            )
+        for mk, texts in STATIC_MENU_TEXTS.items():
+            if mk not in own and value.strip() in texts:
+                return None, conflict_text(mk)
 
     forum_error = _forum_text_error(base, value)
     if forum_error:
