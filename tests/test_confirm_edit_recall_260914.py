@@ -175,7 +175,7 @@ def test_confirm_edit_snapshot_drops_empty_and_service_keys(tmp_path):
         state = _new_state(UID)
         await state.update_data(
             participant_type="full", full_name="Иванов Иван",
-            university="-",  # прочерк -- считается пустым, в снимок не идёт
+            university="-",  # прочерк (пропуск) -- приёмка 09.10: идёт в снимок, на правке «не указан / Оставить»
             age=None,  # None -- тоже не идёт
             _reg_step=3, _reg_total=9,  # служебный `_`-ключ -- в снимок не копируется
         )
@@ -185,7 +185,7 @@ def test_confirm_edit_snapshot_drops_empty_and_service_keys(tmp_path):
 
         data = await state.get_data()
         prior = data.get("_prior_answers") or {}
-        assert "university" not in prior
+        assert prior.get("university") == "-"
         assert "age" not in prior
         assert "_reg_step" not in prior
         assert "season" not in prior  # season никогда не копируется в снимок

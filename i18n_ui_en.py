@@ -281,6 +281,10 @@ UI_EN: dict[str, str] = {
     # короткая, детерминированная, не меняется годами — тот же довод, что у остального яруса A.
     # `handlers/registration.py::_start_registration_flow` (сразу после согласий/до ФИО).
     "Отлично, начинаем регистрацию.": "Great, let's start your application.",
+    # Приёмка 09.10: «Изменить» на сводке (handlers/reg_flow.py::start_confirm_edit) и пропуск
+    # на экране «Прошлый ответ» (handlers/reg_i18n.py::display_value_for_step).
+    "Давай поправим ответы — пройдём по ним по очереди.": "Let's fix your answers — we'll go through them one by one.",
+    "не указан": "not specified",
     "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию.":
         "Great, you're here through a friend's invite. Let's start your application.",
 
