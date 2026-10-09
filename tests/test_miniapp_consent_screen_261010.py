@@ -48,3 +48,34 @@ def test_screen_draws_consent_text_above_checkbox():
     assert "item.text" in body
     card = body[body.index("const card = "):]
     assert card.index("item.text") < card.index('h("label", { class: "check" }')
+
+
+# ── Ревью 10.10: текст согласия у английского делегата ────────────────────────────────────
+
+LEGAL_EN = "I agree to the processing of my personal data by AIESEC in Russia."
+
+
+def _en(client):
+    _set("consent_enabled", "on")
+    _set("delegate_lang_enabled", "on")
+    _set("reg_prompt_consent_personal_data", LEGAL)
+    resp = client.post("/app/api/reg/lang", headers=_hdr(DELEGATE_ID), json={"lang": "en"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_en_delegate_gets_manual_translation(client):
+    from database import db as bot_db
+    from services import i18n
+    from tests.test_miniapp_form import _run
+    _en(client)
+    _run(bot_db.upsert_translation("en", i18n.src_hash(LEGAL), LEGAL, LEGAL_EN, manual=1))
+    assert _consent_item(client)["text"] == LEGAL_EN
+
+
+def test_en_delegate_never_gets_machine_translation(client):
+    from database import db as bot_db
+    from services import i18n
+    from tests.test_miniapp_form import _run
+    _en(client)
+    _run(bot_db.upsert_translation("en", i18n.src_hash(LEGAL), LEGAL, "machine text", manual=0))
+    assert _consent_item(client)["text"] == LEGAL
