@@ -69,3 +69,22 @@ def test_summary_shows_ambassador_no_answer():
 def test_summary_hides_ambassador_when_question_not_asked():
     fields = dict(summary_fields({"full_name": "Иванов Иван"}))
     assert "Амбассадор" not in fields
+
+
+def test_city_pick_confirmation_escapes_manager_label(tmp_path):
+    """Ревью: подпись города от менеджера с «&»/«<» уходила сырой при parse_mode=HTML —
+    Telegram отклонил бы сообщение, и city_pick упал бы до перехода к следующему шагу."""
+    _use_tmp_db(tmp_path)
+    uid = 811002
+
+    async def go():
+        fast_init_db()
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting("city_label__spb", "Питер & <Ко>")
+        state = _new_state(uid)
+        cb = _FakeCallback("city_pick:spb", uid, "u")
+        await reg_flow.city_pick(cb, state)
+        return cb.message.texts
+
+    confirm = [t for t in asyncio.run(go()) if t and "Город форума" in t]
+    assert confirm == ["✅ Город форума: Питер &amp; &lt;Ко&gt;"], confirm
