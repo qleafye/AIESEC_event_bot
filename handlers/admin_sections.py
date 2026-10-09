@@ -45,6 +45,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("event", "🎪 Событие", [
         ("group", "event"),
         ("screen", "admin_menu_buttons", "🔘 Кнопки меню"),
+        # 09.10: аватар бота без BotFather (handlers/admin_bot_avatar.py), капа `settings`.
+        ("screen", "admin_bot_avatar", "🖼 Аватар бота"),
         ("toggle", "settings_toggle_bonus"),
         # Форум-ночь п.4 (расписание форума в боте): контент события, та же капа `settings`,
         # что остальные строки этого раздела.

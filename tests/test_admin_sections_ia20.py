@@ -932,13 +932,15 @@ def test_legacy_admin_settings_lands_on_root(tmp_path):
 # (7) Доки и встроенная справка не разъезжаются с раскладкой (20-05, ADMIN-IA-04)
 
 # Пункты «Первой настройки события» из docs/ADMIN_CHEATSHEET.md, которые делаются В БОТЕ. Первый
-# пункт списка (аватар и описание бота) сюда не входит: он делается в @BotFather, вне нашего
-# бота, и глубины в кнопках /admin у него нет по определению. Последний пункт («🗓 Дата
+# пункт (имя, аватар и описание бота) с 09.10 тоже в боте, раньше делался в @BotFather. Последний пункт («🗓 Дата
 # отсчёта до форума», quick 260903) тоже не входит: ключ `miniapp_hub_countdown_date` живёт в
 # группе `miniapp`, которая не объявлена ни в одной секции бота (`_taps_from_admin` дал бы 99
 # и был бы прав) — правится только в приложении, не в `/admin`.
 # Пара: человеческое имя пункта -> идентификатор кнопки, до которой менеджеру нужно дойти.
 FIRST_SETUP: list[tuple[str, str]] = [
+    ("Аватар бота", "admin_bot_avatar"),
+    ("Имя бота", "settings_edit:bot_name"),
+    ("Описание бота", "settings_edit:bot_description"),
     ("Приветствие", "settings_edit:start_text"),
     ("Фото приветствия", "settings_photo:start"),
     ("Инфо о форуме (дата, время, место, адрес)", "settings_edit:event_date"),
@@ -976,8 +978,9 @@ def test_first_setup_within_three_taps():
     глубже трёх нажатий от /admin. Проверяется по SECTIONS, поэтому это утверждение, за
     которое отвечает раскладка, а не обещание в тексте: блок «Первая настройка события» в
     docs/ADMIN_CHEATSHEET.md только пересказывает менеджеру то, что посчитано здесь."""
-    assert len(FIRST_SETUP) == 8, (
-        "восемь пунктов в боте + BotFather + приложение (дата отсчёта) = десять в шпаргалке"
+    assert len(FIRST_SETUP) == 11, (
+        "девять пунктов шпаргалки в боте (первый — три кнопки: аватар, имя, описание) + "
+        "приложение (дата отсчёта) = десять в шпаргалке"
     )
     for name, target in FIRST_SETUP:
         taps, token = _taps_from_admin(target)
@@ -1000,8 +1003,8 @@ def test_settings_guide_where_starts_with_a_real_section():
 def test_cheatsheet_covers_every_section():
     """Сторож от тихого расхождения доки ↔ код: подпись раздела правится в SECTIONS, шпаргалка
     обязана ехать следом. Плюс состав блока «Первая настройка события» — десять пунктов:
-    первый про BotFather (шаг вне бота), последний про дату отсчёта (шаг в приложении, не в
-    боте, quick 260903)."""
+    первый про имя/аватар/описание бота (с 09.10 — в боте, не в BotFather), последний про дату
+    отсчёта (шаг в приложении, не в боте, quick 260903)."""
     text = (Path(__file__).resolve().parent.parent / "docs" / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
     for _token, label, _rows in sec.SECTIONS:
         assert label in text, label
@@ -1010,7 +1013,7 @@ def test_cheatsheet_covers_every_section():
     block = text.split("## Первая настройка события", 1)[1].split("\n## ", 1)[0]
     numbered = [line for line in block.splitlines() if re.match(r"^\d+\. ", line)]
     assert len(numbered) == 10, numbered
-    assert "BotFather" in numbered[0], numbered[0]
+    assert "🖼 Аватар бота" in numbered[0] and "🤖 Имя бота" in numbered[0], numbered[0]
 
 
 def test_group_button_inside_section_never_repeats_section_label(tmp_path):
