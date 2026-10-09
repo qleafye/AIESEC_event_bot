@@ -134,6 +134,10 @@ class EditSetting(StatesGroup):
     # скобки {…}, которые бот подставляет сам (callback'и phchk_*).
     waiting_for_placeholder_confirm = State()
 
+class SettingsSearch(StatesGroup):
+    # «🔎 Найти настройку» (handlers/admin_settings_search.py): менеджер пишет слово.
+    waiting_query = State()
+
 class StaffAdd(StatesGroup):
     # Phase 8 (ROLE-02, D-18): single-step wizard — one message resolves a person by
     # forwarded message / @username / numeric id, then role assignment is a callback.

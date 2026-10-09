@@ -1213,3 +1213,4 @@ from handlers import admin_bot_avatar  # noqa: E402,F401
 # (handlers/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
 # хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
 from handlers import admin_resend_decision  # noqa: E402,F401
+from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
