@@ -177,7 +177,7 @@ def test_unbound_recipient_and_admin_always_see_global_count_with_breakdown(tmp_
 
     expected = (
         "📋 Заявок в ожидании: 4 (Москва, 30-31 октября — 2, "
-        "Санкт-Петербург, 3 октября — 1, Тюмень, 3 октября — 1). Открой /admin → Заявки."
+        "Санкт-Петербург, 3 октября — 1, Тюмень, 3 октября — 1)."
     )
     assert _texts(bot)[UNBOUND_MANAGER_ID] == expected
     assert _texts(bot)[ADMIN_ID] == expected
@@ -193,7 +193,7 @@ def test_breakdown_skips_zero_cities(tmp_path, monkeypatch):
     _run_one_iteration(bot, monkeypatch)
 
     text = _texts(bot)[ADMIN_ID]
-    assert text == "📋 Заявок в ожидании: 1 (Москва, 30-31 октября — 1). Открой /admin → Заявки."
+    assert text == "📋 Заявок в ожидании: 1 (Москва, 30-31 октября — 1)."
     assert "Санкт-Петербург" not in text
     assert "Тюмень" not in text
 
@@ -227,7 +227,7 @@ def test_no_breakdown_when_cities_module_off(tmp_path, monkeypatch):
     bot = _FakeBot()
     _run_one_iteration(bot, monkeypatch)
 
-    assert _texts(bot)[ADMIN_ID] == "📋 Заявок в ожидании: 2. Открой /admin → Заявки."
+    assert _texts(bot)[ADMIN_ID] == "📋 Заявок в ожидании: 2."
 
 
 # ── совпадение с очередью ────────────────────────────────────────────────────────────────────
@@ -318,3 +318,13 @@ def test_blocked_staff_recipient_does_not_stop_others(tmp_path, monkeypatch):
     assert ADMIN_ID in texts
     assert MSK_MANAGER_ID not in texts
     assert MSK_MANAGER_ID in reminders_mod._blocked_admins
+
+
+def test_summary_has_open_applications_button():
+    """09.10: вместо «Открой /admin → Заявки» (новичок отправлял строку целиком) — кнопка."""
+    from handlers.admin_caps import required_capability
+    from services import reminders
+
+    button = reminders._OPEN_APPS_KB.inline_keyboard[0][0]
+    assert button.text == "📋 Открыть заявки"
+    assert required_capability(callback_data=button.callback_data) == "moderate_reg"
