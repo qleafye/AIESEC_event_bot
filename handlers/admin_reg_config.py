@@ -52,7 +52,7 @@ from cities import (
 )
 from handlers.admin import router
 from handlers.admin_consent import remind_consent_purposes_after_preset
-from handlers.admin_settings import _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.admin_settings import _per_city_visible_codes, _settings_edit_screen  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 
@@ -278,14 +278,31 @@ async def admin_event_preset(callback: types.CallbackQuery):
     await callback.answer()
 
 
-async def skillup_confirm_screen(from_event_type: bool = False) -> tuple[str, InlineKeyboardMarkup]:
+async def skillup_confirm_screen(
+    from_event_type: bool = False, admin_id: int | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
     """Экран подтверждения пресета «🎓 Форум СкиллАп» — один на два входа: кнопка пресета в
     «🎛 Тип события (пресет)» и выбор `skillup` в «🎭 Тип события». Владелец 09.10: тот же
     текст, что приложение показывает при смене типа на СкиллАп (settings_ops.dangerous_confirm_key)
     — один ключ реестра, не дубль. Он говорит, что пресет НЕ настраивает (тексты предложения
     ссылки, ступени), и где это сделать самому. Текст редактируемый и не из HTML_SETTINGS —
     экранируем. Со входа «🎭 Тип события» «Применить» ещё и записывает сам тип (`:et`), а
-    «Отмена» возвращает к этой настройке."""
+    «Отмена» возвращает к этой настройке. При одном городе в шапке пресет (он общий на все
+    города) не применяется — экран сразу говорит, что сменится только тип."""
+    label = html_module.escape(REG_PRESETS["skillup"]["label"])
+    if from_event_type and await _single_city_header(admin_id):
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Сменить только тип", callback_data="preset_confirm:skillup:et")],
+            [InlineKeyboardButton(text="← Отмена", callback_data="settings_edit:event_type")],
+        ])
+        return (
+            f"Тип события станет «{label}». Он общий для всех городов.\n\n"
+            f"Пресет «{label}» (вопросы анкеты, скоринг) меняет анкету сразу всех городов, "
+            "поэтому из шапки одного города он <b>не применится</b> — сменится только тип. "
+            "Чтобы применить и пресет, переключите шапку на «🌍 Все города» и выберите тип ещё "
+            "раз (или «📝 Анкета» → «🎛 Тип события (пресет)»).",
+            kb,
+        )
     confirm = await get_setting_typed("skillup_preset_confirm_text")
     apply_cb, back_cb = (
         ("preset_confirm:skillup:et", "settings_edit:event_type") if from_event_type
@@ -295,14 +312,21 @@ async def skillup_confirm_screen(from_event_type: bool = False) -> tuple[str, In
         [InlineKeyboardButton(text="✅ Применить", callback_data=apply_cb)],
         [InlineKeyboardButton(text="← Отмена", callback_data=back_cb)],
     ])
-    return f"<b>{REG_PRESETS['skillup']['label']}</b>\n\n{html_module.escape(confirm or '')}", kb
+    lead = f"Тип события станет «{label}». Вместе с ним применится пресет:\n\n" if from_event_type else ""
+    return f"{lead}<b>{label}</b>\n\n{html_module.escape(confirm or '')}", kb
+
+
+async def _single_city_header(admin_id: int | None) -> str | None:
+    """Код города, если в шапке админа выбран один город (не «🌍 Все города»), иначе None."""
+    code = await admin_selected_city(admin_id) if admin_id is not None else None
+    return code if code and code != ALL_CITIES else None
 
 
 async def skillup_event_type_confirm(message: types.Message, state) -> None:
     """«🎭 Тип события» = skillup (текстом или кнопкой) — не применять сразу, а показать то же
     подтверждение пресета; до «✅ Применить» ничего не пишется."""
     await state.clear()
-    text, kb = await skillup_confirm_screen(from_event_type=True)
+    text, kb = await skillup_confirm_screen(from_event_type=True, admin_id=message.from_user.id)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
@@ -364,6 +388,18 @@ async def preset_confirm(callback: types.CallbackQuery):
     # question set without the manager ever seeing that. Early exit, no state changed.
     admin_id = callback.from_user.id
     header_code = await admin_selected_city(admin_id)
+    if origin == "et" and header_code and header_code != ALL_CITIES:
+        # Тип события — общий ключ, его пишем и из шапки города; пресет — нет (см. выше).
+        # Экран подтверждения (skillup_confirm_screen) это уже сказал, без тупика.
+        await set_setting_by_admin(admin_id, "event_type", key)
+        await callback.answer(
+            f"Тип события: {option_label('event_type', key)}. Пресет не применён — он меняет "
+            "анкету всех городов, применяется из шапки «🌍 Все города».",
+            show_alert=True,
+        )
+        text, kb = await _settings_edit_screen("event_type", header_code)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
     if header_code and header_code != ALL_CITIES:
         await callback.answer(
             "Пресет меняет набор вопросов для всех городов. Переключи шапку на «🌍 Все города», "

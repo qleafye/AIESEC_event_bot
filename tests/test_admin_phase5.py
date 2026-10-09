@@ -250,6 +250,7 @@ def test_event_type_skillup_typed_goes_to_preset_confirm_and_writes_nothing(tmp_
     asyncio.run(admin_settings.settings_edit_value(msg, state))
     text, _mode, kb = msg.answers[-1]
     assert "Ступени &lt;настройте&gt; сами" in text and REG_PRESETS["skillup"]["label"] in text
+    assert text.startswith("Тип события станет «🎓 Форум СкиллАп». Вместе с ним применится пресет:")
     assert _flat_callback_data(kb) == ["preset_confirm:skillup:et", "settings_edit:event_type"]
     assert asyncio.run(state.get_state()) is None
     assert asyncio.run(db.get_setting("event_type")) is None
@@ -274,7 +275,87 @@ def test_event_type_forum_typed_still_saves_immediately(tmp_path):
     assert asyncio.run(db.get_setting("payment_enabled")) == "off"
 
 
-def test_preset_button_skillup_confirm_does_not_touch_event_type(tmp_path):
+def test_event_type_skillup_cancel_returns_to_setting_and_changes_nothing(tmp_path):
+    """«← Отмена» на подтверждении ведёт обратно к «🎭 Тип события»; тип и анкета прежние."""
+    from tests.test_roles_phase8 import FakeMessage as MsgFake
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_type", "forum"))
+    before = asyncio.run(db.get_setting("reg_q_stack"))
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_start(FakeCallback("settings_edit:event_type"), state))
+    msg = MsgFake("skillup", user_id=ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
+    cancel_cb = _flat_callback_data(msg.answers[-1][2])[1]
+    cb = FakeCallback(cancel_cb)
+    asyncio.run(admin_settings.settings_edit_start(cb, state))
+    assert "Какое у вас событие?" in cb.message.text and "<b>Форум</b>" in cb.message.text
+    assert asyncio.run(db.get_setting("event_type")) == "forum"
+    assert asyncio.run(db.get_setting("reg_q_stack")) == before
+
+
+def test_event_type_skillup_enum_button_goes_to_confirm(tmp_path, monkeypatch):
+    """Кнопка варианта «Форум СкиллАп» (settings_enum_pick) идёт тем же путём, что ввод
+    текстом: экран подтверждения, без записи."""
+    from datetime import datetime
+    from aiogram.types import Chat, Message, User
+    from handlers import admin_settings_enum
+    _admin_ready(tmp_path)
+    shown = []
+
+    async def _fake_confirm(message, state):
+        shown.append(message.text)
+        await state.clear()
+
+    monkeypatch.setattr(admin_reg_config, "skillup_event_type_confirm", _fake_confirm)
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_start(FakeCallback("settings_edit:event_type"), state))
+    idx = admin_settings_enum.enum_options("event_type").index("skillup")
+    bot_msg = Message(message_id=5, date=datetime.now(), chat=Chat(id=ADMIN_ID, type="private"),
+                      from_user=User(id=1, is_bot=True, first_name="Бот"), text="экран")
+
+    class _CB:
+        data = f"settings_enum_pick:{idx}"
+        from_user = User(id=ADMIN_ID, is_bot=False, first_name="Админ")
+        message = bot_msg
+        bot = None
+
+        async def answer(self, *a, **k):
+            pass
+
+    asyncio.run(admin_settings_enum.settings_enum_pick(_CB(), state))
+    assert shown == ["skillup"]
+    assert asyncio.run(db.get_setting("event_type")) is None
+
+
+def test_event_type_skillup_single_city_header_changes_type_only(tmp_path):
+    """Шапка на одном городе: экран сразу говорит, что сменится только тип (пресет — из
+    «🌍 Все города»); кнопка пишет общий event_type и не трогает анкету — без тупика."""
+    import cities
+    from tests.test_roles_phase8 import FakeMessage as MsgFake
+    _admin_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
+    before = asyncio.run(db.get_setting("reg_q_stack"))
+    state = _new_state(ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_start(FakeCallback("settings_edit:event_type"), state))
+    msg = MsgFake("skillup", user_id=ADMIN_ID)
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
+    text, _mode, kb = msg.answers[-1]
+    assert "не применится" in text and "Все города" in text
+    assert "Применить" not in [b.text for row in kb.inline_keyboard for b in row][0]
+    assert _flat_callback_data(kb) == ["preset_confirm:skillup:et", "settings_edit:event_type"]
+    assert asyncio.run(db.get_setting("event_type")) is None
+
+    cb = FakeCallback("preset_confirm:skillup:et")
+    cb.message = MsgFake()
+    asyncio.run(admin_reg_config.preset_confirm(cb))
+    assert asyncio.run(db.get_setting("event_type")) == "skillup"
+    assert asyncio.run(db.get_setting("reg_q_stack")) == before
+    assert "Пресет не применён" in cb.answers[0][0]
+    assert "Какое у вас событие?" in cb.message.text  # вернулись к «🎭 Тип события»
+
+
+def test_preset_confirm_skillup_without_et_suffix_does_not_touch_event_type(tmp_path):
     from tests.test_roles_phase8 import FakeMessage as MsgFake
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:skillup")
