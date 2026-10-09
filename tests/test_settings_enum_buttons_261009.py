@@ -210,3 +210,47 @@ def test_city_own_text_key_keeps_text_input(tmp_path):
     cb = _cb("settings_edit_city:start_text")
     _run(admin_settings.settings_edit_city(cb, _state()))
     assert not any(b.callback_data.startswith("settings_enum_pick") for row in cb.message.markup.inline_keyboard for b in row)
+
+
+# ── «Сейчас: …» над кнопками enum — и когда значение не задано (A3) ───────────────────────
+
+def test_enum_screen_says_current_value_or_default_both_headers(tmp_path):
+    """Без своего значения — подпись дефолта реестра «(по умолчанию)»; дефолта нет —
+    «не выбрано»; заданное — «Сейчас: <подпись>». Одинаково для «🌍 Все города» и шапки
+    города (общий ключ)."""
+    from database import db
+    _city_ready(tmp_path, "a3.db")
+    for header in (None, "spb"):
+        text, _kb = _run(admin_settings._settings_edit_screen("reg_university_mode", header))
+        dflt = admin_settings_enum.enum_label("reg_university_mode", SETTINGS_SCHEMA_DEFAULT("reg_university_mode"))
+        assert f"Сейчас: <b>{dflt}</b> (по умолчанию)" in text, header
+        text, _kb = _run(admin_settings._settings_edit_screen("payment_enabled", header))
+        assert "Сейчас: <b>" in text and "(по умолчанию)" in text, header
+        text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
+        assert "Сейчас: <i>не выбрано</i>" in text, header
+    _run(db.set_setting("event_type", "conference"))
+    for header in (None, "spb"):
+        text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
+        assert "Сейчас: <b>Конференция</b>" in text and "(по умолчанию)" not in text
+
+
+def test_city_own_enum_screen_says_what_applies_when_inherited(tmp_path):
+    """«✏️ Изменить для …» без своего значения у города: «как везде — <общее/дефолт>»."""
+    from database import db
+    _city_ready(tmp_path, "a3c.db")
+    cb = _cb("settings_edit_city:reg_edit_policy")
+    _run(admin_settings.settings_edit_city(cb, _state()))
+    assert "Сейчас у города: как везде — <b>всегда можно</b> (по умолчанию)" in cb.message.text
+    _run(db.set_setting("reg_edit_policy", "never"))
+    cb = _cb("settings_edit_city:reg_edit_policy")
+    _run(admin_settings.settings_edit_city(cb, _state()))
+    assert "Сейчас у города: как везде — <b>нельзя</b>" in cb.message.text
+    _run(db.set_setting("reg_edit_policy__city__spb", "until_decision"))
+    cb = _cb("settings_edit_city:reg_edit_policy")
+    _run(admin_settings.settings_edit_city(cb, _state()))
+    assert "Сейчас у города: <b>только до решения</b>" in cb.message.text
+
+
+def SETTINGS_SCHEMA_DEFAULT(key):
+    from settings_schema import SETTINGS_SCHEMA
+    return SETTINGS_SCHEMA[key]["default"]

@@ -1887,7 +1887,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     is_list, label = entry.get("type") == "list", entry.get("label", key)
     # enum — кнопками (handlers/admin_settings_enum.py), свой у города — в settings_edit_city.
     is_enum = entry.get("type") == "enum" and bool(entry.get("options"))
-    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_rows  # ленивый шов
+    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_now_line, enum_rows  # ленивый шов
 
     if per_city_ctx and is_per_city(key):
         city_label_txt = await city_label(header_code)
@@ -1936,9 +1936,9 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             "\n\n<i>Добавьте или уберите один пункт кнопками ниже. Переписать всё сразу — "
             "«✏️ Заменить список целиком».</i>"
         )
-    elif current:
-        shown = enum_label(key, current) if is_enum else current
-        text = f"Сейчас задано:\n<b>{html_module.escape(shown)}</b>\n\n{text}"
+    elif is_enum or current:  # enum: «Сейчас: …» и без своего значения — подпись дефолта
+        now = enum_now_line(key, current) if is_enum else f"Сейчас задано:\n<b>{html_module.escape(current)}</b>"
+        text = f"{now}\n\n{text}"
     elif dflt := _shown_default(key):
         text = f"Сейчас: <i>по умолчанию — {html_module.escape(enum_label(key, dflt))}</i>\n\n{text}"
     if is_enum:
@@ -2050,11 +2050,8 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"
-    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_rows  # enum — кнопками, пишут в ключ города
-    if current:
-        text += f"Сейчас у города:\n<b>{html_module.escape(enum_label(key, current))}</b>\n\n"
-    else:
-        text += f"Сейчас у города: <i>{'даты нет' if _fdate.is_city_only_key(key) else 'как везде'}</i>\n\n"
+    from handlers.admin_settings_enum import ENUM_HINT, city_now_line, enum_rows  # enum — кнопками, пишут в ключ города
+    text += f"{await city_now_line(key, current)}\n\n"
     rows = enum_rows(key, current)
     text += html_module.escape(prompt) + (ENUM_HINT if rows else _fdate.clear_hint(key))
 
