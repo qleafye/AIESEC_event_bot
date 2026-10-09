@@ -79,12 +79,12 @@ SKILLUP_SETTINGS = {
     "reg_multi_max_goal": "2",
     "score_course_from": "3",
     "score_stack_from": "2",
-    "miniapp_form_ambassador_offer_body_text": (
-        "Позови своих. Дадим личную ссылку: трое по ней пройдут отбор, и у тебя "
-        "гарантированный разбор резюме с рекрутером. Считаем только тех, кто прошёл "
-        "отбор, так что зови тех, кому форум правда нужен."
-    ),
-    **reg_presets.SKILLUP_TIER_SETTINGS,
+}
+
+# Владелец 09.10: тексты-обещания и ступени пресет не пишет — менеджер настраивает их сам.
+SKILLUP_NOT_WRITTEN = {
+    "miniapp_form_ambassador_offer_body_text", "amb_qualified_program",
+    *reg_presets.SKILLUP_TIER_SETTINGS,
 }
 
 SCORING_SET_KEYS = {
@@ -203,6 +203,30 @@ def test_preset_writes_extra_settings(tmp_path):
             assert await get_setting(key) == value, key
 
     asyncio.run(_run())
+
+
+def test_preset_leaves_promises_and_tiers_to_manager(tmp_path):
+    _ready(tmp_path)
+    assert not SKILLUP_NOT_WRITTEN & set(reg_presets.REG_PRESETS["skillup"]["settings"])
+    assert not SKILLUP_NOT_WRITTEN & set(reg_presets.REG_PRESETS["skillup"]["on"])
+
+    async def _run():
+        from database.db import set_setting
+        await set_setting("amb_tier2_threshold", "5")
+        await reg_presets.apply_reg_preset("skillup")
+        assert await get_setting("amb_tier2_threshold") == "5"
+        assert await get_setting("amb_count_deadline") in (None, "")
+
+    asyncio.run(_run())
+
+
+def test_confirm_text_says_where_to_set_rewards():
+    from settings_schema import SETTINGS_SCHEMA
+    text = SETTINGS_SCHEMA["skillup_preset_confirm_text"]["default"]
+    for part in ("«🎁 Текст предложения реф-ссылки»", "«🎓 Ступени амбассадоров»",
+                 "«🪜 Лестница ступеней»", "«🎓 Программа»"):
+        assert part in text, part
+    assert "разбор резюме" not in text and "21 ноября" not in text
 
 
 def test_preset_does_not_touch_scoring_sets(tmp_path):
