@@ -254,7 +254,8 @@ def test_stale_takeover_forbidden_once_something_reached_delegate(tmp_path):
 
 def test_non_text_answer_header_sent_copy_failed_blocks_retry(tmp_path, monkeypatch):
     """Ревью 10.10: не-текстовый ответ вне тихих часов — заголовок дошёл, копия упала.
-    Отметку не снимаем (повтор прислал бы второй заголовок), менеджеру — честно, что дошло."""
+    Отметку не снимаем (повтор прислал бы второй заголовок), менеджеру — честно, что дошло;
+    после уведомления вопрос помечается отвеченным (не висит «отправляется» в списках)."""
     _ready(tmp_path, "qguard_header.db")
     monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
 
@@ -272,13 +273,15 @@ def test_non_text_answer_header_sent_copy_failed_blocks_retry(tmp_path, monkeypa
         assert any("только заголовок" in t for t in m1.replies), m1.replies
         assert not any("попробовать ещё раз" in t for t in m1.replies)
         row = await db.get_question(qid)
-        assert row["dispatched_at"] is not None and row["delivered_at"] is None
+        assert row["dispatched_at"] is not None and row["delivered_at"] is not None
+        from services.questions import question_status
+        assert question_status(row) == "answered"
 
         m2 = _VoiceFail(None, qid)
         m2.text = m2.html_text = None
         await admin_mod.admin_reply_to_question(m2, bot)
         assert len(_delegate_msgs(bot)) == 1, "второй заголовок делегату"
-        assert any("уже отправляется" in t for t in m2.replies), m2.replies
+        assert any("уже" in t for t in m2.replies), m2.replies
 
     asyncio.run(scenario())
 

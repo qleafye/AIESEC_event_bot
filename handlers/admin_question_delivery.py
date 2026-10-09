@@ -83,17 +83,26 @@ async def _attempt_question_delivery(message: types.Message, bot: Bot, user_id: 
             return
         if state["part_sent"]:
             # Заголовок не-текстового ответа дошёл, копия — нет. Отметку не снимаем: повтор
-            # прислал бы делегату второй заголовок.
+            # прислал бы делегату второй заголовок. После уведомления менеджеру вопрос
+            # помечается отвеченным — «отправляется навсегда» в списках путало бы менеджеров;
+            # дальше менеджер пишет делегату напрямую.
             logger.error(f"Question {qid}: header delivered to user {user_id}, copy failed: {e}")
             reason = (
                 "делегат заблокировал бота" if isinstance(e, TelegramForbiddenError)
                 else "ошибка Telegram"
             )
-            await message.reply(
-                "⚠️ Делегат получил только заголовок «Ответ от организаторов», а само сообщение "
-                f"не дошло ({reason}). Повтор из бота закрыт, чтобы заголовок не пришёл дважды — "
-                "напишите делегату напрямую."
-            )
+            try:
+                await message.reply(
+                    "⚠️ Делегат получил только заголовок «Ответ от организаторов», а само сообщение "
+                    f"не дошло ({reason}). Повтор из бота закрыт, чтобы заголовок не пришёл дважды — "
+                    "напишите делегату напрямую."
+                )
+            finally:
+                logger.warning(
+                    f"Question {qid}: помечен отвеченным, хотя делегат получил только заголовок "
+                    "(копия не дошла) — менеджеру предложено написать напрямую"
+                )
+                await record_answer(qid, message.html_text or message.text or "")
             return
         # T-08-33 (accepted risk): the claim is NOT released here -- releasing it would let a
         # retry double-send to the delegate. Снимается только своя отметка «уходит».
