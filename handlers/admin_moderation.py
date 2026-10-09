@@ -244,6 +244,16 @@ async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: boo
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _all_skipped_screen(target: types.Message, admin_id: int, n: int, reopen_cb: str):
+    """Очередь не пуста, просто всё в ней пропущено «⏭» (набор живёт в сессии, D-07). «Нет
+    заявок» тут неправда (UAT 09.10): говорим, сколько ждёт, и даём тот же вход в очередь —
+    он сбрасывает набор пропущенных."""
+    base = await admin_keyboard_for(admin_id)
+    again = [InlineKeyboardButton(text=f"🔁 Показать пропущенные ({n})", callback_data=reopen_cb)]
+    await target.answer(f"⏭ Пропущено: {n} — они всё ещё ждут решения.",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[again, *base.inline_keyboard]))
+
+
 async def _show_current_card(target: types.Message, state: FSMContext):
     """Render the oldest non-skipped pending card (DB-driven, restart-safe). Phase 07.2
     (CITY-02): city-scoped through _admin_city_view (_admin_city_scope's single-read form) —
@@ -273,6 +283,9 @@ async def _show_current_card(target: types.Message, state: FSMContext):
             break
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
+    if not visible and total:
+        await _all_skipped_screen(target, admin_id, total, "admin_applications")
+        return
     if not visible:
         # CR-01: admin-editable label + global HTML parse_mode → escape, or an «<» in the
         # setting makes Telegram reject the message and the empty-queue screen never opens.
@@ -676,6 +689,9 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
             break
         visible = [u for u in batch if u["telegram_id"] not in skipped]
         offset += len(batch)
+    if not visible and total:
+        await _all_skipped_screen(target, admin_id, total, "admin_receipts")
+        return
     if not visible:
         # CR-01: same escaping as the applications queue above.
         empty_text = (
