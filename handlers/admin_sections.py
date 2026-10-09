@@ -359,6 +359,31 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
 # при выключенном «🤝 Отборе амбассадоров» (волны, ступени): раздела в корне тогда нет, а эти две
 # строки показываются в «🎮 Геймификации».
 # 09.10: баллы, исключения и закрепление от отбора не зависят — тоже доступны при выключенном.
+# Подзаголовки внутри «🤝 Амбассадоры» (владелец 09.10): строки раздела группируются по смыслу,
+# логика кнопок та же. Группа без единой доступной строки не рисуется вместе с заголовком.
+AMB_SEPARATOR_CALLBACK = "amb_sep"
+_AMB_SUBGROUPS = (
+    ("Общее", ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb")),
+    ("Команда и волны", ("admin_amb_entry", "admin_amb_candidates", "admin_game_waves")),
+    ("Ступени", ("admin_amb_tiers",)),
+)
+
+
+def _sep(label: str) -> tuple:
+    return ("sep", f"── {label} ──")
+
+
+def _amb_rows_with_separators(rows: list[tuple]) -> list[tuple]:
+    by_cb = {row_callback(r): r for r in rows}
+    placed = {cb for _, cbs in _AMB_SUBGROUPS for cb in cbs}
+    out: list[tuple] = []
+    for label, cbs in _AMB_SUBGROUPS:
+        group = [by_cb[cb] for cb in cbs if cb in by_cb]
+        if group:
+            out += [_sep(label), *group]
+    return out + [r for r in rows if row_callback(r) not in placed]  # новая строка не теряется
+
+
 _AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "admin_amb_points", "ambt_excl_list:0",
                       "admin_amb_attach", "settings_group:amb")  # порядок = порядок в «🎮 Геймификации»
 
@@ -539,7 +564,11 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                         if row_callback(r) in _AMB_OFF_GAME_ROWS),
                        key=lambda r: _AMB_OFF_GAME_ROWS.index(row_callback(r)))
         at = 1 if rows and rows[0][1] == "admin_game_tasks" else 0
+        if extra:  # амбассадорский блок отделён подзаголовками от игровых строк
+            extra = [_sep("🤝 Амбассадоры"), *extra] + ([_sep("🎮 Проверка и монеты")] if rows[at:] else [])
         rows = rows[:at] + extra + rows[at:]
+    elif token == "amb":
+        rows = _amb_rows_with_separators(rows)
     op_labels = {callback_data: text for text, callback_data in _ADMIN_MENU_ROWS}
     code = await admin_selected_city(admin_id)  # ЕДИНСТВЕННОЕ чтение шапки на рендер
     toggles = await settings_toggle_rows(admin_id, header_code=code) if any(r[0] == "toggle" for r in rows) else {}
@@ -576,6 +605,8 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
             buttons.extend(toggles[row[1]])
         elif kind == "group":
             buttons.append([InlineKeyboardButton(text=section_group_label(token, row[1]), callback_data=f"settings_group:{row[1]}")])
+        elif kind == "sep":
+            buttons.append([InlineKeyboardButton(text=row[1], callback_data=AMB_SEPARATOR_CALLBACK)])
 
     # «← Назад» ведёт в существующий корень admin_menu — новых callback'ов не заводим.
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_menu")])
