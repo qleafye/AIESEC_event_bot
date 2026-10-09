@@ -349,6 +349,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
 
     # ── stats ────────────────────────────────────────────────────────────────────────────
     "admin_export_csv": "stats",
+    # «📊 Данные»: «👥 Список участников» (CSV одобренных) — менеджеру регистраций и статистике;
+    # «📄 Открыть таблицу» (url-кнопка, своего callback нет) — тем, кто синхронизирует таблицу,
+    # плюс менеджеру регистраций: он и так читает в ней заявки.
+    "admin_export_participants": ("moderate_reg", "stats"),
+    "admin_open_sheet": ("settings", "moderate_reg"),
     "admin_export_incomplete": "stats",
     "admin_monthly_stats": "stats",
     # Источники видны и маркетологу: та же статистика «метка -> число заявок», без людей.
