@@ -105,3 +105,48 @@ def test_restart_confirm_counts_answered_questions_not_draft_fields(tmp_path):
     confirm = [t for t in _texts(msg) if t and "(" in t]
     assert confirm, _texts(msg)
     assert "(2)" in confirm[0], confirm[0]
+
+
+# ── Выбор кнопкой подтверждается в переписке ──────────────────────────────────────────────
+
+def test_lookup_pick_echoes_chosen_value(tmp_path):
+    """Тап по подсказке ВУЗа гасит кнопки — выбранное должно остаться в переписке строкой."""
+    _use_tmp_db(tmp_path, "uat261009_c5a.db")
+
+    async def go():
+        from handlers import reg_types_lookup
+        state = _new_state(USER_ID)
+        await state.update_data(
+            participant_type="full", _draft_kind="new", _reg_step=3, _reg_total=10,
+            _lookup_step="university", _lookup_results=[{"canonical": "СПбГУ"}],
+        )
+        callback = _FakeCallback("reglookup:pick:0", USER_ID, "delegate")
+        await reg_types_lookup.reglookup_pick(callback, state, bot=None)
+        return callback.message
+
+    msg = asyncio.run(go())
+    assert _texts(msg) and _texts(msg)[0] == "✅ СПбГУ", _texts(msg)
+
+
+def test_multi_done_echoes_chosen_options(tmp_path):
+    """«Готово» в мультивыборе гасит чекбоксы — выбранные варианты остаются в переписке."""
+    _use_tmp_db(tmp_path, "uat261009_c5b.db")
+
+    async def go():
+        from handlers import reg_flow
+        state = _new_state(USER_ID)
+        await state.update_data(
+            participant_type="full", _draft_kind="new", _reg_step=3, _reg_total=10,
+            _current_multi_step="goal", _multi_goal=[0, 2],
+        )
+        await state.set_state(Registration.multi_input)
+        callback = _FakeCallback("regmulti_done:goal", USER_ID, "delegate")
+        await reg_flow.process_multi_done(callback, state, bot=None)
+        return callback.message
+
+    msg = asyncio.run(go())
+    texts = _texts(msg)
+    assert texts, "после «Готово» что-то должно прийти"
+    echo = texts[0] or ""
+    assert "✅ Найти возможность трудоустройства" in echo, texts
+    assert "✅ Пообщаться с людьми из моей сферы, нетворкинг" in echo, texts

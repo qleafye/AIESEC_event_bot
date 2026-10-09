@@ -233,6 +233,7 @@ async def reglookup_pick(callback: types.CallbackQuery, state: FSMContext, bot):
             # T-30-15: индекс вне текущего списка результатов — молча игнорируется.
             return
         value = results[idx]["canonical"]
+        await reg_i18n.echo_choice(tap_message, [value])  # приёмка 09.10: выбор виден в чате
         await state.update_data(**{STEP_TO_COLUMN.get(step_key, step_key): value})
         data = await state.get_data()
         await _sync_draft_out(
