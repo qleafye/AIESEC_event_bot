@@ -956,9 +956,13 @@ export async function render(root, params, ctx) {
             signedConsents.delete(item.key);
           }
         });
+        // Приёмка 09.10: текст согласия (если менеджер его задал) — над галочкой, как в чате.
         const card = h("div", { class: "consent-card" },
           icon("shield-check"),
-          h("label", { class: "check" }, cb, h("span", { text: item.label || "" })),
+          h("div", { class: "consent-body" },
+            item.text ? h("p", { class: "consent-text", text: item.text }) : null,
+            h("label", { class: "check" }, cb, h("span", { text: item.label || "" })),
+          ),
         );
         if (item.pdf_file_id) {
           card.append(h("a", {
