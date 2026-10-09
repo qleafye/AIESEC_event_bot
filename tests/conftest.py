@@ -60,9 +60,20 @@ _default_db_dir = _tempfile.mkdtemp(prefix="gsd_conftest_default_db_")
 _atexit.register(_shutil.rmtree, _default_db_dir, True)
 _config.DB_PATH = _os.path.join(_default_db_dir, "default.db")
 _fast_init_db()
+# Дефолтная база живёт весь процесс — из списка копий на уборку её убираем.
+from tests import _dbtpl as _dbtpl_mod
+_dbtpl_mod._COPIES.clear()
 
 
 import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _remove_stale_db_copies():
+    """После теста стирает копии шаблонной БД прошлых тестов (tests/_dbtpl.py) — без этого
+    tmp_path каждого теста держал свои ~2.6 МБ до конца сессии."""
+    yield
+    _dbtpl_mod.remove_stale_copies()
 
 
 @_pytest.fixture(autouse=True)
