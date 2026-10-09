@@ -302,6 +302,19 @@ async def preset_apply(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="✅ Применить", callback_data=f"preset_confirm:{key}")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_event_preset")],
     ])
+    if key == "skillup":
+        # Владелец 09.10: тот же текст, что приложение показывает при смене «🎭 Тип события»
+        # на СкиллАп (settings_ops.dangerous_confirm_key) — один ключ реестра, не дубль. Он
+        # говорит, что пресет НЕ настраивает (тексты предложения ссылки, ступени), и где это
+        # сделать самому. Текст редактируемый и не из HTML_SETTINGS — экранируем.
+        confirm = await get_setting_typed("skillup_preset_confirm_text")
+        await callback.message.edit_text(
+            f"<b>{preset['label']}</b>\n\n{html_module.escape(confirm or '')}",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+        await callback.answer()
+        return
     await callback.message.edit_text(
         f"Применить пресет <b>{preset['label']}</b>?\n\n"
         f"<b>Включатся:</b> {on_labels}\n"
