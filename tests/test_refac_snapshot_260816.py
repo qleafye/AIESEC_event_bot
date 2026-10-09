@@ -1546,6 +1546,7 @@ admin|callback_query|cointr_cancel|cointr_cancel
 admin|callback_query|cointr_tab|cointr_tab:*
 admin|callback_query|cointr_go|cointr_go:*
 admin|callback_query|settings_enum_pick|settings_enum_pick:*
+admin|callback_query|export_participants|admin_export_participants
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2278,7 +2279,9 @@ def test_snapshot_total_handler_count_is_292():
     # admin.callback_query settings_enum_pick в хвосте; чистая вставка (1083 -> 1084).
     # 09.10 (/start менеджера, handlers/reg_manager_start.py): +1 registration.callback_query
     # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
-    assert len(GOLDEN_SNAPSHOT) == 1085
+    # 09.10: «👥 Список участников» (handlers/admin_participants.py): +1 admin.callback_query
+    # (export_participants) перед prog_fbday_open (1085 -> 1086).
+    assert len(GOLDEN_SNAPSHOT) == 1086
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

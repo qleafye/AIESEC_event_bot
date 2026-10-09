@@ -1173,3 +1173,5 @@ from handlers import admin_forum_tz  # noqa: E402,F401
 from handlers import admin_coins_transfer  # noqa: E402,F401
 # Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
 from handlers import admin_settings_enum  # noqa: E402,F401
+# «👥 Список участников» в «📊 Данные» (handlers/admin_participants.py) — golden append в хвост.
+from handlers import admin_participants  # noqa: E402,F401

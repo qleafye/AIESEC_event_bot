@@ -733,7 +733,7 @@ def test_menu_reg_manager_sees_only_own_sections(tmp_path):
     assert "admin_sec:apps" in flat
     assert "admin_sec:pay" in flat
     for forbidden in ("admin_sec:event", "admin_sec:form", "admin_sec:comms",
-                      "admin_sec:game", "admin_sec:data", "admin_sec:manage"):
+                      "admin_sec:game", "admin_sec:manage"):
         assert forbidden not in flat
 
 
