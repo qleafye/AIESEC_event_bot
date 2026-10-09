@@ -39,6 +39,7 @@ EXPECTED_PER_CITY_KEYS = {
     "menu_referral", "menu_invites", "menu_info", "menu_program", "menu_session_enroll", "menu_quiz", "menu_speakers",
     "menu_contacts", "menu_question", "menu_faq", "menu_coins", "menu_game_tasks",
     "menu_miniapp",
+    "menu_edit_anketa",  # 09.10: «✏️ Изменить анкету» — по городу, как остальные кнопки меню
     # Запись на сессии и тест компетенций: тумблер, дедлайн и тексты — свои у города.
     "session_enroll_enabled",
     "session_enroll_deadline",

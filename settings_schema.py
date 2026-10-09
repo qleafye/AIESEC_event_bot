@@ -7429,6 +7429,13 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "on",
         "per_city": True,
     },
+    # Владелец 09.10: правка поданной анкеты из чата. Видна только делегату с анкетой этого
+    # сезона, пока «✏️ Правка анкеты делегатом» её разрешает (keyboards/builders.py).
+    "menu_edit_anketa": {
+        "type": "enum", "group": "menu", "label": "✏️ Изменить анкету",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
+    },
     # Форум-ночь B3 (идея №22): шпаргалка волонтёра — уходит ЛИЧНЫМ сообщением человеку, кому
     # только что выдали право `checkin` (handlers/admin_roles.py::roles_assign). group "apps" —
     # менеджер её только редактирует, делегату (i18n-корпус) она никогда не показывается, тот же
