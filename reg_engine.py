@@ -3165,6 +3165,9 @@ _SUMMARY_FIELD_LABELS = [
 
 # Служебный ключ (с подчёркиванием — в БД/лист не уходит) с ПОДПИСЬЮ города форума для сводки.
 SUMMARY_EVENT_CITY_KEY = "_event_city_label"
+# Подпись строки города форума — сводка чата (ниже) и обзор анкеты в приложении
+# (`miniapp/routers/form.py::_forum_city_row`).
+FORUM_CITY_LABEL = "Город форума"
 
 
 def summary_fields(answers: dict) -> list:
@@ -3196,7 +3199,7 @@ def summary_fields(answers: dict) -> list:
     fields.append(("Амбассадор", None if ambassador_answer is None else ("Да" if ambassador_answer else "Нет")))
     # Приёмка 09.10: город ФОРУМА (event_city) — первой строкой. Подпись готовит вызывающий
     # (`registration._summary_data`, async-реестр городов), движок только кладёт её в список.
-    fields.insert(0, ("Город форума", answers.get(SUMMARY_EVENT_CITY_KEY)))
+    fields.insert(0, (FORUM_CITY_LABEL, answers.get(SUMMARY_EVENT_CITY_KEY)))
     out = [(label, value) for label, value in fields if not (value is None or str(value) == "")]
     if answers.get("resume_file_id"):
         out.append(("Резюме", "прикреплено файлом"))

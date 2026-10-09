@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 import reg_engine
 from cities import (
     cities_module_on,
+    city_label,
     ensure_cities_fresh,
     get_setting_typed_for_city,
 )
@@ -72,6 +73,18 @@ router = APIRouter()
 
 
 # ── Контекст черновика: общий для GET/PATCH/submit ──────────────────────────────────────────
+
+async def _forum_city_row(event_city: str | None, lang: str, tr_map: dict) -> dict | None:
+    """Приёмка 09.10: строка «Город форума» для обзора анкеты перед отправкой — та же, что в
+    сводке чата (`reg_engine.summary_fields`, подпись `reg_engine.FORUM_CITY_LABEL`). Модуль
+    городов выключен или город не выбран — строки нет."""
+    if not event_city or not await cities_module_on():
+        return None
+    return {
+        "label": i18n.tr(reg_engine.FORUM_CITY_LABEL, lang, tr_map),
+        "value": i18n.tr(await city_label(event_city), lang, tr_map),
+    }
+
 
 async def _load_context(telegram_id: int) -> dict:
     """Один общий разбор «где сейчас черновик» — GET/PATCH обязаны видеть одно и то же
@@ -467,6 +480,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
         # резолвлен выше для перевода текстов спеки, второго похода в `i18n.context` не нужно.
         "lang_module_enabled": await get_setting_typed("delegate_lang_enabled") == "on",
         "lang": lang,
+        "forum_city": await _forum_city_row(ctx["event_city"], lang, tr_map),
     }
 
 
