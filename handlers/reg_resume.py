@@ -32,6 +32,7 @@ from handlers.registration import (
 # Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва на
 # отправке.
 from handlers import reg_i18n
+from handlers.reg_summary import show_summary  # приёмка 09.10: «Продолжить» дочитанной анкеты
 
 logger = logging.getLogger(__name__)
 
@@ -151,10 +152,11 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
         await finalize_registration(tap_message, state, bot)
         return
     if step == reg_engine.STEP_DONE:
-        # UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» — ровно то, что бот
-        # делает сам после последнего ответа в чате (паритет поверхностей); не доезжает до
-        # fallback «согласия -> ФИО» ниже.
-        await finalize_registration(tap_message, state, bot)
+        # UAT 07.09 (T-d6t-04): маркер «все включённые шаги отвечены» — не доезжает до
+        # fallback «согласия -> ФИО» ниже. Приёмка 09.10: ровно то, что бот делает сам после
+        # последнего ответа в чате, — сводка «Всё верно / Изменить», а не отправка заявки мимо
+        # подтверждения (маркер теперь ставит и чат, «Продолжить» жмут и со сводки).
+        await show_summary(tap_message, state, data)
         return
     if step in enabled:
         idx = enabled.index(step)
