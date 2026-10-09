@@ -6,7 +6,8 @@
 правки, проверки, права и «Назад» после сохранения — общие, второго редактора нет.
 
 Ищем только то, что бот и так показывает на экранах групп настроек (`SETTINGS_GROUPS` +
-«📦 Прочие» + фото/файлы события): найденная настройка обязана открываться здесь же, в боте.
+«📦 Прочие» + фото/файлы события) и экраны-кнопки разделов (`admin_sections.SECTIONS`,
+«🖼 Аватар бота», «👥 Роли и доступы»…): найденное обязано открываться здесь же, в боте.
 Вход — первая строка раздела «🔧 Управление» (`admin_sections.SECTIONS`): корень админки по
 решению фазы 20 — только разделы, не больше десяти строк.
 Сопоставление и ранжирование — `settings_search` (тот же модуль отдаёт синонимы Mini App).
@@ -26,6 +27,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from config import config
 from cities import ALL_CITIES, admin_selected_city, city_codes, city_label, cities_module_on, is_per_city
 from handlers.admin import router
 from handlers.states import SettingsSearch
@@ -93,6 +95,31 @@ def candidates() -> list[Candidate]:
     return out
 
 
+async def screen_candidates(admin_id: int) -> list[Candidate]:
+    """Экраны-кнопки разделов («🖼 Аватар бота», «👥 Роли и доступы»…): их нет в реестре, но
+    менеджер ищет их тем же словом. Кнопка — тот же callback, что из раздела; видимость — та
+    же, что у строки раздела (`visible_rows`: право строки, «только суперадмину»)."""
+    from handlers import admin_sections as sec  # ленивый шов (цикл импортов)
+
+    caps = await sec.resolve_capabilities(admin_id)
+    is_super = admin_id in config.ADMIN_IDS
+    amb_on = await sec._amb_section_on()
+    out: list[Candidate] = []
+    for token, section_label, _rows in sec.SECTIONS:
+        for row in sec.visible_rows(token, caps, is_super):
+            cb = sec.row_callback(row)
+            if row[0] not in ("screen", "screen_admin") or cb == "settings_search":
+                continue
+            label = section_label
+            if token == "amb" and not amb_on:
+                # Модуль отбора выключен — раздела нет; волны и ступени живут в «🎮 Геймификации».
+                if cb not in sec._AMB_OFF_GAME_ROWS:
+                    continue
+                label = sec._SECTION_LABELS["game"]
+            out.append(Candidate(key=f"screen:{cb}", label=row[2], extra={"cb": cb, "section": label, "screen": True}))
+    return out
+
+
 async def _hide_city_keys(admin_id: int, header: str | None) -> bool:
     """Скрывать ли городские настройки: менеджер видит не все города, а в шапке не его город
     (общее значение городской настройки ему не принадлежит)."""
@@ -112,6 +139,7 @@ async def find(admin_id: int, query: str) -> tuple[list[Candidate], int]:
     pool = candidates()
     if await _hide_city_keys(admin_id, header):
         pool = [c for c in pool if c.extra.get("media") or not is_per_city(c.key)]
+    pool += await screen_candidates(admin_id)
     found = search(pool, query)
     return found[:RESULT_LIMIT], len(found)
 
