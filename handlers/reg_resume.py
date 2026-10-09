@@ -272,3 +272,14 @@ async def reg_resume_restart_yes(callback: types.CallbackQuery, state: FSMContex
     await _start_registration_flow(
         tap_message, state, referrer_id=referrer_id, event_city=(draft or {}).get("event_city"),
     )
+
+
+async def reply_already_submitted(message: types.Message, state: FSMContext) -> None:
+    """Приёмка 09.10 (ревью): чат на сводке, а анкету уже подало приложение — черновик забран
+    и удалён. `finalize_registration` раньше собирал заявку из FSM и подавал её второй раз;
+    теперь (черновик в этой сессии был — `_draft_version` в FSM — и исчез) состояние
+    сбрасывается и делегат получает тот же ответ, что на любую уже поданную анкету."""
+    logger.warning(f"finalize_registration: draft for {message.from_user.id} vanished — treated as submitted")
+    await state.clear()
+    text = await get_setting_typed("reg_already_submitted_text")
+    await reg_i18n.say(message, text, reply_markup=await get_main_menu_kb(message.from_user.id))

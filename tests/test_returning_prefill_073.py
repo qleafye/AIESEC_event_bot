@@ -70,6 +70,7 @@ class _KBCapturingMessage:
         new = _KBCapturingMessage(self.from_user.id, self.from_user.username)
         new.sent = self.sent
         new.edit_markup_calls = self.edit_markup_calls
+        new.chat = self.chat
         if update and "from_user" in update:
             new.from_user = update["from_user"]
         return new
@@ -80,6 +81,9 @@ class _FakeCallback:
         self.data = data
         self.from_user = _FakeUser(user_id, username)
         self.message = _KBCapturingMessage(0)
+        # Как в Telegram: сообщение бота лежит в личном чате делегата (chat.id == его id) —
+        # по chat.id бот пишет черновик анкеты (_sync_draft_out), а финал читает по from_user.
+        self.message.chat = _FakeChat(user_id)
         self.answers = []  # list[(text, show_alert)]
 
     async def answer(self, text=None, show_alert=False):
