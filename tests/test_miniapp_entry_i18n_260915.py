@@ -87,7 +87,7 @@ def test_english_delegate_gets_english_text_and_button(tmp_path):
     calls = asyncio.run(go())
     assert len(calls) == 1
     text, kwargs = calls[0]
-    assert text == "Tasks, coins and leaderboard in one place. Open the app 👇"
+    assert text == "Everything about the event in one place. Open the app 👇"
     kb = kwargs["reply_markup"]
     btn = kb.inline_keyboard[0][0]
     assert btn.text == "📱 Open the app"
@@ -132,7 +132,7 @@ def test_russian_delegate_gets_unchanged_russian_text_and_button(tmp_path):
     calls = asyncio.run(go())
     assert len(calls) == 1
     text, kwargs = calls[0]
-    assert text == "Задания, монеты и рейтинг — в одном экране. Открывай приложение 👇"
+    assert text == "Всё о мероприятии — в одном экране. Открывай приложение 👇"
     btn = kwargs["reply_markup"].inline_keyboard[0][0]
     assert btn.text == "📱 Открыть приложение"
 

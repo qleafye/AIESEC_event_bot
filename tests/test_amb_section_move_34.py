@@ -67,9 +67,13 @@ def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
     cbs = _callbacks(game_kb)
     assert cbs.index("admin_game_tasks") < cbs.index("admin_game_waves") < cbs.index("admin_amb_tiers")
-    # строки только те две: вход, кандидаты, баллы в выключенном состоянии не протекают
-    for hidden in ("admin_amb_entry", "admin_amb_candidates", "admin_amb_points", "admin_amb_attach"):
+    # 09.10: вход и кандидаты — экраны отбора, при выключенном не видны; баллы, исключения и
+    # закрепление от отбора не зависят — доступны из «🎮 Геймификации».
+    for hidden in ("admin_amb_entry", "admin_amb_candidates"):
         assert hidden not in cbs
+    for shown in ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach"):
+        assert shown in cbs
+    assert _run(sec.owner_back_button("admin_amb_points")).callback_data == "admin_sec:game"
     back = _run(sec.owner_back_button("admin_game_waves"))
     assert back.callback_data == "admin_sec:game"
 

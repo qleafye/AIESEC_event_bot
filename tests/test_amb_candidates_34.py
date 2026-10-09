@@ -232,8 +232,8 @@ def test_list_empty_filter_explains(tmp_path):
     cb = _cb("admin_amb_candidates")
     _run(h.show_candidates(cb))
     text, _kb = _screen(cb)
-    assert ("Кандидатов пока нет. Они появятся, когда делегаты нажмут «Хочу стать "
-            "амбассадором» или ответят «да» в анкете.") in text
+    assert ("Кандидатов пока нет. Они появятся, когда делегаты нажмут «Хочу свою "
+            "ссылку» или ответят «да» в анкете.") in text
 
 
 def test_list_row_format_with_referrals_and_reserve(tmp_path):
