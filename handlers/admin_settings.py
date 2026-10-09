@@ -583,8 +583,8 @@ async def render_settings_text(admin_id: int | None = None) -> str:
     appr_lbl = lambda v: "👮 Ручная" if v == "manual" else "⚡ Авто"
     lines.append(f"✅ Модерация полной формы: <b>{appr_lbl(full_appr)}</b>")
     lines.append(f"✅ Модерация краткой формы: <b>{appr_lbl(short_appr)}</b>")
-    notify_lbl = "📨 Сразу" if notify_mode == "instant" else "🕒 Пачкой (напоминалка)"
-    lines.append(f"🔔 Уведомление о заявке: <b>{notify_lbl}</b>")
+    notify_lbl = "📨 О каждой" if notify_mode == "instant" else "🕒 Сводкой по таймеру"
+    lines.append(f"🔔 О новых заявках: <b>{notify_lbl}</b>")
 
     payment_enabled = await get_setting_typed("payment_enabled")
     consent_enabled = await get_setting_typed("consent_enabled")
@@ -694,7 +694,8 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     notify_mode = await get_setting_typed("pending_notify_mode")
     full_txt = "✅ Полная форма: 👮 Ручная → ⚡ Авто" if full_appr == "manual" else "✅ Полная форма: ⚡ Авто → 👮 Ручная"
     short_txt = "✅ Краткая форма: 👮 Ручная → ⚡ Авто" if short_appr == "manual" else "✅ Краткая форма: ⚡ Авто → 👮 Ручная"
-    notify_txt = "🔔 Уведомление: 📨 Сразу → 🕒 Пачкой" if notify_mode == "instant" else "🔔 Уведомление: 🕒 Пачкой → 📨 Сразу"
+    notify_txt = ("🔔 О новых заявках: 📨 О каждой → 🕒 Сводкой по таймеру" if notify_mode == "instant"
+                  else "🔔 О новых заявках: 🕒 Сводкой по таймеру → 📨 О каждой")
 
     payment_enabled = await get_setting_typed("payment_enabled")
     consent_enabled = await get_setting_typed("consent_enabled")
@@ -847,6 +848,8 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     reg_notify_text = (
         f"{reg_notify_label}: {option_label('reg_submit_notify_mode', reg_notify_val)} → "
         f"{option_label('reg_submit_notify_mode', reg_notify_next)}"
+        # При «🕒 Сводкой по таймеру» сообщений о каждой заявке нет вовсе (reg_finalize).
+        + (" (сейчас не действует)" if notify_mode != "instant" else "")
     )
     # Квик 260916: «📊 Итоги дня» — вечерняя сводка менеджерам, дефолт OFF; сама сводка живёт
     # в services/daily_digest.py, время — ключ daily_digest_time группы «🔧 Система».
@@ -1791,7 +1794,7 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     current = await get_setting_typed("pending_notify_mode")
     new_val = "batched" if current == "instant" else "instant"
     await set_setting_by_admin(callback.from_user.id, "pending_notify_mode", new_val)
-    await callback.answer(f"Уведомление: {'📨 Сразу' if new_val == 'instant' else '🕒 Пачкой'}", show_alert=True)
+    await callback.answer(f"О новых заявках: {'📨 О каждой' if new_val == 'instant' else '🕒 Сводкой по таймеру'}", show_alert=True)
     from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)

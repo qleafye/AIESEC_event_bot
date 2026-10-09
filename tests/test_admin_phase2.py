@@ -64,7 +64,7 @@ def test_settings_guide_speaks_russian_not_raw_keys():
 
     assert "Одобрение для полной формы" in out
     assert "вручную (через «📋 Заявки»)" in out       # resolved value, not "manual"
-    assert "сразу по каждой заявке" in out            # resolved value, not "instant"
+    assert "о каждой заявке" in out            # resolved value, not "instant"
     assert "по умолчанию" in out                      # unset keys show their default
     for raw_key in ("pending_notify_mode", "full_approval", "preselect_tab"):
         assert raw_key not in out

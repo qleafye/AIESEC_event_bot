@@ -45,8 +45,8 @@ async def render_reports_screen(admin_id: int) -> tuple[str, InlineKeyboardMarku
         f"Вкладка в таблице: {html_module.escape(_tab_label(tab))}",
         f"Пачка заявок: {_cap_label(cap_minutes)}",
         "",
-        "Подсказка: пачка уведомлений работает, когда в «📋 Заявки» → «📥 Уведомления о "
-        "заявках» выбран режим «Пачкой (дайджест)».",
+        "Подсказка: пачка уведомлений работает, когда в «📋 Заявки» → «📥 Сообщения о "
+        "каждой заявке» выбран режим «Одной сводкой, когда стихнет».",
     ]
 
     buttons: list[list[InlineKeyboardButton]] = [

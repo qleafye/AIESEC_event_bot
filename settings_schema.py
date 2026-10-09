@@ -3266,9 +3266,9 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "pending_notify_mode": {
-        "type": "enum", "group": "toggles", "label": "🔔 Уведомление о заявке",
+        "type": "enum", "group": "toggles", "label": "🔔 О новых заявках",
         "options": ["instant", "batched"],
-        "option_labels": {"instant": "Сразу", "batched": "Пачкой"},
+        "option_labels": {"instant": "О каждой", "batched": "Сводкой по таймеру"},
         "prompt": None, "default": "batched",
     },
     "full_approval": {
@@ -6865,11 +6865,11 @@ SETTINGS_SCHEMA = {
     # ли вообще о заявке, ждущей модерации. Этот — про то, КАК приходят те уведомления,
     # которые и так уходят.
     "reg_submit_notify_mode": {
-        "type": "enum", "group": "apps", "label": "📥 Уведомления о заявках",
+        "type": "enum", "group": "apps", "label": "📥 Сообщения о каждой заявке",
         "options": ["each", "digest"],
         # Слово в слово с REG_SUBMIT_NOTIFY_MODE_LABELS ниже (третий потребитель тех же
         # подписей — services/reg_digest.py читает свою карту напрямую).
-        "option_labels": {"each": "Каждую заявку отдельно", "digest": "Пачкой (дайджест)"},
+        "option_labels": {"each": "По одной", "digest": "Одной сводкой, когда стихнет"},
         "prompt": None,
         "default": "each",
     },
@@ -6877,7 +6877,7 @@ SETTINGS_SCHEMA = {
         "type": "int", "group": "apps", "label": "📥 Дайджест заявок: окно тишины (мин)",
         "prompt": (
             "Через сколько минут тишины слать сводку о новых заявках, например 15.\n\n"
-            "Работает только в режиме «Пачкой (дайджест)»: каждая новая заявка откладывает "
+            "Работает только в режиме «Одной сводкой, когда стихнет»: каждая новая заявка откладывает "
             "отправку ещё на столько минут, сводка уходит, когда поток стихает."
         ),
         "default": 15,
@@ -8293,8 +8293,8 @@ GAME_SUBMIT_NOTIFY_MODE_LABELS = {
 
 # Квик 260916: то же самое для заявок (services/reg_digest.py). Ключи = options выше.
 REG_SUBMIT_NOTIFY_MODE_LABELS = {
-    "each": "Каждую заявку отдельно",
-    "digest": "Пачкой (дайджест)",
+    "each": "По одной",
+    "digest": "Одной сводкой, когда стихнет",
 }
 
 
