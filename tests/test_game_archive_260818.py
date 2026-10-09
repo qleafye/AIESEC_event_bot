@@ -364,7 +364,7 @@ def test_gtarchive_confirm_does_not_touch_db_and_names_consequences(tmp_path):
 
     text = callback.message.text
     assert "Собрать команду" in text
-    assert "сдачи и начисленные монеты сохранятся" in text
+    assert "сдачи и начисленные баллы сохранятся" in text
     data = _flat_callback_data(callback.message.markup)
     assert f"gtarchive_go:{task_id}" in data
     assert "admin_game_tasks" in data  # cancel button

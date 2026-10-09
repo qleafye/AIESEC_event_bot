@@ -47,3 +47,9 @@ def test_old_coins_menu_caption_still_opens_balance():
     for text in ("🪙 Мои баллы", "🪙 My points", "🪙 Мои монеты", "🪙 My coins"):
         assert STATIC_TEXT_TO_KEY[text] == "menu_coins"
 
+
+
+def test_points_word():
+    from services.ru_plural import points_word
+
+    assert [points_word(n) for n in (1, 3, 5, -2, 11)] == ["балл", "балла", "баллов", "балла", "баллов"]

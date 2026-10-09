@@ -43,6 +43,7 @@ from aiogram.types import (
 
 from config import config
 from settings_schema import get_setting_typed
+from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,
@@ -351,7 +352,7 @@ async def game_task_archive_confirm(callback: types.CallbackQuery):
     await callback.message.edit_text(
         f"🗄 <b>Убрать задание в архив?</b>\n\n«{name}»\n\n"
         "Задание пропадёт у делегатов и его больше нельзя будет сдать; уже сделанные сдачи и "
-        "начисленные монеты сохранятся; непроверенные сдачи останутся в «🎮 Проверка». Вернуть "
+        "начисленные баллы сохранятся; непроверенные сдачи останутся в «🎮 Проверка». Вернуть "
         "можно в любой момент из «🗄 Архив».",
         parse_mode="HTML",
         reply_markup=kb,
@@ -777,7 +778,7 @@ async def _task_edit_screen(task: dict) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"gtedittitle:{task_id}")],
         [InlineKeyboardButton(text="✏️ Описание", callback_data=f"gteditdesc:{task_id}")],
         [
-            InlineKeyboardButton(text="💰 Монеты", callback_data=f"gteditcoins:{task_id}"),
+            InlineKeyboardButton(text="💰 Баллы", callback_data=f"gteditcoins:{task_id}"),
             InlineKeyboardButton(text="📅 Дедлайн", callback_data=f"gteditdeadline:{task_id}"),
         ],
     ]
@@ -1036,7 +1037,7 @@ async def coinsman_sign_step(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.update_data(cm_sign=sign)
     await state.set_state(CoinsManual.amount)
-    await callback.message.answer("Сколько монет? Пришлите число, например 5.", reply_markup=get_cancel_kb())
+    await callback.message.answer("Сколько баллов? Пришлите число, например 5.", reply_markup=get_cancel_kb())
     # Phase 16 (16-04, Экран 8): quick-pick сумм из реестра -- ВТОРЫМ сообщением (reply-«Отмена»
     # и inline-клавиатура не живут в одном сообщении); пустой список пресетов -> без второго.
     quick_kb = await _coinsman_amount_kb(sign)
@@ -1051,7 +1052,7 @@ async def coinsman_amount_step(message: types.Message, state: FSMContext):
     # discarded, the sign was already picked via coinsman_sign:*; garbage/zero -> re-ask.
     parsed = _parse_coins_amount(message.text)
     if parsed is None or parsed == 0:
-        await message.answer("Не понял число. Пришлите количество монет, например 5:")
+        await message.answer("Не понял число. Пришлите количество баллов, например 5:")
         return
     value = abs(parsed)
     data = await state.get_data()
@@ -1120,7 +1121,7 @@ async def coinsman_reason_step(message: types.Message, state: FSMContext):
     raw_reason = message.text or ""
     if not raw_reason.strip():
         await message.answer(
-            "Причина обязательна: журнал монет должен отвечать на вопрос «кто, кому, за что». "
+            "Причина обязательна: журнал баллов должен отвечать на вопрос «кто, кому, за что». "
             "Напишите коротко, например: за помощь на стенде."
         )
         return
@@ -1173,7 +1174,7 @@ async def coinsman_confirm(callback: types.CallbackQuery, state: FSMContext):
     sign_word = "начислено" if delta >= 0 else "списано"
     await callback.answer("Готово")
     await callback.message.answer(
-        f"🪙 {sign_word} {abs(delta)} монет(ы) для {name}.\n"
+        f"🪙 {sign_word} {abs(delta)} {points_word(abs(delta))} для {name}.\n"
         f"Новый баланс: <b>{balance}</b>.{notify_suffix}",
         parse_mode="HTML",
     )
@@ -1193,7 +1194,7 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
     total = await count_manual_coin_entries()
     rows = await list_manual_coin_entries(limit=10, offset=offset)
 
-    lines = ["📜 <b>Журнал монет</b>"]
+    lines = ["📜 <b>Журнал баллов</b>"]
     if total == 0:
         lines.append("")
         lines.append("Ручных операций пока не было.")
@@ -1267,7 +1268,7 @@ async def coinsjrn_csv(callback: types.CallbackQuery):
     writer.writerows(rows)
     file_bytes = output.getvalue().encode('utf-8-sig')
     document = BufferedInputFile(file_bytes, filename="coins_journal.csv")
-    await callback.message.answer_document(document, caption="Журнал монет — все операции")
+    await callback.message.answer_document(document, caption="Журнал баллов — все операции")
     await callback.answer()
 
 
@@ -1553,7 +1554,7 @@ async def grev_approve_custom_start(callback: types.CallbackQuery, state: FSMCon
     late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
     hint = " — сдано после дедлайна, к сумме применится штраф" if late else ""
     await callback.message.answer(
-        f"Сколько монет начислить? (по умолчанию {task['coins']}{hint}):",
+        f"Сколько баллов начислить? (по умолчанию {task['coins']}{hint}):",
         reply_markup=get_cancel_kb(),
     )
     await state.set_state(GameReview.approve_amount)
@@ -1866,7 +1867,7 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
         "🔄 <b>Пересобрать вкладки геймификации?</b>\n\n"
         f"{intro}\n" + "\n".join(f"• {line}" for line in tab_lines) + "\n\n"
         f"{others_note}"
-        f"Вкладки уже обновляются сами после каждого задания/решения/правки монет — {sync_phrase}.\n\n"
+        f"Вкладки уже обновляются сами после каждого задания/решения/правки баллов — {sync_phrase}.\n\n"
         "⚠️ Эти вкладки очищаются целиком и заполняются заново. <b>Заметки, которые вы писали "
         "руками прямо в этих листах, пропадут</b> — в базе бота их нет. Остальные вкладки "
         "таблицы не затрагиваются.",

@@ -89,7 +89,7 @@ _ASSET_SLOTS: list[tuple[str, State, str, str, str]] = [
     ("cover_dark", MiniAppTheme.cover_dark, "miniapp_cover_dark", "Обложка для тёмной темы",
      "необязательно, без неё используется обычная обложка"),
     ("sticker_empty", MiniAppTheme.sticker_empty, "miniapp_sticker_empty", "Стикер «пусто»",
-     "в пустых списках заданий/монет/рейтинга"),
+     "в пустых списках заданий/баллов/рейтинга"),
     ("sticker_success", MiniAppTheme.sticker_success, "miniapp_sticker_success", "Стикер «успех»",
      "на экране принятой сдачи"),
     ("sticker_error", MiniAppTheme.sticker_error, "miniapp_sticker_error", "Стикер «ошибка»",

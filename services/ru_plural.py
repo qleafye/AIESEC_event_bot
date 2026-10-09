@@ -75,3 +75,8 @@ def agree_points(text):
     if not isinstance(text, str) or not text:
         return text
     return _EN_RE.sub(_en_sub, _RU_RE.sub(_ru_sub, text))
+
+
+def points_word(n) -> str:
+    """«балл» / «балла» / «баллов» для числа `n` — слово валюты в текстах менеджеру."""
+    return ru_plural(n, "балл", "балла", "баллов")

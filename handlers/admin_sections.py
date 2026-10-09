@@ -287,7 +287,7 @@ _SECTION_HINTS = {
     "apps": "Очередь заявок и всё, что делегат видит после подачи.",
     "pay": "Чеки делегатов, реквизиты, сроки и напоминания об оплате.",
     "comms": "Рассылки и опросы — всё, что уходит делегатам разом.",
-    "game": "Задания, проверка сдач и монеты.",
+    "game": "Задания, проверка сдач и баллы.",
     "amb": "Команда амбассадоров: вход и места, кандидаты, баллы за приглашённых, ступени, волны, исключения.",
     "data": "Статистика, выгрузки и Google-таблица.",
     "manage": "Города, роли, оформление и запуск нового сезона.",
@@ -577,7 +577,7 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                        key=lambda r: _AMB_OFF_GAME_ROWS.index(row_callback(r)))
         at = 1 if rows and rows[0][1] == "admin_game_tasks" else 0
         if extra:  # амбассадорский блок отделён подзаголовками от игровых строк
-            extra = [_sep("🤝 Амбассадоры"), *extra] + ([_sep("🎮 Проверка и монеты")] if rows[at:] else [])
+            extra = [_sep("🤝 Амбассадоры"), *extra] + ([_sep("🎮 Проверка и баллы")] if rows[at:] else [])
         rows = rows[:at] + extra + rows[at:]
     elif token == "amb":
         rows = _amb_rows_with_separators(rows)

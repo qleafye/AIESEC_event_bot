@@ -570,7 +570,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     await message.answer(
         f"🔄 <b>Начать сезон «{html_module.escape(new)}»?</b>\n\n"
         f"• {n} делегатов текущего сезона станут «прошлыми»\n"
-        "• статусы заявок, монеты и чеки не трогаем, база не чистится\n"
+        "• статусы заявок, баллы и чеки не трогаем, база не чистится\n"
         "• они смогут обновить анкету по /start\n"
         f"{await season_reset_line()}\n{_season_sheet_reminder()}\n\n"
         "Продолжить?",
@@ -632,7 +632,7 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
     )
     await message.answer(
         f"✅ Новый сезон: <b>{html_module.escape(new)}</b>\nПрошлыми отмечены: {affected}{amb_note}\n\n"
-        "Статусы заявок, монеты и чеки не тронуты.\n\n"
+        "Статусы заявок, баллы и чеки не тронуты.\n\n"
         f"{_season_sheet_reminder()}",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
@@ -658,7 +658,7 @@ async def season_import_start(callback: types.CallbackQuery, state: FSMContext):
         "📥 <b>Импорт прошлого события</b>\n\n"
         "Пришли файл базы старого бота — я прочитаю из него делегатов и добавлю тех, кого "
         "ещё нет.\n\n"
-        "Монеты, оплаты и рефералы не переносятся, существующие записи не меняются. Файл "
+        "Баллы, оплаты и рефералы не переносятся, существующие записи не меняются. Файл "
         "после импорта не храню.\n\n"
         "Размер — до 20 МБ.",
         parse_mode="HTML",
@@ -791,7 +791,7 @@ async def season_import_name_step(message: types.Message, state: FSMContext):
     ])
     await message.answer(
         f"📥 <b>Добавить {to_add} делегатов сезона «{html_module.escape(label)}»?</b>\n\n"
-        "Статусы возьму из файла. Монеты, оплаты и рефералы не переносятся, существующие "
+        "Статусы возьму из файла. Баллы, оплаты и рефералы не переносятся, существующие "
         "записи не меняются.",
         parse_mode="HTML",
         reply_markup=kb,

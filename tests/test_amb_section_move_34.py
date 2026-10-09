@@ -77,7 +77,7 @@ def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
     assert cbs.index("admin_game_tasks") < cbs.index("admin_game_waves") < cbs.index("admin_amb_tiers")
     # 09.10: амбассадорский блок внутри «🎮 Геймификации» отделён подзаголовками.
     seps = [b.text for row in game_kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
-    assert seps == ["── 🤝 Амбассадоры ──", "── 🎮 Проверка и монеты ──"]
+    assert seps == ["── 🤝 Амбассадоры ──", "── 🎮 Проверка и баллы ──"]
     assert cbs.index("admin_game_tasks") < cbs.index("amb_sep") < cbs.index("admin_game_waves")
     # 09.10: вход и кандидаты — экраны отбора, при выключенном не видны; баллы, исключения и
     # закрепление от отбора не зависят — доступны из «🎮 Геймификации».

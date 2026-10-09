@@ -804,7 +804,7 @@ def test_task_edit_screen_point_edits_confirmations_and_wizard():
     assert 'params.id === "new"' in text
     # Режим «правка»: точечные правки — плоский список (D-11), «подпись — значение —
     # карандаш» (icon("pen-line")), без эмодзи-иконок (D-13, план 19.1-06).
-    for label in ("Название", "Описание", "Монеты", "Дедлайн", "Обложка"):
+    for label in ("Название", "Описание", "Баллы", "Дедлайн", "Обложка"):
         assert f'title: "{label}"' in text, label
     assert 'icon("pen-line")' in text and 'icon("image")' in text and 'icon("archive")' in text
     assert 'icon("rotate-ccw")' in text and 'icon("trash-2")' in text
