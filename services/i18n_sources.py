@@ -223,6 +223,10 @@ def code_literals() -> list[tuple[str, str]]:
     for step_key, text in reg_engine.STEP_HELP.items():
         items.append((f"lit:STEP_HELP.{step_key}", text))
 
+    # Подсказки развилки резюме — константы вне словаря STEP_HELP.
+    items.append(("lit:reg_engine._STEP_HELP_RESUME_FORK", reg_engine._STEP_HELP_RESUME_FORK))
+    items.append(("lit:reg_engine._STEP_HELP_RESUME_FORK_FILE_CHAT", reg_engine._STEP_HELP_RESUME_FORK_FILE_CHAT))
+
     for step_key, text in reg_engine.STEP_HELP_EXAMPLES.items():
         items.append((f"lit:STEP_HELP_EXAMPLES.{step_key}", text))
 

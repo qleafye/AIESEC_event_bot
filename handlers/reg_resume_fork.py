@@ -93,7 +93,8 @@ async def _ask_file_branch(message: types.Message, state: FSMContext, progress_p
     не меняется байт-в-байт; здесь только показывается инлайн «⬅️ Назад» (T-28-05-01: тот же
     закрытый токен `regfork:back`, ловится тем же callback-хендлером ниже — R2a остаётся в
     состоянии `Registration.resume`, не заводит своего)."""
-    text = f"{progress_prefix}{await help_text('resume', participant_type, city_code) or await prompt('resume', participant_type, city_code)}"
+    help_ = await help_text('resume', participant_type, city_code, surface="chat_file")  # приёмка 09.10
+    text = f"{progress_prefix}{help_ or await prompt('resume', participant_type, city_code)}"
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=BACK_LABEL, callback_data="regfork:back"),
     ]])
