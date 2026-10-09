@@ -1205,6 +1205,8 @@ from handlers import admin_enroll  # noqa: E402,F401
 from handlers import admin_enroll_list  # noqa: E402,F401
 # Тест компетенций: настройки, вопросы, баллы (handlers/admin_quiz.py) — golden append в хвост.
 from handlers import admin_quiz  # noqa: E402,F401
+# «🖼 Аватар бота» в «🎪 Событие» (handlers/admin_bot_avatar.py) — golden append в хвост.
+from handlers import admin_bot_avatar  # noqa: E402,F401
 
 # Переотправка решения одному делегату: shared-router seam import «📨 Отправить решение заново»
 # (handlers/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом

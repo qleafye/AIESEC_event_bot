@@ -620,3 +620,8 @@ class ExtFormAppKeys(StatesGroup):
 class CoinsTransfer(StatesGroup):
     # «📥 Перенос баллов из таблицы»: ждём ссылку на Google-таблицу.
     link = State()
+
+
+class BotAvatar(StatesGroup):
+    # «🖼 Аватар бота» (handlers/admin_bot_avatar.py): ждём фото для аватара.
+    photo = State()

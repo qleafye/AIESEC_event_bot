@@ -52,7 +52,7 @@ STEPS: tuple[WizardStep, ...] = (
         key="botfather",
         title="🤖 Имя и описание бота",
         hint=("Имя бота и что человек видит до /start и в профиле — бот поставит это в Телеграм "
-              "сам. В @BotFather остаётся только аватар: /mybots → Edit Bot → Edit Botpic."),
+              "сам. Аватар ставится в боте: /admin → 🎪 Событие → 🖼 Аватар бота."),
         kind="fields",
         fields=("bot_name", "bot_description", "bot_short_description"),
         done_rule="any",

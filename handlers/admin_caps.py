@@ -615,6 +615,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_dedupe_sheet_go": "settings",
     "admin_event_preset": "settings",
     "admin_menu_buttons": "settings",
+    # 09.10: «🖼 Аватар бота» (handlers/admin_bot_avatar.py) — та же капа, что у раздела.
+    "admin_bot_avatar": "settings",
+    "botava_*": "settings",
+    "state:BotAvatar:*": "settings",
     "admin_reg_prompts": "settings",
     "admin_reg_questions": "settings",
     "admin_rebuild_sheet": "settings",

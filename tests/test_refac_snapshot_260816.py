@@ -828,6 +828,10 @@ admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
 admin|message|prog_qzimp_cancel_word|state:QuizImport:*,state:QuizImport:*
 admin|message|prog_qzimp_file|state:QuizImport:*
 admin|message|prog_qzimp_not_file|state:QuizImport:*
+admin|message|bot_avatar_cancel_text|state:BotAvatar:*,state:BotAvatar:*
+admin|message|bot_avatar_cancel_text|state:BotAvatar:*,state:BotAvatar:*
+admin|message|bot_avatar_photo|state:BotAvatar:*
+admin|message|bot_avatar_not_photo|state:BotAvatar:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1643,6 +1647,10 @@ admin|callback_query|prog_qzimp|prog_qzimp:*
 admin|callback_query|prog_qztpl|prog_qztpl:*
 admin|callback_query|prog_qzapply|prog_qzapply:*
 admin|callback_query|prog_qzimpno|prog_qzimpno:*
+admin|callback_query|bot_avatar_open|admin_bot_avatar
+admin|callback_query|bot_avatar_cancel|botava_cancel
+admin|callback_query|bot_avatar_remove_ask|botava_rm
+admin|callback_query|bot_avatar_remove_go|botava_rm_yes
 admin|callback_query|decresend_start|decresend_start:*
 admin|callback_query|decresend_go|decresend_go:*
 admin|callback_query|decresend_cancel|decresend_cancel:*
@@ -2407,7 +2415,10 @@ def test_snapshot_total_handler_count_is_292():
     # menu_edit_anketa сразу после quiz_menu, до reg_handoff_idle_fallback (1200 -> 1201).
     # 09.10 (подзаголовки раздела «🤝 Амбассадоры»): +1 admin.callback_query amb_separator (amb_sep)
     # в хвосте handlers/admin_amb_section.py, перед forumfn_qr_screen (1201 -> 1202).
-    assert len(GOLDEN_SNAPSHOT) == 1202
+    # 09.10 «🖼 Аватар бота» (handlers/admin_bot_avatar.py, хвост admin.py): +4 admin.message
+    # (state:BotAvatar:* — отмена дважды/фото/не фото) и +4 admin.callback_query в хвосте
+    # перед decresend_start; две чистые вставки (1202 -> 1210).
+    assert len(GOLDEN_SNAPSHOT) == 1210
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
