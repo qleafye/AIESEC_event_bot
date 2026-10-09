@@ -212,6 +212,53 @@ def _add_interval_job(func, job_id: str, interval: timedelta, *,
     )
 
 
+def _setting_interval_jobs() -> dict:
+    """Ключ настройки -> джобы, чей интервал он задаёт: (id, функция, единица, дефолт,
+    first_run_delay). Функцией, а не константой модуля: цели джоб объявлены ниже по файлу.
+
+    * `incomplete_sync_hours` задаёт ДВЕ джобы: вкладку автоотказов (квик 260923,
+      AUTOREJ-REPORT, D-F) обновляем в той же каденции, что «Незавершённые», — отдельного
+      ключа нет; джоба автоотказов сама молчит, если auto_reject_sheet_tab пуст.
+    * `resume_retry_minutes` (квик 260907-4ai): догрузка резюме, не улетевшего в Nextcloud;
+      джоба сама молчит, когда облако не настроено.
+    * `chat_refresh_minutes` (квики 260914-rgr / 260915-twr, D3): первый прогон — через
+      `_BOOT_CATCHUP`, а не через полный интервал (6 часов), иначе новопривязанный чат молчит
+      до вечера; сохранённое в jobstore расписание это не трогает (`_add_interval_job`).
+    """
+    return {
+        "nudge_scan_minutes": (
+            ("nudge_scan", nudge_incomplete_registrations, "minutes", 15, None),),
+        "allowlist_refresh_minutes": (
+            ("allowlist_refresh", allowlist_refresh_job, "minutes", 60, None),),
+        "incomplete_sync_hours": (
+            ("incomplete_sheet_sync", sync_incomplete_sheet_job, "hours", 2, None),
+            ("auto_reject_sheet_sync", sync_auto_reject_sheet_job, "hours", 2, None)),
+        "resume_retry_minutes": (
+            ("resume_upload_retry", resume_upload_retry_job, "minutes", 10, None),),
+        "chat_refresh_minutes": (
+            ("chat_membership_refresh", chat_membership_refresh_job, "minutes", 360,
+             _BOOT_CATCHUP),),
+    }
+
+
+async def _apply_setting_interval(key: str) -> None:
+    """(Пере)ставить джобы ключа на интервал из настроек. Интервал не менялся — джоба и её
+    сохранённое расписание остаются как есть (`_add_interval_job`); поменялся — следующий
+    прогон через новый интервал от текущего момента (или через `first_run_delay`)."""
+    for job_id, func, unit, default, first_run_delay in _setting_interval_jobs()[key]:
+        interval = timedelta(**{unit: _int_or_default(await get_setting(key), default)})
+        _add_interval_job(func, job_id, interval, first_run_delay=first_run_delay)
+
+
+async def on_setting_written(key: str) -> None:
+    """Хук записи настройки (`settings_audit.run_setting_hooks` — и из бота, и из Mini App
+    через очередь): новый интервал фоновой джобы действует сразу, без перезапуска бота."""
+    if key not in _setting_interval_jobs() or _scheduler is None:
+        return  # не тайминг, или планировщика нет (веб-процесс, тесты) — интервал возьмёт старт
+    await _apply_setting_interval(key)
+    logger.info(f"Интервал фоновой джобы по ключу {key} обновлён без перезапуска")
+
+
 # Идеи №16/№23 бэклога чек-ина (отчёт дня форума / опрос неявившихся): периодическая сверка
 # (`_add_interval_job` ниже) требует МОДУЛЬНУЮ функцию, не локальное замыкание — job store
 # (SQLAlchemyJobStore) ссылается на джобу по `module:qualname`, а не пиклит замыкание целиком
@@ -292,31 +339,14 @@ async def init_scheduler(bot):
     _scheduler.start(paused=True)
 
     # ── interval jobs (registered fresh each boot; replace_existing avoids dupes) ──
-    scan_minutes = _int_or_default(await get_setting("nudge_scan_minutes"), 15)
-    _add_interval_job(nudge_incomplete_registrations, "nudge_scan", timedelta(minutes=scan_minutes))
-
-    refresh_minutes = _int_or_default(await get_setting("allowlist_refresh_minutes"), 60)
-    _add_interval_job(allowlist_refresh_job, "allowlist_refresh", timedelta(minutes=refresh_minutes))
+    # Интервалы из настроек (догонялка, предотбор, «Незавершённые»/автоотказы, повтор
+    # выгрузки резюме, сверка чата) — одной таблицей `_setting_interval_jobs`: её же читает
+    # `on_setting_written`, чтобы правка в админке перепланировала джобу без перезапуска.
+    for _key in _setting_interval_jobs():
+        await _apply_setting_interval(_key)
 
     # PAY-06: daily overdue sweep (no-op until a payment_deadline is set and passes).
     _add_interval_job(sweep_payment_overdue, "payment_overdue_sweep", timedelta(hours=24))
-
-    # Auto-refresh the «Незавершённые» sheet tab so managers don't have to tap the admin
-    # button. Interval in hours (setting incomplete_sync_hours, default 2) — light load.
-    sync_hours = _int_or_default(await get_setting("incomplete_sync_hours"), 2)
-    _add_interval_job(sync_incomplete_sheet_job, "incomplete_sheet_sync", timedelta(hours=sync_hours))
-
-    # Квик 260923 (AUTOREJ-REPORT, D-F): та же каденция, что «Незавершённые» выше — отдельного
-    # ключа интервала не заводим. Джоба сама молчит, если auto_reject_sheet_tab пуст.
-    _add_interval_job(
-        sync_auto_reject_sheet_job, "auto_reject_sheet_sync", timedelta(hours=sync_hours)
-    )
-
-    # Quick 260907-4ai (P0 SkillUp5): догрузка резюме, не улетевшего в Nextcloud на финале
-    # (облако лежало/таймаут) — джоба сама молчит, когда Nextcloud не настроен, поэтому
-    # отдельного тумблера нет.
-    retry_minutes = _int_or_default(await get_setting("resume_retry_minutes"), 10)
-    _add_interval_job(resume_upload_retry_job, "resume_upload_retry", timedelta(minutes=retry_minutes))
 
     # Phase 19 (08, D-01/Pattern 7): разбор miniapp_outbox — побочные эффекты записи из
     # Mini App (уведомление менеджерам о сдаче, пересборка вкладок геймы). 30с — короче
@@ -358,17 +388,6 @@ async def init_scheduler(bot):
     # нужен (см. докстринг quiet_hours_flush_job).
     _add_interval_job(quiet_hours_flush_job, "quiet_hours_flush", timedelta(minutes=1))
 
-    # Квик 260914-rgr (RGR-01..07): периодическая сверка состава чата делегатов с Telegram.
-    # Дефолт интервала — 360 мин (6 часов), тот же приём, что у остальных интервалов джоб выше.
-    # Квик 260915-twr (D3): первый прогон — через _BOOT_CATCHUP (2 мин) после старта, а не
-    # через полный интервал — иначе новопривязанный чат молчит до 6 часов; сохранённое в
-    # jobstore расписание уже заведённой джобы это не трогает (см. докстринг _add_interval_job).
-    chat_refresh_minutes = _int_or_default(await get_setting("chat_refresh_minutes"), 360)
-    _add_interval_job(
-        chat_membership_refresh_job, "chat_membership_refresh",
-        timedelta(minutes=chat_refresh_minutes),
-        first_run_delay=_BOOT_CATCHUP,
-    )
     # Квик 260927: срок хранения истории рейтинга чата — раз в сутки, первый прогон вскоре после
     # старта (бот, перезапускаемый чаще раза в сутки, иначе не чистил бы никогда).
     _add_interval_job(
@@ -451,9 +470,10 @@ async def init_scheduler(bot):
     _add_interval_job(_reconcile_chat_rating_post, "chat_rating_post_reconcile", timedelta(minutes=10))
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
+    _nudge, _allow = _scheduler.get_job("nudge_scan"), _scheduler.get_job("allowlist_refresh")
     logger.info(
-        f"Scheduler started (nudge scan every {scan_minutes}m, "
-        f"allowlist refresh every {refresh_minutes}m)"
+        f"Scheduler started (nudge scan every {_nudge.trigger.interval}, "
+        f"allowlist refresh every {_allow.trigger.interval})"
     )
     return _scheduler
 
