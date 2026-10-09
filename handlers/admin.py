@@ -104,6 +104,7 @@ from services.scheduler import (
 from services.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
 from services.background import spawn as _spawn
+from services import decision_delivery
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport
 from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
@@ -507,6 +508,14 @@ async def cmd_find_user(message: types.Message):
         if user.get("status") in ("approved", "rejected"):
             rows.append([InlineKeyboardButton(
                 text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
+            )])
+        # «📨 Отправить решение заново» — для решённой заявки; если письмо не дошло, причина
+        # строкой в карточке (services/decision_delivery.py::failure_line). Шов — handlers/
+        # admin_resend_decision.py.
+        if user.get("status") in ("approved", "rejected"):
+            text += decision_delivery.failure_line(user)
+            rows.append([InlineKeyboardButton(
+                text="📨 Отправить решение заново", callback_data=f"decresend_start:{user['telegram_id']}",
             )])
         # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» — видна только для отклонённой
         # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
@@ -1182,3 +1191,8 @@ from handlers import admin_coins_transfer  # noqa: E402,F401
 from handlers import admin_settings_enum  # noqa: E402,F401
 # «👥 Список участников» в «📊 Данные» (handlers/admin_participants.py) — golden append в хвост.
 from handlers import admin_participants  # noqa: E402,F401
+
+# Переотправка решения одному делегату: shared-router seam import «📨 Отправить решение заново»
+# (handlers/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
+# хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
+from handlers import admin_resend_decision  # noqa: E402,F401
