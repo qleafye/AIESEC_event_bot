@@ -149,6 +149,7 @@ async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="📥 Выгрузить CSV по амбассадорам", callback_data="ambt_csv")],
         [InlineKeyboardButton(text="🚫 Исключить приглашённого из зачёта", callback_data="ambt_excl")],
         [InlineKeyboardButton(text=f"📋 Исключённые ({excluded})", callback_data="ambt_excl_list:0")],
+        [InlineKeyboardButton(text="🔁 Пересчитать ступени", callback_data="ambt_fill")],
         [InlineKeyboardButton(text="🪜 Лестница ступеней", callback_data="ambl:main")],
         [await owner_back_button("admin_amb_tiers")],
     ]
@@ -177,8 +178,8 @@ async def amb_tiers_toggle(callback: types.CallbackQuery):
     # изменилось; полное описание программы — на самом экране.
     if key == "amb_qualified_program":
         note += (
-            "\n\nПересчёт для одобренных раньше ещё не запускали? Выключите и попросите "
-            "разработчика: сначала пересчёт, потом включение." if new_val == "on"
+            "\n\nДля одобренных раньше ступени не выданы? Нажмите «🔁 Пересчитать ступени» "
+            "на этом экране." if new_val == "on"
             else "\n\nНовые ступени не выдаются, уже выданные остаются."
         )
     else:
@@ -236,28 +237,52 @@ def _is_cancel(message) -> bool:
     return body.startswith("/") or body.lower() in {"отмена", "❌ отмена"}
 
 
-@router.callback_query(F.data == "ambt_excl")
-async def amb_exclude_start(callback: types.CallbackQuery, state: FSMContext):
+async def _start_exclude(callback: types.CallbackQuery, state: FSMContext, *, from_list: bool) -> None:
     await state.clear()
     await state.set_state(AmbExclude.waiting_for_person)
+    if from_list:
+        await state.update_data(return_to="list")
     await callback.message.answer(_PERSON_PROMPT, reply_markup=_cancel_kb())
     await callback.answer()
 
 
+async def _show_back_screen(message: types.Message, return_to: str | None) -> None:
+    """Куда вернуть менеджера после мастера: в список исключённых, если зашёл оттуда,
+    иначе на экран ступеней."""
+    if return_to == "list":
+        text, kb = await _exclusions_screen(0)
+    else:
+        text, kb = await _tiers_screen()
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data == "ambt_excl")
+async def amb_exclude_start(callback: types.CallbackQuery, state: FSMContext):
+    await _start_exclude(callback, state, from_list=False)
+
+
+@router.callback_query(F.data == "ambt_excl_l")
+async def amb_exclude_start_from_list(callback: types.CallbackQuery, state: FSMContext):
+    await _start_exclude(callback, state, from_list=True)
+
+
 @router.callback_query(F.data == "ambt_excl_cancel")
 async def amb_exclude_cancel(callback: types.CallbackQuery, state: FSMContext):
+    return_to = (await state.get_data()).get("return_to")
     await state.clear()
-    text, kb = await _tiers_screen()
     await callback.message.answer("Отменено, никого не исключили.")
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await _show_back_screen(callback.message, return_to)
     await callback.answer()
 
 
 @router.message(AmbExclude.waiting_for_person)
 async def amb_exclude_person_step(message: types.Message, state: FSMContext):
     if _is_cancel(message):
+        return_to = (await state.get_data()).get("return_to")
         await state.clear()
         await message.answer("Отменено, никого не исключили.")
+        if return_to == "list":
+            await _show_back_screen(message, return_to)
         return
     tid, username, error = _resolve_person_input(message)
     if error:
@@ -296,8 +321,11 @@ async def amb_exclude_person_step(message: types.Message, state: FSMContext):
 @router.message(AmbExclude.waiting_for_reason)
 async def amb_exclude_reason_step(message: types.Message, state: FSMContext):
     if _is_cancel(message):
+        return_to = (await state.get_data()).get("return_to")
         await state.clear()
         await message.answer("Отменено, никого не исключили.")
+        if return_to == "list":
+            await _show_back_screen(message, return_to)
         return
     reason = (message.text or "").strip()
     if not reason:
@@ -336,8 +364,11 @@ async def amb_exclude_reason_step(message: types.Message, state: FSMContext):
 @router.message(AmbExclude.waiting_for_confirm)
 async def amb_exclude_confirm_hint(message: types.Message, state: FSMContext):
     if _is_cancel(message):
+        return_to = (await state.get_data()).get("return_to")
         await state.clear()
         await message.answer("Отменено, никого не исключили.")
+        if return_to == "list":
+            await _show_back_screen(message, return_to)
         return
     await message.answer(
         "Нажмите «✅ Исключить» или «❌ Отмена» в сообщении выше.", reply_markup=_cancel_kb(),
@@ -352,6 +383,7 @@ async def amb_exclude_go(callback: types.CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer("Кнопка устарела — начните исключение заново", show_alert=True)
         return
+    return_to = data.get("return_to")
     await state.clear()
     from services import amb_journal
     before = await amb_journal_db.get_row(int(invitee_id))
@@ -365,8 +397,7 @@ async def amb_exclude_go(callback: types.CallbackQuery, state: FSMContext):
         )
     else:
         await callback.message.answer("Этот человек уже исключён — ничего не изменилось.")
-    text, kb = await _tiers_screen()
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await _show_back_screen(callback.message, return_to)
     await callback.answer()
 
 
@@ -407,6 +438,7 @@ async def _exclusions_screen(offset: int) -> tuple[str, InlineKeyboardMarkup]:
         nav.append(InlineKeyboardButton(text="Дальше ▶️", callback_data=f"ambt_excl_list:{offset + _PAGE}"))
     if nav:
         buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text="🚫 Исключить приглашённого из зачёта", callback_data="ambt_excl_l")])
     buttons.append([InlineKeyboardButton(text="← К ступеням амбассадоров", callback_data="admin_amb_tiers")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -463,9 +495,125 @@ async def amb_unexclude_go(callback: types.CallbackQuery):
     await _edit_or_send(callback.message, text, kb)
 
 
+# ── разовый пересчёт ступеней ────────────────────────────────────────────────────────────
+
+_FILL_LIST_LIMIT = 15
+
+
+def _fill_totals(preview: list[dict]) -> tuple[int, int, int]:
+    """(новых ступеней, из них мест квоты выдано, из них в лист ожидания)."""
+    new = granted = waitlist = 0
+    for entry in preview:
+        for tier in entry["tiers"]:
+            if tier["exists"]:
+                continue
+            new += 1
+            granted += tier["o2o_status"] == "granted"
+            waitlist += tier["o2o_status"] == "waitlist"
+    return new, granted, waitlist
+
+
+def _fill_entry_line(entry: dict) -> str:
+    who = f"@{html.escape(entry['username'])}" if entry["username"] else f"id {entry['telegram_id']}"
+    tiers = ", ".join(str(t["tier"]) for t in entry["tiers"] if not t["exists"])
+    return f"• {who}: прошли отбор {entry['qualified']} → ступени {tiers}"
+
+
+@router.callback_query(F.data == "ambt_fill")
+async def amb_fill_preview(callback: types.CallbackQuery):
+    back = [InlineKeyboardButton(text="← К ступеням амбассадоров", callback_data="admin_amb_tiers")]
+    if await amb_tiers.deadline_passed():
+        await _edit_or_send(
+            callback.message,
+            "Дедлайн подсчёта ступеней уже прошёл — новые ступени не выдаются, пересчитывать нечего.",
+            InlineKeyboardMarkup(inline_keyboard=[back]),
+        )
+        await callback.answer()
+        return
+    preview = await amb_tiers.preview_backfill()
+    new, granted, waitlist = _fill_totals(preview)
+    if not new:
+        await _edit_or_send(
+            callback.message,
+            "<b>🔁 Пересчёт ступеней</b>\n\nНовых ступеней к выдаче нет — у всех амбассадоров "
+            "уже записано всё, что положено.",
+            InlineKeyboardMarkup(inline_keyboard=[back]),
+        )
+        await callback.answer()
+        return
+    program = await amb_tiers.program_on()
+    lines = [
+        "<b>🔁 Пересчёт ступеней</b>",
+        "Проверит всех амбассадоров и допишет ступени, которые им уже положены, но ещё не записаны "
+        "(например, за приглашённых, одобренных до запуска программы). Ничего не снимает.",
+        "",
+        f"Амбассадоров: {len(preview)}, новых ступеней: {new}",
+    ]
+    if granted or waitlist:
+        lines.append(f"Из них мест с квотой: выдадут {granted}, в лист ожидания {waitlist}")
+    lines.append("")
+    lines += [_fill_entry_line(e) for e in preview[:_FILL_LIST_LIMIT]]
+    if len(preview) > _FILL_LIST_LIMIT:
+        lines.append(f"…и ещё {len(preview) - _FILL_LIST_LIMIT}")
+    lines.append("")
+    rows = []
+    if program:
+        lines.append(
+            f"«✅ Пересчитать и уведомить» запишет ступени и отправит сообщение каждому из "
+            f"{len(preview)} амбассадоров. «🔕 Пересчитать без уведомлений» запишет ступени "
+            "молча — амбассадоры ничего не получат."
+        )
+        rows.append([InlineKeyboardButton(text="✅ Пересчитать и уведомить", callback_data="ambt_fill_go:n")])
+    else:
+        lines.append(
+            "Программа сейчас выключена, поэтому уведомления не отправляются: ступени запишутся "
+            "молча. Включить программу можно после пересчёта."
+        )
+    rows.append([InlineKeyboardButton(text="🔕 Пересчитать без уведомлений", callback_data="ambt_fill_go:q")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="admin_amb_tiers")])
+    await _edit_or_send(callback.message, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ambt_fill_go:"))
+async def amb_fill_go(callback: types.CallbackQuery):
+    """Тот же цикл, что `tools/backfill_amb_tiers.py --apply [--notify]`: по одному амбассадору
+    в порядке предпросмотра (от него зависит раздача квоты), `check_tiers(force=True)`."""
+    notify = callback.data.endswith(":n")
+    if notify and not await amb_tiers.program_on():
+        await callback.answer(
+            "Программа выключена — уведомления не отправляются. Откройте пересчёт заново.",
+            show_alert=True,
+        )
+        return
+    if await amb_tiers.deadline_passed():
+        await callback.answer("Дедлайн подсчёта уже прошёл — ступени не выдаются.", show_alert=True)
+        return
+    preview = await amb_tiers.preview_backfill()
+    written = failed = 0
+    for entry in preview:
+        try:
+            rows = await amb_tiers.check_tiers([entry["telegram_id"]], notify=notify, force=True)
+            written += len(rows)
+        except Exception:
+            failed += 1
+            logger.exception("amb_tiers: пересчёт не прошёл (tid=%s)", entry["telegram_id"])
+    logger.info("amb_tiers: ручной пересчёт by=%s notify=%s записано=%s сбоев=%s",
+                callback.from_user.id, notify, written, failed)
+    tail = ("Амбассадорам отправлены сообщения о ступенях." if notify and written
+            else "Сообщений амбассадорам не отправляли.")
+    if failed:
+        tail += f"\nНе удалось обработать: {failed} — запустите пересчёт ещё раз, записанное не задвоится."
+    await callback.answer()
+    await callback.message.answer(f"Готово. Записано ступеней: {written}. {tail}")
+    text, kb = await _tiers_screen()
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
 __all__ = [
     "show_amb_tiers", "amb_tiers_toggle", "amb_tiers_csv",
     "amb_exclude_start", "amb_exclude_cancel", "amb_exclude_person_step",
     "amb_exclude_reason_step", "amb_exclude_confirm_hint", "amb_exclude_go",
+    "amb_exclude_start_from_list", "amb_fill_preview", "amb_fill_go",
     "amb_exclusions_list", "amb_unexclude_confirm", "amb_unexclude_go",
 ]
