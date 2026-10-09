@@ -29,6 +29,7 @@ from settings_audit import set_setting_by_admin, delete_setting_by_admin
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
+from keyboards.menu_dynamic import caption_for
 from handlers.reg_schema import (
     REG_LABELS,
     REG_PRESETS,
@@ -490,7 +491,8 @@ async def render_menu_text(admin_id: int | None = None) -> str:
     if header_code and header_code != ALL_CITIES:
         city_txt = await city_label(header_code)
         lines = [f"🔘 <b>Кнопки главного меню — {html_module.escape(city_txt)}</b>", ""]
-        for key, text in MENU_BUTTONS:
+        for key, _text in MENU_BUTTONS:
+            text = await caption_for(key, header_code)  # подпись, которую видит делегат
             is_on = await get_setting_typed_for_city(key, header_code) == "on"
             override_key = per_city_key(key, header_code)
             own = bool(override_key and await get_setting(override_key))
@@ -501,7 +503,8 @@ async def render_menu_text(admin_id: int | None = None) -> str:
         return "\n".join(lines)
 
     lines = ["🔘 <b>Кнопки главного меню</b>", ""]
-    for key, text in MENU_BUTTONS:
+    for key, _text in MENU_BUTTONS:
+        text = await caption_for(key, None)
         is_on = await get_setting_typed(key) == "on"
         status = "✅" if is_on else "❌"
         hidden = await _menu_hidden_note(key, None) if is_on else ""
@@ -519,7 +522,8 @@ async def build_menu_keyboard(admin_id: int | None = None):
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
 
     buttons = []
-    for key, text in MENU_BUTTONS:
+    for key, _text in MENU_BUTTONS:
+        text = await caption_for(key, header_code if per_city_ctx else None)
         if per_city_ctx:
             is_on = await get_setting_typed_for_city(key, header_code) == "on"
         else:
@@ -530,6 +534,8 @@ async def build_menu_keyboard(admin_id: int | None = None):
     if per_city_ctx and await _menu_city_has_override(header_code):
         buttons.append([InlineKeyboardButton(text="↩️ Все как везде", callback_data="menu_reset_city")])
 
+    # Подписи этих кнопок правятся рядом — экран группы настроек «✏️ Подписи кнопок меню».
+    buttons.append([InlineKeyboardButton(text="✏️ Подписи кнопок", callback_data="settings_group:menu_labels")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="menu_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

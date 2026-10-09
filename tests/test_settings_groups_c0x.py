@@ -95,7 +95,8 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
     # Phase 20 (20-01): состав рядов-групп зафиксирован целиком, а не «хотя бы один» —
     # разрез «📝 Регистрация» на анкету и «📋 Заявки» обязан быть виден этому сторожу.
     assert [cd for cd in flat if cd and cd.startswith("settings_group:")] == [
-        "settings_group:event", "settings_group:reg", "settings_group:apps",
+        # 09.10: «✏️ Подписи кнопок меню» — сразу за «🎪 Событие/Медиа».
+        "settings_group:event", "settings_group:menu_labels", "settings_group:reg", "settings_group:apps",
         "settings_group:sheets", "settings_group:pay", "settings_group:party",
         "settings_group:consent", "settings_group:game", "settings_group:amb",
         # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
@@ -243,6 +244,8 @@ def test_registry_coverage_event():
         "chat",
         # "amb" — собственная группа раздела «🤝 Амбассадоры» (ключи переехали из game).
         "amb",
+        # "menu_labels" (09.10): подписи кнопок главного меню, экран «✏️ Подписи кнопок меню».
+        "menu_labels",
     }
     # Phase 31 (31-03, D-30): "date_only" — дата без времени (форма отдельная от "date",
     # у которой время суток осмысленно — payment_deadline/планировщик напоминаний).
