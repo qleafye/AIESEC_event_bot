@@ -187,6 +187,15 @@ def test_failed_send_releases_mark_so_own_retry_still_works(tmp_path, monkeypatc
     asyncio.run(scenario())
 
 
+async def _age_mark(qid):
+    async with db._connect() as conn:
+        await conn.execute(
+            "UPDATE delegate_questions SET delivering_at = '2020-01-01T00:00:00' WHERE id = ?",
+            (qid,),
+        )
+        await conn.commit()
+
+
 def test_stale_delivering_mark_does_not_lock_question_forever(tmp_path):
     """Процесс упал посреди отправки — отметка осталась. Через несколько минут повтор снова
     разрешён, иначе вопрос заперт навсегда."""
@@ -195,18 +204,168 @@ def test_stale_delivering_mark_does_not_lock_question_forever(tmp_path):
     async def scenario():
         qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
         assert await db.claim_question(qid, ADMIN_ID, "Админ")
-        assert await db.begin_question_delivery(qid, ADMIN_ID) is True
-        assert await db.begin_question_delivery(qid, ADMIN_ID) is False
-        async with db._connect() as conn:
-            await conn.execute(
-                "UPDATE delegate_questions SET delivering_at = '2020-01-01T00:00:00' WHERE id = ?",
-                (qid,),
-            )
-            await conn.commit()
-        assert await db.begin_question_delivery(qid, ADMIN_ID) is True
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is not None
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is None
+        await _age_mark(qid)
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is not None
         # Чужой менеджер отметку не ставит никогда — захват не его.
-        await db.release_question_delivery(qid)
-        assert await db.begin_question_delivery(qid, ADMIN_ID + 1) is False
+        await _age_mark(qid)
+        assert await db.begin_question_delivery(qid, ADMIN_ID + 1) is None
+
+    asyncio.run(scenario())
+
+
+def test_slow_first_holder_cannot_release_mark_taken_over_by_retry(tmp_path):
+    """Ревью 10.10: первая попытка зависла, отметку перехватили по давности; потом первая
+    попытка всё-таки вернулась с ошибкой — снять она может только СВОЮ отметку, не чужую."""
+    _ready(tmp_path, "qguard_token.db")
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        assert await db.claim_question(qid, ADMIN_ID, "Админ")
+        old = await db.begin_question_delivery(qid, ADMIN_ID)
+        await _age_mark(qid)
+        new = await db.begin_question_delivery(qid, ADMIN_ID)
+        assert new and new != old
+        assert await db.release_question_delivery(qid, old) is False
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is None, "свежая отметка снята чужим токеном"
+        assert (await db.get_question(qid))["delivery_token"] == new
+
+    asyncio.run(scenario())
+
+
+def test_stale_takeover_forbidden_once_something_reached_delegate(tmp_path):
+    """Ревью 10.10: если до делегата уже что-то дошло (dispatched_at), перехват по давности
+    запрещён — повтор продублировал бы дошедшее; снять отметку тоже нельзя."""
+    _ready(tmp_path, "qguard_dispatched.db")
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        assert await db.claim_question(qid, ADMIN_ID, "Админ")
+        token = await db.begin_question_delivery(qid, ADMIN_ID)
+        await db.mark_question_dispatched(qid, token)
+        await _age_mark(qid)
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is None
+        assert await db.release_question_delivery(qid, token) is False
+        assert await db.begin_question_delivery(qid, ADMIN_ID) is None
+
+    asyncio.run(scenario())
+
+
+def test_non_text_answer_header_sent_copy_failed_blocks_retry(tmp_path, monkeypatch):
+    """Ревью 10.10: не-текстовый ответ вне тихих часов — заголовок дошёл, копия упала.
+    Отметку не снимаем (повтор прислал бы второй заголовок), менеджеру — честно, что дошло."""
+    _ready(tmp_path, "qguard_header.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    class _VoiceFail(_AdminMessage):
+        async def send_copy(self, chat_id):
+            raise TimeoutError("network blip")
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        bot = _Bot()
+        m1 = _VoiceFail(None, qid)
+        m1.text = m1.html_text = None
+        await admin_mod.admin_reply_to_question(m1, bot)
+        assert len(_delegate_msgs(bot)) == 1  # заголовок
+        assert any("только заголовок" in t for t in m1.replies), m1.replies
+        assert not any("попробовать ещё раз" in t for t in m1.replies)
+        row = await db.get_question(qid)
+        assert row["dispatched_at"] is not None and row["delivered_at"] is None
+
+        m2 = _VoiceFail(None, qid)
+        m2.text = m2.html_text = None
+        await admin_mod.admin_reply_to_question(m2, bot)
+        assert len(_delegate_msgs(bot)) == 1, "второй заголовок делегату"
+        assert any("уже отправляется" in t for t in m2.replies), m2.replies
+
+    asyncio.run(scenario())
+
+
+def test_record_failure_after_send_is_retried_then_answered(tmp_path, monkeypatch):
+    """Ревью 10.10: ответ дошёл, запись в БД упала один раз — повтор записи, вопрос отвечен,
+    менеджеру — успех, а не «не удалось»."""
+    import services.questions as qs
+
+    _ready(tmp_path, "qguard_record_retry.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    monkeypatch.setattr(qs, "RECORD_ANSWER_PAUSE", 0)
+    real = db.set_question_answer
+    calls = {"n": 0}
+
+    async def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(db, "set_question_answer", flaky)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        bot = _Bot()
+        m = _AdminMessage("Ответ", qid)
+        await admin_mod.admin_reply_to_question(m, bot)
+        assert "✅ Ответ отправлен пользователю." in m.replies, m.replies
+        assert (await db.get_question(qid))["delivered_at"] is not None
+        assert len(_delegate_msgs(bot)) == 1
+
+    asyncio.run(scenario())
+
+
+def test_record_failure_persistent_keeps_sending_and_never_resends(tmp_path, monkeypatch, caplog):
+    """Запись не удалась и после повторов: ERROR в лог, вопрос остаётся «отправляется»,
+    повтор менеджера второй копии делегату не шлёт."""
+    import logging
+    import services.questions as qs
+
+    _ready(tmp_path, "qguard_record_fail.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    monkeypatch.setattr(qs, "RECORD_ANSWER_PAUSE", 0)
+
+    async def broken(*a, **kw):
+        raise RuntimeError("disk I/O error")
+
+    monkeypatch.setattr(db, "set_question_answer", broken)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        bot = _Bot()
+        m1 = _AdminMessage("Ответ", qid)
+        with caplog.at_level(logging.ERROR):
+            await admin_mod.admin_reply_to_question(m1, bot)
+        assert any("записать его не удалось" in r.getMessage() for r in caplog.records)
+        assert not any("Не удалось" in t or "❌" in t for t in m1.replies), m1.replies
+        row = await db.get_question(qid)
+        assert row["delivered_at"] is None and row["dispatched_at"] is not None
+        await _age_mark(qid)
+        m2 = _AdminMessage("Ответ", qid)
+        await admin_mod.admin_reply_to_question(m2, bot)
+        assert len(_delegate_msgs(bot)) == 1
+        assert any("уже отправляется" in t for t in m2.replies), m2.replies
+
+    asyncio.run(scenario())
+
+
+def test_send_timeout_releases_mark_and_says_retry(tmp_path, monkeypatch):
+    """Ревью 10.10: явный потолок отправки — зависшая отправка обрывается и не держит отметку."""
+    _ready(tmp_path, "qguard_timeout.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+    monkeypatch.setattr(db, "QUESTION_SEND_TIMEOUT", 0.05)
+
+    class _Hang(_Bot):
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            if chat_id == DELEGATE_ID:
+                await asyncio.sleep(5)
+            self.sent.append((chat_id, text))
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        m = _AdminMessage("Ответ", qid)
+        await admin_mod.admin_reply_to_question(m, _Hang())
+        assert any("попробовать ещё раз" in t for t in m.replies), m.replies
+        assert (await db.get_question(qid))["delivery_token"] is None
 
     asyncio.run(scenario())
 
@@ -369,5 +528,110 @@ def test_flush_success_keeps_question_answered(tmp_path, monkeypatch):
         assert len(_delegate_msgs(bot)) == 1
         assert [t for cid, t in bot.sent if cid == ADMIN_ID] == []
         assert (await db.get_question(qid))["delivered_at"] is not None
+
+    asyncio.run(scenario())
+
+
+def test_flush_failure_of_old_row_after_new_answer_touches_nothing(tmp_path, monkeypatch):
+    """Ревью 10.10: старая строка очереди (прежняя попытка) упала уже после того, как менеджер
+    ответил заново — вопрос остаётся отвеченным, автору ничего не пишем."""
+    _ready(tmp_path, "qguard_flush_stale.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    async def scenario():
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await _queue_answer(qid, "Старый ответ")
+        old_token = (await db.get_question(qid))["delivery_token"]
+        assert await db.reopen_question_delivery(qid, old_token)
+
+        await db.set_setting("quiet_hours_enabled", "off")
+        ok_bot = _Bot()
+        await admin_mod.admin_reply_to_question(_AdminMessage("Новый ответ", qid), ok_bot)
+        assert len(_delegate_msgs(ok_bot)) == 1
+        delivered = (await db.get_question(qid))["delivered_at"]
+        assert delivered is not None
+
+        bot = _FlushBot(TimeoutError("network blip"))
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+        row = await db.get_question(qid)
+        assert row["delivered_at"] == delivered
+        assert [t for cid, t in bot.sent if cid == ADMIN_ID] == []
+
+    asyncio.run(scenario())
+
+
+def _queued_voice(qid):
+    class _Voice(_AdminMessage):
+        async def send_copy(self, chat_id):
+            raise AssertionError("в тихие часы — только очередь")
+
+    m = _Voice(None, qid)
+    m.text = m.html_text = None
+    return m
+
+
+def test_flush_copy_source_deleted_says_resend_as_text(tmp_path, monkeypatch):
+    """Ревью 10.10: менеджер удалил исходное голосовое — копия утром не находит сообщение."""
+    from aiogram.exceptions import TelegramBadRequest
+
+    _ready(tmp_path, "qguard_flush_gone.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    class _CopyGoneBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.sent.append((chat_id, text))
+
+        async def copy_message(self, chat_id, from_chat_id, message_id, caption=None):
+            raise TelegramBadRequest(method=None, message="Bad Request: message to copy not found")
+
+    async def scenario():
+        await _quiet_all_day()
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await admin_mod.admin_reply_to_question(_queued_voice(qid), _Bot())
+        bot = _CopyGoneBot()
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+
+        to_author = [t for cid, t in bot.sent if cid == ADMIN_ID]
+        assert len(to_author) == 1, bot.sent
+        assert "исходное сообщение удалено" in to_author[0]
+        assert "заново текстом" in to_author[0]
+        # Заголовок ушёл, копия — нет: так и сказано.
+        assert "только заголовок" in to_author[0]
+        assert (await db.get_question(qid))["delivered_at"] is None
+
+    asyncio.run(scenario())
+
+
+def test_flush_header_sent_copy_failed_says_so(tmp_path, monkeypatch):
+    _ready(tmp_path, "qguard_flush_half.db")
+    monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
+
+    class _CopyFailBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.sent.append((chat_id, text))
+
+        async def copy_message(self, chat_id, from_chat_id, message_id, caption=None):
+            raise TimeoutError("network blip")
+
+    async def scenario():
+        await _quiet_all_day()
+        qid = await db.create_question(DELEGATE_ID, "Когда дедлайн?")
+        await admin_mod.admin_reply_to_question(_queued_voice(qid), _Bot())
+        bot = _CopyFailBot()
+        _install(bot)
+        await qh.flush_due(_after_quiet_window())
+
+        to_author = [t for cid, t in bot.sent if cid == ADMIN_ID]
+        assert len(to_author) == 1, bot.sent
+        assert "только заголовок" in to_author[0]
+        assert "удалено" not in to_author[0]
 
     asyncio.run(scenario())
