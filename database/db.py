@@ -10511,6 +10511,27 @@ _UPSERT_TRANSLATION_SQL = '''
 '''
 
 
+# Пауза перед единственным повтором пакетного засева, упавшего на «database is locked»
+# (параллельно пишет процесс Mini App). Модульная — тесты ставят 0.
+SEED_LOCK_RETRY_PAUSE_S = 2.0
+
+
+async def _retry_once_if_locked(run, what: str):
+    """Один повтор с паузой, если проход упал на занятой базе: транзакция откатилась целиком,
+    повтор начинает с чистого листа. Второй сбой уходит вызывающему."""
+    import asyncio
+    import sqlite3
+
+    try:
+        return await run()
+    except sqlite3.OperationalError as e:
+        if "locked" not in str(e):
+            raise
+        logger.warning("%s: база занята (%s), повтор через %.0f с", what, e, SEED_LOCK_RETRY_PAUSE_S)
+        await asyncio.sleep(SEED_LOCK_RETRY_PAUSE_S)
+        return await run()
+
+
 async def seed_manual_translations(
     lang: str, passes: list[tuple[dict[str, str], str]], src_hash_fn,
 ) -> list[dict]:
@@ -10522,35 +10543,43 @@ async def seed_manual_translations(
     `manual=1` перевод с ЧУЖИМ `origin_key` (правка менеджера), остальное пишем тем же
     `INSERT ... ON CONFLICT`, что `upsert_translation`. `passes` — список `(словарь ru→en,
     origin_key)`, проходы идут по порядку и видят записи предыдущих (повтор строки во втором
-    словаре пропускается как «чужая ручная»). Сбой посреди — откат всего вызова, исключение
-    уходит вызывающему (на старте его ловит fail-soft в `main.py`).
+    словаре пропускается как «чужая ручная»).
+
+    Транзакция открывается `BEGIN IMMEDIATE` ДО чтения: иначе правка менеджера из Mini App
+    между SELECT и INSERT перетёрлась бы засевом. Сбой посреди — откат всего вызова; на
+    «database is locked» — один повтор (`_retry_once_if_locked`), дальше исключение уходит
+    вызывающему (на старте его ловит fail-soft в `main.py`).
 
     Возвращает по `{"applied": N, "skipped_manager_edit": M}` на каждый проход."""
-    updated_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
-    results: list[dict] = []
-    async with _connect() as db:
-        try:
-            for translations, origin in passes:
-                async with db.execute(
-                    "SELECT src_hash, manual, origin_key FROM translations WHERE lang = ?", (lang,),
-                ) as cursor:
-                    existing = {row[0]: (row[1], row[2]) for row in await cursor.fetchall()}
-                rows = []
-                skipped = 0
-                for ru_text, en_text in translations.items():
-                    text_hash = src_hash_fn(ru_text)
-                    manual, row_origin = existing.get(text_hash, (0, None))
-                    if manual and row_origin != origin:
-                        skipped += 1
-                        continue
-                    rows.append((lang, text_hash, ru_text, en_text, 1, origin, updated_at))
-                await db.executemany(_UPSERT_TRANSLATION_SQL, rows)
-                results.append({"applied": len(rows), "skipped_manager_edit": skipped})
-            await db.commit()
-        except BaseException:
-            await db.rollback()
-            raise
-    return results
+    async def run() -> list[dict]:
+        updated_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        results: list[dict] = []
+        async with _connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                for translations, origin in passes:
+                    async with db.execute(
+                        "SELECT src_hash, manual, origin_key FROM translations WHERE lang = ?", (lang,),
+                    ) as cursor:
+                        existing = {row[0]: (row[1], row[2]) for row in await cursor.fetchall()}
+                    rows = []
+                    skipped = 0
+                    for ru_text, en_text in translations.items():
+                        text_hash = src_hash_fn(ru_text)
+                        manual, row_origin = existing.get(text_hash, (0, None))
+                        if manual and row_origin != origin:
+                            skipped += 1
+                            continue
+                        rows.append((lang, text_hash, ru_text, en_text, 1, origin, updated_at))
+                    await db.executemany(_UPSERT_TRANSLATION_SQL, rows)
+                    results.append({"applied": len(rows), "skipped_manager_edit": skipped})
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+        return results
+
+    return await _retry_once_if_locked(run, "seed_manual_translations")
 
 
 async def enqueue_untranslated(
@@ -10562,32 +10591,37 @@ async def enqueue_untranslated(
     `items` — `(origin_key, src_hash, src_text)` в порядке корпуса. Строка, для которой в
     `translations` уже есть запись (ручная или машинная), пропускается; остальные идут тем же
     `INSERT OR IGNORE`, что `enqueue_translation` (`UNIQUE(lang, src_hash)` — повтор текста в
-    корпусе и уже стоящие в очереди строки не плодят дублей). Сбой — откат всего вызова.
-    Возвращает число реально вставленных строк."""
-    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
-    async with _connect() as db:
-        try:
-            async with db.execute(
-                "SELECT src_hash FROM translations WHERE lang = ?", (lang,),
-            ) as cursor:
-                translated = {row[0] for row in await cursor.fetchall()}
-            rows = [
-                (lang, text_hash, text, origin_key, created_at)
-                for origin_key, text_hash, text in items
-                if text_hash not in translated
-            ]
-            before = db.total_changes
-            await db.executemany(
-                "INSERT OR IGNORE INTO translation_queue (lang, src_hash, src_text, origin_key, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                rows,
-            )
-            queued = db.total_changes - before
-            await db.commit()
-        except BaseException:
-            await db.rollback()
-            raise
-    return queued
+    корпусе и уже стоящие в очереди строки не плодят дублей). `BEGIN IMMEDIATE` до чтения и
+    один повтор на «database is locked» — как у `seed_manual_translations`. Сбой — откат
+    всего вызова. Возвращает число реально вставленных строк."""
+    async def run() -> int:
+        created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+        async with _connect() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                async with db.execute(
+                    "SELECT src_hash FROM translations WHERE lang = ?", (lang,),
+                ) as cursor:
+                    translated = {row[0] for row in await cursor.fetchall()}
+                rows = [
+                    (lang, text_hash, text, origin_key, created_at)
+                    for origin_key, text_hash, text in items
+                    if text_hash not in translated
+                ]
+                before = db.total_changes
+                await db.executemany(
+                    "INSERT OR IGNORE INTO translation_queue (lang, src_hash, src_text, origin_key, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    rows,
+                )
+                queued = db.total_changes - before
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+        return queued
+
+    return await _retry_once_if_locked(run, "enqueue_untranslated")
 
 
 async def clear_translation_manual(lang: str, src_hash: str) -> None:

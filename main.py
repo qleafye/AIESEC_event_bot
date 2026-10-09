@@ -349,7 +349,9 @@ async def main():
 
         await seed_miniapp_manual_translations()
     except Exception:
-        logger.warning("Не удалось засеять ручные переводы Mini App", exc_info=True)
+        logger.warning(
+            "Ручные переводы Mini App не засеяны, повторится при следующем старте", exc_info=True,
+        )
 
     # Квик 260917-en (приёмка, английский делегат: «перевод интерфейса очень криво сделан») —
     # тот же приём для КОРПУСА АНКЕТЫ (reg_prompts/reg/party): дефолты кодовой базы
@@ -360,7 +362,9 @@ async def main():
 
         await seed_form_manual_translations()
     except Exception:
-        logger.warning("Не удалось засеять ручные переводы анкеты", exc_info=True)
+        logger.warning(
+            "Ручные переводы анкеты не засеяны, повторится при следующем старте", exc_info=True,
+        )
     # Квик 260917-en (живая проверка 17.09, находка 1): корпус анкеты (`services/
     # i18n_sources.py::corpus()`) расширяется кодом (новая группа DELEGATE_GROUPS, новый
     # литерал в code_literals()) — `bulk_seed()` исторически звался ТОЛЬКО в момент включения
@@ -376,7 +380,10 @@ async def main():
             await bulk_seed()
             await requeue_stale_machine_translations()
     except Exception:
-        logger.warning("Не удалось досеять корпус перевода анкеты", exc_info=True)
+        logger.warning(
+            "Корпус перевода анкеты не поставлен в очередь, повторится при следующем старте",
+            exc_info=True,
+        )
 
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
