@@ -16,6 +16,7 @@ import asyncio
 import logging
 
 from config import config
+from services import sheet_target as _sheet_target
 from database.db import (
     list_answer_history,
     list_questions,
@@ -203,7 +204,7 @@ async def _run_autosync():
 def schedule_sheet_logs_sync() -> None:
     """Fire-and-forget точка врезки, зовётся из `database/db.py` ПОСЛЕ commit. Порядок
     проверок — дёшево -> дорого, всё синхронно:
-    (а) `GOOGLE_SHEET_ID`/`GOOGLE_CREDENTIALS_FILE` непустые — иначе молча выходим (тестовое
+    (а) таблица подключена (`services/sheet_target.sheets_enabled`) — иначе молча выходим (тестовое
         окружение и не настроенная установка не должны ходить в сеть);
     (б) есть работающий event loop — иначе выходим (нет цикла — некуда планировать задачу);
     (в) `_sync_inflight` — если задача уже летит, выходим (склейка: правка пачкой из мастера
@@ -213,7 +214,7 @@ def schedule_sheet_logs_sync() -> None:
     переменной, чтобы сборщик мусора не съел её на лету (`asyncio.create_task` её не
     удерживает)."""
     global _sync_inflight, _sync_task
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return
     try:
         asyncio.get_running_loop()

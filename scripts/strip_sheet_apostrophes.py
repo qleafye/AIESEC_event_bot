@@ -39,6 +39,7 @@ import argparse
 import gspread
 
 from config import config
+from services import sheet_target as _sheet_target
 
 # Тот же набор триггеров CSV-инъекции, что и в database.db._CSV_INJECTION_PREFIXES, только
 # с уже приписанным апострофом впереди — именно так `_csv_safe` записывал их на лист.
@@ -97,12 +98,12 @@ def main():
         print('Нужно указать хотя бы один --tab "Имя вкладки" или --all-tabs. См. докстринг файла.')
         return
 
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
-        print("GOOGLE_SHEET_ID/GOOGLE_CREDENTIALS_FILE не настроены — выход.")
+    if not _sheet_target.sheets_enabled():
+        print("Таблица не подключена (ни в боте, ни GOOGLE_SHEET_ID) или нет GOOGLE_CREDENTIALS_FILE — выход.")
         return
 
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
 
     if args.all_tabs:
         worksheets = sh.worksheets()

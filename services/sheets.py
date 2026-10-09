@@ -6,6 +6,7 @@ from secret_redact import redact_secrets
 
 import gspread
 from config import config
+from services import sheet_target as _sheet_target
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ _startup_tab_warning_sent = False
 
 async def warn_if_tab_unconfigured() -> None:
     """Startup check — call once from main.py, right after set_alert_bot(bot). If Sheets sync
-    is active (GOOGLE_SHEET_ID + credentials set) but neither bot_settings.main_sheet_tab nor
+    is active (table + credentials set, services/sheet_target) but neither bot_settings.main_sheet_tab nor
     GOOGLE_SHEET_TAB names the main tab explicitly, _get_sheet() has nothing to resolve by name
     and refuses outright (see _get_sheet's docstring — position is never consulted, quick
     260815-3hw / audit 2026-08-14). Logs loudly and alerts admins ONCE per process start
@@ -162,7 +163,7 @@ async def warn_if_tab_unconfigured() -> None:
     global _startup_tab_warning_sent
     if _startup_tab_warning_sent:
         return
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return  # Sheets integration off entirely — nothing to warn about
     if await _tab_explicitly_configured():
         return
@@ -188,6 +189,8 @@ async def warn_if_tab_unconfigured() -> None:
 # ~3 round-trips per registration. google-auth refreshes the token on the cached client,
 # so the handle stays valid; _reset_sheet_cache() drops it after a failure to force re-auth.
 _sheet = None
+# ID таблицы, под которую собран `_sheet` (services/sheet_target.sheet_id()).
+_sheet_for_id: str | None = None
 # WR-05: sheet ops run across worker threads (asyncio.to_thread), so the check-then-set in
 # _get_sheet is a TOCTOU race — two concurrent ops could both build a fresh client. Guard with
 # a threading.Lock (NOT asyncio.Lock, which is single-thread only).
@@ -265,16 +268,26 @@ def _load_pinned_tab_title() -> str | None:
         return None
 
 
+def _cached_sheet_current(sid: str) -> bool:
+    """Кэш листа годен, пока таблица та же: суперадмин сменил её в боте («🔗 Какая таблица») —
+    следующая запись открывает новую, без перезапуска. `_sheet_for_id is None` — лист положили в
+    кэш в обход `_get_sheet` (тесты), сверять не с чем."""
+    return _sheet is not None and (_sheet_for_id is None or _sheet_for_id == sid)
+
+
 def _get_sheet():
-    global _sheet
-    if _sheet is not None:
+    global _sheet, _sheet_for_id
+    sid = _sheet_target.sheet_id()
+    if _cached_sheet_current(sid):
         return _sheet
     with _sheet_lock:
         # Re-check inside the lock — another thread may have built it while we waited.
-        if _sheet is not None:
+        if _cached_sheet_current(sid):
             return _sheet
+        _sheet = None
+        _sheet_for_id = sid
         gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        sh = gc.open_by_key(sid)
 
         # Quick 260815-3hw: priority chain, stage 1 — bot_settings.main_sheet_tab (admin screen
         # «📄 Вкладки таблицы»). Checked FIRST so a manager who names the tab from the button
@@ -340,8 +353,9 @@ def _get_sheet():
 
 
 def _reset_sheet_cache():
-    global _sheet
+    global _sheet, _sheet_for_id
     _sheet = None
+    _sheet_for_id = None
 
 
 def _append_to_sheet_sync(data: list):
@@ -399,13 +413,13 @@ def _get_allowlist_rows_sync(tab_name: str) -> list[str]:
     """Read column 1 of a non-sheet1 tab (the pre-selection allowlist, D-09).
     Raises WorksheetNotFound if the tab is missing — caller (refresh_allowlist) is fail-soft."""
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     ws = sh.worksheet(tab_name)
     return ws.col_values(1)
 
 
 async def append_to_sheet(data: list):
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         logger.warning("Google Sheet ID or Credentials not set. Skipping sheet export.")
         return
 
@@ -431,7 +445,7 @@ async def append_to_sheet(data: list):
 async def ensure_sheet_header(headers: list[str]):
     """Make sure row 1 of the sheet is the column-name header. Fail-soft: a missing
     sheet/credentials or API error never blocks the bot."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return
     try:
         await asyncio.to_thread(_ensure_header_sync, headers)
@@ -455,7 +469,7 @@ def _sync_named_worksheet_sync(title: str, headers: list[str], rows: list[list])
     """Overwrite a dedicated tab (create if missing) with header + rows. Used for the
     «Незавершённые» dropout export — a full refresh, not an append."""
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     try:
         ws = sh.worksheet(title)
     except gspread.WorksheetNotFound:
@@ -490,7 +504,7 @@ async def dedupe_sheet_by_id() -> int:
     docstring — same reasoning: this permanently DELETES rows on whatever tab _get_sheet()
     resolves, and an unconfigured main tab is not a safe target for a destructive op), or -1
     for unconfigured / API error."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return -1
     if not await _tab_explicitly_configured():
         logger.warning("dedupe_sheet_by_id refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
@@ -506,7 +520,7 @@ async def dedupe_sheet_by_id() -> int:
 async def sync_named_worksheet(title: str, headers: list[str], rows: list[list]) -> int:
     """Fail-soft full-refresh of a named tab. Returns the number of data rows written,
     or -1 when the sheet is not configured / an API error occurs."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return -1
     try:
         n = await asyncio.to_thread(_sync_named_worksheet_sync, title, headers, rows)
@@ -762,7 +776,7 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
     обновлена. Tab resolution reuses `_resolve_status_tab` — same city-routing rule, no second
     async resolver needed (its name doesn't need to change: it resolves WHICH TAB a delegate's
     row lives on, which is not specific to the «Статус» column)."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return False
     from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user  # вид ячейки как у очереди
     stamp = arrival_cell_value(stamp, (await city_offsets_by_user([telegram_id])).get(telegram_id, 0))
@@ -1042,7 +1056,7 @@ async def update_row_by_id(
     Провал API/сети — ретраи по RETRY_DELAYS (как append_to_sheet), после исчерпания —
     _alert_admins_sheet_failure и False. В логах — только telegram_id и имя вкладки, НИКОГДА
     содержимое row (T-21-17, ПД)."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         logger.warning("Google Sheet ID or Credentials not set. Skipping row update.")
         return False
 
@@ -1161,7 +1175,7 @@ async def update_status_in_sheet(telegram_id: int, label: str) -> bool:
     Quick 260819-sst: resolves the delegate's city tab (_resolve_status_tab, same routing as
     the live append) BEFORE the asyncio.to_thread hop — get_user/city_tab_base/tab_suffix need
     a running event loop, which the sync worker thread does not have."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return False
     try:
         tab_name = await _resolve_status_tab(telegram_id)
@@ -1181,7 +1195,7 @@ async def bulk_update_status_in_sheet(id_to_label: dict[str, str]) -> int:
 
     Quick 260819-sst: resolves every id's city tab (_resolve_status_tab) up front, then groups
     by tab for a single batch_update per tab — same reasoning as update_status_in_sheet above."""
-    if not id_to_label or not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not id_to_label or not _sheet_target.sheets_enabled():
         return -1
     try:
         tab_by_id: dict[str, str | None] = {}
@@ -1214,7 +1228,7 @@ async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
     manager-maintained formulas sheet). Wiping is refused until an admin explicitly names the
     tab (bot_settings.main_sheet_tab from «📄 Вкладки таблицы», or GOOGLE_SHEET_TAB in .env), at
     which point _get_sheet() targets it by name unambiguously."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return -1
     if not await _tab_explicitly_configured():
         logger.warning("rebuild_main_sheet refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
@@ -1257,7 +1271,7 @@ def _get_named_sheet(tab_name: str):
         if tab_name in _named_sheets:
             return _named_sheets[tab_name]
         gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        sh = gc.open_by_key(_sheet_target.sheet_id())
         try:
             ws = sh.worksheet(tab_name)
         except gspread.WorksheetNotFound:
@@ -1287,7 +1301,7 @@ async def append_to_named_sheet(tab_name: str, data: list, headers: list[str] | 
     (опционален, `None` — прежнее поведение байт-в-байт) сверяется РОВНО один раз на вкладку за
     процесс: успешная сверка отмечается в `_header_checked_tabs`, сбой сверки — fail-soft,
     отметка не ставится, но строка данных всё равно аппендится."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         logger.warning(f"Google Sheet ID or Credentials not set. Skipping named sheet export (tab={tab_name!r}).")
         return
 
@@ -1338,7 +1352,7 @@ def _ensure_named_header_sync(tab_name: str, headers: list[str]):
 async def named_sheet_exists(tab_name: str | None) -> bool:
     """Есть ли вкладка среди реальных (НИКОГДА не создаёт). Fail-soft: нет таблицы/ключей или
     сбой API -> False (вызывающий тогда просто не трогает вкладку)."""
-    if not tab_name or not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not tab_name or not _sheet_target.sheets_enabled():
         return False
     try:
         return await asyncio.to_thread(_open_named_or_main_sync, tab_name) is not None
@@ -1349,7 +1363,7 @@ async def named_sheet_exists(tab_name: str | None) -> bool:
 
 async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
     """Fail-soft, mirrors ensure_sheet_header but targets a named tab."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return
     try:
         await asyncio.to_thread(_ensure_named_header_sync, tab_name, headers)
@@ -1383,7 +1397,7 @@ async def get_existing_named_sheet_ids(tab_name: str) -> set[int] | None:
     missing and flood the tab with duplicates on the next sync -- exactly the bug this task
     fixes. Fail-soft (unlike get_existing_sheet_ids, which propagates) because this is called in
     a per-tab loop where one bad tab must not cancel the rest."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return None
     try:
         return await asyncio.to_thread(_named_existing_ids_sync, tab_name)
@@ -1407,7 +1421,7 @@ async def append_rows_to_named_sheet(tab_name: str, rows: list[list]) -> int:
     manager which tab to retry."""
     if not rows:
         return 0
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return -1
     try:
         await asyncio.to_thread(_append_rows_to_named_sheet_sync, tab_name, rows)
@@ -1432,7 +1446,7 @@ def _tab_row_count_sync(title: str) -> tuple[bool, int]:
     `(True, N)` with N = number of filled rows (header included, one API call via
     get_all_values()) if it does."""
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     try:
         ws = sh.worksheet(title)
     except gspread.WorksheetNotFound:
@@ -1452,7 +1466,7 @@ async def tab_row_count(title: str) -> tuple[bool, int] | None:
     - `(True, N)` — the tab exists with N rows. This is the only branch that should gate the
       save behind a confirmation, because N rows of REAL data could be overwritten/appended to.
     """
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return None
     try:
         return await asyncio.to_thread(_tab_row_count_sync, title)
@@ -1469,7 +1483,7 @@ async def tab_row_count(title: str) -> tuple[bool, int] | None:
 
 def _list_worksheet_titles_sync() -> list[str]:
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     return [ws.title for ws in sh.worksheets()]
 
 
@@ -1477,7 +1491,7 @@ async def list_worksheet_titles() -> list[str] | None:
     """Read-only probe (same fail-soft contract as `tab_row_count`, no admin alert on
     failure): `None` if Sheets integration is off/unconfigured or the API call fails; the
     list of every tab title in the spreadsheet, in sheet order, otherwise."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return None
     try:
         return await asyncio.to_thread(_list_worksheet_titles_sync)
@@ -1493,7 +1507,7 @@ def _rename_worksheet_sync(old: str, new: str) -> str:
     "ok" | "not_found" (no tab named `old`) | "duplicate" (a tab named `new` already exists —
     Google refuses two worksheets with the same title) | "error" (unexpected exception)."""
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     try:
         ws = sh.worksheet(old)
     except gspread.WorksheetNotFound:
@@ -1548,7 +1562,7 @@ def _open_named_or_main_sync(tab_name: str | None):
     if tab_name is None:
         return _get_sheet()
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-    sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+    sh = gc.open_by_key(_sheet_target.sheet_id())
     try:
         return sh.worksheet(tab_name)
     except gspread.WorksheetNotFound:
@@ -1565,7 +1579,7 @@ def _all_worksheets_sync() -> list:
         return _get_sheet().spreadsheet.worksheets()
     except Exception:
         gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
-        sh = gc.open_by_key(config.GOOGLE_SHEET_ID)
+        sh = gc.open_by_key(_sheet_target.sheet_id())
         return sh.worksheets()
 
 
@@ -1585,7 +1599,7 @@ async def find_rows_by_id(tab_name: str | None, telegram_id: int) -> list[int] |
     """Fail-soft read-only probe (same contract as `tab_row_count`): `None` on a missing named
     tab, unconfigured Sheets, or an API error; otherwise the list of matching row indices
     (possibly empty)."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return None
     try:
         return await asyncio.to_thread(_find_rows_by_id_sync, tab_name, telegram_id)
@@ -1619,7 +1633,7 @@ async def delete_row_by_id(tab_name: str | None, telegram_id: int) -> str:
     or "error" for unconfigured Sheets / an unexpected exception. Resets the relevant tab cache
     on "ok" only — nothing else in this module can have cached a handle whose row count just
     shifted."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         return "error"
     try:
         result = await asyncio.to_thread(_delete_row_by_id_sync, tab_name, telegram_id)
@@ -1666,7 +1680,7 @@ async def append_to_existing_named_sheet(tab_name: str, data: list) -> str:
     "not_found_tab" result returns immediately on the first attempt — retrying a tab that does
     not exist burns the whole backoff window for a result that cannot change mid-loop. Returns
     "ok" | "not_found_tab" | "error" (unconfigured Sheets, or every retry raised)."""
-    if not config.GOOGLE_SHEET_ID or not config.GOOGLE_CREDENTIALS_FILE:
+    if not _sheet_target.sheets_enabled():
         logger.warning(f"Google Sheet ID or Credentials not set. Skipping existing-tab append (tab={tab_name!r}).")
         return "error"
 
