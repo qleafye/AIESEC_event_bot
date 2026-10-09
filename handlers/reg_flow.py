@@ -541,6 +541,7 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
     except Exception:
         pass
     await callback.answer(await reg_i18n.tr_for(callback, "Сохранено"))
+    await reg_i18n.echo_choice(callback.message, chosen)  # приёмка 09.10: выбор виден в чате
     await _advance(step_key, callback.message, state, bot)
 
 
