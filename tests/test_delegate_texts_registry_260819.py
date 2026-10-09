@@ -124,7 +124,7 @@ _PRE_MIGRATION_LITERALS = {
     "leaderboard_rank_line_text": "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>",
     "balance_history_header_text": "📜 <b>История монет</b>",
     "referral_link_prompt_text": (
-        "Отправь эту ссылку друзьям, чтобы пригласить их на форум!\n\n{link}"
+        "Отправь эту ссылку друзьям, чтобы пригласить их с собой!\n\n{link}"
     ),
     "referral_list_header_text": "👥 <b>Твои приглашённые ({count}):</b>",
     "referral_list_empty_text": (
@@ -152,7 +152,7 @@ _PRE_MIGRATION_LITERALS = {
     "payment_pay_later_menu_hint_text": "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.",
     "payment_receipt_received_text": "✅ Чек получен! Менеджер проверит его в ближайшее время.",
     # 17.1-03: empty-state'ы информационных кнопок меню + «❓ Задать вопрос» (user_actions.py).
-    "program_empty_text": "Программа форума ещё не загружена.",
+    "program_empty_text": "Программа ещё не загружена.",
     "speakers_empty_text": "Список спикеров формируется и скоро появится здесь.",
     "contacts_empty_text": "Контакты пока не указаны. Обратитесь к организаторам.",
     "ask_question_prompt_text": "Напиши свой вопрос, и мы передадим его организаторам.",

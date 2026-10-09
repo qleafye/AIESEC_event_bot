@@ -86,7 +86,7 @@ const ONSITE_FALLBACK = {
   onsite_override_button_text: "⚠️ Пропустить вопреки отказу",
   onsite_remove_button_text: "🗑 Убрать",
   onsite_remove_confirm_text: "Убрать {name} из списка ждущих? Короткая анкета удалится — если человек всё же придёт, ему нужно будет заполнить её заново.",
-  onsite_move_confirm_text: "Человек записан на форум в другом городе — после одобрения он переедет в {city}.",
+  onsite_move_confirm_text: "Человек записан в другом городе — после одобрения он переедет в {city}.",
   onsite_override_confirm_text: "Заявку {name} отклонил менеджер. Пропустить вопреки отказу и отметить вход? Отказ будет отменён, решение запишется на вас и попадёт в журнал.",
 };
 const HAPTIC_BY_TONE = { success: "success", warn: "warning", error: "error" };

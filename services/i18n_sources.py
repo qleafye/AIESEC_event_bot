@@ -466,7 +466,7 @@ def code_literals() -> list[tuple[str, str]]:
     # Сохранил, открывается» рассылки QR (services/checkin_broadcast.py) звало reg_i18n.tr_text
     # с этим литералом без записи ни в один ярус — делегат с lang="en" видел бы русский текст
     # (fail-soft тихо промолчал бы, guard-тест — нет). Добавлено сюда же, а не отдельным коммитом.
-    items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, увидимся на форуме!"))
+    items.append(("lit:user_actions.checkin_qr_confirm_receipt", "Отлично, до встречи!"))
 
     # Перенос неявившихся регионального форума в другой город (handlers/user_actions.py,
     # rnm_*): короткие ответы делегату — литералы с ручным EN в i18n_form_manual.

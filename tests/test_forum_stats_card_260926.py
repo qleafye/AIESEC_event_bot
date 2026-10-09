@@ -77,7 +77,8 @@ def _with_bot(monkeypatch):
 def _fake_render(monkeypatch, calls):
     """Подменяет тяжёлый Pillow-рендер лёгкой заглушкой, записывающей аргумент `lang` — рассылку
     тестируем отдельно от самого рендера (у рендера свои тесты ниже, с настоящим Pillow)."""
-    def _stub(stats, background, lang, accent, *, logo_bytes=None, city_label_text=None, date_range_text=None):
+    def _stub(stats, background, lang, accent, *, logo_bytes=None, city_label_text=None, date_range_text=None,
+              event_name=None):
         calls.append(lang)
         return b"PNGDATA"
     monkeypatch.setattr(fsc, "render_card_sync", _stub)
@@ -260,14 +261,25 @@ def test_font_renders_cyrillic_glyph_not_tofu():
     assert real_glyph.size != missing_glyph.size
 
 
-def test_label_set_en_contains_yulid_cyrillic_not_youlead_latin():
-    """Уточнение координатора 25.09: бренд «Юлид» кириллицей ВСЕГДА, в том числе в EN-версии —
-    латиница («YouLead») на карточку не попадает вовсе."""
-    labels_en = fsc.label_set("en")
-    joined = " ".join(labels_en.values())
-    assert "Юлид" in joined
-    assert "YouLead" not in joined
-    assert "youlead" not in joined.lower()
+def test_label_set_has_no_hardcoded_event_brand():
+    """Название мероприятия на карточке — из «🎪 Название мероприятия», не зашитый «Юлид»
+    (карточка уезжала делегатам конференции и СкиллАпа с чужим брендом)."""
+    for lang in ("ru", "en"):
+        joined = " ".join(fsc.label_set(lang).values())
+        assert "Юлид" not in joined
+        assert "youlead" not in joined.lower()
+
+
+def test_title_uses_event_name_as_is_in_both_languages():
+    """Бренд кириллицей и в EN-версии (координатор 25.09): название подставляется как есть."""
+    assert fsc._title_text(fsc.label_set("ru"), "Юлид") == "Юлид в цифрах"
+    assert fsc._title_text(fsc.label_set("en"), "Юлид") == "Юлид in numbers"
+
+
+def test_title_without_event_name_is_neutral():
+    assert fsc._title_text(fsc.label_set("ru"), None) == "Итоги в цифрах"
+    assert fsc._title_text(fsc.label_set("ru"), "  ") == "Итоги в цифрах"
+    assert fsc._title_text(fsc.label_set("en"), "") == "Results in numbers"
 
 
 def test_label_set_unknown_lang_falls_back_to_ru():
@@ -382,11 +394,17 @@ def test_format_forum_dates_en_cross_month():
     assert fsc.format_forum_dates(date(2026, 10, 31), date(2026, 11, 1), "en") == "October 31 – November 1"
 
 
-def test_footer_line_brand_always_city_and_dates_optional():
-    assert fsc._footer_line(None, None) == "Юлид"
-    assert fsc._footer_line("Москва", None) == "Юлид · Москва"
-    assert fsc._footer_line(None, "30–31 октября") == "Юлид · 30–31 октября"
-    assert fsc._footer_line("Москва", "30–31 октября") == "Юлид · Москва, 30–31 октября"
+def test_footer_line_event_name_city_and_dates_optional():
+    assert fsc._footer_line(None, None, "Юлид") == "Юлид"
+    assert fsc._footer_line("Москва", None, "Юлид") == "Юлид · Москва"
+    assert fsc._footer_line(None, "30–31 октября", "Юлид") == "Юлид · 30–31 октября"
+    assert fsc._footer_line("Москва", "30–31 октября", "Юлид") == "Юлид · Москва, 30–31 октября"
+
+
+def test_footer_line_without_event_name_has_no_brand():
+    assert fsc._footer_line(None, None) == ""
+    assert fsc._footer_line("Москва", "30–31 октября") == "Москва, 30–31 октября"
+    assert "Юлид" not in fsc._footer_line("Москва", None, None)
 
 
 def test_resolve_footer_parts_reads_forum_date_window(tmp_path):

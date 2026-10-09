@@ -51,7 +51,7 @@ DEFAULT_TIME = "12:00"
 # название БЕЗ падежа — сама метка может быть произвольной строкой реестра, «в {target_city}»
 # грамматически ломалось бы на части городов); {dates} — уже включает ведущий пробел и скобки
 # (`_dates_label_for`), поэтому пустая дата не оставляет «висящего» текста в конце фразы.
-DEFAULT_OFFER_TEXT = "Не получилось на форум в {city}? Приезжай на Юлид: {target_city}{dates}"
+DEFAULT_OFFER_TEXT = "Не получилось на форум в {city}? Приезжай на {event}: {target_city}{dates}"
 
 STATUS_MODE_KEEP = "keep"
 STATUS_MODE_TO_MODERATION = "to_moderation"
@@ -344,6 +344,9 @@ async def send_offers(city: str | None) -> dict:
     target_label = await _cities.city_label(target_city)
     raw_text = await _offer_text_for(city)
     dates_label = await _dates_label_for(target_city)
+    from services.text_fill import event_label, event_name
+
+    event_title = await event_name()
     now = msk_now()
     muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
 
@@ -375,6 +378,7 @@ async def send_offers(city: str | None) -> dict:
             text.replace("{city}", html.escape(source_city_label))
             .replace("{target_city}", html.escape(target_label))
             .replace("{dates}", dates_label)
+            .replace("{event}", html.escape(event_label(event_title, lang)))
         )
         tr_kb = _localized_offer_keyboard(lang, tr_map, target_label)
         try:

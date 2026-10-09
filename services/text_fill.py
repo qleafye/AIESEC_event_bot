@@ -34,3 +34,31 @@ def fill_collapsing(template: str, **subs) -> str:
         template = re.sub(pattern, "", template, flags=re.IGNORECASE)
         collapsed = True
     return template.strip() if collapsed else template
+
+
+# Подстановка `{event}` — название мероприятия из «🎪 Название мероприятия» (`event_name`).
+# Дефолты текстов делегату раньше говорили «Добро пожаловать на Юлид!» на любом событии; теперь
+# говорят «на {event}», а пустое название заменяется нейтральным словом — фразы вида «на {event}»
+# и «{event} в цифрах» читаются и с ним. Схлопывать токен, как `fill_collapsing`, здесь нельзя:
+# «Добро пожаловать на!» — сломанное предложение.
+EVENT_FALLBACK = {"ru": "мероприятие", "en": "the event"}
+
+
+def event_label(name: str | None, lang: str = "ru") -> str:
+    """Название мероприятия или нейтральное «мероприятие»/«the event» (язык делегата)."""
+    text = (name or "").strip()
+    return text or EVENT_FALLBACK["en" if lang == "en" else "ru"]
+
+
+def fill_event(template, name: str | None, lang: str = "ru"):
+    """`{event}` → название мероприятия; не-строку возвращает как есть."""
+    if not isinstance(template, str) or "{event}" not in template:
+        return template
+    return template.replace("{event}", event_label(name, lang))
+
+
+async def event_name() -> str | None:
+    """Сохранённое `event_name` (ленивый импорт БД — модуль остаётся чистым для тестов)."""
+    from database.db import get_setting
+
+    return ((await get_setting("event_name")) or "").strip() or None

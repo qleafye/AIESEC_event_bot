@@ -91,7 +91,7 @@ def test_training_qr_at_entry_shows_plaque_writes_nothing(tmp_path, kind, status
     body = resp.json()
     assert body["status"] == status
     assert body["training"] is True
-    assert body["training_note"] == "Учебный QR — не пропуск на форум, ничего не записывается."
+    assert body["training_note"] == "Учебный QR — не пропуск на вход, ничего не записывается."
     assert body["hint"]
     if kind == "ok":
         assert body["undo"]["demo"] is True

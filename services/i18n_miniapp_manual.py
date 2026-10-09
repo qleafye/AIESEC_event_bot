@@ -287,8 +287,24 @@ _ACCEPTANCE_260917 = {
     "Напиши дату рождения в формате ДД.ММ.ГГГГ, например 15.03.2007": "Enter your date of birth as DD.MM.YYYY, for example 15.03.2007",
 }
 
+# Нейтральные дефолты 09.10 («форум» в дефолтах уезжал делегату конференции); прежние RU-ключи
+# выше оставлены — у менеджера мог сохраниться старый дефолт дословно.
+_NEUTRAL_261009 = {
+    "{days} дней до старта": "{days} days to go",
+    "Заполни анкету — 14 вопросов, минут на пять. Черновик сохраняется сам.; "
+    "Делай задания — сторис, фото, знакомства с делегатами из других городов.; "
+    "Копи монеты — на мероприятии обменяешь их на призы.": (
+        "Fill out the application — 14 questions, about five minutes. Your draft saves itself.; "
+        "Complete tasks — stories, photos, meeting delegates from other cities.; "
+        "Collect coins — trade them for prizes at the event."
+    ),
+    "Регистрация на {city} закрыта. Можно выбрать другой город:": (
+        "Registration for {city} is closed. You can choose another city:"
+    ),
+}
+
 MANUAL_EN: dict[str, str] = {
-    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO, **_ACCEPTANCE_260917,
+    **_HUB_STATUS, **_TASKS, **_COINS, **_MISC, **_FORM_INTRO, **_ACCEPTANCE_260917, **_NEUTRAL_261009,
 }
 
 

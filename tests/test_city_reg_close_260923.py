@@ -393,7 +393,7 @@ def test_deeplink_to_date_closed_city_shows_closed_screen_with_open_city_buttons
     closed_text = next((t for t in msg.texts if t and "закрыта" in t), None)
     assert closed_text is not None
     assert "Санкт-Петербург" in closed_text
-    assert "Можно зарегистрироваться на другой форум" in closed_text
+    assert "Можно выбрать другой город" in closed_text
     last_markup = msg.markups[-1]
     assert _callback_datas(last_markup) == ["city_pick:msk", "city_pick:tyumen"]
 

@@ -1993,7 +1993,7 @@ async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
     await confirm_receipt(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
     # D-34 (24.09): дефолт зеркалит registry-ключ `checkin_qr_confirm_receipt_text`.
-    text = await get_setting_typed("checkin_qr_confirm_receipt_text") or "Отлично, увидимся на форуме!"
+    text = await get_setting_typed("checkin_qr_confirm_receipt_text") or "Отлично, до встречи!"
     await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
 
 

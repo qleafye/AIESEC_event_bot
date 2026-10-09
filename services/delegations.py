@@ -313,7 +313,13 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
         lang, tr_map = await i18n_context(tid)
     except Exception:
         logger.exception("delegations: язык делегата не определён (tid=%s)", tid)
-    text = tr(template, lang, tr_map).replace("{university}", html_module.escape(university or ""))
+    from services.text_fill import event_label, event_name
+
+    text = (
+        tr(template, lang, tr_map)
+        .replace("{university}", html_module.escape(university or ""))
+        .replace("{event}", html_module.escape(event_label(await event_name(), lang)))
+    )
     kb = await get_main_menu_kb(tid)
     err = await send_with_retry(
         lambda: bot.send_message(tid, text, reply_markup=kb, parse_mode="HTML")
