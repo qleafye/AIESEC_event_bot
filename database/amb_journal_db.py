@@ -339,3 +339,51 @@ async def set_manual_fields(invitee_id: int, *, by: int | None, note: str | None
             (by, note, int(invitee_id)),
         )
         await db.commit()
+
+
+async def credit_candidate_period(referrer_id: int, *, since: str, coins: int, reason_tpl: str,
+                                  by: int | None, at: str) -> dict:
+    """Дозачёт при «✅ Взять» кандидата: приглашённые, одобренные с `since` (кандидат подал
+    заявку в команду) и записанные в журнал без баллов, потому что пригласивший тогда ещё не
+    был амбассадором. Одной транзакцией: `coins` на каждую такую строку журнала и одна строка
+    монет на сумму с причиной `reason_tpl` ({count} — сколько приглашённых).
+
+    Повтор ничего не начисляет — строка журнала с баллами больше не подходит под отбор.
+    Пропускаются исключённые из зачёта, отозванные и чья заявка сейчас не одобрена.
+    Возвращает `{"count", "coins"}`."""
+    out = {"count": 0, "coins": 0}
+    coins = max(int(coins), 0)
+    if coins <= 0:
+        return out
+    async with _db._connect() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT rc.invitee_id FROM referral_credits rc "
+                "JOIN users u ON u.telegram_id = rc.invitee_id "
+                "WHERE rc.referrer_id = ? AND COALESCE(rc.coins, 0) = 0 "
+                "AND COALESCE(rc.referrer_was_ambassador, 0) = 0 "
+                "AND rc.excluded_at IS NULL AND rc.revoked_at IS NULL "
+                "AND rc.credited_at >= ? AND u.status = 'approved' "
+                "AND rc.invitee_id NOT IN (SELECT invitee_id FROM ambassador_exclusions)",
+                (int(referrer_id), since),
+            ) as cursor:
+                ids = [int(r[0]) for r in await cursor.fetchall()]
+            if ids:
+                await db.execute(
+                    f"UPDATE referral_credits SET coins = ? "
+                    f"WHERE invitee_id IN ({','.join('?' * len(ids))})",
+                    [coins, *ids],
+                )
+                total = coins * len(ids)
+                await db.execute(
+                    "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source, "
+                    "task_id) VALUES (?, ?, ?, ?, ?, 'referral', NULL)",
+                    (int(referrer_id), total, reason_tpl.replace("{count}", str(len(ids))), by, at),
+                )
+                out = {"count": len(ids), "coins": total}
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+    return out
