@@ -54,6 +54,7 @@ import python_socks
 from config import config
 from secret_redact import redact_secrets
 from services.background import spawn
+from services.ru_plural import ru_plural
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -74,18 +75,7 @@ def set_alert_bot(bot) -> None:
     _alert_bot = bot
 
 
-def _plural_ru(n: int, one: str, few: str, many: str) -> str:
-    """Pick the correct Russian plural form for a bare count -- «1 переключение» / «2
-    переключения» / «5 переключений». Pure function, standard 1/2-4/5-20 rule."""
-    n_abs = abs(n) % 100
-    if 11 <= n_abs <= 14:
-        return many
-    tail = n_abs % 10
-    if tail == 1:
-        return one
-    if 2 <= tail <= 4:
-        return few
-    return many
+_plural_ru = ru_plural  # общая функция склонения (services/ru_plural.py)
 
 
 async def _alert_admins_proxy_storm(
