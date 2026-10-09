@@ -3151,11 +3151,41 @@ async def get_all_users_dicts() -> list[dict]:
         async with db.execute('SELECT * FROM users ORDER BY registration_date') as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
-async def get_stats(*, city_scope: tuple | None = None):
+def _season_clause(season: str | None, column: str = "season") -> tuple[str, list]:
+    """Фильтр «текущий сезон» для счётчиков — тот же предикат, что `_approved_current_season_frag`
+    и `count_current_season_users`: строки без сезона (NULL) считаются текущими, строки с ДРУГИМ
+    сезоном — прошлыми. `season` пустой/None (настройка `event_season` не задана) — фильтра нет,
+    как было раньше."""
+    if not season:
+        return "", []
+    return f"({column} IS NULL OR {column} = ?)", [season]
+
+
+async def count_past_season_users(season: str | None, *, city_scope=None) -> int:
+    """Сколько делегатов остались от ПРОШЛЫХ сезонов (season задан и не равен текущему).
+    Сезон не задан — 0: отделять не от чего."""
+    if not season:
+        return 0
+    frag, params = _city_clause(city_scope)
+    extra = f" AND {frag}" if frag else ""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM users WHERE season IS NOT NULL AND season != ?{extra}",
+            (season, *params),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+async def get_stats(*, city_scope: tuple | None = None, season: str | None = None):
     """`city_scope=None` (default) is byte-identical to the pre-Phase-15 query and result --
     this is the parity contract Phase 07.2's stats tests depend on (D-10 city-scoping must
     never touch the unscoped call)."""
     frag, city_params = _city_clause(city_scope)
+    s_frag, s_params = _season_clause(season)
+    if s_frag:
+        frag = f"{frag} AND {s_frag}" if frag else s_frag
+        city_params = [*city_params, *s_params]
     total_extra = f" WHERE {frag}" if frag else ""
     uni_extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
@@ -3206,11 +3236,15 @@ async def mark_season_ended(old_season: str | None) -> int:
         return cursor.rowcount
 
 
-async def get_returning_count(*, city_scope: tuple | None = None) -> int:
+async def get_returning_count(*, city_scope: tuple | None = None, season: str | None = None) -> int:
     """Delegates with a non-empty prev_season — set only by a returning-delegate
     re-registration (plan 04), never by a fresh add_user of a new delegate.
     `city_scope=None` (default) is byte-identical to the pre-Phase-15 query/result."""
     frag, city_params = _city_clause(city_scope)
+    s_frag, s_params = _season_clause(season)
+    if s_frag:
+        frag = f"{frag} AND {s_frag}" if frag else s_frag
+        city_params = [*city_params, *s_params]
     extra = f" AND {frag}" if frag else ""
     async with _connect() as db:
         async with db.execute(
@@ -3484,21 +3518,25 @@ async def export_participants_csv(*, city_scope=None, with_payment: bool = False
     return headers, rows
 
 
-async def get_city_counts() -> list[tuple]:
+async def get_city_counts(*, season: str | None = None) -> list[tuple]:
     """One row per RAW `event_city` value present in `users` (including NULL and any
     unknown/garbage code) — `(event_city, total, pending, approved)`. Deliberately returns
     the raw column, never collapsed: db.py cannot import `cities` (import cycle — cities.py
     already imports database.db), so folding NULL/garbage into the default city is the
     CALLER's job via `cities.normalize_city`. The stats screen intentionally does NOT filter
     by the admin's selected city — it is a city-vs-city comparison, not a scoped view
-    (07.2-CONTEXT.md decision)."""
+    (07.2-CONTEXT.md decision). `season` задан — считаются только текущий сезон и строки без
+    сезона (`_season_clause`); не задан — все строки, как раньше."""
+    s_frag, s_params = _season_clause(season)
+    where = f"WHERE {s_frag} " if s_frag else ""
     async with _connect() as db:
         async with db.execute(
             "SELECT event_city, COUNT(*), "
             # D-41: walk-in без решения — не очередь менеджера (_NOT_WALKIN), его ждёт стойка.
             f"SUM(CASE WHEN status = 'pending' AND {_NOT_WALKIN} THEN 1 ELSE 0 END), "
             "SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) "
-            "FROM users GROUP BY event_city"
+            f"FROM users {where}GROUP BY event_city",
+            tuple(s_params),
         ) as cursor:
             return await cursor.fetchall()
 
@@ -7669,7 +7707,8 @@ _APPLICATION_DECIDER_SQL = {
 
 
 async def list_applications_page(*, status: str = "approved", city_scope=None,
-                                   limit: int = 15, offset: int = 0) -> list[dict]:
+                                   limit: int = 15, offset: int = 0,
+                                   season: str | None = None) -> list[dict]:
     """Страница списка заявок для экрана «📇 Список заявок» (handlers/admin_app_list.py).
     Неизвестный `status` трактуется как "approved". Городской фильтр — по `u.event_city`
     (город ДЕЛЕГАТА, та же колонка, что у очереди заявок). `SELECT *` не используется — экрану
@@ -7686,6 +7725,10 @@ async def list_applications_page(*, status: str = "approved", city_scope=None,
     if city_frag:
         where.append(city_frag)
         params.extend(city_params)
+    s_frag, s_params = _season_clause(season, "u.season")
+    if s_frag:
+        where.append(s_frag)
+        params.extend(s_params)
     where_sql = f"WHERE {' AND '.join(where)}"
     date_sql = _APPLICATION_DATE_SQL[status]
     decider_sql = _APPLICATION_DECIDER_SQL[status]
@@ -7739,11 +7782,15 @@ async def resolve_decision_managers(decided_by_ids: list[int]) -> dict[int, str]
     return labels
 
 
-async def count_applications(*, city_scope=None) -> dict[str, int]:
+async def count_applications(*, city_scope=None, season: str | None = None) -> dict[str, int]:
     """Один запрос, три `SUM(CASE …)` по тем же фрагментам `_APPLICATION_STATUS_SQL` и тому же
     city-фрагменту, что `list_applications_page` — счётчик в шапке экрана не может разойтись со
     списком под ней (тот же приём WR-05, что у `count_questions_by_status`)."""
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    s_frag, s_params = _season_clause(season, "u.season")
+    if s_frag:
+        city_frag = f"{city_frag} AND {s_frag}" if city_frag else s_frag
+        city_params = [*city_params, *s_params]
     where_sql = f"WHERE {city_frag}" if city_frag else ""
     async with _connect() as db:
         async with db.execute(
