@@ -1266,6 +1266,18 @@ def columns_for_step(step_key: str | None) -> list[str]:
     return [column] if column else []
 
 
+def answered_step_count(answers: dict | None, enabled: list[str]) -> int:
+    """Сколько включённых вопросов анкеты уже отвечено — для экрана «Пропадут уже введённые
+    ответы (N)». Считаются шаги, а не поля черновика: резюме файлом — три поля, служебные
+    поля (`resume_type`, маркеры) вопросами не являются; иначе делегат видел 18 при анкете
+    из 14 вопросов (приёмка 09.10). Тот же счёт, что у «шаг N из M»: ФИО вне `enabled`."""
+    answers = answers or {}
+    return sum(
+        1 for step in enabled
+        if any(answers.get(col) not in (None, "") for col in columns_for_step(step))
+    )
+
+
 def answer_columns() -> list[str]:
     """Allowlist колонок анкеты — веб-процесс валидирует PATCH-запросы черновика по этому
     списку (RESEARCH Pattern 2); бот его не использует."""

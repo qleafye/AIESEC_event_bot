@@ -285,6 +285,8 @@ def test_reg_resume_restart_shows_confirm_with_count(tmp_path):
     _use_tmp_db(tmp_path)
 
     async def go():
+        # Приёмка 09.10: счётчик — отвеченные ВКЛЮЧЁННЫЕ вопросы, телефон по умолчанию выключен.
+        await db.set_setting("reg_q_phone", "on")
         await _seed_new_draft(USER_ID, patch={"age": "22", "phone": "+7999"})
         from handlers import reg_resume
         callback = _FakeCallback("reg_resume:restart", USER_ID, "delegate")
