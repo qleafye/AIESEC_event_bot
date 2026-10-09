@@ -753,6 +753,7 @@ _REGISTRY_TEXTS_EN = {
     "Пока никто не зарегистрировался по твоей ссылке.\n\nПоделись ей с друзьями:\n{link}": "No one has registered with your link yet.\n\nShare it with your friends:\n{link}",
     "👥 <b>Твои приглашённые ({count}):</b>": "👥 <b>Your invitees ({count}):</b>",
     "✅ Анкета уже отправлена — мы её получили. Ответ придёт сюда, в чат.": "✅ Application already submitted — we've received it. The answer will come here, in the chat.",
+    "Не понял 🙂 Меню обновилось — выбери кнопку ниже 👇": "Didn't get that 🙂 The menu has been updated — pick a button below 👇",
     "Финал — очно на СкиллАп 5, командами по 3–4 человека. Опыт не нужен, важно желание пробовать.": "The final is in person at SkillUp 5, in teams of 3–4. No experience needed — just a willingness to try.",
     "Проверь образование": "Check your education",
     "Исправить": "Fix",
