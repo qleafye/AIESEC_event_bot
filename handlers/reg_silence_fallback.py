@@ -24,6 +24,7 @@ callback_query, так что этот хендлер реально дости�
 + `reg_resume:continue`/`reg_resume:restart` (переиспользованы байт-в-байт, не задублированы).
 """
 import logging
+import time
 
 from aiogram import F, Router, types
 from aiogram.filters import StateFilter
@@ -34,12 +35,19 @@ from handlers.admin_caps import resolve_capabilities
 from handlers.reg_resume import offer_resume
 from handlers.registration import _resumable_draft_for
 from handlers import reg_i18n
+from keyboards.builders import get_main_menu_kb
 from reg_engine import has_submitted_anketa
 from settings_schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="reg_silence_fallback")
+
+# «Меню обновилось» — не чаще раза в 10 минут на человека: делегат, который жмёт мёртвую
+# кнопку подряд, получает одну подсказку, а не ответ на каждое нажатие. В памяти процесса —
+# после рестарта подсказка придёт ещё раз, это безвредно.
+MENU_HINT_COOLDOWN_SECONDS = 600
+_menu_hint_sent_at: dict[int, float] = {}
 
 
 async def _is_staff_or_admin(telegram_id: int) -> bool:
@@ -81,7 +89,8 @@ async def reply_if_submitted(chat_message: types.Message) -> bool:
     `reg_already_submitted_text` отвечал только из `RegHandoffGuard` (состояние
     `Registration:*`), а после подачи из чата FSM уже очищен. Отвечаем тем же текстом, если
     анкета этого сезона подана и ещё ждёт решения. Одобренным/отклонённым — по-прежнему
-    тишина: «анкета на проверке» им неверно, а «❓ Задать вопрос» ожидающему закрыт."""
+    молчание здесь: «анкета на проверке» им неверно (одобренному отвечает
+    `reply_menu_refreshed`), а «❓ Задать вопрос» ожидающему закрыт."""
     if getattr(chat_message.chat, "type", "private") != "private":
         return False
     uid = chat_message.chat.id
@@ -99,11 +108,46 @@ async def reply_if_submitted(chat_message: types.Message) -> bool:
     return True
 
 
+async def reply_menu_refreshed(chat_message: types.Message) -> bool:
+    """10.10: делегат с поданной анкетой жмёт кнопку старой клавиатуры (подпись переименовали)
+    или пишет то, чего бот не понимает, — раньше тишина. Отвечаем коротким текстом и
+    присылаем актуальное меню. Только текст в личке, не персоналу (у него свои экраны), не
+    чаще `MENU_HINT_COOLDOWN_SECONDS`; повтор в окне — тишина."""
+    if getattr(chat_message.chat, "type", "private") != "private":
+        return False
+    if not getattr(chat_message, "text", None):
+        return False
+    uid = chat_message.chat.id
+    now = time.monotonic()
+    last = _menu_hint_sent_at.get(uid)
+    if last is not None and now - last < MENU_HINT_COOLDOWN_SECONDS:
+        return False
+    if await _is_staff_or_admin(uid):
+        return False
+    try:
+        user_row = await get_user(uid)
+        season = await get_setting_typed("event_season") or None
+    except Exception as e:
+        logger.error(f"reg_silence_fallback: menu hint check failed for {uid}: {e}")
+        return False
+    if not has_submitted_anketa(user_row, season):
+        return False
+    _menu_hint_sent_at[uid] = now
+    await reg_i18n.say(
+        chat_message, await get_setting_typed("menu_refreshed_text"),
+        reply_markup=await get_main_menu_kb(uid),
+    )
+    return True
+
+
 async def reply_idle(chat_message: types.Message) -> None:
     """Последний ответ на сообщение без состояния: сначала незаконченная анкета (рестарт
-    посреди заполнения), потом «анкета уже отправлена»."""
-    if not await offer_if_resumable(chat_message):
-        await reply_if_submitted(chat_message)
+    посреди заполнения), потом «анкета уже отправлена», последним — «меню обновилось»."""
+    if await offer_if_resumable(chat_message):
+        return
+    if await reply_if_submitted(chat_message):
+        return
+    await reply_menu_refreshed(chat_message)
 
 
 @router.message(StateFilter(None), F.chat.type == "private")
