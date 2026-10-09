@@ -242,6 +242,19 @@ SETTINGS_SCHEMA = {
     },
     # Phase 07.3 (A): start_text_returning is also NOT per_city — a global banner for
     # returning delegates, unlike per-city start_text_registered.
+    # 09.10: имя бота — тоже из админки (services/bot_profile.py). В отличие от описания
+    # применяется ДО записи: отказ Telegram (лимит частоты) — ошибка экрана правки.
+    "bot_name": {
+        "type": "text", "group": "event", "label": "🤖 Имя бота",
+        "prompt": (
+            "Как бот называется в Telegram — в списке чатов и в шапке переписки. Например:\n"
+            "«Юлид’26 · регистрация»\n\nДо 64 символов. Применяется сразу после сохранения. "
+            "Telegram разрешает менять имя лишь несколько раз подряд — если откажет, бот "
+            "скажет, через сколько попробовать снова.\n\nЕсли очистить поле, имя в Telegram "
+            "останется последним заданным."
+        ),
+        "default": None,
+    },
     "bot_description": {
         "type": "text", "group": "event", "label": "🪪 Описание бота (до /start)",
         "prompt": (

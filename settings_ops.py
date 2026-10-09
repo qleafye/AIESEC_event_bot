@@ -800,7 +800,14 @@ async def cross_setting_error(key: str, value: str | None) -> str | None:
     """Проверки, которым нужны ДРУГИЕ настройки (валидатор значения их не видит): пороги
     ступеней амбассадоров обязаны расти 1 < 2 < … (для включённых ступеней). Сверка — с сохранёнными значениями двух
     других порогов. `None` — всё в порядке, иначе готовый текст ошибки для менеджера."""
-    if value is None or value == "-" or key not in AMB_THRESHOLD_KEYS:
+    if value is None or value == "-":
+        return None
+    if key == "bot_name":
+        # Имя бота: длина, а в процессе бота — сразу setMyName (отказ Telegram — эта же ошибка,
+        # запись не состоится). Ленивый импорт: корневой модуль не тянет services/* на верх.
+        from services.bot_profile import precheck_bot_name
+        return await precheck_bot_name(value)
+    if key not in AMB_THRESHOLD_KEYS:
         return None
     current = {k: int(await get_setting_typed(k)) for k in AMB_THRESHOLD_KEYS}
     count = int(await get_setting_typed("amb_tiers_count"))

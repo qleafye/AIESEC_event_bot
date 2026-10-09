@@ -50,11 +50,11 @@ STEPS: tuple[WizardStep, ...] = (
     ),
     WizardStep(
         key="botfather",
-        title="🤖 Описание бота",
-        hint=("Что человек видит до /start и в профиле бота — бот поставит это в Телеграм сам. "
-              "В @BotFather остаётся только аватар: /mybots → Edit Bot → Edit Botpic."),
+        title="🤖 Имя и описание бота",
+        hint=("Имя бота и что человек видит до /start и в профиле — бот поставит это в Телеграм "
+              "сам. В @BotFather остаётся только аватар: /mybots → Edit Bot → Edit Botpic."),
         kind="fields",
-        fields=("bot_description", "bot_short_description"),
+        fields=("bot_name", "bot_description", "bot_short_description"),
         done_rule="any",
     ),
     WizardStep(

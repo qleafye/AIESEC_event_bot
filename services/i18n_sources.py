@@ -157,7 +157,7 @@ _NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
 
 # 08.10: описание бота ставится в Telegram одно на всех (`services.bot_profile`), без
 # языковых версий — перевод в корпусе был бы мёртвым, его никто не показывает.
-_BOT_PROFILE_KEYS: frozenset[str] = frozenset({"bot_description", "bot_short_description"})
+_BOT_PROFILE_KEYS: frozenset[str] = frozenset({"bot_name", "bot_description", "bot_short_description"})
 
 _NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
     ADMIN_KEYS_IN_DELEGATE_GROUPS | _ADMIN_ONLY_GAME_KEYS | _NON_LANGUAGE_PAY_KEYS

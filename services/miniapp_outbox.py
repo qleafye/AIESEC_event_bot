@@ -271,6 +271,11 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
         from settings_audit import run_setting_hooks  # ленивый, как выше
 
+        if "bot_name" in (payload.get("keys") or []):
+            # Имя бота из приложения: ставит бот, отказ Telegram — сообщением автору правки.
+            from services.bot_profile import apply_name_from_app
+
+            await apply_name_from_app(bot, payload.get("by"))
         for key in payload.get("keys") or []:
             await run_setting_hooks(str(key))
         return
