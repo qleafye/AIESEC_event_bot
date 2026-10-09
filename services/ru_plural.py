@@ -2,15 +2,18 @@
 
 Дробное число по-русски требует формы родительного падежа единственного числа — она совпадает
 с формой «две»: «0,5 балла», «1,5 балла». `int(n)` молча срезал дробь («1,5» → «1 балл»), поэтому
-число разбирается целиком: int, float или строка («+10», «−3», «2,5»). Неразбираемое — `many`.
+число разбирается целиком: int, float или строка («+10», «−3», «2,5»). Неразбираемое, nan и
+бесконечность — `many`.
 
-`agree_points` — согласование слова валюты с числом прямо в готовом тексте: «1 баллов» → «1 балл»,
-«22 баллов» → «22 балла», «1 points» → «1 point». Подстановка `{coins} баллов` в шаблоне не
-знает числа заранее, а тексты менеджер переписывает сам — поэтому чинится результат, а не шаблон.
-Трогаются только целые числа прямо перед словом (через пробел); дроби и чужие слова — нет.
+`agree_placeholder` — согласование слова валюты с числом В ШАБЛОНЕ, до подстановки: в «{coins}
+баллов» слово сразу за плейсхолдером получает форму под значение `coins` («1 балл», «22 балла»,
+«1 point»). Трогается только это одно слово; остальной текст и подставляемые значения (название
+задания, имя) не меняются. Свободной правки готового текста нет сознательно: «1 021 баллов»,
+«до 2 баллов», «1–3 баллов», даты и номера там неотличимы от числа перед словом.
 """
 from __future__ import annotations
 
+import math
 import re
 
 
@@ -18,13 +21,15 @@ def _number(n) -> float | None:
     if isinstance(n, bool):
         return float(n)
     if isinstance(n, (int, float)):
-        return float(n)
-    text = str(n).strip().replace("−", "-").replace(" ", "").replace(" ", "")
-    text = text.lstrip("+").replace(",", ".")
-    try:
-        return float(text)
-    except ValueError:
-        return None
+        value = float(n)
+    else:
+        text = str(n).strip().replace("−", "-").replace(" ", "").replace(" ", "")
+        text = text.lstrip("+").replace(",", ".")
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+    return value if math.isfinite(value) else None
 
 
 def ru_plural(n, one: str, few: str, many: str) -> str:
@@ -49,32 +54,29 @@ _RU_FORMS: tuple[tuple[str, str, str], ...] = (
     ("коин", "коина", "коинов"),
 )
 _RU_WORD_TO_FORMS = {w: forms for forms in _RU_FORMS for w in forms}
-_RU_RE = re.compile(
-    r"(?<![\d.,])([+\-−]?\d+)([  ])("
-    + "|".join(sorted(_RU_WORD_TO_FORMS, key=len, reverse=True))
-    + r")(?![а-яёА-ЯЁ\w])"
-)
-_EN_FORMS = {"point": ("point", "points"), "points": ("point", "points"),
-             "coin": ("coin", "coins"), "coins": ("coin", "coins")}
-_EN_RE = re.compile(r"(?<![\d.,])([+\-−]?\d+)([  ])(points|point|coins|coin)\b")
+_EN_WORD_TO_FORMS = {"point": ("point", "points"), "points": ("point", "points"),
+                     "coin": ("coin", "coins"), "coins": ("coin", "coins")}
+_WORDS = "|".join(sorted([*_RU_WORD_TO_FORMS, *_EN_WORD_TO_FORMS], key=len, reverse=True))
 
 
-def _ru_sub(m: re.Match) -> str:
-    one, few, many = _RU_WORD_TO_FORMS[m.group(3)]
-    return f"{m.group(1)}{m.group(2)}{ru_plural(m.group(1), one, few, many)}"
+def _form(word: str, value) -> str:
+    if word in _RU_WORD_TO_FORMS:
+        return ru_plural(value, *_RU_WORD_TO_FORMS[word])
+    one, many = _EN_WORD_TO_FORMS[word]
+    number = _number(value)
+    return one if number is not None and abs(number) == 1 else many
 
 
-def _en_sub(m: re.Match) -> str:
-    one, many = _EN_FORMS[m.group(3)]
-    word = one if abs(_number(m.group(1)) or 0) == 1 else many
-    return f"{m.group(1)}{m.group(2)}{word}"
-
-
-def agree_points(text):
-    """«N баллов/монет/коинов» и «N points/coins» в согласии с числом; не-строку — как есть."""
-    if not isinstance(text, str) or not text:
-        return text
-    return _EN_RE.sub(_en_sub, _RU_RE.sub(_ru_sub, text))
+def agree_placeholder(template, name: str, value):
+    """В шаблоне «{name} баллов» слово сразу за плейсхолдером — в форме под `value`.
+    Нечисловое `value` и не-строковый шаблон — как есть."""
+    if not isinstance(template, str) or _number(value) is None:
+        return template
+    token = "{" + name + "}"
+    if token not in template:
+        return template
+    pattern = re.compile(re.escape(token) + r"([  ])(" + _WORDS + r")(?!\w)")
+    return pattern.sub(lambda m: token + m.group(1) + _form(m.group(2), value), template)
 
 
 def points_word(n) -> str:

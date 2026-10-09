@@ -22,7 +22,7 @@ from __future__ import annotations
 import html as html_module
 import logging
 
-from services.ru_plural import agree_points
+from services.ru_plural import agree_placeholder
 from settings_schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -44,9 +44,10 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
     template = await get_setting_typed("coins_manual_notify_text")
     if not template:
         template = SETTINGS_SCHEMA["coins_manual_notify_text"]["default"]
-    # «{delta} баллов» согласуется с числом до подстановки причины: «+1 балл», «−3 балла».
+    # «{delta} баллов» согласуется с числом: «+1 балл», «−3 балла».
     text = (
-        agree_points(str(template).replace("{delta}", f"{delta:+d}"))
+        agree_placeholder(str(template), "delta", delta)
+        .replace("{delta}", f"{delta:+d}")
         .replace("{reason}", html_module.escape(str(reason)))
         .replace("{balance}", str(balance))
     )

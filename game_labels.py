@@ -28,7 +28,7 @@ import html
 from datetime import datetime
 
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
-from services.ru_plural import agree_points
+from services.ru_plural import agree_placeholder
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
@@ -189,11 +189,14 @@ def fill_template(template: str, **subs) -> str:
     `IndexError`/`ValueError` и роняет всю отправку; лишний неизвестный `{плейсхолдер}`
     остаётся в тексте как есть, а не превращается в исключение.
 
-    Тексты игры и волн несут «{coins} баллов» — после подстановки слово согласуется с числом
-    (`agree_points`: «1 балл», «22 балла»), в том числе в тексте, переписанном менеджером."""
+    Тексты игры и волн несут «{coins} баллов»: слово сразу за числовым плейсхолдером получает
+    форму под его значение (`agree_placeholder`: «1 балл», «22 балла») — до подстановки, так что
+    название задания или имя в подставленных значениях не трогаются."""
+    for key, value in subs.items():
+        template = agree_placeholder(template, key, value)
     for key, value in subs.items():
         template = template.replace("{" + key + "}", str(value))
-    return agree_points(template)
+    return template
 
 
 def penalized_coins(coins: int, percent: int) -> int:
