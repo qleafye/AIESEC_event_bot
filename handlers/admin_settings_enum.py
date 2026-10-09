@@ -3,7 +3,8 @@
 
 Кнопка ведёт тем же путём, что ввод текстом (`admin_settings.settings_edit_value`): проверка,
 подтверждение опасных значений, хуки и запись — значение подставляется как текст сообщения от
-имени нажавшего. Только общий экран: своё значение города правится через «✏️ Изменить для …».
+имени нажавшего. Куда писать, решает FSM: общий экран кладёт туда общий ключ, «✏️ Изменить для
+…» (`settings_edit_city`) — ключ города, так что та же кнопка пишет в свою область.
 
 Шов к общему `admin.router`, импортируется хвостом `handlers/admin.py`.
 """
@@ -21,10 +22,22 @@ def enum_options(key: str) -> list[str]:
     return list(entry.get("options") or []) if entry.get("type") == "enum" else []
 
 
+ENUM_HINT = "\n\n<i>Выберите вариант кнопкой ниже.</i>"
+# Тумблеры on/off в реестре без option_labels — без этой подписи кнопки и «Сейчас задано»
+# показывали бы сырой код.
+_ON_OFF = {"on": "Включено", "off": "Выключено"}
+
+
+def enum_label(key: str, code: str) -> str:
+    """Человеческая подпись варианта enum-ключа (общего или своего у города); не enum — как есть."""
+    label = option_label(key, code)
+    return _ON_OFF.get(code, label) if label == code and enum_options(key) else label
+
+
 def enum_rows(key: str, current: str | None) -> list[list[InlineKeyboardButton]]:
     return [
         [InlineKeyboardButton(
-            text=("✅ " if opt == current else "") + option_label(key, opt),
+            text=("✅ " if opt == current else "") + enum_label(key, opt),
             callback_data=f"settings_enum_pick:{i}",
         )]
         for i, opt in enumerate(enum_options(key))
