@@ -1684,12 +1684,23 @@ export async function render(root, params, ctx) {
         );
       }
 
+      // Приёмка 09.10: город форума выбирается до анкеты (развилка), шагом не является — в
+      // обзоре его не было, хотя сводка чата его показывает. Строку (подпись и значение)
+      // готовит сервер (`d.forum_city`), первой в группе «Мероприятие».
+      const forumCityRow = d.forum_city && d.forum_city.value
+        ? h("div", { class: "row" },
+          h("div", { text: d.forum_city.label || "" }),
+          h("div", { class: "val filled", text: d.forum_city.value }),
+        )
+        : null;
+
       function groupSection(groupKey, titleKey) {
         const items = groups[groupKey];
-        if (!items.length) return null;
+        const lead = groupKey === "event" ? forumCityRow : null;
+        if (!items.length && !lead) return null;
         return h("div", {},
           sectionTitle(h, formV2Text(titleKey)),
-          h("div", { class: "rows compact" }, ...items.map(reviewRow)),
+          h("div", { class: "rows compact" }, ...[lead, ...items.map(reviewRow)].filter(Boolean)),
         );
       }
 
