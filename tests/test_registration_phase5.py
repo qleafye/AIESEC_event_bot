@@ -280,7 +280,7 @@ def test_prompt_empty_party_override_falls_back_to_global(tmp_path):
 
 def test_party_preset_shape():
     p = reg.REG_PRESETS["party"]
-    assert p["label"] == "🎉 Party"
+    assert p["label"] == "🎉 Вечеринка"
     # 6 at Phase-5 close; +reg_q_alumni_status (quick 260721-msh).
     assert len(p["on"]) == 7
     assert all(k.startswith("reg_q_") for k in p["on"])

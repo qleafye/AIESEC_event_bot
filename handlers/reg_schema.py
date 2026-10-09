@@ -22,7 +22,7 @@ from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
 from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
@@ -543,10 +543,10 @@ async def incomplete_city_batches() -> list[tuple[str, list[str], list[list]]]:
     return [(tab, batch_headers[tab], sheet_rows) for tab, sheet_rows in batch_rows.items()]
 
 
-DEFAULT_APPROVE_TEXT = "Твоя заявка одобрена! Добро пожаловать 🎉"
+DEFAULT_APPROVE_TEXT = SETTINGS_SCHEMA["approve_text"]["default"]
 # Quick 260904-3vm (E2): автоприём (short-трек/подобные сценарии без модерации) — своя
 # причина принятия, не «прошёл отбор» (отбора не было вовсе).
-DEFAULT_APPROVE_AUTO_TEXT = "Заявка принята ✅ Всё получили — ждём тебя!"
+DEFAULT_APPROVE_AUTO_TEXT = SETTINGS_SCHEMA["approve_text__auto"]["default"]
 
 
 # _is_module_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
