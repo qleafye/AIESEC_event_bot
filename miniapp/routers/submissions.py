@@ -152,6 +152,21 @@ def _is_file_rejection(exc: TelegramApiError) -> bool:
     return any(marker in desc for marker in FILE_REJECT_MARKERS)
 
 
+# Отказ Telegram «писать некуда»: делегат ни разу не нажимал /start, заблокировал бота или
+# удалил аккаунт. Повтор той же отправки бессмыслен — нужен чат с ботом (или ответ текстом).
+NO_CHAT_MARKERS = (
+    "chat not found", "bot was blocked by the user", "bot can't initiate conversation",
+    "user is deactivated",
+)
+
+
+def _is_no_chat(exc: TelegramApiError) -> bool:
+    if exc.status not in (400, 403) or not exc.description:
+        return False
+    desc = exc.description.lower()
+    return any(marker in desc for marker in NO_CHAT_MARKERS)
+
+
 LOG_VALUE_MAX = 40
 
 
@@ -232,6 +247,14 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
             cfg, actor.telegram_id, content, filename, content_type, caption,
         )
     except TelegramApiError as exc:
+        if _is_no_chat(exc):
+            # Приёмка 09.10: файл кладётся отправкой в чат делегата — без чата с ботом повтор
+            # не поможет никогда, «попробуй ещё раз» тут вводит в заблуждение.
+            logger.info("uploads(resume): у делегата нет чата с ботом telegram_id=%s", actor.telegram_id)
+            raise HTTPException(409, {
+                "reason": "no_chat",
+                "text": await i18n.tr_setting("reg_form_resume_no_chat_text", lang, tr_map),
+            })
         raise HTTPException(502, {"reason": "telegram_unavailable", "detail": exc.reason})
 
     file_id = _extract_file_id("document", result)
