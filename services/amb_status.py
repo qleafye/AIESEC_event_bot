@@ -157,6 +157,25 @@ async def _try_slot(telegram_id: int) -> bool:
         return False
 
 
+async def _credit_candidate_period(telegram_id: int, *, since: str, by: int) -> None:
+    """Баллы за приглашённых, одобренных пока человек был кандидатом: тогда он ещё не был
+    амбассадором, и журнал записал их без баллов. Так же догоняются ступени ниже. Fail-soft:
+    человек уже в команде, сбой начисления это не отменяет."""
+    try:
+        from database import amb_journal_db
+        coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
+        result = await amb_journal_db.credit_candidate_period(
+            int(telegram_id), since=since, coins=coins, by=by, at=_now(),
+            reason_tpl=await get_setting_typed("amb_referral_catchup_reason_text"),
+        )
+        if result["count"]:
+            logger.info("amb_take_catchup tid=%s invitees=%s coins=%s", telegram_id,
+                        result["count"], result["coins"])
+    except Exception:
+        logger.exception("amb_status: баллы за приглашённых до вступления не начислены (tid=%s)",
+                         telegram_id)
+
+
 async def _check_tiers(telegram_id: int) -> None:
     try:
         from services.amb_tiers import check_tiers_for_new_ambassador
@@ -252,12 +271,15 @@ async def take(telegram_id: int, *, by: int) -> JoinResult:
     tid = int(telegram_id)
     if await _db.get_user(tid) is None:
         return JoinResult("no_user")
+    before = await amb_status_db.get_status(tid) or {}
     if not await amb_status_db.set_status(tid, _ACTIVE, at=_now(), by=int(by),
                                           expect=(_NONE, _CANDIDATE, _DECLINED, _LEFT)):
         if await _status(tid) == _ACTIVE:
             return JoinResult("already_active")
         return JoinResult("no_user")
     slot = await _try_slot(tid)
+    if before.get("status") == _CANDIDATE and before.get("status_at"):
+        await _credit_candidate_period(tid, since=before["status_at"], by=int(by))
     await _check_tiers(tid)
     logger.info("amb_take admin=%s tid=%s slot=%s", by, tid, slot)
     return JoinResult("taken", slot)
