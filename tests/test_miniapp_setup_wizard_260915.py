@@ -206,6 +206,17 @@ def test_event_type_field_matches_settings_all(tmp_path):
     assert setup_field["confirm_text"]
 
 
+def test_event_type_step_not_done_on_registry_default(tmp_path):
+    """Дефолт event_type = "forum" (10.10) — читатели видят «форум», как раньше при пустом
+    значении, но мастер шаг типа по дефолту не засчитывает: менеджер выбирает тип сам."""
+    client = _setup(tmp_path)
+    body = _setup_resp(client).json()
+    assert body["event_type"] == "forum"
+    assert _step(body, "event_type")["done"] is False
+    _set("event_type", "forum")
+    assert _step(_setup_resp(client).json(), "event_type")["done"] is True
+
+
 # ══ 10: HTTP — show_tile ═══════════════════════════════════════════════════════════════
 
 def test_show_tile_false_when_dismissed(tmp_path):
