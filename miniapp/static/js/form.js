@@ -429,10 +429,17 @@ function fileControl(h, spec, value, onChange) {
   // reg_engine.step_spec()-only приём, что upload_button_text выше (settingSpec() его не
   // публикует; впрочем, для этой кнопки не важно — она и так рисуется, только когда
   // textAllowed, а веб-настройки всегда идут с text_allowed:false).
+  // Приёмка 09.10: в развилке резюме дропзона — подмена шага веткой «файл», и поле текста
+  // внутри неё оставляло тип «файл» — подача отбивалась «Файл ещё не загрузился». Экран
+  // передаёт `spec.__onWriteText` — переход на ветку «текст» (тот же, что кнопка развилки);
+  // без него (режим «файл или текст») кнопка, как раньше, раскрывает поле.
   const toggleText = textAllowed ? h("button", {
     class: "btn ghost dropzone-toggle-text", type: "button",
     "aria-label": spec.text_button_text || spec.label,
-    onClick: () => textarea.classList.toggle("hidden"),
+    onClick: () => {
+      if (typeof spec.__onWriteText === "function") spec.__onWriteText();
+      else textarea.classList.toggle("hidden");
+    },
   }, icon("pen-line"), spec.text_button_text ? h("span", { text: spec.text_button_text }) : null) : null;
   if (textarea) textarea.addEventListener("input", () => onChange({ text: textarea.value }));
 
