@@ -12,6 +12,7 @@ import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp, haptic, stagger } from "../motion.js";
 import { fileUrl, flatRow, sectionTitle, labelText, tile, noticeBox, ambassadorLinkBlock } from "../ui.js";
+import { unitFor } from "../units.js";
 import { personNode } from "../person.js";
 
 // Phase 30 (30-05, задача 3, A2-07): плита статуса заявки. Тумблер `reg_form_status_screen`
@@ -313,7 +314,9 @@ async function renderDelegateHub(root, ctx) {
   if (hubR.status === "fulfilled") {
     const hub = hubR.value;
     plateEyebrow.textContent = hub.balance_eyebrow || "";
-    plateUnit.textContent = hub.balance_unit || "";
+    // Число на плите — баланс: «1 балл», «22 балла» (без баланса — подпись как есть).
+    const shown = balanceR.status === "fulfilled" ? (balanceR.value.balance || 0) : null;
+    plateUnit.textContent = shown == null ? (hub.balance_unit || "") : unitFor(shown, hub.balance_unit);
     // Идея №4 бэклога чек-ина: «✅ Ты отмечен» — та же плита фактов, что tasks_fact/days_fact,
     // третьей строкой (сервер уже решил видимость: `checkin_qr_enabled` + отметка есть,
     // `miniapp/routers/hub.py::_checkin_status_fact`).
