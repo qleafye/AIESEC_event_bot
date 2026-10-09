@@ -331,3 +331,42 @@ def test_resend_one_refuses_pending(tmp_path):
 def test_resend_callbacks_require_moderate_reg(name):
     assert required_capability(callback_data=f"{name}:{DELEGATE_ID}") == "moderate_reg"
     assert f"{name}:*" in ADMIN_CAPS
+
+
+# ── «📱 Приложение в браузере» рядом с «🌐 Открыть дашборд» ──────────────────────────────────
+
+def _stats_kb(miniapp: str, url: str):
+    import handlers.admin as admin_mod
+
+    async def scenario():
+        await db.set_setting("miniapp_enabled", miniapp)
+        return await admin_mod._stats_keyboard_for(ADMIN_ID)
+
+    old = config.DASHBOARD_PUBLIC_URL
+    config.DASHBOARD_PUBLIC_URL = url
+    try:
+        return _run(scenario())
+    finally:
+        config.DASHBOARD_PUBLIC_URL = old
+
+
+def test_browser_app_button_when_enabled_and_url_set(tmp_path):
+    _db_ready(tmp_path)
+    kb = _stats_kb("on", "https://yl26.alekseev.info/")
+    assert kb.inline_keyboard[0][0].text == "🌐 Открыть дашборд"
+    second = kb.inline_keyboard[1][0]
+    assert second.text == "📱 Приложение в браузере"
+    assert second.url == "https://yl26.alekseev.info/app"
+
+
+def test_browser_app_button_hidden_when_miniapp_off(tmp_path):
+    _db_ready(tmp_path)
+    texts = [b.text for row in _stats_kb("off", "https://yl26.alekseev.info").inline_keyboard for b in row]
+    assert "📱 Приложение в браузере" not in texts
+    assert "🌐 Открыть дашборд" in texts
+
+
+def test_browser_app_button_hidden_without_dashboard_url(tmp_path):
+    _db_ready(tmp_path)
+    texts = [b.text for row in _stats_kb("on", "").inline_keyboard for b in row]
+    assert "📱 Приложение в браузере" not in texts
