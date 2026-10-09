@@ -1885,9 +1885,9 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
     entry = SETTINGS_SCHEMA.get(_base_setting_key(key), {})
     is_list, label = entry.get("type") == "list", entry.get("label", key)
-    # enum — кнопками (handlers/admin_settings_enum.py), на экране города — текстом, как раньше.
-    is_enum = entry.get("type") == "enum" and bool(entry.get("options")) and not per_city_ctx
-    from handlers.admin_settings_enum import enum_rows  # ленивый шов
+    # enum — кнопками (handlers/admin_settings_enum.py), свой у города — в settings_edit_city.
+    is_enum = entry.get("type") == "enum" and bool(entry.get("options"))
+    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_rows  # ленивый шов
 
     if per_city_ctx and is_per_city(key):
         city_label_txt = await city_label(header_code)
@@ -1895,14 +1895,14 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         own_value = await get_setting(composed) if composed else None
         lines = [f"🏙 {html_module.escape(city_label_txt)}"]
         if own_value:
-            lines.append(f"Своё значение: <b>{html_module.escape(own_value)}</b>")
+            lines.append(f"Своё значение: <b>{html_module.escape(enum_label(key, own_value))}</b>")
         elif _fdate.is_city_only_key(key):
             lines.append(_fdate.NO_CITY_DATE_LINE)
         else:
             global_value = await get_setting(key)
             dflt = _shown_default(key)
-            global_txt = (f"<b>{html_module.escape(global_value)}</b>" if global_value
-                          else f"<i>по умолчанию — {html_module.escape(dflt)}</i>" if dflt else "<i>по умолчанию</i>")
+            global_txt = (f"<b>{html_module.escape(enum_label(key, global_value))}</b>" if global_value
+                          else f"<i>по умолчанию — {html_module.escape(enum_label(key, dflt))}</i>" if dflt else "<i>по умолчанию</i>")
             noun = "Общий текст" if entry.get("type") == "text" else "Общее значение"
             lines.append(f"Как везде. {noun}: {global_txt}")
 
@@ -1937,12 +1937,12 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             "«✏️ Заменить список целиком».</i>"
         )
     elif current:
-        shown = option_label(key, current) if is_enum else current
+        shown = enum_label(key, current) if is_enum else current
         text = f"Сейчас задано:\n<b>{html_module.escape(shown)}</b>\n\n{text}"
     elif dflt := _shown_default(key):
-        text = f"Сейчас: <i>по умолчанию — {html_module.escape(dflt)}</i>\n\n{text}"
+        text = f"Сейчас: <i>по умолчанию — {html_module.escape(enum_label(key, dflt))}</i>\n\n{text}"
     if is_enum:
-        text += "\n\n<i>Выберите вариант кнопкой ниже.</i>"
+        text += ENUM_HINT
     elif not is_list:
         text += "\n\n<i>Пришлите новое значение сообщением. Чтобы очистить поле — отправьте «-».</i>"
 
@@ -2050,13 +2050,14 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"
+    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_rows  # enum — кнопками, пишут в ключ города
     if current:
-        text += f"Сейчас у города:\n<b>{html_module.escape(current)}</b>\n\n"
+        text += f"Сейчас у города:\n<b>{html_module.escape(enum_label(key, current))}</b>\n\n"
     else:
         text += f"Сейчас у города: <i>{'даты нет' if _fdate.is_city_only_key(key) else 'как везде'}</i>\n\n"
-    text += html_module.escape(prompt) + _fdate.clear_hint(key)
+    rows = enum_rows(key, current)
+    text += html_module.escape(prompt) + (ENUM_HINT if rows else _fdate.clear_hint(key))
 
-    rows: list[list[InlineKeyboardButton]] = []
     if current:
         rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=f"settings_reset_city:{key}")])
     rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_edit:{key}")])
