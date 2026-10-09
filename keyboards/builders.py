@@ -85,6 +85,9 @@ MENU_BUTTONS = [
     # Форум-ночь п.8 (идея №19, SOS): кнопка видна только в дни форума города — гейт ниже
     # (services.sos.is_sos_active_for_city), тот же приём, что у menu_schedule/menu_important.
     ("menu_sos", "🆘 SOS"),
+    # Владелец 09.10: правка поданной анкеты прямо из чата — тот же вход, что `/start edit`.
+    # Второй гейт ниже: только делегату с анкетой этого сезона, пока `edit_gate` разрешает.
+    ("menu_edit_anketa", "✏️ Изменить анкету"),
 ]
 
 # Квик 260912 (W5, Задача 2) — множества «русская подпись + английская подпись» для входного
@@ -326,6 +329,18 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     except Exception as e:
         logger.error(f"get_main_menu_kb: enroll/quiz gates resolve failed for {telegram_id}: {e}")
 
+    # «✏️ Изменить анкету»: анкета этого сезона подана и не отклонена, и правило правки
+    # (reg_edit_policy.edit_gate, тот же гейт, что у `/start edit`) её сейчас разрешает.
+    edit_on = False
+    try:
+        import reg_engine
+        if reg_engine.has_submitted_anketa(user, await get_setting_typed("event_season") or None):
+            from services import reg_edit_policy
+            edit_on, _ = await reg_edit_policy.edit_gate(user)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: edit gate resolve failed for {telegram_id}: {e}")
+        edit_on = False
+
     collected: list[tuple[str, str]] = []
     for key, text in MENU_BUTTONS:
         if conference:
@@ -375,6 +390,8 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
             if key == "menu_session_enroll" and not enroll_on:
                 continue
             if key == "menu_quiz" and not quiz_on:
+                continue
+            if key == "menu_edit_anketa" and not edit_on:
                 continue
             if key in DYNAMIC_MENU_LABEL_KEYS:
                 collected.append((key, await caption_for(
@@ -489,7 +506,14 @@ async def _hidden_quiz(code: str | None) -> str | None:
     return "тест не включён или в нём нет вопросов"
 
 
+async def _hidden_edit_anketa(code: str | None) -> str | None:
+    if await get_setting_typed_for_city("reg_edit_policy", code) == "never":
+        return "правка анкеты запрещена — «📋 Заявки» → «✏️ Правка анкеты делегатом»"
+    return None
+
+
 MENU_HIDDEN_REASONS = {
+    "menu_edit_anketa": _hidden_edit_anketa,
     "menu_session_enroll": _hidden_session_enroll,
     "menu_quiz": _hidden_quiz,
     "menu_miniapp": _hidden_miniapp,
