@@ -539,11 +539,15 @@ async def main():
     except Exception:
         logger.warning("sync_chat_menu_button failed at startup", exc_info=True)
     try:
-        from services.bot_profile import sync_bot_name, sync_bot_profile
+        from services.bot_profile import sync_bot_profile
         await sync_bot_profile(bot)
-        await sync_bot_name(bot)
     except Exception:
         logger.warning("sync_bot_profile failed at startup", exc_info=True)
+    try:  # имя отдельно: сбой описания не должен отменять имя, и наоборот
+        from services.bot_profile import sync_bot_name
+        await sync_bot_name(bot)
+    except Exception:
+        logger.warning("sync_bot_name failed at startup", exc_info=True)
 
     try:
         await dp.start_polling(bot)
