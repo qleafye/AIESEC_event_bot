@@ -421,6 +421,9 @@ _CODE_LITERALS_EN = {
     "Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.": "Already submitted — someone beat you to it by a split second. Refresh the task list.",
     "Оплатили или оплата не требуется.": "Already paid, or payment isn't required.",
     "Пожалуйста, отправь вопрос текстом.": "Please send your question as text.",
+    "Это команда для организаторов. Если вы организатор — попросите доступ у руководителя.": (
+        "This command is for organizers. If you are an organizer, ask your lead for access."
+    ),
     "Не удалось отправить вопрос, попробуйте позже.": "Couldn't send your question, please try again later.",
     "Администраторы не настроены.": "No administrators configured.",
     "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.": "To use the bot, you need to register first. Send the /start command.",
