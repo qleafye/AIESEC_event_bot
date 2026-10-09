@@ -150,3 +150,31 @@ def test_multi_done_echoes_chosen_options(tmp_path):
     echo = texts[0] or ""
     assert "✅ Найти возможность трудоустройства" in echo, texts
     assert "✅ Пообщаться с людьми из моей сферы, нетворкинг" in echo, texts
+
+
+# ── Шаг резюме снимает клавиатуру прошлого вопроса ────────────────────────────────────────
+
+def test_resume_fork_removes_previous_reply_keyboard(tmp_path):
+    """Развилка резюме — инлайн-кнопки, а «Да! / Пока нет» прошлого вопроса оставались внизу.
+    Шаг обязан снять reply-клавиатуру и при этом показать четыре кнопки способа."""
+    from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardRemove
+
+    _use_tmp_db(tmp_path, "uat261009_c6.db")
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "fork")
+        msg = _KBCapturingMessage(USER_ID, "delegate")
+        state = _new_state(USER_ID)
+        await state.update_data(participant_type="full", full_name="Тест Тестов")
+        await reg._ask_step("resume", msg, state, 14, 14)
+        return msg, await state.get_state()
+
+    msg, state_name = asyncio.run(go())
+    markups = [rm for (_, rm, _) in msg.sent]
+    assert any(isinstance(rm, ReplyKeyboardRemove) for rm in markups), msg.sent
+    assert sum(isinstance(rm, InlineKeyboardMarkup) for rm in markups) == 1
+    # вопрос идёт первым и снимает клавиатуру; кнопки — под ним (подсказка «кнопкой выше» не врёт)
+    assert isinstance(msg.sent[0][1], ReplyKeyboardRemove)
+    assert "резюме" in (msg.sent[0][0] or "").lower()
+    assert isinstance(msg.sent[-1][1], InlineKeyboardMarkup)
+    assert state_name == Registration.resume.state
