@@ -252,3 +252,27 @@ def test_confirm_edit_skipped_answer_offered_as_not_specified(tmp_path):
     assert fsm_state == Registration.recall_pending.state, _texts(msg)
     assert data.get("_recall_step") == "phone"
     assert any("не указан" in (t or "") for t in _texts(msg)), _texts(msg)
+
+
+# ── Сводка в чате после подачи из приложения: «Всё верно» не подаёт заявку второй раз ─────
+
+def test_confirm_after_draft_submitted_elsewhere_does_not_resubmit(tmp_path):
+    """Приложение подало анкету и удалило черновик, а чат остался на сводке. «Всё верно» не
+    должен собрать заявку из FSM и подать её ещё раз — ответ как на уже поданную анкету."""
+    _use_tmp_db(tmp_path, "uat261009_resubmit.db")
+
+    async def go():
+        msg = _KBCapturingMessage(USER_ID, "delegate", text="Всё верно")
+        state = _new_state(USER_ID)
+        await state.update_data(
+            participant_type="full", _draft_kind="new", _draft_version=7,
+            full_name="Иванова Мария", age="22",
+        )
+        await state.set_state(Registration.confirm)
+        await reg.finalize_registration(msg, state, bot=object())
+        return msg, await state.get_state(), await db.get_user(USER_ID)
+
+    msg, fsm_state, user = asyncio.run(go())
+    assert user is None, "заявка подана второй раз из FSM"
+    assert fsm_state is None
+    assert any("уже отправлена" in (t or "") for t in _texts(msg)), _texts(msg)
