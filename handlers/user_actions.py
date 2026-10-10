@@ -1317,14 +1317,14 @@ async def show_contacts(message: types.Message):
         # Квик 260917-en: contact_person/contact_vk/contact_tg сами НЕ переводятся
         # (юзернейм/URL, см. services/i18n_sources.py::_NON_LANGUAGE_EVENT_KEYS) — переводим
         # только обёртку вокруг них.
-        parts.append(f"{reg_i18n.tr_text(await ui_text('contacts_person_label_text'), lang, tr_map)}: {contact_person}")
+        parts.append(f"{await ui_tr('contacts_person_label_text', lambda s: reg_i18n.tr_text(s, lang, tr_map))}: {contact_person}")
     links = []
     if contact_vk:
         links.append(f"VK: {contact_vk}")
     if contact_tg:
         links.append(f"TG: {contact_tg}")
     if links:
-        parts.append(f"{reg_i18n.tr_text(await ui_text('contacts_groups_label_text'), lang, tr_map)}:\n" + "\n".join(links))
+        parts.append(f"{await ui_tr('contacts_groups_label_text', lambda s: reg_i18n.tr_text(s, lang, tr_map))}:\n" + "\n".join(links))
 
     text = "\n\n".join(parts)
     # WR-04: an invalid admin URL (BUTTON_URL_INVALID) or stray &/< in a contact field under
@@ -1333,7 +1333,7 @@ async def show_contacts(message: types.Message):
         await message.answer(text, reply_markup=get_socials_kb(contact_tg, contact_vk))
     except Exception as e:
         logger.error(f"show_contacts send failed for {message.from_user.id}: {e}")
-        await message.answer(text, parse_mode=None)
+        await message.answer(html.unescape(text), parse_mode=None)  # подписи экранированы для HTML
 
 def _msk_now_str() -> str:
     return msk_now().strftime("%Y-%m-%d %H:%M:%S")
