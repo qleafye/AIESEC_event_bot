@@ -61,7 +61,7 @@ def test_placeholder_needs_numeric_value_and_adjacent_word():
 
 def test_old_coins_menu_caption_still_opens_balance():
     """Дефолт кнопки стал «🪙 Мои баллы»; старые клавиатуры с «🪙 Мои монеты» работают как раньше."""
-    from services.menu_labels import STATIC_TEXT_TO_KEY, default_caption
+    from services.bot.menu_labels import STATIC_TEXT_TO_KEY, default_caption
 
     assert default_caption("menu_coins") == "🪙 Мои баллы"
     for text in ("🪙 Мои баллы", "🪙 My points", "🪙 Мои монеты", "🪙 My coins"):

@@ -12,7 +12,7 @@ _CMD_TAIL = (
 )
 
 UI_TEXT_SCHEMA: dict[str, dict] = {
-    # ── Команды в синей кнопке «Меню» (services/bot_commands.py) ────────────────────────────
+    # ── Команды в синей кнопке «Меню» (services/bot/bot_commands.py) ────────────────────────────
     "bot_command_start_text": {
         "type": "text", "group": "event", "label": "⌨️ Кнопка «Меню»: подпись /start",
         "prompt": (

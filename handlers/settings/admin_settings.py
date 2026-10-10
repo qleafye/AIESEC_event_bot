@@ -59,7 +59,7 @@ from services.program import own_program_photo  # строка «📅 Прогр
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
 from keyboards.menu_dynamic import MENU_LABEL_FIELDS, is_dynamic_menu_text
-from services.menu_labels import base_label_key, label_conflict_text
+from services.bot.menu_labels import base_label_key, label_conflict_text
 from handlers.reg.reg_schema import (
     REG_FLOW,
     dropout_step_label,

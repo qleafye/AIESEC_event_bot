@@ -330,7 +330,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     # Подписи кнопок — настройки по городу (keyboards/menu_dynamic.caption_for). Город для
     # подписи — тот же фолбэк, что у гейтов записи/теста выше; EN — рукописный MENU_EN для
     # стандартных подписей и ручной перевод менеджера для своих (машинный не берём: его не
-    # узнал бы фильтр нажатий, services/menu_labels.py).
+    # узнал бы фильтр нажатий, services/bot/menu_labels.py).
     try:
         label_city = code if code is not None else default_city_code()
     except Exception as e:
@@ -338,7 +338,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         label_city = None
     en_map: dict[str, str] = {}
     if lang == "en":
-        from services.menu_labels import manual_en_map
+        from services.bot.menu_labels import manual_en_map
         en_map = await manual_en_map()
 
     collected: list[tuple[str, str]] = []
