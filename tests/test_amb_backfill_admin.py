@@ -68,7 +68,7 @@ def test_points_screen_has_button_and_caps(tmp_path):
     assert ("🔁 Начислить за прошлых приглашённых", "ambpt_fill") in [
         (b.text, b.callback_data) for r in kb.inline_keyboard for b in r
     ]
-    for key in ("ambpt_fill", "ambpt_fill_go:*"):
+    for key in ("ambpt_fill", "ambpt_fill_go*"):
         assert ADMIN_CAPS[key] == "moderate_game"
     assert required_capability(callback_data="ambpt_fill_go:50:2") == "moderate_game"
 
