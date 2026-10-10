@@ -67,10 +67,25 @@ async def ask_fork(message: types.Message, state: FSMContext, progress_prefix: s
     ])
     # Приёмка 09.10: у сообщения одна разметка — инлайн-кнопки развилки не снимают reply-
     # клавиатуру прошлого вопроса («Да! / Пока нет» оставались внизу, тап по ним давал
-    # «Выбери способ кнопкой выше»). Вопрос снимает клавиатуру, кнопки — отдельной строкой под ним.
-    await _safe_answer(message, text, reply_markup=ReplyKeyboardRemove())
-    await _safe_answer(message, FORK_PICK_TITLE, reply_markup=kb)
+    # «Выбери способ кнопкой выше»). Вопрос снимает клавиатуру.
+    # Приёмка 10.10: отдельное «👇 Выбери способ:» на стенде оказывалось ВЫШЕ вопроса — кнопки
+    # вешаются на само сообщение с вопросом; не дал Telegram — прежнее сообщение под вопросом.
+    sent = await _safe_answer(message, text, reply_markup=ReplyKeyboardRemove())
+    if not await _attach_kb(message, sent, kb):
+        await _safe_answer(message, FORK_PICK_TITLE, reply_markup=kb)
     await state.set_state(Registration.resume)
+
+
+async def _attach_kb(message: types.Message, sent, kb: InlineKeyboardMarkup) -> bool:
+    """Повесить инлайн-кнопки на уже отправленный вопрос. Перевод — как в `_safe_answer`."""
+    if sent is None or not hasattr(sent, "edit_reply_markup"):
+        return False
+    try:
+        lang, tr_map = await reg_i18n.ctx_for(message)
+        await sent.edit_reply_markup(reply_markup=reg_i18n.tr_kb(kb, lang, tr_map))
+        return True
+    except Exception:
+        return False
 
 
 async def back_to_fork(message: types.Message, state: FSMContext) -> None:

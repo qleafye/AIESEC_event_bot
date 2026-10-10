@@ -128,3 +128,74 @@ def test_review_label_has_english():
     assert entry["group"] == "reg" and entry["type"] == "text"
     assert "reg_resume" not in entry["label"]
     assert entry["default"] in i18n_form_manual._REGISTRY_TEXTS_EN
+
+
+# ── Развилка резюме: кнопки способа — под самим вопросом ──────────────────────────────────
+
+class _SentMessage:
+    def __init__(self, owner, index, fail_edit=False):
+        self.owner, self.index, self.fail_edit = owner, index, fail_edit
+
+    async def edit_reply_markup(self, reply_markup=None):
+        if self.fail_edit:
+            raise RuntimeError("Bad Request: message can't be edited")
+        text, _old, parse_mode = self.owner.sent[self.index]
+        self.owner.sent[self.index] = (text, reply_markup, parse_mode)
+        return self
+
+
+class _ReturningMessage(_KBCapturingMessage):
+    """Как в Telegram: `answer` возвращает отправленное сообщение, его разметку можно сменить."""
+
+    def __init__(self, *a, fail_edit=False, **k):
+        super().__init__(*a, **k)
+        self.fail_edit = fail_edit
+
+    async def answer(self, text=None, reply_markup=None, parse_mode=None, *a, **k):
+        self.sent.append((text, reply_markup, parse_mode))
+        return _SentMessage(self, len(self.sent) - 1, self.fail_edit)
+
+
+async def _ask_resume_fork(msg):
+    await db.set_setting("reg_resume_mode", "fork")
+    state = _new_state(USER_ID)
+    await state.update_data(participant_type="full", full_name="Тест Тестов")
+    await reg._ask_step("resume", msg, state, 14, 14)
+    return await state.get_state()
+
+
+def test_resume_fork_buttons_attach_to_question(tmp_path):
+    """«👇 Выбери способ:» отдельным сообщением на стенде оказывалось выше вопроса. Кнопки
+    способа теперь вешаются на само сообщение с вопросом — порядок перепутать нечем, а
+    reply-клавиатура прошлого вопроса всё равно снимается этим же сообщением."""
+    from aiogram.types import InlineKeyboardMarkup
+    from handlers import reg_resume_fork
+
+    _use_tmp_db(tmp_path, "uat261010_fork.db")
+    msg = _ReturningMessage(USER_ID, "delegate")
+    fsm_state = asyncio.run(_ask_resume_fork(msg))
+
+    assert fsm_state == Registration.resume.state
+    assert len(msg.sent) == 1, msg.sent
+    text, markup, _ = msg.sent[0]
+    assert "резюме" in (text or "").lower()
+    assert isinstance(markup, InlineKeyboardMarkup)
+    datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert datas and all(d.startswith("regfork:") for d in datas), datas
+    assert reg_resume_fork.FORK_PICK_TITLE not in _texts(msg)
+
+
+def test_resume_fork_falls_back_to_separate_buttons_message(tmp_path):
+    """Telegram не дал сменить разметку — кнопки уходят отдельным сообщением ПОСЛЕ вопроса."""
+    from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardRemove
+    from handlers import reg_resume_fork
+
+    _use_tmp_db(tmp_path, "uat261010_fork_fb.db")
+    msg = _ReturningMessage(USER_ID, "delegate", fail_edit=True)
+    asyncio.run(_ask_resume_fork(msg))
+
+    assert len(msg.sent) == 2, msg.sent
+    assert isinstance(msg.sent[0][1], ReplyKeyboardRemove)
+    assert "резюме" in (msg.sent[0][0] or "").lower()
+    assert msg.sent[1][0] == reg_resume_fork.FORK_PICK_TITLE
+    assert isinstance(msg.sent[1][1], InlineKeyboardMarkup)
