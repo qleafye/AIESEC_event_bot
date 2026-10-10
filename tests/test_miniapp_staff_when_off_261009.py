@@ -12,7 +12,7 @@ from aiogram.types import WebAppInfo
 
 from config import config
 from database import db
-from handlers import admin_miniapp
+from handlers.settings import admin_miniapp
 from handlers import user_actions as ua_mod
 from keyboards import builders
 from miniapp.file_tokens import mint_file_token

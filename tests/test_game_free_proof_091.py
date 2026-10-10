@@ -128,7 +128,7 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
 
 
 def test_game_settings_group_registered_in_admin():
-    import handlers.admin_settings as a  # Phase 13 (13-06): settings moved out of admin.py
+    import handlers.settings.admin_settings as a  # Phase 13 (13-06): settings moved out of admin.py
     assert ("🎮 Геймификация", "game", a._GAME_FIELD_ORDER) in a.SETTINGS_GROUPS
 
 

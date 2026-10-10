@@ -103,7 +103,7 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
 
 def _back() -> InlineKeyboardButton:
     """«← Назад» в раздел-владелец («📋 Заявки»), не в группу настроек."""
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     return back_button("admin_delegations")
 
 

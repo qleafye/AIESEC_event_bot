@@ -306,7 +306,7 @@ def test_texts_menu_without_settings_right(tmp_path):
 # ── раздел и права ──────────────────────────────────────────────────────────────────────
 
 def test_section_after_game_with_entry_screen():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     tokens = [t for t, _, _ in sec.SECTIONS]
     assert tokens.index("amb") == tokens.index("game") + 1
     label = dict((t, lbl) for t, lbl, _ in sec.SECTIONS)["amb"]
@@ -316,7 +316,7 @@ def test_section_after_game_with_entry_screen():
 
 
 def test_section_visible_to_moderate_game_only():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     assert "amb" in [t for t, _ in sec.visible_sections({"moderate_game"}, False)]
     assert "amb" not in [t for t, _ in sec.visible_sections({"moderate_reg"}, False)]
     # держатель «⚙️ Настройки» видит раздел ради одной строки «Тексты и настройки» — как в «🎮 Геймификации»

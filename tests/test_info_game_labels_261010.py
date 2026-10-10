@@ -19,7 +19,7 @@ def _ready(tmp_path):
 
 
 def test_keys_on_bot_screens():
-    from handlers.admin_settings import _settings_group_keys
+    from handlers.settings.admin_settings import _settings_group_keys
     from domain.settings.amb_fields import AMB_FIELD_ORDER
 
     event = _settings_group_keys("event")

@@ -22,7 +22,7 @@ from handlers.reg import reg_flow
 # Ловушка цикла admin <-> admin_settings (см. tests/test_delegate_texts_registry_260819.py):
 # handlers.admin импортируется ПЕРВЫМ, admin_settings в одиночку не импортируется.
 from handlers import admin as _admin_mod  # noqa: F401
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db

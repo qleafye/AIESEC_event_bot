@@ -11,8 +11,8 @@ import asyncio
 from config import config
 from database.db import init_db
 
-import handlers.admin_lookup as admin_lookup
-import handlers.admin_settings_lists as admin_settings_lists
+import handlers.settings.admin_lookup as admin_lookup
+import handlers.settings.admin_settings_lists as admin_settings_lists
 import handlers.reg.reg_types_lookup as reg_types_lookup
 import domain.regform.engine as reg_engine
 from domain.settings.schema import get_setting_typed
@@ -177,7 +177,7 @@ def test_admin_lookup_home_lists_both_kinds():
 
 def test_no_own_router_and_no_bare_datetime_now():
     src = (
-        __import__("pathlib").Path("handlers/admin_lookup.py").read_text(encoding="utf-8")
+        __import__("pathlib").Path("handlers/settings/admin_lookup.py").read_text(encoding="utf-8")
     )
     assert src.count("Router()") == 0
     assert "datetime.now()" not in src

@@ -18,7 +18,7 @@ from config import config
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from handlers.delegations import admin_delegations as mod
-from handlers import admin_sections as sec
+from handlers.settings import admin_sections as sec
 from handlers.access.admin_caps import required_capability
 from services import delegations as dlg
 from services.settings.audit import set_setting_by_admin

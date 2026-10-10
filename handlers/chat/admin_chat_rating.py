@@ -34,7 +34,7 @@ from domain.cities import (
 )
 from database.db import get_setting, get_task, list_all_tasks, task_title
 from handlers.admin import router
-from handlers.admin_settings import _per_city_visible_codes
+from handlers.settings.admin_settings import _per_city_visible_codes
 from domain.settings.validation import is_command_like, validate_setting_value
 from handlers.states import ChatRatingEdit
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin

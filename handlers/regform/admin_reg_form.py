@@ -1,6 +1,6 @@
 """Phase 30 (30-01, A2-08): шов «📝 Анкета» — девять callback-хендлеров тумблеров «Анкета 2.0»
 (`reg_form_v2_enabled` + восемь элементов). Отдельный файл, а не ещё девять функций внутри
-`handlers/admin_settings.py`: тот модуль уже стоит на документированном потолке
+`handlers/settings/admin_settings.py`: тот модуль уже стоит на документированном потолке
 (`tests/test_module_size_convention_260816.py::KNOWN_OVERAGES["admin_settings.py"]`), и девять
 новых хендлеров подняли бы его дальше без всякой пользы — сама механика переключения (общий
 `_toggle_module_setting`) уже живёт там и переиспользуется отсюда, второй копии нет.
@@ -12,7 +12,7 @@
 from aiogram import F, types
 
 from handlers.admin import router
-from handlers.admin_settings import _toggle_module_setting
+from handlers.settings.admin_settings import _toggle_module_setting
 from domain.settings.schema import SETTINGS_SCHEMA
 
 

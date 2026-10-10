@@ -177,7 +177,7 @@ async def _run_at_for(city: str | None) -> tuple[datetime | None, str | None]:
 
 async def schedule_city_job(city: str | None) -> dict:
     """(Пере)ставить/снять one-shot джобу этого города — вызывается и `reconcile()` (старт
-    бота), и сразу после правки настройки (`handlers/admin_settings.py::
+    бота), и сразу после правки настройки (`handlers/settings/admin_settings.py::
     _reschedule_regional_noshow_move_if_relevant`)."""
     from services.scheduler import get_scheduler
 

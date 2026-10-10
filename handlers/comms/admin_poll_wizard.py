@@ -37,7 +37,7 @@ from services.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
 from domain.cities import cities_module_on, city_label, city_scope, enabled_cities
 from handlers.states import PollCreate
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.comms.admin_broadcasts import _TRACK_LABELS
 from handlers.admin import router
 

@@ -113,7 +113,7 @@ def build_scoring_keyboard(
     course_from: int,
     stack_from: int,
 ) -> InlineKeyboardMarkup:
-    from handlers.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
 
     buttons: list[list[InlineKeyboardButton]] = []
     for key, variants, valid, stale in groups_state:

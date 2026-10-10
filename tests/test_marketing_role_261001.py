@@ -154,8 +154,8 @@ def test_settings_guide_describes_role_without_codes():
 # ── что видит держатель ─────────────────────────────────────────────────────────────────
 
 def test_holder_sees_only_link_rows():
-    from handlers.admin_core import _visible_menu_rows
-    from handlers.admin_sections import visible_rows, visible_sections
+    from handlers.settings.admin_core import _visible_menu_rows
+    from handlers.settings.admin_sections import visible_rows, visible_sections
 
     caps = {"source_links"}
     assert visible_sections(caps, False) == [("data", "📊 Данные")]

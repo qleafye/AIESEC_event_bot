@@ -91,19 +91,19 @@ def _is_super(user_id: int) -> bool:
 
 def _editors() -> dict[str, str]:
     """Ключ поля -> callback экрана правки бота (тот же, что у кнопки на экране группы)."""
-    from handlers.admin_settings_search import candidates  # ленивый шов (цикл импортов)
+    from handlers.settings.admin_settings_search import candidates  # ленивый шов (цикл импортов)
 
     return {c.key: c.extra["cb"] for c in candidates()}
 
 
 def _photo_prefixes() -> set[str]:
-    from handlers import admin_settings as s  # ленивый шов
+    from handlers.settings import admin_settings as s  # ленивый шов
 
     return {prefix for prefix, _label, _prompt in s.PHOTO_FIELDS}
 
 
 def _field_label(key: str) -> str:
-    from handlers import admin_settings as s  # ленивый шов
+    from handlers.settings import admin_settings as s  # ленивый шов
 
     for prefix, label, _prompt in s.PHOTO_FIELDS:
         if prefix == key:
@@ -164,7 +164,7 @@ async def _status(steps: list[WizardStep], admin_id: int | None = None) -> dict[
 
 
 async def overview_screen(admin_id: int | None = None) -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import back_button  # ленивый шов
+    from handlers.settings.admin_sections import back_button  # ленивый шов
 
     steps = await _steps()
     status = await _status(steps, admin_id)
@@ -284,7 +284,7 @@ async def setup_wizard_field(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer(APP_HINT, show_alert=True)
         return
     set_return(callback.from_user.id, step_key, key)
-    from handlers import admin_settings  # ленивый шов
+    from handlers.settings import admin_settings  # ленивый шов
 
     edit = callback.model_copy(update={"data": target})
     if target.startswith("settings_photo:"):

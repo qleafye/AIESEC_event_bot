@@ -1,6 +1,6 @@
 """Квик 260921: своя иконка вкладки браузера ДАШБОРДА статистики — корневой aiogram-free
-модуль (тот же приём, что `shared/tg_media.py`/`shared/web_theme.py`): и `handlers/admin_settings.py`
-(приём документа в чате), и `handlers/admin_miniapp_theme.py` (кнопка/подсказка на экране
+модуль (тот же приём, что `shared/tg_media.py`/`shared/web_theme.py`): и `handlers/settings/admin_settings.py`
+(приём документа в чате), и `handlers/settings/admin_miniapp_theme.py` (кнопка/подсказка на экране
 «🎭 Пресеты и ручки») читают отсюда одни и те же тексты и правила, второй копии нет.
 
 НЕ путать с `miniapp_logo` (лого в шапке Mini App) — это отдельный ключ реестра для отдельной

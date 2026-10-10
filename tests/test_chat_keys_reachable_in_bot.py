@@ -84,7 +84,7 @@ OWN_SCREENS = {
     "forum_stats_card_enabled": "handlers/forum/admin_forum_stats_card.py",
     "lost_found_enabled": "handlers/forum/admin_lost_found.py",
     "city_tz_offset": "handlers/forum/admin_forum_tz.py",
-    "miniapp_theme_pattern": "handlers/admin_miniapp_theme.py",
+    "miniapp_theme_pattern": "handlers/settings/admin_miniapp_theme.py",
     "onsite_reg_enabled": "handlers/forum/admin_onsite_reg.py",
     "volunteer_invite_enabled": "handlers/forum/admin_volunteer_invite.py",
 }
@@ -231,7 +231,7 @@ def _scan():
 def _screen_tables() -> set[str]:
     from handlers.amb import admin_amb_points, admin_amb_section, admin_amb_tiers
     from handlers.delegations import admin_delegations
-    from handlers import admin_miniapp
+    from handlers.settings import admin_miniapp
     from handlers.forum import admin_quiz_levels, admin_sos, session_feedback
     from services import session_enroll
 
@@ -252,7 +252,7 @@ def _screen_tables() -> set[str]:
 
 
 def _computed_reachable(writes: set[str], edit_buttons: set[str]) -> set[str]:
-    from handlers import admin_settings as st
+    from handlers.settings import admin_settings as st
     from keyboards.builders import MENU_BUTTONS
 
     keys: set[str] = set()
@@ -275,7 +275,7 @@ def test_every_chat_read_key_is_reachable_from_a_bot_screen():
     missing = sorted(k for k in reads if k not in reachable)
     assert not missing, (
         "ключ читает код чата, а в боте его не поправить — выведите его в экран бота (группа в "
-        "handlers/admin_settings.py или domain/settings/chat_fields.py) или запишите в EXCEPTIONS "
+        "handlers/settings/admin_settings.py или domain/settings/chat_fields.py) или запишите в EXCEPTIONS "
         "с причиной:\n" + "\n".join(f"  {k}  ({', '.join(reads[k][:2])})" for k in missing)
     )
 
@@ -314,8 +314,8 @@ def test_every_reader_form_is_still_in_use():
 def test_new_chat_text_groups_are_screens_of_the_bot():
     """Группы domain/settings/chat_fields.py — настоящие экраны: строка раздела ведёт в группу, у
     каждого ключа есть подпись и пояснение для менеджера, ключ не задвоен с другой группой."""
-    from handlers import admin_sections as sec
-    from handlers import admin_settings as st
+    from handlers.settings import admin_sections as sec
+    from handlers.settings import admin_settings as st
     from domain.settings.chat_fields import CHAT_TEXT_GROUPS
 
     for _label, token, keys in CHAT_TEXT_GROUPS:

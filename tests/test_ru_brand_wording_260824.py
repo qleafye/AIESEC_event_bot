@@ -26,7 +26,7 @@ from tests._paths import REPO_ROOT
 import re
 from pathlib import Path
 
-from handlers.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
+from handlers.settings.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
 import domain.regform.labels as reg_labels
 import domain.regform.options as reg_options
 import shared.web_theme as web_theme

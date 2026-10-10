@@ -51,7 +51,7 @@ from miniapp.timeutil import now_msk_naive
 
 router = APIRouter()
 
-# Те же слова, что алерт бота (_OUT_OF_SCOPE_ALERT в handlers/admin_core.py) — менеджер видел
+# Те же слова, что алерт бота (_OUT_OF_SCOPE_ALERT в handlers/settings/admin_core.py) — менеджер видел
 # их в боте, дублировать текст в реестре незачем (служебная константа роутера, как у review.py).
 OUT_OF_SCOPE_TEXT = "Эта заявка из другого города — переключите город."
 CITY_REQUIRED_TEXT = "Подтвердите город — нажмите «Принять всех» ещё раз."

@@ -102,7 +102,7 @@ def _start_menu_button_resync() -> None:
     except RuntimeError:  # процесс без бота (тест, скрипт) — переставлять нечем
         logger.info("settings_audit: бота в процессе нет, кнопку меню чата не переставляю")
         return
-    from handlers.admin_miniapp import sync_all_chat_menu_buttons
+    from handlers.settings.admin_miniapp import sync_all_chat_menu_buttons
 
     if _menu_resync_task is not None and not _menu_resync_task.done():
         _menu_resync_task.cancel()  # устаревший проход — новое сохранение начнёт заново

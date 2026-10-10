@@ -1,6 +1,6 @@
 """Правила настроек — общие для бота и веб-слоя Mini App, БЕЗ aiogram.
 
-Перенесено из `handlers/admin_settings.py` byte-for-byte (Phase 22, план 22-01, D-12):
+Перенесено из `handlers/settings/admin_settings.py` byte-for-byte (Phase 22, план 22-01, D-12):
 `_apply_event_type_preset` -> `apply_event_type_preset`, `_SHEET_TAB_WRITE_MODE` ->
 `SHEET_TAB_WRITE_MODE`, `HTML_SETTINGS` (имя то же), `_after_tab_setting_saved` ->
 `after_tab_setting_saved`, `_per_city_visible_codes` -> `per_city_visible_codes`,
@@ -98,7 +98,7 @@ async def can_write_common(admin_id: int | None) -> bool:
     """Общее значение (одно на все города) пишет только тот, кто видит все города: суперадмин
     или менеджер без привязки к городу. Привязанный к городу правит только свой город — иначе,
     правя «свою» настройку, он менял бы её чужим городам. Модуль городов выключен — город
-    один, правило не действует. Единое правило бота (handlers/admin_settings_global.py) и
+    один, правило не действует. Единое правило бота (handlers/settings/admin_settings_global.py) и
     приложения (validate_batch_item)."""
     from domain.cities import cities_module_on  # ленивый: cities тянет БД, settings_ops импортируют в тестах без неё
 
@@ -281,7 +281,7 @@ def normalize_tab_prefix(raw: str | None) -> str:
     `settings_edit_value` уже делает `.strip()` перед сохранением, поэтому «🤖 », введённое
     менеджером, долетает досюда как «🤖» — здесь оно снова получает ровно один пробел на
     конце. Пустая строка и «-» (универсальный «сбросить» для текстовых настроек,
-    см. `handlers/admin_settings.py::settings_edit_value`) означают «без префикса»."""
+    см. `handlers/settings/admin_settings.py::settings_edit_value`) означают «без префикса»."""
     value = (raw or "").strip()
     if not value or value == "-":
         return ""
@@ -498,7 +498,7 @@ EXCLUDED_KEYS: frozenset[str] = (
     | _DELEGATION_SERVICE_KEYS
 )
 
-# Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
+# Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.settings.admin_settings.SETTINGS_GROUPS) —
 # литерал, а не импорт: admin_settings.py тянет aiogram, domain/settings/ops.py — нет (D-12), а
 # импортировать оттуда сюда список токенов означало бы либо цикл (admin_settings уже
 # импортирует settings_ops), либо протаскивание aiogram транзитивно. Список — десять
@@ -570,7 +570,7 @@ GROUP_LABELS: dict[str, str] = {
 }
 
 # (section_token, section_label, (group_token, ...)) — в порядке разделов
-# handlers.admin_sections.SECTIONS. Раздел «comms» настроек не имеет (пустой раздел не
+# handlers.settings.admin_sections.SECTIONS. Раздел «comms» настроек не имеет (пустой раздел не
 # рисует заголовка — 22-UI-SPEC.md) и в карте отсутствует.
 #
 # Известное ограничение (см. SUMMARY): группы menu/dashboard/reg_questions/miniapp не
@@ -599,7 +599,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 SETTINGS_MAIN_SECTIONS: frozenset[str] = frozenset({"event", "form", "apps", "pay", "game", "amb", "data"})
 
 # Ключ группы "toggles" -> раздел, куда его кладёт соответствующая строка ("toggle", …) в
-# handlers.admin_sections.SECTIONS (тридцать два ключа группы "toggles" в SETTINGS_SCHEMA,
+# handlers.settings.admin_sections.SECTIONS (тридцать два ключа группы "toggles" в SETTINGS_SCHEMA,
 # распределены ровно по одному разу — сторож tests/test_settings_ops.py).
 TOGGLE_SECTION: dict[str, str] = {
     "reg_bonus_enabled": "event",
@@ -661,7 +661,7 @@ TOGGLE_SECTION: dict[str, str] = {
     "reg_form_haptics": "form",
     # Phase 30 (30-07, задача 4, A2-03): три атрибута списка-справочника (чипы/поиск/свой
     # вариант) на каждый из двух lookup-списков (university_options/city_options) — правятся
-    # кнопками на экране правки СПИСКА (handlers/admin_settings_lists.py), не отдельной
+    # кнопками на экране правки СПИСКА (handlers/settings/admin_settings_lists.py), не отдельной
     # строкой раздела в admin_sections.SECTIONS (в отличие от девяти тумблеров выше) —
     # достаточно попасть в раздел «form» здесь, второй ("toggle", …) строки не заводится.
     "university_options_chips_enabled": "form",
@@ -911,7 +911,7 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
 
 # ══ Phase 22 (22-04, D-06/D-08/D-10/D-11): ядро пакетной правки — без FastAPI, без aiogram ═
 #
-# `validate_batch_item` повторяет порядок девяти проверок `handlers.admin_settings.
+# `validate_batch_item` повторяет порядок девяти проверок `handlers.settings.admin_settings.
 # settings_edit_value` (пустое -> команда -> per-city TOCTOU -> validate_setting_value ->
 # гейт вкладки / опасный ключ), но без message/state и с plain-текстами (D-06); запись —
 # `commit_batch_item` (сброс -> delete_setting, иначе set_setting; event_type -> пресет;

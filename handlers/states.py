@@ -97,7 +97,7 @@ class FaqItem(StatesGroup):
 
 class LookupAdmin(StatesGroup):
     # Phase 30 (30-07, A2-03): поиск канoники при слиянии «Другое»/закреплении чипа на экране
-    # «📚 Справочники» (handlers/admin_lookup.py) — заведён здесь (не локально в шве), т.к.
+    # «📚 Справочники» (handlers/settings/admin_lookup.py) — заведён здесь (не локально в шве), т.к.
     # `tests/test_roles_phase8.py::_message_keys_from_line` резолвит "state:X:*" ТОЛЬКО для
     # групп, живущих в этом модуле (`hasattr(states_mod, group_name)`); "state:LookupAdmin:*"
     # в handlers/access/admin_caps.py.
@@ -128,14 +128,14 @@ class EditSetting(StatesGroup):
     # (name collision on a tab the bot writes to) -- sheets_tab_confirm/sheets_tab_cancel.
     waiting_for_tab_confirm = State()
     # Quick 260822: «➕ Добавить пункт» списочной настройки -- одно сообщение = один пункт
-    # (handlers/admin_settings_lists.py).
+    # (handlers/settings/admin_settings_lists.py).
     waiting_for_list_item = State()
     # Подтверждение «Пропала подстановка — сохранить всё равно?»: менеджер убрал из текста
     # скобки {…}, которые бот подставляет сам (callback'и phchk_*).
     waiting_for_placeholder_confirm = State()
 
 class SettingsSearch(StatesGroup):
-    # «🔎 Найти настройку» (handlers/admin_settings_search.py): менеджер пишет слово.
+    # «🔎 Найти настройку» (handlers/settings/admin_settings_search.py): менеджер пишет слово.
     waiting_query = State()
 
 class StaffAdd(StatesGroup):
@@ -243,7 +243,7 @@ class PollCreate(StatesGroup):
 
 class MiniAppTheme(StatesGroup):
     # Phase 19 (08, D-06) + Phase 19.1 (07, D-20): экраны «🎨 Оформление» / «🎭 Пресеты и ручки»
-    # Mini App (handlers/admin_miniapp.py + handlers/admin_miniapp_theme.py), право `settings`
+    # Mini App (handlers/settings/admin_miniapp.py + handlers/settings/admin_miniapp_theme.py), право `settings`
     # ("state:MiniAppTheme:*" в handlers/access/admin_caps.py). Своя маленькая группа, а не
     # переиспользование EditSetting -- та же причина, что у GameTaskEdit: у экранов свой экран
     # возврата, и каждое поле правится по одному за раз без общего wizard'а.
@@ -627,7 +627,7 @@ class CoinsTransfer(StatesGroup):
 
 
 class BotAvatar(StatesGroup):
-    # «🖼 Аватар бота» (handlers/admin_bot_avatar.py): ждём фото, затем «Поставить?».
+    # «🖼 Аватар бота» (handlers/settings/admin_bot_avatar.py): ждём фото, затем «Поставить?».
     photo = State()
     confirm = State()
 

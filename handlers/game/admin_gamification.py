@@ -119,7 +119,7 @@ from domain.cities import (
     enabled_cities,
     normalize_city,
 )
-from handlers.admin_core import (
+from handlers.settings.admin_core import (
     _SUBMISSION_OUT_OF_SCOPE_ALERT,
     _admin_city_scope,
     _submission_out_of_scope,
@@ -1441,7 +1441,7 @@ async def show_game_review(callback: types.CallbackQuery, state: FSMContext):
 async def toggle_game_submit_notify(callback: types.CallbackQuery):
     """Quick 260822: тумблер «каждую сдачу отдельно» / «пачкой (дайджест)» на экране
     «⚙️ Настройки → 🎮 Геймификация». Enum без текстового ввода кода (CLAUDE.md)."""
-    from handlers.admin_settings import build_settings_group_keyboard, render_settings_group_text
+    from handlers.settings.admin_settings import build_settings_group_keyboard, render_settings_group_text
     from services.game_digest import notify_mode_label
     current = await get_setting_typed("game_submit_notify_mode")
     new_mode = "digest" if current != "digest" else "each"
@@ -1945,7 +1945,7 @@ async def sync_game_sheets(callback: types.CallbackQuery):
         lines.append(f"{html_module.escape(r['tab'])}: {report}.")
     failed = sum(1 for r in results if r["written"] < 0)
     head = "✅ " if not failed else "⚠️ "
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     await callback.message.answer(
         head + "\n".join(lines),
         parse_mode="HTML",
@@ -1993,7 +1993,7 @@ async def show_game_stats(callback: types.CallbackQuery):
         lines.append(bars or "пока нет одобренных сдач")
         text = "\n".join(lines)
 
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     await callback.message.answer(
         text,
         parse_mode="HTML",

@@ -12,7 +12,7 @@ from config import config
 from database import db
 from domain.settings.ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
 from handlers import admin as admin_mod
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.access.admin_caps import required_capability
 
 
@@ -230,7 +230,7 @@ def test_registry_coverage_event():
         # экран «🔧 Система».
         "system",
         # "dashboard" added Phase 15 (15-02, D-19): восемь тумблеров блоков веб-дашборда,
-        # свой экран «📊 Дашборд» (handlers/admin_dashboard.py) — вне SETTINGS_FIELDS.
+        # свой экран «📊 Дашборд» (handlers/settings/admin_dashboard.py) — вне SETTINGS_FIELDS.
         "dashboard",
         # "miniapp" added Phase 19 (19-01, D-06): тумблеры/оформление/разделы/тексты Mini App,
         # свой экран «🎨 Оформление» (план 19-08) — вне SETTINGS_FIELDS, как и dashboard.
@@ -394,12 +394,12 @@ def test_render_snapshot_reg(tmp_path):
     expected_keys = [
         "source_options", "city_options", "study_field_options",
         # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
-        # кейс-чемпионата, сразу после study_field_options (handlers/admin_settings.py).
+        # кейс-чемпионата, сразу после study_field_options (handlers/settings/admin_settings.py).
         "stack_options", "experience_options", "readiness_options", "education_status_options",
         "edu_studying_statuses",
         "reg_case_optin_description_text",
         # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, сразу после
-        # reg_case_optin_description_text (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        # reg_case_optin_description_text (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
         # 10.10: лимит блоков портфолио и две подсказки «минимум» / «от — до» — читались в
         # чате, правились только в приложении.
         "reg_multi_max_goal", "reg_multi_max_stack", "reg_repeatable_max_mini_portfolio",
@@ -410,21 +410,21 @@ def test_render_snapshot_reg(tmp_path):
         # в хвосте группы.
         "city_fork_text",
         # Квик 260923-p37 (CITY-REG-CLOSE, D-01): закрытие регистрации на город по дате — сразу
-        # после city_fork_text (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        # после city_fork_text (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
         "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text",
         # Phase 28 (28-04, SU-04): развилка резюме — вайтлист доменов + подписи трёх кнопок R1
         # + маркеры/ошибка ссылки R2b + «Пропустить» мини-подшага, сразу после city_fork_text
-        # (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        # (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
         "reg_resume_link_whitelist",
         # Владелец 17.09: четвёртая ветка развилки «Написать текстом» — кнопка сразу после
-        # «Ссылка», вопрос/ошибка ветки — в хвосте группы (handlers/admin_settings.py::
+        # «Ссылка», вопрос/ошибка ветки — в хвосте группы (handlers/settings/admin_settings.py::
         # _REG_FIELD_ORDER).
         "reg_resume_fork_file_label", "reg_resume_fork_link_label", "reg_resume_fork_text_label",
         "reg_resume_fork_none_label",
         "reg_resume_link_whitelist_hint_text", "reg_resume_link_other_hint_text",
         "reg_resume_link_invalid_text", "reg_mini_portfolio_skip_label",
         # Phase 28 (28-05, SU-04): подсказка «выбери кнопкой» — сразу после
-        # reg_mini_portfolio_skip_label (handlers/admin_settings.py::_REG_FIELD_ORDER).
+        # reg_mini_portfolio_skip_label (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
         "reg_resume_fork_pick_hint_text",
         "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
         # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — хвост группы (handlers/
