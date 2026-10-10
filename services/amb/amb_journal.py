@@ -20,7 +20,7 @@ import logging
 
 from database import amb_journal_db
 from database import db as _db
-from services.ambassador_waves import current_wave_for_city_raw, wave_eligible
+from services.amb.ambassador_waves import current_wave_for_city_raw, wave_eligible
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -106,12 +106,12 @@ async def on_invitees_approved(invitee_ids, *, changed_by: int | None = None,
             ambassadors.add(result["referrer_id"])
     if ids:
         try:
-            from services.amb_status import on_applications_approved
+            from services.amb.amb_status import on_applications_approved
             await on_applications_approved(ids)
         except Exception:
             logger.exception("amb_journal: выдача места не прошла")
         try:
-            from services.amb_tiers import check_tiers_for_invitees
+            from services.amb.amb_tiers import check_tiers_for_invitees
             await check_tiers_for_invitees(ids)
         except Exception:
             logger.exception("amb_journal: проверка ступеней не прошла")
@@ -156,7 +156,7 @@ async def reconcile() -> dict:
     except Exception:
         logger.exception("amb_journal: сверка не дописала недостающие строки")
     try:
-        from services import amb_status
+        from services.amb import amb_status
         result["slots_released"] = await amb_status.reconcile_slots()
     except Exception:
         logger.exception("amb_journal: сверка мест не прошла")

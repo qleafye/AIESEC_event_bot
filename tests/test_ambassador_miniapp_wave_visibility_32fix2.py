@@ -1,5 +1,5 @@
 """32-FIX-common-2 (хвост CR-03): Mini App теперь считает `open_wave_ids` так же, как бот
-(`services.ambassador_waves.wave_visibility_ids`), а не только `eligible_wave_ids` для
+(`services.amb.ambassador_waves.wave_visibility_ids`), а не только `eligible_wave_ids` для
 амбассадора — до этой правки задание черновой/будущей/уже закрытой волны было видно и сдаваемо
 в Mini App сразу после создания (`miniapp/routers/tasks.py::_ambassador_gate`, `miniapp/routers/
 submissions.py::create_submission_route`).

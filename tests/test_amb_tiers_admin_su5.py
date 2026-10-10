@@ -23,7 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import amb_tiers_db as tdb
 from database import db
-from services import amb_tiers
+from services.amb import amb_tiers
 from tests._dbtpl import fast_init_db
 
 SEASON = "SU26"

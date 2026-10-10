@@ -11,7 +11,7 @@
 - «✏️ Тексты для делегатов» — подменю шести текстов реестра через общий редактор настроек
   (`settings_edit:<key>`, право «⚙️ Настройки»); без этого права — строка, у кого оно есть.
 
-Правила входа — в `services/amb_status.py` (одна точка), этот модуль их не дублирует: только
+Правила входа — в `services/amb/amb_status.py` (одна точка), этот модуль их не дублирует: только
 читает счётчики и пишет две настройки (`amb_join_mode`, `amb_slots_limit`) через
 `settings_audit.set_setting_by_admin` — тот же путь с логом `admin=…`, что у остальных экранов.
 
@@ -33,7 +33,7 @@ from database import amb_status_db
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from handlers.states import AmbSlotsEdit
-from services import amb_status
+from services.amb import amb_status
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA
 

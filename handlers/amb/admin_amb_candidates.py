@@ -10,7 +10,7 @@
   «🧾 Анкета» — та же карточка, что в очереди заявок (право moderate_reg);
 - выгрузка CSV всех со статусом амбассадора.
 
-Правила входа и места — `services/amb_status.py` и `database/amb_status_db.py`; здесь только
+Правила входа и места — `services/amb/amb_status.py` и `database/amb_status_db.py`; здесь только
 экран и сообщения человеку. Тексты человеку — ключи реестра `amb_taken_text` /
 `amb_removed_text` на его языке, через тихие часы (`quiet_hours.send_or_queue_text`).
 
@@ -34,7 +34,7 @@ from database import amb_status_db, amb_tiers_db
 from database import db as _db
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
-from services import amb_status, amb_tiers
+from services.amb import amb_status, amb_tiers
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 

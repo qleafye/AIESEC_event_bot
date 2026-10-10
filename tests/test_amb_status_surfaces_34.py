@@ -1,4 +1,4 @@
-"""Правила входа в амбассадоры (`services/amb_status.py`) на поверхностях «Моя ссылка» в боте
+"""Правила входа в амбассадоры (`services/amb/amb_status.py`) на поверхностях «Моя ссылка» в боте
 и финального экрана анкеты / «Хочу свою ссылку» в Mini App.
 
 pytest-asyncio в окружении нет — async через `asyncio.run()`, временная БД — тот же приём,
@@ -14,7 +14,7 @@ import pytest
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_tiers
+from services.amb import amb_tiers
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
@@ -173,7 +173,7 @@ def test_screen_ambassador_keeps_path_and_leave(ready):
 
 
 def test_screen_state_failure_shows_button(ready, monkeypatch):
-    from services import amb_status
+    from services.amb import amb_status
 
     async def _boom(_tid):
         raise RuntimeError("БД легла")
@@ -296,7 +296,7 @@ def http(tmp_path, monkeypatch):
 
 
 def _force_full(monkeypatch):
-    from services import amb_status
+    from services.amb import amb_status
 
     async def _full():
         return True
@@ -326,7 +326,7 @@ def test_finale_full_or_declined_no_block(http, monkeypatch, case):
     if case == "full":
         _force_full(monkeypatch)
     else:
-        from services import amb_status
+        from services.amb import amb_status
 
         async def _declined(_tid):
             return "declined"

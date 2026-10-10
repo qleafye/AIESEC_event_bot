@@ -20,7 +20,7 @@ from shared.amb_tier_keys import MAX_TIERS, _LEGACY_TIER_KEYS, tier_key
 from config import config
 from database import amb_tiers_db
 from database import db
-from services import amb_tiers
+from services.amb import amb_tiers
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.validation import amb_threshold_order_error, validate_setting_value
 from tests._dbtpl import fast_init_db
@@ -420,7 +420,7 @@ def test_jump_notifies_top_and_quota_tiers(tmp_path):
 
 
 def test_notify_text_key_by_tier_and_status():
-    from services import amb_tiers_notify as n
+    from services.amb import amb_tiers_notify as n
 
     assert n._text_key(4, None) == "amb_tier4_text"
     assert n._text_key(3, "waitlist") == tier_key(3, "waitlist")
@@ -452,7 +452,7 @@ def test_legacy_positional_quota_still_means_tier_two(tmp_path):
 # ── прогресс, дашборд, бэкафилл, сверка ─────────────────────────────────────────────────────
 
 def test_progress_targets_nearest_labelled_tier(tmp_path):
-    from services import amb_progress
+    from services.amb import amb_progress
 
     _ready(tmp_path)
     _five_tiers()
@@ -472,7 +472,7 @@ def test_progress_targets_nearest_labelled_tier(tmp_path):
 
 
 def test_progress_skips_empty_label_and_renders(tmp_path):
-    from services import amb_progress
+    from services.amb import amb_progress
 
     _ready(tmp_path)
     _five_tiers()

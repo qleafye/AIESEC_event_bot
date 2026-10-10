@@ -80,7 +80,7 @@ def _make_ambassador(tid, *, event_city=None, full_name=None, since="2026-01-01 
 
 def _active_wave(*, event_city=None, starts_at="2026-09-01 00:00:00", ends_at="2026-12-31 23:59:59"):
     """Волна, накрывающая «сейчас» (используется дефолтный `msk_now()` внутри
-    `services.ambassador_waves.current_wave_for` — 2026-09-21 попадает в этот диапазон)."""
+    `services.amb.ambassador_waves.current_wave_for` — 2026-09-21 попадает в этот диапазон)."""
     wave_id = _run(db.create_wave(starts_at, ends_at, event_city=event_city))
     _run(db.set_wave_state(wave_id, "active"))
     return wave_id
@@ -385,7 +385,7 @@ _EXPECTED_APPROVAL_WRITERS = {
     "services/delegations.py": (
         "боевой шов делегаций вузов: set_user_status(..., 'pending') только как ступень перед "
         "approve_user_atomic (новый делегат без анкеты / ранее отклонённый с решением менеджера); "
-        "при реальном перевороте зовёт services.applications.record_decision, а тот — services.amb_journal.on_invitees_approved (зачёт амбассадору ровно один раз)"
+        "при реальном перевороте зовёт services.applications.record_decision, а тот — services.amb.amb_journal.on_invitees_approved (зачёт амбассадору ровно один раз)"
     ),
     "handlers/access/uat_seed.py": (
         "осознанное исключение (T-32-05-07): сидер состояний команды /uat на стенде — "
@@ -448,7 +448,7 @@ _DIRECT_NAMES = {
     "credit_for_approved", "credit_for_approved_bulk",
     "check_tiers_for_invitees", "on_applications_approved",
 }
-_DIRECT_CALL_OK = {"services/amb_journal.py", "services/referrals.py"}
+_DIRECT_CALL_OK = {"services/amb/amb_journal.py", "services/referrals.py"}
 
 
 def _call_name(node) -> str | None:
@@ -478,7 +478,7 @@ def _parsed_sources():
 
 
 def test_nobody_calls_credit_or_tier_hooks_directly():
-    """Журнал зачётов — единая точка: никто, кроме services/amb_journal.py (и обёрток в
+    """Журнал зачётов — единая точка: никто, кроме services/amb/amb_journal.py (и обёрток в
     services/referrals.py), не зовёт начисление, проверку ступеней и выдачу места напрямую.
     Инструменты tools/ и сами определения функций — вне проверки."""
     offenders: list[str] = []
@@ -493,7 +493,7 @@ def test_nobody_calls_credit_or_tier_hooks_directly():
                 offenders.append(f"{rel}::{fn.name} -> {sorted(hit)}")
     assert not offenders, (
         "Прямой вызов в обход журнала зачётов: " + "; ".join(offenders)
-        + " — зовите services.amb_journal.on_invitees_approved."
+        + " — зовите services.amb.amb_journal.on_invitees_approved."
     )
 
 

@@ -19,7 +19,7 @@ import pytest
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_status, amb_tiers
+from services.amb import amb_status, amb_tiers
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 

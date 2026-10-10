@@ -25,7 +25,7 @@
 
 Уведомление амбассадору ставится событием `amb_tier_reached` в `miniapp_outbox` — одним путём
 для обоих процессов: веб-процесс Mini App сам писать в Telegram не может, а очередь разбирает
-только бот (`services/infra/miniapp_outbox.py` -> `services/amb_tiers_notify.py`). Ставится голым
+только бот (`services/infra/miniapp_outbox.py` -> `services/amb/amb_tiers_notify.py`). Ставится голым
 `database.db.enqueue_miniapp_outbox`, не `miniapp.outbox.enqueue`: зависимость services ->
 miniapp запрещена.
 

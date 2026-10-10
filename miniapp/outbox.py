@@ -56,10 +56,10 @@ Phase 21 (21-08, FORM-SYNC-02/04/07, D-05/D-06): `reg_finalized`/`reg_edited` �
 `onsite_approved` (27.09, D-41) — волонтёр одобрил человека у стойки в сканере Mini App; бот
 зовёт `services.onsite_reg.after_onsite_approved` (строка листа, сообщение и QR человеку).
 
-`amb_tier_reached` (29.09, ступени амбассадоров СкиллАп) — ставит `services.amb_tiers.
+`amb_tier_reached` (29.09, ступени амбассадоров СкиллАп) — ставит `services.amb.amb_tiers.
 check_tiers` и в бот-процессе, и в веб-процессе (одобрение в Mini App после окна отмены)
 голым `database.db.enqueue_miniapp_outbox` — services в miniapp не ходят; доставляет только
-бот (`services.amb_tiers_notify`). Payload — только id, номер ступени и сколько осталось до
+бот (`services.amb.amb_tiers_notify`). Payload — только id, номер ступени и сколько осталось до
 разбора резюме, без данных приглашённых.
 
 Fail-soft: таблицу создаёт `database.db.init_db` (схемой владеет ТОЛЬКО бот, здесь

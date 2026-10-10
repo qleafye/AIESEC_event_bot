@@ -28,7 +28,7 @@
 становится `'approved'`), не устной договорённостью — приёмка (план 32-13) явно требует проверять
 начисление боевым одобрением, а не `/uat`.
 
-Зависимости — ТОЛЬКО `database.db`, `services.ambassador_waves`, `settings_schema` (плюс
+Зависимости — ТОЛЬКО `database.db`, `services.amb.ambassador_waves`, `settings_schema` (плюс
 стандартная библиотека). Телеграм-фреймворк и `handlers.*` на уровне модуля не импортируются —
 три врезки (`services/applications.py`, `services/reg_finalize.py`) тянут этот модуль ЛЕНИВЫМ
 импортом внутри функции именно поэтому: не тащить новый модуль в цепочку импортов веб-процесса
@@ -59,15 +59,15 @@ def _invitee_reason(invitee: dict) -> str:
 
 
 async def credit_for_approved(invitee_id: int, *, changed_by: int | None = None) -> dict | None:
-    """Тонкая обёртка над журналом зачётов (`services.amb_journal`): `None`, если баллы не
+    """Тонкая обёртка над журналом зачётов (`services.amb.amb_journal`): `None`, если баллы не
     начислены (не одобрен, нет пригласившего, не амбассадор, исключён, настройка 0, повтор)."""
-    from services.amb_journal import _record_one
+    from services.amb.amb_journal import _record_one
     return await _record_one(int(invitee_id), changed_by=changed_by, source="approval")
 
 
 async def credit_for_approved_bulk(invitee_ids) -> dict:
-    """Сводка `{"credited", "coins", "ambassadors"}` — см. `services.amb_journal`."""
-    from services.amb_journal import on_invitees_approved
+    """Сводка `{"credited", "coins", "ambassadors"}` — см. `services.amb.amb_journal`."""
+    from services.amb.amb_journal import on_invitees_approved
     return await on_invitees_approved(invitee_ids)
 
 

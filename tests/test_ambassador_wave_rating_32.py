@@ -1,5 +1,5 @@
 """Phase 32 План 3 (D-14/D-16/D-17/D-21/D-29/D-31/D-32/D-38): сервис
-`services.ambassador_waves` — участие в волне, рейтинг волны на чтении, сводка конца волны,
+`services.amb.ambassador_waves` — участие в волне, рейтинг волны на чтении, сводка конца волны,
 подсказка соотношения баллов.
 
 Три раздела по задачам плана:
@@ -21,7 +21,7 @@ from datetime import datetime
 import domain.cities as cities
 from config import config
 from database import db
-import services.ambassador_waves as waves
+import services.amb.ambassador_waves as waves
 from handlers.settings.admin_settings import _settings_edit_screen
 from tests._dbtpl import fast_init_db
 

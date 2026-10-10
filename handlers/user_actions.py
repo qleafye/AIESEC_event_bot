@@ -61,7 +61,7 @@ from domain.game.labels import (  # Phase 16 (16-01): single RU-label source; 16
     task_visible_to,  # WR-08 (32-REVIEW.md): гейт прямого входа по task_id
     fill_template as _game_fill,  # «{balance} баллов» — слово согласуется с числом
 )
-from services.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
+from services.amb.ambassador_waves import (  # Phase 32 (32-06): участие в волне, рейтинг волны
     current_wave_for, wave_rating_view, wave_eligible, wave_visibility_ids,
     latest_closing_wave_for,  # IN-09б (32-REVIEW.md): рейтинг closing-волны после ends_at
 )
@@ -88,8 +88,8 @@ from services.faq import apply_city_overrides, short as _faq_short  # Quick 2609
 from services.infra.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
-from services import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
-from services import amb_status  # правила входа/выхода амбассадора — одна точка
+from services.amb import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
+from services.amb import amb_status  # правила входа/выхода амбассадора — одна точка
 from handlers.game.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
 from config import config
 from domain.regform.engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
@@ -1955,7 +1955,7 @@ async def ambassador_leave_cancel(callback: types.CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data == "ambleave_go")
 async def ambassador_leave_confirm(callback: types.CallbackQuery):
-    """Выход из команды — `services.amb_status.leave` (место без пакета освобождается, баллы остаются)."""
+    """Выход из команды — `services.amb.amb_status.leave` (место без пакета освобождается, баллы остаются)."""
     await amb_status.leave(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_done_text"), lang, tr_map)
@@ -1965,7 +1965,7 @@ async def ambassador_leave_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "ambjoin")
 async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
-    """Вход/возврат в команду — `services.amb_status.request_join` (лимит, отбор, отказанные, ступени)."""
+    """Вход/возврат в команду — `services.amb.amb_status.request_join` (лимит, отбор, отказанные, ступени)."""
     result = await amb_status.request_join(callback.from_user.id, source="my_link")
     lang, tr_map = await reg_i18n.ctx_for(callback)
     if result.outcome in ("full", "declined"):

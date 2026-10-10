@@ -2436,7 +2436,7 @@ def test_referral_block_shape(tmp_path):
 # ── амбассадоры и волны (D-33/D-34) ───────────────────────────────────────────────────────
 #
 # `test_ambassador_block_full_metrics_on_fixture` — та самая «общая фикстура», на которой
-# сверяются числа дашборда; формулы обязаны совпадать с `services/ambassador_waves.py`
+# сверяются числа дашборда; формулы обязаны совпадать с `services/amb/ambassador_waves.py`
 # (параллельный план 32-03) — при изменении формулы в одном месте обновить и второе.
 
 def test_ambassador_block_none_when_toggle_off(tmp_path):

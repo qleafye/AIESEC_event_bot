@@ -251,7 +251,7 @@ def test_decline_city_scoped_admin_refused(tmp_path, monkeypatch):
 
 def test_declined_cannot_rejoin_but_manager_can_take(tmp_path, monkeypatch):
     from handlers.amb import admin_amb_candidates as h
-    from services import amb_status
+    from services.amb import amb_status
     _fast(monkeypatch)
     _ready(tmp_path)
     _seed(10, amb_status="candidate")

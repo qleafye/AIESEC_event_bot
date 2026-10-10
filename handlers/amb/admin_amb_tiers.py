@@ -10,7 +10,7 @@
 
 Число ступеней, пороги, квоты и тексты собираются на экране «🪜 Лестница ступеней»
 (`handlers/amb/admin_amb_tier_ladder.py`) — здесь кнопка ведёт туда. Правила подсчёта и выдачи ступеней — в
-`services/amb_tiers.py` (одна точка), этот модуль их не дублирует.
+`services/amb/amb_tiers.py` (одна точка), этот модуль их не дублирует.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router` и подключается хвостовым
 импортом `handlers/game/admin_game_wave_wizard.py` — последнего файла игровой цепочки
@@ -36,7 +36,7 @@ from database import amb_journal_db
 from database import amb_tiers_db
 from database import db
 from domain.regform.labels import STATUS_LABELS
-from services import amb_tiers
+from services.amb import amb_tiers
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.states import AmbExclude
@@ -385,7 +385,7 @@ async def amb_exclude_go(callback: types.CallbackQuery, state: FSMContext):
         return
     return_to = data.get("return_to")
     await state.clear()
-    from services import amb_journal
+    from services.amb import amb_journal
     before = await amb_journal_db.get_row(int(invitee_id))
     won = await amb_journal.exclude(int(invitee_id), by=callback.from_user.id, reason=reason)
     if won:
@@ -478,7 +478,7 @@ async def amb_unexclude_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("ambt_unexcl_go:"))
 async def amb_unexclude_go(callback: types.CallbackQuery):
     invitee_id = _parse_int_suffix(callback.data)
-    from services import amb_journal
+    from services.amb import amb_journal
     won = await amb_journal.unexclude(invitee_id, by=callback.from_user.id) if invitee_id else False
     if not won:
         await callback.answer("Этого человека уже вернули в зачёт", show_alert=True)

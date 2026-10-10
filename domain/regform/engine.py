@@ -605,7 +605,7 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
         # Сбой гейта не имеет права ронять анкету — тогда вопрос показывается.
         if step_key == "ambassador":
             try:
-                from services import amb_status
+                from services.amb import amb_status
                 if not await amb_status.offer_open(None):
                     continue
             except Exception:
