@@ -580,6 +580,39 @@ ROLES_ALL_CITIES_TARGET_TEXT = (
 ROLES_OTHER_CITY_TARGET_TEXT = (
     "Этот человек работает в городе {city} — роль ему выдаёт менеджер этого города или суперадмин."
 )
+ROLES_ALL_CITIES_REMOVE_TEXT = (
+    "Этот человек работает на всех городах — роль с него снимает суперадмин или менеджер без "
+    "привязки к городу."
+)
+ROLES_OTHER_CITY_REMOVE_TEXT = (
+    "Этот человек работает в городе {city} — роль с него снимает менеджер этого города или суперадмин."
+)
+
+
+async def _issuer_city(callback: types.CallbackQuery) -> str | None:
+    """Город менеджера, который жмёт кнопку роли; `None` — суперадмин, менеджер без города или
+    модуль городов выключен (ограничений по городу нет)."""
+    if callback.from_user.id in config.ADMIN_IDS or not await cities_module_on():
+        return None
+    return await get_staff_city(callback.from_user.id)
+
+
+async def _foreign_person_denied(
+    callback: types.CallbackQuery, issuer_city: str | None, tid: int, all_text: str, other_text: str,
+) -> bool:
+    """Менеджер с городом трогает роли только у людей своего города: у человека на всех городах
+    (город NULL) или из чужого города — отказ с объяснением, кто это может. Проверяется в
+    каждом хендлере, а не только на экране: callback_data подделывается."""
+    if not issuer_city:
+        return False
+    target_city = await get_staff_city(tid)
+    if target_city == issuer_city:
+        return False
+    if target_city is None:
+        await callback.answer(all_text, show_alert=True)
+    else:
+        await callback.answer(other_text.format(city=await city_label(target_city)), show_alert=True)
+    return True
 
 
 async def _roles_common_denied(callback: types.CallbackQuery) -> bool:
@@ -975,19 +1008,11 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
     # его город в том же INSERT (не NULL = «все города»), а человеку на всех городах или из
     # другого города роль не выдаётся — иначе любая роль, хоть с «⚙️ Настройками», действовала бы
     # за пределами города выдающего. Выбор города при выдаче — только у суперадмина, ниже.
-    issuer_city = None
-    if callback.from_user.id not in config.ADMIN_IDS and await cities_module_on():
-        issuer_city = await get_staff_city(callback.from_user.id)
-    if issuer_city and await get_staff_roles(tid):
-        target_city = await get_staff_city(tid)
-        if target_city is None:
-            await callback.answer(ROLES_ALL_CITIES_TARGET_TEXT, show_alert=True)
-            return
-        if target_city != issuer_city:
-            await callback.answer(
-                ROLES_OTHER_CITY_TARGET_TEXT.format(city=await city_label(target_city)), show_alert=True,
-            )
-            return
+    issuer_city = await _issuer_city(callback)
+    if await get_staff_roles(tid) and await _foreign_person_denied(
+        callback, issuer_city, tid, ROLES_ALL_CITIES_TARGET_TEXT, ROLES_OTHER_CITY_TARGET_TEXT,
+    ):
+        return
 
     created = await add_staff(tid, role, callback.from_user.id, city=issuer_city)
     if created and issuer_city:
@@ -1034,6 +1059,10 @@ async def roles_remove(callback: types.CallbackQuery):
     if tid in config.ADMIN_IDS:  # D-12: bootstrap superadmin, never revocable from the bot
         await callback.answer("Это суперадмин из .env, снять из бота нельзя", show_alert=True)
         return
+    if await _foreign_person_denied(
+        callback, await _issuer_city(callback), tid, ROLES_ALL_CITIES_REMOVE_TEXT, ROLES_OTHER_CITY_REMOVE_TEXT,
+    ):
+        return
 
     caps = _known_caps(await get_setting_typed(role_caps_key(role)))
     access = ", ".join(CAP_LABELS.get(c, c) for c in caps) if caps else "ничему — у этой роли сейчас нет прав"
@@ -1059,6 +1088,10 @@ async def roles_remove_yes(callback: types.CallbackQuery):
         return
     if tid in config.ADMIN_IDS:
         await callback.answer("Это суперадмин из .env, снять из бота нельзя", show_alert=True)
+        return
+    if await _foreign_person_denied(
+        callback, await _issuer_city(callback), tid, ROLES_ALL_CITIES_REMOVE_TEXT, ROLES_OTHER_CITY_REMOVE_TEXT,
+    ):
         return
 
     await remove_staff(tid, role)
