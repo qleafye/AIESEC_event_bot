@@ -3,7 +3,7 @@
 Веб-процесс `miniapp` пишет побочные эффекты своих write-действий в таблицу
 `miniapp_outbox` (план 19-04, `miniapp/outbox.py::enqueue`) вместо того, чтобы говорить с
 Telegram или пересобирать таблицу самому — единственный писатель в Bot API и владелец
-`services/game_sync.py::request_resync` debounce-таймера остаётся бот. Эта джоба —
+`services/game/game_sync.py::request_resync` debounce-таймера остаётся бот. Эта джоба —
 единственное место, где очередь читается и разбирается.
 
 Диспетчер по `kind` — закрытый набор (T-19-55): неизвестный `kind` НЕ исполняется (никогда
@@ -12,7 +12,7 @@ Telegram или пересобирать таблицу самому — еди�
 - `submission_created` -> `services.game_digest.notify_submission(bot, ...)` — тот же путь
   уведомления менеджеров, что и у сдачи из бота (режим «каждую сдачу»/дайджест решает сама
   функция).
-- `submission_reviewed` -> `services.game_sync.request_resync()` — debounced, синхронная,
+- `submission_reviewed` -> `services.game.game_sync.request_resync()` — debounced, синхронная,
   схлопывает пачку событий в один ребилд вкладок геймы. Делегата о решении по сдаче уведомляет
   сам Mini App (план 19-05) — повторно НЕ уведомляем.
 - `task_changed` -> тот же `request_resync()` ПЛЮС (фикс WR-13 фазы 32) переармирование
@@ -22,7 +22,7 @@ Telegram или пересобирать таблицу самому — еди�
   тронуть джобу APScheduler бота (сам планировщик живёт только в процессе бота). До этого
   фикса задание, созданное или получившее срок ИЗ Mini App, никогда не получало напоминание —
   ветка умела только просить ребилд вкладок геймы.
-- `coins_manual` (16.09) -> `services.coins_notify.notify_manual_coins(bot, ...)` + тот же
+- `coins_manual` (16.09) -> `services.game.coins_notify.notify_manual_coins(bot, ...)` + тот же
   `request_resync()`. Ручные монеты из приложения делегату НЕ приходили вовсе: ветка умела
   только ребилд вкладок, тогда как путь из чата (мастер «🪙 Монеты», `/coins`) уведомлял. Текст
   один на оба пути, уведомление идёт через тихие часы.
@@ -85,9 +85,9 @@ from database.db import (
     get_user,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
-from services.coins_notify import notify_manual_coins
+from services.game.coins_notify import notify_manual_coins
 from services.game_digest import notify_submission
-from services.game_sync import request_resync
+from services.game.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
@@ -171,7 +171,7 @@ async def _handle_task_changed(payload: dict) -> None:
 
 async def _handle_manual_coins(bot, payload: dict) -> None:
     """16.09: ручные монеты из Mini App — уведомить делегата ТЕМ ЖЕ текстом, что путь из чата
-    (`services/coins_notify.py`, общий и для мастера «🪙 Монеты», и для `/coins`), через тихие
+    (`services/game/coins_notify.py`, общий и для мастера «🪙 Монеты», и для `/coins`), через тихие
     часы. До этой правки ветка только просила ребилд вкладок — делегат не узнавал о монетах
     вовсе, хотя в чате узнавал.
 

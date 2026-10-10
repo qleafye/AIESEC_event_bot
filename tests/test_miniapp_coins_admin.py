@@ -200,7 +200,7 @@ def test_manual_coins_enqueues_outbox_coins_manual(tmp_path):
     assert len(rows) == 1
     assert f'"user_id": {DELEGATE_ID}' in rows[0]["payload"] and '"delta": 3' in rows[0]["payload"]
     # 16.09: причина и баланс нужны разборщику, чтобы собрать ТОТ ЖЕ текст уведомления
-    # делегату, что и путь из чата (`services/coins_notify.py`).
+    # делегату, что и путь из чата (`services/game/coins_notify.py`).
     import json as _json
     payload = _json.loads(rows[0]["payload"])
     assert payload["reason"] and payload["balance"] == _run(bot_db.get_balance(DELEGATE_ID))
