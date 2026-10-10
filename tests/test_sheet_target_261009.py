@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod  # noqa: F401 — регистрирует шов
-from handlers import admin_sheet_target as st_handlers
+from handlers.sheets import admin_sheet_target as st_handlers
 from handlers.admin_caps import ADMIN_CAPS
 from handlers.states import SheetTarget
 from services import sheet_target

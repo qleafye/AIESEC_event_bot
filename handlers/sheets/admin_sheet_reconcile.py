@@ -1,7 +1,7 @@
 """Phase 33 (delegate-card admin actions) — «🔍 Сверить с БД», раздел «📊 Данные», рядом с
 «🔄 Синхронизация»/«♻️ Пересобрать таблицу» (тот же класс операции: ходит в живой Google API,
 поэтому редрей — свой раздел, не корень, `op_return_keyboard`, тот же приём, что
-`handlers/admin_sheets.py`). Право — `settings` (то же, что у соседних двух кнопок); с учётом
+`handlers/sheets/admin_sheets.py`). Право — `settings` (то же, что у соседних двух кнопок); с учётом
 города — менеджер, привязанный к городу, сверяет только свой (`_admin_city_view`, тот же
 резолвер, что у «📄 Экспорт CSV»).
 
@@ -38,7 +38,7 @@ def _tab_label(tab) -> str:
 
 
 def _crash_text(done: int, total: int) -> str:
-    """Тот же посыл, что у соседнего `sync_sheet` (handlers/admin_sheets.py): неожиданный сбой
+    """Тот же посыл, что у соседнего `sync_sheet` (handlers/sheets/admin_sheets.py): неожиданный сбой
     (Sheets API/БД не ответили) ловится, а не роняет хендлер молча — но, в отличие от sync_sheet,
     здесь важно сказать, сколько реально успело записаться ДО сбоя (apply_append_missing/
     apply_fix_statuses несут это в `done`/`total` даже при `ok=False, crashed=True`)."""

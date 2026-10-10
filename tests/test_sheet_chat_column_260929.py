@@ -220,7 +220,7 @@ def test_active_sheet_row_takes_value_from_db(tmp_path):
 
 def test_rebuild_batches_take_value_from_db(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_sheets
+    from handlers.sheets import admin_sheets
 
     async def go():
         await _bind(None, MSK_CHAT)
