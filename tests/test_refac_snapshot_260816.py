@@ -1110,6 +1110,8 @@ admin|callback_query|enrf_city_pick|enrf_city:*
 admin|callback_query|enrf_day_pick|enrf_day:*
 admin|callback_query|enrf_session_pick|enrf_pick:*
 admin|callback_query|enrf_cancel|enrf_cancel
+admin|callback_query|bcstatus_only|bcstatus_only
+admin|callback_query|bcstatus_filter|bcstatus_filter
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2482,7 +2484,8 @@ def test_snapshot_total_handler_count_is_292():
     # Слияние обеих вставок: 1241 + 3 = 1244.
     # 10.10 (мастер: экраны «🔘 Кнопки меню»/«📋 Вопросы регистрации» с возвратом в шаг): +1 admin.callback_query
     # setup_wizard_screen после setup_wizard_field; чистая вставка (1244 -> 1245).
-    assert len(GOLDEN_SNAPSHOT) == 1245
+    # 10.10: bcstatus_only/bcstatus_filter (разбивка рассылки по статусу заявки) после enrf_cancel (1245 -> 1247).
+    assert len(GOLDEN_SNAPSHOT) == 1247
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
