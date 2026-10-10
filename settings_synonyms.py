@@ -245,6 +245,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "preselect_link": ["ссылка на форму предотбора", "куда отправить непрошедших"],
     "reg_form_cta_text": ["кнопка заполнить в вебе", "перейти в анкету"],
     "reg_resume_continue_label": ["продолжить анкету", "вернуться к заполнению"],
+    "reg_resume_review_label": ["проверить ответы", "дочитанная анкета"],
     "reg_resume_restart_label": ["заполнить с нуля", "сбросить анкету"],
     "reg_resume_restart_confirm_text": ["точно с нуля", "подтверждение сброса анкеты"],
     "reg_resume_after_restart_text": ["бот перезапускался", "анкета сохранилась после рестарта"],

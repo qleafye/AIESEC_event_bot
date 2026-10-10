@@ -865,6 +865,7 @@ _REGISTRY_TEXTS_EN = {
     "Как называется этот {noun}?": "What's this {noun} called?",
     "Проект {n}": "Project {n}",
     "▶️ Продолжить с шага {step} из {total}": "▶️ Continue from step {step} of {total}",
+    "▶️ К проверке ответов": "▶️ Review my answers",
     "📎 Загрузить файл": "📎 Upload a file",
     "🔗 Дать ссылку": "🔗 Give a link",
     "✍️ Написать текстом": "✍️ Type it instead",
