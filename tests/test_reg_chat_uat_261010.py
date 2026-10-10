@@ -82,3 +82,49 @@ def test_recall_change_on_goal_skips_education_recap(tmp_path):
     msg, fsm_state = asyncio.run(go())
     assert fsm_state != reg_types_composite._CompositeChat.confirm.state, _texts(msg)
     assert not any("Проверь образование" in (t or "") for t in _texts(msg)), _texts(msg)
+
+
+# ── Кнопка «Продолжить» на дочитанной анкете ──────────────────────────────────────────────
+
+async def _continue_label(draft_step):
+    from handlers import reg_resume
+    from tests.test_reg_resume_draft import _seed_new_draft
+
+    await _seed_new_draft(USER_ID, step=draft_step, patch={"full_name": "Иванова Мария", "age": "22"})
+    msg = _KBCapturingMessage(USER_ID, "delegate")
+    await reg_resume.offer_resume(msg, await db.get_reg_draft(USER_ID))
+    for _t, markup, _p in msg.sent:
+        for row in getattr(markup, "inline_keyboard", None) or []:
+            for btn in row:
+                if btn.callback_data == "reg_resume:continue":
+                    return btn.text
+    raise AssertionError(msg.sent)
+
+
+def test_done_draft_continue_button_leads_to_review(tmp_path):
+    """Все шаги пройдены (STEP_DONE) — «Продолжить» ведёт на сводку, подпись это и говорит,
+    а не «Продолжить с шага 14 из 14»."""
+    _use_tmp_db(tmp_path, "uat261010_done.db")
+    label = asyncio.run(_continue_label(reg_engine.STEP_DONE))
+    assert label == "▶️ К проверке ответов", label
+
+
+def test_unfinished_draft_keeps_step_label(tmp_path):
+    _use_tmp_db(tmp_path, "uat261010_unfinished.db")
+
+    async def go():
+        await db.set_setting("reg_q_age", "on")
+        return await _continue_label("age")
+
+    label = asyncio.run(go())
+    assert label.startswith("▶️ Продолжить с шага "), label
+
+
+def test_review_label_has_english():
+    from services import i18n_form_manual
+    from settings_schema import SETTINGS_SCHEMA
+
+    entry = SETTINGS_SCHEMA["reg_resume_review_label"]
+    assert entry["group"] == "reg" and entry["type"] == "text"
+    assert "reg_resume" not in entry["label"]
+    assert entry["default"] in i18n_form_manual._REGISTRY_TEXTS_EN

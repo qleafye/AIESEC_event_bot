@@ -69,16 +69,17 @@ async def offer_resume(message: types.Message, draft: dict, referrer_id: int | N
     enabled = await _get_enabled_steps(probe)
     total = len(enabled) or 1
     step_no = 1
-    if draft.get("step") == reg_engine.STEP_DONE:
-        # UAT 07.09 (T-d6t-04): анкета дочитана — подпись кнопки не должна врать единицей.
-        step_no = total
-    elif draft.get("step") in enabled:
+    if draft.get("step") in enabled:
         step_no = enabled.index(draft["step"]) + 1
     lang, tr_map = await reg_i18n.ctx_for(message)
-    continue_label = reg_i18n.tr_fmt(
-        await get_setting_typed("reg_resume_continue_label"), lang, tr_map,
-        step=step_no, total=total,
-    )
+    if draft.get("step") == reg_engine.STEP_DONE:
+        # Приёмка 10.10: анкета дочитана, «Продолжить» ведёт на сводку — «шаг 14 из 14» врал.
+        continue_label = reg_i18n.tr_text(await get_setting_typed("reg_resume_review_label"), lang, tr_map)
+    else:
+        continue_label = reg_i18n.tr_fmt(
+            await get_setting_typed("reg_resume_continue_label"), lang, tr_map,
+            step=step_no, total=total,
+        )
     restart_label = reg_i18n.tr_text(await get_setting_typed("reg_resume_restart_label"), lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=continue_label, callback_data="reg_resume:continue")],
