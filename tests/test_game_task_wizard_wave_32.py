@@ -163,6 +163,19 @@ def test_wave_step_no_waves_offers_only_out_of_wave_with_explainer(tmp_path):
     assert "Волны" in cb.message.answers_sent[-1]  # где завести — подсказка не молчит
 
 
+def test_wave_step_no_waves_points_to_section_where_waves_live(tmp_path):
+    """Приёмка 10.10: при включённом отборе амбассадоров «🌊 Волны» живут в «🤝 Амбассадоры», а
+    подсказка слала в «🎮 Геймификация → Волны», где кнопки нет. Путь зависит от тумблера."""
+    _db_ready(tmp_path)
+    cb = _drive_to_wave_step(_new_state())
+    assert "«🎮 Геймификация → 🌊 Волны»" in cb.message.answers_sent[-1]
+
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
+    cb = _drive_to_wave_step(_new_state())
+    assert "«🤝 Амбассадоры → 🌊 Волны»" in cb.message.answers_sent[-1]
+    assert "Геймификация" not in cb.message.answers_sent[-1]
+
+
 def test_wave_step_lists_only_draft_and_active_waves(tmp_path):
     _db_ready(tmp_path)
     draft_id = _mk_wave(state="draft")
