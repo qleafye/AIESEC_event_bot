@@ -8,7 +8,7 @@
 Файл растёт по задачам квика (образец — 06-01-style структура, один файл на весь квик):
 - Task 1: примитивы `services/sheets.py` (`list_worksheet_titles`, `rename_worksheet`);
 - Task 2: `domain/settings/ops.py` (`normalize_tab_prefix`, `current_tab_titles`, `plan_prefix_renames`);
-- Task 3: развилка при смене одного ключа-имени (`handlers/admin_sheet_tabs.py`);
+- Task 3: развилка при смене одного ключа-имени (`handlers/sheets/admin_sheet_tabs.py`);
 - Task 4: массовые кнопки «Добавить/Убрать префикс».
 
 Идиомы — как в tests/test_sheets_main_tab_pin_260813.py / test_sheets_admin_alert.py:
@@ -23,7 +23,7 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_sheet_tabs
+from handlers.sheets import admin_sheet_tabs
 from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
 import domain.settings.ops as settings_ops
@@ -388,7 +388,7 @@ def test_plan_prefix_renames_empty_prefix_skips_everything_both_directions():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Task 3: handlers/admin_sheet_tabs.py — развилка при смене одного ключа-имени
+# Task 3: handlers/sheets/admin_sheet_tabs.py — развилка при смене одного ключа-имени
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 ADMIN_ID_T3 = 931919

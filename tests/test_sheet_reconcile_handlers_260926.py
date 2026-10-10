@@ -1,7 +1,7 @@
-"""Phase 33 — «🔍 Сверить с БД», обработка сбоя (handlers/admin_sheet_reconcile.py).
+"""Phase 33 — «🔍 Сверить с БД», обработка сбоя (handlers/sheets/admin_sheet_reconcile.py).
 
 Хендлеры дописать/выправить и экраны отчёта/подтверждения оборачиваются в try/except (тот же
-посыл, что у соседнего `sync_sheet`, handlers/admin_sheets.py): исключение из apply_*/
+посыл, что у соседнего `sync_sheet`, handlers/sheets/admin_sheets.py): исключение из apply_*/
 build_report превращается в человеческое сообщение, а не падает молча — иначе менеджер видит
 вечное «Дописываю...»/«Читаю таблицу...» и не понимает, что случилось.
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 
 from config import config
-import handlers.admin_sheet_reconcile as admin_sheet_reconcile
+import handlers.sheets.admin_sheet_reconcile as admin_sheet_reconcile
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 260926601

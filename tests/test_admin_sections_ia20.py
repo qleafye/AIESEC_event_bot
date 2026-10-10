@@ -32,7 +32,7 @@ from handlers import admin_reg_percity as regpercity  # module-size split: quest
 from handlers import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
-from handlers import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
+from handlers.sheets import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
 from handlers.admin_caps import role_caps_key
 from handlers.admin_settings import settings_toggle_rows
 
