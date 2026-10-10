@@ -587,9 +587,24 @@ ROLES_ALL_CITIES_REMOVE_TEXT = (
 ROLES_OTHER_CITY_REMOVE_TEXT = (
     "Этот человек работает в городе {city} — роль с него снимает менеджер этого города или суперадмин."
 )
+ROLES_ALL_CITIES_EXPIRY_TEXT = (
+    "Этот человек работает на всех городах — срок его роли меняет суперадмин или менеджер без "
+    "привязки к городу."
+)
+ROLES_OTHER_CITY_EXPIRY_TEXT = (
+    "Этот человек работает в городе {city} — срок его роли меняет менеджер этого города или суперадмин."
+)
 
 
-async def _issuer_city(callback: types.CallbackQuery) -> str | None:
+async def _expiry_denied(event: types.CallbackQuery | types.Message, tid: int) -> bool:
+    """Срок роли — та же власть над чужим доступом, что выдача и снятие: каждый шаг экрана
+    «⏳ Срок действия роли» (открытие, кнопки, ввод даты) проверяет город отдельно."""
+    return await _foreign_person_denied(
+        event, await _issuer_city(event), tid, ROLES_ALL_CITIES_EXPIRY_TEXT, ROLES_OTHER_CITY_EXPIRY_TEXT,
+    )
+
+
+async def _issuer_city(callback: types.CallbackQuery | types.Message) -> str | None:
     """Город менеджера, который жмёт кнопку роли; `None` — суперадмин, менеджер без города или
     модуль городов выключен (ограничений по городу нет)."""
     if callback.from_user.id in config.ADMIN_IDS or not await cities_module_on():
@@ -598,7 +613,8 @@ async def _issuer_city(callback: types.CallbackQuery) -> str | None:
 
 
 async def _foreign_person_denied(
-    callback: types.CallbackQuery, issuer_city: str | None, tid: int, all_text: str, other_text: str,
+    callback: types.CallbackQuery | types.Message, issuer_city: str | None, tid: int,
+    all_text: str, other_text: str,
 ) -> bool:
     """Менеджер с городом трогает роли только у людей своего города: у человека на всех городах
     (город NULL) или из чужого города — отказ с объяснением, кто это может. Проверяется в
@@ -608,10 +624,11 @@ async def _foreign_person_denied(
     target_city = await get_staff_city(tid)
     if target_city == issuer_city:
         return False
-    if target_city is None:
-        await callback.answer(all_text, show_alert=True)
-    else:
-        await callback.answer(other_text.format(city=await city_label(target_city)), show_alert=True)
+    text = all_text if target_city is None else other_text.format(city=await city_label(target_city))
+    if hasattr(callback, "data"):  # нажатие кнопки — всплывающее окно (как admin_settings_global.deny)
+        await callback.answer(text, show_alert=True)
+    else:  # ввод даты срока — обычным сообщением
+        await callback.answer(text, reply_markup=ReplyKeyboardRemove())
     return True
 
 
@@ -1160,6 +1177,8 @@ async def roles_expiry_start(callback: types.CallbackQuery):
         await callback.answer("Неизвестная роль", show_alert=True)
         return
     tid, role = int(parts[1]), parts[2]
+    if await _expiry_denied(callback, tid):
+        return
     text, kb = await _rexp_text_kb(tid, role)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -1183,6 +1202,8 @@ async def roles_expiry_go(callback: types.CallbackQuery):
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
     tid, role, choice = int(parts[1]), parts[2], parts[3]
+    if await _expiry_denied(callback, tid):
+        return
     if choice == "none":
         expires_at = None
     elif choice == "forum":
@@ -1204,6 +1225,8 @@ async def roles_expiry_custom_start(callback: types.CallbackQuery, state: FSMCon
         await callback.answer("Неизвестная роль", show_alert=True)
         return
     tid, role = int(parts[1]), parts[2]
+    if await _expiry_denied(callback, tid):
+        return
     await state.update_data(rexp_tid=tid, rexp_role=role)
     await state.set_state(RolesExpiryEdit.waiting_date)
     await callback.message.answer(
@@ -1229,6 +1252,9 @@ async def roles_expiry_custom_step(message: types.Message, state: FSMContext):
     await state.set_state(None)
     if tid is None or role not in ROLES:
         await message.answer("Экран устарел — откройте «👥 Роли и доступы» заново.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if await _expiry_denied(message, tid):  # город мог смениться, пока менеджер вводил дату
         return
 
     expires_at = parse_ddmmyyyy((message.text or "").strip())
