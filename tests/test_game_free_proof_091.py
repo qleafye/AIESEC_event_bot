@@ -119,7 +119,8 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # Ключи амбассадорки переехали в группу amb: в game остаются только игровые, а переехавшие
     # обязаны лежать в amb.
     # 09.10: три текста ссылки и приглашённых переехали в группу «amb» (−3).
-    assert len(keys) == 47
+    # 10.10: +5 -- подписи кнопок экранов «🪙 Баланс» и «📜 История» (settings_ui_text_fields.py).
+    assert len(keys) == 52
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:

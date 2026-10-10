@@ -105,9 +105,114 @@ BACKGROUND_BUTTON_FIELD_ORDER = [
     "broadcast_mute_button_text", "broadcast_unmute_button_text",
 ]
 
+_FRAG = "\n\nБез разметки. Если очистить поле, вернётся текст по умолчанию."
+
+
+def _text(group: str, label: str, where: str, default: str) -> dict:
+    return {"type": "text", "group": group, "label": label,
+            "prompt": f"{where} Сейчас: «{default}».{_FRAG}", "default": default}
+
+
+def _in_group(group: str, entry: dict) -> dict:
+    return {**entry, "group": group}
+
+
+UI_TEXT_SCHEMA.update({
+    # ── «ℹ️ Информация о форуме», «📞 Контакты» (handlers/user_actions.py) ───────────────────
+    "info_screen_title_text": _text(
+        "event", "ℹ️ Информация: заголовок",
+        "Заголовок экрана кнопки «Информация о форуме», когда дата и место заданы.",
+        "Информация о мероприятии"),
+    "info_date_label_text": _text(
+        "event", "ℹ️ Информация: подпись «Дата»",
+        "Подпись перед датой на экране информации о мероприятии.", "Дата"),
+    "info_time_label_text": _text(
+        "event", "ℹ️ Информация: подпись «Время»",
+        "Подпись перед временем — на экране информации и в ответе на кнопку даты.", "Время"),
+    "info_place_label_text": _text(
+        "event", "ℹ️ Информация: подпись «Место»",
+        "Подпись перед названием площадки на экране информации.", "Место"),
+    "info_pending_text": _text(
+        "event", "ℹ️ Информация: пока не заполнено",
+        "Первая строка экрана информации, пока у города не заданы дата или площадка.",
+        "Информация о мероприятии пока заполняется."),
+    "info_choose_text": _text(
+        "event", "ℹ️ Информация: «выбери кнопку»",
+        "Вторая строка того же экрана — над кнопками даты и места.",
+        "Выбери, что тебя интересует:"),
+    "info_date_lead_text": {
+        "type": "text", "group": "event", "label": "🗓 Дата: начало фразы",
+        "prompt": (
+            "Начало фразы в ответе на кнопку даты: «‹это› 25 октября!». Например: «Форум "
+            "пройдет».\n\nПока не задано, бот пишет «Форум пройдет», а у конференции — "
+            "«Конференция пройдет»." + _FRAG
+        ),
+        "default": None,
+    },
+    "info_date_pending_text": _text(
+        "event", "🗓 Дата: пока уточняется",
+        "Ответ на кнопку даты, пока дата города не задана.",
+        "🗓 Дата пока уточняется. Скоро сообщим! 🙂"),
+    "info_venue_title_text": _text(
+        "event", "📍 Место: начало заголовка",
+        "Начало заголовка в ответе на кнопку места: «‹это› — Технопарк!».", "Наша площадка"),
+    "info_address_label_text": _text(
+        "event", "📍 Место: подпись «Адрес»", "Подпись перед адресом площадки.", "Адрес"),
+    "info_place_pending_text": _text(
+        "event", "📍 Место: пока уточняется",
+        "Ответ на кнопку места, пока площадка города не задана.",
+        "📍 Место проведения в процессе подтверждения. Как только всё будет готово, мы напишем!"),
+    "contacts_person_label_text": _text(
+        "event", "📞 Контакты: подпись к контакту",
+        "Подпись перед контактным лицом на экране «Контакты».", "По всем вопросам пиши сюда"),
+    "contacts_groups_label_text": _text(
+        "event", "📞 Контакты: подпись к группам",
+        "Подпись над ссылками на группы VK и Telegram на экране «Контакты».", "Наши группы"),
+    # ── Кнопки экранов «🪙 Баланс» и «🎯 Задания» ───────────────────────────────────────────
+    "balance_history_button_text": _in_group("game", _button(
+        "🪙 Баланс: кнопка «История»", "Кнопка на экране «🪙 Баланс» — история баллов.",
+        "📜 История")),
+    "balance_top_button_text": _in_group("game", _button(
+        "🪙 Баланс: кнопка «Рейтинг»", "Кнопка на экране «🪙 Баланс» — общий рейтинг.",
+        "🏆 Рейтинг")),
+    "balance_back_button_text": _in_group("game", _button(
+        "🪙 Баланс: кнопка «назад к балансу»",
+        "Кнопка возврата на экран «🪙 Баланс» из истории и рейтинга.", "◀️ Баланс")),
+    "balance_history_prev_button_text": _in_group("game", _button(
+        "📜 История баллов: кнопка «Раньше»", "Листает историю баллов к более старым записям.",
+        "← Раньше")),
+    "balance_history_next_button_text": _in_group("game", _button(
+        "📜 История баллов: кнопка «Позже»", "Листает историю баллов к более новым записям.",
+        "Позже →")),
+    "wave_rating_button_text": _in_group("amb", _button(
+        "🏅 Кнопка «Рейтинг волны»",
+        "Кнопка под списком заданий у амбассадора, пока идёт его волна.", "🏅 Рейтинг волны")),
+})
+
+# Экран «🎪 Событие» — после команд меню: тексты экранов информации и контактов.
+INFO_SCREEN_FIELD_ORDER = [
+    "info_screen_title_text", "info_date_label_text", "info_time_label_text",
+    "info_place_label_text", "info_pending_text", "info_choose_text", "info_date_lead_text",
+    "info_date_pending_text", "info_venue_title_text", "info_address_label_text",
+    "info_place_pending_text", "contacts_person_label_text", "contacts_groups_label_text",
+]
+# Экран «🎮 Геймификация» — кнопки «🪙 Баланс». Кнопка волны — в settings_amb_fields.py.
+GAME_SCREEN_FIELD_ORDER = [
+    "balance_history_button_text", "balance_top_button_text", "balance_back_button_text",
+    "balance_history_prev_button_text", "balance_history_next_button_text",
+]
+
 
 async def ui_text(key: str) -> str:
     """Значение подписи; пустое — подпись по умолчанию (пустую кнопку Telegram не примет)."""
     from settings_schema import get_setting_typed  # ленивый: settings_schema импортирует этот модуль
 
     return (await get_setting_typed(key) or "").strip() or UI_TEXT_SCHEMA[key]["default"] or ""
+
+
+async def ui_tr(key: str, translate) -> str:
+    """Подпись из настроек на языке делегата (`translate` — `reg_i18n.tr_text` с его
+    контекстом), экранированная для сообщений с HTML-разметкой."""
+    import html
+
+    return html.escape(translate(await ui_text(key)))
