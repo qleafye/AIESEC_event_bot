@@ -1020,14 +1020,14 @@ async def validate_batch_item(
     return BatchCheck(value)
 
 
-async def commit_batch_item(key: str, value: str | None) -> str | None:
+async def commit_batch_item(key: str, value: str | None, admin_id: int | None = None) -> str | None:
     """Шаги записи одного ключа (после того как ВЕСЬ пакет прошёл проверки). Возвращает
-    предупреждение (не блокирующее) либо `None`."""
+    предупреждение (не блокирующее) либо `None`. `admin_id` — автор правки для лога настроек."""
+    from settings_audit import write_setting_logged
+
     warning = None
-    if value is None:
-        await delete_setting(key)
-    else:
-        await set_setting(key, value)
+    await write_setting_logged(admin_id, key, value)
+    if value is not None:
         if key == "event_type":
             await apply_event_type_preset(value.strip().lower())
         if key.endswith("_options"):

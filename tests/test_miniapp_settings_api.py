@@ -285,3 +285,37 @@ def test_disabling_miniapp_enabled_locks_app_for_delegates_only(tmp_path):
     # Выключивший менеджер не запирает сам себя — может включить обратно из приложения.
     assert _post(client, "miniapp_enabled", "on").status_code == 200
     assert client.get("/app/health").status_code == 200  # health переживает тумблер
+
+
+# ── Запись из приложения: автор в логе + очередь реакций бота ────────────────────────────
+
+def _outbox_settings_changed():
+    rows = _run(bot_db.list_unprocessed_miniapp_outbox(limit=50))
+    return [r for r in rows if r.get("kind") == "settings_changed"]
+
+
+def test_toggle_logs_author_and_queues_hooks(tmp_path, caplog):
+    client = _setup(tmp_path, "miniapp_settings_audit_toggle.db")
+    with caplog.at_level("INFO"):
+        resp = _post(client, "miniapp_section_stats", "off")
+    assert resp.status_code == 200, resp.text
+    assert f"admin={ADMIN_ID} setting miniapp_section_stats <- 'off'" in caplog.text
+    queued = _outbox_settings_changed()
+    assert queued, "реакции бота на правку не поставлены в очередь"
+    assert queued[-1]["payload"]["keys"] == ["miniapp_section_stats"]
+    assert queued[-1]["payload"]["by"] == ADMIN_ID
+
+
+def test_outbox_handler_runs_setting_hooks_for_queued_keys(tmp_path, monkeypatch):
+    from services import miniapp_outbox
+    import settings_audit
+
+    _setup(tmp_path, "miniapp_settings_audit_hooks.db")
+    seen = []
+
+    async def fake_hooks(key):
+        seen.append(key)
+
+    monkeypatch.setattr(settings_audit, "run_setting_hooks", fake_hooks)
+    _run(miniapp_outbox._handle_row(None, "settings_changed", {"keys": ["miniapp_section_stats"], "by": ADMIN_ID}))
+    assert seen == ["miniapp_section_stats"]
