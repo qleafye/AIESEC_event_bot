@@ -21,8 +21,9 @@ import pytest
 
 from config import config
 from database import db
-import services.sheets as sheets
-from services import sheet_arrival_sync, venue_log
+import services.sheets.sheets as sheets
+from services.sheets import sheet_arrival_sync
+from services import venue_log
 from services.checkin import record_arrival
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 
@@ -385,7 +386,7 @@ def test_queue_stats(tmp_path):
 
 # ── сторож: отметка и Mini App без Google-листов ───────────────────────────────────────────
 
-_FORBIDDEN = ("services.sheets", "gspread")
+_FORBIDDEN = ("services.sheets.sheets", "gspread")
 
 
 def _imports(path: Path) -> set[str]:

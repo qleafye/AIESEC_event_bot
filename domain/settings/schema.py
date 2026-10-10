@@ -2158,7 +2158,7 @@ SETTINGS_SCHEMA = {
     # чтобы менеджер переименовывал любую вкладку кнопкой, без разработчика. Дефолты — БУКВА
     # В БУКВУ старые хардкоды (short_sheet_tab/party_sheet_tab физически переехали сюда из
     # reg/party ниже по файлу, а не продублированы — единственный источник правды один).
-    # Какая Google-таблица у события (services/sheet_target.py — единственный резолвер). Пусто —
+    # Какая Google-таблица у события (services/sheets/sheet_target.py — единственный резолвер). Пусто —
     # бот берёт таблицу, заданную при установке (`GOOGLE_SHEET_ID` в .env), прод живёт как раньше.
     # Правится ТОЛЬКО экраном «📊 Данные → 🔗 Какая таблица» (handlers/sheets/admin_sheet_target.py) и
     # только суперадмином: там ввод ссылкой, проверка доступа сервисного аккаунта и сброс кэша
@@ -2174,7 +2174,7 @@ SETTINGS_SCHEMA = {
         "default": None,
     },
     # main_sheet_tab имеет `default: None` НАМЕРЕННО: реестровый дефолт подменил бы 4-ступенчатую
-    # цепочку резолва в services/sheets.py::_get_sheet (bot_settings -> .env -> legacy-пин ->
+    # цепочку резолва в services/sheets/sheets.py::_get_sheet (bot_settings -> .env -> legacy-пин ->
     # RuntimeError, инцидент 058def0) — non-None дефолт здесь сделал бы .env вечно недостижимым.
     "main_sheet_tab": {
         "type": "text", "group": "sheets", "label": "📄 Основная (регистрации)",

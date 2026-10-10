@@ -1213,7 +1213,7 @@ async def sync_incomplete_sheet_job():
     (one per city, Phase 07.1 CITY-04) with the current dropout list every
     incomplete_sync_hours. Fail-soft."""
     try:
-        from services.sheets import sync_named_worksheet
+        from services.sheets.sheets import sync_named_worksheet
         from handlers.registration import incomplete_city_batches
         # Phase 07.1 (CITY-04): incomplete_city_batches() is the SINGLE shared helper for both
         # this auto-sync and the admin-triggered export (handlers/admin.py::export_incomplete)
@@ -1236,14 +1236,14 @@ async def sync_auto_reject_sheet_job() -> int:
     Пустое/пробельное `auto_reject_sheet_tab` -> вкладка НЕ ведётся, до `sync_named_worksheet`
     дело не доходит вовсе (D-E: событие без модуля автоотказа не получает лишней вкладки).
     Возвращает число строк (0 при пустом имени/пустом журнале), -1 при ошибке — тот же
-    контракт, что у `services.sheets.sync_named_worksheet`, чтобы вызывающий (`arp_sync`,
+    контракт, что у `services.sheets.sheets.sync_named_worksheet`, чтобы вызывающий (`arp_sync`,
     handlers/applications/admin_reject_reports.py) мог отличить «нечего было выгружать» от «сбой листа»."""
     try:
         tab = (await get_setting("auto_reject_sheet_tab") or "").strip()
         if not tab:
             return 0
         from database.db import auto_reject_sheet_rows
-        from services.sheets import sync_named_worksheet
+        from services.sheets.sheets import sync_named_worksheet
         headers, rows = await auto_reject_sheet_rows()
         return await sync_named_worksheet(tab, headers, rows)
     except Exception as e:
@@ -1305,10 +1305,10 @@ async def miniapp_outbox_drain_job():
 
 async def sheet_arrival_drain_job():
     """Interval-job target (no args, picklable): очередь «Пришёл» -> Google-лист пачкой
-    (`services/sheet_arrival_sync.py::drain`). Сбой прохода не роняет планировщик — события
+    (`services/sheets/sheet_arrival_sync.py::drain`). Сбой прохода не роняет планировщик — события
     остаются в очереди до следующего тика."""
     try:
-        from services.sheet_arrival_sync import drain
+        from services.sheets.sheet_arrival_sync import drain
         await drain()
     except Exception as e:
         logger.error(f"sheet_arrival_drain_job failed: {e}")
@@ -1316,9 +1316,9 @@ async def sheet_arrival_drain_job():
 
 async def sheet_chat_drain_job():
     """Interval-job target (no args, picklable): очередь «В чате» -> Google-лист пачкой
-    (`services/sheet_chat_sync.py::drain`). Сбой прохода не роняет планировщик."""
+    (`services/sheets/sheet_chat_sync.py::drain`). Сбой прохода не роняет планировщик."""
     try:
-        from services.sheet_chat_sync import drain
+        from services.sheets.sheet_chat_sync import drain
         await drain()
     except Exception as e:
         logger.error(f"sheet_chat_drain_job failed: {e}")

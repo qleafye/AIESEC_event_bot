@@ -9,7 +9,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 
 

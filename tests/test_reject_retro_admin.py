@@ -209,12 +209,12 @@ def test_manual_reject_does_not_get_a_letter(tmp_path, monkeypatch):
 def test_sheet_failure_is_reported(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(h, "_since", lambda p: "2026-01-01")
-    monkeypatch.setattr("services.sheet_target.sheets_enabled", lambda: True)
+    monkeypatch.setattr("services.sheets.sheet_target.sheets_enabled", lambda: True)
 
     async def bulk(mapping):
         return -1
 
-    monkeypatch.setattr("services.sheets.bulk_update_status_in_sheet", bulk)
+    monkeypatch.setattr("services.sheets.sheets.bulk_update_status_in_sheet", bulk)
     cb = FakeBotCallback(f"rjretro_go:7:{_digest()}")
     _run(h.reject_retro_go(cb))
     assert "Сверить таблицу с базой" in cb.message.answers[0][0]
@@ -266,7 +266,7 @@ def test_sheet_updated_with_one_bulk_call(tmp_path, monkeypatch):
     async def bulk(mapping):
         calls.append(mapping)
 
-    monkeypatch.setattr("services.sheets.bulk_update_status_in_sheet", bulk)
+    monkeypatch.setattr("services.sheets.sheets.bulk_update_status_in_sheet", bulk)
     _run(reject_retro.apply(object(), "2026-01-01", pause=0))
     assert len(calls) == 1 and set(calls[0]) == {"1", "2"}
 

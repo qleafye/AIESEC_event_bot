@@ -151,7 +151,7 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
     # (claim выигран, статус в БД сменён) — сбой листа только логируется, не откатывает возврат.
     try:
         from domain.regform.labels import STATUS_LABELS
-        from services.sheets import update_status_in_sheet
+        from services.sheets.sheets import update_status_in_sheet
         await update_status_in_sheet(telegram_id, STATUS_LABELS["pending"])
         from services.scheduler import sync_auto_reject_sheet_job
         await sync_auto_reject_sheet_job()

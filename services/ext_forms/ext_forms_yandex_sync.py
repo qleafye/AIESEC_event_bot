@@ -29,7 +29,7 @@ from services.ext_forms import ext_forms_yandex as yx
 from services.ext_forms.ext_forms_ingest import ingest_answer
 from services.ext_forms.ext_forms_match import rematch_unmatched
 from services.ext_forms.ext_forms_parse import parse_push_body, parse_yandex_answer
-from services.sheet_arrival_sync import backoff_seconds
+from services.sheets.sheet_arrival_sync import backoff_seconds
 from services.infra.timeutil import msk_now
 from services.ext_forms.ext_forms_yandex import YandexApiError
 

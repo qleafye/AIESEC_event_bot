@@ -132,7 +132,7 @@ def test_incomplete_sheet_row_unanswered_fields_are_dash(tmp_path):
         values = dict(zip(headers, row))
         # any header beyond the base 4 + ФИО that was not answered must be the unanswered
         # placeholder "-", written RAW (квик 260919: incomplete_sheet_row no longer runs
-        # _csv_safe — services/sheets.py writes RAW, which never parses "-" as a formula, see
+        # _csv_safe — services/sheets/sheets.py writes RAW, which never parses "-" as a formula, see
         # database.db._sheet_safe). "Работает" is a special yes/no column with no "-" default,
         # so it is excluded here.
         for h in headers[4:]:

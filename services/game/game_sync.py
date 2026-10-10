@@ -11,10 +11,10 @@ scheduler (CONTEXT.md D is explicit about this) — the debounce only needs "wai
 maybe-cancel", which `asyncio.sleep` + `Task.cancel()` already do on their own.
 
 Import discipline: this module imports ONLY stdlib + `services.infra.background.spawn` +
-`services.sheets._send_admin_alert`. It never reaches into the admin request layer above
+`services.sheets.sheets._send_admin_alert`. It never reaches into the admin request layer above
 `services/` — that layer already imports `services.*`, so an import the other way would be
 a cycle. Instead, the admin layer hands its own `rebuild_game_sheets` coroutine down via
-`set_rebuild()` at import time (inversion of control — the same shape `services/sheets.py`
+`set_rebuild()` at import time (inversion of control — the same shape `services/sheets/sheets.py`
 uses for `set_alert_bot`).
 """
 
@@ -22,7 +22,7 @@ import asyncio
 import logging
 
 from services.infra.background import spawn
-from services.sheets import _send_admin_alert
+from services.sheets.sheets import _send_admin_alert
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ DEBOUNCE_SECONDS = 30
 # of that (heavy) module.
 _rebuild = None
 _pending: "asyncio.Task | None" = None
-# One-shot admin warning per failure streak — same shape as services.sheets._alert_bot_warned:
+# One-shot admin warning per failure streak — same shape as services.sheets.sheets._alert_bot_warned:
 # set on the first failure, cleared on the next success, so a run of failures never spams.
 _failure_warned = False
 

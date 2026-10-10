@@ -1,8 +1,8 @@
 """Quick 260819-sst (owner-reported bug): Approve/Reject/«Одобрить все» used to write the
-«Статус» column only on the MAIN worksheet (services/sheets.py::_get_sheet()) — a delegate whose
+«Статус» column only on the MAIN worksheet (services/sheets/sheets.py::_get_sheet()) — a delegate whose
 row actually lives on a city tab (СПб/Тюмень) or a short/party sub-tab never got their status
 cell updated at all. Fixed by resolving the delegate's tab the same way the live append does
-(handlers/registration.py::city_row_tab + _sheet_kind, replicated in services/sheets.py as
+(handlers/registration.py::city_row_tab + _sheet_kind, replicated in services/sheets/sheets.py as
 _resolve_status_tab / _status_sheet_kind — see that module's docstrings for why it's a
 replication rather than an import), with a fallback to the main sheet for legacy rows.
 
@@ -20,7 +20,7 @@ import gspread
 
 from config import config
 from database import db
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 
 

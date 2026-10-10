@@ -43,7 +43,7 @@ from keyboards.builders import (
     get_yes_no_kb,
     ADMIN_REREG_BUTTON_TEXT,
 )
-from services.sheets import append_to_sheet, append_to_named_sheet
+from services.sheets.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
 from services.infra.background import spawn as _spawn
 # Phase 21 (21-08, FORM-SYNC-02/04, Pattern 4): common data+effects finale shared with the
@@ -1361,7 +1361,7 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     `handlers.reg.reg_schema.sheet_city_code`'s docstring for the shared invariant).
 
     Квик 260919 (08-sheets-dashboard): раньше здесь стоял database.db._csv_safe — сейчас
-    database.db._sheet_safe (функция-тождество). services/sheets.py пишет каждый gspread-вызов
+    database.db._sheet_safe (функция-тождество). services/sheets/sheets.py пишет каждый gspread-вызов
     явным value_input_option=RAW, а RAW-ячейку Google никогда не интерпретирует как формулу —
     приписанный апостроф был не защитой, а порчей данных (`'+79991234567`, `'@username` не
     находятся фильтром/ВПР)."""
@@ -1398,7 +1398,7 @@ async def incomplete_sheet_headers(city_code: str | None = None) -> list[str]:
     live registration_mode alone: if only the live mode were checked, reverting the toggle to
     "full" on 2026-08-11 would make the very next 2h auto-sync (services/scheduler.py
     sync_incomplete_sheet_job) rewrite the tab with the narrow (non-merged) header set —
-    sync_named_worksheet does a full clear+rewrite (services/sheets.py), so already-answered
+    sync_named_worksheet does a full clear+rewrite (services/sheets/sheets.py), so already-answered
     promo fields (Город, ВК, ...) would collapse to "-" even though reg_started.partial_data
     still holds them. has_short_incomplete() ties the merge to whether a live abandoned promo
     row still exists, not to a setting that has already been flipped back — once the last
@@ -1495,7 +1495,7 @@ async def party_sheet_row(data: dict, city_code: str | None = None) -> list:
 
     Квик 260919 (08-sheets-dashboard): раньше каждая ячейка шла через database.db._csv_safe
     (T-05-06-01, 260713-jgi) — теперь через database.db._sheet_safe (функция-тождество).
-    services/sheets.py пишет явным value_input_option=RAW, и Google Sheets никогда не
+    services/sheets/sheets.py пишет явным value_input_option=RAW, и Google Sheets никогда не
     интерпретирует RAW-ячейку как формулу, так что приписанный апостроф защищал от несуществующей
     угрозы ценой порчи телефонов/юзернеймов на листе (see database.db._sheet_safe docstring).
 

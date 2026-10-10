@@ -990,7 +990,7 @@ def test_technical_alert_sites_still_use_admin_ids():
     теперь оно тоже маршрутизируется через `capability_holders`, см.
     `test_pending_reminder_routes_via_capability`."""
     repo_root = REPO_ROOT
-    for rel_path in ("services/sheets.py", "services/scheduler.py"):
+    for rel_path in ("services/sheets/sheets.py", "services/scheduler.py"):
         source = (repo_root / rel_path).read_text(encoding="utf-8")
         assert "notify_by_capability" not in source
         assert source.count("for admin_id in config.ADMIN_IDS") == 1
@@ -1481,7 +1481,7 @@ def test_gate_technical_alerts_stay_on_admin_ids():
     Квик 260919 (P3): `services/reminders.py` dropped OUT of this list -- see
     `test_technical_alert_sites_still_use_admin_ids`'s updated docstring above."""
     repo_root = REPO_ROOT
-    for rel_path in ("services/sheets.py", "services/scheduler.py"):
+    for rel_path in ("services/sheets/sheets.py", "services/scheduler.py"):
         source = _non_comment_source(repo_root / rel_path)
         assert "notify_by_capability" not in source
         assert source.count("for admin_id in config.ADMIN_IDS") == 1

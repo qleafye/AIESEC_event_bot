@@ -4,7 +4,7 @@ CWE-1236-фикса — раньше `_csv_safe` (database/db.py) приписы
 385+ строк на проде несли `'+79991234567` / `'@username` — ВПР/фильтр их не находили.
 
 Три сторожа:
-(а) AST — ни один пишущий вызов gspread в services/sheets.py не остаётся без явного
+(а) AST — ни один пишущий вызов gspread в services/sheets/sheets.py не остаётся без явного
     value_input_option=RAW (не полагаемся на дефолт библиотеки — апгрейд gspread может его
     незаметно сменить); update_cell (который RAW не поддерживает вовсе, gspread хардкодит
     USER_ENTERED) запрещён совсем.
@@ -28,7 +28,7 @@ from handlers import registration as reg
 from tests._dbtpl import fast_init_db
 
 _REPO_ROOT = REPO_ROOT
-_SHEETS_PY = _REPO_ROOT / "services" / "sheets.py"
+_SHEETS_PY = _REPO_ROOT / "services" / "sheets" / "sheets.py"
 
 # Методы gspread.Worksheet, которые пишут ЗНАЧЕНИЯ ячеек (а не структуру/форматирование) и
 # принимают value_input_option.
@@ -68,7 +68,7 @@ def _calls_missing_raw(path: Path) -> list[tuple[int, str]]:
 def test_every_gspread_value_write_has_explicit_raw():
     offenders = _calls_missing_raw(_SHEETS_PY)
     assert not offenders, (
-        "services/sheets.py: каждый пишущий вызов gspread обязан нести явный "
+        "services/sheets/sheets.py: каждый пишущий вызов gspread обязан нести явный "
         f"value_input_option=RAW (находка 08-sheets-dashboard): {offenders}"
     )
 

@@ -243,9 +243,9 @@ def check_access_sync(spreadsheet_id: str) -> tuple[str, str | None]:
 
 def reset_client_caches() -> None:
     """Таблица сменилась — бросить открытый главный лист сразу. Кэши вкладок сами сверяют
-    ID таблицы (services/sheets.py), второй процесс (Mini App) переключится по TTL."""
+    ID таблицы (services/sheets/sheets.py), второй процесс (Mini App) переключится по TTL."""
     try:
-        from services import sheets
+        from services.sheets import sheets
         sheets._reset_sheet_cache()
     except Exception as e:  # noqa: BLE001 — сброс кэша не должен ронять сохранение
         logger.warning(f"sheet_target: сброс кэша листа не удался: {e}")

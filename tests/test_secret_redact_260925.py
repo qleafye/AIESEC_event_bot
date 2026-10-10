@@ -160,7 +160,7 @@ def test_proxy_alert_goes_as_plain_text_even_with_angle_brackets(alert_bot):
 
 
 def test_sheets_alert_goes_as_plain_text(monkeypatch):
-    from services import sheets
+    from services.sheets import sheets
 
     bot = _FakeBot()
     monkeypatch.setattr(config, "ADMIN_IDS", [111])

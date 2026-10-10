@@ -20,7 +20,7 @@ import asyncio
 
 import gspread
 
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities/dedupe screen
 from tests.test_sheet_status_city_tab_260819 import FakeWorksheet, _patch_fake_sheets
 from tests.test_sheets_update_row_safe_260926 import _FakeWorksheet as RecordingWorksheet

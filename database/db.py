@@ -1172,7 +1172,7 @@ async def init_db():
         #   decision_delivery_error    — человеческая причина сбоя (только status='failed')
         # NULL у всех четырёх — «неизвестно»: либо решение ещё не было (pending), либо оно
         # принято ДО этой миграции (признака тогда не было вовсе) — БЕЗ бэкафилла, честно не
-        # путаем с «не доставлено» (`services/sheet_reconcile.py` отчёт разводит эти две
+        # путаем с «не доставлено» (`services/sheets/sheet_reconcile.py` отчёт разводит эти две
         # категории). Пишет `services.application_effects.apply_decision_effects`/
         # `mass_approve_effects` — единственный choke-point всех путей решения (бот/веб/
         # автоотказ/квик-скрипт, см. их докстринг). Возврат на модерацию
@@ -1948,7 +1948,7 @@ async def init_db():
 
         # Нагрузочный прогон 25.09: очередь записи «Пришёл» в Google-лист. Отметка/снятие/CSV
         # пишут ТОЛЬКО сюда (оба процесса — бот и Mini App без Google-кредов), джоба бота
-        # (`services/sheet_arrival_sync.py`) раз в 30 с разбирает пачку: одно чтение столбца id
+        # (`services/sheets/sheet_arrival_sync.py`) раз в 30 с разбирает пачку: одно чтение столбца id
         # на вкладку и один batch_update, значение ячейки — всегда из `checkins` (время первого
         # входа), поэтому строка события — лишь «пересчитать этого делегата», повтор безвреден.
         # Дубли по telegram_id не схлопываются в схеме (UNIQUE дал бы гонку «прочитал значение —
@@ -1974,7 +1974,7 @@ async def init_db():
 
         # 29.09: очередь записи «В чате» в Google-лист — вход/выход из чата, одобрение, сверка
         # состава. Та же семантика, что у sheet_arrival_queue выше (строка = «пересчитать
-        # делегата», значение всегда из базы, джоба `services/sheet_chat_sync.py` удаляет id <=
+        # делегата», значение всегда из базы, джоба `services/sheets/sheet_chat_sync.py` удаляет id <=
         # прочитанного максимума). Отдельная таблица, а не вид события в sheet_arrival_queue:
         # ту пишет и Mini App, а drop/fail по (telegram_id, id <= max) без фильтра по виду
         # снесли бы чужие события уже работающей очереди.
@@ -3474,7 +3474,7 @@ def _csv_safe(value):
 
 def _sheet_safe(value):
     """Identity function — the Google-Sheets counterpart of `_csv_safe` above (находка
-    08-sheets-dashboard, квик 260919). Every gspread write in services/sheets.py passes an
+    08-sheets-dashboard, квик 260919). Every gspread write in services/sheets/sheets.py passes an
     EXPLICIT `value_input_option=RAW` (see that module's `_RAW` constant), and Google Sheets
     NEVER interprets a RAW cell as a formula/date/number — so a crafted cell like
     `=HYPERLINK(...)` is already inert on arrival, without prefixing a visible apostrophe.
@@ -3482,7 +3482,7 @@ def _sheet_safe(value):
     `'@username`, `'-` — phones/usernames no longer matched by filter/ВПР in the sheet.
 
     Used by handlers/registration.py's *_sheet_row builders (active/incomplete/party/short) and
-    by services/sheet_logs.py / services/polls.py's row builders — everywhere a row is destined
+    by services/sheets/sheet_logs.py / services/polls.py's row builders — everywhere a row is destined
     for Sheets, never for a .csv file. Kept as a named no-op (not just removing the call) so the
     row builders stay self-documenting about WHY no neutralization happens here."""
     return value
@@ -4021,7 +4021,7 @@ async def record_answer_history(
     Quick 260906-52m: `changed_at` хранится в UTC (`datetime.utcnow()`), формат строки
     `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/questions.py::_parse_stamp`,
     и `services/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
-    экранах (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
+    экранах (`services/sheets/sheet_logs.py`, `services/applications.py::_history_entry`,
     `handlers/applications/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
     квиком 260912-mcj переведена на московский `msk_now()` (раньше писала локальное время
     контейнера) — это по-прежнему РАЗНЫЕ семьи: `changed_at` остаётся UTC и переводится на
@@ -4041,7 +4041,7 @@ async def record_answer_history(
     # miniapp/. Ленивый импорт: db.py — нижний слой, не тянет services на импорте модуля.
     # Fail-soft: сбой планирования фоновой синхронизации не должен ронять запись правки.
     try:
-        from services.sheet_logs import schedule_sheet_logs_sync
+        from services.sheets.sheet_logs import schedule_sheet_logs_sync
         schedule_sheet_logs_sync()
     except Exception as e:
         logger.warning("sheet_logs autosync scheduling after record_answer_history failed: %s", e)
@@ -7260,7 +7260,7 @@ async def create_question(user_id: int, question_text: str) -> int:
     # Quick 260902-vth: та же врезка, что у record_answer_history (см. её комментарий) — сюда
     # заходит только источник «вопрос делегата», второй источник правки анкеты не касается.
     try:
-        from services.sheet_logs import schedule_sheet_logs_sync
+        from services.sheets.sheet_logs import schedule_sheet_logs_sync
         schedule_sheet_logs_sync()
     except Exception as e:
         logger.warning("sheet_logs autosync scheduling after create_question failed: %s", e)
@@ -8567,7 +8567,7 @@ async def auto_reject_names(*, since: str | None = None, city_scope=None) -> lis
 
 async def auto_reject_sheet_rows() -> tuple[list[str], list[list]]:
     """D-E: шапка + строки живых автоотклонённых для вкладки «🤖 Автоотказы» (полная
-    перезапись, `services.sheets.sync_named_worksheet`). Живая строка = не возвращена журналом
+    перезапись, `services.sheets.sheets.sync_named_worksheet`). Живая строка = не возвращена журналом
     И делегат всё ещё `status='rejected'` — та же дисциплина, что у `auto_reject_summary`
     (`live_only=True`)/`dashboard.queries.auto_reject_breakdown` (D-H). Правила — человеческими
     именами (та же логика имён, что в `auto_reject_summary` выше), ID правил в выгрузку не

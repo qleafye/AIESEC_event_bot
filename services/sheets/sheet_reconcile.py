@@ -17,7 +17,7 @@ is_past_season_row` — те же 482 импортированных делег�
 отдельным списком `unknown_tabs`, без разбора строк.
 
 Ни один читающий или пишущий вызов НЕ создаёт вкладку: `_read_tab_snapshot_sync` резолвит через
-`services.sheets._open_named_or_main_sync` (тот же no-create контракт, что у `find_rows_by_id`/
+`services.sheets.sheets._open_named_or_main_sync` (тот же no-create контракт, что у `find_rows_by_id`/
 `delete_row_by_id`, Phase 33 review R1 — памятка `standalone-script-sheet-traps`, находка 21.09:
 разовый скрипт завёл пустую вкладку на проде именно через auto-create по имени). Шаг 2 —
 массовые исправления (`apply_append_missing`/`apply_fix_statuses`) ПЕРЕСЧИТЫВАЮТ расхождения
@@ -36,17 +36,17 @@ import logging
 import gspread
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
 from domain.settings.schema import get_setting_typed
 from domain.regform.engine import is_past_season_row
 from domain.regform.labels import STATUS_LABELS
 from services.decision_delivery import summarize_deliveries
-import services.sheets as sheets_service
+import services.sheets.sheets as sheets_service
 
 logger = logging.getLogger(__name__)
 
-STATUS_HEADER = sheets_service.STATUS_HEADER  # "Статус" — общий с services/sheets.py
+STATUS_HEADER = sheets_service.STATUS_HEADER  # "Статус" — общий с services/sheets/sheets.py
 
 _TRACK_LABEL = {"main": "полная анкета", "short": "короткая анкета", "party": "party"}
 
@@ -264,7 +264,7 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
             status_col_by_title[title] = -1
             continue
 
-        # Та же эвристика, что `services/sheets.py::_ensure_header_sync` уже применяет при
+        # Та же эвристика, что `services/sheets/sheets.py::_ensure_header_sync` уже применяет при
         # живом аппенде: первая ячейка — число (telegram_id) -> заголовка нет, это данные
         # (инцидент 13.09: «СПб Акция» без заголовков, lost-applications-260914).
         first_cell = (values[0][0] if values[0] else "").strip()
@@ -368,7 +368,7 @@ def _scope_key(city_scope: tuple | None) -> str:
 
 
 async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
-    """Дописывает недостающие строки ТОЛЬКО на существующие вкладки (`services.sheets::
+    """Дописывает недостающие строки ТОЛЬКО на существующие вкладки (`services.sheets.sheets::
     append_to_existing_named_sheet` — никогда не создаёт, Phase 33 review R1), с шапкой
     (`ensure_sheet_header`/`ensure_named_sheet_header` перед первой строкой на вкладку — та же
     последовательность, что `sync_sheet`, заодно чинит «вкладку без заголовков», если она
@@ -442,7 +442,7 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
 
 async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
     """Правит статус ТОЛЬКО там, где на вкладке РОВНО одна строка делегата (дубли — только
-    показываем, руками) — тем же путём, что решение модератора (`services.sheets::
+    показываем, руками) — тем же путём, что решение модератора (`services.sheets.sheets::
     update_status_in_sheet`). По одному с паузой; сбой одного не прерывает остальные.
 
     Неожиданный сбой ловится ЗДЕСЬ же (см. `apply_append_missing`'s докстринг — тот же посыл):

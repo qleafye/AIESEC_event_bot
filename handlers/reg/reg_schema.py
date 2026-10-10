@@ -203,7 +203,7 @@ def _sheet_details(data: dict) -> str:
 
 # status код БД → человеческий ярлык в колонке «Статус» (Таня, п.5). «Новая» = ещё не
 # смотрели (pending), «Одобрена»/«Отклонена» — после решения менеджера. Совпадает со
-# списком значений выпадашки в services.sheets.STATUS_LABELS.
+# списком значений выпадашки в services.sheets.sheets.STATUS_LABELS.
 # Сам словарь — в корневом domain/regform/labels.py (Phase 19), импорт вверху модуля.
 
 
@@ -307,7 +307,7 @@ SHEET_COLUMNS = [
     ("Дата план. оплаты", "reg_q_payment_date", lambda d: d.get("payment_plan_date") or "-"),
     # Форум-ночь B2 (идея №17): точка прихода — В КОНЦЕ схемы, не посреди (см. предупреждение
     # в докстринге модуля выше: старт бота переписывает шапку листа, колонка посреди сдвигает
-    # уже записанные строки). Отметку пишет джоба очереди «Пришёл» (services/sheet_arrival_sync.py),
+    # уже записанные строки). Отметку пишет джоба очереди «Пришёл» (services/sheets/sheet_arrival_sync.py),
     # но ЛЮБАЯ полная перезапись строки (правка анкеты, перевод в город, пересборка, синхронизация)
     # пишет и эту ячейку — поэтому значение берётся из базы тем же правилом, что у очереди: строители
     # строки кладут его в `d[ARRIVED_CELL_KEY]` (`with_arrived_cell` / `arrived_cells_map`). Раньше
@@ -316,7 +316,7 @@ SHEET_COLUMNS = [
     # 29.09: «В чате» — ПОСЛЕДНЕЙ, после «Пришёл», по тому же правилу «новая колонка только в
     # конец». Значение из базы (`services.chat_tracking.chat_cell_values`): строители строки
     # кладут его в `d[CHAT_CELL_KEY]` (`with_chat_cell` / `chat_cells_map`), живые изменения
-    # дописывает очередь `sheet_chat_queue` (`services/sheet_chat_sync.py`).
+    # дописывает очередь `sheet_chat_queue` (`services/sheets/sheet_chat_sync.py`).
     ("В чате", None, lambda d: d.get(CHAT_CELL_KEY) or "-"),
 ]
 
@@ -328,7 +328,7 @@ async def arrived_cells_map() -> dict[int, str]:
     """{telegram_id: значение ячейки «Пришёл»} для всех, у кого есть вход, — ОДИН запрос к базе
     на массовую пересборку/синхронизацию листа."""
     from database.db import first_entry_scanned_at_map
-    from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
+    from services.sheets.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
 
     stamps = await first_entry_scanned_at_map()
     offsets = await city_offsets_by_user(stamps)
@@ -341,7 +341,7 @@ async def with_arrived_cell(data: dict) -> dict:
     if ARRIVED_CELL_KEY in data or not data.get("telegram_id"):
         return data
     from database.db import first_entry_scanned_at
-    from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
+    from services.sheets.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user
 
     tid = int(data["telegram_id"])
     at = await first_entry_scanned_at(tid)

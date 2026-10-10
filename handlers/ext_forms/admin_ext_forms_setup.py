@@ -13,11 +13,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database import ext_forms_db as xdb
 from handlers.admin import router
 from handlers.ext_forms.admin_ext_forms import _e, _show, render_form_card
-from services import sheets
+from services.sheets import sheets
 from services.ext_forms.ext_forms_google import list_tabs as google_list_tabs
 from services.ext_forms.ext_forms_mirror import create_mirror_tab
 
@@ -51,7 +51,7 @@ def _cut(title: str) -> str:
 async def protected_tab_titles(form: dict) -> set[str]:
     """Вкладки, в которые зеркало писать нельзя: основная и служебные вкладки бота, вкладки
     других форм и таблица ответов самой Google-формы (иначе зеркало читалось бы как ответы)."""
-    from services.sheet_reconcile import _known_non_delegate_tab_titles
+    from services.sheets.sheet_reconcile import _known_non_delegate_tab_titles
     from domain.settings.ops import current_tab_titles
 
     hidden: set[str] = {t.title for t in await current_tab_titles()}
