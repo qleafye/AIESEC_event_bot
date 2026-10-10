@@ -26,6 +26,7 @@ from config import config
 from domain.cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
 from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
 from handlers.admin import router
+from handlers.applications import admin_reject_master as master  # рубильник выключен — строка в карточке
 from handlers.settings.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
@@ -316,7 +317,7 @@ async def arr_toggle_enabled(callback: types.CallbackQuery):
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     if new_enabled:
-        await callback.answer("✅ Правило включено и теперь действует на подходящие заявки.", show_alert=True)
+        await callback.answer(await master.enabled_alert(callback.from_user.id), show_alert=True)
     else:
         await callback.answer(
             "🚫 Правило выключено, но осталось в списке — включить обратно можно в любой момент.",
@@ -412,6 +413,8 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
         else ("✅ Включено" if rule.get("enabled") else "🚫 Выключено")
     )
     lines.append(status_line)
+    warn_lines, warn_buttons = await master.card_warning(admin_id, rule_id, rule)
+    lines.extend(warn_lines)
     if rule.get("paused_reason"):
         lines.append(
             f"Опиралось на вопрос «{html_module.escape(str(rule['paused_reason']))}», а он "
@@ -464,6 +467,7 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
     buttons.append([InlineKeyboardButton(text="✏ Имя правила", callback_data=f"arr_name:{rule_id}")])
     buttons.append([InlineKeyboardButton(text="✏ Текст отказа", callback_data=f"arr_text:{rule_id}")])
     buttons.append([InlineKeyboardButton(text="🔢 Сколько заявок попадёт", callback_data=f"arc_dry:{rule_id}")])
+    buttons.extend(warn_buttons)
     buttons.append([InlineKeyboardButton(
         text=("🚫 Выключить" if rule.get("enabled") else "✅ Включить"),
         callback_data=f"arc_gate:{rule_id}",
