@@ -2686,6 +2686,10 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     )
 
     await state.clear()
+    # Правило автоотказа уже отклонило заявку и прислало делегату текст отказа (эффекты
+    # финала). «Поздравляем, заявка принята» и оффер реф-ссылки поверх отказа противоречат ему.
+    if result.get("auto_rejected"):
+        return
     # Tatiana: «поздравляем»-скрипт приходит сразу после регистрации — всем (и pending, и
     # approved). Approve/reject досылают свои отдельные скрипты позже.
     if result["mode"] == "new":
