@@ -4,7 +4,7 @@ import asyncio
 
 from config import config
 from database import db
-from services import i18n
+from services.i18n import i18n
 from tests._dbtpl import fast_init_db
 
 UID = 777001

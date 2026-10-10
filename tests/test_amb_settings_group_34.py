@@ -8,7 +8,7 @@ from config import config
 from database import db
 from handlers.settings import admin_sections as sec
 from handlers.settings import admin_settings as st
-from services import i18n_sources
+from services.i18n import i18n_sources
 import domain.settings.ops as settings_ops
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

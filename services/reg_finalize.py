@@ -1033,7 +1033,7 @@ async def post_finalize(
 
     if is_new_auto_reject:
         try:
-            from services.i18n import context as _i18n_context, tr as _i18n_tr
+            from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
             from services.application_effects import apply_decision_effects
             from services.applications import record_decision
             from services.reject_journal import AUTO_DECIDED_BY

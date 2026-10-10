@@ -82,7 +82,7 @@ def test_module_off_same_as_before(client):
 
 
 def test_english_lines(client, monkeypatch):
-    from services import i18n
+    from services.i18n import i18n
     _patch_view(monkeypatch, _view(
         state="active_pack", status_key="amb_status_pack_text", referral_points=5, is_ambassador=True))
     ru_status = _default("amb_status_pack_text")

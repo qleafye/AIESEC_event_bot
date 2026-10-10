@@ -92,7 +92,7 @@ def test_upsert_translation_machine_updates_machine(tmp_path):
 
 
 def _hash(text: str) -> str:
-    """Дублирует src_hash из services/i18n.py (задача 3) намеренно — тест хранилища
+    """Дублирует src_hash из services/i18n/i18n.py (задача 3) намеренно — тест хранилища
     (задача 1) не должен зависеть от ядра перевода, которое появится позже в этом же плане;
     контракт хеша (`sha256(strip(text))[:32]`) фиксирован тестами задачи 3."""
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:32]

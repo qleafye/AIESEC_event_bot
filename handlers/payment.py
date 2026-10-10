@@ -22,12 +22,12 @@ from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260917-en: экраны оплаты — group "pay" теперь в делегатском корпусе
-# (services/i18n_sources.py); reg_i18n не импортирует handlers.registration на уровне модуля
+# (services/i18n/i18n_sources.py); reg_i18n не импортирует handlers.registration на уровне модуля
 # (лениво внутри say()), цикла нет. bot.send_message-вызовы этого файла не идут через
 # say()/_safe_answer (нет message-объекта в start_payment_step) — контекст резолвим напрямую
-# через services.i18n.context(telegram_id), tr_text/tr_kb/tr_fmt применяем вручную.
+# через services.i18n.i18n.context(telegram_id), tr_text/tr_kb/tr_fmt применяем вручную.
 from handlers.i18n import reg_i18n
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def _format_requisites_block(requisites: str | None, lang: str = "ru", tr_map: d
 
     Квик 260917-en: `requisites` сам переводится ТОЛЬКО если это общий `payment_requisites`
     (одна строка, в делегатском корпусе) — построчный `payment_requisites_by_lc` исключён из
-    корпуса (services/i18n_sources.py::_NON_LANGUAGE_PAY_KEYS, хеш подстроки не совпал бы с
+    корпуса (services/i18n/i18n_sources.py::_NON_LANGUAGE_PAY_KEYS, хеш подстроки не совпал бы с
     хешем целой строки «ЛК | реквизиты»), поэтому для него `tr_text` fail-soft отдаёт русский
     как есть — известное ограничение, не баг."""
     if not requisites or not requisites.strip():
@@ -360,7 +360,7 @@ async def _show_payment_details(
     penalties_block = ""
     if penalties and penalties.strip():
         # Квик 260917-en: `penalty_schedule` — данные (дата|сумма), не язык (см.
-        # services/i18n_sources.py::_NON_LANGUAGE_PAY_KEYS) — переводим только обёртку.
+        # services/i18n/i18n_sources.py::_NON_LANGUAGE_PAY_KEYS) — переводим только обёртку.
         until_word = reg_i18n.tr_text("до", lang, tr_map)
         remaining_word = reg_i18n.tr_text("остаток", lang, tr_map)
         lines = []

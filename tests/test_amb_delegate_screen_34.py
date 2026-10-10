@@ -199,8 +199,8 @@ class _Bot:
 
 def _screen(uid, lang="ru"):
     from handlers import user_actions as ua
-    from services.i18n_form_manual import FORM_DEFAULT_EN
-    from services.i18n import src_hash
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n import src_hash
     tr_map = {src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()} if lang == "en" else {}
     return _run(ua._referral_screen(uid, _Bot(), lang, tr_map))
 

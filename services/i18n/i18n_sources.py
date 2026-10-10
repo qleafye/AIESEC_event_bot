@@ -285,7 +285,7 @@ def code_literals() -> list[tuple[str, str]]:
     # `tests/test_i18n_sources_27.py` держит обе строки байт-в-байт списком, «сверено на дату
     # плана» (тот же приём, что уже используется в domain/i18n/ui_en.py для validate_date_range).
     # DEFAULT_START_RETURNING_TEXT несёт {season} — плейсхолдер сентинелится автоматически
-    # (services/i18n_glossary.py::_TAG_OR_PLACEHOLDER_RE), отдельно защищать не нужно.
+    # (services/i18n/i18n_glossary.py::_TAG_OR_PLACEHOLDER_RE), отдельно защищать не нужно.
     items.append((
         "lit:registration.DEFAULT_START_REGISTERED_TEXT",
         "С возвращением! Ты уже зарегистрирован(а) — всё нужное в меню ниже \U0001f447",
@@ -573,7 +573,7 @@ def code_literals() -> list[tuple[str, str]]:
     # Ядро без «📍 » — именно его ищет `tr_kb` (ведущий эмодзи снимается до поиска).
     items.append(("lit:sos.location_button_core", "Отправить геопозицию"))
     # Шапки ответа организаторов делегату (SOS и «❓ Задать вопрос»): уходят из чужого
-    # чата через `services.i18n.tr_for_user`, АСТ-сторож их не видит.
+    # чата через `services.i18n.i18n.tr_for_user`, АСТ-сторож их не видит.
     items.append(("lit:sos.org_reply_header", "Ответ по SOS #{id}:"))
     items.append(("lit:questions.org_reply_header", "Ответ от организаторов:"))
 

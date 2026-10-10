@@ -23,7 +23,7 @@
 
 Тексты делегатской стороны — через `reg_i18n.say`/`reg_i18n.tr_text` (тот же перевод, что
 остальные экраны делегатского чата); литерал алерта «Эта оценка тебе недоступна.»
-зарегистрирован в `services/i18n_sources.py::code_literals()` (сторож
+зарегистрирован в `services/i18n/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем)."""
 import html as html_module
 import logging

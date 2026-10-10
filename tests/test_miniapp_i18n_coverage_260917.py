@@ -1,9 +1,9 @@
 """Задача «делегатский интерфейс Mini App на английском» — аудит покрытия: для каждого
 делегатского экрана (хаб/статус/задания/монеты/рейтинг/профиль/FAQ/обзор перед отправкой/
 навигация приложения через `/app/api/me`), при lang=en, ключевые тексты интерфейса проходят
-через `services.i18n.tr()`, а не уходят к клиенту русскими байт-в-байт.
+через `services.i18n.i18n.tr()`, а не уходят к клиенту русскими байт-в-байт.
 
-Приём — тот же, что `tests/test_i18n_miniapp_27.py::_fake_tr`: подменяем `services.i18n.tr` на
+Приём — тот же, что `tests/test_i18n_miniapp_27.py::_fake_tr`: подменяем `services.i18n.i18n.tr` на
 детерминированный маркер `EN:<текст>` — тест проверяет ФАКТ прогона через `tr()` (wiring), а не
 качество конкретного перевода (это отдельная забота ручных/машинных словарей). Харнесс — тот
 же `TestClient`, что и остальные тесты Mini App (`tests/test_miniapp_routes.py`).
@@ -15,7 +15,7 @@ import asyncio
 import pytest
 
 from database import db as bot_db
-from services import i18n as i18n_mod
+from services.i18n import i18n as i18n_mod
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,

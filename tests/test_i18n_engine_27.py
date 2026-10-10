@@ -17,7 +17,7 @@ import types
 
 import pytest
 
-from services.i18n_engine import EmbeddedArgosDriver
+from services.i18n.i18n_engine import EmbeddedArgosDriver
 
 
 class _FakePackage:

@@ -379,7 +379,7 @@ async def send_offers(city: str | None) -> dict:
             continue
 
         from handlers.i18n import reg_i18n
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)
         source_city_label = await _cities.city_label(_cities.normalize_city(user.get("event_city")))

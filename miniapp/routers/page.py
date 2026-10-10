@@ -34,7 +34,7 @@ from dashboard.db import read_conn
 from domain.regform.labels import STATUS_LABELS
 from domain.settings.schema import SETTINGS_SCHEMA
 
-from services import i18n
+from services.i18n import i18n
 
 import shared.web_theme as web_theme
 from miniapp.deps import (

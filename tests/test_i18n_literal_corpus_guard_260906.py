@@ -2,7 +2,7 @@
 «русский литерал ушёл в перевод, но забыт в корпусе». Находка 1 первого прогона
 (`handlers/reg/reg_resume.py::offer_resume` звал `reg_i18n.say(message, "У тебя есть
 незаконченная анкета — что дальше?", ...)`, но сам литерал не значился ни в
-`services/i18n_sources.py::code_literals()` (ярус B), ни в `i18n_ui_en.UI_EN` (ярус A)) —
+`services/i18n/i18n_sources.py::code_literals()` (ярус B), ни в `i18n_ui_en.UI_EN` (ярус A)) —
 класс бага, который `tests/test_registration_send_guard_260906.py` не ловит: та проверка
 смотрит на ШОВ (прошёл ли аргумент через `reg_i18n.*`), не на КОРПУС (есть ли у переведённого
 текста вообще шанс найти перевод в БД).
@@ -13,7 +13,7 @@
 несущий текст (для `say`/`tr_for` — второй позиционный, получатель первым; для `tr_text`/
 `tr_fmt` — первый), и если это ГОЛЫЙ строковый литерал (не переменная/f-строка — статически
 такие уже покрыты `code_literals()`/registry по построению, см. докстринг
-`services/i18n_sources.py`) с кириллицей — литерал обязан быть либо в `code_literals()`
+`services/i18n/i18n_sources.py`) с кириллицей — литерал обязан быть либо в `code_literals()`
 (ярус B, машинный перевод), либо в `i18n_ui_en.UI_EN` (ярус A, рукописный). Новый литерал,
 который не завели ни туда, ни туда, — тихая дыра ровно того класса, что нашёл стендовый UAT."""
 from tests._paths import REPO_ROOT
@@ -21,7 +21,7 @@ import ast
 from pathlib import Path
 
 from domain.i18n.ui_en import UI_EN
-from services import i18n_sources
+from services.i18n import i18n_sources
 
 ROOT = REPO_ROOT
 
@@ -104,7 +104,7 @@ def test_every_translated_literal_is_in_corpus_or_tier_a():
 
     assert not violations, (
         "Литералы переведены на отправке (reg_i18n.say/tr_text/tr_for/tr_fmt), но отсутствуют "
-        "и в services/i18n_sources.py::code_literals() (ярус B), и в i18n_ui_en.UI_EN (ярус A) "
+        "и в services/i18n/i18n_sources.py::code_literals() (ярус B), и в i18n_ui_en.UI_EN (ярус A) "
         "— делегат с lang != ru увидит русский текст (fail-soft тихо промолчит, тест — нет):\n  "
         + "\n  ".join(violations)
     )

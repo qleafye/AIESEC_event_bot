@@ -12,7 +12,7 @@ D-29 (владелец, 24.09): своей кнопки меню больше н
 `from handlers.user_actions import router`; импортирован ХВОСТОМ `handlers/user_actions.py`
 (нужен для callback-хендлеров дня ниже, message-хендлера теперь нет). Тексты — через
 `reg_i18n.tr_text` (тот же перевод, что остальные экраны делегатского чата), литералы
-зарегистрированы в `services/i18n_sources.py::code_literals()` (сторож
+зарегистрированы в `services/i18n/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем)."""
 import html
 

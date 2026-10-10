@@ -76,7 +76,8 @@ import domain.regform.engine as reg_engine
 from domain.cities import cities_module_on, city_label as resolve_city_label, normalize_city
 from database.db import get_user
 from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
-from services import i18n, reg_edit_policy
+from services.i18n import i18n
+from services import reg_edit_policy
 from services.applications import format_edited_date
 from services.nextcloud import file_name_from_link
 from domain.settings.schema import get_setting_typed

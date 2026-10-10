@@ -7,10 +7,10 @@ from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 from domain.cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
-# проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
+# проекта (инвариант), цикла тут нет. services.i18n.i18n — aiogram-free/handlers-free (см. его
 # докстринг), тоже без цикла.
 from domain.i18n.ui_en import MENU_EN
-from services.i18n import resolve_lang
+from services.i18n.i18n import resolve_lang
 # Подписи кнопок меню — настройки; CONFERENCE_MENU_LABELS/LEGACY_MENU_TEXTS реэкспортом
 # (на них ссылаются старые импорты).
 from keyboards.menu_dynamic import (  # noqa: F401
@@ -192,7 +192,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         code = None
 
     # Квик 260912 (W5, Задача 3): язык делегата резолвится ровно как везде в проекте --
-    # `services.i18n.resolve_lang`, `language_code` клиента здесь намеренно не передаётся
+    # `services.i18n.i18n.resolve_lang`, `language_code` клиента здесь намеренно не передаётся
     # (D-06 уже отработал на /start, здесь ничего не угадываем повторно). Исход "ask"
     # (модуль включён, выбор ещё не сохранён) трактуется как "ru" -- то же самое, что и любая
     # ошибка резолюции: меню важнее языка.

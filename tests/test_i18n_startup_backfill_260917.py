@@ -1,4 +1,4 @@
-"""Квик 260917-en (живая проверка 17.09, находка 1) — корпус анкеты (`services/i18n_sources.py
+"""Квик 260917-en (живая проверка 17.09, находка 1) — корпус анкеты (`services/i18n/i18n_sources.py
 ::corpus()`) расширяется кодом (новая группа `DELEGATE_GROUPS`, новый литерал), а `bulk_seed()`
 исторически звался ТОЛЬКО в момент включения модуля (`delegate_lang_enabled` -> "on"). На
 стенде, где модуль включён давно, расширение корпуса в очередь не попадало никогда.
@@ -17,8 +17,8 @@ from pathlib import Path
 
 from config import config
 from database import db
-from services import i18n_worker
-from services.i18n import src_hash
+from services.i18n import i18n_worker
+from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
 ROOT = REPO_ROOT
@@ -37,7 +37,7 @@ def test_bulk_seed_skips_already_machine_translated_row(tmp_path):
     бота), хотя перевод для неё уже есть."""
     _db_ready(tmp_path)
 
-    from services.i18n_sources import corpus
+    from services.i18n.i18n_sources import corpus
 
     items = asyncio.run(corpus())
     assert items
@@ -62,7 +62,7 @@ def test_bulk_seed_still_queues_genuinely_untranslated_rows(tmp_path):
     queued = asyncio.run(i18n_worker.bulk_seed())
     assert queued > 0
 
-    from services.i18n_sources import corpus
+    from services.i18n.i18n_sources import corpus
 
     items = asyncio.run(corpus())
     assert queued == len(items)
@@ -116,8 +116,8 @@ def test_main_py_calls_bulk_seed_guarded_by_module_toggle():
     `bulk_seed()` только внутри ветки `delegate_lang_enabled` == "on", а не безусловно —
     иначе выключенный модуль на каждом старте зря бы читал БД по всему корпусу."""
     source = (ROOT / "main.py").read_text(encoding="utf-8")
-    assert "from services.i18n_worker import bulk_seed" in source
-    idx = source.index("from services.i18n_worker import bulk_seed")
+    assert "from services.i18n.i18n_worker import bulk_seed" in source
+    idx = source.index("from services.i18n.i18n_worker import bulk_seed")
     # Гейт `delegate_lang_enabled` должен стоять НЕПОСРЕДСТВЕННО перед вызовом (в этом же
     # try-блоке), не где-то ещё в файле — окно в 200 символов покрывает "if await
     # get_setting_typed(...) == "on":" сразу над импортом.
