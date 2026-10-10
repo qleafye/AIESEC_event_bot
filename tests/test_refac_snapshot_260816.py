@@ -2403,18 +2403,18 @@ def test_snapshot_total_handler_count_is_292():
     # Внешние формы (Яндекс/Google): +42 хендлера admin — раздел «📝 Внешние формы», ключи
     # приложения Яндекса (ExtFormAppKeys) и фильтр рассылки по форме (extff_*); существующий
     # порядок не менялся, только вставки (984 -> 1026).
-    # Делегации вузов: +8 хендлеров admin — экран «🏫 Делегации» (handlers/admin_delegations.py,
+    # Делегации вузов: +8 хендлеров admin — экран «🏫 Делегации» (handlers/delegations/admin_delegations.py,
     # импорт последним в хвосте admin.py): admin_delegations/dlg_univ/dlg_form_pick/dlg_form/
     # dlg_keys/dlg_key/dlg_keyset/dlg_keys_ok; только вставки в хвост (1026 -> 1034).
     # Делегации вузов, настройки с экрана: +2 admin.message (state:DelegationEdit:* — ввод даты
     # отсечки и текста делегату) в хвост message и +8 admin.callback_query (dlg_cancel/dlg_game/
     # dlg_cutoff/dlg_courses/dlg_course/dlg_courses_done/dlg_text/dlg_text_pick) сразу после
     # dlg_keys_ok; только вставки (1034 -> 1044).
-    # Делегации вузов, лист UR REGS (handlers/admin_delegations_sheet.py, импорт из хвоста
+    # Делегации вузов, лист UR REGS (handlers/delegations/admin_delegations_sheet.py, импорт из хвоста
     # admin_delegations.py): +7 admin.callback_query (dlg_sheet/dlg_tab/dlg_check/dlg_write_on/
     # dlg_write_yes/dlg_write_off/dlg_write_off_yes) сразу после dlg_text_pick; одна чистая
     # вставка, сверено SequenceMatcher'ом (1044 -> 1051).
-    # Делегации вузов, проверка курса и ручная привязка (handlers/admin_delegations_review.py,
+    # Делегации вузов, проверка курса и ручная привязка (handlers/delegations/admin_delegations_review.py,
     # импорт из хвоста admin_delegations.py после sheet): +1 admin.message
     # (state:DelegationLink:* — кого привязать) сразу после dlg_text_input и +7
     # admin.callback_query (dlg_review/dlg_card/dlg_ta/dlg_absent/dlg_link/dlg_pick/dlg_link_yes)
