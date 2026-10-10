@@ -185,7 +185,7 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
     if not _file_broadcast_allowed(callback.from_user.id):
-        await callback.answer("Рассылка по файлу доступна только владельцу бота.", show_alert=True)
+        await callback.answer("Рассылка по файлу — только суперадмину. Выберите получателей кнопками выше.", show_alert=True)
         return
     file_path = BROADCAST_TARGET_FILE
 
