@@ -625,6 +625,7 @@ _SOS_DELAY_FIELDS = {
     "reopen": "sos_reopen_window_minutes",
     "claimed": "sos_claimed_remind_minutes",
     "collecting": "sos_collecting_timeout_minutes",
+    "escalation": "sos_escalation_minutes",  # 10.10: правился только в приложении
 }
 
 _SOS_TEXT_FIELDS = {
@@ -636,6 +637,7 @@ _SOS_TEXT_FIELDS = {
     "expired": ("sos_collecting_expired_text", "🆘 Сессия дозаписи истекла"),
     "remind": ("sos_claimed_remind_text", "⏰ Напоминание взявшему"),
     "stale": ("sos_claimed_escalation_text", "⏰ Взяли, но не решили — менеджерам"),
+    "sent": ("sos_sent_text", "🆘 Сигнал отправлен"),
 }
 
 
@@ -691,6 +693,11 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
     except (TypeError, ValueError):
         collecting = sos_service.DEFAULT_COLLECTING_TIMEOUT_MINUTES
     contact = await get_setting_typed_for_city("sos_fallback_contact_text", code if per_city_ctx else None)
+    try:
+        escalation = int(await get_setting_typed_for_city("sos_escalation_minutes", code if per_city_ctx else None)
+                         or sos_service.DEFAULT_ESCALATION_MINUTES)
+    except (TypeError, ValueError):
+        escalation = sos_service.DEFAULT_ESCALATION_MINUTES
 
     lines.append(f"⏱ Окно повторного открытия: {reopen} мин")
     lines.append(
@@ -699,6 +706,7 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
         + " мин, после третьего — сообщение менеджерам"
     )
     lines.append(f"⏱ Сколько ждать дозапись: {collecting} мин")
+    lines.append(f"⏱ Никто не нажал «Беру» — напомнить через {escalation} мин")
     lines.append(f"📞 Экстренный контакт: {html_module.escape(contact) if contact else 'не задан'}")
     # Сколько дней видна кнопка SOS = длина форума; сама настройка живёт рядом с датой форума
     # («🎪 Событие/Медиа»), здесь — только ссылка на неё.
@@ -723,6 +731,7 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
     _delay_row("reopen", reopen, "⏱ Окно повторного открытия:")
     _delay_row("claimed", claimed, "⏱ Напоминание взявшему:")
     _delay_row("collecting", collecting, "⏱ Сколько ждать дозапись:")
+    _delay_row("escalation", escalation, "⏱ Никто не нажал «Беру» — напомнить через:")
 
     if not can_edit_percity:
         lines.append("")
@@ -737,6 +746,8 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Уже есть открытый — дополнить", callback_data="asos_settings_edit:followup")])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Дописывание завершено", callback_data="asos_settings_edit:done")])
     buttons.append([InlineKeyboardButton(text="✏️ Изменить: 🆘 Сессия дозаписи истекла", callback_data="asos_settings_edit:expired")])
+    for field in ("sent", "resolved", "remind", "stale"):  # 10.10: эти четыре правились только в приложении
+        buttons.append([InlineKeyboardButton(text=f"✏️ Изменить: {_SOS_TEXT_FIELDS[field][1]}", callback_data=f"asos_settings_edit:{field}")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_sos")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)

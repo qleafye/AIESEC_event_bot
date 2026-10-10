@@ -135,6 +135,26 @@ def test_settings_screen_shows_collecting_timeout_preset_buttons(tmp_path):
     assert "asos_settings_edit:expired" in cbs
 
 
+def test_every_sos_text_and_timing_has_a_button(tmp_path):
+    """10.10: три текста из `_SOS_TEXT_FIELDS` были в словаре, но без кнопки, — правились
+    только в приложении. Каждый текст и каждый тайминг словарей экрана обязан иметь кнопку."""
+    _ready(tmp_path)
+    text, kb = _run(admin_sos.render_sos_settings_screen(SUPERADMIN_ID))
+    cbs = _cbs(kb)
+    for field in admin_sos._SOS_TEXT_FIELDS:
+        assert f"asos_settings_edit:{field}" in cbs, field
+    for field in admin_sos._SOS_DELAY_FIELDS:
+        assert f"asos_delay_custom:{field}" in cbs, field
+    assert "Никто не нажал «Беру» — напомнить через 5 мин" in text  # дефолт эскалации
+
+
+def test_set_delay_escalation_writes_its_key(tmp_path):
+    _ready(tmp_path)
+    callback = _FakeCallback("asos_set_delay:escalation:10", user_id=SUPERADMIN_ID)
+    _run(admin_sos.asos_set_delay(callback))
+    assert _run(db.get_setting("sos_escalation_minutes")) == "10"
+
+
 def test_set_delay_preset_collecting_module_off_writes_global_key(tmp_path):
     _ready(tmp_path)
     callback = _FakeCallback("asos_set_delay:collecting:15", user_id=SUPERADMIN_ID)
