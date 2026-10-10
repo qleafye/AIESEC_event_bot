@@ -4,7 +4,7 @@
 и отдельная кнопка «применить». Логика — `services/reject_retro.py`.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; импортируется хвостом
-`handlers/admin_sections.py`. Право — как у экрана правил (`settings`); применять может только
+`handlers/settings/admin_sections.py`. Право — как у экрана правил (`settings`); применять может только
 руководитель без привязки к городу (правила действуют на все города сразу).
 """
 from __future__ import annotations

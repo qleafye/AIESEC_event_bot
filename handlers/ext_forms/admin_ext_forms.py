@@ -40,7 +40,7 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
 
 
 def _back(callback_data: str = "admin_ext_forms") -> InlineKeyboardButton:
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     return back_button(callback_data)
 
 

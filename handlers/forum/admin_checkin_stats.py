@@ -22,7 +22,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 import shared.arrival_stats as arrival_stats
 from domain.cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
 from handlers.admin import router
-from handlers.admin_core import _admin_city_scope
+from handlers.settings.admin_core import _admin_city_scope
 from services.checkin_arrival import arrival_report
 from services.timeutil import msk_now
 

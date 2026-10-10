@@ -12,7 +12,7 @@ _resolve_screen_city`/`handlers.forum.admin_volunteer_invite.volinvite_entry` (�
 `lost_found_enabled` (дефолт OFF) — свой экран здесь (`lostfound_cfg:*`), статусная СТРОКА —
 хаб «🎪 Форум: функции» (`handlers/forum/admin_forum_functions.py`, правка аддитивная — см. его
 докстринг). Текст поста — общий текстовый редактор («📋 Заявки»,
-`handlers/admin_settings.py::_APPS_FIELD_ORDER`), group "apps" (НЕ переводится, см.
+`handlers/settings/admin_settings.py::_APPS_FIELD_ORDER`), group "apps" (НЕ переводится, см.
 докстринг `settings_schema.SETTINGS_SCHEMA["lost_found_post_text"]`).
 
 Своего `Router()` нет — декорирует `handlers.admin.router`, тот же приём, что

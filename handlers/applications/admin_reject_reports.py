@@ -6,7 +6,7 @@
 Форма шва — та же, что у соседей раздела (`handlers/applications/admin_reject_rules.py`,
 `handlers/applications/admin_reject_journal.py`): своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `handlers.admin.router`, каждый декоратор — в одну строку (инвариант cap-теста).
-`handlers.admin` — на уровне модуля; `handlers.admin_sections` (`back_button`) — лениво внутри
+`handlers.admin` — на уровне модуля; `handlers.settings.admin_sections` (`back_button`) — лениво внутри
 функций, тот же приём, что у каждого соседнего шва.
 
 Капа — ТА ЖЕ, что у экрана правил (`"settings"`, см. `handlers/access/admin_caps.py`): в отличие от
@@ -16,7 +16,7 @@
 `handlers/applications/admin_reject_rules.py`).
 
 Правка обоих ключей (`auto_reject_sheet_tab`, `reg_submit_digest_max_minutes`) идёт через ОБЩИЙ
-редактор `settings_edit:{key}` (handlers/admin_settings.py) — второй редактор здесь не
+редактор `settings_edit:{key}` (handlers/settings/admin_settings.py) — второй редактор здесь не
 заводится (D-I: правится кнопками, но ввод произвольного значения — общий механизм проекта)."""
 import html as html_module
 
@@ -62,7 +62,7 @@ async def render_reports_screen(admin_id: int) -> tuple[str, InlineKeyboardMarku
     if tab:
         buttons.append([InlineKeyboardButton(text="🔄 Обновить вкладку сейчас", callback_data="arp_sync")])
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_reject_rules")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)

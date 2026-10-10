@@ -9,7 +9,7 @@
 
 Форма шва — `handlers/access/admin_purge.py`: своего `Router()` нет, `from handlers.admin import
 router`, декоратор — в одну строку (инвариант cap-теста `tests/test_roles_phase8.py`).
-`handlers.admin_settings`/`handlers.admin_sections` импортируются ЛЕНИВО внутри функции —
+`handlers.settings.admin_settings`/`handlers.settings.admin_sections` импортируются ЛЕНИВО внутри функции —
 на уровне модуля они замкнули бы цикл (admin_sections -> admin_settings -> хвост admin_sections
 -> этот модуль, D-03)."""
 import html as html_module
@@ -92,8 +92,8 @@ async def render_quiet_hours_screen(admin_id: int) -> tuple[str, InlineKeyboardM
 
     text = "\n".join(lines)
 
-    from handlers.admin_sections import back_button  # ленивый шов (D-03)
-    from handlers.admin_settings import settings_toggle_rows  # ленивый шов (D-03)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (D-03)
+    from handlers.settings.admin_settings import settings_toggle_rows  # ленивый шов (D-03)
 
     toggles = await settings_toggle_rows(admin_id, header_code=header_code)
     buttons: list[list[InlineKeyboardButton]] = [row for row in toggles.get("toggle_quiet_hours", [])]

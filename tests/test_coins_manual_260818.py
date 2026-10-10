@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.game import admin_gamification
 from handlers.access.admin_caps import required_capability
 from handlers.states import CoinsManual, GameReview

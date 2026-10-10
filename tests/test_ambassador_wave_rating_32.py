@@ -7,7 +7,7 @@
   `wave_rating_view` — привязка задания к волне переживает поздний просмотр (D-14), участие
   подчиняется D-31/D-32/D-38, имена скрываются на уровне данных (D-29).
 - Задача 2: `wave_end_summary`/`close_wave`/`wave_number_label`.
-- Задача 3: `referral_ratio_hint` + подсказка на экране `handlers.admin_settings`.
+- Задача 3: `referral_ratio_hint` + подсказка на экране `handlers.settings.admin_settings`.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, та же фикстура
 временной БД, что `tests/test_ambassador_waves_db_32.py::_ready`.
@@ -22,7 +22,7 @@ import domain.cities as cities
 from config import config
 from database import db
 import services.ambassador_waves as waves
-from handlers.admin_settings import _settings_edit_screen
+from handlers.settings.admin_settings import _settings_edit_screen
 from tests._dbtpl import fast_init_db
 
 

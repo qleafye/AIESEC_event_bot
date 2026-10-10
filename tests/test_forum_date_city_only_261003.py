@@ -109,7 +109,7 @@ def test_qr_broadcast_not_scheduled_for_city_without_own_date(tmp_path, monkeypa
 
 def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
     from domain.cities import ALL_CITIES, set_admin_city
-    from handlers.admin_settings import EditSetting, settings_edit_start
+    from handlers.settings.admin_settings import EditSetting, settings_edit_start
 
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, ALL_CITIES))
@@ -129,7 +129,7 @@ def test_all_cities_header_asks_for_city_instead_of_writing_common(tmp_path):
 
 def test_city_pick_switches_header_and_edits_city_key(tmp_path):
     from domain.cities import ALL_CITIES, admin_selected_city, set_admin_city
-    from handlers.admin_settings import settings_edit_city as forum_city_key_edit
+    from handlers.settings.admin_settings import settings_edit_city as forum_city_key_edit
 
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, ALL_CITIES))
@@ -141,7 +141,7 @@ def test_city_pick_switches_header_and_edits_city_key(tmp_path):
 
 
 def test_city_pick_rejects_unknown_key_and_foreign_city(tmp_path):
-    from handlers.admin_settings import settings_edit_city as forum_city_key_edit
+    from handlers.settings.admin_settings import settings_edit_city as forum_city_key_edit
 
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
@@ -183,7 +183,7 @@ def test_city_buttons_need_settings_right():
 
 def test_date_typed_instead_of_city_button_gets_hint(tmp_path):
     from domain.cities import ALL_CITIES, set_admin_city
-    from handlers.admin_settings import settings_edit_start, settings_edit_value
+    from handlers.settings.admin_settings import settings_edit_start, settings_edit_value
     from tests.test_roles_phase8 import FakeMessage
 
     _ready(tmp_path)
@@ -197,7 +197,7 @@ def test_date_typed_instead_of_city_button_gets_hint(tmp_path):
 
 
 def _screen(code, key="forum_date"):
-    from handlers.admin_settings import _settings_edit_screen
+    from handlers.settings.admin_settings import _settings_edit_screen
     text, kb = _run(_settings_edit_screen(key, code))
     return text, [b.text for row in kb.inline_keyboard for b in row]
 
@@ -219,7 +219,7 @@ def test_city_screen_without_own_date_does_not_promise_common_date(tmp_path):
 
 def test_clear_city_date_confirm_names_what_turns_off(tmp_path):
     from domain.cities import set_admin_city
-    from handlers.admin_settings import settings_reset_city
+    from handlers.settings.admin_settings import settings_reset_city
 
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, "spb"))
@@ -236,7 +236,7 @@ def test_clear_city_date_go_says_date_erased_not_as_everywhere(tmp_path):
     """После «🗑 Да, стереть дату» ответ «дата стёрта», а не «как везде» — общей даты у
     города нет. У обычной городской настройки — по-прежнему «как везде»."""
     from domain.cities import set_admin_city
-    from handlers.admin_settings import settings_reset_city_go
+    from handlers.settings.admin_settings import settings_reset_city_go
 
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, "spb"))
@@ -256,7 +256,7 @@ def test_dash_on_city_date_asks_confirmation_instead_of_erasing(tmp_path):
     """«-» на экране даты города ведёт на то же подтверждение, что «🗑 Стереть дату города»,
     — дата остаётся на месте до «Да, стереть». У обычной городской настройки «-» — сброс."""
     from domain.cities import set_admin_city
-    from handlers.admin_settings import settings_edit_city, settings_edit_value
+    from handlers.settings.admin_settings import settings_edit_city, settings_edit_value
     from tests.test_roles_phase8 import FakeMessage
 
     _ready(tmp_path)
@@ -294,7 +294,7 @@ def test_city_date_save_offers_way_back_to_readiness(tmp_path):
     «🚦 К готовности форума» этого города (только тому, у кого есть право светофора)."""
     from domain.cities import set_admin_city
     from handlers.access.admin_caps import required_capability
-    from handlers.admin_settings import settings_edit_city, settings_edit_value
+    from handlers.settings.admin_settings import settings_edit_city, settings_edit_value
     from tests.test_roles_phase8 import FakeMessage
 
     _ready(tmp_path)

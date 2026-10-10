@@ -120,7 +120,7 @@ async def _decline_confirm(admin_id: int, n: int, pending: int,
 
 
 async def _scope(admin_id: int):
-    from handlers.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
+    from handlers.settings.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
 
     scope, _label = await _admin_city_view(admin_id)
     return scope

@@ -28,8 +28,8 @@ import pytest
 ROOT = REPO_ROOT
 
 SEAMS = [
-    "handlers.admin_settings",
-    "handlers.admin_settings_lists",
+    "handlers.settings.admin_settings",
+    "handlers.settings.admin_settings_lists",
     "handlers.cities.admin_cities",
     "handlers.comms.admin_broadcasts",
     "handlers.regform.admin_reg_config",
@@ -46,7 +46,7 @@ SEAMS = [
     "handlers.regform.admin_consent",
     "handlers.reg.reg_consent",
     # Phase 15 (15-02): экран «📊 Дашборд» — тумблеры блоков веб-дашборда.
-    "handlers.admin_dashboard",
+    "handlers.settings.admin_dashboard",
     # Phase 27 (27-04, LANG-01): выбор языка делегатской анкеты — экран/переключатель/запись.
     "handlers.reg.reg_lang",
     # Phase 27 (27-05, LANG-02): перевод чата на отправке (say()/tr_kb()). Регистрирует НОЛЬ

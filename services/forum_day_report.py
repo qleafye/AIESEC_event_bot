@@ -116,7 +116,7 @@ async def schedule_city_job(city: str | None, *, after_failure: bool = False) ->
     """(Пере)ставить джобу СЛЕДУЮЩЕГО ещё не отправленного дня форума этого города — или снять
     её (тумблер выключен / дата форума не задана / все дни окна уже отправлены / окно форума
     прошло с большим запасом). Вызывается и `reconcile()` (старт бота), и СРАЗУ после правки
-    настройки (`handlers/admin_settings.py::_reschedule_forum_day_report_if_relevant`)."""
+    настройки (`handlers/settings/admin_settings.py::_reschedule_forum_day_report_if_relevant`)."""
     from services.scheduler import get_scheduler
 
     sched = get_scheduler()

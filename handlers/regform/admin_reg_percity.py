@@ -41,7 +41,7 @@ from domain.cities import (
 )
 from handlers.admin import router
 from handlers.regform.admin_consent import remind_consent_purposes_if_widened
-from handlers.admin_settings import _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings.admin_settings import _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.regform.admin_reg_config import (
     _refresh_sheet_header,
     _refresh_party_sheet_header,
@@ -513,7 +513,7 @@ def _next_resume_mode(current: str) -> str:
 
 def _resume_mode_toggle_label(current: str) -> str:
     """«Текущее → Новое» direction idiom — same shape as every other direction-toggle button
-    in the admin surface (handlers/admin_settings.py: registration_mode/bonus_enabled/...).
+    in the admin surface (handlers/settings/admin_settings.py: registration_mode/bonus_enabled/...).
     Phase 28-04: `target` — следующий элемент цикла из трёх, не жёсткий двузначный флип."""
     target = _next_resume_mode(current)
     return f"📄 Резюме: {_RESUME_MODE_HUMAN.get(current, current)} → {_RESUME_MODE_HUMAN.get(target, target)}"
@@ -695,7 +695,7 @@ async def reg_questions_back(callback: types.CallbackQuery):
     # Phase 20 (20-04): выход с экрана «📋 Вопросы регистрации» ведёт в его раздел —
     # «📝 Анкета». Подсказка резолверу — callback_data СВОЕГО экрана (`admin_reg_questions`),
     # а не собственный `reg_q_back`: строки `reg_q_back` в SECTIONS нет и быть не должно.
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, callback_data="admin_reg_questions")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -812,7 +812,7 @@ async def _build_prompts_keyboard_impl(track: str, admin_id: int | None):
             row.append(InlineKeyboardButton(text=help_label, callback_data=help_callback))
         buttons.append(row)
     # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
-    from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
     buttons.append([back_button("admin_reg_prompts")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

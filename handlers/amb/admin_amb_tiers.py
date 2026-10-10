@@ -105,7 +105,7 @@ async def _deadline_line() -> str:
 
 
 async def _tiers_screen() -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import owner_back_button
+    from handlers.settings.admin_sections import owner_back_button
 
     program = await amb_tiers.program_on()
     hide = await get_setting_typed("amb_hide_invitee_names") == "on"

@@ -260,7 +260,7 @@ async def lang_pick_choose(callback: types.CallbackQuery, state: FSMContext, bot
     # раньше обычного (reg_lang грузится из хвоста registration.py) и расходился бы с золотым
     # снимком порядка хендлеров (tests/test_refac_snapshot_260816.py).
     try:
-        from handlers.admin_miniapp import sync_chat_menu_button
+        from handlers.settings.admin_miniapp import sync_chat_menu_button
         await sync_chat_menu_button(bot, chat_id=callback.from_user.id, lang=code)
     except Exception:
         logger.warning("lang_pick_choose: sync_chat_menu_button failed for %s", callback.from_user.id, exc_info=True)

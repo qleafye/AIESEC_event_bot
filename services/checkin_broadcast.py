@@ -163,7 +163,7 @@ async def schedule_city_jobs(city: str | None) -> dict:
     """(Пере)ставить вечернюю+утреннюю джобы ОДНОГО города — или снять обе, если дата форума не
     задана либо рассылка выключена (мастер/per_city). Вызывается и реконсиляцией на боте
     (`reconcile_broadcasts`, боевой рестарт), и СРАЗУ после правки `forum_date`/
-    `checkin_qr_broadcast_enabled`/времени (handlers/forum/admin_checkin.py, handlers/admin_settings.py)
+    `checkin_qr_broadcast_enabled`/времени (handlers/forum/admin_checkin.py, handlers/settings/admin_settings.py)
     — «джоба переставляется при смене даты форума/настройки», без ожидания рестарта."""
     sched = _sched.get_scheduler()
     ev_id, morn_id = evening_job_id(city), morning_job_id(city)

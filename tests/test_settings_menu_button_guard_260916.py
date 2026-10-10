@@ -24,7 +24,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 
 from config import config
 from database import db
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from keyboards.builders import MENU_TEXTS, ADMIN_REREG_BUTTON_TEXT
 from tests._dbtpl import fast_init_db
 

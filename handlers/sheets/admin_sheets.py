@@ -1,4 +1,4 @@
-"""Module-size split из `handlers/admin_settings.py` (module-size convention,
+"""Module-size split из `handlers/settings/admin_settings.py` (module-size convention,
 tests/test_module_size_convention_260816.py): «🔄 Синхронизация» и «♻️ Пересобрать таблицу» —
 единственные два экрана, что переписывают/дозаписывают ВСЮ Google-таблицу по вкладкам
 (Phase 25, CITYQ-03: набор колонок и снимок схемы считаются один раз на код города, не на
@@ -186,7 +186,7 @@ async def sync_sheet(callback: types.CallbackQuery):
     СВОЕЙ шапкой (party_sheet_headers/short_sheet_headers), а не общей по городу. Сама логика
     сверки id и try/except на вкладку не изменилась — sync только дозаписывает, никогда не
     перезаписывает/не морозит схему (это по-прежнему работа rebuild_sheet)."""
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     await callback.answer("🔄 Синхронизация...")
     await callback.message.edit_text("🔄 Получаю данные из таблицы...", parse_mode="HTML")
 
@@ -339,7 +339,7 @@ async def rebuild_sheet(callback: types.CallbackQuery):
     `set_sheet_schema` (снимок схемы) морозится ТОЛЬКО для батчей `kind == "main"` — короткая
     /party шапка это не «схема города», замораживать её под sheet_header_schema города нельзя."""
     # Гейт подтверждения дал callback «…_go», в разделе объявлена сама кнопка — называем её.
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     await callback.answer("♻️ Пересборка...")
     logger.info(f"admin={callback.from_user.id} action=rebuild_sheet start")
     await callback.message.edit_text("♻️ Пересобираю таблицу (перезапись всех строк)…", parse_mode="HTML")

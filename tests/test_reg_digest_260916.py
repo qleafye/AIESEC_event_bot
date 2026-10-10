@@ -107,14 +107,14 @@ def test_schema_key_max_minutes_defaults_to_zero_uncapped():
 
 def test_minutes_is_a_plain_field_mode_is_toggle_only():
     """Минуты правятся обычным полем (int), режим — только тумблером, без ввода кода."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "reg_submit_digest_minutes" in admin_settings._APPS_FIELD_ORDER
     assert "reg_submit_notify_mode" not in {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
 
 
 def test_toggle_row_shows_human_labels_only(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     rows = asyncio.run(admin_settings.settings_toggle_rows(ADMIN_ID))
     btn = rows["toggle_reg_submit_notify"][0][0]
     assert btn.callback_data == "toggle_reg_submit_notify"
@@ -123,7 +123,7 @@ def test_toggle_row_shows_human_labels_only(tmp_path):
 
 
 def test_toggle_row_lives_in_the_applications_section_right_after_its_neighbour():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     callbacks = [sec.row_callback(r) for r in sec._declared_rows("apps")]
     assert callbacks.count("toggle_reg_submit_notify") == 1
     assert callbacks.index("toggle_reg_submit_notify") == callbacks.index("settings_toggle_notify") + 1
@@ -140,7 +140,7 @@ def test_toggle_callback_registered_under_settings_capability():
 
 def test_toggle_handler_flips_mode_and_answers_with_label(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     class _Msg:
         async def edit_text(self, text, parse_mode=None, reply_markup=None):

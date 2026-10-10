@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton
 
 from database.db import get_setting
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from handlers.admin import router
 from domain.settings.schema import SETTINGS_SCHEMA, option_label
 from domain.settings.validation import ON_OFF_LABELS

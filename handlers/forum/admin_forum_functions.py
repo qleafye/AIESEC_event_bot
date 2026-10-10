@@ -46,7 +46,7 @@ from handlers.forum.admin_checkin import (
     _encode_city,
 )
 from handlers.forum.admin_checkin_training import sheet_allowed
-from handlers.admin_sections import back_button
+from handlers.settings.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
 from handlers.states import ForumDayMenuTimeEdit
 from handlers.states import ForumDayReportTimeEdit, ForumNoshowPollTimeEdit
@@ -237,7 +237,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     # окно активности (forum_date + sos_active_days, вечер накануне); родной экран заведён
     # этим же модулем (forumdaymenu_cfg:*). Строка видна только держателю права на СВОЙ
     # экран (moderate_reg — тот же капа, что и у входа в этот хаб) — тот же приём, что
-    # handlers.admin_sections.visible_rows использует для строк раздела (капа берётся из
+    # handlers.settings.admin_sections.visible_rows использует для строк раздела (капа берётся из
     # ADMIN_CAPS, а не второй самодельной картой).
     if await has_capability(admin_id, "moderate_reg"):
         fdm_on = await get_setting_typed_for_city("forum_day_menu_enabled", code) == "on"
@@ -578,7 +578,7 @@ async def forumdaymenu_time_step(message: types.Message, state: FSMContext):
 # ── Идея №3 бэклога чек-ина: приветствие после первой отметки входа делегата ────────────────
 # Тумблер-only экран (в отличие от соседей выше — нет своего временного поля): САМ текст
 # (`forum_welcome_text`) правится общим текстовым редактором «📋 Заявки» (`settings_edit:*`,
-# капа «settings» — попадание в `_APPS_FIELD_ORDER`, `handlers/admin_settings.py`), тот же
+# капа «settings» — попадание в `_APPS_FIELD_ORDER`, `handlers/settings/admin_settings.py`), тот же
 # приём, что у соседей `checkin_qr_broadcast_text`/`checkin_not_arrived_text`; здесь — только
 # тумблер (капа «moderate_reg», тот же довод, что у остального хаба).
 
