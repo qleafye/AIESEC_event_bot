@@ -113,7 +113,7 @@ def test_code_literals_covers_every_source_and_excludes_tier_a():
     expected_origin_prefixes = (
         "lit:PROMPT_DEFAULTS.", "lit:STEP_HELP.", "lit:STEP_HELP_EXAMPLES.",
         "lit:_GENERIC_FALLBACK_LABEL.", "lit:REG_LABELS.", "lit:reg_options.",
-        "lit:config.UNIVERSITIES",
+        "lit:reg_options.LEGACY_SPB_UNIVERSITIES",
     )
     for prefix in expected_origin_prefixes:
         assert any(o.startswith(prefix) for o in origins), f"нет ни одного {prefix}*"

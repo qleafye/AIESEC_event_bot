@@ -8,7 +8,7 @@
 
     python tools/seed_universities.py                 # живая выгрузка из Викиданных (30-02)
     python tools/seed_universities.py --apply          # записывает оба снапшота
-    python tools/seed_universities.py --from-config     # без сети: вузы из config.UNIVERSITIES
+    python tools/seed_universities.py --from-config     # без сети: вузы из reg_options.LEGACY_SPB_UNIVERSITIES
     python tools/seed_universities.py --curated --apply # кураторская выгрузка (30-08, ниже)
 
 Города СЕГОДНЯ всегда собираются офлайн-фолбэком (города бота + топ-8 `SELECT_CONFIG`) —
@@ -358,13 +358,13 @@ def fetch_cities_curated(city_class: str = CITY_CLASS_RUSSIA, population_min: in
 
 def _universities_from_config() -> dict:
     """Офлайн-фолбэк (задача 3, «если сеть недоступна — не выдумывать данные и не откладывать
-    план»): снапшот из `config.UNIVERSITIES` (11 строк дефолта бота), без псевдонимов —
+    план»): снапшот из `reg_options.LEGACY_SPB_UNIVERSITIES` (11 строк дефолта бота), без псевдонимов —
     `count_base`/`count_closure` = 0, объяснено в README как «сид не выполнен полностью»."""
-    from config import config
+    import reg_options
 
     items = [
         {"canonical": name, "aliases": [], "source": "config_fallback", "dissolved": False}
-        for name in config.UNIVERSITIES
+        for name in reg_options.LEGACY_SPB_UNIVERSITIES
     ]
     return {
         "items": items,
@@ -372,7 +372,7 @@ def _universities_from_config() -> dict:
         "count_closure": 0,
         "excluded_dissolved": 0,
         "source_query": (
-            "офлайн-фолбэк: config.UNIVERSITIES (сеть до query.wikidata.org недоступна "
+            "офлайн-фолбэк: reg_options.LEGACY_SPB_UNIVERSITIES (сеть до query.wikidata.org недоступна "
             "на момент выгрузки — см. data/lookup/README.md)"
         ),
     }
@@ -600,7 +600,7 @@ async def main(apply: bool, from_config: bool, curated: bool) -> int:
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print(
                 f"Сеть до query.wikidata.org недоступна ({exc}) — офлайн-фолбэк "
-                "config.UNIVERSITIES.",
+                "reg_options.LEGACY_SPB_UNIVERSITIES.",
                 file=sys.stderr,
             )
             uni_stats = _universities_from_config()
@@ -625,7 +625,7 @@ if __name__ == "__main__":
     parser.add_argument("--apply", action="store_true", help="перезаписать data/lookup/*.json")
     parser.add_argument(
         "--from-config", action="store_true",
-        help="собрать снапшот вузов из config.UNIVERSITIES без сети (города всегда офлайн-фолбэк)",
+        help="собрать снапшот вузов из reg_options.LEGACY_SPB_UNIVERSITIES без сети (города всегда офлайн-фолбэк)",
     )
     parser.add_argument(
         "--curated", action="store_true",

@@ -412,7 +412,7 @@ async def options(step_key: str) -> list[str]:
         uni_opts = await get_setting("university_options")
         if uni_opts and uni_opts.strip():
             return [line.strip() for line in uni_opts.splitlines() if line.strip()]
-        return list(config.UNIVERSITIES)
+        return []  # пусто = свободный ввод, питерский список не подставляем
     return list(_LITERAL_OPTIONS.get(step_key, []))
 
 

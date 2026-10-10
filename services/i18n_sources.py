@@ -276,9 +276,6 @@ def code_literals() -> list[tuple[str, str]]:
         for text in defaults:
             items.append((f"lit:{opt_key}", text))
 
-    for uni in config.UNIVERSITIES:
-        items.append(("lit:config.UNIVERSITIES", uni))
-
     # Quick 260906 (UAT-фикс 27-05): /start-литералы handlers/registration.py, найденные
     # стендовым UAT (делегат видел русский, даже когда bulk_seed уже перевёл весь остальной
     # корпус) — этот модуль НЕ импортирует handlers ни при каких условиях (докстринг модуля
