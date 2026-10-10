@@ -11,6 +11,7 @@ import asyncio
 
 from config import config
 from database.db import _connect
+from services.registration import lookup
 from services.registration.lookup import normalize_alias, search_lookup
 from tests._dbtpl import fast_init_db
 
@@ -21,6 +22,7 @@ SEASON = "YL 26/2"
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "lookup_rank_261011.db")
     fast_init_db()
+    lookup.invalidate_rank_cache()
 
 
 async def _answers(university, n, season=SEASON, start=1000):
@@ -34,6 +36,7 @@ async def _answers(university, n, season=SEASON, start=1000):
                 (start + i, university, season),
             )
         await conn.commit()
+    lookup.invalidate_rank_cache()
 
 
 async def _entry(canonical, alias, pinned=0):
@@ -44,6 +47,7 @@ async def _entry(canonical, alias, pinned=0):
             (canonical, alias, normalize_alias(alias), pinned),
         )
         await conn.commit()
+    lookup.invalidate_rank_cache()
 
 
 def _names(result):
@@ -99,3 +103,55 @@ def test_exact_tier_still_first(tmp_path):
     result = asyncio.run(search_lookup("university", "Политех", limit=5))
     assert normalize_alias(result[0]["alias"]) == "политех"
     assert result[0]["canonical"] != MOSPOLY
+
+
+def _first_prefix_canonicals(q, n):
+    async def go():
+        async with _connect() as conn:
+            cursor = await conn.execute(
+                "SELECT canonical FROM lookup_entries WHERE kind = 'university' AND alias_norm LIKE ? LIMIT ?",
+                (normalize_alias(q) + "%", n),
+            )
+            return [row[0] for row in await cursor.fetchall()]
+    return asyncio.run(go())
+
+
+def test_short_query_lifts_frequent_beyond_scan_cap(tmp_path, monkeypatch):
+    """Короткий запрос: под префикс строк больше потолка скана, частый вуз дальше по rowid —
+    всё равно в пятёрке. Потолок уменьшен, чтобы снапшот справочника точно его перекрыл."""
+    _ready(tmp_path)
+    monkeypatch.setattr(lookup, "_TIER_SCAN_CAP", 20)
+    assert MOSPOLY not in _first_prefix_canonicals("мо", 20)  # иначе тест ничего не проверяет
+    asyncio.run(_answers(MOSPOLY, 7))
+    assert MOSPOLY in _names(asyncio.run(search_lookup("university", "мо", limit=5)))
+
+
+def test_short_query_lifts_pinned(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    monkeypatch.setattr(lookup, "_TIER_SCAN_CAP", 20)
+
+    async def pin():
+        await lookup.pin_chip("university", MOSPOLY, True)
+    asyncio.run(pin())
+    assert _names(asyncio.run(search_lookup("university", "мо", limit=5)))[0] == MOSPOLY
+
+
+def test_rank_inputs_cached_until_invalidated(tmp_path):
+    """Частота кэшируется: новые ответы видны после TTL или сброса; закрепление сбрасывает сразу."""
+    _ready(tmp_path)
+    asyncio.run(search_lookup("university", "политех", limit=5))  # прогрев пустой частотой
+    async def raw_answers():
+        async with _connect() as conn:
+            for i in range(7):
+                await conn.execute(
+                    "INSERT INTO users (telegram_id, university, season) VALUES (?, ?, ?)",
+                    (5000 + i, MOSPOLY, SEASON),
+                )
+            await conn.execute(
+                "INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('event_season', ?)", (SEASON,)
+            )
+            await conn.commit()
+    asyncio.run(raw_answers())
+    assert MOSPOLY not in _names(asyncio.run(search_lookup("university", "политех", limit=5)))
+    lookup.invalidate_rank_cache()
+    assert MOSPOLY in _names(asyncio.run(search_lookup("university", "политех", limit=5)))
