@@ -25,6 +25,10 @@ JOB_ENTRY_MODULES = {
         "quiet_hours_flush_job", "chat_history_prune_job", "chat_cleanup_drain_job",
         "_reconcile_forum_report_and_poll_job", "nudge_incomplete_registrations",
         "allowlist_refresh_job",
+        # Цели из таблицы `_setting_interval_jobs()` — передаются не по имени в add_job,
+        # AST-проверка ниже их не видит, поэтому перечислены явно.
+        "sync_incomplete_sheet_job", "sync_auto_reject_sheet_job", "resume_upload_retry_job",
+        "chat_membership_refresh_job",
     },
     "services.daily_digest": {"daily_digest_job"},
     "services.checkin_broadcast": {"reconcile_forum_jobs", "_run_morning_job", "_run_evening_job"},
