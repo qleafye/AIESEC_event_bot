@@ -243,7 +243,7 @@ SETTINGS_SCHEMA = {
     },
     # Phase 07.3 (A): start_text_returning is also NOT per_city — a global banner for
     # returning delegates, unlike per-city start_text_registered.
-    # 09.10: имя бота — тоже из админки (services/bot_profile.py). В отличие от описания
+    # 09.10: имя бота — тоже из админки (services/bot/bot_profile.py). В отличие от описания
     # применяется ДО записи: отказ Telegram (лимит частоты) — ошибка экрана правки.
     "bot_name": {
         "type": "text", "group": "event", "label": "🤖 Имя бота",

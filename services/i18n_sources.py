@@ -157,9 +157,9 @@ _NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
     "sos_fallback_contact_text",
 })
 
-# 08.10: описание бота ставится в Telegram одно на всех (`services.bot_profile`), без
+# 08.10: описание бота ставится в Telegram одно на всех (`services.bot.bot_profile`), без
 # языковых версий — перевод в корпусе был бы мёртвым, его никто не показывает.
-# Подписи команд кнопки «Меню» — у английской своя настройка (`services/bot_commands.py`).
+# Подписи команд кнопки «Меню» — у английской своя настройка (`services/bot/bot_commands.py`).
 _BOT_PROFILE_KEYS: frozenset[str] = frozenset({
     "bot_name", "bot_description", "bot_short_description", "bot_command_start_text",
     "bot_command_admin_text", "bot_command_start_text_en", "bot_command_admin_text_en"})
