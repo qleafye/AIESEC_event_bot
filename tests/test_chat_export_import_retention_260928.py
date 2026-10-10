@@ -19,11 +19,12 @@ from tests.test_chat_export_import_260927 import (  # noqa: F401 — фикст�
     _write_export,
     db_path,
 )
+from services import chat_export_import as svc
 from tools import chat_export_import as imp
 
 
 def _freeze(monkeypatch, when: datetime):
-    monkeypatch.setattr(imp, "_now", lambda: when)
+    monkeypatch.setattr(svc, "_now", lambda: when)
 
 
 def test_dry_run_warns_about_rows_older_than_retention(db_path, tmp_path, capsys, monkeypatch):  # noqa: F811
