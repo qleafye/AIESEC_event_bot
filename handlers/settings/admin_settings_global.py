@@ -57,9 +57,24 @@ async def deny(callback_or_message, key: str) -> bool:
     return True
 
 
+async def deny_unless_all_cities(callback_or_message) -> bool:
+    """Ранний гейт действия над всеми городами сразу (переименование всех вкладок и т.п.):
+    ставится ДО внешнего эффекта (Google, Telegram, выгрузки) — отказ воронки записи после
+    него оставил бы эффект без сохранённой настройки."""
+    if await can_write_common(callback_or_message.from_user.id):
+        return False
+    await show_common_denied(callback_or_message)
+    return True
+
+
+def _in_group(message) -> bool:
+    chat = getattr(message, "chat", None)
+    return chat is not None and getattr(chat, "type", "private") != "private"
+
+
 async def show_common_denied(callback_or_message) -> None:
-    """Нажатие кнопки — всплывающее окно; если на нажатие уже ответили, то сообщение в чат.
-    Присланное сообщение — ответ сообщением."""
+    """Нажатие кнопки — всплывающее окно; если на нажатие уже ответили, то сообщение в личку.
+    Присланное сообщение — ответ сообщением. В группу не пишем — только лог."""
     if hasattr(callback_or_message, "data"):
         try:
             await callback_or_message.answer(COMMON_DENIED_TEXT, show_alert=True)
@@ -68,6 +83,9 @@ async def show_common_denied(callback_or_message) -> None:
             callback_or_message = callback_or_message.message
             if callback_or_message is None:
                 return
+    if _in_group(callback_or_message):
+        logger.info("Отказ в записи общего ключа в группе — в чат не пишем")
+        return
     await callback_or_message.answer(COMMON_DENIED_TEXT)
 
 
