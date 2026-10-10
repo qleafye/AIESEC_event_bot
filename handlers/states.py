@@ -658,3 +658,11 @@ class SheetTarget(StatesGroup):
     # «📊 Данные → 🔗 Какая таблица» (handlers/admin_sheet_target.py): ждём ссылку на таблицу.
     # Право `settings` + суперадмин (`config.ADMIN_IDS`), перепроверяется в каждом хендлере.
     waiting_ref = State()
+
+
+class ChatExportImport(StatesGroup):
+    # «📥 Загрузить историю чата» (handlers/admin_chat_import.py): сначала ждём файл result.json из
+    # Telegram Desktop, затем — подтверждение предпросмотра кнопкой. Выбранный чат и разобранный
+    # файл несёт state.get_data(); текстового ввода нет.
+    waiting_file = State()
+    confirm = State()

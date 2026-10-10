@@ -20,6 +20,7 @@ from tests.test_chat_rating_parity_260927 import (
     export_scores,
     live_scores,
 )
+from services import chat_export_import as svc
 from tools import chat_export_import as imp
 
 EXPORT_ID = 3333333333
@@ -80,7 +81,7 @@ MANY_REACTIONS = {
 def _frozen_now(monkeypatch):
     # Срок хранения считается от «сейчас»: без заморозки фикстура сентября 2026 через полгода
     # оказалась бы старше срока и тесты начали бы падать сами.
-    monkeypatch.setattr(imp, "_now", lambda: datetime(2026, 9, 27, 12, 0, 0))
+    monkeypatch.setattr(svc, "_now", lambda: datetime(2026, 9, 27, 12, 0, 0))
 
 
 @pytest.fixture

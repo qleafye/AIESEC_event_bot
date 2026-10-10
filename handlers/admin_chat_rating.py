@@ -181,6 +181,7 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
     # импорт: тот модуль сам импортирует этот.
     from handlers.admin_chat_rating_post import toggle_row
     rows.extend(await toggle_row(code, header))
+    rows.append([InlineKeyboardButton(text="📥 Загрузить историю чата", callback_data="chimp:open")])
     rows.append([InlineKeyboardButton(text="⚖️ Веса формулы", callback_data="settings_group:chat")])
     if header:
         rows.append([InlineKeyboardButton(text="🏙 Сменить город", callback_data="admin_city_switch:manage")])
@@ -423,3 +424,7 @@ async def chrate_task_toggle(callback: types.CallbackQuery):
     text, kb = await _render_tasks(code, parts[2])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer(note)
+
+
+# «📥 Загрузить историю чата» (chimp:*, ввод ChatExportImport) — хвост admin.router после хендлеров этого файла.
+from handlers import admin_chat_import  # noqa: E402,F401
