@@ -11,7 +11,7 @@
 - `FORM_DEFAULT_EN` — перевод ДЕФОЛТОВ корпуса: то, что вернёт `services/i18n_sources.py::corpus()`
   на чистой БД (без единой правки менеджера) — `PROMPT_DEFAULTS`/`STEP_HELP`/`STEP_HELP_EXAMPLES`/
   `_GENERIC_FALLBACK_LABEL`/`REG_LABELS`/`_SUMMARY_FIELD_LABELS`/`reg_options.*`/`SELECT_CONFIG`/
-  `MULTI_CONFIG`/`config.UNIVERSITIES` (`reg_engine.py`, `reg_labels.py`, `reg_options.py`), литералы
+  `MULTI_CONFIG`/`LEGACY_SPB_UNIVERSITIES` (`reg_engine.py`, `reg_labels.py`, `reg_options.py`), литералы
   `registration.py`/`reg_flow.py`/`reg_resume.py`/`reg_consent.py`/`user_actions.py`/`payment.py`/
   `application_effects.py`/`reg_schema.py` (эти модули aiogram-зависимы и не импортируются
   `i18n_sources.py` — литералы продублированы там буквально, см. докстринг `code_literals()`), и
@@ -370,7 +370,7 @@ _OPTIONS_EN = {
     "DevOps и облака": "DevOps and cloud",
     "Тестирование": "Testing",
     "Информационная безопасность": "Information security",
-    # config.UNIVERSITIES — общеизвестные латинские сокращения питерских ВУЗов.
+    # LEGACY_SPB_UNIVERSITIES — общеизвестные латинские сокращения питерских ВУЗов.
     "ИТМО": "ITMO University",
     "Политех": "Polytech (SPbPU)",
     "ЛЭТИ": "LETI",
