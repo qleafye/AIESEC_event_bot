@@ -148,3 +148,40 @@ def test_role_keys_through_generic_settings_editor_are_common_and_denied(tmp_pat
     for key in ("role_caps_reg_manager", "role_reg_manager_enabled"):
         assert asyncio.run(gscope.common_write_denied(MANAGER_ID, key)) is True
     assert asyncio.run(gscope.common_write_denied(ADMIN_ID, "role_caps_reg_manager")) is False
+
+
+# ── Снятие роли: менеджер с городом — только у людей своего города (ревью 11.10) ──
+
+def test_bound_manager_cannot_remove_role_of_all_cities_or_other_city_person(tmp_path):
+    """И экран подтверждения, и сама кнопка «Да, снять»: callback_data подделывается."""
+    code = _bound_manager(tmp_path)
+    other = next(c for c in cities.city_codes() if c != code)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))  # на всех городах
+
+    for handler, data in ((admin_roles.roles_remove, "roles_del"), (admin_roles.roles_remove_yes, "roles_del_ok")):
+        cb = FakeCallback(f"{data}:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID)
+        asyncio.run(handler(cb))
+        assert cb.answers == [(admin_roles.ROLES_ALL_CITIES_REMOVE_TEXT, True)]
+    assert asyncio.run(db.get_staff_roles(NEWCOMER_ID)) == ["game_manager"]
+
+    asyncio.run(db.set_staff_city(NEWCOMER_ID, other))
+    for handler, data in ((admin_roles.roles_remove, "roles_del"), (admin_roles.roles_remove_yes, "roles_del_ok")):
+        cb = FakeCallback(f"{data}:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID)
+        asyncio.run(handler(cb))
+        assert cb.answers and cb.answers[0][1] is True and "работает в городе" in cb.answers[0][0]
+    assert asyncio.run(db.get_staff_roles(NEWCOMER_ID)) == ["game_manager"]
+
+
+def test_bound_manager_removes_role_in_own_city_and_superadmin_anywhere(tmp_path):
+    code = _bound_manager(tmp_path)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID, city=code))
+    asyncio.run(admin_roles.roles_remove_yes(
+        FakeCallback(f"roles_del_ok:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID),
+    ))
+    assert asyncio.run(db.get_staff_roles(NEWCOMER_ID)) == []
+
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))  # на всех городах
+    asyncio.run(admin_roles.roles_remove_yes(
+        FakeCallback(f"roles_del_ok:{NEWCOMER_ID}:game_manager", user_id=ADMIN_ID),
+    ))
+    assert asyncio.run(db.get_staff_roles(NEWCOMER_ID)) == []
