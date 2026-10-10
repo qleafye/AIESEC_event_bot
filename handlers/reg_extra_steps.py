@@ -41,7 +41,7 @@ from handlers import reg_i18n
 from handlers.registration import _advance, _safe_answer, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb, get_yes_no_kb
-from reg_engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, validate_answer
+from domain.regform.engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, validate_answer
 
 logger = logging.getLogger(__name__)
 

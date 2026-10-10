@@ -294,7 +294,7 @@ async def _notify(bot, tid: int, key: str) -> bool | None:
     """Текст реестра `key` человеку на его языке через тихие часы; `{link}` — его реф-ссылка.
     True — отправлено, False — придёт утром, None — не удалось (заблокировал бота и т.п.)."""
     try:
-        from reg_engine import build_referral_link
+        from domain.regform.engine import build_referral_link
         from services import quiet_hours
         from services.i18n import context as i18n_context, tr as i18n_tr
         from services.scheduler import _now_moscow_naive

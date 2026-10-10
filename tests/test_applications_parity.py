@@ -20,8 +20,8 @@ import inspect
 import pathlib
 from datetime import datetime, timedelta
 
-import moderation_card
-import reg_engine
+import domain.regform.moderation_card as moderation_card
+import domain.regform.engine as reg_engine
 import services.application_effects as application_effects
 import services.applications as applications
 from config import config

@@ -150,7 +150,7 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
     # трогал. Тот же fail-soft приём, что revert_user_to_pending выше: возврат УЖЕ зафиксирован
     # (claim выигран, статус в БД сменён) — сбой листа только логируется, не откатывает возврат.
     try:
-        from reg_labels import STATUS_LABELS
+        from domain.regform.labels import STATUS_LABELS
         from services.sheets import update_status_in_sheet
         await update_status_in_sheet(telegram_id, STATUS_LABELS["pending"])
         from services.scheduler import sync_auto_reject_sheet_job

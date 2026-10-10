@@ -37,7 +37,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-import moderation_card
+import domain.regform.moderation_card as moderation_card
 from cities import cities_module_on, city_scope, normalize_city
 from database.db import (
     approve_all_pending,
@@ -57,7 +57,7 @@ from database.db import (
     reject_user,
     revert_user_to_pending,
 )
-from reg_engine import STEP_TO_COLUMN, label_for
+from domain.regform.engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
 from services.timeutil import utc_naive_to_msk
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed

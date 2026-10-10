@@ -34,7 +34,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-import reg_engine
+import domain.regform.engine as reg_engine
 import domain.settings.ops as settings_ops
 import shared.web_theme as web_theme
 from cities import (

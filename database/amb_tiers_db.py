@@ -681,7 +681,7 @@ async def freeze_legacy_tier_defaults(db: aiosqlite.Connection) -> None:
     ) as cursor:
         has_program = await cursor.fetchone() is not None
     if has_program:
-        from reg_presets import SKILLUP_TIER_SETTINGS
+        from domain.regform.presets import SKILLUP_TIER_SETTINGS
 
         for key, value in SKILLUP_TIER_SETTINGS.items():
             cursor = await db.execute(

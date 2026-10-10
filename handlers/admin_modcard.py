@@ -15,8 +15,8 @@ EMPTY_SENTINEL` (иначе `_parse_setting` вернул бы дефолтны�
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import moderation_card
-import reg_engine
+import domain.regform.moderation_card as moderation_card
+import domain.regform.engine as reg_engine
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 from handlers.admin import router

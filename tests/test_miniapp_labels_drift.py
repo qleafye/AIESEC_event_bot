@@ -1,9 +1,9 @@
 """Phase 19 Plan 03 Task 1 (WEBAPP-01, D-01): подписи анкеты и геймы вынесены в корневые
-aiogram-free модули `reg_labels.py` / `game_labels.py`; в `handlers/` остались шимы.
+aiogram-free модули `domain/regform/labels.py` / `game_labels.py`; в `handlers/` остались шимы.
 
 Сторожа:
 - шимы реэкспортируют ТЕ ЖЕ объекты (`is`, не `==`) — перенос, а не копия;
-- `import reg_labels, game_labels` в чистом подпроцессе не загружает `aiogram`, а
+- `import domain.regform.labels; import game_labels` в чистом подпроцессе не загружает `aiogram`, а
   `import handlers.game_labels` — загружает (доказательство, что шим нужен);
 - `miniapp` импортирует именно корневые модули;
 - состав ключей `REG_LABELS` не изменился относительно снимка.
@@ -22,7 +22,7 @@ ROOT = REPO_ROOT
 
 REG_LABELS_KEYS_SNAPSHOT = [
     # Приёмка 16.09 (4a99eee): мастер анкеты в приложении спрашивает ФИО первым шагом
-    # (form_spec(ask_full_name=True)) — подпись добавлена ПЕРВОЙ (порядок вставки в reg_labels.py).
+    # (form_spec(ask_full_name=True)) — подпись добавлена ПЕРВОЙ (порядок вставки в domain/regform/labels.py).
     "reg_q_full_name",
     "reg_q_age", "reg_q_vk", "reg_q_email", "reg_q_phone", "reg_q_city", "reg_q_source",
     "reg_q_lc", "reg_q_position", "reg_q_education", "reg_q_university", "reg_q_course",
@@ -71,7 +71,7 @@ def _loaded_aiogram(code: str) -> list[str]:
 # ── identity: перенос, а не копия ────────────────────────────────────────────────────────
 
 def test_reg_schema_reexports_same_objects():
-    import reg_labels
+    import domain.regform.labels as reg_labels
     from handlers import reg_schema
 
     assert reg_schema.REG_LABELS is reg_labels.REG_LABELS
@@ -79,7 +79,7 @@ def test_reg_schema_reexports_same_objects():
 
 
 def test_admin_broadcasts_payment_labels_same_object():
-    import reg_labels
+    import domain.regform.labels as reg_labels
     from handlers import admin_broadcasts
 
     assert admin_broadcasts._PAYMENT_STATUS_LABELS is reg_labels.PAYMENT_STATUS_LABELS
@@ -102,7 +102,7 @@ def test_game_labels_public_names_declared():
 # ── aiogram-free ────────────────────────────────────────────────────────────────────────
 
 def test_root_label_modules_do_not_load_aiogram():
-    assert _loaded_aiogram("import reg_labels, game_labels") == []
+    assert _loaded_aiogram("import domain.regform.labels; import game_labels") == []
 
 
 def test_handlers_game_labels_loads_aiogram_so_shim_is_needed():
@@ -122,7 +122,7 @@ def test_miniapp_imports_root_modules_not_handlers():
 # ── снимок ключей ───────────────────────────────────────────────────────────────────────
 
 def test_reg_labels_keys_snapshot():
-    import reg_labels
+    import domain.regform.labels as reg_labels
 
     assert list(reg_labels.REG_LABELS) == REG_LABELS_KEYS_SNAPSHOT
     assert reg_labels.STATUS_LABELS == {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
@@ -139,8 +139,8 @@ def test_profile_columns_cover_only_known_labels():
     подписи) — вместо этого профиль исключает его ЯВНО в `_profile_columns()`
     (`reg_engine.FULL_NAME_STEP`): имя уже на плите карточки профиля, вторая строка ответа
     не нужна."""
-    import reg_engine
-    import reg_labels
+    import domain.regform.engine as reg_engine
+    import domain.regform.labels as reg_labels
     from miniapp.routers.profile import _profile_columns
 
     columns = _profile_columns()

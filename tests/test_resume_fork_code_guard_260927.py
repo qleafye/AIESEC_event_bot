@@ -17,7 +17,7 @@ import logging
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db as bot_db
 from domain.settings.schema import SETTINGS_SCHEMA

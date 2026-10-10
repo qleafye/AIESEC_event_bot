@@ -97,7 +97,7 @@ def test_event_placeholder_defaults_and_hints():
 def test_default_source_option_keeps_stored_answer_label():
     """«Соцсети Юлид» — это и ответ, сохранённый в users.source у старых анкет: смена подписи
     разбила бы статистику источников на две корзины, поэтому вариант оставлен как был."""
-    from reg_options import DEFAULT_SOURCE_OPTIONS
+    from domain.regform.options import DEFAULT_SOURCE_OPTIONS
 
     assert "Соцсети Юлид" in DEFAULT_SOURCE_OPTIONS
     assert "Соцсети мероприятия" not in DEFAULT_SOURCE_OPTIONS

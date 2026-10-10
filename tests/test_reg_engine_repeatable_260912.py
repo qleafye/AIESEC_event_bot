@@ -12,7 +12,7 @@ import json
 from config import config
 from database import db as db_mod
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from handlers import reg_schema
 from tests._dbtpl import fast_init_db
 

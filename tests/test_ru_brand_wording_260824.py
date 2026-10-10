@@ -4,7 +4,7 @@
 Сторож против регресса: проверяет не файлы целиком (в путях к SVG латиница законна),
 а именно значения человеко-видимых словарей подписей — подписи пресетов оформления,
 подписи/подсказки/дефолты реестра настроек (включая зеркало в reg_labels), варианты
-ответов анкеты (reg_options.py) и строковые литералы во фронтенде Mini App
+ответов анкеты (domain/regform/options.py) и строковые литералы во фронтенде Mini App
 (miniapp/static/js/**).
 
 Коды (id пресетов `bluebook`/`youlead`, ключи реестра `reg_q_aiesec_role`,
@@ -27,8 +27,8 @@ import re
 from pathlib import Path
 
 from handlers.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
-import reg_labels
-import reg_options
+import domain.regform.labels as reg_labels
+import domain.regform.options as reg_options
 import shared.web_theme as web_theme
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -136,7 +136,7 @@ def test_registry_defaults_have_no_owner_latin_brand():
 
 
 def test_reg_options_labels_have_no_owner_latin_brand():
-    """Задача 260903: варианты ответов анкеты (reg_options.py) — то, что делегат реально
+    """Задача 260903: варианты ответов анкеты (domain/regform/options.py) — то, что делегат реально
     видит кнопками. Коды городов/департаментов (Moscow, OGV и т.п.) — не бренд, не задеты
     этой проверкой (в списке только aiesec/youlead)."""
     offenders = []

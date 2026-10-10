@@ -588,7 +588,7 @@ def test_reg_resume_restart_yes_still_works_when_never(tmp_path):
 # кнопка-цикл раздела «📋 Заявки», врезки в /start, rereg_start, finalize_registration.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 
 # ── resubmit_allowed_for — чистое правило ────────────────────────────────────────────────────

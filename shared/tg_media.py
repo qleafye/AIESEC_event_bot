@@ -1,5 +1,5 @@
 """Резолвер настоящего типа файла Telegram — корневой aiogram-free модуль (прецедент
-`shared/web_theme.py`, `domain/settings/ops.py`, `reg_labels.py`). Импорт только `mimetypes` и
+`shared/web_theme.py`, `domain/settings/ops.py`, `domain/regform/labels.py`). Импорт только `mimetypes` и
 `PurePosixPath`, никаких зависимостей проекта.
 
 Зачем: файловый сервер Telegram отдаёт фотографии с `content-type: application/octet-stream`,

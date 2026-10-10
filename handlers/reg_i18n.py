@@ -45,7 +45,7 @@ from services.i18n_glossary import split_leading_symbols
 # канон варианта -> подпись для показа (display_summary_value/display_value_for_step ниже).
 # MULTI_CONFIG — определить, какие шаги хранят несколько канонов через ", ".join (см.
 # reg_engine.validate_answer, ветка step_type == "multi") и требуют сплита перед переводом.
-from reg_engine import option_pairs, canonical_option, MULTI_CONFIG
+from domain.regform.engine import option_pairs, canonical_option, MULTI_CONFIG
 
 logger = logging.getLogger(__name__)
 

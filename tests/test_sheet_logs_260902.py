@@ -96,7 +96,7 @@ def test_history_rows_order_and_field_count(tmp_path):
 
 
 def reg_engine_label(step):
-    import reg_engine
+    import domain.regform.engine as reg_engine
     return reg_engine.label_for(step)
 
 

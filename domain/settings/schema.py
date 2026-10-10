@@ -30,7 +30,7 @@ from datetime import datetime
 import shared.chat_score as chat_score
 
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
-from reg_labels import REG_LABELS
+from domain.regform.labels import REG_LABELS
 
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
@@ -3043,7 +3043,7 @@ SETTINGS_SCHEMA = {
     # «📝 Анкета» (это явное решение оркестратора). Дефолт каждого — `"on"`: сегодняшнее
     # поведение (chips/search — часть визуала новой анкеты, которая и так вся выключена
     # мастер-тумблером; other_allowed — university/city УЖЕ в `_OTHER_ALLOWED_STEPS`
-    # `reg_engine.py`, дефолт сохраняет разрешённость «Другое»). Атрибуты читаются ТОЛЬКО при
+    # `domain/regform/engine.py`, дефолт сохраняет разрешённость «Другое»). Атрибуты читаются ТОЛЬКО при
     # включённой новой анкете (`reg_form_v2_enabled`) — старый путь их не видит.
     "university_options_chips_enabled": {
         "type": "enum", "group": "toggles", "label": "🏫 Чипы у списка ВУЗов (новая анкета)",
@@ -3085,7 +3085,7 @@ SETTINGS_SCHEMA = {
     },
     # Phase 30 (30-03, A2-02/A2-03/A2-06, 30-UI-SPEC.md § Copywriting Contract): тексты новых
     # типов шага (select/lookup/multi/link/phone), которые видит делегат в новой анкете.
-    # Публикуются в `spec["v2_texts"]` (`reg_engine.py::_v2_texts_for`), читает
+    # Публикуются в `spec["v2_texts"]` (`domain/regform/engine.py::_v2_texts_for`), читает
     # `form_types.js`. Дефолты — дословно из принятого макета, `per_city` — колонка-в-колонку
     # из таблицы UI-SPEC. Группа `reg_prompts` уже маршрутизируется в раздел «📝 Анкета»
     # (`domain/settings/ops.py::SECTION_GROUPS`), второй регистрации раздела не требуется.
@@ -3235,7 +3235,7 @@ SETTINGS_SCHEMA = {
         "default": "Телеграм подставит номер сам — вводить руками не нужно.", "per_city": True,
     },
     # Пояснения к вариантам select-плитки (30-UI-SPEC.md § «1. select») — заведены сегодня
-    # ТОЛЬКО для `alumni_status` (макет рисует пример именно для него, `reg_engine.py::
+    # ТОЛЬКО для `alumni_status` (макет рисует пример именно для него, `domain/regform/engine.py::
     # _OPTION_HINT_KEYS`); остальные девятнадцать select-шагов пояснений в макете не
     # получили — тиражировать текст, которого никто не написал, не станем.
     "reg_option_hint__alumni_status__alumni": {
@@ -3264,7 +3264,7 @@ SETTINGS_SCHEMA = {
         "default": "Пришёл(ла) к нам впервые", "per_city": True,
     },
     # Phase 30 (30-04, A2-04, 30-UI-SPEC.md § «composite "Образование"»): тексты составной
-    # карточки. Публикуются в `spec["v2_texts"]` (`reg_engine.py::_v2_texts_for`), читает
+    # карточки. Публикуются в `spec["v2_texts"]` (`domain/regform/engine.py::_v2_texts_for`), читает
     # `form_types.js`. Чат-ключи (`_chat_*`) заводятся здесь для плана 30-06 (30-04-PLAN.md
     # `<action>`: «чат-ключи заводятся здесь, а используются планом 30-06 — так план 30-06 не
     # трогает реестр»).
@@ -6965,7 +6965,7 @@ SETTINGS_SCHEMA = {
     # (как dashboard/miniapp выше): свой экран `handlers/admin_modcard.py`, эти два ключа
     # НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS — второй
     # конкурирующей поверхности правки не заводим. Дефолт modcard_fields ПОВТОРЯЕТ
-    # moderation_card.DEFAULT_CARD_STEPS литералом (import moderation_card сюда даёт цикл:
+    # moderation_card.DEFAULT_CARD_STEPS литералом (import domain.regform.moderation_card as moderation_card сюда даёт цикл:
     # moderation_card -> reg_engine -> settings_schema) — дрейф закрыт сторожем
     # test_registry_default_matches_service_default.
     # Quick 260906-6xe: `type: "multi"` — набор закрыт (43 шага `moderation_card.CARD_STEPS`),
@@ -6978,7 +6978,7 @@ SETTINGS_SCHEMA = {
     # `_parse_setting` читал бы обратно как дефолтные 20 вопросов).
     "modcard_fields": {
         "type": "multi", "group": "apps", "label": "🧾 Поля карточки заявки",
-        "options_ref": "moderation_card:CARD_STEPS",
+        "options_ref": "domain.regform.moderation_card:CARD_STEPS",
         "empty_value": "—",
         "prompt": (
             "Какие ответы анкеты видит менеджер в карточке заявки. Один набор и для "

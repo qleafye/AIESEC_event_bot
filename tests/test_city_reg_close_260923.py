@@ -14,7 +14,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import cities
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from handlers import registration as reg

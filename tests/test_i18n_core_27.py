@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from i18n_ui_en import UI_EN
@@ -93,7 +93,7 @@ def test_src_hash_changes_when_source_changes():
 
 # ── Покрытие яруса A ─────────────────────────────────────────────────────────────────────
 # Тексты, зашитые внутрь тела `_validate_answer_core` и недоступные интроспекцией снаружи —
-# сверено с reg_engine.py на дату плана (2026-09-06). Список — сторож против расхождения
+# сверено с domain/regform/engine.py на дату плана (2026-09-06). Список — сторож против расхождения
 # (несовпадение хотя бы на символ = молчаливый пропуск перевода), а не дубликат кода.
 _NON_INTROSPECTABLE_VALIDATION_ERRORS = [
     "Укажи ФИО полностью (минимум фамилию и имя).",

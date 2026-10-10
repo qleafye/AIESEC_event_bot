@@ -1369,7 +1369,7 @@ export async function render(root, params, ctx) {
         // патч НЕСКОЛЬКИХ колонок одной карточкой, а не скаляром одной колонки `column`, как
         // остальные типы. Отличаем от файла (`instanceof File`) и repeatable-массива
         // (`Array.isArray`) — только «голый» объект значит composite-патч; для образования
-        // `step_key === column` (`STEP_TO_COLUMN` — identity-мэп для этих полей, reg_engine.py),
+        // `step_key === column` (`STEP_TO_COLUMN` — identity-мэп для этих полей, domain/regform/engine.py),
         // второй карты имён не заводим.
         // Приёмка 15.09 (п.5 «при отправке текста в резюме пишется, что не дошло до сервера»):
         // объектом отдаёт onChange не только карточка-композит — дропзона резюме шлёт текстовый

@@ -16,7 +16,7 @@ from config import config
 from database import db
 from handlers import admin_caps
 from handlers import registration as reg_mod
-import reg_engine
+import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
 from services import miniapp_outbox
 from services import sheets as sheets_service

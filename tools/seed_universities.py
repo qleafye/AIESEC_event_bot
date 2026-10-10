@@ -360,7 +360,7 @@ def _universities_from_config() -> dict:
     """Офлайн-фолбэк (задача 3, «если сеть недоступна — не выдумывать данные и не откладывать
     план»): снапшот из `reg_options.LEGACY_SPB_UNIVERSITIES` (11 строк дефолта бота), без псевдонимов —
     `count_base`/`count_closure` = 0, объяснено в README как «сид не выполнен полностью»."""
-    import reg_options
+    import domain.regform.options as reg_options
 
     items = [
         {"canonical": name, "aliases": [], "source": "config_fallback", "dissolved": False}
@@ -392,7 +392,7 @@ def cities_fallback_snapshot() -> dict:
     читать это значение где-либо, кроме `cities.py`). Скрипт не вызывает `reload_cities()`,
     поэтому список — тот же холодный фолбэк из `.env`, что и раньше, если БД недоступна/пуста."""
     import cities as cities_module
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     names: list[str] = []
     for entry in cities_module.all_cities():
@@ -600,7 +600,7 @@ async def main(apply: bool, from_config: bool, curated: bool) -> int:
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             print(
                 f"Сеть до query.wikidata.org недоступна ({exc}) — офлайн-фолбэк "
-                "reg_options.LEGACY_SPB_UNIVERSITIES.",
+                "domain.regform.options.LEGACY_SPB_UNIVERSITIES.",
                 file=sys.stderr,
             )
             uni_stats = _universities_from_config()

@@ -11,10 +11,10 @@
 """
 import asyncio
 
-import reg_options
+import domain.regform.options as reg_options
 from config import config
 from database import db
-from reg_engine import with_defaults
+from domain.regform.engine import with_defaults
 from tests._dbtpl import fast_init_db
 
 

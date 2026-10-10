@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-import moderation_card as mc
+import domain.regform.moderation_card as mc
 import domain.settings.ops as settings_ops
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, multi_codes, multi_labels, multi_options
 from domain.settings.validation import validate_setting_value
@@ -154,5 +154,5 @@ def test_registry_multi_entries_are_well_formed():
 def test_modcard_fields_registry_meta():
     entry = SETTINGS_SCHEMA["modcard_fields"]
     assert entry["type"] == "multi"
-    assert entry["options_ref"] == "moderation_card:CARD_STEPS"
+    assert entry["options_ref"] == "domain.regform.moderation_card:CARD_STEPS"
     assert entry["empty_value"] == mc.EMPTY_SENTINEL

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from reg_options import COURSE_OPTIONS
+from domain.regform.options import COURSE_OPTIONS
 from services.delegations_course import ParsedCourse, evaluate_ta, parse_course
 
 CUTOFF = datetime(2026, 9, 23)

@@ -47,7 +47,7 @@ from handlers.admin_reg_config import (
     _refresh_party_sheet_header,
     _refresh_short_sheet_header,
 )
-import reg_engine  # квик 260906-7zv: help_default/has_help — швов циклов нет, reg_engine handlers не импортирует
+import domain.regform.engine as reg_engine  # квик 260906-7zv: help_default/has_help — швов циклов нет, reg_engine handlers не импортирует
 
 logger = logging.getLogger(__name__)
 
@@ -503,7 +503,7 @@ _RESUME_MODE_CYCLE = ("file_or_text", "text_only", "fork")
 def _next_resume_mode(current: str) -> str:
     """Следующее значение цикла из трёх (Phase 28-04, SU-04). Неизвестное/несуществующее
     текущее значение (например будущее, ещё не заведённое здесь) безопасно уходит на первый
-    элемент цикла — тот же fail-soft принцип, что у `resume_mode()` в `reg_engine.py`."""
+    элемент цикла — тот же fail-soft принцип, что у `resume_mode()` в `domain/regform/engine.py`."""
     try:
         idx = _RESUME_MODE_CYCLE.index(current)
     except ValueError:

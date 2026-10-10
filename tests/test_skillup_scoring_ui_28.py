@@ -36,7 +36,7 @@ import domain.settings.ops as settings_ops
 from config import config
 from database import db as bot_db
 from handlers.admin_caps import required_capability
-from moderation_card import EMPTY_SENTINEL
+from domain.regform.moderation_card import EMPTY_SENTINEL
 from domain.settings.schema import get_setting_typed
 
 from tests.test_miniapp_routes import (

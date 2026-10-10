@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta
 
 import aiosqlite
-import reg_options
+import domain.regform.options as reg_options
 from config import config
 from services.timeutil import msk_now, process_clock_is_utc
 
@@ -3510,7 +3510,7 @@ async def export_participants_csv(*, city_scope=None, with_payment: bool = False
     нужна, только если модуль оплаты включён). Пусто -> `(headers, [])`.
     `city_label` — async-функция «сырое значение event_city -> название»: её передаёт хендлер,
     потому что db.py не импортирует cities (цикл импорта); без неё в колонке сырое значение."""
-    from reg_labels import PAYMENT_STATUS_LABELS
+    from domain.regform.labels import PAYMENT_STATUS_LABELS
 
     season = (await get_setting("event_season") or "").strip() or None
     frag, params = _approved_current_season_frag(season)
@@ -5601,7 +5601,7 @@ QUIZ_NOT_PASSED = "not_passed"
 # (`RESUME_RECALL_COLUMNS + (...)`), а не вторым литералом, чтобы паритет трёх из четырёх
 # колонок был гарантирован кодом, а не совпадением при правке.
 #
-# Константы живут ИМЕННО здесь (а не в `reg_engine.py`), потому что `reg_engine.py` уже
+# Константы живут ИМЕННО здесь (а не в `domain/regform/engine.py`), потому что `domain/regform/engine.py` уже
 # импортирует `database.db` (строка 38) — обратный импорт был бы циклом.
 RESUME_RECALL_COLUMNS = ("resume_file_id", "resume_text", "resume_url")
 RESUME_COLUMNS = RESUME_RECALL_COLUMNS + ("resume_link",)

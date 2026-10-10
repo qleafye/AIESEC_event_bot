@@ -29,12 +29,12 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from handlers.admin import router
 from handlers.states import DelegationEdit
-from moderation_card import EMPTY_SENTINEL
+from domain.regform.moderation_card import EMPTY_SENTINEL
 from services import delegations
 from services.background import spawn
 from services.settings.audit import set_setting_by_admin

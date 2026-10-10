@@ -52,7 +52,7 @@ from database.db import (
     list_onsite_pending,
     purge_user,
 )
-from reg_engine import is_past_season_row
+from domain.regform.engine import is_past_season_row
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,

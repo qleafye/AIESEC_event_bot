@@ -37,7 +37,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
-from reg_engine import (
+from domain.regform.engine import (
     STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed,
     lookup_render_flags, prompt, validate_answer,
 )

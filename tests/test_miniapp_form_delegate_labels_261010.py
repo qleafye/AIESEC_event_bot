@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import asyncio
 
-import reg_engine
-from reg_labels import DELEGATE_LABELS, REG_LABELS
+import domain.regform.engine as reg_engine
+from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
 from services import i18n_form_manual
 
 

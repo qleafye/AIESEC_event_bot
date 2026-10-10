@@ -16,7 +16,7 @@ import sqlite3
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from handlers import registration as reg

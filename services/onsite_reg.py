@@ -25,7 +25,7 @@ import segno
 from cities import cities_module_on, city_label, normalize_city, per_city_key
 from database import db as _db
 from database.db import approve_onsite, get_user
-from reg_engine import is_past_season_row
+from domain.regform.engine import is_past_season_row
 from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
 from services.timeutil import msk_now
 from domain.settings.schema import get_setting_typed

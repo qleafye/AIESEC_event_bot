@@ -92,7 +92,7 @@ from services import amb_progress  # СкиллАп 5: прогресс амба
 from services import amb_status  # правила входа/выхода амбассадора — одна точка
 from handlers.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
 from config import config
-from reg_engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
+from domain.regform.engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 
 router = Router()
 logger = logging.getLogger(__name__)

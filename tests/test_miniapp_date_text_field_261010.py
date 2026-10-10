@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 from tests.test_miniapp_form_controls_js_260911 import _FAKE_DOM_PRELUDE
 from tests.test_miniapp_frontend import FORM_JS

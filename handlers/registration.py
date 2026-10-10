@@ -53,8 +53,8 @@ from services.reg_finalize import finalize_data, post_finalize, resolve_delegate
 from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
 from services.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
-# reg_options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
-from reg_options import (
+# domain/regform/options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
+from domain.regform.options import (
     ALUMNI_STATUS_OPTIONS,
     BED_SHARING_OPTIONS,
     TRANSPORT_OPTIONS,
@@ -126,14 +126,14 @@ DEFAULT_REG_COMPLETE_TEXT = SETTINGS_SCHEMA["reg_complete_text"]["default"]
 
 # Phase 21 (21-01, FORM-SYNC-01): step-type/column maps, select/multi configs, enabled-step
 # resolution, prompt/options resolution, the prior-answer (recall) rule and pre-flow gates
-# moved to the root aiogram-free reg_engine.py — the single engine bot AND Mini App call
+# moved to the root aiogram-free domain/regform/engine.py — the single engine bot AND Mini App call
 # (D-03, FORM-SYNC-01). Old private names kept as aliases so every existing call site in this
 # file and in handlers/reg_flow.py, handlers/reg_consent.py, tests/*.py keeps working unchanged.
-# Квик 260923-p37 (CITY-REG-CLOSE): модульный импорт (не `from reg_engine import city_gate`) —
+# Квик 260923-p37 (CITY-REG-CLOSE): модульный импорт (не `from domain.regform.engine import city_gate`) —
 # `_city_fork_then_continue` уже несёт свой keyword-параметр `city_gate`, бэйр-имя функции
 # затенялось бы им внутри тела.
-import reg_engine
-from reg_engine import (
+import domain.regform.engine as reg_engine
+from domain.regform.engine import (
     REG_STEP_TYPES, STEP_TO_COLUMN, SELECT_CONFIG, MULTI_CONFIG, RECALLABLE_STEPS,
     enabled_steps, option_list_for, is_step_enabled_for_track, prompt,
     options as engine_options,  # Phase 28: алиас — в _ask_step локальная `options` затеняла бы импорт
@@ -966,7 +966,7 @@ def _extract_source_tag(command_args: str | None) -> str | None:
 
 # Phase 7 `_resolve_track` (три шага: party-трек авторитетен -> глобальный/per-city
 # `registration_mode == short` -> кандидат или "full") и закрытый словарь `_PARTY_TAG_MAP`
-# переехали в reg_engine.py (gap closure фазы 21) — тот же код обслуживает PATCH из Mini App.
+# переехали в domain/regform/engine.py (gap closure фазы 21) — тот же код обслуживает PATCH из Mini App.
 # Старые имена сохранены: их зовут ~20 тестов и код ниже.
 _resolve_track = resolve_track
 _PARTY_TAG_MAP = PARTY_TAG_MAP
@@ -1239,7 +1239,7 @@ def _party_fork_kb() -> InlineKeyboardMarkup:
     ])
 
 
-# _should_show_fork moved to reg_engine.py (Phase 21, 21-01) as should_show_fork; imported +
+# _should_show_fork moved to domain/regform/engine.py (Phase 21, 21-01) as should_show_fork; imported +
 # aliased above.
 
 
@@ -1263,7 +1263,7 @@ async def _city_fork_kb() -> InlineKeyboardMarkup:
 # воспроизводится только конфигурацией (event_city_enabled=off или <2 включённых городов),
 # не кодовой зависимостью от режима формы. Поведение закреплено регрессионным тестом
 # test_city_fork_shown_for_short_mode (tests/test_content_percity_consumers.py).
-# _should_show_city_fork moved to reg_engine.py (Phase 21, 21-01) as should_show_city_fork;
+# _should_show_city_fork moved to domain/regform/engine.py (Phase 21, 21-01) as should_show_city_fork;
 # imported + aliased above.
 
 
@@ -1994,7 +1994,7 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
         return None
 
 
-# _is_returning_row moved to reg_engine.py (Phase 21, 21-01) as is_returning_row; imported +
+# _is_returning_row moved to domain/regform/engine.py (Phase 21, 21-01) as is_returning_row; imported +
 # aliased above.
 
 
