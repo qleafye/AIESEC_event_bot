@@ -1502,6 +1502,8 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
             text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
             return
+    if await gscope.deny(callback, key):  # общее значение — не для привязанного к городу
+        return
     current = await get_setting_typed(key)
     new_val = _next_enum_value(key, current)
     await set_setting_by_admin(admin_id, key, new_val)
@@ -1519,6 +1521,8 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     """On/off toggle for a Phase 4 module flag (fail-safe default OFF, D-15)."""
     # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA
     # (payment_enabled/consent_enabled/party_enabled/party_fork_question), all default "off".
+    if await gscope.deny(callback, key):  # общий ключ — не для привязанного к городу
+        return
     current = await get_setting_typed(key)
     new_val = "off" if current == "on" else "on"
     await set_setting_by_admin(callback.from_user.id, key, new_val)
