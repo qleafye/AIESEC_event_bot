@@ -10,7 +10,8 @@
 - уже отклонён вручную -> только пометка (колонки + журнал), второго письма нет;
 - одобрен -> не трогается.
 
-Уже помеченные автоотказом пропускаются, поэтому повторное применение ничего не удвоит.
+Уже помеченные автоотказом пропускаются (метка пишется последней), поэтому повторное применение
+ничего не удвоит, а прерванное — дообработается.
 """
 from __future__ import annotations
 
@@ -67,34 +68,56 @@ async def preview(since: str) -> dict:
         "pending": len(groups["pending"]),
         "rejected": len(groups["rejected"]),
         "approved": len(groups["approved"]),
+        "digest": ids_digest(groups["pending"] + groups["rejected"]),
         "examples": [person_label(u) for u, _ in groups["pending"][:EXAMPLES_LIMIT]],
     }
 
 
-async def apply(bot, since: str, pause: float = 0.1) -> dict:
-    """Применяет к тем, кто есть в предпросмотре на момент запуска. Возвращает счётчики."""
-    from database.db import set_user_status, update_user_answers
+def ids_digest(pairs: list[tuple[dict, dict]]) -> str:
+    """Короткий отпечаток списка из предпросмотра: кнопка «Применить» несёт его, и применение
+    идёт, только если список за это время не изменился."""
+    import hashlib
+
+    ids = sorted(int(u["telegram_id"]) for u, _ in pairs)
+    return hashlib.sha1(",".join(map(str, ids)).encode()).hexdigest()[:8]
+
+
+async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None) -> dict:
+    """Применяет к тем, кто есть в предпросмотре (`ids` — список из него; без `ids` — свежая
+    выборка). Возвращает счётчики. Порядок на человека: статус «отклонён» проверяемой записью
+    (`reject_user`, только из «на рассмотрении»), журнал, письмо, и только потом метка
+    `auto_reject_rule_ids` — она «закрывает» строку для повторного запуска, поэтому на сбое
+    посередине строка остаётся видна и дообрабатывается, а не теряется."""
+    from database.db import reject_user, update_user_answers
+    from reg_labels import STATUS_LABELS
     from services.application_effects import apply_decision_effects
     from services.applications import record_decision
     from services.i18n import context as i18n_context, tr as i18n_tr
     from services.reject_journal import AUTO_DECIDED_BY, record_auto_reject
 
-    groups = split_targets(await collect(since))
-    done = {"pending": 0, "rejected": 0, "failed": 0}
+    pairs = await collect(since)
+    if ids is not None:
+        pairs = [(u, p) for u, p in pairs if int(u["telegram_id"]) in ids]
+    groups = split_targets(pairs)
+    done = {"pending": 0, "rejected": 0, "failed": 0, "skipped": 0}
+    sheet_ids: list[int] = []
     for status in ("pending", "rejected"):
         for user, patch in groups[status]:
             tid = user["telegram_id"]
             try:
                 column_patch = {k: patch[k] for k in AUTO_COLUMNS if k in patch}
-                if status == "rejected":
+                if status == "pending":
+                    if not await reject_user(tid):
+                        done["skipped"] += 1  # успели одобрить/отклонить вручную — не трогаем
+                        continue
+                    sheet_ids.append(tid)
+                else:
                     column_patch.pop("rejected_at", None)
-                await update_user_answers(tid, column_patch, allowed_columns=list(column_patch))
                 await record_auto_reject(tid, patch["reject_rule_ids"], patch["reject_texts"])
                 if status == "pending":
-                    await set_user_status(tid, "rejected")
                     lang, tr_map = await i18n_context(tid)
                     reason = "\n\n".join(i18n_tr(t, lang, tr_map) for t in patch["reject_texts"]) or None
-                    await apply_decision_effects(bot, tid, "rejected", reason, notify=True, sheet=True)
+                    await apply_decision_effects(bot, tid, "rejected", reason, notify=True, sheet=False)
                     await record_decision(
                         tid, "rejected", reason, AUTO_DECIDED_BY,
                         datetime.strptime(patch["auto_rejected_at"], "%Y-%m-%d %H:%M:%S"),
@@ -102,8 +125,16 @@ async def apply(bot, since: str, pause: float = 0.1) -> dict:
                     )
                     if pause:
                         await asyncio.sleep(pause)
+                await update_user_answers(tid, column_patch, allowed_columns=list(column_patch))
                 done[status] += 1
             except Exception:
                 done["failed"] += 1
                 logger.exception("reject_retro: не обработан tid=%s", tid)
+    if sheet_ids:
+        try:
+            from services.sheets import bulk_update_status_in_sheet
+
+            await bulk_update_status_in_sheet({str(t): STATUS_LABELS["rejected"] for t in sheet_ids})
+        except Exception:
+            logger.exception("reject_retro: лист не обновлён для %s строк", len(sheet_ids))
     return done
