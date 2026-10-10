@@ -65,7 +65,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "короткая анкета — в шве handlers/reg/onsite_reg.py; 2770 -> 2774. "
         "27.09 (заявки с пустым городом): +5 строк — `_start_registration_flow` без города зовёт "
         "`handlers.reg.reg_city_gate.form_city_or_ask` (известный город или экран выбора) вместо "
-        "старта анкеты без города; сама логика — в шве reg_city_gate/services.known_city; 2765 -> 2770. "
+        "старта анкеты без города; сама логика — в шве reg_city_gate/services.cities.known_city; 2765 -> 2770. "
         "25.09 (день форума): +1 строка — строка листа party берёт «Пришёл» из базы (with_arrived_cell), иначе полная перезапись строки стирала время прихода; 2764 -> 2765. "
         "Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): +103 строки — "
         "`_extract_volunteer_invite_code`/`_handle_volunteer_invite` (deep-link `vol_<код>` "

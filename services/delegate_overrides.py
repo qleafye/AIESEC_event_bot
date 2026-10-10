@@ -1,7 +1,7 @@
 """Phase 33 (delegate-card admin actions, задачи 2/3): персональные ОДНОРАЗОВЫЕ исключения
 из двух глобальных положений — `reg_resubmit_after_reject` («🔁 Разрешить повторную подачу»,
 `handlers/applications/admin_resubmit_grant.py`) и `reg_edit_policy` («✏️ Открыть правку после решения»,
-`handlers/applications/admin_edit_grant.py`). Общий примитив (та же роль, что `services/city_move.py` для
+`handlers/applications/admin_edit_grant.py`). Общий примитив (та же роль, что `services/cities/city_move.py` для
 обеих карточных операций города) — своя таблица `admin_delegate_overrides`
 (`database/db.py::grant_delegate_override`/`get_active_delegate_override`/
 `revoke_delegate_override`/`consume_delegate_override`).
