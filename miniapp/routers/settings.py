@@ -710,38 +710,57 @@ async def settings_batch(
             # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
             # Имя бота: прежнее значение — в очередь, бот вернёт его, если Telegram откажет.
             prev_bot_name = await get_setting("bot_name")
-            for change in body.changes:
-                key = change.key
-                logger.info(f"admin {p.telegram_id} правит настройку {key}")
-                warning = await settings_ops.commit_batch_item(key, checked[key], p.telegram_id)
-                if warning:
-                    warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
-                saved.append(key)
-            if saved:
+            # Ключи, которые ФАКТИЧЕСКИ тронуты записью: событие для бота ставится по ним, даже
+            # если пакет упал на середине — иначе бот не применит хуки уже сохранённого.
+            event_keys: list[str] = []
+            failure: tuple[str, Exception] | None = None
+            failing_key = ""
+            try:
+                for change in body.changes:
+                    key = failing_key = change.key
+                    logger.info(f"admin {p.telegram_id} правит настройку {key}")
+                    event_keys.append(key)
+                    warning = await settings_ops.commit_batch_item(key, checked[key], p.telegram_id)
+                    if warning:
+                        warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
+                    saved.append(key)
+                # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот
+                # же приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО
+                # после успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только
+                # по ключам из `web_theme.THEME_KEYS`, значения — из `PRESETS`, не из тела запроса
+                # (T-de4-03).
+                preset_key = web_theme.THEME_KEYS["preset"]
+                if preset_key in saved:
+                    preset_name = checked.get(preset_key)
+                    if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
+                        preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
+                        for handle_key, handle_value in preset_writes.items():
+                            failing_key = handle_key
+                            event_keys.append(handle_key)
+                            await write_setting_logged(p.telegram_id, handle_key, handle_value)
+                            targets[handle_key] = handle_key
+                            saved.append(handle_key)
+                        logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
+            except Exception as exc:  # noqa: BLE001 — сообщаем, что успело сохраниться
+                logger.exception("settings/batch: запись упала на ключе %s", failing_key)
+                failure = (failing_key, exc)
+            if event_keys:
                 # Реакции на правку (описание бота, время «Итогов дня», автоотказ) живут в
                 # процессе бота — просим его через очередь, как после записи из бота.
                 from miniapp.outbox import enqueue
 
-                await enqueue("settings_changed", {"keys": saved, "by": p.telegram_id,
+                await enqueue("settings_changed", {"keys": list(dict.fromkeys(event_keys)),
+                                                   "by": p.telegram_id,
                                                    "prev_bot_name": prev_bot_name})
-            # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот же
-            # приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО после
-            # успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только по ключам
-            # из `web_theme.THEME_KEYS`, значения — из `PRESETS`, не из тела запроса (T-de4-03).
-            preset_key = web_theme.THEME_KEYS["preset"]
-            if preset_key in saved:
-                preset_name = checked.get(preset_key)
-                if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
-                    preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
-                    for handle_key, handle_value in preset_writes.items():
-                        await write_setting_logged(p.telegram_id, handle_key, handle_value)
-                        targets[handle_key] = handle_key
-                        saved.append(handle_key)
-                    if preset_writes:
-                        from miniapp.outbox import enqueue
-
-                        await enqueue("settings_changed", {"keys": list(preset_writes), "by": p.telegram_id})
-                    logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
+            if failure:
+                raise HTTPException(500, {
+                    "reason": "partial_save",
+                    "saved": saved,
+                    "failed_key": failure[0],
+                    "text": ("Сохранилось не всё: " + (f"записано {len(saved)}, " if saved else "")
+                             + "остальное не записалось. Откройте раздел заново, проверьте "
+                             "значения и повторите сохранение."),
+                })
         else:
             warnings = {}
 
