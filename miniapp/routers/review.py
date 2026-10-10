@@ -238,7 +238,7 @@ async def review_approve(
 
     await add_coins(
         submission["user_id"], coins,
-        reason=f"Задание: {str(task['text'])[:60]}",
+        reason=f"Задание: {task_title(task)[:60]}",
         changed_by=p.telegram_id,
         source="task",
         task_id=task["id"],  # CR-01: ссылка для рейтинга волны (sum_task_coins_for_wave)
@@ -249,7 +249,7 @@ async def review_approve(
         "status": "approved",
         "coins": coins,
     })
-    text = f"✅ Задание «{task['text']}» одобрено! +{coins}🪙"
+    text = f"✅ Задание «{task_title(task)}» одобрено! +{coins}🪙"
     if late and coins != base_coins:
         # Тот же хвост, что у бота (D-25/D-35) — делегат должен понимать, почему баллов меньше.
         text += " — сдано после дедлайна, начислено меньше обычного"
@@ -283,6 +283,6 @@ async def review_reject(
     })
     await _notify_delegate(
         request.app.state.cfg, submission["user_id"],
-        f"❌ Задание «{task['text']}» отклонено.\n\nПричина: {reason}",
+        f"❌ Задание «{task_title(task)}» отклонено.\n\nПричина: {reason}",
     )
     return {"ok": True, "status": "rejected"}

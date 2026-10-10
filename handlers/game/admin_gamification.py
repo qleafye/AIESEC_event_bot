@@ -1500,7 +1500,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
     if won:
         await add_coins(
             submission["user_id"], coins,
-            reason=f"Задание: {str(task['text'])[:60]}",
+            reason=f"Задание: {task_title(task)[:60]}",
             changed_by=callback.from_user.id,
             source="task",
             task_id=task["id"],  # Phase 32 (32-01, D-14): ссылка для рейтинга волны
@@ -1515,7 +1515,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             # проставляются сразу, откладывается только пуш.
             from services.comms import quiet_hours
             from services.scheduler import _now_moscow_naive
-            text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
+            text = f"✅ Задание «{html_module.escape(task_title(task))}» одобрено! +{coins}🪙"
             if late and coins != base_coins:
                 # D-25/D-35: делегат должен понимать, почему баллов меньше (T-32-07-04).
                 # Нулевой процент штрафа (coins == base_coins) текста не меняет ни на байт.
@@ -1626,7 +1626,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
     if won:
         await add_coins(
             submission["user_id"], coins,
-            reason=f"Задание: {str(task['text'])[:60]}",
+            reason=f"Задание: {task_title(task)[:60]}",
             changed_by=message.from_user.id,
             source="task",
             task_id=task["id"],  # Phase 32 (32-01, D-14): ссылка для рейтинга волны
@@ -1636,7 +1636,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
             # Quick 260904-dq1: та же обёртка, что grev_approve выше.
             from services.comms import quiet_hours
             from services.scheduler import _now_moscow_naive
-            text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
+            text = f"✅ Задание «{html_module.escape(task_title(task))}» одобрено! +{coins}🪙"
             if late and coins != base_amount:
                 text += " — сдано после дедлайна, начислено меньше обычного"
             await quiet_hours.send_or_queue_text(
@@ -1677,7 +1677,7 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
         # only when claim_submission actually won the race, same rule as grev_approve.
         _request_game_resync()
     if won and submission is not None and task is not None:
-        user_msg = f"❌ Задание «{html_module.escape(str(task['text']))}» отклонено."
+        user_msg = f"❌ Задание «{html_module.escape(task_title(task))}» отклонено."
         if reason != "-":  # A-02: причина доходит до делегата, только если менеджер её написал
             user_msg += f"\n\nПричина: {html_module.escape(reason)}"
         try:
