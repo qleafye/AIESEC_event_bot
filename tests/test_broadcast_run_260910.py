@@ -208,7 +208,7 @@ class _RevokeBot:
 
     async def delete_message(self, chat_id, message_id):
         if (chat_id, message_id) in self.fail_pairs:
-            raise Exception("message to delete not found")
+            raise Exception("Bad Request: message can't be deleted for everyone")
         self.deleted.append((chat_id, message_id))
 
 
