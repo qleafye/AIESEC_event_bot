@@ -7,7 +7,7 @@ filtering, notification fan-out) calls to turn a `telegram_id` into a `set[str]`
 capabilities.
 
 D-05 (no cache): every call re-reads SQLite fresh. `staff` is a local ~5-row table (not a
-network source like `services/allowlist.py`'s Google Sheets), so caching here would only
+network source like `services/access/allowlist.py`'s Google Sheets), so caching here would only
 introduce "added a manager, doesn't take effect until restart" desync. Do NOT add a memoizing
 decorator, a module-level results set, or a manual reload-on-demand helper to this module.
 
@@ -29,7 +29,7 @@ from domain.settings.schema import get_setting_typed
 # only config/database.db/settings_schema (see domain/cities.py's own module docstring) -- it never
 # imports handlers.*, so importing it here from handlers/access/admin_caps.py cannot form a cycle.
 from domain.cities import cities_module_on, normalize_city
-from services import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
+from services.access import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
 
 logger = logging.getLogger(__name__)
 

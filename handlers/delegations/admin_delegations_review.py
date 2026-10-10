@@ -37,8 +37,8 @@ from handlers.delegations.admin_delegations import (
 )
 from handlers.states import DelegationLink
 from services import delegations
-from services.person_label import person_label
-from services.person_search import search_people
+from services.access.person_label import person_label
+from services.access.person_search import search_people
 
 logger = logging.getLogger(__name__)
 

@@ -133,7 +133,7 @@ def test_allowlist_refresh_skipped_when_preselect_off(monkeypatch):
     async def fake_get_setting(key):
         return "off" if key == "preselect_enabled" else None
 
-    monkeypatch.setattr("services.allowlist.refresh_allowlist", fake_refresh)
+    monkeypatch.setattr("services.access.allowlist.refresh_allowlist", fake_refresh)
     monkeypatch.setattr(scheduler, "get_setting", fake_get_setting)
 
     asyncio.run(scheduler.allowlist_refresh_job())
@@ -155,8 +155,8 @@ def test_allowlist_refresh_runs_when_preselect_on(monkeypatch):
         async def send_message(self, chat_id, text):
             alerts.append((chat_id, text))
 
-    monkeypatch.setattr("services.allowlist.refresh_allowlist", fake_refresh)
-    monkeypatch.setattr("services.allowlist.allowlist_size", lambda: 0)
+    monkeypatch.setattr("services.access.allowlist.refresh_allowlist", fake_refresh)
+    monkeypatch.setattr("services.access.allowlist.allowlist_size", lambda: 0)
     monkeypatch.setattr(scheduler, "get_setting", fake_get_setting)
     monkeypatch.setattr(scheduler, "_bot", _FakeBot())
     monkeypatch.setattr(scheduler.config, "ADMIN_IDS", [777])
@@ -173,7 +173,7 @@ def test_allowlist_refresh_runs_when_preselect_on(monkeypatch):
 def test_startup_warm_up_skipped_when_preselect_off(monkeypatch):
     """The interval job alone was not enough: startup called refresh_allowlist() directly, so
     every restart still produced one WARNING about the missing tab."""
-    import services.allowlist as allowlist
+    import services.access.allowlist as allowlist
 
     refreshed = []
 
@@ -192,7 +192,7 @@ def test_startup_warm_up_skipped_when_preselect_off(monkeypatch):
 
 
 def test_startup_warm_up_runs_when_preselect_on(monkeypatch):
-    import services.allowlist as allowlist
+    import services.access.allowlist as allowlist
 
     refreshed = []
 
