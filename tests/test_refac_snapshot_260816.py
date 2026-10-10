@@ -618,7 +618,7 @@ def _build_snapshot_lines():
 # Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
 # Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/admin_program_halls.py), чистая вставка (972 -> 973).
 # Дрифт-нота (09.10, личные Яндекс Формы): +7 хендлеров admin.router (3 message + 4 callback_query,
-# handlers/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070);
+# handlers/ext_forms/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070);
 # мастер подключения личной формы (admin_ext_forms_connect.py): +3 хендлера (extf_push_title, extf_push,
 # extf_push_title_default), чистые вставки рядом с extf_connect_link и extf_add_google (1070 -> 1073).
 GOLDEN_SNAPSHOT = """
@@ -2425,11 +2425,11 @@ def test_snapshot_total_handler_count_is_292():
     # Снятие роли с подтверждением: +1 admin.callback_query (roles_remove_yes) сразу после
     # roles_remove; одна чистая вставка (1060 -> 1061).
     # Часовой пояс города: forumtz_cfg_screen/forumtz_set_go перед prog_fbday_open (1061 -> 1063).
-    # Личные Яндекс Формы (handlers/admin_ext_forms_push.py, импорт из хвоста admin_ext_forms.py):
+    # Личные Яндекс Формы (handlers/ext_forms/admin_ext_forms_push.py, импорт из хвоста admin_ext_forms.py):
     # +3 admin.message (state:ExtFormImport:* — отмена/файл/не файл) сразу после
     # extf_connect_link и +4 admin.callback_query (extf_import_start/extf_pkeys/extf_pkey/
     # extf_pkeyset) сразу после extf_keys_ok; две чистые вставки (1063 -> 1070).
-    # Мастер личной Яндекс Формы (handlers/admin_ext_forms_connect.py): +1 admin.message
+    # Мастер личной Яндекс Формы (handlers/ext_forms/admin_ext_forms_connect.py): +1 admin.message
     # (extf_push_title, ExtFormConnect.push_title) сразу после extf_connect_link и +2
     # admin.callback_query (extf_push/extf_push_title_default) сразу после extf_add_google;
     # две чистые вставки (1070 -> 1073).

@@ -14,7 +14,7 @@ import pytest
 from config import config
 from database import ext_forms_db as ef
 from handlers import admin_delegations_sheet as mod
-from handlers import admin_ext_forms_setup as setup
+from handlers.ext_forms import admin_ext_forms_setup as setup
 from handlers.admin_caps import required_capability
 from tests.test_delegations_admin import (
     _FakeCallback, _FakeEditableMessage, _button_texts, _callbacks, _env, _form, _last_edit,
