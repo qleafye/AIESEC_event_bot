@@ -669,7 +669,7 @@ def test_send_wave_end_ping_close_wave_false_no_send(tmp_path, monkeypatch):
 
 
 def test_send_wave_end_ping_only_city_managers_and_has_numbers(tmp_path, monkeypatch):
-    """Известный пред-существующий баг ВНЕ этого плана (`services/ambassador_waves.py::
+    """Известный пред-существующий баг ВНЕ этого плана (`services/amb/ambassador_waves.py::
     wave_rating` зовёт `list_ambassadors(city_scope=wave.get("event_city"))` сырой строкой, а
     не дескриптором `cities.city_scope(...)` — падает `database.db._city_clause` на любой
     волне с реальным городом; см. SUMMARY, раздел «Найденный, не исправленный баг») — файл
@@ -687,7 +687,7 @@ def test_send_wave_end_ping_only_city_managers_and_has_numbers(tmp_path, monkeyp
         wave = await db.get_wave(wid)
         return {"wave": wave, "top": [{"place": 1, "name": "Иван", "user_id": 1, "points": 30}],
                 "pending": 2, "pending_near_cutoff": 0}
-    monkeypatch.setattr("services.ambassador_waves.wave_end_summary", fake_summary)
+    monkeypatch.setattr("services.amb.ambassador_waves.wave_end_summary", fake_summary)
 
     seen_city = {}
 

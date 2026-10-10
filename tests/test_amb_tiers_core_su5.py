@@ -263,7 +263,8 @@ def test_deadline_validator():
 import json  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
 
-from services import amb_tiers, applications  # noqa: E402
+from services.amb import amb_tiers  # noqa: E402
+from services import applications
 
 
 def _on(*, deadline="2099-01-01 00:00", quota=None):
@@ -735,13 +736,13 @@ def test_new_ambassador_check_is_fail_soft_and_off_noop(tmp_path, monkeypatch):
 
 def test_every_ambassador_join_path_checks_tiers():
     """Сторож: каждая точка, где человек становится амбассадором, зовёт проверку ступеней —
-    сама или через `services.amb_status.request_join` (он проверяет ступени при вступлении)."""
+    сама или через `services.amb.amb_status.request_join` (он проверяет ступени при вступлении)."""
     import inspect
 
     from handlers.reg import reg_ambassador
     from handlers import user_actions
     from miniapp.routers import form
-    from services import amb_status
+    from services.amb import amb_status
 
     assert "check_tiers_for_new_ambassador" in inspect.getsource(amb_status._check_tiers)
     assert "_check_tiers(" in inspect.getsource(amb_status._request_join)
@@ -768,7 +769,7 @@ def test_ambassador_without_own_approval_gets_no_tier_until_approved(tmp_path):
     """Решение владельца 30.09: ступени — только амбассадору с одобренной заявкой текущего
     сезона. Приглашённые, прошедшие отбор раньше него, засчитываются, как только одобрят его
     самого (одобрение амбассадора само запускает пересчёт)."""
-    from services import amb_tiers
+    from services.amb import amb_tiers
 
     _ready(tmp_path)
     _on()
@@ -784,7 +785,7 @@ def test_ambassador_without_own_approval_gets_no_tier_until_approved(tmp_path):
 
 
 def test_ambassador_from_past_season_gets_no_tier(tmp_path):
-    from services import amb_tiers
+    from services.amb import amb_tiers
 
     _ready(tmp_path)
     _on()

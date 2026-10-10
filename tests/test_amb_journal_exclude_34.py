@@ -6,7 +6,7 @@ import sqlite3
 
 from config import config
 from database import amb_journal_db, amb_tiers_db, db
-from services import amb_journal, amb_progress
+from services.amb import amb_journal, amb_progress
 from tests.test_referral_credit_32 import (
     _active_wave,
     _coins_rows,

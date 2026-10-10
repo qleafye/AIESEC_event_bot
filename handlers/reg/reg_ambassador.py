@@ -32,7 +32,7 @@ from domain.settings.schema import get_setting_typed
 from handlers.registration import router
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
-from services import amb_status
+from services.amb import amb_status
 
 _ALERT_MAX = 200  # потолок текста всплывающего алерта Telegram
 
@@ -55,7 +55,7 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
     ронять уже сохранённую заявку; здесь дополнительно свой собственный fail-soft на get_me(),
     чтобы функция не поднимала исключение вообще ни при каких обстоятельствах."""
     try:
-        # Правила входа — services.amb_status. Кандидату (режим отбора, ответил «да» в анкете)
+        # Правила входа — services.amb.amb_status. Кандидату (режим отбора, ответил «да» в анкете)
         # подтверждение и ссылка приходят независимо от тумблера предложения ссылки; при набранном
         # лимите и отказанному предлагать нечего. Сбой чтения — прежнее предложение.
         try:
@@ -128,7 +128,7 @@ async def _send_link_and_note(message, bot, uid: int) -> None:
 
 @router.callback_query(F.data == "regamb:want")
 async def regamb_want(callback: types.CallbackQuery):
-    """«Хочу свою ссылку». Вход в команду идёт через `services.amb_status.request_join` (там же
+    """«Хочу свою ссылку». Вход в команду идёт через `services.amb.amb_status.request_join` (там же
     лимит мест, режим отбора, отказанные и ступени): вступил — ссылка и пояснение; стал
     кандидатом — подтверждение, ссылка и пояснение; мест нет или отказано — короткий алерт,
     в БД ничего не пишется. `uid` — только из `callback.from_user`, устаревшая кнопка

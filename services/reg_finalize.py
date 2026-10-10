@@ -262,7 +262,7 @@ async def _amb_form_yes(telegram_id: int) -> None:
     в команду ведёт кнопка после анкеты. Отказанного/уже кандидата `request_join` не трогает.
     Сбой не роняет уже сохранённую заявку."""
     try:
-        from services import amb_status
+        from services.amb import amb_status
         if await amb_status.join_mode() == amb_status.MODE_SELECTION:
             await amb_status.request_join(telegram_id, source="form")
     except Exception as e:
@@ -273,7 +273,7 @@ async def _amb_unapproved(telegram_id: int) -> None:
     """Заявка перестала быть одобренной (повторная модерация после правки, автоотказ,
     переподача) — место амбассадора без выданного пакета снимается."""
     try:
-        from services import amb_status
+        from services.amb import amb_status
         await amb_status.on_applications_unapproved([telegram_id])
     except Exception as e:
         logger.error(f"on_applications_unapproved failed for {telegram_id}: {e}")
@@ -687,7 +687,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             # записанный статус (T-32-05-05).
             if status == "approved":
                 try:
-                    from services.amb_journal import on_invitees_approved
+                    from services.amb.amb_journal import on_invitees_approved
                     await on_invitees_approved([telegram_id])
                 except Exception as e:
                     logger.error(f"on_invitees_approved failed for {telegram_id}: {e}")

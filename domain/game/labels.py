@@ -284,7 +284,7 @@ def visible_tasks_for(
     Фикс находки CR-03 (32-REVIEW.md): у НЕ-амбассадора задание `audience="all"`, привязанное
     к волне, раньше отдавалось всегда — черновик/будущая/уже закрытая волна утекала кому
     угодно. Новый необязательный `open_wave_ids` (по умолчанию `None` — прежнее поведение)
-    сужает такое задание до волн, которые прямо сейчас идут (`services.ambassador_waves.
+    сужает такое задание до волн, которые прямо сейчас идут (`services.amb.ambassador_waves.
     wave_open`), той же формой множества id, что и `eligible_wave_ids`. `None` — сознательный
     сохранённый пробел: Mini App (`miniapp/routers/tasks.py`/`submissions.py`) пока не
     передаёт этот параметр вовсе (см. отчёт фиксера находки — какую правку туда нужно
@@ -315,7 +315,7 @@ async def task_visible_to(user: dict | None, task: dict) -> bool:
     ambassador_waves.wave_visibility_ids`, `cities`) — этот модуль корневой для Mini App,
     таскать их на уровень модуля незачем ни боту, ни веб-процессу."""
     from domain.cities import cities_module_on, city_scope, normalize_city
-    from services.ambassador_waves import wave_visibility_ids
+    from services.amb.ambassador_waves import wave_visibility_ids
 
     is_ambassador = bool(user and user.get("is_ambassador"))
     cities_on = await cities_module_on()

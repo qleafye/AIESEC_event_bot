@@ -371,12 +371,12 @@ async def move_user_city(
             report["status_changed"] = True
             report["after"]["status"] = "pending"
             try:  # место амбассадора держит только одобренная заявка
-                from services import amb_status
+                from services.amb import amb_status
                 await amb_status.on_applications_unapproved([telegram_id])
             except Exception as e:
                 logger.error("city_move: on_applications_unapproved(%s) failed: %s", telegram_id, e)
             try:
-                from services import amb_journal
+                from services.amb import amb_journal
                 await amb_journal.sync_revocations([telegram_id])
             except Exception as e:
                 logger.error("city_move: sync_revocations(%s) failed: %s", telegram_id, e)

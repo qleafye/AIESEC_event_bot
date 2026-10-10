@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from config import config
 from database import amb_journal_db, db
-from services import amb_journal
+from services.amb import amb_journal
 from services.infra.timeutil import msk_now
 from tests.test_referral_credit_32 import (
     _coins_rows,

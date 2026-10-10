@@ -28,7 +28,8 @@ from domain.cities import get_setting_typed_for_city
 from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
 from domain.payment import parse_options
 import domain.regform.engine as reg_engine
-from services import amb_progress, amb_screen, applications, i18n, reg_edit_policy
+from services.amb import amb_progress, amb_screen
+from services import applications, i18n, reg_edit_policy
 from domain.settings.schema import get_setting_typed
 from services.text_fill import fill_collapsing
 
@@ -194,7 +195,7 @@ async def _referral_block(
         return None
     if not bot_username:
         return None
-    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
         return await i18n.tr_setting(key, lang, tr_map or {})
 
     # Ступени амбассадоров СкиллАп: амбассадору вместо счётчика — прогресс цифрами (часть блока

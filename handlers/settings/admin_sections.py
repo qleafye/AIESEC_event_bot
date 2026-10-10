@@ -671,7 +671,7 @@ def is_section(token: str | None) -> bool:
 
 async def _amb_section_on() -> bool:
     """Раздел «🤝 Амбассадоры» есть только при включённом модуле «🤝 Отбор амбассадоров»."""
-    from services.amb_status import selection_enabled  # ленивый шов
+    from services.amb.amb_status import selection_enabled  # ленивый шов
     return await selection_enabled()
 
 

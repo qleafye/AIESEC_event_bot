@@ -23,7 +23,7 @@
 `tests/test_refac_snapshot_260816.py`). WR-13: удаление волны (`wave_delete_go`) больше не
 снимает напоминания о дедлайне у её заданий — они остаются жить «вне волн» со своим сроком.
 
-Право на КАЖДОЕ изменяющее действие — `services.ambassador_waves.can_edit_wave`/
+Право на КАЖДОЕ изменяющее действие — `services.amb.ambassador_waves.can_edit_wave`/
 `editable_city_codes` (per_city_visible_codes) ПЕРЕД чтением и записью — кнопка могла быть
 нарисована до привязки менеджера к городу (T-32-10-01).
 """
@@ -45,7 +45,7 @@ from database.db import (
     task_title,
 )
 from domain.game.labels import task_deadline, task_deadline_admin, task_has_deadline
-from services import ambassador_waves as aw
+from services.amb import ambassador_waves as aw
 from services.scheduler import (
     cancel_wave_jobs,
     schedule_task_deadline_reminder,

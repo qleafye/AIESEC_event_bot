@@ -1,6 +1,6 @@
 """Доставка уведомления о новой ступени амбассадора (событие `amb_tier_reached`).
 
-Событие ставит `services.amb_tiers.check_tiers` в `miniapp_outbox` — из бот-процесса или из
+Событие ставит `services.amb.amb_tiers.check_tiers` в `miniapp_outbox` — из бот-процесса или из
 веб-процесса Mini App; разбирает его только бот (`services/infra/miniapp_outbox.py::_handle_row`).
 
 Повтор безопасен: сначала атомарно ставится `notified_at`

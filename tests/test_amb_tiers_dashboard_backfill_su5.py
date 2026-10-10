@@ -2,7 +2,7 @@
 
 - `dashboard/amb_tiers_block.py` — четыре агрегата без персональных данных, паритет
   определений с ботом (`database/amb_tiers_db.referral_counts`), старая БД без таблиц;
-- `services.amb_tiers.preview_backfill` — предпросмотр пересчёта ступеней (кнопка
+- `services.amb.amb_tiers.preview_backfill` — предпросмотр пересчёта ступеней (кнопка
   «🔁 Пересчитать ступени» проверяется в tests/test_amb_excl_backfill_261009.py).
 
 pytest-asyncio нет — async через `asyncio.run()`.
@@ -19,7 +19,7 @@ from dashboard.amb_tiers_block import amb_tiers_block
 from dashboard.queries import Scope, ambassador_block
 from database import amb_tiers_db as tdb
 from database import db
-from services import amb_tiers
+from services.amb import amb_tiers
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_core_su5 import seed_journal_row
 

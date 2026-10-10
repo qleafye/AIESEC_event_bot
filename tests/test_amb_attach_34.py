@@ -5,7 +5,7 @@ import sqlite3
 
 from config import config
 from database import amb_journal_db, db
-from services import amb_journal
+from services.amb import amb_journal
 from tests.test_referral_credit_32 import (
     _coins_rows,
     _make_ambassador,

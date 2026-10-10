@@ -17,7 +17,8 @@ from database.db import (
     get_user_rank,
     list_coin_entries_for_user,
 )
-from services import amb_progress, i18n
+from services.amb import amb_progress
+from services import i18n
 from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, game_gate, require_section
@@ -61,7 +62,7 @@ async def history(offset: str | None = None, limit: str | None = None,
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
 
-    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
         return await i18n.tr_setting(key, lang, tr_map)
 
     # Тумблер «Скрывать имена приглашённых»: «Приглашённый №N» вместо имени, БД не трогаем.

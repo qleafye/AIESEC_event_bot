@@ -12,7 +12,7 @@ import logging
 from config import config
 from database import amb_tiers_db as tdb
 from database import db
-from services import amb_tiers
+from services.amb import amb_tiers
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_admin_su5 import (
     ADMIN_ID, FakeCallback, FakeMessage, _make_ambassador, _new_state, _sql,
