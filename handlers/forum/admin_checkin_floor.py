@@ -2,7 +2,7 @@
 сколько одобренных пришли сегодня и сколько за последние 15 минут, какие сессии идут сейчас
 и сколько на них отметилось, сколько отметила каждая стойка входа. Всё за СЕГОДНЯ (МСК): вход
 отмечается каждый день форума. Числа — общие запросы `shared/arrival_stats.py` (их же рисует дашборд
-в разделе «Приход»), исполняет `services/checkin_arrival.py`.
+в разделе «Приход»), исполняет `services/forum/checkin_arrival.py`.
 
 Город — из шапки, та же развилка, что у «📊 Статистика прихода» (`handlers/forum/admin_checkin_stats.py`):
 закреплённый город / модуль выключен — один отчёт, иначе «Все города» с построчной разбивкой.
@@ -20,7 +20,7 @@ import shared.arrival_stats as arrival_stats
 from domain.cities import cities_module_on, city_label, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_scope
-from services.checkin_arrival import floor_report
+from services.forum.checkin_arrival import floor_report
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

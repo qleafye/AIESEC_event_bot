@@ -17,7 +17,7 @@ from domain.cities import per_city_key
 from config import config
 from database import db
 from handlers.states import ProgramPhotoUpload
-from services import program
+from services.forum import program
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 961003001

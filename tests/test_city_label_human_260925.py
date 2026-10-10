@@ -23,7 +23,7 @@ import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from handlers.forum import admin_checkin, admin_checkin_stats
-from services.checkin import ENTRY_POINT, build_payload, current_event_tag
+from services.forum.checkin import ENTRY_POINT, build_payload, current_event_tag
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,
@@ -96,7 +96,7 @@ def test_label_setting_override_wins_with_module_off(tmp_path):
 # ── (б) ответы сканера Mini App при выключенном модуле ──────────────────────────────────────
 
 def _qr_with_code(uid, code="msk") -> str:
-    # Настоящий QR несёт КОД города (`services.checkin.build_qr_payload` -> users.event_city).
+    # Настоящий QR несёт КОД города (`services.forum.checkin.build_qr_payload` -> users.event_city).
     return build_payload(TAG, "Иванов Иван", code, _token(uid))
 
 

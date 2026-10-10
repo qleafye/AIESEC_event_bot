@@ -8,7 +8,7 @@
 - снятие отметки -> ячейка пересчитана (пусто, если входов не осталось);
 - CSV на 500 строк -> одно чтение на вкладку;
 - делегата нет в листе -> событие ждёт с редким повтором, через неделю снимается;
-- сторож: services/checkin.py, services/venue_log.py и miniapp/ не импортируют Google-листы."""
+- сторож: services/forum/checkin.py, services/forum/venue_log.py и miniapp/ не импортируют Google-листы."""
 from __future__ import annotations
 from tests._paths import REPO_ROOT
 
@@ -23,8 +23,8 @@ from config import config
 from database import db
 import services.sheets.sheets as sheets
 from services.sheets import sheet_arrival_sync
-from services import venue_log
-from services.checkin import record_arrival
+from services.forum import venue_log
+from services.forum.checkin import record_arrival
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 
 ROOT = REPO_ROOT
@@ -401,7 +401,7 @@ def _imports(path: Path) -> set[str]:
     return names
 
 
-_GUARDED = [ROOT / "services" / "checkin.py", ROOT / "services" / "venue_log.py"] + sorted(
+_GUARDED = [ROOT / "services" / "forum" / "checkin.py", ROOT / "services" / "forum" / "venue_log.py"] + sorted(
     (ROOT / "miniapp").rglob("*.py")
 )
 

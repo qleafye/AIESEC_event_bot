@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
 from handlers.states import ProgramPhotoUpload
-from services.program import (
+from services.forum.program import (
     PROGRAM_PHOTO_KEY, PROGRAM_VIEW_KEY, own_program_photo, resolve_program_content,
     resolve_program_view,
 )
@@ -85,7 +85,7 @@ async def _back_screen(admin_id: int, code: str, back_to: str):
 #
 # Раньше фото программы из бота было одно на все города: загрузила его СПб — увидели Тюмень и
 # Москва, и оно перекрывало их программу сессиями. Теперь фото пишется в per_city составной
-# ключ города экрана (`services.program.own_program_photo`), а общее показывается только городу
+# ключ города экрана (`services.forum.program.own_program_photo`), а общее показывается только городу
 # без своего фото и без сессий (`resolve_program_photo_source`). Модуль городов выключен —
 # городов нет, пишется общее фото. Подпись — своя у города (`program_caption` составным ключом).
 

@@ -1,5 +1,5 @@
 """Quick 260906-8uq (FAQ-01..06): раздел «❓ Частые вопросы» — хранение (`faq_items` +
-аксессоры `database/db.py`), чистое правило перекрытия по городу (`services/faq.py`), экран
+аксессоры `database/db.py`), чистое правило перекрытия по городу (`services/forum/faq.py`), экран
 делегата (бот) и экран менеджера (бот).
 
 pytest-asyncio в проекте нет — каждый async-вызов через `asyncio.run()`; БД — tmp_path,
@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from services import faq as faq_service
+from services.forum import faq as faq_service
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb
 from domain.settings.schema import SETTINGS_SCHEMA
@@ -35,7 +35,7 @@ def _ready(tmp_path, name="faq_260906.db"):
 async def _seed_cities(rows):
     """rows: list of (code, label, tab_base, sort_order[, enabled]) — форма
     tests/test_cities_registry_260818.py::_seed_cities_db. Нужно ТОЛЬКО тем тестам, что
-    резолвят `cities.city_scope("kzn")` — чистое правило `services/faq.py` в резолве города
+    резолвят `cities.city_scope("kzn")` — чистое правило `services/forum/faq.py` в резолве города
     не нуждается вовсе."""
     import domain.cities as cities
     for r in rows:
@@ -60,7 +60,7 @@ def _restore_cities_cache():
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Задача 1: normalize_question / apply_city_overrides / city_badge / short (services/faq.py)
+# Задача 1: normalize_question / apply_city_overrides / city_badge / short (services/forum/faq.py)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_normalize_question_collapses_case_and_whitespace_and_trims_trailing_punct():

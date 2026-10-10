@@ -8,7 +8,7 @@ from database import db, session_enroll_db as edb
 from handlers.forum import admin_enroll_list as el
 from handlers.forum import admin_forum_functions as aff
 from handlers.states import EditSetting
-from services.session_enroll import ENROLL_TEXT_KEYS
+from services.forum.session_enroll import ENROLL_TEXT_KEYS
 from tests._enroll38 import ADMIN_ID, CITY, DAY, add_user, ready, run, seed_msk_program
 from tests.test_admin_enroll_38 import FakeCallback, cbs, new_state, texts
 

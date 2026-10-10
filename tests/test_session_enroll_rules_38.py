@@ -3,7 +3,7 @@ from datetime import datetime
 
 from domain.cities import per_city_key
 from database import db, session_enroll_db
-from services import session_enroll as se
+from services.forum import session_enroll as se
 from tests._enroll38 import CITY, add_user, ready, run, seed_delegates, seed_msk_program
 
 U = 101  # approved, текущий сезон, msk
@@ -198,7 +198,7 @@ def test_no_aiogram_import():
     env = {**os.environ, "BOT_TOKEN": "123456:dummy-test-token", "ADMIN_IDS": "[1]"}
     out = subprocess.run(
         [sys.executable, "-c",
-         "import sys; import services.session_enroll; print('aiogram' in sys.modules)"],
+         "import sys; import services.forum.session_enroll; print('aiogram' in sys.modules)"],
         capture_output=True, text=True, env=env, check=True,
     ).stdout.strip()
     assert out == "False"

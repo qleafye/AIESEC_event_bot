@@ -427,7 +427,7 @@ async def _migrate_menu_schedule_into_program(db: aiosqlite.Connection) -> None:
     `menu_schedule` там НЕ выключен явно, `menu_program` становится `on`; если выключен явно —
     `menu_program` остаётся с тем значением, которое делегат этого города видел до миграции.
     Затем все варианты `menu_schedule` удаляются — их больше никто не читает. Пустую кнопку
-    всё равно прячет гейт «есть фото или сессии» (`services.program.program_menu_visible`).
+    всё равно прячет гейт «есть фото или сессии» (`services.forum.program.program_menu_visible`).
     На чистой БД не пишет ни одной строки (значение, равное дефолту/глобальному, не
     записывается)."""
     async with db.execute("PRAGMA user_version") as cursor:
@@ -1926,15 +1926,15 @@ async def init_db():
         )
 
         # Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-20): таблица отметок «пришёл» — вход и сессии
-        # программы на одной схеме. `point` = "entry" для входа (services.checkin.ENTRY_POINT),
-        # `"session:{id}"` (services.program.point_for_session) — для сессий. `UNIQUE(telegram_id,
+        # программы на одной схеме. `point` = "entry" для входа (services.forum.checkin.ENTRY_POINT),
+        # `"session:{id}"` (services.forum.program.point_for_session) — для сессий. `UNIQUE(telegram_id,
         # point)` + `INSERT OR IGNORE` (record_checkin ниже) хранит ПЕРВЫЙ скан на точку — верно
         # для входа (D-10: «повторы отбрасываются»). D-20 («на сессии засчитывается ПОСЛЕДНИЙ
         # скан слота») этому идемпотентному INSERT не подчиняется — сессии идут через ОТДЕЛЬНУЮ
         # функцию `record_session_checkin` (delete-then-insert внутри слота параллельных сессий,
-        # `services.program.parallel_group`), вход продолжает жить на INSERT OR IGNORE как был.
+        # `services.forum.program.parallel_group`), вход продолжает жить на INSERT OR IGNORE как был.
         # `source` — miniapp (сканер Mini App) | csv (загрузка выгрузки офлайн-сканера) | manual
-        # (по фамилии/от руки, D-11/D-12) | auto_session (услуга `services.checkin.record_arrival`
+        # (по фамилии/от руки, D-11/D-12) | auto_session (услуга `services.forum.checkin.record_arrival`
         # сама подтверждает вход, когда делегата отметили на сессии, а на входе он ещё не был).
         # `approx_time` — 1, если время скана не удалось прочитать из файла и подставлено время
         # загрузки (D-10).
@@ -2173,7 +2173,7 @@ async def init_db():
 
         # Форум-ночь B1 (идея №10, перевыпуск QR): старый токен после reissue_checkin_token
         # ниже уходит сюда — скан УЖЕ недействительного QR отвечает причиной «QR заменён»
-        # (services.checkin.resolve_scanned_user), а не общим «не найден», как для по-
+        # (services.forum.checkin.resolve_scanned_user), а не общим «не найден», как для по-
         # настоящему чужого/поддельного кода. PRIMARY KEY на old_token — реиссью одного и
         # того же делегата дважды кладёт сюда ДВЕ РАЗНЫЕ строки (два разных сгенерированных
         # токена), коллизия между СВОИМИ старыми токенами по построению невозможна
@@ -2290,7 +2290,7 @@ async def init_db():
         # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
         # строк лексикографически совпадает со сравнением значения, лишний парсинг на каждый
         # запрос не нужен (пересечение слотов/сортировка по времени — обычный `ORDER BY`/`<`).
-        # `services.program.point_for_session` уже готовит `f"session:{id}"` для будущей
+        # `services.forum.program.point_for_session` уже готовит `f"session:{id}"` для будущей
         # отметки на сессиях (FORUM-CHECKIN.md D-18..D-20) — не эта задача, только совместимое
         # API. Удаление зала НЕ каскадит сессии (`delete_program_hall`) — они остаются без
         # зала (`hall_id -> NULL`), а не пропадают из программы.
@@ -5628,8 +5628,8 @@ CHAT_IN = "in"
 CHAT_OUT = "out"
 
 # Форум-ночь п.6 (D-25, идея №14): поле фильтра рассылки «Отметка на форуме» — «пришли» / «не
-# пришли». Литерал ниже ОБЯЗАН побайтово совпадать с `services.checkin.ENTRY_POINT`
-# (`checkins.point` для входа) — не импортирован напрямую (services.checkin импортирует ЭТОТ
+# пришли». Литерал ниже ОБЯЗАН побайтово совпадать с `services.forum.checkin.ENTRY_POINT`
+# (`checkins.point` для входа) — не импортирован напрямую (services.forum.checkin импортирует ЭТОТ
 # модуль, обратный импорт был бы циклом), совпадение проверяет
 # tests/test_checkin_broadcast_filter_260924.py::test_entry_point_literal_matches_service.
 CHECKIN_ENTRY_POINT = "entry"
@@ -5642,7 +5642,7 @@ CHECKIN_DAY_TODAY = "today"
 
 # Поле фильтра рассылки «Сессия программы» — «были» / «не были» на КОНКРЕТНОЙ сессии (внутри
 # записи фильтра едет `session_id`, тот же приём, что `chats`/`exclude` у delegate_chat/
-# event_city выше — `database/db.py` не может импортировать `services.program`).
+# event_city выше — `database/db.py` не может импортировать `services.forum.program`).
 SESSION_ATTENDED = "attended"
 SESSION_NOT_ATTENDED = "not_attended"
 
@@ -6246,7 +6246,7 @@ async def _resolve_checkin_entry_season(filters: list[dict]) -> list[dict]:
     ):
         return filters
     event_season = (await get_setting("event_season") or "").strip() or None
-    from services.forum_days import forum_city_scopes  # ленивый: модуль читает cities
+    from services.forum.forum_days import forum_city_scopes  # ленивый: модуль читает cities
 
     today = msk_now().date()
     out = []
@@ -8045,7 +8045,7 @@ async def count_applications(*, city_scope=None, season: str | None = None) -> d
 #
 # Правило «городской пункт перекрывает общий» здесь НЕ живёт — это одноразовая городская
 # ФИЛЬТРАЦИЯ (см. `_city_clause`), сама логика перекрытия объявлена ровно один раз в чистом
-# модуле `services/faq.py::apply_city_overrides`, который вызывающий (бот/Mini App) применяет
+# модуле `services/forum/faq.py::apply_city_overrides`, который вызывающий (бот/Mini App) применяет
 # поверх результата `list_faq_for_city`.
 
 # Белый список колонок для `update_faq_item` (T-FAQ-04): имя колонки никогда не приходит из
@@ -8083,7 +8083,7 @@ async def list_faq_for_city(city_code: str | None) -> list[dict]:
     пункты — параметр `?` со значением None никогда не совпадает с `city = ?` в SQLite, так
     что вторая ветка OR молчаливо не срабатывает, а первая (`city IS NULL`) уже покрывает этот
     случай. Перекрытие общего пункта городским (тот же нормализованный вопрос) — забота
-    вызывающего через `services.faq.apply_city_overrides`, не этой функции."""
+    вызывающего через `services.forum.faq.apply_city_overrides`, не этой функции."""
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -11477,7 +11477,7 @@ async def get_or_create_checkin_token(telegram_id: int) -> str | None:
 
 
 async def get_user_by_checkin_token(token: str | None) -> dict | None:
-    """Делегат по токену из QR (последнее поле, `services.checkin.build_payload`/
+    """Делегат по токену из QR (последнее поле, `services.forum.checkin.build_payload`/
     `parse_qr_payload`). Тёзки не путаются (D-13) — токен уникален по построению (частичный
     индекс `idx_users_checkin_token` выше)."""
     if not token:
@@ -11496,7 +11496,7 @@ async def reissue_checkin_token(telegram_id: int) -> str | None:
     вообще был выдан, лениво через `get_or_create_checkin_token`) уходит в
     `checkin_token_replacements`, `users.checkin_token` получает новый случайный токен. Скан
     старого QR после этого находит его в `checkin_token_replacements`
-    (`get_checkin_token_replacement` ниже) вместо `users` — `services.checkin.
+    (`get_checkin_token_replacement` ниже) вместо `users` — `services.forum.checkin.
     resolve_scanned_user` превращает это в причину «QR заменён», а не «не найден».
 
     Возвращает новый токен или `None`, если пользователя нет вовсе. Та же защита от
@@ -11619,7 +11619,7 @@ async def record_session_checkin(
     `record_checkin` выше (первый скан побеждает, точка «Вход»), здесь «последний скан СЛОТА
     засчитывается» (D-20): делегат, ушедший с одной параллельной сессии на другую в ТОМ ЖЕ
     временном слоте, обязан считаться на НОВОЙ, а не на старой. `slot_session_ids` — id ДРУГИХ
-    сессий слота (без самой `session_id`, слот строит `services.program.parallel_group`) — эта
+    сессий слота (без самой `session_id`, слот строит `services.forum.program.parallel_group`) — эта
     функция ничего не знает о времени/пересечении сессий, только про то, какие point-строки
     (`session:{id}`) — слот-соседи текущей.
 
@@ -12052,7 +12052,7 @@ async def count_approved_current_season(*, city_scope=None) -> int:
 async def list_approved_users(*, city_scope=None) -> list[dict]:
     """Кандидатный пул для `services.checkin_broadcast`: строки `users` со `status='approved'`
     в границах `city_scope`, БЕЗ фильтра по сезону — сезон (и статус ещё раз) перепроверяет
-    `services.checkin.checkin_denial` на КАЖДОЙ строке вызывающим кодом (задание просило
+    `services.forum.checkin.checkin_denial` на КАЖДОЙ строке вызывающим кодом (задание просило
     «через checkin_denial», не отдельную копию его правила SQL-условием), единственный источник
     правды о допуске остаётся один. `city_scope=None` — без ограничения по городу (модуль
     городов выключен)."""
@@ -12335,7 +12335,7 @@ async def checkin_not_arrived_summary(*, city_scope=None, day: str | None = None
 
 # ── Форум-ночь п.4: расписание форума в боте (program_halls/program_sessions) ─────────────────
 # Бизнес-правила (разбор времени, предупреждение о занятости зала, слоты параллельных сессий,
-# копирование между городами) — в аiogram-free `services/program.py`; здесь только сырой CRUD,
+# копирование между городами) — в аiogram-free `services/forum/program.py`; здесь только сырой CRUD,
 # тем же приёмом, что `services/reject_rules.py` поверх `reject_rules`/`auto_reject_log`.
 
 async def create_program_hall(city: str, name: str, capacity: int | None = None) -> int:
@@ -12512,7 +12512,7 @@ async def sessions_overlapping_hall(
 ) -> list[dict]:
     """Сессии ДРУГОГО занятия ТОГО ЖЕ зала в ТОТ ЖЕ день, чей интервал `[start_time, end_time)`
     пересекается с переданным — предупреждение словами (CLAUDE.md), не запрет: вызывающий
-    (`services.program.hall_conflict_warning`) показывает текст и спрашивает подтверждение,
+    (`services.forum.program.hall_conflict_warning`) показывает текст и спрашивает подтверждение,
     сохранить разрешено в любом случае."""
     params: list = [city, day, hall_id, end_time, start_time]
     sql = (
@@ -12547,7 +12547,7 @@ async def is_marked_for_session(telegram_id: int, session_id: int) -> bool:
     хранит РОВНО одну строку на слот благодаря `record_session_checkin`) — единственная
     проверка допуска к оценке: не отмеченный на этой сессии делегат не может её оценить, ни
     получить приглашение (D-24). Точка отметки собрана строкой `f"session:{id}"` НАПРЯМУЮ, не
-    через `services.program.point_for_session` — тот модуль импортирует ИЗ `database.db`,
+    через `services.forum.program.point_for_session` — тот модуль импортирует ИЗ `database.db`,
     обратный импорт замкнул бы цикл (тот же довод, что у `record_session_checkin` выше)."""
     async with _connect() as db:
         async with db.execute(
@@ -12979,7 +12979,7 @@ async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
 # ── Идея №29 бэклога чек-ина: «Твой Юлид в цифрах» — картинка-итог после форума ─────────────
 
 async def forum_stats_card_sent_ids(season: str) -> set[int]:
-    """Кому УЖЕ отправлена карточка в ЭТОМ `season` — вызывающий (`services.forum_stats_card`)
+    """Кому УЖЕ отправлена карточка в ЭТОМ `season` — вызывающий (`services.forum.forum_stats_card`)
     вычитает этот набор из кандидатов, идемпотентность рассылки: повторный тик/тап не шлёт
     дважды за один сезон."""
     async with _connect() as db:

@@ -1,6 +1,6 @@
 """Quick 260906-8uq (FAQ-01..06): раздел менеджера «❓ Частые вопросы» — список пунктов,
 карточка с правкой/порядком/городом/удалением, мастер добавления. Правило видимости пункта
-делегату живёт ОДИН раз в `services/faq.py` — этот шов его не переопределяет, только пишет и
+делегату живёт ОДИН раз в `services/forum/faq.py` — этот шов его не переопределяет, только пишет и
 читает `faq_items` через аксессоры `database/db.py`.
 
 Форма шва — Phase 13 (REFAC-01), точная копия `handlers/comms/admin_questions.py`: своего `Router()`
@@ -34,7 +34,7 @@ from handlers.comms.admin_questions import render_questions_screen
 from handlers.states import FaqItem
 from keyboards.builders import get_cancel_kb
 from domain.cities import ALL_CITIES, admin_selected_city, city_label
-from services import faq as faq_service
+from services.forum import faq as faq_service
 from services.questions import question_status
 
 FAQ_PAGE = 8
@@ -471,7 +471,7 @@ async def afaq_save_draft(callback: types.CallbackQuery, state: FSMContext):
 
     # T-FAQ дубль: ищем совпадение по нормализованному вопросу СРЕДИ пунктов ТОГО ЖЕ городского
     # ведра (city == target_city, точное совпадение, не include_null-видимость делегата —
-    # `services.faq.apply_city_overrides` тут не подходит, та функция про то, что видит делегат,
+    # `services.forum.faq.apply_city_overrides` тут не подходит, та функция про то, что видит делегат,
     # а не про поиск дублей в ведре менеджера).
     all_items = await list_faq_items(city_scope=None)
     norm_target = faq_service.normalize_question(draft_q)

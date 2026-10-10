@@ -6,7 +6,7 @@
   (собран до того, как её завели) — fail-soft False, без исключения.
 - Named-tab-first, fallback на main — тот же приём, что `tests/test_sheet_status_city_tab_
   260819.py` для «Статус» (FakeWorksheet/_patch_fake_sheets переиспользованы оттуда).
-- `services.checkin.mark_arrived_in_sheet` — ставит событие в очередь ТОЛЬКО на `status == "new"`;
+- `services.forum.checkin.mark_arrived_in_sheet` — ставит событие в очередь ТОЛЬКО на `status == "new"`;
   `"duplicate"` не ставит ничего. Сам лист пишет джоба очереди (services/sheets/sheet_arrival_sync.py,
   подробно — tests/test_sheet_arrival_queue_260925.py), отметка лист не трогает."""
 from __future__ import annotations
@@ -19,7 +19,7 @@ from config import config
 import services.sheets.sheets as sheets
 from database import db
 from services.sheets import sheet_arrival_sync
-from services.checkin import mark_arrived_in_sheet
+from services.forum.checkin import mark_arrived_in_sheet
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 
 
@@ -140,7 +140,7 @@ def test_update_arrived_not_found_returns_false(tmp_path, monkeypatch):
     assert asyncio.run(go()) is False
 
 
-# ── services.checkin.mark_arrived_in_sheet: только на 'new' ─────────────────────────────────
+# ── services.forum.checkin.mark_arrived_in_sheet: только на 'new' ─────────────────────────────────
 
 def test_mark_arrived_writes_on_new(tmp_path, monkeypatch):
     main = ArrivedFakeWorksheet("main", HEADER, rows=[["555", "Одобрена", "-"]])

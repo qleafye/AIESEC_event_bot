@@ -58,14 +58,14 @@ def test_question_without_options_blocks_enable_and_activity(tmp_path):
 
 
 def test_parse_csv_rejects_question_without_options():
-    from services.quiz_import import parse_csv
+    from services.forum.quiz_import import parse_csv
 
     parsed = parse_csv("Вопрос;Вариант;Компетенция;Баллы\nЕсть вопрос;;;\n".encode("utf-8"), {}, 5)
     assert parsed.errors
 
 
 def test_current_question_skips_question_without_options(tmp_path):
-    from services import quiz as svc
+    from services.forum import quiz as svc
 
     ready(tmp_path)
 
@@ -83,7 +83,7 @@ def test_current_question_skips_question_without_options(tmp_path):
 
 def test_staff_enroll_validates_delegate(tmp_path):
     from domain.cities import per_city_key
-    from services import session_enroll as svc
+    from services.forum import session_enroll as svc
 
     ready(tmp_path)
 
@@ -169,7 +169,7 @@ def test_parallel_start_gives_single_open_attempt(tmp_path):
 
 def test_already_enrolled_on_full_session_is_not_full(tmp_path):
     from domain.cities import per_city_key
-    from services import session_enroll as svc
+    from services.forum import session_enroll as svc
 
     ready(tmp_path)
 
@@ -187,7 +187,7 @@ def test_already_enrolled_on_full_session_is_not_full(tmp_path):
 
 
 def test_unavailable_session_has_own_text(tmp_path):
-    from services import session_enroll as svc
+    from services.forum import session_enroll as svc
 
     ready(tmp_path)
     for status in ("wrong_city", "not_enrollable", "no_session"):

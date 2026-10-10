@@ -2,7 +2,7 @@
 `checkins` и `database.db.get_user_by_checkin_token`/`record_checkin`/
 `count_checkins_by_point`/`count_approved_current_season`.
 
-Токен (`get_or_create_checkin_token`) и формат содержимого QR (`services.checkin.build_payload`)
+Токен (`get_or_create_checkin_token`) и формат содержимого QR (`services.forum.checkin.build_payload`)
 уже покрыты `tests/test_checkin_qr_260923.py` — здесь только новая половина: таблица `checkins`
 (идемпотентность по (telegram_id, point), счётчики) и поиск делегата по токену.
 

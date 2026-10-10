@@ -113,9 +113,9 @@ async def is_public_asset(file_id: str) -> bool:
             return True
     # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): фото программы — публичное
     # оформление события (та же карточка, что делегат уже видит в чате по кнопке «📅 Программа
-    # форума»), не персональные данные — общий ключ ИЛИ per_city составной (`services.program.
+    # форума»), не персональные данные — общий ключ ИЛИ per_city составной (`services.forum.program.
     # PROGRAM_PHOTO_KEY`, мимо обычного per_city-резолвера, D-10).
-    from services.program import PROGRAM_PHOTO_KEY
+    from services.forum.program import PROGRAM_PHOTO_KEY
     if (await get_setting(PROGRAM_PHOTO_KEY) or "") == file_id:
         return True
     for code in city_codes():

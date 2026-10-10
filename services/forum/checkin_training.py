@@ -1,6 +1,6 @@
 """Бэклог чек-ина №7: тренировочный режим сканера и лист учебных QR.
 
-Учебный QR — обычная строка формата `services.checkin.build_payload`
+Учебный QR — обычная строка формата `services.forum.checkin.build_payload`
 («метка·имя·город·токен»), только токен из закрытого набора `TRAIN-…` (`TRAINING_TOKENS`).
 Настоящий токен делегата — `secrets.token_urlsafe` в `users.checkin_token`, с «TRAIN-» он не
 совпадёт: в БД такого токена нет, отметку по нему поставить нельзя в принципе.
@@ -9,7 +9,7 @@
 🔴 прошлый сезон, 🔴 чужое событие. У «чужого события» метка намеренно НЕ наша
 (`FOREIGN_TAG`) — приложение-сканер и загрузка CSV видят его ровно как настоящий чужой QR.
 
-Как узнаётся учебный токен — через реестр резолверов `services.checkin.register_token_resolver`
+Как узнаётся учебный токен — через реестр резолверов `services.forum.checkin.register_token_resolver`
 (первый его потребитель): резолвер отдаёт `kind="training"`, `id` = вид учебного QR, `denial` —
 тот же код отказа, что был бы у настоящего делегата. Запись отметки для kind != "delegate" в
 `resolve_scanned_user` не предусмотрена, поэтому вызывающие перехватывают учебный токен ДО неё:
@@ -41,7 +41,7 @@ import segno
 
 from database.db import list_checkins_for_user
 from services.i18n import i18n
-from services.checkin import (
+from services.forum.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
     Resolved,
@@ -135,7 +135,7 @@ def _stamp(dt) -> str:
 async def _demo_undo(lang: str, tr_map: dict) -> dict:
     """Кнопка «↩️ Отменить» на учебной плашке: фронт не ходит на сервер, а показывает
     `text` — отменять нечего, отметки нет."""
-    from services import venue_log  # лениво: журнал площадки нужен только ради длины окна
+    from services.forum import venue_log  # лениво: журнал площадки нужен только ради длины окна
 
     return {
         "demo": True,
@@ -204,7 +204,7 @@ def count_training_codes(text: str) -> int:
 
 def drop_training_records(records: list[dict]) -> list[dict]:
     """Записи `find_checkin_records` без учебных кодов — их не отмечаем."""
-    from services.checkin import parse_qr_payload
+    from services.forum.checkin import parse_qr_payload
 
     return [r for r in records if not is_training_token(parse_qr_payload(r["qr"])["token"])]
 
@@ -253,7 +253,7 @@ async def training_qr_pngs(lang: str, tr_map: dict) -> list[tuple[bytes, str]]:
     return [(_qr_png(payload), hints[kind]) for kind, payload in await training_payloads()]
 
 
-_FONTS_DIR = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "fonts"
+_FONTS_DIR = Path(__file__).resolve().parents[2] / "miniapp" / "static" / "fonts"
 _A4 = (1240, 1754)  # 150 dpi
 _MARGIN = 80
 _QR_BOX = 250

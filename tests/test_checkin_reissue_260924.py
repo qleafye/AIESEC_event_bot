@@ -5,7 +5,7 @@
   от старого, старый попадает в `checkin_token_replacements` с верным `telegram_id`, пользователя
   нет вовсе -- `None`, у делегата ещё не было токена -- реиссью всё равно выдаёт новый и ничего
   не кладёт в таблицу замен (нечего класть).
-- `services.checkin.resolve_scanned_user` -- единая точка «токен -> (делегат, код отказа)»:
+- `services.forum.checkin.resolve_scanned_user` -- единая точка «токен -> (делегат, код отказа)»:
   обычный активный токен ведёт себя как раньше (denial по `checkin_denial`), ЗАМЕНЁННЫЙ токен
   даёт `(None, "token_replaced")`, вообще незнакомый токен -- `(None, "no_user")`.
 - `handlers/admin.py::cmd_find_user` (кнопка на карточке) + `handlers/forum/admin_checkin.py`
@@ -21,7 +21,7 @@ from database import db
 from database.db import _connect
 from handlers import admin as admin_mod
 from handlers.forum import admin_checkin
-from services.checkin import build_payload, current_event_tag, resolve_scanned_user
+from services.forum.checkin import build_payload, current_event_tag, resolve_scanned_user
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910201
@@ -159,7 +159,7 @@ def test_get_checkin_token_replacement_unknown_token_is_none(tmp_path):
     assert asyncio.run(db.get_checkin_token_replacement(None)) is None
 
 
-# ── services.checkin.resolve_scanned_user ───────────────────────────────────────────────────
+# ── services.forum.checkin.resolve_scanned_user ───────────────────────────────────────────────────
 
 def test_resolve_scanned_user_active_token_behaves_like_checkin_denial(tmp_path):
     _db_ready(tmp_path)
@@ -317,7 +317,7 @@ def test_csv_upload_flags_replaced_token_distinctly_from_not_found(tmp_path):
     tag = asyncio.run(current_event_tag())
     old_payload = build_payload(tag, "Тест Тестов", "—", old_token)
 
-    from services.checkin import find_checkin_records
+    from services.forum.checkin import find_checkin_records
     records = find_checkin_records(f"{old_payload},2026-10-03 09:00:00", tag)
     assert len(records) == 1
 

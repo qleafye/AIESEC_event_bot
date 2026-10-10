@@ -162,7 +162,7 @@ DENIAL_REASON_TEXT = {
     "not_approved": "Заявка ещё на рассмотрении",
     # D-41 (ревью 28.09): отдельный код сканера для status='rejected' — `checkin_denial` его НЕ
     # отдаёт (там и отказ, и «на рассмотрении» — `not_approved`), уточняет сканер
-    # (`services.onsite_reg.refine_denial`): волонтёр обязан видеть, что заявку ОТКЛОНИЛИ.
+    # (`services.forum.onsite_reg.refine_denial`): волонтёр обязан видеть, что заявку ОТКЛОНИЛИ.
     "rejected": "Заявка отклонена менеджером",
     "past_season": "Делегат прошлого сезона",
     "foreign_event": "QR другого мероприятия",
@@ -214,7 +214,7 @@ async def checkin_denial(user: dict | None) -> str | None:
 
 # Код отказа «резолвер узнал токен, но записывать отметку для такого вида пропуска некому»
 # (см. `resolve_scanned_user`). Подписи — `DENIAL_REASON_TEXT` выше,
-# `services.venue_log.DENIAL_LABELS`, `handlers.forum.admin_checkin._DENIAL_LABELS`.
+# `services.forum.venue_log.DENIAL_LABELS`, `handlers.forum.admin_checkin._DENIAL_LABELS`.
 UNKNOWN_PASS_KIND = "unknown_pass_kind"
 
 
@@ -283,7 +283,7 @@ def register_token_resolver(fn) -> None:
     «QR не найден» (так было до реестра).
 
     Процессы: реестр — модульный, встроенный резолвер есть в любом процессе, импортировавшем
-    `services.checkin` (бот — `handlers/forum/admin_checkin.py`, Mini App — `miniapp/routers/checkin.py`).
+    `services.forum.checkin` (бот — `handlers/forum/admin_checkin.py`, Mini App — `miniapp/routers/checkin.py`).
     Внешний резолвер регистрировать в ОБОИХ процессах: скан QR идёт в Mini App
     (`/app/api/checkin/scan`), загрузка CSV — в боте. Удобно звать `register_token_resolver` на
     уровне модуля фичи и импортировать этот модуль из `main.py` и `miniapp/app.py`.
@@ -450,7 +450,7 @@ def register_first_entry_listener(fn) -> None:
     мешает ни отметке, ни остальным слушателям.
 
     Снятие отметки (идея №32: «↩️ Отменить» волонтёра или снятие менеджером,
-    `services/venue_log.py`) слушателей НЕ откатывает и никого не зовёт — что слушатель уже
+    `services/forum/venue_log.py`) слушателей НЕ откатывает и никого не зовёт — что слушатель уже
     сделал (приветствие ушло), то сделано. Строка входа при снятии удаляется, поэтому
     повторная отметка того же делегата снова будет `"new"` и позовёт слушателей ЕЩЁ РАЗ
     (`first_of_forum` снова True, если других дней нет).
@@ -530,7 +530,7 @@ async def record_arrival(
     (`database.db.record_checkin`, идемпотентно, первый скан побеждает, D-10); `point` вида
     `"session:{id}"` (D-18) — делегат ОБЯЗАН быть из ТОГО ЖЕ города, что сессия (иначе
     `status="wrong_city"`, отказ словами — у входа такой проверки нет и не будет), иначе D-20
-    («последний скан слота засчитывается», слот строит `services.program.parallel_group`) через
+    («последний скан слота засчитывается», слот строит `services.forum.program.parallel_group`) через
     `database.db.record_session_checkin`. Отметка на сессии САМА ставит вход
     (`source="auto_session"`), если его ещё не было, — делегат физически подтверждён на
     площадке, даже если отдельного скана на входе не случилось.
@@ -560,7 +560,7 @@ async def record_arrival(
     `result["first_entry"]` — Mini App без Bot переносит его в outbox сам.
 
     Идея №31/№32 (журнал площадки): живая отметка (`source` не "csv") со статусом new/moved
-    пишет строку `venue_log` (`services.venue_log.log_live_checkin`, fail-soft), её id —
+    пишет строку `venue_log` (`services.forum.venue_log.log_live_checkin`, fail-soft), её id —
     `result["log_id"]`, ключ кнопки «↩️ Отменить» на плашке сканера. `staff_name` — снимок
     имени волонтёра для журнала."""
     if not (point or "").startswith("session:"):
@@ -587,7 +587,7 @@ async def record_arrival(
     if session is None:
         return {"status": "invalid_point"}
 
-    import domain.cities as _cities  # ленивый импорт — тот же приём, что services/program.py делает для msk_now
+    import domain.cities as _cities  # ленивый импорт — тот же приём, что services/forum/program.py делает для msk_now
 
     delegate_city = _cities.normalize_city(user.get("event_city"))
     if session["city"] != delegate_city:
@@ -613,7 +613,7 @@ async def record_arrival(
             ),
         }
 
-    from services.program import parallel_group  # ленивый импорт — избегаем цикла на верхнем уровне
+    from services.forum.program import parallel_group  # ленивый импорт — избегаем цикла на верхнем уровне
 
     day_sessions = await list_program_sessions_for_city_day(session["city"], session["day"])
     slot = parallel_group(session, day_sessions)
@@ -656,9 +656,9 @@ async def record_arrival(
 
 
 def _venue_log():
-    """Ленивый импорт журнала площадки (`services.venue_log` сам ничего не импортирует отсюда,
+    """Ленивый импорт журнала площадки (`services.forum.venue_log` сам ничего не импортирует отсюда,
     но держим верх модуля без новых зависимостей — тот же приём, что `cities`/`program`)."""
-    from services import venue_log
+    from services.forum import venue_log
     return venue_log
 
 
@@ -811,7 +811,7 @@ def _swapped_reading(text: str, stamp: str) -> str | None:
     бывает и 3 октября (д/м, RU/EU), и 10 марта (м/д, US; с AM/PM разбор выбирает его). `stamp`
     («YYYY-MM-DD…») — уже выбранная читка; возвращает ту же строку с переставленными месяцем и
     днём, если в строке файла есть такая неоднозначная дата. Какую читку взять, решает загрузка
-    по окну форума/дню сессии (`services.checkin_csv_import`)."""
+    по окну форума/дню сессии (`services.forum.checkin_csv_import`)."""
     y, m, d = int(stamp[:4]), int(stamp[5:7]), int(stamp[8:10])
     for match in _SLASH_DATE_RE.finditer(text):
         a, b = int(match.group(1)), int(match.group(2))
@@ -892,7 +892,7 @@ def find_checkin_records(text: str, tag: str) -> list[dict]:
     «м/д/гггг чч:мм AM» / дата и время отдельными колонками / unix-эпоха); `None` — время
     скана в файле не нашлось. Если в строке есть хотя бы дата — она в `"day"` («YYYY-MM-DD»);
     неоднозначная «a/b/гггг» даёт ещё `"alt"` — ту же отметку с переставленными днём и месяцем;
-    день записи без даты и времени выбирает загрузка (`services.checkin_csv_import`), отметка
+    день записи без даты и времени выбирает загрузка (`services.forum.checkin_csv_import`), отметка
     помечается «примерной» (D-10). Дубли сводятся по токену: одна запись на делегата и
     день скана (самое раннее время дня), запись без времени поглощается записью с временем."""
     if not tag or not text:

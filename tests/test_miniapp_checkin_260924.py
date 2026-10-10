@@ -16,7 +16,7 @@ import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from services.infra import timeutil as timeutil_mod
-from services.checkin import ENTRY_POINT, build_payload
+from services.forum.checkin import ENTRY_POINT, build_payload
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -395,7 +395,7 @@ def test_scan_session_point_new_auto_marks_entry(tmp_path, monkeypatch):
     _run(_insert_user(uid, full_name="Сидоров Сидор", city="msk"))
     sid = _run(bot_db.create_program_session("msk", "2026-10-03", "10:00", "11:00", "Открытие"))
     # ревью (D-18): /scan никогда не передаёт scanned_at -- эффективный день сессии сверяется с
-    # РЕАЛЬНЫМ "сегодня" (services.checkin.record_arrival), сессия обязана идти сегодня.
+    # РЕАЛЬНЫМ "сегодня" (services.forum.checkin.record_arrival), сессия обязана идти сегодня.
     _freeze_now(monkeypatch, datetime(2026, 10, 3, 10, 5))
     payload = _qr(uid, city="Москва")
     resp = client.post(

@@ -1,5 +1,5 @@
 """Идеи №31/№32 бэклога чек-ина: «📓 Журнал площадки» (кто что сделал в день форума) и снятие
-ошибочной отметки менеджером — экраны бота. Домен — `services/venue_log.py`, БД —
+ошибочной отметки менеджером — экраны бота. Домен — `services/forum/venue_log.py`, БД —
 `database/db.py` (`venue_log`, `revoke_checkin`).
 
 Форма шва — та же, что `handlers/applications/admin_reject_journal.py`: своего `Router()` нет, хендлеры
@@ -32,7 +32,7 @@ from handlers.access.admin_caps import has_capability
 from handlers.settings.admin_core import _admin_city_view, _card_out_of_scope
 from handlers.states import VenueRevokeFind
 from keyboards.builders import get_cancel_kb
-from services import venue_log
+from services.forum import venue_log
 from services.access.person_search import search_people
 
 logger = logging.getLogger(__name__)

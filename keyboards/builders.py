@@ -104,7 +104,7 @@ MENU_BUTTONS = [
 # он видит ещё и подписи, которые менеджер настроил.
 MENU_TEXTS: dict[str, frozenset[str]] = dict(STATIC_MENU_TEXTS)
 
-# Идея №1 бэклога чек-ина (режим «день форума», services/forum_day_menu.py): пока для города
+# Идея №1 бэклога чек-ина (режим «день форума», services/forum/forum_day_menu.py): пока для города
 # делегата идёт форум, эти четыре кнопки (если каждая и так прошла СВОЙ обычный гейт — сама
 # константа НИЧЕГО не включает и не выключает) поднимаются наверх меню в этом порядке, всё
 # остальное сдвигается вниз БЕЗ сокрытия (см. get_main_menu_kb).
@@ -253,10 +253,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     # выключен (см. выше), но у сессий/фото «нет города» не бывает — `has_program_content`
     # сама резолвит `default_city_code()` (тот же однocity-фоллбэк, что использует админский
     # экран `handlers/forum/admin_program.py._resolve_city_for_screen`). Одна проверка вместо двух
-    # независимых — см. `services.program.has_program_content` docstring.
+    # независимых — см. `services.forum.program.has_program_content` docstring.
     program_photo_on = False
     try:
-        from services.program import has_program_content
+        from services.forum.program import has_program_content
         program_photo_on = await has_program_content(code)
     except Exception as e:
         logger.error(f"get_main_menu_kb: has_program_content resolve failed: {e}")
@@ -294,7 +294,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     forum_day_on = False
     try:
         forum_day_city = code if code is not None else default_city_code()
-        from services.forum_day_menu import is_forum_day_menu_active_for_city
+        from services.forum.forum_day_menu import is_forum_day_menu_active_for_city
         forum_day_on = await is_forum_day_menu_active_for_city(forum_day_city)
     except Exception as e:
         logger.error(f"get_main_menu_kb: is_forum_day_menu_active_for_city resolve failed for {telegram_id}: {e}")
@@ -305,7 +305,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     quiz_on = False
     try:
         enroll_city = code if code is not None else default_city_code()
-        from services.session_enroll import module_enabled as _enroll_enabled
+        from services.forum.session_enroll import module_enabled as _enroll_enabled
         enroll_on = await _enroll_enabled(enroll_city)
         from database.quiz_db import active_quiz_for_city
         quiz_on = await active_quiz_for_city(enroll_city) is not None
@@ -447,7 +447,7 @@ async def _hidden_faq(code: str | None) -> str | None:
 
 
 async def _hidden_program(code: str | None) -> str | None:
-    from services.program import has_program_content  # то же правило, что у делегата
+    from services.forum.program import has_program_content  # то же правило, что у делегата
     if await has_program_content(code):
         return None
     return "не загружено фото программы и нет ни одной сессии"
@@ -485,7 +485,7 @@ async def _hidden_sos(code: str | None) -> str | None:
 
 
 async def _hidden_session_enroll(code: str | None) -> str | None:
-    from services.session_enroll import module_enabled
+    from services.forum.session_enroll import module_enabled
     if await module_enabled(code if code is not None else default_city_code()):
         return None
     return "модуль записи на сессии выключен"

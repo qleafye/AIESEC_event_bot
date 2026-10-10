@@ -8,7 +8,7 @@ deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `s
 
 Поток: картинка повестки -> трек (или «Смешать») -> по слотам дня выбор одной сессии ->
 «Моё расписание» -> подтверждение. Все правила (допуск, город, дедлайн, закрытие, лимит,
-пересечения) живут в `services.session_enroll` и перепроверяются на КАЖДЫЙ callback: кнопка
+пересечения) живут в `services.forum.session_enroll` и перепроверяются на КАЖДЫЙ callback: кнопка
 в старом сообщении ничего не обходит. Тексты делегату — только из реестра настроек.
 
 Callback'и (числа, <= 64 байт): se:open, se:t:{tid} (0 = смешать), se:s:{tid}:{gi},
@@ -29,9 +29,9 @@ from database.db import get_user
 from handlers.i18n import reg_i18n
 from handlers.user_actions import _returning_text_if_past_season, ensure_registered, router
 from keyboards.menu_dynamic import DynamicMenuText
-from services import session_enroll as svc
-from services.checkin import checkin_denial
-from services.program import program_photo_caption, resolve_program_photo_source
+from services.forum import session_enroll as svc
+from services.forum.checkin import checkin_denial
+from services.forum.program import program_photo_caption, resolve_program_photo_source
 
 logger = logging.getLogger(__name__)
 

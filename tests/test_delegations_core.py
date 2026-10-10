@@ -310,7 +310,7 @@ def _drow(fid, aid):
 
 
 def _assert_approved_delegate(tid: int, aid: str, *, course="1"):
-    from services.checkin import checkin_denial
+    from services.forum.checkin import checkin_denial
     u = _row(tid)
     assert u is not None and u["status"] == "approved" and u["approved_at"]
     assert u["event_city"] == cities_mod.default_city_code()

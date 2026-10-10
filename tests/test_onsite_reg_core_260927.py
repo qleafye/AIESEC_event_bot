@@ -1,5 +1,5 @@
 """Регистрация на месте (FORUM-CHECKIN.md D-41): ядро — слой данных, настройки и сервис
-`services/onsite_reg.py`, который используют и чат бота, и сканер Mini App.
+`services/forum/onsite_reg.py`, который используют и чат бота, и сканер Mini App.
 
 Что проверяем:
 - миграция `users.onsite_kind/onsite_at/onsite_by` аддитивна (старые строки — NULL);
@@ -333,12 +333,12 @@ def test_confirm_and_done_placeholders():
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# services/onsite_reg.py — тумблер, ссылка/QR walk-in, одобрение у стойки
+# services/forum/onsite_reg.py — тумблер, ссылка/QR walk-in, одобрение у стойки
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 from unittest.mock import AsyncMock  # noqa: E402
 
-from services import onsite_reg  # noqa: E402
+from services.forum import onsite_reg  # noqa: E402
 
 
 def _cities_on():
@@ -623,7 +623,7 @@ def test_outbox_routes_onsite_approved(monkeypatch):
 
 
 def test_venue_log_action_label():
-    from services import venue_log
+    from services.forum import venue_log
     assert venue_log.ACTION_ONSITE_APPROVE == "onsite_approve"
     assert venue_log.ACTION_LABELS[venue_log.ACTION_ONSITE_APPROVE] == "📝 одобрил(а) на месте"
 

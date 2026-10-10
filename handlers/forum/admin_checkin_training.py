@@ -1,7 +1,7 @@
 """«🧪 Учебные QR» (бэклог чек-ина №7): лист A4 с пятью учебными QR для тренировки сканера.
 
 Кнопка — на экране «✅ Отметки на форуме» (`handlers/forum/admin_checkin.py`), сам лист и учебные
-токены — `services/checkin_training.py`. Волонтёр сканирует лист в точке «🧪 Тренировка»
+токены — `services/forum/checkin_training.py`. Волонтёр сканирует лист в точке «🧪 Тренировка»
 Mini App (или в любой точке — учебный QR всё равно ничего не отметит) либо своим
 приложением-сканером и присылает выгрузку в обычную загрузку CSV: учебные коды там
 считаются отдельной строкой и не пишутся.
@@ -21,7 +21,7 @@ from aiogram.types import BufferedInputFile, InputMediaPhoto
 
 from handlers.admin import router
 from handlers.access.admin_caps import resolve_capabilities
-from services import checkin_training
+from services.forum import checkin_training
 from services.i18n import i18n
 
 logger = logging.getLogger(__name__)

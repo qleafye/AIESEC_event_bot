@@ -14,7 +14,7 @@ from pathlib import Path
 import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
-from services import onsite_reg, venue_log
+from services.forum import onsite_reg, venue_log
 from services.infra.timeutil import msk_now
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -417,7 +417,7 @@ def test_journal_failure_at_door_is_marked_in_venue_log_and_logged(tmp_path, mon
         raise RuntimeError("journal down")
 
     monkeypatch.setattr(applications, "record_decision", _boom)
-    with caplog.at_level(logging.ERROR, logger="services.onsite_reg"):
+    with caplog.at_level(logging.ERROR, logger="services.forum.onsite_reg"):
         res = _door(953302)
     assert res["status"] == "new"
     assert any(r.levelno >= logging.ERROR and "журнал решений" in r.getMessage() for r in caplog.records)

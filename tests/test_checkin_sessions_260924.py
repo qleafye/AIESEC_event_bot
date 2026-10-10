@@ -1,5 +1,5 @@
 """Форум-ночь п.5 (FORUM-CHECKIN.md D-18..D-20): отметка на СЕССИЯХ программы — единая точка
-`services.checkin.record_arrival`, которая решает, какой БД-путь нужен (`database.db.
+`services.forum.checkin.record_arrival`, которая решает, какой БД-путь нужен (`database.db.
 record_checkin` для «Входа», `database.db.record_session_checkin` для `session:{id}`), проверяет
 город делегата против города сессии и авто-подтверждает вход (`source="auto_session"`), если
 его ещё не было.
@@ -18,7 +18,7 @@ from datetime import datetime
 from config import config
 from database import db
 from services.infra import timeutil as timeutil_mod
-from services.checkin import ENTRY_POINT, record_arrival
+from services.forum.checkin import ENTRY_POINT, record_arrival
 from tests._dbtpl import fast_init_db
 
 UID = 260925001
