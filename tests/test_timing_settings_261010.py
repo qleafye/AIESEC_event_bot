@@ -121,7 +121,7 @@ def test_qr_screen_has_catchup_row_and_rejects_time_before_morning_repeat(tmp_pa
     from aiogram.fsm.storage.base import StorageKey
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.types import User
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     from handlers.states import CheckinQrTimeEdit
 
     _ready(tmp_path, "timings_qr_screen.db")

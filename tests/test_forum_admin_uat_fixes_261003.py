@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from database import db
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from services.checkin_broadcast import qr_send_report as cbc_report
 from tests.test_admin_checkin_260924 import ADMIN_ID, _db_ready, _FakeCallback, _set_season
 
@@ -55,7 +55,7 @@ class _CB(_FakeCallback):
 
 
 def _hub_cbs(code="spb"):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _text, kb = asyncio.run(aff._render_hub(ADMIN_ID, code))
     return _kb_callbacks(kb)
 
@@ -68,7 +68,7 @@ def test_hub_qr_button_opens_confirm_not_toggle(tmp_path):
 
 
 def test_qr_confirm_names_all_cities_and_does_not_toggle(tmp_path):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     _seed_spb(tmp_path)
     cb = _CB("forumfn_qr:spb")
     asyncio.run(nav.forumfn_qr_screen(cb))
@@ -81,7 +81,7 @@ def test_qr_confirm_names_all_cities_and_does_not_toggle(tmp_path):
 
 
 def test_qr_set_off_returns_to_hub_and_is_idempotent(tmp_path):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     _seed_spb(tmp_path)
     for _ in range(2):  # повторный тап по той же кнопке не включает обратно
         cb = _CB("forumfn_qr_set:off:spb")
@@ -100,7 +100,7 @@ class _State:
 
 
 def _open_from_hub(target, code="spb"):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     cb = _CB(f"forumfn_open:{target}:{code}")
     asyncio.run(nav.forumfn_open(cb, _State()))
     return cb.message.edits[-1]
@@ -120,7 +120,7 @@ def test_hub_rows_open_native_screens_with_hub_back(tmp_path):
 def test_hub_back_survives_toggle_redraw(tmp_path):
     from handlers import admin_miniapp
     from handlers.regform import admin_reg_config
-    from handlers import session_feedback
+    from handlers.forum import session_feedback
     _seed_spb(tmp_path)
 
     _t, kb = _open_from_hub("menu")
@@ -148,7 +148,7 @@ def test_native_entry_keeps_section_back(tmp_path):
 
 
 def test_hub_back_redraws_hub_in_place(tmp_path):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     _seed_spb(tmp_path)
     cb = _CB("forumfn_back:spb")
     asyncio.run(nav.forumfn_back(cb))
@@ -159,8 +159,8 @@ def test_hub_back_redraws_hub_in_place(tmp_path):
 # ── Хаб и «Готовность» правят сообщение, где нажата кнопка ─────────────────────────────────
 
 def test_hub_entry_and_ready_edit_in_place(tmp_path, monkeypatch):
-    from handlers import admin_forum_functions as aff
-    from handlers import admin_forum_ready as afr
+    from handlers.forum import admin_forum_functions as aff
+    from handlers.forum import admin_forum_ready as afr
     _seed_spb(tmp_path)
     cb = _CB("admin_forum_functions")
     asyncio.run(aff.admin_forum_functions_entry(cb))
@@ -178,7 +178,7 @@ def test_hub_entry_and_ready_edit_in_place(tmp_path, monkeypatch):
 def test_edit_falls_back_to_new_message_for_photo(tmp_path):
     from aiogram.exceptions import TelegramBadRequest
     from aiogram.types import InlineKeyboardMarkup
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
 
     class _PhotoMsg(_EditMsg):
         async def edit_text(self, *a, **k):

@@ -72,7 +72,7 @@ def test_enter_collecting_records_start_in_db(tmp_path):
     from aiogram.fsm.storage.base import StorageKey
     from aiogram.fsm.storage.memory import MemoryStorage
 
-    from handlers import sos as sos_handlers
+    from handlers.forum import sos as sos_handlers
 
     _ready(tmp_path)
 

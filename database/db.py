@@ -2364,7 +2364,7 @@ async def init_db():
         # D-31 (24.09, «SOS без категорий»): `category` осталась NULL-able ради обратной
         # совместимости (старые строки с категориями сохранены как есть) — новый код её больше
         # не пишет (`create_sos_report` больше не принимает этот аргумент вовсе) и не читает
-        # (`services.sos.render_card_text`/`handlers.admin_sos._row_text`).
+        # (`services.sos.render_card_text`/`handlers.forum.admin_sos._row_text`).
         await db.execute('''
             CREATE TABLE IF NOT EXISTS sos_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2393,7 +2393,7 @@ async def init_db():
         # ни фоллбэком в личку), `services/sos.py::record_delivery_outcome`; `prior_open_report_id`
         # — снимок «у делегата уже был открытый SOS #N», когда окно повторного открытия
         # (`sos_reopen_window_minutes`) истекло и делегат открыл новый, не дожидаясь ответа на
-        # старый (см. `handlers/sos.py::sos_pick_category`). `_ensure_column` — на случай, если
+        # старый (см. `handlers/forum/sos.py::sos_pick_category`). `_ensure_column` — на случай, если
         # таблица уже создана более ранней версией этой же ветки (cf0da0b) на стенде.
         await _ensure_column(db, "sos_reports", "delivery_failed_at", "TEXT")
         await _ensure_column(db, "sos_reports", "prior_open_report_id", "INTEGER")
@@ -2466,7 +2466,7 @@ async def init_db():
         # NULL равными в UNIQUE — с настоящим NULL повторный тик джобы без городов вставлял бы
         # вторую строку и ломал идемпотентность; тот же приём сентинела нужен и ниже у
         # `forum_noshow_poll`). Ручная кнопка «📊 Отчёт дня сейчас» эту таблицу НЕ трогает
-        # (handlers/admin_forum_functions.py — ручной запуск не помечает автоматическую
+        # (handlers/forum/admin_forum_functions.py — ручной запуск не помечает автоматическую
         # отправку «сделанной», см. docstring services/forum_day_report.py).
         await db.execute('''
             CREATE TABLE IF NOT EXISTS forum_day_report_sends (
@@ -6225,7 +6225,7 @@ async def get_checkin_entry_picker_options() -> list[str]:
 
 async def any_program_sessions_exist() -> bool:
     """Порог показа кнопок «Были на сессии …» / «Не были на сессии …» — прежде чем менеджер
-    завёл хотя бы одну сессию программы (`handlers/admin_program.py`), фильтровать по сессиям
+    завёл хотя бы одну сессию программы (`handlers/forum/admin_program.py`), фильтровать по сессиям
     не по чему."""
     async with _connect() as db:
         async with db.execute("SELECT EXISTS(SELECT 1 FROM program_sessions)") as cursor:
@@ -7538,7 +7538,7 @@ async def create_sos_report(
 
 async def add_sos_details(report_id: int, *, text: str | None = None,
                            photo_file_id: str | None = None) -> bool:
-    """Режим «дописываю SOS» (`handlers/sos.py::SosReport.collecting`, D-31) — первый текст/
+    """Режим «дописываю SOS» (`handlers/forum/sos.py::SosReport.collecting`, D-31) — первый текст/
     фото делегата садится в карточку (`services.sos.render_card_text` снимает пометку «подробности
     ещё не прислали»); КАЖДОЕ поле — первый непустой раз побеждает (`WHERE ... IS NULL`), дальше
     сообщения делегата всё равно уходят в тред карточки (`services.sos.relay_delegate_message`),
@@ -8165,7 +8165,7 @@ async def reorder_faq_items(ordered_ids: list[int]) -> None:
     """Одна транзакция, `position` = индекс в `ordered_ids`. Пишет позиции ТОЛЬКО переданным
     id — вызывающий (админ-экран) передаёт видимое в его scope подмножество, порядок пунктов
     другого города доопределяется вторичным ключом `id` (документированное ограничение,
-    handlers/admin_faq.py)."""
+    handlers/forum/admin_faq.py)."""
     async with _connect() as db:
         for idx, item_id in enumerate(ordered_ids):
             await db.execute(
@@ -12027,7 +12027,7 @@ async def count_checkins_by_point(point: str, *, city_scope=None, day: str | Non
 async def count_approved_current_season(*, city_scope=None) -> int:
     """Одобренные делегаты ТЕКУЩЕГО сезона — тот же признак «не прошлый делегат», что
     `reg_engine.is_past_season_row` (`season IS NULL OR season = event_season`). Знаменатель
-    строки «Пришли: N из M одобренных» (handlers/admin_checkin.py)."""
+    строки «Пришли: N из M одобренных» (handlers/forum/admin_checkin.py)."""
     event_season = (await get_setting("event_season") or "").strip()
     where_parts = ["status = 'approved'"]
     params: list = []
@@ -12170,7 +12170,7 @@ async def checkin_qr_confirm(telegram_id: int, confirmed_at: str) -> bool:
 
 
 async def checkin_qr_send_counts(*, city_scope=None) -> tuple[int, int]:
-    """`(получили, подтвердили)` — строка «✅ Отметки на форуме» (handlers/admin_checkin.py)."""
+    """`(получили, подтвердили)` — строка «✅ Отметки на форуме» (handlers/forum/admin_checkin.py)."""
     city_frag, city_params = _city_clause(city_scope, "event_city")
     where = f" WHERE {city_frag}" if city_frag else ""
     async with _connect() as db:
@@ -12396,7 +12396,7 @@ async def count_program_sessions_for_hall(hall_id: int) -> int:
 
 async def delete_program_hall(hall_id: int) -> bool:
     """Удаление зала НЕ удаляет его сессии — они остаются в программе, только теряют
-    привязку (`hall_id -> NULL`); подтверждение на экране (handlers/admin_program.py) называет
+    привязку (`hall_id -> NULL`); подтверждение на экране (handlers/forum/admin_program.py) называет
     их число ДО удаления, тем же приёмом, что `arr_delete_confirm`/`afaq_delete_confirm`."""
     async with _connect() as db:
         await db.execute(
@@ -12676,7 +12676,7 @@ async def get_session_feedback(telegram_id: int, session_id: int) -> dict | None
 
 async def session_feedback_stats(session_id: int) -> dict:
     """`{"avg": float|None, "rating_count": int, "comment_count": int}` для карточки сессии
-    (`handlers.admin_program.render_session_card`) — `avg is None`, если оценок ещё нет
+    (`handlers.forum.admin_program.render_session_card`) — `avg is None`, если оценок ещё нет
     («Пока нет оценок», не «0.0»)."""
     async with _connect() as db:
         async with db.execute(
@@ -12696,7 +12696,7 @@ async def session_feedback_stats(session_id: int) -> dict:
 
 async def session_feedback_stats_bulk(session_ids: list[int]) -> dict[int, dict]:
     """Та же статистика, что `session_feedback_stats`, для НЕСКОЛЬКИХ сессий одним запросом —
-    экран «📊 Оценки сессий» дня (`handlers.session_feedback`) не бьёт БД по сессии в цикле.
+    экран «📊 Оценки сессий» дня (`handlers.forum.session_feedback`) не бьёт БД по сессии в цикле.
     Сессия без единой строки `session_feedback` — просто отсутствует в результате, вызывающий
     подставляет нулевую статистику сам (тот же приём, что `program.sessions_for_city_day`
     подставляет `hall_name=None` для сессий без зала)."""
@@ -12947,7 +12947,7 @@ async def record_forum_noshow_poll_response(
 
 async def forum_noshow_poll_summary(season: str, *, city_scope=None) -> dict:
     """«Ответили N из M: передумал 12, учёба 7…» — строка экрана менеджера
-    (`handlers.admin_forum_functions`). `sent` — M (всем, кому опрос уходил), `answered` — N
+    (`handlers.forum.admin_forum_functions`). `sent` — M (всем, кому опрос уходил), `answered` — N
     (кто нажал хоть одну кнопку), `by_reason` — счётчик по каждой причине (все пять ключей
     всегда присутствуют, даже нулевые — вызывающему не приходится гадать, какие бывают)."""
     city_frag, city_params = _city_clause(city_scope, "city")
@@ -13190,7 +13190,7 @@ async def regional_noshow_move_mark_notified(ids: list[int], notified_at: str) -
 
 async def regional_noshow_move_summary(season: str, *, city_scope=None) -> dict:
     """«Предложено N, перенеслись M, отказались K» — строка экрана менеджера
-    (`handlers.admin_forum_functions`). `city_scope` фильтрует по `source_city` (регион, откуда
+    (`handlers.forum.admin_forum_functions`). `city_scope` фильтрует по `source_city` (регион, откуда
     ушло предложение) — тот же смысл, что `forum_noshow_poll_summary`."""
     city_frag, city_params = _city_clause(city_scope, "source_city")
     where = "season = ?"

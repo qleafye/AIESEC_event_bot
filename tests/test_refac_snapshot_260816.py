@@ -78,12 +78,12 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 (723 -> 733), пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним
 723-строчным снапшотом. Экран «⚙️ Тексты и тайминги» SOS — пять хендлеров
 (`asos_settings_open`/`asos_noop`/`asos_set_delay`/`asos_delay_custom_start`/
-`asos_settings_edit_start`, `handlers/admin_sos.py`) вставлены сразу после `sos_resolve`
-(конец файла admin_sos.py, но раньше `handlers/session_feedback.py` в цепочке импортов —
+`asos_settings_edit_start`, `handlers/forum/admin_sos.py`) вставлены сразу после `sos_resolve`
+(конец файла admin_sos.py, но раньше `handlers/forum/session_feedback.py` в цепочке импортов —
 message-хендлер `admin_reply_to_sos` в поток callback_query не попадает вовсе, поэтому
 текстовое «в хвосте файла» и «место в снапшоте» не совпадают). Экран «⭐ Отзывы о сессиях»
 — пять хендлеров (`prog_fbset_open`/`prog_fbtoggle`/`prog_fbdelay`/`prog_fbdelay_custom_start`/
-`prog_fbtext_edit`, `handlers/session_feedback.py`) вставлены сразу после `prog_fbc_open`
+`prog_fbtext_edit`, `handlers/forum/session_feedback.py`) вставлены сразу после `prog_fbc_open`
 (тот же файл, простое добавление в хвост).
 
 Дрифт-нота (2026-10-10, приёмка 09.10, свободный текст на сводке): +1 хендлер, чистая вставка —
@@ -523,7 +523,7 @@ def _build_snapshot_lines():
 # 611-строчного снимка: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
 #
 # Drift note (форум-ночь п.4, расписание форума в боте, 642 -> 678 handlers -- PURE APPEND, ДВЕ
-# вставки): новые швы `handlers/admin_program.py` (импортирован из хвоста
+# вставки): новые швы `handlers/forum/admin_program.py` (импортирован из хвоста
 # `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_reports`) и `handlers/
 # admin_program_halls.py` (импортирован хвостом самого `admin_program.py`, потолок размера
 # модуля). 9 message-хендлеров (`prog_daynew_cancel`/`prog_daynew_step`/`prog_field_cancel`/
@@ -543,7 +543,7 @@ def _build_snapshot_lines():
 # 642-строчного снимка: ровно две вставки (9 + 27 строк), 0 удалений, 0 реордеров.
 #
 # Drift note (форум-ночь п.4, делегатский экран «🗓 Программа», 678 -> 681 handlers -- PURE
-# APPEND, ДВЕ вставки): новый шов `handlers/program.py`, импортирован из хвоста
+# APPEND, ДВЕ вставки): новый шов `handlers/forum/program.py`, импортирован из хвоста
 # `handlers/user_actions.py` СРАЗУ ПОСЛЕ `show_my_checkin_qr` и ПЕРЕД `reg_handoff_idle_fallback`
 # (тот — фолбэк-хендлер `StateFilter(None), F.text` без ограничений, обязан оставаться
 # последним message-хендлером user_actions.router). 1 message-хендлер (`show_program_schedule`,
@@ -559,7 +559,7 @@ def _build_snapshot_lines():
 # 678-строчного снимка: ровно две вставки (1 + 2 строки), 0 удалений, 0 реордеров.
 #
 # Drift note (форум-ночь п.9, идея №15/D-24, «⭐ Отзыв о сессии одним тапом», 718 -> 723
-# handlers -- PURE APPEND, ТРИ вставки): новый шов `handlers/session_feedback.py`,
+# handlers -- PURE APPEND, ТРИ вставки): новый шов `handlers/forum/session_feedback.py`,
 # декорирующий ОБА общих роутера (докстринг модуля объясняет псевдоним `delegate_router` для
 # `user_actions.router` — capability-скан ищет буквальный текст `"@router."`, второй роутер не
 # может называться так же). Импортирован из хвоста `handlers/user_actions.py` СРАЗУ ПОСЛЕ
@@ -578,13 +578,13 @@ def _build_snapshot_lines():
 # (2 + 1 + 2 строки), 0 удалений, 0 реордеров.
 # Drift note (D-29, 24.09, «одна кнопка программы»): -1 user_actions.message
 # (`show_program_schedule`, `F.text.in_(MENU_TEXTS["menu_schedule"])`) — своей кнопки меню
-# больше нет, `handlers/program.py::send_program_schedule_text` стал обычной функцией,
+# больше нет, `handlers/forum/program.py::send_program_schedule_text` стал обычной функцией,
 # вызываемой напрямую из `show_program` (та же строка снимка, что и раньше, не переехала —
 # объединённая кнопка живёт под старым ключом `menu_program`). Пересчитано RUNNING
 # `_build_snapshot_lines()` и сверено diff'ом с прежним 727-строчным снимком: одно чистое
 # удаление, 0 вставок, 0 реордеров (727 -> 726).
 # Drift note (D-36, 24.09, «Форум: функции» + недостающий экран шпаргалки волонтёра): +8
-# handlers.admin.router (handlers/admin_forum_functions.py, импортирован ХВОСТОМ admin.py
+# handlers.admin.router (handlers/forum/admin_forum_functions.py, импортирован ХВОСТОМ admin.py
 # сразу после admin_sos) — 3 message (`cancel_checkinvol_time_edit` регистрируется ДВАЖДЫ,
 # `Command("cancel")` и `F.text == "Отмена"`, тот же приём, что у соседних cancel_* в файле,
 # плюс `checkinvol_time_step`), встали в хвост message-блока admin.router, СРАЗУ ПОСЛЕ
@@ -592,8 +592,8 @@ def _build_snapshot_lines():
 # моменту исполнения). 5 callback_query (`admin_forum_functions_entry`/
 # `admin_forum_functions_city_pick`/`checkinvol_cfg_screen`/`checkinvol_toggle_go`/
 # `checkinvol_time_start`) встали СРАЗУ ПОСЛЕ `asos_settings_edit_start` и ПЕРЕД
-# `prog_fbday_open` — `handlers/session_feedback.py` (владелец prog_fb*) импортируется ПОЗЖЕ,
-# лениво через хвост `handlers/program.py`/`handlers/user_actions.py`, а не из admin.py
+# `prog_fbday_open` — `handlers/forum/session_feedback.py` (владелец prog_fb*) импортируется ПОЗЖЕ,
+# лениво через хвост `handlers/forum/program.py`/`handlers/user_actions.py`, а не из admin.py
 # напрямую, поэтому его хендлеры физически регистрируются на УЖЕ существующем `admin.router`
 # позже моих — не реордер, естественный порядок двух независимых цепочек импорта. Пересчитано
 # RUNNING `_build_snapshot_lines()` против HEAD и diffed (difflib.SequenceMatcher) против
@@ -614,9 +614,9 @@ def _build_snapshot_lines():
 # кнопки раздела при выключенном модуле (фильтр-функция, поэтому колонка ключей пуста; обязан
 # стоять ДО хендлеров раздела), и `toggle_amb_team_selection` — сам тумблер. Пересчитано
 # `_build_snapshot_lines()`, остальные строки не сдвинулись относительно друг друга.
-# Дрифт-нота (03.10, приёмка хаба форума): +3 хендлера admin.router — forumfn_qr_screen/forumfn_qr_set/forumfn_back (handlers/admin_forum_hub_nav.py, импорт последним в хвосте admin.py), чистая вставка (968 -> 971).
-# Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
-# Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/admin_program_halls.py), чистая вставка (972 -> 973).
+# Дрифт-нота (03.10, приёмка хаба форума): +3 хендлера admin.router — forumfn_qr_screen/forumfn_qr_set/forumfn_back (handlers/forum/admin_forum_hub_nav.py, импорт последним в хвосте admin.py), чистая вставка (968 -> 971).
+# Дрифт-нота (03.10, приёмка хаба форума): +1 хендлер admin.router — forumfn_open (handlers/forum/admin_forum_hub_nav.py), чистая вставка (971 -> 972).
+# Дрифт-нота (03.10, приёмка мастера сессии): +1 хендлер admin.router — prog_wretime (handlers/forum/admin_program_halls.py), чистая вставка (972 -> 973).
 # Дрифт-нота (09.10, личные Яндекс Формы): +7 хендлеров admin.router (3 message + 4 callback_query,
 # handlers/ext_forms/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070);
 # мастер подключения личной формы (admin_ext_forms_connect.py): +3 хендлера (extf_push_title, extf_push,
@@ -2119,7 +2119,7 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_wave_rating_show_names — чистая вставка, пересчитано `_build_snapshot_lines()` и
     # сверено diff'ом с прежним 615-строчным снимком: ровно одна вставка из 1 строки, 0
     # удалений, 0 реордеров (615 -> 616).
-    # Phase 12 (FORUM-CHECKIN.md, раздел «✅ Отметки на форуме»): +7 handlers/admin_checkin.py —
+    # Phase 12 (FORUM-CHECKIN.md, раздел «✅ Отметки на форуме»): +7 handlers/forum/admin_checkin.py —
     # шов импортируется из ХВОСТА handlers/admin.py (после admin_purge), поэтому все его
     # хендлеры встают в самый хвост СВОЕГО observer-блока: +4 admin.message
     # (cancel_checkin_import — два декоратора, Command("cancel")/F.text=="Отмена", значит два
@@ -2133,12 +2133,12 @@ def test_snapshot_total_handler_count_is_292():
     # вставки (4 строки в message-блоке, 3 строки в callback_query-блоке), 0 удалений, 0
     # реордеров.
     # Форум-ночь B1 (идея №10): +3 admin.callback_query (checkin_reissue_confirm/
-    # checkin_reissue_go/checkin_reissue_cancel, handlers/admin_checkin.py) — тот же шов,
+    # checkin_reissue_go/checkin_reissue_cancel, handlers/forum/admin_checkin.py) — тот же шов,
     # встают в самый хвост callback_query-блока admin.router (сразу после checkin_point_pick,
     # перед первым хендлером payment.router) — чистая вставка, пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 623-строчным снимком: ровно одна
     # вставка из 3 строк, 0 удалений, 0 реордеров (623 -> 626).
-    # Форум-ночь B4 (идея №8): +6 handlers/admin_checkin.py — «🧪 Проверить приложение-сканер»:
+    # Форум-ночь B4 (идея №8): +6 handlers/forum/admin_checkin.py — «🧪 Проверить приложение-сканер»:
     # +4 admin.message (cancel_checkin_test_upload — два декоратора, Command("cancel")/
     # F.text=="Отмена", значит два отдельных registration-объекта; checkin_test_file_step;
     # checkin_test_file_invalid), встали сразу после checkin_import_file_invalid и перед
@@ -2149,7 +2149,7 @@ def test_snapshot_total_handler_count_is_292():
     # пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 626-строчным
     # снимком: ровно две вставки (4 строки в message-блоке, 2 строки в callback_query-блоке),
     # 0 удалений, 0 реордеров (626 -> 632).
-    # Форум-ночь п.3 (D-03, идея №2): +10 хендлеров — handlers/admin_checkin.py получил
+    # Форум-ночь п.3 (D-03, идея №2): +10 хендлеров — handlers/forum/admin_checkin.py получил
     # рассылку QR (checkinqr_send_confirm/checkinqr_send_go/checkinqr_send_cancel/
     # checkinqr_cfg_screen/checkinqr_toggle_go/checkinqr_time_start — 6 admin.callback_query,
     # встали в самый хвост callback_query-блока admin.router, сразу после checkin_test_qr и
@@ -2161,13 +2161,13 @@ def test_snapshot_total_handler_count_is_292():
     # после ambassador_join) — пересчитано RUNNING `_build_snapshot_lines()` и сверено
     # diff'ом (difflib.SequenceMatcher) с прежним 632-строчным снимком: ровно три вставки
     # (3+6+1 строк), 0 удалений, 0 реордеров (632 -> 642).
-    # Форум-ночь п.4 (расписание форума в боте): +36 хендлеров — handlers/admin_program.py +
-    # handlers/admin_program_halls.py (9 admin.message + 27 admin.callback_query, см. drift-ноту
+    # Форум-ночь п.4 (расписание форума в боте): +36 хендлеров — handlers/forum/admin_program.py +
+    # handlers/forum/admin_program_halls.py (9 admin.message + 27 admin.callback_query, см. drift-ноту
     # над GOLDEN_SNAPSHOT) — 642 -> 678.
-    # Форум-ночь п.4 (делегатский экран «🗓 Программа»): +3 хендлера — handlers/program.py
+    # Форум-ночь п.4 (делегатский экран «🗓 Программа»): +3 хендлера — handlers/forum/program.py
     # (1 user_actions.message + 2 user_actions.callback_query, см. drift-ноту над
     # GOLDEN_SNAPSHOT) — 678 -> 681.
-    # Форум-ночь п.5 (D-18, точки-сессии в загрузке CSV): +1 хендлер — handlers/admin_checkin.py
+    # Форум-ночь п.5 (D-18, точки-сессии в загрузке CSV): +1 хендлер — handlers/forum/admin_checkin.py
     # получил checkin_point_city_pick (admin.callback_query, checkin_point_city:*) — встал сразу
     # после checkin_upload_start и ПЕРЕД checkin_point_pick (город выбирается ДО точки, тот же
     # порядок, что в самом файле). Пересчитано RUNNING `_build_snapshot_lines()` и сверено
@@ -2181,7 +2181,7 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 682-строчным снимком: ровно пять
     # вставок, 0 удалений, 0 реордеров (682 -> 687).
     # Форум-ночь п.6 (D-25, идея №14, шаблон «Не пришёл»): +5 хендлеров — 3
-    # admin.callback_query в handlers/admin_checkin.py (cna_send_confirm/cna_send_go/
+    # admin.callback_query в handlers/forum/admin_checkin.py (cna_send_confirm/cna_send_go/
     # cna_send_cancel, встали сразу после show_admin_checkin и ПЕРЕД checkin_upload_start,
     # та же позиция, что у блока «🚪 Не пришли» на самом экране) + 2 user_actions.callback_query
     # в handlers/user_actions.py (checkin_not_arrived_respond/checkin_not_arrived_show_qr,
@@ -2207,13 +2207,13 @@ def test_snapshot_total_handler_count_is_292():
     # вставка из 1 строки, 0 удалений, 0 реордеров (698 -> 699).
     # Форум-ночь п.8 (идея №19, SOS): +9 user_actions.message (sos_start/sos_details_cancel/
     # sos_details_skip/sos_details_step/sos_location_cancel/sos_location_skip/
-    # sos_location_step/sos_location_invalid/sos_delegate_followup, шов handlers/sos.py) —
+    # sos_location_step/sos_location_invalid/sos_delegate_followup, шов handlers/forum/sos.py) —
     # встали сразу после show_important_today и ПЕРЕД reg_handoff_idle_fallback (тот же приём,
     # что у program/menu_important выше) + 1 user_actions.callback_query (sos_pick_category,
     # sos_cat:*) — встал сразу после pds_days_back и ПЕРЕД show_wave_rating. Пересчитано
     # RUNNING `_build_snapshot_lines()` и сверено diff'ом с прежним 699-строчным снимком: две
     # чистые вставки (9+1 строк), 0 удалений, 0 реордеров (699 -> 709).
-    # Форум-ночь п.8 (SOS), менеджерская сторона (handlers/admin_sos.py): +3 admin.message
+    # Форум-ночь п.8 (SOS), менеджерская сторона (handlers/forum/admin_sos.py): +3 admin.message
     # (asos_bind_cancel/asos_bind_step/admin_reply_to_sos) — встали в хвост message-блока
     # admin.router, сразу после checkinqr_time_step и ПЕРЕД началом admin.callback_query
     # (show_admin_stats) + 5 admin.callback_query (admin_sos/asos_page/asos_bind_start/
@@ -2224,7 +2224,7 @@ def test_snapshot_total_handler_count_is_292():
     # (709 -> 717).
     # Ревью 24.09 (находка 3, SOS): +1 user_actions.message (sos_followup_step, state:
     # SosReport:*) — «свежий» открытый SOS предлагает дополнить, следующее сообщение делегата
-    # уходит в тред тем же хвостом, что sos_delegate_followup (handlers/sos.py). Встал сразу
+    # уходит в тред тем же хвостом, что sos_delegate_followup (handlers/forum/sos.py). Встал сразу
     # после sos_delegate_followup и ПЕРЕД reg_handoff_idle_fallback (тот же файл, следующая
     # функция по исходнику). Чистая вставка, 0 удалений, 0 реордеров (717 -> 718).
     # Форум-ночь п.9 (идея №15/D-24, «⭐ Отзыв о сессии одним тапом»): +5 — 2 admin.callback_query
@@ -2235,9 +2235,9 @@ def test_snapshot_total_handler_count_is_292():
     # удалений, 0 реордеров (718 -> 723).
     # Ревью 24.09 (аудит ключей после 8c0d8af): +10 admin.callback_query — экран «⚙️ Тексты и
     # тайминги» SOS (asos_settings_open/asos_noop/asos_set_delay/asos_delay_custom_start/
-    # asos_settings_edit_start, handlers/admin_sos.py, сразу после sos_resolve и ПЕРЕД
+    # asos_settings_edit_start, handlers/forum/admin_sos.py, сразу после sos_resolve и ПЕРЕД
     # prog_fbday_open) + экран «⭐ Отзывы о сессиях» (prog_fbset_open/prog_fbtoggle/prog_fbdelay/
-    # prog_fbdelay_custom_start/prog_fbtext_edit, handlers/session_feedback.py, сразу после
+    # prog_fbdelay_custom_start/prog_fbtext_edit, handlers/forum/session_feedback.py, сразу после
     # prog_fbc_open и ПЕРЕД началом payment.router) — см. Drift note над GOLDEN_SNAPSHOT. Две
     # чистые вставки, 0 удалений, 0 реордеров (723 -> 733).
     # D-31 (24.09, «SOS без категорий»): категорийный визард делегатской стороны SOS снесён —
@@ -2252,30 +2252,30 @@ def test_snapshot_total_handler_count_is_292():
     # удаления блоков (9+1), 1 чистая вставка (3), 0 реордеров вне удалённого/вставленного
     # диапазона (733 -> 727).
     # D-29 (24.09, «одна кнопка программы у делегата»): +1 admin.callback_query
-    # (prog_view_toggle_go|prog_view_toggle:*, handlers/admin_program_view.py) — шов
+    # (prog_view_toggle_go|prog_view_toggle:*, handlers/forum/admin_program_view.py) — шов
     # импортируется из хвоста handlers/admin.py, СРАЗУ ПОСЛЕ admin_forum_functions; встал
     # сразу после checkinvol_time_start и ПЕРЕД prog_fbday_open. Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом (difflib.unified_diff) с прежним
     # 734-строчным снимком: ровно одна чистая вставка, 0 удалений, 0 реордеров (734 -> 735).
     # Бэклог чек-ина п.10 («📊 Статистика прихода»): +3 admin.callback_query
-    # (checkin_stats_open/checkin_stats_refresh/checkin_stats_csv, handlers/admin_checkin_stats.py)
+    # (checkin_stats_open/checkin_stats_refresh/checkin_stats_csv, handlers/forum/admin_checkin_stats.py)
     # — шов импортируется из хвоста handlers/admin.py, СРАЗУ ПОСЛЕ admin_program_view; встали
     # сразу после prog_view_toggle_go и ПЕРЕД prog_fbday_open. Одна чистая вставка (735 -> 738).
     # Бэклог чек-ина №25 («🚦 Готовность к форуму»): +2 admin.callback_query (forum_ready_open/
-    # forum_ready_refresh, handlers/admin_forum_ready.py) — шов из хвоста handlers/admin.py сразу
+    # forum_ready_refresh, handlers/forum/admin_forum_ready.py) — шов из хвоста handlers/admin.py сразу
     # после admin_checkin_stats; одна чистая вставка перед prog_fbday_open (738 -> 740).
-    # Идеи №31/№32 (журнал площадки, снятие отметки): шов handlers/admin_venue.py импортируется
-    # из хвоста handlers/admin_checkin.py — +3 admin.message (venue_revoke_find_cancel x2/
+    # Идеи №31/№32 (журнал площадки, снятие отметки): шов handlers/forum/admin_venue.py импортируется
+    # из хвоста handlers/forum/admin_checkin.py — +3 admin.message (venue_revoke_find_cancel x2/
     # venue_revoke_find_step, сразу после checkinqr_time_step) и +7 admin.callback_query
     # (venue_log_open/venue_log_page_cb/venue_log_staff_pick/venue_revoke_find/venue_revoke_user/
     # venue_revoke_confirm/venue_revoke_go, сразу после checkinqr_time_start и ПЕРЕД admin_sos).
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые вставки, 0 удалений,
     # 0 реордеров (вставки независимы от п.10/№25; при слиянии 740 -> 750).
     # Бэклог чек-ина №12 («📍 Сейчас на площадке»): +2 admin.callback_query (checkin_floor_open/
-    # checkin_floor_refresh, handlers/admin_checkin_floor.py) — шов из хвоста handlers/admin.py
+    # checkin_floor_refresh, handlers/forum/admin_checkin_floor.py) — шов из хвоста handlers/admin.py
     # сразу после admin_forum_ready; одна чистая вставка перед prog_fbday_open (750 -> 752).
     # Бэклог чек-ина №7 («🧪 Учебные QR»): +1 admin.callback_query checkin_training_sheet
-    # (handlers/admin_checkin_training.py) — шов из хвоста handlers/admin_checkin.py сразу
+    # (handlers/forum/admin_checkin_training.py) — шов из хвоста handlers/forum/admin_checkin.py сразу
     # после venue_revoke_go и ПЕРЕД admin_sos; одна чистая вставка (752 -> 753).
     # Фаза 33 (перевод делегата в другой город): admin.callback_query citymv_* из handlers/cities/admin_city_move.py — шов импортирован из хвоста handlers/admin.py после admin_forum_ready.
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (750 -> 754).
@@ -2327,7 +2327,7 @@ def test_snapshot_total_handler_count_is_292():
     # вставка (2 строки), 0 удалений, 0 реордеров (860 -> 862).
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): пять новых callback_query-хендлеров
     # (forumstats_cfg/forumstats_toggle/forumstats_preview/forumstats_pick/forumstats_send_go)
-    # в новом шве handlers/admin_forum_stats_card.py, импортирован в хвосте handlers/admin.py
+    # в новом шве handlers/forum/admin_forum_stats_card.py, импортирован в хвосте handlers/admin.py
     # СРАЗУ ПОСЛЕ admin_sheet_reconcile — встали сразу после sheet_reconcile_resend_go и ПЕРЕД
     # prog_fbday_open (та же точка регистрации, что у regreset_*/resumerep_*/sheetrec_* выше).
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая вставка (5 строк),
@@ -2346,7 +2346,7 @@ def test_snapshot_total_handler_count_is_292():
     # admin_chat_cleanup — девять callback_query (chpost:*) после chclean_delay и message-хендлер
     # ввода (state:ChatRatingPostEdit:*) после chclean_delay_value. Две чистые вставки
     # (1 + 9 строк), 0 удалений, 0 реордеров (879 -> 889).
-    # D-41 (регистрация на месте): шов handlers/admin_onsite_reg.py в хвосте handlers/admin.py
+    # D-41 (регистрация на месте): шов handlers/forum/admin_onsite_reg.py в хвосте handlers/admin.py
     # сразу после admin_chat_cleanup — три callback_query (onsitereg_cfg:*/onsitereg_toggle:*/
     # onsitereg_qr:*) после chpost_publish_go (шов импортируется после admin_chat_rating_post).
     # Одна чистая вставка (3 строки), 0 удалений, 0 реордеров (889 -> 892).
@@ -2359,7 +2359,7 @@ def test_snapshot_total_handler_count_is_292():
     # wave_create_cancel. Сверено diff'ом (difflib.SequenceMatcher): две чистые вставки
     # (3 + 9 строк), 0 удалений, 0 реордеров (893 -> 905).
     # 30.09 (раздел «🤝 Амбассадоры»): шов handlers/amb/admin_amb_section.py хвостом
-    # handlers/admin_onsite_reg.py — admin.message amb_limit_value (state:AmbSlotsEdit:*) сразу
+    # handlers/forum/admin_onsite_reg.py — admin.message amb_limit_value (state:AmbSlotsEdit:*) сразу
     # после chpost_value и 6 admin.callback_query сразу после onsitereg_qr_send. Сверено
     # diff'ом (difflib): две чистые вставки (1 + 6 строк), 0 удалений, 0 реордеров (905 -> 912).
     # 30.09 (экран «🙋 Кандидаты и команда»): шов handlers/amb/admin_amb_candidates.py хвостом
@@ -2387,13 +2387,13 @@ def test_snapshot_total_handler_count_is_292():
     # promote_go — одна чистая вставка, 0 удалений, 0 реордеров (961 -> 963).
     # 03.10 («🆘 Настройки SOS» из хаба с городом): 1 admin.callback_query (asos_city_open)
     # сразу после admin_sos — одна чистая вставка, 0 удалений, 0 реордеров (963 -> 964).
-    # 03.10 (фото программы своё у города, handlers/admin_program_view.py): 2 admin.message
+    # 03.10 (фото программы своё у города, handlers/forum/admin_program_view.py): 2 admin.message
     # (state:ProgramPhotoUpload:*) сразу после rgnm_time_step и 2 admin.callback_query
     # (prog_photo/prog_photo_cancel) сразу после prog_view_toggle_go. Две чистые вставки
     # (2 + 2), 0 удалений, 0 реордеров (964 -> 968).
     # 03.10 («🗑 Убрать фото программы»): 2 admin.callback_query (prog_photo_del_ask/
     # prog_photo_del_go) сразу после prog_photo_cancel — одна чистая вставка (973 -> 975).
-    # 03.10 («🔁 Перехватить» взятый SOS, handlers/admin_sos.py): 3 admin.callback_query
+    # 03.10 («🔁 Перехватить» взятый SOS, handlers/forum/admin_sos.py): 3 admin.callback_query
     # (sos_takeover/sos_takeover_go/sos_takeover_no) сразу после sos_claim и ПЕРЕД sos_resolve —
     # одна чистая вставка, 0 удалений, 0 реордеров (975 -> 978).
     # Роль «📣 Маркетинг (метки)» (handlers/applications/admin_source_links.py, хвост handlers/admin.py):
@@ -2508,7 +2508,7 @@ def test_snapshot_total_handler_count_is_292():
     # admin_i18n_list_page/admin_i18n_row/admin_i18n_edit_new_start/admin_i18n_edit_start/
     # admin_i18n_retranslate_confirm/admin_i18n_retranslate_go, сразу после afaq_edit_answer_start
     # и перед show_applications — шов импортируется из хвоста handlers/admin.py сразу после
-    # admin_faq) (444 -> 454). Phase 27-04 (LANG-01): +2 handlers/reg_lang.py (message menu_lang_open, хвост message-блока registration.router; callback_query lang_pick_choose, сразу после consent_renew_accept и перед reg_resume_continue) (442 -> 444); Phase 27-02 (LANG-01): +2 admin_settings.py toggle_delegate_lang_enabled/toggle_delegate_lang_ask_on_start (callback_query, сразу после toggle_quiet_hours и перед toggle_reg_edit_remoderation) (440 -> 442); quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/applications/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/sheets/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/comms/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417); quick 260906-8uq (FAQ-01..06): +4 user_actions.router (message show_faq; callback_query faq_page/faq_open_answer/faq_ask, хвост роутера, перед ask_organizer_start/после reg_handoff_idle_fallback) + handlers/admin_faq.py (message afaq_text_cancel/afaq_text_step; callback_query admin_faq/afaq_page/afaq_view/afaq_move_up/afaq_move_down/afaq_toggle_enabled/afaq_toggle_city/afaq_delete_confirm/afaq_delete_go/afaq_new_start/afaq_edit_question_start/afaq_edit_answer_start), шов встал сразу после admin_questions (417 -> 435); quick 260906-8uq задача 4 (FAQ-04, «❓ В FAQ» из журнала): +5 handlers/admin_faq.py callback_query (afaq_from_question/afaq_draft_edit_question/afaq_draft_edit_answer/afaq_save_draft/afaq_cancel_draft), встали сразу после afaq_delete_go и перед afaq_new_start (тот же порядок, что и в исходном файле — новый блок кода вставлен между этими двумя хендлерами), чистая вставка (435 -> 440)
+    # admin_faq) (444 -> 454). Phase 27-04 (LANG-01): +2 handlers/reg_lang.py (message menu_lang_open, хвост message-блока registration.router; callback_query lang_pick_choose, сразу после consent_renew_accept и перед reg_resume_continue) (442 -> 444); Phase 27-02 (LANG-01): +2 admin_settings.py toggle_delegate_lang_enabled/toggle_delegate_lang_ask_on_start (callback_query, сразу после toggle_quiet_hours и перед toggle_reg_edit_remoderation) (440 -> 442); quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/applications/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/sheets/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/comms/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417); quick 260906-8uq (FAQ-01..06): +4 user_actions.router (message show_faq; callback_query faq_page/faq_open_answer/faq_ask, хвост роутера, перед ask_organizer_start/после reg_handoff_idle_fallback) + handlers/forum/admin_faq.py (message afaq_text_cancel/afaq_text_step; callback_query admin_faq/afaq_page/afaq_view/afaq_move_up/afaq_move_down/afaq_toggle_enabled/afaq_toggle_city/afaq_delete_confirm/afaq_delete_go/afaq_new_start/afaq_edit_question_start/afaq_edit_answer_start), шов встал сразу после admin_questions (417 -> 435); quick 260906-8uq задача 4 (FAQ-04, «❓ В FAQ» из журнала): +5 handlers/forum/admin_faq.py callback_query (afaq_from_question/afaq_draft_edit_question/afaq_draft_edit_answer/afaq_save_draft/afaq_cancel_draft), встали сразу после afaq_delete_go и перед afaq_new_start (тот же порядок, что и в исходном файле — новый блок кода вставлен между этими двумя хендлерами), чистая вставка (435 -> 440)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

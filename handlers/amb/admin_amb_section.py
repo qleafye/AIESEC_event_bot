@@ -16,7 +16,7 @@
 `settings_audit.set_setting_by_admin` — тот же путь с логом `admin=…`, что у остальных экранов.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router` и подключается хвостовым
-импортом `handlers/admin_onsite_reg.py` — последнего файла цепочки admin.router, чтобы не
+импортом `handlers/forum/admin_onsite_reg.py` — последнего файла цепочки admin.router, чтобы не
 растить admin.py и не трогать main.py (docs/CONVENTIONS.md, приём швов).
 """
 from __future__ import annotations

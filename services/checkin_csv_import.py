@@ -1,7 +1,7 @@
 """Загрузка выгрузки офлайн-сканера (D-09/D-10): отметка найденных кодов и текст отчёта.
 
 Разбор файла — `services.checkin.find_checkin_records`; хендлер бота (выбор точки, ответ на
-кнопку) — `handlers/admin_checkin.py::checkin_point_pick`. Здесь — цикл отметки и подсчёт:
+кнопку) — `handlers/forum/admin_checkin.py::checkin_point_pick`. Здесь — цикл отметки и подсчёт:
 каждая запись попадает ровно в одну графу отчёта, удалённая или пересозданная сессия не
 выдаётся за «уже были», записи без времени скана перечислены отдельно.
 
@@ -47,7 +47,7 @@ def progress_text(n: int) -> str:
 async def import_records(records: list[dict], point: str, *, session: dict | None,
                          bound_city: str | None, staff_id: int, bot, labels: dict) -> dict:
     """Отмечает каждую запись выгрузки на точке `point`. `labels` — машинный код отказа ->
-    подпись отчёта (`handlers/admin_checkin.py::_DENIAL_LABELS`). Возвращает счётчики и
+    подпись отчёта (`handlers/forum/admin_checkin.py::_DENIAL_LABELS`). Возвращает счётчики и
     список `flagged` [(подпись, разобранный QR)] для строк «Требуют внимания»."""
     res = {
         "new": 0, "duplicate": 0, "moved": 0, "outside": 0, "day_mismatch": 0,

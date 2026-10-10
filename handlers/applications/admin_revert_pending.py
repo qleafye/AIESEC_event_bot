@@ -6,7 +6,7 @@
 
 Шов той же формы, что соседние: своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `admin.router`, модуль импортируется ХВОСТОМ `handlers/admin.py` (golden snapshot: чистая
-вставка). `_city_allowed` — импорт из `handlers/admin_checkin.py` (тот же приём, что у
+вставка). `_city_allowed` — импорт из `handlers/forum/admin_checkin.py` (тот же приём, что у
 `admin_city_move.py` — не владеем файлом, только вызываем его публичную функцию).
 
 Тумблер «🔔 Сообщить делегату» — состояние живёт в самом `callback_data` (тот же приём, что
@@ -21,7 +21,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_user
 from handlers.admin import router
-from handlers.admin_checkin import _city_allowed
+from handlers.forum.admin_checkin import _city_allowed
 from services.revert_pending import preview_revert_pending, revert_to_pending
 from domain.cities import city_label, normalize_city
 
@@ -163,7 +163,7 @@ async def revertp_apply(callback: types.CallbackQuery):
     # Координатор 25.09: в режиме уведомлений «каждая заявка» карточка менеджерам должна
     # называть, КТО вернул заявку на модерацию (в digest-режиме это уже видно из отдельного
     # блока пачки, 9d15517) — тот же приём резолва имени, что у sos_claim/sos_resolve
-    # (handlers/admin_sos.py): full_name -> username -> код-фолбэк. `getattr` — минимальные
+    # (handlers/forum/admin_sos.py): full_name -> username -> код-фолбэк. `getattr` — минимальные
     # тестовые дублёры callback.from_user (напр. test_card_actions_260925.py::_FakeUser) несут
     # только `.id`, настоящий aiogram User несёт оба поля всегда.
     admin_name = (

@@ -102,7 +102,7 @@ def db_ready(tmp_path):
 
 def test_rendered_forum_screens_have_no_internal_ids(db_ready):
     from domain.cities import default_city_code
-    from handlers import admin_checkin, admin_forum_functions, admin_sos
+    from handlers.forum import admin_checkin, admin_forum_functions, admin_sos
 
     code = default_city_code()
 

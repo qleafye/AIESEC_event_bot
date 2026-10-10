@@ -1,7 +1,7 @@
 """Делегатский вход в запись на сессии: гейт, повестка, треки, deep-link."""
 from domain.cities import per_city_key
 from database import db
-from handlers import forum_deeplinks, session_enroll as h
+from handlers.forum import forum_deeplinks, session_enroll as h
 from tests._enroll38 import CITY, add_user, ready, run
 from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, make_state, setup_world
 

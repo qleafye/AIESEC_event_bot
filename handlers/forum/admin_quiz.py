@@ -15,7 +15,7 @@ from domain.cities import city_label, get_setting_typed_for_city
 from database import quiz_db as qdb
 from database import session_enroll_db as edb
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import QuizEdit
 
 _PAGE = 8
@@ -112,7 +112,7 @@ async def render_quiz(code: str) -> tuple[str, InlineKeyboardMarkup]:
 
 async def _show_quiz(callback: types.CallbackQuery, code: str, note: str | None = None) -> None:
     text, kb = await render_quiz(code)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=keep_hub_back(callback.message, kb))
     await callback.answer(note)
 
@@ -220,7 +220,7 @@ async def prog_qz_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
     what, target = data.get("what"), data.get("target")
     if what and what.startswith("level"):
-        from handlers.admin_quiz_levels import level_input
+        from handlers.forum.admin_quiz_levels import level_input
         await level_input(message, state, what, target)
         return
     if what not in _INPUT_HELP:
@@ -511,7 +511,7 @@ async def prog_qzoxgo(callback: types.CallbackQuery):
     await callback.answer("Удалено.")
 
 
-# Уровни, статистика, ссылка, тексты (handlers/admin_quiz_levels.py) — хвостовой импорт.
-from handlers import admin_quiz_levels  # noqa: E402,F401
-# Импорт из таблицы (handlers/admin_quiz_import.py) — хвостовой импорт.
-from handlers import admin_quiz_import  # noqa: E402,F401
+# Уровни, статистика, ссылка, тексты (handlers/forum/admin_quiz_levels.py) — хвостовой импорт.
+from handlers.forum import admin_quiz_levels  # noqa: E402,F401
+# Импорт из таблицы (handlers/forum/admin_quiz_import.py) — хвостовой импорт.
+from handlers.forum import admin_quiz_import  # noqa: E402,F401

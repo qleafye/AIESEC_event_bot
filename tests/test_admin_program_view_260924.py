@@ -1,4 +1,4 @@
-"""Пакет C, п.3 (D-29, «одна кнопка программы у делегата»): `handlers/admin_program_view.py`
+"""Пакет C, п.3 (D-29, «одна кнопка программы у делегата»): `handlers/forum/admin_program_view.py`
 — циклический тумблер «Таблица/Фото» и его врезка в оба экрана-владельца («🗓 Программа
 форума», «🎪 Форум: функции»).
 
@@ -10,8 +10,8 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_forum_functions as aff
-from handlers import admin_program, admin_program_view
+from handlers.forum import admin_forum_functions as aff
+from handlers.forum import admin_program, admin_program_view
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900924401

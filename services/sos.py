@@ -3,7 +3,7 @@
 захват — та же идиома, что `claim_question`/T-08-33), отвечает реплаем, при молчании
 эскалирует.
 
-Домен вынесен из `handlers/sos.py` (делегатская сторона) и `handlers/admin_sos.py`
+Домен вынесен из `handlers/forum/sos.py` (делегатская сторона) и `handlers/forum/admin_sos.py`
 (менеджерская сторона) в этот модуль по правилу проекта «своего Router() нет — домен в
 services/, хендлеры — тонкий шов» (та же форма, что `services/questions.py` для «❓ Задать
 вопрос», `services/chat_tracking.py` для привязки чата делегатов).
@@ -12,7 +12,7 @@ services/, хендлеры — тонкий шов» (та же форма, ч�
 категорий без пояснительного текста бесполезны — в экстренной ситуации важна скорость, не
 классификация. Кнопка «🆘 SOS» СРАЗУ создаёт заявку и публикует карточку («подробности ещё не
 прислали»); делегат попадает в режим «дописываю SOS» (`SosReport.collecting`,
-`handlers/sos.py`) — всё, что он пишет/присылает (текст, фото, геопозиция), уходит В ТРЕД
+`handlers/forum/sos.py`) — всё, что он пишет/присылает (текст, фото, геопозиция), уходит В ТРЕД
 карточки И дописывает саму карточку (первый текст/фото снимает пометку «подробности ещё не
 прислали»). Режим живёт до «Готово», решения заявки оргом, таймаута
 (`sos_collecting_timeout_minutes`) или следующего `/start`. Старые категорийные кнопки/тексты
@@ -217,7 +217,7 @@ def _parse_stamp(raw: str | None) -> datetime | None:
 
 # Ревью 24.09 (находка 2): три исхода вместо голого bool — «личка устарела»/«личка молчит,
 # D-9» команды `/sos_id` в группе должны различаться от «бота ещё нет в чате», иначе
-# `handlers/admin_sos.py::asos_bind_step` не может объяснить менеджеру, что сделать дальше
+# `handlers/forum/admin_sos.py::asos_bind_step` не может объяснить менеджеру, что сделать дальше
 # (CLAUDE.md: «ошибка объясняет, что делать»).
 BIND_OK = "ok"
 BIND_EXPIRED = "expired"
@@ -341,7 +341,7 @@ def render_card_text(
         details = str(details)
         if len(details) > CARD_DETAILS_LIMIT:
             # Карточка с длинной дописью не влезла бы в 4096 символов, и правка упала бы
-            # целиком. Полный текст команда видит копией дописки (`handlers/sos.py`).
+            # целиком. Полный текст команда видит копией дописки (`handlers/forum/sos.py`).
             details = details[:CARD_DETAILS_LIMIT].rstrip() + "…"
         lines.append(f"«{html_module.escape(details)}»")
         if photo:
@@ -363,7 +363,7 @@ def render_card_text(
         lines.append(f"⚠️ У делегата есть открытый SOS #{prior_id}")
 
     # Пункт 3 плана: карточка обновляется «Взял: … в HH:MM» после «🙋 Беру», «✅ Решено …» после
-    # решения — тот же приём, что `handlers/admin_sos.py::_row_text` (журнал экрана менеджера),
+    # решения — тот же приём, что `handlers/forum/admin_sos.py::_row_text` (журнал экрана менеджера),
     # здесь для карточки, которую видит весь чат оргов.
     status = report_status(report)
     if status == STATUS_CLAIMED:
@@ -400,7 +400,7 @@ def build_card_kb(report_id: int, *, claimed: bool = False):
 
 
 # ── Ревью 24.09 (находка 1): `post_card` раньше возвращал голый `bool` («ушло в чат?»), который
-# `handlers/sos.py::_finalize_sos` даже не читал — делегат слышал «Оргкомитет получил» и тогда,
+# `handlers/forum/sos.py::_finalize_sos` даже не читал — делегат слышал «Оргкомитет получил» и тогда,
 # когда карточка не дошла НИКУДА (чат упал, фоллбэк-веер разошёлся нулю получателей, например
 # все держатели `moderate_reg` заблокировали бота). `PostCardResult` несёт РЕАЛЬНОЕ число
 # доставок по каждому каналу — вызывающий код сам решает, что сказать делегату
@@ -512,9 +512,9 @@ async def record_delivery_outcome(report_id: int, result: PostCardResult) -> Non
 
 # ── D-31: перерисовка карточки в чате после «дописывания» (текст/фото/гео режима collecting) ─
 #
-# Тот же рендер, что раньше жил ТОЛЬКО в `handlers/admin_sos.py::_refresh_card` (после захвата/
+# Тот же рендер, что раньше жил ТОЛЬКО в `handlers/forum/admin_sos.py::_refresh_card` (после захвата/
 # решения заявки) — перенесён сюда, потому что теперь его зовёт ещё и делегатская сторона
-# (`handlers/sos.py`, режим «дописываю SOS»), а домен карточки целиком живёт в этом модуле
+# (`handlers/forum/sos.py`, режим «дописываю SOS»), а домен карточки целиком живёт в этом модуле
 # (докстринг файла). `admin_sos._refresh_card` остаётся тонкой обёрткой ради обратной
 # совместимости места вызова.
 
@@ -571,7 +571,7 @@ async def refresh_card(bot, report_id: int) -> int:
 
 
 # ── Ответ орга РЕПЛАЕМ на карточку — общий путь для чата SOS (`handlers/chat/group_chat.py`) и
-# личной копии карточки (`handlers/admin_sos.py::admin_reply_to_sos`). Кто вправе ответить,
+# личной копии карточки (`handlers/forum/admin_sos.py::admin_reply_to_sos`). Кто вправе ответить,
 # решают вызывающие: в чате — сам факт, что карточка из привязанного чата SOS этой заявки, в
 # личке — капа `moderate_reg` + город заявки. Здесь только захват, доставка и отчёт.
 
@@ -671,7 +671,7 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
     from services import i18n as i18n_service
 
     # Шапка — на языке делегата («SOS #» остаётся и в переводе: по нему его реплай на ответ
-    # уходит обратно в тред, `handlers/sos.py::_is_sos_followup`).
+    # уходит обратно в тред, `handlers/forum/sos.py::_is_sos_followup`).
     title = await i18n_service.tr_for_user(user_id, SOS_REPLY_HEADER)
     header = f"🆘 <b>{html_module.escape(title.replace('{id}', str(report_id)))}</b>"
     try:
@@ -710,7 +710,7 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
 
 async def relay_delegate_message(message, report_id: int) -> None:
     """`message` — оригинал делегата (текст/фото/геопозиция), копируется КАК ЕСТЬ
-    (`message.copy_to`) — та же форма, что была у `handlers/sos.py::_relay_report_followup`
+    (`message.copy_to`) — та же форма, что была у `handlers/forum/sos.py::_relay_report_followup`
     до переноса сюда (пункт 3 плана: реплай уводит ответ орга мимо тихих часов, здесь —
     обратное направление, делегат дописывает свою же заявку)."""
     report = await get_sos_report(report_id)
@@ -740,7 +740,7 @@ async def relay_delegate_message(message, report_id: int) -> None:
     # ответом на неё (как тред в чате SOS), без отдельной строки «Делегат дополнил».
     # Каждую копию (и подпись) пишем в `sos_relay_messages` с chat_id = личка админа: реплай
     # на неё выглядит как ответ в треде и должен дойти до делегата
-    # (`handlers/admin_sos.py::admin_reply_to_sos`), а не молча остаться у админа.
+    # (`handlers/forum/admin_sos.py::admin_reply_to_sos`), а не молча остаться у админа.
     card_copies = dict(await list_sos_card_copies(report_id))
     prefix = f"💬 Делегат дополнил SOS #{report_id}:"
     for uid in recipients:
@@ -803,7 +803,7 @@ async def delivery_retry_job(report_id: int) -> None:
 # ── Здоровье привязанного чата (пункт 2 плана, находка 2) — процессный (не в БД) словарь,
 # та же форма, что `handlers/access/admin_caps.py::_blocked_notified_at` (троттлинг «раз в час», после
 # рестарта алерт может повториться — это приемлемо, не критичный журнал). Красная строка на
-# экране менеджера (`handlers/admin_sos.py::render_sos_screen`) читает `chat_is_unhealthy`
+# экране менеджера (`handlers/forum/admin_sos.py::render_sos_screen`) читает `chat_is_unhealthy`
 # напрямую — тот же процесс шлёт алерт и рендерит экран.
 _unhealthy_chats: set[int] = set()
 _chat_alert_sent_at: dict[int, float] = {}

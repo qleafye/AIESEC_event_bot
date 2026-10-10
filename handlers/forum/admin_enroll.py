@@ -17,8 +17,8 @@ from domain.cities import city_label
 from database import session_enroll_db as edb
 from database.db import get_program_session, update_program_session
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
-from handlers.admin_enroll_guard import confirm_limit
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
+from handlers.forum.admin_enroll_guard import confirm_limit
 from handlers.states import ProgramCompetencyEdit, ProgramEnrollLimit, ProgramTrackEdit
 from services.session_enroll import session_open_state
 

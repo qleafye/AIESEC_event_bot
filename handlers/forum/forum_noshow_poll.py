@@ -2,7 +2,7 @@
 опроса неявившихся «почему не пришёл» — пять кнопок ответа, «Другое» просит дописать словами
 (FSM, отмена следующим /start — `cmd_start` чистит FSM, тот же приём, что `SosReport.collecting`/
 `SessionFeedbackComment`). Домен (аудитория, рассылка, идемпотентность, сводка) — целиком в
-`services/forum_noshow_poll.py`, здесь только тонкий шов (та же форма, что `handlers/sos.py`
+`services/forum_noshow_poll.py`, здесь только тонкий шов (та же форма, что `handlers/forum/sos.py`
 поверх `services/sos.py`).
 
 Импортирован ХВОСТОМ `handlers/user_actions.py` (сразу после `session_feedback`, перед

@@ -389,7 +389,7 @@ SETTINGS_SCHEMA = {
     # D-31 (24.09, «SOS без категорий»): «🆘 SOS» публикует карточку МГНОВЕННО — без вопроса
     # «что случилось» и без кнопок категорий (`sos_category_prompt_text`/`sos_details_prompt_text`/
     # `sos_location_prompt_text`/`sos_already_open_text` сняты из реестра целиком вместе с
-    # категорийным визардом, `handlers/sos.py`). Тексты ниже — тот же сосед, что ask_question_*
+    # категорийным визардом, `handlers/forum/sos.py`). Тексты ниже — тот же сосед, что ask_question_*
     # выше (group "event", тот же корпус машинного перевода — 27-01/D-25).
     "sos_sent_text": {
         "type": "text", "group": "event", "label": "🆘 SOS: сигнал отправлен",
@@ -445,7 +445,7 @@ SETTINGS_SCHEMA = {
     # к тексту выше — per_city (у разных городов форума разный дежурный номер). Реестр не
     # содержал готового телефонного поля контактов (contact_person/contact_vk/contact_tg —
     # юзернейм/ссылки, не номер) — заведён отдельным ключом по указанию находки. Пустое
-    # значение -> строка просто не добавляется (см. handlers/sos.py::_finalize_sos).
+    # значение -> строка просто не добавляется (см. handlers/forum/sos.py::_finalize_sos).
     "sos_fallback_contact_text": {
         "type": "text", "group": "event", "label": "🆘 SOS: экстренный контакт (если не доставлено)",
         "prompt": (
@@ -459,7 +459,7 @@ SETTINGS_SCHEMA = {
     },
     # Ревью 24.09 (находка 3) + D-31: делегат снова жмёт «🆘 SOS», пока предыдущий свой же SOS
     # ещё свежий (`sos_reopen_window_minutes`) — вместо новой заявки бот предлагает дополнить
-    # СУЩЕСТВУЮЩИЙ SOS (handlers/sos.py::sos_start), тем же режимом «дописываю SOS».
+    # СУЩЕСТВУЮЩИЙ SOS (handlers/forum/sos.py::sos_start), тем же режимом «дописываю SOS».
     # {claim_status} — «взял(а) ИМЯ» либо «ещё не взяли» (services.sos.claim_status_label). НЕ
     # per_city — тот же сосед, что sos_sent_text.
     "sos_recent_followup_text": {
@@ -5317,7 +5317,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # D-29 (владелец 24.09, FORUM-CHECKIN.md): одна кнопка вместо двух — интерактивная
-    # программа сессий/залов (handlers/program.py, был отдельный ключ menu_schedule) стала
+    # программа сессий/залов (handlers/forum/program.py, был отдельный ключ menu_schedule) стала
     # запасным видом ВНУТРИ этой же кнопки, когда фото не загружено. Кнопка рисуется, пока
     # есть фото ИЛИ у города делегата есть хотя бы одна сессия (`database.db.
     # has_program_sessions_for_city`, keyboards/builders.py::get_main_menu_kb).
@@ -7905,7 +7905,7 @@ SETTINGS_SCHEMA = {
         "default": "17:00",
         # D-36 (24.09, аудит форумных тумблеров): "format": "time" был пропущен при заведении
         # ключа (D-33) — без него не было живого экрана ввода вовсе, дыра оставалась
-        # незаметной; пункт добавляет реальный ввод (handlers/admin_forum_functions.py),
+        # незаметной; пункт добавляет реальный ввод (handlers/forum/admin_forum_functions.py),
         # поэтому Rule 1 — без этого HH:ММ не проверялся бы (тот же формат, что у соседних
         # checkin_qr_broadcast_time/checkin_qr_morning_repeat_time выше).
         "format": "time",
@@ -8098,7 +8098,7 @@ SETTINGS_SCHEMA = {
     # делегатский текст, корпус машинного перевода (services/i18n_sources.py) подхватывает сам,
     # отдельной записи в i18n_form_manual.py не требует. Подстановка `{time}` — ПОСЛЕ перевода
     # (`handlers.i18n.reg_i18n.tr_fmt`, тот же порядок, что у `{claim_status}`/`{title}` — см.
-    # `handlers/sos.py`/`services/session_feedback.py`), время скана ЧЧ:ММ по Москве.
+    # `handlers/forum/sos.py`/`services/session_feedback.py`), время скана ЧЧ:ММ по Москве.
     "forum_welcome_text": {
         "type": "text", "group": "reg", "label": "👋 Текст приветствия после отметки на входе",
         "prompt": (
@@ -8248,7 +8248,7 @@ SETTINGS_SCHEMA = {
         "format": "time",
         "per_city": True,
     },
-    # Кнопочный выбор (экран `handlers/admin_forum_functions.py::_regional_noshow_cfg_text_kb`,
+    # Кнопочный выбор (экран `handlers/forum/admin_forum_functions.py::_regional_noshow_cfg_text_kb`,
     # кнопки среди `cities.enabled_cities()`) — НЕ в `_APPS_FIELD_ORDER`/`_SYSTEM_FIELD_ORDER`
     # (менеджер не печатает код города, тот же приём, что у `admin_selected_city`). Дефолт —
     # `None`, резолвится в `cities.default_city_code()` на чтении (`services.regional_noshow_
@@ -8565,7 +8565,7 @@ SETTINGS_SCHEMA = {
 
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): картинка-итог делегату после форума —
     # тот же приём, что lost_found_enabled/forum_welcome_enabled выше (тумблер-only запись
-    # реестра, свой экран — handlers/admin_forum_stats_card.py::forumstats_cfg_screen,
+    # реестра, свой экран — handlers/forum/admin_forum_stats_card.py::forumstats_cfg_screen,
     # статусная строка — хаб «🎪 Форум: функции»). Дефолт "off": рассылка идёт по ручному тапу
     # менеджера ПОСЛЕ форума, включать заранее нечего.
     "forum_stats_card_enabled": {

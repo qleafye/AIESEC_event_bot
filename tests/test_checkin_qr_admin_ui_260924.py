@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from database.db import _connect
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from handlers.access.admin_caps import role_caps_key, role_enabled_key
 from handlers.states import CheckinQrTimeEdit
 import services.checkin_broadcast as broadcast_svc

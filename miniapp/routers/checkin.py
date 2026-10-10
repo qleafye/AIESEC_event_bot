@@ -10,7 +10,7 @@
 ограничен НИКОГДА, модуль городов выключен -> ограничений нет, иначе -- `Principal.city`
 (`staff.city`, привязка менеджера, НЕ бот-овский `admin_selected_city` — тот живёт в
 aiogram-зависимом `handlers/admin_core.py`, сюда его импортировать нельзя). `/stats` строит ту
-же разбивку по городам, что бот (`handlers/admin_checkin.py::_counter_line`) — те же
+же разбивку по городам, что бот (`handlers/forum/admin_checkin.py::_counter_line`) — те же
 `count_checkins_by_point(city_scope=…)`/`count_approved_current_season(city_scope=…)`
 (задача A2). Скан/ручная отметка (`/scan`/`/manual`) с D-26 (24.09) ПРОВЕРЯЮТ город делегата
 против привязки менеджера И на входе, не только на сессиях — уточняет D-15: стойки физически не
@@ -174,7 +174,7 @@ async def _bound_city(request: Request, p: Principal) -> str | None:
 
 async def _resolve_scanner_city(bound: str | None) -> str | None:
     """Форум-ночь п.5 (D-18): тот же трёхветочный приём, что
-    `handlers/admin_checkin.py::_resolve_checkin_screen_city` — привязанный город менеджера
+    `handlers/forum/admin_checkin.py::_resolve_checkin_screen_city` — привязанный город менеджера
     сразу его, модуль выключен -> единственный дефолтный город, иначе (суперадмин/непривязанный
     менеджер) -> `None`, экрану сканера нужен явный выбор города (`GET /points?city=`)."""
     if bound is not None:
@@ -705,7 +705,7 @@ async def checkin_stats(
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     """A2 (FORUM-CHECKIN.md): та же построчная разбивка по городам, что бот
-    (`handlers/admin_checkin.py::_counter_line`) — три ветки: менеджер с городом-привязкой
+    (`handlers/forum/admin_checkin.py::_counter_line`) — три ветки: менеджер с городом-привязкой
     видит только свой (`cities: null`), модуль городов выключен — общий счётчик байт-в-байт
     как раньше, иначе — построчно по городам с хотя бы одним одобренным + Итого."""
     bound = await _bound_city(request, p)

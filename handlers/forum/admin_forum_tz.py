@@ -5,7 +5,7 @@
 считается местным, рассылки QR уходят по местным часам, отметки и карточки показывают
 местное время. Сами метки в базе остаются московскими.
 
-Форма шва — как у соседей (`handlers/admin_forum_ready.py`): своего `Router()` нет,
+Форма шва — как у соседей (`handlers/forum/admin_forum_ready.py`): своего `Router()` нет,
 `from handlers.admin import router`, импорт из хвоста `handlers/admin.py`. Право —
 `moderate_reg`, как у остальных экранов хаба."""
 import html
@@ -16,7 +16,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
-from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
+from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.timeutil import city_offset_hours, offset_label
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA

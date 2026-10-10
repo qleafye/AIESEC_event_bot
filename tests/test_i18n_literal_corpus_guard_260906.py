@@ -41,13 +41,13 @@ SCANNED_FILES = [
     ROOT / "handlers" / "reg_lang.py",
     ROOT / "handlers" / "game" / "game_submit_counter.py",
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа».
-    ROOT / "handlers" / "program.py",
+    ROOT / "handlers" / "forum" / "program.py",
     # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — делегатская сторона.
-    ROOT / "handlers" / "session_feedback.py",
+    ROOT / "handlers" / "forum" / "session_feedback.py",
     # Запись на сессии форума: делегатский поток, тексты только из реестра настроек.
-    ROOT / "handlers" / "session_enroll.py",
+    ROOT / "handlers" / "forum" / "session_enroll.py",
     # Тест компетенций: делегатский поток, тексты интерфейса только из реестра настроек.
-    ROOT / "handlers" / "quiz.py",
+    ROOT / "handlers" / "forum" / "quiz.py",
     # Приёмка 09.10: ответ на /admin человеку без прав.
     ROOT / "handlers" / "access" / "admin_no_access.py",
 ]

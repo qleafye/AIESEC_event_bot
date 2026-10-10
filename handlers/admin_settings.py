@@ -41,7 +41,7 @@ from services.sheets import (
     tab_row_count,
 )
 from handlers.states import EditSetting
-from handlers import admin_forum_date as _fdate  # дата форума — только своя у города
+from handlers.forum import admin_forum_date as _fdate  # дата форума — только своя у города
 from domain.settings.validation import validate_setting_value, is_command_like
 from domain.settings.ops import (
     apply_event_type_preset as _apply_event_type_preset,
@@ -216,7 +216,7 @@ _APPS_FIELD_ORDER = [
     "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text", "checkin_qr_disabled_text",
     # Форум-ночь: текст самой рассылки QR накануне форума (+ утренний повтор) — был заведён
     # в реестре (D-25), но забыт здесь: время рассылки правилось в «✅ Отметки на форуме»
-    # (handlers/admin_checkin.py), а сам текст в боте было не найти вовсе (только Mini App).
+    # (handlers/forum/admin_checkin.py), а сам текст в боте было не найти вовсе (только Mini App).
     "checkin_qr_broadcast_text", "checkin_qr_morning_text",
     # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — тот же приём, что у трёх
     # ключей чек-ина выше (редактор экрана достаётся бесплатно попаданием в этот список).
@@ -227,7 +227,7 @@ _APPS_FIELD_ORDER = [
     # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
     "checkin_volunteer_guide_text",
     # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа делегата (тумблер
-    # `forum_welcome_enabled` — свой экран `handlers/admin_forum_functions.py::
+    # `forum_welcome_enabled` — свой экран `handlers/forum/admin_forum_functions.py::
     # forumwelcome_cfg_screen`, сам текст — редактор достаётся бесплатно попаданием в этот
     # список, тот же приём, что у checkin_qr_broadcast_text выше).
     "forum_welcome_text",
@@ -239,7 +239,7 @@ _APPS_FIELD_ORDER = [
     # кнопок, подсказка после «Другое» и ответ-подтверждение — тот же приём, что у соседних
     # форумных текстов выше (редактор экрана достаётся бесплатно попаданием в этот список);
     # сам тумблер `forum_noshow_poll_enabled` (type "enum") — НЕ здесь, живёт на своём экране
-    # `handlers/admin_forum_functions.py::forumnoshowpoll_cfg_screen` (тот же приём, что
+    # `handlers/forum/admin_forum_functions.py::forumnoshowpoll_cfg_screen` (тот же приём, что
     # forum_day_menu_enabled/forum_welcome_enabled).
     "forum_noshow_poll_question_text",
     "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
@@ -249,7 +249,7 @@ _APPS_FIELD_ORDER = [
     # Идея №20 бэклога чек-ина: текст поста бюро находок — редактор экрана достаётся
     # бесплатно попаданием в этот список (тот же приём, что у соседних форумных текстов
     # выше); сам тумблер `lost_found_enabled` (type "enum") — НЕ здесь, живёт на своём
-    # экране `handlers/admin_lost_found.py::lostfound_cfg_screen`.
+    # экране `handlers/forum/admin_lost_found.py::lostfound_cfg_screen`.
     "lost_found_post_text",
     # Трек «региональные форумы → Москва»: текст предложения переноса — новый хвост группы
     # (тот же приём, что у соседних форумных текстов выше); сам тумблер
@@ -273,7 +273,7 @@ _APPS_FIELD_ORDER = [
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога —
     # редактор экрана достаётся бесплатно попаданием в этот список (тот же приём, что у
     # forum_welcome_text выше); сам тумблер `forum_stats_card_enabled` и фон карточки — НЕ
-    # здесь, живут на своём экране `handlers/admin_forum_stats_card.py`.
+    # здесь, живут на своём экране `handlers/forum/admin_forum_stats_card.py`.
     "forum_stats_card_caption_text", *_UI.BACKGROUND_BUTTON_FIELD_ORDER,
 ]
 _PAY_FIELD_ORDER = [
@@ -503,7 +503,7 @@ PHOTO_FIELDS = [
     )),
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): фон итоговой картинки — та же кнопка
     # достаётся бесплатно попаданием в этот список, плюс прямая кнопка на собственном экране
-    # карточки (handlers/admin_forum_stats_card.py) через тот же генерический callback.
+    # карточки (handlers/forum/admin_forum_stats_card.py) через тот же генерический callback.
     ("forum_stats_card", "📊 Фон карточки «Мы в цифрах»", (
         "Отправьте фон карточки-итога (вертикальное фото, лучше всего подойдёт 1080×1350) — "
         "без фона будет однотонный фон бренда."
@@ -2040,7 +2040,7 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     # shared render helper so it never re-resolves the header itself.
     header_code = await admin_selected_city(admin_id)
     if key == "forum_date" and header_code == ALL_CITIES:  # общая дата молча досталась бы Москве
-        from handlers.admin_forum_date import show_forum_date_city_picker
+        from handlers.forum.admin_forum_date import show_forum_date_city_picker
         return await show_forum_date_city_picker(callback, state)
     text, cancel_kb = await _settings_edit_screen(key, header_code)
     denied = not (header_code and header_code != ALL_CITIES and is_per_city(key)) and await gscope.common_write_denied(admin_id, key)
@@ -2073,7 +2073,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     from the header-aware editor screen instead of the deleted separate city picker."""
     key = callback.data.split(":", 1)[1]
     if "@" in key:  # кнопка несёт город: светофор «🚦 Готовность», выбор города для даты форума
-        from handlers.admin_forum_date import switch_header_to_button_city
+        from handlers.forum.admin_forum_date import switch_header_to_button_city
         if (key := await switch_header_to_button_city(callback, key)) is None:
             return
     admin_id = callback.from_user.id
@@ -2202,7 +2202,7 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
     prefix = callback.data.split(":", 1)[1]
     header = await admin_selected_city(callback.from_user.id)
     if prefix == "program" and header not in (None, ALL_CITIES):  # своё фото города шапки
-        from handlers.admin_program_view import start_program_photo
+        from handlers.forum.admin_program_view import start_program_photo
         return await start_program_photo(callback, state, header, "program")
     prompts = {p: (label, prompt) for p, label, prompt in PHOTO_FIELDS}
     label, prompt = prompts.get(prefix, ("Фото", "Отправьте фото."))

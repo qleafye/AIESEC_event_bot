@@ -333,7 +333,7 @@ def test_every_callback_and_state_resolves_to_moderate_game():
 
 
 def test_seam_is_registered_on_admin_router():
-    import handlers.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
+    import handlers.forum.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
     from handlers.admin import router
     names = {h.callback.__name__ for h in router.callback_query.handlers}
     assert {"show_amb_entry", "amb_mode_confirm", "amb_mode_apply", "amb_limit_start",

@@ -15,7 +15,7 @@ import pytest
 
 from config import config
 from database import db
-from handlers import admin_faq
+from handlers.forum import admin_faq
 from tests._dbtpl import fast_init_db
 
 

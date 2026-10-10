@@ -19,7 +19,7 @@
 
 Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-13): вторая половина модуля — `parse_qr_payload`
 (обратная операция к `build_payload`) и разбор выгрузки офлайн-приложения-сканера
-(`decode_scan_export`/`find_checkin_records`) для `handlers/admin_checkin.py`. Доступ к БД
+(`decode_scan_export`/`find_checkin_records`) для `handlers/forum/admin_checkin.py`. Доступ к БД
 (токен делегата, запись отметки, счётчики) — `database/db.py`
 (`get_or_create_checkin_token`/`get_user_by_checkin_token`/`record_checkin`/
 `count_checkins_by_point`/`count_approved_current_season`), здесь — только чистая логика."""
@@ -59,7 +59,7 @@ _QR_SEP = "·"
 # Phase 12 (FORUM-CHECKIN.md, D-08/D-18): точка входа «Вход» — тот же `point`, что
 # `database.db.record_checkin`/`count_checkins_by_point` считают по умолчанию. Сессии
 # программы (будущая фаза) получат свои point-код/слаг, вход остаётся отдельной
-# константой — она уже размечена кнопкой в `handlers/admin_checkin.py`.
+# константой — она уже размечена кнопкой в `handlers/forum/admin_checkin.py`.
 ENTRY_POINT = "entry"
 ENTRY_POINT_LABEL = "🚪 Вход"
 
@@ -86,7 +86,7 @@ async def _event_tag() -> str:
 
 async def current_event_tag() -> str:
     """Публичная асинхронная обёртка `_event_tag()` — единственная точка, которую зовёт
-    `handlers/admin_checkin.py` при разборе выгрузки офлайн-сканера (`find_checkin_records`
+    `handlers/forum/admin_checkin.py` при разборе выгрузки офлайн-сканера (`find_checkin_records`
     ниже), чтобы искать код нашего события в файле ТЕМ ЖЕ значением, что уходит в свежий QR —
     генерация и разбор физически не могут разойтись, читая один и тот же `_event_tag()`."""
     return await _event_tag()
@@ -151,7 +151,7 @@ async def foreign_qr_reason(code: str) -> str:
 # Единая точка перевода машинного кода в текст — `checkin_denial` ниже отдаёт коды
 # ("no_user"/"not_approved"/"past_season"), эта карта живёт РЯДОМ с ней, а не в самом
 # Mini App (импортировать нельзя — второй словарь тех же кодов в другом модуле разошёлся бы
-# при следующей правке). `handlers/admin_checkin.py` держит СВОЮ, более терсную версию тех
+# при следующей правке). `handlers/forum/admin_checkin.py` держит СВОЮ, более терсную версию тех
 # же кодов (`_DENIAL_LABELS`) — там строка идёт в компактный список отчёта загрузки CSV,
 # здесь — крупная плашка на весь экран, разный жанр текста, не дубль одного и того же.
 # "foreign_event" — код, которого `checkin_denial` НЕ возвращает (это отдельная проверка
@@ -214,7 +214,7 @@ async def checkin_denial(user: dict | None) -> str | None:
 
 # Код отказа «резолвер узнал токен, но записывать отметку для такого вида пропуска некому»
 # (см. `resolve_scanned_user`). Подписи — `DENIAL_REASON_TEXT` выше,
-# `services.venue_log.DENIAL_LABELS`, `handlers.admin_checkin._DENIAL_LABELS`.
+# `services.venue_log.DENIAL_LABELS`, `handlers.forum.admin_checkin._DENIAL_LABELS`.
 UNKNOWN_PASS_KIND = "unknown_pass_kind"
 
 
@@ -283,7 +283,7 @@ def register_token_resolver(fn) -> None:
     «QR не найден» (так было до реестра).
 
     Процессы: реестр — модульный, встроенный резолвер есть в любом процессе, импортировавшем
-    `services.checkin` (бот — `handlers/admin_checkin.py`, Mini App — `miniapp/routers/checkin.py`).
+    `services.checkin` (бот — `handlers/forum/admin_checkin.py`, Mini App — `miniapp/routers/checkin.py`).
     Внешний резолвер регистрировать в ОБОИХ процессах: скан QR идёт в Mini App
     (`/app/api/checkin/scan`), загрузка CSV — в боте. Удобно звать `register_token_resolver` на
     уровне модуля фичи и импортировать этот модуль из `main.py` и `miniapp/app.py`.
@@ -292,7 +292,7 @@ def register_token_resolver(fn) -> None:
     такому токену отказ `UNKNOWN_PASS_KIND` («неизвестный тип пропуска», пишется в журнал
     площадки). Будущий код гостей подключает свою отметку ТАМ — в `resolve_scanned_user`
     (ветка `kind != "delegate"`) и у её вызывающих (`miniapp/routers/checkin.py::checkin_scan`,
-    `handlers/admin_checkin.py` — разбор CSV), которые сейчас передают дальше в
+    `handlers/forum/admin_checkin.py` — разбор CSV), которые сейчас передают дальше в
     `record_arrival` только строку `users`."""
     if fn not in _token_resolvers:
         _token_resolvers.append(fn)
@@ -324,7 +324,7 @@ async def resolve_token(token: str | None, **ctx) -> Resolved | None:
 
 async def resolve_scanned_user(token: str | None, **ctx) -> tuple[dict | None, str | None]:
     """Единая точка «токен из QR -> (делегат, код отказа)» для ОБОИХ вызывающих
-    (`miniapp/routers/checkin.py`, `handlers/admin_checkin.py`) поверх реестра резолверов
+    (`miniapp/routers/checkin.py`, `handlers/forum/admin_checkin.py`) поверх реестра резолверов
     `resolve_token`. Делегат — `(строка users, checkin_denial(...))`, перевыпущенный QR —
     `(None, 'token_replaced')`, никто не узнал — `(None, 'no_user')`. Токен узнал резолвер
     иного вида (`kind != "delegate"`), а записи отметки для него пока нет —
@@ -374,7 +374,7 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
 # ненастоящим токеном (`TEST` + случайные символы) — не спутать ни с одним реальным
 # `secrets.token_urlsafe`-токеном делегата (те никогда не начинаются с «TEST»), и таким
 # образом сканирование/загрузка выгрузки с этим кодом никогда не «находит» реального
-# человека даже случайно (handlers/admin_checkin.py::checkin_test_file_step ничего не
+# человека даже случайно (handlers/forum/admin_checkin.py::checkin_test_file_step ничего не
 # отмечает вообще, но эта же гарантия защищает от путаницы, если волонтёр всё же занесёт
 # такую выгрузку в НАСТОЯЩУЮ загрузку — код останется просто «не найден»).
 _TEST_TOKEN_PREFIX = "TEST"
@@ -538,7 +538,7 @@ async def record_arrival(
     Возвращает `{"status": ..., "scanned_at": ...}` плюс `"reason_text"` при `wrong_city` и
     `wrong_day`, `"previous_title"` при `moved`, `"day_mismatch": True` при несовпадении дня
     у CSV (см. ниже). `mark_arrived_in_sheet` вызывается ВНУТРИ (на настоящем новом входе,
-    прямом или авто-от-сессии) — вызывающему (`handlers/admin_checkin.py`,
+    прямом или авто-от-сессии) — вызывающему (`handlers/forum/admin_checkin.py`,
     `miniapp/routers/checkin.py`) звать его отдельно для этих трёх источников больше не нужно.
 
     Ревью (D-18, день сессии): раньше отметка на сессии верила присланному `point` вслепую —
@@ -552,7 +552,7 @@ async def record_arrival(
     случае неверно (нашёл ревью). Несовпадение живого источника — ОТКАЗ (`"wrong_day"`, сканер
     волонтёра прислал устаревшую точку, отметку ставить некуда). Несовпадение у CSV — НЕ отказ
     (выгрузка уже случилась, делегат физически отметился на площадке) — `record_session_checkin`
-    всё равно вызывается, `day_mismatch=True` уходит в результат, `handlers/admin_checkin.py`
+    всё равно вызывается, `day_mismatch=True` уходит в результат, `handlers/forum/admin_checkin.py`
     показывает это отдельной строкой отчёта, а не режет отметки.
 
     Первая отметка входа (прямая или `auto_session`) дополнительно зовёт слушателей
@@ -672,7 +672,7 @@ def _venue_log():
 # разбирается выбранным разделителем, пробуются остальные («;» вместо «,» и наоборот). Дубли
 # сводятся по ТОКЕНУ и дню скана: повтор того же делегата в тот же день — одна запись (с самым
 # ранним временем), запись без времени поглощается записью с временем. Доступ к БД — в
-# `database/db.py`; хендлер бота — `handlers/admin_checkin.py`.
+# `database/db.py`; хендлер бота — `handlers/forum/admin_checkin.py`.
 
 _DECODE_ENCODINGS = ("utf-8-sig", "utf-8", "cp1251")
 

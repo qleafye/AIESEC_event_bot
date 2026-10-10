@@ -2,7 +2,7 @@
 «🗓 Программа форума»: залы и сессии, per-city, менеджер заводит их сам, без разработчика и без
 импорта из таблицы (решение владельца).
 
-Форма шва — эталон `handlers/applications/admin_reject_rules.py`/`handlers/admin_checkin.py`: своего
+Форма шва — эталон `handlers/applications/admin_reject_rules.py`/`handlers/forum/admin_checkin.py`: своего
 `Router()` нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`, каждый декоратор — в ОДНУ
 строку (инвариант cap-теста `tests/test_roles_phase8.py`). Импортирован ХВОСТОМ
 `handlers/admin_sections.py` (после `admin_reject_reports`).
@@ -10,7 +10,7 @@
 Право — `settings` (тот же класс экрана, что «🚫 Правила автоотказа»/«🧮 Правила балла»:
 конфигурирование контента события, не действие над конкретной заявкой). Город экрана — из
 шапки админки (`handlers.admin_core._admin_city_scope`), тем же трёхветочным приёмом, что
-`handlers/admin_checkin.py::_counter_line` (закреплённый город / модуль городов выключен /
+`handlers/forum/admin_checkin.py::_counter_line` (закреплённый город / модуль городов выключен /
 «Все города» — список городов на выбор): расписание форума не бывает «общим на все города»,
 поэтому третья ветка ведёт на ЭКРАН ВЫБОРА конкретного города, а не схлопывается в
 нескопированный запрос, как у чек-ина.
@@ -176,12 +176,12 @@ async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, Inl
 
     buttons.append([InlineKeyboardButton(text="📅 Другой день", callback_data=f"prog_daynew:{code}")])
     buttons.append([InlineKeyboardButton(text="🏛 Залы", callback_data=f"prog_halls:{code}")])
-    # Ревью 24.09: экран настроек отзыва — handlers/session_feedback.py (потолок этого файла).
+    # Ревью 24.09: экран настроек отзыва — handlers/forum/session_feedback.py (потолок этого файла).
     buttons.append([InlineKeyboardButton(text="⭐ Отзывы о сессиях", callback_data=f"prog_fbset:{code}")])
     buttons.append([InlineKeyboardButton(text="📋 Записи на сессии", callback_data=f"prog_enrl:{code}:0")])
-    # D-29: таблица/фото в Mini App — общий рендер handlers/admin_program_view.py (потолок
+    # D-29: таблица/фото в Mini App — общий рендер handlers/forum/admin_program_view.py (потолок
     # этого файла, кнопка нужна и хабу «🎪 Форум: функции»).
-    from handlers.admin_program_view import program_rows  # + фото программы города
+    from handlers.forum.admin_program_view import program_rows  # + фото программы города
     view_status, view_rows = await program_rows(code, "program")
     lines.append(f"\n{view_status}")
     buttons += view_rows
@@ -294,7 +294,7 @@ async def prog_new_start(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.set_data({"pmode": "new", "pw_city": code, "pw_day": day})
     await state.set_state(ProgramSessionField.time)
-    from handlers.admin_program_halls import wizard_cancel_kb  # инлайн-отмена: reply-клавиатуру не видно
+    from handlers.forum.admin_program_halls import wizard_cancel_kb  # инлайн-отмена: reply-клавиатуру не видно
     await callback.message.answer(
         f"➕ <b>Новая сессия</b> — {day_label(day)}\n\n{_TIME_HINT}",
         parse_mode="HTML", reply_markup=wizard_cancel_kb(),
@@ -317,7 +317,7 @@ async def prog_time_step(message: types.Message, state: FSMContext):
     start, end = parsed
     data = await state.get_data()
     if data.get("pmode") == "new":
-        from handlers.admin_program_halls import wizard_after_retime, wizard_cancel_kb
+        from handlers.forum.admin_program_halls import wizard_after_retime, wizard_cancel_kb
         await state.update_data(pw_start=start, pw_end=end)
         if data.get("pw_title"):  # время заново после конфликта зала — назад к проверке зала
             await wizard_after_retime(message, state)
@@ -344,7 +344,7 @@ async def prog_time_step(message: types.Message, state: FSMContext):
         await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=ReplyKeyboardRemove())
         await message.answer("Выберите:", reply_markup=kb)
         return
-    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    from handlers.forum.admin_enroll_guard import confirm_time  # записанным — спросить
     if await confirm_time(message, state, session_id, start, end):
         return
     await state.clear()
@@ -361,7 +361,7 @@ async def prog_ftyes(callback: types.CallbackQuery, state: FSMContext):
     if start is None or end is None:
         await callback.answer("Действие устарело — откройте карточку заново.", show_alert=True)
         return
-    from handlers.admin_enroll_guard import confirm_time  # записанным — спросить
+    from handlers.forum.admin_enroll_guard import confirm_time  # записанным — спросить
     if await confirm_time(callback.message, state, session_id, start, end):
         await callback.answer()
         return
@@ -466,7 +466,7 @@ async def prog_hp_pick(callback: types.CallbackQuery, state: FSMContext):
         await state.update_data(pw_hall_id=hall_id, pw_hall_picked=True)  # до первого await к БД
         warning = await hall_conflict_warning(city, day, hall_id, start, end)
         if warning:
-            from handlers.admin_program_halls import wizard_conflict_kb
+            from handlers.forum.admin_program_halls import wizard_conflict_kb
             kb = wizard_conflict_kb()
             await callback.message.edit_text(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=kb)
             await callback.answer()
@@ -639,7 +639,7 @@ async def prog_hallname_step(message: types.Message, state: FSMContext):
     # потолок размера модуля) — тот же приём, что `back_button` из `admin_sections.py` везде
     # по проекту (на момент вызова этой функции хвостовой модуль уже полностью импортирован).
     if mode == "create":
-        from handlers.admin_program_halls import render_halls_screen
+        from handlers.forum.admin_program_halls import render_halls_screen
         code = data.get("ph_city")
         await state.clear()
         await create_program_hall(code, name)
@@ -649,7 +649,7 @@ async def prog_hallname_step(message: types.Message, state: FSMContext):
         return
 
     if mode == "rename":
-        from handlers.admin_program_halls import render_halls_screen
+        from handlers.forum.admin_program_halls import render_halls_screen
         hall_id = data.get("ph_hall_id")
         hall = await get_program_hall(hall_id)
         await state.clear()
@@ -670,7 +670,7 @@ async def prog_hallname_step(message: types.Message, state: FSMContext):
         pw = await state.get_data()
         warning = await hall_conflict_warning(pw.get("pw_city"), pw.get("pw_day"), new_id, pw.get("pw_start"), pw.get("pw_end"))
         if warning:
-            from handlers.admin_program_halls import wizard_conflict_kb
+            from handlers.forum.admin_program_halls import wizard_conflict_kb
             kb = wizard_conflict_kb()
             await message.answer(f"⚠️ {warning}\n\nСохранить всё равно?", reply_markup=kb)
             return
@@ -737,7 +737,7 @@ async def render_session_card(session_id: int) -> tuple[str, InlineKeyboardMarku
         f"✅ {arrived_line}",
         session_feedback.stats_line(fb_stats),
     ]
-    from handlers.admin_enroll import enroll_card_lines  # трек, компетенции, запись
+    from handlers.forum.admin_enroll import enroll_card_lines  # трек, компетенции, запись
     lines += await enroll_card_lines(session)
     if session.get("description"):
         lines.append("")
@@ -884,5 +884,5 @@ async def prog_delete_go(callback: types.CallbackQuery):
 # Форум-ночь п.4: шов «🏛 Залы» + «📋 Скопировать программу из города…» — импорт ХВОСТОМ (потолок
 # размера модуля, tests/test_module_size_convention_260816.py), не архитектурная граница; тот же
 # приём, что admin_reject_rules.py -> admin_reject_cond.py.
-from handlers import admin_program_halls  # noqa: E402,F401
+from handlers.forum import admin_program_halls  # noqa: E402,F401
 

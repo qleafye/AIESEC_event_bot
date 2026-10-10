@@ -1,4 +1,4 @@
-"""Загрузка выгрузки офлайн-сканера в боте (`handlers/admin_checkin.py::checkin_point_pick` +
+"""Загрузка выгрузки офлайн-сканера в боте (`handlers/forum/admin_checkin.py::checkin_point_pick` +
 `services/checkin_csv_import.py`): удалённая сессия не выдаётся за «уже были», кнопка после
 перезапуска отвечает «пришлите файл заново», повторный тап не отмечает второй раз, большой файл
 получает «⏳ Отмечаю…», записи без времени перечислены в отчёте, UTF-16 и дубли — сквозь весь
@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 
 from database import db
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from handlers.states import CheckinImport
 from services.checkin import build_payload
 from services import checkin_csv_import

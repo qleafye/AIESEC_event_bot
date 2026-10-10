@@ -340,7 +340,7 @@ async def _not_arrived_section(admin_id: int, city: str | None = None) -> tuple[
 
 async def render_admin_checkin(admin_id: int, city: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
     """Экран «✅ Отметки на форуме». Последняя строка — «◀️ Назад» в раздел; хаб «🎪 Форум:
-    функции» подменяет её своей (handlers/admin_forum_hub_nav.py)."""
+    функции» подменяет её своей (handlers/forum/admin_forum_hub_nav.py)."""
     from handlers.admin_sections import back_button  # ленивый шов (см. docstring модуля)
     qr_line, qr_buttons = await _qr_broadcast_section(admin_id, city)
     qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
@@ -508,7 +508,7 @@ async def checkin_import_file_invalid(message: types.Message):
 
 # Форум-ночь п.5 (D-18): точки отметки — «Вход» + сессии СЕГОДНЯ выбранного города, «идёт
 # сейчас» — первыми (`services.program.checkin_session_points`). Город — тот же трёхветочный
-# приём, что `handlers/admin_program.py::_resolve_city_for_screen` (закреплённый город /
+# приём, что `handlers/forum/admin_program.py::_resolve_city_for_screen` (закреплённый город /
 # модуль выключен -> единственный дефолтный город / иначе -> экран выбора).
 
 async def _resolve_checkin_screen_city(admin_id: int) -> str | None:
@@ -1041,8 +1041,8 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
 
 
 # Идеи №31/№32: журнал площадки (строки выше пишут в него перевыпуск QR и загрузку CSV) и снятие
-# отметки менеджером — экраны в отдельном шве handlers/admin_venue.py, регистрируются здесь хвостом.
+# отметки менеджером — экраны в отдельном шве handlers/forum/admin_venue.py, регистрируются здесь хвостом.
 from services import venue_log as _venue_log  # noqa: E402
-from handlers.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
+from handlers.forum.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
 from services import checkin_training as _training  # noqa: E402
-from handlers import admin_checkin_training  # noqa: E402,F401  (бэклог №7: «🧪 Учебные QR»)
+from handlers.forum import admin_checkin_training  # noqa: E402,F401  (бэклог №7: «🧪 Учебные QR»)

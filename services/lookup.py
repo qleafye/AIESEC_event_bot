@@ -287,7 +287,7 @@ async def pin_chip(kind: str, canonical: str, on: bool) -> None:
 async def merge_queue_items(kind: str, status: str = "new") -> list[dict]:
     """Очередь «Другое» одного справочника/статуса, новые сверху для менеджера (план 30-07,
     экран «📚 Справочники») — постраничность режет список СЮДА возвращённый (тот же приём,
-    что `handlers/admin_faq.py::render_faq_screen` — `items[offset:offset+PAGE]` в хендлере,
+    что `handlers/forum/admin_faq.py::render_faq_screen` — `items[offset:offset+PAGE]` в хендлере,
     второй копии постраничной логики здесь не заводим)."""
     from database.db import _connect
 

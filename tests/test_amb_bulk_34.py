@@ -563,7 +563,7 @@ def test_every_bulk_callback_resolves_to_moderate_game():
 
 
 def test_bulk_seam_registered_after_candidates():
-    import handlers.admin_onsite_reg  # noqa: F401
+    import handlers.forum.admin_onsite_reg  # noqa: F401
     from handlers.admin import router
     names = [h.callback.__name__ for h in router.callback_query.handlers]
     expected = ["decline_all_confirm", "decline_all_cancel", "decline_all_go", "appoint_start",

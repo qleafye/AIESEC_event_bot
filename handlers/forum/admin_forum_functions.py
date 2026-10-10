@@ -9,10 +9,10 @@
 `checkin_volunteer_guide_broadcast_enabled` + время `checkin_volunteer_guide_broadcast_time`
 (D-33) были в реестре настроек с самого начала, но БЕЗ экрана в боте (аудит D-36 нашёл дыру —
 менеджер не мог поменять их иначе как руками в БД). Форма экрана — byte-в-byte
-`handlers.admin_checkin._qr_cfg_text_kb`/`checkinqr_toggle_go`/`checkinqr_time_start`, только
+`handlers.forum.admin_checkin._qr_cfg_text_kb`/`checkinqr_toggle_go`/`checkinqr_time_start`, только
 один временной слот вместо двух (вечер/утро QR — у шпаргалки одна отправка).
 
-Форма шва — та же, что у соседей (`handlers/session_feedback.py`, `handlers/admin_sos.py`):
+Форма шва — та же, что у соседей (`handlers/forum/session_feedback.py`, `handlers/forum/admin_sos.py`):
 своего `Router()` нет, `from handlers.admin import router`; импортирован из ХВОСТА
 `handlers/admin.py`, СРАЗУ ПОСЛЕ `admin_sos` (golden-снапшот роутера требует чистого аппенда).
 Право — `moderate_reg` (`handlers/access/admin_caps.py`), тот же довод, что у соседнего
@@ -38,14 +38,14 @@ from domain.cities import (
 )
 from handlers.admin import router
 from handlers.access.admin_caps import _holds, has_capability, required_capability, resolve_capabilities
-from handlers.admin_checkin import (
+from handlers.forum.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,
     _city_allowed,
     _decode_city,
     _encode_city,
 )
-from handlers.admin_checkin_training import sheet_allowed
+from handlers.forum.admin_checkin_training import sheet_allowed
 from handlers.admin_sections import back_button
 from handlers.states import CheckinVolGuideTimeEdit
 from handlers.states import ForumDayMenuTimeEdit
@@ -67,8 +67,8 @@ from domain.settings.schema import get_setting_typed
 from domain.settings.validation import validate_setting_value
 
 async def _resolve_screen_city(admin_id: int) -> str | None:
-    """Тот же трёхветочный резолвер «город из шапки», что `handlers.admin_checkin.
-    _resolve_checkin_screen_city`/`handlers.admin_program._resolve_city_for_screen` (не
+    """Тот же трёхветочный резолвер «город из шапки», что `handlers.forum.admin_checkin.
+    _resolve_checkin_screen_city`/`handlers.forum.admin_program._resolve_city_for_screen` (не
     импортирую напрямую — оба приватные к своему модулю, но логика byte-в-byte, копия дешевле
     межмодульной приватной связи ещё и с admin_program)."""
     own_scope = await _admin_city_scope(admin_id)
@@ -101,14 +101,14 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     label = await city_label(code) if await cities_module_on() else None
     lines = ["🎪 <b>Форум: функции</b>" + (f" — {html.escape(label)}" if label else ""), ""]
     buttons: list[list[InlineKeyboardButton]] = []
-    # Бэклог №25: светофор «всё ли готово сейчас» — handlers/admin_forum_ready.py.
+    # Бэклог №25: светофор «всё ли готово сейчас» — handlers/forum/admin_forum_ready.py.
     if visible(f"forum_ready:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(text="🚦 Готовность к форуму", callback_data=f"forum_ready:{_encode_city(code)}")])
 
     # 1. Выпуск личного QR — общий тумблер, НЕ per_city; из хаба — только через подтверждение.
     qr_on = await get_setting_typed("checkin_qr_enabled") == "on"
     lines.append(f"🎟 QR для входа: {_status(qr_on)}")
-    from handlers.admin_forum_hub_nav import sees_all_cities  # тумблер общий: кнопка — только видящим все города
+    from handlers.forum.admin_forum_hub_nav import sees_all_cities  # тумблер общий: кнопка — только видящим все города
     if visible(f"forumfn_qr:{_encode_city(code)}") and await sees_all_cities(admin_id):  # подтверждение: admin_forum_hub_nav.py
         buttons.append([InlineKeyboardButton(text="🎟 Вход по QR (общий для всех городов)", callback_data=f"forumfn_qr:{_encode_city(code)}")])
 
@@ -154,7 +154,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
 
     # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой — per_city, свой экран
-    # (handlers/admin_volunteer_invite.py). Строка добавлена аддитивно (RULES.md), номер шага
+    # (handlers/forum/admin_volunteer_invite.py). Строка добавлена аддитивно (RULES.md), номер шага
     # соседей выше не переставляется.
     volinv_on = await get_setting_typed_for_city("volunteer_invite_enabled", code) == "on"
     lines.append(f"🔗 Приглашение волонтёров ссылкой: {_status(volinv_on)}")
@@ -164,7 +164,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
 
     # Идея №20 бэклога чек-ина: бюро находок — per_city, свой экран
-    # (handlers/admin_lost_found.py). Строка добавлена аддитивно (RULES.md), номер шага
+    # (handlers/forum/admin_lost_found.py). Строка добавлена аддитивно (RULES.md), номер шага
     # соседей выше не переставляется.
     lostfound_on = await get_setting_typed_for_city("lost_found_enabled", code) == "on"
     lines.append(f"🧳 Бюро находок: {_status(lostfound_on)}")
@@ -174,7 +174,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
 
     # D-41 (регистрация на месте): короткая анкета по QR у стойки — per_city, свой экран
-    # (handlers/admin_onsite_reg.py). Строка добавлена аддитивно, соседи не переставлены.
+    # (handlers/forum/admin_onsite_reg.py). Строка добавлена аддитивно, соседи не переставлены.
     from services.onsite_reg import onsite_enabled  # строго по городу, без общего ключа
     onsite_on = await onsite_enabled(code)
     lines.append(f"📝 Регистрация на месте: {_status(onsite_on)}")
@@ -199,13 +199,13 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🔘 Кнопки меню (Программа/Важное/SOS/QR)", callback_data=f"forumfn_open:menu:{_encode_city(code)}",
         )])
     # D-29: что делегат видит по этой кнопке в Mini App — таблица сессий бота или фото. Общий
-    # рендер с экраном «🗓 Программа форума» — handlers/admin_program_view.py.
-    from handlers.admin_program_view import program_rows  # + фото программы города
+    # рендер с экраном «🗓 Программа форума» — handlers/forum/admin_program_view.py.
+    from handlers.forum.admin_program_view import program_rows  # + фото программы города
     view_status, view_rows = await program_rows(code, "hub")
     lines.append(view_status)
     buttons += [row for row in view_rows if visible(row[0].callback_data)]
 
-    # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/session_feedback.py).
+    # 7. Отзывы о сессиях — per_city, родной экран уже есть (handlers/forum/session_feedback.py).
     fb_on = await sf.is_enabled_for_city(code)
     lines.append(f"⭐ Отзывы о сессиях: {_status(fb_on)}")
     if visible(f"forumfn_open:fb:{_encode_city(code)}"):
@@ -222,7 +222,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         buttons.append([InlineKeyboardButton(text="🧭 Тест компетенций", callback_data=f"prog_qz:{code}")])
 
     # 8. SOS — сама кнопка меню (menu_sos, см. пункт 6) + окно активности (forum_date +
-    # sos_active_days); родной экран уже есть (handlers/admin_sos.py).
+    # sos_active_days); родной экран уже есть (handlers/forum/admin_sos.py).
     sos_on = await is_sos_active_for_city(code)
     lines.append(f"🆘 SOS активен сейчас: {_status(sos_on)}")
     if visible(f"asos_city:{code}"):
@@ -285,7 +285,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
 
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах») — картинка-итог делегату после форума,
-    # per_city, свой экран этого же трека (handlers/admin_forum_stats_card.py, forumstats_cfg:*).
+    # per_city, свой экран этого же трека (handlers/forum/admin_forum_stats_card.py, forumstats_cfg:*).
     # Строка добавлена аддитивно (RULES.md), номер шага соседей выше не переставляется.
     stats_card_on = await get_setting_typed_for_city("forum_stats_card_enabled", code) == "on"
     lines.append(f"📊 Карточка «Мы в цифрах»: {_status(stats_card_on)}")
@@ -317,7 +317,7 @@ async def admin_forum_functions_entry(callback: types.CallbackQuery):
         text, kb = await _render_city_picker()
     else:
         text, kb = await _render_hub(callback.from_user.id, code)
-    from handlers.admin_forum_hub_nav import edit_or_answer  # правкой, а не новым сообщением
+    from handlers.forum.admin_forum_hub_nav import edit_or_answer  # правкой, а не новым сообщением
     await edit_or_answer(callback, text, kb)
     await callback.answer()
 
@@ -334,7 +334,7 @@ async def admin_forum_functions_city_pick(callback: types.CallbackQuery):
 
 
 # ── Шпаргалка волонтёра накануне форума (D-33/D-36) — недостающий экран ─────────────────────
-# Форма byte-в-byte `handlers.admin_checkin._qr_cfg_text_kb`/`checkinqr_toggle_go`/
+# Форма byte-в-byte `handlers.forum.admin_checkin._qr_cfg_text_kb`/`checkinqr_toggle_go`/
 # `checkinqr_time_start`, один временной слот вместо двух.
 
 async def _vol_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
@@ -376,7 +376,7 @@ async def checkinvol_cfg_screen(callback: types.CallbackQuery):
 
 
 async def _safe_reschedule_vol(code: str | None) -> None:
-    """Fail-soft перепостановка джобы — тот же приём, что `handlers.admin_checkin.
+    """Fail-soft перепостановка джобы — тот же приём, что `handlers.forum.admin_checkin.
     _safe_reschedule`: правка настройки не имеет права уронить сохранение из-за недоступного
     планировщика (например, в тесте без запущенного `AsyncIOScheduler`)."""
     import logging

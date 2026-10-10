@@ -3,7 +3,7 @@
 кнопка «↩️ Вернуть на модерацию» (D-06: «исключения — только через возврат из журнала»);
 выгрузка журнала файлом для отчёта партнёрам (D-29); плюс вход в журнал с экрана правил.
 
-Форма шва — та же, что `handlers/applications/admin_app_list.py`/`handlers/admin_faq.py`: своего `Router()`
+Форма шва — та же, что `handlers/applications/admin_app_list.py`/`handlers/forum/admin_faq.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
 (инвариант cap-теста). `handlers.admin`/`handlers.admin_core`/`handlers.access.admin_caps` — на уровне
 модуля (безопасно, цикла не создают — `handlers/access/admin_caps.py` явно не импортирует `handlers.

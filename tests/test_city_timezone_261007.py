@@ -102,7 +102,7 @@ def test_tz_screen_has_buttons_and_marks_current(tmp_path):
     _db(tmp_path)
 
     async def scenario():
-        from handlers.admin_forum_tz import tz_cfg_text_kb
+        from handlers.forum.admin_forum_tz import tz_cfg_text_kb
         await _tyumen_plus2()
         text, kb = await tz_cfg_text_kb("tyumen")
         flat = [b for row in kb.inline_keyboard for b in row]
@@ -390,7 +390,7 @@ def test_session_window_check_in_city_local_time():
 def test_csv_import_converts_naive_local_stamp_to_msk(tmp_path, monkeypatch):
     from services import checkin_csv_import
     from services.checkin import build_payload
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     from tests.test_checkin_forum_day_261001 import _forum, _insert_user, _setup
 
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))

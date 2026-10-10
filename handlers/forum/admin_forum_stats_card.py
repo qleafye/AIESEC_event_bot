@@ -1,9 +1,9 @@
 """Идея №29 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): экран рассылки
 «Твой Юлид в цифрах» — картинка-итог делегату после форума.
 
-Форма — та же, что `handlers.admin_lost_found`/`handlers.admin_volunteer_invite`: тумблер
+Форма — та же, что `handlers.forum.admin_lost_found`/`handlers.forum.admin_volunteer_invite`: тумблер
 per_city `forum_stats_card_enabled` (дефолт off), собственный экран (`forumstats_cfg:*`),
-статусная СТРОКА в хабе «🎪 Форум: функции» (`handlers/admin_forum_functions.py`, правка
+статусная СТРОКА в хабе «🎪 Форум: функции» (`handlers/forum/admin_forum_functions.py`, правка
 аддитивная — см. его докстринг). Своего `Router()` нет — декорирует `handlers.admin.router`,
 импортирован в ХВОСТЕ `handlers/admin.py`, ПОСЛЕДНИМ (золотой снапшот — чистый аппенд).
 
@@ -18,7 +18,7 @@ FSM per-city правки только через «✏️ Изменить дл
 
 Рассылка — двухшаговое подтверждение (выбор аудитории кнопкой с готовым числом -> «✅ Да,
 отправить»), тот же приём двойного барьера, что «📤 Разослать QR сейчас»
-(`handlers/admin_checkin.py::checkinqr_send_go`): колбэк отвечает СРАЗУ, клавиатура убирается
+(`handlers/forum/admin_checkin.py::checkinqr_send_go`): колбэк отвечает СРАЗУ, клавиатура убирается
 ДО вызова `services.forum_stats_card.send_broadcast` (может занять минуты — сотни фото), сама
 рассылка вдобавок блокируется `asyncio.Lock` на город.
 
@@ -32,7 +32,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_setting
 from handlers.admin import router
-from handlers.admin_checkin import (
+from handlers.forum.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _city_allowed,
     _decode_city,
@@ -164,7 +164,7 @@ async def forumstats_send_go(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    # Тот же двойной барьер, что checkinqr_send_go (handlers/admin_checkin.py): отвечаем на
+    # Тот же двойной барьер, что checkinqr_send_go (handlers/forum/admin_checkin.py): отвечаем на
     # колбэк СРАЗУ и убираем клавиатуру ДО вызова — рассылка может занять минуты, повторный тап
     # уже физически не по чему нажимать; send_broadcast вдобавок сама блокируется per-city
     # локом.

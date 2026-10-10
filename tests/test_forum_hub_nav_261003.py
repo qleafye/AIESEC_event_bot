@@ -12,7 +12,7 @@ UNBOUND_ID = 905002
 
 
 def _hub_cbs(uid: int, code: str = "spb") -> list[str]:
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _text, kb = asyncio.run(aff._render_hub(uid, code))
     return _kb_callbacks(kb)
 
@@ -39,7 +39,7 @@ def test_unbound_manager_sees_shared_qr_button(tmp_path):
 
 
 def test_city_bound_manager_has_no_shared_qr_button_and_cannot_toggle(tmp_path):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     _seed_spb(tmp_path)
     _staff(BOUND_ID, "spb")
     assert "forumfn_qr:spb" not in _hub_cbs(BOUND_ID)
@@ -58,7 +58,7 @@ class _State:
 
 
 def _open_from_hub(target: str, code: str = "spb", uid: int = ADMIN_ID):
-    from handlers import admin_forum_hub_nav as nav
+    from handlers.forum import admin_forum_hub_nav as nav
     cb = _CB(f"forumfn_open:{target}:{code}", uid=uid)
     asyncio.run(nav.forumfn_open(cb, _State()))
     return cb.message.edits[-1]

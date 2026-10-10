@@ -1,5 +1,5 @@
 """Идея №29 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): «Твой Юлид в
-цифрах» — `services/forum_stats_card.py` + `handlers/admin_forum_stats_card.py`.
+цифрах» — `services/forum_stats_card.py` + `handlers/forum/admin_forum_stats_card.py`.
 
 Стиль — `tests/test_checkin_qr_broadcast_260924.py`/`tests/test_forum_noshow_poll_260924.py`
 (шаблонная БД `tests/_dbtpl.fast_init_db`, `asyncio.run`, `FakeBot` для `send_photo`).

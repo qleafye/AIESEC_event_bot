@@ -86,7 +86,7 @@ ROLES = {
         "default_caps": ["stats"],
     },
     # Идея №5 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): волонтёр,
-    # приглашённый ссылкой (`handlers/admin_volunteer_invite.py`) или добавленный вручную тем
+    # приглашённый ссылкой (`handlers/forum/admin_volunteer_invite.py`) или добавленный вручную тем
     # же общим экраном «👥 Роли и доступы» — держит РОВНО право `checkin`, ничего больше.
     # Заведена как обычная запись ROLES (не спецказус) — ссылка-приглашение зовёт тот же
     # `database.db.add_staff(role="volunteer")`, что и ручная выдача.
@@ -691,7 +691,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Форум-ночь п.4 (расписание форума в боте): раздел «🗓 Программа форума» — тот же класс
     # экрана настроек, что «🚫 Правила автоотказа»/«🧮 Правила балла» выше (конфигурирование
     # контента события, не действие над конкретной заявкой). Один префиксный ключ на всё
-    # пространство callback'ов шва handlers/admin_program.py (prog_v/prog_day/prog_new/
+    # пространство callback'ов шва handlers/forum/admin_program.py (prog_v/prog_day/prog_new/
     # prog_field/prog_hall*/prog_copy*/prog_d/prog_dgo/... — все начинаются с "prog_").
     "admin_program": "settings",
     "prog_*": "settings",
@@ -1112,7 +1112,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:AmbPointsEdit:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
-    # выгрузки офлайн-сканера (handlers/admin_checkin.py). Первые реальные ключи капы
+    # выгрузки офлайн-сканера (handlers/forum/admin_checkin.py). Первые реальные ключи капы
     # `checkin` — до этого она существовала в ALL_CAPABILITIES/ROLES без единой строки меню.
     "admin_checkin": "checkin",
     "checkin_upload_start": "checkin",
@@ -1136,7 +1136,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:CheckinTestUpload:*": "checkin",
     # Бэклог чек-ина №7: «🧪 Учебные QR» — право «checkin» ИЛИ «moderate_reg». Карта знает одно
     # право на ключ, поэтому здесь «любое право панели», а пару проверяет сам хендлер
-    # (handlers/admin_checkin_training.py). Лист ничего не пишет и прав не даёт.
+    # (handlers/forum/admin_checkin_training.py). Лист ничего не пишет и прав не даёт.
     "checkin_training_sheet": ANY_CAPABILITY,
 
     # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом + её настройки — та же капа
@@ -1160,7 +1160,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_forum_functions": "moderate_reg",
     "forumfn_city:*": "moderate_reg",
     # Приёмка 03.10: хаб «🎪 Форум: функции» — «🎟 Вход по QR» через экран подтверждения
-    # (handlers/admin_forum_hub_nav.py), та же капа, что у самого тумблера; возврат в хаб — капа хаба.
+    # (handlers/forum/admin_forum_hub_nav.py), та же капа, что у самого тумблера; возврат в хаб — капа хаба.
     "forumfn_qr:*": "settings",
     "forumfn_qr_set:*": "settings",
     "forumfn_back:*": "moderate_reg",
@@ -1190,7 +1190,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Идея №3 бэклога чек-ина (приветствие после первой отметки входа): та же капа
     # «moderate_reg», что и у остального хаба «🎪 Форум: функции» выше — тумблер-only экран
     # (сам текст `forum_welcome_text` правится generic-редактором «settings», см. докстринг
-    # `handlers/admin_forum_functions.py` над `_welcome_cfg_text_kb`).
+    # `handlers/forum/admin_forum_functions.py` над `_welcome_cfg_text_kb`).
     "forumwelcome_cfg:*": "moderate_reg",
     "forumwelcome_toggle:*": "moderate_reg",
 
@@ -1227,7 +1227,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "cna_send:*": "moderate_reg",
     "cna_send_go:*": "moderate_reg",
     "cna_send_no": "moderate_reg",
-    # Идеи №31/№32: «📓 Журнал площадки» и снятие отметки менеджером (handlers/admin_venue.py) —
+    # Идеи №31/№32: «📓 Журнал площадки» и снятие отметки менеджером (handlers/forum/admin_venue.py) —
     # «moderate_reg», тот же довод, что у перевыпуска QR: правка чужих отметок, не сканирование.
     "admin_venue_log": "moderate_reg",
     "vlog:*": "moderate_reg",
@@ -1238,16 +1238,16 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "vrv_go:*": "moderate_reg",
     "state:VenueRevokeFind:*": "moderate_reg",
 
-    # Бэклог чек-ина п.10: «📊 Статистика прихода» (handlers/admin_checkin_stats.py) — сводка по
+    # Бэклог чек-ина п.10: «📊 Статистика прихода» (handlers/forum/admin_checkin_stats.py) — сводка по
     # всему городу для менеджера, не волонтёрская `checkin`; та же капа, что у соседних
     # менеджерских экранов чек-ина выше.
     "checkin_stats": "moderate_reg",
     "checkin_stats_refresh": "moderate_reg",
     "checkin_stats_csv": "moderate_reg",
-    # Бэклог №12: «📍 Сейчас на площадке» (handlers/admin_checkin_floor.py) — та же капа.
+    # Бэклог №12: «📍 Сейчас на площадке» (handlers/forum/admin_checkin_floor.py) — та же капа.
     "checkin_floor": "moderate_reg",
     "checkin_floor_refresh": "moderate_reg",
-    # Бэклог №25: «🚦 Готовность к форуму» (handlers/admin_forum_ready.py) — кнопка хаба «🎪 Форум:
+    # Бэклог №25: «🚦 Готовность к форуму» (handlers/forum/admin_forum_ready.py) — кнопка хаба «🎪 Форум:
     # функции», та же капа, что у хаба. Префиксы разные: "forum_ready:*" не покрывает "forum_ready_re:*".
     "forum_ready:*": "moderate_reg",
     "forum_ready_re:*": "moderate_reg",
@@ -1261,7 +1261,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:RolesExpiryEdit:*": "settings",
 
     # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): «🔗 Пригласить волонтёров»
-    # (handlers/admin_volunteer_invite.py) — та же капа, что весь остальной хаб «🎪 Форум:
+    # (handlers/forum/admin_volunteer_invite.py) — та же капа, что весь остальной хаб «🎪 Форум:
     # функции» (admin_forum_functions выше): массовая выдача доступа третьим лицам, не
     # рутинное сканирование, которого достаточно праву «checkin».
     "volinvite_entry": "moderate_reg",
@@ -1338,7 +1338,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
-    # (handlers/admin_lost_found.py) — капа «checkin», тот же довод, что у admin_checkin выше
+    # (handlers/forum/admin_lost_found.py) — капа «checkin», тот же довод, что у admin_checkin выше
     # (рутинное действие волонтёра на площадке, не настройка и не массовая рассылка).
     "lost_found_new": "checkin",
     "cmd:found": "checkin",
@@ -1356,7 +1356,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # «moderate_reg», обе аудитории по плану) не выражается ОДНИМ значением этой карты
     # (D-01/D-15: один ключ -> одна капа), поэтому запись ANY_CAPABILITY — тот же
     # навигационный приём, что «admin_city_pick:*»/«admin_city_switch*» выше: реальная
-    # проверка (OR двух прав) — вручную внутри `handlers.admin_lost_found.lostfound_return`.
+    # проверка (OR двух прав) — вручную внутри `handlers.forum.admin_lost_found.lostfound_return`.
     "lostfound_return:*": ANY_CAPABILITY,
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах») — капа «moderate_reg», тот же довод, что
     # у соседних строк хаба «🎪 Форум: функции» (checkinvol_cfg:*/lostfound_cfg:* выше):
@@ -1366,7 +1366,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "forumstats_preview:*": "moderate_reg",
     "forumstats_pick:*": "moderate_reg",
     "forumstats_send_go:*": "moderate_reg",
-    # D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/admin_onsite_reg.py)
+    # D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/forum/admin_onsite_reg.py)
     # — капа «moderate_reg», тот же довод, что у соседних тумблеров хаба «🎪 Форум: функции»
     # (lostfound_cfg:*/volinvite_cfg:*): включение функции для города и QR ссылки для стойки.
     "onsitereg_cfg:*": "moderate_reg",

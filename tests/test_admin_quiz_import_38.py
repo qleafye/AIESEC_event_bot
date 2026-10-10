@@ -5,7 +5,7 @@ import io
 from types import SimpleNamespace
 
 from database import quiz_db as qdb, session_enroll_db as edb
-from handlers import admin_quiz_import as qi
+from handlers.forum import admin_quiz_import as qi
 from handlers.states import QuizImport
 from tests._enroll38 import CITY, ready, run
 from tests.test_admin_enroll_38 import FakeCallback, FakeMessage, cbs, new_state, texts

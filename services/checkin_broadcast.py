@@ -16,7 +16,7 @@ per_city `forum_date`, Phase 31/D-30) — второй копии чтения �
 Аудитория обеих рассылок — `database.db.list_approved_users(city_scope=...)`, отфильтрованная
 `services.checkin.checkin_denial` НА КАЖДОЙ СТРОКЕ (единая точка правила допуска D-02 — не
 вторая копия сезонного условия SQL-строкой). Идемпотентность вечерней рассылки И ручной кнопки
-«📤 Разослать QR сейчас» (handlers/admin_checkin.py) — `database.db.checkin_qr_sent_ids` (кому
+«📤 Разослать QR сейчас» (handlers/forum/admin_checkin.py) — `database.db.checkin_qr_sent_ids` (кому
 УЖЕ отправлен QR когда-либо) вычитается из пула ДО отправки, обе точки входа зовут ОДНУ и ту же
 `send_broadcast`. Утренний повтор (`send_morning_repeat`, находка ревью 260924) шлёт ВСЕМ
 допущенным города, кто ещё НЕ подтвердил «✅ Сохранил» (`eligible_recipients` минус
@@ -163,7 +163,7 @@ async def schedule_city_jobs(city: str | None) -> dict:
     """(Пере)ставить вечернюю+утреннюю джобы ОДНОГО города — или снять обе, если дата форума не
     задана либо рассылка выключена (мастер/per_city). Вызывается и реконсиляцией на боте
     (`reconcile_broadcasts`, боевой рестарт), и СРАЗУ после правки `forum_date`/
-    `checkin_qr_broadcast_enabled`/времени (handlers/admin_checkin.py, handlers/admin_settings.py)
+    `checkin_qr_broadcast_enabled`/времени (handlers/forum/admin_checkin.py, handlers/admin_settings.py)
     — «джоба переставляется при смене даты форума/настройки», без ожидания рестарта."""
     sched = _sched.get_scheduler()
     ev_id, morn_id = evening_job_id(city), morning_job_id(city)
@@ -488,7 +488,7 @@ async def manual_send_block_reason(city: str | None) -> str | None:
 async def pending_broadcast_count(city: str | None) -> int:
     """Сколько делегатов города РЕАЛЬНО получат QR при следующей отправке (вечерней джобе или
     ручной кнопке «📤 Разослать QR сейчас») — превью для подтверждения «Уйдёт N делегатам
-    города X» (handlers/admin_checkin.py)."""
+    города X» (handlers/forum/admin_checkin.py)."""
     import domain.cities as _cities
 
     eligible = await eligible_recipients(city)
@@ -599,7 +599,7 @@ FAIL_BLOCKED, FAIL_BUILD, FAIL_OTHER = "blocked", "build", "other"
 # рассылка может занять минуты), поэтому кнопки подтверждения физически успевают остаться
 # нажимаемыми на экране менеджера, пока идёт долгая отправка — второй тап (двойной клик,
 # задумчивость) запускал бы параллельный `send_broadcast` того же города с дублями рассылки.
-# Барьер здесь — второй, за хендлером (handlers/admin_checkin.py убирает клавиатуру ДО вызова,
+# Барьер здесь — второй, за хендлером (handlers/forum/admin_checkin.py убирает клавиатуру ДО вызова,
 # см. `checkinqr_send_go`): `asyncio.Lock` НА ГОРОД, не глобальный (разные города рассылаются
 # независимо друг от друга). Простой `dict` (не `defaultdict`) — создаётся лениво, единственный
 # читатель/писатель — этот же однопоточный event loop, гонки на СОЗДАНИЕ лока нет (между
@@ -617,7 +617,7 @@ def _get_city_lock(city: str | None) -> asyncio.Lock:
 
 async def send_broadcast(city: str | None) -> dict:
     """Date-джоба вечерней рассылки И ручная кнопка «📤 Разослать QR сейчас»
-    (handlers/admin_checkin.py) — ОДНА и та же функция, идемпотентная по построению:
+    (handlers/forum/admin_checkin.py) — ОДНА и та же функция, идемпотентная по построению:
     `checkin_qr_sent_ids` вычитается из пула ДО отправки, повторный вызов (рестарт бота,
     двойной тап кнопки) не находит уже отправленных заново.
 

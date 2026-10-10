@@ -16,7 +16,7 @@ from domain.cities import cities_module_on, city_label, get_setting_typed_for_ci
 from database import session_enroll_db as edb
 from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import EditSetting
 from services.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
 from services.settings.audit import set_setting_by_admin
@@ -165,7 +165,7 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
 
 async def _show_settings(callback: types.CallbackQuery, code: str, note: str | None = None) -> None:
     text, kb = await render_enroll_settings(code)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     kb = keep_hub_back(callback.message, kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer(note)

@@ -69,7 +69,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📖 Справка по настройкам", "admin_settings_guide"),
     ("🏙 Города мероприятия", "admin_cities"),
     # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
-    # handlers/admin_program.py.
+    # handlers/forum/admin_program.py.
     ("🗓 Программа форума", "admin_program"),
     ("🎯 Задания", "admin_game_tasks"),  # Phase 16 (16-03): same label as the delegate's section
     ("🎮 Проверка заданий", "admin_game_review"),
@@ -79,18 +79,18 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик пришедших +
-    # загрузка выгрузки офлайн-сканера (handlers/admin_checkin.py).
+    # загрузка выгрузки офлайн-сканера (handlers/forum/admin_checkin.py).
     ("✅ Отметки на форуме", "admin_checkin"),
-    # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» (handlers/admin_sos.py) — эта строка была
+    # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» (handlers/forum/admin_sos.py) — эта строка была
     # заведена в `admin_sections.SECTIONS` (раздел «apps»), но забыта здесь: без записи в
     # ЭТОМ списке `build_section_keyboard` не находит подпись для "admin_sos" и молча
     # выбрасывает строку (лог-warning «строка без подписи»), хотя капа `moderate_reg` у
     # строки в SECTIONS верная — сирота была видна только в логе, не в панели.
     ("🆘 SOS", "admin_sos"),
     # D-36 (24.09, аудит форумных тумблеров): «🎪 Форум: функции» — единый статус-экран всех
-    # форумных тумблеров (handlers/admin_forum_functions.py).
+    # форумных тумблеров (handlers/forum/admin_forum_functions.py).
     ("🎪 Форум: функции", "admin_forum_functions"),
-    # Идея №20 бэклога чек-ина: «🧳 Нашли вещь» (handlers/admin_lost_found.py) — капа
+    # Идея №20 бэклога чек-ина: «🧳 Нашли вещь» (handlers/forum/admin_lost_found.py) — капа
     # `checkin`, та же видимость, что у «✅ Отметки на форуме» выше: волонтёр без единого
     # другого права всё равно видит раздел «apps» не пустым.
     ("🧳 Нашли вещь", "lost_found_new"),
