@@ -12,7 +12,8 @@ from config import config
 from database import chat_coins_db, db
 from handlers.chat import group_chat
 from handlers.access.admin_caps import required_capability
-from services import chat_coins, chat_tracking
+from services.chat import chat_coins
+from services import chat_tracking
 from services.game import coins_transfer
 from services import quiet_hours
 from tests._dbtpl import fast_init_db

@@ -1,4 +1,4 @@
-"""Импорт экспорта Telegram Desktop в историю живого рейтинга чата (services/chat_export_import.py,
+"""Импорт экспорта Telegram Desktop в историю живого рейтинга чата (services/chat/chat_export_import.py,
 кнопка «🏆 Рейтинг чата» -> «📥 Загрузить историю чата»).
 
 Предпросмотр (`make_plan`) ничего не пишет; запись (`apply_plan`) — INSERT OR IGNORE, повторный
@@ -20,7 +20,7 @@ from tests.test_chat_rating_parity_260927 import (
     export_scores,
     live_scores,
 )
-from services import chat_export_import as svc
+from services.chat import chat_export_import as svc
 
 EXPORT_ID = 3333333333
 CHAT_ID = -1003333333333

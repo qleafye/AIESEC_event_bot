@@ -18,7 +18,7 @@ from tests.test_chat_export_import_260927 import (  # noqa: F401 — фикст�
     _setting,
     db_path,
 )
-from services import chat_export_import as svc
+from services.chat import chat_export_import as svc
 
 
 def _freeze(monkeypatch, when: datetime):
