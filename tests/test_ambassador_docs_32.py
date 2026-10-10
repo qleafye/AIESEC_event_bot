@@ -15,6 +15,7 @@
   четырнадцати пунктов живой приёмки (план прямо требует min_lines в must_haves.artifacts).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
@@ -25,7 +26,7 @@ import handlers.admin_roles as roles
 import handlers.admin_sections as sec
 from settings_schema import SETTINGS_SCHEMA
 
-DOCS_ROOT = Path(__file__).resolve().parent.parent / "docs"
+DOCS_ROOT = REPO_ROOT / "docs"
 GUIDE = DOCS_ROOT / "ADMIN_GUIDE.md"
 CHEATSHEET = DOCS_ROOT / "ADMIN_CHEATSHEET.md"
 
@@ -106,7 +107,7 @@ def test_key_documented_in_settings_guide(key: str):
 
 def test_uat_checklist_scaffold_exists_and_long_enough():
     uat_path = (
-        Path(__file__).resolve().parent.parent
+        REPO_ROOT
         / ".planning" / "phases" / "32-ambassador-waves" / "32-UAT.md"
     )
     if not uat_path.exists():

@@ -14,6 +14,7 @@ The capability-model tests below (`-k capabilities`/`-k bootstrap_compat`) impor
 of this plan, and a top-level import would break collection for the WHOLE file. Their
 RED failure (AttributeError/ImportError) at this stage is expected and intentional.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import inspect
 import re
@@ -988,7 +989,7 @@ def test_technical_alert_sites_still_use_admin_ids():
     менеджерам о ЗАЯВКАХ, той же природы, что registration.py/payment.py ниже — поэтому
     теперь оно тоже маршрутизируется через `capability_holders`, см.
     `test_pending_reminder_routes_via_capability`."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     for rel_path in ("services/sheets.py", "services/scheduler.py"):
         source = (repo_root / rel_path).read_text(encoding="utf-8")
         assert "notify_by_capability" not in source
@@ -996,7 +997,7 @@ def test_technical_alert_sites_still_use_admin_ids():
 
 
 def test_registration_and_payment_route_via_capability():
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     reg_src = (repo_root / "handlers/registration.py").read_text(encoding="utf-8")
     pay_src = (repo_root / "handlers/payment.py").read_text(encoding="utf-8")
     assert reg_src.count("notify_by_capability") >= 1
@@ -1007,7 +1008,7 @@ def test_pending_reminder_routes_via_capability():
     """Квик 260919 (P3, находка #03-moderation): 7 reg_manager на проде не получали пачку
     «Заявок в ожидании», потому что рассылка шла только `config.ADMIN_IDS`. Теперь —
     `capability_holders("moderate_reg")`, тот же D-13 примитив, что у registration.py/payment.py."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     source = (repo_root / "services/reminders.py").read_text(encoding="utf-8")
     assert "capability_holders(" in source
     assert "for admin_id in config.ADMIN_IDS" not in source
@@ -1424,7 +1425,7 @@ def test_gate_no_legacy_admin_check_remains():
     """D-01/D-03/T-08-18: the inline `not in config.ADMIN_IDS` checks and the `is_admin`
     filter (98 pre-phase call sites combined) are physically gone from handlers/admin.py --
     the only enforcement point is CapabilityMiddleware."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     source = _non_comment_source(repo_root / "handlers" / "admin.py")
     assert "not in config.ADMIN_IDS" not in source
     assert not re.search(r"\bis_admin\b", source)
@@ -1439,7 +1440,7 @@ def test_gate_single_capability_map():
     literal pairs inside admin.py -- this gate is the stronger, whole-`handlers/`-directory
     version: no other file defines a module-level ADMIN_CAPS, and admin.py's own source never
     contains the identifier at all outside comments)."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     handlers_dir = repo_root / "handlers"
 
     definitions = [
@@ -1462,7 +1463,7 @@ def test_gate_no_capability_cache():
     """D-05: no RAM cache in handlers/admin_caps.py -- staff is a local ~5-row table, not a
     networked source like services/allowlist.py (the explicitly-named anti-pattern this gate
     guards against reintroducing)."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     source = _non_comment_source(repo_root / "handlers" / "admin_caps.py")
     assert "lru_cache" not in source
     assert not re.search(r"^_?\w*cache\w*\s*[:=]", source, re.IGNORECASE | re.MULTILINE)
@@ -1479,7 +1480,7 @@ def test_gate_technical_alerts_stay_on_admin_ids():
 
     Квик 260919 (P3): `services/reminders.py` dropped OUT of this list -- see
     `test_technical_alert_sites_still_use_admin_ids`'s updated docstring above."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     for rel_path in ("services/sheets.py", "services/scheduler.py"):
         source = _non_comment_source(repo_root / rel_path)
         assert "notify_by_capability" not in source
@@ -1531,7 +1532,7 @@ def _keys_collide(key_a, key_b):
 def test_gate_no_callback_namespace_collision_with_admin():
     from handlers.admin_caps import ADMIN_CAPS
 
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     admin_keys = [k for k in ADMIN_CAPS if not k.startswith(("cmd:", "state:", "special:"))]
 
     collisions = []

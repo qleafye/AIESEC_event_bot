@@ -6,6 +6,7 @@
 
 pytest-asyncio в проекте нет — async через `asyncio.run()` (конвенция проекта)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import sqlite3
 from pathlib import Path
@@ -31,7 +32,7 @@ from tests.test_miniapp_routes import BOUND_MANAGER_ID, GAME_MANAGER_ID, _cfg, _
 ONSITE = f"{BASE}/onsite"
 SEASON = "YL'26"
 STAFF_ID = 927001
-SCANNER_JS = Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "scanner.js"
+SCANNER_JS = REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 
 
 def _ready(tmp_path, *, enable=("spb",)):
@@ -1148,7 +1149,7 @@ def test_volunteer_texts_in_registry_with_english_defaults():
         assert meta["type"] == "text" and meta["group"] == staff_group, key
         assert meta["default"] in FORM_DEFAULT_EN, key
     assert "{city}" in SETTINGS_SCHEMA["onsite_wrong_city_text"]["default"]
-    src = (Path(__file__).resolve().parents[1] / "miniapp" / "routers" / "checkin.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "miniapp" / "routers" / "checkin.py").read_text(encoding="utf-8")
     assert "_ONSITE_APPROVED_TEXT" not in src and "_LINK_NO_CITY_TEXT" not in src
 
 

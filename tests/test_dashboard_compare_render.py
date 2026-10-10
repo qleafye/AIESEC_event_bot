@@ -3,6 +3,7 @@
 старта, включённые блоки, пресет оформления).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import json
@@ -26,7 +27,7 @@ from dashboard.main import create_app
 from dashboard.registry import EventSource
 from tests._dbtpl import fast_init_db
 
-DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+DASHBOARD_DIR = REPO_ROOT / "dashboard"
 COMPARE_HTML = DASHBOARD_DIR / "templates" / "compare.html"
 
 TEAM_DOMAIN = "aiesec"

@@ -10,6 +10,7 @@
 импортированы по имени).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import re
@@ -38,7 +39,7 @@ from tests.test_reg_resume_draft import (
 )
 from tests._dbtpl import fast_init_db
 
-FORM_JS = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "form.js"
+FORM_JS = REPO_ROOT / "miniapp" / "static" / "js" / "form.js"
 
 
 def _run(coro):

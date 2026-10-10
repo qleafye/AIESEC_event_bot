@@ -11,6 +11,7 @@
 все ручки пресета разом, плюс ключ самого пресета.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 from pathlib import Path
@@ -30,7 +31,7 @@ from tests._dbtpl import fast_init_db
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 ADMIN_ID = 900001
-APP_CSS = Path(__file__).resolve().parent.parent / "dashboard" / "static" / "app.css"
+APP_CSS = REPO_ROOT / "dashboard" / "static" / "app.css"
 
 
 def _use_tmp_db(tmp_path, name: str = "dashboard_event_assets.db") -> str:
@@ -330,7 +331,7 @@ def test_no_session_required_for_theme_asset(tmp_path, monkeypatch):
 
 # ── Фаза 26-02 Задача 3: снимки дашборда в трёх пресетах для приёмки ────────────────────
 
-SHOOT_SCREENS_PY = Path(__file__).resolve().parent.parent / "tools" / "shoot_screens.py"
+SHOOT_SCREENS_PY = REPO_ROOT / "tools" / "shoot_screens.py"
 
 
 def test_shoot_screens_covers_realtalk_dashboard():

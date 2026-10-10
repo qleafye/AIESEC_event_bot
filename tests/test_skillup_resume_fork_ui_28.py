@@ -13,6 +13,7 @@ Fake-объектов aiogram — тот же приём, что `tests/test_reg
 PATCH `resume_type` (`miniapp/routers/form.py`, deviation Rule 3 — без него развилка в
 приложении не могла бы записать выбор ветки вообще).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import json
 import shutil
@@ -35,7 +36,7 @@ from handlers.states import Registration
 
 from tests.test_miniapp_frontend import _js_without_comments
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
 FORM_SCREEN_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "form.js"
 

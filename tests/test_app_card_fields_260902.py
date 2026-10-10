@@ -7,6 +7,7 @@ ImportError. Тесты реестра/экрана «🧾 Поля карточ
 ниже отдельным блоком, после сервисных тестов.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 
@@ -384,7 +385,7 @@ def test_toggle_writes_sentinel_when_nothing_selected(tmp_path):
 
 
 def test_full_card_handler_checks_city_scope():
-    source_path = Path(__file__).resolve().parent.parent / "handlers" / "admin_moderation.py"
+    source_path = REPO_ROOT / "handlers" / "admin_moderation.py"
     text = source_path.read_text(encoding="utf-8")
     start = text.index("async def appr_full(")
     end = text.index("# Quick 260902-tzh: handlers/admin_modcard.py", start)

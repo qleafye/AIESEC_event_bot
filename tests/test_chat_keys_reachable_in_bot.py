@@ -23,6 +23,7 @@
 Остальное — `EXCEPTIONS`, с причиной для каждого ключа.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import functools
@@ -33,7 +34,7 @@ from pathlib import Path
 
 from settings_schema import SETTINGS_SCHEMA
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 CHAT_DIRS = ("handlers", "services", "keyboards")
 # Корневые модули, где чтение настройки — не показ в чате: сам реестр (типизированное чтение
 # внутри get_setting_typed).

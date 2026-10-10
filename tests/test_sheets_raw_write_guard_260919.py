@@ -17,6 +17,7 @@ CWE-1236-фикса — раньше `_csv_safe` (database/db.py) приписы
 pytest-asyncio недоступно в окружении — асинхронные помощники гоняются через asyncio.run(),
 как в соседних файлах (tests/test_block7_low.py и т.п.).
 """
+from tests._paths import REPO_ROOT
 import ast
 import asyncio
 from pathlib import Path
@@ -26,7 +27,7 @@ from database import db
 from handlers import registration as reg
 from tests._dbtpl import fast_init_db
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = REPO_ROOT
 _SHEETS_PY = _REPO_ROOT / "services" / "sheets.py"
 
 # Методы gspread.Worksheet, которые пишут ЗНАЧЕНИЯ ячеек (а не структуру/форматирование) и

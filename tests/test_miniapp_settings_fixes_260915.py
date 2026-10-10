@@ -8,6 +8,7 @@
 исходнику `screens/settings.js`/`app.js` (без `node`, тот же приём, что
 `tests/test_miniapp_form_types_js_260912.py`)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import re
@@ -20,7 +21,7 @@ from miniapp.routers.settings import _reg_questions_matrix
 from settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 SETTINGS_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "settings.js"
 APP_JS = ROOT / "miniapp" / "static" / "js" / "app.js"
 

@@ -17,6 +17,7 @@ pytest-asyncio недоступен в этом окружении (см. tests/
 приём, что у tests/test_settings_consumers_phase6.py).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import logging
@@ -27,7 +28,7 @@ from config import config
 from database import db
 from tests._dbtpl import fast_init_db
 
-HANDLERS_DIR = Path(__file__).resolve().parent.parent / "handlers"
+HANDLERS_DIR = REPO_ROOT / "handlers"
 
 # Ровно два осознанных исключения (см. docstring settings_audit.py и 260913-16o-PLAN.md,
 # задача 1): вызовы не из-под пользователя-админа, автора взять неоткуда.

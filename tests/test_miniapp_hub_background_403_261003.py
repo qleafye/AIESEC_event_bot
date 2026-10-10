@@ -10,6 +10,7 @@
 должны упираться в право, которого у роли нет.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
@@ -18,7 +19,7 @@ import pytest
 
 from tests.test_miniapp_frontend import _nav_from_app_js
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
 ROUTERS = ROOT / "miniapp" / "routers"
 

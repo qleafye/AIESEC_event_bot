@@ -9,6 +9,7 @@
 город, поиск), статический скан JS сканера/заявок, CSV «Статистики прихода» и отчёт загрузки
 CSV-отметок в боте."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import csv
@@ -35,7 +36,7 @@ from tests.test_miniapp_checkin_260924 import (
     _token,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 _REGISTRY = [
     {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
     {"code": "spb", "label": "Санкт-Петербург", "tab_base": "СПб", "enabled": 1, "sort_order": 1},

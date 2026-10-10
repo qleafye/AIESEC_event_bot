@@ -3,6 +3,7 @@
 думал, что бот завис. Роутер `handlers/admin_no_access.py` стоит сразу после `admin.router` и
 отвечает понятным текстом. Остальные админ-команды по-прежнему молчат — поверхность админки
 не раскрываем."""
+from tests._paths import REPO_ROOT
 import asyncio
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from handlers import admin_no_access
 from services import i18n_sources
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 UID = 912300400
 
 

@@ -15,6 +15,7 @@ reg_extra_steps/reg_types_*/reg_resume_fork) не порождает asyncio.cre
 Харнесс — тот же, что `tests/test_registration_send_guard_260816.py` (FakeMessage/FSMContext,
 БД — tmp_path, asyncio.run(), pytest-asyncio недоступен)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import re
@@ -223,7 +224,7 @@ def test_hotpath_files_never_spawn_background_tasks():
     тест когда-нибудь покраснеет — до оборачивания новой функции в settings_snapshot() нужно
     сначала убедиться, что порождённая задача создаётся ВНЕ снимка (или явно сбрасывает
     ContextVar на старте)."""
-    root = Path(__file__).resolve().parents[1]
+    root = REPO_ROOT
     offenders = []
     for rel in _HOTPATH_FILES:
         path = root / rel

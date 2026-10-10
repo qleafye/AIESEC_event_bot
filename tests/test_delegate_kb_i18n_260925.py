@@ -10,6 +10,7 @@
     `_safe_answer`, переводящего клавиатуру при отправке), `InlineKeyboardButton(text=<литерал
     с кириллицей>)` без обёртки перевода запрещён. Админские модули не проверяются."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -20,7 +21,7 @@ import pytest
 from services import i18n
 from services.i18n_form_manual import FORM_DEFAULT_EN
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 _TR_MAP = {i18n.src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}
 

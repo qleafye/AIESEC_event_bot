@@ -1,11 +1,12 @@
 """Плашка сканера «не день форума» и подтверждение «Отметить всё равно» — без рода: делегатом
 бывает и девушка, «у него форум»/«не его день» читаются как ошибка бота."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 _GENDERED = re.compile(r"у него|не его день|он пришёл|пришёл не")
 
 

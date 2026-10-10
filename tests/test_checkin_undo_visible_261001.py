@@ -4,6 +4,7 @@
 кнопки (10 с) стартует, когда попап закрыт (`scanQrPopupClosed`), а сервер принимает отмену
 своей последней отметки 2 минуты с момента скана."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from datetime import timedelta
 from pathlib import Path
@@ -14,7 +15,7 @@ from services.checkin import ENTRY_POINT, record_arrival
 from tests.test_miniapp_checkin_260924 import BASE, _grant_checkin_to_game_manager, _insert_user, _qr, _run, client_with
 from tests.test_miniapp_routes import GAME_MANAGER_ID, _hdr
 
-SCANNER_JS = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "scanner.js"
+SCANNER_JS = REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 
 
 def test_scan_reports_button_and_accept_windows(tmp_path):

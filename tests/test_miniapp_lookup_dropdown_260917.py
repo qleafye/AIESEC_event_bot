@@ -18,6 +18,7 @@ lookup-полей (`form_types.js::lookupControl`, город/ВУЗ) рисов
 lookup-тестов нет (там `fetch` намеренно падает — здесь он ОБЯЗАН вернуть результат, иначе
 `renderResults`/`toggleResults` не проверить)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -28,7 +29,7 @@ import pytest
 
 from tests.test_miniapp_frontend import MINIAPP_STATIC
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_TYPES_JS = MINIAPP_STATIC / "js" / "form_types.js"
 
 _FAKE_DOM_PRELUDE = """

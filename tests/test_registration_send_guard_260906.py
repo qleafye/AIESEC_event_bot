@@ -20,11 +20,12 @@
 хендлеры/`reg_resume.py`/`reg_handoff.py` уже покрыты собственными сторожами плана 27-05
 (`tests/test_i18n_bot_render_27.py`, `tests/test_i18n_service_words_27.py`) — не
 переизобретаем."""
+from tests._paths import REPO_ROOT
 import ast
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 SCANNED_FILES = [
     ROOT / "handlers" / "registration.py",

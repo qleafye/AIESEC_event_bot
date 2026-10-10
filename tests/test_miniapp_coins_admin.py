@@ -8,6 +8,7 @@
 Харнесс — `tests/test_miniapp_routes.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import re
@@ -314,6 +315,6 @@ def test_presets_from_registry_garbage_ignored_and_default(tmp_path):
 # ── без SQL в miniapp/ ───────────────────────────────────────────────────────────────────
 
 def test_no_sql_in_miniapp_coins_admin_router():
-    text = (Path(__file__).resolve().parent.parent / "miniapp" / "routers" / "coins_admin.py").read_text(encoding="utf-8")
+    text = (REPO_ROOT / "miniapp" / "routers" / "coins_admin.py").read_text(encoding="utf-8")
     assert not re.search(r"\b(SELECT|INSERT|UPDATE|DELETE)\b", text)
     assert "search_users_by_name" in text

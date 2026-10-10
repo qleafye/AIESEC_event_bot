@@ -15,12 +15,12 @@ test_gate_no_legacy_admin_check_remains`): исходник читается ц�
 комментарий («старый пикер `menu_city_pick` удалён») не может ни завалить, ни фальшиво
 озеленить гейт литералом внутри самого себя.
 """
+from tests._paths import REPO_ROOT
 from pathlib import Path
 
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _non_comment_source(path: Path) -> str:

@@ -10,6 +10,7 @@ Node-подпроцесс без jsdom — тот же приём, что `tests
 `document.documentElement.dataset.motion` задан заранее.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import re
@@ -21,7 +22,7 @@ import pytest
 
 from tests.test_miniapp_frontend import _STRING_LITERAL, _js_without_comments
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 MINIAPP_JS = ROOT / "miniapp" / "static" / "js"
 UI_JS = MINIAPP_JS / "ui.js"
 SCREENS_DIR = MINIAPP_JS / "screens"

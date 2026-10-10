@@ -6,6 +6,7 @@
 обязан упасть с `ModuleNotFoundError`/`ImportError`, не пройти молча.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import os
 import subprocess
@@ -16,7 +17,7 @@ import pytest
 
 import web_theme
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 # ── contrast_ratio / relative_luminance ─────────────────────────────────────────────────

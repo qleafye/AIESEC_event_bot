@@ -5,6 +5,7 @@ cmd_start) и экран менеджера «📝 Регистрация на �
 
 pytest-asyncio недоступна — async через `asyncio.run()` (конвенция проекта)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import sqlite3
@@ -385,7 +386,7 @@ def test_start_walkin_waits_for_language_choice(tmp_path, monkeypatch):
 
 def test_onsite_router_is_included_before_registration_in_main():
     import pathlib
-    src = pathlib.Path(__file__).resolve().parent.parent.joinpath("main.py").read_text(encoding="utf-8")
+    src = REPO_ROOT.joinpath("main.py").read_text(encoding="utf-8")
     i_onsite = src.index("dp.include_router(onsite_reg.router)")
     i_reg = src.index("dp.include_router(registration.router)")
     assert i_onsite < i_reg

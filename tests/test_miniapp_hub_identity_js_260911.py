@@ -9,6 +9,7 @@ Node-подпроцесс без jsdom (тот же фейковый DOM, что
 `personNode` через node.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import re
@@ -20,7 +21,7 @@ import pytest
 
 from tests.test_miniapp_frontend import SCREENS_DIR, _HEX_OR_RGB_COLOR, _STRING_LITERAL, _js_without_comments
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 
 PERSON_JS = ROOT / "miniapp" / "static" / "js" / "person.js"

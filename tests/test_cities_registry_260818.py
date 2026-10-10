@@ -10,6 +10,7 @@ pytest-asyncio is unavailable in this env — every async helper is driven via a
 and config.DB_PATH points at a tmp_path file, same convention as
 tests/test_game_city_tasks_091.py / tests/test_city_scope_phase72.py.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import pathlib
 
@@ -126,7 +127,7 @@ def test_count_users_and_tasks_by_city_ignore_null(tmp_path):
 def test_db_py_never_imports_cities_module():
     """Structural: database/db.py stays a pure SQL layer -- no `import cities`/`from cities`
     (that would create an import cycle, since cities.py already imports database.db)."""
-    src = pathlib.Path(__file__).resolve().parents[1].joinpath("database", "db.py").read_text(encoding="utf-8")
+    src = REPO_ROOT.joinpath("database", "db.py").read_text(encoding="utf-8")
     assert "import cities" not in src
     assert "from cities" not in src
 
@@ -350,7 +351,7 @@ def test_no_module_besides_cities_reads_config_EVENT_CITIES():
     ownership per 14-CONTEXT.md's wave split) carry pre-existing PROSE comments that merely
     name "EVENT_CITIES" as historical context from Phase 07.1/07.2 -- those are not reads and
     are not this plan's regression to fix."""
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = REPO_ROOT
     allowed = {root / "cities.py"}
     offenders = []
     for path in root.rglob("*.py"):
@@ -372,7 +373,7 @@ def test_main_py_seeds_and_reloads_cities_before_header_materialization():
     """Structural: `main.py::main()` must call `seed_cities_if_empty()` and `reload_cities()`
     (in that relative position) BEFORE `_maybe_ensure_city_sheet_headers()` is spawned -- that
     function already reads `cities.enabled_cities()`, so the cache must be populated first."""
-    root = pathlib.Path(__file__).resolve().parents[1]
+    root = REPO_ROOT
     src = root.joinpath("main.py").read_text(encoding="utf-8")
     seed_pos = src.index("seed_cities_if_empty")
     reload_pos = src.index("reload_cities")

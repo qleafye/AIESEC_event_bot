@@ -13,6 +13,7 @@ A2. Мастер новой анкеты: «Дальше» не ждала за�
 `screens/form.js` без комментариев.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -24,7 +25,7 @@ import pytest
 from tests.test_miniapp_frontend import FORM_JS, SCREENS_DIR, _js_without_comments
 from tests.test_miniapp_resume_clear_js_260912 import _FAKE_DOM_PRELUDE
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_SCREEN_JS = SCREENS_DIR / "form.js"
 
 

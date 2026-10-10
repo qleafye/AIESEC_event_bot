@@ -11,6 +11,7 @@
   `tests/test_dashboard_auth.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import subprocess
 import sys
@@ -23,7 +24,7 @@ from miniapp.main import CONTENT_SECURITY_POLICY, create_app
 
 from tests.test_miniapp_routes import ADMIN_ID, _cfg, _hdr, _standard_seed, _use_tmp_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 DEPS_FILE = ROOT / "miniapp" / "deps.py"
 ACCESS_FILE = ROOT / "dashboard" / "access.py"
 

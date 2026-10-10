@@ -6,11 +6,12 @@
 а `quiet` глушит переход в «Нет доступа» на 403.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
 API_JS = ROOT / "miniapp" / "static" / "js" / "api.js"
 

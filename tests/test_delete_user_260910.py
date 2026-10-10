@@ -13,6 +13,7 @@ pytest-asyncio недоступен в этом окружении (см. tests/
 `edit_text`, `answer`), хендлеры вызываются напрямую функцией (не через `router.propagate_
 event`), как в большинстве admin-тестов проекта.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import re
 from datetime import datetime
@@ -224,7 +225,7 @@ def test_find_user_id_by_username_unknown_returns_none(tmp_path):
 
 # ── Сторож дрейфа схемы ─────────────────────────────────────────────────────────────────────
 
-DB_SRC_PATH = Path(__file__).resolve().parent.parent / "database" / "db.py"
+DB_SRC_PATH = REPO_ROOT / "database" / "db.py"
 _TABLE_BLOCK_RE = re.compile(r"CREATE TABLE IF NOT EXISTS (\w+)(.*?)'''", re.S)
 _ID_COLUMN_RE = re.compile(r"^\s*(user_id|telegram_id|chat_id)\b", re.M)
 

@@ -2,6 +2,7 @@
 мероприятия» (тот — только для нашего формата с чужой меткой); подпись города без падежа
 после «в»; «@username» без двойной «@»."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from tests.test_miniapp_checkin_260924 import (
 from tests.test_miniapp_checkin_denied_log_260925 import _denials
 from tests.test_miniapp_routes import GAME_MANAGER_ID, _hdr
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def test_foreign_qr_code_distinguishes_format():

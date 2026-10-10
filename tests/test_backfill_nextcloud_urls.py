@@ -1,4 +1,5 @@
 """Бэкфилл ссылок на резюме при смене домена Nextcloud + сторож рунбука DEPLOY-DOMAIN.md."""
+from tests._paths import REPO_ROOT
 import asyncio
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import pytest
 
 from scripts.backfill_nextcloud_urls import run, select_rows, swap_base
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 RUNBOOK = ROOT / "docs" / "DEPLOY-DOMAIN.md"
 
 OLD = "https://1.2.3.4:8443"

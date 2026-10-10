@@ -2,6 +2,7 @@
 ручки `/app/api/checkin/onsite/*` и onsite-флаги в ответах `/scan`, `/manual`, `/search`,
 `/points`, `/net-texts` (`miniapp/routers/checkin.py`). Харнесс — tests/test_miniapp_checkin_260924.py."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import base64
 import json
@@ -359,7 +360,7 @@ def test_admin_superuser_unrestricted_link(tmp_path):
 
 # ── экран сканера ────────────────────────────────────────────────────────────────────────
 
-SCANNER_JS = Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "scanner.js"
+SCANNER_JS = REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 
 
 def _js_function(src: str, name: str) -> str:

@@ -9,6 +9,7 @@ aiosqlite-подключение с записью закрыто (иначе `m
 pytest-asyncio недоступен в этом окружении — сидинг идёт через `asyncio.run()`, как и во
 всех остальных тестах, трогающих `database.db` (см. tests/test_reg_events_log.py).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,7 +59,7 @@ from dashboard.queries import (
 from services.questions import question_status
 from tests._dbtpl import fast_init_db
 
-DASHBOARD_QUERIES_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "queries.py"
+DASHBOARD_QUERIES_FILE = REPO_ROOT / "dashboard" / "queries.py"
 
 
 def _use_tmp_db(tmp_path, name="dashboard_queries.db") -> str:

@@ -15,6 +15,7 @@ Design rule D-04 («в приложении нет эмодзи-иконок») 
 («🇬🇧»); подпись без эмодзи (не трогаем); пустая/`null`/`undefined` подпись (не падаем).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -23,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 UI_JS = ROOT / "miniapp" / "static" / "js" / "ui.js"
 
 # key -> (вход, ожидаемый результат). Значения — дословные подписи из settings_schema.py/

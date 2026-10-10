@@ -18,6 +18,7 @@
 pytest-asyncio в этом окружении нет — каждый async-вызов через asyncio.run(), config.DB_PATH
 смотрит в tmp_path (конвенция проекта, conftest.py нет).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import re
 from pathlib import Path
@@ -648,7 +649,7 @@ def test_season_wizards_cancel_through_the_registry_not_a_literal():
     выводит её из реестра — переезд «🔄 Новый сезон» в другой раздел уведёт и отмену."""
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parent.parent / "handlers" / "admin_cities.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "handlers" / "admin_cities.py").read_text(encoding="utf-8")
     assert "settings_group:event" not in src, "отмена визарда снова целится литералом в группу"
     for screen in ("admin_season_reset", "admin_season_import"):
         assert f'back_button("{screen}", text="← Отмена")' in src, screen
@@ -914,7 +915,7 @@ def test_no_handler_redraws_the_flat_settings_screen():
     единственное упоминание `build_settings_keyboard(` на весь handlers/ — её объявление."""
     from pathlib import Path
 
-    handlers_dir = Path(__file__).resolve().parent.parent / "handlers"
+    handlers_dir = REPO_ROOT / "handlers"
     settings_src = (handlers_dir / "admin_settings.py").read_text(encoding="utf-8")
     regcfg_src = (handlers_dir / "admin_reg_config.py").read_text(encoding="utf-8")
 
@@ -1012,7 +1013,7 @@ def test_cheatsheet_covers_every_section():
     обязана ехать следом. Плюс состав блока «Первая настройка события» — десять пунктов:
     первый про имя/аватар/описание бота (с 09.10 — в боте, не в BotFather), последний про дату
     отсчёта (шаг в приложении, не в боте, quick 260903)."""
-    text = (Path(__file__).resolve().parent.parent / "docs" / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
+    text = (REPO_ROOT / "docs" / "ADMIN_CHEATSHEET.md").read_text(encoding="utf-8")
     for _token, label, _rows in sec.SECTIONS:
         assert label in text, label
 
@@ -1069,7 +1070,7 @@ def test_guide_and_cheatsheet_spell_group_path_with_new_label():
         f"«{sec.GROUP_IN_SECTION_LABEL}» →" in entry["where"]
         for _t, _s, entries in roles.SETTINGS_GUIDE_SECTIONS for entry in entries
     )
-    root = Path(__file__).resolve().parent.parent / "docs"
+    root = REPO_ROOT / "docs"
     for doc in ("ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md"):
         text = (root / doc).read_text(encoding="utf-8")
         for label in group_only:

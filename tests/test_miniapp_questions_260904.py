@@ -8,6 +8,7 @@ Bot API (sendMessage делегату) — `httpx.MockTransport`, фикстур
 дублируем — только контракт HTTP поверх них.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import json
@@ -393,7 +394,7 @@ def test_answer_section_off_403(client, bot_api):
 # ── Quick 260904-kk6 (Q2): сторож на фронт — плейсхолдер из реестра, тоггл озвучен ────────
 
 def test_questions_js_placeholder_from_registry_and_toggle_has_aria_label():
-    src = Path(__file__).resolve().parent.parent.joinpath(
+    src = REPO_ROOT.joinpath(
         "miniapp", "static", "js", "screens", "questions.js",
     ).read_text(encoding="utf-8")
     assert "Ответ делегату" not in src

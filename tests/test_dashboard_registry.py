@@ -2,6 +2,7 @@
 периметра Cloudflare Access в `dashboard.config`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import logging
 import os
@@ -219,11 +220,11 @@ def test_no_dashboard_superadmins_key_read_from_env():
     не встречается — комментарий, объясняющий ОТСУТСТВИЕ ключа, размещать можно)."""
     import pathlib
 
-    dashboard_dir = pathlib.Path(__file__).resolve().parent.parent / "dashboard"
+    dashboard_dir = REPO_ROOT / "dashboard"
     for py_file in dashboard_dir.rglob("*.py"):
         text = py_file.read_text(encoding="utf-8")
         assert '"DASHBOARD_SUPERADMINS"' not in text, py_file
         assert "'DASHBOARD_SUPERADMINS'" not in text, py_file
 
-    env_example = pathlib.Path(__file__).resolve().parent.parent / ".env.example"
+    env_example = REPO_ROOT / ".env.example"
     assert "DASHBOARD_SUPERADMINS=" not in env_example.read_text(encoding="utf-8")

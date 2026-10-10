@@ -15,6 +15,7 @@ QR перед форумом, «не пришёл», ответ менеджер
 
 pytest-asyncio недоступен — `asyncio.run()`, БД в `tmp_path`.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 from pathlib import Path
 
@@ -22,7 +23,6 @@ from config import config
 from database import db
 from tests._dbtpl import fast_init_db
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 ADMIN_ID = 900960
 DELEGATE_ID = 900961
 
