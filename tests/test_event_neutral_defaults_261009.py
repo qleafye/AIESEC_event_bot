@@ -207,7 +207,7 @@ def test_preview_shows_event_name_or_neutral_word(tmp_path):
 # ── каждый отправитель с {event}: в отправленном тексте нет буквального «{event}» ──────────
 
 def test_delegation_welcome_sent_without_raw_event_token(tmp_path):
-    from services import delegations
+    from services.delegations import delegations
 
     _ready(tmp_path)
     _run(db.set_setting("event_name", "Юлид & Ко"))

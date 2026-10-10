@@ -4,7 +4,7 @@
 карточками: курс показан так, как написан в форме, решение — две кнопки «✅ ЦА» / «🚫 Не ЦА».
 Решение пишется в `delegation_answers` с автором (`set_decision`), а все последствия (поиск
 человека по нику, превращение в делегата, отметка колонки «В боте») идут через единственную
-точку эффектов `services.delegations.on_answer_available(reason="manual")`.
+точку эффектов `services.delegations.delegations.on_answer_available(reason="manual")`.
 
 Карточка человека, которому в боте уже отказали, несёт пометку «в боте отказ»: автоматика его
 не одобрила намеренно; «✅ ЦА» менеджера — авторизация, после которой `convert_to_delegate`
@@ -36,7 +36,7 @@ from handlers.delegations.admin_delegations import (
     _show, _tail_int, _to_screen, render_screen,
 )
 from handlers.states import DelegationLink
-from services import delegations
+from services.delegations import delegations
 from services.access.person_label import person_label
 from services.access.person_search import search_people
 

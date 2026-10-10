@@ -114,7 +114,7 @@ async def rematch_unmatched(limit: int = 500) -> int:
             done += 1
             # Делегации вузов: человек появился позже ответа — тот же хук, что при приёме.
             try:
-                from services.delegations import on_answer_available
+                from services.delegations.delegations import on_answer_available
                 await on_answer_available(row["form_id"], row["answer_id"], reason="rematch")
             except Exception as e:  # noqa: BLE001
                 logger.warning("delegations: хук ответа %s формы %s: %s",

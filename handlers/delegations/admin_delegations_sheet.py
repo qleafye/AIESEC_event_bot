@@ -2,7 +2,7 @@
 
 Запись в вкладку делегаций — обдуманный шаг в два касания. Менеджер выбирает вкладку из
 реального списка листа (по индексу, список лежит в FSM-данных), бот показывает сверку без
-записи (`services.delegations_mirror.dry_run_sync`): сколько строк в листе, сколько узнал по
+записи (`services.delegations.delegations_mirror.dry_run_sync`): сколько строк в листе, сколько узнал по
 ID ответа, сколько добавит, совпадает ли шапка A–L с вопросами формы и свободна ли колонка M.
 Только после этого появляется кнопка «✅ Включить запись …», а за ней — подтверждение, которое
 называет, что именно изменится. Так первая запись не задваивает строки, уже выгруженные
@@ -28,7 +28,8 @@ from handlers.admin import router
 from handlers.delegations.admin_delegations import (
     _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, render_screen,
 )
-from services import delegations_mirror, sheets
+from services.delegations import delegations_mirror
+from services import sheets
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 """Делегации вузов: модуль одобряет и пишет людям только после «✅ Включить делегации».
 
-Гейт `is_armed()` в services/delegations.py, экраны включения/выключения в
+Гейт `is_armed()` в services/delegations/delegations.py, экраны включения/выключения в
 handlers/delegations/admin_delegations.py, ручные решения и привязка в handlers/delegations/admin_delegations_review.py,
 миграция совместимости в init_db. Окружение — из tests/test_delegations_core.py.
 pytest-asyncio нет — `asyncio.run()`.
@@ -14,7 +14,7 @@ from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from handlers.delegations import admin_delegations as mod
 from handlers.delegations import admin_delegations_review as review
-from services import delegations as dlg
+from services.delegations import delegations as dlg
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 from tests.test_delegations_admin import (

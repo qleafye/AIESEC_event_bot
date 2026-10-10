@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from domain.regform.options import COURSE_OPTIONS
-from services.delegations_course import ParsedCourse, evaluate_ta, parse_course
+from services.delegations.delegations_course import ParsedCourse, evaluate_ta, parse_course
 
 CUTOFF = datetime(2026, 9, 23)
 NOT_TA = ["1", "2"]
@@ -257,11 +257,11 @@ def test_empty_not_ta_list_makes_bachelors_ok():
 # ---------------------------------------------------------------- чистота модуля
 
 def test_module_is_pure_and_references_course_options():
-    src = Path("services/delegations_course.py").read_text(encoding="utf-8")
+    src = Path("services/delegations/delegations_course.py").read_text(encoding="utf-8")
     assert "aiosqlite" not in src
     assert "aiogram" not in src
     assert not re.search(r"^\s*(from|import)\s+database", src, re.M)
     assert "COURSE_OPTIONS" in src
     # Строки в таблицах вымышленные: ни одного адреса почты ни в модуле, ни в этом файле.
-    for path in ("services/delegations_course.py", __file__):
+    for path in ("services/delegations/delegations_course.py", __file__):
         assert not re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", Path(path).read_text(encoding="utf-8"))
