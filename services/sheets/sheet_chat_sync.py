@@ -8,10 +8,10 @@
 Здесь, в процессе бота, раз в 60 с (`services/scheduler.py`, джоба `sheet_chat_drain`): пачка
 созревших событий -> дубли схлопываются по делегату -> значение ячейки из базы одним проходом
 (`chat_tracking.chat_cell_values`: «да» / «нет» / «не проверено» / «-») -> одно чтение и один
-batch_update на вкладку (`services.sheets.write_column_batch`). Значение всегда из базы,
+batch_update на вкладку (`services.sheets.sheets.write_column_batch`). Значение всегда из базы,
 поэтому повтор безвреден.
 
-Исходы по делегату — как у очереди «Пришёл» (`services/sheet_arrival_sync.py`):
+Исходы по делегату — как у очереди «Пришёл» (`services/sheets/sheet_arrival_sync.py`):
 - записано -> события удаляются;
 - строки нет (или на листе ещё нет колонки «В чате» — не пересобран) -> события удаляются,
   в лог одна сводная строка: строка сама не появится, следующая пересборка/событие догонит;
@@ -24,10 +24,10 @@ from collections import defaultdict
 from datetime import timedelta
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database.db import drop_sheet_chat, fail_sheet_chat, list_due_sheet_chat
 from shared.secret_redact import redact_secrets
-from services.sheet_arrival_sync import backoff_seconds
+from services.sheets.sheet_arrival_sync import backoff_seconds
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ async def drain() -> dict:
         return counts
 
     from services.chat_tracking import chat_cell_values
-    from services.sheets import CHAT_HEADER, write_column_batch
+    from services.sheets.sheets import CHAT_HEADER, write_column_batch
 
     try:
         values = await chat_cell_values(list(upto))

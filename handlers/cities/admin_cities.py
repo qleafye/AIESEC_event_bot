@@ -37,7 +37,7 @@ from database.db import (
     bulk_insert_users_if_absent,
     count_existing_telegram_ids,
 )
-from services.sheets import dedupe_sheet_by_id, REFUSED_UNPINNED_TAB
+from services.sheets.sheets import dedupe_sheet_by_id, REFUSED_UNPINNED_TAB
 from services.infra.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
 from handlers.states import CityForm, SeasonReset, SeasonImport, clear_admin_flow_state

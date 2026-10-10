@@ -367,7 +367,7 @@ def test_export_incomplete_and_scheduler_sync_produce_same_batches(tmp_path, mon
         await admin_settings.export_incomplete(FakeCallback("admin_export_incomplete"))
 
         import services.scheduler as scheduler_mod
-        import services.sheets as sheets_mod
+        import services.sheets.sheets as sheets_mod
         scheduler_calls = []
 
         async def _fake_sheets_sync(title, headers, rows):

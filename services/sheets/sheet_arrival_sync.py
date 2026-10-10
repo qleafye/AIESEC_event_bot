@@ -9,7 +9,7 @@
 Здесь, в процессе бота, раз в 30 с (`services/scheduler.py`, джоба `sheet_arrival_drain`):
 пачка созревших событий -> дубли схлопываются по делегату -> значение ячейки из базы (время
 ПЕРВОГО входа за форум, для людей: «25.09 05:23»; входов не осталось — пусто) -> одно чтение
-и один batch_update на вкладку (`services.sheets.write_arrivals_batch`). Значение всегда из базы, поэтому повтор
+и один batch_update на вкладку (`services.sheets.sheets.write_arrivals_batch`). Значение всегда из базы, поэтому повтор
 безвреден.
 
 Исходы по делегату:
@@ -29,7 +29,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database.db import (
     drop_sheet_arrivals,
     fail_sheet_arrivals,
@@ -121,7 +121,7 @@ async def drain() -> dict:
         tid: arrival_cell_value(await first_entry_scanned_at(tid), offsets.get(tid, 0)) for tid in upto
     }
 
-    from services.sheets import write_arrivals_batch  # процесс бота; Mini App сюда не ходит
+    from services.sheets.sheets import write_arrivals_batch  # процесс бота; Mini App сюда не ходит
 
     try:
         result = await write_arrivals_batch(values)

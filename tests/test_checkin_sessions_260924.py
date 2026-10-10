@@ -8,7 +8,7 @@ record_checkin` для «Входа», `database.db.record_session_checkin` дл
 недоступен в этом окружении (тот же приём, что у соседних тестов чек-ина/программы).
 `config.GOOGLE_SHEET_ID`/`GOOGLE_CREDENTIALS_FILE` не заданы в тестовом окружении —
 `mark_arrived_in_sheet` внутри `record_arrival` fail-soft уходит в no-op (см.
-`services.sheets.update_arrived_in_sheet`), отдельного мока не нужно (тот же приём, что у
+`services.sheets.sheets.update_arrived_in_sheet`), отдельного мока не нужно (тот же приём, что у
 `tests/test_admin_checkin_260924.py`)."""
 from __future__ import annotations
 

@@ -79,7 +79,7 @@ from database.db import (
 )
 from services.settings.audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
-from services.sheets import sync_named_worksheet
+from services.sheets.sheets import sync_named_worksheet
 from services.game.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
@@ -1699,7 +1699,7 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
 
 # ── 09-05 (GAME-01..03, D-05): «🔄 Таблица геймы» — full-rebuild sync of two named tabs ──────
 # Deliberately the SAME `sync_named_worksheet` full clear+rewrite already used by
-# `admin_export_incomplete`/the party/incomplete named tabs (services/sheets.py, unmodified by
+# `admin_export_incomplete`/the party/incomplete named tabs (services/sheets/sheets.py, unmodified by
 # this plan) -- a manual button a manager taps a couple times a day, not a background job
 # (CLAUDE.md: keep the existing stack, no APScheduler for this). TWO independent calls per
 # T-09-16: a failure on one tab must not swallow the other, and must be reported by text, not

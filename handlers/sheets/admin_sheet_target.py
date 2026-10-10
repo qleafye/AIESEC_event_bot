@@ -3,7 +3,7 @@
 Вставляет ссылку из адресной строки (или голый ID) — бот вытаскивает ID, открывает таблицу
 сервисным аккаунтом и только после этого спрашивает «переключить?». Нет доступа — говорит, кого
 добавить в «Настройки доступа». Значение ложится в `bot_settings.google_sheet_id`, читает его
-единственный резолвер `services/sheet_target.py` (пусто — таблица из `.env`, как раньше).
+единственный резолвер `services/sheets/sheet_target.py` (пусто — таблица из `.env`, как раньше).
 
 Только суперадмин (`config.ADMIN_IDS`): смена таблицы уводит ВСЕ записи бота в другой файл.
 Гейт повторён в каждом хендлере — стейл-кнопка в чате живёт вечно (тот же приём, что у
@@ -24,7 +24,7 @@ from config import config
 from handlers.admin import router
 from handlers.states import SheetTarget
 from keyboards.builders import get_cancel_kb
-from services import sheet_target
+from services.sheets import sheet_target
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)

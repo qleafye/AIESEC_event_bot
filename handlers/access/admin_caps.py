@@ -148,7 +148,7 @@ async def has_capability(telegram_id: int, cap: str) -> bool:
 # user_actions.py, pending-applications reminder/services.reminders.py) route to whoever HOLDS
 # the relevant capability, not the bare ADMIN_IDS list -- a reg_manager who isn't in
 # config.ADMIN_IDS must still see new/pending applications. Two technical-failure sites
-# (services/sheets.py, services/scheduler.py) deliberately keep the old ADMIN_IDS loop -- D-13
+# (services/sheets/sheets.py, services/scheduler.py) deliberately keep the old ADMIN_IDS loop -- D-13
 # explicitly does NOT route those to holders ("менеджер геймы не починит квоту Google API").
 
 async def capability_holders(cap: str, *, city: str | None = None) -> list[int]:

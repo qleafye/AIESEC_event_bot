@@ -27,7 +27,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_all_users_dicts, get_setting
-from services.sheets import (
+from services.sheets.sheets import (
     get_existing_sheet_ids,
     append_rows_to_sheet,
     ensure_sheet_header,

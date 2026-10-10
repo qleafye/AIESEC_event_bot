@@ -175,7 +175,7 @@ def test_retry_uploads_file_resume_and_updates_url(tmp_path, monkeypatch):
 
     from services import reg_finalize
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     upload_calls = []
 
@@ -208,7 +208,7 @@ def test_retry_uploads_text_resume_with_txt_extension(tmp_path, monkeypatch):
 
     from services import reg_finalize
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     upload_calls = []
 
@@ -255,7 +255,7 @@ def test_retry_sheet_update_failure_does_not_roll_back_db_url(tmp_path, monkeypa
 
     from services import reg_finalize
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     async def _fake_upload_resume(bot, file_id, filename):
         return "https://cloud.example.org/s/TOK/download?path=%2F&files=z.pdf"
@@ -346,7 +346,7 @@ def test_retry_one_bad_row_does_not_block_the_next(tmp_path, monkeypatch):
 
     from services import reg_finalize
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     calls = []
 

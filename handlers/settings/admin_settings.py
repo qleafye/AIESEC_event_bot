@@ -36,7 +36,7 @@ from database.db import (
     settings_snapshot,
 )
 from services.settings.audit import after_save_note, set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
-from services.sheets import (
+from services.sheets.sheets import (
     sync_named_worksheet,
     tab_row_count,
 )

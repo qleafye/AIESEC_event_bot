@@ -16,7 +16,7 @@ import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
 import services.reject_rules as reject_rules_mod
 from handlers import registration as reg_mod
-from services import sheets as sheets_service
+from services.sheets import sheets as sheets_service
 from tests._dbtpl import fast_init_db
 
 UID = 910800200
