@@ -94,3 +94,20 @@ def test_city_scoped_manager_cannot_credit_all_cities(tmp_path, monkeypatch):
     go = FakeCallback("ambpt_fill_go:50:2")
     _run(h.amb_backfill_go(go))
     assert go.answers[0][1] is True and _credits() == []
+
+
+def test_apply_crash_is_reported_with_next_step(tmp_path, monkeypatch):
+    _setup(tmp_path)
+    real = h.referrals.backfill_approved
+
+    async def boom(dry_run=False):
+        if dry_run:
+            return await real(dry_run=True)
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(h.referrals, "backfill_approved", boom)
+    cb = FakeCallback("ambpt_fill_go:50:2")
+    _run(h.amb_backfill_go(cb))
+    text = cb.message.answers[0][0]
+    assert "Не получилось начислить" in text and "«✅ Начислить»" in text
+    assert cb.answers

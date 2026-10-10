@@ -137,7 +137,16 @@ async def amb_backfill_go(callback: types.CallbackQuery):
             await _show_preview(callback)
             return
         await callback.answer()
-        summary = await referrals.backfill_approved(dry_run=False)
+        try:
+            summary = await referrals.backfill_approved(dry_run=False)
+        except Exception:
+            logger.exception("amb_backfill: начисление оборвалось by=%s", callback.from_user.id)
+            await callback.message.answer(
+                "Не получилось начислить баллы до конца. Часть начислений могла успеть записаться. "
+                "Откройте «🔁 Начислить за прошлых приглашённых» заново и нажмите «✅ Начислить» — "
+                "повторное нажатие никого не задвоит. Если снова не выйдет — напишите @qleafye."
+            )
+            return
     logger.info(
         "amb_backfill: by=%s начислено=%s баллов=%s амбассадорам=%s",
         callback.from_user.id, summary["credited"], summary["coins"], summary["ambassadors"],
