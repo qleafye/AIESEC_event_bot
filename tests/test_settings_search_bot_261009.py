@@ -12,7 +12,7 @@ from aiogram.types import User
 from config import config
 from database import db
 from handlers import admin_settings, admin_settings_search as ss
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import SettingsSearch
 from domain.settings.search import Candidate, match_word, search, search_terms, words
 from domain.settings.synonyms import SETTINGS_SYNONYMS
@@ -326,7 +326,7 @@ def test_screen_candidates_respect_section_rights(tmp_path):
     mgr = {c.extra["cb"] for c in _run(ss.screen_candidates(MANAGER))}
     assert "admin_season_reset" not in mgr and "admin_sheet_target" not in mgr
     assert "admin_bot_avatar" not in mgr  # капа settings
-    from handlers.admin_caps import _holds
+    from handlers.access.admin_caps import _holds
 
     for cb in mgr:
         assert _holds({"moderate_reg", "moderate_receipts"}, required_capability(callback_data=cb)), cb

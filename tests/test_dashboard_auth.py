@@ -306,7 +306,7 @@ def test_unbound_manager_with_no_requested_city_sees_all(tmp_path):
 # ── сторож дрейфа модели прав от бота ────────────────────────────────────────────────────
 
 def test_all_capabilities_matches_bot_capability_model():
-    from handlers.admin_caps import ALL_CAPABILITIES as BOT_CAPS
+    from handlers.access.admin_caps import ALL_CAPABILITIES as BOT_CAPS
 
     assert list(ALL_CAPABILITIES) == list(BOT_CAPS)
 

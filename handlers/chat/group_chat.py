@@ -3,7 +3,7 @@
 `user_actions.router`/`payment.router` — на групповые чаты не рассчитаны вовсе).
 
 Форма — СВОЙ `Router()`, мимо `CapabilityMiddleware` (та висит на `admin.router`, не на
-`dp`), тот же приём, что `handlers/uat_seed.py`: право на привязку/отвязку чата проверяется
+`dp`), тот же приём, что `handlers/access/uat_seed.py`: право на привязку/отвязку чата проверяется
 ВНУТРИ каждого хендлера (`chat_tracking.is_bot_admin_user`), а не через капу — человек,
 добавляющий бота в группу, ещё может быть неизвестен `staff`/`ADMIN_IDS` вовсе, и middleware
 на несуществующем праве просто не сработала бы.
@@ -548,7 +548,7 @@ async def on_group_reaction(event: types.MessageReactionUpdated):
 #
 # Отдельный роутер, НЕ `router` выше (тот целиком отфильтрован по `chat.type in {group,
 # supergroup}`) и НЕ `admin.router` (тот несёт `CapabilityMiddleware`, deny-by-default —
-# `handlers/admin_caps.py`): право привязать чат здесь уже перепроверено `is_bot_admin_user`
+# `handlers/access/admin_caps.py`): право привязать чат здесь уже перепроверено `is_bot_admin_user`
 # ДО отправки личного сообщения с кнопками, а капа поверх была бы той же самой проверкой под
 # другим именем, не независимым гейтом (тот же довод, что у группового `router` в докстринге
 # модуля).

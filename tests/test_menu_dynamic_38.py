@@ -8,7 +8,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_settings
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from keyboards.menu_dynamic import (
     DynamicMenuText,
     all_dynamic_captions,

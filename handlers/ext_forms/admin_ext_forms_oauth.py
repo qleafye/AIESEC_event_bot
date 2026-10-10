@@ -1,7 +1,7 @@
 """Доступ бота к Яндекс Формам: «🔑 Ключи приложения Яндекса» и «🔑 Войти через Яндекс».
 
 Шов на общий `handlers.admin.router` (своего Router нет, декораторы в одну строку). Права —
-в handlers/admin_caps.py: `extf_*` и состояния ExtFormOAuth / ExtFormAppKeys — `settings`.
+в handlers/access/admin_caps.py: `extf_*` и состояния ExtFormOAuth / ExtFormAppKeys — `settings`.
 
 Секреты (client_secret, код подтверждения) проходят через чат: сообщение с ними удаляется
 сразу после чтения, значение никогда не показывается и не пишется в лог. Токены лежат только

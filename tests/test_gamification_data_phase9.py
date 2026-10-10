@@ -201,7 +201,7 @@ def test_game_review_states_group_has_expected_steps():
 
 
 def test_moderate_game_callback_keys_resolve():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     callbacks = [
         "admin_game_tasks", "gtnew", "gtcat:foo", "gtproof:photo", "gtconfirm", "gtcancel",
         "admin_game_review", "grev_approve:1", "grev_approve_custom:1", "grev_reject:1",
@@ -212,6 +212,6 @@ def test_moderate_game_callback_keys_resolve():
 
 
 def test_moderate_game_state_keys_resolve():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(raw_state="GameTaskCreate:text") == "moderate_game"
     assert required_capability(raw_state="GameReview:reject_reason") == "moderate_game"

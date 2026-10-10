@@ -7,7 +7,7 @@
 
 Что здесь: тумблеры по каждому вопросу анкеты из `moderation_card.CARD_STEPS` (реестр
 `modcard_fields`) + пресеты лимита длины ответа (реестр `modcard_answer_limit`) — то же
-«кнопки вместо кодов», что у `handlers/admin_roles.py::build_role_caps_keyboard` (CLAUDE.md:
+«кнопки вместо кодов», что у `handlers/access/admin_roles.py::build_role_caps_keyboard` (CLAUDE.md:
 кодовые значения человеку не показываем). Хранение набора вопросов — та же форма, что
 `role_caps_*`: по одной строке на step_key, пустой набор — сентинел `moderation_card.
 EMPTY_SENTINEL` (иначе `_parse_setting` вернул бы дефолтные 20 вопросов на пустую строку).

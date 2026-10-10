@@ -9,7 +9,7 @@
 ИЗ ХВОСТА `handlers/admin_sections.py`, СРАЗУ ПОСЛЕ `admin_program` (golden snapshot:
 `tests/test_refac_snapshot_260816.py`).
 
-Право — `prog_*` (`handlers/admin_caps.py`, `settings`) — тот же префикс, что весь шов
+Право — `prog_*` (`handlers/access/admin_caps.py`, `settings`) — тот же префикс, что весь шов
 `admin_program.py`, callback уже покрыт им, второй записи не заводим.
 
 Кнопка — ЦИКЛ (table<->photo), не чекбокс, та же идиома, что

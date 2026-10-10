@@ -31,7 +31,7 @@ from aiogram.filters import StateFilter
 
 from config import config
 from database.db import get_user
-from handlers.admin_caps import resolve_capabilities
+from handlers.access.admin_caps import resolve_capabilities
 from handlers.reg_resume import offer_resume
 from handlers.registration import _resumable_draft_for
 from handlers.i18n import reg_i18n
@@ -53,7 +53,7 @@ _menu_hint_sent_at: dict[int, float] = {}
 async def _is_staff_or_admin(telegram_id: int) -> bool:
     """Менеджер/модератор никогда не должен увидеть делегатский экран «анкета сохранена» —
     ни ADMIN_IDS (полные права), ни держатель произвольной роли из `staff` (D-13 capability
-    bootstrap, `handlers/admin_caps.py::resolve_capabilities`)."""
+    bootstrap, `handlers/access/admin_caps.py::resolve_capabilities`)."""
     if telegram_id in config.ADMIN_IDS:
         return True
     try:

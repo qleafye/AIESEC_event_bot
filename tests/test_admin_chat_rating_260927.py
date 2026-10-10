@@ -17,7 +17,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers.chat import admin_chat_rating as scr
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import ChatRatingEdit
 from tests._dbtpl import fast_init_db
 

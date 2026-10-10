@@ -25,7 +25,7 @@ import domain.settings.schema as settings_schema
 from handlers import user_actions as ua_mod
 from handlers import admin as admin_mod
 from handlers.game import admin_gamification
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 
 
 ADMIN_ID = 940911

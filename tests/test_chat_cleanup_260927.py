@@ -388,7 +388,7 @@ from aiogram.fsm.storage.base import StorageKey  # noqa: E402
 from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
 
 from handlers.chat import admin_chat_cleanup as scr  # noqa: E402
-from handlers.admin_caps import required_capability  # noqa: E402
+from handlers.access.admin_caps import required_capability  # noqa: E402
 from handlers.states import ChatCleanupEdit  # noqa: E402
 
 

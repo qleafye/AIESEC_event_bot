@@ -419,7 +419,7 @@ from types import SimpleNamespace  # noqa: E402
 
 from handlers import admin_forum_functions as aff  # noqa: E402
 from handlers import admin_onsite_reg as aor  # noqa: E402
-from handlers.admin_caps import required_capability  # noqa: E402
+from handlers.access.admin_caps import required_capability  # noqa: E402
 from tests.test_roles_phase8 import dispatch_callback  # noqa: E402
 
 

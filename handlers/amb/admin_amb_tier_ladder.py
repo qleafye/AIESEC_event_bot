@@ -35,7 +35,7 @@ from database import amb_tiers_db
 from database import db
 from handlers.admin import router
 from handlers.amb.admin_amb_tiers import _edit_or_send, _is_cancel, _person_label, _resolve_person_input
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from handlers.states import AmbTierRevoke
 from services import amb_tiers
 from services.settings.audit import set_setting_by_admin

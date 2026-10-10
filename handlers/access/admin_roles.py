@@ -45,7 +45,7 @@ from services.staff_expiry import (
 )
 from services.settings.audit import set_setting_by_admin
 from handlers.states import RolesExpiryEdit, StaffAdd
-from handlers.admin_caps import (
+from handlers.access.admin_caps import (
     ALL_CAPABILITIES,
     CAP_LABELS,
     ROLES,
@@ -599,7 +599,7 @@ async def toggle_role_enabled(callback: types.CallbackQuery, bot: Bot | None = N
 # возвращает `default` на falsy raw (domain/settings/schema.py), то есть пустая строка молча вернула
 # бы роли права по умолчанию — противоположность тому, что нажал менеджер. Сентинел не входит
 # в ALL_CAPABILITIES, а resolve_capabilities отбрасывает всё, чего там нет
-# (handlers/admin_caps.py) — на выходе честный нулевой набор прав.
+# (handlers/access/admin_caps.py) — на выходе честный нулевой набор прав.
 _CAPS_EMPTY_SENTINEL = "—"
 
 

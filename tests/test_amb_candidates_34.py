@@ -570,7 +570,7 @@ def test_entry_screen_links_to_candidates(tmp_path):
 
 
 def test_every_callback_resolves_to_its_right():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     game = ("admin_amb_candidates", "ambc:candidates:0", "ambc:team:10", "ambp:10:team:0",
             "ambc_take:10:candidates:0", "ambc_later:10", "ambc_pack:10:team:0",
             "ambc_slot:10", "ambc_rm:10:team:0", "ambc_rm_go:10:team:0", "ambc_csv")

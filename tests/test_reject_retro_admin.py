@@ -10,7 +10,7 @@ import sqlite3
 from config import config
 from database import db
 from handlers.applications import admin_reject_retro as h
-from handlers.admin_caps import ADMIN_CAPS, required_capability
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from services import reg_finalize, reject_retro
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback

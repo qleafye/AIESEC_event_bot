@@ -18,7 +18,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod  # noqa: F401 — регистрирует шов
 from handlers.sheets import admin_sheet_target as st_handlers
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 from handlers.states import SheetTarget
 from services import sheet_target
 import services.sheets as sheets
@@ -178,7 +178,7 @@ def test_registry_key_hidden_from_web_and_group_screens():
 def test_caps_registered_and_row_is_superadmin_only():
     from handlers.admin_sections import section_rows, visible_rows
 
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     for cb in ("admin_sheet_target", "sheet_target_set", "sheet_target_apply",
                "sheet_target_env", "sheet_target_env_go"):
@@ -546,7 +546,7 @@ def test_command_instead_of_link_leaves_wizard(env):
 
 def test_dashboard_roles_match_bot_roles():
     from dashboard.access import _ROLE_DEFAULT_CAPS
-    from handlers.admin_caps import ROLES
+    from handlers.access.admin_caps import ROLES
     from domain.settings.schema import SETTINGS_SCHEMA
 
     assert set(_ROLE_DEFAULT_CAPS) == set(ROLES)  # роль без записи в дашборде = ноль прав в приложении

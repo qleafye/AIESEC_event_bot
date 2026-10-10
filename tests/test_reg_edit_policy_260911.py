@@ -202,7 +202,7 @@ def test_toggle_redraws_apps_section_screen(tmp_path):
 
 
 def test_admin_caps_maps_toggle_to_settings_capability():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS["toggle_reg_edit_policy"] == "settings"
 
 
@@ -777,7 +777,7 @@ def test_resubmit_toggle_alert_is_human_never_shows_raw_codes(tmp_path):
 
 
 def test_admin_caps_maps_resubmit_toggle_to_settings_capability():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS["toggle_reg_resubmit_after_reject"] == "settings"
 
 

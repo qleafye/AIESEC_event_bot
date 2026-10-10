@@ -155,7 +155,7 @@ def test_chat_tracking_toggle_is_registered_in_admin_caps():
     """Экран «💬 Чат» снесён целиком (`handlers/admin_chat.py` удалён) — единственный
     оставшийся вход в тумблер учёта регистрируется на `admin.router` под общей капой
     `settings`, как и любой другой тумблер раздела «🔧 Управление»."""
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     assert ADMIN_CAPS["toggle_chat_tracking_enabled"] == "settings"
     for stale in ("admin_chat", "chat_chat_tracking_toggle", "chat_refresh_now",

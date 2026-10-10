@@ -973,7 +973,7 @@ def test_group_sos_id_command_silent_without_pending_request(tmp_path):
 
 def test_stranger_has_no_sos_capability(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_caps import has_capability, required_capability
+    from handlers.access.admin_caps import has_capability, required_capability
 
     cap = required_capability(callback_data="admin_sos")
     assert cap == "moderate_reg"
@@ -983,7 +983,7 @@ def test_stranger_has_no_sos_capability(tmp_path):
 
 def test_asos_bind_capability_is_settings_not_moderate_reg(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_caps import has_capability, required_capability
+    from handlers.access.admin_caps import has_capability, required_capability
 
     cap = required_capability(callback_data="asos_bind")
     assert cap == "settings"
@@ -1022,7 +1022,7 @@ def test_sos_start_total_failure_gives_honest_text_and_schedules_retry(tmp_path,
     # уходит нулю получателей: bootstrap ADMIN_ID тоже должен провалиться, иначе доставка
     # состоится через него.
     monkeypatch.setattr(
-        "handlers.admin_caps.capability_holders",
+        "handlers.access.admin_caps.capability_holders",
         lambda cap, city=None: _async_result([]),
     )
     scheduled = []
@@ -1415,7 +1415,7 @@ def test_sos_start_total_failure_translates_for_english_delegate(tmp_path, monke
     _ready(tmp_path)
     _run(_make_english_delegate(DELEGATE_ID))
     monkeypatch.setattr(
-        "handlers.admin_caps.capability_holders",
+        "handlers.access.admin_caps.capability_holders",
         lambda cap, city=None: _async_result([]),
     )
     monkeypatch.setattr(sos_service, "schedule_delivery_retry", lambda report_id, delay_minutes=1: None)
@@ -1445,7 +1445,7 @@ def test_sos_start_emergency_contact_falls_back_without_html_on_parse_error(tmp_
     contact_text = "Экстренный телефон: +7 999 <3 000-00-00"
     _run(db.set_setting("sos_fallback_contact_text", contact_text))
     monkeypatch.setattr(
-        "handlers.admin_caps.capability_holders",
+        "handlers.access.admin_caps.capability_holders",
         lambda cap, city=None: _async_result([]),
     )
     monkeypatch.setattr(sos_service, "schedule_delivery_retry", lambda report_id, delay_minutes=1: None)

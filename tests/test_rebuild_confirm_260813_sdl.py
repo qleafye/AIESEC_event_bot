@@ -13,7 +13,7 @@ import asyncio
 
 from handlers import admin as admin_mod
 from handlers.sheets import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
-from handlers import admin_caps
+from handlers.access import admin_caps
 
 
 class _FakeUser:

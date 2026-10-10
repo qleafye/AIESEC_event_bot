@@ -301,7 +301,7 @@ def test_admin_send_cancel_does_not_send(tmp_path):
 # ── capability (deny-by-default, D-02) ───────────────────────────────────────────────────────
 
 def test_required_capability_cna_send_is_moderate_reg():
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     assert admin_caps.required_capability(callback_data="cna_send:_all") == "moderate_reg"
     assert admin_caps.required_capability(callback_data="cna_send_go:_all") == "moderate_reg"
     assert admin_caps.required_capability(callback_data="cna_send_no") == "moderate_reg"
@@ -433,7 +433,7 @@ def test_confirm_button_carries_count(tmp_path):
 def test_send_go_reports_fewer_than_confirmed(tmp_path):
     """На подтверждении было 3, за это время один отметился на входе — «Ушло 2 из 3»."""
     from handlers import admin_checkin as ac
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     _ready(tmp_path)
     _run(_add_user(1))
     _run(_add_user(2))

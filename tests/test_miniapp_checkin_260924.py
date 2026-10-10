@@ -2,7 +2,7 @@
 `/app/api/checkin/*` (`miniapp/routers/checkin.py`). Харнесс — `tests/test_miniapp_routes.py`,
 тот же приём, что `tests/test_miniapp_admin_tasks.py`.
 
-Капа `checkin` НЕ входит ни в один `default_caps` роли (`handlers/admin_caps.py::ROLES`) —
+Капа `checkin` НЕ входит ни в один `default_caps` роли (`handlers/access/admin_caps.py::ROLES`) —
 менеджер добавляет её вручную через `role_caps_*`; здесь она примешивается settings-сидом,
 как `tests/test_dashboard_auth.py` делает для остальных прав."""
 from __future__ import annotations

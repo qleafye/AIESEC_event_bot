@@ -37,7 +37,7 @@ _KIND_LABELS = {"new": "новая анкета (ещё не подана)", "ed
 
 def _parse_tid(raw: str) -> int | None:
     # Ревью part2: делегатский telegram_id никогда не отрицателен (это чаты/каналы) —
-    # `lstrip("-")` зря расширял парсер; тот же гейт, что `handlers/admin_roles.py::
+    # `lstrip("-")` зря расширял парсер; тот же гейт, что `handlers/access/admin_roles.py::
     # _parse_staff_role_callback` (parts[1].isascii() and parts[1].isdigit()).
     return int(raw) if raw.isascii() and raw.isdigit() else None
 

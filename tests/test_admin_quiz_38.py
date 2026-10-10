@@ -5,7 +5,7 @@ from database import db, quiz_db as qdb, session_enroll_db as edb
 from handlers import admin_enroll_list as el
 from handlers import admin_forum_functions as aff
 from handlers import admin_quiz as aq
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from handlers.states import QuizEdit
 from tests._enroll38 import ADMIN_ID, CITY, ready, run
 from tests.test_admin_enroll_38 import FakeCallback, FakeMessage, cbs, new_state, texts

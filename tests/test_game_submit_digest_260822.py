@@ -60,8 +60,8 @@ class _Bot:
 
 
 def _capture_notify(monkeypatch):
-    """Подменяет notify_by_capability в handlers.admin_caps (game_digest импортирует его лениво)."""
-    from handlers import admin_caps
+    """Подменяет notify_by_capability в handlers.access.admin_caps (game_digest импортирует его лениво)."""
+    from handlers.access import admin_caps
     calls = []
 
     async def fake(bot, cap, text, *, parse_mode=None, city=None):
@@ -117,7 +117,7 @@ def test_game_group_keyboard_has_mode_toggle(tmp_path):
 
 
 def test_toggle_callback_registered_under_settings_capability():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS["toggle_game_submit_notify"] == "settings"
 
 

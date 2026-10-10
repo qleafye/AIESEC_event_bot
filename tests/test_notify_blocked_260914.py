@@ -19,7 +19,7 @@ from aiogram.exceptions import TelegramForbiddenError
 
 from config import config
 from database import db
-from handlers import admin_caps
+from handlers.access import admin_caps
 from tests._dbtpl import fast_init_db
 
 ADMIN_A = 910001  # обычный админ, всегда доступен

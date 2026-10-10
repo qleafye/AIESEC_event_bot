@@ -14,7 +14,7 @@ import pytest
 from config import config
 from database import db
 from handlers.comms import admin_quiet_hours as qh_screen
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 
 from tests.test_roles_phase8 import ADMIN_ID, _roles_ready
 

@@ -405,5 +405,5 @@ def test_count_and_list_filtered_via_picked_season_spec(tmp_path):
 def test_required_capability_filter_f_season_is_broadcast():
     """Доказательство, что записи в ADMIN_CAPS не нужны — `filter_f_*` уже покрывает
     (`admin_caps.py:343`), префиксный матч в `required_capability`."""
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     assert admin_caps.required_capability(callback_data="filter_f_season") == "broadcast"

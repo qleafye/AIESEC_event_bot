@@ -17,7 +17,7 @@ from config import config
 from database import db
 from handlers import admin_volunteer_invite as avi  # noqa: F401 -- регистрирует volinvite_*/volinv_*
 from handlers import registration as reg
-from handlers.admin_caps import resolve_capabilities
+from handlers.access.admin_caps import resolve_capabilities
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import _fresh_state, dispatch_callback, dispatch_message
 

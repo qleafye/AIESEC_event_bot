@@ -13,7 +13,7 @@
 edit_grant/reg_reset — экран подтверждения ЗАКАНЧИВАЕТСЯ тапом кнопки), здесь подтверждение
 ОТКРЫВАЕТ ожидание файла: `resumerep_start` сразу переводит менеджера в FSM-состояние
 `ResumeReplace.waiting_for_file` (telegram_id делегата несёт `state.get_data()`, тот же приём,
-что у `StaffAdd.waiting_for_person`, `handlers/admin_roles.py`) — сама замена происходит в
+что у `StaffAdd.waiting_for_person`, `handlers/access/admin_roles.py`) — сама замена происходит в
 приёмном хендлере документа, не в callback."""
 import html as html_module
 import logging
@@ -37,7 +37,7 @@ _NOT_FOUND_ALERT = "Делегат не найден — возможно, ка�
 
 def _parse_tid(raw: str) -> int | None:
     # Ревью part2: делегатский telegram_id никогда не отрицателен (это чаты/каналы) —
-    # `lstrip("-")` зря расширял парсер; тот же гейт, что `handlers/admin_roles.py::
+    # `lstrip("-")` зря расширял парсер; тот же гейт, что `handlers/access/admin_roles.py::
     # _parse_staff_role_callback` (parts[1].isascii() and parts[1].isdigit()).
     return int(raw) if raw.isascii() and raw.isdigit() else None
 

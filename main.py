@@ -10,9 +10,10 @@ from shared.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
 from handlers import registration, user_actions, admin, payment
 from handlers.comms import polls
-from handlers import uat_seed
+from handlers.access import uat_seed
 from handlers.chat import group_chat
-from handlers import reg_silence_fallback, onsite_reg, admin_no_access
+from handlers import reg_silence_fallback, onsite_reg
+from handlers.access import admin_no_access
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on

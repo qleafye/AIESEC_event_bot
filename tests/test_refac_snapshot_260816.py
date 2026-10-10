@@ -1933,7 +1933,7 @@ def test_snapshot_total_handler_count_is_292():
     # admin_broadcast_log -- экран «Последние рассылки»), встали сразу после bc_stop и перед
     # broadcast_schedule_start (476 -> 481); чистый аппенд, перепроверен прогоном
     # _build_snapshot_lines() и diff'ом с прежним 476-строчным снапшотом.
-    # Квик 260910-ro7 (DELU-01..08): +3 handlers/admin_purge.py (скрытая команда
+    # Квик 260910-ro7 (DELU-01..08): +3 handlers/access/admin_purge.py (скрытая команда
     # «/delete_user») -- message cmd_delete_user, хвост admin.message (сразу после
     # poll_schedule_when); callback_query delete_user_confirm/delete_user_cancel, хвост
     # admin.callback_query (сразу после poll_schedule_start) -- шов импортируется из самого
@@ -2297,7 +2297,7 @@ def test_snapshot_total_handler_count_is_292():
     # `_build_snapshot_lines()`, difflib: одна чистая вставка (4 строки), 0 удалений, 0
     # реордеров (844 -> 848).
     # Phase 33 (delegate-card admin actions, задача 2, 26.09): roles_add_for
-    # (handlers/admin_roles.py) — прямой вход в мастер выдачи роли с карточки /find, встал
+    # (handlers/access/admin_roles.py) — прямой вход в мастер выдачи роли с карточки /find, встал
     # СРАЗУ ПОСЛЕ roles_add_start и ПЕРЕД roles_assign (порядок регистрации callback_query
     # внутри admin_roles.py — физическое место функции в файле, между roles_add_person и
     # roles_assign). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая

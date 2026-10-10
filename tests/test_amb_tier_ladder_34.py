@@ -362,7 +362,7 @@ def test_promote_flow_confirm_then_go(tmp_path):
 # ── права, регистрация, экран ступеней ────────────────────────────────────────────────────
 
 def test_caps_resolve_for_every_ladder_callback():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("ambl:main", "ambl_add", "ambl_del", "ambl_del_go", "ambl_quota:2", "ambl_req",
                  "ambl_rev", "ambl_rev_cancel", "ambl_rev_pick:2", "ambl_rev_go:2",
                  "ambl_prom:2", "ambl_prom_go:2"):

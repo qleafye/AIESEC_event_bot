@@ -10,7 +10,7 @@ pytest-asyncio is unavailable in this env (see tests/test_db_phase5.py) — ever
 helper is driven via asyncio.run() and config.DB_PATH points at a tmp_path file.
 
 The capability-model tests below (`-k capabilities`/`-k bootstrap_compat`) import
-`handlers.admin_caps` LAZILY, inside the test body — that module does not exist until Task 2
+`handlers.access.admin_caps` LAZILY, inside the test body — that module does not exist until Task 2
 of this plan, and a top-level import would break collection for the WHOLE file. Their
 RED failure (AttributeError/ImportError) at this stage is expected and intentional.
 """
@@ -30,7 +30,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
-from handlers import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
+from handlers.access import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
 from tests._dbtpl import fast_init_db
 
@@ -168,11 +168,11 @@ def test_harness_returns_unhandled_for_foreign_callback(tmp_path):
     assert result is UNHANDLED
 
 
-# ── Capability model (RED until Task 2 — handlers.admin_caps does not exist yet) ───────────
+# ── Capability model (RED until Task 2 — handlers.access.admin_caps does not exist yet) ───────────
 
 def test_capabilities_of_staff_member_are_role_caps(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     caps = asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID))
@@ -181,7 +181,7 @@ def test_capabilities_of_staff_member_are_role_caps(tmp_path):
 
 def test_capabilities_union_across_two_roles(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.add_staff(MANAGER_ID, "game_manager", ADMIN_ID))
@@ -191,7 +191,7 @@ def test_capabilities_union_across_two_roles(tmp_path):
 
 def test_disabled_role_grants_nothing(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_setting("role_reg_manager_enabled", "off"))
@@ -201,7 +201,7 @@ def test_disabled_role_grants_nothing(tmp_path):
 
 def test_bootstrap_admin_has_all_capabilities_with_empty_staff(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     caps = asyncio.run(admin_caps.resolve_capabilities(ADMIN_ID))
     assert caps == set(admin_caps.ALL_CAPABILITIES)
@@ -209,7 +209,7 @@ def test_bootstrap_admin_has_all_capabilities_with_empty_staff(tmp_path):
 
 def test_stranger_has_no_capabilities(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     caps = asyncio.run(admin_caps.resolve_capabilities(STRANGER_ID))
     assert caps == set()
@@ -240,7 +240,7 @@ def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
 
 def test_roles_screen_lists_staff_with_roles(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import ROLES
+    from handlers.access.admin_caps import ROLES
 
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.add_staff(GAME_MANAGER_ID, "game_manager", ADMIN_ID))
@@ -254,7 +254,7 @@ def test_roles_screen_lists_staff_with_roles(tmp_path):
 
 def test_roles_screen_shows_role_toggle_state(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import ROLES
+    from handlers.access.admin_caps import ROLES
 
     asyncio.run(db.set_setting("role_game_manager_enabled", "off"))
     text = asyncio.run(admin_roles.render_roles_text())
@@ -332,7 +332,7 @@ def test_staff_crud_add_unresolvable_input_is_rejected(tmp_path):
 
 def test_staff_crud_assign_and_remove(tmp_path):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     dispatch_callback(f"roles_addrole:{MANAGER_ID}:reg_manager", ADMIN_ID)
     assert asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID)) == {"moderate_reg", "moderate_receipts"}
@@ -439,7 +439,7 @@ def _resolve_key(key):
     """Feed a derived key back through the REAL required_capability() -- not a second lookup
     table -- so this test proves ADMIN_CAPS itself is complete, not just internally consistent
     with a copy of itself."""
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     if key.startswith("cmd:"):
         return required_capability(command=key[len("cmd:"):])
@@ -516,7 +516,7 @@ def test_completeness_admin_router_decorators_are_single_line():
 
 def test_required_capability_prefix_match_is_longest_first(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     assert required_capability(callback_data="settings_edit:foo") == "settings"
     assert required_capability(callback_data="appr_approve:123") == "moderate_reg"
@@ -525,7 +525,7 @@ def test_required_capability_prefix_match_is_longest_first(tmp_path):
 
 def test_required_capability_message_order_state_before_command(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     # /cancel mid-Broadcast-wizard resolves via the state (broadcast), not the absent
     # "cmd:cancel" -- 08-03-PLAN.md <capability_map> footnote: cmd:cancel is deliberately
@@ -535,7 +535,7 @@ def test_required_capability_message_order_state_before_command(tmp_path):
 
 
 def test_every_capability_value_is_known(tmp_path):
-    from handlers.admin_caps import ADMIN_CAPS, ALL_CAPABILITIES, ANY_CAPABILITY
+    from handlers.access.admin_caps import ADMIN_CAPS, ALL_CAPABILITIES, ANY_CAPABILITY
 
     # Кортеж — «любое из»: непустой, и каждый его элемент — настоящее право.
     bad = [k for k, v in ADMIN_CAPS.items()
@@ -557,7 +557,7 @@ def test_every_capability_value_is_known(tmp_path):
 # interfere with a negative assertion either way.
 
 def _run_middleware(event, data):
-    from handlers.admin_caps import CapabilityMiddleware
+    from handlers.access.admin_caps import CapabilityMiddleware
 
     calls = []
 
@@ -602,7 +602,7 @@ def test_deny_response_is_silent_for_stranger(tmp_path):
 
 def test_middleware_denies_unmapped_callback(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     assert required_capability(callback_data="zzz_totally_unknown") is None
 
@@ -623,7 +623,7 @@ def test_stranger_event_still_propagates(tmp_path):
 
 def test_bootstrap_compat_admin_with_empty_staff_passes_every_key(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     data = {"event_from_user": FakeUser(ADMIN_ID)}
     for key in ADMIN_CAPS:
@@ -635,7 +635,7 @@ def test_bootstrap_compat_admin_with_empty_staff_passes_every_key(tmp_path):
 
 def test_middleware_does_not_touch_foreign_router_events(tmp_path, monkeypatch):
     _roles_ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     calls = []
     original = admin_caps.resolve_capabilities
@@ -685,7 +685,7 @@ def test_manager_reaches_handler_body_end_to_end(tmp_path):
 # ── 08-04 (D-17): slash commands are protected by the SAME map as callback buttons ─────────
 
 def test_admin_commands_match_d17_mapping():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     d17 = {
         "find": "moderate_reg",
@@ -745,7 +745,7 @@ def test_menu_stranger_gets_empty_row_set(tmp_path):
 
 
 def test_menu_rows_and_map_stay_in_sync():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     # A new menu row with no ADMIN_CAPS entry would resolve to None here and silently vanish
     # from every keyboard forever (deny-by-default, D-02) -- this test roars instead.
@@ -798,7 +798,7 @@ def test_pick_auto_open_returns_the_handler_for_a_single_screen_row():
 # tests elsewhere in this file).
 
 def test_single_section_autoopens(tmp_path):
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -834,7 +834,7 @@ def test_multi_section_shows_menu(tmp_path):
 
 
 def test_action_only_row_never_autoopens_end_to_end(tmp_path):
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -894,7 +894,7 @@ def test_no_sections_shows_explanatory_message(tmp_path, monkeypatch):
 # ── 08-06 Task 1 (D-13): notify_by_capability / capability_holders fan-out ─────────────────
 
 def test_notify_fanout_reaches_capability_holders(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -911,7 +911,7 @@ def test_notify_fanout_reaches_capability_holders(tmp_path):
 
 
 def test_notify_fanout_falls_back_to_admins(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     # Nobody in `staff` holds moderate_reg at all (staff table is empty) -- fallback (T-08-31)
@@ -924,8 +924,8 @@ def test_notify_fanout_falls_back_to_admins(tmp_path):
 
 
 def test_notify_fanout_deduplicates(tmp_path):
-    from handlers import admin_caps
-    from handlers.admin_caps import role_caps_key
+    from handlers.access import admin_caps
+    from handlers.access.admin_caps import role_caps_key
 
     _roles_ready(tmp_path)
     # Give game_manager's role_caps an EXTRA "moderate_reg" entry (on top of its default
@@ -944,7 +944,7 @@ def test_notify_fanout_deduplicates(tmp_path):
 
 
 def test_notify_fanout_is_fail_soft(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -968,7 +968,7 @@ def test_notify_fanout_is_fail_soft(tmp_path):
 
 
 def test_notify_skips_disabled_role(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -1389,7 +1389,7 @@ def test_stuck_questions_screen_denied_for_stranger(tmp_path):
 def test_settings_schema_role_caps_and_enabled_round_trip(tmp_path):
     _roles_ready(tmp_path)
     from domain.settings.schema import get_setting_typed
-    from handlers.admin_caps import role_caps_key, role_enabled_key
+    from handlers.access.admin_caps import role_caps_key, role_enabled_key
 
     # Unset -> registry default (D-09), not an empty list or None.
     assert asyncio.run(get_setting_typed(role_caps_key("reg_manager"))) == [
@@ -1433,7 +1433,7 @@ def test_gate_no_legacy_admin_check_remains():
 
 def test_gate_single_capability_map():
     """D-01/D-15: exactly ONE dict maps event -> capability across the codebase -- ADMIN_CAPS
-    in handlers/admin_caps.py. Both middleware (required_capability, called from
+    in handlers/access/admin_caps.py. Both middleware (required_capability, called from
     CapabilityMiddleware) and menu assembly (_visible_menu_rows, via the same
     required_capability) resolve against it; handlers/admin.py never hand-rolls a second,
     parallel "button -> capability" dict (test_menu_has_no_second_map already checks 3
@@ -1455,16 +1455,16 @@ def test_gate_single_capability_map():
     assert "ADMIN_CAPS" not in admin_source  # never imported/copied by name into admin.py
     assert "required_capability" in admin_source  # resolves live against the one map instead
 
-    caps_source = _non_comment_source(handlers_dir / "admin_caps.py")
+    caps_source = _non_comment_source(repo_root / "handlers/access/admin_caps.py")
     assert "ADMIN_CAPS.get(" in caps_source and "ADMIN_CAPS[" in caps_source
 
 
 def test_gate_no_capability_cache():
-    """D-05: no RAM cache in handlers/admin_caps.py -- staff is a local ~5-row table, not a
+    """D-05: no RAM cache in handlers/access/admin_caps.py -- staff is a local ~5-row table, not a
     networked source like services/allowlist.py (the explicitly-named anti-pattern this gate
     guards against reintroducing)."""
     repo_root = REPO_ROOT
-    source = _non_comment_source(repo_root / "handlers" / "admin_caps.py")
+    source = _non_comment_source(repo_root / "handlers" / "access" / "admin_caps.py")
     assert "lru_cache" not in source
     assert not re.search(r"^_?\w*cache\w*\s*[:=]", source, re.IGNORECASE | re.MULTILINE)
     assert not re.search(r"^(async def|def)\s+refresh_\w*\(", source, re.MULTILINE)
@@ -1530,7 +1530,7 @@ def _keys_collide(key_a, key_b):
 
 
 def test_gate_no_callback_namespace_collision_with_admin():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     repo_root = REPO_ROOT
     admin_keys = [k for k in ADMIN_CAPS if not k.startswith(("cmd:", "state:", "special:"))]

@@ -27,7 +27,7 @@ from config import config
 from database import db
 from handlers.regform import admin_reg_percity
 from handlers import admin_settings
-from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
+from handlers.access.admin_caps import required_capability, role_caps_key, role_enabled_key
 import domain.cities as cities
 import domain.regform.engine as reg_engine
 from tests._dbtpl import fast_init_db

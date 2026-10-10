@@ -4,10 +4,10 @@
 отдельные задачи Phase 12, не эта (выдача QR уже сделана Квиком 260923 —
 `services/checkin.py::build_checkin_qr`/`handlers/user_actions.py::show_my_checkin_qr`).
 
-Форма шва — эталон `handlers/admin_purge.py`/`handlers/cities/admin_cities.py`: своего `Router()`
+Форма шва — эталон `handlers/access/admin_purge.py`/`handlers/cities/admin_cities.py`: своего `Router()`
 нет, `from handlers.admin import router`, каждый декоратор — в одну строку со строковым
 литералом (инвариант cap-теста `tests/test_roles_phase8.py`). Право — `checkin`
-(`handlers/admin_caps.py` ADMIN_CAPS/`_ADMIN_MENU_ROWS`, `handlers/admin_sections.py`
+(`handlers/access/admin_caps.py` ADMIN_CAPS/`_ADMIN_MENU_ROWS`, `handlers/admin_sections.py`
 SECTIONS «apps»).
 
 T-12-01 (Tampering): найденный в файле QR-код НЕ доверенный ввод — строки отчёта «не найден»/
@@ -356,7 +356,7 @@ async def render_admin_checkin(admin_id: int, city: str | None = None) -> tuple[
     )
     # Рассылка QR, «Написать не пришедшим», сводка прихода — менеджерские (moderate_reg):
     # волонтёру с одним правом `checkin` эти кнопки не рисуем, иначе тап отвечает «Недостаточно прав».
-    from handlers.admin_caps import _holds, resolve_capabilities
+    from handlers.access.admin_caps import _holds, resolve_capabilities
     is_manager = _holds(await resolve_capabilities(admin_id), "moderate_reg")
     if not is_manager:
         qr_buttons, not_arrived_buttons = [], []

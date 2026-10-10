@@ -24,7 +24,7 @@ from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_miniapp
 from handlers import admin_miniapp_theme
 from handlers.states import MiniAppTheme
-from handlers.admin_caps import ADMIN_CAPS, required_capability
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 import shared.web_theme as web_theme
 from tests._dbtpl import fast_init_db
 

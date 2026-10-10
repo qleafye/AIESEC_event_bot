@@ -22,7 +22,7 @@ from config import config
 from database import db
 from database.db import _connect
 from handlers import admin_checkin
-from handlers.admin_caps import role_caps_key, role_enabled_key
+from handlers.access.admin_caps import role_caps_key, role_enabled_key
 from handlers.states import CheckinQrTimeEdit
 import services.checkin_broadcast as broadcast_svc
 import services.scheduler as sched

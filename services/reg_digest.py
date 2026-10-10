@@ -21,7 +21,7 @@
 модерацию») остаётся в `post_finalize` — он решает ЧТО отправлять, а этот модуль ТОЛЬКО как
 (по одной или пачкой).
 
-Импорт `handlers.admin_caps` — ленивый, внутри функций: `handlers/registration.py`
+Импорт `handlers.access.admin_caps` — ленивый, внутри функций: `handlers/registration.py`
 импортирует `reg_finalize` на верхнем уровне, поэтому верхнеуровневый импорт обратно в
 `handlers` замкнул бы цикл при загрузке пакета (тот же приём, что в game_digest.py).
 """
@@ -232,7 +232,7 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
     `admin_text`), а в режиме `digest` штампуется в очередь, чтобы `send_reg_digest` показал
     эти заявки ОТДЕЛЬНЫМ блоком «↩️ Возвращены на модерацию», не смешивая со счётчиком
     «Новые заявки»."""
-    from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
+    from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     if is_new and auto_rejected and await auto_rejects_go_to_summary():
         return  # владелец 23.09: автоотказы — той же периодической сводкой, что и заявки
     city = await resolve_city(city_raw)
@@ -266,7 +266,7 @@ async def send_reg_digest(city: str | None) -> int:
     постановке `notify_application`), а НЕ перечитыванием `users.status` — к моменту отправки
     статус мог смениться (менеджер вернул заявку из журнала автоотказов), и сводка соврала
     бы."""
-    from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
+    from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     try:
         rows = await list_unsent_reg_digest(city)
         if not rows:

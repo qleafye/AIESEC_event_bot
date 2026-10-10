@@ -41,7 +41,7 @@ from database.db import (
     # (miniapp/routers/hub.py, координация владельца 24.09).
     get_checkin_status,
 )
-from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260923-en2 (задача 3): тот же дефолт-текст возвращенца, что /start уже шлёт
 # (handlers/registration.py::cmd_start, DEFAULT_START_RETURNING_TEXT) — второй копии
 # литерала не заводим. Циклического импорта нет: handlers/__init__.py импортирует

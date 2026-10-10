@@ -33,7 +33,7 @@
 День — московский (`services/timeutil.msk_now`), окно `[00:00, момент отправки)`: сводка,
 ушедшая в 21:00, рассказывает про уже прожитые 21 час, а не про вчера.
 
-Импорт `handlers.admin_caps` — ленивый, внутри функций (цикл через пакет `handlers`), тот же
+Импорт `handlers.access.admin_caps` — ленивый, внутри функций (цикл через пакет `handlers`), тот же
 приём, что в `services/game_digest.py` и `services/reg_digest.py`.
 """
 import html
@@ -193,7 +193,7 @@ async def digest_recipients(city: str | None) -> list[int]:
     DXP) получил бы две одинаковые сводки. Пустой результат (никто не держит ни одного права)
     достаётся тем же фоллбэком на `config.ADMIN_IDS`, что внутри `notify_by_capability` —
     он живёт в `capability_holders`/вызывающем ниже, не здесь."""
-    from handlers.admin_caps import capability_holders  # lazy: см. докстринг модуля
+    from handlers.access.admin_caps import capability_holders  # lazy: см. докстринг модуля
     out: list[int] = []
     seen: set[int] = set()
     for cap in CAPS:

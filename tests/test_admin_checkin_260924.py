@@ -119,7 +119,7 @@ BOUND_ID = 910102
 async def _setup_bound_manager(city: str):
     """D-26 (24.09): волонтёр/менеджер, НАСТОЯЩЕ привязанный к городу (`staff.city`, не просто
     выбравший фильтр в панели) — тот же приём, что `tests/test_admin_program_260924.py`."""
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
     await db.set_setting(role_caps_key("reg_manager"), "checkin")
     await db.add_staff(BOUND_ID, "reg_manager", ADMIN_ID)
     await db.set_staff_city(BOUND_ID, city)

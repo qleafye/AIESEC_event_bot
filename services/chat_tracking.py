@@ -184,11 +184,11 @@ async def city_for_chat(chat_id: int) -> str | None:
 async def is_bot_admin_user(telegram_id: int) -> bool:
     """Смеет привязывать/отвязывать чат тот же круг людей, что держит право `settings` —
     привязка чата это настройка интеграции (D-1), не действие над конкретной заявкой.
-    Ленивый импорт `handlers.admin_caps` — `services` не тянет `handlers` на уровне модуля
+    Ленивый импорт `handlers.access.admin_caps` — `services` не тянет `handlers` на уровне модуля
     (тот же приём, что у остальных `services/*`, импортирующих `handlers.*` лениво)."""
     if telegram_id in config.ADMIN_IDS:
         return True
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     return "settings" in await resolve_capabilities(telegram_id)
 

@@ -134,7 +134,7 @@ def test_toggle_row_and_section_placement(tmp_path):
 
 
 def test_toggle_callback_registered_under_settings_capability():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="toggle_daily_digest") == "settings"
 
 
@@ -450,7 +450,7 @@ def _grant(uid, role):
 def test_recipient_with_both_capabilities_gets_one_copy(tmp_path):
     _db_ready(tmp_path)
     config.ADMIN_IDS = []  # иначе суперадмин держит оба права и закрывает собой картину
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
     asyncio.run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))
     asyncio.run(db.set_setting(role_caps_key("game_manager"), "moderate_game"))
     _grant(MANAGER_A, "reg_manager")

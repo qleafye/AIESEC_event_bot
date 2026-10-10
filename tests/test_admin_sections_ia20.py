@@ -29,11 +29,11 @@ from database import db
 import domain.cities as cities
 from handlers.regform import admin_reg_config as regcfg
 from handlers.regform import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
-from handlers import admin_roles as roles
+from handlers.access import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
 from handlers.sheets import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from handlers.admin_settings import settings_toggle_rows
 
 from tests.test_roles_phase8 import (
@@ -269,7 +269,7 @@ def test_flat_menu_and_sections_agree_on_who_sees_anything():
     `SECTIONS`). Пока оба говорят одно и то же, расхождения не видно; разойдутся — менеджеру
     с таким правом `/admin` скажет «нет доступных разделов», хотя панель раздел бы нарисовала
     (или наоборот: раздел есть, а войти в него не с чего)."""
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     from handlers.admin_core import _visible_menu_rows
 
     single = {c for v in ADMIN_CAPS.values() for c in (v if isinstance(v, tuple) else (v,))}
@@ -291,7 +291,7 @@ def test_manager_with_moderate_reg_only_sees_the_applications_section(tmp_path):
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "moderate_reg")
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     caps = asyncio.run(resolve_capabilities(MANAGER_ID))
     assert caps == {"moderate_reg"}
@@ -303,7 +303,7 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "settings")
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     caps = asyncio.run(resolve_capabilities(MANAGER_ID))
     tokens = [t for t, _ in sec.visible_sections(caps, False)]
@@ -319,7 +319,7 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
 
 def test_stranger_sees_no_sections(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     caps = asyncio.run(resolve_capabilities(STRANGER_ID))
     assert caps == set()

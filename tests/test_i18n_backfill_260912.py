@@ -291,5 +291,5 @@ def test_admin_i18n_seed_does_not_touch_synchronous_driver(tmp_path, monkeypatch
 # ── ADMIN_CAPS: новый callback размечен, вне карты прав его бы не существовало ──────────────
 
 def test_admin_i18n_seed_is_capability_mapped():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS.get("admin_i18n_seed") == "settings"

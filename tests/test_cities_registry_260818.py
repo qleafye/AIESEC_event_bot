@@ -392,7 +392,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers import admin as admin_mod
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities screen/CRUD/season moved here
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 
 ADMIN_ID = 941101
 MANAGER_ID = 941102

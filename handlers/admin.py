@@ -107,7 +107,7 @@ from services.background import spawn as _spawn
 from services import decision_delivery
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
-from handlers.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
+from handlers.access.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
 from handlers.reg_schema import REG_FLOW, REG_DEFAULTS, REG_LABELS, REG_PRESETS, REG_CATEGORIES, SHEET_HEADERS, STATUS_LABELS, _build_sheet_row, active_sheet_headers, set_sheet_schema, _sheet_value_map, approve_user, dropout_step_label, _apply_party_preset, _apply_short_preset, city_row_tab, incomplete_city_batches
 from domain.cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07.2 (CITY-02): admin city switcher + scoping
@@ -156,7 +156,7 @@ logger = logging.getLogger(__name__)
 # NOT the router's outer-hook variant) -- it only wraps a handler whose OWN filter already
 # matched, so it never touches events belonging to sibling routers (payment/registration/
 # user_actions), regardless of `admin.router` being registered first in main.py. See
-# handlers/admin_caps.py for the map + resolver + the class itself.
+# handlers/access/admin_caps.py for the map + resolver + the class itself.
 router.callback_query.middleware(CapabilityMiddleware())
 router.message.middleware(CapabilityMiddleware())
 
@@ -595,7 +595,7 @@ async def cmd_find_user(message: types.Message):
     # Phase 33 (задача 2): фоллбэк на reg_started — человек нажал /start, но анкету не подал
     # (users_row_only_on_submit, память проекта), поэтому его не было в users, но он всё
     # равно существует в базе бота. `services/person_search.py` это уже умеет для мастера
-    # выдачи ролей (`handlers/admin_roles.py::roles_add_person`) — здесь та же фактическая
+    # выдачи ролей (`handlers/access/admin_roles.py::roles_add_person`) — здесь та же фактическая
     # проверка, только напрямую по username (без части ФИО — /find сам всегда искал только
     # @username).
     started = await get_reg_started_by_username(username)
@@ -948,7 +948,7 @@ from handlers.applications.admin_moderation import show_applications, show_recei
 # registers admin_roles.py's handlers on the shared router at exactly the position guide+roles
 # occupied in the original (pre-split) file -- immediately before gamification, which the bottom
 # `from handlers import admin_gamification` import still reproduces (13-01 snapshot order).
-from handlers.admin_roles import show_admin_settings_guide  # noqa: E402
+from handlers.access.admin_roles import show_admin_settings_guide  # noqa: E402
 
 
 # ── ROLE-01 (D-16): «/admin auto-opens the one available section» ──────────────────────────
@@ -1043,8 +1043,8 @@ from handlers.comms import admin_polls  # noqa: E402
 # Квик 260910-ro7 (DELU-01..08): shared-router seam import for the hidden superadmin command
 # «/delete_user» — registers cmd_delete_user/delu_go:*/delu_no on the shared router right
 # after the gamification+polls tail (golden snapshot: a clean append, no reorder of anything
-# above). Command is intentionally invisible everywhere else — see handlers/admin_purge.py.
-from handlers import admin_purge  # noqa: E402
+# above). Command is intentionally invisible everywhere else — see handlers/access/admin_purge.py.
+from handlers.access import admin_purge  # noqa: E402
 
 # Phase 12 (FORUM-CHECKIN.md): shared-router seam import for «✅ Отметки на форуме»
 # (handlers/admin_checkin.py) — registers show_admin_checkin/checkin_upload_start/

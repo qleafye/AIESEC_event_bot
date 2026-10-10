@@ -4,7 +4,7 @@
 настраиваемое время (per_city, дефолт 21:00) бот шлёт отчёт: в привязанный чат SOS города
 (та же привязка, что `services.sos.sos_chat_for_city` — читаем ЕЁ ПУБЛИЧНУЮ функцию, `sos.py`
 не правим) и личным сообщением держателям capability `moderate_reg` этого города
-(`handlers.admin_caps.capability_holders` — тот же примитив, что у соседних форумных рассылок,
+(`handlers.access.admin_caps.capability_holders` — тот же примитив, что у соседних форумных рассылок,
 уже умеет фоллбэк «никто не привязан к городу -> все держатели»).
 
 Идемпотентность АВТОМАТИЧЕСКОЙ отправки — по (город, день форума), `database.db.
@@ -352,7 +352,7 @@ async def send_report(city: str | None, day: str, *, mark_sent: bool) -> dict:
     (`_run_job`); ручная кнопка «Отчёт дня сейчас» зовёт с `mark_sent=False` (докстринг
     модуля)."""
     from database.db import forum_day_report_mark_sent
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
     from services.sos import sos_chat_for_city  # публичная функция, sos.py не правим
 
     text = await build_report_text(city, day)

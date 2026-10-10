@@ -16,7 +16,7 @@ from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import registration as reg_mod
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from domain.cities import CITIES
 import domain.cities as cities_mod
 from tests._dbtpl import fast_init_db
@@ -95,7 +95,7 @@ def test_build_admin_keyboard_admin_cities_lives_in_manage_section(tmp_path):
     # того, сколько строк добавит следующая фаза.
     _admin_ready(tmp_path)
     from handlers import admin_sections as sec
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     caps = asyncio.run(resolve_capabilities(ADMIN_ID))
     assert ("op", "admin_cities") in sec.visible_rows("manage", caps, is_superadmin=True)

@@ -486,7 +486,7 @@ def _set_role_caps(role, caps):
 
 def test_checkin_approve_capability_and_reg_volunteer_role():
     from dashboard import access
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     assert "checkin_approve" in admin_caps.ALL_CAPABILITIES
     assert list(access.ALL_CAPABILITIES) == list(admin_caps.ALL_CAPABILITIES)
     assert admin_caps.CAP_LABELS["checkin_approve"]
@@ -550,7 +550,7 @@ def test_invite_with_approval_grants_reg_volunteer_role(tmp_path):
     from tests.test_volunteer_invite_260924 import FakeBot, _FakeCommand, _FakeMessage
     from tests.test_volunteer_invite_260924 import _ready as inv_ready
     from handlers import registration as reg
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     inv_ready(tmp_path)
     _run(bot_db.set_setting("volunteer_invite_enabled", "on"))

@@ -207,7 +207,7 @@ def test_get_status_shape(tmp_path):
 # Файлы, которым разрешено писать is_ambassador / ambassador_status в SQL — с причиной.
 _ALLOWED_STATUS_WRITERS = {
     "database/amb_status_db.py": "единственный писатель статуса и зеркала is_ambassador",
-    "handlers/uat_seed.py": "сидер состояний /uat на стенде — не боевой путь",
+    "handlers/access/uat_seed.py": "сидер состояний /uat на стенде — не боевой путь",
     "tools/shoot_screens.py": "генератор скриншотов документации — не боевой путь",
 }
 _SKIP_DIRS = {"tests", ".planning", "venv", ".venv", "node_modules", ".git", "__pycache__",

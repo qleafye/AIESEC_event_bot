@@ -62,7 +62,7 @@ def _command_passes(text, uid):
     """Фильтр Command у aiogram требует настоящий `Message` (isinstance), поэтому команды
     через `dispatch_message` не доходят. Решение о доступе принимает CapabilityMiddleware —
     гоняем через неё сам текст команды: (пропущено ли до хендлера, ответы человеку)."""
-    from handlers.admin_caps import CapabilityMiddleware
+    from handlers.access.admin_caps import CapabilityMiddleware
     from tests.test_roles_phase8 import FakeMessage, FakeUser
 
     called = []
@@ -91,7 +91,7 @@ def _flat(kb):
 # ── модель прав ─────────────────────────────────────────────────────────────────────────
 
 def test_holds_understands_any_of_tuple():
-    from handlers.admin_caps import _holds, ANY_CAPABILITY
+    from handlers.access.admin_caps import _holds, ANY_CAPABILITY
 
     assert _holds({"stats"}, ("stats", "source_links"))
     assert _holds({"source_links"}, ("stats", "source_links"))
@@ -103,7 +103,7 @@ def test_holds_understands_any_of_tuple():
 
 def test_role_grants_exactly_source_links(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     asyncio.run(db.add_staff(MKT_ID, ROLE, ADMIN_ID))
     assert asyncio.run(resolve_capabilities(MKT_ID)) == {"source_links"}
@@ -122,7 +122,7 @@ def test_role_is_assigned_and_removed_from_roles_screen(tmp_path):
     assert result is not UNHANDLED
     assert ROLE in asyncio.run(db.get_staff_roles(MKT_ID))
 
-    from handlers import admin_roles
+    from handlers.access import admin_roles
     text = asyncio.run(admin_roles.render_roles_text())
     assert "📣 Маркетинг (метки)" in text and "🔗 Ссылки с метками" in text
     kb = _flat(asyncio.run(admin_roles.build_roles_keyboard(ADMIN_ID)))
@@ -143,7 +143,7 @@ def test_role_caps_checkbox_screen_lists_the_new_right(tmp_path):
 
 
 def test_settings_guide_describes_role_without_codes():
-    from handlers.admin_roles import SETTINGS_GUIDE_KEYS, SETTINGS_GUIDE_SECTIONS, _render_settings_guide
+    from handlers.access.admin_roles import SETTINGS_GUIDE_KEYS, SETTINGS_GUIDE_SECTIONS, _render_settings_guide
 
     assert {"role_caps_marketing_manager", "role_marketing_manager_enabled"} <= set(SETTINGS_GUIDE_KEYS)
     text = "\n".join(_render_settings_guide(SETTINGS_GUIDE_SECTIONS, {k: None for k in SETTINGS_GUIDE_KEYS}))

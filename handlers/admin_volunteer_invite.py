@@ -2,7 +2,7 @@
 волонтёров ссылкой вместо ручного сбора юзернеймов. Держатель `moderate_reg` создаёт ссылку
 `https://t.me/<bot>?start=vol_<код>` с сроком жизни ССЫЛКИ, сроком ПРАВ волонтёра и лимитом
 переходов; перешедший по рабочей ссылке получает роль «volunteer» (ровно `checkin`,
-`handlers/admin_caps.py::ROLES`) на срок прав, без ручного набора @username. Приём переходов —
+`handlers/access/admin_caps.py::ROLES`) на срок прав, без ручного набора @username. Приём переходов —
 `handlers/registration.py::cmd_start` (`vol_`-ветка deep-link, СРАЗУ, до анкеты).
 
 Тумблер `volunteer_invite_enabled` — per_city, дефолт OFF (D: «риск утечки ссылки принят», но
@@ -44,7 +44,7 @@ from keyboards.builders import get_cancel_kb
 from services.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, relative_days_iso
 from services.settings.audit import set_setting_by_admin
 
-VOLUNTEER_ROLE = "volunteer"  # handlers.admin_caps.ROLES — держит ровно "checkin"
+VOLUNTEER_ROLE = "volunteer"  # handlers.access.admin_caps.ROLES — держит ровно "checkin"
 # Ревью 28.09 (D-41): ссылка «с одобрением на месте» выдаёт роль волонтёра регистрации —
 # отметка входа И одобрение человека у стойки (checkin + checkin_approve).
 REG_VOLUNTEER_ROLE = "reg_volunteer"

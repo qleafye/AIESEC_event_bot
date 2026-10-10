@@ -13,7 +13,7 @@ from config import config
 from database import db
 from handlers import admin_forum_functions as aff
 from handlers import admin_forum_ready as afr
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from services import sheets
 from tests._dbtpl import fast_init_db
 

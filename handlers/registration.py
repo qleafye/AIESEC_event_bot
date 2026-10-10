@@ -61,9 +61,9 @@ from domain.regform.options import (
     AMBASSADOR_OPTIONS,
     PARTY_TRACK_OPTIONS,  # gap closure фазы 21: подписи развилки формата — один список с вебом
 )
-from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Идея №5 бэклога чек-ина: resolve_capabilities для _handle_volunteer_invite ниже.
-from handlers.admin_caps import resolve_capabilities
+from handlers.access.admin_caps import resolve_capabilities
 # Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
 # plumbing extracted to handlers/reg_schema.py (router-free) so handlers/admin.py no longer
 # reaches into this handler module. Re-imported here since registration.py's own step-flow,
@@ -1068,7 +1068,7 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     rights_expires_at = (invite or {}).get("rights_expires_at")
     invite_city = (invite or {}).get("city")
     # added_by -- создатель ссылки (менеджер), не None: тот же смысл, что у ручной выдачи роли
-    # в handlers/admin_roles.py.
+    # в handlers/access/admin_roles.py.
     await add_staff(  # роль ссылки: volunteer — checkin; reg_volunteer — ещё одобрение на месте
         user_id, (invite or {}).get("role") or "volunteer", (invite or {}).get("created_by"), expires_at=rights_expires_at)
     # Без привязки города staff-строка значит «все города» -- волонтёр по ссылке города A смог

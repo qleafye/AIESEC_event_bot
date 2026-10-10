@@ -2,7 +2,7 @@
 и выбор вопросов ника и телефона кнопками — когда первые ответы уже пришли.
 
 Шов на общий `handlers.admin.router` (своего Router нет, декораторы в одну строку). Права — в
-handlers/admin_caps.py: `extf_*` и состояние ExtFormImport — `settings`.
+handlers/access/admin_caps.py: `extf_*` и состояние ExtFormImport — `settings`.
 """
 import logging
 

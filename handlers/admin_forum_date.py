@@ -171,7 +171,7 @@ async def with_ready_button(kb: InlineKeyboardMarkup, key: str, code: str | None
     города (иначе пути назад в светофор нет). Право — то же, что у кнопки хаба (`forum_ready:*`)."""
     if key not in CITY_FORUM_KEYS or not code:
         return kb
-    from handlers.admin_caps import _holds, required_capability, resolve_capabilities
+    from handlers.access.admin_caps import _holds, required_capability, resolve_capabilities
     cb = f"forum_ready:{code}"
     cap = required_capability(callback_data=cb)
     if cap is None or not _holds(await resolve_capabilities(admin_id), cap):

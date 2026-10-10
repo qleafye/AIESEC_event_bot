@@ -1,7 +1,7 @@
 """Мастер подключения формы: «➕ Подключить Яндекс Форму» / «➕ Подключить Google Форму».
 
 Шов на общий `handlers.admin.router` (своего Router нет, декораторы в одну строку). Права —
-в handlers/admin_caps.py: все `extf_*` и состояние ExtFormConnect — `settings`.
+в handlers/access/admin_caps.py: все `extf_*` и состояние ExtFormConnect — `settings`.
 
 Шаги: ссылка -> проверка доступа -> ключевые вопросы (по ним ответ привязывается к делегату) ->
 создание формы -> вкладка и адрес приёмника (экраны handlers/ext_forms/admin_ext_forms_setup.py) ->

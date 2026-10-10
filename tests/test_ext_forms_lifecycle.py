@@ -146,7 +146,7 @@ def test_long_answer_is_truncated(tmp_path):
 
 
 def test_capabilities_are_enforced(tmp_path):
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="admin_ext_forms") == "settings"
     assert required_capability(callback_data="extf_purge_ok:3") == "settings"
     assert required_capability(callback_data="extf_view:5") == "moderate_reg"

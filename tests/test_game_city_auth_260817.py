@@ -22,7 +22,7 @@ from database import db
 import domain.cities as cities
 from handlers import admin as admin_mod
 from handlers.game import admin_gamification
-from handlers import admin_roles
+from handlers.access import admin_roles
 from handlers import user_actions as ua_mod
 from tests._dbtpl import fast_init_db
 

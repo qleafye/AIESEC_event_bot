@@ -555,7 +555,7 @@ def test_archive_csv_empty_and_formula_safe(tmp_path):
 # ── права и порядок регистрации ──────────────────────────────────────────────────────────
 
 def test_every_bulk_callback_resolves_to_moderate_game():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("ambc_decl", "ambc_decl_go:12", "ambc_decl_go:0", "ambc_decl_no", "ambc_add",
                  "ambc_add_pick:10", "ambc_add_go:10", "ambc_add_cancel", "ambc_arch_csv"):
         assert required_capability(callback_data=data) == "moderate_game", data

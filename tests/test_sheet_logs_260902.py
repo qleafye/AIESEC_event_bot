@@ -17,7 +17,7 @@ from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.synonyms import SETTINGS_SYNONYMS
 from services import sheet_logs
 import handlers.admin_sections as sec
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 import handlers.sheets.admin_sheet_logs as ash
 from tests._dbtpl import fast_init_db
 

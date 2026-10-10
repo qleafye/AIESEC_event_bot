@@ -5,7 +5,7 @@ pytest-asyncio is unavailable in this env — every async helper is driven via a
 and config.DB_PATH points at a tmp_path file, same convention as tests/test_roles_phase8.py /
 tests/test_manager_city_091.py.
 
-Task 1: `handlers/admin_caps.py::capability_holders`/`notify_by_capability` grow an optional
+Task 1: `handlers/access/admin_caps.py::capability_holders`/`notify_by_capability` grow an optional
     `city` kwarg -- addressing narrowing with a mandatory "never drop the message" fallback.
 Task 2: `handlers/user_actions.py::process_question` resolves the delegate's city once and
     passes it through.
@@ -102,7 +102,7 @@ def _count_questions():
 
 def test_capability_holders_without_city_kwarg_is_byte_identical_to_before(tmp_path):
     """Regression: no `city` argument at all -> same as calling it pre-09.2."""
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MSK_MANAGER_ID, "reg_manager", ADMIN_ID))
@@ -112,7 +112,7 @@ def test_capability_holders_without_city_kwarg_is_byte_identical_to_before(tmp_p
 
 
 def test_capability_holders_city_none_applies_no_filter(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -124,7 +124,7 @@ def test_capability_holders_city_none_applies_no_filter(tmp_path):
 
 
 def test_capability_holders_module_off_ignores_city_kwarg(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     # event_city_enabled left at its default ("off").
@@ -136,7 +136,7 @@ def test_capability_holders_module_off_ignores_city_kwarg(tmp_path):
 
 
 def test_capability_holders_filters_by_bound_city(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -157,7 +157,7 @@ def test_capability_holders_filters_by_bound_city(tmp_path):
 def test_capability_holders_normalizes_both_sides(tmp_path):
     """Garbage/legacy binding label and a garbage requested city both collapse through
     normalize_city to the same default code, so they still match."""
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -172,7 +172,7 @@ def test_capability_holders_normalizes_both_sides(tmp_path):
 def test_capability_holders_city_filter_empties_falls_back_to_unfiltered(tmp_path):
     """T-092-04: every holder is bound to a DIFFERENT city than requested -> the message must
     still reach somebody, not vanish."""
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -185,7 +185,7 @@ def test_capability_holders_city_filter_empties_falls_back_to_unfiltered(tmp_pat
 
 
 def test_notify_by_capability_city_kwarg_returns_same_sent_count_shape(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -207,7 +207,7 @@ def test_notify_by_capability_city_kwarg_returns_same_sent_count_shape(tmp_path)
 
 
 def test_notify_by_capability_recipient_order_keeps_superadmins_first(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     _roles_ready(tmp_path)
     _enable_cities()
@@ -221,7 +221,7 @@ def test_notify_by_capability_recipient_order_keeps_superadmins_first(tmp_path):
 # ── Task 2: delegate question -> process_question resolves + passes the delegate's city ────
 
 def test_process_question_module_off_recipients_match_capability_holders(tmp_path):
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     from handlers import user_actions as ua_mod
 
     _roles_ready(tmp_path)
