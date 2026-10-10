@@ -1,5 +1,5 @@
 """Фикс фазы 32 (CR-01/CR-02): паритет одобрения просроченной сдачи между ботом
-(`handlers/admin_gamification.py::grev_approve`) и Mini App (`miniapp/routers/review.py::
+(`handlers/game/admin_gamification.py::grev_approve`) и Mini App (`miniapp/routers/review.py::
 review_approve`) — тот же `task_id` в строке `coins` (иначе баллы не попадают в рейтинг
 волны, `database.db.sum_task_coins_for_wave`), тот же штраф за просрочку и одно и то же
 место в рейтинге волны (`services.ambassador_waves.wave_rating`).
@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db as bot_db
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from services.ambassador_waves import wave_rating
 
 from tests.test_miniapp_routes import GAME_MANAGER_ID, _cfg, _client, _hdr, _seed, _use_tmp_db

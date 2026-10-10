@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 import handlers.admin as admin_mod
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from handlers import user_actions as ua_mod
 from handlers.states import GameSubmit
 from tests._dbtpl import fast_init_db

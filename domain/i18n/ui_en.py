@@ -152,7 +152,7 @@ UI_EN: dict[str, str] = {
     # предупреждение у «✅ Принято» выше).
     "✅ Оставили": "✅ Kept",
     "Оставили": "Kept",
-    # handlers/game_submit_counter.py::game_counter_kb — та же пара «с эмодзи для
+    # handlers/game/game_submit_counter.py::game_counter_kb — та же пара «с эмодзи для
     # test_i18n_literal_corpus_guard_260906.py / без эмодзи для реального перевода».
     "❌ Отмена": "❌ Cancel",
     # cancel_registration_dismiss (handlers/reg_flow.py) — алерт «Продолжаем» после «Нет,

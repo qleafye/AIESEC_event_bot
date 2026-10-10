@@ -259,7 +259,7 @@ def test_copy_wave_clamps_deadline_to_new_wave_end(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Задача 2: экран списка волн и визард создания (handlers/admin_game_waves.py)
+# Задача 2: экран списка волн и визард создания (handlers/game/admin_game_waves.py)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _enable_cities():
@@ -268,7 +268,7 @@ def _enable_cities():
 
 def test_wave_list_screen_has_no_state_codes(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     _run(db.set_wave_state(wid, "announced"))
     text, kb = _run(w._wave_list_screen(ADMIN_ID))
@@ -279,7 +279,7 @@ def test_wave_list_screen_has_no_state_codes(tmp_path):
 
 def test_wave_create_dates_both_via_semicolon(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))
@@ -295,7 +295,7 @@ def test_wave_create_dates_both_via_semicolon(tmp_path):
 
 def test_wave_create_single_date_asks_second(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))
@@ -316,7 +316,7 @@ def test_wave_create_single_date_asks_second(tmp_path):
 
 def test_wave_create_garbage_input_stays_in_state_with_example(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))
@@ -330,7 +330,7 @@ def test_wave_create_garbage_input_stays_in_state_with_example(tmp_path):
 
 def test_wave_create_overlap_rejected_names_conflicting_wave(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     state = _new_state(ADMIN_ID)
@@ -352,7 +352,7 @@ def test_wave_card_stale_button_wrong_city_manager_gets_explanation(tmp_path):
     city_a, city_b = _codes()
     wave_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), event_city=city_b, created_by=ADMIN_ID))
     _bind_manager(MSK_MANAGER_ID, city_a)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     state = _new_state(MSK_MANAGER_ID)
     cb = FakeCallback(f"wave:{wave_id}", user_id=MSK_MANAGER_ID)
     _run(w.show_wave_card(cb, state))
@@ -364,7 +364,7 @@ def test_wave_card_stale_button_wrong_city_manager_gets_explanation(tmp_path):
 
 def test_wave_create_go_creates_draft_with_continuing_number(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     # Первая волна города — номер 1, уже существует.
     _run(db.create_wave(_dt("01.01.2026"), _dt_end("05.01.2026"), created_by=ADMIN_ID))
@@ -390,7 +390,7 @@ def test_card_shows_intro_html_as_stored_without_second_escape(tmp_path):
     """Вводный текст хранится готовым HTML (`message.html_text`): «&» уже лежит как «&amp;»,
     жирный — тегом. Второй escape на карточке показывал менеджеру «&amp;amp;» и «&lt;b&gt;»."""
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(
         _dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID,
         intro_text="<b>Старт</b> &amp; вперёд",
@@ -402,7 +402,7 @@ def test_card_shows_intro_html_as_stored_without_second_escape(tmp_path):
 
 def test_card_locked_fields_after_start_sent_shows_explanation(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     _run(db.set_wave_state(wid, "active"))
     _run(db.mark_wave_started(wid, "2026-09-30 09:00:00"))
@@ -416,7 +416,7 @@ def test_card_locked_fields_after_start_sent_shows_explanation(tmp_path, monkeyp
 
 def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))
     # WR-16 (остаток, ревизия 32-FIX-common-2): `wave_activate_go` теперь тоже отказывает
     # волне без заданий — этот тест проверяет саму расстановку джоб, а не запрет пустой волны
@@ -459,7 +459,7 @@ def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
 
 def test_delete_requires_confirm_and_clears_wave_id_and_jobs(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     tid = _run(db.create_task("Задание", "Light", 10, "text", "2026-10-10 23:59:59", ADMIN_ID, wave_id=wid))
 
@@ -496,7 +496,7 @@ def test_delete_requires_confirm_and_clears_wave_id_and_jobs(tmp_path, monkeypat
 
 def test_delete_announced_wave_rejected(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     _run(db.set_wave_state(wid, "announced"))
     cb = FakeCallback(f"wavedel:{wid}", user_id=ADMIN_ID)
@@ -508,7 +508,7 @@ def test_delete_announced_wave_rejected(tmp_path):
 
 def test_copy_from_card_opens_new_wave_card(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     src_id = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     cb = FakeCallback(f"wavecopy:{src_id}", user_id=ADMIN_ID)
@@ -536,8 +536,8 @@ def test_wrong_city_manager_blocked_on_every_mutating_callback(tmp_path):
     city_a, city_b = _codes()
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), event_city=city_b, created_by=ADMIN_ID))
     _bind_manager(MSK_MANAGER_ID, city_a)
-    from handlers import admin_game_waves as w
-    from handlers import admin_game_wave_wizard as ww
+    from handlers.game import admin_game_waves as w
+    from handlers.game import admin_game_wave_wizard as ww
 
     checks = [
         (ww.wave_edit_field_start, f"waveedit:{wid}:dates"),
@@ -561,13 +561,13 @@ def test_wrong_city_manager_blocked_on_every_mutating_callback(tmp_path):
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Ревизия 32-FIX: CR-04 (отмена визарда) / WR-06 (право и состав перепроверяются на шаге
-# правки) / WR-13 частично — handlers/admin_game_wave_wizard.py
+# правки) / WR-13 частично — handlers/game/admin_game_wave_wizard.py
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_wave_wizard_cancel_on_create_intro_step_does_not_save_text(tmp_path):
     """CR-04, сценарий 1: раньше «Отмена» на шаге вводного текста сохранялась как сам текст."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))
@@ -582,7 +582,7 @@ def test_wave_wizard_cancel_on_create_intro_step_does_not_save_text(tmp_path):
 def test_wave_wizard_cancel_via_slash_command_on_dates_step(tmp_path):
     """CR-04, сценарий 2: раньше любая команда посреди шага дат вешала в бесконечном «не понял»."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))
@@ -596,7 +596,7 @@ def test_wave_wizard_cancel_on_edit_intro_step_returns_to_card_without_saving(tm
     """CR-04: «Отмена» на шаге правки вводного текста волны не портит прежний текст и
     возвращает на карточку (не в список — есть куда вернуться, we_wave_id известен)."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveEdit
     wid = _run(db.create_wave(
         _dt("01.10.2026"), _dt_end("10.10.2026"), intro_text="Старый текст", created_by=ADMIN_ID,
@@ -617,7 +617,7 @@ def test_wave_edit_dates_step_rejects_when_wave_deleted_mid_edit(tmp_path):
     """WR-06: волну удалили, пока менеджер вводил новые даты — правка не падает и не пишет
     в несуществующую волну."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveEdit
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     state = _new_state(ADMIN_ID)
@@ -634,7 +634,7 @@ def test_wave_edit_dates_step_rejects_field_locked_after_start_notified(tmp_path
     """WR-06, сценарий 1: стартовая рассылка ушла, пока менеджер вводил новые даты — даты
     заперты `wave_editable_fields`, правка отклоняется, а не молча сдвигает дедлайны."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveEdit
     wid = _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))
     _run(db.set_wave_state(wid, "active"))
@@ -656,7 +656,7 @@ def test_wave_edit_intro_step_rejects_when_city_access_lost(tmp_path):
     _ready(tmp_path)
     _enable_cities()
     city_a, city_b = _codes()
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveEdit
     wid = _run(db.create_wave(
         _dt("01.10.2026"), _dt_end("10.10.2026"), event_city=city_a, intro_text="Было",
@@ -703,7 +703,7 @@ def test_general_wave_alert_differs_from_wrong_city_alert(tmp_path):
         _dt("01.11.2026"), _dt_end("10.11.2026"), event_city=city_b, created_by=ADMIN_ID,
     ))
     _bind_manager(MSK_MANAGER_ID, city_a)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
 
     cb_general = FakeCallback(f"wave:{general_id}", user_id=MSK_MANAGER_ID)
     _run(w.show_wave_card(cb_general, _new_state(MSK_MANAGER_ID)))
@@ -730,7 +730,7 @@ def test_wave_copy_last_picks_most_recent_editable_wave(tmp_path):
     ))
     _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))  # общая, свежее
     _bind_manager(MSK_MANAGER_ID, city_a)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     cb = FakeCallback("wavecopy", user_id=MSK_MANAGER_ID)
     state = _new_state(MSK_MANAGER_ID)
@@ -747,7 +747,7 @@ def test_wave_copy_last_explains_when_nothing_editable(tmp_path):
     city_a, _city_b = _codes()
     _run(db.create_wave(_dt("01.10.2026"), _dt_end("10.10.2026"), created_by=ADMIN_ID))  # только общая
     _bind_manager(MSK_MANAGER_ID, city_a)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     cb = FakeCallback("wavecopy", user_id=MSK_MANAGER_ID)
     state = _new_state(MSK_MANAGER_ID)
     _run(w.wave_copy_last_start(cb, state))
@@ -767,7 +767,7 @@ def test_wave_edit_intro_step_asks_for_text_on_message_without_text_or_caption(t
     ветку сброса, но и не сохраняла старое значение). FSM не сбрасывается — менеджер может
     прислать текст ещё раз."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveEdit
     wid = _run(db.create_wave(
         _dt("01.10.2026"), _dt_end("10.10.2026"), intro_text="Старый текст", created_by=ADMIN_ID,
@@ -787,7 +787,7 @@ def test_wave_create_intro_step_asks_for_text_on_message_without_text_or_caption
     """IN-04: та же проверка на шаге вводного текста НОВОЙ волны — фото без подписи не должно
     молча стать «волной без вводного текста»."""
     _ready(tmp_path)
-    from handlers import admin_game_wave_wizard as w
+    from handlers.game import admin_game_wave_wizard as w
     from handlers.states import WaveCreate
     state = _new_state(ADMIN_ID)
     _run(state.set_data({"wc_mode": "create", "wc_city": None}))

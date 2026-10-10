@@ -200,7 +200,7 @@ def test_reminder_is_sent_once_per_deadline(tmp_path, monkeypatch):
 
 
 def test_task_created_too_close_to_deadline_warns(tmp_path, monkeypatch):
-    from handlers import game_task_wizard
+    from handlers.game import game_task_wizard
 
     monkeypatch.setattr(sched, "_deadline_reminder_hours", 24)
     monkeypatch.setattr(game_task_wizard, "schedule_task_deadline_reminder", lambda *_a: False)

@@ -4,7 +4,7 @@
 
 Phase 16 (16-01, GAME-UI-01): единственный источник RU-подписей категорий/типов
 подтверждения геймификации. Делегатский рендер (`handlers/user_actions.py`) — прямой
-потребитель с этого коммита. `handlers/admin_gamification.py`'s `_proof_types_label`/
+потребитель с этого коммита. `handlers/game/admin_gamification.py`'s `_proof_types_label`/
 `_GAME_PROOF_LABELS` — синхронная копия для синхронных рендеров модерации
 (`_render_submission_card`, чекбоксы визарда), оставлена намеренно (см. 16-03-SUMMARY).
 
@@ -45,7 +45,7 @@ _CATEGORY_KEY: dict[str, str] = {
 # Phase 17.1 (17.1-01): подписи типов подтверждения переехали из литералов в реестр —
 # зеркало _CATEGORY_KEY выше (code (GAME_PROOF_TYPES) -> имя ключа game_proof_type_label_*).
 # Дефолты в SETTINGS_SCHEMA байт-в-байт равны прежнему словарю PROOF_TYPE_LABELS, который
-# сам был дословной копией handlers/admin_gamification.py::_GAME_PROOF_LABELS (админская
+# сам был дословной копией handlers/game/admin_gamification.py::_GAME_PROOF_LABELS (админская
 # копия остаётся литеральной до 16-03 — он репойнтит её сюда).
 _PROOF_TYPE_KEY: dict[str, str] = {
     "photo": "game_proof_type_label_photo",
@@ -136,10 +136,10 @@ async def task_deadline_text(task: dict) -> str:
 def task_deadline_admin(task: dict, fmt: str = "%d.%m %H:%M") -> str:
     """Phase 32 (32-04, D-27): срок МЕНЕДЖЕРУ — синхронная, реестра не читает (менеджерские
     экраны проекта собираются литералами модуля, та же граница, что у бейджа
-    `handlers/game_review_render.py`). Формат приходит параметром: бот печатает
+    `handlers/game/game_review_render.py`). Формат приходит параметром: бот печатает
     `%d.%m %H:%M`, веб-редактор Mini App — `%d.%m.%Y %H:%M`. Срока нет -> литерал «без срока»;
     строку разобрать не удалось -> прежний фейл-софт (значение как есть, `—` для пустого) —
-    byte-identical копия `_game_task_deadline_display` (`handlers/admin_gamification.py`) для
+    byte-identical копия `_game_task_deadline_display` (`handlers/game/admin_gamification.py`) для
     ветки успешного разбора. Единственный помощник, которым менеджерским экранам разрешено
     печатать срок — приватные копии удаляют планы 32-07 и 32-14, дальше собственный
     `strptime` по `deadline_at` запрещён структурным сторожем плана 32-14."""

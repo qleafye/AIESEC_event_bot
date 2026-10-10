@@ -16,8 +16,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_gamification
-from handlers.game_review_render import _render_submission_card
+from handlers.game import admin_gamification
+from handlers.game.game_review_render import _render_submission_card
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932901

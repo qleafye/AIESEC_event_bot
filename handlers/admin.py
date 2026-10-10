@@ -1027,11 +1027,11 @@ def _pick_auto_open(rows: list[tuple[str, str]]):
 # order (gamification was last in the file before this split) -- decorating THIS module's
 # `router` object, never a second Router() instance. main.py is unaffected: it still includes
 # `admin.router` by reference, unaware any handler now physically lives in a seam file.
-from handlers import admin_gamification  # noqa: E402
+from handlers.game import admin_gamification  # noqa: E402
 # «📊 Опросы»: список/карточка (admin_polls) + мастер (admin_poll_wizard, импортируется из
 # хвоста admin_polls — тот же приём, что admin_gamification → admin_game_tasks ниже).
 from handlers import admin_polls  # noqa: E402
-# Phase 16 (16-03, GAME-UI-03): the manager task-management seam handlers/admin_game_tasks.py
+# Phase 16 (16-03, GAME-UI-03): the manager task-management seam handlers/game/admin_game_tasks.py
 # (point-edit card actions, deadline presets, wizard «✏️ Изменить», «👁 Как видит делегат»)
 # is imported at the TAIL of admin_gamification.py, not here (16-04): a `from handlers import
 # admin_gamification` that runs BEFORE this module (~20 test files do that) re-enters this
@@ -1190,8 +1190,8 @@ from handlers.ext_forms import admin_ext_forms  # noqa: E402,F401
 from handlers.delegations import admin_delegations  # noqa: E402,F401
 # Экран «🕐 Часовой пояс» города (handlers/admin_forum_tz.py) — golden append в хвост.
 from handlers import admin_forum_tz  # noqa: E402,F401
-# «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/admin_coins_transfer.py) — golden append в хвост.
-from handlers import admin_coins_transfer  # noqa: E402,F401
+# «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/game/admin_coins_transfer.py) — golden append в хвост.
+from handlers.game import admin_coins_transfer  # noqa: E402,F401
 # Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
 from handlers import admin_settings_enum  # noqa: E402,F401
 # «👥 Список участников» в «📊 Данные» (handlers/admin_participants.py) — golden append в хвост.
