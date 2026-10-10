@@ -156,7 +156,7 @@ def schedule_sync(bot) -> asyncio.Task:
 async def on_setting_written(key: str) -> None:
     if key not in COMMAND_KEYS:
         return
-    from services.bot_profile import _running_bot  # вне процесса бота — поставит старт бота
+    from services.bot.bot_profile import _running_bot  # вне процесса бота — поставит старт бота
 
     bot = _running_bot()
     if bot is not None:

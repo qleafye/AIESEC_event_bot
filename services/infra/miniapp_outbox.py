@@ -263,7 +263,7 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         return
     if kind == "bot_profile_changed":
         # 08.10: описание бота правят в приложении, а ставить его в Telegram может только бот.
-        from services.bot_profile import sync_bot_profile  # ленивый, как выше
+        from services.bot.bot_profile import sync_bot_profile  # ленивый, как выше
 
         await sync_bot_profile(bot)
         return
@@ -273,7 +273,7 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
 
         if "bot_name" in (payload.get("keys") or []):
             # Имя бота из приложения: ставит бот, отказ Telegram — сообщением автору правки.
-            from services.bot_profile import apply_name_from_app
+            from services.bot.bot_profile import apply_name_from_app
 
             await apply_name_from_app(bot, payload.get("by"), payload.get("prev_bot_name"))
         await run_setting_hooks_batch([str(key) for key in payload.get("keys") or []])

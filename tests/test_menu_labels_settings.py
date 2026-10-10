@@ -305,7 +305,7 @@ def test_label_resolved_by_delegate_city(ready, monkeypatch):
 
 def test_label_data_cached_until_write(ready, monkeypatch):
     """Подписи читаются один раз до следующей записи; русскому делегату EN-переводы не грузятся."""
-    from services import menu_labels
+    from services.bot import menu_labels
     loads, en_loads = [], []
     real_keys, real_en = menu_labels._setting_keys, db.fetch_manual_translations
 
@@ -391,7 +391,7 @@ def test_taken_label_in_chat_is_explained_not_tapped(ready):
 
 def test_old_captions_keep_working_after_rename(ready):
     """Прежние подписи (до HISTORY_DEPTH на ключ) узнаются — старая клавиатура не мертва."""
-    from services import menu_labels
+    from services.bot import menu_labels
 
     async def rename(value):
         await db.set_setting("menu_coins_label", value)
