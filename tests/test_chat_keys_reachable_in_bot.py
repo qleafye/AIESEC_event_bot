@@ -35,6 +35,14 @@ from settings_schema import SETTINGS_SCHEMA
 
 ROOT = Path(__file__).resolve().parent.parent
 CHAT_DIRS = ("handlers", "services", "keyboards")
+# Корневые модули, где чтение настройки — не показ в чате: сам реестр (типизированное чтение
+# внутри get_setting_typed).
+ROOT_NOT_CHAT = {"settings_schema.py"}
+# Функции общего с приложением кода, которые собирают экран ТОЛЬКО для приложения: их тексты
+# в чат не уходят (чат-анкета строит вопросы сама, handlers/registration.py).
+APP_ONLY_FUNCTIONS = {
+    "reg_engine.py": {"step_spec", "_v2_texts_for"},  # спека шага формы приложения
+}
 
 # (имя функции, позиция ключа). Обёртки — те же чтения настройки: `ctx.t` (тест и запись на
 # сессии), `_say` (регистрация на месте), `tr_setting`/`_tr_key`/`tr_key` (чтение + перевод),
@@ -100,6 +108,29 @@ EXCEPTIONS = {
     # Описание того, что включает пресет «🎓 Форум СкиллАп»: меняется вместе с составом
     # пресета в коде (reg_presets.py), правка менеджером сделала бы описание неправдой.
     "skillup_preset_confirm_text": "описание пресета, привязано к коду пресета",
+    # Начало имён вкладок бота в Google-таблице (settings_ops.bot_tab_prefix): в чате не
+    # показывается, а смена переименовывает все вкладки бота разом — операция владельца бота.
+    "sheet_tab_bot_prefix": "имя вкладок таблицы, смена переименовывает все вкладки бота",
+}
+
+def _form_v2_toggle_keys():
+    from reg_engine import FORM_V2_TOGGLE_KEYS
+    return [f"reg_form_{name}" for name in FORM_V2_TOGGLE_KEYS]
+
+
+def _by_prefix(prefix):
+    return lambda: [k for k in SETTINGS_SCHEMA if k.startswith(prefix)]
+
+
+# Ключ, собранный f-строкой: начало -> какие ключи реестра так читаются. Новое начало без
+# записи здесь роняет test_every_fstring_read_is_declared — решение принимает человек.
+FSTRING_FAMILIES = {
+    "reg_form_": _form_v2_toggle_keys,  # f"reg_form_{name}" — тумблеры «Анкета 2.0»
+    "reg_prompt_": _by_prefix("reg_prompt_"),  # тексты вопросов анкеты
+    "reg_multi_max_": _by_prefix("reg_multi_max_"),  # лимиты мультивыбора
+    "reg_repeatable_max_": _by_prefix("reg_repeatable_max_"),  # лимит блоков повторяемого вопроса
+    "game_proof_prompt_": _by_prefix("game_proof_prompt_"),  # подсказка к сдаче задания по типу
+    "city_tab_suffix__": _by_prefix("city_tab_suffix__"),  # окончание вкладки листа города
 }
 
 _EDIT_CB = re.compile(r"settings_edit(?:_city)?:([a-z0-9_]+)")
@@ -114,7 +145,41 @@ def _fname(node) -> str | None:
 
 
 def _chat_files() -> list[Path]:
-    return [p for d in CHAT_DIRS for p in sorted((ROOT / d).rglob("*.py"))]
+    """Код бота: три каталога и корневые модули (`reg_engine.py`, `game_labels.py`, `main.py`…),
+    кроме самого реестра — там чтения служебные."""
+    root = [p for p in sorted(ROOT.glob("*.py")) if p.name not in ROOT_NOT_CHAT]
+    return [p for d in CHAT_DIRS for p in sorted((ROOT / d).rglob("*.py"))] + root
+
+
+def _calls_outside_app_only(path: Path):
+    """Вызовы модуля, кроме тел функций из `APP_ONLY_FUNCTIONS`."""
+    skip = APP_ONLY_FUNCTIONS.get(path.name, set())
+    stack = [_tree(path)]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in skip:
+            continue
+        if isinstance(node, ast.Call):
+            yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def _fstring_prefix(arg) -> str | None:
+    """Начало ключа, собранного f-строкой (f"game_proof_prompt_{code}" -> "game_proof_prompt_").
+    Пустое начало (f"{key}__city__{code}" — городское значение уже названного ключа) и начало,
+    под которое не подходит ни один ключ реестра (`consent_pdf_`, `reg_help_`), — не чтение
+    ключа реестра."""
+    if not (isinstance(arg, ast.JoinedStr) and arg.values and isinstance(arg.values[0], ast.Constant)):
+        return None
+    prefix = arg.values[0].value
+    if not prefix or not any(k.startswith(prefix) for k in SETTINGS_SCHEMA):
+        return None
+    return prefix
+
+
+def _family_keys(prefix: str) -> list[str]:
+    source = FSTRING_FAMILIES.get(prefix)
+    return list(source()) if source else []
 
 
 @functools.lru_cache(maxsize=None)
@@ -131,23 +196,29 @@ def _scan():
     reads: dict[str, list[str]] = defaultdict(list)
     writes: set[str] = set()
     edit_buttons: set[str] = set()
+    fstring_prefixes: set[str] = set()
     for path in _chat_files():
         src = path.read_text(encoding="utf-8")
         edit_buttons |= set(_EDIT_CB.findall(src))
         rel = path.relative_to(ROOT).as_posix()
-        for node in ast.walk(_tree(path)):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in _calls_outside_app_only(path):
             name = _fname(node.func)
             for pos, arg in enumerate(node.args):
-                if (name, pos) in READERS and isinstance(arg, ast.Constant) and arg.value in SETTINGS_SCHEMA:
+                if (name, pos) not in READERS:
+                    continue
+                if isinstance(arg, ast.Constant) and arg.value in SETTINGS_SCHEMA:
                     reads[arg.value].append(f"{rel}:{node.lineno}")
+                prefix = _fstring_prefix(arg)
+                if prefix is not None:
+                    fstring_prefixes.add(prefix)
+                    for key in _family_keys(prefix):
+                        reads[key].append(f"{rel}:{node.lineno} (f-строка)")
             if name in WRITERS and rel.startswith("handlers/"):
                 for arg in node.args:
                     for sub in ast.walk(arg):
                         if isinstance(sub, ast.Constant) and sub.value in SETTINGS_SCHEMA:
                             writes.add(sub.value)
-    return reads, writes, edit_buttons
+    return reads, writes, edit_buttons, frozenset(fstring_prefixes)
 
 
 def _screen_tables() -> set[str]:
@@ -164,6 +235,10 @@ def _screen_tables() -> set[str]:
     keys |= {entry[0] for entry in admin_amb_tiers._TOGGLES.values()}
     keys |= set(admin_quiz_levels._EDIT_KEYS) | set(session_enroll.ENROLL_TEXT_KEYS)
     keys |= set(admin_miniapp.SECTION_KEYS)
+    # «✏️ Тексты вопросов»: кнопка на каждый шаг анкеты, общий трек и трек 🎉 Party.
+    from handlers.admin_reg_percity import _prompt_steps
+    for step, _label in _prompt_steps():
+        keys |= {f"reg_prompt_{step}", f"reg_prompt_{step}__party"}
     return keys
 
 
@@ -186,7 +261,7 @@ def _module_mentions(module: str) -> set[str]:
 
 
 def test_every_chat_read_key_is_reachable_from_a_bot_screen():
-    reads, writes, edit_buttons = _scan()
+    reads, writes, edit_buttons, _prefixes = _scan()
     reachable = _computed_reachable(writes, edit_buttons) | set(OWN_SCREENS) | set(EXCEPTIONS)
     missing = sorted(k for k in reads if k not in reachable)
     assert not missing, (
@@ -204,7 +279,7 @@ def test_own_screens_really_mention_their_keys():
 def test_lists_hold_only_what_the_computation_cannot_see():
     """Списки не копят мусор: ключ, который больше не читается в чате или уже виден из экрана
     по вычислению, из OWN_SCREENS/EXCEPTIONS убирается; ключ — ровно в одном из списков."""
-    reads, writes, edit_buttons = _scan()
+    reads, writes, edit_buttons, _prefixes = _scan()
     computed = _computed_reachable(writes, edit_buttons)
     assert not set(OWN_SCREENS) & set(EXCEPTIONS)
     for name, listed in (("OWN_SCREENS", OWN_SCREENS), ("EXCEPTIONS", EXCEPTIONS)):
@@ -240,3 +315,13 @@ def test_new_chat_text_groups_are_screens_of_the_bot():
             assert SETTINGS_SCHEMA[key]["label"] and SETTINGS_SCHEMA[key]["prompt"], key
     grouped = [k for _l, _t, keys in st.SETTINGS_GROUPS for k in keys]
     assert len(grouped) == len(set(grouped)), "ключ в двух группах бота"
+
+
+def test_every_fstring_read_is_declared():
+    """Ключ, собранный f-строкой, сторож иначе не увидел бы: каждое такое начало обязано быть
+    в FSTRING_FAMILIES (и наоборот — запись без чтения в коде убирается)."""
+    _reads, _writes, _buttons, prefixes = _scan()
+    assert set(prefixes) == set(FSTRING_FAMILIES), (
+        f"не описаны: {sorted(set(prefixes) - set(FSTRING_FAMILIES))}; "
+        f"больше не встречаются: {sorted(set(FSTRING_FAMILIES) - set(prefixes))}"
+    )
