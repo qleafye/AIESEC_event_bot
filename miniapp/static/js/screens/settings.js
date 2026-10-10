@@ -940,6 +940,13 @@ async function renderSection(root, code, ctx, targetKey) {
       if (resp.notice) showToast(resp.notice, "warn");
       else showToast(texts.miniapp_settings_saved_toast_text || "", "success");
     } catch (err) {
+      // 500 partial_save: часть ключей уже записана — они не должны висеть «несохранёнными».
+      const savedKeys = (err && err.payload && err.payload.saved) || [];
+      if (savedKeys.length) {
+        for (const key of savedKeys) { pending.delete(key); fileNames.delete(key); }
+        updateBatchBar();
+        renderDiffList();
+      }
       if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
     } finally {
       busyBatch = false;
@@ -1170,7 +1177,8 @@ async function renderSection(root, code, ctx, targetKey) {
           setFieldState(el, "default");
         }
         haptic("success");
-        showToast(
+        if (resp.notice) showToast(resp.notice, "warn");
+        else showToast(
           wasDangerous ? texts.miniapp_settings_dangerous_saved_toast_text : texts.miniapp_settings_saved_toast_text,
           "success",
         );
@@ -1356,7 +1364,8 @@ async function renderSection(root, code, ctx, targetKey) {
       }
       if (resp.saved && resp.saved.includes(item.key) && resp.items && resp.items[0]) {
         haptic("success");
-        showToast(texts.miniapp_settings_saved_toast_text, "success");
+        if (resp.notice) showToast(resp.notice, "warn");
+        else showToast(texts.miniapp_settings_saved_toast_text, "success");
         return resp.items[0];
       }
       return null;

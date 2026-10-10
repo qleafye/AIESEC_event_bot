@@ -287,6 +287,7 @@ export async function render(root, params, ctx) {
       }
       pending.clear();
       await refreshData();
+      if (resp.notice) showToast(resp.notice);
       return true;
     } catch (err) {
       if (!isAuthError(err)) showToast(errorText(err, texts.error_toast_text || ""));
@@ -321,10 +322,11 @@ export async function render(root, params, ctx) {
 
   async function hideTile() {
     try {
-      await api("/admin/settings/batch", {
+      const resp = await api("/admin/settings/batch", {
         method: "POST",
         body: { changes: [{ key: "setup_wizard_dismissed", value: "on" }], base: {}, confirm: [] },
       });
+      if (resp && resp.notice) showToast(resp.notice);
     } catch (err) {
       if (!isAuthError(err)) showToast(errorText(err, texts.error_toast_text || ""));
       return;
