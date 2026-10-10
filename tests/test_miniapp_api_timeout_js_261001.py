@@ -2,6 +2,7 @@
 AbortController и бросает ApiTimeout без HTTP-статуса — экран сканера показывает волонтёру
 «нет ответа — отсканируйте ещё раз» и снова принимает QR. Гоняется в node с подменённым fetch."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -10,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 API_JS = ROOT / "miniapp" / "static" / "js" / "api.js"
 SCANNER_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 

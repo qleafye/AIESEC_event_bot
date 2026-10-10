@@ -12,13 +12,14 @@
   `none`/`currentColor` в fill/stroke, без `innerHTML` и без `http`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 MINIAPP_FONTS = ROOT / "miniapp" / "static" / "fonts"
 DASHBOARD_FONTS = ROOT / "dashboard" / "static" / "fonts"
 MINIAPP_APP_CSS = ROOT / "miniapp" / "static" / "app.css"

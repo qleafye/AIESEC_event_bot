@@ -5,12 +5,13 @@
 тестировщики уже ставят отметки на сервере, поэтому ни один прежний ключ исчезнуть не должен.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPO_ROOT
 BOARD = ROOT / "tools" / "uat_board" / "index.html"
 
 _SESSION = re.compile(r'^\{ key:"(s\d|bl)", n:')

@@ -5,6 +5,7 @@ Task 1 — `dashboard/config.py::load_config` (плоская конфигура
 `dashboard/db.py::read_conn` (sqlite3, URI `mode=ro`). Никакого pytest-asyncio — весь
 модуль синхронный (plain `sqlite3`), в отличие от бота.
 """
+from tests._paths import REPO_ROOT
 import sqlite3
 from pathlib import Path
 
@@ -13,7 +14,7 @@ import pytest
 from dashboard.config import load_config
 from dashboard.db import read_conn
 
-DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+DASHBOARD_DIR = REPO_ROOT / "dashboard"
 
 
 def _make_db(tmp_path, name="ro.db") -> str:

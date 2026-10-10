@@ -3,6 +3,7 @@
 слово менеджера, которое бот не знает, возвращается как есть. Тот же приём запуска в node, что
 у `tests/test_ui_js.py`."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 UI_JS = ROOT / "miniapp" / "static" / "js" / "units.js"
 
 CASES = [

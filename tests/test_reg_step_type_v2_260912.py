@@ -8,6 +8,7 @@
 Паритет проверяется по ЯВНОЙ таблице (`reg_engine.CHAT_PROJECTION`/`APP_PROJECTION`), не по
 grep произвольного токена — импорт чат-модуля идёт через `importlib.import_module` (реальная
 проверка «модуль существует и импортируется без ошибок»), а не текстовый поиск имени."""
+from tests._paths import REPO_ROOT
 import asyncio
 import importlib
 import os
@@ -44,7 +45,7 @@ def _all_form_v2_toggles_on():
     for name in FORM_V2_TOGGLE_KEYS:
         asyncio.run(set_setting(f"reg_form_{name}", "on"))
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = str(REPO_ROOT)
 
 CANONICAL_KINDS = ("select", "lookup", "composite", "link", "multi", "repeatable", "text")
 

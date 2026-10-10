@@ -6,6 +6,7 @@
 сегодня в нескольких городах — на успешной плашке город делегата крупно. Выгрузка CSV
 отмечает, но предупреждает строкой отчёта. Без даты форума — как раньше."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from datetime import datetime
 
@@ -182,7 +183,7 @@ def test_manager_can_mark_anyway_volunteer_gets_hint(tmp_path, monkeypatch):
 
 def test_scanner_has_mark_anyway_button_with_confirm():
     from pathlib import Path
-    js = (Path(__file__).resolve().parent.parent / "miniapp/static/js/screens/scanner.js").read_text(encoding="utf-8")
+    js = (REPO_ROOT / "miniapp/static/js/screens/scanner.js").read_text(encoding="utf-8")
     body = js[js.index("function dayOverrideButton"):js.index("function closeScanPopup")]
     assert "askConfirm(" in body and "force_day: true" in body
     assert "res.day_override" in js

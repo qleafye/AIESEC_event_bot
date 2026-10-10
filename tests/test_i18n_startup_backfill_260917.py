@@ -11,6 +11,7 @@
    структурно (сам `main.py` — не aiogram-free модуль, тянет весь бот, поэтому здесь только
    исходник сканируется на наличие врезки, тот же приём, что уже есть в проекте для
    аналогичных сторожей точек входа)."""
+from tests._paths import REPO_ROOT
 import asyncio
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from services import i18n_worker
 from services.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def _db_ready(tmp_path, name="test_i18n_startup_backfill_260917.db"):

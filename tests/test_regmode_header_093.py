@@ -14,6 +14,7 @@ Sections mirror the plan's tasks:
               toggle write path, reset confirm/go two-step gate, rights, freshness, ALL_CITIES
               and module-off parity, ADMIN_CAPS coverage.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import re
 from pathlib import Path
@@ -97,7 +98,7 @@ def test_gate_no_empty_paren_landing_calls_remain():
     handlers/admin.py must pass an admin_id -- the empty-parens form only ever appears in the
     function's OWN default-parameter declaration (`admin_id: int | None = None`), never as a
     call."""
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     source = _non_comment_source(repo_root / "handlers" / "admin.py")
     assert not re.search(r"render_settings_text\(\)", source)
     assert not re.search(r"build_settings_keyboard\(\)", source)

@@ -13,6 +13,7 @@
 - Выключенный тумблер на `/app` -> 503 с человеческим текстом из реестра, не JSON.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
@@ -33,7 +34,7 @@ from tests.test_miniapp_routes import (
     _use_tmp_db,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 DASHBOARD_TOKENS = ROOT / "dashboard" / "static" / "tokens.css"
 MINIAPP_DIR = ROOT / "miniapp"
 MINIAPP_STATIC = MINIAPP_DIR / "static"

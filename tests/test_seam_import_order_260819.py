@@ -17,6 +17,7 @@
 там не действует — он сам маскирует баг для pytest-прогонов) и сверяет отпечаток порядка хендлеров
 всех четырёх роутеров с каноническим (импорт в порядке `main.py`).
 """
+from tests._paths import REPO_ROOT
 import os
 import subprocess
 import sys
@@ -24,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 SEAMS = [
     "admin_settings",

@@ -14,6 +14,7 @@
 `test_swipe_js_thresholds_are_named_constants` остаются гейтом в любом случае.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 SWIPE_JS = ROOT / "miniapp" / "static" / "js" / "swipe.js"
 
 # Жесты по контракту (dx/dy/width/startX) — startX по умолчанию далеко от края (150), чтобы

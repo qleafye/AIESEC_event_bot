@@ -4,6 +4,7 @@
 pytest-asyncio в окружении нет — async через `asyncio.run()`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import json
@@ -24,7 +25,7 @@ from settings_schema import SETTINGS_SCHEMA
 from settings_validation import amb_threshold_order_error, validate_setting_value
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def _run(coro):

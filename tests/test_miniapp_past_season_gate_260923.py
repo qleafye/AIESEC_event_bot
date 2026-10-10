@@ -7,6 +7,7 @@
 Задача 2 (фронт) добавляет source-guard тесты по app.js в этот же файл — см. нижнюю секцию.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 from pathlib import Path
@@ -195,7 +196,7 @@ def test_upload_actor_past_season_without_draft_gets_403(client):
 
 # ── Задача 2: фронтовая ветка past_season в app.js — source-guard ───────────────────────────
 
-APP_JS = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "app.js"
+APP_JS = REPO_ROOT / "miniapp" / "static" / "js" / "app.js"
 
 
 def _app_js_text() -> str:

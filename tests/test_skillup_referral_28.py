@@ -22,6 +22,7 @@ aiogram — тот же приём, что `tests/test_city_flow_phase71.py`/`te
 ссылку; HTTP-харнесс — `tests/test_miniapp_routes.py`/`tests/test_miniapp_form.py`
 (`TestClient` + временная БД).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 
 import pytest
@@ -468,7 +469,7 @@ def test_link_rendered_as_text_node_not_anchor():
 
     from tests.test_miniapp_frontend import _js_without_comments
 
-    ui_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "ui.js"
+    ui_js = REPO_ROOT / "miniapp" / "static" / "js" / "ui.js"
     src = _js_without_comments(ui_js)
     assert 'h("div", { class: "ambassador-link-box", text: res.link' in src
     assert "href" not in src.split("ambassador-link-box")[1].split("\n")[0]
@@ -483,7 +484,7 @@ def test_ambassador_link_screen_renders_note():
 
     # Блок ссылки вынесен в общий `ui.js::ambassadorLinkBlock` (его рисуют финальный экран
     # анкеты и постоянное место реф-ссылки в хабе) — пояснение проверяется там.
-    ui_js = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "ui.js"
+    ui_js = REPO_ROOT / "miniapp" / "static" / "js" / "ui.js"
     src = _js_without_comments(ui_js)
     fn_start = src.index("function ambassadorLinkBlock(")
     body = src[fn_start:fn_start + 3000]

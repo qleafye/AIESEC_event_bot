@@ -4,6 +4,7 @@ Task 1 — `dashboard.auth`: HMAC-подпись Login Widget, параметр�
 клиента за Cloudflare. Task 2 — `dashboard.access`: пересверка права `stats` и городской
 скоуп. Task 3 (дописывается позже) — `dashboard.notify`.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import hashlib
 import hmac
@@ -25,8 +26,8 @@ from dashboard.auth import (
 from dashboard.config import load_config
 from dashboard import db as dash_db
 
-ACCESS_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "access.py"
-NOTIFY_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "notify.py"
+ACCESS_FILE = REPO_ROOT / "dashboard" / "access.py"
+NOTIFY_FILE = REPO_ROOT / "dashboard" / "notify.py"
 
 BOT_TOKEN = "123456:ABCDEF-testtoken"
 

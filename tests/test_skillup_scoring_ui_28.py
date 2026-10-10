@@ -20,6 +20,7 @@ pytest-asyncio в проекте не используется — асинхр�
 (`config.DB_PATH = tmp_path / "..."` + `database.db.init_db()`), как в соседних тестах фазы.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import json
@@ -49,7 +50,7 @@ from tests.test_miniapp_routes import (
 )
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
 
 

@@ -6,6 +6,7 @@ pytest-asyncio в окружении нет — async через `asyncio.run()`
 что `tests/test_amb_status_34.py::_ready`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -23,7 +24,7 @@ from tests._dbtpl import fast_init_db
 SEASON = "RT 26"
 AT = "2026-09-30 12:00:00"
 ADMIN = 777
-REPO = Path(__file__).resolve().parent.parent
+REPO = REPO_ROOT
 
 
 def _run(coro):

@@ -3,6 +3,7 @@
 `tests/test_miniapp_form_state_js.py`); подключение к экрану и тексты с сервера — статикой
 и через `/app/api/checkin/net-texts`."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import re
@@ -16,7 +17,7 @@ from tests.test_miniapp_checkin_260924 import BASE, _grant_checkin_to_game_manag
 from tests.test_miniapp_frontend import SCREENS_DIR, _HEX_OR_RGB_COLOR, _js_without_comments
 from tests.test_miniapp_routes import DELEGATE_ID, GAME_MANAGER_ID, _hdr
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 NET_JS = ROOT / "miniapp" / "static" / "js" / "net_health.js"
 SCANNER_JS = SCREENS_DIR / "scanner.js"
 _CYRILLIC_LITERAL = re.compile(r"""(["'`])[^"'`\n]*[А-Яа-яЁё][^"'`\n]*\1""")

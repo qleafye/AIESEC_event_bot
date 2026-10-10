@@ -20,12 +20,13 @@ Design (per 13-07-PLAN.md's <interfaces> note):
   ceiling "while you're in here" — each entry is owned by whoever grew that file.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from pathlib import Path
 
 import pytest
 
-HANDLERS_DIR = Path(__file__).resolve().parent.parent / "handlers"
+HANDLERS_DIR = REPO_ROOT / "handlers"
 
 # Soft guideline every handlers/*.py module SHOULD stay under (see docs/CONVENTIONS.md).
 GUIDELINE = 800

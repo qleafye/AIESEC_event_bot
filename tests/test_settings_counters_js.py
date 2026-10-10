@@ -8,6 +8,7 @@
 Без node — `pytest.skip` с явной причиной (как `tests/test_settings_search_js.py`).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -16,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 UI_JS = ROOT / "miniapp" / "static" / "js" / "ui.js"
 
 TEMPLATE = "Сохранить {count} {изменение|изменения|изменений}"

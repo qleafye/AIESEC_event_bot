@@ -7,6 +7,7 @@ N», недоступная база, кэш.
 читает уже ПОСЛЕ того как aiosqlite-подключение с записью закрыто.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 from datetime import datetime
@@ -22,7 +23,7 @@ from dashboard.config import DashboardConfig
 from dashboard.registry import EventSource
 from tests._dbtpl import fast_init_db
 
-COMPARE_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "compare.py"
+COMPARE_FILE = REPO_ROOT / "dashboard" / "compare.py"
 
 
 def _use_tmp_db(tmp_path, name: str) -> str:

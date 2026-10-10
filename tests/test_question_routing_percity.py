@@ -12,6 +12,7 @@ Task 2: `handlers/user_actions.py::process_question` resolves the delegate's cit
 Task 3: `handlers/registration.py::finalize_registration` passes `data.get("event_city")`
     through the same primitive for the new-application notification.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import inspect
 import re
@@ -346,7 +347,7 @@ def test_finalize_registration_source_passes_event_city():
 
 
 def test_both_fanout_sites_pass_city_kwarg():
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = REPO_ROOT
     # Phase 21 (21-08) + квик 260916: post_finalize's own notify_by_capability call moved out
     # into services/reg_digest.py — notify_application's "each" branch AND send_reg_digest's
     # queue flush ("digest" branch) both scope by city; user_actions.py's question-routing

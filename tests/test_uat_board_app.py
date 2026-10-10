@@ -3,6 +3,7 @@
 Сервер на stdlib, без фреймворка: проверяем функции состояния напрямую, HTTP-слой тонкий.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import importlib
 import json
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPO_ROOT
 
 
 @pytest.fixture()

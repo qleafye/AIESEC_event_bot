@@ -6,13 +6,14 @@
 `white-space: pre-line`, в заголовке плиты — короткая подпись шага.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from pathlib import Path
 
 from tests.test_miniapp_frontend import _js_without_comments
 from tests.test_miniapp_resume_fork_edit_js_260927 import FORM_SCREEN_JS, _between
 
-APP_CSS = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "app.css"
+APP_CSS = REPO_ROOT / "miniapp" / "static" / "app.css"
 
 
 def _draw_step() -> str:

@@ -1,11 +1,12 @@
 """Docker hardening guard: build context must not carry secrets/data, process must not be root.
 
 Static checks on `.dockerignore` / `Dockerfile` (no docker daemon needed in CI)."""
+from tests._paths import REPO_ROOT
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def _lines(name: str) -> list[str]:

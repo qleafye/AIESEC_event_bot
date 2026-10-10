@@ -9,6 +9,7 @@
 Хендлеры зовутся напрямую с Fake message/callback, как в
 tests/test_game_ui16_delegate_260820.py (pytest-asyncio в этом окружении нет).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 
 import pytest
@@ -996,7 +997,7 @@ def _literal_setting_keys_in_source() -> dict[str, set[str]]:
     import os
     import re
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = str(REPO_ROOT)
     pattern = re.compile(
         r"""\bget_setting(?:_typed)?(?:_for_city)?\(\s*(["'])([A-Za-z0-9_]+)\1"""
     )

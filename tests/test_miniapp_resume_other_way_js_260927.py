@@ -11,6 +11,7 @@
 `tests/test_miniapp_resume_upload_js_review_260927.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 from services.i18n_form_manual import _REGISTRY_TEXTS_EN
 from settings_schema import SETTINGS_SCHEMA
@@ -20,7 +21,7 @@ from tests.test_miniapp_frontend import _js_without_comments
 from tests.test_miniapp_resume_fork_edit_js_260927 import _between, _screen_text
 
 KEY = "reg_form_resume_other_way_text"
-ROOT_FORM_PY = __import__("pathlib").Path(__file__).resolve().parent.parent / "miniapp" / "routers" / "form.py"
+ROOT_FORM_PY = REPO_ROOT / "miniapp" / "routers" / "form.py"
 
 
 def _overview() -> str:

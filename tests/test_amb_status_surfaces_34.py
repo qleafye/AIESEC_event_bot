@@ -5,6 +5,7 @@ pytest-asyncio в окружении нет — async через `asyncio.run()`
 что `tests/test_amb_status_wiring_34.py`; HTTP — харнесс `tests/test_miniapp_routes.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 
@@ -403,7 +404,7 @@ def test_form_js_handles_full_state_and_notes():
 
     from tests.test_miniapp_frontend import _js_without_comments
 
-    src = _js_without_comments(Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js"
+    src = _js_without_comments(REPO_ROOT / "miniapp" / "static" / "js"
                                / "screens" / "form.js")
     assert 'res.state === "full"' in src
     assert "say(res.message" in src

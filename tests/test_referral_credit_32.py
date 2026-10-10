@@ -13,6 +13,7 @@ pytest-asyncio недоступен в этом окружении — async ч�
 БД — тот же приём, что `tests/test_ambassador_waves_db_32.py::_ready(tmp_path)`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -364,7 +365,7 @@ def test_auto_rejected_applicant_no_credit(tmp_path):
 
 # ── Тест-сторож швов (D-20, T-32-05-07): список мест, где users.status становится 'approved' ─
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_REPO_ROOT = REPO_ROOT
 _SCAN_DIRS = ("services", "handlers", "miniapp", "tools", "database")
 _RAW_SQL_RE = re.compile(r"SET status\s*=\s*'approved'")
 _SET_STATUS_CALL_RE = re.compile(r"\bset_user_status\(")

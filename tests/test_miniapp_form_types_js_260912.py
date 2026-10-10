@@ -7,6 +7,7 @@
 PATH поведенческие тесты пропускаются, структурные — исполняются всегда.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import re
@@ -23,7 +24,7 @@ from tests.test_miniapp_frontend import (
     _js_without_comments,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_TYPES_JS = MINIAPP_STATIC / "js" / "form_types.js"
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 
