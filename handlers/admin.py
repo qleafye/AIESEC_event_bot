@@ -454,7 +454,7 @@ async def cmd_coins(message: types.Message, bot: Bot):
     balance = await get_balance(user["telegram_id"])
 
     safe_username = html_module.escape(str(user.get("username") or args[1]))
-    sign = "начислено" if amount >= 0 else "списано"
+    sign = "Начислено" if amount >= 0 else "Списано"
     notified = await _notify_manual_coins(bot, user["telegram_id"], amount, reason, balance)
     notify_suffix = "" if notified else " (делегат не получил уведомление)"
     await message.answer(
