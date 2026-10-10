@@ -330,11 +330,8 @@ async def _audience_warning(state: FSMContext, users_ids: list[int] | None, send
     missing = staff - set(users_ids) - {sender_id}
     if not missing:
         return ""
-    k = len(missing)
-    return (
-        f"⚠️ {k} из команды (админы и менеджеры) не зарегистрированы как делегаты — "
-        "рассылку они не получат.\n\n"
-    )
+    from handlers.admin_broadcast_status import staff_missing_note  # нет анкеты / не одобрены
+    return await staff_missing_note(missing)
 
 
 async def _send_confirm_prompt(
@@ -360,7 +357,10 @@ async def _send_confirm_prompt(
     (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
     эту же функцию заново)."""
     dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
-    warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
+    warning = await sender_city_note(chat_id, dropped)
+    from handlers.admin_broadcast_status import confirm_extra  # статусы заявки
+    status_text, status_rows = await confirm_extra(state, users_ids)
+    warning += status_text + await _audience_warning(state, users_ids, chat_id)
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
@@ -381,7 +381,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
-            [important_btn],
+            *status_rows, [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -389,7 +389,7 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
-        [important_btn],
+        *status_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
@@ -1707,8 +1707,10 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     # Менеджер города — то же сужение, что у «✅ Отправить N»: числа на экранах совпадают.
     ids = await restrict_to_sender_city(callback.from_user.id, await count_and_list_filtered(filters))
     await callback.answer()
+    from handlers.admin_broadcast_status import status_block  # разбивка по статусу заявки
+    st_text, st_rows = await status_block(ids, filters, "bcstatus_filter")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")],
+        [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")], *st_rows,
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="filter_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
@@ -1716,7 +1718,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"{await sender_city_note(callback.from_user.id)}🎯 Условия: {_filter_summary(filters)}\n"
         f"Под фильтр попадает <b>{len(ids)}</b> пользователей."
-        f"{html_module.escape(await not_arrived_city_note(filters, ids))}",
+        f"{html_module.escape(await not_arrived_city_note(filters, ids))}\n\n{st_text}".rstrip(),
         reply_markup=kb,
     )
 
@@ -1772,3 +1774,4 @@ async def cmd_refresh_allowlist(message: types.Message):
 # тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
 from handlers import admin_broadcast_session_filter  # noqa: E402,F401
 from handlers import admin_broadcast_ext_form_filter  # noqa: E402,F401
+from handlers import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»
