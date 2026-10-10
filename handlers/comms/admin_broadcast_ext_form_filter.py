@@ -1,6 +1,6 @@
 """Фильтр рассылки «📝 Внешняя форма»: выбор формы кнопками и режима «заполнил / не заполнил».
 
-Не входит в generic-пикер `handlers/admin_broadcasts.py::_show_value_picker`: значение здесь —
+Не входит в generic-пикер `handlers/comms/admin_broadcasts.py::_show_value_picker`: значение здесь —
 конкретная форма (`form_id` едет внутри записи фильтра), SQL-ветка — `database/db.py`
 (`ext_form`). Форма шва — как у `admin_broadcast_session_filter.py`: `from handlers.admin
 import router`, декораторы в одну строку, импорт — хвостом `admin_broadcasts.py`."""
@@ -88,7 +88,7 @@ async def extff_pick(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(filters=filters)
     await callback.answer()
 
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов
 
     await _render_filter_menu(callback.message, filters, edit=True)
 
@@ -98,6 +98,6 @@ async def extff_cancel(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await callback.answer()
 
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов
 
     await _render_filter_menu(callback.message, data.get("filters", []), edit=True)

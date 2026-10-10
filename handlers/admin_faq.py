@@ -3,14 +3,14 @@
 делегату живёт ОДИН раз в `services/faq.py` — этот шов его не переопределяет, только пишет и
 читает `faq_items` через аксессоры `database/db.py`.
 
-Форма шва — Phase 13 (REFAC-01), точная копия `handlers/admin_questions.py`: своего `Router()`
+Форма шва — Phase 13 (REFAC-01), точная копия `handlers/comms/admin_questions.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
 (инвариант cap-теста 13-01). `admin_core` импортируется на уровне модуля (безопасно — не
 создаёт цикл), `admin_sections` — лениво внутри функций (цикл на уровне модуля: admin_sections
 импортирует admin_settings, тот — обратно к admin_core).
 
 Задача 4 (FAQ-04, кнопка «❓ В FAQ» из журнала вопросов) добавляет импорт
-`handlers.admin_questions.render_questions_screen` НА УРОВНЕ МОДУЛЯ — безопасно, потому что
+`handlers.comms.admin_questions.render_questions_screen` НА УРОВНЕ МОДУЛЯ — безопасно, потому что
 `handlers/admin.py` подключает этот шов ХВОСТОМ сразу после `admin_questions` (тот уже
 полностью загружен) и сам `admin_questions.py` этот модуль не импортирует (цикла нет)."""
 import html as html_module
@@ -30,7 +30,7 @@ from database.db import (
 )
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
-from handlers.admin_questions import render_questions_screen
+from handlers.comms.admin_questions import render_questions_screen
 from handlers.states import FaqItem
 from keyboards.builders import get_cancel_kb
 from domain.cities import ALL_CITIES, admin_selected_city, city_label
@@ -385,7 +385,7 @@ async def afaq_delete_go(callback: types.CallbackQuery):
 
 # ── Quick 260906-8uq (FAQ-04): «❓ В FAQ» из журнала вопросов делегатов ──────────────────────
 #
-# Кнопка `afaq_from:{qid}` рисуется в handlers/admin_questions.py::render_questions_screen под
+# Кнопка `afaq_from:{qid}` рисуется в handlers/comms/admin_questions.py::render_questions_screen под
 # ОТВЕЧЕННЫМ вопросом. Черновик (вопрос+ответ, ещё НИЧЕГО не создано в faq_items) живёт в
 # state.get_data() — faq_qid/faq_draft_q/faq_draft_a; ветка «черновик» шага FaqItem.text
 # отличается от «new»/«edit» (задача 3) значением faq_mode == "draft" (faq_field указывает,

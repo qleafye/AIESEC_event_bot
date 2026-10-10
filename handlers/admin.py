@@ -691,7 +691,7 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     Менеджер в ответ получает приписку `manager_notice` — «отправлено» без неё было бы
     полуправдой.
 
-    `on_dispatched`/`on_part_sent`/`question_ref` (10.10) — см. handlers/admin_question_delivery.py."""
+    `on_dispatched`/`on_part_sent`/`question_ref` (10.10) — см. handlers/comms/admin_question_delivery.py."""
     from services import questions as questions_service, quiet_hours
     from services.scheduler import _now_moscow_naive
     now = _now_moscow_naive()
@@ -749,7 +749,7 @@ async def _reply_with_delivery_error(message: types.Message, error: Exception):
         )
 
 
-from handlers.admin_question_delivery import _attempt_question_delivery  # noqa: E402
+from handlers.comms.admin_question_delivery import _attempt_question_delivery  # noqa: E402
 
 
 @router.message(is_question_reply)
@@ -861,7 +861,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
 # T-08-33 (quick task), part D: claimed-but-never-delivered delegate questions.
 #
 # Quick 260904-2cj: экран-однострочник поглощён журналом «❓ Вопросы делегатов»
-# (handlers/admin_questions.py) — видит все три статуса, не только «в работе», и умеет
+# (handlers/comms/admin_questions.py) — видит все три статуса, не только «в работе», и умеет
 # отвечать прямо со страницы. Кнопки «🔒 Залипшие вопросы» на главном экране больше нет
 # (см. handlers/admin_core.py::_ADMIN_MENU_ROWS), но этот callback остаётся жить: клавиатуры,
 # отправленные ДО этого квика, лежат в чатах менеджеров вечно и должны продолжать работать.
@@ -869,7 +869,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
 # `tests/test_refac_snapshot_260816.py`.
 @router.callback_query(F.data == "admin_stuck_questions")
 async def show_stuck_questions(callback: types.CallbackQuery):
-    from handlers.admin_questions import render_questions_screen  # ленивый шов
+    from handlers.comms.admin_questions import render_questions_screen  # ленивый шов
     text, kb = await render_questions_screen(callback.from_user.id, status="in_work")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -895,8 +895,8 @@ from handlers.sheets import admin_sheets  # noqa: E402
 from handlers.cities import admin_cities  # noqa: E402
 
 
-from handlers import admin_broadcasts  # noqa: E402
-from handlers.admin_broadcasts import show_admin_broadcast  # noqa: E402
+from handlers.comms import admin_broadcasts  # noqa: E402
+from handlers.comms.admin_broadcasts import show_admin_broadcast  # noqa: E402
 
 
 from handlers import admin_reg_config  # noqa: E402
@@ -916,7 +916,7 @@ from handlers import admin_reg_percity  # noqa: E402
 # Quick 260904-2cj (QJRN-01..04): shared-router seam import for the delegate-questions journal
 # screen («❓ Вопросы делегатов») — registers admin_questions/aq:*/aq_answer:*/QuestionAnswer.*
 # on the shared router right after the reg-config seam.
-from handlers import admin_questions  # noqa: E402
+from handlers.comms import admin_questions  # noqa: E402
 
 
 # Quick 260906-8uq (FAQ-01..06): shared-router seam import for the manager FAQ screen
@@ -1030,7 +1030,7 @@ def _pick_auto_open(rows: list[tuple[str, str]]):
 from handlers.game import admin_gamification  # noqa: E402
 # «📊 Опросы»: список/карточка (admin_polls) + мастер (admin_poll_wizard, импортируется из
 # хвоста admin_polls — тот же приём, что admin_gamification → admin_game_tasks ниже).
-from handlers import admin_polls  # noqa: E402
+from handlers.comms import admin_polls  # noqa: E402
 # Phase 16 (16-03, GAME-UI-03): the manager task-management seam handlers/game/admin_game_tasks.py
 # (point-edit card actions, deadline presets, wizard «✏️ Изменить», «👁 Как видит делегат»)
 # is imported at the TAIL of admin_gamification.py, not here (16-04): a `from handlers import

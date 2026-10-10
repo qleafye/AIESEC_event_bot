@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from database import db, quiz_db, session_enroll_db
-from handlers import admin_broadcast_enroll_filter as ef
-from handlers import admin_broadcasts as ab
+from handlers.comms import admin_broadcast_enroll_filter as ef
+from handlers.comms import admin_broadcasts as ab
 from handlers.states import Broadcast
 from tests._enroll38 import ADMIN_ID, CITY, DAY, add_user, ready, run, seed_delegates, seed_msk_program
 from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state

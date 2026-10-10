@@ -79,7 +79,7 @@ def test_proxy_settings_prompts_mention_restart():
 
 def test_proxy_settings_wired_into_admin_system_group():
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 
     keys = {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
@@ -121,7 +121,7 @@ def test_seed_proxy_settings_from_env_noop_when_env_matches_default(tmp_path):
 
 def test_settings_group_misc_does_not_swallow_system_keys():
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 
     misc_keys = admin_settings._settings_group_keys("misc")
@@ -187,7 +187,7 @@ def _btn_datas(kb):
 
 def test_track_labels_cover_every_track_and_are_not_the_raw_code():
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     for code in ("full", "party_overnight", "party_noovernight", "short"):
         assert code in admin_broadcasts._TRACK_LABELS
@@ -196,7 +196,7 @@ def test_track_labels_cover_every_track_and_are_not_the_raw_code():
 
 def test_show_value_picker_participant_type_shows_labels_codes_in_callback(tmp_path):
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     _db_ready(tmp_path, name="test_config_audit_260818_track.db")
     asyncio.run(db.add_user({
@@ -229,7 +229,7 @@ def test_show_value_picker_participant_type_shows_labels_codes_in_callback(tmp_p
 
 def test_show_value_picker_participant_type_unknown_value_is_fail_soft(tmp_path):
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 
     _db_ready(tmp_path, name="test_config_audit_260818_track_unknown.db")
     asyncio.run(db.add_user({

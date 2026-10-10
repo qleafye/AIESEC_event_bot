@@ -1,7 +1,7 @@
 """Бенчмарк рассылки: сколько стоит ОДИН получатель на стороне бота, без сети.
 
 Гоняет настоящий код обоих путей рассылки на временной БД с синтетическими получателями:
-  * мгновенная — `handlers/admin_broadcasts.py::bc_go` (фейковые callback/FSM, фоновый прогон
+  * мгновенная — `handlers/comms/admin_broadcasts.py::bc_go` (фейковые callback/FSM, фоновый прогон
     `services/broadcast_run.run_broadcast` дожидается здесь же);
   * отложенная — `services/scheduler.py::send_scheduled_broadcast`.
 
@@ -129,7 +129,7 @@ class _Counters:
 
         br.asyncio = SimpleNamespace(**{**vars(asyncio), "sleep": fake_sleep})
         sched.asyncio = SimpleNamespace(**{**vars(asyncio), "sleep": fake_sleep})
-        import handlers.admin_broadcasts as ab
+        import handlers.comms.admin_broadcasts as ab
         ab.asyncio = SimpleNamespace(**{**vars(asyncio), "sleep": fake_sleep})
 
     def reset(self):
@@ -138,7 +138,7 @@ class _Counters:
 
 
 async def run_instant(ids, bot, *, important=False, kind="text"):
-    import handlers.admin_broadcasts as ab
+    import handlers.comms.admin_broadcasts as ab
 
     spawned = []
     ab._spawn = lambda coro: spawned.append(coro)

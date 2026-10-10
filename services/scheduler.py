@@ -613,7 +613,7 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
 # `reply_markup` копированием/отправкой поддерживают И send_message, И copy_message — единое
 # место правки нашлось. Осталось ровно одно исключение: `bot.send_media_group` не принимает
 # `reply_markup` вовсе, поэтому альбом несёт пометку важности ВНУТРИ подписи первого элемента
-# (см. `handlers/admin_broadcasts.py::_media_from_album_dicts`), а предложение «🔕» для альбома
+# (см. `handlers/comms/admin_broadcasts.py::_media_from_album_dicts`), а предложение «🔕» для альбома
 # по-прежнему отдельное сообщение — но не чаще раза в сутки на получателя (см.
 # `send_mute_offer_if_eligible` ниже), а не после КАЖДОЙ неважной альбомной рассылки.
 #

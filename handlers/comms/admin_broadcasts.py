@@ -373,7 +373,7 @@ async def _send_confirm_prompt(
     эту же функцию заново)."""
     dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
     warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
-    from handlers.admin_broadcast_season import season_confirm_extra
+    from handlers.comms.admin_broadcast_season import season_confirm_extra
     season_text, season_rows = await season_confirm_extra(state, users_ids)
     warning += season_text
     important = bool((await state.get_data()).get("bc_important"))
@@ -1028,7 +1028,7 @@ async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="sched_important_toggle",
     )
-    from handlers.admin_broadcast_season import schedule_season_extra
+    from handlers.comms.admin_broadcast_season import schedule_season_extra
     season_text, season_rows = await schedule_season_extra(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
@@ -1352,7 +1352,7 @@ def _filter_menu_kb(filters: list[dict], *, show_city: bool = False,
     # пришедшие, и (approved текущего сезона) не пришедшие — тот же довод, что у соседей выше.
     if show_checkin:
         kb.append([InlineKeyboardButton(text="🚪 Отметка на форуме", callback_data="filter_f_checkin_entry")])
-    # Свой мастер (город → день → сессия, handlers/admin_broadcast_session_filter.py) — не
+    # Свой мастер (город → день → сессия, handlers/comms/admin_broadcast_session_filter.py) — не
     # входит в generic-пикер `_show_value_picker` (значение — конкретная сессия, а не пара
     # сентинелов). Кнопка только когда менеджер завёл хотя бы одну сессию программы.
     if show_sessions:
@@ -1401,7 +1401,7 @@ async def _render_filter_menu(target, filters: list[dict], *, edit: bool):
     # Вход каждый день: порог — хоть один вариант (за форум / сегодня / день) с людьми.
     checkin_options = await get_checkin_entry_picker_options()
     show_sessions = await any_program_sessions_exist()
-    from handlers.admin_broadcast_season import menu_extra_rows
+    from handlers.comms.admin_broadcast_season import menu_extra_rows
     kb = _filter_menu_kb(filters, show_city=await cities_module_on(),
                          show_season=len(season_options) > 1,
                          show_resume=len(resume_options) > 1,
@@ -1795,8 +1795,8 @@ async def cmd_refresh_allowlist(message: types.Message):
 
 
 # Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …» — свой шов, декорирует
-# тот же `handlers.admin.router` (см. докстринг handlers/admin_broadcast_session_filter.py).
-from handlers import admin_broadcast_session_filter  # noqa: E402,F401
-from handlers import admin_broadcast_ext_form_filter  # noqa: E402,F401
-from handlers import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
-from handlers import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
+# тот же `handlers.admin.router` (см. докстринг handlers/comms/admin_broadcast_session_filter.py).
+from handlers.comms import admin_broadcast_session_filter  # noqa: E402,F401
+from handlers.comms import admin_broadcast_ext_form_filter  # noqa: E402,F401
+from handlers.comms import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
+from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
