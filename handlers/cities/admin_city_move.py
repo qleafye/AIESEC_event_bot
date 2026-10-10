@@ -16,7 +16,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import city_codes, city_label, cities_module_on, get_city, is_city_enabled, normalize_city
 from database.db import get_user
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed
 from services import i18n as i18n_service

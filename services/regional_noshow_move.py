@@ -320,7 +320,7 @@ def _localized_offer_keyboard(lang: str, tr_map: dict, target_label: str,
     `reg_i18n.tr_kb` (при `lang == "ru"` это ТОТ ЖЕ объект) не мутируются, чтобы общий для всех
     получателей города шаблон не потёк подстановкой одного делегата в подпись другого."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
 
     kb = reg_i18n.tr_kb(offer_keyboard(labels), lang, tr_map)
     rows = [
@@ -378,7 +378,7 @@ async def send_offers(city: str | None) -> dict:
         if not marked:
             continue
 
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)

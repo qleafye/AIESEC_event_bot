@@ -18,7 +18,7 @@ import logging
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.states import ForumNoshowPollOther
 from handlers.user_actions import router
 from services import forum_noshow_poll as fnsp

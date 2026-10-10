@@ -44,7 +44,7 @@ from domain.cities import (
     normalize_city,
 )
 from database.db import create_onsite_user, get_user, record_user_consent
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.regform.engine import is_past_season_row, validate_answer
 from services.onsite_reg import onsite_enabled, parse_walkin_arg
 from domain.settings.schema import get_setting_typed

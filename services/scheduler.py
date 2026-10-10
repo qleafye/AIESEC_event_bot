@@ -656,7 +656,7 @@ def apply_important_prefix(content: str | None, important: bool, prefix: str) ->
 
 
 async def _translated_button(text: str, callback_data: str, chat_id: int) -> InlineKeyboardButton:
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
     from services import i18n as i18n_service
     lang, tr_map = await i18n_service.context(chat_id)
     return InlineKeyboardButton(text=reg_i18n.tr_text(text, lang, tr_map), callback_data=callback_data)
@@ -691,7 +691,7 @@ class RecipientLangs:
         return lang, (self._tr_map_en if lang == "en" else {})
 
     def mute_button(self, chat_id: int) -> InlineKeyboardButton:
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         lang, tr_map = self.context(chat_id)
         button = self._buttons.get(lang)
         if button is None:
@@ -781,7 +781,7 @@ async def send_mute_offer_if_eligible(
         already_shown = await get_mute_offer_shown_ids(today)
         if chat_id in already_shown:
             return None
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
         if langs is not None:
             lang, tr_map = langs.context(chat_id)

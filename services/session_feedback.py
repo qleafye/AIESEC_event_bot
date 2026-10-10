@@ -180,7 +180,7 @@ def comment_offer_keyboard(
 ) -> InlineKeyboardMarkup:
     """Кнопка «✍️ Написать» — на языке получателя. Ленивый импорт: модуль aiogram-free на
     уровне импорта `handlers.*` (см. докстринг)."""
-    from handlers.reg_i18n import tr_text
+    from handlers.i18n.reg_i18n import tr_text
 
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=tr_text("✍️ Написать", lang, tr_map or {}), callback_data=f"sfb:c:{session_id}"),
@@ -208,13 +208,13 @@ async def deliver_feedback_prompts(session_id: int) -> None:
         kb = rating_keyboard(session_id)
 
         # Ленивые импорты — модуль aiogram-free на уровне импорта (докстринг), эта функция
-        # выполняется ТОЛЬКО ботом. `handlers.reg_i18n.tr_fmt` — тот же порядок «шаблон
+        # выполняется ТОЛЬКО ботом. `handlers.i18n.reg_i18n.tr_fmt` — тот же порядок «шаблон
         # переводится СНАЧАЛА, {title} подставляется ПОСЛЕ», что LANG-02 уже закрепила везде
         # в чате (Часть А ревью SOS — тот же класс бага, если поменять местами).
         from services.scheduler import _now_moscow_naive, get_bot
         from services import quiet_hours
         from services import i18n as i18n_service
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
 
         bot = get_bot()
         now = _now_moscow_naive()

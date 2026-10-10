@@ -23,7 +23,7 @@ from handlers.registration import (
 from domain.regform.engine import validate_answer, apply_answer, STEP_TO_COLUMN, studying_statuses
 # Phase 27 (27-05, LANG-02): say() переводит делегатские отправки этого шва на отправке —
 # ноль правок публичных сигнатур хендлеров.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 
 # --- Core Registration ---
 

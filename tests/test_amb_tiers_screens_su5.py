@@ -15,7 +15,7 @@ import sqlite3
 
 from config import config
 from database import db
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers import user_actions as ua_mod
 from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db

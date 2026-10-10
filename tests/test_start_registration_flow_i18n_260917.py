@@ -8,7 +8,7 @@
 `services/i18n_sources.py::code_literals()` (`lit:registration._start_registration_flow`) —
 несовпадение хотя бы на символ означает, что перевод здесь никогда не сработает (см. докстринг
 `domain/i18n/ui_en.py`)."""
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import i18n_sources
 
 _PLAIN = "Отлично, начинаем регистрацию."
