@@ -100,10 +100,13 @@ def test_schema_has_no_min_max_fields():
         "amb_tier4_threshold", "amb_tier5_threshold", "amb_tiers_count",
         "quiz_points_max",  # 09.10: баллы варианта теста 1–10, 0 бессмыслен
         "wave_deadline_reminder_hours",  # 10.10: за 0 часов напоминать поздно, больше недели — бессмысленно
+        "question_stuck_minutes",  # 10.10: «залип» через 0 минут — каждый взятый вопрос
     }
     # `max` — у числа ступеней амбассадоров (1–5) и максимума баллов варианта теста (1–10).
     with_max = {key for key, entry in SETTINGS_SCHEMA.items() if "max" in entry}
-    assert with_max == {"amb_tiers_count", "quiz_points_max", "wave_deadline_reminder_hours"}
+    assert with_max == {
+        "amb_tiers_count", "quiz_points_max", "wave_deadline_reminder_hours", "question_stuck_minutes",
+    }
 
 
 # ── int: отказ ────────────────────────────────────────────────────────────────────────────────
