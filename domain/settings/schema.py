@@ -4139,7 +4139,7 @@ SETTINGS_SCHEMA = {
     # Phase 17.1 (17.1-01): RU-подписи типов подтверждения — зеркально game_category_label_*
     # выше (единственный источник — domain/game/labels.py::proof_types_label; коды
     # GAME_PROOF_TYPES в БД не меняются). Админская копия
-    # handlers/admin_gamification.py::_proof_types_label остаётся литеральной до 16-03,
+    # handlers/game/admin_gamification.py::_proof_types_label остаётся литеральной до 16-03,
     # который репойнтит её на game_labels (не в скоупе).
     "game_proof_type_label_photo": {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения «фото» (RU)",
@@ -4266,7 +4266,7 @@ SETTINGS_SCHEMA = {
     },
     # Quick 260822: уведомления менеджеру о сдачах — каждую отдельно или дайджестом по окну
     # тишины. Enum без текстового ввода: на экране «🎮 Геймификация» это тумблер
-    # (handlers/admin_gamification.py::toggle_game_submit_notify), ключ в _GAME_FIELD_ORDER
+    # (handlers/game/admin_gamification.py::toggle_game_submit_notify), ключ в _GAME_FIELD_ORDER
     # НЕ входит — менеджер не должен печатать код варианта. Подписи вариантов — рядом, в
     # GAME_SUBMIT_NOTIFY_MODE_LABELS (единственный источник для тумблера и алерта).
     "game_submit_notify_mode": {

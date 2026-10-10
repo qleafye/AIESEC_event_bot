@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from handlers import admin_settings
 from handlers.admin_caps import required_capability
 from handlers.states import CoinsManual

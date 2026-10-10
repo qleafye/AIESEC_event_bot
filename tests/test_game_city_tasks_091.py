@@ -19,8 +19,8 @@ from config import config
 from database import db
 import domain.cities as cities
 from handlers import admin as admin_mod
-from handlers import admin_gamification
-from handlers import admin_game_tasks
+from handlers.game import admin_gamification
+from handlers.game import admin_game_tasks
 from handlers import user_actions as ua_mod
 from handlers.states import GameTaskCreate
 from tests._dbtpl import fast_init_db

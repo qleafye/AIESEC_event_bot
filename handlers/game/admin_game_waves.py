@@ -1,12 +1,12 @@
 """Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): админка амбассадорских волн — отдельный шов,
 своего `Router()` НЕТ, декорирует ОБЩИЙ `handlers.admin.router` (та же техника 13-02, что у
-`handlers/admin_game_tasks.py`/`handlers/reg_ambassador.py`).
+`handlers/game/admin_game_tasks.py`/`handlers/reg_ambassador.py`).
 
-Почему отдельный файл: `handlers/admin_gamification.py` стоит вплотную к потолку размера
+Почему отдельный файл: `handlers/game/admin_gamification.py` стоит вплотную к потолку размера
 (`tests/test_module_size_convention_260816.py`), новый экран волн туда не помещается —
-тот же аргумент, что у `handlers/admin_game_tasks.py`.
+тот же аргумент, что у `handlers/game/admin_game_tasks.py`.
 
-Почему импортируется В ХВОСТЕ `handlers/admin_game_tasks.py` (см. последнюю строку того
+Почему импортируется В ХВОСТЕ `handlers/game/admin_game_tasks.py` (см. последнюю строку того
 файла): золотой снимок порядка регистрации (`tests/test_refac_snapshot_260816.py`) только
 дополняется, независимо от того, какой модуль импортировали первым в тестах.
 
@@ -15,7 +15,7 @@
 
 Ревизия 32-FIX (CR-04/WR-06/WR-07/WR-13/WR-16): визард создания/копии/правки волны (FSM
 `WaveCreate`/`WaveEdit`, обработчики `wavenew`/`wavecopy*`/`waveedit*`/`wc*`) вынесен в
-`handlers/admin_game_wave_wizard.py` — этот файл подошёл вплотную к потолку размера
+`handlers/game/admin_game_wave_wizard.py` — этот файл подошёл вплотную к потолку размера
 (`tests/test_module_size_convention_260816.py`), а сами правки визарда (перепроверка права и
 состава на каждом шаге, обработчик «Отмена») сюда уже не помещались. Импортирован В ХВОСТЕ
 этого файла — та же дисциплина, что у соседних швов: золотой снимок регистрации только
@@ -56,9 +56,9 @@ from services.scheduler import (
 from services.timeutil import msk_now
 from handlers.admin import router
 # Модульная ссылка (не `from ... import name`): та же осторожность с порядком импорта, что у
-# handlers/admin_game_tasks.py::_ag — на момент импорта этого файла admin_gamification может
+# handlers/game/admin_game_tasks.py::_ag — на момент импорта этого файла admin_gamification может
 # быть ещё частично инициализирован.
-from handlers import admin_gamification as _ag
+from handlers.game import admin_gamification as _ag
 
 _STATE_LABELS = {
     "draft": "черновик",
@@ -483,4 +483,4 @@ __all__ = [
 # файла (та же дисциплина, что у admin_game_tasks.py::admin_game_waves выше по цепочке) —
 # золотой снимок порядка (tests/test_refac_snapshot_260816.py) видит чистое перемещение блока
 # хендлеров, независимо от того, какой модуль импортировали первым в тестах.
-from handlers import admin_game_wave_wizard  # noqa: E402,F401
+from handlers.game import admin_game_wave_wizard  # noqa: E402,F401

@@ -1,6 +1,6 @@
 """Phase 19 (D-04 волна 2): задания менеджера из Mini App — список, карточка, точечные
 правки, создание, архив/возврат/удаление. Зеркало экранов 6 и 7 скетча Phase 16 на ТЕХ ЖЕ
-аксессорах, что бот (`handlers/admin_gamification.py`, `handlers/admin_game_tasks.py` —
+аксессорах, что бот (`handlers/game/admin_gamification.py`, `handlers/game/admin_game_tasks.py` —
 импортировать нельзя, aiogram): `list_all_tasks`, `create_task`, `update_task_*`,
 `archive_task`/`unarchive_task`, `delete_task` (у задания без сдач — гейт внутри SQL).
 
@@ -70,13 +70,13 @@ from miniapp.timeutil import now_msk_naive
 
 router = APIRouter()
 
-TITLE_MAX = 60          # handlers/admin_gamification.py::_normalize_task_title
+TITLE_MAX = 60          # handlers/game/admin_gamification.py::_normalize_task_title
 TEXT_MAX = 4000         # описание уходит в <blockquote> сообщения Telegram (4096)
 COINS_MAX = 100_000
 STORAGE_FMT = "%Y-%m-%d %H:%M:%S"
 INPUT_FMT = "%d.%m.%Y %H:%M"
 
-# Пресеты дедлайна — код -> подпись (handlers/game_task_wizard.py::_DEADLINE_PRESETS).
+# Пресеты дедлайна — код -> подпись (handlers/game/game_task_wizard.py::_DEADLINE_PRESETS).
 DEADLINE_PRESETS = (("today", "Сегодня 23:59"), ("plus3", "+3 дня"), ("plus7", "+7 дней"))
 _PRESET_DAYS = {"today": 0, "plus3": 3, "plus7": 7}
 
@@ -100,7 +100,7 @@ TEXT_NOT_FOUND = "Задание не найдено — возможно, ег�
 # ── время и разбор полей (копии чистых хелперов бота — импорт тянет aiogram) ───────────
 
 def resolve_deadline_preset(code: str) -> datetime | None:
-    """handlers/game_task_wizard.py::_resolve_deadline_preset: неизвестный код -> None."""
+    """handlers/game/game_task_wizard.py::_resolve_deadline_preset: неизвестный код -> None."""
     days = _PRESET_DAYS.get(code)
     if days is None:
         return None
@@ -130,7 +130,7 @@ def parse_deadline(raw) -> tuple[str | None, str | None]:
 
 
 def normalize_task_title(raw) -> str:
-    """handlers/admin_gamification.py::_normalize_task_title — перенос -> пробел, 60 символов."""
+    """handlers/game/admin_gamification.py::_normalize_task_title — перенос -> пробел, 60 символов."""
     return " ".join(str(raw or "").split())[:TITLE_MAX]
 
 
@@ -147,7 +147,7 @@ def parse_positive_int(raw) -> int | None:
 # ── скоуп ────────────────────────────────────────────────────────────────────────────────
 
 async def bound_city(request: Request, p: Principal) -> str | None:
-    """handlers/admin_gamification.py::_bound_task_city: суперадмин из ADMIN_IDS не
+    """handlers/game/admin_gamification.py::_bound_task_city: суперадмин из ADMIN_IDS не
     ограничен никогда; модуль городов выключен -> ограничений нет."""
     if p.telegram_id in (request.app.state.cfg.admin_ids or ()):
         return None

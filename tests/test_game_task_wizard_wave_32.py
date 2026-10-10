@@ -28,9 +28,9 @@ import domain.cities as cities
 from config import config
 from database import db
 import services.scheduler as sched
-from handlers import admin_gamification
-from handlers import admin_game_tasks
-from handlers import game_task_wizard
+from handlers.game import admin_gamification
+from handlers.game import admin_game_tasks
+from handlers.game import game_task_wizard
 from handlers.states import GameTaskCreate
 from tests._dbtpl import fast_init_db
 

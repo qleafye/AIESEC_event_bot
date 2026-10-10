@@ -12,7 +12,7 @@ waves/32-04-PLAN.md`, раздел «Карта читателей метки «
 
 Сторож 1 («свой разбор срока») — ищет `strptime(` с первым аргументом, содержащим
 `deadline_at`: это разбор ХРАНИМОГО значения. Разбор ВВОДА менеджера (`parse_deadline` в
-`miniapp/routers/admin_tasks.py`, пресеты в `handlers/admin_game_tasks.py`,
+`miniapp/routers/admin_tasks.py`, пресеты в `handlers/game/admin_game_tasks.py`,
 `services/scheduler.py`) читает переменную `raw`/`text`/`when`, а не `deadline_at`, — под
 детектор не попадает и нарушением не является (проверено собственным тестом детектора ниже).
 

@@ -45,7 +45,7 @@ DEFAULT_FILES = [
     "handlers/reg_types_composite.py",
     "handlers/reg_types_lookup.py",
     "handlers/reg_types_repeatable.py",
-    "handlers/game_submit_counter.py",
+    "handlers/game/game_submit_counter.py",
     "services/application_effects.py",
 ]
 

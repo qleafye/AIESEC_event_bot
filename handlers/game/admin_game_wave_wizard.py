@@ -4,7 +4,7 @@
 даты/вводный текст/призовые места). Декорирует ОБЩИЙ `handlers.admin.router` — своего
 `Router()` нет, та же техника 13-02, что у соседних швов геймы.
 
-Вынесен ИЗ `handlers/admin_game_waves.py` (импортирован В ХВОСТЕ того файла) — он подошёл
+Вынесен ИЗ `handlers/game/admin_game_waves.py` (импортирован В ХВОСТЕ того файла) — он подошёл
 вплотную к потолку размера (`tests/test_module_size_convention_260816.py`), а правки этой
 ревизии (CR-04/WR-06 ниже) сюда уже не помещались. Общие помощники карточки/списка волны
 (`_wave_card_screen`/`_wave_list_screen`/`_wave_from_prefix`/`_fmt`/`_city_display`) остались
@@ -18,7 +18,7 @@ CR-04: ни у `WaveCreate`, ни у `WaveEdit` раньше не было об�
 амбассадорам на старте), а на шагах дат/призовых мест любая команда вешала менеджера в
 бесконечном «не понял». `wave_wizard_cancel` регистрируется ПЕРЕД шаговыми обработчиками
 (admin.router: первое совпадение выигрывает) и одним фильтром ловит и «Отмена», и любую
-`/команду` — идиома `grev_step_cancel` (`handlers/admin_gamification.py`).
+`/команду` — идиома `grev_step_cancel` (`handlers/game/admin_gamification.py`).
 
 WR-06: шаги `WaveEdit.*` раньше писали в БД по значению, прочитанному в момент НАЖАТИЯ кнопки
 — между кнопкой и присланным сообщением волна могла смениться (стартовая рассылка ушла,
@@ -55,9 +55,9 @@ from domain.settings.validation import validate_setting_value
 from handlers.states import WaveCreate, WaveEdit
 from handlers.admin import router
 # Модульная ссылка (не `from ... import name`): та же осторожность с порядком импорта, что у
-# handlers/admin_game_tasks.py::_ag — общие помощники карточки/списка волны читаются лениво,
+# handlers/game/admin_game_tasks.py::_ag — общие помощники карточки/списка волны читаются лениво,
 # при вызове, а не при импорте этого модуля.
-from handlers import admin_game_waves as _gw
+from handlers.game import admin_game_waves as _gw
 
 _DATE_HELP = (
     "Пришлите даты волны в формате <code>ДД.ММ.ГГГГ</code>. Можно одной строкой через «;»: "

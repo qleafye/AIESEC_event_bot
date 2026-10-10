@@ -1,4 +1,4 @@
-"""Ревизия 32-FIX (фиксер 3, находка WR-16) — `handlers/admin_game_waves.py::wave_activate_confirm`:
+"""Ревизия 32-FIX (фиксер 3, находка WR-16) — `handlers/game/admin_game_waves.py::wave_activate_confirm`:
 
 запуск пустой волны (ни одного активного задания) или волны с уже прошедшей датой конца
 отклоняется с человеческим объяснением; текст подтверждения честно называет момент рассылки
@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_game_waves as w
+from handlers.game import admin_game_waves as w
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932001

@@ -2,7 +2,7 @@
 подтверждение менеджера, неизменяемый снимок призёров и две рассылки (общая + призёрам).
 
 Задача 1 — `services.ambassador_waves.announce_results`/`prize_places_for` (без aiogram, чистые
-БД-тесты). Задача 2 — экран итогов и подтверждение в `handlers/admin_game_waves.py` (стиль
+БД-тесты). Задача 2 — экран итогов и подтверждение в `handlers/game/admin_game_waves.py` (стиль
 `tests/test_ambassador_waves_crud_32.py`: Fake* объекты, прямой вызов хендлеров). Задача 3 —
 рассылка из снимка в `services/scheduler.py` (стиль `tests/test_ambassador_wave_scheduling_32.py`:
 FakeBot, реальный AsyncIOScheduler на временном jobstore для проверки постановки джобы, прямой
@@ -272,7 +272,7 @@ def test_announce_results_no_coin_writes():
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Задача 2: экран итогов и подтверждение менеджера (handlers/admin_game_waves.py)
+# Задача 2: экран итогов и подтверждение менеджера (handlers/game/admin_game_waves.py)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _new_state(uid: int) -> FSMContext:
@@ -319,7 +319,7 @@ def _kb_callbacks(kb):
 
 def test_wavefin_screen_shows_top_and_pending_count(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     _seed_ambassador(1)
     _seed_ambassador(2)
@@ -341,7 +341,7 @@ def test_wavefin_screen_shows_top_and_pending_count(tmp_path):
 
 def test_wavefin_screen_no_warning_when_queue_empty(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     _seed_ambassador(1)
     _award(1, task_id, 30)
@@ -356,7 +356,7 @@ def test_wavefin_screen_no_warning_when_queue_empty(tmp_path):
 
 def test_wavefin_go_confirm_mentions_winners_list_wont_change(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, _task_id = _make_wave_with_task()
 
     cb = FakeCallback(f"wavefin_go:{wave_id}", user_id=ADMIN_ID)
@@ -372,7 +372,7 @@ def test_wavefin_go_confirm_mentions_tie_when_winners_exceed_prize_places(tmp_pa
     призовых мест даёт больше призёров, чем самих мест — иначе первое, что он узнаёт об этом,
     происходит уже ПОСЛЕ объявления, когда список призёров заперт (D-17)."""
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     for uid in (1, 2, 3):
         _seed_ambassador(uid, since=f"2025-01-0{uid} 00:00:00")
@@ -387,7 +387,7 @@ def test_wavefin_go_confirm_mentions_tie_when_winners_exceed_prize_places(tmp_pa
 
 def test_wavefin_go_confirm_no_tie_note_without_tie(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=2)
     _seed_ambassador(1)
     _award(1, task_id, 10)
@@ -400,7 +400,7 @@ def test_wavefin_go_confirm_no_tie_note_without_tie(tmp_path):
 
 def test_wavefin_do_rejected_for_manager_of_other_city(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     msk, spb = _codes()
     _bind_manager(MSK_MANAGER_ID, msk)
     wave_id, _task_id = _make_wave_with_task(event_city=spb)
@@ -415,7 +415,7 @@ def test_wavefin_do_rejected_for_manager_of_other_city(tmp_path):
 
 def test_wavefin_do_repeat_answers_already_announced_no_second_broadcast(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=1)
     _seed_ambassador(1)
     _award(1, task_id, 10)
@@ -435,7 +435,7 @@ def test_wavefin_do_repeat_answers_already_announced_no_second_broadcast(tmp_pat
 
 def test_wave_card_has_no_edit_buttons_after_announcement(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, task_id = _make_wave_with_task(prize_places=1)
     _seed_ambassador(1)
     _award(1, task_id, 10)
@@ -453,7 +453,7 @@ def test_closing_wave_card_offers_results_screen(tmp_path):
     """Сообщение о конце волны можно потерять — карточка волны, ждущей итогов, сама ведёт на
     экран итогов; у идущей волны такой кнопки нет (нажимать её рано)."""
     _ready(tmp_path)
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     wave_id, _task_id = _make_wave_with_task()
     _text, kb = _run(w._wave_card_screen(ADMIN_ID, _run(db.get_wave(wave_id))))
     assert f"wavefin:{wave_id}" in _kb_callbacks(kb)
@@ -468,7 +468,7 @@ def test_wavefin_callback_format_matches_scheduler_button():
     """services.scheduler.send_wave_end_ping ставит кнопку `wavefin:{wave_id}` — формат должен
     совпадать буква в букву с фильтром обработчика в admin_game_waves.py."""
     import inspect
-    from handlers import admin_game_waves as w
+    from handlers.game import admin_game_waves as w
     sched_src = inspect.getsource(sched.send_wave_end_ping)
     assert 'callback_data=f"wavefin:{wave_id}"' in sched_src
     handlers_src = inspect.getsource(w)
