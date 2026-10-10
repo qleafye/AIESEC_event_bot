@@ -7,7 +7,7 @@ import pytest
 
 from config import config
 from database import ext_forms_db as ef
-from services import ext_forms_google as g
+from services.ext_forms import ext_forms_google as g
 from tests._dbtpl import fast_init_db
 
 HEAD = ["Отметка времени", "ФИО", "Ник"]

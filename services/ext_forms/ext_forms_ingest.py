@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from database import ext_forms_db as ef
-from services.ext_forms_match import match_answer
+from services.ext_forms.ext_forms_match import match_answer
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

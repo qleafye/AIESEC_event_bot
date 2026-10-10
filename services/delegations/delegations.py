@@ -42,7 +42,7 @@ from database.db import (
     update_user_answers, username_needle,
 )
 from services.delegations.delegations_course import _cutoff_dt, evaluate_ta, parse_course
-from services.ext_forms_match import username_from_value
+from services.ext_forms.ext_forms_match import username_from_value
 from services.reg_stuck_reset import _is_registration_state
 from services.reject_journal import AUTO_DECIDED_BY
 from services.infra.timeutil import msk_now
@@ -68,7 +68,7 @@ _ALLOWED_DELEGATION_COLUMNS = ["delegation", "delegation_answer_id"]
 _FMT = "%Y-%m-%d %H:%M:%S"
 
 # Угадывание ключевых вопросов формы по подписи — тем же приёмом, что
-# `services.ext_forms_match.guess_key_questions`. Подписи про ник/телеграм/ВК пропускаются:
+# `services.ext_forms.ext_forms_match.guess_key_questions`. Подписи про ник/телеграм/ВК пропускаются:
 # «Ник в телеграмме» содержит «ник», а не «имя», но лишняя страховка дешевле ложного ФИО.
 _FULLNAME = re.compile(r"фио|имя")
 _UNIVERSITY = re.compile(r"универ|вуз")

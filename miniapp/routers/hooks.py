@@ -25,7 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from database import ext_forms_db
-from services.ext_forms_parse import parse_push_body
+from services.ext_forms.ext_forms_parse import parse_push_body
 from miniapp.timeutil import now_msk_naive
 
 logger = logging.getLogger(__name__)

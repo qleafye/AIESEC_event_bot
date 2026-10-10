@@ -5,7 +5,7 @@ from datetime import time
 
 from config import config
 from database import ext_forms_db as ef
-from services import ext_forms_notify as N
+from services.ext_forms import ext_forms_notify as N
 from services import scheduler as sched
 from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
@@ -119,7 +119,7 @@ def test_jobs_registered_and_safe():
 
 
 def test_job_swallows_errors(monkeypatch):
-    import services.ext_forms_google as G
+    import services.ext_forms.ext_forms_google as G
 
     async def boom():
         raise RuntimeError("x")

@@ -9,7 +9,7 @@ from config import config
 from aiogram.dispatcher.event.bases import UNHANDLED
 
 from database import ext_forms_db as xdb
-from services import ext_forms_yandex as yx
+from services.ext_forms import ext_forms_yandex as yx
 from tests.test_roles_phase8 import (
     ADMIN_ID, FakeBot, FakeMessage, _fresh_state, _roles_ready, dispatch_callback, dispatch_message,
 )
