@@ -8,7 +8,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin
-from handlers import admin_reg_config  # Phase 13 (13-05): _refresh_party_sheet_header moved here
+from handlers.regform import admin_reg_config  # Phase 13 (13-05): _refresh_party_sheet_header moved here
 import services.sheets as sheets
 from tests._dbtpl import fast_init_db
 

@@ -9,7 +9,7 @@
 в логе через `settings_audit.set_setting_by_admin`, но здесь — в чат живым людям, не только
 в лог). Обратный переход в ручную модерацию остаётся мгновенным — там нечего терять.
 
-Форма шва — `handlers/admin_reg_form.py`: свой `Router()` здесь НЕ заводится, декоратор
+Форма шва — `handlers/regform/admin_reg_form.py`: свой `Router()` здесь НЕ заводится, декоратор
 навешивается на общий `router` из `handlers.admin` (тот же инвариант cap-теста
 `tests/test_roles_phase8.py`). Импортируется последней строкой `handlers/admin_sections.py`
 (тот же хвостовой приём, что и соседи).

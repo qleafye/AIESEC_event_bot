@@ -8929,7 +8929,7 @@ SETTINGS_SCHEMA.update(_UI_TEXT_SCHEMA)
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по
 # городу. Пары (step_key, setting_key) — байт-в-байт порядок `_prompt_steps()`
-# (handlers/admin_reg_config.py): первая — full_name (setting_key=None, вопрос без reg_q_*
+# (handlers/regform/admin_reg_config.py): первая — full_name (setting_key=None, вопрос без reg_q_*
 # тумблера), дальше — одна пара на каждую тройку `reg_engine.REG_FLOW`, в её порядке.
 # Литерал, а не импорт REG_FLOW: `reg_engine` импортирует ЭТОТ модуль (SETTINGS_SCHEMA),
 # обратный импорт дал бы цикл.

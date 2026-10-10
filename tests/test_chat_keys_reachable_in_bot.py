@@ -244,7 +244,7 @@ def _screen_tables() -> set[str]:
     keys |= set(admin_quiz_levels._EDIT_KEYS) | set(session_enroll.ENROLL_TEXT_KEYS)
     keys |= set(admin_miniapp.SECTION_KEYS)
     # «✏️ Тексты вопросов»: кнопка на каждый шаг анкеты, общий трек и трек 🎉 Party.
-    from handlers.admin_reg_percity import _prompt_steps
+    from handlers.regform.admin_reg_percity import _prompt_steps
     for step, _label in _prompt_steps():
         keys |= {f"reg_prompt_{step}", f"reg_prompt_{step}__party"}
     return keys

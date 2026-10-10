@@ -4,7 +4,7 @@
 Module-size convention (tests/test_module_size_convention_260816.py) later split this file
 further: the per-city question/prompt screens (`toggle_reg_question`/`toggle_party_question`/
 `toggle_short_question`/`reg_prompt_*`/`reg_q_reset_city*`/`reg_resume_mode_toggle`) moved to
-`handlers/admin_reg_percity.py`, imported right after this module in `handlers/admin.py` (same
+`handlers/regform/admin_reg_percity.py`, imported right after this module in `handlers/admin.py` (same
 registration order, same shared router — golden snapshot in test_refac_snapshot_260816.py stays
 byte-for-byte, it only tracks handler name/filter/order, never the defining file).
 
@@ -54,7 +54,7 @@ from domain.cities import (
 )
 from handlers.admin import router
 from handlers.states import EditSetting
-from handlers.admin_consent import remind_consent_purposes_after_preset
+from handlers.regform.admin_consent import remind_consent_purposes_after_preset
 from handlers.admin_settings import _per_city_visible_codes, _settings_edit_screen  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
@@ -379,7 +379,7 @@ async def preset_confirm(callback: types.CallbackQuery, state: FSMContext | None
     # Phase 25 (module-size split): render_questions_text/build_questions_keyboard now live in
     # admin_reg_percity.py -- lazy import avoids a load-time cycle (that module imports the
     # _refresh_*_sheet_header trio back from THIS module, which must finish loading first).
-    from handlers.admin_reg_percity import render_questions_text, build_questions_keyboard
+    from handlers.regform.admin_reg_percity import render_questions_text, build_questions_keyboard
     # `:et` — подтверждение пришло из «🎭 Тип события» (skillup_confirm_screen): тип тоже пишем.
     key, _, origin = callback.data.split(":", 1)[1].partition(":")
     preset = REG_PRESETS.get(key)

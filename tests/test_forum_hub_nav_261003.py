@@ -74,7 +74,7 @@ def test_menu_from_hub_uses_hub_city_not_header(tmp_path):
 
 
 def test_menu_reset_city_keeps_way_back_to_hub(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _seed_spb(tmp_path)
     asyncio.run(db.set_setting("menu_info__city__spb", "off"))
     _t, menu_kb = _open_from_hub("menu", "spb")

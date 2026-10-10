@@ -217,7 +217,7 @@ async def _native_screen(target: str, admin_id: int, code: str | None):
         if code and await cities_module_on():
             from domain.cities import set_admin_city
             await set_admin_city(admin_id, code)
-        from handlers.admin_reg_config import build_menu_keyboard, render_menu_text
+        from handlers.regform.admin_reg_config import build_menu_keyboard, render_menu_text
         return await render_menu_text(admin_id), await build_menu_keyboard(admin_id)
     if target == "fb" and code:
         from handlers.session_feedback import render_feedback_settings_screen

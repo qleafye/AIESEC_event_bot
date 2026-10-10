@@ -1,6 +1,6 @@
 """Phase 13 (13-05, REFAC-01) / Phase 25 split — реестр вопросов и текстов анкеты, per-city.
 
-Вынесено из `handlers/admin_reg_config.py` (module-size convention, tests/test_module_size_
+Вынесено из `handlers/regform/admin_reg_config.py` (module-size convention, tests/test_module_size_
 convention_260816.py): экраны «📋 Вопросы регистрации» (toggle_reg_question/toggle_party_
 question/toggle_short_question), «✏️ Тексты вопросов» (reg_prompt_*), переключатель
 резюме-режима (reg_resume_mode_toggle) и их общие «↩️ Как везде» confirm-флоу
@@ -40,9 +40,9 @@ from domain.cities import (
     per_city_key,
 )
 from handlers.admin import router
-from handlers.admin_consent import remind_consent_purposes_if_widened
+from handlers.regform.admin_consent import remind_consent_purposes_if_widened
 from handlers.admin_settings import _per_city_visible_codes  # Phase 13 (13-06): settings moved out of admin.py
-from handlers.admin_reg_config import (
+from handlers.regform.admin_reg_config import (
     _refresh_sheet_header,
     _refresh_party_sheet_header,
     _refresh_short_sheet_header,

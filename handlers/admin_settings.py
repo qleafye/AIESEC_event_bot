@@ -876,7 +876,7 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     checkin_qr_text = (f"{checkin_qr_label}: ✅ Вкл → ❌ Выкл" if checkin_qr_on == "on"
                        else f"{checkin_qr_label}: ❌ Выкл → ✅ Вкл")
     # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — сами хендлеры живут в шве
-    # `handlers/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
+    # `handlers/regform/admin_reg_form.py` (потолок этого файла, tests/test_module_size_convention_
     # 260816.py), строки кнопок — здесь, как у всех остальных тумблеров раздела «📝 Анкета»
     # (сторож tests/test_admin_sections_ia20.py::test_toggle_rows_are_shared_with_the_
     # settings_screen требует общий источник строки). Мастер-тумблер показывает человеческие
@@ -1321,7 +1321,7 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
     # (same idiom _refresh_party_sheet_header/_refresh_short_sheet_header themselves use for
     # handlers.registration) avoids triggering admin_reg_config's own back-import of this
     # module before admin.py has finished defining the names admin_reg_config imports back.
-    from handlers.admin_reg_config import _refresh_short_sheet_header
+    from handlers.regform.admin_reg_config import _refresh_short_sheet_header
     await _refresh_short_sheet_header()
 
 
@@ -1453,7 +1453,7 @@ async def toggle_party_approval(callback: types.CallbackQuery):
 
 def _next_enum_value(key: str, current: str) -> str:
     """Следующее значение цикла `SETTINGS_SCHEMA[key]["options"]` по кругу — тот же приём,
-    что `_next_resume_mode` в `handlers/admin_reg_percity.py`, но без второй копии цикла:
+    что `_next_resume_mode` в `handlers/regform/admin_reg_percity.py`, но без второй копии цикла:
     источник — сам реестр, не литеральный кортеж. Неизвестное/несуществующее текущее
     значение безопасно уходит на первый элемент (fail-soft)."""
     options = SETTINGS_SCHEMA[key]["options"]
@@ -1472,7 +1472,7 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
 
     Правка 260922-wrg: ключи `SETTINGS_SCHEMA[key]["per_city"] is True` (сегодня —
     `reg_edit_policy`/`reg_resubmit_after_reject`) переключаются ДЛЯ ГОРОДА ШАПКИ, тот же
-    паттерн, что `handlers/admin_reg_percity.py::reg_resume_mode_toggle` (право проверяется
+    паттерн, что `handlers/regform/admin_reg_percity.py::reg_resume_mode_toggle` (право проверяется
     через `_per_city_visible_codes`, ключ пишется составным через `cities.per_city_key`,
     алерт называет город). Ключ без `per_city` (`reg_submit_notify_mode`/
     `delegate_lang_ask_on_start`) или шапка = «все города»/модуль городов выключен —
@@ -1708,7 +1708,7 @@ async def toggle_reg_scoring_enabled(callback: types.CallbackQuery):
     # "enum" — см. комментарий у ключа), поэтому get_setting_typed отдаёт bool, не строку
     # "on"/"off". Общий _toggle_module_setting сравнивает со строкой "on" — для этого ключа
     # сравнение bool == str всегда False, кнопка не смогла бы выключиться обратно, поэтому
-    # здесь bool-приём, тот же, что у reg_q_* тумблера (handlers/admin_reg_percity.py::
+    # здесь bool-приём, тот же, что у reg_q_* тумблера (handlers/regform/admin_reg_percity.py::
     # toggle_reg_question).
     current_on = await get_setting_typed("reg_scoring_enabled")
     new_val = "off" if current_on else "on"
@@ -2632,7 +2632,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         if await ph.gate(message, state, key, value, ack=ack):  # пропавшая/опечатанная {подстановка}
             return
         if key == "event_type" and value == "skillup":  # пресет СкиллАп — только через подтверждение
-            from handlers.admin_reg_config import skillup_event_type_confirm  # ленивый: цикл импорта
+            from handlers.regform.admin_reg_config import skillup_event_type_confirm  # ленивый: цикл импорта
             return await skillup_event_type_confirm(message, state)
 
     # Quick 260919-mlu (Task 3): развилка «была своя вкладка с данными, имя меняется» — идёт
@@ -2838,7 +2838,7 @@ async def export_incomplete(callback: types.CallbackQuery):
     )
 
 
-from handlers.admin_consent import consent_group_extra_lines, consent_group_extra_buttons, remind_consent_purposes_if_widened, remind_consent_purposes_after_preset  # noqa: E402  -- quick 260822: шов согласий (версия/пересогласие/напоминание о целях)
+from handlers.regform.admin_consent import consent_group_extra_lines, consent_group_extra_buttons, remind_consent_purposes_if_widened, remind_consent_purposes_after_preset  # noqa: E402  -- quick 260822: шов согласий (версия/пересогласие/напоминание о целях)
 
 # ── Seam chain (quick 260822): handlers/admin_settings_lists.py (списочные настройки по
 # пунктам) decorates the same admin.router and depends one-way on this module. Imported HERE,

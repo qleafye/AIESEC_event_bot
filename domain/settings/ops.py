@@ -749,7 +749,7 @@ DANGEROUS_KEYS: frozenset[str] = frozenset(SHEET_TAB_WRITE_MODE) | {
 # читают/пишут их как обычную строку (ветка `entry is None` в `validate_setting_value`), здесь
 # только распознавание «можно ли вообще их править» (миниапп/routers/settings.py::
 # `_editable_target`) и то же множество допустимых базовых ключей, что
-# `handlers.admin_reg_config` сверяет по `REG_FLOW` перед записью (T-05-03-02/T-07-09) —
+# `handlers.regform.admin_reg_config` сверяет по `REG_FLOW` перед записью (T-05-03-02/T-07-09) —
 # крафченный `reg_q_noop__party` не долетает до `bot_settings`.
 REG_QUESTION_TRACK_SUFFIXES = ("__party", "__short")
 

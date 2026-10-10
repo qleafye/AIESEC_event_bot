@@ -32,7 +32,7 @@ SEAMS = [
     "handlers.admin_settings_lists",
     "handlers.cities.admin_cities",
     "handlers.comms.admin_broadcasts",
-    "handlers.admin_reg_config",
+    "handlers.regform.admin_reg_config",
     "handlers.admin_moderation",
     "handlers.admin_roles",
     "handlers.game.admin_gamification",
@@ -43,7 +43,7 @@ SEAMS = [
     "handlers.reg_steps",
     # quick 260822: согласия -- версия/пересогласие (шов admin_settings) и делегатский
     # пересбор (шов registration)
-    "handlers.admin_consent",
+    "handlers.regform.admin_consent",
     "handlers.reg_consent",
     # Phase 15 (15-02): экран «📊 Дашборд» — тумблеры блоков веб-дашборда.
     "handlers.admin_dashboard",
