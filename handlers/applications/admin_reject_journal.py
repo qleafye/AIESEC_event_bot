@@ -149,8 +149,8 @@ async def render_journal_screen(admin_id: int, offset: int = 0, include_returned
 
     buttons.append([InlineKeyboardButton(text="📄 Выгрузить файлом", callback_data="arj_csv")])
 
-    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
-    buttons.append([back_button("admin_reject_journal")])
+    # Вход в журнал — только с экрана правил; back_button вёл в корень /admin.
+    buttons.append([InlineKeyboardButton(text="← К правилам автоотказа", callback_data="admin_reject_rules")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
