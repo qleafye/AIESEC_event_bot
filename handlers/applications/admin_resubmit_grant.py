@@ -195,11 +195,11 @@ async def resubg_revoke(callback: types.CallbackQuery):
 
 async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> bool:
     """`True` — отправлено сейчас или поставлено в очередь тихих часов (для вызывающего это
-    успех, тот же контракт, что `services/quiet_hours.py::send_or_queue_text`); `False` —
+    успех, тот же контракт, что `services/comms/quiet_hours.py::send_or_queue_text`); `False` —
     сбой (делегат заблокировал бота и т.п.), fail-soft, не рвёт саму выдачу разрешения."""
     try:
         from domain.cities import get_setting_typed_for_city
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
         from services.scheduler import _now_moscow_naive
         from domain.settings.schema import SETTINGS_SCHEMA

@@ -20,7 +20,7 @@ from datetime import timedelta
 from config import config
 from database import db
 from handlers import admin as admin_mod
-import services.quiet_hours as qh
+import services.comms.quiet_hours as qh
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910101
@@ -274,7 +274,7 @@ def test_non_text_answer_header_sent_copy_failed_blocks_retry(tmp_path, monkeypa
         assert not any("попробовать ещё раз" in t for t in m1.replies)
         row = await db.get_question(qid)
         assert row["dispatched_at"] is not None and row["delivered_at"] is not None
-        from services.questions import question_status
+        from services.comms.questions import question_status
         assert question_status(row) == "answered"
 
         m2 = _VoiceFail(None, qid)
@@ -289,7 +289,7 @@ def test_non_text_answer_header_sent_copy_failed_blocks_retry(tmp_path, monkeypa
 def test_record_failure_after_send_is_retried_then_answered(tmp_path, monkeypatch):
     """Ревью 10.10: ответ дошёл, запись в БД упала один раз — повтор записи, вопрос отвечен,
     менеджеру — успех, а не «не удалось»."""
-    import services.questions as qs
+    import services.comms.questions as qs
 
     _ready(tmp_path, "qguard_record_retry.db")
     monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)
@@ -321,7 +321,7 @@ def test_record_failure_persistent_keeps_sending_and_never_resends(tmp_path, mon
     """Запись не удалась и после повторов: ERROR в лог, вопрос остаётся «отправляется»,
     повтор менеджера второй копии делегату не шлёт."""
     import logging
-    import services.questions as qs
+    import services.comms.questions as qs
 
     _ready(tmp_path, "qguard_record_fail.db")
     monkeypatch.setattr(admin_mod, "_notify_other_moderate_reg_holders", _no_fanout)

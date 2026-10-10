@@ -4,7 +4,7 @@
 Харнесс — `tests/test_miniapp_routes.py` (тот же процесс/БД, что у соседних роутеров).
 Bot API (sendMessage делегату) — `httpx.MockTransport`, фикстура `bot_api` скопирована с
 `tests/test_miniapp_review.py::bot_api` (включая ветку `fail`). Правило статуса и
-постраничная выборка — общие с ботом (`services/questions.py`, `database.db`), здесь их не
+постраничная выборка — общие с ботом (`services/comms/questions.py`, `database.db`), здесь их не
 дублируем — только контракт HTTP поверх них.
 """
 from __future__ import annotations
@@ -405,9 +405,9 @@ def test_questions_js_placeholder_from_registry_and_toggle_has_aria_label():
 
 def test_answer_in_quiet_hours_queues_instead_of_sending(client, bot_api):
     """Веб не ходит в Bot API, а кладёт строку в ТУ ЖЕ очередь `delayed_notifications`, что и
-    бот (`services/quiet_hours.py`) — отправит её бот своей джобой. Вопрос при этом считается
+    бот (`services/comms/quiet_hours.py`) — отправит её бот своей джобой. Вопрос при этом считается
     отвеченным: доставка гарантирована, просто утром."""
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
     _seed(settings={"quiet_hours_enabled": "on", "quiet_hours_start": "00:00",
@@ -442,7 +442,7 @@ def test_answer_in_quiet_hours_queue_row_carries_question_id(client, bot_api):
 
 
 def test_answer_outside_quiet_hours_sends_immediately_and_queued_until_is_null(client, bot_api):
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
     resp = client.post(
@@ -457,7 +457,7 @@ def test_answer_outside_quiet_hours_sends_immediately_and_queued_until_is_null(c
 def test_answer_any_error_before_send_releases_mark_so_retry_works(client, bot_api, monkeypatch):
     """Ревью 10.10: отметка «уходит» снимается при ЛЮБОЙ ошибке до отправки, не только при
     TelegramApiError — иначе пять минут «уже отправляется» на попытку, которой нет."""
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     real = quiet_hours.send_or_queue_text_due
     calls = {"n": 0}
@@ -481,7 +481,7 @@ def test_answer_any_error_before_send_releases_mark_so_retry_works(client, bot_a
 
 def test_answer_record_failure_after_send_is_retried(client, bot_api, monkeypatch):
     """Ответ ушёл, первая запись в БД упала — запись повторяется, менеджер видит успех."""
-    import services.questions as qs
+    import services.comms.questions as qs
     from database import db as dbm
 
     monkeypatch.setattr(qs, "RECORD_ANSWER_PAUSE", 0)

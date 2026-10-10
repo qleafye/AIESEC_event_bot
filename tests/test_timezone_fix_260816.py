@@ -115,9 +115,9 @@ def test_moscow_literal_declared_exactly_once():
     so the scheduler pin and the admin-input validations physically cannot read a different
     timezone — that divergence was the root cause of TZFIX-260816.
 
-    Quick 260904-kk6 (Q1): the literal moved scheduler.py -> timeutil.py — `services/questions.py`
+    Quick 260904-kk6 (Q1): the literal moved scheduler.py -> timeutil.py — `services/comms/questions.py`
     needs MOSCOW_TZ too but cannot import `services.scheduler` (aiogram + APScheduler), and
-    `services/questions.py` is imported from `miniapp/routers/questions.py`, which must stay
+    `services/comms/questions.py` is imported from `miniapp/routers/questions.py`, which must stay
     aiogram-free (D-01). `services/scheduler.py` now re-exports MOSCOW_TZ from timeutil.py.
     """
     hits = []

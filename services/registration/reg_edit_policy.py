@@ -4,7 +4,7 @@
 нет.
 
 Модуль aiogram-free и на уровне импорта, И на уровне вызова (тот же контракт, что
-`services/quiet_hours.py`): его импортирует и вызывает и бот (`handlers/registration.py`,
+`services/comms/quiet_hours.py`): его импортирует и вызывает и бот (`handlers/registration.py`,
 `handlers/reg/reg_resume.py`), и веб-процесс Mini App (`miniapp/routers/profile.py`,
 `miniapp/routers/form.py`) — сторож aiogram-free `miniapp/deps.py` подпроцессом проверяет
 именно это.

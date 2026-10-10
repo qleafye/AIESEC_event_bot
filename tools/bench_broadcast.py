@@ -109,7 +109,7 @@ class _Counters:
 
     def install(self):
         from database import db
-        import services.broadcast_run as br
+        import services.comms.broadcast_run as br
         import services.scheduler as sched
 
         real_connect = db._connect

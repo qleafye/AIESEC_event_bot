@@ -93,7 +93,7 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
 
         text = str(tr(template, lang, tr_map)).replace("{left}", str(max(int(left or 0), 0)))
 
-        from services import quiet_hours
+        from services.comms import quiet_hours
 
         async def send():
             try:

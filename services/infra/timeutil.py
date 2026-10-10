@@ -1,9 +1,9 @@
 """Quick 260904-kk6 (Q1): leaf-модуль часового пояса — единственный (кроме `miniapp/timeutil.py`,
 см. её докстринг) файл `services/*.py`/`handlers/*.py`, где назван часовой пояс Europe/Moscow.
 
-Переезд из `services/scheduler.py` (TZFIX-260816): `services/questions.py::format_stamp`
+Переезд из `services/scheduler.py` (TZFIX-260816): `services/comms/questions.py::format_stamp`
 обязан переводить UTC-метки в МСК на отображении, но импортировать `services.scheduler` не
-может — тот модуль тянет aiogram + APScheduler, а `services/questions.py` импортируется из
+может — тот модуль тянет aiogram + APScheduler, а `services/comms/questions.py` импортируется из
 `miniapp/routers/questions.py`, где ребра `miniapp -> aiogram` нет и не будет (D-01,
 докстринг `miniapp/timeutil.py`). Свой второй литерал в `questions.py` тоже нельзя: сторож
 `tests/test_timezone_fix_260816.py::test_moscow_literal_declared_exactly_once` требует ровно

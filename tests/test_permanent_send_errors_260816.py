@@ -1,7 +1,7 @@
 """Night review 260815 (`review/services.md`), findings #1 and #15: a send that fails with
 `TelegramBadRequest` must count as a PERMANENT delivery failure, not a transient one.
 
-Both `services/scheduler.py::_safe_send` (#1) and `services/reminders.py::pending_reminder_loop`
+Both `services/scheduler.py::_safe_send` (#1) and `services/comms/reminders.py::pending_reminder_loop`
 (#15) treated only `TelegramForbiddenError` as permanent. "chat not found" / a deleted account
 arrives as HTTP 400 -> `TelegramBadRequest` -> fell into the generic `except` -> the give-up was
 never recorded -> the same chat_id was retried forever and flooded the log with ERRORs (in
@@ -144,11 +144,11 @@ def test_scheduler_permanent_send_errors_contains_both_classes():
     assert TelegramBadRequest in scheduler._PERMANENT_SEND_ERRORS
 
 
-# ── #15: services/reminders.py::pending_reminder_loop ───────────────────────────────────────
+# ── #15: services/comms/reminders.py::pending_reminder_loop ───────────────────────────────────────
 
 class _StopLoop(Exception):
     """Sentinel raised from a patched asyncio.sleep to escape the infinite reminder loop
-    after exactly one iteration, without altering services/reminders.py's structure.
+    after exactly one iteration, without altering services/comms/reminders.py's structure.
     (`await asyncio.sleep(interval)` sits OUTSIDE the inner try, so it is not swallowed.)"""
 
 
@@ -171,7 +171,7 @@ def _run_one_reminder_iteration(bot, admin_ids, monkeypatch, tmp_path):
     config.DB_PATH = str(tmp_path / "test_permanent_send_errors_260816.db")
     fast_init_db()
 
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     monkeypatch.setattr(config, "ADMIN_IDS", admin_ids)
 
@@ -201,7 +201,7 @@ def _run_one_reminder_iteration(bot, admin_ids, monkeypatch, tmp_path):
 
 def test_reminder_bad_request_mutes_admin(tmp_path, monkeypatch):
     """A broken/unreachable admin id must be muted after the FIRST 400, not ERROR forever."""
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     reminders_mod._blocked_admins.clear()
     try:
@@ -217,7 +217,7 @@ def test_reminder_bad_request_mutes_admin(tmp_path, monkeypatch):
 
 def test_reminder_bad_request_does_not_stop_other_admins(tmp_path, monkeypatch):
     """One admin's permanent failure must not abort the fan-out to the rest."""
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     reminders_mod._blocked_admins.clear()
     try:
@@ -230,7 +230,7 @@ def test_reminder_bad_request_does_not_stop_other_admins(tmp_path, monkeypatch):
 
 def test_reminder_forbidden_still_mutes_admin_regression(tmp_path, monkeypatch):
     """Regression: the pre-existing block-the-bot muting is unchanged."""
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     reminders_mod._blocked_admins.clear()
     try:
@@ -243,7 +243,7 @@ def test_reminder_forbidden_still_mutes_admin_regression(tmp_path, monkeypatch):
 
 def test_reminder_transient_error_does_not_mute_admin(tmp_path, monkeypatch):
     """A temporary glitch must never silence an admin's reminders for the whole bot run."""
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     reminders_mod._blocked_admins.clear()
     try:
@@ -256,7 +256,7 @@ def test_reminder_transient_error_does_not_mute_admin(tmp_path, monkeypatch):
 
 def test_reminders_permanent_send_errors_contains_both_classes():
     """Structural gate: check the tuple object itself, not the source text."""
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     assert TelegramForbiddenError in reminders_mod._PERMANENT_SEND_ERRORS
     assert TelegramBadRequest in reminders_mod._PERMANENT_SEND_ERRORS

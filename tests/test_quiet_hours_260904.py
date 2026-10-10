@@ -3,7 +3,7 @@
 Файл наполняется по задачам плана:
 - Task 1 (этот срез) — реестровая часть: четыре ключа существуют, дефолты/типы/группы
   верные, валидатор `format: "time"` принимает/отклоняет по правилам.
-- Task 2 — окно (`services.quiet_hours.is_quiet`/`next_window_end`/`window_for_city`),
+- Task 2 — окно (`services.comms.quiet_hours.is_quiet`/`next_window_end`/`window_for_city`),
   очередь `delayed_notifications`, джоба `flush_due`.
 - Task 3 — обёртка `apply_decision_effects`, дедуп «последнее решение», приписка менеджеру.
 - Task 4 — гейма/монеты/напоминания.
@@ -96,15 +96,15 @@ def _ready(tmp_path, name):
 from datetime import datetime, time as dtime, timedelta
 
 from domain.cities import per_city_key
-import services.quiet_hours as qh
+import services.comms.quiet_hours as qh
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 
 DELEGATE = 940901
 
 
 def test_quiet_hours_module_does_not_load_aiogram():
-    loaded = _loaded_aiogram("import services.quiet_hours")
-    assert loaded == [], f"services.quiet_hours потянул aiogram: {loaded}"
+    loaded = _loaded_aiogram("import services.comms.quiet_hours")
+    assert loaded == [], f"services.comms.quiet_hours потянул aiogram: {loaded}"
 
 
 # ── чистые функции ──────────────────────────────────────────────────────────────────────

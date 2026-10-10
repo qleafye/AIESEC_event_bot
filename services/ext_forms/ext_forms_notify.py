@@ -10,7 +10,7 @@ import logging
 
 from database import ext_forms_db as ef
 from handlers.access.admin_caps import notify_by_capability
-from services.quiet_hours import is_quiet, window_for_city
+from services.comms.quiet_hours import is_quiet, window_for_city
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
