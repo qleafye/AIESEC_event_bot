@@ -22,6 +22,13 @@ export const JPEG_QUALITY = 0.82;
 // очередь держала бы все следующие фото до конца сессии. По таймауту уходит оригинал.
 export const SHRINK_TIMEOUT_MS = 12000;
 
+// Сколько пикселей можно декодировать целиком. 12–24 Мп (обычный снимок) проходят; 48–108 Мп
+// целиком в память не берём — iOS-вебвью от такого падает целиком, и fail-soft это не ловит.
+// Крупные JPEG/PNG декодируются сразу в целевой размер (resizeWidth/resizeHeight), а там, где
+// размер заранее не узнать или его нельзя безопасно передать, — уходит оригинал.
+export const MAX_DECODE_PIXELS = 24000000;
+const HEADER_BYTES = 256 * 1024;
+
 const KEEP_AS_IS = new Set(["image/gif", "image/svg+xml"]);
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|heic|heif|avif|bmp)$/i;
 
@@ -36,8 +43,65 @@ function jpegName(name) {
   return `${base || "photo"}.jpg`;
 }
 
+// ── размеры из заголовка файла, без декодирования ─────────────────────────────────────────
+// JPEG: SOF-маркер (ширина/высота как записаны) + EXIF Orientation (5–8 — снимок повёрнут на
+// 90°, видимые стороны меняются местами). PNG: IHDR. Прочее (HEIC, WebP, …) — неизвестно.
+
+function exifOrientation(dv, start) {
+  if (start + 14 > dv.byteLength || dv.getUint32(start) !== 0x45786966) return 0; // "Exif"
+  const tiff = start + 6;
+  const little = dv.getUint16(tiff) === 0x4949;
+  const ifd = tiff + dv.getUint32(tiff + 4, little);
+  if (ifd + 2 > dv.byteLength) return 0;
+  const count = dv.getUint16(ifd, little);
+  for (let i = 0; i < count; i += 1) {
+    const entry = ifd + 2 + i * 12;
+    if (entry + 12 > dv.byteLength) return 0;
+    if (dv.getUint16(entry, little) === 0x0112) return dv.getUint16(entry + 8, little);
+  }
+  return 0;
+}
+
+function jpegInfo(dv) {
+  let off = 2;
+  let orientation = 1;
+  while (off + 4 <= dv.byteLength) {
+    if (dv.getUint8(off) !== 0xFF) return null;
+    const marker = dv.getUint8(off + 1);
+    if (marker === 0xFF) { off += 1; continue; }
+    if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD8)) { off += 2; continue; }
+    if (marker === 0xDA || marker === 0xD9) return null;
+    const len = dv.getUint16(off + 2);
+    if (len < 2) return null;
+    if (marker === 0xE1) orientation = exifOrientation(dv, off + 4) || orientation;
+    const isSof = marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC;
+    if (isSof) {
+      if (off + 9 > dv.byteLength) return null;
+      return { width: dv.getUint16(off + 7), height: dv.getUint16(off + 5), orientation };
+    }
+    off += 2 + len;
+  }
+  return null;
+}
+
+async function readImageInfo(file) {
+  try {
+    if (typeof file.slice !== "function") return null;
+    const dv = new DataView(await file.slice(0, HEADER_BYTES).arrayBuffer());
+    if (dv.byteLength >= 24 && dv.getUint32(0) === 0x89504E47) {
+      return { width: dv.getUint32(16), height: dv.getUint32(20), orientation: 1 };
+    }
+    if (dv.byteLength >= 4 && dv.getUint16(0) === 0xFFD8) return jpegInfo(dv);
+  } catch (_) {
+    // битый заголовок — как неизвестный формат
+  }
+  return null;
+}
+
 // <img> декодирует то, что умеет движок, и сам учитывает EXIF-поворот (CSS
-// image-orientation: from-image — значение по умолчанию во всех живых движках).
+// image-orientation: from-image — значение по умолчанию во всех живых движках). После
+// onload размеры уже известны, а пиксели браузер декодирует только при отрисовке — слишком
+// крупную картинку здесь отсекаем, не нарисовав.
 function decodeWithImg(file) {
   if (typeof Image !== "function" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
     return Promise.resolve(null);
@@ -46,19 +110,41 @@ function decodeWithImg(file) {
   return new Promise((resolve) => {
     const img = new Image();
     const done = (value) => { URL.revokeObjectURL(url); resolve(value); };
-    img.onload = () => done(img.naturalWidth && img.naturalHeight ? img : null);
+    img.onload = () => {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      done(w && h && w * h <= MAX_DECODE_PIXELS ? img : null);
+    };
     img.onerror = () => done(null);
     img.src = url;
   });
 }
 
 // createImageBitmap с явным imageOrientation: "from-image" — поворот по EXIF (фото с телефона,
-// снятое вертикально, иначе легло бы набок). Движок, который не знает значения или не
-// декодирует формат, бросает — тогда <img>.
-async function decode(file) {
-  if (typeof globalThis.createImageBitmap === "function") {
+// снятое вертикально, иначе легло бы набок). Размеры известны из заголовка — декодируем сразу
+// в целевой размер (resizeWidth/resizeHeight), полный кадр в память не попадает. У снимка,
+// повёрнутого на 90° (EXIF 5–8), движки по-разному понимают, к какой ориентации относится
+// resize, — такой декодируем без resize и только если он не крупнее MAX_DECODE_PIXELS.
+// Размеров нет, движок не знает значения или не декодирует формат — <img> с тем же потолком.
+async function decode(file, maxSide) {
+  const info = await readImageInfo(file);
+  if (info && typeof globalThis.createImageBitmap === "function") {
+    const rotated = info.orientation >= 5 && info.orientation <= 8;
+    const scale = Math.min(1, maxSide / Math.max(info.width, info.height));
+    let opts = null;
+    if (scale < 1 && !rotated) {
+      opts = {
+        imageOrientation: "from-image",
+        resizeWidth: Math.max(1, Math.round(info.width * scale)),
+        resizeHeight: Math.max(1, Math.round(info.height * scale)),
+        resizeQuality: "high",
+      };
+    } else if (info.width * info.height <= MAX_DECODE_PIXELS) {
+      opts = { imageOrientation: "from-image" };
+    }
+    if (!opts) return null;
     try {
-      return await globalThis.createImageBitmap(file, { imageOrientation: "from-image" });
+      return await globalThis.createImageBitmap(file, opts);
     } catch (_) {
       // ниже — <img>
     }
@@ -88,7 +174,7 @@ async function shrinkNow(file, maxSide, quality) {
   let source = null;
   let canvas = null;
   try {
-    source = await decode(file);
+    source = await decode(file, maxSide);
     if (!source) return file;
     const srcW = source.naturalWidth || source.width;
     const srcH = source.naturalHeight || source.height;
