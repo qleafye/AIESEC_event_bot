@@ -620,8 +620,9 @@ def test_approve_text_party_is_settings_edit_field_html_and_in_party_group():
 def test_payment_options_help_describes_track_filter():
     prompts = {k: prompt for k, _, prompt in admin_settings.SETTINGS_FIELDS}
     help_text = prompts["payment_options"]
-    assert "party_overnight" in help_text
-    assert "party_noovernight" in help_text
+    # 10.10: треки названы словами (парсер их принимает), без кодов party_overnight/…
+    assert "«с ночёвкой»" in help_text and "«без ночёвки»" in help_text
+    assert "party_overnight" not in help_text
 
 
 # ── Quick 260724-cfn Task 2: track switcher on «Тексты вопросов» screen (WR-02b) ──

@@ -262,3 +262,19 @@ def test_enum_without_registry_default_says_not_chosen(monkeypatch):
     from settings_schema import SETTINGS_SCHEMA
     monkeypatch.setitem(SETTINGS_SCHEMA, "event_type", {**SETTINGS_SCHEMA["event_type"], "default": None})
     assert admin_settings_enum.enum_now_line("event_type", None) == "Сейчас: <i>не выбрано</i>"
+
+
+# ── Ввод текстом: подписи вместо кодов (подсказки без кодов, 10.10) ─────────────────────────
+
+def test_enum_text_input_accepts_labels_and_error_lists_no_codes():
+    from settings_validation import validate_setting_value
+    assert validate_setting_value("event_type", "конференция") == ("conference", None)
+    assert validate_setting_value("event_type", "skillup") == ("skillup", None)  # коды — как раньше
+    assert validate_setting_value("payment_enabled", "Выключено") == ("off", None)
+    value, error = validate_setting_value("event_type", "семинар")
+    assert value is None
+    assert "«Форум», «Конференция», «Вручную», «Форум СкиллАп»" in error
+    for code in ("forum", "conference", "custom", "<code>"):
+        assert code not in error
+    _value, error = validate_setting_value("payment_enabled", "может быть")
+    assert "«Включено», «Выключено»" in error and "on" not in error.replace("«", " ").split()

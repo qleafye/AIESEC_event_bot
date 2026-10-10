@@ -30,7 +30,11 @@ import re
 from datetime import datetime
 
 from cities import PER_CITY_SEP
-from settings_schema import SETTINGS_SCHEMA, multi_codes
+from settings_schema import SETTINGS_SCHEMA, multi_codes, option_labels
+
+# Тумблеры on/off в реестре без option_labels — человеку их показываем так (и так же
+# принимаем ввод текстом). Источник для кнопок бота (handlers/admin_settings_enum.py).
+ON_OFF_LABELS = {"on": "Включено", "off": "Выключено"}
 
 # Quick 260820-rms: одиночная команда — `/slovo` или `/slovo@YouLead_bot`, без пробелов и без
 # продолжения. Ровно то, что телеграм отправляет по тапу на подсказку команды; ровно то, чем
@@ -190,15 +194,16 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
         options = list(entry.get("options") or [])
         if not options:
             return value, None
-        wanted = value.strip().lower()
+        labels = {**ON_OFF_LABELS, **option_labels(key)}
+        wanted = value.strip().lower().replace("ё", "е")
         for option in options:
-            if str(option).lower() == wanted:
+            label = labels.get(str(option), str(option))
+            if wanted in (str(option).lower(), label.lower().replace("ё", "е")):
                 return str(option), None
-        listed = ", ".join(f"<code>{o}</code>" for o in options)
+        listed = ", ".join(f"«{labels.get(str(o), o)}»" for o in options)
         return None, (
-            f"Такого варианта нет. Допустимые значения: {listed}.\n\n"
-            f"Пришлите одно из них (например <code>{options[0]}</code>) "
-            "или «-», чтобы сбросить к значению по умолчанию."
+            f"Такого варианта нет. Нажмите кнопку или пришлите один из вариантов: {listed}.\n\n"
+            "Чтобы вернуть значение по умолчанию, пришлите «-»."
         )
 
     # Phase 28 (28-08, SU-08, A5): `list` + `options_from_step` (скоринговые чекбокс-пикеры,
