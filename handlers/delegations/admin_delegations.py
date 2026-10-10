@@ -174,6 +174,34 @@ async def _not_ta_courses() -> list[str]:
     return _chosen(await get_setting_typed("delegation_not_ta_courses"))
 
 
+# ── кто правит ────────────────────────────────────────────────────────────────────────────
+
+CITY_LOCKED_TEXT = "Делегации настраивает суперадмин или менеджер без привязки к городу."
+
+
+async def delegations_locked(admin_id: int | None) -> bool:
+    """Единственный гейт экрана. Делегации вузов одни на все города: форма, лист UR REGS и все
+    ключи модуля общие, а внешние эффекты (снятие выгрузки, запись в лист, рассылка делегатам)
+    идут раньше записи настроек. Менеджер с городом видит экран без действий. Открыть экран
+    одному городу — поменять только это условие."""
+    from domain.settings.ops import can_write_common  # ленивый: ops тянет БД и config
+
+    return not await can_write_common(admin_id)
+
+
+async def deny_locked(event, state: FSMContext | None = None) -> bool:
+    """Старая кнопка или ввод от менеджера с городом: объяснение вместо действия."""
+    if not await delegations_locked(_admin_id(event)):
+        return False
+    if state is not None:
+        await state.clear()
+    if hasattr(event, "data"):
+        await event.answer(CITY_LOCKED_TEXT, show_alert=True)
+    else:
+        await event.answer(CITY_LOCKED_TEXT)
+    return True
+
+
 # ── экран ─────────────────────────────────────────────────────────────────────────────────
 
 async def _counters(fid: int) -> dict:
@@ -224,8 +252,13 @@ async def _settings_rows() -> list[list[InlineKeyboardButton]]:
 
 
 async def render_screen(target, *, edit: bool = True) -> None:
+    locked = await delegations_locked(_admin_id(target))
     fid = await delegations.delegation_form_id()
     form = await ef.get_form(fid) if fid is not None else None
+    if form is None and locked:
+        text = f"🏫 <b>Делегации вузов</b>\n\n🔒 {CITY_LOCKED_TEXT}"
+        await _show(target, text, _kb([[_back()]]), edit=edit)
+        return
     if form is None:
         text = _NO_FORM_TEXT if fid is None else _FORM_GONE_TEXT
         await _show(target, text, _kb([[_btn("📝 Выбрать форму", "dlg_form_pick")], [_back()]]),
@@ -252,6 +285,9 @@ async def render_screen(target, *, edit: bool = True) -> None:
     rows.extend(await _settings_rows())
     rows.append([_btn("❓ Вопросы формы", "dlg_keys"), _btn("📝 Сменить форму", "dlg_form_pick")])
     rows.append([_back()])
+    if locked:  # без кнопок-ловушек: только счётчики и объяснение
+        lines.append(f"\n🔒 {CITY_LOCKED_TEXT}")
+        rows = [[_back()]]
     await _show(target, "\n".join(lines), _kb(rows), edit=edit)
 
 
@@ -265,6 +301,8 @@ async def admin_delegations(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_univ:"))
 async def dlg_univ(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     fid = await delegations.delegation_form_id()
     rows_db = await ddb.summary_by_university(fid) if fid is not None else []
     offset = max(0, _tail_int(callback.data) or 0)
@@ -295,6 +333,8 @@ async def dlg_univ(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_form_pick")
 async def dlg_form_pick(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     forms = await ef.list_forms()
     if not forms:
         await callback.answer(_NO_FORMS_ALERT, show_alert=True)
@@ -320,14 +360,17 @@ async def _release_previous_export(prev_id: int | None, new_id: int) -> None:
 
 @router.callback_query(F.data.startswith("dlg_form:"))
 async def dlg_form(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     fid = _tail_int(callback.data)
     form = await ef.get_form(fid) if fid is not None else None
     if form is None:
         await callback.answer(_FORM_NOT_FOUND, show_alert=True)
         return
     admin = _admin_id(callback)
-    await _release_previous_export(await delegations.delegation_form_id(), fid)
+    prev_id = await delegations.delegation_form_id()
     await set_setting_by_admin(admin, "delegation_form_id", str(fid))
+    await _release_previous_export(prev_id, fid)  # после записи: отказ записи выгрузку не снимет
     # Выбор формы никогда не включает модуль: включает только «✅ Включить делегации».
     await set_setting_by_admin(admin, "delegation_armed_form_id", "")
     columns = await ef.list_columns(fid)
@@ -368,6 +411,8 @@ async def _show_keys(target, form: dict, *, edit: bool = True) -> None:
 
 @router.callback_query(F.data == "dlg_keys")
 async def dlg_keys(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     form = await _current_form()
     if form is None:
         await render_screen(callback)
@@ -378,6 +423,8 @@ async def dlg_keys(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_key:"))
 async def dlg_key(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     which = _tail(callback.data)
     form = await _current_form()
     if form is None or which not in _KEY_SETTINGS:
@@ -394,6 +441,8 @@ async def dlg_key(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_keyset:"))
 async def dlg_keyset(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     parts = str(callback.data).split(":")
     form = await _current_form()
     if form is None or len(parts) != 3 or parts[1] not in _KEY_SETTINGS:
@@ -436,6 +485,8 @@ async def _offer_reevaluate(target, lead: str, *, edit: bool = True) -> bool:
 
 @router.callback_query(F.data == "dlg_keys_ok")
 async def dlg_keys_ok(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     keys = await delegations.field_keys()
     if any(not keys.get(w) for w in _REQUIRED_KEYS):
         await callback.answer(_KEYS_MISSING, show_alert=True)
@@ -493,6 +544,8 @@ async def dlg_cancel(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_game")
 async def dlg_game(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     new_val = "off" if await _game_on() else "on"
     await set_setting_by_admin(_admin_id(callback), "delegation_game_enabled", new_val)
     await callback.answer("Геймификация для делегатов: "
@@ -504,6 +557,8 @@ async def dlg_game(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_cutoff")
 async def dlg_cutoff(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     await state.set_state(DelegationEdit.waiting_cutoff)
     text = (f"📅 <b>Дата отсечки ЦА</b>\n\nСейчас: {await _cutoff_label()}.\n"
             "Кто заполнил форму до этой даты — целевая аудитория при любом курсе; кто после — "
@@ -515,6 +570,8 @@ async def dlg_cutoff(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(DelegationEdit.waiting_cutoff))
 async def dlg_cutoff_input(message: types.Message, state: FSMContext):
+    if await deny_locked(message, state):
+        return
     if _is_cancel(message):
         await _cancel_input(message, state)
         return
@@ -550,12 +607,16 @@ async def _courses_screen(target) -> None:
 
 @router.callback_query(F.data == "dlg_courses")
 async def dlg_courses(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await _courses_screen(callback)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("dlg_course:"))
 async def dlg_course(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     variants = await _course_variants()
     idx = _tail_int(callback.data)
     if idx is None or not 0 <= idx < len(variants):
@@ -573,6 +634,8 @@ async def dlg_course(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_courses_done")
 async def dlg_courses_done(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     chosen = await _not_ta_courses()
     toast = (_EMPTY_COURSES_TOAST if not chosen
              else f"Курсы не ЦА: {', '.join(chosen)}.")
@@ -583,6 +646,8 @@ async def dlg_courses_done(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_apply")
 async def dlg_apply(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     spawn(delegations.sweep_pending(reevaluate=True))
     await callback.answer("Пересчитываю ЦА по ответам формы…")
     await render_screen(callback)
@@ -592,6 +657,8 @@ async def dlg_apply(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_arm")
 async def dlg_arm(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     keys = await delegations.field_keys()
     if any(not keys.get(w) for w in _REQUIRED_KEYS):
         await callback.answer(_KEYS_MISSING, show_alert=True)
@@ -608,6 +675,8 @@ async def dlg_arm(callback: types.CallbackQuery):
 @router.callback_query(F.data == "dlg_arm_yes")
 async def dlg_arm_yes(callback: types.CallbackQuery):
     # Форма и вопросы перечитываются в момент нажатия: устаревшая кнопка не включит другую форму.
+    if await deny_locked(callback):
+        return
     fid = await delegations.delegation_form_id()
     form = await ef.get_form(fid) if fid is not None else None
     if form is None:
@@ -627,6 +696,8 @@ async def dlg_arm_yes(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_disarm")
 async def dlg_disarm(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await set_setting_by_admin(_admin_id(callback), "delegation_armed_form_id", "")
     await callback.answer(_DISARM_TOAST, show_alert=True)
     await render_screen(callback)
@@ -636,6 +707,8 @@ async def dlg_disarm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_text")
 async def dlg_text(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     rows = [[_btn(label, f"dlg_text:{which}")] for which, (_key, label) in _TEXT_KEYS.items()]
     rows.append([_to_screen()])
     await _show(callback, "✏️ <b>Тексты делегату</b>\n\nКакой текст поменять?", _kb(rows))
@@ -644,6 +717,8 @@ async def dlg_text(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_text:"))
 async def dlg_text_pick(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     which = _tail(callback.data)
     if which not in _TEXT_KEYS:
         await callback.answer(_STALE_EDIT, show_alert=True)
@@ -661,6 +736,8 @@ async def dlg_text_pick(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(DelegationEdit.waiting_text))
 async def dlg_text_input(message: types.Message, state: FSMContext):
+    if await deny_locked(message, state):
+        return
     if _is_cancel(message):
         await _cancel_input(message, state)
         return
