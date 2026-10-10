@@ -26,7 +26,7 @@ from settings_schema import SETTINGS_SCHEMA, get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
-from reg_labels import REG_LABELS, STATUS_LABELS  # noqa: F401
+from reg_labels import DELEGATE_LABELS, REG_LABELS, STATUS_LABELS  # noqa: F401
 # Phase 21 (21-01, FORM-SYNC-01): REG_FLOW и его непосредственные зависимости переехали в
 # корневой aiogram-free reg_engine.py (та же причина, что у REG_LABELS выше — веб-процесс
 # Mini App не должен импортировать handlers.* и тянуть за собой весь бот). Реэкспорт ТЕХ ЖЕ
@@ -73,6 +73,14 @@ def dropout_step_label(step_key: str | None) -> str:
         # REG_LABELS is defined below but only read at call time, so the forward ref is fine.
         return REG_LABELS.get(setting_key, step_key)
     return step_key
+
+
+def delegate_step_label(step_key: str | None) -> str:
+    """Подпись шага для делегата (экран «Прошлый ответ» в чате): служебные уточнения админской
+    подписи заменены человеческими (`DELEGATE_LABELS`, тот же словарь, что у анкеты
+    приложения), остальные шаги — как `dropout_step_label`. Аналитика отвалов в админке
+    по-прежнему видит админскую подпись."""
+    return DELEGATE_LABELS.get(_STEP_TO_SETTING.get(step_key or "")) or dropout_step_label(step_key)
 
 
 # REG_DEFAULTS moved to reg_engine.py (Phase 21, 21-01) alongside REG_FLOW; imported above.
