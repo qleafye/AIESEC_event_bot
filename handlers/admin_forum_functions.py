@@ -60,7 +60,6 @@ from services import forum_noshow_poll as fnsp
 from services import regional_noshow_move as rgnm
 from services.forum_day_report import schedule_city_job as schedule_day_report_job
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
-from services.regional_noshow_move import schedule_city_job as schedule_regional_noshow_move_job
 from services.reject_rules import forum_date_for
 from services.sos import is_sos_active_for_city
 from settings_audit import set_setting_by_admin
@@ -936,14 +935,6 @@ _RGNM_STATUS_LABELS = {
 }
 
 
-async def _safe_reschedule_regional_noshow_move(code: str | None) -> None:
-    import logging
-    try:
-        await schedule_regional_noshow_move_job(code)
-    except Exception as e:
-        logging.getLogger(__name__).error(f"regional_noshow_move reschedule({code!r}) failed: {e}")
-
-
 async def _regional_noshow_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     enabled = await get_setting_typed_for_city("regional_noshow_offer_enabled", code)
     t = await get_setting_typed_for_city("regional_noshow_offer_time", code) or "12:00"
@@ -1018,7 +1009,6 @@ async def rgnm_toggle_go(callback: types.CallbackQuery):
         await set_setting_by_admin(callback.from_user.id, composed, new_val)
     else:
         await set_setting_by_admin(callback.from_user.id, key, new_val)
-    await _safe_reschedule_regional_noshow_move(code)
     text, kb = await _regional_noshow_cfg_text_kb(code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Вкл" if new_val == "on" else "❌ Выкл", show_alert=True)
@@ -1069,7 +1059,6 @@ async def rgnm_time_step(message: types.Message, state: FSMContext):
         await set_setting_by_admin(message.from_user.id, composed, value)
     else:
         await set_setting_by_admin(message.from_user.id, key, value)
-    await _safe_reschedule_regional_noshow_move(code)
 
     text, kb = await _regional_noshow_cfg_text_kb(code)
     await message.answer("✅ Сохранено.", reply_markup=ReplyKeyboardRemove())
