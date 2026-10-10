@@ -25,7 +25,7 @@ D-9 — железное правило всего модуля: текст со
 сохраняется и не логируется. Форум-ночь п.8 (SOS) — ОДНО узкое, явное исключение:
 `on_sos_id_command` матчит фиксированную команду `/sos_id` (не содержимое) и не читает
 `message.text` за пределами этого совпадения — см. комментарий у самого хендлера.
-«+N» ответом гейм-менеджера (`services.chat_coins`) — второе: текст смотрит сам сервис,
+«+N» ответом гейм-менеджера (`services.chat.chat_coins`) — второе: текст смотрит сам сервис,
 и в журнал монет уходит только причина из сообщения менеджера.
 
 Правка 15.09 (владелец, «привязка через личку админа»): бот БОЛЬШЕ НИКОГДА не пишет В ГРУППУ —
@@ -483,10 +483,10 @@ async def on_group_message(message: types.Message, bot: Bot | None = None):
     sos_report = await _sos_card_reply_report(message, bot)
     if sos_report is not None:
         await _answer_sos_card_reply(message, bot or message.bot, sos_report)
-    # «+N» ответом гейм-менеджера — монеты делегату (services/chat_coins.py). Только в
+    # «+N» ответом гейм-менеджера — монеты делегату (services/chat/chat_coins.py). Только в
     # привязанном чате делегатов и независимо от тумблера учёта.
     if bot is not None:
-        from services import chat_coins
+        from services.chat import chat_coins
 
         if await chat_coins.try_handle(message, bot):
             return
