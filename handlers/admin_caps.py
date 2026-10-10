@@ -636,7 +636,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_season_reset": "settings",
     "season_reset_go": "settings",
     "state:SeasonReset:*": "settings",
-    # «🔗 Какая таблица»: как «Новый сезон» — настоящий гейт ADMIN_IDS в handlers/admin_sheet_target.py.
+    # «🔗 Какая таблица»: как «Новый сезон» — настоящий гейт ADMIN_IDS в handlers/sheets/admin_sheet_target.py.
     "admin_sheet_target": "settings", "sheet_target_*": "settings", "state:SheetTarget:*": "settings",
     # Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard. Available to any `settings`
     # holder (CONTEXT D — unlike «Новый сезон», not superadmin-only): the action is additive,
@@ -728,7 +728,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:ChatRatingPostEdit:*": "settings",  # ввод времени, числа мест, текстов поста
     "admin_sync_sheet": "settings",
     # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс экрана, что
-    # «🔄 Синхронизация»/«♻️ Пересобрать таблицу» выше (handlers/admin_sheet_reconcile.py, всё
+    # «🔄 Синхронизация»/«♻️ Пересобрать таблицу» выше (handlers/sheets/admin_sheet_reconcile.py, всё
     # callback-пространство sheetrec_*: sheetrec_csv/sheetrec_append_confirm/sheetrec_append_go/
     # sheetrec_status_confirm/sheetrec_status_go).
     "admin_sheet_reconcile": "settings",

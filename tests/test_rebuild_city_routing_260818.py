@@ -13,7 +13,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_sheets  # module-size split (module-size convention): rebuild/sync moved out of admin_sheets.py
+from handlers.sheets import admin_sheets  # module-size split (module-size convention): rebuild/sync moved out of admin_sheets.py
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
 from tests._dbtpl import fast_init_db
 

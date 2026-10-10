@@ -889,7 +889,7 @@ from handlers.admin_settings import show_admin_settings  # noqa: E402
 # on the shared router right after it -- these two handlers were the last ones in the original
 # file to rewrite Sheets by tab, so they now register right after everything else that stayed in
 # admin_settings.py, instead of their old mid-file position (golden snapshot reorder, reviewed).
-from handlers import admin_sheets  # noqa: E402
+from handlers.sheets import admin_sheets  # noqa: E402
 
 
 from handlers.cities import admin_cities  # noqa: E402
@@ -1147,11 +1147,11 @@ from handlers import admin_reg_reset  # noqa: E402
 from handlers import admin_resume_replace  # noqa: E402
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «🔍 Сверить с БД»
-# (handlers/admin_sheet_reconcile.py) — registers admin_sheet_reconcile/sheetrec_csv/
+# (handlers/sheets/admin_sheet_reconcile.py) — registers admin_sheet_reconcile/sheetrec_csv/
 # sheetrec_append_confirm/sheetrec_append_go/sheetrec_status_confirm/sheetrec_status_go in the
 # very tail of admin.router (golden snapshot: a clean append, right after admin_resume_replace).
 # «📊 Данные» hub row: handlers/admin_core.py right after «♻️ Пересобрать таблицу».
-from handlers import admin_sheet_reconcile  # noqa: E402
+from handlers.sheets import admin_sheet_reconcile  # noqa: E402
 
 # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): shared-router seam import for the
 # forum-stats-card broadcast screen (handlers/admin_forum_stats_card.py) — registers
@@ -1210,5 +1210,5 @@ from handlers import admin_bot_avatar  # noqa: E402,F401
 # хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
 from handlers import admin_resend_decision  # noqa: E402,F401
 from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
-from handlers import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
+from handlers.sheets import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
 from handlers import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append

@@ -655,7 +655,7 @@ async def clear_admin_flow_state(state) -> bool:
 
 
 class SheetTarget(StatesGroup):
-    # «📊 Данные → 🔗 Какая таблица» (handlers/admin_sheet_target.py): ждём ссылку на таблицу.
+    # «📊 Данные → 🔗 Какая таблица» (handlers/sheets/admin_sheet_target.py): ждём ссылку на таблицу.
     # Право `settings` + суперадмин (`config.ADMIN_IDS`), перепроверяется в каждом хендлере.
     waiting_ref = State()
 
