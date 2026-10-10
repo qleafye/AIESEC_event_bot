@@ -258,7 +258,7 @@ def test_event_type_has_four_options():
 
 def test_web_and_bot_apply_same_preset(tmp_path):
     import domain.settings.ops as settings_ops
-    from handlers.admin_reg_config import _apply_event_preset
+    from handlers.regform.admin_reg_config import _apply_event_preset
 
     async def _snapshot():
         keys = list(reg_presets.REG_DEFAULTS) + ["payment_enabled"] + list(SKILLUP_SETTINGS)

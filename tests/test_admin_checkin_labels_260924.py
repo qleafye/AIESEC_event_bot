@@ -146,7 +146,7 @@ def _menu_line(text, label):
 
 
 def test_menu_screen_marks_qr_hidden_while_master_toggle_off(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "off"))
     text = asyncio.run(admin_reg_config.render_menu_text())
@@ -159,7 +159,7 @@ def test_menu_screen_marks_qr_hidden_while_master_toggle_off(tmp_path):
 
 def test_menu_screen_marks_sos_hidden_outside_forum_days(tmp_path, monkeypatch):
     import services.sos as sos_mod
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _db_ready(tmp_path)
     text = asyncio.run(admin_reg_config.render_menu_text())
     assert "сейчас скрыта: не задана дата форума" in _menu_line(text, "🆘 SOS")
@@ -175,7 +175,7 @@ def test_menu_screen_marks_sos_hidden_outside_forum_days(tmp_path, monkeypatch):
 
 
 def test_menu_screen_no_hidden_note_for_switched_off_button(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("checkin_qr_enabled", "off"))
     asyncio.run(db.set_setting("menu_checkin_qr", "off"))
@@ -228,7 +228,7 @@ def test_every_menu_gate_has_hidden_reason():
 
 
 def test_menu_screen_marks_other_gated_buttons(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("miniapp_enabled", "off"))
     asyncio.run(db.set_setting("delegate_lang_enabled", "off"))
@@ -246,7 +246,7 @@ def test_menu_screen_marks_other_gated_buttons(tmp_path):
 
 
 def test_menu_screen_all_cities_explains_common_values(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
