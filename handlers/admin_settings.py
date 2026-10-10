@@ -274,7 +274,7 @@ _APPS_FIELD_ORDER = [
     # редактор экрана достаётся бесплатно попаданием в этот список (тот же приём, что у
     # forum_welcome_text выше); сам тумблер `forum_stats_card_enabled` и фон карточки — НЕ
     # здесь, живут на своём экране `handlers/admin_forum_stats_card.py`.
-    "forum_stats_card_caption_text",
+    "forum_stats_card_caption_text", *_UI.BACKGROUND_BUTTON_FIELD_ORDER,
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
