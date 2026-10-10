@@ -107,7 +107,7 @@ async def enqueue(kind: str, payload: dict) -> int | None:
     try:
         return await enqueue_miniapp_outbox(kind, dict(payload), created_at)
     except aiosqlite.Error as exc:
-        logger.warning("miniapp outbox: событие %s не поставлено (%s)", kind, exc)
+        logger.error("miniapp outbox: событие %s не поставлено (%s) — бот на него не отреагирует", kind, exc)
         return None
 
 

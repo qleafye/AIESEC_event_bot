@@ -319,3 +319,18 @@ def test_outbox_handler_runs_setting_hooks_for_queued_keys(tmp_path, monkeypatch
     monkeypatch.setattr(settings_audit, "run_setting_hooks", fake_hooks)
     _run(miniapp_outbox._handle_row(None, "settings_changed", {"keys": ["miniapp_section_stats"], "by": ADMIN_ID}))
     assert seen == ["miniapp_section_stats"]
+
+
+def test_toggle_tells_user_when_bot_queue_unavailable(tmp_path, monkeypatch):
+    from miniapp import outbox
+
+    client = _setup(tmp_path, "miniapp_settings_toggle_noqueue.db")
+
+    async def dead(kind, payload):
+        return None
+
+    monkeypatch.setattr(outbox, "enqueue", dead)
+    resp = _post(client, "miniapp_section_stats", "off")
+    assert resp.status_code == 503, resp.text
+    assert resp.json()["reason"] == "bot_not_notified" and "бот" in resp.json()["text"]
+    assert _run(bot_db.get_setting("miniapp_section_stats")) == "off"  # сама правка сохранена

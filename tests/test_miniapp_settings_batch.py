@@ -588,3 +588,27 @@ def test_batch_failure_midway_still_queues_event_for_saved_keys(tmp_path, no_tab
     assert _raw("event_name") == "форума RusCo" and _raw("nudge_after_minutes") is None
     rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "settings_changed"]
     assert rows and "event_name" in rows[-1]["payload"]["keys"]
+
+
+# ── очередь бота недоступна: настройка сохранена, но пользователю — честно ────────────────
+
+def test_batch_reports_when_bot_queue_unavailable(tmp_path, no_tab, monkeypatch):
+    from miniapp import outbox
+
+    client = _setup(tmp_path, "miniapp_settings_batch_noqueue.db")
+
+    async def dead(kind, payload):
+        return None
+
+    monkeypatch.setattr(outbox, "enqueue", dead)
+    resp = _batch(client, [("event_name", "форума RusCo")])
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["saved"] == ["event_name"] and _raw("event_name") == "форума RusCo"
+    assert body["bot_applied"] is False and "бот" in body["notice"]
+
+
+def test_batch_bot_applied_true_when_queue_works(tmp_path, no_tab):
+    client = _setup(tmp_path, "miniapp_settings_batch_queue_ok.db")
+    body = _batch(client, [("event_name", "форума RusCo")]).json()
+    assert body["bot_applied"] is True and body["notice"] == ""
