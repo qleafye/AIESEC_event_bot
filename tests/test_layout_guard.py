@@ -26,6 +26,49 @@ DOMAIN_ALLOWLIST: set[tuple[str, str]] = set()
 
 FORBIDDEN_IN_DOMAIN = ("aiogram", "handlers")
 
+# Ярусы ниже хендлеров не импортируют `handlers`: импорт любого `handlers.x` грузит все роутеры
+# бота (`handlers/__init__`), а для Mini App и дашборда их нет. Сервисы пока ходят в хендлеры
+# ленивыми импортами (права `admin_caps`, рендеры анкеты) — это долг, список только сокращается.
+BELOW_HANDLERS = ("services", "keyboards", "database", "miniapp", "dashboard", "domain", "shared")
+HANDLERS_IMPORT_ALLOWLIST: set[tuple[str, str]] = {
+    ("keyboards/builders.py", "handlers.payment"),
+    ("services/access/miniapp_access.py", "handlers.access.admin_caps"),
+    ("services/applications/application_effects.py", "handlers.reg.reg_schema"),
+    ("services/applications/decision_delivery.py", "handlers.reg.reg_schema"),
+    ("services/applications/reject_rules_notify.py", "handlers.access.admin_caps"),
+    ("services/chat/chat_coins.py", "handlers.access.admin_caps"),
+    ("services/chat_tracking.py", "handlers.access.admin_caps"),
+    ("services/checkin_broadcast.py", "handlers.i18n.reg_i18n"),
+    ("services/checkin_volunteer_broadcast.py", "handlers.access.admin_caps"),
+    ("services/cities/city_move.py", "handlers.reg.reg_schema"),
+    ("services/cities/city_move.py", "handlers.registration"),
+    ("services/comms/reminders.py", "handlers.access.admin_caps"),
+    ("services/daily_digest.py", "handlers.access.admin_caps"),
+    ("services/ext_forms/ext_forms_notify.py", "handlers.access.admin_caps"),
+    ("services/forum/checkin_not_arrived.py", "handlers.i18n.reg_i18n"),
+    ("services/forum/forum_stats_card.py", "handlers.i18n"),
+    ("services/forum/forum_welcome.py", "handlers.i18n"),
+    ("services/forum_day_report.py", "handlers.access.admin_caps"),
+    ("services/forum_noshow_poll.py", "handlers.i18n"),
+    ("services/game_digest.py", "handlers.access.admin_caps"),
+    ("services/reg_digest.py", "handlers.access.admin_caps"),
+    ("services/regional_noshow_move.py", "handlers.access.admin_caps"),
+    ("services/regional_noshow_move.py", "handlers.i18n"),
+    ("services/registration/reg_finalize.py", "handlers.reg.reg_schema"),
+    ("services/registration/reg_finalize.py", "handlers.registration"),
+    ("services/scheduler.py", "handlers.access.admin_caps"),
+    ("services/scheduler.py", "handlers.i18n"),
+    ("services/scheduler.py", "handlers.registration"),
+    ("services/session_feedback.py", "handlers.i18n"),
+    ("services/session_feedback.py", "handlers.i18n.reg_i18n"),
+    ("services/settings/audit.py", "handlers.settings.admin_miniapp"),
+    ("services/sheets/sheet_reconcile.py", "handlers.registration"),
+    ("services/sheets/sheet_reconcile.py", "handlers.sheets.admin_sheets"),
+    ("services/sos.py", "handlers.access.admin_caps"),
+    ("services/sos.py", "handlers.i18n"),
+    ("services/sos.py", "handlers.states"),
+}
+
 
 def _imports(path):
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -97,3 +140,35 @@ def test_new_packages_are_regular_packages():
         if not (d / "__init__.py").exists()
     )
     assert not missing, f"Пакетам нужен __init__.py: {missing}"
+
+
+def _handlers_imports_below():
+    found = set()
+    for package in BELOW_HANDLERS:
+        for path in _py_files(package):
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            found.update((rel, m) for m in _imports(path) if _top(m) == "handlers")
+    return found
+
+
+def test_lower_layers_do_not_import_handlers():
+    new = sorted(_handlers_imports_below() - HANDLERS_IMPORT_ALLOWLIST)
+    assert not new, (
+        "Новый импорт handlers из нижнего яруса. Общую логику вынесите в services/<домен>/ или "
+        f"domain/<домен>/, а хендлер пусть импортирует её оттуда: {new}"
+    )
+
+
+def test_handlers_import_allowlist_has_no_stale_entries():
+    stale = sorted(HANDLERS_IMPORT_ALLOWLIST - _handlers_imports_below())
+    assert not stale, f"Импорт убран — вычеркните его из HANDLERS_IMPORT_ALLOWLIST: {stale}"
+
+
+def test_file_relative_asset_dirs_exist():
+    """Каталоги, вычисленные от `__file__` модуля, переживают перенос модуля в подпакет: после
+    раскладки по доменам `parent.parent` указывал бы уже не на корень репозитория."""
+    from handlers.settings.admin_miniapp_theme import PREVIEW_DIR
+    from services.forum.checkin_training import _FONTS_DIR
+
+    assert PREVIEW_DIR.is_dir(), PREVIEW_DIR
+    assert _FONTS_DIR.is_dir(), _FONTS_DIR
