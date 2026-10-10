@@ -8909,6 +8909,12 @@ SETTINGS_SCHEMA.update({
 })
 del _W, _R
 
+# Подписи, вынесенные из кода (команды кнопки «Меню», инфо-экраны, кнопки фоновых сообщений) —
+# записи живут в своём модуле, здесь только вливаются в общий реестр.
+from settings_ui_text_fields import UI_TEXT_SCHEMA as _UI_TEXT_SCHEMA  # noqa: E402
+
+SETTINGS_SCHEMA.update(_UI_TEXT_SCHEMA)
+
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по
 # городу. Пары (step_key, setting_key) — байт-в-байт порядок `_prompt_steps()`
