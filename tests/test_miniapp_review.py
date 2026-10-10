@@ -223,7 +223,8 @@ def test_approve_credits_once_and_notifies(client, bot_api):
     assert len(rows) == 1
     assert rows[0]["delta"] == 10 and rows[0]["source"] == "task"
     assert rows[0]["changed_by"] == GAME_MANAGER_ID            # T-19-31
-    assert rows[0]["reason"].startswith("Задание: Сфоткай стенд")
+    # Название задания, а не его текст (приёмка 10.10: в историю баллов уходил текст).
+    assert rows[0]["reason"] == "Задание: Стенд"
 
     sub = _submission(sid)
     assert sub["status"] == "approved" and sub["coins_awarded"] == 10
@@ -237,6 +238,7 @@ def test_approve_credits_once_and_notifies(client, bot_api):
     msg = bot_api.messages[0]
     assert msg["chat_id"] == DELEGATE_ID
     assert "одобрено" in msg["text"] and "+10🪙" in msg["text"]
+    assert "«Стенд»" in msg["text"] and "Сфоткай" not in msg["text"]
 
 
 def test_approve_writes_task_id_for_wave_rating(client, bot_api):
@@ -379,6 +381,7 @@ def test_reject_stores_reason_no_coins_notifies(client, bot_api):
     assert len(bot_api.messages) == 1
     assert "отклонено" in bot_api.messages[0]["text"]
     assert "Причина: Фото не читается" in bot_api.messages[0]["text"]
+    assert "«Стенд»" in bot_api.messages[0]["text"] and "Сфоткай" not in bot_api.messages[0]["text"]
 
 
 def test_reject_requires_reason(client, bot_api):
