@@ -46,6 +46,20 @@ _JOURNAL_FLUSH_EVERY_N = 25
 _JOURNAL_FLUSH_EVERY_S = 2.0
 
 
+# Идущие отзывы: второй тап «🗑 Да, удалить» (или кнопка со вчерашнего экрана) не должен
+# запустить второй прогон по тем же парам. Захват — синхронно, без await между проверкой и
+# записью, так что в одном event loop гонки нет.
+_revoking: set[int] = set()
+
+
+def claim_revoke(broadcast_id: int) -> bool:
+    """True — отзыв захвачен этим вызовом; False — по этой рассылке отзыв уже идёт."""
+    if broadcast_id in _revoking:
+        return False
+    _revoking.add(broadcast_id)
+    return True
+
+
 def request_stop(broadcast_id: int) -> None:
     _stop.add(broadcast_id)
 
@@ -212,14 +226,24 @@ async def run_revoke(bot, broadcast_id, on_progress=None, on_finish=None):
     """Удаляет у получателей всё, что записано в broadcast_deliveries для этой рассылки.
     Любая ошибка удаления — «не удалось», цикл не падает. Тот же стоп-флаг/троттлинг/сон, что
     у run_broadcast."""
+    _revoking.add(broadcast_id)  # и при прямом вызове, мимо claim_revoke
+    try:
+        await _run_revoke(bot, broadcast_id, on_progress, on_finish)
+    finally:
+        _revoking.discard(broadcast_id)
+
+
+async def _run_revoke(bot, broadcast_id, on_progress, on_finish):
     pairs = await list_broadcast_messages(broadcast_id)
     total = len(pairs)
     deleted = 0
     failed = 0
+    stopped = False
     last_progress_ts = time.monotonic()
 
     for i, (chat_id, message_id) in enumerate(pairs):
         if is_stopped(broadcast_id):
+            stopped = True
             break
 
         ok = False
@@ -253,8 +277,14 @@ async def run_revoke(bot, broadcast_id, on_progress=None, on_finish=None):
             except Exception:
                 pass
 
-    await set_broadcast_status(broadcast_id, "revoked")
+    # После ⛔ часть сообщений осталась у получателей — «удалена» была бы неправдой, и кнопка
+    # удаления пропала бы с карточки. Статус не трогаем: удалить остальное можно ещё раз.
+    if not stopped:
+        await set_broadcast_status(broadcast_id, "revoked")
     clear_stop(broadcast_id)
-    logger.info("broadcast %s revoke finished: deleted=%s failed=%s", broadcast_id, deleted, failed)
+    logger.info(
+        "broadcast %s revoke finished: deleted=%s failed=%s stopped=%s",
+        broadcast_id, deleted, failed, stopped,
+    )
     if on_finish:
-        await on_finish(deleted, failed)
+        await on_finish(deleted, failed, stopped)
