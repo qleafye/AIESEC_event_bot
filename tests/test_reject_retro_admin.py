@@ -11,7 +11,7 @@ from config import config
 from database import db
 from handlers.applications import admin_reject_retro as h
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
-from services import reg_finalize
+from services.registration import reg_finalize
 from services.applications import reject_retro
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback

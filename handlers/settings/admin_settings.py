@@ -1757,7 +1757,7 @@ async def toggle_reg_edit_remoderation(callback: types.CallbackQuery):
 @router.callback_query(F.data == "toggle_reg_edit_policy")
 async def toggle_reg_edit_policy(callback: types.CallbackQuery):
     # Квик 260911-w2m: цикл из трёх положений — правило само живёт в
-    # `services/reg_edit_policy.py`, здесь только переключатель и человеческий алерт.
+    # `services/registration/reg_edit_policy.py`, здесь только переключатель и человеческий алерт.
     # Лимит `answerCallbackQuery` — 200 символов, подсказки короткие.
     await _cycle_enum_setting(callback, "reg_edit_policy", {
         "always": "Правит когда захочет — как было.",
@@ -1769,7 +1769,7 @@ async def toggle_reg_edit_policy(callback: types.CallbackQuery):
 @router.callback_query(F.data == "toggle_reg_resubmit_after_reject")
 async def toggle_reg_resubmit_after_reject(callback: types.CallbackQuery):
     # Квик 260922-wrg: цикл из двух положений — правило само живёт в
-    # `services/reg_edit_policy.py` (resubmit_gate), здесь только переключатель и человеческий
+    # `services/registration/reg_edit_policy.py` (resubmit_gate), здесь только переключатель и человеческий
     # алерт. Отклонённых прошлого сезона это не касается ни при каком положении.
     await _cycle_enum_setting(callback, "reg_resubmit_after_reject", {
         "allow": "Отклонённые могут исправить и подать анкету заново — как было.",

@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 
 from handlers.registration import _resume_file_stem
-from services.nextcloud import _safe_name
+from services.registration.nextcloud import _safe_name
 
 _NOW = datetime(2026, 8, 19, 14, 5, 9)
 

@@ -20,7 +20,7 @@ import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from handlers import registration as reg
-from services import reg_finalize
+from services.registration import reg_finalize
 from tests._dbtpl import fast_init_db
 
 
@@ -103,7 +103,7 @@ def test_double_tap_confirm_writes_exactly_one_user_and_one_append(tmp_path, mon
         add_calls.append(data)
         await asyncio.sleep(0.05)
 
-    # Phase 21 (21-08): add_user's real call site moved into services.reg_finalize.finalize_data.
+    # Phase 21 (21-08): add_user's real call site moved into services.registration.reg_finalize.finalize_data.
     monkeypatch.setattr(reg_finalize, "add_user", slow_add_user)
 
     async def go():

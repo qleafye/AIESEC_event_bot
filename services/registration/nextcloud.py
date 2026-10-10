@@ -55,7 +55,7 @@ def _ssl_arg():
 def is_configured() -> bool:
     """Единственный источник тройной проверки: облако включено, только если заполнены ВСЕ
     три параметра (WebDAV-урл, публичный урл шары, токен папки). Используется и
-    upload_resume/upload_text_resume, и фоновой джобой повтора (services/reg_finalize.py) —
+    upload_resume/upload_text_resume, и фоновой джобой повтора (services/registration/reg_finalize.py) —
     один источник правды вместо продублированной проверки в двух местах."""
     if (
         not config.NEXTCLOUD_WEBDAV_URL

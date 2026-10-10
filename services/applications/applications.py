@@ -25,7 +25,7 @@
 точка правды по тексту отказа делегату).
 
 Зависимости — ТОЛЬКО `database.db`, `cities`, `moderation_card`, `settings_schema`,
-`services.consent` (плюс стандартная библиотека). Ни `aiogram`, ни `handlers.*`, ни
+`services.registration.consent` (плюс стандартная библиотека). Ни `aiogram`, ни `handlers.*`, ни
 `miniapp.*` на уровне модуля не импортируются (сторож
 `tests/test_applications_parity.py::test_applications_module_does_not_load_aiogram`,
 приём `tests/test_miniapp_labels_drift.py::_loaded_aiogram`).
@@ -58,7 +58,7 @@ from database.db import (
     revert_user_to_pending,
 )
 from domain.regform.engine import STEP_TO_COLUMN, label_for
-from services.consent import consent_card_line
+from services.registration.consent import consent_card_line
 from services.infra.timeutil import utc_naive_to_msk
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
@@ -212,7 +212,7 @@ def _parse_rule_ids(raw) -> list:
 
 async def _resolve_rule_label(rule_id) -> str:
     """id правила -> человеческая подпись: своё имя (D-10), если менеджер его задал, иначе
-    первые слова текста отказа — тот же приём, что `services/reg_finalize.py::_auto_rule_label`
+    первые слова текста отказа — тот же приём, что `services/registration/reg_finalize.py::_auto_rule_label`
     (обе функции решают одну задачу на разных срезах данных: та читает свежесработавший список
     правил, эта — персистентную колонку users спустя произвольное время, поэтому резолвит ЗАНОВО
     через `database.db.get_reject_rule`, а не хранимый `auto_rule_note`). Правило удалено ->
@@ -239,7 +239,7 @@ async def _rule_badge_entries(user: dict) -> list[tuple[str, str]]:
     (`flagged_rule_ids`/`auto_reject_rule_ids`) — общий строитель для `rule_badge_lines` (бот,
     плоский список строк) и `card_payload` (веб, нужен `kind` для фронта). При нескольких
     сработавших id берётся первый — та же дисциплина, что у `_auto_rule_label`/`auto_rule_note`
-    в `services/reg_finalize.py` (один, самый информативный, а не список из N имён на строку)."""
+    в `services/registration/reg_finalize.py` (один, самый информативный, а не список из N имён на строку)."""
     entries: list[tuple[str, str]] = []
     flag_ids = _parse_rule_ids(user.get("flagged_rule_ids"))
     if flag_ids:
@@ -267,7 +267,7 @@ async def auto_reject_cleared_line(user: dict) -> str | None:
     читает `edit_badges_for` выше (второй запрос не нужен). Форму кортежа `edit_badges_for` НЕ
     меняем (T-23-28, тот же довод, что у `prev_reject_line`) — отдельная функция.
 
-    Ключа `auto_reject_cleared` в маркере статуса (`services/reg_finalize.py::
+    Ключа `auto_reject_cleared` в маркере статуса (`services/registration/reg_finalize.py::
     _auto_reject_cleared_marker`) нет -> `None` — карточка ведёт себя ровно как до этой фазы.
     Есть, но без `rule_field` (правило удалено/условия битые/правка не коснулась полей правила,
     например снялось из-за смены даты форума, а не ответа) -> строка БЕЗ детализации поля, сам

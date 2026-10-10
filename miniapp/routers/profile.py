@@ -28,7 +28,7 @@
 `edit_cta_text` из реестра `reg_form_profile_edit_cta_text`.
 
 Квик 260911-w2m: `can_edit` больше не литерал `True` — единственное место правила
-`services.reg_edit_policy.edit_gate` решает, можно ли делегату сейчас редактировать уже
+`services.registration.reg_edit_policy.edit_gate` решает, можно ли делегату сейчас редактировать уже
 поданную анкету (три положения реестрового ключа `reg_edit_policy`); `edit_closed_text`
 (`None` при разрешённой правке) заменяет кнопку в `screens/profile.js`, когда правка закрыта.
 
@@ -61,12 +61,12 @@ D-10 (владелец, `23.1-CONTEXT.md` O-2): `users.approved_at` проста
 
 Квик 260911-6i9 (пункт 2, T-6i9-01): значение строки «Резюме» — человекочитаемое (текст
 резюме или имя файла), НИКОГДА не `resume_url`. Ссылка Nextcloud указывает на ОБЩУЮ
-расшаренную папку (`services/nextcloud.py::_file_link` — один токен на всех делегатов сразу),
+расшаренную папку (`services/registration/nextcloud.py::_file_link` — один токен на всех делегатов сразу),
 `files=` в ней — только указатель на файл внутри этой папки; отдать её делегату значит отдать
 устройство хранилища (хост, порт, токен общей папки), а не просто «некрасиво показать ссылку».
 Имени файла в `users` нет вовсе (`resume_file_name` — `DRAFT_ONLY_COLUMNS`, живёт только в
 `reg_drafts.answers`), поэтому единственный источник человекочитаемого имени — разбор
-`resume_url` функцией `services.nextcloud.file_name_from_link` (обратная к `_file_link`).
+`resume_url` функцией `services.registration.nextcloud.file_name_from_link` (обратная к `_file_link`).
 """
 from __future__ import annotations
 
@@ -77,9 +77,9 @@ from domain.cities import cities_module_on, city_label as resolve_city_label, no
 from database.db import get_user
 from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services.i18n import i18n
-from services import reg_edit_policy
+from services.registration import reg_edit_policy
 from services.applications.applications import format_edited_date
-from services.nextcloud import file_name_from_link
+from services.registration.nextcloud import file_name_from_link
 from domain.settings.schema import get_setting_typed
 
 from miniapp import file_tokens
@@ -191,7 +191,7 @@ _RESUME_LABEL_KEY = reg_engine.label_key_for("resume")
 def _resume_display(user: dict) -> str | None:
     """Человекочитаемое значение строки «Резюме» — единственное, что видит делегат: текст
     резюме как есть; если резюме файлом — имя файла, разобранное из ссылки Nextcloud
-    (`services.nextcloud.file_name_from_link`, обратная к `_file_link`). `resume_url` сюда
+    (`services.registration.nextcloud.file_name_from_link`, обратная к `_file_link`). `resume_url` сюда
     НИКОГДА не попадает как есть (T-6i9-01) — ссылка ведёт в ОБЩУЮ расшаренную папку, отдать её
     делегату значит отдать устройство хранилища. Резюме нет вовсе, ссылка пуста или не
     разобралась (загрузка в Nextcloud не удалась — известный инцидент 202 файлов 05-10.09) ->
@@ -404,7 +404,7 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
         # параметр запуска нигде не обрабатывался — кнопка «Изменить» вела в никуда, RESEARCH
         # Pitfall 1; `?start=edit` остаётся fallback-путём ИЗ БОТА, план 21-09, но профиль его
         # больше не публикует — навигация внутри приложения, `screens/profile.js`).
-        # Квик 260911-w2m: `can_edit` больше не литерал — `services.reg_edit_policy.edit_gate`
+        # Квик 260911-w2m: `can_edit` больше не литерал — `services.registration.reg_edit_policy.edit_gate`
         # (единственное место правила) решает по положению `reg_edit_policy` + статусу
         # анкеты; `edit_closed_text` непуст ТОЛЬКО когда правка закрыта, `profile.js` рисует
         # его вместо кнопки.

@@ -11,17 +11,17 @@
 отзыва/использования заводит НОВУЮ строку, не перезаписывает старую (история выдач видна
 целиком, тот же приём, что у `reg_answer_history`).
 
-`services/reg_edit_policy.py::resubmit_gate`/`edit_gate` — ЕДИНСТВЕННЫЕ читатели
+`services/registration/reg_edit_policy.py::resubmit_gate`/`edit_gate` — ЕДИНСТВЕННЫЕ читатели
 `active_override` на пути делегата (peek, не consume: гейт может дёрнуться много раз за один
 поход делегата в анкету, гасить исключение на первом же взгляде было бы неправильно).
 Погашение — `consume_override`, зовётся РОВНО в точке фактического использования:
-`services/reg_finalize.py` (resubmit — ветка «статус rejected -> pending»; edit — любая
+`services/registration/reg_finalize.py` (resubmit — ветка «статус rejected -> pending»; edit — любая
 реально применённая правка, независимо от того, чем был разрешён этот конкретный вызов —
 глобальной политикой или личным исключением, гасить несуществующее активное исключение
 безвредно, `consume_delegate_override` тогда просто no-op).
 
 aiogram-free по импортам — вызывается и ботом (`handlers/applications/admin_resubmit_grant.py`/
-`admin_edit_grant.py`, `services/reg_finalize.py`), и, если понадобится, веб-процессом
+`admin_edit_grant.py`, `services/registration/reg_finalize.py`), и, если понадобится, веб-процессом
 Mini App (тот же гейт `reg_edit_policy` уже общий для обеих поверхностей)."""
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _now() -> str:
 
 
 async def active_override(telegram_id: int, kind: str) -> dict | None:
-    """Публичный peek — `services/reg_edit_policy.py` зовёт это на каждом проходе гейта, БЕЗ
+    """Публичный peek — `services/registration/reg_edit_policy.py` зовёт это на каждом проходе гейта, БЕЗ
     погашения (см. докстринг модуля)."""
     return await get_active_delegate_override(telegram_id, kind)
 
@@ -92,7 +92,7 @@ async def revoke_override(telegram_id: int, kind: str, admin_id: int) -> dict:
 
 
 async def consume_override(telegram_id: int, kind: str) -> bool:
-    """Гасит активное исключение — вызывается из `services/reg_finalize.py` В ТОЧКЕ
+    """Гасит активное исключение — вызывается из `services/registration/reg_finalize.py` В ТОЧКЕ
     фактического использования (см. докстринг модуля), fail-soft на стороне вызывающего
     (сбой погашения не должен рвать саму подачу/правку делегата)."""
     return await consume_delegate_override(telegram_id, kind, _now())

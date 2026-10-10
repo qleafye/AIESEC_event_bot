@@ -5,7 +5,7 @@
 - Задача 1: `services/game/referrals.py` (`credit_for_approved`) + одиночное одобрение
   (`services.applications.applications.claim_approve`).
 - Задача 2: массовое одобрение (`claim_approve_all_with_credits`) и авто-одобрение
-  (`services/reg_finalize.py`) — плюс тест-сторож швов (список мест, где статус становится
+  (`services/registration/reg_finalize.py`) — плюс тест-сторож швов (список мест, где статус становится
   `'approved'`).
 - Задача 3: подсказка модератору на карточке заявки + бэкафилл задним числом.
 
@@ -306,9 +306,9 @@ def test_stale_approve_all_second_click_no_new_credits(tmp_path):
 
 def test_full_approval_auto_credits_ambassador(tmp_path, monkeypatch):
     """Врезка №3 (авто-одобрение): `full_approval=auto` зовёт `credit_for_approved` напрямую
-    внутри `services/reg_finalize.py` — единственный путь, который не проходит ни через
+    внутри `services/registration/reg_finalize.py` — единственный путь, который не проходит ни через
     `claim_approve`, ни через `claim_approve_all_with_credits`."""
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _ready(tmp_path)
     monkeypatch.setattr(config, "ADMIN_IDS", [])
@@ -336,7 +336,7 @@ def test_full_approval_auto_credits_ambassador(tmp_path, monkeypatch):
 def test_auto_rejected_applicant_no_credit(tmp_path):
     """Автоотказ фазы 31 побеждает даже при `full_approval=auto` — статус становится
     `rejected`, а не `approved`, начисления нет (D-20)."""
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _ready(tmp_path)
     _make_ambassador(7002)
@@ -379,7 +379,7 @@ _EXPECTED_APPROVAL_WRITERS = {
         "services.applications.applications.claim_approve / claim_approve_all_with_credits, которые сами "
         "зовут credit_for_approved(_bulk) и рядом check_tiers_for_invitees (ступени амбассадоров)"
     ),
-    "services/reg_finalize.py": (
+    "services/registration/reg_finalize.py": (
         "боевой шов: full_approval=auto/short_approval=auto/party_approval=auto зовёт "
         "credit_for_approved напрямую (план 32-05, задача 2), рядом check_tiers_for_invitees"
     ),
@@ -501,7 +501,7 @@ def test_nobody_calls_credit_or_tier_hooks_directly():
 def test_every_approval_path_calls_journal_entry_point():
     """Все известные пути одобрения зовут on_invitees_approved (сторож не пустой)."""
     seen: set[str] = set()
-    for rel in ("services/applications/applications.py", "services/reg_finalize.py"):
+    for rel in ("services/applications/applications.py", "services/registration/reg_finalize.py"):
         tree = ast.parse((_REPO_ROOT / rel).read_text(encoding="utf-8"))
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):

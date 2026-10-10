@@ -95,7 +95,7 @@ seed_universities.py::check_known_universities`):*
   академии и т.п.), не обязательно мусор.
 
 **Коллизии псевдонимов (найдено при проверке, не в акс. критерии, но важно для практики):**
-18 нормализованных псевдонимов (`services.lookup.normalize_alias`) совпадают у ≥2 разных
+18 нормализованных псевдонимов (`services.registration.lookup.normalize_alias`) совпадают у ≥2 разных
 каноник — при посеве в `lookup_entries` (`UNIQUE INDEX (kind, alias_norm)`) выживает только
 первая по алфавиту вставка, остальные `INSERT OR IGNORE` молча пропускает. Самая заметная —
 `мгу` (Морской vs Московский государственный университет, см. таблицу выше); полный список —
@@ -266,4 +266,4 @@ REST API для репозитория — `null`). По умолчанию GitH
 
 `items` читает `database.db.seed_lookup_from_snapshot` (задача 1 этого плана) — каждый
 `alias` (включая сам `canonical`) вставляется отдельной строкой `lookup_entries` через
-`INSERT OR IGNORE`, нормализация — `services.lookup.normalize_alias`.
+`INSERT OR IGNORE`, нормализация — `services.registration.lookup.normalize_alias`.

@@ -13,7 +13,7 @@ import sqlite3
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
-from services import consent as consent_svc
+from services.registration import consent as consent_svc
 from handlers.settings import admin_settings
 from handlers.regform import admin_reg_config, admin_reg_percity, admin_consent
 from handlers.applications import admin_moderation

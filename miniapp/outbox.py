@@ -43,7 +43,7 @@ Phase 23 (23-04, APP-TINDER-02, D-06/D-07): `application_decided`/`application_m
 
 Phase 21 (21-08, FORM-SYNC-02/04/07, D-05/D-06): `reg_finalized`/`reg_edited` — Mini App
 поставила `finalize_data` (данные уже записаны узким UPDATE/add_user); бот разбирает их
-`services.reg_finalize.post_finalize` — тем же путём, что и прямой вызов из чата (Sheets/
+`services.registration.reg_finalize.post_finalize` — тем же путём, что и прямой вызов из чата (Sheets/
 уведомления менеджерам). Payload сознательно несёт только `telegram_id` — ответы анкеты (ПД)
 в очередь не попадают (T-21-08), бот перечитывает текущее состояние из `users` сам.
 `reg_resume_upload` — резюме, загруженное в Mini App (D-05): бот кладёт файл в Nextcloud и

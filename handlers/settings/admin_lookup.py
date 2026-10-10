@@ -1,5 +1,5 @@
 """Phase 30 (30-07, A2-03, 30-CONTEXT.md § «Архитектурные ориентиры»): экран «📚 Справочники»
-— тонкая настройка справочника ВУЗ/город, необязательна (`services/lookup.py`, планы 30-02/
+— тонкая настройка справочника ВУЗ/город, необязательна (`services/registration/lookup.py`, планы 30-02/
 30-07 — единственное место правил и SQL этой темы, здесь только UI). Менеджер разбирает
 очередь «Другое → влить как псевдоним/отклонить» и закрепляет ≤8 чипов кнопками, без похода
 в базу.
@@ -33,7 +33,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from handlers.admin import router
 from handlers.states import LookupAdmin
 from keyboards.builders import get_cancel_kb
-from services import lookup as lookup_service
+from services.registration import lookup as lookup_service
 
 QUEUE_PAGE = 5
 CHIPS_MAX = 8

@@ -18,7 +18,7 @@ import asyncio
 
 from config import config
 from database.db import _connect, init_db
-from services.lookup import normalize_alias, search_lookup
+from services.registration.lookup import normalize_alias, search_lookup
 from tests._dbtpl import fast_init_db
 
 
@@ -143,7 +143,7 @@ def test_topup_does_not_touch_manager_pinned_entry(tmp_path):
 
 
 def test_topup_does_not_duplicate_manager_added_alias(tmp_path):
-    """Менеджер влил кастомный псевдоним через «Другое → влить» (`services.lookup.merge_apply`
+    """Менеджер влил кастомный псевдоним через «Другое → влить» (`services.registration.lookup.merge_apply`
     в проде) под существующей каноникой — у него `source != "wikidata_curated"`. Дозаливка
     снапшота не должна тронуть эту строку ни повторной вставкой, ни изменением source."""
     _ready(tmp_path)
