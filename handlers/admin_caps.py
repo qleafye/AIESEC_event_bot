@@ -887,7 +887,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "toggle_wave_rating_show_names": "settings",  # тумблер «имена в рейтинге волны»
     "toggle_show_progress": "settings",
     "toggle_uni_mode": "settings",
-    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — handlers/admin_reg_form.py.
+    # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» — handlers/regform/admin_reg_form.py.
     "toggle_reg_form_v2": "settings",
     "toggle_reg_form_chips": "settings",
     "toggle_reg_form_lookup_search": "settings",

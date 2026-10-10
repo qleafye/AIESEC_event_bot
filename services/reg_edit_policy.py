@@ -64,7 +64,7 @@ def edit_allowed_for(policy: str, *, submitted: bool, status: str | None) -> boo
     сторож задачи, тумблер про правку технически не может ничего запретить тому, кто анкету
     ещё не подавал. Неизвестное/будущее значение `policy` (например опечатка миграции)
     fail-soft уходит в «разрешено» — тот же принцип, что у `_next_resume_mode` в
-    `handlers/admin_reg_percity.py`."""
+    `handlers/regform/admin_reg_percity.py`."""
     if not submitted:
         return True
     if policy == NEVER:

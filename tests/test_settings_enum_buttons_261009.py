@@ -168,7 +168,7 @@ def test_city_header_skillup_pick_goes_to_type_only_confirm(tmp_path):
 
     # «✅ Сменить только тип» → экран «🎭 Тип события» с кнопками и живым FSM: следующий выбор
     # не теряется молча.
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     cb = _cb("preset_confirm:skillup:et")
     _run(admin_reg_config.preset_confirm(cb, state))
     assert _run(db.get_setting("event_type")) == "skillup"

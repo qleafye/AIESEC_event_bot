@@ -219,7 +219,7 @@ def test_conference_lc_question_opens_reg_questions_not_app(tmp_path):
 
 
 def test_screen_from_wizard_returns_on_back_only(tmp_path, monkeypatch):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
 
     _ready(tmp_path, "setup_wizard_screen.db")
     opened = []

@@ -174,7 +174,7 @@ REG_PRESETS = {
 
 async def apply_reg_preset(preset_key: str, admin_id: int | None = None) -> list[str]:
     """Bulk-write reg_q_* + payment_enabled for the chosen preset (byte-for-byte body of the
-    former `handlers.admin_reg_config._apply_event_preset`), then (Phase 28, 28-10) any
+    former `handlers.regform.admin_reg_config._apply_event_preset`), then (Phase 28, 28-10) any
     arbitrary registry keys listed in preset["settings"]. Every REG_DEFAULTS key (every
     reg_q_* toggle — NOT module switches, see `reg_engine.MODULE_SWITCH_TOGGLES`) is set
     explicitly — on if it's in the preset's "on" list, off otherwise — so the result is

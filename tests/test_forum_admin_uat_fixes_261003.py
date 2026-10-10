@@ -118,7 +118,9 @@ def test_hub_rows_open_native_screens_with_hub_back(tmp_path):
 
 
 def test_hub_back_survives_toggle_redraw(tmp_path):
-    from handlers import admin_miniapp, admin_reg_config, session_feedback
+    from handlers import admin_miniapp
+    from handlers.regform import admin_reg_config
+    from handlers import session_feedback
     _seed_spb(tmp_path)
 
     _t, kb = _open_from_hub("menu")
@@ -138,7 +140,7 @@ def test_hub_back_survives_toggle_redraw(tmp_path):
 
 
 def test_native_entry_keeps_section_back(tmp_path):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
     _seed_spb(tmp_path)
     cb = _CB("menu_toggle:menu_sos")  # открыт из раздела — клавиатуры хаба не было
     asyncio.run(admin_reg_config.toggle_menu_button(cb))

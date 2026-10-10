@@ -241,7 +241,7 @@ def _build_snapshot_lines():
 # Drift note (2026-08-22, quick consent-versioning): 2 handlers added (340 -> 342 после слияния с «➕ пункт» и дайджестом), re-captured
 # by RUNNING `_build_snapshot_lines()` and diffed against the prior 334-line snapshot -- every
 # pre-existing line byte-for-byte identical in the same relative order. admin.router gained
-# `toggle_consent_recollect` (seam handlers/admin_consent.py, imported at the tail of
+# `toggle_consent_recollect` (seam handlers/regform/admin_consent.py, imported at the tail of
 # admin_settings.py -> lands right after the settings block, before admin_cities);
 # registration.router gained `consent_renew_accept` (seam handlers/reg_consent.py, imported
 # after reg_steps -> last in registration.router).
@@ -351,12 +351,12 @@ def _build_snapshot_lines():
 # строк, весь остальной порядок байт-в-байт тот же.
 #
 # Drift note (module-size split, 414 handlers unchanged -- REORDER, not insert/delete):
-# handlers/admin_reg_config.py (1451 lines, over tests/test_module_size_convention_260816.py's
+# handlers/regform/admin_reg_config.py (1451 lines, over tests/test_module_size_convention_260816.py's
 # DEFAULT_CEILING) was split. `show_reg_questions`/`toggle_reg_question`/`reg_q_track_switch`/
 # `toggle_party_question`/`toggle_short_question`/`reg_resume_mode_toggle`/`reg_q_reset_city`/
 # `reg_q_reset_city_go`/`reg_q_noop`/`reg_questions_back`/`admin_reg_prompts`/
 # `reg_prompt_track_switch`/`reg_prompt_edit`/`reg_prompt_rst`/`reg_prompt_rst_go` moved to the
-# new `handlers/admin_reg_percity.py` seam, which imports the three `_refresh_*_sheet_header`
+# new `handlers/regform/admin_reg_percity.py` seam, which imports the three `_refresh_*_sheet_header`
 # helpers back from admin_reg_config.py at module level (that module loads FIRST in
 # handlers/admin.py's seam-import order) — so admin_reg_percity's own handlers now register
 # AFTER admin_reg_config's remaining `admin_event_preset`/`preset_apply`/`preset_confirm`/
@@ -381,7 +381,7 @@ def _build_snapshot_lines():
 # to right after `sheet_logs_sync_go` (and before `show_admin_cities`), all other lines
 # byte-for-byte identical in the same order.
 # Drift note (Phase 30, 30-01, A2-08, 487 -> 496 handlers -- PURE APPEND): девять новых
-# callback-хендлеров тумблеров «Анкета 2.0» (`handlers/admin_reg_form.py`, шов, декорирующий
+# callback-хендлеров тумблеров «Анкета 2.0» (`handlers/regform/admin_reg_form.py`, шов, декорирующий
 # общий `admin.router`, импортируется последним в хвостовой цепочке `handlers/admin_sections.py`
 # -- сразу после `admin_quiet_hours`) регистрируются ПОСЛЕ `admin_quiet_hours` и ПЕРЕД
 # `admin_sync_sheet` (`handlers/sheets/admin_sheets.py`, импортируется в `handlers/admin.py` только
@@ -1899,7 +1899,7 @@ def test_snapshot_total_handler_count_is_292():
     # Phase 28 (28-09, SU-10, задача 2): +1 admin_settings.py callback_query
     # toggle_resume_filename_short_mode, встал сразу после toggle_reg_offer_ref_link и перед
     # toggle_reg_scoring_enabled (472 -> 473).
-    # Phase 28 (28-08, SU-08, задача 1): +5 handlers/admin_reg_scoring.py callback_query
+    # Phase 28 (28-08, SU-08, задача 1): +5 handlers/regform/admin_reg_scoring.py callback_query
     # (admin_reg_scoring/scoring_toggle/scoring_drop/scoring_limit/scoring_noop), шов
     # импортируется из хвоста admin_moderation.py сразу после admin_modcard и перед
     # show_admin_settings_guide (466 -> 471); (28-08, SU-08, задача 3): +1 admin_settings.py
@@ -1962,7 +1962,7 @@ def test_snapshot_total_handler_count_is_292():
     # (498 -> 503); чистая вставка (два места, оба хвосты своих observer-блоков), перепроверена
     # прогоном `_build_snapshot_lines()` и diff'ом с прежним 498-строчным снапшотом — ровно пять
     # новых строк, ни одна другая строка не поменялась и не переставилась.
-    # Phase 30 (30-01, A2-08): +9 handlers/admin_reg_form.py; (30-07, A2-03): +11
+    # Phase 30 (30-01, A2-08): +9 handlers/regform/admin_reg_form.py; (30-07, A2-03): +11
     # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514;
     # (30-07, задача 4): +1 admin_settings_lists.py::settings_list_attr_toggle -> 515.
     # Квик 260914-rgq (RGQ-01): +2 handlers/admin_app_list.py (callback_query

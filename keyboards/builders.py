@@ -427,7 +427,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
 # --- Почему включённая кнопка меню сейчас не видна делегату ---
 #
 # Один реестр на ВСЕ кнопки со вторым гейтом в `get_main_menu_kb` выше (`if key == ... and
-# not ...: continue`): экран «🔘 Кнопки меню» (handlers/admin_reg_config.py) пишет рядом с
+# not ...: continue`): экран «🔘 Кнопки меню» (handlers/regform/admin_reg_config.py) пишет рядом с
 # включённой кнопкой «сейчас скрыта: <причина>». Функция получает город (None — общие
 # значения) и возвращает причину словами или None (кнопка видна). Новый гейт без записи здесь
 # роняет tests/test_admin_checkin_labels_260924.py::test_every_menu_gate_has_hidden_reason.

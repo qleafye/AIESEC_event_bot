@@ -309,8 +309,8 @@ async def setup_wizard_screen(callback: types.CallbackQuery):
     set_return(callback.from_user.id, step_key, _SCREEN_MARK + screen)
     opened = callback.model_copy(update={"data": screen})
     if screen == "admin_menu_buttons":
-        from handlers.admin_reg_config import show_menu_buttons  # ленивый шов
+        from handlers.regform.admin_reg_config import show_menu_buttons  # ленивый шов
         await show_menu_buttons(opened)
     else:
-        from handlers.admin_reg_percity import show_reg_questions  # ленивый шов
+        from handlers.regform.admin_reg_percity import show_reg_questions  # ленивый шов
         await show_reg_questions(opened)
