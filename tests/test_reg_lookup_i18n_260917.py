@@ -1,13 +1,13 @@
 """Приёмка 17.09 (живой прогон стенда, lang=en) — регрессия найденной дыры в
 `handlers/reg/reg_types_lookup.py`: вопрос шага и подсказка «напиши первые буквы» склеивались в
 ОДНУ строку ДО перевода (`f"{prompt}\\n\\n{hint}"`, потом ОДИН вызов `reg_i18n.say` на всё) —
-`services.i18n.tr()` ищет перевод по хешу ВСЕГО текста, склейка не совпадала ни с одним из двух
+`services.i18n.i18n.tr()` ищет перевод по хешу ВСЕГО текста, склейка не совпадала ни с одним из двух
 переводов по отдельности, делегат с lang=en видел русский вопрос и подсказку целиком, хотя обе
-строки давно переведены (`services/i18n_form_manual.py`).
+строки давно переведены (`services/i18n/i18n_form_manual.py`).
 
 Приём — тот же, что `tests/test_i18n_bot_render_27.py::_patch_ctx`: подменяем
 `handlers.i18n.reg_i18n.ctx_for` на фиксированный `(lang, tr_map)`, без похода в БД за языком
-делегата — `reg_types_lookup.py` зовёт именно `reg_i18n.ctx_for`, не `services.i18n.context`
+делегата — `reg_types_lookup.py` зовёт именно `reg_i18n.ctx_for`, не `services.i18n.i18n.context`
 напрямую."""
 import asyncio
 
@@ -19,14 +19,14 @@ from config import config
 from database import db
 from handlers.i18n import reg_i18n
 from handlers.reg import reg_types_lookup
-from services.i18n_form_manual import EVENT_TEXTS_260917, FORM_DEFAULT_EN
-from services.i18n_miniapp_manual import MANUAL_EN
-from services.i18n import src_hash
+from services.i18n.i18n_form_manual import EVENT_TEXTS_260917, FORM_DEFAULT_EN
+from services.i18n.i18n_miniapp_manual import MANUAL_EN
+from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
 # reg_lookup_hint_default_text живёт в MANUAL_EN (_FORM_INTRO, Квик 260915-skg), не в
 # FORM_DEFAULT_EN — карта теста собрана из всех трёх ручных словарей, как это делает реальный
-# `services.i18n.tr()` через `load_map`/`translations` после `seed()`.
+# `services.i18n.i18n.tr()` через `load_map`/`translations` после `seed()`.
 _ALL_MANUAL_EN = {**MANUAL_EN, **FORM_DEFAULT_EN, **EVENT_TEXTS_260917}
 
 UID = 260917100
@@ -111,7 +111,7 @@ def test_reglookup_other_translates_entity_composite(tmp_path, monkeypatch):
     подставляется В РУССКИЙ шаблон ДО перевода (`reg_engine._v2_texts_for`/`reg_types_lookup.py`
     зовут `.replace("{entity}", ...)` на сыром значении настройки) — составная строка «Впиши
     город сам — менеджер увидит его как есть.» обязана переводиться целиком (см.
-    `services/i18n_form_manual.py::_ENGINE_DYNAMIC_EN`)."""
+    `services/i18n/i18n_form_manual.py::_ENGINE_DYNAMIC_EN`)."""
     _use_tmp_db(tmp_path)
     composite_ru = "Впиши город сам — менеджер увидит его как есть."
     _patch_ctx_en(monkeypatch, composite_ru)

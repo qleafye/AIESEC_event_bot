@@ -493,7 +493,7 @@ def test_registry_defaults_and_format():
 
 def test_registry_defaults_have_manual_en_translation():
     from domain.settings.schema import SETTINGS_SCHEMA
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 
     for key in (
         "forum_noshow_poll_question_text",

@@ -2,7 +2,7 @@
 делегатских текстов анкеты, до того как в образ бота лягут ~90 МБ колёс и 156 МБ модели.
 
 Не часть рантайма бота — CLI-инструмент, запускается руками (или из `--measure` на стенде).
-Своего перечисления источников текста не имеет: корпус собирает `services.i18n_sources.corpus()`
+Своего перечисления источников текста не имеет: корпус собирает `services.i18n.i18n_sources.corpus()`
 — второго списка источников в проекте быть не должно.
 
 Запуск:
@@ -138,7 +138,7 @@ def _translate_all(driver, texts: list[str]) -> list[str]:
 async def _load_corpus(db_path: str, limit: int | None) -> list[tuple[str, str]]:
     from config import config
     config.DB_PATH = db_path
-    import services.i18n_sources as i18n_sources
+    import services.i18n.i18n_sources as i18n_sources
     items = await i18n_sources.corpus()
     if limit:
         items = items[:limit]
@@ -253,7 +253,7 @@ def _glossary_section(driver) -> str:
     lines.append(f"\n**Вывод:** {verdict}\n")
 
     lines.append(
-        "\n### Черновик глоссария (`services/i18n_glossary.py`, план 27-03 создаёт по "
+        "\n### Черновик глоссария (`services/i18n/i18n_glossary.py`, план 27-03 создаёт по "
         "утверждённому черновику)\n"
     )
     lines.append(

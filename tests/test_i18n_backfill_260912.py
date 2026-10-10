@@ -14,7 +14,7 @@ import asyncio
 from config import config
 from database import db
 from handlers.i18n import admin_i18n
-from services import i18n_worker
+from services.i18n import i18n_worker
 from tests._dbtpl import fast_init_db
 
 
@@ -51,8 +51,8 @@ def _patch_driver_never_called(monkeypatch):
 
 
 def _patch_corpus_everywhere(monkeypatch, fake_corpus):
-    """`admin_i18n._corpus_gap` и `services.i18n_worker.bulk_seed` каждый импортировали
-    `corpus` В СВОЙ модуль (`from services.i18n_sources import corpus`) -- переменные разные
+    """`admin_i18n._corpus_gap` и `services.i18n.i18n_worker.bulk_seed` каждый импортировали
+    `corpus` В СВОЙ модуль (`from services.i18n.i18n_sources import corpus`) -- переменные разные
     объекты, монки нужно ставить в оба модуля, иначе `bulk_seed` посеет РЕАЛЬНЫЙ корпус анкеты
     (сотни строк) поверх фейковых ожиданий теста."""
     monkeypatch.setattr(admin_i18n, "corpus", fake_corpus)

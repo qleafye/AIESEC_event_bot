@@ -18,7 +18,7 @@ from database.db import (
     list_coin_entries_for_user,
 )
 from services.amb import amb_progress
-from services import i18n
+from services.i18n import i18n
 from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, game_gate, require_section

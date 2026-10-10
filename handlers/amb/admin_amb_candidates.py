@@ -296,7 +296,7 @@ async def _notify(bot, tid: int, key: str) -> bool | None:
     try:
         from domain.regform.engine import build_referral_link
         from services import quiet_hours
-        from services.i18n import context as i18n_context, tr as i18n_tr
+        from services.i18n.i18n import context as i18n_context, tr as i18n_tr
         from services.scheduler import _now_moscow_naive
 
         lang, tr_map = await i18n_context(tid)

@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 CAP = "settings"
 
-# Тот же закрытый набор трековых хвостов, что `services.i18n_sources._TRACK_SUFFIXES` — второй
+# Тот же закрытый набор трековых хвостов, что `services.i18n.i18n_sources._TRACK_SUFFIXES` — второй
 # копией логики его снятия не считается (это два литерала, не алгоритм), но ПРИЁМ снятия хвоста
 # (`cities.split_per_city_key` для городского, сравнение суффикса для трекового) — тот же самый:
 # закрытое множество кодов городов, а не произвольная регулярка.
@@ -73,7 +73,7 @@ _OPTION_LIST_KEYS = _option_list_keys()  # SELECT_CONFIG/MULTI_CONFIG — ста
 
 def _strip_reg_key_suffixes(key: str) -> str:
     """Снимает городской, потом трековый хвост — `reg_q_course__party__city__msk` ->
-    `reg_q_course`. Тот же приём, что `services.i18n_sources._strip_dynamic_suffixes`."""
+    `reg_q_course`. Тот же приём, что `services.i18n.i18n_sources._strip_dynamic_suffixes`."""
     split = split_per_city_key(key)
     base = split[0] if split else key
     for suffix in _TRACK_SUFFIXES:

@@ -302,8 +302,8 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
 
     from keyboards.builders import get_main_menu_kb
     from services.application_effects import _record_delivery_fail_soft
-    from services.i18n import context as i18n_context
-    from services.i18n import tr
+    from services.i18n.i18n import context as i18n_context
+    from services.i18n.i18n import tr
     from services.infra.telegram_send import send_with_retry
 
     key = "delegation_welcome_existing_text" if existing else "delegation_welcome_text"

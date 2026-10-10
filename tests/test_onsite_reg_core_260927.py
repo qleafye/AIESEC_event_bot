@@ -311,7 +311,7 @@ def test_registry_toggle_per_city_default_off():
 
 
 def test_registry_texts_exist_with_english_defaults():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     staff_group = SETTINGS_SCHEMA["checkin_undo_button_text"]["group"]
     for key in ONSITE_DELEGATE_TEXTS:
         meta = SETTINGS_SCHEMA[key]

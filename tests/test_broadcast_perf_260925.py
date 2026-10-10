@@ -16,7 +16,7 @@ import pytest
 from config import config
 from database import db
 from services import broadcast_run as br
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 from services import scheduler as sched
 from tests._dbtpl import fast_init_db
 

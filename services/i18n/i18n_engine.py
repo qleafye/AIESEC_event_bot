@@ -3,7 +3,7 @@
 Решение владельца (чекпоинт 27-01, `27-CONTEXT.md` «Решения владельца на чекпоинте 27-01»):
 **embedded с выгрузкой** — `argos-translate-lt` в процессе бота, модель грузится ТОЛЬКО когда
 очередь перевода непуста и выгружается (`EmbeddedArgosDriver.unload`) сразу после того, как
-`services/i18n_worker.py::drain` её опустошил (в покое — ~0 МБ сверх базового интерпретатора).
+`services/i18n/i18n_worker.py::drain` её опустошил (в покое — ~0 МБ сверх базового интерпретатора).
 Сайдкар LibreTranslate НЕ поднимается по умолчанию (хост держит 237 МБ физически свободных на
 ~26 контейнеров — постоянные 400-700 МБ сайдкара туда не влезают), но код HTTP-драйвера
 остаётся рабочим фоллбэком за тем же контрактом — переключение `delegate_lang_driver`
@@ -20,7 +20,7 @@
 есть в проекте — `services/scheduler.py` лениво импортирует `services.game_digest` — и
 обязательна здесь: полный прогон тестов без 156 МБ модели в `./data/argos/` упал бы на
 импорте, Pitfall 9 замера 27-01). `grep -c "^import argostranslate\|^from argostranslate"
-services/i18n_engine.py` обязан быть `0` — это acceptance criterion плана, не стиль.
+services/i18n/i18n_engine.py` обязан быть `0` — это acceptance criterion плана, не стиль.
 """
 from __future__ import annotations
 

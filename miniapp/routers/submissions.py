@@ -59,7 +59,7 @@ from database.db import (
     upsert_reg_draft,
 )
 from domain.game.labels import visible_tasks_for  # Phase 32 (32-06, D-28/D-36, T-32-06-02)
-from services import i18n
+from services.i18n import i18n
 from services.amb.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from domain.settings.schema import get_setting_typed
 

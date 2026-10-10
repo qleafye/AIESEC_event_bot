@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from services import i18n
-from services.i18n_form_manual import FORM_DEFAULT_EN
+from services.i18n import i18n
+from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 
 ROOT = REPO_ROOT
 

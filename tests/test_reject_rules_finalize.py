@@ -373,7 +373,7 @@ def test_delegate_message_composition_en_translated_when_available(tmp_path, mon
     monkeypatch.setattr(config, "ADMIN_IDS", [])
 
     async def go():
-        from services.i18n import src_hash
+        from services.i18n.i18n import src_hash
 
         await db.set_setting("delegate_lang_enabled", "on")
         await db.upsert_translation(

@@ -10,7 +10,7 @@ from datetime import datetime
 
 import domain.settings.ops as settings_ops
 from config import config
-from services.i18n_form_manual import FORM_DEFAULT_EN
+from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 from tests._dbtpl import fast_init_db
 
