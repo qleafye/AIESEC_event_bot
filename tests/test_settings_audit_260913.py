@@ -53,7 +53,7 @@ _CALL_RE = re.compile(r"\b(?:set_setting|delete_setting)\(")
 
 def _scan_violations() -> dict[str, list[str]]:
     violations: dict[str, list[str]] = {}
-    for path in sorted(HANDLERS_DIR.glob("*.py")):
+    for path in sorted(HANDLERS_DIR.rglob("*.py")):
         lines = path.read_text(encoding="utf-8").splitlines()
         hits = [ln.strip() for ln in lines if _CALL_RE.search(ln)]
         if hits:
