@@ -31,6 +31,7 @@ tr_map)` РОВНО ОДИН раз на запрос (не по разу на �
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -44,6 +45,7 @@ from domain.cities import (
     ensure_cities_fresh,
     get_setting_typed_for_city,
 )
+from database import db
 from database.db import (
     fetch_manual_translations,
     claim_reg_draft,
@@ -1110,7 +1112,19 @@ async def draft_submit(
         raise HTTPException(500, {"reason": "server_error"})
 
     event_city = draft.get("event_city")
-    if result["mode"] == "new":
+    auto_rejected = bool(result.get("auto_rejected"))
+    if auto_rejected:
+        # Правило автоотказа уже отклонило заявку; текст отказа делегату в чат пришлёт бот
+        # (post_finalize из очереди). Экран показывает тот же текст из журнала, а не «Заявка
+        # принята», и без оффера реф-ссылки.
+        entry = await db.get_live_auto_reject_log_entry(p.telegram_id)
+        try:
+            texts = [t for t in json.loads((entry or {}).get("reject_texts") or "[]") if t]
+        except (TypeError, ValueError):
+            texts = []
+        heading = "\n\n".join(texts) or await get_setting_typed_for_city("reject_text", event_city)
+        body = None
+    elif result["mode"] == "new":
         heading = await get_setting_typed_for_city("reg_form_complete_heading_text", event_city)
         body = await get_setting_typed_for_city("reg_form_complete_body_text", event_city)
     else:
@@ -1136,7 +1150,7 @@ async def draft_submit(
     # чата — зона другого исполнителя, LANG-08/договорённость плана) — chat_text строится из
     # НЕпереведённых heading/body. Экран приложения переводится ОТДЕЛЬНОЙ парой ниже.
     chat_text = heading if not body else f"{heading}\n{body}"
-    if chat_text:
+    if chat_text and not auto_rejected:
         try:
             await telegram_api.send_message(request.app.state.cfg, p.telegram_id, chat_text)
         except TelegramApiError as exc:
@@ -1155,7 +1169,7 @@ async def draft_submit(
     # Предложение реф-ссылки на экране «Заявка принята» (паритет с чатом бота). Правила входа —
     # services.amb.amb_status: при набранном лимите и у отказанного блока нет; кандидату (режим
     # отбора, «да» в анкете) — подтверждение и сразу его ссылка, независимо от тумблера.
-    if result["mode"] == "new":
+    if result["mode"] == "new" and not auto_rejected:
         from services.amb import amb_status
         try:
             amb_state = await amb_status.delegate_state(p.telegram_id)
