@@ -1,4 +1,4 @@
-"""Экран «🏆 Рейтинг чата» (handlers/admin_chat_rating.py): режим по городу, суммы правил,
+"""Экран «🏆 Рейтинг чата» (handlers/chat/admin_chat_rating.py): режим по городу, суммы правил,
 галочки заданий для «упоминаний в соцсетях».
 
 Бот для людей: режим и задания — кнопками, суммы — числом с примером; коды ключей, городов и
@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_chat_rating as scr
+from handlers.chat import admin_chat_rating as scr
 from handlers.admin_caps import required_capability
 from handlers.states import ChatRatingEdit
 from tests._dbtpl import fast_init_db

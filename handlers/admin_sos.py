@@ -244,7 +244,7 @@ async def asos_page(callback: types.CallbackQuery):
 
 # ── Пункт 2 плана: «🔗 Привязать чат SOS» — бот просит добавить его в группу и прислать оттуда
 # подтверждение (пересылка сообщения ИЗ группы, эта DM-ветка; ИЛИ команда `/sos_id`, набранная
-# прямо в группе, `handlers/group_chat.py`). Одна и та же цель —
+# прямо в группе, `handlers/chat/group_chat.py`). Одна и та же цель —
 # `services.sos.complete_chat_bind`, потребляет ту же заявку `sos_chat_bind_pending`.
 
 _BIND_INSTRUCTIONS = (
@@ -544,7 +544,7 @@ async def sos_resolve(callback: types.CallbackQuery, bot: Bot, fsm_storage=None)
 #
 # Здесь — только ЛИЧНАЯ копия карточки (фоллбэк-веер, чат SOS не привязан или упал). Реплай на
 # карточку в самом чате SOS сюда не доходит и не должен: групповые сообщения целиком съедает
-# `handlers/group_chat.py` (он подключён раньше `admin.router`), там же и обрабатывается ответ на
+# `handlers/chat/group_chat.py` (он подключён раньше `admin.router`), там же и обрабатывается ответ на
 # карточку — право в чате даёт сам привязанный чат SOS, а не капа (см. докстринг там).
 
 async def is_sos_reply(message: types.Message) -> bool:

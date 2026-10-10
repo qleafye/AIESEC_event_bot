@@ -1,6 +1,6 @@
 """Квик 260914-rgr (RGR-01..07), правка 15.09 («привязка через личку админа»): доменная
 логика учёта чата делегатов — без единого aiogram-хендлера (те живут в
-`handlers/group_chat.py`, который и импортирует этот модуль; отдельного экрана «💬 Чат» с
+`handlers/chat/group_chat.py`, который и импортирует этот модуль; отдельного экрана «💬 Чат» с
 15.09 больше нет — тумблер учёта переехал строкой в `handlers/admin_settings.py`).
 
 Привязка «город -> chat_id» физически хранится в `bot_settings` теми же композитными
@@ -131,7 +131,7 @@ def _parse_chat_id(key: str, raw: str | None) -> int | None:
 async def bind_chat(admin_id: int | None, chat_id: int, title: str, city: str | None) -> None:
     """Записывает привязку. `city is None` -> глобальные ключи; иначе — per-city пара.
     Неизвестный код города (`per_city_key` вернул `None`) — тихий no-op, вызывающий
-    (`handlers/group_chat.py`) уже проверил код по `city_codes()`/`enabled_cities()` до
+    (`handlers/chat/group_chat.py`) уже проверил код по `city_codes()`/`enabled_cities()` до
     вызова, повторная проверка здесь — страховка, не основной путь."""
     if city is None or city == ALL_CITIES:
         await set_setting_by_admin(admin_id, CHAT_ID_KEY, str(chat_id))

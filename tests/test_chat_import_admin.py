@@ -14,8 +14,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_chat_import as h
-from handlers import admin_chat_rating as scr
+from handlers.chat import admin_chat_import as h
+from handlers.chat import admin_chat_rating as scr
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from handlers.states import ChatExportImport
 from tests.test_chat_export_import_260927 import (  # noqa: F401 — фикстуры db_path, _frozen_now

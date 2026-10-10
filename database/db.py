@@ -6763,7 +6763,7 @@ TELEGRAM_SERVICE_USER_ID = 777000
 
 async def chat_activity_totals(chat_id: int) -> dict:
     """Сумма `messages` за СЕГОДНЯ и за последние 7 дней (по Москве, включительно) — нужна
-    `/chat_stats` (`handlers/group_chat.py`), чтобы админ, разбирающийся прямо в группе, не
+    `/chat_stats` (`handlers/chat/group_chat.py`), чтобы админ, разбирающийся прямо в группе, не
     шёл за этими цифрами в бота отдельно. Служебный 777000 не в счёт."""
     today = msk_now().strftime("%Y-%m-%d")
     week_ago = (msk_now() - timedelta(days=6)).strftime("%Y-%m-%d")

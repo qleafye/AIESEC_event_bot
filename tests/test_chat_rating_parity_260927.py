@@ -93,7 +93,7 @@ def _live_kind(kind: str) -> str:
 
 
 def insert_live(db_path: str, conversation=CONVERSATION, chat_id: int = CHAT_ID) -> None:
-    """Те же сообщения — как их записал бы живой учёт (handlers/group_chat.py)."""
+    """Те же сообщения — как их записал бы живой учёт (handlers/chat/group_chat.py)."""
     authors = {row[0]: row[1] for row in conversation}
     conn = sqlite3.connect(db_path)
     try:
