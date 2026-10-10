@@ -131,7 +131,7 @@ def test_declined_sees_question_but_yes_is_noop(ready):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _finalize(tid, *, yes, kind="new"):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
     draft = {
         "telegram_id": tid, "kind": kind,
         "answers": {"full_name": f"Делегат {tid}", "is_ambassador_candidate": yes},
@@ -245,7 +245,7 @@ def _call_name(node) -> str | None:
     return None
 
 
-_APPROVAL_FILES = ("services/applications/applications.py", "services/reg_finalize.py")
+_APPROVAL_FILES = ("services/applications/applications.py", "services/registration/reg_finalize.py")
 
 
 def _functions_calling(name: str) -> dict[str, set[str]]:
@@ -458,7 +458,7 @@ def test_city_move_to_moderation_releases_slot(ready, monkeypatch):
 
 
 def test_edit_remoderation_releases_slot(ready):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
     _run(db.set_setting("toggle_reg_edit_remoderation", "on"))
     _holder(63)
     result = _run(rf.finalize_data(63, "@d", {
@@ -469,7 +469,7 @@ def test_edit_remoderation_releases_slot(ready):
 
 
 def test_edit_without_remoderation_keeps_slot(ready):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
     _holder(64)
     _run(rf.finalize_data(64, "@d", {
         "telegram_id": 64, "kind": "edit", "answers": {"full_name": "Новое Имя"},

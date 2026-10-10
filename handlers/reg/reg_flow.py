@@ -29,7 +29,7 @@ from database.db import current_consent_version, get_user_consent_versions
 # источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
 from database.db import RESUME_RECALL_COLUMNS
 from domain.settings.schema import get_setting_typed
-from services.consent import tapped_button_text
+from services.registration.consent import tapped_button_text
 from domain.cities import CITIES, is_city_registration_open
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
@@ -65,7 +65,7 @@ from domain.regform.engine import multi_max
 # ярус A i18n_ui_en, не второй список литералов.
 from handlers.i18n import reg_i18n
 from domain.i18n.ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
-from services import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
+from services.registration import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ import handlers.settings.admin_settings_lists as admin_settings_lists
 import handlers.reg.reg_types_lookup as reg_types_lookup
 import domain.regform.engine as reg_engine
 from domain.settings.schema import get_setting_typed
-from services import lookup as lookup_service
+from services.registration import lookup as lookup_service
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900901

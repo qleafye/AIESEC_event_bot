@@ -4,7 +4,7 @@
 каждой метке пришло. Экран показывает счётчики из той же статистики, что «📈 Источники»
 (`database.db.get_source_stats`: «источник -> число поданных анкет»), — только метка и число,
 ни имён, ни контактов. «➕ Новая ссылка» спрашивает название метки и отдаёт готовую ссылку
-(проверка и тексты общие с командой `/create_link`, `services/source_links.py`).
+(проверка и тексты общие с командой `/create_link`, `services/registration/source_links.py`).
 
 Ссылку сохранять в боте не нужно: она работает сразу, а метка появляется в списке с первой
 поданной по ней анкетой.
@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_source_stats
 from handlers.admin import router
 from handlers.states import SourceLinkCreate
-from services import source_links
+from services.registration import source_links
 
 logger = logging.getLogger(__name__)
 

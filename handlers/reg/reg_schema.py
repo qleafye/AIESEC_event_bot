@@ -186,14 +186,14 @@ def _sheet_details(data: dict) -> str:
     # Phase 21 (21-08, D-16): пометка правки — «✏️ Изменена дд.мм (поля: ...)». Дописывается
     # ВТОРЫМ элементом (после Referrer ID, если он есть), а не отдельной колонкой листа
     # (Pitfall 4 — новая колонка посреди сезона сдвигает уже записанные строки). Значение
-    # проставляет services.reg_finalize.post_finalize перед сборкой строки — здесь только
+    # проставляет services.registration.reg_finalize.post_finalize перед сборкой строки — здесь только
     # читаем готовую строку, никакой логики форматирования.
     if data.get("_edited_note"):
         parts.append(str(data["_edited_note"]))
     # Phase 31 (31-06, D-26): пометка автоотказа/правила-пометки — «Детали» ЕДИНСТВЕННАЯ
     # колонка листа для неё (новую колонку посреди сезона не заводим, инцидент 13.09). В
     # отличие от `_edited_note` (эфемерная, собирается в post_finalize из changed_columns),
-    # `auto_rule_note` — ПЕРСИСТЕНТНАЯ колонка users (её пишет `services.reg_finalize.
+    # `auto_rule_note` — ПЕРСИСТЕНТНАЯ колонка users (её пишет `services.registration.reg_finalize.
     # _auto_reject_patch`) — здесь только читаем готовое значение из `data` (= `full`, строка
     # users), никакой логики форматирования.
     if data.get("auto_rule_note"):
@@ -711,7 +711,7 @@ async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = Fals
     Quick 260904-3vm (E2): `auto_approved=True` — заявка принята БЕЗ модерации (short-трек и
     подобные сценарии) — делегат читает «заявка принята», а не «прошёл отбор». Default False
     keeps every existing caller (manual approve, receipt confirm, payment path) unchanged; the
-    ONLY caller passing True is `services/reg_finalize.py::post_finalize`'s auto-approve tail.
+    ONLY caller passing True is `services/registration/reg_finalize.py::post_finalize`'s auto-approve tail.
 
     Координатор 25.09 (учёт доставки решения): возврат — `None` при успехе, иначе итоговое
     исключение (`services/applications/application_effects.py` классифицирует и пишет `users.

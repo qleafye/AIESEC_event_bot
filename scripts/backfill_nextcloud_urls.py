@@ -1,7 +1,7 @@
 """One-shot backfill: перенос сохранённых ссылок на резюме на новый домен Nextcloud.
 
 После переезда Nextcloud за Cloudflare Tunnel (docs/DEPLOY-DOMAIN.md) новые загрузки
-сразу получают ссылки на `https://cloud.<домен>` — `services.nextcloud._file_link` читает
+сразу получают ссылки на `https://cloud.<домен>` — `services.registration.nextcloud._file_link` читает
 NEXTCLOUD_PUBLIC_URL в момент вызова. А в `users.resume_url` у старых делегатов лежат
 адреса самоподписанного `https://<IP>:8443/...`. Этот скрипт меняет у них ТОЛЬКО префикс;
 токен шары и имя файла в хвосте ссылки не трогаются.

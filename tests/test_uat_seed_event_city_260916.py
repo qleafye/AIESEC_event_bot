@@ -7,7 +7,7 @@
 текста своего города, и приёмка сочла это багом одобрения, хотя баг — в сеялке.
 
 Второй сюжет того же квика: засеянные заглушки-ответы («Тестовый университет (приёмка)»)
-попадали в топ-8 подсказок справочника ВУЗов Mini App (`services/lookup.py::top_chips`) —
+попадали в топ-8 подсказок справочника ВУЗов Mini App (`services/registration/lookup.py::top_chips`) —
 до первой настоящей заявки сезона такая строка легко становится первой подсказкой.
 
 pytest-asyncio недоступен — async через asyncio.run(), по образцу
@@ -217,7 +217,7 @@ def test_seeded_university_stub_excluded_from_top_chips(tmp_path):
 
     _go(uat_seed, "pending", "none")
 
-    from services.lookup import top_chips
+    from services.registration.lookup import top_chips
     chips = asyncio.run(top_chips("university", None))
     assert uat_seed._SEED_ANSWERS["university"] not in chips
 
@@ -236,6 +236,6 @@ def test_real_university_answer_still_ranked(tmp_path):
         "season": "TEST-SEASON",
     }))
 
-    from services.lookup import top_chips
+    from services.registration.lookup import top_chips
     chips = asyncio.run(top_chips("university", None))
     assert "Высшая школа экономики" in chips

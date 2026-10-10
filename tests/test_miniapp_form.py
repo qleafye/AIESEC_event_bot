@@ -448,7 +448,7 @@ def test_draft_get_skips_already_signed_current_version_consent(client):
     """UAT 21-12 находка 1 / БАГ: мастер переспрашивал согласие на КАЖДОЕ открытие, даже
     секунды после подписи в чате той же сессией (`user_consents` уже содержит свежую запись
     текущей редакции). Ожидание: уже подписанная ТЕКУЩЕЙ редакцией согласие-экран не
-    показывается повторно (тот же фильтр версий, что `services.consent.outstanding_consents`
+    показывается повторно (тот же фильтр версий, что `services.registration.consent.outstanding_consents`
     у гейта пересогласия — вторая копия не заводится)."""
     _set("consent_enabled", "on")
     resp = client.get("/app/api/reg/draft", headers=_hdr(DELEGATE_ID))

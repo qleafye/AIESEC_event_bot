@@ -25,7 +25,7 @@ import pytest
 from config import config
 from database import db
 import services.applications.reject_rules as rr
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 
 SEASON = "YL 26/2"

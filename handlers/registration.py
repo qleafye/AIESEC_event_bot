@@ -44,13 +44,13 @@ from keyboards.builders import (
     ADMIN_REREG_BUTTON_TEXT,
 )
 from services.sheets.sheets import append_to_sheet, append_to_named_sheet
-from services.nextcloud import upload_resume, upload_text_resume
+from services.registration.nextcloud import upload_resume, upload_text_resume
 from services.infra.background import spawn as _spawn
 # Phase 21 (21-08, FORM-SYNC-02/04, Pattern 4): common data+effects finale shared with the
 # Mini App outbox job (services/infra/miniapp_outbox.py) — finalize_registration below is now a
 # thin wrapper around these two.
-from services.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
-from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
+from services.registration.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
+from services.registration import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
 from services.infra.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # domain/regform/options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
@@ -1807,7 +1807,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # `?start=edit` fallback (D-18); every other caller (newcomer, a rejected delegate's
     # ordinary resubmission, a past-season "Обновить анкету" via rereg_start) gets kind='new',
     # matching add_user's existing ON-CONFLICT-DO-UPDATE ('new') semantics in
-    # services.reg_finalize.finalize_data — no behavior change for those paths. Fail-soft: a
+    # services.registration.reg_finalize.finalize_data — no behavior change for those paths. Fail-soft: a
     # draft-write hiccup here must never block the flow from starting.
     draft_kind = "new"
     try:
@@ -1831,7 +1831,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
             # ТОЛЬКО когда источник пришёл из деп-линка (source_from_tag выше), не просто
             # потому что значение source вообще есть (оно есть и у делегата, ответившего
             # вопрос «Источник» сам). finalize_data подхватит его из draft["meta"] и запишет
-            # в users.source_from_tag узким UPDATE (services/reg_finalize.py).
+            # в users.source_from_tag узким UPDATE (services/registration/reg_finalize.py).
             if source_from_tag:
                 meta_patch["source_from_tag"] = True
         ver = await upsert_reg_draft(
@@ -2525,12 +2525,12 @@ def _resume_file_stem(data, now: datetime | None = None, mode: str = "full") -> 
     `mode="id"` (Phase 28, 28-09, SU-10): "<telegram_id>_<YYYYMMDD-HHMMSS>" — no ФИО, no
     username. Менеджер выбирает режим тумблером реестра (`resume_filename_short_mode`);
     ЭТА функция остаётся чистой sync (Pitfall 4) и в реестр не ходит — режим читает
-    async-вызывающий (`services/reg_finalize.py`) и передаёт параметром.
+    async-вызывающий (`services/registration/reg_finalize.py`) и передаёт параметром.
 
     Nextcloud WebDAV PUT overwrites silently. Two delegates with the same display name — or
     one delegate re-submitting — used to replace each other's file while the stored link
     kept looking valid (pointing at someone else's CV). telegram_id + timestamp make every
-    upload land in its own file; sanitisation is still done by services.nextcloud._safe_name
+    upload land in its own file; sanitisation is still done by services.registration.nextcloud._safe_name
     (keeps [\\w.-], so digits/underscores/hyphen survive).
     """
     tid = str(data.get("telegram_id"))
@@ -2583,8 +2583,8 @@ def _single_flight(func):
 @_single_flight
 async def finalize_registration(message: types.Message, state: FSMContext, bot: Bot):
     """Тонкая обёртка (Phase 21, 21-08, Pattern 4): данные и статус считает
-    `services.reg_finalize.finalize_data`, эффекты (Nextcloud/Sheets/уведомления
-    менеджерам/приветствие при auto-approve) — `services.reg_finalize.post_finalize` — тот же
+    `services.registration.reg_finalize.finalize_data`, эффекты (Nextcloud/Sheets/уведомления
+    менеджерам/приветствие при auto-approve) — `services.registration.reg_finalize.post_finalize` — тот же
     путь, который зовёт джоба очереди для отправок из Mini App
     (`services/infra/miniapp_outbox.py::_handle_row`, kind `reg_finalized`/`reg_edited`).
 

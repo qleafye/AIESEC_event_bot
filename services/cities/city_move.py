@@ -13,7 +13,7 @@ msk «как есть, одобренной»). Единая точка прав
     нового города нет анкеты этого трека — это только повод предупредить менеджера на экране
     подтверждения (`preview_city_move`), не повод её сменить.
   - `reg_drafts.event_city` (открытый edit-черновик иначе вернёт делегату старый город на
-    финализации, `services/reg_finalize.py:296`), `reg_started.event_city` (dropout-учёт),
+    финализации, `services/registration/reg_finalize.py:296`), `reg_started.event_city` (dropout-учёт),
     неотправленные `reg_submit_digest_queue.city` / `game_submit_digest_queue.city`
     (`reg_events` — история, её эта функция никогда не трогает).
   - Строка Google-таблицы: перенос со вкладки старого города на вкладку нового — СНАЧАЛА
@@ -109,7 +109,7 @@ async def _resolve_sheet_targets(new_city: str, participant_type: str | None) ->
     `None` (главный лист) или `False` — сигнал «никуда» (обе вкладки отсутствуют). Если список
     вкладок прочитать не удалось, резолв не гадает — пробует `target_tab` как обычно (сама
     запись — fail-soft, как и весь остальной модуль)."""
-    from services.reg_finalize import _resolve_update_tab
+    from services.registration.reg_finalize import _resolve_update_tab
 
     target_tab = await _resolve_update_tab(new_city, participant_type)
     fallback_tab = await _resolve_update_tab(new_city, None)
@@ -245,7 +245,7 @@ async def move_user_city(
     # реальные имена вкладок и число строк ДО того, как что-либо применится.
     from handlers.registration import _sheet_dispatch
     from handlers.reg.reg_schema import sheet_city_code
-    from services.reg_finalize import _resolve_update_tab
+    from services.registration.reg_finalize import _resolve_update_tab
 
     old_tab = await _resolve_update_tab(old_city, participant_type)
     sheet_targets = await _resolve_sheet_targets(new_city, participant_type)

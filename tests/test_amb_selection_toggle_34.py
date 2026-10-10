@@ -210,7 +210,7 @@ def _fakes():
 
 
 def _finalize(tid, *, yes):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
     draft = {"telegram_id": tid, "kind": "new",
              "answers": {"full_name": f"Делегат {tid}", "is_ambassador_candidate": yes}}
     return _run(rf.finalize_data(tid, "@d", draft))

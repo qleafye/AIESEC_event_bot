@@ -2773,7 +2773,7 @@ SETTINGS_SCHEMA = {
     },
     # Квик 260911-w2m: можно ли делегату вообще редактировать уже ПОДАННУЮ анкету — три
     # положения, дефолт "always" = сегодняшнее поведение байт-в-байт, пока менеджер сам не
-    # переключил (`services/reg_edit_policy.py` — единственное место, где живёт правило).
+    # переключил (`services/registration/reg_edit_policy.py` — единственное место, где живёт правило).
     # Отклонённый делегат под этот гейт не попадает вовсе ни при одном положении:
     # `reg_engine.has_submitted_anketa` ложна для status == "rejected" — правка отклонённой
     # заявки технически не отличима от первичной подачи (D-10 повторной подачи), второй
@@ -2823,7 +2823,7 @@ SETTINGS_SCHEMA = {
     },
     # Phase 28 (28-09, SU-10, D-05): имя файла резюме в облаке — дефолт "off" ("ФИО + ник +
     # ID + дата", прежнее поведение байт-в-байт); "on" — "только ID + дата" (без ФИО и ника,
-    # T-28-09-02). Читает `services/reg_finalize.py::_resume_filename_mode` (Pitfall 4: сама
+    # T-28-09-02). Читает `services/registration/reg_finalize.py::_resume_filename_mode` (Pitfall 4: сама
     # `_resume_file_stem` в реестр не ходит).
     "resume_filename_short_mode": {
         "type": "enum", "group": "toggles",

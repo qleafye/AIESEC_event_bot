@@ -12,7 +12,7 @@
 вызываем).
 
 Экран подтверждения честно объясняет судьбу старой анкеты/строки листа (проверено по
-`services/reg_finalize.py::_finalize_data_impl`, ветка resubmit, mode="edit"): делегат
+`services/registration/reg_finalize.py::_finalize_data_impl`, ветка resubmit, mode="edit"): делегат
 проходит СВОИМ обычным /start → «Заполнить заново», финал ищет старую строку листа по ID
 (`update_row_by_id`) и правит на месте — новая строка добавляется, только если старую не
 нашли, дубля в норме не будет."""

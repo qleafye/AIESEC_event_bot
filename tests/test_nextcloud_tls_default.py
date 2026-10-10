@@ -6,7 +6,7 @@ import ssl
 import pytest
 
 from config import Settings, config
-from services import nextcloud
+from services.registration import nextcloud
 
 
 def test_verify_tls_default_is_true():

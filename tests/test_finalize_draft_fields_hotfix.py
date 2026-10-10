@@ -1,5 +1,5 @@
 """Хотфикс 06.09 (production, ветка hotfix/finalize-draft-fields): с b460826 обёртка
-`handlers/registration.py::finalize_registration` передаёт в `services.reg_finalize.
+`handlers/registration.py::finalize_registration` передаёт в `services.registration.reg_finalize.
 finalize_data` РЕАЛЬНЫЙ черновик `reg_drafts` (через `claim_reg_draft`), а не FSM-словарь.
 `finalize_data` строила `users` только из `draft["answers"]` — а город/трек анкеты живут в
 колонках черновика (`event_city`, `participant_type`), источник/реферер деп-линка — в
@@ -16,7 +16,7 @@ import asyncio
 
 from config import config
 from database import db
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 
 UID_A = 900800200

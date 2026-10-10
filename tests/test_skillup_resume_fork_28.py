@@ -12,7 +12,7 @@ import asyncio
 from config import config
 from database import db
 import domain.regform.engine as reg_engine
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 
 UID = 900800400

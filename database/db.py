@@ -499,7 +499,7 @@ async def _migrate_menu_schedule_into_program(db: aiosqlite.Connection) -> None:
 
 
 # Phase 30 (30-02, A2-03): имя файла снапшота на `kind` — таблица закрытая (`kind` — словарь
-# "university"/"city" из `services/lookup.py`), а НЕ строковый шаблон `"<kind>s_ru.json"`: для
+# "university"/"city" из `services/registration/lookup.py`), а НЕ строковый шаблон `"<kind>s_ru.json"`: для
 # "city" такой шаблон дал бы "citys_ru.json", а не существующий `cities_ru.json`.
 _LOOKUP_SNAPSHOT_FILES = {
     "university": "universities_ru.json",
@@ -518,7 +518,7 @@ async def seed_lookup_from_snapshot(db: aiosqlite.Connection, kind: str) -> None
     (kind, alias_norm)` + `INSERT OR IGNORE` как на единственный источник идемпотентности:
     строка с уже существующим нормализованным алиасом просто не вставится повторно — не
     важно, кто её завёл первым (снапшот при посеве, менеджер через «Другое → влить» —
-    `services.lookup.enqueue_merge`/`merge_apply`, или закрепление чипа — `pin_chip`).
+    `services.registration.lookup.enqueue_merge`/`merge_apply`, или закрепление чипа — `pin_chip`).
     Значит и `pinned`, и `added_by`, и `source` уже существующей строки трогать нечем: сам
     факт совпадения `alias_norm` не даёт запросу дойти до записи. Стоимость на каждый
     рестарт — единичный проход по ~1000-2000 строк снапшота с `INSERT OR IGNORE` по
@@ -549,8 +549,8 @@ async def seed_lookup_from_snapshot(db: aiosqlite.Connection, kind: str) -> None
 
     # Отложенный импорт (та же дисциплина разрыва цикла, что у `services/i18n/i18n_sources.py`/
     # `services/scheduler.py`, читающих `database.db._connect()` тем же приёмом в обратную
-    # сторону): `services.lookup` на верхнем уровне не импортирует `database.db`.
-    from services.lookup import normalize_alias
+    # сторону): `services.registration.lookup` на верхнем уровне не импортирует `database.db`.
+    from services.registration.lookup import normalize_alias
 
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     inserted = 0
@@ -854,7 +854,7 @@ async def init_db():
         ''')
         # Quick 260904-3vm (эстафета вместо двустороннего синхрона): кто сейчас владеет
         # черновиком — 'bot' | 'app' | NULL. NULL у строк, созданных до этой фичи, читается
-        # как 'bot' (см. services/reg_handoff.py::draft_holder) — их всегда заводил бот,
+        # как 'bot' (см. services/registration/reg_handoff.py::draft_holder) — их всегда заводил бот,
         # отдельного backfill не делаем.
         await _ensure_column(db, "reg_drafts", "active_surface", "TEXT")
 
@@ -1703,7 +1703,7 @@ async def init_db():
         ''')
 
         # Phase 30 (30-02, A2-03): справочники ВУЗов/городов для типа шага `lookup` — общий
-        # модуль правил `services/lookup.py` (нормализация/поиск/чипы/очередь) — единственный
+        # модуль правил `services/registration/lookup.py` (нормализация/поиск/чипы/очередь) — единственный
         # читатель/писатель этих двух таблиц, бот и Mini App ищут по ОДНИМ данным. Уникальность
         # по (kind, alias_norm): один и тот же нормализованный псевдоним не должен попасть в
         # справочник дважды под разные каноники — на этот индекс полагаются и идемпотентный
@@ -1733,7 +1733,7 @@ async def init_db():
 
         # Очередь «Другое → влить как псевдоним» (A2-03, тонкая настройка менеджера, план
         # 30-07, необязательна): делегат ответил свободным текстом на шаге типа `lookup`,
-        # `services.lookup.enqueue_merge` кладёт сюда сырой ответ вместо того, чтобы его
+        # `services.registration.lookup.enqueue_merge` кладёт сюда сырой ответ вместо того, чтобы его
         # потерять. `status`: `new` — ждёт решения менеджера, `merged` — менеджер добавил как
         # псевдоним (новой или существующей) каноники, `rejected` — решил не заводить (мусор/
         # опечатка/спам). Дубль по (kind, raw_norm, status='new') не плодится — `enqueue_merge`
@@ -2947,7 +2947,7 @@ async def add_user(data: dict):
         ''', (
             data['telegram_id'],
             # UNAME-03 (квик 260911-0zu): канон записи "с @" -- единственная точка, где
-            # сходятся ОБА пути анкеты (чат и Mini App, через services/reg_finalize.py).
+            # сходятся ОБА пути анкеты (чат и Mini App, через services/registration/reg_finalize.py).
             store_username(data.get('username')),
             data.get('full_name', ''),
             data.get('email', '-'),
@@ -4588,7 +4588,7 @@ async def get_resume_upload_backlog(before: str, limit: int = 20) -> list[dict]:
 
     `before` — отсечка «строка не моложе N минут», сравнение СТРОКОВОЕ. Квик 260912-mcj:
     `registration_date` пишется `strftime("%Y-%m-%d %H:%M:%S")` от московского `msk_now()`
-    (services/reg_finalize.py:161) — обе стороны сравнения теперь на одних часах, отсечка
+    (services/registration/reg_finalize.py:161) — обе стороны сравнения теперь на одних часах, отсечка
     ОБЯЗАНА приходить тоже московской (`msk_now()`), иначе разъезд на 3 часа. Свежие строки
     (моложе отсечки) не берём — финал ещё может быть «в полёте» под своим таймаутом.
 
@@ -4977,7 +4977,7 @@ async def consume_delegate_override(telegram_id: int, kind: str, consumed_at: st
     """Гасит активную строку (одноразовость) — `True`, если строка действительно была активна
     и погашена этим вызовом; `False` — ничего активного не было (обычный делегат без
     исключения проходит этот вызов как безвредный no-op, см. вызывающих в
-    `services/reg_finalize.py`)."""
+    `services/registration/reg_finalize.py`)."""
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE admin_delegate_overrides SET consumed_at = ? "
@@ -7919,7 +7919,7 @@ _APPLICATION_DATE_SQL = {
 # `_APPLICATION_DATE_SQL`, но отдаёт `decided_by`, а не `decided_at`. Для "pending" решения
 # ещё нет — константа `NULL`, а не подзапрос (запрос по несуществующему decision-у на pending
 # строке просто вернул бы NULL каждый раз, но так честнее и дешевле читать). Отсутствие живой
-# строки (отменённое решение / автоодобрение без записи в журнал, см. `services/reg_finalize.py
+# строки (отменённое решение / автоодобрение без записи в журнал, см. `services/registration/reg_finalize.py
 # ::post_finalize`) тоже даёт NULL — экран (`handlers/applications/admin_app_list.py`) читает это как
 # «автоматически», а не как ошибку.
 _APPLICATION_DECIDER_SQL = {
@@ -8390,7 +8390,7 @@ async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
 
 async def get_live_auto_reject_log_entry(telegram_id: int) -> dict | None:
     """Живая (`returned_to_moderation_at IS NULL`) строка журнала автоотказов ОДНОГО делегата
-    — план 31-06 (`services/reg_finalize.py::post_finalize`, D-21/D-25): снимок текстов правил
+    — план 31-06 (`services/registration/reg_finalize.py::post_finalize`, D-21/D-25): снимок текстов правил
     на МОМЕНТ срабатывания (записала `upsert_auto_reject_log`/`record_auto_reject`), а не
     текущий текст правила — который к моменту хвоста финала (может быть отложенным ретраем
     очереди Mini App) уже могли отредактировать. Та же дисциплина, что `get_last_application_
@@ -10984,7 +10984,7 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("broadcast_deliveries", "chat_id", "deliveries"),
     ("scheduled_broadcast_deliveries", "chat_id", "deliveries"),
     # Phase 30 (30-03, дефект дрейфа схемы после 30-02): lookup_merge_queue.telegram_id —
-    # сырой ответ «Другое» делегата в очереди слияния справочника (`services/lookup.py::
+    # сырой ответ «Другое» делегата в очереди слияния справочника (`services/registration/lookup.py::
     # enqueue_merge`). Это делегатский след — уходит вместе с человеком. Группа "draft" —
     # та же, что у reg_drafts: запись рождается из того же незавершённого шага анкеты.
     # decided_by в этой таблице — id менеджера, принявшего решение по очереди, не трогаем

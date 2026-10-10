@@ -3,7 +3,7 @@
 Какой ИМЕННО текст был на кнопке в момент подписи — подпись (`consent_button_text`)
 редактируемая настройка, и без снимка нечем доказать, что именно нажал делегат, если
 подпись сменили ПОСЛЕ. Покрывает: миграцию колонки, запись record_user_consent,
-services.consent.tapped_button_text и обе кнопочные точки принятия (reg_flow/reg_consent) +
+services.registration.consent.tapped_button_text и обе кнопочные точки принятия (reg_flow/reg_consent) +
 Mini App (снимок настройки — там разметки кнопки на сервере нет).
 
 Без pytest-asyncio (как везде в проекте): asyncio.run(...) + config.DB_PATH на tmp_path,
@@ -14,7 +14,7 @@ import sqlite3
 
 from config import config
 from database import db
-from services import consent as consent_svc
+from services.registration import consent as consent_svc
 
 ADMIN_ID = 900907
 
@@ -145,7 +145,7 @@ def test_record_user_consent_with_raw_button_writes_text(tmp_path):
     assert _raw_button_rows(2) == [("data", "Согласен(-на)")]
 
 
-# ── services.consent.tapped_button_text ──────────────────────────────────────────────────
+# ── services.registration.consent.tapped_button_text ──────────────────────────────────────────────────
 
 def test_tapped_button_text_returns_matching_button_label():
     cb = FakeCallback("consent_accept:data", reply_markup=_Markup([
