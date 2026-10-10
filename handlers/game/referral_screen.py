@@ -8,7 +8,7 @@
 «Моя ссылка» — единственное место амбассадорского самообслуживания в чате. Ссылка для
 приглашений показывается всем: приглашать может любой делегат, приглашения до вступления
 в команду засчитываются. Амбассадору — прогресс, выбор пути (меняет только порядок заданий)
-и кнопка выхода. Не-амбассадору — по `services.amb_status.delegate_state`: кнопка
+и кнопка выхода. Не-амбассадору — по `services.amb.amb_status.delegate_state`: кнопка
 «Хочу стать амбассадором», строка «заявка рассматривается» (режим отбора) или строка
 «места заняты» (лимит набран / отказано в этом сезоне).
 """
@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_user
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
-from services import amb_progress, amb_screen
+from services.amb import amb_progress, amb_screen
 from services import i18n as i18n_service
 from domain.settings.schema import get_setting_typed
 
@@ -36,7 +36,7 @@ _PATHS = (
 
 
 def amb_tr(lang: str, tr_map: dict | None):
-    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb_progress
+    async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
         return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map or {})
     return tr_key
 

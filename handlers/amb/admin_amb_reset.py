@@ -2,7 +2,7 @@
 оставшихся после миграции (кандидаты и амбассадоры прошлых сезонов, «да» из старой анкеты).
 
 Менеджер выбирает кнопкой, что сбросить, видит предпросмотр с перечнем, что пропадёт и у скольких
-людей, и подтверждает отдельной кнопкой. Логика — `services.amb_status_reset`.
+людей, и подтверждает отдельной кнопкой. Логика — `services.amb.amb_status_reset`.
 Сообщений людям не уходит, баллы не трогаются, место за человеком с
 выданным пакетом остаётся. Кнопка подтверждения несёт отпечаток списка, который менеджер видел: если за это
 время список изменился, сброс не выполняется, а предпросмотр показывается заново.
@@ -21,7 +21,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
-from services import amb_status_reset as svc
+from services.amb import amb_status_reset as svc
 
 logger = logging.getLogger(__name__)
 

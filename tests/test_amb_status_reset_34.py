@@ -1,4 +1,4 @@
-"""Сброс мигрированных статусов амбассадора (`services/amb_status_reset.py`).
+"""Сброс мигрированных статусов амбассадора (`services/amb/amb_status_reset.py`).
 
 Общие помощники (временная БД, посев делегатов) — их берёт tests/test_amb_reset_admin.py, где
 проверяется сама кнопка «🧹 Сбросить статусы». Здесь — сторож сервиса: сообщений он не шлёт и
@@ -72,7 +72,7 @@ def _world(tmp_path):
 
 
 def test_service_sends_nothing_and_writes_only_through_set_status():
-    src = (REPO / "services" / "amb_status_reset.py").read_text(encoding="utf-8")
+    src = (REPO / "services" / "amb" / "amb_status_reset.py").read_text(encoding="utf-8")
     for marker in ("send_message", "aiogram", "send_or_queue", "coins"):
         assert marker not in src, marker
     assert "set_status(" in src

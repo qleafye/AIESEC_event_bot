@@ -1,4 +1,4 @@
-"""Хаб Mini App на `services.amb_screen.delegate_view` (паритет с «Моя ссылка» в боте) и
+"""Хаб Mini App на `services.amb.amb_screen.delegate_view` (паритет с «Моя ссылка» в боте) и
 счётчики амбассадоров на дашборде. Харнесс — как у `tests/test_miniapp_referral_hub_260917.py`."""
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from services import amb_screen
+from services.amb import amb_screen
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_miniapp_routes import (
     DELEGATE_ID, _cfg, _client, _hdr, _set, _standard_seed, _use_tmp_db,

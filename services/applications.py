@@ -344,7 +344,7 @@ async def _referrer_badge_line(user: dict) -> str | None:
         if not referrer or int(referrer.get("is_ambassador") or 0) != 1:
             return None
 
-        from services.ambassador_waves import current_wave_for, wave_eligible
+        from services.amb.ambassador_waves import current_wave_for, wave_eligible
         from services.referrals import approved_referrals_in_wave
 
         wave_id = None
@@ -631,12 +631,12 @@ async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
     бот-путь и веб-путь структурно не могут разъехаться по начислению (раньше бот звал
     `approve_all_pending` напрямую, минуя `claim_approve_all`). approved_at ставит
     `approve_all_pending` в той же атомарной записи, что и status (D-10). Здесь же — проверка
-    ступеней амбассадоров (`services.amb_tiers`)."""
+    ступеней амбассадоров (`services.amb.amb_tiers`)."""
     ids = await approve_all_pending(city_scope=scope)
     if not ids:
         return ids, {"credited": 0, "coins": 0, "ambassadors": 0}
     # Журнал зачётов + баллы + ступени + место в лимите — одной точкой (сама не бросает).
-    from services.amb_journal import on_invitees_approved
+    from services.amb.amb_journal import on_invitees_approved
     summary = await on_invitees_approved(ids)
     return ids, summary
 
@@ -678,7 +678,7 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     делал это само, см. его докстринг) для решения `approved` без окна отмены происходит
     ИМЕННО здесь — синхронно, тем же вызовом, каким бот-путь помечает эффекты уже
     отправленными; решение уже необратимо, откладывать нечего. Там же — проверка ступеней
-    амбассадоров (`services.amb_tiers`)."""
+    амбассадоров (`services.amb.amb_tiers`)."""
     decided_at = _stamp(now)
     if effects_already_sent:
         sent_at = _stamp(now)
@@ -690,10 +690,10 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
         if decision == "approved":
             # Бот-одиночное и вход на площадке — решение уже необратимо. Журнал, баллы,
             # ступени и место — одной точкой (сама не бросает).
-            from services.amb_journal import on_invitees_approved
+            from services.amb.amb_journal import on_invitees_approved
             await on_invitees_approved([telegram_id])
         else:
-            from services.amb_status import on_applications_unapproved
+            from services.amb.amb_status import on_applications_unapproved
             await on_applications_unapproved([telegram_id])
         return decision_id
     effects_due_at = _stamp(now + timedelta(seconds=UNDO_WINDOW_SECONDS))
@@ -747,7 +747,7 @@ async def undo_decision(decision_id: int) -> dict:
     reverted = await revert_user_to_pending(telegram_id, from_status)
     if not reverted:
         return {"ok": False, "reason": "already"}
-    from services.amb_status import on_applications_unapproved
+    from services.amb.amb_status import on_applications_unapproved
     await on_applications_unapproved([telegram_id])
     return {"ok": True, "telegram_id": telegram_id}
 
@@ -771,11 +771,11 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
         # (отменённое сюда не доходит). Одним вызовом на всю пачку.
         approved_ids = [row["telegram_id"] for row in due if row["decision"] == "approved"]
         if approved_ids:
-            from services.amb_journal import on_invitees_approved
+            from services.amb.amb_journal import on_invitees_approved
             await on_invitees_approved(approved_ids)
         rejected_ids = [row["telegram_id"] for row in due if row["decision"] != "approved"]
         if rejected_ids:
-            from services.amb_status import on_applications_unapproved
+            from services.amb.amb_status import on_applications_unapproved
             await on_applications_unapproved(rejected_ids)
     for row in due:
         enqueue(row["decision"], row)
