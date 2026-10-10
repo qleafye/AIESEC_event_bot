@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.settings.ops as settings_ops
 from config import config
 from database import db
-from handlers import admin_settings, admin_settings_placeholders as ph
+from handlers.settings import admin_settings, admin_settings_placeholders as ph
 from handlers.states import EditSetting
 from tests._dbtpl import fast_init_db
 

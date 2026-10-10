@@ -113,7 +113,7 @@ def test_caps_resolve_for_every_attach_callback():
 
 
 def test_section_has_attach_button():
-    from handlers.admin_sections import SECTIONS
+    from handlers.settings.admin_sections import SECTIONS
     amb = next(s for s in SECTIONS if s[0] == "amb")
     assert ("screen", "admin_amb_attach", "📎 Закрепить приглашённого") in amb[2]
 

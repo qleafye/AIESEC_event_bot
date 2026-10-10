@@ -20,7 +20,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.game import admin_gamification
 import domain.cities as cities
 from tests._dbtpl import fast_init_db

@@ -6,9 +6,9 @@
 - новые ключи группы `game` видны на экране «🎮 Геймификация» (`_GAME_FIELD_ORDER`) — КРОМЕ
   `wave_rating_show_names`, который редактируется отдельной кнопкой-тумблером (CLAUDE.md:
   выбор из готового набора — кнопкой, а не вводом кода "on"/"off"; см. докстринг ключа в
-  domain/settings/schema.py и `handlers.admin_settings.toggle_wave_rating_show_names`);
+  domain/settings/schema.py и `handlers.settings.admin_settings.toggle_wave_rating_show_names`);
 - `dashboard_block_ambassadors` НЕ попал ни в `_GAME_FIELD_ORDER`, ни куда-либо ещё в
-  handlers/admin_settings.py — свой экран у группы `dashboard` (handlers/admin_dashboard.py,
+  handlers/settings/admin_settings.py — свой экран у группы `dashboard` (handlers/settings/admin_dashboard.py,
   план 32-09);
 - делегатские тексты переводятся машинным переводом, `wave_end_manager_text` — нет;
 - в дефолтах нет латиницы брендов («AIESEC»/«YouLead»).
@@ -20,7 +20,7 @@ import asyncio
 import services.i18n_sources as i18n_sources
 from config import config
 from database import db
-from handlers.admin_settings import _GAME_FIELD_ORDER
+from handlers.settings.admin_settings import _GAME_FIELD_ORDER
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db
 
@@ -74,7 +74,7 @@ def test_wave_rating_show_names_hint_explains_when_to_turn_off():
 
 def test_dashboard_block_ambassadors_not_in_admin_settings_field_order():
     # Тот же приём, что у dashboard_block_game/остальных dashboard_block_* — свой экран
-    # (handlers/admin_dashboard.py, план 32-09), НЕ generic settings_edit.
+    # (handlers/settings/admin_dashboard.py, план 32-09), НЕ generic settings_edit.
     assert "dashboard_block_ambassadors" not in _GAME_FIELD_ORDER
 
 

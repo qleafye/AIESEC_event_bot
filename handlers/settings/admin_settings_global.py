@@ -9,7 +9,7 @@
 предупреждения. Тот же приём, что у городских настроек: ввод начинает только явная кнопка
 (`settings_edit_city`), случайное сообщение при простом просмотре экрана ничего не меняет.
 
-Шов к общему `admin.router`, импортируется хвостом `handlers/admin_settings.py`.
+Шов к общему `admin.router`, импортируется хвостом `handlers/settings/admin_settings.py`.
 """
 from __future__ import annotations
 

@@ -6,14 +6,14 @@
 `handlers/forum/admin_forum_functions.py` (кнопка нужна ОБОИМ экранам — общий рендер строки живёт
 здесь один раз). Форма шва — эталон соседей (`admin_reject_reports.py`,
 `admin_program.py` сам): своего `Router()` нет, `from handlers.admin import router`; импортирован
-ИЗ ХВОСТА `handlers/admin_sections.py`, СРАЗУ ПОСЛЕ `admin_program` (golden snapshot:
+ИЗ ХВОСТА `handlers/settings/admin_sections.py`, СРАЗУ ПОСЛЕ `admin_program` (golden snapshot:
 `tests/test_refac_snapshot_260816.py`).
 
 Право — `prog_*` (`handlers/access/admin_caps.py`, `settings`) — тот же префикс, что весь шов
 `admin_program.py`, callback уже покрыт им, второй записи не заводим.
 
 Кнопка — ЦИКЛ (table<->photo), не чекбокс, та же идиома, что
-`handlers.admin_miniapp.cycle_miniapp_motion`. `back_to` в callback_data («program»/«hub») —
+`handlers.settings.admin_miniapp.cycle_miniapp_motion`. `back_to` в callback_data («program»/«hub») —
 это и есть карта «куда вернуть после нажатия», второй не заводим (D-01/D-15 инвариант)."""
 import html
 
@@ -125,7 +125,7 @@ async def prog_photo_start(callback: types.CallbackQuery, state: FSMContext):
 
 async def start_program_photo(callback: types.CallbackQuery, state: FSMContext, code: str, back_to: str):
     """Вход в загрузку — и с экранов программы, и с «📷 📅 Программа» раздела «🎪 Событие»
-    (`handlers/admin_settings.py::settings_photo_start`, когда в шапке выбран город)."""
+    (`handlers/settings/admin_settings.py::settings_photo_start`, когда в шапке выбран город)."""
     from handlers.forum.admin_program import _city_allowed
 
     per_city = await cities_module_on()

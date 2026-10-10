@@ -32,7 +32,7 @@ from handlers.access.admin_caps import required_capability, resolve_capabilities
 
 # ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows. Phase 20 (20-03,
 # ADMIN-IA-01): this is NO LONGER the layout of the root panel — the root now renders the
-# eight sections declared in `handlers/admin_sections.py::SECTIONS`, and every row below is
+# eight sections declared in `handlers/settings/admin_sections.py::SECTIONS`, and every row below is
 # reachable through its own section. What this list still is, and why it must stay:
 #   — the map «callback_data -> подпись операции» that `build_section_keyboard` reads its
 #     button texts from (one operation cannot get two different labels on two screens);
@@ -128,7 +128,7 @@ async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
     The import is LAZY on purpose: `admin_sections` imports `admin_settings`, which imports
     back into `admin_core` — a module-level import here closes that cycle."""
-    from handlers.admin_sections import visible_sections  # ленивый шов (см. docstring)
+    from handlers.settings.admin_sections import visible_sections  # ленивый шов (см. docstring)
 
     caps = await resolve_capabilities(user_id)  # D-05: одно свежее чтение на рендер, без кеша
     sections = visible_sections(caps, user_id in config.ADMIN_IDS)

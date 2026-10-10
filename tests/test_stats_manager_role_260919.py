@@ -189,7 +189,7 @@ def test_render_roles_text_shows_stats_manager_label_and_cap_label(tmp_path):
 
 
 def test_stats_manager_sees_only_data_section_with_five_ops():
-    from handlers.admin_sections import visible_sections, visible_rows
+    from handlers.settings.admin_sections import visible_sections, visible_rows
 
     caps = {"stats"}
     assert visible_sections(caps, False) == [("data", "📊 Данные")]

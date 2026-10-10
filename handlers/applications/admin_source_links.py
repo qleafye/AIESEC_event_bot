@@ -11,7 +11,7 @@
 
 Форма шва — как у соседей: своего `Router()` нет, `from handlers.admin import router`, импорт
 из хвоста `handlers/admin.py`. Права — `ADMIN_CAPS` (admin_source_links/srclink_*/
-state:SourceLinkCreate:*), строка раздела — «📊 Данные» (`handlers/admin_sections.py`).
+state:SourceLinkCreate:*), строка раздела — «📊 Данные» (`handlers/settings/admin_sections.py`).
 """
 import html
 import logging
@@ -52,7 +52,7 @@ def _block(title: str, rows: list) -> list[str]:
 
 
 async def render_source_links_screen() -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    from handlers.settings.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
 
     rows = list(await get_source_stats())
     # Метка — то, что могло прийти из ссылки (латиница/цифры/«_»/«-»); остальное — ответы

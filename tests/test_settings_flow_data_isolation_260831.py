@@ -21,7 +21,7 @@ pytest-asyncio в этом окружении нет — каждый async-вы
 import asyncio
 
 from database import db
-from handlers import admin_settings as st
+from handlers.settings import admin_settings as st
 from handlers.states import EditSetting
 
 from tests.test_admin_sections_ia20 import (

@@ -6,8 +6,8 @@
 АЙСЕК) и `GET /api/file/{file_id}` (dashboard/files.py::ASSET_SETTING_KEYS). Харнесс скопирован
 из tests/test_dashboard_render.py / tests/test_dashboard_event_assets.py.
 
-(B) Приём в боте — handlers/admin_miniapp_theme.py (кнопка на экране «🎭 Пресеты и ручки»,
-document-only приёмник вместо MiniAppTheme-состояния) и handlers/admin_settings.py
+(B) Приём в боте — handlers/settings/admin_miniapp_theme.py (кнопка на экране «🎭 Пресеты и ручки»,
+document-only приёмник вместо MiniAppTheme-состояния) и handlers/settings/admin_settings.py
 (`settings_receive_file_photo`/`settings_receive_file_doc`, ветка `raw_file_key ==
 dashboard_favicon.SETTING_KEY`). Fake-объекты — из tests/test_admin_sections_ia20.py, тот же
 приём, что tests/test_settings_flow_data_isolation_260831.py.
@@ -34,8 +34,8 @@ from dashboard import files as dashboard_files
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
 
-from handlers import admin_miniapp_theme as theme_mod
-from handlers import admin_settings as st
+from handlers.settings import admin_miniapp_theme as theme_mod
+from handlers.settings import admin_settings as st
 from handlers.states import EditSetting
 from domain.settings.schema import SETTINGS_SCHEMA
 

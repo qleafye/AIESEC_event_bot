@@ -3750,7 +3750,7 @@ SETTINGS_SCHEMA = {
     "registration_mode": {
         "type": "enum", "group": "toggles", "label": "📝 Форма регистрации",
         "options": ["short", "full"],
-        # Слово в слово с handlers/admin_settings.py::_enum_human_label (сейчас читает отсюда).
+        # Слово в слово с handlers/settings/admin_settings.py::_enum_human_label (сейчас читает отсюда).
         "option_labels": {"short": "⚡ Краткая", "full": "📋 Полная"},
         "prompt": None, "default": "short",
         "per_city": True,
@@ -3791,7 +3791,7 @@ SETTINGS_SCHEMA = {
     # (VERIF-01/02). Тип "enum" on/off, НЕ "toggle" — по той же причине, что и
     # event_city_enabled выше (toggle-тип зарезервирован за reg_q_* и переписывается пресетом).
     # Дефолт "off" = прежний `get_setting("preselect_enabled") or "off"`. Кнопка-переключатель
-    # на лендинге настроек — `toggle_preselect_enabled` (handlers/admin_settings.py).
+    # на лендинге настроек — `toggle_preselect_enabled` (handlers/settings/admin_settings.py).
     "preselect_enabled": {
         "type": "enum", "group": "toggles", "label": "🎯 Предотбор по таблице",
         "options": ["on", "off"], "prompt": None, "default": "off",
@@ -3800,7 +3800,7 @@ SETTINGS_SCHEMA = {
     # Правка 15.09 (владелец, «привязка через личку админа»): главный тумблер учёта чата
     # делегатов. Дефолт "off" — пока менеджер не включил его и не привязал чат, поведение
     # бота не меняется ничем. Кнопка-переключатель — строка ("toggle", …) раздела
-    # «🔧 Управление» (`toggle_chat_tracking_enabled`, `handlers/admin_settings.py`); экран
+    # «🔧 Управление» (`toggle_chat_tracking_enabled`, `handlers/settings/admin_settings.py`); экран
     # «💬 Чат» снесён целиком, привязка чата теперь идёт через личку (`handlers/chat/group_chat.py`).
     "chat_tracking_enabled": {
         "type": "enum", "group": "toggles", "label": "💬 Учёт чата делегатов",
@@ -4328,7 +4328,7 @@ SETTINGS_SCHEMA = {
         "default": 3,
     },
     # Тумблер «одной кнопкой» (D-29, must_haves): редактируется дедикейтед-хендлером
-    # `toggle_wave_rating_show_names` (handlers/admin_settings.py), а НЕ через общий ввод
+    # `toggle_wave_rating_show_names` (handlers/settings/admin_settings.py), а НЕ через общий ввод
     # текста «пришлите значение» — CLAUDE.md запрещает просить менеджера печатать код
     # положения («on»/«off»). Поэтому ключ НЕ входит в `_GAME_FIELD_ORDER` (тот же приём, что
     # у `game_submit_notify_mode` выше); `prompt` здесь — источник совета «когда выключать»,
@@ -5232,7 +5232,7 @@ SETTINGS_SCHEMA = {
     # Квик 260914-rgr (RGR-01..07, D-3/D-11): чат делегатов. Интервал сверки — в «🔧 Система»
     # рядом с прочими интервалами джоб (как allowlist_refresh_minutes выше). Сами ключи
     # привязки (id/название чата) РЕГИСТРИРУЮТСЯ в реестре (правило проекта «ключи настроек —
-    # в реестре»), но в `_SYSTEM_FIELD_ORDER` (handlers/admin_settings.py) НЕ добавляются:
+    # в реестре»), но в `_SYSTEM_FIELD_ORDER` (handlers/settings/admin_settings.py) НЕ добавляются:
     # значение пишет сам бот при добавлении его в группу, экрана ручного ввода id у менеджера
     # не появляется — «бот для людей», id руками не вводим.
     "chat_refresh_minutes": {
@@ -5388,8 +5388,8 @@ SETTINGS_SCHEMA = {
     # ── Phase 15 (15-02, D-19): экран «📊 Дашборд» — тумблеры блоков веб-дашборда. Только
     # чекбоксы фиксированного набора (CLAUDE.md «бот для людей» — кодовые значения ключей
     # менеджеру не показываем, текстовый ввод не просим). Own group "dashboard" — эти ключи
-    # намеренно НЕ добавлены в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS: у них
-    # свой отдельный экран (handlers/admin_dashboard.py), попадание в «Прочие» дало бы вторую
+    # намеренно НЕ добавлены в handlers.settings.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS: у них
+    # свой отдельный экран (handlers/settings/admin_dashboard.py), попадание в «Прочие» дало бы вторую
     # конкурирующую поверхность правки (тот же принцип, что применён к role_caps_* в Phase 8).
     # per_city не ставим — дашборд один на стек (D-04).
     #
@@ -5440,8 +5440,8 @@ SETTINGS_SCHEMA = {
     },
     # Phase 32 (32-02, D-04): блок появляется, только когда менеджер его включил (дефолт
     # "off" — как у dashboard_block_game); срез данных строит план 32-09. Как и остальные
-    # dashboard_block_*, намеренно НЕ в handlers.admin_settings._GAME_FIELD_ORDER — у ключей
-    # группы dashboard свой экран (handlers/admin_dashboard.py).
+    # dashboard_block_*, намеренно НЕ в handlers.settings.admin_settings._GAME_FIELD_ORDER — у ключей
+    # группы dashboard свой экран (handlers/settings/admin_dashboard.py).
     "dashboard_block_ambassadors": {
         "type": "enum", "group": "dashboard", "label": "🏅 Амбассадоры",
         "options": ["on", "off"], "prompt": None, "default": "off",
@@ -5459,7 +5459,7 @@ SETTINGS_SCHEMA = {
     # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
     # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
     # НЕ фото — Telegram пережимает фото в JPEG) с экрана «🎭 Пресеты и ручки оформления»
-    # (handlers/admin_miniapp_theme.py), тексты/правила — shared/favicon.py. Резолвер
+    # (handlers/settings/admin_miniapp_theme.py), тексты/правила — shared/favicon.py. Резолвер
     # порядка favicon -> miniapp_logo -> статика АЙСЕК — dashboard/main.py::_favicon_url.
     "dashboard_favicon": {
         "type": "file", "group": "dashboard", "label": "🔖 Иконка вкладки дашборда",
@@ -5468,7 +5468,7 @@ SETTINGS_SCHEMA = {
 
     # ── Phase 19 (D-06): экран «🎨 Оформление» Mini App — тумблеры, оформление, чекбоксы
     # разделов и тексты, которых нет в группах game/menu. Own group "miniapp": как и
-    # dashboard_block_*, эти ключи НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/
+    # dashboard_block_*, эти ключи НЕ добавляются в handlers.settings.admin_settings.SETTINGS_FIELDS/
     # SETTINGS_GROUPS — у них своя поверхность правки (план 19-08), иначе они всплыли бы в
     # «📦 Прочие» второй конкурирующей поверхностью. per_city нет — приложение одно на стек.
     #
@@ -5839,7 +5839,7 @@ SETTINGS_SCHEMA = {
     "miniapp_theme_preset": {
         "type": "enum", "group": "miniapp", "label": "🎭 Пресет оформления",
         "options": ["bluebook", "youlead", "realtalk", "custom"],
-        # Слово в слово с handlers/admin_miniapp_theme.py::_PRESET_LABELS + кнопка «Своя»
+        # Слово в слово с handlers/settings/admin_miniapp_theme.py::_PRESET_LABELS + кнопка «Своя»
         # (custom — единственный вариант вне web_theme.PRESETS, сторож
         # tests/test_ru_brand_wording_260824.py:88 держит это соответствие).
         "option_labels": {
@@ -5867,7 +5867,7 @@ SETTINGS_SCHEMA = {
     "miniapp_theme_heading_font": {
         "type": "enum", "group": "miniapp", "label": "🔤 Шрифт заголовков",
         "options": ["raleway", "raleway_italic", "lato"],
-        # Слово в слово с handlers/admin_miniapp_theme.py::_FONT_LABELS, порядок тот же.
+        # Слово в слово с handlers/settings/admin_miniapp_theme.py::_FONT_LABELS, порядок тот же.
         "option_labels": {
             "raleway": "Raleway — строгий", "raleway_italic": "Raleway курсив — игривый",
             "lato": "Lato — нейтральный",
@@ -6112,7 +6112,7 @@ SETTINGS_SCHEMA = {
     },
     # Quick 260903 (дашборд из хаба менеджера): подпись плитки «Дашборд» в хабе менеджера —
     # сам адрес НЕ здесь. `config.DASHBOARD_PUBLIC_URL`/`cfg.public_url` остаются деплойным
-    # значением (D-05/D-19, handlers/admin.py:332, handlers/admin_dashboard.py) — заводить
+    # значением (D-05/D-19, handlers/admin.py:332, handlers/settings/admin_dashboard.py) — заводить
     # второй bot_settings-ключ для того же адреса значило бы держать URL в двух местах,
     # которые могут разойтись. Плитка появляется в хабе сама, когда адрес задан при деплое.
     "miniapp_tile_dashboard_label": {
@@ -6963,7 +6963,7 @@ SETTINGS_SCHEMA = {
     # ── Quick 260902-tzh: «🧾 Поля карточки заявки» — какие ответы анкеты показывать
     # менеджеру в карточке отбора и до какой длины обрезать длинный ответ. Own group "apps"
     # (как dashboard/miniapp выше): свой экран `handlers/applications/admin_modcard.py`, эти два ключа
-    # НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS — второй
+    # НЕ добавляются в handlers.settings.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS — второй
     # конкурирующей поверхности правки не заводим. Дефолт modcard_fields ПОВТОРЯЕТ
     # moderation_card.DEFAULT_CARD_STEPS литералом (import domain.regform.moderation_card as moderation_card сюда даёт цикл:
     # moderation_card -> reg_engine -> settings_schema) — дрейф закрыт сторожем
@@ -7229,7 +7229,7 @@ SETTINGS_SCHEMA = {
 
     # Phase 23 Plan 01 (APP-TINDER-01, D-05): шаблоны причин отказа для шторки отказа Mini App
     # (и карточки бота, паритет). Own group "apps" — правится ОБЩИМ списочным редактором
-    # (handlers/admin_settings_lists.py: ➕ добавить / 🗑 удалить / ✏️ заменить целиком), нового
+    # (handlers/settings/admin_settings_lists.py: ➕ добавить / 🗑 удалить / ✏️ заменить целиком), нового
     # экрана бота не заводим — достаточно попадания в _APPS_FIELD_ORDER.
     "reject_reason_templates": {
         "type": "list", "group": "apps", "label": "✍️ Причины отказа",
@@ -7371,7 +7371,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # Квик 260915-twr (D2): служебные сообщения админу о разовой сверке чата сразу после
-    # привязки — group "system", но НЕ в _SYSTEM_FIELD_ORDER (handlers/admin_settings.py) —
+    # привязки — group "system", но НЕ в _SYSTEM_FIELD_ORDER (handlers/settings/admin_settings.py) —
     # тот же прецедент, что у delegate_chat_id/delegate_chat_title выше (:3128): экран
     # настроек их не показывает, это технические тексты о фоновом прогоне, не делегатская
     # копирайтинг-копия.
@@ -7395,7 +7395,7 @@ SETTINGS_SCHEMA = {
 
     # Квик 260916: уведомления менеджеру о НОВЫХ ЗАЯВКАХ — каждую отдельно или пачкой по окну
     # тишины (services/reg_digest.py). Тот же приём, что у game_submit_notify_mode выше: enum
-    # без текстового ввода, на экране это тумблер (handlers/admin_settings.py::
+    # без текстового ввода, на экране это тумблер (handlers/settings/admin_settings.py::
     # toggle_reg_submit_notify, раздел «📋 Заявки»), в _APPS_FIELD_ORDER ключ НЕ входит —
     # менеджер не должен печатать код варианта. Дефолт "each" = прежнее поведение прода.
     #
@@ -8550,7 +8550,7 @@ SETTINGS_SCHEMA = {
     # ОБЩИЙ чат делегатов, а не персонально каждому — корпус машинного перевода
     # (services/i18n_sources.py::DELEGATE_GROUPS) намеренно его не подхватывает (владелец
     # 24.09: «с EN не нужен — пост в общий чат, пишем на русском»); редактор экрана — общий
-    # текстовый (handlers/admin_settings.py::_APPS_FIELD_ORDER). Плейсхолдер {where}
+    # текстовый (handlers/settings/admin_settings.py::_APPS_FIELD_ORDER). Плейсхолдер {where}
     # подставляется простой заменой (без перевода подставлять «после» нечего) —
     # html.escape ПЕРЕД подстановкой, пост уходит с parse_mode="HTML".
     "lost_found_post_text": {
@@ -8592,7 +8592,7 @@ SETTINGS_SCHEMA = {
     # Фон карточки — photo-запись (D-10: медиа-ключи вне обычного резолвера, тест
     # test_no_per_city_key_is_photo_or_file_type запрещает per_city на type "photo"/"file").
     # НЕ per_city: одна картинка на все города, тот же довод, что program/speakers/venue
-    # выше — загружается менеджером через общий флоу handlers/admin_settings.py::PHOTO_FIELDS
+    # выше — загружается менеджером через общий флоу handlers/settings/admin_settings.py::PHOTO_FIELDS
     # (кнопка есть и на собственном экране карточки — settings_photo:forum_stats_card, тот же
     # генерический callback, второй копии хендлера не заводим). Без загруженного фона
     # services/forum_stats_card.py рисует фон брендовым цветом (web_theme.PRESETS).

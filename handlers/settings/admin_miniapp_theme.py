@@ -2,9 +2,9 @@
 App — пресеты (BlueBook/YouLead/Своя) и ручки кастома.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_settings.py`, СРАЗУ ПОСЛЕ `admin_miniapp` (та же
+импортируется из ХВОСТА `handlers/settings/admin_settings.py`, СРАЗУ ПОСЛЕ `admin_miniapp` (та же
 техника шва, что и остальные модули Phase 13/15/19). Вынесен в отдельный файл от
-`handlers/admin_miniapp.py` из-за потолка размера модуля (docs/CONVENTIONS.md) — вход сюда идёт
+`handlers/settings/admin_miniapp.py` из-за потолка размера модуля (docs/CONVENTIONS.md) — вход сюда идёт
 кнопкой «🎭 Пресеты и ручки оформления» с первого экрана «🎨 Оформление».
 
 Правило D-03 (пресет — стартовая точка, не жёсткий шаблон): применение пресета пишет ВСЕ его
@@ -49,7 +49,7 @@ _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 # проверяются против текущего `bg` — они, как правило, сами служат текстом/иконкой на фоне.
 _TEXT_INK = "#1C1C1C"
 
-PREVIEW_DIR = Path(__file__).resolve().parent.parent / "assets" / "theme-preview"
+PREVIEW_DIR = Path(__file__).resolve().parents[2] / "assets" / "theme-preview"
 
 # Quick 260904-183: бренд-материалы РилТолк сняты владельцем 04.09.2026 — третий пресет
 # заведён. Три встроенных пресета; «Своя» вычисляется отдельно (не хранится в этих словарях).
@@ -521,7 +521,7 @@ async def miniapp_theme_photo_start(callback: types.CallbackQuery, state: FSMCon
     slot_name = callback.data.split(":", 1)[1]
     # Квик 260921: иконка вкладки дашборда — вне _ASSET_SLOTS (документ, не фото), приёмник
     # общий EditSetting.waiting_for_file + raw_file_key (тот же путь, что у PDF согласий в
-    # handlers/admin_settings.py), своей MiniAppTheme-ручки не заводит.
+    # handlers/settings/admin_settings.py), своей MiniAppTheme-ручки не заводит.
     if slot_name == dashboard_favicon.SETTING_KEY:
         await callback.message.edit_text(
             dashboard_favicon.UPLOAD_PROMPT_HTML, parse_mode="HTML", reply_markup=_cancel_edit_keyboard(),

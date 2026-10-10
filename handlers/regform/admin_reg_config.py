@@ -55,7 +55,7 @@ from domain.cities import (
 from handlers.admin import router
 from handlers.states import EditSetting
 from handlers.regform.admin_consent import remind_consent_purposes_after_preset
-from handlers.admin_settings import _per_city_visible_codes, _settings_edit_screen  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings.admin_settings import _per_city_visible_codes, _settings_edit_screen  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 
@@ -603,7 +603,7 @@ async def toggle_menu_button(callback: types.CallbackQuery):
 async def menu_buttons_back(callback: types.CallbackQuery):
     # Phase 20 (20-04): выход с экрана «🔘 Кнопки меню» ведёт в его раздел — «🎪 Событие»
     # (подсказка — callback_data своего экрана, см. комментарий у reg_questions_back).
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, callback_data="admin_menu_buttons")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()

@@ -96,14 +96,14 @@ def test_schema_keys_present_with_human_labels():
 
 def test_minutes_in_game_group_mode_not_a_text_field():
     """Минуты правятся обычным полем (int), режим — только тумблером, без ввода кода."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "game_submit_digest_minutes" in admin_settings._GAME_FIELD_ORDER
     assert "game_submit_notify_mode" not in {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
 
 
 def test_game_group_keyboard_has_mode_toggle(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("game"))
     btns = [b for row in kb.inline_keyboard for b in row if b.callback_data == "toggle_game_submit_notify"]
     assert len(btns) == 1

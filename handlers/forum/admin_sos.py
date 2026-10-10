@@ -34,7 +34,7 @@ from database.db import (
 )
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability, required_capability
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.states import EditSetting, SosChatBind
 from keyboards.builders import get_cancel_kb
 from services.settings.audit import set_setting_by_admin
@@ -189,7 +189,7 @@ async def render_sos_screen(admin_id: int, status: str | None = None, offset: in
     if nav_row:
         buttons.append(nav_row)
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_sos")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -608,10 +608,10 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
 # «Беру»/следующий повторный SOS), джобу переставлять не нужно, в отличие от `services.
 # session_feedback` (там задержка уже зашита в run_date уже стоящей джобы).
 #
-# Правка текстов идёт через ОБЩИЙ `EditSetting.waiting_for_value` (handlers/admin_settings.py::
+# Правка текстов идёт через ОБЩИЙ `EditSetting.waiting_for_value` (handlers/settings/admin_settings.py::
 # settings_edit_value) — валидация/HTML/сброс «-» там уже есть, здесь только вход в FSM.
 # Возврат после сохранения — известное ограничение `settings_return_screen` (нет карты
-# «ключ -> подэкран», docstring `handlers/admin_sections.py`): менеджер приземляется в корне
+# «ключ -> подэкран», docstring `handlers/settings/admin_sections.py`): менеджер приземляется в корне
 # разделов, как и у `admin_reg_percity.py::reg_prompt_edit` (глобальная ветка) — тот же
 # принятый компромисс, не новый.
 

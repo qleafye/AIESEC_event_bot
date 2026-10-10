@@ -5,11 +5,11 @@
 Форма шва — эталон `handlers/applications/admin_reject_rules.py`/`handlers/forum/admin_checkin.py`: своего
 `Router()` нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`, каждый декоратор — в ОДНУ
 строку (инвариант cap-теста `tests/test_roles_phase8.py`). Импортирован ХВОСТОМ
-`handlers/admin_sections.py` (после `admin_reject_reports`).
+`handlers/settings/admin_sections.py` (после `admin_reject_reports`).
 
 Право — `settings` (тот же класс экрана, что «🚫 Правила автоотказа»/«🧮 Правила балла»:
 конфигурирование контента события, не действие над конкретной заявкой). Город экрана — из
-шапки админки (`handlers.admin_core._admin_city_scope`), тем же трёхветочным приёмом, что
+шапки админки (`handlers.settings.admin_core._admin_city_scope`), тем же трёхветочным приёмом, что
 `handlers/forum/admin_checkin.py::_counter_line` (закреплённый город / модуль городов выключен /
 «Все города» — список городов на выбор): расписание форума не бывает «общим на все города»,
 поэтому третья ветка ведёт на ЭКРАН ВЫБОРА конкретного города, а не схлопывается в
@@ -48,7 +48,7 @@ from database.db import (
     update_program_session,
 )
 from handlers.admin import router
-from handlers.admin_core import _admin_city_scope
+from handlers.settings.admin_core import _admin_city_scope
 from handlers.states import ProgramDayCustom, ProgramHallName, ProgramSessionField
 from keyboards.builders import get_cancel_kb, get_skip_kb
 from services.program import (
@@ -119,7 +119,7 @@ async def render_city_picker_screen() -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text=await city_label(c["code"]), callback_data=f"prog_city:{c['code']}")]
         for c in await enabled_cities()
     ]
-    from handlers.admin_sections import back_button
+    from handlers.settings.admin_sections import back_button
     buttons.append([back_button("admin_program")])
     text = "🗓 <b>Программа форума</b>\n\nВыберите город."
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -192,7 +192,7 @@ async def render_city_program_screen(admin_id: int, code: str) -> tuple[str, Inl
             text="📋 Скопировать программу из города…", callback_data=f"prog_copy:{code}",
         )])
 
-    from handlers.admin_sections import back_button
+    from handlers.settings.admin_sections import back_button
     buttons.append([back_button("admin_program")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 

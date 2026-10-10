@@ -145,8 +145,8 @@ def _row_line(number: int, row: dict, counts: dict, city: str | None) -> str:
 
 async def render_list(admin_id: int, flt: str = "candidates",
                       offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
-    from handlers.admin_sections import back_button
+    from handlers.settings.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
+    from handlers.settings.admin_sections import back_button
 
     scope, city = await _admin_city_view(admin_id)
     total = await amb_status_db.count_by_filter(flt, city_scope=scope)
@@ -508,7 +508,7 @@ async def export_csv(city_scope=None) -> tuple[bytes, int]:
 
 @router.callback_query(F.data == "ambc_csv")
 async def candidates_csv(callback: types.CallbackQuery):
-    from handlers.admin_core import _admin_city_view
+    from handlers.settings.admin_core import _admin_city_view
 
     scope, _city = await _admin_city_view(callback.from_user.id)
     data, count = await export_csv(scope)

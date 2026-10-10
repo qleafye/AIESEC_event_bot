@@ -1394,7 +1394,7 @@ async def ensure_named_sheet_header(tab_name: str, headers: list[str]):
 
 
 # --- Quick 260825-ldi: incremental read/append for a named tab, mirroring get_existing_sheet_ids
-# / append_rows_to_sheet (main tab) but keyed by tab name. Needed by handlers/admin_settings.py's
+# / append_rows_to_sheet (main tab) but keyed by tab name. Needed by handlers/settings/admin_settings.py's
 # «🔄 Синхронизация» (sync_sheet), which used to always dozapisyvat missing rows into the main
 # tab even for delegates whose city routes them to a named tab -- the fix loops over city tabs and
 # needs read+append primitives that don't abort the whole sync when a single tab misbehaves.

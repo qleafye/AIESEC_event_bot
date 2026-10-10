@@ -30,11 +30,11 @@ import domain.cities as cities
 from handlers.regform import admin_reg_config as regcfg
 from handlers.regform import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
 from handlers.access import admin_roles as roles
-from handlers import admin_sections as sec
-from handlers import admin_settings as st
+from handlers.settings import admin_sections as sec
+from handlers.settings import admin_settings as st
 from handlers.sheets import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
 from handlers.access.admin_caps import role_caps_key
-from handlers.admin_settings import settings_toggle_rows
+from handlers.settings.admin_settings import settings_toggle_rows
 
 from tests.test_roles_phase8 import (
     ADMIN_ID,
@@ -241,7 +241,7 @@ def test_every_op_row_has_a_label_and_every_label_has_a_section():
     подпись из `_ADMIN_MENU_ROWS`. Нет подписи — `build_section_keyboard` молча выбрасывает
     кнопку («🆘 SOS» так прожила ночь невидимой). Обратное тоже ловим: подпись в
     `_ADMIN_MENU_ROWS` без строки ни в одном разделе — операция недостижима из панели."""
-    from handlers.admin_core import _ADMIN_MENU_ROWS
+    from handlers.settings.admin_core import _ADMIN_MENU_ROWS
 
     labelled = {cb for _text, cb in _ADMIN_MENU_ROWS}
     ops = {row[1] for _t, _l, rows in sec.SECTIONS for row in rows if row[0] == "op"}
@@ -270,7 +270,7 @@ def test_flat_menu_and_sections_agree_on_who_sees_anything():
     с таким правом `/admin` скажет «нет доступных разделов», хотя панель раздел бы нарисовала
     (или наоборот: раздел есть, а войти в него не с чего)."""
     from handlers.access.admin_caps import ADMIN_CAPS
-    from handlers.admin_core import _visible_menu_rows
+    from handlers.settings.admin_core import _visible_menu_rows
 
     single = {c for v in ADMIN_CAPS.values() for c in (v if isinstance(v, tuple) else (v,))}
     for cap in sorted(single):
@@ -360,7 +360,7 @@ def test_admin_sos_row_is_not_an_orphan(tmp_path, caplog):
     _only_caps("reg_manager", "moderate_reg")
 
     import logging
-    caplog.set_level(logging.WARNING, logger="handlers.admin_sections")
+    caplog.set_level(logging.WARNING, logger="handlers.settings.admin_sections")
     kb = asyncio.run(sec.build_section_keyboard("apps", MANAGER_ID))
 
     assert "admin_sos" in _flat_callback_data(kb)
@@ -391,7 +391,7 @@ def test_quiet_hours_entry_row_is_declared_once_right_after_its_toggle():
 def test_quiet_hours_back_button_targets_apps_section():
     """`back_button("admin_quiet_hours")` целит в `admin_sec:apps` — раздел-владелец строки
     выводится из SECTIONS, второй карты «экран -> раздел» не заводим."""
-    from handlers import admin_sections as sec_mod
+    from handlers.settings import admin_sections as sec_mod
     btn = sec_mod.back_button("admin_quiet_hours")
     assert btn.callback_data == "admin_sec:apps"
 
@@ -564,7 +564,7 @@ def test_root_shows_at_most_ten_rows(tmp_path):
     они терялись среди заданий и монет."""
     _roles_ready(tmp_path)
     _enable_cities()
-    from handlers.admin_core import admin_keyboard_for
+    from handlers.settings.admin_core import admin_keyboard_for
 
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
     assert len(kb.inline_keyboard) <= 10, _flat_callback_data(kb)
@@ -580,7 +580,7 @@ def test_root_rows_are_only_sections(tmp_path):
     и их порядок задаёт реестр (путь делегата), а не история появления фаз."""
     _roles_ready(tmp_path)
     _enable_cities()
-    from handlers.admin_core import admin_keyboard_for
+    from handlers.settings.admin_core import admin_keyboard_for
 
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
@@ -594,7 +594,7 @@ def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path)
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "moderate_reg")
-    from handlers.admin_core import build_admin_keyboard
+    from handlers.settings.admin_core import build_admin_keyboard
 
     flat = _flat_callback_data(asyncio.run(build_admin_keyboard(MANAGER_ID)))
     assert flat == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные» (список участников)
@@ -603,7 +603,7 @@ def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path)
 def test_root_of_a_stranger_stays_empty(tmp_path):
     """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает."""
     _roles_ready(tmp_path)
-    from handlers.admin_core import build_admin_keyboard
+    from handlers.settings.admin_core import build_admin_keyboard
 
     assert asyncio.run(build_admin_keyboard(STRANGER_ID)).inline_keyboard == []
 
@@ -915,7 +915,7 @@ def test_no_handler_redraws_the_flat_settings_screen():
     единственное упоминание `build_settings_keyboard(` на весь handlers/ — её объявление."""
     from pathlib import Path
 
-    settings_src = (REPO_ROOT / "handlers/admin_settings.py").read_text(encoding="utf-8")
+    settings_src = (REPO_ROOT / "handlers/settings/admin_settings.py").read_text(encoding="utf-8")
     regcfg_src = (REPO_ROOT / "handlers/regform/admin_reg_config.py").read_text(encoding="utf-8")
 
     assert settings_src.count("build_settings_keyboard(") == 1, "перерисовка снова целится в лендинг"
@@ -1054,7 +1054,7 @@ def test_guide_and_cheatsheet_spell_group_path_with_new_label():
     удвоенный путь в доках легален: так называется и операция «карточки по одной»
     (`admin_applications`) — она своё имя не меняла; поэтому в доках сторожим только разделы,
     у которых с группой не совпадает ни одна операция, а справку бота — целиком."""
-    from handlers.admin_core import _ADMIN_MENU_ROWS
+    from handlers.settings.admin_core import _ADMIN_MENU_ROWS
 
     op_labels = {text for text, _cb in _ADMIN_MENU_ROWS}
     group_only = [label for _t, label, _r in sec.SECTIONS if label not in op_labels]

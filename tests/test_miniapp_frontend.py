@@ -1082,7 +1082,7 @@ def test_replace_children_never_gets_null_false_undefined_as_top_level_argument(
     )
 # ── Phase 20 (ADMIN-IA-04, D-05): хаб Mini App = та же IA, что корень /admin ─────────────
 # Менеджер держит в голове ОДНУ карту админки. Подписи разделов лежат в двух местах —
-# `handlers/admin_sections.py::SECTIONS` (бот) и `SECTION_GROUPS` в app.js (веб) — поэтому
+# `handlers/settings/admin_sections.py::SECTIONS` (бот) и `SECTION_GROUPS` в app.js (веб) — поэтому
 # нужен тот же сторож дрейфа, что у побайтной копии tokens.css выше
 # (`test_tokens_css_is_byte_for_byte_copy_of_dashboard_tokens`): расхождение обязано ронять
 # сборку, а не всплывать у менеджера двумя разными меню.
@@ -1108,10 +1108,10 @@ def test_section_groups_match_bot_sections():
     на экране: хаб рисует заголовок раздела капсом — `.sec` в `miniapp/static/app.css` ставит
     `text-transform: uppercase`. Поэтому «🎪 СОБЫТИЕ» на экране при «🎪 Событие» в коде — это
     оформление, а не расхождение карты админки, и чинить регистр в литералах не нужно."""
-    from handlers.admin_sections import SECTIONS
+    from handlers.settings.admin_sections import SECTIONS
 
     assert _section_groups_from_app_js() == [(token, label) for token, label, _ in SECTIONS], (
-        "SECTION_GROUPS в miniapp/static/js/app.js разошёлся с handlers/admin_sections.py::"
+        "SECTION_GROUPS в miniapp/static/js/app.js разошёлся с handlers/settings/admin_sections.py::"
         "SECTIONS — подписи и порядок разделов правятся в двух местах сразу, иначе бот и "
         "Mini App показывают менеджеру две разные админки"
     )

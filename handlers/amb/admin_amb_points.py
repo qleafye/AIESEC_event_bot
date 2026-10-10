@@ -72,7 +72,7 @@ async def _edit_or_send(message: types.Message, text: str, kb: InlineKeyboardMar
 
 
 async def render_points_screen() -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_sections import owner_back_button
+    from handlers.settings.admin_sections import owner_back_button
 
     coins = int(await get_setting_typed(COINS_KEY) or 0)
     hide = await get_setting_typed("amb_hide_invitee_names") == "on"

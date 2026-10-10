@@ -29,7 +29,7 @@ from database.db import (
     update_faq_item,
 )
 from handlers.admin import router
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.comms.admin_questions import render_questions_screen
 from handlers.states import FaqItem
 from keyboards.builders import get_cancel_kb
@@ -123,7 +123,7 @@ async def render_faq_screen(admin_id: int, offset: int = 0) -> tuple[str, Inline
     if nav_row:
         buttons.append(nav_row)
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_faq")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

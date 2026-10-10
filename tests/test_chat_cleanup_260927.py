@@ -497,6 +497,6 @@ def test_cleanup_capabilities():
 
 
 def test_cleanup_screen_row_in_manage_section():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     callbacks = [sec.row_callback(r) for r in sec._declared_rows("manage")]
     assert callbacks.index("admin_chat_cleanup") == callbacks.index("admin_chat_rating") + 1

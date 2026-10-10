@@ -340,7 +340,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_city_switch*": ANY_CAPABILITY,
     # Phase 20 (20-01, ADMIN-IA-01): admin_sec:{token} -- экран раздела админки. Это
     # навигационная точка входа, а не право: содержимое раздела повторно фильтруется
-    # ПОСТРОЧНО этой же картой (handlers/admin_sections.py::visible_rows -> required_capability
+    # ПОСТРОЧНО этой же картой (handlers/settings/admin_sections.py::visible_rows -> required_capability
     # + _holds), раздел без единой доступной строки не открывается вовсе, а каждый реальный
     # callback внутри по-прежнему проверяется CapabilityMiddleware независимо. Тот же приём и
     # то же обоснование, что у admin_city_switch выше (09.3): открыть навигацию всем, кто
@@ -585,13 +585,13 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_dashboard_settings": "settings",
     "dash_block:*": "settings",
     # Экран «🎨 Оформление» Mini App (Phase 19, 19-08, D-06) — тумблеры, чекбоксы разделов.
-    # handlers/admin_miniapp.py.
+    # handlers/settings/admin_miniapp.py.
     "admin_miniapp_settings": "settings",
     "miniapp_toggle_enabled": "settings",
     "miniapp_toggle_staff_only": "settings",
     "miniapp_section:*": "settings",
     # Второй шов «🎭 Пресеты и ручки оформления» (Phase 19.1, 07, D-20) —
-    # handlers/admin_miniapp_theme.py. Правка акцента/лого (старые "miniapp_edit_accent"/
+    # handlers/settings/admin_miniapp_theme.py. Правка акцента/лого (старые "miniapp_edit_accent"/
     # "miniapp_edit_logo"/"miniapp_remove_logo"/"miniapp_cancel_edit") заменена этим блоком —
     # правка акцента теперь идёт через "miniapp_theme_color:accent", лого — через
     # "miniapp_theme_photo:logo"/"miniapp_theme_remove_photo:logo".
@@ -615,7 +615,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_dedupe_sheet_go": "settings",
     "admin_event_preset": "settings",
     "admin_menu_buttons": "settings",
-    # 09.10: «🖼 Аватар бота» (handlers/admin_bot_avatar.py) — та же капа, что у раздела.
+    # 09.10: «🖼 Аватар бота» (handlers/settings/admin_bot_avatar.py) — та же капа, что у раздела.
     "admin_bot_avatar": "settings",
     "botava_*": "settings",
     "state:BotAvatar:*": "settings",
@@ -810,7 +810,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "settings_reset_city:*": "settings",
     "settings_reset_city_go:*": "settings",
     "settings_file:*": "settings",
-    # Quick 260822: списочные настройки по пунктам (handlers/admin_settings_lists.py) —
+    # Quick 260822: списочные настройки по пунктам (handlers/settings/admin_settings_lists.py) —
     # ➕ добавить / 🗑 выбрать пункт / 🗑 убрать выбранный / ✏️ заменить целиком. Тот же
     # «settings», что у settings_edit:*; prefix-ключи не пересекаются (del vs rm vs replace).
     "settings_list_add:*": "settings",
@@ -853,7 +853,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:EditSetting:*": "settings",
     "state:SettingsSearch:*": "settings",  # «🔎 Найти настройку» — то же право, что у правки
     "settings_search": "settings",
-    # «🚀 Первая настройка» в боте: настоящий гейт ADMIN_IDS — в handlers/admin_setup_wizard.py.
+    # «🚀 Первая настройка» в боте: настоящий гейт ADMIN_IDS — в handlers/settings/admin_setup_wizard.py.
     "admin_setup_wizard": "settings", "setupw_*": "settings",
     "settings_search_cancel": "settings",
     "state:StaffAdd:*": "settings",
@@ -897,7 +897,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "toggle_reg_form_status_screen": "settings",
     "toggle_reg_form_header_settings": "settings",
     "toggle_reg_form_haptics": "settings",
-    # Phase 30 (30-07, A2-03): экран «📚 Справочники» — handlers/admin_lookup.py, весь
+    # Phase 30 (30-07, A2-03): экран «📚 Справочники» — handlers/settings/admin_lookup.py, весь
     # семейство callback'ов одним префиксом (`:*` покрывает kind/q/qm/qr/c/cu/cp/sel).
     "admin_lookup": "settings",
     "admin_lookup:*": "settings",

@@ -66,7 +66,7 @@ def _cancel_kb() -> InlineKeyboardMarkup:
 
 def candidates() -> list[Candidate]:
     """Все настройки, которые бот показывает на экранах групп, — с подписью раздела."""
-    from handlers import admin_settings as s  # ленивый шов: admin_settings импортирует этот модуль хвостом цепочки
+    from handlers.settings import admin_settings as s  # ленивый шов: admin_settings импортирует этот модуль хвостом цепочки
 
     field_labels = {k: lbl for k, lbl, _ in s.SETTINGS_FIELDS}
     out: list[Candidate] = []
@@ -99,7 +99,7 @@ async def screen_candidates(admin_id: int) -> list[Candidate]:
     """Экраны-кнопки разделов («🖼 Аватар бота», «👥 Роли и доступы»…): их нет в реестре, но
     менеджер ищет их тем же словом. Кнопка — тот же callback, что из раздела; видимость — та
     же, что у строки раздела (`visible_rows`: право строки, «только суперадмину»)."""
-    from handlers import admin_sections as sec  # ленивый шов (цикл импортов)
+    from handlers.settings import admin_sections as sec  # ленивый шов (цикл импортов)
 
     caps = await sec.resolve_capabilities(admin_id)
     is_super = admin_id in config.ADMIN_IDS
@@ -178,7 +178,7 @@ async def settings_search_start(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "settings_search_cancel")
 async def settings_search_cancel(callback: types.CallbackQuery, state: FSMContext):
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (цикл импортов)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (цикл импортов)
 
     await state.clear()
     # Строка «🔎 Найти настройку» объявлена в разделе «🔧 Управление» — туда и возвращаемся.

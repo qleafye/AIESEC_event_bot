@@ -128,7 +128,7 @@ def all_menu_button_texts() -> frozenset[str]:
     """Every caption the persistent main-menu reply keyboard can show right now, RU+EN,
     flattened into one set. Single source of truth used both to BUILD the keyboard (via
     MENU_TEXTS above) and to GUARD against silently saving a stray button tap as free text
-    elsewhere (handlers/admin_settings.py::settings_edit_value) — the admin's reply keyboard
+    elsewhere (handlers/settings/admin_settings.py::settings_edit_value) — the admin's reply keyboard
     stays the main menu while they type a setting value (settings edit never sends its own
     reply keyboard), so a habitual tap on e.g. "🪙 Мои монеты" sends its caption here as a
     normal text message."""

@@ -13,7 +13,7 @@
 него уже не сотрёт список; ввод начинается только с кнопки.
 
 Шов к общему `admin.router` (техника 13-02/13-03): импортируется ПОСЛЕДНЕЙ строкой
-`handlers/admin_settings.py`, так что хендлеры встают сразу за хендлерами настроек при любом
+`handlers/settings/admin_settings.py`, так что хендлеры встают сразу за хендлерами настроек при любом
 порядке импорта модулей (тот же приём, что admin_gamification -> admin_game_tasks). Зависит
 от admin_settings односторонне.
 
@@ -38,7 +38,7 @@ from domain.cities import ALL_CITIES, admin_selected_city, is_per_city, per_city
 from handlers.states import EditSetting
 from domain.settings.validation import is_command_like
 from handlers.admin import router
-from handlers.admin_settings import (
+from handlers.settings.admin_settings import (
     SETTINGS_FIELDS,
     _per_city_visible_codes,
     _settings_edit_screen,
