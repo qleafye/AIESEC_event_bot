@@ -329,7 +329,7 @@ async def prev_reject_line(user: dict, *, escape_reason: bool = False) -> str | 
 async def _referrer_badge_line(user: dict) -> str | None:
     """Phase 32 (32-05, задача 3, T-32-05-04): «🤝 Пригласил(а) Имя Фамилия — уже N
     одобренных в этой волне» — ТОЛЬКО когда у заявки непустой `referrer_id`, пригласивший
-    существует и он ПРЯМО СЕЙЧАС амбассадор (тот же гейт, что `services.referrals.
+    существует и он ПРЯМО СЕЙЧАС амбассадор (тот же гейт, что `services.game.referrals.
     credit_for_approved`, — обычный делегат со старой реф-ссылкой бейджа не порождает).
     Волна — `current_wave_for(город пригласившего)`, только если пригласивший в ней
     участвует (`wave_eligible`), иначе счётчик — вне волн (`wave_id=None`, общий зачёт).
@@ -345,7 +345,7 @@ async def _referrer_badge_line(user: dict) -> str | None:
             return None
 
         from services.amb.ambassador_waves import current_wave_for, wave_eligible
-        from services.referrals import approved_referrals_in_wave
+        from services.game.referrals import approved_referrals_in_wave
 
         wave_id = None
         wave = await current_wave_for(referrer.get("event_city"))

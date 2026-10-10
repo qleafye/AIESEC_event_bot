@@ -246,7 +246,7 @@ TAB_SUFFIX = {
     "incomplete": " Незавершённые",
     # Quick GAME-CITY-TABS: per-city gamification tabs («СПб Гейма» / «СПб История сдач») —
     # same base+suffix convention as the registration tabs, registry keys
-    # city_tab_suffix__game / city_tab_suffix__game_history (services/game_sheets.py).
+    # city_tab_suffix__game / city_tab_suffix__game_history (services/game/game_sheets.py).
     "game": " Гейма",
     "game_history": " История сдач",
 }

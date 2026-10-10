@@ -2,7 +2,7 @@
 амбассадорам за приглашённых, одобренных до запуска амбассадорского слоя. Предпросмотр показывает,
 кому и сколько начислится, затем отдельная кнопка «Начислить».
 
-Логика — `services.referrals.backfill_approved`:
+Логика — `services.game.referrals.backfill_approved`:
 кандидаты только текущего сезона, начисление идёт через идемпотентную точку журнала зачётов, так что
 повторное нажатие никого не задвоит. Баллы догона идут только в общий зачёт, ни в одну волну.
 
@@ -19,7 +19,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
-from services import referrals
+from services.game import referrals
 
 logger = logging.getLogger(__name__)
 

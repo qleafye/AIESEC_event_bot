@@ -6,7 +6,7 @@ same convention as every other 09.1 test file. Debounce tests always pass a shor
 override (never the real 30s DEBOUNCE_SECONDS) so the suite stays fast and deterministic --
 CONTEXT.md D's own instruction ("делай задержку подменяемой, тесты не должны спать 30 с").
 
-Task 1: services/game_sync.py -- request_resync's cancel-and-restart debounce, set_rebuild
+Task 1: services/game/game_sync.py -- request_resync's cancel-and-restart debounce, set_rebuild
 registration, the one-shot admin failure warning, and handlers/admin.py::rebuild_game_sheets
 (the shared body sync_game_sheets/request_resync both eventually call).
 Task 2: the 5 handlers/admin.py hook points (game_task_confirm/grev_approve/
@@ -22,7 +22,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-import services.game_sync as game_sync
+import services.game.game_sync as game_sync
 from handlers import admin as admin_mod
 from handlers.game import admin_gamification
 from handlers.states import GameReview
