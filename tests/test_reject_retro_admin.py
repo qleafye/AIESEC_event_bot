@@ -206,6 +206,20 @@ def test_manual_reject_does_not_get_a_letter(tmp_path, monkeypatch):
     assert _sql("SELECT COUNT(*) FROM application_decisions WHERE telegram_id = 3") == [(1,)]
 
 
+def test_sheet_failure_is_reported(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(h, "_since", lambda p: "2026-01-01")
+    monkeypatch.setattr("services.sheet_target.sheets_enabled", lambda: True)
+
+    async def bulk(mapping):
+        return -1
+
+    monkeypatch.setattr("services.sheets.bulk_update_status_in_sheet", bulk)
+    cb = FakeBotCallback(f"rjretro_go:7:{_digest()}")
+    _run(h.reject_retro_go(cb))
+    assert "Сверить таблицу с базой" in cb.message.answers[0][0]
+
+
 def test_manager_approval_during_run_is_not_overwritten(tmp_path, monkeypatch):
     sent = _setup(tmp_path, monkeypatch)
     real = reg_finalize._auto_reject_patch
