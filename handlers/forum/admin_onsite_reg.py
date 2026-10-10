@@ -3,10 +3,10 @@
 Тумблер per_city `onsite_reg_enabled` (дефолт выключен) и кнопка «📎 QR для стойки» — картинка
 ссылки `?start=walkin_<город>`, которую волонтёр печатает или показывает с телефона. Человек
 сканирует её и проходит короткую анкету (handlers/onsite_reg.py), а решение о входе принимает
-волонтёр у стойки. Статусная строка — хаб «🎪 Форум: функции» (handlers/admin_forum_functions.py).
+волонтёр у стойки. Статусная строка — хаб «🎪 Форум: функции» (handlers/forum/admin_forum_functions.py).
 
 Своего `Router()` нет — декорирует `handlers.admin.router`, тот же приём, что
-handlers/admin_lost_found.py; импортирован в ХВОСТЕ handlers/admin.py (golden snapshot — чистое
+handlers/forum/admin_lost_found.py; импортирован в ХВОСТЕ handlers/admin.py (golden snapshot — чистое
 добавление). Капа — «moderate_reg», как у соседних тумблеров хаба (handlers/access/admin_caps.py);
 городская привязка менеджера (D-26) — `_city_allowed`, как у бюро находок."""
 import html
@@ -18,7 +18,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from domain.cities import cities_module_on, city_label, per_city_key
 from database.db import get_staff_city
 from handlers.admin import router
-from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
+from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.onsite_reg import onsite_enabled, walkin_link, walkin_qr_png
 from services.settings.audit import set_setting_by_admin
 

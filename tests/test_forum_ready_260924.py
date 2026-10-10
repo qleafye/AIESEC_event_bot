@@ -1,4 +1,4 @@
-"""Бэклог чек-ина №25: «🚦 Готовность к форуму» (handlers/admin_forum_ready.py) — светофор
+"""Бэклог чек-ина №25: «🚦 Готовность к форуму» (handlers/forum/admin_forum_ready.py) — светофор
 по городу из хаба «🎪 Форум: функции». Экран только читает: планировщик — через `get_job`,
 без `schedule_city_jobs` (тот переставляет джобы).
 
@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 from config import config
 from database import db
-from handlers import admin_forum_functions as aff
-from handlers import admin_forum_ready as afr
+from handlers.forum import admin_forum_functions as aff
+from handlers.forum import admin_forum_ready as afr
 from handlers.access.admin_caps import role_caps_key
 from services import sheets
 from tests._dbtpl import fast_init_db

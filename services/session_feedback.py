@@ -3,7 +3,7 @@ D-24 `.planning/FORUM-CHECKIN.md`): «⭐ Отзыв о сессии одним 
 сессии делегатам, ОТМЕЧЕННЫМ на ней (итоговая отметка слота, D-20), уходит вопрос с оценкой
 1–5 и необязательным комментарием.
 
-Домен вынесен из `handlers/session_feedback.py` по правилу проекта «своего Router() нет — домен
+Домен вынесен из `handlers/forum/session_feedback.py` по правилу проекта «своего Router() нет — домен
 в services/, хендлеры — тонкий шов» (та же форма, что `services/sos.py`/`services/program.py`).
 
 aiogram-free НА УРОВНЕ ИМПОРТА (тот же инвариант, что `services/program.py`/`services/sos.py`)
@@ -97,7 +97,7 @@ def cancel_for_session(session_id: int) -> None:
 
 async def schedule_for_session(session_id: int) -> bool:
     """Ставит/переставляет джобу отзыва сессии — вызывается после ЛЮБОГО создания/правки
-    сессии (`handlers/admin_program.py`), идемпотентно (`replace_existing=True`, тот же id
+    сессии (`handlers/forum/admin_program.py`), идемпотентно (`replace_existing=True`, тот же id
     что при прошлой постановке). Правка, изменившая день/время конца, просто переставляет джобу
     на новый момент — отдельного дифа «что именно изменилось» не считает, пересчёт от нуля
     дешевле дифа и не может разойтись с фактическим состоянием сессии.
@@ -151,7 +151,7 @@ async def reconcile_all() -> None:
 async def reconcile_city(code: str) -> None:
     """Перестановка джоб отзыва ВСЕХ сессий ОДНОГО города — вызывается после смены тумблера
     `session_feedback_enabled` или задержки `session_feedback_delay_minutes` на экране
-    «⭐ Отзывы о сессиях» (`handlers/session_feedback.py`). Тумблер сам по себе джобу не трогает
+    «⭐ Отзывы о сессиях» (`handlers/forum/session_feedback.py`). Тумблер сам по себе джобу не трогает
     (`deliver_feedback_prompts` перечитывает его на тике, докстринг выше), а вот задержка —
     да: у уже стоящей джобы `run_at` посчитан со СТАРЫМ значением, отдельного диффа не считает
     (`schedule_for_session` и так пересчитывает от нуля дешевле дифа), поэтому реконсиляция
@@ -265,7 +265,7 @@ async def my_feedback(telegram_id: int, session_id: int) -> dict | None:
 
 
 def stats_line(stats: dict) -> str:
-    """«⭐ 4.6 (38 оценок) · 12 комментариев» (карточка сессии, `handlers.admin_program.
+    """«⭐ 4.6 (38 оценок) · 12 комментариев» (карточка сессии, `handlers.forum.admin_program.
     render_session_card`) — «Пока нет оценок», если `rating_count == 0` (не «⭐ 0.0»)."""
     count = stats.get("rating_count", 0)
     if not count:

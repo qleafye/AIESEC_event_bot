@@ -332,7 +332,7 @@ def test_registry_defaults_and_format():
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Экран «🎪 Форум: функции» -- строка + свой экран настройки (handlers/admin_forum_functions.py)
+# Экран «🎪 Форум: функции» -- строка + свой экран настройки (handlers/forum/admin_forum_functions.py)
 # Fake-объекты -- та же форма, что tests/test_admin_sos_settings_260924.py.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -372,7 +372,7 @@ def _cbs(kb):
 
 
 def test_hub_shows_forum_day_menu_row_and_button(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
     assert "Меню «день форума»" in text
@@ -380,7 +380,7 @@ def test_hub_shows_forum_day_menu_row_and_button(tmp_path):
 
 
 def test_hub_status_line_reflects_active_window(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _ready(tmp_path)
     today = msk_now().strftime("%d.%m.%Y")
     _run(db.set_setting("forum_day_menu_enabled", "on"))
@@ -390,7 +390,7 @@ def test_hub_status_line_reflects_active_window(tmp_path):
 
 
 def test_cfg_screen_toggle_flips_setting(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _ready(tmp_path)
     callback = _FakeCallback("forumdaymenu_toggle:_all")
     _run(aff.forumdaymenu_toggle_go(callback))
@@ -401,7 +401,7 @@ def test_cfg_screen_toggle_flips_setting(tmp_path):
 
 
 def test_cfg_screen_writes_percity_key_when_module_on(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     from handlers.access.admin_caps import role_caps_key
     _ready(tmp_path)
     _enable_cities()
@@ -415,7 +415,7 @@ def test_cfg_screen_writes_percity_key_when_module_on(tmp_path):
 
 
 def test_cfg_screen_warns_without_forum_date(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     _ready(tmp_path)
     text, _kb = _run(aff._forumdaymenu_cfg_text_kb(None))
     assert "не задана" in text

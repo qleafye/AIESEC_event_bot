@@ -3,7 +3,7 @@
 Своего `Router()` нет: хендлеры садятся на `handlers.user_actions.router`, модуль подключён
 хвостовым импортом `user_actions.py` до фолбэка `reg_handoff_idle_fallback` (иначе текст кнопки
 меню ушёл бы в него). Три входа: кнопка меню (подпись настраивается — `DynamicMenuText`),
-deep-link `/start sessions` (`handlers/forum_deeplinks.py`) и callback `se:open` (кнопка из
+deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `se:open` (кнопка из
 результата теста).
 
 Поток: картинка повестки -> трек (или «Смешать») -> по слотам дня выбор одной сессии ->

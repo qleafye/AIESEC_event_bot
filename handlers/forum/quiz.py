@@ -3,7 +3,7 @@
 Своего `Router()` нет: хендлеры садятся на `handlers.user_actions.router`, модуль подключён
 хвостовым импортом `user_actions.py` до фолбэка `reg_handoff_idle_fallback`. Входы: кнопка меню
 (подпись настраивается — `DynamicMenuText("menu_quiz")`) и deep-link `/start quiz`
-(`handlers/forum_deeplinks.py`).
+(`handlers/forum/forum_deeplinks.py`).
 
 Прогресс живёт ТОЛЬКО в БД (`quiz_attempts`), FSM не используется: после рестарта бота делегат
 продолжает с первого неотвеченного вопроса. Допуск — тот же, что у записи на сессии: одобренный
@@ -22,7 +22,7 @@ from domain.cities import normalize_city
 from database import quiz_db
 from database.db import get_user
 from handlers.i18n import reg_i18n
-from handlers.session_enroll import _Ctx, _btn, _kb, _show
+from handlers.forum.session_enroll import _Ctx, _btn, _kb, _show
 from handlers.user_actions import _returning_text_if_past_season, ensure_registered, router
 from keyboards.menu_dynamic import DynamicMenuText
 from services import quiz as svc

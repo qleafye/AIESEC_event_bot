@@ -1019,7 +1019,7 @@ def _extract_resume_arg(command_args: str | None) -> str | None:
 
 
 # Идея №5 бэклога чек-ина: `vol_<код>` -- deep-link токен приглашения волонтёров
-# (handlers/admin_volunteer_invite.py). Префикс "vol_" не пересекается ни с одним из
+# (handlers/forum/admin_volunteer_invite.py). Префикс "vol_" не пересекается ни с одним из
 # остальных форматов выше (_extract_referrer_id требует чистые ASCII-цифры,
 # _extract_source_tag смотрит "src_", _extract_party_track/_extract_event_city/
 # _extract_resume_arg -- фиксированные литералы/"city_"-префикс) -- extractor мутуально
@@ -2044,7 +2044,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     if await try_walkin_start(message, state, args):
         return
     # `?start=sessions` и другие форумные deep-link'и; не обработан — идёт обычный /start.
-    from handlers.forum_deeplinks import try_forum_deeplink
+    from handlers.forum.forum_deeplinks import try_forum_deeplink
     if await try_forum_deeplink(message, state, args):
         return
 

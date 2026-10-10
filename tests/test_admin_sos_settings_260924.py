@@ -1,5 +1,5 @@
 """Ревью 24.09 (аудит ключей после 8c0d8af): экран «⚙️ Тексты и тайминги» —
-`handlers/admin_sos.py::render_sos_settings_screen` + хендлеры
+`handlers/forum/admin_sos.py::render_sos_settings_screen` + хендлеры
 `asos_settings*/asos_set_delay*/asos_delay_custom*/asos_settings_edit*`. Пять ключей реестра
 (`sos_delivery_failed_text`, `sos_recent_followup_text`, `sos_fallback_contact_text`,
 `sos_reopen_window_minutes`, `sos_claimed_remind_minutes`) жили ТОЛЬКО в Mini App (на проде
@@ -19,7 +19,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_sos
+from handlers.forum import admin_sos
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import EditSetting
 from tests._dbtpl import fast_init_db

@@ -1,4 +1,4 @@
-"""Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» (handlers/admin_checkin.py) —
+"""Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» (handlers/forum/admin_checkin.py) —
 загрузка выгрузки офлайн-сканера, выбор точки, отчёт, счётчик.
 
 Формат QR/денайл (`build_payload`/`checkin_denial`) — из `services/checkin.py` (Квик 260923,
@@ -21,7 +21,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from database.db import _connect
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from handlers.states import CheckinImport
 from services.checkin import build_payload
 from services import timeutil as timeutil_mod

@@ -1,8 +1,8 @@
-"""Форум-ночь п.4 (расписание форума в боте) — вынесенный хвост `handlers/admin_program.py`
+"""Форум-ночь п.4 (расписание форума в боте) — вынесенный хвост `handlers/forum/admin_program.py`
 (потолок размера модуля, `tests/test_module_size_convention_260816.py`, не архитектурная
 граница): экран «🏛 Залы» (список/переименование/удаление) и «📋 Скопировать программу из
 города…». Форма шва та же — своего `Router()` нет, `from handlers.admin import router`, каждый
-декоратор в одну строку; импортирован ХВОСТОМ `handlers/admin_program.py`, поэтому здесь можно
+декоратор в одну строку; импортирован ХВОСТОМ `handlers/forum/admin_program.py`, поэтому здесь можно
 безопасно, на уровне модуля, читать имена оттуда (`admin_program` к этому моменту уже полностью
 определён — тот же приём, что `handlers/applications/admin_reject_cond.py` поверх `admin_reject_rules.py`).
 Право — `settings`, тот же префиксный ключ `prog_*` (handlers/access/admin_caps.py)."""
@@ -22,7 +22,7 @@ from database.db import (
     list_program_sessions_for_city_day,
 )
 from handlers.admin import router
-from handlers.admin_program import (
+from handlers.forum.admin_program import (
     _CITY_FORBIDDEN_ALERT,
     _city_allowed,
     _sessions_word,
@@ -239,7 +239,7 @@ def wizard_conflict_kb() -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "prog_wretime")
 async def prog_wretime(callback: types.CallbackQuery, state: FSMContext):
-    from handlers.admin_program import _TIME_HINT
+    from handlers.forum.admin_program import _TIME_HINT
     data = await state.get_data()
     if data.get("pmode") != "new" or not data.get("pw_city"):
         await callback.answer("Создание сессии уже закрыто — начните заново.", show_alert=True)
@@ -253,7 +253,7 @@ async def prog_wretime(callback: types.CallbackQuery, state: FSMContext):
 
 async def wizard_after_retime(message: types.Message, state: FSMContext) -> None:
     """Новое время после конфликта: тот же зал проверяется заново, дальше — спикер."""
-    from handlers.admin_program import _wizard_ask_speaker
+    from handlers.forum.admin_program import _wizard_ask_speaker
     data = await state.get_data()
     warning = await hall_conflict_warning(
         data.get("pw_city"), data.get("pw_day"), data.get("pw_hall_id"), data.get("pw_start"), data.get("pw_end"),

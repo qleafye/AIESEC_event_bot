@@ -77,7 +77,7 @@ async def program_section_visible(p: Principal) -> bool:
 
 def _texts(lang: str, tr_map: dict) -> dict:
     """Подписи экрана — те же литералы, что у текстового вида программы в чате
-    (`handlers/program.py`, корпус `services/i18n_sources.py` «lit:program.*»): перевод уже
+    (`handlers/forum/program.py`, корпус `services/i18n_sources.py` «lit:program.*»): перевод уже
     есть, второй словарь не заводим."""
     def tr(text: str) -> str:
         return i18n.tr(text, lang, tr_map)

@@ -1,9 +1,9 @@
 """D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): циклический тумблер «Таблица/Фото»
 (`program_miniapp_view`) — что делегат видит по кнопке «📅 Программа» в Mini App.
 
-Отдельный шов, а не тело `handlers/admin_program.py` (тот на потолке размера,
+Отдельный шов, а не тело `handlers/forum/admin_program.py` (тот на потолке размера,
 `tests/test_module_size_convention_260816.py`, KNOWN_OVERAGES) и не тело
-`handlers/admin_forum_functions.py` (кнопка нужна ОБОИМ экранам — общий рендер строки живёт
+`handlers/forum/admin_forum_functions.py` (кнопка нужна ОБОИМ экранам — общий рендер строки живёт
 здесь один раз). Форма шва — эталон соседей (`admin_reject_reports.py`,
 `admin_program.py` сам): своего `Router()` нет, `from handlers.admin import router`; импортирован
 ИЗ ХВОСТА `handlers/admin_sections.py`, СРАЗУ ПОСЛЕ `admin_program` (golden snapshot:
@@ -64,10 +64,10 @@ async def prog_view_toggle_go(callback: types.CallbackQuery):
     # Ленивый импорт — оба модуля сами импортируют этот шов транзитивно (через хвост
     # admin_sections.py), обратный импорт на уровне модуля замкнул бы цикл.
     if back_to == "hub":
-        from handlers.admin_forum_functions import _render_hub
+        from handlers.forum.admin_forum_functions import _render_hub
         text, kb = await _render_hub(callback.from_user.id, code)
     else:
-        from handlers.admin_program import render_city_program_screen
+        from handlers.forum.admin_program import render_city_program_screen
         text, kb = await render_city_program_screen(callback.from_user.id, code)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -75,9 +75,9 @@ async def prog_view_toggle_go(callback: types.CallbackQuery):
 async def _back_screen(admin_id: int, code: str, back_to: str):
     # Ленивый импорт — тот же цикл-разрыв, что у prog_view_toggle_go выше.
     if back_to == "hub":
-        from handlers.admin_forum_functions import _render_hub
+        from handlers.forum.admin_forum_functions import _render_hub
         return await _render_hub(admin_id, code)
-    from handlers.admin_program import render_city_program_screen
+    from handlers.forum.admin_program import render_city_program_screen
     return await render_city_program_screen(admin_id, code)
 
 
@@ -126,7 +126,7 @@ async def prog_photo_start(callback: types.CallbackQuery, state: FSMContext):
 async def start_program_photo(callback: types.CallbackQuery, state: FSMContext, code: str, back_to: str):
     """Вход в загрузку — и с экранов программы, и с «📷 📅 Программа» раздела «🎪 Событие»
     (`handlers/admin_settings.py::settings_photo_start`, когда в шапке выбран город)."""
-    from handlers.admin_program import _city_allowed
+    from handlers.forum.admin_program import _city_allowed
 
     per_city = await cities_module_on()
     if per_city and (per_city_key(PROGRAM_PHOTO_KEY, code) is None
@@ -186,7 +186,7 @@ async def prog_photo_del_ask(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("prog_photo_delgo:"))
 async def prog_photo_del_go(callback: types.CallbackQuery):
-    from handlers.admin_program import _city_allowed
+    from handlers.forum.admin_program import _city_allowed
 
     _prefix, code, back_to = callback.data.split(":", 2)
     per_city = await cities_module_on()
@@ -204,7 +204,7 @@ async def prog_photo_del_go(callback: types.CallbackQuery):
 
 @router.message(ProgramPhotoUpload.waiting, F.photo)
 async def prog_photo_receive(message: types.Message, state: FSMContext):
-    from handlers.admin_program import _city_allowed
+    from handlers.forum.admin_program import _city_allowed
 
     data = await state.get_data()
     code, back_to = data.get("code"), data.get("back_to", "program")

@@ -63,7 +63,7 @@ async def city_now_line(key: str, current: str | None) -> str:
         return f"Сейчас у города: как везде — {_now_value(key, await get_setting(key))}"
     if current:
         return f"Сейчас у города:\n<b>{html_module.escape(current)}</b>"
-    from handlers.admin_forum_date import is_city_only_key
+    from handlers.forum.admin_forum_date import is_city_only_key
     return f"Сейчас у города: <i>{'даты нет' if is_city_only_key(key) else 'как везде'}</i>"
 
 

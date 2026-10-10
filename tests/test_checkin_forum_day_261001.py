@@ -134,7 +134,7 @@ def test_csv_upload_marks_but_warns_about_off_day(tmp_path, monkeypatch):
     from services.checkin import build_payload
     _run(_insert_user(952009, city="spb"))
     token = _run(bot_db.get_or_create_checkin_token(952009))
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     res = _run(checkin_csv_import.import_records(
         [{"qr": build_payload("YL26", "И", "spb", token), "scanned_at": "2026-10-02 18:00:00"}], "entry",
         session=None, bound_city=None, staff_id=1, bot=None, labels=admin_checkin._DENIAL_LABELS,
@@ -192,7 +192,7 @@ def test_scanner_has_mark_anyway_button_with_confirm():
 def _csv_untimed(rec_extra: dict, now: datetime, tmp_path, monkeypatch, uid: int):
     _setup(tmp_path, monkeypatch, now)
     from services.checkin import build_payload
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     _run(_insert_user(uid, city="spb"))
     token = _run(bot_db.get_or_create_checkin_token(uid))
     res = _run(checkin_csv_import.import_records(
@@ -233,7 +233,7 @@ def test_csv_ambiguous_us_date_is_swapped_into_forum_window(tmp_path, monkeypatc
     """«03/10/2026 10:15 AM» разбор читает как 10 марта (AM/PM = американский м/д). В окно форума
     СПб (03.10) попадает только перестановка — её и берём, со строкой отчёта."""
     from services.checkin import find_checkin_records, build_payload
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))
     _run(_insert_user(952015, city="spb"))
     token = _run(bot_db.get_or_create_checkin_token(952015))

@@ -1,5 +1,5 @@
 """Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20) — интерактивная
-программа сессий (handlers/program.py) + гейт кнопки меню (keyboards/builders.py::get_main_menu_kb).
+программа сессий (handlers/forum/program.py) + гейт кнопки меню (keyboards/builders.py::get_main_menu_kb).
 
 D-29: своей кнопки «🗓 Программа» больше нет — программа сессий это запасной вид объединённой
 кнопки «📅 Программа форума» (`handlers/user_actions.py::show_program`), когда фото не
@@ -16,7 +16,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from handlers import program as program_handlers
+from handlers.forum import program as program_handlers
 from handlers import user_actions
 from keyboards.builders import MENU_TEXTS, get_main_menu_kb
 from tests._dbtpl import fast_init_db

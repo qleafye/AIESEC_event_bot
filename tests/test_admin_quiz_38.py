@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from database import db, quiz_db as qdb, session_enroll_db as edb
-from handlers import admin_enroll_list as el
-from handlers import admin_forum_functions as aff
-from handlers import admin_quiz as aq
+from handlers.forum import admin_enroll_list as el
+from handlers.forum import admin_forum_functions as aff
+from handlers.forum import admin_quiz as aq
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import QuizEdit
 from tests._enroll38 import ADMIN_ID, CITY, ready, run
@@ -199,7 +199,7 @@ def test_foreign_city_denied(tmp_path):
 
 # ── Уровни, статистика, ссылка, тексты ───────────────────────────────────────────────────────
 
-from handlers import admin_quiz_levels as lv  # noqa: E402
+from handlers.forum import admin_quiz_levels as lv  # noqa: E402
 from handlers.states import EditSetting  # noqa: E402
 from services.quiz import QUIZ_TEXT_KEYS  # noqa: E402
 

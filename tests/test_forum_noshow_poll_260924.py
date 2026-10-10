@@ -1,6 +1,6 @@
 """Идея №23 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): опрос неявившихся
 «почему не пришёл» — `services/forum_noshow_poll.py` + делегатская сторона
-`handlers/forum_noshow_poll.py` + экран `handlers/admin_forum_functions.py`.
+`handlers/forum/forum_noshow_poll.py` + экран `handlers/forum/admin_forum_functions.py`.
 
 Стиль — `tests/test_checkin_volunteer_broadcast_260924.py`/`tests/test_forum_day_report_260924.py`
 (реальный AsyncIOScheduler на временном jobstore, `asyncio.run`, шаблонная БД
@@ -365,11 +365,11 @@ def test_send_poll_no_bot_returns_zeroes(tmp_path, monkeypatch):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# handlers/forum_noshow_poll.py: делегатская сторона
+# handlers/forum/forum_noshow_poll.py: делегатская сторона
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_fnsp_answer_records_and_thanks(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
     _ready(tmp_path)
     _run(db.forum_noshow_poll_mark_sent(UID, "msk", "", "2026-10-31 12:00:00"))
     cb = FakeCallback("fnsp:far", UID)
@@ -381,7 +381,7 @@ def test_fnsp_answer_records_and_thanks(tmp_path):
 
 
 def test_fnsp_answer_change_by_repeated_tap(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
     _ready(tmp_path)
     _run(db.forum_noshow_poll_mark_sent(UID, "msk", "", "2026-10-31 12:00:00"))
     _run(hfnsp.fnsp_answer(FakeCallback("fnsp:far", UID), _fresh_state(UID)))
@@ -392,7 +392,7 @@ def test_fnsp_answer_change_by_repeated_tap(tmp_path):
 
 
 def test_fnsp_answer_unknown_reason_is_noop(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
     _ready(tmp_path)
     cb = FakeCallback("fnsp:garbage", UID)
     _run(hfnsp.fnsp_answer(cb, _fresh_state(UID)))
@@ -400,7 +400,7 @@ def test_fnsp_answer_unknown_reason_is_noop(tmp_path):
 
 
 def test_fnsp_answer_stale_row_is_noop(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
     _ready(tmp_path)
     cb = FakeCallback("fnsp:far", UID)  # никогда не получал опрос -- строки нет
     _run(hfnsp.fnsp_answer(cb, _fresh_state(UID)))
@@ -408,7 +408,7 @@ def test_fnsp_answer_stale_row_is_noop(tmp_path):
 
 
 def test_fnsp_answer_other_sets_state_and_prompts(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
     from handlers.states import ForumNoshowPollOther
 
     _ready(tmp_path)
@@ -422,7 +422,7 @@ def test_fnsp_answer_other_sets_state_and_prompts(tmp_path):
 
 
 def test_fnsp_other_step_records_comment_and_thanks(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
 
     _ready(tmp_path)
     _run(db.forum_noshow_poll_mark_sent(UID, "msk", "", "2026-10-31 12:00:00"))
@@ -443,7 +443,7 @@ def test_fnsp_other_step_records_comment_and_thanks(tmp_path):
 
 
 def test_fnsp_other_step_empty_text_does_not_record(tmp_path):
-    from handlers import forum_noshow_poll as hfnsp
+    from handlers.forum import forum_noshow_poll as hfnsp
 
     _ready(tmp_path)
     _run(db.forum_noshow_poll_mark_sent(UID, "msk", "", "2026-10-31 12:00:00"))
@@ -518,7 +518,7 @@ def _cbs(kb):
 
 
 def test_hub_shows_noshow_poll_row_and_button(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
@@ -527,7 +527,7 @@ def test_hub_shows_noshow_poll_row_and_button(tmp_path):
 
 
 def test_cfg_screen_toggle_flips_global_setting(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     callback = FakeCallback("forumnoshowpoll_toggle:_all", ADMIN_ID)
@@ -539,7 +539,7 @@ def test_cfg_screen_toggle_flips_global_setting(tmp_path):
 
 
 def test_cfg_screen_shows_summary_line(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _run(db.forum_noshow_poll_mark_sent(1, None, "", "2026-10-31 12:00:00"))

@@ -6,7 +6,7 @@
 
 Шов той же формы, что соседние: своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `admin.router`, модуль импортируется ХВОСТОМ `handlers/admin.py` (golden snapshot: чистая
-вставка). `_city_allowed` — импорт из `handlers/admin_checkin.py` (не владеем файлом, только
+вставка). `_city_allowed` — импорт из `handlers/forum/admin_checkin.py` (не владеем файлом, только
 вызываем).
 
 В отличие от соседних карточных действий фазы (city_move/revert_pending/resubmit_grant/
@@ -25,7 +25,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
-from handlers.admin_checkin import _city_allowed
+from handlers.forum.admin_checkin import _city_allowed
 from handlers.states import ResumeReplace
 from services.resume_replace import preview_resume_replace, replace_resume, validate_resume_document
 

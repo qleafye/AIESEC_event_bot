@@ -6,7 +6,7 @@ D-29 (владелец, 24.09): своей кнопки меню больше н
 «📅 Программа форума» (`handlers/user_actions.py::show_program`), когда фото не загружено,
 но в боте заведена хотя бы одна сессия (`send_program_schedule_text` вызывается оттуда
 напрямую, `F.text`-фильтра на модуль больше нет). Данные ведёт менеджер в
-`handlers/admin_program.py`, здесь только чтение.
+`handlers/forum/admin_program.py`, здесь только чтение.
 
 Форма шва — та же, что у соседних делегатских экранов (FAQ/чек-ин): своего `Router()` нет,
 `from handlers.user_actions import router`; импортирован ХВОСТОМ `handlers/user_actions.py`
@@ -30,7 +30,7 @@ from services.timeutil import city_offset_hours, msk_now, shift_hours
 async def _resolve_delegate_city(telegram_id: int) -> str:
     """Расписанию «нет города» не бывает (в отличие от прочих делегатских экранов) — модуль
     городов выключен -> единственный (дефолтный) город события, тот же приём, что у
-    `handlers.admin_program._resolve_city_for_screen`/`keyboards.builders.get_main_menu_kb`."""
+    `handlers.forum.admin_program._resolve_city_for_screen`/`keyboards.builders.get_main_menu_kb`."""
     code = await _delegate_city(telegram_id)
     return code or default_city_code()
 

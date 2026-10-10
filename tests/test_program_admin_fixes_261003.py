@@ -10,7 +10,7 @@ import asyncio
 
 from domain.cities import per_city_key
 from database import db
-from handlers import admin_program, admin_program_view
+from handlers.forum import admin_program, admin_program_view
 from handlers.states import ProgramSessionField
 from tests import test_admin_program_260924 as tap
 from tests import test_program_photo_city_261003 as tpp

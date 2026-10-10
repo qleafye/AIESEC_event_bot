@@ -230,10 +230,10 @@ def test_pending_count_matches_pending_ids(tmp_path):
     assert _run(cna.pending_count()) == 1
 
 
-# ── handlers/admin_checkin.py: экран подтверждения + отправка ───────────────────────────────
+# ── handlers/forum/admin_checkin.py: экран подтверждения + отправка ───────────────────────────────
 
 def test_admin_confirm_shows_count_and_two_buttons(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _run(_add_user(2))
@@ -249,7 +249,7 @@ def test_admin_confirm_shows_count_and_two_buttons(tmp_path):
 
 
 def test_admin_confirm_alerts_when_nobody_pending(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     cb = FakeCallback("cna_send:_all", ADMIN_ID)
     _run(ac.cna_send_confirm(cb))
@@ -257,7 +257,7 @@ def test_admin_confirm_alerts_when_nobody_pending(tmp_path):
 
 
 def test_admin_send_go_executes_and_reports(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _with_bot()
@@ -272,7 +272,7 @@ def test_admin_send_go_executes_and_reports(tmp_path):
 def test_admin_send_go_reports_quiet_hours_separately(tmp_path):
     """Экран после отправки обязан назвать делегатов, попавших в тихие часы, отдельной строкой
     — менеджер должен понимать, что часть аудитории не тронута и её нужно дожать позже."""
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _run(db.set_setting("quiet_hours_enabled", "on"))
@@ -288,7 +288,7 @@ def test_admin_send_go_reports_quiet_hours_separately(tmp_path):
 
 
 def test_admin_send_cancel_does_not_send(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _with_bot()
@@ -401,7 +401,7 @@ def test_admin_confirm_names_city_and_today(tmp_path):
     """Подтверждение массовой отправки называет число, город и «сегодня» — менеджер видит, кому
     уйдёт, до нажатия."""
     from domain.cities import city_label
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     _run(_add_user(1, city="spb"))
@@ -420,7 +420,7 @@ def test_admin_confirm_names_city_and_today(tmp_path):
 # ── Итог после отправки: ушло меньше, чем обещал экран подтверждения ─────────────────────────
 
 def test_confirm_button_carries_count(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _run(_add_user(2))
@@ -432,7 +432,7 @@ def test_confirm_button_carries_count(tmp_path):
 
 def test_send_go_reports_fewer_than_confirmed(tmp_path):
     """На подтверждении было 3, за это время один отметился на входе — «Ушло 2 из 3»."""
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     from handlers.access.admin_caps import required_capability
     _ready(tmp_path)
     _run(_add_user(1))
@@ -448,7 +448,7 @@ def test_send_go_reports_fewer_than_confirmed(tmp_path):
 
 
 def test_send_go_reports_delivery_failure_separately(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _run(_add_user(2))
@@ -469,7 +469,7 @@ def test_send_go_reports_delivery_failure_separately(tmp_path):
 
 
 def test_send_go_all_sent_keeps_plain_report(tmp_path):
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _with_bot()
@@ -482,7 +482,7 @@ def test_send_go_all_sent_keeps_plain_report(tmp_path):
 
 def test_admin_confirm_shows_message_text_and_singular(tmp_path):
     """Приёмка 03.10: в подтверждении — сам текст, который уйдёт, и «1 делегату»."""
-    from handlers import admin_checkin as ac
+    from handlers.forum import admin_checkin as ac
     _ready(tmp_path)
     _run(_add_user(1))
     _run(db.set_setting("checkin_not_arrived_text", "Ты где? <b>Ждём</b>"))

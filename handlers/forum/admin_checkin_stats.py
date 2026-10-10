@@ -6,9 +6,9 @@
 
 Город — из шапки: закреплённый за менеджером город / модуль городов выключен — один отчёт;
 иначе «Все города» построчно по включённым городам + итог (та же развилка, что у счётчика
-`handlers.admin_checkin._counter_line`).
+`handlers.forum.admin_checkin._counter_line`).
 
-Форма шва — как у соседей (`handlers/admin_forum_functions.py`): своего `Router()` нет,
+Форма шва — как у соседей (`handlers/forum/admin_forum_functions.py`): своего `Router()` нет,
 `from handlers.admin import router`, импорт из хвоста `handlers/admin.py`. Право —
 `moderate_reg`, как у остальных менеджерских экранов чек-ина (рассылки QR, «Не пришли»), не
 волонтёрское `checkin`: волонтёру на стойке сводка по всему форуму не нужна."""

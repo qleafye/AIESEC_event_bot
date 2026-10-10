@@ -152,7 +152,7 @@ async def render_questions_screen(
             )])
         else:
             # Quick 260906-8uq (FAQ-04): под ОТВЕЧЕННЫМ вопросом — кнопка «В FAQ», ведёт в
-            # handlers/admin_faq.py::afaq_from_question (черновик правится ДО сохранения).
+            # handlers/forum/admin_faq.py::afaq_from_question (черновик правится ДО сохранения).
             buttons.append([InlineKeyboardButton(
                 text=f"❓ В FAQ #{row['id']}", callback_data=f"afaq_from:{row['id']}",
             )])
