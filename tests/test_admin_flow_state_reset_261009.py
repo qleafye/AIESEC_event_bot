@@ -13,7 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from handlers import states
 from handlers.admin import cmd_admin_help
-from handlers.admin_cities import admin_menu_root
+from handlers.cities.admin_cities import admin_menu_root
 from tests._dbtpl import fast_init_db
 
 

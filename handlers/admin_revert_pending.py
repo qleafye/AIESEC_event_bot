@@ -2,7 +2,7 @@
 `/find` (`handlers/admin.py::cmd_find_user`), сам перевод — `services/revert_pending.py`.
 
 Не форумная функция (админ-действие модератора) — своей строки в хабе «🎪 Форум: функции»
-нет и не нужно (см. рабочее задание фазы, тот же посыл, что у `handlers/admin_city_move.py`).
+нет и не нужно (см. рабочее задание фазы, тот же посыл, что у `handlers/cities/admin_city_move.py`).
 
 Шов той же формы, что соседние: своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `admin.router`, модуль импортируется ХВОСТОМ `handlers/admin.py` (golden snapshot: чистая

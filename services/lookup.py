@@ -156,7 +156,7 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
     """Топ-8 чипов (30-CONTEXT.md решение владельца №4): закреплённые менеджером ПЕРВЫМИ
     (порядок `canonical`, план 30-07 — экран закрепления), затем самые частые ОТВЕТЫ ТЕКУЩЕГО
     сезона (`bot_settings.event_season`, тот же ключ, каким сезон читают соседние агрегаты —
-    `handlers/admin_cities.py`/`dashboard/queries.py`) по колонке `users`, добито до `limit`.
+    `handlers/cities/admin_cities.py`/`dashboard/queries.py`) по колонке `users`, добито до `limit`.
     Пустой сезон/колонка без данных/легаси-схема без `season` (тестовые БД старых миграций,
     `database/db.py::_column_exists` — тот же fail-soft приём, здесь через `try/except`, т.к.
     модуль не лезет в приватные хелперы `database.db`) — просто закреплённые (или пустой
