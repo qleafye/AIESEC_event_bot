@@ -228,7 +228,7 @@ EXPECTED_PER_CITY_KEYS = {
     # городов идут в разные дни (03.10 регионы, 30.10 Москва) — общее время/тумблер разослали
     # бы QR не тому городу не в тот день (IDEAS-CHECKIN-BACKLOG-260924.md, п. A1).
     "checkin_qr_broadcast_enabled", "checkin_qr_broadcast_time",
-    "checkin_qr_morning_repeat_time", "checkin_qr_broadcast_text",
+    "checkin_qr_morning_repeat_time", "checkin_qr_morning_catchup_until", "checkin_qr_broadcast_text",
     # Утренний повтор QR в день форума — свой текст (без «Завтра форум!»), та же ось.
     "checkin_qr_morning_text",
     # Часовой пояс города (смещение от МСК, кнопки): у каждого города свой.

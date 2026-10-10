@@ -79,3 +79,26 @@ def test_question_stuck_threshold_follows_setting(tmp_path, monkeypatch):
 
     _run(db.set_setting("question_stuck_minutes", "0"))
     assert _run(questions.load_stuck_minutes()) == 30  # мусор — дефолт, а не «залип сразу»
+
+
+# ── QR: до скольки догонять утренний повтор ─────────────────────────────────────────────
+
+def test_morning_catchup_until_follows_setting(tmp_path):
+    from datetime import time
+    from services import checkin_broadcast as cb
+
+    _ready(tmp_path, "timings_qr.db")
+    run_at = datetime(2026, 10, 10, 8, 0)
+    at_13 = datetime(2026, 10, 10, 13, 0)
+
+    until = _run(cb.morning_catchup_until(None))
+    assert until == time(12, 0)  # дефолт — прежние 12:00
+    assert cb.morning_catchup_ok(run_at, at_13, until) is False
+
+    _run(db.set_setting("checkin_qr_morning_catchup_until", "15:00"))
+    until = _run(cb.morning_catchup_until(None))
+    assert until == time(15, 0)
+    assert cb.morning_catchup_ok(run_at, at_13, until) is True
+
+    _run(db.set_setting("checkin_qr_morning_catchup_until", "обед"))
+    assert _run(cb.morning_catchup_until(None)) == time(12, 0)

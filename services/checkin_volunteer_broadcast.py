@@ -128,7 +128,7 @@ async def schedule_city_job(city: str | None) -> dict:
         # повтора QR; время прошло и там — снимаем. Повтор тем, кто уже получил, отсекает
         # checkin_volunteer_guide_sends (по дню форума).
         from services.checkin_broadcast import (
-            EVENING_CATCHUP_CUTOFF, _times_for, morning_catchup_ok, morning_run_at,
+            EVENING_CATCHUP_CUTOFF, _times_for, morning_catchup_ok, morning_catchup_until, morning_run_at,
         )
         if forum_day > now.date() and now.time() < EVENING_CATCHUP_CUTOFF:
             run_at = now + timedelta(minutes=1)
@@ -137,7 +137,7 @@ async def schedule_city_job(city: str | None) -> dict:
             run_at = morning_run_at(date_str, morning_hhmm)
             if run_at <= now:
                 pending = sched.get_job(jid) is not None
-                if not (pending and morning_catchup_ok(run_at, now)):
+                if not (pending and morning_catchup_ok(run_at, now, await morning_catchup_until(city))):
                     cancel_city_job(city)
                     return {"scheduled": False, "reason": "too_late"}
                 run_at = now + timedelta(minutes=1)
