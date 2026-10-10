@@ -74,7 +74,7 @@ def _capture_notify(monkeypatch):
 async def _submit(bot, user_id, submission_id=1, task_id=7):
     await gd.notify_submission(
         bot, submission_id=submission_id, user_id=user_id, task_id=task_id,
-        task_text="Сфоткай <кота>", submitter_name="Иван <Иванов>",
+        task_title="Сфоткай <кота>", submitter_name="Иван <Иванов>",
     )
 
 

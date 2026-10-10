@@ -83,6 +83,7 @@ from database.db import (
     mark_miniapp_outbox_failed,
     mark_miniapp_outbox_processed,
     get_user,
+    task_title,
 )
 from services.applications.application_effects import apply_decision_effects, mass_approve_effects
 from services.game.coins_notify import notify_manual_coins
@@ -200,7 +201,8 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             submission_id=payload.get("submission_id"),
             user_id=payload.get("user_id"),
             task_id=payload.get("task_id"),
-            task_text=payload.get("task_text"),
+            # строка от приложения прежней версии несёт только текст — название из него
+            task_title=payload.get("task_title") or task_title({"text": payload.get("task_text")}),
             submitter_name=payload.get("submitter_name"),
         )
         return
