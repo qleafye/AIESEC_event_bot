@@ -716,6 +716,8 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # список тумблеров раздела «🔧 Управление» — та же капа, что у «🌙 Тихие часы» выше.
     "toggle_chat_tracking_enabled": "settings",
     "admin_chat_rating": "settings",  # Квик 260927: экран «🏆 Рейтинг чата» (раздел «🔧 Управление»)
+    "chimp:*": "settings",  # «📥 Загрузить историю чата» с экрана рейтинга: выбор чата, подтверждение
+    "state:ChatExportImport:*": "settings",  # ожидание файла result.json и подтверждение
     "chrate:*": "settings",  # его кнопки: режим, суммы правил, галочки заданий
     "state:ChatRatingEdit:*": "settings",  # ввод суммы правила / названия баллов
     "admin_chat_cleanup": "settings",  # Квик 260927: экран «🧹 Служебные сообщения в чате»

@@ -788,6 +788,10 @@ admin|message|resumerep_cancel_text|state:ResumeReplace:*
 admin|message|resumerep_receive_file|state:ResumeReplace:*
 admin|message|resumerep_receive_other|state:ResumeReplace:*
 admin|message|chrate_value|state:ChatRatingEdit:*
+admin|message|chat_import_cancel|state:ChatExportImport:*,state:ChatExportImport:*
+admin|message|chat_import_cancel|state:ChatExportImport:*,state:ChatExportImport:*
+admin|message|chat_import_file|state:ChatExportImport:*
+admin|message|chat_import_not_document|state:ChatExportImport:*
 admin|message|chclean_delay_value|state:ChatCleanupEdit:*
 admin|message|chpost_value|state:ChatRatingPostEdit:*
 admin|message|amb_limit_value|state:AmbSlotsEdit:*
@@ -1440,6 +1444,10 @@ admin|callback_query|chrate_edit|chrate:edit:*
 admin|callback_query|chrate_reset|chrate:rst:*
 admin|callback_query|chrate_tasks|chrate:tasks:*
 admin|callback_query|chrate_task_toggle|chrate:task:*
+admin|callback_query|chat_import_open|chimp:open
+admin|callback_query|chat_import_pick|chimp:chat:*
+admin|callback_query|chat_import_cancel_button|chimp:cancel
+admin|callback_query|chat_import_go|chimp:go
 admin|callback_query|chat_cleanup_open|admin_chat_cleanup
 admin|callback_query|chclean_toggle|chclean:t:*
 admin|callback_query|chclean_delay|chclean:delay
@@ -2458,7 +2466,8 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (ретро-применение автоотказа): +3 admin.callback_query сразу после arp_sync (1224 -> 1227).
     # 10.10 («Начислить за прошлых приглашённых»): +2 admin.callback_query после amb_points_toggle (1227 -> 1229).
     # 10.10 («Сбросить статусы» амбассадоров): +3 admin.callback_query после amb_backfill_go (1229 -> 1232).
-    assert len(GOLDEN_SNAPSHOT) == 1232
+    # 10.10 («Загрузить историю чата»): +4 admin.message и +4 admin.callback_query у экрана рейтинга чата (1232 -> 1240).
+    assert len(GOLDEN_SNAPSHOT) == 1240
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

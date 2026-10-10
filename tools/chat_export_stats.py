@@ -65,17 +65,13 @@ class ExportError(Exception):
 # Разбор входа
 # ---------------------------------------------------------------------------
 
-def load_export(path: str) -> dict:
-    """Читает и валидирует result.json. Не тот файл/формат -> ExportError с русским текстом."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            raw = f.read()
-    except OSError as e:
-        raise ExportError(f"Не удалось открыть файл «{path}»: {e}. {_HOWTO}") from e
+def parse_export(raw: str, label: str) -> dict:
+    """Разбирает и валидирует текст result.json; `label` — как назвать файл в ошибке
+    (путь в тулe, имя файла в боте). Не тот файл/формат -> ExportError с русским текстом."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ExportError(f"Файл «{path}» — не JSON ({e}). {_HOWTO}") from e
+        raise ExportError(f"Файл «{label}» — не JSON ({e}). {_HOWTO}") from e
     if not isinstance(data, dict):
         raise ExportError(
             f"Корень экспорта должен быть объектом, а получено {type(data).__name__}. {_HOWTO}"
@@ -83,9 +79,19 @@ def load_export(path: str) -> dict:
     messages = data.get("messages")
     if not isinstance(messages, list):
         raise ExportError(
-            f"В файле «{path}» нет списка «messages» — это не экспорт чата Telegram Desktop. {_HOWTO}"
+            f"В файле «{label}» нет списка «messages» — это не экспорт чата Telegram Desktop. {_HOWTO}"
         )
     return data
+
+
+def load_export(path: str) -> dict:
+    """Читает и валидирует result.json. Не тот файл/формат -> ExportError с русским текстом."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        raise ExportError(f"Не удалось открыть файл «{path}»: {e}. {_HOWTO}") from e
+    return parse_export(raw, path)
 
 
 def _author_id_from_from_id(raw) -> int | None:
