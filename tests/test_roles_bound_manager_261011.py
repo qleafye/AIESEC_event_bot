@@ -185,3 +185,61 @@ def test_bound_manager_removes_role_in_own_city_and_superadmin_anywhere(tmp_path
         FakeCallback(f"roles_del_ok:{NEWCOMER_ID}:game_manager", user_id=ADMIN_ID),
     ))
     assert asyncio.run(db.get_staff_roles(NEWCOMER_ID)) == []
+
+
+# ── «⏳ Срок действия роли»: менеджер с городом — только у людей своего города (ревью 11.10) ──
+
+class _DateMessage:
+    def __init__(self, text, uid):
+        self.text = text
+        self.from_user = SimpleNamespace(id=uid)
+        self.answers = []
+
+    async def answer(self, text=None, **kwargs):
+        self.answers.append(text)
+
+
+def _expiry(tid=NEWCOMER_ID):
+    rows = [r for r in asyncio.run(db.list_staff()) if r["telegram_id"] == tid]
+    return rows[0]["expires_at"]
+
+
+def test_bound_manager_cannot_change_expiry_of_all_cities_or_other_city_person(tmp_path):
+    code = _bound_manager(tmp_path)
+    other = next(c for c in cities.city_codes() if c != code)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))  # на всех городах
+
+    for city, marker in ((None, admin_roles.ROLES_ALL_CITIES_EXPIRY_TEXT), (other, "работает в городе")):
+        if city:
+            asyncio.run(db.set_staff_city(NEWCOMER_ID, city))
+        for data, handler in (
+            (f"rexp:{NEWCOMER_ID}:game_manager", admin_roles.roles_expiry_start),
+            (f"rexp_go:{NEWCOMER_ID}:game_manager:none", admin_roles.roles_expiry_go),
+        ):
+            cb = FakeCallback(data, user_id=MANAGER_ID)
+            asyncio.run(handler(cb))
+            assert cb.answers and cb.answers[0][1] is True and marker in cb.answers[0][0], data
+        state = _state(MANAGER_ID)
+        cb = FakeCallback(f"rexp_custom:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID)
+        asyncio.run(admin_roles.roles_expiry_custom_start(cb, state))
+        assert cb.answers and marker in cb.answers[0][0]
+        assert asyncio.run(state.get_state()) is None
+
+    # Ввод даты в уже открытом состоянии (начат до смены города / подделан) — тоже отказ.
+    state = _state(MANAGER_ID)
+    asyncio.run(state.set_state(admin_roles.RolesExpiryEdit.waiting_date))
+    asyncio.run(state.update_data(rexp_tid=NEWCOMER_ID, rexp_role="game_manager"))
+    msg = _DateMessage("04.10.2030", MANAGER_ID)
+    asyncio.run(admin_roles.roles_expiry_custom_step(msg, state))
+    assert any("работает в городе" in (t or "") for t in msg.answers)
+    assert _expiry() is None
+
+
+def test_bound_manager_changes_expiry_in_own_city(tmp_path):
+    code = _bound_manager(tmp_path)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID, city=code))
+    state = _state(MANAGER_ID)
+    asyncio.run(state.set_state(admin_roles.RolesExpiryEdit.waiting_date))
+    asyncio.run(state.update_data(rexp_tid=NEWCOMER_ID, rexp_role="game_manager"))
+    asyncio.run(admin_roles.roles_expiry_custom_step(_DateMessage("04.10.2030", MANAGER_ID), state))
+    assert _expiry() == "2030-10-04"
