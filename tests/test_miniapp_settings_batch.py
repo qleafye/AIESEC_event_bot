@@ -565,3 +565,26 @@ def test_batch_write_logs_author(tmp_path, caplog):
         resp = _batch(client, [("nudge_after_minutes", "15")])
     assert resp.status_code == 200, resp.text
     assert f"admin={ADMIN_ID} setting nudge_after_minutes <- '15'" in caplog.text
+
+
+# ── падение посреди пакета: бот узнаёт о том, что успело записаться ──────────────────────
+
+def test_batch_failure_midway_still_queues_event_for_saved_keys(tmp_path, no_tab, monkeypatch):
+    client = _setup(tmp_path, "miniapp_settings_batch_partial.db")
+    real = settings_ops.commit_batch_item
+
+    async def flaky(key, value, admin_id=None, *a, **kw):
+        if key == "reg_resume_ttl_hours":
+            raise RuntimeError("диск")
+        return await real(key, value, admin_id, *a, **kw)
+
+    monkeypatch.setattr(settings_ops, "commit_batch_item", flaky)
+    resp = _batch(client, [("event_name", "форума RusCo"), ("reg_resume_ttl_hours", "48"),
+                           ("nudge_after_minutes", "15")])
+    assert resp.status_code == 500
+    detail = resp.json()
+    assert detail["reason"] == "partial_save" and detail["saved"] == ["event_name"]
+    assert detail["failed_key"] == "reg_resume_ttl_hours" and "Сохранилось не всё" in detail["text"]
+    assert _raw("event_name") == "форума RusCo" and _raw("nudge_after_minutes") is None
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "settings_changed"]
+    assert rows and "event_name" in rows[-1]["payload"]["keys"]
