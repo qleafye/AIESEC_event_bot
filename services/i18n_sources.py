@@ -440,6 +440,15 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append(("lit:user_actions.process_question_none_configured", "Администраторы не настроены."))
     items.append(("lit:user_actions.cancel_question", "Действие отменено."))
+    # handlers/menu_tap_escape.py::ESCAPE_NOTICES — кнопка меню посреди ответа делегата.
+    for group, text in (
+        ("Question", "Вопрос не отправлен."),
+        ("GameSubmit", "Подтверждение задания не отправлено."),
+        ("SessionFeedbackComment", "Комментарий не отправлен."),
+        ("ForumNoshowPollOther", "Ответ не отправлен."),
+        ("SosReport", "🆘 SOS уже у организаторов, дописывание закрыто."),
+    ):
+        items.append((f"lit:menu_tap_escape.{group}", text))
     items.append((
         "lit:admin_no_access.admin_no_access",
         "Это команда для организаторов. Если вы организатор — попросите доступ у руководителя.",
