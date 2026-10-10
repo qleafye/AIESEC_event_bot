@@ -62,8 +62,8 @@ async def render_reports_screen(admin_id: int) -> tuple[str, InlineKeyboardMarku
     if tab:
         buttons.append([InlineKeyboardButton(text="🔄 Обновить вкладку сейчас", callback_data="arp_sync")])
 
-    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
-    buttons.append([back_button("admin_reject_rules")])
+    # Вход — с экрана правил; back_button вёл мимо него в раздел «📋 Заявки».
+    buttons.append([InlineKeyboardButton(text="← К правилам автоотказа", callback_data="admin_reject_rules")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
