@@ -771,6 +771,7 @@ async def settings_batch(
                     "reason": "partial_save",
                     "saved": saved,
                     "failed_key": failure[0],
+                    "bot_applied": bot_applied,
                     "text": ("Сохранилось не всё: " + (f"записано {len(saved)}, " if saved else "")
                              + "остальное не записалось. Откройте раздел заново, проверьте "
                              "значения и повторите сохранение."),

@@ -585,6 +585,7 @@ def test_batch_failure_midway_still_queues_event_for_saved_keys(tmp_path, no_tab
     detail = resp.json()
     assert detail["reason"] == "partial_save" and detail["saved"] == ["event_name"]
     assert detail["failed_key"] == "reg_resume_ttl_hours" and "Сохранилось не всё" in detail["text"]
+    assert detail["bot_applied"] is True
     assert _raw("event_name") == "форума RusCo" and _raw("nudge_after_minutes") is None
     rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "settings_changed"]
     assert rows and "event_name" in rows[-1]["payload"]["keys"]
