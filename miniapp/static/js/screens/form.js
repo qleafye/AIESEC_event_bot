@@ -894,6 +894,7 @@ export async function render(root, params, ctx) {
       async function next() {
         if (busy) return;
         busy = true;
+        syncNext();
         const picked = options.find((o) => o.label === chosen);
         // Без выбора уходит пустая строка — текст ошибки вернёт сервер (литерала здесь нет).
         const body = { version: d.version };
@@ -905,6 +906,8 @@ export async function render(root, params, ctx) {
           drawCurrent();
         } catch (err) {
           busy = false;
+          // Сетевая ошибка или отказ сервера — «Дальше» снова активна, иначе повторить нечем.
+          syncNext();
           if (err && err.status === 400 && err.reason === "invalid" && err.payload && err.payload.errors) {
             showError(err.payload.errors[item.field] || failText(err));
           } else if (err && err.status === 409 && err.reason === "already_set") {

@@ -25,6 +25,7 @@ ask_step`, показ уже готов планом 28-02, здесь толь�
 «Назад» логически обязан жить там, а не здесь.
 """
 from aiogram import F, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
@@ -84,7 +85,10 @@ async def _attach_kb(message: types.Message, sent, kb: InlineKeyboardMarkup) -> 
         lang, tr_map = await reg_i18n.ctx_for(message)
         await sent.edit_reply_markup(reply_markup=reg_i18n.tr_kb(kb, lang, tr_map))
         return True
-    except Exception:
+    except TelegramBadRequest:
+        # Telegram отказал сменить разметку — кнопки уйдут отдельным сообщением. Таймаут и
+        # прочие сбои сети сюда не ловим: разметка могла уже встать, и запасное сообщение
+        # дало бы второе «Выбери способ».
         return False
 
 
