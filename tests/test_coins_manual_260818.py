@@ -628,7 +628,7 @@ def test_export_coins_journal_csv_neutralizes_formula_injection_in_reason(tmp_pa
 
 def test_coins_journal_menu_row_visible_for_moderate_game_hidden_for_moderate_reg(tmp_path):
     _db_ready(tmp_path)
-    row = ("📜 Журнал баллов", "admin_coins_journal")
+    row = ("📜 Ручные начисления", "admin_coins_journal")
     assert row in admin_mod._ADMIN_MENU_ROWS
     assert row in admin_mod._visible_menu_rows({"moderate_game"})
     assert row not in admin_mod._visible_menu_rows({"moderate_reg"})
@@ -672,6 +672,24 @@ def test_coins_journal_screen_empty_shows_placeholder_and_csv_button(tmp_path):
     assert "Ручных операций пока не было." in text
     flat = [btn.callback_data for row in kb.inline_keyboard for btn in row]
     assert "coinsjrn_csv" in flat
+
+
+def test_coins_journal_screen_says_it_is_manual_and_where_task_awards_live(tmp_path):
+    """Решение владельца 11.10: экран остаётся журналом РУЧНЫХ начислений. Чтобы менеджер не
+    ждал тут «+10 (задание)», заголовок говорит «Ручные начисления», а строка под ним — где
+    искать баллы за задания (CSV и «📊 Статистика геймы»). Задание на экран по-прежнему не
+    попадает."""
+    _db_ready(tmp_path)
+    _seed_delegate()
+    asyncio.run(db.add_coins(DELEGATE_ID, 10, reason="Задание: Стенд", changed_by=ADMIN_ID, source="task"))
+    asyncio.run(db.add_coins(DELEGATE_ID, 5, reason="за приёмку", changed_by=ADMIN_ID, source="manual"))
+    text, kb = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
+    assert text.splitlines()[0] == "📜 <b>Ручные начисления</b>"
+    assert "Баллы за задания — построчно в выгрузке CSV ниже, итогом — в «📊 Статистика геймы»." in text
+    assert "Журнал баллов" not in text
+    assert "за приёмку" in text and "Задание: Стенд" not in text
+    csv_btn = [b for row in kb.inline_keyboard for b in row if b.callback_data == "coinsjrn_csv"]
+    assert csv_btn and "с заданиями" in csv_btn[0].text
 
 
 def test_coinsjrn_csv_sends_document_with_content(tmp_path):

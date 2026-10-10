@@ -1196,13 +1196,20 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
     total = await count_manual_coin_entries()
     rows = await list_manual_coin_entries(limit=10, offset=offset)
 
-    lines = ["📜 <b>Журнал баллов</b>"]
+    # Решение владельца 11.10: экран — журнал РУЧНЫХ начислений; задания сюда не попадают,
+    # и экран сам говорит, где их искать (иначе менеджер ждёт тут «+10 (задание)»).
+    lines = [
+        "📜 <b>Ручные начисления</b>",
+        "«🪙 Баллы вручную», «+N» в чате и перенос из таблицы. Баллы за задания — построчно "
+        "в выгрузке CSV ниже, итогом — в «📊 Статистика геймы».",
+    ]
     if total == 0:
         lines.append("")
         lines.append("Ручных операций пока не было.")
     else:
         total_pages = (total + limit - 1) // limit
         current_page = offset // limit + 1
+        lines.append("")
         lines.append(f"Страница {current_page} из {total_pages}")
         lines.append("")
         for row in rows:
@@ -1234,7 +1241,7 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
         ))
     if nav_row:
         buttons.append(nav_row)
-    buttons.append([InlineKeyboardButton(text="📄 Выгрузить журнал (CSV)", callback_data="coinsjrn_csv")])
+    buttons.append([InlineKeyboardButton(text="📄 Все операции с баллами, с заданиями (CSV)", callback_data="coinsjrn_csv")])
     buttons.append([InlineKeyboardButton(text="← Назад", callback_data="admin_menu")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -1270,7 +1277,7 @@ async def coinsjrn_csv(callback: types.CallbackQuery):
     writer.writerows(rows)
     file_bytes = output.getvalue().encode('utf-8-sig')
     document = BufferedInputFile(file_bytes, filename="coins_journal.csv")
-    await callback.message.answer_document(document, caption="Журнал баллов — все операции")
+    await callback.message.answer_document(document, caption="Все операции с баллами — ручные и за задания")
     await callback.answer()
 
 
@@ -1984,6 +1991,7 @@ async def show_game_stats(callback: types.CallbackQuery):
             f"⏳ На проверке: {stats['pending']}",
             f"✅ Одобрено: {stats['approved']}",
             f"❌ Отклонено: {stats['rejected']}",
+            f"🪙 Начислено баллов за задания: {stats.get('coins_awarded', 0)}",
             "",
             "<b>По категориям (одобрено):</b>",
         ]
