@@ -34,7 +34,7 @@ def test_other_key_and_no_scheduler_are_noops(tmp_path, monkeypatch):
 
 
 def test_miniapp_outbox_runs_setting_hooks(monkeypatch):
-    from services import miniapp_outbox
+    from services.infra import miniapp_outbox
     import services.settings.audit as settings_audit
 
     seen = []

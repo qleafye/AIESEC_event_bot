@@ -54,7 +54,7 @@ from services.applications import (
     IT_3PLUS_BADGE_TEXT as _IT_3PLUS_BADGE_TEXT,
 )
 from services.application_effects import apply_decision_effects, mass_approve_effects
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from services.consent import consent_card_line  # noqa: F401 — читает admin_modcard_render
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
@@ -63,7 +63,7 @@ from domain.settings.schema import get_setting_typed
 from domain.cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.applications.admin_modcard_render import build_card_text
 from handlers.settings.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
-from services.ru_plural import ru_plural
+from services.infra.ru_plural import ru_plural
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)

@@ -27,7 +27,7 @@ from config import config
 from database import db
 from keyboards.builders import get_main_menu_kb
 from services import forum_day_menu as fdm
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 926001

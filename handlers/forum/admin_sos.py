@@ -41,7 +41,7 @@ from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
-from services.timeutil import city_offset_hours, msk_now
+from services.infra.timeutil import city_offset_hours, msk_now
 
 logger = logging.getLogger(__name__)
 

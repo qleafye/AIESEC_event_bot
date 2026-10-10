@@ -44,7 +44,7 @@ from domain.i18n.ui_en import DONE_WORDS
 from keyboards.builders import get_main_menu_kb
 from keyboards.menu_dynamic import MenuButton
 from services import sos as sos_service
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

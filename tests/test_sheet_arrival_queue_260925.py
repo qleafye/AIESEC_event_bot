@@ -280,7 +280,7 @@ def test_missing_row_waits_and_is_written_when_row_appears(tmp_path, monkeypatch
     выбрасывается: ждёт с редким повтором и пишется, когда строка появилась."""
     from datetime import datetime, timedelta
 
-    from services import timeutil
+    from services.infra import timeutil
     _use_tmp_db(tmp_path)
     main, _ = _two_tabs(monkeypatch)
     t0 = datetime(2026, 10, 3, 9, 5)
@@ -312,7 +312,7 @@ def test_missing_row_waits_and_is_written_when_row_appears(tmp_path, monkeypatch
 def test_missing_row_gives_up_after_a_week(tmp_path, monkeypatch):
     from datetime import datetime, timedelta
 
-    from services import timeutil
+    from services.infra import timeutil
     _use_tmp_db(tmp_path)
     main, _ = _two_tabs(monkeypatch)
     t0 = datetime(2026, 10, 3, 9, 5)

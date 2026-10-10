@@ -17,7 +17,7 @@ import json
 import aiosqlite
 
 from database import db as _db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 _FMT = "%Y-%m-%d %H:%M:%S"
 _ERR_MAX = 300

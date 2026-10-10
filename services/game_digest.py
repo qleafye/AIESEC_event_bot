@@ -31,7 +31,7 @@ from database.db import (
 )
 from domain.settings.schema import GAME_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
 from services import scheduler as _sched
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from services import onsite_reg, venue_log
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_checkin_260924 import (

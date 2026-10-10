@@ -91,7 +91,7 @@ from services.scheduler import (
     send_mute_offer_if_eligible,
 )
 from services.allowlist import refresh_allowlist, allowlist_size
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
 from services.broadcast_scope import (
     past_season_note, restrict_to_sender_city, season_default_filter, sender_city_note, split_by_sender_city,

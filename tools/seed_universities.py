@@ -509,7 +509,7 @@ def find_alias_collisions(items: list[dict]) -> list[tuple[str, list[str]]]:
 
 
 async def main(apply: bool, from_config: bool, curated: bool) -> int:
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     fetched_at_stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
 

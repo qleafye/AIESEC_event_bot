@@ -23,7 +23,7 @@
     settings_changed           {keys, by, prev_bot_name}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
-код (`services/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
+код (`services/infra/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
 никто извне не сбрасывает, это единственный путь веб-процесса туда. При `reason="takeover"`
 делегату дополнительно уходит уведомление «анкета открыта в приложении»; при
 `reason="submitted"` — молча (приложение уже показало экран «Заявка принята»).

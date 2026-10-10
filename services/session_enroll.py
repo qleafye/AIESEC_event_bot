@@ -23,7 +23,7 @@ from database import session_enroll_db as _edb
 from database.db import get_program_hall, get_program_session, get_user, list_program_days_for_city
 from services.checkin import checkin_denial
 from services.program import group_parallel, sessions_for_city_day
-from services.timeutil import city_now
+from services.infra.timeutil import city_now
 
 logger = logging.getLogger(__name__)
 

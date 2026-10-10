@@ -41,7 +41,7 @@ from database.db import (
     get_user,
     record_answer_history,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

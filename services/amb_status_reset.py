@@ -114,7 +114,7 @@ async def preview(scope: str) -> dict:
 async def apply(scope: str, plan: dict | None = None) -> dict:
     """Сбрасывает статусы (по уже полученному `plan` из `preview` или по свежей выборке). Возвращает `{season, done: [row], skipped: [telegram_id]}`."""
     from database import amb_status_db
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     plan = plan if plan is not None else await collect(scope)
     if not (plan.get("season") or "").strip():

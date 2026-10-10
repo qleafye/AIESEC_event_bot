@@ -3,7 +3,7 @@
 Переезд из `handlers/admin.py::_notify_manual_coins` (16.09). Причина переезда — находка
 ревизии: ручные монеты, начисленные из Mini App (`miniapp/routers/coins_admin.py`), делегату
 не приходили ВООБЩЕ. Веб пишет событие `coins_manual` в `miniapp_outbox`, а разборщик
-(`services/miniapp_outbox.py`) до этого дня только просил пересборку вкладок геймы — про
+(`services/infra/miniapp_outbox.py`) до этого дня только просил пересборку вкладок геймы — про
 уведомление там не было ни строки, тогда как путь из чата (мастер «🪙 Монеты» и `/coins`)
 уведомлял через `services.quiet_hours`. Класть копию текста в разборщик значило бы завести
 второй источник формулировки; поэтому функция живёт здесь, а оба пути её зовут.
@@ -22,7 +22,7 @@ from __future__ import annotations
 import html as html_module
 import logging
 
-from services.ru_plural import agree_placeholder
+from services.infra.ru_plural import agree_placeholder
 from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)

@@ -51,7 +51,7 @@ def _db_ready(tmp_path, name="test_checkin_qr_admin_ui_260924.db"):
 def _forum_tomorrow():
     """Ручная «📤 Разослать QR сейчас» проверяет дату форума города — завтра подходит."""
     from datetime import timedelta
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     day = (msk_now() + timedelta(days=1)).strftime("%d.%m.%Y")
     asyncio.run(db.set_setting("forum_date", day))
 
@@ -254,7 +254,7 @@ def test_send_go_ignores_quiet_hours(tmp_path, monkeypatch):
     asyncio.run(db.set_setting("quiet_hours_end", "09:00"))
     # 23:00 накануне форума: дата форума выше берётся от реального «сегодня», поэтому и «сейчас»
     # считаем от него, а не фиксированной датой (иначе тест протухает, как только дата прошла).
-    from services.timeutil import msk_now as real_msk_now
+    from services.infra.timeutil import msk_now as real_msk_now
     evening = real_msk_now().replace(hour=23, minute=0, second=0, microsecond=0)
     monkeypatch.setattr(broadcast_svc, "msk_now", lambda: evening)
 
@@ -528,7 +528,7 @@ def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
 def test_forum_date_from_app_outbox_reschedules_jobs(tmp_path, monkeypatch):
     """Дата форума, сохранённая из приложения, доходит до бота только событием
     `settings_changed`; разборщик очереди обязан переставить QR-джобу сразу, не после рестарта."""
-    from services import miniapp_outbox
+    from services.infra import miniapp_outbox
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))

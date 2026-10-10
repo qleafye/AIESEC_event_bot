@@ -41,7 +41,7 @@ from database.db import (
     upsert_auto_reject_log,
 )
 from services.reject_rules import rule_summary
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.ops import per_city_visible_codes
 
 logger = logging.getLogger(__name__)

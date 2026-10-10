@@ -17,7 +17,7 @@ from database import db
 from handlers.applications import admin_reject_journal as j
 from handlers.applications import admin_reject_rules
 from handlers.access.admin_caps import required_capability
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900400001

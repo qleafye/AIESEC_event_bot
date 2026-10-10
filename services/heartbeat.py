@@ -13,7 +13,7 @@ backoff, сессия зависла) — и снаружи это не видн
    ``getUpdates`` — это и есть тик поллинга. В простое aiogram делает getUpdates каждые
    ~10 с (long-poll timeout), под нагрузкой — чаще, так что сигнал регулярный. Пока
    поллинг падает (сеть/прокси), отметка не обновляется — heartbeat стареет.
-2. ``heartbeat_loop`` — фоновая задача (через ``services.background.spawn``, чтобы
+2. ``heartbeat_loop`` — фоновая задача (через ``services.infra.background.spawn``, чтобы
    ``cancel_all`` её гасила на shutdown). Раз в ``HEARTBEAT_INTERVAL`` секунд ПИШЕТ файл,
    но только если поллинг отмечался живым не позже ``POLLING_STALE_SECONDS`` назад.
    Таймер сам по себе файл не трогает — иначе он отражал бы лишь живость цикла.
@@ -161,7 +161,7 @@ async def heartbeat_loop(
 ) -> None:
     """Фоновая задача: каждые *interval* с писать heartbeat, если поллинг жив.
 
-    Запускать через ``services.background.spawn`` — тогда ``cancel_all`` остановит её на
+    Запускать через ``services.infra.background.spawn`` — тогда ``cancel_all`` остановит её на
     shutdown. Ошибки записи логируются и не убивают цикл (fail-soft)."""
     path = path or default_path()
     warned_stale = False

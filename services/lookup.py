@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 # Хвостовой скобочный довесок («СПбГУТ (бывш. ЛЭИС)», «Университет (филиал в …)») — снимается
 # ПОСЛЕ casefold, чтобы регистр скобок не имел значения.

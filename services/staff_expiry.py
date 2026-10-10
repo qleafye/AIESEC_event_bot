@@ -16,14 +16,14 @@ admin_volunteer_invite.py`). Единая точка:
   модуля — `dashboard/*.py` не имеет права тянуть `services.*`, см. докстринг
   `dashboard/access.py`).
 
-aiogram-free (голая stdlib + `cities`/`services.timeutil`), тот же класс модуля, что
+aiogram-free (голая stdlib + `cities`/`services.infra.timeutil`), тот же класс модуля, что
 `services/sos.py`/`services/reject_rules.py`."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
 from domain.cities import get_setting_typed_for_city
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 DEFAULT_ACTIVE_DAYS = 2  # тот же дефолт, что services.sos.DEFAULT_ACTIVE_DAYS
 

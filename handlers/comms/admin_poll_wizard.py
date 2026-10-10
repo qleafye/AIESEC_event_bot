@@ -33,7 +33,7 @@ from services.scheduler import (
     _now_moscow_naive,
     schedule_poll_job,
 )
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
 from domain.cities import cities_module_on, city_label, city_scope, enabled_cities
 from handlers.states import PollCreate

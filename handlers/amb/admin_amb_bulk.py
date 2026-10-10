@@ -49,7 +49,7 @@ from handlers.amb.admin_amb_candidates import (
 from handlers.access.admin_caps import has_capability
 from handlers.states import AmbAppoint
 from services import amb_status, person_search
-from services.background import spawn
+from services.infra.background import spawn
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

@@ -15,7 +15,7 @@ Phase 30 (30-02, A2-03): то же правило действует и у ру�
 ниже) — НИКОГДА `q` (поисковый текст делегата), только длина/факт запроса (T-30-06).
 
 Веб-процесс не ходит в Telegram Bot API/Sheets сам (D-01 фазы 19): `submit`/резюме ставят
-события в `miniapp.outbox`, их разбирает `services/miniapp_outbox.py` в боте
+события в `miniapp.outbox`, их разбирает `services/infra/miniapp_outbox.py` в боте
 (`post_finalize`/`handle_resume_upload`, план 21-08). Единственное исключение — мгновенный
 ответ делегату в ЕГО ЖЕ чат через `telegram_api.send_message` (тот же приём, что
 `miniapp/routers/review.py::_notify_delegate`) — не эффект над чужими данными, а копия того,
@@ -861,7 +861,7 @@ async def draft_takeover(
     приложением. Черновика может не быть вовсе (мастер просто откроется пустым) — маршрут
     всё равно 200. Событие сброса FSM бота ставится ТОЛЬКО при реальной смене держателя
     (holder != app) — повторный тап по уже забранному черновику молчит: outbox
-    (services/miniapp_outbox.py::_reset_fsm) шлёт делегату сообщение о переносе анкеты на
+    (services/infra/miniapp_outbox.py::_reset_fsm) шлёт делегату сообщение о переносе анкеты на
     КАЖДУЮ такую строку, и без этого условия пять тапов подряд превращались в пять сообщений."""
     ctx = await _load_context(p.telegram_id)
     await set_reg_draft_surface(p.telegram_id, SURFACE_APP)

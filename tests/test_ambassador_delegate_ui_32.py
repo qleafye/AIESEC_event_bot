@@ -24,7 +24,7 @@ import pytest
 from database import db as bot_db
 # Часы теста = часы бота: `ambassador_since` и `wave_open` считают по Москве (`msk_now`).
 # С `datetime.now()` на CI (UTC) «вступил» уезжал на 3 ч позже старта «следующей волны».
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 from tests.test_miniapp_delegate import client  # noqa: F401 — переиспользуемая фикстура
 from tests.test_miniapp_routes import DELEGATE_ID, _hdr

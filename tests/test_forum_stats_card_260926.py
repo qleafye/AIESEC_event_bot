@@ -588,7 +588,7 @@ def test_send_broadcast_respects_mute(tmp_path, monkeypatch):
     _fake_render(monkeypatch, calls)
 
     async def go():
-        from services.timeutil import msk_now
+        from services.infra.timeutil import msk_now
         await _set_setting("forum_stats_card_enabled", "on")
         await db.set_broadcast_mute(UID, msk_now().strftime("%Y-%m-%d"))
         return await fsc.send_broadcast(None, only_arrived=False)
@@ -609,7 +609,7 @@ def test_send_broadcast_respects_quiet_hours(tmp_path, monkeypatch):
     _fake_render(monkeypatch, calls)
 
     async def go():
-        from services.timeutil import msk_now
+        from services.infra.timeutil import msk_now
         await _set_setting("forum_stats_card_enabled", "on")
         await _set_setting("quiet_hours_enabled", "on")
         now = msk_now()

@@ -59,7 +59,7 @@ from database.db import (
 )
 from domain.regform.engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
-from services.timeutil import utc_naive_to_msk
+from services.infra.timeutil import utc_naive_to_msk
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.

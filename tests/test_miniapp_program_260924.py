@@ -343,7 +343,7 @@ def test_program_marks_session_running_now_by_msk(client, monkeypatch):
     """«🔴 Идёт сейчас»: API помечает слот `now`, если по МСК сессия идёт; фронт рисует метку
     по `slot.now` текстом `texts.now` (tests/test_miniapp_program_js_260924.py)."""
     from datetime import datetime
-    from services import timeutil
+    from services.infra import timeutil
     monkeypatch.setattr(timeutil, "msk_now", lambda: datetime(2026, 10, 30, 10, 30))
     _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
     _run(bot_db.create_program_session("msk", "2026-10-30", "12:00", "13:00", "Обед"))

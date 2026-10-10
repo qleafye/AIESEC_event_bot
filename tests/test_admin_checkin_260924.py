@@ -24,7 +24,7 @@ from database.db import _connect
 from handlers.forum import admin_checkin
 from handlers.states import CheckinImport
 from services.checkin import build_payload
-from services import timeutil as timeutil_mod
+from services.infra import timeutil as timeutil_mod
 from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
@@ -528,7 +528,7 @@ def test_counter_all_cities_today_only_cities_with_forum_today(tmp_path):
     """«Все города» в день форума: в «Сегодня» только города, где сегодня идёт форум (как
     счётчик сканера Mini App); Москва с форумом в другой день не стоит строкой с нулём и не
     подмешивается в «Итого»; один город — без отдельной строки «Итого»."""
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     _db_ready(tmp_path)
     asyncio.run(_set_season("YL'26"))

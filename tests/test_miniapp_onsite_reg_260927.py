@@ -179,7 +179,7 @@ def test_approve_body_takes_single_id_only(tmp_path):
 def test_pending_lists_todays_walkin_of_own_city_without_phone(tmp_path, monkeypatch):
     client = _ready(tmp_path, enable=("spb", "msk"))
     _grant_checkin_to_bound_manager()
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     today = msk_now().strftime("%Y-%m-%d")
     _walkin(951010, city="spb", name="Сегодняшний Спб", day=f"{today} 10:05:00")
     _walkin(951011, city="msk", name="Сегодняшний Мск", day=f"{today} 10:06:00")
@@ -199,7 +199,7 @@ def test_pending_lists_todays_walkin_of_own_city_without_phone(tmp_path, monkeyp
 def test_pending_toggle_off_is_empty(tmp_path):
     client = _ready(tmp_path, enable=())
     _grant_checkin_to_bound_manager()
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     _walkin(951014, city="spb", day=msk_now().strftime("%Y-%m-%d 09:00:00"))
     body = client.get(f"{ONSITE}/pending", headers=_hdr(BOUND_MANAGER_ID)).json()
     assert body == {"items": [], "enabled": False}

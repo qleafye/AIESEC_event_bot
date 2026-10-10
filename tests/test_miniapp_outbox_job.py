@@ -1,6 +1,6 @@
 """Phase 19 (08, Task 3, WEBAPP-01) — джоба бота: разбор `miniapp_outbox`.
 
-services/miniapp_outbox.py::drain(bot) — диспетчер по `kind`, ретраи с потолком попыток,
+services/infra/miniapp_outbox.py::drain(bot) — диспетчер по `kind`, ретраи с потолком попыток,
 `drain` никогда не вызывает `add_coins`. Плюс регистрация интервальной джобы в
 services/scheduler.py::init_scheduler (job_id="miniapp_outbox_drain", 30с).
 
@@ -15,7 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from config import config
 from database import db as bot_db
-from services import miniapp_outbox
+from services.infra import miniapp_outbox
 from services import scheduler as sched
 from tests._dbtpl import fast_init_db
 
@@ -420,7 +420,7 @@ def test_task_changed_cancels_stale_job_when_new_deadline_already_too_close(tmp_
 # ── drain никогда не начисляет монеты ────────────────────────────────────────────────────
 
 def test_drain_never_imports_or_calls_add_coins():
-    import services.miniapp_outbox as mod
+    import services.infra.miniapp_outbox as mod
     assert not hasattr(mod, "add_coins")
     # No executable reference to add_coins anywhere outside the module's own prose docstring
     # (which explains WHY it must never appear) -- scan only actual statements, not comments.

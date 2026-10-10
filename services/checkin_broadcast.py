@@ -49,7 +49,7 @@ from services import scheduler as _sched
 from services.checkin import build_checkin_qr, checkin_denial
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
-from services.timeutil import city_offset_hours, msk_now, shift_hours
+from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
