@@ -18,6 +18,7 @@ from database.db import get_setting
 from handlers import admin_settings
 from handlers.admin import router
 from settings_schema import SETTINGS_SCHEMA, option_label
+from settings_validation import ON_OFF_LABELS
 
 
 def enum_options(key: str) -> list[str]:
@@ -27,8 +28,8 @@ def enum_options(key: str) -> list[str]:
 
 ENUM_HINT = "\n\n<i>Выберите вариант кнопкой ниже.</i>"
 # Тумблеры on/off в реестре без option_labels — без этой подписи кнопки и «Сейчас задано»
-# показывали бы сырой код.
-_ON_OFF = {"on": "Включено", "off": "Выключено"}
+# показывали бы сырой код. Те же слова валидатор принимает текстом.
+_ON_OFF = ON_OFF_LABELS
 
 
 def enum_label(key: str, code: str) -> str:

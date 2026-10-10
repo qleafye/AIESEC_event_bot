@@ -13,6 +13,18 @@
 
 from __future__ import annotations
 
+# Треки в третьем поле можно писать словами (подсказка настройки называет их так); коды
+# full/party_overnight/party_noovernight по-прежнему принимаются — старые настройки не ломаются.
+TRACK_WORDS = {
+    "полная": "full", "полная регистрация": "full", "делегаты": "full",
+    "с ночевкой": "party_overnight", "вечеринка с ночевкой": "party_overnight",
+    "без ночевки": "party_noovernight", "вечеринка без ночевки": "party_noovernight",
+}
+
+
+def _track_code(word: str) -> str:
+    return TRACK_WORDS.get(word.strip().lower().replace("ё", "е"), word.strip())
+
 
 def parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
     """Parse the payment_options setting → [(label, price, tracks)].
@@ -47,7 +59,7 @@ def parse_options(raw: str) -> list[tuple[str, int, set[str] | None]]:
             if len(parts) >= 3:
                 raw_tracks = parts[2].strip()
                 if raw_tracks:
-                    tracks = {t.strip() for t in raw_tracks.split(",") if t.strip()} or None
+                    tracks = {_track_code(t) for t in raw_tracks.split(",") if t.strip()} or None
         else:
             label, price, tracks = line, 0, None
         options.append((label, price, tracks))
