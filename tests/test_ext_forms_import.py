@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from database import ext_forms_db as ef
-from handlers import admin_ext_forms_push as push
+from handlers.ext_forms import admin_ext_forms_push as push
 from handlers.states import ExtFormImport
 from services import ext_forms_import as imp
 from services import ext_forms_yandex_sync as S
@@ -268,7 +268,7 @@ def test_pkeys_pick_sets_keys(form):
 
 
 def test_card_of_push_form_has_buttons_and_waiting_line(form):
-    from handlers.admin_ext_forms import _card_kb, _card_text, _form_with_stats
+    from handlers.ext_forms.admin_ext_forms import _card_kb, _card_text, _form_with_stats
     f = _run(_form_with_stats(form["id"]))
     assert "Ждёт первый ответ" in _card_text(f)
     assert "Последняя сверка" not in _card_text(f)

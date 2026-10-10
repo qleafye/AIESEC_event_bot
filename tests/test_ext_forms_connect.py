@@ -5,7 +5,7 @@ import pytest
 from aiogram.dispatcher.event.bases import UNHANDLED
 
 from database import ext_forms_db as xdb
-from handlers import admin_ext_forms_connect as wiz
+from handlers.ext_forms import admin_ext_forms_connect as wiz
 from handlers.states import ExtFormConnect
 from services import ext_forms_google as gg
 from services import ext_forms_yandex as yx

@@ -1,7 +1,7 @@
 """Код подтверждения Яндекса: раньше 7 цифр, с октября 2026 — 16 букв и цифр."""
 import pytest
 
-from handlers.admin_ext_forms_oauth import normalize_code
+from handlers.ext_forms.admin_ext_forms_oauth import normalize_code
 
 
 @pytest.mark.parametrize("raw, expected", [
