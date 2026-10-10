@@ -2,7 +2,7 @@
 («Согласие на обработку персональных данных») оставался русским при lang=en, хотя это
 НАЗВАНИЕ документа, а не сам юридический текст (LANG-09 запрещает переводить именно текст
 согласия, PDF). Фикс — `handlers/registration.py::_ask_step` (ветка `consent:*`) и
-`handlers/reg_consent.py::_send_renew_card` переводят `caption` через `reg_i18n.tr_text` с
+`handlers/reg/reg_consent.py::_send_renew_card` переводят `caption` через `reg_i18n.tr_text` с
 ПУСТЫМ `tr_map`: срабатывает ТОЛЬКО ярус A (точный рукописный литерал), машинный перевод
 (легальный override менеджера) сюда не подключается ни при каких условиях.
 
@@ -12,7 +12,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import reg_consent
+from handlers.reg import reg_consent
 from handlers.i18n import reg_i18n
 from tests._dbtpl import fast_init_db
 

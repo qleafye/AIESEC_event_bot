@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_lang
+from handlers.reg import reg_lang
 from tests._dbtpl import fast_init_db
 
 UID = 812001

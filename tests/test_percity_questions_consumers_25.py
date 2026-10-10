@@ -33,7 +33,7 @@ from database import db
 import domain.regform.moderation_card as moderation_card
 import domain.regform.engine as e
 from handlers import registration as reg
-from handlers import reg_flow
+from handlers.reg import reg_flow
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,

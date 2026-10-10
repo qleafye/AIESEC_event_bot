@@ -22,8 +22,8 @@ import domain.regform.options as reg_options
 from config import config
 from database import db
 from handlers import registration as reg
-# Phase 13 REFAC (13-03): rereg_start moved to handlers/reg_flow.py.
-from handlers import reg_flow
+# Phase 13 REFAC (13-03): rereg_start moved to handlers/reg/reg_flow.py.
+from handlers.reg import reg_flow
 from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 
@@ -480,7 +480,7 @@ def test_prior_answers_not_in_incomplete_snapshot(tmp_path, monkeypatch):
 # оно вообще отправляется — status делегата на это никак не влияет (движок не читает
 # `status` вовсе). Единственный код-путь, где итоговое сообщение уходит БЕЗ подтверждения —
 # `_after_full_name`: «нет включённых вопросов -> сразу finalize», задокументированный как
-# СОЗНАТЕЛЬНОЕ поведение SHORT-04 (handlers/reg_steps.py::process_full_name, комментарий
+# СОЗНАТЕЛЬНОЕ поведение SHORT-04 (handlers/reg/reg_steps.py::process_full_name, комментарий
 # «reproduces the historical short-form behavior STRUCTURALLY») для КОРОТКОЙ формы с нулём
 # вопросов (дефолт `registration_mode=short`, факт установленный тестом ниже) — но в этой
 # ветке текст «Проверь свои ответы» вообще не отправляется (сразу submit), а не отправляется

@@ -2,7 +2,7 @@
 aiogram-free модули `domain/regform/labels.py` / `domain/game/labels.py` (шимов в `handlers/` больше нет).
 
 Сторожа:
-- `handlers/reg_schema.py` реэкспортирует ТЕ ЖЕ объекты (`is`, не `==`) — перенос, а не копия;
+- `handlers/reg/reg_schema.py` реэкспортирует ТЕ ЖЕ объекты (`is`, не `==`) — перенос, а не копия;
 - `import domain.regform.labels; import domain.game.labels` в чистом подпроцессе не загружает `aiogram`;
 - `miniapp` импортирует именно корневые модули;
 - состав ключей `REG_LABELS` не изменился относительно снимка.
@@ -69,7 +69,7 @@ def _loaded_aiogram(code: str) -> list[str]:
 
 def test_reg_schema_reexports_same_objects():
     import domain.regform.labels as reg_labels
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     assert reg_schema.REG_LABELS is reg_labels.REG_LABELS
     assert reg_schema.STATUS_LABELS is reg_labels.STATUS_LABELS

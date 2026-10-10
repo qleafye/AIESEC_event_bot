@@ -17,7 +17,7 @@ import asyncio
 import logging
 
 from database import db as bot_db
-from handlers.reg_schema import active_sheet_headers
+from handlers.reg.reg_schema import active_sheet_headers
 from services import reg_finalize as rf
 from services import sheets as sheets_service
 

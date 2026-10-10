@@ -31,11 +31,11 @@ Mini App; режим `new` продолжает резолвиться само�
 
 Модуль без телеграм-фреймворка, кроме одного нетипизированного параметра `bot` у
 `post_finalize` (сам файл не импортирует этот фреймворк ни разу — грепается тестом плана).
-Вызовы `handlers.registration`/`handlers.reg_schema`/`handlers.access.admin_caps` внутри
+Вызовы `handlers.registration`/`handlers.reg.reg_schema`/`handlers.access.admin_caps` внутри
 `post_finalize` — ЛОКАЛЬНЫЕ (внутри функции):
 `handlers/registration.py` импортирует `finalize_data`/`post_finalize` из ЭТОГО модуля на своём
 верхнем уровне, поэтому обратный импорт на уровне модуля дал бы цикл при загрузке пакета
-`handlers` (тот же приём уже используют `handlers/reg_schema.py::approve_user`/
+`handlers` (тот же приём уже используют `handlers/reg/reg_schema.py::approve_user`/
 `incomplete_city_batches` — «function-body-local import» дословно оттуда).
 """
 from __future__ import annotations
@@ -882,7 +882,7 @@ async def write_sheet_row(telegram_id: int, full: dict, mode: str) -> None:
     from handlers.registration import (
         _sheet_dispatch, _sheet_headers_fn, append_to_named_sheet, city_row_tab,
     )
-    from handlers.reg_schema import sheet_city_code
+    from handlers.reg.reg_schema import sheet_city_code
     from services.sheets import update_row_by_id
 
     try:
@@ -1157,7 +1157,7 @@ async def _apply_resume_url(telegram_id: int, full: dict, url: str | None) -> No
     Сбой Sheets — `logger.error`, без проброса: ссылка в БД уже обновлена, лист догонит
     «Синхронизацией» (та же дисциплина, что и раньше в `handle_resume_upload`)."""
     from handlers.registration import _sheet_dispatch
-    from handlers.reg_schema import sheet_city_code
+    from handlers.reg.reg_schema import sheet_city_code
     from services.sheets import update_row_by_id
 
     await update_user_answers(telegram_id, {"resume_url": url}, allowed_columns=["resume_url"])

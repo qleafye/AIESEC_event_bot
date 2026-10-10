@@ -66,7 +66,7 @@ class _Msg:
 
 def test_lookup_results_have_found_header_not_hint(tmp_path, monkeypatch):
     _use_tmp_db(tmp_path)
-    from handlers import reg_types_lookup
+    from handlers.reg import reg_types_lookup
 
     async def fake_search(kind, q, limit=10):
         return [{"canonical": "СПбГУ"}, {"canonical": "СПбПУ"}]

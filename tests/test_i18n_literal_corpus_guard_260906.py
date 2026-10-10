@@ -1,6 +1,6 @@
 """Quick 260906, UAT run 2 (второй проход после 2773791/44c77df/222340a) — сторож регрессии
 «русский литерал ушёл в перевод, но забыт в корпусе». Находка 1 первого прогона
-(`handlers/reg_resume.py::offer_resume` звал `reg_i18n.say(message, "У тебя есть
+(`handlers/reg/reg_resume.py::offer_resume` звал `reg_i18n.say(message, "У тебя есть
 незаконченная анкета — что дальше?", ...)`, но сам литерал не значился ни в
 `services/i18n_sources.py::code_literals()` (ярус B), ни в `i18n_ui_en.UI_EN` (ярус A)) —
 класс бага, который `tests/test_registration_send_guard_260906.py` не ловит: та проверка
@@ -27,18 +27,18 @@ ROOT = REPO_ROOT
 
 SCANNED_FILES = [
     ROOT / "handlers" / "registration.py",
-    ROOT / "handlers" / "reg_flow.py",
-    ROOT / "handlers" / "reg_consent.py",
-    ROOT / "handlers" / "reg_steps.py",
-    ROOT / "handlers" / "reg_resume.py",
-    ROOT / "handlers" / "reg_handoff.py",
+    ROOT / "handlers" / "reg" / "reg_flow.py",
+    ROOT / "handlers" / "reg" / "reg_consent.py",
+    ROOT / "handlers" / "reg" / "reg_steps.py",
+    ROOT / "handlers" / "reg" / "reg_resume.py",
+    ROOT / "handlers" / "reg" / "reg_handoff.py",
     # Приёмка 09.10 (D3): экран /start возвращенца и отклонённого в этом сезоне.
-    ROOT / "handlers" / "reg_returning.py",
+    ROOT / "handlers" / "reg" / "reg_returning.py",
     # Квик 260917-en: расширение на остальные швы, которые теперь тоже зовут reg_i18n.say/
     # tr_for/tr_text/tr_fmt — полный чат бота, не только анкета (item 4 приёмки 17.09).
     ROOT / "handlers" / "user_actions.py",
     ROOT / "handlers" / "payment.py",
-    ROOT / "handlers" / "reg_lang.py",
+    ROOT / "handlers" / "reg" / "reg_lang.py",
     ROOT / "handlers" / "game" / "game_submit_counter.py",
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа».
     ROOT / "handlers" / "forum" / "program.py",

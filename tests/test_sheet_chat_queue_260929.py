@@ -104,7 +104,7 @@ def test_upsert_is_fail_soft_without_queue_table(tmp_path):
 
 def test_approve_user_enqueues(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     async def fake_send(*a, **k):
         return None

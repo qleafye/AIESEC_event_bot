@@ -65,10 +65,10 @@ from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by 
 # Идея №5 бэклога чек-ина: resolve_capabilities для _handle_volunteer_invite ниже.
 from handlers.access.admin_caps import resolve_capabilities
 # Phase 13 REFAC (13-02, REFAC-02): shared registration data registries + sheet-schema
-# plumbing extracted to handlers/reg_schema.py (router-free) so handlers/admin.py no longer
+# plumbing extracted to handlers/reg/reg_schema.py (router-free) so handlers/admin.py no longer
 # reaches into this handler module. Re-imported here since registration.py's own step-flow,
 # sheet builders and finalize/approve path still use every one of these names internally.
-from handlers.reg_schema import (
+from handlers.reg.reg_schema import (
     REG_FLOW, _STEP_TO_SETTING, dropout_step_label, delegate_step_label,
     REG_DEFAULTS, REG_LABELS, REG_PRESETS, _PARTY_PRESET_OVERNIGHT_EXEMPT,
     _apply_party_preset, _apply_short_preset, REG_CATEGORIES,
@@ -115,7 +115,7 @@ DEFAULT_START_RETURNING_TEXT = SETTINGS_SCHEMA["start_text_returning"]["default"
 # одобрения). reg_complete_text = пост-регистрационный скрипт; approve_text = отдельный
 # скрипт после одобрения заявки. Оба правятся в /admin → Настройки.
 DEFAULT_REG_COMPLETE_TEXT = SETTINGS_SCHEMA["reg_complete_text"]["default"]
-# DEFAULT_APPROVE_TEXT moved to handlers/reg_schema.py (13-02, REFAC-02).
+# DEFAULT_APPROVE_TEXT moved to handlers/reg/reg_schema.py (13-02, REFAC-02).
 
 # --- Approval status decision (Phase 2, D-01..D-03) ---
 # Phase 21 (21-06, Task 3): _decide_status moved to reg_engine.decide_status (aliased below,
@@ -128,7 +128,7 @@ DEFAULT_REG_COMPLETE_TEXT = SETTINGS_SCHEMA["reg_complete_text"]["default"]
 # resolution, prompt/options resolution, the prior-answer (recall) rule and pre-flow gates
 # moved to the root aiogram-free domain/regform/engine.py — the single engine bot AND Mini App call
 # (D-03, FORM-SYNC-01). Old private names kept as aliases so every existing call site in this
-# file and in handlers/reg_flow.py, handlers/reg_consent.py, tests/*.py keeps working unchanged.
+# file and in handlers/reg/reg_flow.py, handlers/reg/reg_consent.py, tests/*.py keeps working unchanged.
 # Квик 260923-p37 (CITY-REG-CLOSE): модульный импорт (не `from domain.regform.engine import city_gate`) —
 # `_city_fork_then_continue` уже несёт свой keyword-параметр `city_gate`, бэйр-имя функции
 # затенялось бы им внутри тела.
@@ -179,7 +179,7 @@ _consent_entries = consent_entries
 _get_consent_steps = get_consent_steps
 _should_show_fork = should_show_fork
 _should_show_city_fork = should_show_city_fork
-# Back-compat aliases (старые private-имена) — handlers/reg_flow.py, handlers/reg_steps.py и
+# Back-compat aliases (старые private-имена) — handlers/reg/reg_flow.py, handlers/reg/reg_steps.py и
 # ~4 существующих тестовых файла (test_registration_phase1.py, test_review_b1b.py,
 # test_block7_low.py) продолжают импортировать их отсюда без изменений.
 _parse_age = parse_age
@@ -196,7 +196,7 @@ _decide_status = decide_status
 
 async def _prompt(step_key: str, default: str, participant_type: str | None = None) -> str:
     """Back-compat 3-arg resolver (admin override reg_prompt_<step_key> else a
-    CALLER-SUPPLIED default) — kept local because handlers/reg_consent.py calls it for
+    CALLER-SUPPLIED default) — kept local because handlers/reg/reg_consent.py calls it for
     synthetic `consent_<key>` step keys, which are not part of REG_FLOW and therefore have no
     entry in reg_engine.PROMPT_DEFAULTS. `_ask_step` below uses the new 2-arg
     `reg_engine.prompt(step_key, participant_type)` (engine-computed default) for every real
@@ -364,18 +364,18 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     # Phase 30 (30-06, A2-01/03/04/05): диспетчер типов новой анкеты — деградация решает, вести
     # ли шаг через шов reg_types_*.py; сами ветки живут там (CHAT_PROJECTION), не здесь.
     v2_flags = await form_v2_flags(city_code)
-    from handlers import reg_types_composite  # ленивый шов (цикл импортов)
+    from handlers.reg import reg_types_composite  # ленивый шов (цикл импортов)
     if await reg_types_composite.maybe_show_recap(
         step_key, message, state, data, step, total, participant_type, city_code, v2_flags,
     ):
         return
     v2_kind = degrade_kind(step_type_v2(step_key), v2_flags)
     if v2_kind == "lookup":
-        from handlers import reg_types_lookup  # ленивый шов (цикл импортов)
+        from handlers.reg import reg_types_lookup  # ленивый шов (цикл импортов)
         await reg_types_lookup.ask_step(step_key, message, state, p, participant_type, city_code, v2_flags)
         return
     if v2_kind == "repeatable":
-        from handlers import reg_types_repeatable  # ленивый шов (цикл импортов)
+        from handlers.reg import reg_types_repeatable  # ленивый шов (цикл импортов)
         await reg_types_repeatable.ask_step(step_key, message, state, p, participant_type, city_code)
         return
     if step_key == "age":
@@ -538,7 +538,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
             # reg_resume_fork, лениво (тот же приём цикла импортов, что reg_extra_steps выше:
             # reg_resume_fork импортирует router/_advance/_safe_answer из ЭТОГО модуля, поэтому
             # top-level импорт здесь замкнул бы цикл до того, как эти имена определены).
-            from handlers import reg_resume_fork  # ленивый шов (цикл импортов)
+            from handlers.reg import reg_resume_fork  # ленивый шов (цикл импортов)
             await reg_resume_fork.ask_fork(message, state, p, participant_type, city_code)
         else:
             # Резюме обязательно (Таня п.2): без «Пропустить». Убираем reply-клаву целиком —
@@ -624,7 +624,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         # (стек/опыт/готовность уже покрыты generic select/multi, остаются пять новых
         # шагов резюме-развилки и кейс-чемпионата) уходит в шов вместо того, чтобы молча
         # замереть без вопроса и без state.set_state(...).
-        from handlers import reg_extra_steps  # ленивый шов (цикл импортов), приём admin_sections
+        from handlers.reg import reg_extra_steps  # ленивый шов (цикл импортов), приём admin_sections
         await reg_extra_steps.ask_step(step_key, message, state, p, participant_type, city_code)
 
 
@@ -694,7 +694,7 @@ async def _sync_draft_out(telegram_id: int, state: FSMContext, data: dict, step_
     ВСЕМ колонкам набора.
 
     Quick 260904-3vm (эстафета): сознательно НЕ передаёт `active_surface` — единственный путь
-    бота к записи ответа теперь проходит через `handlers/reg_handoff.py::RegHandoffGuard`
+    бота к записи ответа теперь проходит через `handlers/reg/reg_handoff.py::RegHandoffGuard`
     (апдейт, дошедший до этой функции, уже прошёл гвард, т.е. владение и так у бота). Безусловный
     штамп 'bot' на КАЖДОМ ходе означал бы тихую кражу анкеты у приложения любым апдейтом,
     проскочившим мимо гварда — ровно ту беззвучную смену владельца, которую эстафета убирает."""
@@ -767,7 +767,7 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
         await state.update_data(_reg_step=step, _reg_total=total)
         await _ask_step_or_recall(enabled[next_idx], message, state, step, total)
     else:
-        from handlers.reg_summary import show_summary  # общая с «Продолжить» (reg_resume)
+        from handlers.reg.reg_summary import show_summary  # общая с «Продолжить» (reg_resume)
         await show_summary(message, state, data)
 
 
@@ -960,7 +960,7 @@ def _extract_source_tag(command_args: str | None) -> str | None:
     return None
 
 
-# _is_party_track, SHORT_TRACK, _is_short_track moved to handlers/reg_schema.py
+# _is_party_track, SHORT_TRACK, _is_short_track moved to handlers/reg/reg_schema.py
 # (13-02, REFAC-02); imported above. Deep-link parsing below is unaffected.
 
 
@@ -1136,7 +1136,7 @@ def _draft_is_fresh(draft: dict, ttl_hours: int) -> bool:
 
 async def _resumable_draft_for(telegram_id: int) -> dict | None:
     """Квик 260919-u7e (находка #3): «жив ли черновик анкеты» для случаев ВНЕ /start — сейчас
-    единственный вызывающий — `handlers/reg_silence_fallback.py` (делегат пишет боту/жмёт
+    единственный вызывающий — `handlers/reg/reg_silence_fallback.py` (делегат пишет боту/жмёт
     старую кнопку анкеты БЕЗ живого FSM-состояния после рестарта контейнера, MemoryStorage
     пуст, reg_drafts — нет). Тот же предикат, что первые две ветки `cmd_start` уже применяют
     для экрана «Продолжить/Заново» (D-18): kind='new' — TTL-свежий (`reg_resume_ttl_hours`,
@@ -1252,9 +1252,9 @@ DEFAULT_CITY_FORK_TEXT = SETTINGS_SCHEMA["city_fork_text"]["default"]
 
 async def _city_fork_kb() -> InlineKeyboardMarkup:
     """One button per OPEN city (enabled AND not closed by date, quick 260923-p37) — delegates
-    to handlers.reg_city_gate.open_city_kb (lazy import: that module doesn't import this one,
+    to handlers.reg.reg_city_gate.open_city_kb (lazy import: that module doesn't import this one,
     but keeping the same "no module-level cross-seam import" idiom as reg_lang below)."""
-    from handlers.reg_city_gate import open_city_kb
+    from handlers.reg.reg_city_gate import open_city_kb
     return await open_city_kb()
 
 
@@ -1311,7 +1311,7 @@ def _multi_kb(step_key: str, options: list[str], selected: set[int]):
 
 # _sheet_details, STATUS_LABELS, _status_label, SHEET_COLUMNS, SHEET_HEADERS,
 # _build_sheet_row, _sheet_value_map, active_sheet_headers, set_sheet_schema moved to
-# handlers/reg_schema.py (13-02, REFAC-02); imported above.
+# handlers/reg/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 def _parse_sheet_schema_snapshot(raw: str | None) -> list[str] | None:
@@ -1358,7 +1358,7 @@ async def active_sheet_row(data: dict, city_code: str | None = None) -> list:
     Phase 25 (CITYQ-03): `city_code` (default `None` = main tab, byte-identical) selects WHICH
     frozen snapshot the row is projected onto — a city's own snapshot for a named tab, so a
     delegate's row is always built by the SAME rule that decided the tab's own header (see
-    `handlers.reg_schema.sheet_city_code`'s docstring for the shared invariant).
+    `handlers.reg.reg_schema.sheet_city_code`'s docstring for the shared invariant).
 
     Квик 260919 (08-sheets-dashboard): раньше здесь стоял database.db._csv_safe — сейчас
     database.db._sheet_safe (функция-тождество). services/sheets.py пишет каждый gspread-вызов
@@ -1626,7 +1626,7 @@ def _sheet_headers_fn(participant_type: str | None):
 
 # --- Phase 07.1 (CITY-02, plan 07.1-02): city selects the TAB, track selects the COLUMNS ----
 # _sheet_dispatch above stays the sole source of ROW BUILDER + exclusivity. _sheet_kind and
-# city_row_tab (TAB NAME resolvers) moved to handlers/reg_schema.py (13-02, REFAC-02); imported
+# city_row_tab (TAB NAME resolvers) moved to handlers/reg/reg_schema.py (13-02, REFAC-02); imported
 # above. city_incomplete_tab below is the third such helper and stays here (registration-flow
 # internal, wired into incomplete_sheet_headers's _is_step_enabled_for_track dependency).
 
@@ -1649,7 +1649,7 @@ async def city_incomplete_tab(event_city: str | None) -> str:
     return f"{base}{await tab_suffix('incomplete')}"
 
 
-# incomplete_city_batches moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
+# incomplete_city_batches moved to handlers/reg/reg_schema.py (13-02, REFAC-02); imported above.
 # It local-imports incomplete_sheet_headers/city_incomplete_tab/incomplete_sheet_row from
 # this module at call time (same function-body-local-import pattern approve_user already
 # used) since those three stay here, wired into the per-track FSM gate.
@@ -1709,7 +1709,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     # _resolve_track would risk the two resolutions disagreeing.
     saved_city = event_city or existing_data.get("event_city")
     if not saved_city:  # квик 27.09: обходные входы («Заново», старые кнопки) не стартуют без города
-        from handlers.reg_city_gate import form_city_or_ask
+        from handlers.reg.reg_city_gate import form_city_or_ask
         _go, saved_city = await form_city_or_ask(message, state, referrer_id=referrer_id, source_tag=source_tag, participant_type=participant_type)
         if not _go:
             return
@@ -1845,7 +1845,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
     except Exception as e:
         logger.error(f"draft create/refresh failed for {message.from_user.id}: {e}")
     if (saved_prior or {}).get("_from_confirm"):  # приёмка 09.10: «Изменить» на сводке — правка, не новая анкета
-        from handlers.reg_flow import start_confirm_edit
+        from handlers.reg.reg_flow import start_confirm_edit
         return await start_confirm_edit(message, state)
 
     await _safe_answer(  # Quick 260906: литералы -> i18n_sources.py::code_literals()
@@ -2035,12 +2035,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
     # `False`, поток не меняется ни на шаг); показанный экран стоит между /start и первым же
     # делегатским текстом, поэтому `args` передаётся сырым — `lang_pick_choose` реинвокнёт
     # `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
-    from handlers.reg_lang import offer_language
+    from handlers.reg.reg_lang import offer_language
     if await offer_language(message, state, args):
         return
     # D-41: `?start=walkin_<город>` — короткая анкета на месте: после вопроса о языке (как у
     # обычного /start), до funnel-лога и предотбора. Выбор языка реинвокнет /start с теми же args.
-    from handlers.onsite_reg import try_walkin_start
+    from handlers.reg.onsite_reg import try_walkin_start
     if await try_walkin_start(message, state, args):
         return
     # `?start=sessions` и другие форумные deep-link'и; не обработан — идёт обычный /start.
@@ -2161,7 +2161,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
             logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
             _resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
         if resume_arg in ("continue", "edit") or _draft_is_fresh(_draft_probe, _resume_ttl_hours):
-            from handlers.reg_resume import offer_resume
+            from handlers.reg.reg_resume import offer_resume
             await offer_resume(message, _draft_probe, referrer_id=referrer_id)
             return
 
@@ -2184,7 +2184,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         is_returning = False
     if is_returning:
         # Приёмка 09.10 (D3): прошлый сезон — баннер возвращенца, отклонённый в этом — свой экран.
-        from handlers.reg_returning import offer_returning
+        from handlers.reg.reg_returning import offer_returning
         await offer_returning(message, state, user, event_season, start_text, start_photo,
                               referrer_id=referrer_id, source_tag=source_tag,
                               party_track=party_track, dl_event_city=dl_event_city)
@@ -2217,7 +2217,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
                     await reg_i18n.say(message, _edit_text, reply_markup=await get_main_menu_kb(user_id))
                     return
             if _edit_draft:
-                from handlers.reg_resume import offer_resume
+                from handlers.reg.reg_resume import offer_resume
                 await offer_resume(message, _edit_draft)
                 return
             if resume_arg == "edit":
@@ -2273,7 +2273,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
 
     # Ночь 09.10: чистый /start менеджера — подсказка про /admin вместо анкеты делегата
     # (reg_started не пишется, пока он сам не нажмёт «Всё-таки заполнить анкету»).
-    from handlers.reg_manager_start import offer_manager_hint
+    from handlers.reg.reg_manager_start import offer_manager_hint
     if await offer_manager_hint(message, state, user, args):
         return
 
@@ -2414,7 +2414,7 @@ async def _city_fork_then_continue(
         if gate_kind in ("closed", "all_closed"):
             await _persist_fork_attribution(state, referrer_id, source_tag, dl_party_track, recovered_track)
             await state.update_data(event_city=None)  # закрытый город не наследуется дальше по цепочке
-            from handlers.reg_city_gate import send_city_closed
+            from handlers.reg.reg_city_gate import send_city_closed
             await send_city_closed(message, gate_code)
             return
         effective_city = gate_code  # "go": то же значение, либо единственный открытый город (D-06)
@@ -2511,7 +2511,7 @@ async def _continue_after_city(
 # --- Finalize ---
 
 # DEFAULT_APPROVE_TEXT, _is_module_enabled, _approve_text_for, send_completion_and_bonus,
-# approve_user moved to handlers/reg_schema.py (13-02, REFAC-02); imported above.
+# approve_user moved to handlers/reg/reg_schema.py (13-02, REFAC-02); imported above.
 
 
 def _resume_file_stem(data, now: datetime | None = None, mode: str = "full") -> str:
@@ -2631,7 +2631,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
         if not _city_open:
             logger.info(f"user={uid} action=registration_blocked_city_closed city={_city}")
             await state.clear()
-            from handlers.reg_city_gate import send_city_closed
+            from handlers.reg.reg_city_gate import send_city_closed
             await send_city_closed(message, _city)
             return
 
@@ -2648,7 +2648,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
             logger.warning(f"finalize_registration: draft for {uid} is already submitting elsewhere")
             return
         if data.get("_draft_version") is not None:  # черновик был и исчез: подан другой поверхностью
-            from handlers.reg_resume import reply_already_submitted
+            from handlers.reg.reg_resume import reply_already_submitted
             return await reply_already_submitted(message, state)
         draft = {"telegram_id": uid, "kind": "new", "answers": dict(data), "updated_by": "bot"}
 
@@ -2710,7 +2710,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     await _safe_answer(message, submitted, reply_markup=menu_kb, parse_mode="HTML")  # Quick 260906
     if result["mode"] == "new":
         try:
-            from handlers import reg_ambassador  # ленивый импорт шва (SU-07)
+            from handlers.reg import reg_ambassador  # ленивый импорт шва (SU-07)
             await reg_ambassador.offer_ref_link(message, uid, data.get("event_city"))
         except Exception as e:
             logger.error(f"offer_ref_link failed for {uid}: {e}")
@@ -2721,48 +2721,48 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
 # (entry/forks/consent/generic-input, originally right after cmd_start) MUST import before
 # reg_steps (the per-state process_* block, originally last in the file) to reproduce the
 # exact original handler registration order.
-from handlers import reg_flow  # noqa: E402
-from handlers import reg_steps  # noqa: E402
-from handlers.reg_consent import maybe_offer_consent_recollect  # noqa: E402  -- quick 260822: пересогласие новой редакции
+from handlers.reg import reg_flow  # noqa: E402
+from handlers.reg import reg_steps  # noqa: E402
+from handlers.reg.reg_consent import maybe_offer_consent_recollect  # noqa: E402  -- quick 260822: пересогласие новой редакции
 
 # Phase 27 (27-04, LANG-01): imported right after reg_consent, BEFORE reg_resume/reg_handoff —
 # its message handler (menu_lang_open) lands LAST among registration.router's message handlers
 # (reg_flow/reg_steps already registered theirs above), its callback (lang_pick_choose) lands
 # right after consent_renew_accept and before reg_resume's callbacks (golden snapshot order).
-from handlers import reg_lang  # noqa: E402, F401
+from handlers.reg import reg_lang  # noqa: E402, F401
 
 # Phase 21 (21-09): imported LAST — its callback_query handlers (reg_resume:*) register at the
 # very TAIL of registration.router (after consent_renew_accept), so the golden order+filter
 # snapshot only ever gets APPENDED to, never reordered.
-from handlers import reg_resume  # noqa: E402
+from handlers.reg import reg_resume  # noqa: E402
 
 # Quick 260904-3vm (эстафета): imported LAST OF ALL — registers RegHandoffGuard as OUTER
 # middleware on registration.router (message + callback_query) and the reg_handoff:to_bot
 # callback at the very TAIL, same seam pattern as reg_resume just above.
-from handlers import reg_handoff  # noqa: E402
+from handlers.reg import reg_handoff  # noqa: E402
 
 # Phase 28 (28-02, SU-01/SU-04): imported AFTER reg_handoff — its four message handlers
 # (mini_projects/mini_portfolio/mini_direction/case_optin; resume_link is show-only in this
 # plan) land at the very TAIL of registration.router, so the golden order+filter snapshot
 # (tests/test_refac_snapshot_260816.py) only gets APPENDED to, never reordered.
-from handlers import reg_extra_steps  # noqa: E402, F401
+from handlers.reg import reg_extra_steps  # noqa: E402, F401
 
 # Phase 28 (28-05, SU-04): imported AFTER reg_extra_steps — regfork:*/Registration.resume_link
 # handlers land at the very TAIL of registration.router (after mini_projects/mini_portfolio/
 # mini_direction/case_optin above), golden order+filter snapshot only gets APPENDED to.
-from handlers import reg_resume_fork  # noqa: E402, F401
+from handlers.reg import reg_resume_fork  # noqa: E402, F401
 
 # Phase 28 (28-06, SU-07): imported LAST — regamb:want/regamb:later handlers land at the very
 # TAIL of registration.router, golden order+filter snapshot only gets APPENDED to.
-from handlers import reg_ambassador  # noqa: E402, F401
+from handlers.reg import reg_ambassador  # noqa: E402, F401
 
 # Phase 30 (30-06, A2-01/03/04/05): imported AFTER reg_ambassador — reglookup:*/regedu:*/
 # regrepeat:* handlers land at the very TAIL of registration.router, golden order+filter
 # snapshot only gets APPENDED to. `_ask_step` above calls into these three lazily (dispatcher),
 # the import here only registers their message/callback_query handlers on the shared router.
-from handlers import reg_types_lookup  # noqa: E402, F401
-from handlers import reg_types_composite  # noqa: E402, F401
-from handlers import reg_types_repeatable  # noqa: E402, F401
+from handlers.reg import reg_types_lookup  # noqa: E402, F401
+from handlers.reg import reg_types_composite  # noqa: E402, F401
+from handlers.reg import reg_types_repeatable  # noqa: E402, F401
 
 # Ночь 09.10: «Всё-таки заполнить анкету» менеджера — callback в самом хвосте router.
-from handlers import reg_manager_start  # noqa: E402, F401
+from handlers.reg import reg_manager_start  # noqa: E402, F401

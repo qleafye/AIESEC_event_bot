@@ -14,7 +14,7 @@ from config import config
 from database import db
 from handlers import registration  # noqa: F401  -- первым: registration сам подтягивает reg_flow/reg_steps в нужном порядке
 from handlers import user_actions as ua_mod
-from handlers import reg_flow
+from handlers.reg import reg_flow
 from handlers.states import GameSubmit, Registration
 from tests._dbtpl import fast_init_db
 

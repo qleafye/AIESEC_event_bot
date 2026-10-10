@@ -33,7 +33,7 @@ _TOO_LARGE_TEXT = f"❌ Файл слишком большой (максимум
 
 def validate_resume_document(file_name: str | None, file_size) -> str | None:
     """`None` — файл принимается; иначе текст отказа менеджеру (та же пара проверок, что
-    `handlers/reg_flow.py::process_resume` у делегата, литералами — не через реестр, здесь
+    `handlers/reg/reg_flow.py::process_resume` у делегата, литералами — не через реестр, здесь
     менеджерский экран)."""
     if not is_allowed_resume(file_name):
         return _NOT_ALLOWED_TEXT

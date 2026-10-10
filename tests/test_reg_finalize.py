@@ -633,7 +633,7 @@ def test_post_finalize_new_approved_sends_auto_approve_text(tmp_path, monkeypatc
     _patch_notify(monkeypatch)
     monkeypatch.setattr(config, "ADMIN_IDS", [])
 
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     async def go():
         await _seed_user(UID, status="approved", event_city=None)
@@ -667,13 +667,13 @@ def test_post_finalize_new_approved_respects_approve_text_auto_override(tmp_path
 
 
 def test_manual_approve_still_uses_default_approve_text(tmp_path, monkeypatch):
-    """Ручное одобрение менеджером (handlers.reg_schema.approve_user БЕЗ auto_approved) —
+    """Ручное одобрение менеджером (handlers.reg.reg_schema.approve_user БЕЗ auto_approved) —
     прежний текст «🎉 После одобрения», регресс не допускается."""
     _ready(tmp_path)
     _offline(monkeypatch)
     monkeypatch.setattr(config, "ADMIN_IDS", [])
 
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     async def go():
         await _seed_user(UID, status="approved")

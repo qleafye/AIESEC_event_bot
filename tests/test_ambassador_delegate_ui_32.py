@@ -444,7 +444,7 @@ def test_wave_rating_after_ends_at_no_closing_wave_still_shows_closed_text(clien
 
 # ── Задача 3: путь, выход/возврат амбассадора, подпись начисления за приглашённого ──────────
 
-from handlers import reg_ambassador as amb_mod  # noqa: E402
+from handlers.reg import reg_ambassador as amb_mod  # noqa: E402
 
 
 class _FakeBotMe:

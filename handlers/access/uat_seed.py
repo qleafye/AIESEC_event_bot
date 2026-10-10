@@ -342,7 +342,7 @@ async def _seed_consent(tid: int) -> None:
     (`handlers/registration.py` ~1633-1638) — любое состояние с черновиком/заявкой обязано
     нести ту же подпись, иначе сеялка изображает пользователя, недостижимого в реальной
     анкете. Пишем через `database.db.record_user_consent` (та же функция, что и
-    `handlers/reg_consent.py::consent_renew_accept`), без сырого SQL; версия — дефолтная
+    `handlers/reg/reg_consent.py::consent_renew_accept`), без сырого SQL; версия — дефолтная
     (текущая `consent_version`), как и у настоящей подписи. Модуль согласий выключен —
     ничего не пишем (`outstanding_consents` в реальном флоу тоже промолчал бы)."""
     if await get_setting_typed("consent_enabled") != "on":

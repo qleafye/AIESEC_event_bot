@@ -61,7 +61,7 @@ def test_continue_from_done_draft_shows_summary_not_questions(tmp_path, monkeypa
             USER_ID, step=reg_engine.STEP_DONE, event_city="msk",
             patch={"full_name": "Иванова Мария", "age": "22", "resume_file_id": "FILE_1"},
         )
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
 
         calls = []
 
@@ -99,7 +99,7 @@ def test_restart_confirm_counts_answered_questions_not_draft_fields(tmp_path):
             "full_name": "Иванова Мария", "age": "22", "resume_type": "file",
             "resume_file_id": "FILE_1", "resume_file_name": "cv.pdf",
         })
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
         enabled = await reg._get_enabled_steps({"participant_type": "full", "age": "22"})
         callback = _FakeCallback("reg_resume:restart", USER_ID, "delegate")
         await reg_resume.reg_resume_restart(callback, _new_state(USER_ID))
@@ -120,7 +120,7 @@ def test_lookup_pick_echoes_chosen_value(tmp_path):
     _use_tmp_db(tmp_path, "uat261009_c5a.db")
 
     async def go():
-        from handlers import reg_types_lookup
+        from handlers.reg import reg_types_lookup
         state = _new_state(USER_ID)
         await state.update_data(
             participant_type="full", _draft_kind="new", _reg_step=3, _reg_total=10,
@@ -139,7 +139,7 @@ def test_multi_done_echoes_chosen_options(tmp_path):
     _use_tmp_db(tmp_path, "uat261009_c5b.db")
 
     async def go():
-        from handlers import reg_flow
+        from handlers.reg import reg_flow
         state = _new_state(USER_ID)
         await state.update_data(
             participant_type="full", _draft_kind="new", _reg_step=3, _reg_total=10,
@@ -189,7 +189,7 @@ def test_resume_fork_removes_previous_reply_keyboard(tmp_path):
 # ── «Изменить» на сводке — правка, а не новая анкета ──────────────────────────────────────
 
 async def _confirm_edit(signed_consents: bool, extra: dict | None = None):
-    from handlers import reg_flow
+    from handlers.reg import reg_flow
     await db.set_setting("consent_enabled", "on")
     if signed_consents:
         for step in await reg_engine.get_consent_steps():
@@ -288,7 +288,7 @@ def test_confirm_edit_consent_read_failure_goes_to_full_name(tmp_path, monkeypat
         raise RuntimeError("database is locked")
 
     async def go():
-        from handlers import reg_flow
+        from handlers.reg import reg_flow
         monkeypatch.setattr(reg_flow, "get_consent_steps", boom)
         msg, state = await _confirm_edit(signed_consents=False)
         return await state.get_state(), await state.get_data()

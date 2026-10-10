@@ -7,12 +7,12 @@ inline-кнопок совпадений + «Другое» (30-UI-SPEC.md § «
 модуля, второй агрегаторской ветки быть не должно.
 
 Своего `Router` нет — декорирует общий `router`, импортированный из `handlers.registration`
-(тот же образец, что `handlers/reg_resume_fork.py`). Импортируется В ХВОСТЕ `registration.py`
+(тот же образец, что `handlers/reg/reg_resume_fork.py`). Импортируется В ХВОСТЕ `registration.py`
 (план 30-06, задача 4), ПОСЛЕ существующих швов — золотой снимок порядка
 (`tests/test_refac_snapshot_260816.py`) только дополняется.
 
 Собственное состояние `_LookupChat.waiting` — НЕ `Registration.university`/`Registration.city`.
-Те состояния уже заняты приёмным хендлером `handlers/reg_steps.py`
+Те состояния уже заняты приёмным хендлером `handlers/reg/reg_steps.py`
 (`process_university`/`process_city`, если такие есть), зарегистрированным РАНЬШЕ по порядку
 импорта хвоста `handlers/registration.py`. aiogram матчит хендлеры одного состояния в порядке
 регистрации, не по специфичности фильтра — переиспользовать общий `State` нельзя, событие
