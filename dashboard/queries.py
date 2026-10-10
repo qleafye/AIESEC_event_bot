@@ -1974,7 +1974,7 @@ def referral_block(conn, scope: Scope) -> dict | None:
 # Формулы — `.planning/phases/32-ambassador-waves/32-RESEARCH-DOMAIN.md`, раздел «Metric
 # Definitions (D-33)». Схема — план 32-01 (`ambassador_waves`/`wave_results`/
 # `referral_credits`, колонки `game_tasks.wave_id`/`audience`, `coins.task_id`,
-# `users.is_ambassador`/`ambassador_since`). Сервис `services/ambassador_waves.py`
+# `users.is_ambassador`/`ambassador_since`). Сервис `services/amb/ambassador_waves.py`
 # (параллельный план 32-03) считает ТЕ ЖЕ метрики для бота — держать в синхроне с этим модулем
 # при изменении формул; здесь — независимая read-only реализация (дашборд не импортирует
 # сервисы бота, см. модульный докстринг файла), сверка чисел — тест

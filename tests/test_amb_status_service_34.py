@@ -1,4 +1,4 @@
-"""Правила входа в команду амбассадоров — `services/amb_status.py`: режим входа, лимит мест,
+"""Правила входа в команду амбассадоров — `services/amb/amb_status.py`: режим входа, лимит мест,
 место только с одобренной заявкой, отказанные, «Взять», выход, вывод менеджером, швы
 одобрения и сверка мест, состояние для «Моя ссылка».
 
@@ -18,7 +18,7 @@ import pytest
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_status, amb_tiers
+from services.amb import amb_status, amb_tiers
 from tests._dbtpl import fast_init_db
 
 SEASON = "RT 26"
@@ -393,7 +393,7 @@ def test_delegate_state_values(ready):
 # ── Сервис aiogram-free ──────────────────────────────────────────────────────────────────────
 
 def test_service_is_aiogram_free():
-    tree = ast.parse((REPO / "services" / "amb_status.py").read_text(encoding="utf-8"))
+    tree = ast.parse((REPO / "services" / "amb" / "amb_status.py").read_text(encoding="utf-8"))
     modules = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

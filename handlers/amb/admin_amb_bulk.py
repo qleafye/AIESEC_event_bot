@@ -48,7 +48,7 @@ from handlers.amb.admin_amb_candidates import (
 )
 from handlers.access.admin_caps import has_capability
 from handlers.states import AmbAppoint
-from services import amb_status
+from services.amb import amb_status
 from services.access import person_search
 from services.infra.background import spawn
 from domain.settings.schema import get_setting_typed

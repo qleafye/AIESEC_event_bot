@@ -1152,10 +1152,10 @@ async def draft_submit(
         "home_cta": await i18n.tr_setting("miniapp_form_complete_home_cta_text", lang, tr_map),
     }
     # Предложение реф-ссылки на экране «Заявка принята» (паритет с чатом бота). Правила входа —
-    # services.amb_status: при набранном лимите и у отказанного блока нет; кандидату (режим
+    # services.amb.amb_status: при набранном лимите и у отказанного блока нет; кандидату (режим
     # отбора, «да» в анкете) — подтверждение и сразу его ссылка, независимо от тумблера.
     if result["mode"] == "new":
-        from services import amb_status
+        from services.amb import amb_status
         try:
             amb_state = await amb_status.delegate_state(p.telegram_id)
         except Exception:
@@ -1209,9 +1209,9 @@ async def draft_ambassador(
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
-    """«Хочу свою ссылку» — вход через `services.amb_status.request_join` (`telegram_id` только
+    """«Хочу свою ссылку» — вход через `services.amb.amb_status.request_join` (`telegram_id` только
     из initData): `state` = active | candidate | full, при full ничего не пишется и ссылки нет."""
-    from services import amb_status
+    from services.amb import amb_status
     result = await amb_status.request_join(p.telegram_id, source="button_app")
     if result.outcome in ("full", "declined"):
         lang, tr_map = await i18n.context(p.telegram_id)

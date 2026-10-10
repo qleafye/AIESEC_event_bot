@@ -1886,7 +1886,7 @@ async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
 
 # ── Phase 32 (32-03, D-21): динамические подсказки поверх экрана правки ключа ──────────────
 #
-# Ключ настройки -> имя функции-подсказки в services.ambassador_waves. Сейчас ровно одна
+# Ключ настройки -> имя функции-подсказки в services.amb.ambassador_waves. Сейчас ровно одна
 # запись (риск «D-14 + D-21» из 32-RESEARCH-DOMAIN.md: сумма за приглашённого, поставленная
 # без ориентира, может превратить рейтинг волны в «кто больше пригласил»). Подсказка сама
 # fail-soft (referral_ratio_hint ловит исключения и возвращает None) — этот словарь и его
@@ -2015,7 +2015,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     # даже если подсчёт внутри неё упал.
     hint = None
     if _DYNAMIC_SETTING_HINTS.get(key) == "referral_ratio_hint":
-        from services.ambassador_waves import referral_ratio_hint  # ленивый шов (32-03)
+        from services.amb.ambassador_waves import referral_ratio_hint  # ленивый шов (32-03)
         hint = await referral_ratio_hint()
     if hint:
         text += f"\n\n{html_module.escape(hint)}"

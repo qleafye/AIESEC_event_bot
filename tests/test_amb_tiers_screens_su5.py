@@ -287,7 +287,7 @@ def test_balance_screens_off_keep_names(tmp_path):
 
 
 def test_mask_off_returns_same_object(tmp_path):
-    from services import amb_progress
+    from services.amb import amb_progress
 
     _ready(tmp_path)
     rows = [{"id": 1, "source": "referral", "reason": "Приглашённый: Иван"}]
@@ -386,7 +386,7 @@ def test_hub_progress_db_error_falls_back_to_old_counter(client, monkeypatch):
     счётчик приглашённых."""
     import sqlite3
 
-    from services import amb_progress
+    from services.amb import amb_progress
     from domain.settings.schema import SETTINGS_SCHEMA
 
     _set("amb_qualified_program", "on")

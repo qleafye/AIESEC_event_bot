@@ -83,7 +83,7 @@ from services.sheets import sync_named_worksheet
 from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
-from services.ambassador_waves import can_edit_wave, wave_editable_fields
+from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from domain.game.labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
 from domain.game.labels import proof_types_label as _registry_proof_types_label

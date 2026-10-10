@@ -1,6 +1,6 @@
 """Уведомление амбассадору о новой ступени СкиллАп: событие `amb_tier_reached` в
 `miniapp_outbox` разбирает бот (`services/infra/miniapp_outbox.py` ->
-`services/amb_tiers_notify.py`). Одно сообщение на ступень даже при повторной доставке,
+`services/amb/amb_tiers_notify.py`). Одно сообщение на ступень даже при повторной доставке,
 тексты без данных приглашённых, выбор текста «слот есть / лист ожидания» по статусу строки.
 """
 from __future__ import annotations
@@ -16,7 +16,8 @@ from config import config
 from database import amb_tiers_db as tdb
 from database import db
 from miniapp import outbox as web_outbox
-from services import amb_tiers_notify, applications
+from services.amb import amb_tiers_notify
+from services import applications
 from services.infra import miniapp_outbox
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

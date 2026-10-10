@@ -276,13 +276,13 @@ async def _amb_journal_reconcile_job() -> None:
     шагом — сверка ступеней амбассадоров.
     Модульная функция: SQLAlchemyJobStore хранит её как module:qualname."""
     try:
-        from services.amb_journal import reconcile
+        from services.amb.amb_journal import reconcile
         await reconcile()
     except Exception as e:
         logger.error(f"_amb_journal_reconcile_job failed: {e}")
     try:
         # Ступени амбассадоров: дозапись пропущенных и повторная постановка зависших уведомлений.
-        from services.amb_tiers import reconcile_tiers
+        from services.amb.amb_tiers import reconcile_tiers
         await reconcile_tiers()
     except Exception as e:
         logger.error(f"_amb_journal_reconcile_job: reconcile_tiers failed: {e}")
@@ -1682,7 +1682,7 @@ async def _wave_eligible_ambassador_ids(wave: dict) -> list[int]:
     — `wave["event_city"]` без обёртки роняет `database.db._city_clause` (`code, exclude =
     scope` на голой строке)."""
     from database.db import list_ambassadors
-    from services.ambassador_waves import wave_eligible
+    from services.amb.ambassador_waves import wave_eligible
     import domain.cities as cities
 
     ambassadors = await list_ambassadors(city_scope=cities.city_scope(wave.get("event_city")))
@@ -1800,7 +1800,7 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
     бота) не обрывает фан-аут остальным."""
     try:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
-        from services.ambassador_waves import wave_eligible
+        from services.amb.ambassador_waves import wave_eligible
         from services import quiet_hours, i18n
         import domain.game.labels as game_labels
 
@@ -2010,7 +2010,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         from database.db import (
             get_task, get_active_submission, get_user, list_ambassadors, get_wave, task_title,
         )
-        from services.ambassador_waves import wave_eligible, wave_open
+        from services.amb.ambassador_waves import wave_eligible, wave_open
         from services import quiet_hours, i18n
         import domain.game.labels as game_labels
 
@@ -2124,7 +2124,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
     try:
         import domain.game.labels as game_labels
         from services import quiet_hours
-        from services.ambassador_waves import close_wave, wave_end_summary
+        from services.amb.ambassador_waves import close_wave, wave_end_summary
         from handlers.access.admin_caps import capability_holders
 
         if not await close_wave(wave_id):

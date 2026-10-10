@@ -1,6 +1,6 @@
 """Ревизия 32-FIX (CR-04/WR-06): визард волны — создание (`WaveCreate`: даты -> вводный
 текст -> подтверждение), «📋 Скопировать прошлую»/«со своей карточки» (тот же визард дат,
-дальше `services.ambassador_waves.copy_wave`) и правка ОДНОГО поля с карточки (`WaveEdit`:
+дальше `services.amb.ambassador_waves.copy_wave`) и правка ОДНОГО поля с карточки (`WaveEdit`:
 даты/вводный текст/призовые места). Декорирует ОБЩИЙ `handlers.admin.router` — своего
 `Router()` нет, та же техника 13-02, что у соседних швов геймы.
 
@@ -45,7 +45,7 @@ from database.db import (
 )
 from domain.game.labels import task_deadline
 from keyboards.builders import get_cancel_kb
-from services import ambassador_waves as aw
+from services.amb import ambassador_waves as aw
 from services.scheduler import (
     schedule_task_deadline_reminder,
     schedule_wave_end,

@@ -358,7 +358,7 @@ def test_convert_credits_inviting_ambassador(tmp_path, monkeypatch):
     заявка (record_decision → on_invitees_approved): амбассадор получает зачёт ровно один раз,
     повторная обработка того же ответа второй раз не зачитывает."""
     _env(tmp_path)
-    import services.amb_journal as amb_journal
+    import services.amb.amb_journal as amb_journal
     calls = []
 
     async def fake(ids, *, changed_by=None, source="approval"):

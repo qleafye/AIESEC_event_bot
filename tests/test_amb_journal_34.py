@@ -5,7 +5,7 @@ import sqlite3
 
 from config import config
 from database import amb_journal_db, amb_tiers_db, db
-from services import amb_journal
+from services.amb import amb_journal
 from tests.test_referral_credit_32 import (
     _coins_rows,
     _make_ambassador,
@@ -162,7 +162,7 @@ def test_bulk_summary_and_single_calls_of_followups(tmp_path, monkeypatch):
     async def fake_tiers(ids):
         calls["tiers"].append(list(ids))
 
-    from services import amb_status, amb_tiers
+    from services.amb import amb_status, amb_tiers
     monkeypatch.setattr(amb_status, "on_applications_approved", fake_slot)
     monkeypatch.setattr(amb_tiers, "check_tiers_for_invitees", fake_tiers)
     summary = _run(amb_journal.on_invitees_approved([2, 3, 4]))
@@ -177,7 +177,7 @@ def test_failure_of_followups_is_not_raised(tmp_path, monkeypatch):
     async def boom(ids):
         raise RuntimeError("сбой")
 
-    from services import amb_status, amb_tiers
+    from services.amb import amb_status, amb_tiers
     monkeypatch.setattr(amb_status, "on_applications_approved", boom)
     monkeypatch.setattr(amb_tiers, "check_tiers_for_invitees", boom)
     assert _run(amb_journal.on_invitees_approved([2]))["credited"] == 0
