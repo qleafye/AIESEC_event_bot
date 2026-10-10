@@ -84,6 +84,40 @@ def test_recall_change_on_goal_skips_education_recap(tmp_path):
     assert not any("Проверь образование" in (t or "") for t in _texts(msg)), _texts(msg)
 
 
+def test_recall_change_then_next_step_skips_education_recap(tmp_path):
+    """Ревью 10.10: пропуск рекапа по «Изменить» был разовым — после ответа на правку
+    следующий `_ask_step` (уже не в `recall_pending`) снова видел «группа образования
+    закончена» и показывал «Проверь образование». Правка одного вопроса снимает рекап групп,
+    к которым этот вопрос не относится, до конца сессии."""
+    from handlers import reg_types_composite
+    from tests.test_reg_resume_draft import _FakeCallback
+
+    _use_tmp_db(tmp_path, "uat261010_edu_next.db")
+
+    async def go():
+        await db.set_setting("reg_form_v2_enabled", "on")
+        await db.set_setting("reg_form_edu_card", "on")
+        state = _new_state(USER_ID)
+        await state.update_data(
+            participant_type="full", _draft_kind="new",
+            education_status="Да, в ВУЗе или колледже", course="2", university="СПбГУ",
+            study_field="Информационные технологии", goal="Нетворкинг",
+            _recall_step="goal", _reg_step=10, _reg_total=14,
+        )
+        await state.set_state(Registration.recall_pending)
+        await reg.recall_change(_FakeCallback("recall_change:goal", USER_ID, "delegate"), state)
+        # Делегат ответил на правку — дальше бот спрашивает следующий вопрос обычным путём.
+        await state.update_data(goal="Карьера")
+        await state.set_state(None)
+        msg = _KBCapturingMessage(USER_ID, "delegate")
+        await reg._ask_step("expectations", msg, state, 11, 14)
+        return msg, await state.get_state()
+
+    msg, fsm_state = asyncio.run(go())
+    assert fsm_state != reg_types_composite._CompositeChat.confirm.state, _texts(msg)
+    assert not any("Проверь образование" in (t or "") for t in _texts(msg)), _texts(msg)
+
+
 # ── Кнопка «Продолжить» на дочитанной анкете ──────────────────────────────────────────────
 
 async def _continue_label(draft_step):
@@ -137,8 +171,17 @@ class _SentMessage:
         self.owner, self.index, self.fail_edit = owner, index, fail_edit
 
     async def edit_reply_markup(self, reply_markup=None):
+        from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
+        from aiogram.methods import EditMessageReplyMarkup
+
+        method = EditMessageReplyMarkup(chat_id=USER_ID, message_id=self.index + 1)
+        if self.fail_edit == "timeout":
+            # Разметка встала, а ответ Telegram не дошёл.
+            text, _old, parse_mode = self.owner.sent[self.index]
+            self.owner.sent[self.index] = (text, reply_markup, parse_mode)
+            raise TelegramNetworkError(method=method, message="Request timeout error")
         if self.fail_edit:
-            raise RuntimeError("Bad Request: message can't be edited")
+            raise TelegramBadRequest(method=method, message="Bad Request: message can't be edited")
         text, _old, parse_mode = self.owner.sent[self.index]
         self.owner.sent[self.index] = (text, reply_markup, parse_mode)
         return self
@@ -199,3 +242,20 @@ def test_resume_fork_falls_back_to_separate_buttons_message(tmp_path):
     assert "резюме" in (msg.sent[0][0] or "").lower()
     assert msg.sent[1][0] == reg_resume_fork.FORK_PICK_TITLE
     assert isinstance(msg.sent[1][1], InlineKeyboardMarkup)
+
+
+def test_resume_fork_timeout_does_not_send_second_pick(tmp_path):
+    """Ревью 10.10: таймаут после того, как разметка встала, — не повод слать запасное
+    «Выбери способ»: делегат увидел бы кнопки дважды. Запасное сообщение — только на отказ
+    Telegram (`TelegramBadRequest`)."""
+    import pytest
+    from aiogram.exceptions import TelegramNetworkError
+    from handlers import reg_resume_fork
+
+    _use_tmp_db(tmp_path, "uat261010_fork_timeout.db")
+    msg = _ReturningMessage(USER_ID, "delegate", fail_edit="timeout")
+    with pytest.raises(TelegramNetworkError):
+        asyncio.run(_ask_resume_fork(msg))
+
+    assert len(msg.sent) == 1, msg.sent
+    assert reg_resume_fork.FORK_PICK_TITLE not in _texts(msg)

@@ -59,6 +59,16 @@ async def maybe_show_recap(step_key: str, message: types.Message, state: FSMCont
     if degrade_kind("composite", flags) != "composite":
         return False
     if await _is_direct_edit(step_key, state, data):
+        # Правка одного вопроса: рекап групп, к которым он не относится, снят до конца сессии —
+        # иначе следующий `_ask_step` после ответа на правку (уже не в `recall_pending`) снова
+        # увидел бы «группа закончена» и показал «Проверь образование».
+        done = {}
+        for group in _COMPOSITE_GROUPS:
+            parts = await composite_parts(group, participant_type, city_code)
+            if step_key not in (parts or []):
+                done[f"_composite_recap_done_{group}"] = True
+        if done:
+            await state.update_data(**done)
         return False
     for group, _group_steps in _COMPOSITE_GROUPS.items():
         if data.get(f"_composite_recap_done_{group}"):
